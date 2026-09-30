@@ -13,7 +13,7 @@
     'eventWorkspaceSubtitle' => 'Event announcements',
   ])
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 no-print">
-    <div><h2 class="h4 mb-1">Event announcements</h2><p class="text-muted mb-0">Publish updates and optionally email current participants.</p></div>
+    <div><h2 class="h4 mb-1">Event announcements</h2><p class="text-muted mb-0">Publish updates and optionally email nominated and registered players.</p></div>
       <button type="button" class="btn btn-primary btn-sm" id="newAnnouncementBtn">
         <i class="ti ti-plus me-1"></i>New Announcement
       </button>
@@ -106,9 +106,35 @@
         <div class="form-check" id="announcementEmailOption">
           <input class="form-check-input" type="checkbox" id="announcement_send_email">
           <label class="form-check-label" for="announcement_send_email">
-            Send announcement email to all players in this event
+            Email all nominated and active paid registered players
           </label>
           <div class="form-text">Email is queued when you save. Leaving this clear only publishes the announcement online.</div>
+        </div>
+
+        <div id="announcementRecipientReview" class="border rounded p-3 mt-3 d-none">
+          <div class="d-flex justify-content-between gap-3 mb-2">
+            <strong>Exact email recipients</strong>
+            <span class="badge bg-primary">{{ $announcementRecipients->count() }}</span>
+          </div>
+          @if($announcementRecipients->isEmpty())
+            <p class="text-muted mb-0">No valid nominated or registered player email addresses are currently available.</p>
+          @else
+            <div class="small overflow-auto mb-3" style="max-height: 220px;">
+              @foreach($announcementRecipients as $recipient)
+                <div class="py-1 border-bottom">
+                  <span>{{ $recipient['name'] ?: 'Player' }}</span>
+                  <span class="text-muted">&lt;{{ $recipient['email'] }}&gt;</span>
+                </div>
+              @endforeach
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="announcement_confirm_recipients">
+              <label class="form-check-label" for="announcement_confirm_recipients">
+                I confirm this exact recipient list
+              </label>
+            </div>
+          @endif
+          <input type="hidden" id="announcement_recipient_hash" value="{{ $announcementRecipientHash }}">
         </div>
 
         <div id="announcementFormFeedback" class="alert d-none mt-3 mb-0" role="status" aria-live="polite"></div>
@@ -152,6 +178,9 @@ const announcementId = document.getElementById('announcement_id');
 const announcementTitle = document.getElementById('announcement_title');
 const announcementSendEmail = document.getElementById('announcement_send_email');
 const announcementEmailOption = document.getElementById('announcementEmailOption');
+const announcementRecipientReview = document.getElementById('announcementRecipientReview');
+const announcementConfirmRecipients = document.getElementById('announcement_confirm_recipients');
+const announcementRecipientHash = document.getElementById('announcement_recipient_hash');
 const modalTitle = document.getElementById('announcementModalTitle');
 const saveButton = document.getElementById('saveAnnouncementBtn');
 const saveLabel = saveButton.querySelector('.save-label');
@@ -170,6 +199,18 @@ function setSaving(saving) {
   announcementForm.setAttribute('aria-busy', saving ? 'true' : 'false');
   if (saving) saveLabel.textContent = announcementId.value ? 'Saving changes…' : 'Publishing…';
 }
+
+function syncRecipientReview() {
+  const reviewing = !announcementId.value && announcementSendEmail.checked;
+  announcementRecipientReview.classList.toggle('d-none', !reviewing);
+}
+
+announcementSendEmail.addEventListener('change', () => {
+  if (!announcementSendEmail.checked && announcementConfirmRecipients) {
+    announcementConfirmRecipients.checked = false;
+  }
+  syncRecipientReview();
+});
 
 // Initialize Quill editor
 const quill = new Quill('#announcement_message', {
@@ -192,6 +233,7 @@ document.getElementById('newAnnouncementBtn').addEventListener('click', () => {
   quill.root.innerHTML = '';
   announcementSendEmail.checked = false;
   announcementEmailOption.classList.remove('d-none');
+  syncRecipientReview();
   modalTitle.textContent = 'Create announcement';
   saveLabel.textContent = 'Publish announcement';
   setFormFeedback();
@@ -217,6 +259,7 @@ document.addEventListener('click', async e => {
     quill.root.innerHTML = announcement.message;
     announcementSendEmail.checked = false;
     announcementEmailOption.classList.add('d-none');
+    announcementRecipientReview.classList.add('d-none');
     modalTitle.textContent = 'Edit announcement';
     saveLabel.textContent = 'Save changes';
     setFormFeedback('Editing changes the public announcement only. Previously queued emails are not resent.', 'info');
@@ -248,6 +291,11 @@ announcementForm.addEventListener('submit', async e => {
     quill.focus();
     return;
   }
+  if (!id && announcementSendEmail.checked && (!announcementConfirmRecipients || !announcementConfirmRecipients.checked)) {
+    setFormFeedback('Review and confirm the exact recipient list before queueing email.');
+    announcementConfirmRecipients?.focus();
+    return;
+  }
 
   setSaving(true);
   try {
@@ -261,7 +309,9 @@ announcementForm.addEventListener('submit', async e => {
       body: JSON.stringify({
         title: announcementTitle.value.trim(),
         message: quill.root.innerHTML,
-        sendMail: !id && announcementSendEmail.checked ? 1 : 0
+        sendMail: !id && announcementSendEmail.checked ? 1 : 0,
+        confirm_recipients: !id && announcementSendEmail.checked && announcementConfirmRecipients?.checked ? 1 : 0,
+        recipient_hash: !id && announcementSendEmail.checked ? announcementRecipientHash?.value : null
       })
     });
     if (!response.ok) throw await AppFeedback.responseError(response, 'Could not save the announcement.');

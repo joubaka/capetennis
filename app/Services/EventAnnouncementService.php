@@ -4,11 +4,17 @@ namespace App\Services;
 
 use App\Models\Announcement;
 use App\Models\Event;
+use App\Models\Player;
+use App\Services\TeamSelection\TeamSelectionContactService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class EventAnnouncementService
 {
+    public function __construct(private readonly TeamSelectionContactService $contacts)
+    {
+    }
+
     /**
      * Build the editable announcement shown after venue allocation.
      *
@@ -72,35 +78,76 @@ class EventAnnouncementService
         ];
     }
 
-    /** @return Collection<int, string> */
-    public function recipientEmails(Event $event): Collection
+    /**
+     * Resolve the exact event announcement audience from current nominations and
+     * active, paid registrations. Client-submitted addresses are never used.
+     *
+     * @return Collection<int, array{email:string,name:string}>
+     */
+    public function recipients(Event $event): Collection
     {
         $event->loadMissing('eventTypeModel');
 
+        $nominatedPlayers = $event->nominations()
+            ->with('player.user', 'player.users')
+            ->get()
+            ->pluck('player');
+
+        $registeredPlayers = $event->registrations()
+            ->activeAndPaid()
+            ->with('players.user', 'players.users')
+            ->get()
+            ->flatMap->players;
+
+        $teamPlayers = collect();
         if ($event->isTeam()) {
-            $event->loadMissing('regions.teams.players');
-            $emails = $event->regions
+            $event->loadMissing('regions.teams.players.user', 'regions.teams.players.users');
+            $teamPlayers = $event->regions
                 ->flatMap->teams
-                ->flatMap->players
-                ->pluck('email');
-        } else {
-            $emails = $event->registrations()
-                ->activeAndPaid()
-                ->with('players:id,email')
-                ->get()
-                ->flatMap->players
-                ->pluck('email');
+                ->flatMap->players;
         }
 
-        return $emails
-            ->map(fn ($email) => strtolower(trim((string) $email)))
-            ->filter(fn ($email) => filter_var($email, FILTER_VALIDATE_EMAIL) !== false)
-            ->unique()
+        return $nominatedPlayers
+            ->merge($registeredPlayers)
+            ->merge($teamPlayers)
+            ->filter(fn ($player): bool => $player instanceof Player)
+            ->unique('id')
+            ->map(function (Player $player): ?array {
+                $email = $this->contacts->primaryEmail($player);
+                if (! $email) {
+                    return null;
+                }
+
+                $name = trim($player->name.' '.$player->surname);
+
+                return ['email' => $email, 'name' => $name];
+            })
+            ->filter()
+            ->unique('email')
+            ->sortBy('email')
             ->values();
     }
 
+    /** @return Collection<int, string> */
+    public function recipientEmails(Event $event): Collection
+    {
+        return $this->recipients($event)->pluck('email')->values();
+    }
+
+    public function recipientHash(Event $event): string
+    {
+        return hash('sha256', $this->recipientEmails($event)->toJson());
+    }
+
     /** @return array{total: int, queued: int, skipped: int, invalid: int, duplicate: int} */
-    public function dispatch(Announcement $announcement): array
+    /**
+     * Queue the exact server-derived recipient snapshot already validated by
+     * the caller. Do not re-resolve the audience after confirmation.
+     *
+     * @param  Collection<int, array{email:string,name:string}>  $recipients
+     * @return array{total: int, queued: int, skipped: int, invalid: int, duplicate: int}
+     */
+    public function dispatch(Announcement $announcement, Collection $recipients): array
     {
         $event = $announcement->event;
         if (! $event) {
@@ -110,7 +157,7 @@ class EventAnnouncementService
         return app(BulkMailDispatcher::class)->dispatch(
             mailType: 'event_announcement',
             related: $announcement,
-            recipients: $this->recipientEmails($event),
+            recipients: $recipients,
             payload: [
                 'event_name' => $event->name,
                 'title' => $announcement->title,

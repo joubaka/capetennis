@@ -17,7 +17,7 @@ class EventAnnouncementController extends Controller
   ========================= */
 
 
-  public function index(Event $event)
+  public function index(Event $event, EventAnnouncementService $announcements)
   {
     $this->authorize('event.manage', $event);
 
@@ -28,7 +28,14 @@ class EventAnnouncementController extends Controller
       }
     ]);
 
-    return view('backend.event.announcements', compact('event'));
+    $announcementRecipients = $announcements->recipients($event);
+    $announcementRecipientHash = hash('sha256', $announcementRecipients->pluck('email')->toJson());
+
+    return view('backend.event.announcements', compact(
+      'event',
+      'announcementRecipients',
+      'announcementRecipientHash',
+    ));
   }
 
 
@@ -48,9 +55,27 @@ class EventAnnouncementController extends Controller
       'title' => ['required', 'string', 'max:255'],
       'message' => ['required', 'string'],
       'sendMail' => 'nullable|boolean',
+      'confirm_recipients' => ['nullable', 'accepted_if:sendMail,1'],
+      'recipient_hash' => ['nullable', 'string', 'size:64'],
     ]);
 
     $this->ensureMessageHasContent($data['message']);
+
+    if (!empty($data['sendMail'])) {
+      $recipients = $announcements->recipients($event);
+      if ($recipients->isEmpty()) {
+        throw ValidationException::withMessages([
+          'sendMail' => 'There are no valid nominated or registered player email addresses for this event.',
+        ]);
+      }
+
+      $currentHash = hash('sha256', $recipients->pluck('email')->toJson());
+      if (! hash_equals($currentHash, (string) ($data['recipient_hash'] ?? ''))) {
+        throw ValidationException::withMessages([
+          'confirm_recipients' => 'The recipient list changed. Review the current recipients and confirm again.',
+        ]);
+      }
+    }
 
     $announcement = $event->announcements()->create([
       'title' => $data['title'],
@@ -64,7 +89,7 @@ class EventAnnouncementController extends Controller
     $mailStats = null;
     if (!empty($data['sendMail'])) {
       Log::info('[EventAnnouncement] 📧 Sending emails...');
-      $mailStats = $announcements->dispatch($announcement);
+      $mailStats = $announcements->dispatch($announcement, $recipients);
     } else {
       Log::info('[EventAnnouncement] ⏭️ sendMail not checked, skipping emails');
     }

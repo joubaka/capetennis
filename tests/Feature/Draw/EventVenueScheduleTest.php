@@ -1065,10 +1065,13 @@ class EventVenueScheduleTest extends TestCase
             ->assertSee('Court 2')
             ->assertSee('unique active, paid player');
 
+        $announcementService = app(\App\Services\EventAnnouncementService::class);
         $response = $this->actingAs($admin)->postJson(route('admin.events.announcements.store', $event), [
             'title' => 'Final court allocation',
             'message' => '<p>Courts are ready. Please review your age group.</p>',
             'sendMail' => true,
+            'confirm_recipients' => true,
+            'recipient_hash' => $announcementService->recipientHash($event),
         ]);
 
         $response->assertOk()
