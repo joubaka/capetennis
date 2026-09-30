@@ -115,6 +115,11 @@ return [
         'name' => env('MAIL_FROM_NAME', 'Cape Tennis'),
     ],
 
+    'allowed_from_addresses' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env('MAIL_ALLOWED_FROM_ADDRESSES', ''))
+    ))),
+
     /*
     |--------------------------------------------------------------------------
     | Markdown Mail Settings

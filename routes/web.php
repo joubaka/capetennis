@@ -465,6 +465,7 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::patch('batches/{batch}/details', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'updateDetails'])->name('details.update');
     Route::patch('batches/{batch}/deadlines/extend', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'extendDeadlines'])->name('deadlines.extend');
     Route::post('batches/{batch}/send-invitations', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'sendInvitations'])->name('send-invitations');
+    Route::post('batches/{batch}/send-invitations/preview', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'previewInitial'])->name('send-invitations.preview');
     Route::post('batches/{batch}/publish-names', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'publishNamesOnly'])->name('publish-names');
     Route::post('batches/{batch}/public-list', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'togglePublicList'])->name('public-list.toggle');
     Route::post('batches/{batch}/registration', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'toggleRegistration'])->name('registration.toggle');
@@ -2133,11 +2134,15 @@ Route::prefix('backend')->middleware('auth')->group(function () {
   Route::post('draw/{draw}/unlock', [DrawController::class, 'unlock_draw'])
     ->name('draw.unlock');
 
-  // Engine debug panel (read-only, super-user / admin only)
-  Route::get('/admin/engine/debug', [\App\Http\Controllers\Backend\EngineDebugController::class, 'index'])
-    ->name('engine.debug');
-  Route::delete('/admin/engine/debug/clear', [\App\Http\Controllers\Backend\EngineDebugController::class, 'clearLogs'])
-    ->name('engine.debug.clear');
+  // Local diagnostic only: production must not register these routes at all.
+  if (! app()->environment('production')) {
+    Route::get('/admin/engine/debug', [\App\Http\Controllers\Backend\EngineDebugController::class, 'index'])
+      ->middleware(['auth', 'role:super-user'])
+      ->name('engine.debug');
+    Route::delete('/admin/engine/debug/clear', [\App\Http\Controllers\Backend\EngineDebugController::class, 'clearLogs'])
+      ->middleware(['auth', 'role:super-user'])
+      ->name('engine.debug.clear');
+  }
 
   // Per-draw engine mode management
   Route::get('/admin/engine/draw/{draw}', [\App\Http\Controllers\Backend\DrawEngineModeController::class, 'show'])

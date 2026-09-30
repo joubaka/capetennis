@@ -40,6 +40,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config(['mail.allowed_from_addresses' => ['trials@example.test']]);
         Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
         Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
         $typeId = DB::table('eventtypes')->insertGetId(['name' => 'Interpro Trials', 'type' => EventType::INDIVIDUAL,
@@ -476,15 +477,48 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
             'type' => 'registration', 'custom_int5' => $order->id,
         ])->assertSessionHasErrors('payment');
 
+        $firstHandoffAt = $order->fresh()->payfast_handed_off_at;
+        $orderCount = RegistrationOrder::count();
+        $itemCount = RegistrationOrderItems::count();
+        $this->travel(31)->minutes();
+
+        $this->actingAs($payer)->post(route('registration.hybrid.pay'), [
+            'type' => 'registration', 'custom_int5' => $order->id,
+        ])->assertSessionHasErrors('payment');
+
+        $stillPending = $order->fresh();
+        $this->assertTrue($stillPending->payfast_handed_off_at->equalTo($firstHandoffAt));
+        $this->assertSame(0.0, (float) $stillPending->wallet_reserved);
+        $this->assertSame(150.0, (float) $stillPending->payfast_amount_due);
+        $this->assertSame($orderCount, RegistrationOrder::count());
+        $this->assertSame($itemCount, RegistrationOrderItems::count());
+
         $this->actingAs($otherPayer)->post(route('interprovincial-trials.nominations.register', [
             $this->event, $this->category, $nomination,
         ]))->assertSessionHasErrors('invitation');
         $this->actingAs($payer)->get(route('registration.hybrid.cancel', ['orderId' => $order->id]))
-            ->assertSessionHasErrors('payment');
+            ->assertRedirect(route('events.show', $this->event))
+            ->assertSessionHas('info', 'Returning from PayFast does not confirm cancellation. This checkout remains unchanged while PayFast payment is resolving.');
 
         $this->assertSame($order->id, $invitation->fresh()->order_id);
         $this->assertSame(InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT, $invitation->fresh()->status);
         $this->assertSame('pending', $order->fresh()->status);
+        $this->assertDatabaseCount('registration_orders', 1);
+        $this->assertDatabaseCount('registration_order_items', 1);
+
+        $payments = app(\App\Domain\Payments\Services\RegistrationPaymentService::class);
+        $paid = $payments->finalizePayfastPayment($order->fresh(), 150, [
+            'pf_payment_id' => 'PF-LATE-AFTER-WAIT',
+            'user_id' => $payer->id,
+        ]);
+        app(InvitationService::class)->confirmPaidOrder($paid);
+        $payments->finalizePayfastPayment($paid->fresh(), 150, [
+            'pf_payment_id' => 'PF-LATE-AFTER-WAIT',
+            'user_id' => $payer->id,
+        ]);
+
+        $this->assertTrue((bool) $order->fresh()->pay_status);
+        $this->assertSame(InterprovincialTrialInvitation::PAID_CONFIRMED, $invitation->fresh()->status);
         $this->assertDatabaseCount('registration_orders', 1);
         $this->assertDatabaseCount('registration_order_items', 1);
     }
@@ -1305,23 +1339,30 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $this->assertSame($before['dispatches'], DB::table('interprovincial_trial_mail_dispatches')->count());
         $this->assertSame($before['logs'], BulkEmailLog::count());
 
+        $review = $this->actingAs($this->admin)->postJson($previewUrl, [
+            'mode' => 'new', 'subject' => 'Exact trials invitation', 'body' => 'Please use your secure invitation link.',
+            'from_address' => 'trials@example.test', 'from_name' => 'Cape Tennis Trials', 'reply_to' => 'reply@example.test',
+        ])->assertOk()->json();
         $payload = [
             'mode' => 'new',
-            'request_token' => $preview['request_token'],
-            'recipient_hash' => $preview['recipient_hash'],
+            'request_token' => $review['request_token'],
+            'recipient_hash' => $review['recipient_hash'],
+            'composition_hash' => $review['composition_hash'],
+            'review_proof' => $review['review_proof'], 'review_expires_at' => $review['review_expires_at'],
             'subject' => 'Exact trials invitation',
             'body' => 'Please use your secure invitation link.',
+            'from_address' => 'trials@example.test', 'from_name' => 'Cape Tennis Trials', 'reply_to' => 'reply@example.test',
         ];
         $this->actingAs($this->admin)->postJson($queueUrl, $payload)->assertOk()->assertJsonPath('queued_count', 1);
         $this->actingAs($this->admin)->postJson($queueUrl, $payload)->assertOk()->assertJsonPath('already_queued', true);
         $this->assertDatabaseCount('interprovincial_trial_mail_dispatches', 1);
         $this->assertDatabaseCount('bulk_email_logs', 1);
         $this->assertDatabaseHas('interprovincial_trial_mail_dispatches', [
-            'request_token' => $preview['request_token'], 'kind' => 'initial', 'requested_by_user_id' => $this->admin->id,
+            'request_token' => $review['request_token'], 'kind' => 'initial', 'requested_by_user_id' => $this->admin->id,
         ]);
         $log = BulkEmailLog::sole();
         $this->assertSame('new', $log->payload['mode']);
-        $this->assertSame($preview['request_token'], $log->payload['request_token']);
+        $this->assertSame($review['request_token'], $log->payload['request_token']);
         $this->assertSame($this->admin->id, $log->payload['requested_by_user_id']);
         $log->update(['status' => 'sent', 'sent_at' => now()]);
         InterprovincialTrialInvitation::sole()->update(['status' => 'sent', 'sent_at' => now()]);
@@ -1330,12 +1371,19 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $reminderOne = $this->actingAs($this->admin)->postJson($previewUrl, ['mode' => 'not_registered'])
             ->assertOk()->assertJsonCount(1, 'recipients')
             ->assertJsonPath('recipients.0.email', 'preview-owner-updated@example.test')->json();
+        $reminderReview = $this->actingAs($this->admin)->postJson($previewUrl, [
+            'mode' => 'not_registered', 'subject' => 'Registration reminder', 'body' => 'Please complete your registration.',
+            'from_address' => 'trials@example.test', 'from_name' => 'Cape Tennis Trials', 'reply_to' => 'reply@example.test',
+        ])->assertOk()->json();
         $reminderPayload = [
             'mode' => 'not_registered',
-            'request_token' => $reminderOne['request_token'],
-            'recipient_hash' => $reminderOne['recipient_hash'],
+            'request_token' => $reminderReview['request_token'],
+            'recipient_hash' => $reminderReview['recipient_hash'],
+            'composition_hash' => $reminderReview['composition_hash'],
+            'review_proof' => $reminderReview['review_proof'], 'review_expires_at' => $reminderReview['review_expires_at'],
             'subject' => 'Registration reminder',
             'body' => 'Please complete your registration.',
+            'from_address' => 'trials@example.test', 'from_name' => 'Cape Tennis Trials', 'reply_to' => 'reply@example.test',
         ];
         $this->actingAs($this->admin)->postJson($queueUrl, $reminderPayload)->assertOk()->assertJsonPath('queued_count', 1);
         $this->assertSame('preview-owner-updated@example.test', InterprovincialTrialInvitation::sole()->recipient_email);
@@ -1344,8 +1392,12 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $this->actingAs($this->admin)->get(route('backend.interprovincial-trials.invitations.index', $this->event))
             ->assertOk()->assertSee('preview-owner-updated@example.test')->assertDontSee('mailto:preview-owner%40example.test', false);
         $reminderTwo = $this->actingAs($this->admin)->postJson($previewUrl, ['mode' => 'not_registered'])->assertOk()->json();
-        $reminderPayload['request_token'] = $reminderTwo['request_token'];
-        $reminderPayload['recipient_hash'] = $reminderTwo['recipient_hash'];
+        $reminderTwoReview = $this->actingAs($this->admin)->postJson($previewUrl, $reminderPayload)->assertOk()->json();
+        $reminderPayload['request_token'] = $reminderTwoReview['request_token'];
+        $reminderPayload['recipient_hash'] = $reminderTwoReview['recipient_hash'];
+        $reminderPayload['composition_hash'] = $reminderTwoReview['composition_hash'];
+        $reminderPayload['review_proof'] = $reminderTwoReview['review_proof'];
+        $reminderPayload['review_expires_at'] = $reminderTwoReview['review_expires_at'];
         $this->actingAs($this->admin)->postJson($queueUrl, $reminderPayload)->assertOk()->assertJsonPath('queued_count', 1);
         $this->assertDatabaseCount('interprovincial_trial_mail_dispatches', 3);
         $this->assertSame(2, DB::table('interprovincial_trial_mail_dispatches')->where('kind', 'follow_up')->count());
@@ -1370,12 +1422,19 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
             ->assertJsonCount(1, 'blockers')
             ->json();
 
+        $review = $this->actingAs($this->admin)->postJson($previewUrl, [
+            'mode' => 'new', 'subject' => 'Trials invitation', 'body' => 'Register for the published trial.',
+            'from_address' => 'trials@example.test', 'from_name' => 'Cape Tennis Trials', 'reply_to' => 'reply@example.test',
+        ])->assertOk()->json();
         $this->actingAs($this->admin)->postJson($queueUrl, [
             'mode' => 'new',
-            'request_token' => $preview['request_token'],
-            'recipient_hash' => $preview['recipient_hash'],
+            'request_token' => $review['request_token'],
+            'recipient_hash' => $review['recipient_hash'],
+            'composition_hash' => $review['composition_hash'],
+            'review_proof' => $review['review_proof'], 'review_expires_at' => $review['review_expires_at'],
             'subject' => 'Trials invitation',
             'body' => 'Register for the published trial.',
+            'from_address' => 'trials@example.test', 'from_name' => 'Cape Tennis Trials', 'reply_to' => 'reply@example.test',
         ])->assertOk()
             ->assertJsonPath('queued_count', 1)
             ->assertJsonPath('skipped_count', 1);
@@ -1416,15 +1475,16 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $nomination = EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id]);
         $batch = InterprovincialTrialInvitationBatch::create(['event_id' => $this->event->id, 'status' => InterprovincialTrialInvitationBatch::QUEUED, 'snapshot_hash' => str_repeat('a', 64), 'created_by_user_id' => $this->admin->id]);
         $invitation = InterprovincialTrialInvitation::create(['batch_id' => $batch->id, 'event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'nomination_id' => $nomination->id, 'player_id' => $player->id, 'recipient_email' => $owner->email, 'status' => InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT]);
-        $payload = ['kind' => 'follow_up', 'subject' => 'Reminder', 'body' => 'Please complete registration.', 'recipient_name' => 'Follow Up'];
-        $log = BulkEmailLog::create(['mail_type' => 'interprovincial_trial_invitation', 'related_type' => InterprovincialTrialInvitation::class, 'related_id' => $invitation->id, 'recipient_email' => $owner->email, 'status' => 'queued', 'payload' => $payload, 'queued_at' => now()]);
+        $payload = ['event_id' => $this->event->id, 'invitation_id' => $invitation->id, 'kind' => 'follow_up', 'subject' => 'Reminder', 'body' => 'Please complete registration.', 'from_address' => config('mail.from.address'), 'from_name' => config('mail.from.name'), 'reply_to' => config('mail.from.address'), 'recipient_email' => $owner->email, 'recipient_name' => 'Follow Up', 'related_type' => InterprovincialTrialInvitation::class, 'related_id' => $invitation->id];
+        $payload['payload_integrity'] = app(\App\Services\InvitationMailSecurity::class)->payloadIntegrity($payload);
+        $log = BulkEmailLog::create(['mail_type' => 'interprovincial_trial_invitation', 'related_type' => InterprovincialTrialInvitation::class, 'related_id' => $invitation->id, 'recipient_email' => $owner->email, 'recipient_name' => 'Follow Up', 'status' => 'queued', 'payload' => $payload, 'queued_at' => now()]);
 
         (new SendInterprovincialTrialInvitationEmailJob($log->id, $this->event->id))->handle();
         $this->assertSame('sent', $log->fresh()->status);
         $this->assertSame(InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT, $invitation->fresh()->status);
 
         $invitation->update(['status' => InterprovincialTrialInvitation::PAID_CONFIRMED]);
-        $terminalLog = BulkEmailLog::create(['mail_type' => 'interprovincial_trial_invitation', 'related_type' => InterprovincialTrialInvitation::class, 'related_id' => $invitation->id, 'recipient_email' => $owner->email, 'status' => 'queued', 'payload' => $payload, 'queued_at' => now()]);
+        $terminalLog = BulkEmailLog::create(['mail_type' => 'interprovincial_trial_invitation', 'related_type' => InterprovincialTrialInvitation::class, 'related_id' => $invitation->id, 'recipient_email' => $owner->email, 'recipient_name' => 'Follow Up', 'status' => 'queued', 'payload' => $payload, 'queued_at' => now()]);
         (new SendInterprovincialTrialInvitationEmailJob($terminalLog->id, $this->event->id))->handle();
         $this->assertSame('skipped', $terminalLog->fresh()->status);
         $this->assertSame(InterprovincialTrialInvitation::PAID_CONFIRMED, $invitation->fresh()->status);
@@ -1465,7 +1525,9 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $owner = User::factory()->create(['email' => 'retry-follow-up@example.test']);
         $player = Player::factory()->create(['userId' => $owner->id]);
         $nomination = EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id]);
-        $batch = InterprovincialTrialInvitationBatch::create(['event_id' => $this->event->id, 'status' => InterprovincialTrialInvitationBatch::QUEUED, 'snapshot_hash' => str_repeat('b', 64), 'created_by_user_id' => $this->admin->id]);
+        $subject = 'Reviewed reminder'; $body = 'Reviewed exact body';
+        $messageHash = hash('sha256', json_encode(['subject' => $subject, 'body' => $body], JSON_THROW_ON_ERROR));
+        $batch = InterprovincialTrialInvitationBatch::create(['event_id' => $this->event->id, 'status' => InterprovincialTrialInvitationBatch::QUEUED, 'snapshot_hash' => str_repeat('b', 64), 'created_by_user_id' => $this->admin->id, 'email_subject' => $subject, 'email_body' => $body, 'message_hash' => $messageHash, 'reviewed_message_hash' => $messageHash]);
         $invitation = InterprovincialTrialInvitation::create(['batch_id' => $batch->id, 'event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'nomination_id' => $nomination->id, 'player_id' => $player->id, 'recipient_email' => $owner->email, 'status' => InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT]);
         $token = (string) \Illuminate\Support\Str::uuid();
         $log = BulkEmailLog::create([
@@ -1488,10 +1550,29 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
 
         $this->assertSame(InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT, $invitation->fresh()->status);
         $this->assertSame('queued', $log->fresh()->status);
-        $this->assertSame('Original exact body', $log->fresh()->payload['body']);
+        $this->assertSame('Reviewed exact body', $log->fresh()->payload['body']);
+        $this->assertTrue(app(\App\Services\InvitationMailSecurity::class)->logMatchesSignedSnapshot($log->fresh(), $this->event->id));
         $this->assertDatabaseCount('interprovincial_trial_mail_dispatches', 1);
         $this->assertDatabaseCount('bulk_email_logs', 1);
         Bus::assertDispatchedTimes(SendInterprovincialTrialInvitationEmailJob::class, 1);
+    }
+
+    public function test_unsigned_failed_follow_up_retry_refuses_when_reviewed_message_cannot_be_reconstructed(): void
+    {
+        Bus::fake();
+        $owner = User::factory()->create(['email' => 'unsafe-legacy@example.test']);
+        $player = Player::factory()->create(['userId' => $owner->id]);
+        $nomination = EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id]);
+        $batch = InterprovincialTrialInvitationBatch::create(['event_id' => $this->event->id, 'status' => InterprovincialTrialInvitationBatch::QUEUED, 'snapshot_hash' => str_repeat('f', 64), 'created_by_user_id' => $this->admin->id]);
+        $invitation = InterprovincialTrialInvitation::create(['batch_id' => $batch->id, 'event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'nomination_id' => $nomination->id, 'player_id' => $player->id, 'recipient_email' => $owner->email, 'status' => InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT]);
+        $token = (string) \Illuminate\Support\Str::uuid();
+        $log = BulkEmailLog::create(['mail_type' => 'interprovincial_trial_invitation', 'related_type' => InterprovincialTrialInvitation::class, 'related_id' => $invitation->id, 'recipient_email' => 'mutable@example.test', 'status' => 'failed', 'payload' => ['kind' => 'follow_up', 'request_token' => $token], 'failed_at' => now()]);
+        DB::table('interprovincial_trial_mail_dispatches')->insert(['invitation_id' => $invitation->id, 'bulk_email_log_id' => $log->id, 'request_token' => $token, 'kind' => 'follow_up', 'requested_by_user_id' => $this->admin->id, 'created_at' => now(), 'updated_at' => now()]);
+
+        $this->actingAs($this->admin)->post(route('backend.interprovincial-trials.invitations.retry-follow-up', [$this->event, $invitation]))->assertSessionHasErrors('invitation');
+        $this->assertSame('failed', $log->fresh()->status);
+        $this->assertSame('mutable@example.test', $log->fresh()->recipient_email);
+        Bus::assertNothingDispatched();
     }
 
     public function test_legacy_send_endpoints_are_hard_disabled_without_writes(): void
@@ -1554,16 +1635,44 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
             route('backend.interprovincial-trials.invitations.send-preview', $this->event),
             ['mode' => 'new']
         )->assertOk()->json();
+        $preview = $this->actingAs($this->admin)->postJson(
+            route('backend.interprovincial-trials.invitations.send-preview', $this->event),
+            ['mode' => 'new', 'subject' => 'Trials invitation', 'body' => 'You are invited to participate in the Interprovincial Trials.', 'from_address' => 'trials@example.test', 'from_name' => 'Cape Tennis Trials', 'reply_to' => 'reply@example.test']
+        )->assertOk()->json();
         $this->actingAs($this->admin)->postJson(
             route('backend.interprovincial-trials.invitations.send-preview.queue', $this->event),
             [
                 'mode' => 'new',
                 'request_token' => $preview['request_token'],
                 'recipient_hash' => $preview['recipient_hash'],
+                'composition_hash' => $preview['composition_hash'],
+                'review_proof' => $preview['review_proof'], 'review_expires_at' => $preview['review_expires_at'],
                 'subject' => 'Trials invitation',
                 'body' => 'You are invited to participate in the Interprovincial Trials.',
+                'from_address' => 'trials@example.test', 'from_name' => 'Cape Tennis Trials', 'reply_to' => 'reply@example.test',
             ]
         )->assertOk();
+    }
+
+    public function test_interpro_job_rejects_tampered_log_envelope_and_relation_before_transport(): void
+    {
+        Bus::fake();
+        $owner = User::factory()->create(['email' => 'signed-recipient@example.test']);
+        $player = Player::factory()->create(['userId' => $owner->id]);
+        EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id]);
+        $this->queuePreviewedNewInvitation();
+        \Illuminate\Support\Facades\Mail::fake();
+        $original = BulkEmailLog::sole();
+        $original->update(['recipient_email' => 'attacker@example.test']);
+        (new SendInterprovincialTrialInvitationEmailJob($original->id, $this->event->id))->handle();
+        $this->assertSame('skipped', $original->fresh()->status);
+
+        $payload = $original->payload;
+        $second = BulkEmailLog::create(['mail_type' => 'interprovincial_trial_invitation', 'related_type' => InterprovincialTrialInvitation::class, 'related_id' => $payload['related_id'], 'recipient_email' => $payload['recipient_email'], 'recipient_name' => $payload['recipient_name'], 'status' => 'queued', 'payload' => $payload, 'queued_at' => now()]);
+        $second->update(['related_id' => $second->related_id + 9999]);
+        (new SendInterprovincialTrialInvitationEmailJob($second->id, $this->event->id))->handle();
+        $this->assertSame('skipped', $second->fresh()->status);
+        \Illuminate\Support\Facades\Mail::assertNothingSent();
     }
 
     private function prepareInvitationFixtures(): InterprovincialTrialInvitationBatch

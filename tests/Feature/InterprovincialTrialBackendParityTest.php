@@ -203,7 +203,7 @@ class InterprovincialTrialBackendParityTest extends TestCase
             ->assertOk()
             ->assertSee('Invitation readiness')
             ->assertSee('Add nominations')
-            ->assertSee('Recipients need attention')
+            ->assertSee('No recipients ready')
             ->assertSee('Message ready to edit below')
             ->assertSee('Registration open');
 
@@ -264,13 +264,13 @@ class InterprovincialTrialBackendParityTest extends TestCase
             ->get(route('backend.interprovincial-trials.invitations.index', $this->event))
             ->assertOk()
             ->assertSee('Nominations ready')
-            ->assertSee('Recipients ready')
+            ->assertSee('Valid recipients can be emailed')
             ->assertSee('Message stored')
             ->assertSee('Batch Reviewed')
             ->assertSee('Sent: 1')
             ->assertDontSee('Failed: 1');
 
-        $response->assertSeeInOrder(['Ready recipients', '>1<', 'Recipient blockers', '>0<'], false);
+        $response->assertSeeInOrder(['Ready recipients', '>1<', 'Missing email', '>0<'], false);
         foreach ($before as $table => $count) {
             $this->assertSame($count, DB::table($table)->count(), "The readiness page must not write {$table}.");
         }

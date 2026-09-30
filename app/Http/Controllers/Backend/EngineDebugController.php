@@ -18,6 +18,8 @@ class EngineDebugController extends Controller
 {
     public function index(EngineRouter $engine)
     {
+        abort_if(app()->environment('production'), 404);
+
         // --- legacy comparison log stats (original table)
         $totalMismatches = EngineComparisonLog::where('was_fallback', false)->count();
         $totalFallbacks  = EngineComparisonLog::where('was_fallback', true)->count();
@@ -96,6 +98,8 @@ class EngineDebugController extends Controller
 
     public function clearLogs()
     {
+        abort_if(app()->environment('production'), 404);
+
         EngineComparisonLog::truncate();
         EngineRun::truncate();
         EngineMismatch::truncate();

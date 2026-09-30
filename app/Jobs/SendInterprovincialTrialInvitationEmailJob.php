@@ -6,6 +6,7 @@ use App\Mail\InterprovincialTrialInvitationMail;
 use App\Models\BulkEmailLog;
 use App\Models\InterprovincialTrialInvitation;
 use App\Services\MailAccountManager;
+use App\Services\InvitationMailSecurity;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -28,6 +29,9 @@ class SendInterprovincialTrialInvitationEmailJob implements ShouldQueue
     {
         $log = BulkEmailLog::where('mail_type', 'interprovincial_trial_invitation')->find($this->logId);
         if (! $log || $log->sent_at || in_array($log->status, ['sent', 'skipped'], true)) return;
+        if (! app(InvitationMailSecurity::class)->logMatchesSignedSnapshot($log, $this->eventId)) {
+            $log->markAsSkipped('Invitation email snapshot integrity check failed.'); return;
+        }
         $invitation = InterprovincialTrialInvitation::with(['batch.event', 'categoryEvent.category', 'player'])->find($log->related_id);
         $kind = (string) data_get($log->payload, 'kind', 'initial');
         $eligibleStates = $kind === 'initial'

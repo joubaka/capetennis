@@ -6,6 +6,7 @@ use App\Mail\MastersInvitationMail;
 use App\Models\BulkEmailLog;
 use App\Models\MastersInvitation;
 use App\Services\MailAccountManager;
+use App\Services\InvitationMailSecurity;
 use App\Services\Masters\MastersInvitationMailEligibility;
 use DateTimeImmutable;
 use Illuminate\Bus\Queueable;
@@ -61,6 +62,9 @@ class SendMastersInvitationEmailJob implements ShouldQueue
         if (!$log || $log->sent_at || in_array($log->status, ['sent', 'skipped'], true)) {
             return;
         }
+        if (! app(InvitationMailSecurity::class)->logMatchesSignedSnapshot($log, $this->eventId)) {
+            $log->markAsSkipped('Masters email snapshot integrity check failed.'); return;
+        }
 
         $invitation = MastersInvitation::with(['batch.event', 'categoryEvent.category', 'player'])
             ->find($log->related_id);
@@ -73,7 +77,7 @@ class SendMastersInvitationEmailJob implements ShouldQueue
         try {
             $mailer = app(MailAccountManager::class)->getMailer();
             $sent = Mail::mailer($mailer)->to($log->recipient_email)->sendNow(
-                new MastersInvitationMail($invitation, $log->payload['kind'] ?? 'invitation')
+                new MastersInvitationMail($invitation, $log->payload['kind'] ?? 'invitation', $log->payload ?? [])
             );
             if ($sent === null) {
                 throw new RuntimeException('Masters email sending was cancelled before transport acceptance.');
@@ -108,8 +112,6 @@ class SendMastersInvitationEmailJob implements ShouldQueue
     {
         return BulkEmailLog::where('mail_type', 'masters_invitation')
             ->where('related_type', MastersInvitation::class)
-            ->whereIn('related_id', MastersInvitation::query()->select('id')
-                ->whereHas('batch', fn ($query) => $query->where('event_id', $this->eventId)))
             ->find($this->logId);
     }
 }

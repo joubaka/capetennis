@@ -406,6 +406,24 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             ->where('subject_id', $order->id)
             ->where('description', 'team checkout handed off to PayFast')
             ->count());
+
+        $reserved = (float) $order->fresh()->wallet_reserved;
+        $due = (float) $order->fresh()->payfast_amount_due;
+        $this->travel(31)->minutes();
+        $this->post(route('team.payment.payfast.handoff', [
+            $this->team, $player, $this->event,
+        ]))->assertOk();
+
+        $stillPending = $order->fresh();
+        $this->assertSame($handedOffAt, $stillPending->payfast_handed_off_at->toISOString());
+        $this->assertSame($reserved, (float) $stillPending->wallet_reserved);
+        $this->assertSame($due, (float) $stillPending->payfast_amount_due);
+        $this->assertDatabaseCount('team_payment_orders', 1);
+        $this->assertSame(0, DB::table('activity_log')
+            ->where('subject_type', TeamPaymentOrder::class)
+            ->where('subject_id', $order->id)
+            ->where('description', 'stale team checkout re-submitted to PayFast')
+            ->count());
     }
 
     public function test_linked_no_profile_player_can_open_payment_when_zero_mirror_is_repaired(): void

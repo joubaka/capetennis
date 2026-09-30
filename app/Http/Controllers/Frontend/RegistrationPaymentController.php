@@ -538,8 +538,19 @@ class RegistrationPaymentController extends Controller
     }
 
     $this->assertInvitationOnlyOrderIsLinked($order);
+    $eventId = optional($order->items->first()?->category_event)->event_id;
 
-    app(RegistrationPaymentService::class)->cancelPayment($order);
+    try {
+      app(RegistrationPaymentService::class)->cancelPayment($order);
+    } catch (ValidationException $exception) {
+      if ($order->payfast_handed_off_at !== null) {
+        return redirect()
+          ->route($eventId ? 'events.show' : 'home', $eventId ? ['event' => $eventId] : [])
+          ->with('info', 'Returning from PayFast does not confirm cancellation. This checkout remains unchanged while PayFast payment is resolving.');
+      }
+
+      throw $exception;
+    }
     app(\App\Services\Masters\MastersInvitationService::class)->resetCancelledPayment($order, auth()->user());
     app(\App\Services\InterprovincialTrials\InvitationService::class)->resetCancelledPayment($order, auth()->user());
 
@@ -547,8 +558,6 @@ class RegistrationPaymentController extends Controller
       'order_id' => $orderId,
       'user_id'  => auth()->id(),
     ]);
-
-    $eventId = optional($order->items->first()?->category_event)->event_id;
 
     return redirect()
       ->route($eventId ? 'events.show' : 'home', $eventId ? ['event' => $eventId] : [])

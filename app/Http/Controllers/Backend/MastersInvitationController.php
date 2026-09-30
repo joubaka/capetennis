@@ -173,9 +173,33 @@ class MastersInvitationController extends Controller
     public function sendInvitations(Request $request, MastersInvitationBatch $batch, MastersInvitationService $service)
     {
         $this->authorizeBatch($batch);
-        $report = $service->sendInvitations($batch);
+        $notBlank = fn (string $attribute, mixed $value, \Closure $fail) => trim((string) $value) === '' ? $fail('The '.$attribute.' field must contain text.') : null;
+        $data = $request->validate([
+            'request_token' => ['required', 'uuid'], 'recipient_hash' => ['required', 'string', 'size:64'],
+            'composition_hash' => ['required', 'string', 'size:64'],
+            'review_expires_at' => ['required', 'integer'], 'review_proof' => ['required', 'string', 'size:64'],
+            'subject' => ['required', 'string', 'max:150', 'not_regex:/[\r\n]/', $notBlank],
+            'body' => ['required', 'string', 'max:5000', $notBlank],
+            'from_address' => ['required', 'email:rfc', 'max:254', 'not_regex:/[\r\n]/'],
+            'from_name' => ['required', 'string', 'max:100', 'not_regex:/[\r\n]/', $notBlank],
+            'reply_to' => ['required', 'email:rfc', 'max:254', 'not_regex:/[\r\n]/'],
+        ]);
+        $report = $service->sendInvitations($batch, $request->user(), $data);
         return redirect()->route('admin.events.overview', $batch->event_id)
             ->with('success', "{$report['queued']} invitation emails queued; {$report['skipped']} skipped and {$report['failed']} failed. Detailed results were written to Laravel.log.");
+    }
+
+    public function previewInitial(Request $request, MastersInvitationBatch $batch, MastersInvitationService $service)
+    {
+        $this->authorizeBatch($batch);
+        $data = $request->validate([
+            'subject' => ['nullable', 'string', 'max:150', 'not_regex:/[\r\n]/'], 'body' => ['nullable', 'string', 'max:5000'],
+            'from_address' => ['nullable', 'email:rfc', 'max:254', 'not_regex:/[\r\n]/'],
+            'from_name' => ['nullable', 'string', 'max:100', 'not_regex:/[\r\n]/'],
+            'reply_to' => ['nullable', 'email:rfc', 'max:254', 'not_regex:/[\r\n]/'],
+        ]);
+
+        return response()->json($service->previewInitial($batch, $request->user(), $data));
     }
 
     public function publishNamesOnly(Request $request, MastersInvitationBatch $batch, MastersInvitationService $service)

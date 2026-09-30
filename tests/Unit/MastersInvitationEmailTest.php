@@ -119,11 +119,15 @@ class MastersInvitationEmailTest extends TestCase
     private function email(int $eventId = 1, string $state = 'invited', string $kind = 'invitation'): BulkEmailLog
     {
         $invitation = MastersInvitation::create(['batch_id' => $eventId, 'status' => $state]);
+        $payload = ['invitation_id' => $invitation->id, 'event_id' => $eventId, 'kind' => $kind,
+            'recipient_email' => 'player@example.test', 'recipient_name' => null,
+            'related_type' => MastersInvitation::class, 'related_id' => $invitation->id];
+        $payload['payload_integrity'] = app(\App\Services\InvitationMailSecurity::class)->payloadIntegrity($payload);
 
         return BulkEmailLog::create([
             'mail_type' => 'masters_invitation', 'related_type' => MastersInvitation::class,
             'related_id' => $invitation->id, 'recipient_email' => 'player@example.test',
-            'status' => 'queued', 'payload' => ['invitation_id' => $invitation->id, 'kind' => $kind],
+            'status' => 'queued', 'payload' => $payload,
             'queued_at' => now(),
         ]);
     }

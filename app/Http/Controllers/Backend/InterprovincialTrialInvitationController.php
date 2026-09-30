@@ -390,9 +390,14 @@ class InterprovincialTrialInvitationController extends Controller
         $data = $request->validate([
             'mode' => ['required', 'in:new,not_registered,individual'],
             'invitation_id' => ['nullable', 'integer'],
+            'subject' => ['nullable', 'string', 'max:150', 'not_regex:/[\r\n]/'],
+            'body' => ['nullable', 'string', 'max:5000'],
+            'from_address' => ['nullable', 'email:rfc', 'max:254', 'not_regex:/[\r\n]/'],
+            'from_name' => ['nullable', 'string', 'max:100', 'not_regex:/[\r\n]/'],
+            'reply_to' => ['nullable', 'email:rfc', 'max:254', 'not_regex:/[\r\n]/'],
         ]);
 
-        return response()->json($service->previewAttempt($event, $data['mode'], $data['invitation_id'] ?? null));
+        return response()->json($service->previewAttempt($event, $request->user(), $data['mode'], $data['invitation_id'] ?? null, $data));
     }
 
     public function queuePreviewedSend(Request $request, Event $event, InvitationService $service)
@@ -406,8 +411,13 @@ class InterprovincialTrialInvitationController extends Controller
             'invitation_id' => ['nullable', 'integer'],
             'request_token' => ['required', 'uuid'],
             'recipient_hash' => ['required', 'string', 'size:64'],
+            'composition_hash' => ['required', 'string', 'size:64'],
+            'review_expires_at' => ['required', 'integer'], 'review_proof' => ['required', 'string', 'size:64'],
             'subject' => ['required', 'string', 'max:150', 'not_regex:/[\r\n]/', $notBlank],
             'body' => ['required', 'string', 'max:5000', $notBlank],
+            'from_address' => ['required', 'email:rfc', 'max:254', 'not_regex:/[\r\n]/'],
+            'from_name' => ['required', 'string', 'max:100', 'not_regex:/[\r\n]/', $notBlank],
+            'reply_to' => ['required', 'email:rfc', 'max:254', 'not_regex:/[\r\n]/'],
         ]);
         $result = $service->queueAttempt($event, $request->user(), $data);
 

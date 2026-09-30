@@ -52,7 +52,7 @@ class TeamPaymentService
                 if ($existing) {
                     if ((int) ($existing->pay_status ?? 0) !== 1 && !(bool) ($existing->payfast_paid ?? false)) {
                         if ((int) $existing->user_id !== (int) $user->id) {
-                            if ($this->hasActivePayfastHandoff($existing)) {
+                            if ($this->hasUnresolvedPayfastHandoff($existing)) {
                                 throw ValidationException::withMessages([
                                     'payment' => 'This checkout is currently being processed by PayFast. Please try again later.',
                                 ]);
@@ -97,7 +97,7 @@ class TeamPaymentService
 
                             return $replacement;
                         }
-                        if ($this->hasActivePayfastHandoff($existing)) {
+                        if ($this->hasUnresolvedPayfastHandoff($existing)) {
                             return $existing;
                         }
                         $totalChanged = round((float) $existing->total_amount, 2) !== round($total, 2);
@@ -136,7 +136,7 @@ class TeamPaymentService
             if ($locked->withdrawn_at !== null) {
                 throw new \RuntimeException('This team checkout has been superseded or withdrawn and cannot be changed.');
             }
-            if ($this->hasActivePayfastHandoff($locked)) {
+            if ($this->hasUnresolvedPayfastHandoff($locked)) {
                 throw new \RuntimeException('This team checkout is currently being processed by PayFast and cannot be changed.');
             }
 
@@ -158,10 +158,13 @@ class TeamPaymentService
             if ($locked->withdrawn_at !== null || $locked->pay_status || $locked->payfast_paid || $locked->wallet_debited) {
                 throw ValidationException::withMessages(['payment' => 'This checkout is no longer available for PayFast submission.']);
             }
+            if (! $this->isWhollyUnpaid($locked)) {
+                throw ValidationException::withMessages(['payment' => 'This checkout contains settlement evidence and cannot be submitted to PayFast.']);
+            }
             if ($expected <= 0 || round($amount, 2) !== $expected) {
                 throw ValidationException::withMessages(['payment' => 'The PayFast handoff amount does not match the server-calculated balance.']);
             }
-            if ($this->hasActivePayfastHandoff($locked)) {
+            if ($this->hasUnresolvedPayfastHandoff($locked)) {
                 return $locked;
             }
             $locked->forceFill([
@@ -342,19 +345,75 @@ class TeamPaymentService
         return ! $order->pay_status
             && ! $order->payfast_paid
             && ! $order->wallet_debited
+            && blank($order->withdrawn_at)
+            && blank($order->withdrawn_by)
             && blank($order->payfast_pf_payment_id)
+            && blank($order->payfast_raw_data)
             && blank($order->paid_privately_at)
             && blank($order->collection_status)
             && ! $order->hasRefund()
             && $order->refunded_at === null
             && round((float) $order->refund_gross, 2) === 0.0
             && round((float) $order->refund_fee, 2) === 0.0
-            && round((float) $order->refund_net, 2) === 0.0;
+            && round((float) $order->refund_net, 2) === 0.0
+            && blank($order->refund_method)
+            && blank($order->refund_waived_at)
+            && blank($order->refund_waived_by)
+            && blank($order->refund_waiver_reason);
     }
 
-    private function hasActivePayfastHandoff(TeamPaymentOrder $order): bool
+    public function assertPayfastHandoffMayBeReleased(TeamPaymentOrder $order): void
     {
-        return $this->hasUnresolvedPayfastHandoff($order);
+        $total = round((float) $order->total_amount, 2);
+        $reserved = round((float) $order->wallet_reserved, 2);
+        $due = round((float) $order->payfast_amount_due, 2);
+        if (! $this->hasUnresolvedPayfastHandoff($order)) {
+            throw ValidationException::withMessages(['payment' => 'This team order has no unresolved PayFast handoff.']);
+        }
+        if ($total <= 0 || $due <= 0 || $reserved < 0 || round($reserved + $due, 2) !== $total
+            || ! $this->isWhollyUnpaid($order)) {
+            throw ValidationException::withMessages([
+                'payment' => 'This team order contains settlement or lifecycle evidence and cannot be released.',
+            ]);
+        }
+    }
+
+    public function releaseUnresolvedPayfastHandoff(TeamPaymentOrder $order, User $operator, string $evidenceReference): TeamPaymentOrder
+    {
+        $this->assertSafeEvidenceReference($evidenceReference);
+
+        return DB::transaction(function () use ($order, $operator, $evidenceReference): TeamPaymentOrder {
+            $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
+            $authorizedOperator = User::query()->find($operator->id);
+            if (! $authorizedOperator?->hasRole('super-user')) {
+                throw ValidationException::withMessages(['operator' => 'An existing super-user operator is required.']);
+            }
+            $this->assertPayfastHandoffMayBeReleased($locked);
+            $walletReserved = round((float) $locked->wallet_reserved, 2);
+            $payfastDue = round((float) $locked->payfast_amount_due, 2);
+
+            $locked->forceFill(['payfast_handed_off_at' => null])->save();
+
+            activity('team-payment')->performedOn($locked)->causedBy($authorizedOperator)
+                ->withProperties([
+                    'order_id' => $locked->id,
+                    'operator_id' => $authorizedOperator->id,
+                    'evidence_reference' => $evidenceReference,
+                    'wallet_reserved' => $walletReserved,
+                    'payfast_amount_due' => $payfastDue,
+                ])->log('supervised unresolved PayFast handoff released');
+
+            return $locked->refresh();
+        });
+    }
+
+    private function assertSafeEvidenceReference(string $evidenceReference): void
+    {
+        if (! preg_match('/^[A-Za-z0-9][A-Za-z0-9._:\/-]{2,119}$/', $evidenceReference)) {
+            throw ValidationException::withMessages([
+                'payment' => 'A safe 3-120 character provider evidence/reference is required.',
+            ]);
+        }
     }
 
     public function hasUnresolvedPayfastHandoff(TeamPaymentOrder $order): bool

@@ -19,6 +19,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use App\Services\InvitationMailSecurity;
 
 class InvitationService
 {
@@ -95,15 +96,25 @@ class InvitationService
         });
     }
 
-    public function previewAttempt(Event $event, string $mode, ?int $invitationId = null): array
+    public function previewAttempt(Event $event, User $actor, string $mode, ?int $invitationId = null, array $composition = []): array
     {
         $selection = $this->attemptSelection($event, $mode, $invitationId, false);
 
-        return $selection + [
-            'request_token' => (string) Str::uuid(),
-            'recipient_hash' => $this->attemptRecipientHash($selection['recipients']),
-            'subject' => 'Invitation to '.$event->name,
-            'body' => "You have been invited to register for {$event->name}.\n\nUse the secure registration link in this email to continue.",
+        $composition = $this->normalizeComposition($event, $composition);
+
+        app(InvitationMailSecurity::class)->assertAllowedFrom($composition['from_address']);
+        $requestToken = (string) Str::uuid();
+        $recipientHash = $this->attemptRecipientHash($selection['recipients']);
+        $compositionHash = $this->compositionHash($composition);
+        $expiresAt = now()->addMinutes(15)->getTimestamp();
+        return $selection + $composition + [
+            'request_token' => $requestToken,
+            'recipient_hash' => $recipientHash,
+            'composition_hash' => $compositionHash,
+            'review_expires_at' => $expiresAt,
+            'review_proof' => app(InvitationMailSecurity::class)->reviewProof($actor->id, 'interpro:'.$event->id, $requestToken, $recipientHash, $compositionHash, $expiresAt),
+            'rendered_body' => view('emails.interprovincial-trials.invitation-preview', $composition)->render(),
+            'sender_warning' => 'The From address must be verified by the configured mail provider or delivery may fail.',
         ];
     }
 
@@ -119,9 +130,15 @@ class InvitationService
             if ($existingAttempts > 0) {
                 return ['queued_count' => 0, 'skipped_count' => 0, 'already_queued' => true];
             }
+            app(InvitationMailSecurity::class)->assertAllowedFrom($request['from_address']);
+            app(InvitationMailSecurity::class)->assertReviewProof($actor->id, 'interpro:'.$event->id, $request);
             $selection = $this->attemptSelection($event, $request['mode'], $request['invitation_id'] ?? null, true);
             if (! hash_equals($request['recipient_hash'], $this->attemptRecipientHash($selection['recipients']))) {
                 throw ValidationException::withMessages(['recipients' => 'The recipients changed. Preview the exact list again.']);
+            }
+            $composition = $this->normalizeComposition($event, $request);
+            if (! hash_equals($request['composition_hash'], $this->compositionHash($composition))) {
+                throw ValidationException::withMessages(['message' => 'The reviewed email changed. Review the complete email again before sending.']);
             }
             if (! $selection['recipients']) {
                 throw ValidationException::withMessages(['recipients' => 'There are no eligible recipients for this send.']);
@@ -160,7 +177,19 @@ class InvitationService
                 ]);
                 if (! $claimed) continue;
                 $invitation->update(['recipient_email' => $recipient['email'], 'recipient_name' => $recipient['name']]);
-                $messageHash = $this->messageHash($request['subject'], $request['body']);
+                $messageHash = $this->compositionHash($composition);
+                $payload = [
+                        'event_id' => $event->id,
+                        'invitation_id' => $invitation->id,
+                        'mode' => $request['mode'], 'kind' => $kind, 'request_token' => $request['request_token'],
+                        'requested_by_user_id' => $actor->id, 'recipient_hash' => $request['recipient_hash'],
+                        'message_hash' => $messageHash, 'subject' => $request['subject'], 'body' => $request['body'],
+                        'from_address' => $composition['from_address'], 'from_name' => $composition['from_name'], 'reply_to' => $composition['reply_to'],
+                        'recipient_email' => $recipient['email'], 'recipient_name' => $recipient['name'],
+                        'related_type' => InterprovincialTrialInvitation::class, 'related_id' => $invitation->id,
+                        'event_name' => $event->name, 'category_name' => $recipient['category'],
+                    ];
+                $payload['payload_integrity'] = app(InvitationMailSecurity::class)->payloadIntegrity($payload);
                 $log = BulkEmailLog::create([
                     'mail_type' => 'interprovincial_trial_invitation',
                     'related_type' => InterprovincialTrialInvitation::class,
@@ -168,21 +197,7 @@ class InvitationService
                     'recipient_email' => $recipient['email'],
                     'recipient_name' => $recipient['name'],
                     'status' => 'queued',
-                    'payload' => [
-                        'event_id' => $event->id,
-                        'invitation_id' => $invitation->id,
-                        'mode' => $request['mode'],
-                        'kind' => $kind,
-                        'request_token' => $request['request_token'],
-                        'requested_by_user_id' => $actor->id,
-                        'recipient_hash' => $request['recipient_hash'],
-                        'message_hash' => $messageHash,
-                        'subject' => $request['subject'],
-                        'body' => $request['body'],
-                        'recipient_name' => $recipient['name'],
-                        'event_name' => $event->name,
-                        'category_name' => $recipient['category'],
-                    ],
+                    'payload' => $payload,
                     'queued_at' => now(),
                 ]);
                 DB::table('interprovincial_trial_mail_dispatches')
@@ -192,7 +207,7 @@ class InvitationService
                 if ($kind === 'initial') {
                     $invitation->update(['status' => 'queued', 'queued_at' => $invitation->queued_at ?? now()]);
                 }
-                DB::afterCommit(fn () => SendInterprovincialTrialInvitationEmailJob::dispatch($log->id, $event->id));
+                DB::afterCommit(fn () => $this->dispatchInvitationLog($log->id, $event->id));
                 $queued++;
             }
 
@@ -791,10 +806,14 @@ class InvitationService
                 || $log->status !== 'failed' || $log->sent_at) {
                 throw ValidationException::withMessages(['invitation' => 'The failed invitation does not have a matching failed email log.']);
             }
+            if (! app(InvitationMailSecurity::class)->logMatchesSignedSnapshot($log, $lockedBatch->event_id)) {
+                $payload = $this->canonicalLegacyPayload($locked, $lockedBatch, 'initial', (string) $dispatch->request_token);
+                $log->update(['recipient_email' => $payload['recipient_email'], 'recipient_name' => $payload['recipient_name'], 'payload' => $payload]);
+            }
 
             $locked->update(['status' => 'queued', 'queued_at' => now()]);
             $log->update(['status' => 'queued', 'queued_at' => now(), 'failed_at' => null, 'skipped_at' => null, 'error_message' => null]);
-            DB::afterCommit(fn () => SendInterprovincialTrialInvitationEmailJob::dispatch($log->id, $lockedBatch->event_id));
+            DB::afterCommit(fn () => $this->dispatchInvitationLog($log->id, $lockedBatch->event_id));
 
             return true;
         });
@@ -828,6 +847,10 @@ class InvitationService
                 || (int) $log->related_id !== (int) $locked->id) {
                 throw ValidationException::withMessages(['invitation' => 'The failed follow-up does not have a matching email log.']);
             }
+            if (! app(InvitationMailSecurity::class)->logMatchesSignedSnapshot($log, $event->id)) {
+                $payload = $this->canonicalLegacyPayload($locked, $locked->batch()->firstOrFail(), 'follow_up', (string) $dispatch->request_token);
+                $log->update(['recipient_email' => $payload['recipient_email'], 'recipient_name' => $payload['recipient_name'], 'payload' => $payload]);
+            }
 
             $log->update([
                 'status' => 'queued',
@@ -836,7 +859,7 @@ class InvitationService
                 'skipped_at' => null,
                 'error_message' => null,
             ]);
-            DB::afterCommit(fn () => SendInterprovincialTrialInvitationEmailJob::dispatch($log->id, $event->id));
+            DB::afterCommit(fn () => $this->dispatchInvitationLog($log->id, $event->id));
 
             return true;
         });
@@ -857,6 +880,7 @@ class InvitationService
                 'created_at' => now(), 'updated_at' => now(),
             ]);
             if ($claimed) {
+                $payload = $this->canonicalLegacyPayload($invitation, $batch, 'initial', $requestToken);
                 $log = BulkEmailLog::create([
                     'mail_type' => 'interprovincial_trial_invitation',
                     'related_type' => InterprovincialTrialInvitation::class,
@@ -864,22 +888,13 @@ class InvitationService
                     'recipient_email' => $invitation->recipient_email,
                     'recipient_name' => $invitation->recipient_name,
                     'status' => 'queued',
-                    'payload' => [
-                        'event_id' => $batch->event_id, 'invitation_id' => $invitation->id,
-                        'mode' => 'initial', 'kind' => 'initial', 'request_token' => $requestToken,
-                        'requested_by_user_id' => $batch->created_by_user_id,
-                        'snapshot_hash' => $batch->snapshot_hash, 'message_hash' => $batch->message_hash,
-                        'content_version' => $batch->content_version, 'subject' => $batch->email_subject,
-                        'body' => $batch->email_body, 'recipient_name' => $invitation->recipient_name,
-                        'event_name' => $batch->event->name,
-                        'category_name' => $invitation->categoryEvent?->category?->name,
-                    ],
+                    'payload' => $payload,
                     'queued_at' => now(),
                 ]);
                 DB::table('interprovincial_trial_mail_dispatches')->where('invitation_id', $invitation->id)
                     ->where('request_token', $requestToken)
                     ->update(['bulk_email_log_id' => $log->id, 'updated_at' => now()]);
-                DB::afterCommit(fn () => SendInterprovincialTrialInvitationEmailJob::dispatch($log->id, $batch->event_id));
+                DB::afterCommit(fn () => $this->dispatchInvitationLog($log->id, $batch->event_id));
                 $claimedCount++;
             }
             if ($claimed) {
@@ -921,8 +936,8 @@ class InvitationService
                     && in_array((int) $invitation->id, $successfulInitialIds, true),
             };
             if (! $eligible) continue;
-            if (blank($row['recipient_email'])) {
-                $blockers[] = ['nomination_id' => $nomination->id, 'name' => $row['recipient_name'], 'reason' => 'Missing linked account email'];
+            if (blank($row['recipient_email']) || ! filter_var($row['recipient_email'], FILTER_VALIDATE_EMAIL)) {
+                $blockers[] = ['nomination_id' => $nomination->id, 'name' => $row['recipient_name'], 'reason' => blank($row['recipient_email']) ? 'Missing linked account email' : 'Linked account email is invalid'];
                 continue;
             }
             $recipients[] = [
@@ -952,6 +967,8 @@ class InvitationService
             'player_id' => $row['player_id'],
             'category_event_id' => $row['category_event_id'],
             'email' => $row['email'],
+            'name' => $row['name'],
+            'category' => $row['category'],
             'status' => $row['status'],
         ])->values()->all(), JSON_THROW_ON_ERROR));
     }
@@ -986,8 +1003,54 @@ class InvitationService
         return hash('sha256', json_encode(['subject' => $subject, 'body' => $body], JSON_THROW_ON_ERROR));
     }
 
+    private function normalizeComposition(Event $event, array $composition): array
+    {
+        return [
+            'subject' => (string) ($composition['subject'] ?? 'Invitation to '.$event->name),
+            'body' => (string) ($composition['body'] ?? "You have been invited to register for {$event->name}.\n\nUse the secure registration link in this email to continue."),
+            'from_address' => (string) ($composition['from_address'] ?? config('mail.from.address')),
+            'from_name' => (string) ($composition['from_name'] ?? config('mail.from.name')),
+            'reply_to' => (string) ($composition['reply_to'] ?? config('mail.from.address')),
+        ];
+    }
+
+    private function compositionHash(array $composition): string
+    {
+        return hash_hmac('sha256', json_encode($composition, JSON_THROW_ON_ERROR), (string) config('app.key'));
+    }
+
     private function moneyInCents(mixed $amount): int
     {
         return (int) round(((float) $amount) * 100);
+    }
+
+    private function dispatchInvitationLog(int $logId, int $eventId): void
+    {
+        try {
+            SendInterprovincialTrialInvitationEmailJob::dispatch($logId, $eventId);
+        } catch (\Throwable) {
+            $log = BulkEmailLog::query()->find($logId);
+            if ($log && $log->status === 'queued' && ! $log->sent_at) {
+                $log->markAsFailed('Queue publication failed. Retry this invitation email.');
+                if (($log->payload['kind'] ?? 'initial') === 'initial') {
+                    InterprovincialTrialInvitation::query()->whereKey($log->related_id)
+                        ->whereNull('sent_at')->update(['status' => 'failed']);
+                }
+            }
+        }
+    }
+
+    private function canonicalLegacyPayload(InterprovincialTrialInvitation $invitation, InterprovincialTrialInvitationBatch $batch, string $kind, string $requestToken): array
+    {
+        abort_unless((int) $invitation->event_id === (int) $batch->event_id && (int) $invitation->batch_id === (int) $batch->id, 404);
+        $invitation->loadMissing(['player.user', 'player.users', 'categoryEvent.category']);
+        $recipient = $invitation->player?->user && filled($invitation->player->user->email)
+            ? $invitation->player->user : $invitation->player?->users?->first(fn ($user) => filled($user->email));
+        if (! $recipient || ! filter_var($recipient->email, FILTER_VALIDATE_EMAIL) || blank($batch->email_subject) || blank($batch->email_body)) {
+            throw ValidationException::withMessages(['invitation' => 'The legacy email cannot be safely reconstructed from the current invitation and reviewed batch.']);
+        }
+        $payload = ['event_id' => $batch->event_id, 'invitation_id' => $invitation->id, 'mode' => $kind === 'initial' ? 'initial' : 'not_registered', 'kind' => $kind, 'request_token' => $requestToken, 'requested_by_user_id' => $batch->created_by_user_id, 'snapshot_hash' => $batch->snapshot_hash, 'message_hash' => $batch->message_hash, 'content_version' => $batch->content_version, 'subject' => $batch->email_subject, 'body' => $batch->email_body, 'from_address' => config('mail.from.address'), 'from_name' => config('mail.from.name'), 'reply_to' => config('mail.from.address'), 'recipient_email' => $recipient->email, 'recipient_name' => $invitation->player?->full_name, 'related_type' => InterprovincialTrialInvitation::class, 'related_id' => $invitation->id, 'event_name' => $batch->event?->name, 'category_name' => $invitation->categoryEvent?->category?->name];
+        $payload['payload_integrity'] = app(InvitationMailSecurity::class)->payloadIntegrity($payload);
+        return $payload;
     }
 }

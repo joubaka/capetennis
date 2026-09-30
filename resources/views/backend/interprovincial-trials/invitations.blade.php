@@ -167,11 +167,13 @@
         <div id="interpro-send-preview-feedback" class="alert d-none" role="status"></div>
         <div class="mb-3"><strong>Exact recipients</strong><div id="interpro-send-preview-recipients" class="list-group mt-2"></div></div>
         <div class="mb-3 d-none" id="interpro-send-preview-blockers-wrap"><strong class="text-warning">Skipped because no email is available</strong><div id="interpro-send-preview-blockers" class="list-group mt-2"></div></div>
+        <div class="row g-3 mb-3"><div class="col-md-6"><label class="form-label" for="interpro-preview-from-address">From address</label><input type="email" class="form-control" id="interpro-preview-from-address" required></div><div class="col-md-6"><label class="form-label" for="interpro-preview-from-name">From name</label><input class="form-control" id="interpro-preview-from-name" maxlength="100" required></div><div class="col-12"><label class="form-label" for="interpro-preview-reply-to">Reply-to address</label><input type="email" class="form-control" id="interpro-preview-reply-to" required><div class="form-text" id="interpro-preview-sender-warning"></div></div></div>
         <div class="mb-3"><label class="form-label" for="interpro-preview-subject">Subject</label><input class="form-control" id="interpro-preview-subject" maxlength="150" required></div>
-        <div><label class="form-label" for="interpro-preview-body">Message</label><textarea class="form-control" id="interpro-preview-body" rows="6" maxlength="5000" required></textarea></div>
-        <input type="hidden" id="interpro-preview-mode"><input type="hidden" id="interpro-preview-invitation"><input type="hidden" id="interpro-preview-token"><input type="hidden" id="interpro-preview-hash">
+        <div class="mb-3"><label class="form-label" for="interpro-preview-body">Message</label><textarea class="form-control" id="interpro-preview-body" rows="6" maxlength="5000" required></textarea></div>
+        <div class="border rounded p-3 bg-light d-none" id="interpro-rendered-preview"><div class="small text-uppercase text-muted mb-2">Rendered email preview</div><div id="interpro-rendered-preview-body"></div></div>
+        <input type="hidden" id="interpro-preview-mode"><input type="hidden" id="interpro-preview-invitation"><input type="hidden" id="interpro-preview-token"><input type="hidden" id="interpro-preview-hash"><input type="hidden" id="interpro-preview-composition-hash"><input type="hidden" id="interpro-preview-proof"><input type="hidden" id="interpro-preview-expires">
       </div>
-      <div class="modal-footer"><span class="me-auto text-muted small" id="interpro-preview-count"></span><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary" id="interpro-preview-confirm">Queue exact emails</button></div>
+      <div class="modal-footer"><span class="me-auto text-muted small" id="interpro-preview-count"></span><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-outline-primary" id="interpro-preview-review">Review rendered email</button><button type="submit" class="btn btn-primary d-none" id="interpro-preview-confirm">Queue reviewed emails</button></div>
     </form>
   </div></div>
 </div>
@@ -227,6 +229,12 @@ $(function () {
       document.getElementById('interpro-preview-hash').value = data.recipient_hash;
       document.getElementById('interpro-preview-subject').value = data.subject;
       document.getElementById('interpro-preview-body').value = data.body;
+      document.getElementById('interpro-preview-from-address').value = data.from_address;
+      document.getElementById('interpro-preview-from-name').value = data.from_name;
+      document.getElementById('interpro-preview-reply-to').value = data.reply_to;
+      document.getElementById('interpro-preview-sender-warning').textContent = data.sender_warning;
+      document.getElementById('interpro-preview-confirm').classList.add('d-none');
+      document.getElementById('interpro-rendered-preview').classList.add('d-none');
       document.getElementById('interpro-send-preview-recipients').innerHTML = data.recipients.map(row => `<div class="list-group-item"><strong>${escapeHtml(row.name)}</strong><div class="small text-muted">${escapeHtml(row.email)} · ${escapeHtml(row.category || '')} · ${escapeHtml(row.status)}</div></div>`).join('') || '<div class="text-muted">No eligible recipients.</div>';
       document.getElementById('interpro-send-preview-blockers').innerHTML = data.blockers.map(row => `<div class="list-group-item text-warning">${escapeHtml(row.name)} — ${escapeHtml(row.reason)}</div>`).join('');
       document.getElementById('interpro-send-preview-blockers-wrap').classList.toggle('d-none', data.blockers.length === 0);
@@ -237,6 +245,11 @@ $(function () {
     finally { trigger.disabled = false; }
   });
   const escapeHtml = value => $('<div>').text(value ?? '').html();
+  document.getElementById('interpro-preview-review')?.addEventListener('click', async () => {
+    const payload = {mode:document.getElementById('interpro-preview-mode').value, invitation_id:document.getElementById('interpro-preview-invitation').value||null, subject:document.getElementById('interpro-preview-subject').value, body:document.getElementById('interpro-preview-body').value, from_address:document.getElementById('interpro-preview-from-address').value, from_name:document.getElementById('interpro-preview-from-name').value, reply_to:document.getElementById('interpro-preview-reply-to').value};
+    try { const response=await fetch(@json(route('backend.interprovincial-trials.invitations.send-preview', $event)),{method:'POST',headers:{'X-CSRF-TOKEN':csrf,'Accept':'application/json','Content-Type':'application/json'},body:JSON.stringify(payload)}); const data=await response.json(); if(!response.ok) throw new Error(data.message||Object.values(data.errors||{}).flat()[0]); document.getElementById('interpro-preview-token').value=data.request_token; document.getElementById('interpro-preview-hash').value=data.recipient_hash; document.getElementById('interpro-preview-composition-hash').value=data.composition_hash; document.getElementById('interpro-preview-proof').value=data.review_proof; document.getElementById('interpro-preview-expires').value=data.review_expires_at; document.getElementById('interpro-send-preview-recipients').innerHTML=data.recipients.map(row=>`<div class="list-group-item"><strong>${escapeHtml(row.name)}</strong><div class="small text-muted">${escapeHtml(row.email)} · ${escapeHtml(row.category||'')}</div></div>`).join('')||'<div class="text-muted">No eligible recipients.</div>'; document.getElementById('interpro-send-preview-blockers').innerHTML=data.blockers.map(row=>`<div class="list-group-item text-warning">${escapeHtml(row.name)} — ${escapeHtml(row.reason)}</div>`).join(''); document.getElementById('interpro-send-preview-blockers-wrap').classList.toggle('d-none',!data.blockers.length); document.getElementById('interpro-preview-count').textContent=`${data.recipients.length} email${data.recipients.length===1?'':'s'} ready`; document.getElementById('interpro-rendered-preview-body').innerHTML=data.rendered_body; document.getElementById('interpro-rendered-preview').classList.remove('d-none'); document.getElementById('interpro-preview-confirm').classList.remove('d-none'); } catch(error){ AppFeedback.fromError(error,'Email could not be reviewed.'); }
+  });
+  ['interpro-preview-subject','interpro-preview-body','interpro-preview-from-address','interpro-preview-from-name','interpro-preview-reply-to'].forEach(id => document.getElementById(id)?.addEventListener('input',()=>document.getElementById('interpro-preview-confirm').classList.add('d-none')));
   previewForm?.addEventListener('submit', async event => {
     event.preventDefault();
     const confirm = document.getElementById('interpro-preview-confirm');
@@ -247,8 +260,14 @@ $(function () {
         invitation_id: document.getElementById('interpro-preview-invitation').value || null,
         request_token: document.getElementById('interpro-preview-token').value,
         recipient_hash: document.getElementById('interpro-preview-hash').value,
+        composition_hash: document.getElementById('interpro-preview-composition-hash').value,
+        review_proof: document.getElementById('interpro-preview-proof').value,
+        review_expires_at: document.getElementById('interpro-preview-expires').value,
         subject: document.getElementById('interpro-preview-subject').value,
         body: document.getElementById('interpro-preview-body').value,
+        from_address: document.getElementById('interpro-preview-from-address').value,
+        from_name: document.getElementById('interpro-preview-from-name').value,
+        reply_to: document.getElementById('interpro-preview-reply-to').value,
       };
       const response = await fetch(@json(route('backend.interprovincial-trials.invitations.send-preview.queue', $event)), {
         method: 'POST', headers: {'X-CSRF-TOKEN': csrf, 'Accept': 'application/json', 'Content-Type': 'application/json'}, body: JSON.stringify(payload)

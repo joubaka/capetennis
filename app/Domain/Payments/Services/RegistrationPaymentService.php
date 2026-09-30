@@ -4,7 +4,9 @@ namespace App\Domain\Payments\Services;
 
 use App\Models\Registration;
 use App\Models\RegistrationOrder;
+use App\Models\Transaction;
 use App\Models\User;
+use App\Models\WalletTransaction;
 use App\Support\FinanceMutationScope;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -103,6 +105,105 @@ class RegistrationPaymentService
 
             return $prepared->fresh('items');
         });
+    }
+
+    public function assertPayfastHandoffMayBeReleased(RegistrationOrder $order): void
+    {
+        $order->loadMissing('items');
+        $total = round((float) $order->items->sum('item_price'), 2);
+        $reserved = round((float) $order->wallet_reserved, 2);
+        $due = round((float) $order->payfast_amount_due, 2);
+        if ($order->payfast_handed_off_at === null) {
+            throw ValidationException::withMessages(['payment' => 'This registration order has no unresolved PayFast handoff.']);
+        }
+        if ($total <= 0 || $due <= 0 || $reserved < 0 || round($reserved + $due, 2) !== $total
+            || $this->hasSettlementEvidence($order)) {
+            throw ValidationException::withMessages([
+                'payment' => 'This registration order contains settlement or lifecycle evidence and cannot be released.',
+            ]);
+        }
+    }
+
+    public function releaseUnresolvedPayfastHandoff(RegistrationOrder $order, User $operator, string $evidenceReference): RegistrationOrder
+    {
+        $this->assertSafeEvidenceReference($evidenceReference);
+
+        return DB::transaction(function () use ($order, $operator, $evidenceReference): RegistrationOrder {
+            $locked = RegistrationOrder::query()->lockForUpdate()->with('items')->findOrFail($order->id);
+            $authorizedOperator = User::query()->find($operator->id);
+            if (! $authorizedOperator?->hasRole('super-user')) {
+                throw ValidationException::withMessages(['operator' => 'An existing super-user operator is required.']);
+            }
+            $this->assertPayfastHandoffMayBeReleased($locked);
+            $walletReserved = round((float) $locked->wallet_reserved, 2);
+            $payfastDue = round((float) $locked->payfast_amount_due, 2);
+
+            $locked->forceFill(['payfast_handed_off_at' => null])->save();
+
+            activity('registration-payment')->performedOn($locked)->causedBy($authorizedOperator)
+                ->withProperties([
+                    'order_id' => $locked->id,
+                    'operator_id' => $authorizedOperator->id,
+                    'evidence_reference' => $evidenceReference,
+                    'wallet_reserved' => $walletReserved,
+                    'payfast_amount_due' => $payfastDue,
+                ])->log('supervised unresolved PayFast handoff released');
+
+            return $locked->fresh('items');
+        });
+    }
+
+    private function assertSafeEvidenceReference(string $evidenceReference): void
+    {
+        if (! preg_match('/^[A-Za-z0-9][A-Za-z0-9._:\/-]{2,119}$/', $evidenceReference)) {
+            throw ValidationException::withMessages([
+                'payment' => 'A safe 3-120 character provider evidence/reference is required.',
+            ]);
+        }
+    }
+
+    private function hasSettlementEvidence(RegistrationOrder $order): bool
+    {
+        if ((int) $order->pay_status === 1 || (bool) $order->payfast_paid
+            || (bool) $order->wallet_debited || filled($order->payfast_pf_payment_id)
+            || filled($order->wallet_transaction_id)
+            || $order->status === 'cancelled') {
+            return true;
+        }
+        if (Transaction::query()->where('custom_int5', $order->id)
+            ->where(function ($query): void {
+                $query->whereNull('custom_str5')->orWhere('custom_str5', '');
+            })->exists()) {
+            return true;
+        }
+        if (WalletTransaction::query()->where('source_id', $order->id)
+            ->where('source_type', 'event_registration_wallet_payment')->exists()) {
+            return true;
+        }
+
+        foreach ($order->items as $item) {
+            $hasEvidence = DB::table('category_event_registrations')
+                ->where('registration_id', $item->registration_id)
+                ->where('category_event_id', $item->category_event_id)
+                ->where(function ($query): void {
+                    $query->whereNotNull('withdrawn_at')
+                        ->orWhereNotNull('refunded_at')
+                        ->orWhereNotNull('pf_transaction_id')
+                        ->orWhereNotNull('wallet_transaction_id')
+                        ->orWhere('payment_status_id', 1)
+                        ->orWhere('admin_payment_status', 'paid')
+                        ->orWhere(function ($refundQuery): void {
+                            $refundQuery->whereNotNull('refund_status')
+                                ->whereNotIn('refund_status', ['', 'not_refunded']);
+                        });
+                })->exists();
+
+            if ($hasEvidence) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function finalizePayment(RegistrationOrder $order, array $context = []): RegistrationOrder

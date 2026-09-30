@@ -6,6 +6,7 @@ use App\Jobs\SendMastersInvitationEmailJob;
 use App\Models\BulkEmailLog;
 use App\Models\MastersInvitation;
 use Illuminate\Support\Facades\DB;
+use App\Services\InvitationMailSecurity;
 
 class RetryMastersInvitationEmails
 {
@@ -57,6 +58,20 @@ class RetryMastersInvitationEmails
             || !in_array($log->payload['kind'] ?? null, ['invitation', 'replacement'], true)
             || app(MastersInvitationMailEligibility::class)->reason($log, $invitation, $eventId)) {
             return false;
+        }
+        if (! app(InvitationMailSecurity::class)->logMatchesSignedSnapshot($log, $eventId)) {
+            $invitation->loadMissing(['player.user', 'player.users', 'batch.event']);
+            $recipient = $invitation->player?->user && filled($invitation->player->user->email)
+                ? $invitation->player->user : $invitation->player?->users?->first(fn ($user) => filled($user->email));
+            if (! $recipient || ! filter_var($recipient->email, FILTER_VALIDATE_EMAIL)
+                || (int) $invitation->batch?->event_id !== $eventId) {
+                if ($queue) $log->markAsSkipped('Legacy Masters email could not be safely reconstructed.');
+                return false;
+            }
+            $kind = (string) ($log->payload['kind'] ?? '');
+            $payload = ['invitation_id' => $invitation->id, 'event_id' => $eventId, 'kind' => $kind, 'recipient_email' => $recipient->email, 'recipient_name' => $invitation->player?->full_name, 'related_type' => MastersInvitation::class, 'related_id' => $invitation->id];
+            $payload['payload_integrity'] = app(InvitationMailSecurity::class)->payloadIntegrity($payload);
+            if ($queue) $log->update(['recipient_email' => $recipient->email, 'recipient_name' => $payload['recipient_name'], 'payload' => $payload]);
         }
 
         $scheduledQuery = BulkEmailLog::query()
