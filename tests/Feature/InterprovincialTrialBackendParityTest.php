@@ -193,6 +193,89 @@ class InterprovincialTrialBackendParityTest extends TestCase
         $this->assertSame($before['invitations'], InterprovincialTrialInvitation::count());
     }
 
+    public function test_current_nomination_lifecycle_survives_newer_email_batches_in_full_and_ajax_views(): void
+    {
+        $originalBatch = InterprovincialTrialInvitationBatch::create([
+            'event_id' => $this->event->id, 'status' => InterprovincialTrialInvitationBatch::DRAFT,
+            'snapshot_hash' => str_repeat('a', 64), 'created_by_user_id' => $this->admin->id,
+        ]);
+        $expected = [];
+        foreach ([
+            InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT => 'payment-pending',
+            InterprovincialTrialInvitation::PAID_CONFIRMED => 'registered',
+            'failed' => 'delivery-failed',
+        ] as $status => $statusKey) {
+            $player = Player::factory()->create();
+            $nomination = EventNomination::create([
+                'event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id,
+            ]);
+            $invitation = InterprovincialTrialInvitation::create([
+                'batch_id' => $originalBatch->id, 'event_id' => $this->event->id,
+                'category_event_id' => $this->category->id, 'nomination_id' => $nomination->id,
+                'player_id' => $player->id, 'status' => $status, 'accepted_at' => now()->subDay(),
+            ]);
+            $expected[$nomination->id] = ['invitation' => $invitation, 'status_key' => $statusKey, 'player' => $player];
+        }
+        $newBatch = InterprovincialTrialInvitationBatch::create([
+            'event_id' => $this->event->id, 'status' => InterprovincialTrialInvitationBatch::DRAFT,
+            'snapshot_hash' => str_repeat('b', 64), 'created_by_user_id' => $this->admin->id,
+        ]);
+        foreach ($expected as $nominationId => $details) {
+            InterprovincialTrialInvitation::create([
+                'batch_id' => $newBatch->id, 'event_id' => $this->event->id,
+                'category_event_id' => $this->category->id, 'nomination_id' => $nominationId,
+                'player_id' => $details['player']->id, 'status' => 'prepared',
+            ]);
+        }
+        // A malformed invitation from another event must not replace or expose
+        // a valid lifecycle for this event's nomination.
+        $otherEvent = Event::factory()->create(['eventType' => $this->event->eventType]);
+        $otherCategory = CategoryEvent::factory()->create(['event_id' => $otherEvent->id]);
+        $otherBatch = InterprovincialTrialInvitationBatch::create([
+            'event_id' => $otherEvent->id, 'status' => InterprovincialTrialInvitationBatch::DRAFT,
+            'snapshot_hash' => str_repeat('c', 64), 'created_by_user_id' => $this->admin->id,
+        ]);
+        $firstNominationId = array_key_first($expected);
+        InterprovincialTrialInvitation::create([
+            'batch_id' => $otherBatch->id, 'event_id' => $otherEvent->id,
+            'category_event_id' => $otherCategory->id, 'nomination_id' => $firstNominationId,
+            'player_id' => $expected[$firstNominationId]['player']->id, 'status' => 'sent',
+            'recipient_email' => 'private-other-event@example.test',
+        ]);
+        $before = collect([
+            'registrations', 'registration_orders', 'registration_order_items', 'wallet_transactions',
+            'event_nominations', 'interprovincial_trial_invitations', 'interprovincial_trial_invitation_batches',
+        ])
+            ->mapWithKeys(fn (string $table): array => [$table => DB::table($table)->count()]);
+
+        $response = $this->actingAs($this->admin)
+            ->get(route('backend.interprovincial-trials.invitations.index', $this->event))
+            ->assertOk()->assertDontSee('private-other-event@example.test');
+        foreach ($expected as $nominationId => $details) {
+            $presentation = $response->viewData('nominationPresentations')->get($nominationId);
+            $this->assertSame($details['invitation']->id, $presentation['invitation']->id);
+            $this->assertSame($details['status_key'], $presentation['filter_key']);
+            $this->assertFalse($presentation['can_remove']);
+        }
+        $failedInvitation = $expected[array_key_last($expected)]['invitation'];
+        $response->assertSee(route('backend.interprovincial-trials.invitations.retry', [
+            $this->event, $originalBatch, $failedInvitation,
+        ]), false);
+
+        $ajax = $this->postJson(route('backend.interprovincial-trials.nominations.bulk-store', $this->event), [
+            'category_event_id' => $this->category->id,
+            'player_ids' => [$expected[$firstNominationId]['player']->id],
+        ])->assertOk()->assertJsonPath('added', 0);
+        $rows = collect($ajax->json('nominations'))->keyBy('id');
+        foreach ($expected as $nominationId => $details) {
+            $this->assertSame($details['status_key'], $rows[$nominationId]['status_key']);
+            $this->assertFalse($rows[$nominationId]['can_remove']);
+        }
+        foreach ($before as $table => $count) {
+            $this->assertSame($count, DB::table($table)->count());
+        }
+    }
+
     public function test_readiness_is_observational_bounded_and_event_scoped(): void
     {
         $financialTables = ['registrations', 'registration_orders', 'registration_order_items', 'wallet_transactions'];

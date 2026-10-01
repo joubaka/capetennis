@@ -41,8 +41,8 @@
         <button class="btn btn-sm btn-outline-primary interpro-row-action">Retry follow-up</button>
       </form>
     @endif
-    @if($invitation?->status === 'failed' && $batch)
-      <form method="POST" action="{{ route('backend.interprovincial-trials.invitations.retry', [$event, $batch, $invitation]) }}">
+    @if($invitation?->status === 'failed')
+      <form method="POST" action="{{ route('backend.interprovincial-trials.invitations.retry', [$event, $invitation->batch_id, $invitation]) }}">
         @csrf
         <button class="btn btn-sm btn-outline-primary interpro-row-action">Retry</button>
       </form>

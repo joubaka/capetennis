@@ -35,12 +35,7 @@ class InterprovincialTrialInvitationController extends Controller
             ->orderBy('id')
             ->paginate(self::NOMINATIONS_PER_PAGE, ['*'], 'nominations_page')
             ->withQueryString();
-        $invitations = $batch
-            ? $this->batchInvitationQuery($batch, $event)
-                ->select($this->invitationColumns())
-                ->whereIn('nomination_id', $nominations->getCollection()->pluck('id'))
-                ->get()
-            : collect();
+        $invitations = $this->nominationInvitations($event, $nominations->getCollection());
         $successfulInitialIds = $this->successfulInitialInvitationIds($invitations);
         $failedFollowUpIds = $this->failedFollowUpInvitationIds($invitations);
         $latestInvitationsByNomination = $invitations->keyBy(fn (InterprovincialTrialInvitation $invitation): int => (int) $invitation->nomination_id);
@@ -247,12 +242,7 @@ class InterprovincialTrialInvitationController extends Controller
             ->paginate(self::NOMINATIONS_PER_PAGE, ['*'], 'nominations_page', max(1, request()->integer('nominations_page', 1)));
         $event = $categoryEvent->event()->firstOrFail();
         $batch = $this->latestBatchForEvent($event);
-        $batchInvitations = $batch
-            ? $this->batchInvitationQuery($batch, $event)
-                ->select($this->invitationColumns())
-                ->whereIn('nomination_id', $nominations->getCollection()->pluck('id'))
-                ->get()
-            : collect();
+        $batchInvitations = $this->nominationInvitations($event, $nominations->getCollection());
         $latestInvitations = $batchInvitations
             ->keyBy(fn (InterprovincialTrialInvitation $invitation): int => (int) $invitation->nomination_id);
         $successfulInitialIds = $this->successfulInitialInvitationIds($batchInvitations);
@@ -313,6 +303,26 @@ class InterprovincialTrialInvitationController extends Controller
         return InterprovincialTrialInvitation::query()
             ->where('batch_id', $batch->id)
             ->where('event_id', $event->id);
+    }
+
+    private function nominationInvitations(Event $event, \Illuminate\Support\Collection $nominations)
+    {
+        $query = InterprovincialTrialInvitation::query()
+            ->where('event_id', $event->id)
+            ->whereIn('nomination_id', $nominations->pluck('id'))
+            ->whereHas('nomination', function ($query) use ($event): void {
+                $query->where('event_id', $event->id)
+                    ->whereColumn('category_event_id', 'interprovincial_trial_invitations.category_event_id')
+                    ->whereColumn('player_id', 'interprovincial_trial_invitations.player_id');
+            });
+
+        // An email draft must not hide an existing checkout or paid registration.
+        // Resolve one current lifecycle per visible nominee across every batch.
+        $currentIds = (clone $query)
+            ->selectRaw('COALESCE(MAX(CASE WHEN status != ? THEN id END), MAX(id))', ['prepared'])
+            ->groupBy('nomination_id');
+
+        return $query->select($this->invitationColumns())->whereIn('id', $currentIds)->get();
     }
 
     private function invitationColumns(): array
