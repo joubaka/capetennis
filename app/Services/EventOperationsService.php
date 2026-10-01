@@ -24,7 +24,7 @@ class EventOperationsService
         $entryCount = (clone $registrationQuery)->activeAndPaid()->count();
         $paidCount = $entryCount;
         $pendingCheckoutCount = (clone $registrationQuery)
-            ->active()
+            ->whereNotIn('status', ['withdrawn', 'withdrawn_pending_refund', 'withdrawn_refunded'])
             ->where(function ($query): void {
                 $query->where('payment_status_id', '!=', 1)->orWhereNull('payment_status_id');
             })->count();
@@ -38,7 +38,10 @@ class EventOperationsService
 
         $canViewPendingCheckouts = auth()->user()?->hasRole('super-user') ?? false;
         if ($canViewPendingCheckouts) {
-            $this->warning($warnings, 'critical', 'pending_checkouts', 'Pending checkouts', $pendingCheckoutCount, route('admin.events.entries.new', $event));
+            $checkoutAction = $event->isInterprovincialTrials()
+                ? route('backend.interprovincial-trials.programme.index', $event).'#trial-trial-payments'
+                : route('admin.events.entries.new', $event);
+            $this->warning($warnings, 'critical', 'pending_checkouts', 'Pending checkouts', $pendingCheckoutCount, $checkoutAction);
         }
         $this->warning($warnings, 'warning', 'withdrawals', 'Withdrawals', $withdrawalCount, route('admin.events.overview', $event));
         $this->warning($warnings, 'warning', 'pending_refunds', 'Pending refunds', $pendingRefundCount, route('admin.registration.refunds.bank.index'));

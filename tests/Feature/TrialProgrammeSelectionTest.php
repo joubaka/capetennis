@@ -46,6 +46,21 @@ class TrialProgrammeSelectionTest extends TestCase
         $this->assertDatabaseCount('trial_squad_slots', 16);
     }
 
+    public function test_replacement_choices_are_next_team_only_and_satisfy_required_colour_place(): void
+    {
+        $f = $this->scenario();
+        $draft = app(TrialSquadService::class)->generate($f['event'], ['A', 'B'], $f['admin']);
+        $target = $draft->slots()->where('tier', 'A')->where('slot', 1)->sole();
+        $sources = app(TrialSelectionReviewService::class)->eligibleSources($draft, $target);
+        $this->assertSame(['B'], $sources->pluck('tier')->unique()->values()->all());
+        $this->assertTrue($sources->every(fn ($slot) => !$slot->reserve && $slot->player->is_player_of_colour));
+        $declined = $sources->first(); $this->assertNotNull($declined);
+        $declined->update(['response' => 'declined']);
+        $this->assertFalse(app(TrialSelectionReviewService::class)->eligibleSources($draft, $target)->contains('id', $declined->id));
+        $lowest = $draft->slots()->where('tier', 'B')->where('slot', 3)->sole();
+        $this->assertTrue(app(TrialSelectionReviewService::class)->eligibleSources($draft, $lowest)->every(fn ($slot) => $slot->reserve));
+    }
+
     public function test_required_vacancies_need_explicit_acknowledgement_and_swap_rolls_back(): void
     {
         $f = $this->scenario(8, []); $service = app(TrialSquadService::class);

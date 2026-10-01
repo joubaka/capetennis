@@ -208,11 +208,13 @@ class RegistrationPaymentService
 
     public function finalizePayment(RegistrationOrder $order, array $context = []): RegistrationOrder
     {
-        /** @var RegistrationOrder $finalized */
-        $finalized = $this->paymentOrchestrator->finalizePayment($order, $context);
-        $this->markOrderRegistrationsPaid($finalized, $context['pf_payment_id'] ?? null, $context['user_id'] ?? $finalized->user_id);
-
-        return $finalized;
+        return DB::transaction(function () use ($order, $context) {
+            /** @var RegistrationOrder $finalized */
+            $finalized = $this->paymentOrchestrator->finalizePayment($order, $context);
+            $this->markOrderRegistrationsPaid($finalized, $context['pf_payment_id'] ?? null, $context['user_id'] ?? $finalized->user_id);
+            app(\App\Services\InterprovincialTrials\InvitationService::class)->confirmPaidOrder($finalized);
+            return $finalized;
+        });
     }
 
     public function finalizeManualPayment(RegistrationOrder $order, User $operator, string $method, string $reference, ?int $proofId = null): \App\Models\RegistrationManualReceipt
@@ -241,7 +243,9 @@ class RegistrationPaymentService
             $item = $items->count() === 1 ? $items->first() : null;
             $entry = $item ? \App\Models\CategoryEventRegistration::where('registration_id', $item->registration_id)->where('category_event_id', $item->category_event_id)->lockForUpdate()->first() : null;
             $amount = $item ? (int) round((float) $item->item_price * 100) : 0;
-            if (! $item || ! $entry || $amount <= 0 || $amount !== (int) round((float) $locked->total_fee * 100)
+            if (! $item || ! $entry || $entry->withdrawn_at
+                || in_array($entry->status, ['withdrawn', 'withdrawn_pending_refund', 'withdrawn_refunded'], true)
+                || $amount <= 0 || $amount !== (int) round((float) $locked->total_fee * 100)
                 || (int) $item->user_id !== (int) $locked->user_id
                 || (int) $item->player_id !== (int) $invitation->player_id
                 || (int) $item->registration_id !== (int) $invitation->registration_id

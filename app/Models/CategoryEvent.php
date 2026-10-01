@@ -81,8 +81,14 @@ class CategoryEvent extends Model
 
   public function activeRegistrations()
   {
+    $trialsType = fn ($query) => $query->where('code', EventType::INTERPROVINCIAL_TRIALS_CODE)
+      ->orWhereRaw('LOWER(TRIM(name)) IN (?, ?)', ['interpro trials', 'interprovincial trials']);
+
     return $this->hasMany(\App\Models\CategoryEventRegistration::class, 'category_event_id', 'id')
-      ->where('status', '!=', 'withdrawn');
+      ->where('status', '!=', 'withdrawn')
+      ->where(fn ($query) => $query
+        ->whereDoesntHave('categoryEvent.event.eventTypeModel', $trialsType)
+        ->orWhere(fn ($paid) => $paid->activeAndPaid()));
   }
 
   public function allCategoryEventRegistrations()

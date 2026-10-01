@@ -24,7 +24,35 @@ class TrialProgrammeController extends Controller
         $participationProofs = \App\Models\TrialParticipationProof::whereHas('participation', fn ($q) => $q->where('event_id', $event->id))->with(['participation.player', 'order'])->where('status', 'pending')->latest('id')->paginate(25, ['*'], 'participation_proofs_page');
         $paymentByPlayer = \App\Models\TrialParticipation::with('order')->where('event_id', $event->id)->whereIn('player_id', $slots->pluck('player_id')->filter())->get()->keyBy('player_id');
         $declarations = $event->nominations()->with(['player', 'categoryEvent.category'])->whereNotNull('player_id')->orderBy('id')->paginate(25, ['*'], 'declarations_page');
-        return view('backend.interprovincial-trials.programme', compact('event', 'programme', 'draft', 'slots', 'proofs', 'proposals', 'orders', 'withdrawn', 'participations', 'participationProofs', 'paymentByPlayer', 'declarations'));
+        $categoryReadiness = $event->categoryEvents()->with(['category', 'draws.drawFixtures'])
+            ->withCount(['categoryEventRegistrations as paid_count' => fn ($q) => $q->where('payment_status_id', 1)])
+            ->get()->map(function ($category) use ($event, $programme) {
+                $fixtures = $category->draws->flatMap->drawFixtures;
+                $unresolved = $fixtures->filter(fn ($fixture) => !in_array((int) $fixture->match_status, [1, 3, 5], true)
+                    || ((int) $fixture->match_status !== 5 && !in_array((int) $fixture->winner_registration, array_filter([(int) $fixture->registration1_id, (int) $fixture->registration2_id]), true)))->count();
+                $message = !$category->paid_count ? 'No paid registrations yet.'
+                    : ($fixtures->isEmpty() ? 'Draw and matches not ready.'
+                    : ($unresolved ? $unresolved.' match(es) still need a result or withdrawal decision.'
+                    : ($programme?->concluded_at ? 'Final positions ready.' : 'Matches complete. Check finishing positions and resolve any ties.')));
+                return ['name' => $category->category?->name, 'message' => $message,
+                    'href' => route($fixtures->isEmpty() || $unresolved ? 'admin.events.draws' : 'admin.events.results.individual', $event)];
+            });
+        $journey = match (true) {
+            !$programme?->region_id => ['label' => 'Setup', 'action' => 'Confirm the event region and save regional settings.', 'href' => '#trial-settings'],
+            (bool) $draft?->needs_review => ['label' => 'Selection review required', 'action' => 'Review corrected results and affected team places.', 'href' => '#trial-teams'],
+            $draft?->status === 'finalised' => ['label' => 'Participation and follow-up', 'action' => 'Follow up responses, payments and replacement places. Invitations are optional.', 'href' => '#trial-participation'],
+            (bool) $draft => ['label' => 'Draft teams', 'action' => 'Review selections and vacancies, then finalise all teams together.', 'href' => '#trial-teams'],
+            (bool) $programme?->concluded_at => ['label' => 'Team selection', 'action' => 'Check colour declarations and choose the teams to generate.', 'href' => '#trial-declarations'],
+            default => ['label' => 'Registration and Trials results', 'action' => 'Publish nominees, verify payments and complete category matches.', 'href' => '#trial-results'],
+        };
+        $replacementCandidates = collect();
+        if ($draft?->status === 'finalised') {
+            foreach ($slots->where('reserve', false)->filter(fn ($slot) => !$slot->player_id || $slot->response === 'declined') as $target) {
+                $replacementCandidates[$target->id] = app(\App\Services\InterprovincialTrials\TrialSelectionReviewService::class)->eligibleSources($draft, $target, $slots)
+                    ->filter(fn ($candidate) => !($paymentByPlayer->get($candidate->player_id)?->order?->payfast_handed_off_at && !$paymentByPlayer->get($candidate->player_id)?->order?->pay_status));
+            }
+        }
+        return view('backend.interprovincial-trials.programme', compact('event', 'programme', 'draft', 'slots', 'proofs', 'proposals', 'orders', 'withdrawn', 'participations', 'participationProofs', 'paymentByPlayer', 'declarations', 'categoryReadiness', 'journey', 'replacementCandidates'));
     }
 
     public function settings(Request $request, Event $event, TrialProgrammeService $service)

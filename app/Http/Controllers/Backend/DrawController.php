@@ -768,6 +768,8 @@ class DrawController extends Controller
     $registrations = $categoryEvent->registrations()->with('players')
       ->wherePivot('status', '!=', 'withdrawn')
       ->wherePivotNull('deleted_at')
+      ->when($categoryEvent->event?->isInterprovincialTrials(), fn ($query) => $query
+        ->wherePivot('status', 'active')->wherePivot('payment_status_id', 1))
       ->get();
 
     foreach ($registrations as $registration) {
@@ -890,6 +892,8 @@ class DrawController extends Controller
     $activeRegistrations = $categoryEvent->registrations()
       ->wherePivot('status', '!=', 'withdrawn')
       ->wherePivotNull('deleted_at')
+      ->when($categoryEvent->event?->isInterprovincialTrials(), fn ($query) => $query
+        ->wherePivot('status', 'active')->wherePivot('payment_status_id', 1))
       ->with('players')->get();
 
     DB::transaction(function () use ($activeRegistrations, $draw, $existingRegistrationIds, &$attached) {
@@ -1460,6 +1464,10 @@ public function json(Draw $draw)
 
     if ($draw->category_event_id) {
       $query->where('entry.category_event_id', $draw->category_event_id);
+    }
+
+    if ($draw->event?->isInterprovincialTrials()) {
+      $query->where('entry.status', 'active')->where('entry.payment_status_id', 1);
     }
 
     if (! $query->exists()) {

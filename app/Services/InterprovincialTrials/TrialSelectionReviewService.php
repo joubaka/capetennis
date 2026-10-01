@@ -75,19 +75,8 @@ class TrialSelectionReviewService
             abort_unless($draft->status === 'finalised' && !$draft->needs_review && !$target->reserve && (!$target->player_id || $target->response === 'declined'), 422);
             $existing = TrialReplacementProposal::where('target_slot_id', $target->id)->where('status', 'pending')->first();
             if ($existing && !$chosenSourceId && $existing->source_player_id) { return $existing; }
-            $tiers = $draft->tiers;
-            $next = $tiers[array_search($target->tier, $tiers, true) + 1] ?? null;
-            $currentColour = $draft->slots()->where('category_event_id', $target->category_event_id)->where('tier', $target->tier)
-                ->where('reserve', false)->where('id', '!=', $target->id)->with('player')->get()
-                ->filter(fn ($s) => $s->player?->is_player_of_colour || (!$s->player_id && $s->requires_colour))->count();
-            $needsColour = $currentColour < 2;
-            $ranking = collect($draft->rankingRun->positions)->keyBy('player_id');
-            $source = $draft->slots()->where('category_event_id', $target->category_event_id)
-                ->where('tier', $next ?? $target->tier)->where('reserve', $next === null)->whereNotNull('player_id')
-                ->where('response', '!=', 'declined')->with('player')->get()
-                ->filter(fn ($s) => !$needsColour || $s->player?->is_player_of_colour)
-                ->when($chosenSourceId, fn ($rows) => $rows->where('id', $chosenSourceId))
-                ->sortBy(fn ($s) => $ranking[$s->player_id]['position'] ?? PHP_INT_MAX)->first();
+            $source = $this->eligibleSources($draft, $target)
+                ->when($chosenSourceId, fn ($rows) => $rows->where('id', $chosenSourceId))->first();
             if ($chosenSourceId && !$source) { throw ValidationException::withMessages(['source_slot' => 'Choose an eligible replacement from the next team or the lowest team reserves.']); }
             if ($existing) { $existing->update(['status' => 'superseded']); }
             return TrialReplacementProposal::create(['draft_id' => $draft->id, 'target_slot_id' => $target->id,
@@ -134,5 +123,21 @@ class TrialSelectionReviewService
             ->whereHas('order', fn ($q) => $q->whereNotNull('payfast_handed_off_at')->where('pay_status', false))->exists()) {
             throw ValidationException::withMessages(['payment' => 'Wait for the outstanding PayFast checkout to resolve before changing participation.']);
         }
+    }
+
+    /** Shared read-only choices for the proposal form and locked proposal creation. */
+    public function eligibleSources(TrialSquadDraft $draft, TrialSquadSlot $target, ?\Illuminate\Support\Collection $slots = null): \Illuminate\Support\Collection
+    {
+        $slots ??= $draft->slots()->with('player')->get();
+        $tiers = $draft->tiers;
+        $next = $tiers[array_search($target->tier, $tiers, true) + 1] ?? null;
+        $categorySlots = $slots->where('category_event_id', $target->category_event_id);
+        $colourCount = $categorySlots->where('tier', $target->tier)->where('reserve', false)->where('id', '!=', $target->id)
+            ->filter(fn ($slot) => $slot->player?->is_player_of_colour || (!$slot->player_id && $slot->requires_colour))->count();
+        $ranking = collect($draft->rankingRun->positions)->keyBy('player_id');
+        return $categorySlots->where('tier', $next ?? $target->tier)->where('reserve', $next === null)
+            ->whereNotNull('player_id')->where('response', '!=', 'declined')
+            ->filter(fn ($slot) => $colourCount >= 2 || $slot->player?->is_player_of_colour)
+            ->sortBy(fn ($slot) => $ranking[$slot->player_id]['position'] ?? PHP_INT_MAX)->values();
     }
 }

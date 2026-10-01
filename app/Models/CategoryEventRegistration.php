@@ -130,6 +130,7 @@ class CategoryEventRegistration extends Model
   public function scopeActive($query)
   {
     return $query->whereNotIn('status', [
+      'pending_checkout',
       'withdrawn',
       'withdrawn_pending_refund',
       'withdrawn_refunded',
@@ -468,6 +469,11 @@ class CategoryEventRegistration extends Model
         'refund_allowed' => false,
         'message' => 'You do not own this registration.',
       ];
+    }
+
+    if ($this->status === 'pending_checkout'
+      || ($this->categoryEvent?->event?->isInterprovincialTrials() && !$this->is_paid)) {
+      return ['ok' => false, 'reason' => 'pending_checkout', 'refund_allowed' => false, 'message' => 'Cancel the unpaid checkout instead of withdrawing an entry.'];
     }
 
     // Already withdrawn

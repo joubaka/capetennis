@@ -46,7 +46,7 @@ class EventEntryController extends Controller
       ->get();
 
     $pendingCheckouts = collect();
-    if (auth()->user()->hasRole('super-user')) {
+    if (auth()->user()->hasRole('super-user') && !$event->isInterprovincialTrials()) {
       $pendingCheckouts = CategoryEventRegistration::query()
         ->active()
         ->whereHas('categoryEvent', fn ($query) => $query->where('event_id', $event->id))

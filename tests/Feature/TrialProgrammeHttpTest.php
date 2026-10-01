@@ -36,6 +36,33 @@ class TrialProgrammeHttpTest extends TestCase
         $this->actingAs($outsider)->get(route('backend.interprovincial-trials.programme.index', $f['event']))->assertForbidden();
     }
 
+    public function test_paginated_programme_uses_bootstrap_and_retains_other_list_positions(): void
+    {
+        $f = $this->scenario();
+        foreach (Player::factory()->count(26)->create() as $player) {
+            \App\Models\EventNomination::create(['event_id' => $f['event']->id, 'category_event_id' => $f['category']->id, 'player_id' => $player->id]);
+        }
+        $response = $this->actingAs($f['admin'])->get(route('backend.interprovincial-trials.programme.index', $f['event']).'?orders_page=2');
+        $response->assertOk()->assertSee('pagination', false)->assertDontSee('sm:flex-1', false);
+        $response->assertSee('orders_page=2&amp;declarations_page=2', false)->assertSee('#trial-declarations', false);
+        $this->assertDatabaseCount('trial_ranking_runs', 1);
+    }
+
+    public function test_participation_proof_shows_exact_amount_and_handoff_blocks_manual_actions(): void
+    {
+        $f = $this->scenario();
+        $f['draft']->update(['status' => 'finalised', 'finalised_at' => now()]);
+        $payer = User::factory()->create();
+        $participation = app(\App\Services\InterprovincialTrials\TrialParticipationService::class)->begin($f['slot'], $payer);
+        \App\Models\TrialParticipationProof::create(['participation_id' => $participation->id, 'order_id' => $participation->order_id, 'payer_id' => $payer->id,
+            'path' => 'private-test-proof.pdf', 'mime_type' => 'application/pdf', 'size' => 10]);
+        app(\App\Domain\Payments\Services\TeamPaymentService::class)->recordPayfastHandoff($participation->order, $payer, 450);
+        $response = $this->actingAs($f['admin'])->get(route('backend.interprovincial-trials.programme.index', $f['event']));
+        $response->assertOk()->assertSee('450.00')->assertDontSee('Record manual participation payment')->assertDontSee('Verify EFT payment received');
+        $this->assertFalse($participation->fresh()->isPaid());
+        $this->assertDatabaseCount('trial_participation_receipts', 0);
+    }
+
     public function test_public_page_hides_drafts_and_account_then_shows_finalised_roster_without_private_data(): void
     {
         $f = $this->scenario();

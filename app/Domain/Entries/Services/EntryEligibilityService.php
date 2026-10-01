@@ -50,6 +50,21 @@ class EntryEligibilityService
             throw new RuntimeException('Category is locked — cannot add player.');
         }
 
+        if ($categoryEvent->event?->isInterprovincialTrials()
+            && CategoryEventRegistration::where('category_event_id', $categoryEvent->id)
+                ->whereNull('withdrawn_at')
+                ->whereNotIn('status', ['withdrawn', 'withdrawn_pending_refund', 'withdrawn_refunded'])
+                ->where(fn ($query) => $query->whereNull('payment_status_id')->orWhere('payment_status_id', '!=', 1))
+                ->whereHas('registration.players', fn ($query) => $query->where('players.id', $playerId))
+                ->whereExists(function ($query) {
+                    $query->selectRaw('1')->from('interprovincial_trial_invitations')
+                        ->whereColumn('interprovincial_trial_invitations.registration_id', 'category_event_registrations.registration_id')
+                        ->whereColumn('interprovincial_trial_invitations.category_event_id', 'category_event_registrations.category_event_id')
+                        ->whereNotNull('order_id');
+                })->exists()) {
+            throw new RuntimeException('Player has an unpaid Trials checkout. Resume or cancel that checkout first.');
+        }
+
         $duplicate = $categoryEvent->categoryEventRegistrations()
             ->where('status', 'active')
             ->where('payment_status_id', 1)

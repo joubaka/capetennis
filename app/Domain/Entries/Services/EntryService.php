@@ -325,6 +325,10 @@ class EntryService
         CategoryEventRegistration $entry,
         User $actingUser
     ): void {
+        if ($entry->status === 'pending_checkout'
+            || ($entry->categoryEvent?->event?->isInterprovincialTrials() && !$entry->is_paid)) {
+            throw new \RuntimeException('Cancel the unpaid checkout instead of withdrawing an entry.');
+        }
         if ($entry->status === 'withdrawn') {
             throw new \RuntimeException('This registration is already withdrawn.');
         }

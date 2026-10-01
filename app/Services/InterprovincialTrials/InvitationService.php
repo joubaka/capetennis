@@ -348,7 +348,7 @@ class InvitationService
             $registration = Registration::create([]);
             $registration->players()->sync([(int) $locked->player_id]);
             $registration->categoryEvents()->syncWithoutDetaching([
-                $category->id => ['payment_status_id' => 0, 'user_id' => $user->id],
+                $category->id => ['payment_status_id' => 0, 'user_id' => $user->id, 'status' => 'pending_checkout'],
             ]);
             $rawFee = $event->entryFee;
             $fee = round((float) ($rawFee ?? 0), 2);
@@ -488,6 +488,12 @@ class InvitationService
 
             if ($invitation->status !== InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT) {
                 throw ValidationException::withMessages(['payment' => 'The trial invitation is not awaiting payment.']);
+            }
+            if ($entry->withdrawn_at || in_array($entry->status, ['withdrawn', 'withdrawn_pending_refund', 'withdrawn_refunded'], true)) {
+                return;
+            }
+            if ($entry->status === 'pending_checkout') {
+                $entry->update(['status' => 'active']);
             }
             $invitation->update(['status' => InterprovincialTrialInvitation::PAID_CONFIRMED, 'paid_at' => now()]);
         });
