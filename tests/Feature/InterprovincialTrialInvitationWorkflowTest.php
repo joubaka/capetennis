@@ -40,6 +40,11 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config([
+            'services.payfast.sandbox' => false,
+            'services.payfast.merchant_id' => '10000100',
+            'services.payfast.merchant_key' => 'test-merchant-key',
+        ]);
         config(['mail.allowed_from_addresses' => ['trials@example.test']]);
         Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
         Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
@@ -429,6 +434,148 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $this->assertDatabaseCount('registration_order_items', 3);
         $this->assertSame(1, DB::table('category_event_registrations')->whereNull('deleted_at')->count());
         $this->assertDatabaseMissing('user_players', ['player_id' => $player->id, 'user_id' => $nextPayer->id]);
+    }
+
+    public function test_local_payfast_preparation_failures_leave_trial_registration_available_for_a_clean_restart(): void
+    {
+        config(['app.debug' => false]);
+        $this->withoutMiddleware([EnsureAgreementAccepted::class, EnsurePlayerProfileUpdated::class]);
+        $this->event->update(['status' => 'open', 'start_date' => now()->addDays(20)->toDateString(), 'deadline' => 2]);
+        $this->category->update(['entry_fee' => 150, 'nominations_published' => true]);
+        $service = app(InvitationService::class);
+        $payments = app(\App\Domain\Payments\Services\RegistrationPaymentService::class);
+
+        foreach (['missing_credentials', 'signing_failure', 'amount_changed_during_render'] as $failure) {
+            config(['services.payfast.merchant_key' => 'test-merchant-key']);
+            $this->app->forgetInstance(\App\Services\Payfast::class);
+            $payer = User::factory()->create();
+            $nextPayer = User::factory()->create();
+            $player = Player::factory()->create();
+            $nomination = EventNomination::create([
+                'event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id,
+            ]);
+            $order = $service->acceptPublishedNomination($this->event, $this->category, $nomination, $payer);
+            $orderCount = RegistrationOrder::count();
+            $itemCount = RegistrationOrderItems::count();
+
+            $this->actingAs($payer)->get(route('registration.checkout', $order))->assertOk();
+            $this->assertNull($order->fresh()->payfast_handed_off_at);
+            if ($failure === 'missing_credentials') {
+                config(['services.payfast.merchant_key' => '   ']);
+            } else {
+                $provider = new \App\Services\Payfast();
+                $mock = \Mockery::mock(\App\Services\Payfast::class)->makePartial();
+                $mock->__construct();
+                $mock->shouldReceive('generateFormSignature')->once()->andReturnUsing(
+                    function (array $fields) use ($failure, $payments, $order, $provider): string {
+                        $this->assertNull($order->fresh()->payfast_handed_off_at);
+                        if ($failure === 'signing_failure') {
+                            throw new \RuntimeException('Simulated local signature failure.');
+                        }
+                        $payments->reservePayment($order->fresh(), 25, 125);
+
+                        return $provider->generateFormSignature($fields);
+                    }
+                );
+                $this->app->instance(\App\Services\Payfast::class, $mock);
+            }
+
+            $response = $this->actingAs($payer)->post(route('registration.hybrid.pay'), [
+                'type' => 'registration', 'custom_int5' => $order->id,
+            ]);
+            if ($failure === 'signing_failure') {
+                $response->assertStatus(500);
+            } else {
+                $response->assertSessionHasErrors('payment');
+            }
+            $response->assertDontSee('id="payfastForm"', false);
+            $this->assertNull($order->fresh()->payfast_handed_off_at, $failure);
+            $this->assertSame($orderCount, RegistrationOrder::count());
+            $this->assertSame($itemCount, RegistrationOrderItems::count());
+            $this->assertFalse((bool) $order->fresh()->pay_status);
+            $this->assertSame($failure === 'amount_changed_during_render' ? 25.0 : 0.0, (float) $order->fresh()->wallet_reserved);
+
+            $this->actingAs($nextPayer)->post(route('interprovincial-trials.nominations.register', [
+                $this->event, $this->category, $nomination,
+            ]))->assertRedirect();
+            $replacement = RegistrationOrder::query()->where('user_id', $nextPayer->id)->sole();
+            $this->assertSame('cancelled', $order->fresh()->status);
+            $this->assertSame(0.0, (float) $order->fresh()->wallet_reserved);
+            $this->assertSame(150.0, (float) $replacement->payfast_amount_due);
+            $this->assertNull($replacement->payfast_handed_off_at);
+            $this->assertDatabaseMissing('user_players', ['player_id' => $player->id, 'user_id' => $nextPayer->id]);
+        }
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
+    public function test_reconciled_trial_handoff_allows_a_different_payer_to_restart_without_reusing_the_old_payment(): void
+    {
+        $owner = User::factory()->create();
+        $payer = User::factory()->create();
+        $nextPayer = User::factory()->create();
+        $operator = User::factory()->create()->assignRole('super-user');
+        $player = Player::factory()->create(['userId' => $owner->id]);
+        $this->event->update(['status' => 'open', 'start_date' => now()->addDays(20)->toDateString(), 'deadline' => 2]);
+        $this->category->update(['entry_fee' => 150, 'nominations_published' => true]);
+        $nomination = EventNomination::create([
+            'event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id,
+        ]);
+        $service = app(InvitationService::class);
+        $payments = app(\App\Domain\Payments\Services\RegistrationPaymentService::class);
+        $order = $service->acceptPublishedNomination($this->event, $this->category, $nomination, $payer);
+        $invitation = InterprovincialTrialInvitation::sole();
+        $oldRegistrationId = $order->items()->value('registration_id');
+        $payments->reservePayment($order, 25, 125);
+        $payments->preparePayfastHandoff($order->fresh(), $payer, 25, 125);
+        $this->withoutMiddleware([EnsureAgreementAccepted::class, EnsurePlayerProfileUpdated::class]);
+        $registrationRoute = route('interprovincial-trials.nominations.register', [
+            $this->event, $this->category, $nomination,
+        ]);
+
+        $this->actingAs($nextPayer)->post($registrationRoute)->assertSessionHasErrors('invitation');
+        $this->assertDatabaseCount('registration_orders', 1);
+        $this->assertSame($order->id, $invitation->fresh()->order_id);
+
+        $this->artisan('payments:release-payfast-handoff', [
+            'type' => 'registration', 'id' => $order->id, '--apply' => true,
+            '--operator' => $operator->id, '--evidence' => 'PF-QUERY:TRIAL-NO-PAYMENT',
+        ])->assertSuccessful();
+        $this->assertNull($order->fresh()->payfast_handed_off_at);
+        $this->assertSame(25.0, (float) $order->fresh()->wallet_reserved);
+        $this->assertSame($order->id, $invitation->fresh()->order_id);
+
+        $response = $this->actingAs($nextPayer)->post($registrationRoute);
+        $replacement = RegistrationOrder::query()->where('user_id', $nextPayer->id)->sole();
+        $response->assertRedirect(route('registration.checkout', $replacement));
+        $this->assertSame('cancelled', $order->fresh()->status);
+        $this->assertSame(0.0, (float) $order->fresh()->wallet_reserved);
+        $this->assertSame(0.0, (float) $order->fresh()->payfast_amount_due);
+        $this->assertSame(150.0, (float) $replacement->total_fee);
+        $this->assertSame(150.0, (float) $replacement->payfast_amount_due);
+        $this->assertSame(0.0, (float) $replacement->wallet_reserved);
+        $this->assertSame($replacement->id, $invitation->fresh()->order_id);
+        $this->assertDatabaseCount('registration_orders', 2);
+        $this->assertDatabaseCount('registration_order_items', 2);
+        $this->assertSame(1, DB::table('category_event_registrations')->whereNull('deleted_at')->count());
+        $this->assertDatabaseMissing('category_event_registrations', [
+            'registration_id' => $oldRegistrationId, 'deleted_at' => null,
+        ]);
+        $this->assertDatabaseMissing('user_players', ['player_id' => $player->id, 'user_id' => $nextPayer->id]);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+
+        try {
+            $payments->finalizePayment($order->fresh(), [
+                'payfast_amount_received' => 125, 'pf_payment_id' => 'PF-RETIRED-ATTEMPT',
+            ]);
+            $this->fail('A retired checkout must never confirm a second entry.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('This payment order has been cancelled. Start registration again.', $exception->getMessage());
+        }
+        $this->assertFalse((bool) $order->fresh()->pay_status);
+        $this->assertFalse((bool) $replacement->fresh()->pay_status);
+        $this->assertSame($replacement->id, $invitation->fresh()->order_id);
+        $this->assertSame(1, DB::table('category_event_registrations')->whereNull('deleted_at')->count());
+        $this->assertDatabaseCount('wallet_transactions', 0);
     }
 
     public function test_payfast_handoff_uses_locked_server_amount_and_blocks_replacement_and_local_cancellation(): void

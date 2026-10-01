@@ -46,6 +46,11 @@ class LegacyAdapterCallsCanonicalServicesTest extends TestCase
 
     public function test_hybrid_pay_calls_payment_orchestrator_initiate_payment(): void
     {
+        config([
+            'services.payfast.sandbox' => false,
+            'services.payfast.merchant_id' => '10000100',
+            'services.payfast.merchant_key' => 'test-merchant-key',
+        ]);
         $user  = User::factory()->create();
         $wallet = Wallet::factory()->forUser($user)->create();
         // Fund the wallet so the balance check passes

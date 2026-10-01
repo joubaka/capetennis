@@ -122,35 +122,43 @@ class RegistrationPaymentController extends Controller
       return $this->hybridComplete($orderId);
     }
 
+    $payfast = app(\App\Services\Payfast::class);
+    $payfast->setMode(config('services.payfast.sandbox') ? 0 : 1);
+    if (blank($payfast->id) || blank($payfast->key)) {
+      throw ValidationException::withMessages([
+        'payment' => 'PayFast is temporarily unavailable. Your registration has not been submitted. Please try again later.',
+      ]);
+    }
+
+    // Render and sign before claiming the handoff. A local rendering failure must
+    // leave the unpaid checkout available for a clean registration attempt.
+    $response = response()->view('frontend.payfast.pay_now', [
+      'payfast' => $payfast,
+      'amount' => $payfastDue,
+      'orderId' => $orderId,
+      'custom_wallet_reserved' => $walletReserved,
+      'return_url' => route('frontend.registration.success', ['order' => $orderId]),
+      // route parameter name must be match route definition (/registration/hybrid/cancel/{orderId})
+      'cancel_url' => route('registration.hybrid.cancel', ['orderId' => $orderId]),
+      'notify_url' => route('notify'),
+    ]);
+
+    // Recheck the exact rendered amounts and payment state under the service's
+    // order lock. Do not return the signed response if this claim fails.
     $order = app(RegistrationPaymentService::class)->preparePayfastHandoff(
       $order,
       $user,
       $walletReserved,
       $payfastDue
     );
-    $remaining = round((float) $order->payfast_amount_due, 2);
-
     Log::info('PAYFAST HANDOFF PREPARED', [
       'order_id' => $order->id,
       'user_id' => $user->id,
       'wallet_reserved' => round((float) $order->wallet_reserved, 2),
-      'payfast_due' => $remaining,
+      'payfast_due' => round((float) $order->payfast_amount_due, 2),
     ]);
 
-    // 🔁 Send to PayFast
-    $payfast = new \App\Services\Payfast();
-    $payfast->setMode(config('services.payfast.sandbox') ? 0 : 1);
-
-    return view('frontend.payfast.pay_now', [
-      'payfast' => $payfast,
-      'amount' => $remaining,
-      'orderId' => $orderId,
-      'custom_wallet_reserved' => $order->wallet_reserved,
-      'return_url' => route('frontend.registration.success', ['order' => $orderId]),
-      // route parameter name must be match route definition (/registration/hybrid/cancel/{orderId})
-      'cancel_url' => route('registration.hybrid.cancel', ['orderId' => $orderId]),
-      'notify_url' => route('notify'),
-    ]);
+    return $response;
   }
 
   /** Start a full-value PayFast payment without using wallet funds. */
