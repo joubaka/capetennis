@@ -60,8 +60,7 @@ class HeadOfficeController extends Controller
     $this->authorize('event-draw.view', $event);
 
     // The individual draw overview needs neither team fixtures nor team formats.
-    if (($event->isIndividual() || (int) $event->eventType === 6)
-      && ! $event->isInterprovincialTrials()) {
+    if ($event->isIndividual() || (int) $event->eventType === 6 || $event->isInterprovincialTrials()) {
       $event->load([
         'draws' => fn ($query) => $query
           ->with(['venues', 'settings', 'flexibleMonrad:id,draw_id,revision,graph'])

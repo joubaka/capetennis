@@ -52,7 +52,7 @@
               <i class="ti ti-users me-1"></i>Entries
             </a>
           @endcan
-          <a href="{{ route('admin.events.draws', $event) }}" class="btn btn-outline-primary dashboard-action">
+          <a href="{{ route('headOffice.show', $event) }}" class="btn btn-outline-primary dashboard-action">
             <i class="ti ti-tournament me-1"></i>Draws
           </a>
           <a href="{{ route('admin.events.individual.hq', $event) }}" class="btn btn-outline-primary dashboard-action">

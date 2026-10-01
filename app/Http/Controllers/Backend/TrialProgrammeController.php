@@ -35,7 +35,7 @@ class TrialProgrammeController extends Controller
                     : ($unresolved ? $unresolved.' match(es) still need a result or withdrawal decision.'
                     : ($programme?->concluded_at ? 'Final positions ready.' : 'Matches complete. Check finishing positions and resolve any ties.')));
                 return ['name' => $category->category?->name, 'message' => $message,
-                    'href' => route($fixtures->isEmpty() || $unresolved ? 'admin.events.draws' : 'admin.events.results.individual', $event)];
+                    'href' => route($fixtures->isEmpty() || $unresolved ? 'headOffice.show' : 'admin.events.results.individual', $event)];
             });
         $journey = match (true) {
             !$programme?->region_id => ['label' => 'Setup', 'action' => 'Confirm the event region and save regional settings.', 'href' => '#trial-settings'],

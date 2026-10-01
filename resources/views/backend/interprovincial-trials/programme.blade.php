@@ -8,7 +8,7 @@
   <div class="card border-primary mb-3"><div class="card-body"><div class="text-muted small">Current stage</div><h2 class="h5">{{ data_get($journey,'label') }}</h2><p>{{ data_get($journey,'action') }}</p>@if(data_get($journey,'href'))<a class="btn btn-primary" href="{{ data_get($journey,'href') }}">Next action</a>@endif</div></div>
   <nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Programme sections">@foreach(['settings'=>'Settings','results'=>'Results','declarations'=>'Declarations','teams'=>'Teams','trial-payments'=>'Trials payments','participation'=>'Participation','eft-review'=>'EFT review','withdrawals'=>'Withdrawals'] as $anchor=>$label)<a class="btn btn-sm btn-outline-secondary" href="#trial-{{ $anchor }}">{{ $label }}</a>@endforeach</nav>
   <div class="d-flex flex-wrap gap-2 mb-3">
-    <a class="btn btn-outline-primary" href="{{ route('admin.events.draws',$event) }}">Draws</a>
+    <a class="btn btn-outline-primary" href="{{ route('headOffice.show',$event) }}">Draws</a>
     <a class="btn btn-outline-primary" href="{{ route('admin.events.results.individual',$event) }}">Enter results</a>
     <a class="btn btn-outline-warning" href="{{ route('backend.interprovincial-trials.refund-recovery.index',$event) }}">PayFast refund recovery</a>
     <a class="btn btn-outline-primary" href="{{ route('backend.interprovincial-trials.invitations.index', $event) }}">Nominations</a>

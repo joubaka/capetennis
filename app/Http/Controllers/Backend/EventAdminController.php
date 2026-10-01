@@ -522,11 +522,7 @@ class EventAdminController extends Controller
     $event = Event::findOrFail($id);
     $this->authorize('event-draw.view', $event);
 
-    $draws = Draw::where('event_id', $id)
-      ->withCount('registrations')
-      ->get();
-
-    return view('backend.adminPage.partials.draws', compact('event', 'draws'));
+    return redirect()->route('headOffice.show', $event);
   }
 
   //new stuff here
@@ -534,6 +530,8 @@ class EventAdminController extends Controller
   public function generateFixtures(Request $request, Event $event, FixtureService $fixtureService)
   {
     $this->authorize('draw.create', $event);
+
+    abort_if($event->isInterprovincialTrials(), 422, 'Create Trials fixtures through the individual draw setup.');
 
     $mode = $request->string('mode', 'perType')->toString();
     $onlyCategories = $request->input('onlyCategories'); // array|null

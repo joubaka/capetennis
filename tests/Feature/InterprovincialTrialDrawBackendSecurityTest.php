@@ -54,12 +54,12 @@ class InterprovincialTrialDrawBackendSecurityTest extends TestCase
         $this->actingAs($this->assignedAdmin)
             ->get(route('headOffice.show', $this->event))
             ->assertOk()
-            ->assertViewIs('backend.headOffice.interpro-event-show');
+            ->assertViewIs('backend.headOffice.individual-event-show');
 
         $this->actingAs($this->superUser)
             ->get(route('headOffice.show', $this->event))
             ->assertOk()
-            ->assertViewIs('backend.headOffice.interpro-event-show');
+            ->assertViewIs('backend.headOffice.individual-event-show');
 
         $unassignedAdmin = User::factory()->create()->assignRole('admin');
         $ordinaryUser = User::factory()->create();
@@ -76,6 +76,22 @@ class InterprovincialTrialDrawBackendSecurityTest extends TestCase
         $this->actingAs($this->assignedAdmin)
             ->get(route('headOffice.show', $otherEvent))
             ->assertForbidden();
+    }
+
+    public function test_legacy_draw_link_redirects_to_full_workspace_and_team_generation_is_blocked(): void
+    {
+        $this->actingAs($this->assignedAdmin)
+            ->get(route('admin.events.draws', $this->event))
+            ->assertRedirect(route('headOffice.show', $this->event));
+        $this->get(route('headOffice.show', $this->event))->assertOk()
+            ->assertSee('class="ct-backend"', false)
+            ->assertSee('Create &amp; choose format', false)
+            ->assertDontSee('generate-fixtures-btn', false);
+        $this->postJson(route('headoffice.createFixtures', $this->event))->assertUnprocessable();
+        $this->assertDatabaseCount('draws', 1);
+        $this->assertDatabaseCount('team_fixtures', 0);
+        $this->actingAs(User::factory()->create()->assignRole('admin'))
+            ->get(route('admin.events.draws', $this->event))->assertForbidden();
     }
 
     public function test_engine_mode_endpoints_are_super_user_only(): void
