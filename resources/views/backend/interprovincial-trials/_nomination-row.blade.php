@@ -1,7 +1,16 @@
 @php($invitation = $presentation['invitation'])
 <div class="interpro-nomination-row" data-nomination-row data-nomination-state="{{ $presentation['filter_key'] }}">
   <div class="interpro-nomination-row__identity">
-    <div class="fw-semibold">{{ $nomination->player?->name }} {{ $nomination->player?->surname }}</div>
+    <div class="fw-semibold">{{ $nomination->display_name }}</div>
+    @if($nomination->player_id === null)<span class="badge bg-label-warning">Profile required</span>@endif
+    @if($nomination->player_id === null)
+      <form method="POST" action="{{ route('backend.interprovincial-trials.nominations.email', [$event, $categoryEvent, $nomination]) }}" class="mt-2">
+        @csrf @method('PUT')
+        <label class="form-label small" for="nominee-email-{{ $nomination->id }}">Invitation email (optional)</label>
+        <input id="nominee-email-{{ $nomination->id }}" type="email" name="nominee_email" value="{{ $nomination->nominee_email }}" maxlength="255" class="form-control form-control-sm">
+        <button class="btn btn-sm btn-outline-primary mt-1">Save email</button>
+      </form>
+    @endif
     <div class="text-muted small">{{ $categoryEvent->category?->name ?? 'Category unavailable' }}</div>
     @if($invitation?->recipient_email)
       <a class="small interpro-email" href="mailto:{{ rawurlencode($invitation->recipient_email) }}">{{ $invitation->recipient_email }}</a>

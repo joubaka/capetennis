@@ -47,6 +47,7 @@ class AppServiceProvider extends ServiceProvider
    */
   public function register()
   {
+    $this->app->scoped(\App\Services\InterprovincialTrials\TrialRefreshQueue::class);
     // Cape Tennis owns its wallet schema and ledger migrations. Registering
     // Bavix's bundled migrations would recreate/alter incompatible tables.
     WalletConfigure::ignoreMigrations();
@@ -83,6 +84,12 @@ class AppServiceProvider extends ServiceProvider
    */
   public function boot()
   {
+    \App\Models\Fixture::observe(\App\Observers\TrialFixtureObserver::class);
+    \App\Models\FixtureResult::observe(\App\Observers\TrialResultObserver::class);
+    $this->app['router']->pushMiddlewareToGroup('web', \App\Http\Middleware\RefreshTrialsAfterMutation::class);
+    $this->app['router']->pushMiddlewareToGroup('api', \App\Http\Middleware\RefreshTrialsAfterMutation::class);
+    EventFacade::listen(\Illuminate\Console\Events\CommandFinished::class, fn () => app(\App\Services\InterprovincialTrials\TrialRefreshQueue::class)->flush());
+    EventFacade::listen(\Illuminate\Queue\Events\JobProcessed::class, fn () => app(\App\Services\InterprovincialTrials\TrialRefreshQueue::class)->flush());
     DB::listen(fn ($query) => app(AuditQueryListener::class)->handle($query));
 
     EventFacade::listen(CommandStarting::class, function (CommandStarting $event): void {

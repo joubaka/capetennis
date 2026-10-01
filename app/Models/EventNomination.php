@@ -15,9 +15,18 @@ class EventNomination extends Model
     'event_id',
     'category_event_id',
     'player_id',
+    'nominee_name',
+    'nominee_surname',
+    'nominee_email',
+    'profileless_key',
   ];
 
   // Relationships
+  public function getDisplayNameAttribute(): string
+  {
+    return trim(($this->player?->name ?? $this->nominee_name).' '.($this->player?->surname ?? $this->nominee_surname));
+  }
+
   public function player()
   {
     return $this->belongsTo(Player::class);

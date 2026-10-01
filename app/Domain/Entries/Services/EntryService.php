@@ -78,6 +78,9 @@ class EntryService
                 ->firstOrFail();
 
             $this->eligibility->assertCanAddAdmin($lockedCategoryEvent, $playerId);
+            if ($lockedCategoryEvent->event->isInterprovincialTrials() && (float) $lockedCategoryEvent->event->entryFee > 0 && $collectionStatus !== 'paid_privately') {
+                throw ValidationException::withMessages(['collection_status' => 'Receive and record the Trials payment before creating a paid administrative entry, or use the nominee checkout.']);
+            }
 
             $adminPaymentStatus = $collectionStatus === 'paid_privately' ? 'paid' : 'unpaid';
             $capeTennisFee = round((float) $lockedCategoryEvent->event()
@@ -387,6 +390,11 @@ class EntryService
             ->pluck('id');
 
         if ($drawIds->isEmpty()) {
+            return;
+        }
+
+        if ($categoryEvent->event->isInterprovincialTrials()) {
+            app(\App\Services\InterprovincialTrials\TrialWithdrawalProgressionService::class)->resolve($entry);
             return;
         }
 

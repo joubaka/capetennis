@@ -23,6 +23,58 @@ use App\Services\InvitationMailSecurity;
 
 class InvitationService
 {
+    /** Move an administrator-approved Trials entry without breaking its payment tuple. */
+    public function transferEntry(CategoryEventRegistration $entry, CategoryEvent $target, User $actor): CategoryEventRegistration
+    {
+        return DB::transaction(function () use ($entry, $target, $actor) {
+            $event = Event::with('eventTypeModel')->lockForUpdate()->findOrFail($entry->categoryEvent->event_id);
+            abort_unless($event->isInterprovincialTrials()
+                && ($actor->hasRole('super-user') || ($actor->hasRole('admin') && $actor->is_event_admin($event->id))), 403);
+            abort_unless((int) $target->event_id === (int) $event->id, 404);
+            $categories = CategoryEvent::whereIn('id', [$entry->category_event_id, $target->id])
+                ->orderBy('id')->lockForUpdate()->get();
+            if ($categories->contains(fn ($category) => $category->draws()->exists() || $category->isLocked())) {
+                throw ValidationException::withMessages(['category' => 'Players may only move before either category has a draw.']);
+            }
+            $source = (int) $entry->category_event_id;
+            $nominationIds = InterprovincialTrialInvitation::where('event_id', $event->id)
+                ->where('category_event_id', $source)->where('registration_id', $entry->registration_id)
+                ->pluck('nomination_id')->unique();
+            $nominations = EventNomination::whereIn('id', $nominationIds)->orderBy('id')->lockForUpdate()->get();
+            foreach ($nominations as $nomination) {
+                if (EventNomination::where('category_event_id', $target->id)->where('player_id', $nomination->player_id)->exists()) {
+                    throw ValidationException::withMessages(['category' => 'The player is already nominated in the target category.']);
+                }
+            }
+            $items = RegistrationOrderItems::where('registration_id', $entry->registration_id)
+                ->where('category_event_id', $source)->get();
+            $orders = RegistrationOrder::whereIn('id', $items->pluck('order_id'))
+                ->orderBy('id')->lockForUpdate()->get();
+            if ($orders->contains(fn ($order) => $order->payfast_handed_off_at && ! $order->pay_status)) {
+                throw ValidationException::withMessages(['category' => 'Wait for the outstanding PayFast payment to resolve before moving this entry.']);
+            }
+            $invitations = InterprovincialTrialInvitation::where('event_id', $event->id)
+                ->where('category_event_id', $source)->whereIn('nomination_id', $nominationIds)
+                ->orderBy('id')->lockForUpdate()->get();
+            $lockedEntry = CategoryEventRegistration::lockForUpdate()->findOrFail($entry->id);
+            abort_unless((int) $lockedEntry->category_event_id === $source, 409);
+            $moved = app(\App\Domain\Entries\Services\EntryService::class)->transferEntry($lockedEntry, $target, $actor, true);
+            foreach ($nominations as $nomination) {
+                $nomination->update(['category_event_id' => $target->id]);
+            }
+            foreach ($invitations as $invitation) {
+                $invitation->update(['category_event_id' => $target->id]);
+            }
+            foreach ($items as $item) {
+                $item->forceFill(['category_event_id' => $target->id])->save();
+            }
+            activity('interprovincial-trials')->performedOn($moved)->causedBy($actor)
+                ->withProperties(['from_category_id' => $source, 'to_category_id' => $target->id])
+                ->log('Trials entry category changed before draw creation');
+            return $moved;
+        });
+    }
+
     public function acceptPublishedNomination(
         Event $event,
         CategoryEvent $categoryEvent,
@@ -33,6 +85,10 @@ class InvitationService
             $lockedEvent = Event::query()->with('eventTypeModel')->lockForUpdate()->findOrFail($event->id);
             $lockedCategory = CategoryEvent::query()->lockForUpdate()->findOrFail($categoryEvent->id);
             $lockedNomination = EventNomination::query()->lockForUpdate()->findOrFail($nomination->id);
+
+            if ($lockedNomination->player_id === null) {
+                throw ValidationException::withMessages(['nomination' => 'Create the nominated player profile before registering.']);
+            }
 
             abort_unless($lockedEvent->isInterprovincialTrials()
                 && (int) $lockedCategory->event_id === (int) $lockedEvent->id
@@ -166,7 +222,7 @@ class InvitationService
                         'status' => 'prepared',
                     ]);
                 abort_unless((int) $invitation->event_id === (int) $event->id, 404);
-                $kind = $request['mode'] === 'new' ? 'initial' : 'follow_up';
+                $kind = in_array($request['mode'], ['new', 'profileless'], true) ? 'initial' : 'follow_up';
                 $claimed = DB::table('interprovincial_trial_mail_dispatches')->insertOrIgnore([
                     'invitation_id' => $invitation->id,
                     'request_token' => $request['request_token'],
@@ -222,9 +278,15 @@ class InvitationService
     public function accept(InterprovincialTrialInvitation $invitation, User $user): RegistrationOrder
     {
         return DB::transaction(function () use ($invitation, $user): RegistrationOrder {
+            $orderId = InterprovincialTrialInvitation::whereKey($invitation->id)->value('order_id');
+            if ($orderId) { RegistrationOrder::whereKey($orderId)->lockForUpdate()->firstOrFail(); }
             $locked = InterprovincialTrialInvitation::query()
                 ->with(['event.eventTypeModel', 'categoryEvent', 'nomination', 'player'])
                 ->lockForUpdate()->findOrFail($invitation->id);
+
+            if ($locked->player_id === null) {
+                throw ValidationException::withMessages(['nomination' => 'Create the nominated player profile before registering.']);
+            }
 
             $tupleIsCurrent = $locked->event?->isInterprovincialTrials()
                 && (int) $locked->categoryEvent?->event_id === (int) $locked->event_id
@@ -243,6 +305,9 @@ class InvitationService
             }
             if ($locked->status === InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT && $locked->order_id) {
                 $existing = RegistrationOrder::query()->lockForUpdate()->findOrFail($locked->order_id);
+                if ((int) $existing->user_id !== (int) $user->id) {
+                    throw ValidationException::withMessages(['invitation' => 'Only the payer may resume this checkout.']);
+                }
                 if ($existing->payfast_handed_off_at) {
                     if ((int) $existing->user_id !== (int) $user->id) {
                         throw ValidationException::withMessages([
@@ -285,7 +350,7 @@ class InvitationService
             $registration->categoryEvents()->syncWithoutDetaching([
                 $category->id => ['payment_status_id' => 0, 'user_id' => $user->id],
             ]);
-            $rawFee = $category->entry_fee !== null ? $category->entry_fee : $event->entryFee;
+            $rawFee = $event->entryFee;
             $fee = round((float) ($rawFee ?? 0), 2);
             if (! is_finite($fee) || $fee < 0 || (float) $rawFee !== $fee) {
                 throw ValidationException::withMessages(['invitation' => 'The configured entry fee is invalid.']);
@@ -377,9 +442,9 @@ class InvitationService
                 ->where('category_event_id', $invitation->category_event_id)
                 ->lockForUpdate()
                 ->first();
-            $category = $invitation->categoryEvent()->lockForUpdate()->first();
-            $event = $invitation->event()->lockForUpdate()->first();
-            $player = $invitation->player()->lockForUpdate()->first();
+            $category = $invitation->categoryEvent()->first();
+            $event = $invitation->event()->first();
+            $player = $invitation->player()->first();
             $nominationMatches = DB::table('event_nominations')
                 ->where('id', $invitation->nomination_id)
                 ->where('event_id', $invitation->event_id)
@@ -907,7 +972,7 @@ class InvitationService
 
     private function attemptSelection(Event $event, string $mode, ?int $invitationId, bool $lock): array
     {
-        if (! in_array($mode, ['new', 'not_registered', 'individual'], true)) {
+        if (! in_array($mode, ['new', 'profileless', 'not_registered', 'individual'], true)) {
             throw ValidationException::withMessages(['mode' => 'Choose a supported invitation send mode.']);
         }
         $nominationQuery = $event->nominations()->with(['player.user', 'player.users', 'categoryEvent.category'])->orderBy('id');
@@ -926,11 +991,12 @@ class InvitationService
         $recipients = [];
         $blockers = [];
         foreach ($nominations as $nomination) {
+            if ($mode === 'profileless' && $nomination->player_id !== null) continue;
             $row = $snapshotRows->get((int) $nomination->id);
             $invitation = $invitations->get((int) $nomination->id);
             if ($mode === 'individual' && (int) $invitation?->id !== (int) $invitationId) continue;
             $eligible = match ($mode) {
-                'new' => ! $invitation || (! in_array((int) $invitation->id, $dispatchedIds, true) && $invitation->status === 'prepared'),
+                'new', 'profileless' => ! $invitation || (! in_array((int) $invitation->id, $dispatchedIds, true) && $invitation->status === 'prepared'),
                 'not_registered', 'individual' => $invitation
                     && in_array($invitation->status, ['sent', InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT], true)
                     && in_array((int) $invitation->id, $successfulInitialIds, true),
@@ -944,7 +1010,7 @@ class InvitationService
                 'invitation_id' => $invitation?->id,
                 'nomination_id' => (int) $nomination->id,
                 'category_event_id' => (int) $nomination->category_event_id,
-                'player_id' => (int) $nomination->player_id,
+                'player_id' => $nomination->player_id === null ? null : (int) $nomination->player_id,
                 'name' => $row['recipient_name'],
                 'email' => $row['recipient_email'],
                 'category' => $nomination->categoryEvent?->category?->name,
@@ -988,8 +1054,9 @@ class InvitationService
             $direct = $player?->user && filled($player->user->email) ? $player->user : null;
             $recipient = $direct ?: $player?->users?->filter(fn ($user) => filled($user->email))->sortBy('id')->first();
             return ['nomination_id' => (int) $nomination->id, 'category_event_id' => (int) $nomination->category_event_id,
-                'player_id' => (int) $nomination->player_id, 'recipient_email' => $recipient?->email,
-                'recipient_user_id' => $recipient?->id, 'recipient_name' => trim(($player?->name ?? '').' '.($player?->surname ?? ''))];
+                'player_id' => $nomination->player_id === null ? null : (int) $nomination->player_id,
+                'recipient_email' => $recipient?->email ?? $nomination->nominee_email,
+                'recipient_user_id' => $recipient?->id, 'recipient_name' => $nomination->display_name];
         })->sortBy('nomination_id')->values()->all();
     }
 

@@ -48,6 +48,8 @@ class Kernel extends ConsoleKernel
         $schedule->command('team-selection:process-deadlines --apply')
             ->everyFiveMinutes()
             ->withoutOverlapping();
+
+        $schedule->command('trials:send-due-reminders')->everyFiveMinutes()->withoutOverlapping();
     }
 
     /**

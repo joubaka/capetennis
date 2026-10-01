@@ -101,11 +101,24 @@
       </div>
       <div class="col-12"><div id="nomination-feedback" class="small" role="status" aria-live="polite"></div></div>
     </form>
+    <details class="mt-3" @if($errors->hasAny(['nominee_name', 'nominee_surname', 'nominee_email'])) open @endif>
+      <summary class="fw-semibold">Add a player without a profile</summary>
+      <p class="text-muted small mt-2">Use the player or parent/guardian email for invitations. Any signed-in user may complete the player profile and pay for registration.</p>
+      <form method="POST" action="{{ route('backend.interprovincial-trials.nominations.no-profile', $event) }}" class="row g-3">
+        @csrf
+        <div class="col-md-6"><label for="nominee-name" class="form-label">First name</label><input id="nominee-name" name="nominee_name" class="form-control" value="{{ old('nominee_name') }}" maxlength="255" required></div>
+        <div class="col-md-6"><label for="nominee-surname" class="form-label">Surname</label><input id="nominee-surname" name="nominee_surname" class="form-control" value="{{ old('nominee_surname') }}" maxlength="255" required></div>
+        <div class="col-md-6"><label for="nominee-email" class="form-label">Player or parent/guardian email (optional)</label><input id="nominee-email" name="nominee_email" type="email" class="form-control" value="{{ old('nominee_email') }}" maxlength="255"></div>
+        <div class="col-md-6"><label for="nominee-category" class="form-label">Category</label><select id="nominee-category" name="category_event_id" class="form-select" required><option value="">Choose a category</option>@foreach($event->categoryEvents as $categoryEvent)<option value="{{ $categoryEvent->id }}" @selected((string) old('category_event_id') === (string) $categoryEvent->id)>{{ $categoryEvent->category?->name ?? 'Category' }}</option>@endforeach</select></div>
+        <div class="col-12"><button class="btn btn-primary" {{ $event->categoryEvents->isEmpty() ? 'disabled' : '' }}>Add nomination without profile</button></div>
+      </form>
+    </details>
   </div></div>
 
   <div class="card mb-4"><div class="card-header"><h5 class="mb-0">2. Review nominations by category</h5></div><div class="card-body">
     <div class="d-flex flex-wrap gap-2 mb-3">
       <button type="button" class="btn btn-primary" data-send-preview-mode="new"><i class="ti ti-send me-1"></i>Send to newly nominated</button>
+      <button type="button" class="btn btn-outline-primary" data-send-preview-mode="profileless">Send to players without profiles</button>
       <button type="button" class="btn btn-outline-primary" data-send-preview-mode="not_registered"><i class="ti ti-mail-forward me-1"></i>Send to players not registered</button>
     </div>
     <p class="text-muted small mb-2">Showing {{ $nominations->firstItem() ?? 0 }}–{{ $nominations->lastItem() ?? 0 }} of {{ $nominations->total() }} nominations. Filters apply to this page.</p>

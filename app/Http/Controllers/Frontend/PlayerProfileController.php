@@ -17,9 +17,11 @@ class PlayerProfileController extends Controller
     /**
      * Show the form to create a new player profile.
      */
-    public function create()
+    public function create(Request $request)
     {
-        return view('frontend.player.create-profile');
+        $trialNomination = $this->trialNomination($request);
+
+        return view('frontend.player.create-profile', compact('trialNomination'));
     }
 
     /**
@@ -42,6 +44,27 @@ class PlayerProfileController extends Controller
         ]);
 
         $user = auth()->user();
+
+        $trialNomination = $this->trialNomination($request);
+        if ($trialNomination) {
+            $request->validate(['cellNr' => ['required', 'string', 'max:50']]);
+            $result = app(\App\Services\InterprovincialTrials\NominationProfileService::class)->complete($trialNomination->id, $user, [
+                'dateOfBirth' => $validated['dateOfBirth'], 'gender' => (int) $validated['gender'],
+                'cellNr' => $validated['cellNr'] ?? null, 'email' => $validated['email'] ?? null,
+            ]);
+            $request->session()->forget('trial_nomination_profile');
+
+            $currentInvitation = \App\Models\InterprovincialTrialInvitation::where('event_id', $trialNomination->event_id)
+                ->where('nomination_id', $trialNomination->id)->where('status', '!=', 'prepared')->latest('id')->first();
+            if ($currentInvitation && in_array($currentInvitation->status, ['queued', 'sent'], true)) {
+                return redirect(\Illuminate\Support\Facades\URL::temporarySignedRoute('interprovincial-trials.invitations.show', now()->addHours(1), $currentInvitation))
+                    ->with('success', 'Player profile confirmed. You can now register the nominated player.');
+            }
+
+            return redirect(route('events.show', ['event' => $trialNomination->event_id, 'nomination' => $trialNomination->id,
+                'player' => $result['player']->id]).'#trial-nomination-'.$trialNomination->id)
+                ->with('success', 'Player profile confirmed. You can now register the nominated player.');
+        }
 
         $name = trim($validated['name']);
         $surname = trim($validated['surname']);
@@ -75,6 +98,21 @@ class PlayerProfileController extends Controller
     /**
      * Show all pending player profiles that need updating.
      */
+    private function trialNomination(Request $request): ?\App\Models\EventNomination
+    {
+        if (! $request->filled('trial_nomination')) {
+            return null;
+        }
+        $context = $request->session()->get('trial_nomination_profile');
+        abort_unless(is_array($context)
+            && (int) ($context['user_id'] ?? 0) === (int) $request->user()->id
+            && (int) ($context['nomination_id'] ?? 0) === $request->integer('trial_nomination'), 403);
+        $nomination = \App\Models\EventNomination::findOrFail($context['nomination_id']);
+        app(\App\Services\InterprovincialTrials\NominationProfileService::class)->authorize($nomination, $request->user());
+
+        return $nomination;
+    }
+
     public function pending()
     {
         $user = auth()->user();

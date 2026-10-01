@@ -375,6 +375,7 @@ class EventSettingsController extends Controller
    */
   public function updateCategoryFee(Request $request, CategoryEvent $categoryEvent)
   {
+    Gate::authorize('event.settings.manage', $categoryEvent->event);
     $data = $request->validate([
       'entry_fee' => 'nullable|integer|min:0',
       'enabled' => 'nullable|boolean',
@@ -382,6 +383,10 @@ class EventSettingsController extends Controller
 
     if (array_key_exists('enabled', $data) && !$data['enabled']) {
       $data['entry_fee'] = null;
+    }
+
+    if ($categoryEvent->event->isInterprovincialTrials() && isset($data['entry_fee'])) {
+      throw ValidationException::withMessages(['entry_fee' => 'Trials use the event fee for every category.']);
     }
 
     unset($data['enabled']);

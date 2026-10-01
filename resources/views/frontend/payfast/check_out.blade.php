@@ -3,6 +3,7 @@
 @section('title', 'Checkout')
 
 @section('content')
+@include('frontend.event.partials.trial-eft-checkout')
 
 @section('page-style')
 <style>

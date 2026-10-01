@@ -223,13 +223,14 @@ class InterprovincialTrialPaymentLifecycleTest extends TestCase
         ]);
         $event = Event::factory()->create([
             'eventType' => $typeId,
+            'entryFee' => 0,
             'published' => true,
             'status' => 'active',
             'signUp' => true,
             'start_date' => now()->addDays(20)->toDateString(),
             'deadline' => 2,
         ]);
-        $category = CategoryEvent::factory()->create(['event_id' => $event->id, 'entry_fee' => 0]);
+        $category = CategoryEvent::factory()->create(['event_id' => $event->id, 'nominations_published' => true]);
         $owner = User::factory()->create();
         $payer = User::factory()->create();
         $player = Player::factory()->create(['userId' => $owner->id]);

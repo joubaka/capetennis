@@ -132,6 +132,7 @@ class RegistrationPricingTest extends TestCase
         $event = Event::factory()->create([
             'eventType' => $eventTypeId,
             'entryFee' => $eventFee,
+            'deadline' => 0,
             'status' => 'open',
             'published' => true,
             'signUp' => true,

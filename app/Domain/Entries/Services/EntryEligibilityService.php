@@ -44,6 +44,7 @@ class EntryEligibilityService
     public function assertCanAddAdmin(CategoryEvent $categoryEvent, int $playerId): void
     {
         $this->disciplinaryEligibility->assertEligible($playerId, $categoryEvent->event_id);
+        $this->assertTrialNominationBeforeDraw($categoryEvent, $playerId);
 
         if ($categoryEvent->isLocked()) {
             throw new RuntimeException('Category is locked — cannot add player.');
@@ -79,6 +80,7 @@ class EntryEligibilityService
     public function assertCanRegister(CategoryEvent $categoryEvent, int $playerId): void
     {
         $this->disciplinaryEligibility->assertEligible($playerId, $categoryEvent->event_id);
+        $this->assertTrialNominationBeforeDraw($categoryEvent, $playerId);
 
         if (SiteSetting::get('registration_open', '1') !== '1') {
             throw new RuntimeException(
@@ -236,5 +238,16 @@ class EntryEligibilityService
         return $categoryEvent->categoryEventRegistrations()
             ->where('registration_id', $registrationId)
             ->exists();
+    }
+
+    private function assertTrialNominationBeforeDraw(CategoryEvent $categoryEvent, int $playerId): void
+    {
+        if (!$categoryEvent->event->isInterprovincialTrials()) { return; }
+        if ($categoryEvent->draws()->exists()) {
+            throw new RuntimeException('Trials entries may only be added before the category draw is created.');
+        }
+        if (!\App\Models\EventNomination::where('event_id', $categoryEvent->event_id)->where('category_event_id', $categoryEvent->id)->where('player_id', $playerId)->exists()) {
+            throw new RuntimeException('Only a current nominee in this Trials category may register.');
+        }
     }
 }

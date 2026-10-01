@@ -75,6 +75,155 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         }
     }
 
+    public function test_profileless_nomination_is_authorized_event_scoped_and_idempotent(): void
+    {
+        $payload = ['category_event_id' => $this->category->id, 'nominee_name' => 'New', 'nominee_surname' => 'Nominee', 'nominee_email' => 'family@example.test'];
+        $url = route('backend.interprovincial-trials.nominations.no-profile', $this->event);
+        $this->actingAs(User::factory()->create())->post($url, $payload)->assertForbidden();
+        $otherCategory = CategoryEvent::factory()->create();
+        $this->actingAs($this->admin)->post($url, array_merge($payload, ['category_event_id' => $otherCategory->id]))->assertNotFound();
+        $this->actingAs($this->admin)->post($url, $payload)->assertRedirect();
+        $this->post($url, $payload)->assertRedirect();
+        $this->post($url, array_merge($payload, ['nominee_email' => 'another@example.test']))->assertRedirect();
+        $this->assertDatabaseCount('event_nominations', 1);
+        $this->assertDatabaseCount('players', 0);
+        $this->assertDatabaseCount('user_players', 0);
+        $preview = app(InvitationService::class)->previewAttempt($this->event, $this->admin, 'new');
+        $this->assertCount(1, $preview['recipients']);
+        $this->assertSame('family@example.test', $preview['recipients'][0]['email']);
+        $this->assertNull($preview['recipients'][0]['player_id']);
+    }
+
+    public function test_profileless_recipient_creates_profile_and_resolves_invitation_without_checkout(): void
+    {
+        $user = User::factory()->create(['email' => 'family@example.test']);
+        $nomination = $this->profilelessNomination();
+        $batch = InterprovincialTrialInvitationBatch::create(['event_id' => $this->event->id, 'status' => 'draft', 'snapshot_hash' => hash('sha256', 'test'), 'created_by_user_id' => $this->admin->id]);
+        $invitation = InterprovincialTrialInvitation::create(['batch_id' => $batch->id, 'event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'nomination_id' => $nomination->id, 'player_id' => null, 'recipient_email' => $user->email, 'status' => 'sent']);
+        $this->actingAs($user)->get(route('interprovincial-trials.nominations.profile', [$this->event, $this->category, $nomination]))->assertRedirect(route('player.profile.create', ['trial_nomination' => $nomination->id]));
+        $this->get(route('player.profile.create', ['trial_nomination' => $nomination->id]))->assertOk()->assertSee('New');
+        $details = ['trial_nomination' => $nomination->id, 'name' => 'Tampered', 'surname' => 'Name', 'dateOfBirth' => '2012-01-01', 'gender' => 1, 'cellNr' => '0123456789'];
+        $this->post(route('player.profile.store'), $details)->assertRedirect();
+        $player = Player::sole();
+        $this->assertSame('New', $player->name);
+        $this->assertSame('Nominee', $player->surname);
+        $this->assertSame($player->id, $nomination->fresh()->player_id);
+        $this->assertSame($player->id, $invitation->fresh()->player_id);
+        $this->assertNull($player->userId);
+        $this->assertDatabaseCount('user_players', 0);
+        $this->assertDatabaseCount('registration_orders', 0);
+        $this->post(route('player.profile.store'), $details)->assertForbidden();
+        $this->assertDatabaseCount('players', 1);
+    }
+
+    public function test_profileless_onboarding_allows_any_sponsor_but_rejects_cross_event_private_and_closed_nomination(): void
+    {
+        $nomination = $this->profilelessNomination();
+        $url = route('interprovincial-trials.nominations.profile', [$this->event, $this->category, $nomination]);
+        $this->actingAs(User::factory()->create())->get($url)->assertRedirect();
+        $user = User::factory()->create(['email' => 'family@example.test']);
+        $otherEvent = Event::factory()->create(['eventType' => $this->event->eventType]);
+        $this->actingAs($user)->get(route('interprovincial-trials.nominations.profile', [$otherEvent, $this->category, $nomination]))->assertNotFound();
+        $this->category->update(['nominations_published' => false]);
+        $this->get($url)->assertNotFound();
+        $this->category->update(['nominations_published' => true]);
+        $this->event->update(['signUp' => 0]);
+        $this->getJson($url)->assertUnprocessable();
+        $this->assertDatabaseCount('players', 0);
+        $this->assertDatabaseCount('user_players', 0);
+    }
+
+    public function test_profileless_onboarding_does_not_claim_unrelated_existing_identity(): void
+    {
+        $nomination = $this->profilelessNomination();
+        $existing = Player::factory()->create(['name' => 'New', 'surname' => 'Nominee', 'dateOfBirth' => '2012-01-01']);
+        $before = $existing->fresh()->getRawOriginal();
+        $user = User::factory()->create(['email' => 'family@example.test']);
+        $this->actingAs($user)->get(route('interprovincial-trials.nominations.profile', [$this->event, $this->category, $nomination]))->assertRedirect();
+        $this->postJson(route('player.profile.store'), ['trial_nomination' => $nomination->id, 'name' => 'New', 'surname' => 'Nominee', 'dateOfBirth' => '2012-01-01', 'gender' => 1, 'cellNr' => '0123456789'])->assertRedirect();
+        $this->assertSame($existing->id, $nomination->fresh()->player_id);
+        $this->assertSame($before, $existing->fresh()->getRawOriginal());
+        $this->assertDatabaseCount('players', 1);
+        $this->assertDatabaseMissing('user_players', ['user_id' => $user->id, 'player_id' => $existing->id]);
+    }
+
+    public function test_profileless_nomination_cannot_create_registration_order(): void
+    {
+        $nomination = $this->profilelessNomination();
+        $this->withoutMiddleware([EnsureAgreementAccepted::class, EnsurePlayerProfileUpdated::class]);
+        $this->actingAs(User::factory()->create())->postJson(route('interprovincial-trials.nominations.register', [$this->event, $this->category, $nomination]))->assertUnprocessable();
+        $this->assertDatabaseCount('registration_orders', 0);
+        $this->assertDatabaseCount('interprovincial_trial_invitations', 0);
+        $this->get(route('events.show', $this->event))->assertOk()->assertSee('New Nominee')->assertDontSee('family@example.test');
+    }
+
+    private function profilelessNomination(): EventNomination
+    {
+        $this->category->update(['nominations_published' => true]);
+        return EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => null, 'nominee_name' => 'New', 'nominee_surname' => 'Nominee', 'nominee_email' => 'family@example.test']);
+    }
+
+    public function test_profileless_separate_preview_and_email_update_do_not_send(): void
+    {
+        $nomination = $this->profilelessNomination();
+        $nomination->update(['nominee_email' => null]);
+        $preview = app(InvitationService::class)->previewAttempt($this->event, $this->admin, 'profileless');
+        $this->assertCount(0, $preview['recipients']);
+        $this->assertCount(1, $preview['blockers']);
+        $url = route('backend.interprovincial-trials.nominations.email', [$this->event, $this->category, $nomination]);
+        $this->actingAs(User::factory()->create())->put($url, ['nominee_email' => 'other@example.test'])->assertForbidden();
+        $otherEvent = Event::factory()->create(['eventType' => $this->event->eventType]);
+        $this->actingAs($this->admin)->put(route('backend.interprovincial-trials.nominations.email', [$otherEvent, $this->category, $nomination]), ['nominee_email' => 'other@example.test'])->assertForbidden();
+        $this->put($url, ['nominee_email' => 'new-contact@example.test'])->assertRedirect();
+        $existingPlayer = Player::factory()->create();
+        EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $existingPlayer->id]);
+        $preview = app(InvitationService::class)->previewAttempt($this->event, $this->admin, 'profileless');
+        $this->assertCount(1, $preview['recipients']);
+        $this->assertSame('new-contact@example.test', $preview['recipients'][0]['email']);
+        $this->assertCount(0, $preview['blockers']);
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        $this->assertDatabaseCount('interprovincial_trial_invitations', 0);
+    }
+
+    public function test_trial_pending_checkout_cannot_be_restarted_by_another_sponsor(): void
+    {
+        $player = Player::factory()->create();
+        $nomination = EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id]);
+        $this->event->update(['entryFee' => 100]);
+        $this->category->update(['nominations_published' => true]);
+        $payer = User::factory()->create();
+        $service = app(InvitationService::class);
+        $order = $service->acceptPublishedNomination($this->event, $this->category, $nomination, $payer);
+        $before = $order->getRawOriginal();
+        $this->withoutMiddleware([EnsureAgreementAccepted::class, EnsurePlayerProfileUpdated::class]);
+        $this->actingAs(User::factory()->create())->postJson(route('interprovincial-trials.nominations.register', [$this->event, $this->category, $nomination]))->assertUnprocessable();
+        $this->assertSame($before, $order->fresh()->getRawOriginal());
+        $this->assertDatabaseCount('registration_orders', 1);
+        $this->assertDatabaseCount('registration_order_items', 1);
+    }
+
+    public function test_profileless_send_rejects_stale_email_or_resolved_nominee_preview(): void
+    {
+        foreach (['email', 'profile'] as $change) {
+            $nomination = $this->profilelessNomination();
+            $preview = app(InvitationService::class)->previewAttempt($this->event, $this->admin, 'profileless');
+            if ($change === 'email') {
+                $nomination->update(['nominee_email' => 'changed@example.test']);
+            } else {
+                $nomination->update(['player_id' => Player::factory()->create()->id]);
+            }
+            try {
+                app(InvitationService::class)->queueAttempt($this->event, $this->admin, $preview);
+                $this->fail('A changed recipient preview must not queue.');
+            } catch (\Illuminate\Validation\ValidationException $exception) {
+                $this->assertArrayHasKey('recipients', $exception->errors());
+            }
+            $this->assertDatabaseCount('bulk_email_logs', 0);
+            $this->assertDatabaseCount('interprovincial_trial_mail_dispatches', 0);
+            $nomination->delete();
+        }
+    }
+
     public function test_nomination_update_is_authorized_event_scoped_and_preserves_unchanged_rows(): void
     {
         $first = Player::factory()->create(); $second = Player::factory()->create();
@@ -154,7 +303,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
             'published' => true, 'status' => 'active', 'signUp' => true,
             'start_date' => now()->addDays(20)->toDateString(), 'deadline' => 2,
         ]);
-        $this->category->update(['entry_fee' => 275.50]);
+        $this->event->update(['entryFee' => 275.50]);
         EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id]);
         $this->prepareInvitationFixtures();
         $invitation = InterprovincialTrialInvitation::sole();
@@ -180,6 +329,8 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
             $this->assertSame(InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT, $invitation->fresh()->status);
 
             $competingPayer = User::factory()->create();
+            app(\App\Domain\Payments\Services\RegistrationPaymentService::class)->cancelPayment($second);
+            app(InvitationService::class)->resetCancelledPayment($second->fresh(), $payer);
             $replacement = app(InvitationService::class)->accept($invitation->fresh(), $competingPayer);
             $this->assertSame($competingPayer->id, $replacement->user_id);
             $this->assertSame('cancelled', $second->fresh()->status);
@@ -210,7 +361,8 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
             'category_event_id' => $this->category->id,
             'player_id' => $player->id,
         ]);
-        $this->category->update(['entry_fee' => 175.25, 'nominations_published' => true]);
+        $this->event->update(['entryFee' => 175.25]);
+        $this->category->update(['nominations_published' => true]);
         $this->event->update(['published' => true, 'status' => 'open', 'signUp' => 1]);
         $route = route('interprovincial-trials.nominations.register', [$this->event, $this->category, $nomination]);
 
@@ -247,8 +399,8 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $this->assertDatabaseCount('registration_orders', 2);
         $this->assertDatabaseCount('registration_order_items', 2);
 
-        $this->actingAs(User::factory()->create())->post($route)->assertRedirect();
-        $this->assertDatabaseCount('registration_orders', 3);
+        $this->actingAs(User::factory()->create())->postJson($route)->assertUnprocessable();
+        $this->assertDatabaseCount('registration_orders', 2);
     }
 
     public function test_open_nomination_registration_rejects_unpublished_mismatched_and_closed_tuples_without_writes(): void
@@ -289,7 +441,8 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
     public function test_terminal_and_unsent_invitation_states_preserve_history_and_allow_one_fresh_open_registration_attempt(): void
     {
         $payer = User::factory()->create();
-        $this->category->update(['entry_fee' => 25, 'nominations_published' => true]);
+        $this->event->update(['entryFee' => 25]);
+        $this->category->update(['nominations_published' => true]);
         $this->event->update([
             'published' => true,
             'status' => 'open',
@@ -362,7 +515,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $player = Player::factory()->create(['userId' => $owner->id]);
         $this->event->update(['published' => true, 'status' => 'open', 'signUp' => true,
             'start_date' => now()->addDays(20)->toDateString(), 'deadline' => 2]);
-        $this->category->update(['entry_fee' => 150]);
+        $this->event->update(['entryFee' => 150]);
         EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id]);
         $this->prepareInvitationFixtures();
         $invitation = InterprovincialTrialInvitation::sole();
@@ -407,7 +560,8 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $nextPayer = User::factory()->create();
         $player = Player::factory()->create(['userId' => $owner->id]);
         $this->event->update(['status' => 'open', 'start_date' => now()->addDays(20)->toDateString(), 'deadline' => 2]);
-        $this->category->update(['entry_fee' => 150, 'nominations_published' => true]);
+        $this->event->update(['entryFee' => 150]);
+        $this->category->update(['nominations_published' => true]);
         $nomination = EventNomination::create([
             'event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id,
         ]);
@@ -419,6 +573,8 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $second = app(InvitationService::class)->acceptPublishedNomination(
             $this->event, $this->category, $nomination, $firstPayer
         );
+        app(\App\Domain\Payments\Services\RegistrationPaymentService::class)->cancelPayment($second);
+        app(InvitationService::class)->resetCancelledPayment($second->fresh(), $firstPayer);
         $third = app(InvitationService::class)->acceptPublishedNomination(
             $this->event, $this->category, $nomination, $nextPayer
         );
@@ -441,7 +597,8 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         config(['app.debug' => false]);
         $this->withoutMiddleware([EnsureAgreementAccepted::class, EnsurePlayerProfileUpdated::class]);
         $this->event->update(['status' => 'open', 'start_date' => now()->addDays(20)->toDateString(), 'deadline' => 2]);
-        $this->category->update(['entry_fee' => 150, 'nominations_published' => true]);
+        $this->event->update(['entryFee' => 150]);
+        $this->category->update(['nominations_published' => true]);
         $service = app(InvitationService::class);
         $payments = app(\App\Domain\Payments\Services\RegistrationPaymentService::class);
 
@@ -495,6 +652,11 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
             $this->assertFalse((bool) $order->fresh()->pay_status);
             $this->assertSame($failure === 'amount_changed_during_render' ? 25.0 : 0.0, (float) $order->fresh()->wallet_reserved);
 
+            $this->actingAs($nextPayer)->postJson(route('interprovincial-trials.nominations.register', [
+                $this->event, $this->category, $nomination,
+            ]))->assertUnprocessable();
+            $payments->cancelPayment($order->fresh());
+            $service->resetCancelledPayment($order->fresh(), $payer);
             $this->actingAs($nextPayer)->post(route('interprovincial-trials.nominations.register', [
                 $this->event, $this->category, $nomination,
             ]))->assertRedirect();
@@ -516,7 +678,8 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $operator = User::factory()->create()->assignRole('super-user');
         $player = Player::factory()->create(['userId' => $owner->id]);
         $this->event->update(['status' => 'open', 'start_date' => now()->addDays(20)->toDateString(), 'deadline' => 2]);
-        $this->category->update(['entry_fee' => 150, 'nominations_published' => true]);
+        $this->event->update(['entryFee' => 150]);
+        $this->category->update(['nominations_published' => true]);
         $nomination = EventNomination::create([
             'event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id,
         ]);
@@ -544,6 +707,9 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $this->assertSame(25.0, (float) $order->fresh()->wallet_reserved);
         $this->assertSame($order->id, $invitation->fresh()->order_id);
 
+        $this->actingAs($nextPayer)->post($registrationRoute)->assertSessionHasErrors('invitation');
+        $payments->cancelPayment($order->fresh());
+        $service->resetCancelledPayment($order->fresh(), $payer);
         $response = $this->actingAs($nextPayer)->post($registrationRoute);
         $replacement = RegistrationOrder::query()->where('user_id', $nextPayer->id)->sole();
         $response->assertRedirect(route('registration.checkout', $replacement));
@@ -585,7 +751,8 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $otherPayer = User::factory()->create();
         $player = Player::factory()->create(['userId' => $owner->id]);
         $this->event->update(['status' => 'open', 'start_date' => now()->addDays(20)->toDateString(), 'deadline' => 2]);
-        $this->category->update(['entry_fee' => 150, 'nominations_published' => true]);
+        $this->event->update(['entryFee' => 150]);
+        $this->category->update(['nominations_published' => true]);
         $nomination = EventNomination::create([
             'event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id,
         ]);
@@ -708,7 +875,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
             'published' => true, 'status' => 'active', 'signUp' => true,
             'start_date' => now()->addDays(20)->toDateString(), 'deadline' => 2,
         ]);
-        $this->category->update(['entry_fee' => 0]);
+        $this->event->update(['entryFee' => 0]);
         EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id]);
         $this->prepareInvitationFixtures();
         $invitation = InterprovincialTrialInvitation::sole();
@@ -755,7 +922,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $payer = User::factory()->create();
         $player = Player::factory()->create(['userId' => $owner->id]);
         $this->event->update(['published' => true, 'status' => 'active', 'signUp' => true, 'start_date' => now()->addDays(20)->toDateString(), 'deadline' => 2]);
-        $this->category->update(['entry_fee' => 225]);
+        $this->event->update(['entryFee' => 225]);
         EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id]);
         $this->prepareInvitationFixtures();
         $invitation = InterprovincialTrialInvitation::sole();
@@ -1135,6 +1302,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
 
     public function test_owner_can_decline_once_without_financial_writes_and_declined_cannot_register(): void
     {
+        $this->category->update(['nominations_published' => true]);
         $owner = User::factory()->create();
         $player = Player::factory()->create(['userId' => $owner->id]);
         $nomination = EventNomination::create([
@@ -1190,6 +1358,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
 
     public function test_unlinked_authenticated_user_may_sponsor_without_gaining_player_ownership(): void
     {
+        $this->category->update(['nominations_published' => true]);
         $owner = User::factory()->create();
         $player = Player::factory()->create(['userId' => $owner->id]);
         EventNomination::create([
@@ -1604,6 +1773,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $job->failed(new \RuntimeException('Transport unavailable'));
         $this->assertSame('failed', InterprovincialTrialInvitation::sole()->status);
 
+        app(InvitationService::class)->retryFailed(InterprovincialTrialInvitationBatch::sole(), InterprovincialTrialInvitation::sole());
         $job->handle();
         $job->handle();
         $this->assertSame('sent', $log->fresh()->status);

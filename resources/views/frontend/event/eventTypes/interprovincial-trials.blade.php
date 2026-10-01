@@ -3,6 +3,7 @@
     <div class="col-lg-8">
       @include('frontend.event.partials.event-information')
       @include('frontend.event.partials.event-announcements')
+      @include('frontend.event.partials.trial-programme')
       <div class="card mt-4">
         <div class="card-header"><h5 class="mb-0">Trial nominations</h5></div>
         <div class="card-body">
@@ -30,8 +31,15 @@
                             && (!$event->registrationClosesAt() || now()->lte($event->registrationClosesAt()->endOfDay()));
                         @endphp
                         <li id="trial-nomination-{{ $nomination->id }}" class="list-group-item px-0 d-flex flex-wrap justify-content-between align-items-center gap-2 {{ $focused ? 'border border-primary rounded px-2 bg-label-primary' : '' }}" @if($focused) tabindex="-1" autofocus @endif>
-                          <span>{{ $nomination->player?->name }} {{ $nomination->player?->surname }}</span>
-                          @if(!$trialInvitation && $registrationOpen)
+                          <span>{{ $nomination->display_name }}</span>
+                          @if($nomination->player_id === null)
+                            <div class="d-flex flex-wrap align-items-center gap-2">
+                              <span class="badge bg-label-warning">Profile required</span>
+                              @if($registrationOpen)
+                                <a class="btn btn-sm btn-primary" href="{{ route('interprovincial-trials.nominations.profile', [$event, $categoryEvent, $nomination]) }}">Create player profile</a>
+                              @endif
+                            </div>
+                          @elseif(!$trialInvitation && $registrationOpen)
                             <div class="d-flex flex-wrap align-items-center gap-2">
                               <span class="badge bg-label-secondary">Not registered</span>
                               @auth

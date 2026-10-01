@@ -138,6 +138,7 @@ final class ByeAdvancementService
 
         return $children->every(function ($c) {
             if (! is_null($c->winner_registration)) return true;
+            if ((int) $c->match_status === 5 && $c->draw?->event?->isInterprovincialTrials()) return true;
             return is_null($c->registration1_id) && is_null($c->registration2_id);
         });
     }

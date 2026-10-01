@@ -46,6 +46,7 @@
           <a href="{{ route('backend.interprovincial-trials.invitations.index', $event) }}" class="btn btn-primary dashboard-action">
             <i class="ti ti-send me-1"></i>Nominations &amp; invitations
           </a>
+          <a href="{{ route('backend.interprovincial-trials.programme.index', $event) }}" class="btn btn-outline-primary dashboard-action">Regional payments &amp; team selection</a>
           @can('event-draw.view', $event)
             <a href="{{ route('admin.events.entries.new', $event) }}" class="btn btn-outline-primary dashboard-action">
               <i class="ti ti-users me-1"></i>Entries

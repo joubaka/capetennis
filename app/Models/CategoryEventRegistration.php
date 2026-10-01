@@ -245,6 +245,20 @@ class CategoryEventRegistration extends Model
 
     $order = $orderItem?->order;
 
+    if (in_array($method, ['eft', 'manual'], true)) {
+      $receipt = \App\Models\RegistrationManualReceipt::where('event_id', $this->categoryEvent->event_id)
+        ->whereHas('order.items', fn ($query) => $query->where('registration_id', $this->registration_id)->where('category_event_id', $this->category_event_id))
+        ->latest('id')->first();
+      $paidItem = $receipt?->order?->items->first(fn ($item) => (int) $item->registration_id === (int) $this->registration_id && (int) $item->category_event_id === (int) $this->category_event_id);
+      if (! $receipt || ! $paidItem) {
+        return [];
+      }
+      $gross = round((float) $receipt->amount, 2);
+      return ['payment_method' => $method, 'pf_payment_id' => null, 'transaction_id' => null,
+        'gross' => $gross, 'fee' => 0.0, 'net' => $gross, 'wallet_paid' => 0.0,
+        'total_paid' => $gross, 'paid_at' => $receipt->paid_at, 'receipt_id' => $receipt->id];
+    }
+
     $totalItems = max(1, $order?->items?->count() ?? 1);
 
     // ------------------------------------------------------------------

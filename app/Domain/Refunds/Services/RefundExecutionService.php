@@ -101,6 +101,141 @@ class RefundExecutionService
         return $completed;
     }
 
+    public function completeTrialManualRefund(\App\Models\CategoryEventRegistration $entry, User $actor, string $reference): Model
+    {
+        app(\App\Services\InterprovincialTrials\TrialProgrammeService::class)->authorize($entry->categoryEvent->event, $actor);
+        if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9._:\/\-]{2,119}$/', $reference)) {
+            throw ValidationException::withMessages(['reference' => 'Record the external refund reference without personal banking details.']);
+        }
+        return DB::transaction(function () use ($entry, $actor, $reference) {
+            $locked = \App\Models\CategoryEventRegistration::with('categoryEvent.event')->lockForUpdate()->findOrFail($entry->id);
+            app(\App\Services\InterprovincialTrials\TrialProgrammeService::class)->authorize($locked->categoryEvent->event, $actor);
+            if ($locked->refund_status === 'completed') { return $locked; }
+            if ($locked->status !== 'withdrawn' || !$locked->is_paid || $locked->refund_status !== 'pending' || $locked->refund_method !== 'bank'
+                || (float) $locked->refund_net <= 0 || (float) $locked->refund_gross > round($locked->maxRefundableAmount(), 2)) {
+                throw ValidationException::withMessages(['refund' => 'Only an eligible pending bank refund can be recorded as externally paid.']);
+            }
+            $completed = $this->executeBankRefund($locked);
+            activity('refund')->performedOn($completed)->causedBy($actor)->withProperties(['reference' => $reference, 'amount' => $locked->refund_net])->log('Trials refund paid externally and recorded');
+            return $completed;
+        });
+    }
+
+    public function completeTrialTeamManualRefund(\App\Models\TrialParticipation $participation, User $actor, string $reference): Model
+    {
+        if (! preg_match('/^[A-Za-z0-9][A-Za-z0-9._:\/\-]{2,119}$/', $reference)) {
+            throw ValidationException::withMessages(['reference' => 'Record a safe external refund reference.']);
+        }
+        return DB::transaction(function () use ($participation, $actor, $reference) {
+            app(\App\Services\InterprovincialTrials\TrialParticipationService::class)->lockForOrder((int) $participation->order_id, true);
+            $order = \App\Models\TeamPaymentOrder::with('event')->lockForUpdate()->findOrFail($participation->order_id);
+            app(\App\Services\InterprovincialTrials\TrialProgrammeService::class)->authorize($order->event, $actor);
+            if ($order->refund_status === 'completed' && $order->refund_method === 'bank') return $order;
+            $this->assertTrialTeamRefund($participation, $order, 'bank');
+            $completed = $this->executeBankRefund($order);
+            activity('refund')->performedOn($completed)->causedBy($actor)->withProperties(['external_reference' => $reference, 'gross' => $completed->refund_gross, 'fee' => $completed->refund_fee, 'net' => $completed->refund_net])->log('Regional participation manual refund reconciled');
+            return $completed;
+        });
+    }
+
+    public function executeTrialTeamPayfastRefund(\App\Models\TrialParticipation $participation, User $actor): Model
+    {
+        if (DB::transactionLevel() !== 0) {
+            throw new \LogicException('Provider refunds require a committed request outside an enclosing transaction.');
+        }
+        $dispatch = false;
+        $attempt = DB::transaction(function () use ($participation, $actor, &$dispatch) {
+            app(\App\Services\InterprovincialTrials\TrialParticipationService::class)->lockForOrder((int) $participation->order_id, true);
+            $order = \App\Models\TeamPaymentOrder::with('event')->lockForUpdate()->findOrFail($participation->order_id);
+            $manager = app(\App\Services\InterprovincialTrials\TrialProgrammeService::class)->canManage($order->event, $actor);
+            abort_unless($manager || (int) $order->user_id === (int) $actor->id, 403);
+            if ($order->refund_status === 'completed' && $order->refund_method === 'payfast') return null;
+            $this->assertTrialTeamRefund($participation, $order, 'payfast');
+            abort_unless($order->payfast_paid && filled($order->payfast_pf_payment_id), 422);
+            $attempt = \App\Models\TrialProviderRefundAttempt::where('order_id', $order->id)->lockForUpdate()->first();
+            if ($attempt) {
+                if ($attempt->status !== 'confirmed' || $attempt->pf_payment_id !== $order->payfast_pf_payment_id || (float) $attempt->amount !== round((float) $order->refund_net, 2)) {
+                    throw ValidationException::withMessages(['refund' => 'A provider refund attempt requires reconciliation. Review PayFast history before another dispatch.']);
+                }
+                return $attempt;
+            }
+            $dispatch = true;
+            return \App\Models\TrialProviderRefundAttempt::create(['order_id' => $order->id, 'pf_payment_id' => $order->payfast_pf_payment_id, 'amount' => $order->refund_net, 'requested_by' => $actor->id]);
+        });
+        if (!$attempt) { return $participation->order()->firstOrFail(); }
+        if ($dispatch) {
+            $order = $participation->order()->firstOrFail();
+            try {
+                $result = app(\App\Services\Payfast::class)->refundUsingAvailableMethod($attempt->pf_payment_id, (float) $attempt->amount, 'Regional team withdrawal refund', [
+                    'account_holder' => $order->refund_account_name, 'bank_name' => $order->refund_bank_name,
+                    'account_number' => $order->refund_account_number, 'branch_code' => $order->refund_branch_code, 'account_type' => $order->refund_account_type,
+                ]);
+            } catch (\Throwable $exception) {
+                \App\Models\TrialProviderRefundAttempt::whereKey($attempt->id)->where('status', 'dispatching')->update(['status' => 'uncertain']);
+                throw ValidationException::withMessages(['refund' => 'The provider outcome needs reconciliation. No second refund will be dispatched.']);
+            }
+            \App\Models\TrialProviderRefundAttempt::whereKey($attempt->id)->where('status', 'dispatching')->update(['status' => ($result['success'] ?? false) ? 'confirmed' : 'uncertain', 'confirmed_at' => ($result['success'] ?? false) ? now() : null]);
+            $attempt->refresh();
+            if ($attempt->status !== 'confirmed') {
+                throw ValidationException::withMessages(['refund' => 'PayFast did not confirm the refund. Review provider history before further action.']);
+            }
+        }
+        return DB::transaction(function () use ($participation, $actor, $attempt) {
+            app(\App\Services\InterprovincialTrials\TrialParticipationService::class)->lockForOrder((int) $attempt->order_id, true);
+            $order = \App\Models\TeamPaymentOrder::with('event')->lockForUpdate()->findOrFail($attempt->order_id);
+            if ($order->refund_status === 'completed' && $order->refund_method === 'payfast') { return $order; }
+            $this->assertTrialTeamRefund($participation, $order, 'payfast');
+            $completed = $this->executeSplitRefund($order, null, 0, 'trial_participation_refund', $order->id, [], [
+                'refund_method' => 'payfast', 'refund_gross' => $order->refund_gross, 'refund_fee' => $order->refund_fee, 'refund_net' => $order->refund_net,
+            ]);
+            activity('refund')->performedOn($completed)->causedBy($actor)->withProperties(['attempt_id' => $attempt->id, 'pf_payment_id' => $order->payfast_pf_payment_id, 'gross' => $order->refund_gross, 'fee' => $order->refund_fee, 'net' => $order->refund_net])->log('Regional participation PayFast refund confirmed');
+            return $completed;
+        });
+    }
+
+    public function recoverTrialTeamPayfastRefund(\App\Models\TrialParticipation $participation, User $actor, ?array $evidence = null): Model
+    {
+        if (DB::transactionLevel() !== 0) throw new \LogicException('Refund recovery requires a committed request.');
+        DB::transaction(function () use ($participation, $actor, $evidence) {
+            app(\App\Services\InterprovincialTrials\TrialParticipationService::class)->lockForOrder((int)$participation->order_id, true);
+            $order=\App\Models\TeamPaymentOrder::with('event')->lockForUpdate()->findOrFail($participation->order_id);
+            app(\App\Services\InterprovincialTrials\TrialProgrammeService::class)->authorize($order->event,$actor);
+            $attempt=\App\Models\TrialProviderRefundAttempt::where('order_id',$order->id)->lockForUpdate()->firstOrFail();
+            abort_unless($attempt->pf_payment_id===$order->payfast_pf_payment_id && round((float)$attempt->amount,2)===round((float)$order->refund_net,2),422);
+            if ($order->refund_status==='completed') { abort_unless($attempt->status==='confirmed' && $order->refund_method==='payfast',422);return; }
+            $this->assertTrialTeamRefund($participation,$order,'payfast');
+            if ($evidence===null) { abort_unless($attempt->status==='confirmed',422,'Provider confirmation is required before local retry.');return; }
+            abort_unless(in_array($attempt->status,['dispatching','uncertain'],true),422);
+            $validated=validator($evidence,[
+                'pf_payment_id'=>'required|string|max:120','amount'=>'required|decimal:0,2|min:0.01',
+                'reference'=>['required','regex:/^[A-Za-z0-9][A-Za-z0-9._:\/\-]{2,119}$/'],
+                'reason'=>'required|string|min:10|max:1000','confirmed_at'=>'required|date|before_or_equal:now','externally_confirmed'=>'required|accepted',
+            ])->validate();
+            abort_unless($validated['pf_payment_id']===$attempt->pf_payment_id && round((float)$validated['amount'],2)===round((float)$attempt->amount,2),422,'Provider evidence must match the original payment and exact refund net.');
+            $attempt->update(['status'=>'confirmed','confirmed_at'=>$validated['confirmed_at']]);
+            activity('refund')->performedOn($attempt)->causedBy($actor)->withProperties([
+                'order_id'=>$order->id,'pf_payment_id'=>$attempt->pf_payment_id,'refund_net'=>$attempt->amount,
+                'provider_reference'=>$validated['reference'],'reason'=>$validated['reason'],'confirmed_at'=>$validated['confirmed_at'],
+            ])->log('Regional PayFast refund externally confirmed for local recovery');
+        });
+        // The persisted confirmed attempt makes the canonical executor skip provider dispatch.
+        return $this->executeTrialTeamPayfastRefund($participation,$actor);
+    }
+
+    private function assertTrialTeamRefund(\App\Models\TrialParticipation $participation, \App\Models\TeamPaymentOrder $order, string $method): void
+    {
+        $participation = \App\Models\TrialParticipation::whereKey($participation->id)->firstOrFail();
+        $receipt = \App\Models\TrialParticipationReceipt::where('order_id', $order->id)->first();
+        $gross = round((float) ($receipt?->amount ?? ($order->payfast_paid && $order->payfast_pf_payment_id ? $order->total_amount : 0)), 2);
+        $fee = \App\Models\SiteSetting::calculateWithdrawalFee($gross);
+        if ((int) $participation->order_id !== (int) $order->id || (int) $participation->event_id !== (int) $order->event_id || (int) $participation->player_id !== (int) $order->player_id
+            || ! $order->event->isInterprovincialTrials() || ! $order->withdrawn_at || ! $order->pay_status || $order->refund_status !== 'pending' || $order->refund_method !== $method
+            || $gross <= 0 || $gross !== round((float) $order->total_amount, 2) || $gross !== round((float) $order->refund_gross, 2)
+            || $fee !== round((float) $order->refund_fee, 2) || round($gross - $fee, 2) !== round((float) $order->refund_net, 2)) {
+            throw ValidationException::withMessages(['refund' => 'Only an exact pending refund against the original paid, withdrawn participation may be completed.']);
+        }
+    }
+
     public function executeBankRefund(Model $refundEntity, array $statusOverrides = []): Model
     {
         $entityClass = get_class($refundEntity);

@@ -28,6 +28,7 @@
       @endif
 
       {{-- Info box --}}
+      @unless($trialNomination ?? null)
       <div class="alert alert-info mb-4" role="alert">
         <h6 class="alert-heading mb-1"><i class="ti ti-info-circle me-1"></i> What is a Player Profile?</h6>
         <p class="mb-2">A <strong>Player Profile</strong> stores the personal details of a tennis player — such as their name, date of birth, gender, and contact information. You need a profile for each player before they can enter any events.</p>
@@ -38,30 +39,35 @@
         </ul>
         <p class="mb-0">Once saved, the profile will appear on your dashboard and can be used when entering events.</p>
       </div>
+      @endunless
 
       <div class="card">
         <div class="card-header">
           <h5 class="mb-0"><i class="ti ti-user-plus me-2"></i>Add Player Profile</h5>
-          <small class="text-muted">The profile will automatically be linked to your account.</small>
+          <small class="text-muted">{{ ($trialNomination ?? null) ? 'You can complete this nominee profile and sponsor registration.' : 'The profile will automatically be linked to your account.' }}</small>
         </div>
 
         <div class="card-body">
           <form method="POST" action="{{ route('player.profile.store') }}" id="createPlayerProfileForm">
             @csrf
+            @if($trialNomination ?? null)
+              <input type="hidden" name="trial_nomination" value="{{ $trialNomination->id }}">
+              <div class="alert alert-info">Complete the profile for {{ $trialNomination->display_name }} to continue with the trial nomination.</div>
+            @endif
 
             <div class="row g-3">
 
               <div class="col-md-6">
                 <label class="form-label">First Name <span class="text-danger">*</span></label>
                 <input type="text" name="name" class="form-control @error('name') is-invalid @enderror"
-                       value="{{ old('name') }}" required>
+                       value="{{ $trialNomination?->nominee_name ?? old('name') }}" @if($trialNomination ?? null) readonly @endif required>
                 @error('name')<div class="invalid-feedback">{{ $message }}</div>@enderror
               </div>
 
               <div class="col-md-6">
                 <label class="form-label">Surname <span class="text-danger">*</span></label>
                 <input type="text" name="surname" class="form-control @error('surname') is-invalid @enderror"
-                       value="{{ old('surname') }}" required>
+                       value="{{ $trialNomination?->nominee_surname ?? old('surname') }}" @if($trialNomination ?? null) readonly @endif required>
                 @error('surname')<div class="invalid-feedback">{{ $message }}</div>@enderror
               </div>
 
@@ -84,9 +90,9 @@
               </div>
 
               <div class="col-md-6">
-                <label class="form-label">Cell Number</label>
+                <label class="form-label">Cell Number @if($trialNomination ?? null)<span class="text-danger">*</span>@endif</label>
                 <input type="text" name="cellNr" class="form-control @error('cellNr') is-invalid @enderror"
-                       value="{{ old('cellNr') }}">
+                       value="{{ old('cellNr') }}" @if($trialNomination ?? null) required @endif>
                 @error('cellNr')<div class="invalid-feedback">{{ $message }}</div>@enderror
               </div>
 

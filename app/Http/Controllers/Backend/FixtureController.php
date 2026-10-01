@@ -218,6 +218,10 @@ class FixtureController extends Controller
       ? $this->authorize('team-fixture.saveScore', $fixtureForAuth)
       : $this->authorize('fixture.update', $drawForAuth);
 
+    if ($request->type !== 'team') {
+      app(\App\Services\InterprovincialTrials\TrialRefreshQueue::class)->remember((int) $drawForAuth->event_id, true, (int) $drawForAuth->category_event_id);
+    }
+
     $responce = null;
 
     if ($request->type == 'team') {
@@ -596,9 +600,10 @@ class FixtureController extends Controller
       return response()->json(['message' => 'Fixture not found.'], 404);
     }
 
-    $draw = \App\Models\Draw::find($fixture->draw_id);
-    if ($draw) {
-      $this->authorize('fixture.update', $draw);
+      $draw = \App\Models\Draw::find($fixture->draw_id);
+      if ($draw) {
+        $this->authorize('fixture.update', $draw);
+        app(\App\Services\InterprovincialTrials\TrialRefreshQueue::class)->remember((int) $draw->event_id, true, (int) $draw->category_event_id);
     }
 
     if ($draw && $draw->locked) {

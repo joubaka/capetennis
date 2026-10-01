@@ -199,13 +199,68 @@ class InterprovincialTrialInvitationController extends Controller
         return $this->nominate($request, $event, CategoryEvent::findOrFail($data['category_event_id']));
     }
 
+    public function nominateWithoutProfile(Request $request, Event $event)
+    {
+        $this->authorizeEvent($event);
+        $data = $request->validate([
+            'category_event_id' => ['required', 'integer'],
+            'nominee_name' => ['required', 'string', 'max:255'],
+            'nominee_surname' => ['required', 'string', 'max:255'],
+            'nominee_email' => ['nullable', 'email', 'max:255'],
+        ]);
+        $category = CategoryEvent::where('event_id', $event->id)->findOrFail($data['category_event_id']);
+        $name = trim($data['nominee_name']);
+        $surname = trim($data['nominee_surname']);
+        $email = mb_strtolower(trim((string) ($data['nominee_email'] ?? '')));
+        if ($name === '' || $surname === '') {
+            throw \Illuminate\Validation\ValidationException::withMessages(['nominee_name' => 'Enter the player name and surname.']);
+        }
+        EventNomination::firstOrCreate([
+            'profileless_key' => hash('sha256', implode('|', [$event->id, $category->id, mb_strtolower($name), mb_strtolower($surname)])),
+        ], [
+            'event_id' => $event->id, 'category_event_id' => $category->id,
+            'player_id' => null, 'nominee_name' => $name, 'nominee_surname' => $surname, 'nominee_email' => $email ?: null,
+        ]);
+
+        return redirect()->route('backend.interprovincial-trials.invitations.index', $event)
+            ->with('success', 'Nomination saved. The recipient must create or confirm the player profile before registering.');
+    }
+
+    public function updateNomineeEmail(Request $request, Event $event, CategoryEvent $categoryEvent, EventNomination $nomination)
+    {
+        $this->authorizeEvent($event);
+        abort_unless((int) $categoryEvent->event_id === (int) $event->id
+            && (int) $nomination->event_id === (int) $event->id
+            && (int) $nomination->category_event_id === (int) $categoryEvent->id, 404);
+        $data = $request->validate(['nominee_email' => ['nullable', 'email', 'max:255']]);
+        DB::transaction(function () use ($nomination, $data): void {
+            $locked = EventNomination::whereKey($nomination->id)->lockForUpdate()->firstOrFail();
+            abort_unless($locked->player_id === null, 404);
+            $locked->update(['nominee_email' => filled($data['nominee_email'] ?? null)
+                ? mb_strtolower(trim($data['nominee_email'])) : null]);
+        });
+
+        return redirect()->route('backend.interprovincial-trials.invitations.index', $event)->with('success', 'Nominee contact email saved. Preview recipients before sending.');
+    }
+
     public function removeNomination(Event $event, CategoryEvent $categoryEvent, EventNomination $nomination)
     {
         $this->authorizeEvent($event);
         abort_unless((int) $categoryEvent->event_id === (int) $event->id
             && (int) $nomination->event_id === (int) $event->id
             && (int) $nomination->category_event_id === (int) $categoryEvent->id, 404);
-        $nomination->delete();
+        DB::transaction(function () use ($nomination, $categoryEvent): void {
+            $locked = EventNomination::whereKey($nomination->id)->lockForUpdate()->firstOrFail();
+            $hasLifecycle = InterprovincialTrialInvitation::where('nomination_id', $locked->id)
+                ->where(function ($query): void {
+                    $query->whereNotNull('order_id')->orWhereNotNull('registration_id')
+                        ->orWhereIn('status', ['queued', 'sending', 'accepted_pending_payment', 'paid_confirmed']);
+                })->exists();
+            $hasEntry = $locked->player_id && $categoryEvent->categoryEventRegistrations()
+                ->whereHas('registration.players', fn ($query) => $query->where('players.id', $locked->player_id))->exists();
+            abort_if($hasLifecycle || $hasEntry, 422, 'Withdraw or cancel the registration before removing this nomination.');
+            $locked->delete();
+        });
 
         if (request()->expectsJson()) {
             return response()->json($this->categoryNominationPayload($categoryEvent, 'Nomination removed.'));
@@ -276,7 +331,7 @@ class InterprovincialTrialInvitationController extends Controller
             ],
             'nominations' => $nominations->getCollection()->map(fn (EventNomination $nomination): array => [
                 'id' => $nomination->id,
-                'player_name' => trim(($nomination->player?->name ?? '').' '.($nomination->player?->surname ?? '')),
+                'player_name' => $nomination->display_name,
                 'status_label' => $presentations->get($nomination->id)['label'],
                 'status_key' => $presentations->get($nomination->id)['key'],
                 'recipient_email' => $presentations->get($nomination->id)['invitation']?->recipient_email,
@@ -313,7 +368,12 @@ class InterprovincialTrialInvitationController extends Controller
             ->whereHas('nomination', function ($query) use ($event): void {
                 $query->where('event_id', $event->id)
                     ->whereColumn('category_event_id', 'interprovincial_trial_invitations.category_event_id')
-                    ->whereColumn('player_id', 'interprovincial_trial_invitations.player_id');
+                    ->where(function ($query): void {
+                        $query->whereColumn('player_id', 'interprovincial_trial_invitations.player_id')
+                            ->orWhere(function ($query): void {
+                                $query->whereNull('player_id')->whereNull('interprovincial_trial_invitations.player_id');
+                            });
+                    });
             });
 
         // An email draft must not hide an existing checkout or paid registration.
@@ -398,7 +458,7 @@ class InterprovincialTrialInvitationController extends Controller
     {
         $this->authorizeEvent($event);
         $data = $request->validate([
-            'mode' => ['required', 'in:new,not_registered,individual'],
+            'mode' => ['required', 'in:new,profileless,not_registered,individual'],
             'invitation_id' => ['nullable', 'integer'],
             'subject' => ['nullable', 'string', 'max:150', 'not_regex:/[\r\n]/'],
             'body' => ['nullable', 'string', 'max:5000'],
@@ -417,7 +477,7 @@ class InterprovincialTrialInvitationController extends Controller
             if (trim((string) $value) === '') $fail('The '.$attribute.' field must contain text.');
         };
         $data = $request->validate([
-            'mode' => ['required', 'in:new,not_registered,individual'],
+            'mode' => ['required', 'in:new,profileless,not_registered,individual'],
             'invitation_id' => ['nullable', 'integer'],
             'request_token' => ['required', 'uuid'],
             'recipient_hash' => ['required', 'string', 'size:64'],

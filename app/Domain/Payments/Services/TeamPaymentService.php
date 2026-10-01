@@ -131,6 +131,9 @@ class TeamPaymentService
 
     public function reservePayment(TeamPaymentOrder $order, float $walletApplied, float $remainingAmount): TeamPaymentOrder
     {
+        if (\App\Models\TrialParticipation::where('order_id', $order->id)->exists()) {
+            throw ValidationException::withMessages(['payment' => 'Use the dedicated regional participation checkout.']);
+        }
         return DB::transaction(function () use ($order, $walletApplied, $remainingAmount): TeamPaymentOrder {
             $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
             if ($locked->withdrawn_at !== null) {
@@ -147,9 +150,71 @@ class TeamPaymentService
         });
     }
 
+    public function ensureTrialOrder(\App\Models\TrialParticipation $participation, User $payer): TeamPaymentOrder
+    {
+        return FinanceMutationScope::run('payment_state_write', function () use ($participation, $payer) {
+            $fee = round((float) \App\Models\TrialProgramme::where('event_id', $participation->event_id)->value('participation_fee'), 2);
+            abort_unless($fee > 0, 422);
+            if ($participation->order_id) {
+                $order = TeamPaymentOrder::lockForUpdate()->findOrFail($participation->order_id);
+                abort_unless((int) $order->user_id === (int) $payer->id, 403, 'Only the existing payer may resume or cancel this checkout.');
+                if ($participation->isPaid()) return $order;
+                abort_unless(! $order->withdrawn_at, 422);
+                if (! $order->payfast_handed_off_at && $this->isWhollyUnpaid($order) && (float) $order->wallet_reserved === 0.0) {
+                    $order->update(['total_amount' => $fee, 'payfast_amount_due' => $fee]);
+                }
+                return $order;
+            }
+            return TeamPaymentOrder::create(['user_id' => $payer->id, 'team_id' => null, 'event_id' => $participation->event_id,
+                'player_id' => $participation->player_id, 'total_amount' => $fee, 'payfast_amount_due' => $fee,
+                'wallet_reserved' => 0, 'payfast_paid' => false, 'wallet_debited' => false, 'pay_status' => false]);
+        });
+    }
+
+    public function finalizeTrialManualPayment(\App\Models\TrialParticipation $participation, User $actor, string $method, string $reference, ?int $proofId = null): \App\Models\TrialParticipationReceipt
+    {
+        $this->assertSafeEvidenceReference($reference);
+        abort_unless(in_array($method, ['eft', 'manual'], true), 422);
+        return DB::transaction(function () use ($participation, $actor, $method, $reference, $proofId) {
+            app(\App\Services\InterprovincialTrials\TrialParticipationService::class)->lockForOrder((int)$participation->order_id);
+            $participation = \App\Models\TrialParticipation::lockForUpdate()->findOrFail($participation->id);
+            $order = TeamPaymentOrder::lockForUpdate()->findOrFail($participation->order_id);
+            app(\App\Services\InterprovincialTrials\TrialProgrammeService::class)->authorize($participation->event, $actor);
+            app(\App\Services\InterprovincialTrials\TrialParticipationService::class)->assertOrder($order);
+            $existing = \App\Models\TrialParticipationReceipt::where('order_id', $order->id)->first();
+            if ($existing) {
+                abort_unless($proofId === null || ((int) $existing->proof_id === $proofId && $existing->method === $method), 422, 'A different proof already settled this participation checkout.');
+                return $existing;
+            }
+            if (! $this->isWhollyUnpaid($order) || $order->payfast_handed_off_at || (float) $order->wallet_reserved !== 0.0
+                || \App\Models\Transaction::where('custom_int5', $order->id)->where('custom_str5', 'TeamOrder')->exists()
+                || \App\Models\WalletTransaction::where('source_id', $order->id)->where('source_type', 'team_registration_wallet_payment')->exists()) {
+                throw ValidationException::withMessages(['payment' => 'This participation checkout contains settlement evidence.']);
+            }
+            $fee = round((float) \App\Models\TrialProgramme::where('event_id', $participation->event_id)->value('participation_fee'), 2);
+            if ($fee <= 0 || $fee !== round((float) $order->total_amount, 2) || $fee !== round((float) $order->payfast_amount_due, 2)) {
+                throw ValidationException::withMessages(['payment' => 'The regional participation fee changed. Refresh the checkout.']);
+            }
+            if ($proofId !== null) {
+                $proof = \App\Models\TrialParticipationProof::lockForUpdate()->findOrFail($proofId);
+                abort_unless((int) $proof->participation_id === (int) $participation->id && (int) $proof->order_id === (int) $order->id && (int) $proof->payer_id === (int) $order->user_id && $proof->status === 'pending', 422);
+            }
+            $receipt = \App\Models\TrialParticipationReceipt::create(['participation_id' => $participation->id, 'order_id' => $order->id, 'event_id' => $order->event_id,
+                'amount' => $fee, 'method' => $method, 'reference' => $reference, 'verified_by' => $actor->id, 'proof_id' => $proofId, 'paid_at' => now()]);
+            FinanceMutationScope::run(['payment_state_write', 'team_payment_state_write'], function () use ($order, $actor): void {
+                $order->update(['pay_status' => true, 'collection_status' => 'paid_privately', 'paid_privately_at' => now(), 'paid_privately_by' => $actor->id, 'payfast_amount_due' => 0]);
+            });
+            $participation->update(['paid_at' => now()]);
+            if (isset($proof)) $proof->update(['status' => 'verified', 'reviewed_by' => $actor->id, 'reviewed_at' => now()]);
+            activity('interprovincial-trials')->performedOn($receipt)->causedBy($actor)->withProperties(['order_id' => $order->id, 'method' => $method, 'reference' => $reference, 'amount' => $fee])->log('Regional participation payment received');
+            return $receipt;
+        });
+    }
+
     public function recordPayfastHandoff(TeamPaymentOrder $order, User $payer, float $amount): TeamPaymentOrder
     {
         return DB::transaction(function () use ($order, $payer, $amount): TeamPaymentOrder {
+            app(\App\Services\InterprovincialTrials\TrialParticipationService::class)->lockForOrder((int)$order->id);
             $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
             $expected = round((float) $locked->payfast_amount_due, 2);
             if ((int) $locked->user_id !== (int) $payer->id) {
@@ -163,6 +228,14 @@ class TeamPaymentService
             }
             if ($expected <= 0 || round($amount, 2) !== $expected) {
                 throw ValidationException::withMessages(['payment' => 'The PayFast handoff amount does not match the server-calculated balance.']);
+            }
+            $participation = \App\Models\TrialParticipation::where('order_id', $locked->id)->first();
+            if ($participation) {
+                app(\App\Services\InterprovincialTrials\TrialParticipationService::class)->assertOrder($locked);
+                $fee = round((float) \App\Models\TrialProgramme::where('event_id', $locked->event_id)->value('participation_fee'), 2);
+                if (! $locked->payfast_handed_off_at && ($fee !== round((float) $locked->total_amount, 2) || $expected !== $fee || (float) $locked->wallet_reserved !== 0.0)) {
+                    throw ValidationException::withMessages(['payment' => 'The regional participation fee changed. Refresh the checkout before paying.']);
+                }
             }
             if ($this->hasUnresolvedPayfastHandoff($locked)) {
                 return $locked;
@@ -189,12 +262,22 @@ class TeamPaymentService
     public function finalizePayment(TeamPaymentOrder $order, array $context = []): TeamPaymentOrder
     {
         return DB::transaction(function () use ($order, $context): TeamPaymentOrder {
+            app(\App\Services\InterprovincialTrials\TrialParticipationService::class)->lockForOrder((int)$order->id);
             $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
+            if (\App\Models\TrialParticipation::where('order_id', $locked->id)->exists()
+                && (! array_key_exists('payfast_amount_received', $context) || ($context['payment_method'] ?? '') !== 'payfast' || (float) $locked->wallet_reserved !== 0.0 || empty($context['pf_payment_id']))) {
+                throw ValidationException::withMessages(['payment' => 'Regional participation requires a verified PayFast result or recorded manual receipt.']);
+            }
             if ($locked->withdrawn_at !== null) {
                 throw new \RuntimeException('This team checkout has been superseded or withdrawn and cannot be paid.');
             }
             /** @var TeamPaymentOrder $finalized */
             $finalized = $this->paymentOrchestrator->finalizePayment($locked, $context);
+            $participation = \App\Models\TrialParticipation::where('order_id', $finalized->id)->first();
+            if ($participation) {
+                app(\App\Services\InterprovincialTrials\TrialParticipationService::class)->assertOrder($finalized);
+                $participation->update(['paid_at' => $participation->paid_at ?? now()]);
+            }
             $this->markPlayerPaid($finalized);
             app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->confirmPaidOrder($finalized);
 
@@ -286,7 +369,8 @@ class TeamPaymentService
     {
         return FinanceMutationScope::run('team_payment_state_write', function () use ($order, $actor) {
             return DB::transaction(function () use ($order, $actor) {
-                $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
+                app(\App\Services\InterprovincialTrials\TrialParticipationService::class)->lockForOrder((int)$order->id);
+            $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
 
                 if ($this->hasUnresolvedPayfastHandoff($locked)) {
                     throw ValidationException::withMessages([
@@ -316,6 +400,7 @@ class TeamPaymentService
     public function closeUnpaidLifecycle(TeamPaymentOrder $order, ?User $actor): TeamPaymentOrder
     {
         return DB::transaction(function () use ($order, $actor): TeamPaymentOrder {
+            app(\App\Services\InterprovincialTrials\TrialParticipationService::class)->lockForOrder((int)$order->id);
             $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
 
             if ($locked->payfast_handed_off_at !== null) {

@@ -215,6 +215,61 @@ class RegistrationPaymentService
         return $finalized;
     }
 
+    public function finalizeManualPayment(RegistrationOrder $order, User $operator, string $method, string $reference, ?int $proofId = null): \App\Models\RegistrationManualReceipt
+    {
+        $this->assertSafeEvidenceReference($reference);
+        abort_unless(in_array($method, ['eft', 'manual'], true), 422);
+
+        return DB::transaction(function () use ($order, $operator, $method, $reference, $proofId) {
+            $locked = RegistrationOrder::with('items')->lockForUpdate()->findOrFail($order->id);
+            $invitation = \App\Models\InterprovincialTrialInvitation::where('order_id', $order->id)->lockForUpdate()->firstOrFail();
+            $event = $invitation->event()->firstOrFail();
+            $actor = User::findOrFail($operator->id);
+            app(\App\Services\InterprovincialTrials\TrialProgrammeService::class)->authorize($event, $actor);
+            $existing = \App\Models\RegistrationManualReceipt::where('order_id', $locked->id)->first();
+              if ($existing) {
+                  if ((int) ($existing->proof_id ?? 0) !== (int) ($proofId ?? 0)) {
+                      throw ValidationException::withMessages(['payment' => 'This order was settled using different evidence. Review the existing receipt.']);
+                  }
+                  return $existing;
+            }
+            if ($invitation->status !== \App\Models\InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT
+                || $locked->payfast_handed_off_at || (float) $locked->wallet_reserved !== 0.0 || $this->hasSettlementEvidence($locked)) {
+                throw ValidationException::withMessages(['payment' => 'This checkout has payment or lifecycle evidence and cannot be manually settled.']);
+            }
+            $items = $locked->items;
+            $item = $items->count() === 1 ? $items->first() : null;
+            $entry = $item ? \App\Models\CategoryEventRegistration::where('registration_id', $item->registration_id)->where('category_event_id', $item->category_event_id)->lockForUpdate()->first() : null;
+            $amount = $item ? (int) round((float) $item->item_price * 100) : 0;
+            if (! $item || ! $entry || $amount <= 0 || $amount !== (int) round((float) $locked->total_fee * 100)
+                || (int) $item->user_id !== (int) $locked->user_id
+                || (int) $item->player_id !== (int) $invitation->player_id
+                || (int) $item->registration_id !== (int) $invitation->registration_id
+                || (int) $item->category_event_id !== (int) $invitation->category_event_id
+                || (int) $entry->user_id !== (int) $locked->user_id) {
+                throw ValidationException::withMessages(['payment' => 'The checkout does not match its Trials entry and exact amount.']);
+            }
+            if ($proofId !== null) {
+                $proof = \App\Models\TrialPaymentProof::lockForUpdate()->findOrFail($proofId);
+                abort_unless((int) $proof->order_id === (int) $locked->id && (int) $proof->event_id === (int) $event->id && (int) $proof->payer_id === (int) $locked->user_id && $proof->status === 'pending', 422);
+            }
+            $receipt = \App\Models\RegistrationManualReceipt::create([
+                'order_id' => $locked->id, 'event_id' => $event->id, 'amount' => $amount / 100,
+                'method' => $method, 'reference' => $reference, 'verified_by_user_id' => $actor->id, 'proof_id' => $proofId, 'paid_at' => now(),
+            ]);
+            FinanceMutationScope::run(['payment_state_write', 'registration_payment_state_write'], function () use ($locked, $entry, $method): void {
+                $locked->update(['pay_status' => 1, 'status' => 'completed', 'payment_method' => $method, 'payfast_amount_due' => 0]);
+                $entry->update(['payment_status_id' => 1, 'payment_method' => $method]);
+            });
+            app(\App\Services\InterprovincialTrials\InvitationService::class)->confirmPaidOrder($locked);
+            if (isset($proof)) {
+                $proof->update(['status' => 'verified', 'reviewed_by_user_id' => $actor->id, 'reviewed_at' => now()]);
+            }
+            activity('registration-payment')->performedOn($locked)->causedBy($actor)->withProperties(['receipt_id' => $receipt->id, 'method' => $method, 'amount' => $receipt->amount, 'reference' => $reference])->log('Trials payment received manually');
+            return $receipt;
+        });
+    }
+
     public function finalizeWalletPayment(RegistrationOrder $order, array $context = []): RegistrationOrder
     {
         return DB::transaction(function () use ($order, $context) {

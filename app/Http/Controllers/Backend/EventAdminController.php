@@ -893,15 +893,16 @@ class EventAdminController extends Controller
         ->latest('id')
         ->first();
 
-      $invitationStates = collect();
-      if ($interproBatch) {
-        $invitationStates = \App\Models\InterprovincialTrialInvitation::query()
-          ->where('event_id', $event->id)
-          ->where('batch_id', $interproBatch->id)
-          ->selectRaw('status, COUNT(*) as aggregate')
-          ->groupBy('status')
-          ->pluck('aggregate', 'status');
-      }
+      $currentIds = \App\Models\InterprovincialTrialInvitation::query()
+        ->where('event_id', $event->id)
+        ->selectRaw('COALESCE(MAX(CASE WHEN status != ? THEN id END), MAX(id))', ['prepared'])
+        ->groupBy('nomination_id');
+      $invitationStates = \App\Models\InterprovincialTrialInvitation::query()
+        ->where('event_id', $event->id)
+        ->whereIn('id', $currentIds)
+        ->selectRaw('status, COUNT(*) as aggregate')
+        ->groupBy('status')
+        ->pluck('aggregate', 'status');
 
       $categoryCount = \App\Models\CategoryEvent::query()
         ->where('event_id', $event->id)

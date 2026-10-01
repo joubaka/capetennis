@@ -113,7 +113,11 @@ class BulkMailDispatcher
             ]);
 
             // Dispatch job immediately (bulk email server handles rate)
-            SendBulkEmailJob::dispatch($log->id);
+            if ($payload['manual_retry_only'] ?? false) {
+                SendBulkEmailJob::dispatch($log->id, true)->afterCommit();
+            } else {
+                SendBulkEmailJob::dispatch($log->id);
+            }
 
             $stats['queued']++;
         }
@@ -206,7 +210,7 @@ class BulkMailDispatcher
             ]);
 
             // Dispatch job with delay
-            SendBulkEmailJob::dispatch($log->id)
+            SendBulkEmailJob::dispatch($log->id, (bool) data_get($log->payload, 'manual_retry_only', false))
                 ->delay(now()->addSeconds($currentDelay));
 
             $queued++;

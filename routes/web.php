@@ -139,6 +139,19 @@ Route::middleware('auth')->prefix('masters')->name('masters.')->group(function (
 });
 
 Route::middleware('auth')->prefix('interprovincial-trials')->name('interprovincial-trials.')->group(function () {
+  Route::post('events/{event}/squad-slots/{slot}/participation', [\App\Http\Controllers\Frontend\TrialParticipationController::class, 'begin'])->middleware(['agreement', 'profile.updated', 'throttle:10,1'])->name('participation.begin');
+  Route::get('events/{event}/participations/{participation}', [\App\Http\Controllers\Frontend\TrialParticipationController::class, 'show'])->name('participation.show');
+  Route::post('events/{event}/participations/{participation}/payfast', [\App\Http\Controllers\Frontend\TrialParticipationController::class, 'payfast'])->middleware(['agreement', 'profile.updated', 'throttle:10,1'])->name('participation.payfast');
+  Route::post('events/{event}/participations/{participation}/proof', [\App\Http\Controllers\Frontend\TrialParticipationController::class, 'proof'])->middleware(['agreement', 'profile.updated', 'throttle:10,1'])->name('participation.proof');
+  Route::post('events/{event}/participations/{participation}/cancel', [\App\Http\Controllers\Frontend\TrialParticipationController::class, 'cancel'])->name('participation.cancel');
+  Route::post('events/{event}/participations/{participation}/withdraw', [\App\Http\Controllers\Frontend\TrialParticipationController::class, 'withdraw'])->name('participation.withdraw');
+  Route::get('events/{event}/participations/{participation}/refund', [\App\Http\Controllers\Frontend\TrialParticipationController::class, 'refund'])->name('participation.refund');
+  Route::post('events/{event}/participations/{participation}/refund', [\App\Http\Controllers\Frontend\TrialParticipationController::class, 'requestRefund'])->name('participation.request-refund');
+  Route::get('events/{event}/participation-proofs/{proof}', [\App\Http\Controllers\Frontend\TrialParticipationController::class, 'download'])->name('participation.download');
+  Route::post('events/{event}/squad-slots/{slot}/respond', [\App\Http\Controllers\Frontend\TrialRegistrationController::class, 'respond'])->middleware(['agreement', 'profile.updated', 'throttle:10,1'])->name('squads.respond');
+  Route::post('events/{event}/orders/{order}/proof', [\App\Http\Controllers\Frontend\TrialRegistrationController::class, 'upload'])->middleware(['agreement', 'profile.updated', 'throttle:10,1'])->name('proof.upload');
+  Route::get('proofs/{proof}', [\App\Http\Controllers\Frontend\TrialRegistrationController::class, 'proof'])->name('proof.download');
+  Route::get('events/{event}/categories/{categoryEvent}/nominations/{nomination}/profile', [\App\Http\Controllers\Frontend\InterprovincialTrialInvitationController::class, 'createNomineeProfile'])->middleware('throttle:10,1')->name('nominations.profile');
   Route::post('events/{event}/categories/{categoryEvent}/nominations/{nomination}/register', [\App\Http\Controllers\Frontend\InterprovincialTrialInvitationController::class, 'registerNomination'])->middleware(['agreement', 'profile.updated', 'throttle:10,1'])->name('nominations.register');
   Route::get('invitations', [\App\Http\Controllers\Frontend\InterprovincialTrialInvitationController::class, 'index'])->name('invitations.index');
   Route::get('invitations/{invitation}', [\App\Http\Controllers\Frontend\InterprovincialTrialInvitationController::class, 'show'])->middleware(['signed', 'throttle:30,1'])->name('invitations.show');
@@ -429,10 +442,44 @@ Route::middleware([
 Route::prefix('backend')->middleware('auth')->group(function () {
 
   Route::prefix('interprovincial-trials')->name('backend.interprovincial-trials.')->group(function () {
+    Route::get('events/{event}/communications', [\App\Http\Controllers\Backend\TrialCommunicationController::class, 'index'])->name('communications.index');
+    Route::post('events/{event}/communications/preview', [\App\Http\Controllers\Backend\TrialCommunicationController::class, 'preview'])->name('communications.preview');
+    Route::post('events/{event}/communications/send', [\App\Http\Controllers\Backend\TrialCommunicationController::class, 'send'])->name('communications.send');
+    Route::post('events/{event}/communications/templates', [\App\Http\Controllers\Backend\TrialCommunicationController::class, 'templates'])->name('communications.templates');
+    Route::post('events/{event}/communications/schedules', [\App\Http\Controllers\Backend\TrialCommunicationController::class, 'schedules'])->name('communications.schedules');
+    Route::post('events/{event}/communications/schedules/{schedule}/pause', [\App\Http\Controllers\Backend\TrialCommunicationController::class, 'pause'])->name('communications.pause');
+    Route::post('events/{event}/communications/logs/{log}/retry', [\App\Http\Controllers\Backend\TrialCommunicationController::class, 'retry'])->name('communications.retry');
+    Route::get('events/{event}/programme', [\App\Http\Controllers\Backend\TrialProgrammeController::class, 'index'])->name('programme.index');
+    Route::post('events/{event}/squad-slots/{slot}/respond', [\App\Http\Controllers\Backend\TrialProgrammeController::class, 'respond'])->name('programme.respond');
+    Route::post('events/{event}/squad-slots/{slot}/remove', [\App\Http\Controllers\Backend\TrialProgrammeController::class, 'remove'])->name('programme.remove');
+    Route::post('events/{event}/squad-slots/{slot}/propose', [\App\Http\Controllers\Backend\TrialProgrammeController::class, 'propose'])->name('programme.propose');
+    Route::post('events/{event}/proposals/{proposal}/approve', [\App\Http\Controllers\Backend\TrialProgrammeController::class, 'approve'])->name('programme.approve');
+    Route::post('events/{event}/players/{player}/colour', [\App\Http\Controllers\Backend\TrialProgrammeController::class, 'colour'])->name('programme.colour');
+    Route::post('events/{event}/entries/{entry}/ranking-disposition', [\App\Http\Controllers\Backend\TrialProgrammeController::class, 'disposition'])->name('programme.disposition');
+    Route::post('events/{event}/entries/{entry}/refund', [\App\Http\Controllers\Backend\TrialProgrammeController::class, 'refundRequest'])->name('programme.refund-request');
+    Route::post('events/{event}/entries/{entry}/refund/complete', [\App\Http\Controllers\Backend\TrialProgrammeController::class, 'refundComplete'])->name('programme.refund-complete');
+    Route::put('events/{event}/programme', [\App\Http\Controllers\Backend\TrialProgrammeController::class, 'settings'])->name('programme.settings');
+    Route::post('events/{event}/programme/teams', [\App\Http\Controllers\Backend\TrialProgrammeController::class, 'generate'])->name('programme.generate');
+    Route::post('events/{event}/drafts/{draft}/swap', [\App\Http\Controllers\Backend\TrialProgrammeController::class, 'swap'])->name('programme.swap');
+    Route::post('events/{event}/drafts/{draft}/finalise', [\App\Http\Controllers\Backend\TrialProgrammeController::class, 'finalise'])->name('programme.finalise');
+    Route::post('events/{event}/drafts/{draft}/review', [\App\Http\Controllers\Backend\TrialProgrammeController::class, 'review'])->name('programme.review');
+    Route::post('events/{event}/proofs/{proof}/verify', [\App\Http\Controllers\Backend\TrialProgrammeController::class, 'verify'])->name('proof.verify');
+    Route::post('events/{event}/proofs/{proof}/reject', [\App\Http\Controllers\Backend\TrialProgrammeController::class, 'rejectProof'])->name('proof.reject');
+    Route::post('events/{event}/orders/{order}/mark-paid', [\App\Http\Controllers\Backend\TrialProgrammeController::class, 'markPaid'])->name('orders.mark-paid');
+    Route::post('events/{event}/participations/{participation}/mark-paid', [\App\Http\Controllers\Backend\TrialProgrammeController::class, 'participationPaid'])->name('participations.mark-paid');
+    Route::post('events/{event}/squad-slots/{slot}/collect', [\App\Http\Controllers\Backend\TrialProgrammeController::class, 'participationCollect'])->name('participations.collect');
+    Route::post('events/{event}/participation-proofs/{proof}/verify', [\App\Http\Controllers\Backend\TrialProgrammeController::class, 'participationVerify'])->name('participations.verify');
+    Route::post('events/{event}/participations/{participation}/refund', [\App\Http\Controllers\Backend\TrialProgrammeController::class, 'participationRefund'])->name('participations.refund');
+    Route::post('events/{event}/participation-proofs/{proof}/reject', [\App\Http\Controllers\Backend\TrialRefundRecoveryController::class, 'rejectProof'])->name('participations.reject-proof');
+    Route::get('events/{event}/refund-recovery', [\App\Http\Controllers\Backend\TrialRefundRecoveryController::class, 'index'])->name('refund-recovery.index');
+    Route::post('events/{event}/participations/{participation}/refund-recovery', [\App\Http\Controllers\Backend\TrialRefundRecoveryController::class, 'recover'])->name('refund-recovery.recover');
+    Route::post('events/{event}/participations/{participation}/refund/complete', [\App\Http\Controllers\Backend\TrialProgrammeController::class, 'participationRefundComplete'])->name('participations.refund-complete');
     Route::get('events/{event}/invitations', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'index'])->name('invitations.index');
     Route::get('events/{event}/players', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'players'])
       ->middleware('throttle:30,1')->name('players.index');
     Route::post('events/{event}/nominations', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'nominateForCategory'])->name('nominations.bulk-store');
+    Route::post('events/{event}/nominations/no-profile', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'nominateWithoutProfile'])->name('nominations.no-profile');
+    Route::put('events/{event}/categories/{categoryEvent}/nominations/{nomination}/email', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'updateNomineeEmail'])->name('nominations.email');
     Route::put('events/{event}/nominations/publication', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'publication'])->name('nominations.publication');
     Route::post('events/{event}/categories/{categoryEvent}/nominations', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'nominate'])->name('nominations.store');
     Route::delete('events/{event}/categories/{categoryEvent}/nominations/{nomination}', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'removeNomination'])->name('nominations.destroy');

@@ -26,14 +26,16 @@ class SendBulkEmailJob implements ShouldQueue
      * The bulk email log ID.
      */
     public int $logId;
+    public bool $manualRetryOnly = false;
 
     /**
      * Create a new job instance.
      */
-    public function __construct(int $logId)
+    public function __construct(int $logId, bool $manualRetryOnly = false)
     {
         $this->logId = $logId;
-        $this->tries = config('mail.bulk_mail.max_tries', 3);
+        $this->manualRetryOnly = $manualRetryOnly;
+        $this->tries = $manualRetryOnly ? 0 : config('mail.bulk_mail.max_tries', 3);
     }
 
     /**
@@ -74,6 +76,10 @@ class SendBulkEmailJob implements ShouldQueue
                 'status' => $log->status,
                 'recipient' => $log->recipient_email,
             ]);
+            return;
+        }
+
+        if ($this->manualRetryOnly && ! BulkEmailLog::whereKey($log->id)->where('status', 'queued')->whereNull('sent_at')->update(['status' => 'sending'])) {
             return;
         }
 
@@ -126,13 +132,13 @@ class SendBulkEmailJob implements ShouldQueue
             ]);
 
             // Mark as failed if this is the last attempt
-            if ($this->attempts() >= $this->tries) {
+            if ($this->manualRetryOnly || $this->attempts() >= $this->tries) {
                 $log->markAsFailed($e->getMessage());
                 $this->syncRankingReviewRecipient($log, 'failed', $e->getMessage());
             }
 
-            // Re-throw to trigger retry
-            throw $e;
+            // Rate-limit releases remain retryable; explicit SMTP failures require admin action.
+            if (! $this->manualRetryOnly) throw $e;
         }
     }
 
@@ -156,6 +162,7 @@ class SendBulkEmailJob implements ShouldQueue
                     ->replyTo('info@capetennis.co.za', 'Cape Tennis');
 
             case 'bulk_event_mail':
+            case 'trial_communication':
             case 'team_email':
             case 'region_email':
             case 'team_selection_registration_clothing_reminder':

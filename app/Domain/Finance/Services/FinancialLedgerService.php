@@ -133,7 +133,66 @@ class FinancialLedgerService
             ->merge($pfRows)
             ->merge($walletOnlyRows)
             ->merge($teamWalletOnlyRows)
+            ->merge($this->buildManualReceiptRows($event, $feePerEntry))
+            ->merge($this->buildParticipationReceiptRows($event))
             ->merge($clothingRows);
+    }
+
+    private function buildManualReceiptRows(Event $event, float $feePerEntry): Collection
+    {
+        return \App\Models\RegistrationManualReceipt::with(['order.user', 'order.items.player', 'order.items.category_event.category'])
+            ->where('event_id', $event->id)->get()->map(function ($receipt) use ($event, $feePerEntry) {
+                $order = $receipt->order;
+                $gross = (float) $receipt->amount;
+                $count = $order->items->count();
+                $capeFee = -round($feePerEntry * $count, 2);
+                $method = $receipt->method === 'eft' ? 'EFT' : 'Manual';
+                return (object) [
+                    'type' => 'payment', 'subtype' => 'manual_receipt', 'amount_gross' => $gross,
+                    'amount_fee' => $capeFee, 'amount_net' => round($gross + $capeFee, 2),
+                    'payment_method' => $method, 'refund_status' => null, 'withdrawal_status' => null,
+                    'status_label' => $method, 'status_colour' => 'success', 'source_tx_id' => null,
+                    'source_order_id' => $order->id, 'source_pf_id' => null, 'user_name' => $order->user?->name ?? '—', 'event_id' => $event->id,
+                    'created_at' => $receipt->paid_at, 'player' => $order->user?->name ?? '—', 'method' => $method,
+                    'gross' => $gross, 'fee' => 0.0, 'capeFee' => $capeFee, 'net' => round($gross + $capeFee, 2),
+                    'pf_payment_id' => null, 'tx_id' => null, 'paid_at' => $receipt->paid_at,
+                    'order' => $order, 'entryCount' => $count, 'payfastGross' => 0.0, 'walletUsed' => 0.0,
+                    'registrationDetails' => $order->items->map(fn ($item) => ['player' => trim(($item->player?->name ?? '').' '.($item->player?->surname ?? '')), 'category' => $item->category_event?->category?->name ?? '—']),
+                ];
+            });
+    }
+
+    private function buildParticipationReceiptRows(Event $event): Collection
+    {
+        return \App\Models\TrialParticipationReceipt::with(['order.user', 'order.player'])->where('event_id', $event->id)->get()->map(function ($receipt) use ($event) {
+            $order = $receipt->order;
+            $gross = (float) $receipt->amount;
+            $method = $receipt->method === 'eft' ? 'EFT' : 'Manual';
+            return (object) ['type' => 'payment', 'subtype' => 'participation_receipt', 'amount_gross' => $gross, 'amount_fee' => 0.0, 'amount_net' => $gross,
+                'payment_method' => $method, 'refund_status' => null, 'withdrawal_status' => null, 'status_label' => $method, 'status_colour' => 'success',
+                'source_tx_id' => null, 'source_order_id' => $order->id, 'source_pf_id' => null, 'user_name' => $order->user?->name ?? '—', 'event_id' => $event->id,
+                'created_at' => $receipt->paid_at, 'player' => $order->player?->full_name ?? '—', 'method' => $method, 'gross' => $gross, 'fee' => 0.0,
+                'capeFee' => 0.0, 'net' => $gross, 'pf_payment_id' => null, 'tx_id' => null, 'paid_at' => $receipt->paid_at, 'order' => $order, 'entryCount' => 1,
+                'payfastGross' => 0.0, 'walletUsed' => 0.0, 'registrationDetails' => collect()];
+        });
+    }
+
+    private function buildParticipationRefundRows(Event $event): Collection
+    {
+        return TeamPaymentOrder::with(['player', 'user'])->where('event_id', $event->id)
+            ->whereIn('id', \App\Models\TrialParticipation::where('event_id', $event->id)->select('order_id'))
+            ->whereNotNull('withdrawn_at')->whereIn('refund_status', ['pending', 'completed', 'not_refunded'])->get()->map(function ($order) use ($event) {
+                $accounting = in_array($order->refund_status, ['pending', 'completed'], true);
+                $gross = $accounting ? (float) $order->refund_gross : (float) $order->total_amount;
+                $net = $accounting ? -(float) $order->refund_net : 0.0;
+                return (object) ['type' => $accounting ? 'refund' : 'withdrawal', 'subtype' => 'participation_refund', 'amount_gross' => $gross,
+                    'amount_fee' => $accounting ? (float) $order->refund_fee : 0.0, 'amount_net' => $net, 'payment_method' => $order->refund_method,
+                    'refund_status' => $order->refund_status, 'withdrawal_status' => 'withdrawn', 'status_label' => ucfirst($order->refund_status), 'status_colour' => 'warning',
+                    'source_tx_id' => null, 'source_order_id' => $order->id, 'source_pf_id' => $order->payfast_pf_payment_id, 'user_name' => $order->user?->name ?? '—', 'event_id' => $event->id,
+                    'created_at' => $order->refunded_at ?? $order->withdrawn_at, 'player' => $order->player?->full_name ?? '—', 'method' => $order->refund_method,
+                    'gross' => -$gross, 'fee' => $accounting ? (float) $order->refund_fee : 0.0, 'capeFee' => 0.0, 'net' => $net,
+                    'refund_gross' => $accounting ? (float) $order->refund_gross : 0.0, 'refund_net' => (float) $order->refund_net, 'order' => $order, 'model' => $order];
+            });
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -245,7 +304,7 @@ class FinancialLedgerService
                     ])->values(),
                 ];
             })
-            ->values();
+            ->toBase()->merge($this->buildParticipationRefundRows($event))->values();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -451,10 +510,12 @@ class FinancialLedgerService
 
     private function mapPayfastRow(Transaction $tx, float $feePerEntry): object
     {
-        $items        = collect(optional($tx->order)->items ?? []);
+        $participation = $tx->custom_str5 === 'TeamOrder' ? \App\Models\TrialParticipation::where('order_id', $tx->custom_int5)->first() : null;
+        $resolvedOrder = $participation ? $participation->order : $tx->order;
+        $items        = collect($participation ? [] : (optional($resolvedOrder)->items ?? []));
         $entryCount   = max(1, $items->count());
         $payfastGross = round((float) $tx->amount_gross, 2);
-        $walletUsed   = round((float) optional($tx->order)->wallet_reserved, 2);
+        $walletUsed   = round((float) optional($resolvedOrder)->wallet_reserved, 2);
         $grossTx      = $payfastGross + $walletUsed;
 
         $isAdminEntry = $tx->item_name === 'Admin Entry'
@@ -490,7 +551,7 @@ class FinancialLedgerService
                 ? abs(round((float) $capturedCapeFee, 2))
                 : round($feePerEntry * $entryCount, 2))
             : 0.0;
-        $capeFeeTx = -1 * $capeFeeAmount;
+        $capeFeeTx = $participation ? 0.0 : -1 * $capeFeeAmount;
         $netTx     = round($grossTx + $pfFeeTx + $capeFeeTx, 2);
 
         $playerName = ($tx->pf_payment_id === null)
@@ -530,7 +591,7 @@ class FinancialLedgerService
                 : ($isUnmarkedZeroValue ? 'Unreconciled zero-value record' : $method),
             'status_colour'    => ($isAdminEntry || $isUnmarkedZeroValue) ? 'warning' : 'primary',
             'source_tx_id'     => $tx->id,
-            'source_order_id'  => optional($tx->order)->id,
+            'source_order_id'  => optional($resolvedOrder)->id,
             'source_pf_id'     => $tx->pf_payment_id,
             'user_name'        => $playerName ?: optional($tx->user)->name,
             'event_id'         => $tx->event_id,
@@ -545,7 +606,7 @@ class FinancialLedgerService
             'pf_payment_id' => $tx->pf_payment_id,
             'tx_id'         => $tx->id,
             'paid_at'       => ($isAdminEntry || $isUnmarkedZeroValue) ? null : $tx->created_at,
-            'order'         => $tx->order,
+            'order'         => $resolvedOrder,
             'entryCount'    => $entryCount,
             'payfastGross'  => $payfastGross,
             'walletUsed'    => $walletUsed,

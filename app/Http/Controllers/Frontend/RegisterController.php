@@ -891,16 +891,28 @@ class RegisterController extends Controller
 
     try {
       $processed = DB::transaction(function () use ($orderId, $data) {
+        app(\App\Services\InterprovincialTrials\TrialParticipationService::class)->lockForOrder($orderId);
         $order = \App\Models\TeamPaymentOrder::query()
           ->lockForUpdate()
           ->with(['user.wallet', 'event', 'team', 'player'])
           ->findOrFail($orderId);
 
+        $trialParticipation = \App\Models\TrialParticipation::where('order_id', $order->id)->first();
+        if ($trialParticipation && (
+          ($data['custom_str5'] ?? null) !== 'TeamOrder'
+          || (string) ($data['custom_int4'] ?? '') !== (string) $order->user_id
+          || (string) ($data['custom_int3'] ?? '') !== (string) $order->event_id
+          || (string) ($data['custom_int2'] ?? '') !== (string) $order->player_id
+        )) {
+          throw new \RuntimeException('Trials payment callback metadata does not match its order.');
+        }
         if ((int) $order->pay_status === 1 || (bool) $order->payfast_paid) {
           return false;
         }
 
-        if (! $order->event || ! $order->team || ! $order->player
+          if ($trialParticipation) {
+            app(\App\Services\InterprovincialTrials\TrialParticipationService::class)->assertOrder($order);
+          } elseif (! $order->event || ! $order->team || ! $order->player
           || ! app(\App\Domain\Teams\Services\ExternalTeamRosterService::class)
             ->teamBelongsToEvent($order->team, $order->event)
           || ! \App\Models\TeamPlayer::query()
@@ -924,7 +936,10 @@ class RegisterController extends Controller
             ],
           ]);
 
-        $teamEventName = optional($order->event)->name ?? 'Team Event';
+          $teamEventName = optional($order->event)->name ?? 'Team Event';
+          if ($trialParticipation) {
+            $data['cape_tennis_fee'] = 0;
+          }
         app(\App\Domain\Payments\Services\PaymentTransactionService::class)->record(array_merge($data, [
           'custom_int5' => $order->id,
           'custom_int4' => $order->user_id,

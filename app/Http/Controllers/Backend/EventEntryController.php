@@ -480,6 +480,11 @@ class EventEntryController extends Controller
     }
 
     $this->rejectMastersRosterMutation($newCategory->event);
+    $this->authorize('category.manage', $newCategory);
+
+    if ($entry->categoryEvent->draws()->exists() || $newCategory->draws()->exists()) {
+      return response()->json(['success' => false, 'message' => 'Players can only move before draw creation.'], 422);
+    }
 
     if ($newCategory->isLocked()) {
       return response()->json([
@@ -501,9 +506,11 @@ class EventEntryController extends Controller
     }
 
     // 🔥 Move by updating foreign key
-    $entry->update([
-      'category_event_id' => $newCategory->id
-    ]);
+    if ($entry->categoryEvent->event->isInterprovincialTrials()) {
+      app(\App\Services\InterprovincialTrials\InvitationService::class)->transferEntry($entry, $newCategory, $request->user());
+    } else {
+      $entry->update(['category_event_id' => $newCategory->id]);
+    }
 
     $entry->load('registration.players');
 

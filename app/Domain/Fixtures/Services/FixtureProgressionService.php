@@ -45,6 +45,14 @@ final class FixtureProgressionService
         DB::transaction(function () use ($fixture, $winner, $loser) {
             $this->advanceWinner($fixture, $winner);
             $this->advanceLoser($fixture, $loser);
+            if (($winner === 0 || $loser === 0) && $fixture->draw?->event?->isInterprovincialTrials()) {
+                foreach (Fixture::whereIn('id', array_filter([$fixture->parent_fixture_id, $fixture->loser_parent_fixture_id]))->get() as $parent) {
+                    foreach (['registration1_id', 'registration2_id'] as $field) {
+                        if ($parent->{$field} !== null && (int) $parent->{$field} === 0) { $parent->{$field} = null; }
+                    }
+                    if ($parent->isDirty()) { $parent->save(); }
+                }
+            }
         });
     }
 

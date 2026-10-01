@@ -43,7 +43,8 @@ class EventCategoryResultController extends Controller
     }
 
     $activeRegistrationIds = CategoryEventRegistration::where('category_event_id', $categoryEvent->id)
-      ->where('status', '!=', 'withdrawn')
+      ->when(! $event->isInterprovincialTrials(), fn ($query) => $query->where('status', '!=', 'withdrawn'))
+      ->when($event->isInterprovincialTrials(), fn ($query) => $query->where('payment_status_id', 1))
       ->whereIn('registration_id', $submittedIds)
       ->pluck('registration_id')
       ->map(fn ($id) => (int) $id);
@@ -61,7 +62,7 @@ class EventCategoryResultController extends Controller
       ->flip();
 
     $rows = collect($request->positions)
-      ->reject(fn($row) => isset($withdrawnIds[$row['registration_id']]))
+      ->reject(fn($row) => ! $event->isInterprovincialTrials() && isset($withdrawnIds[$row['registration_id']]))
       ->map(fn($row) => [
         'event_id' => $event->id,
         'category_id' => $categoryEvent->category_id,
@@ -82,7 +83,14 @@ class EventCategoryResultController extends Controller
       if ($rows !== []) {
         DB::table('category_results')->insert($rows);
       }
+      if ($event->isInterprovincialTrials()) {
+        $programme = \App\Models\TrialProgramme::firstOrCreate(['event_id' => $event->id]);
+        $programme->update(['manual_position_categories' => array_values(array_unique(array_merge($programme->manual_position_categories ?? [], [$categoryEvent->id])))]);
+        activity('interprovincial-trials')->performedOn($programme)->causedBy(auth()->user())->withProperties(['category_event_id' => $categoryEvent->id, 'positions' => $rows])->log('Administrator resolved final Trial positions');
+      }
     });
+
+    app(\App\Services\InterprovincialTrials\TrialRefreshQueue::class)->remember($event->id);
 
     return response()->json([
       'status' => 'ok',

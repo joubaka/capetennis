@@ -20,7 +20,7 @@ use Throwable;
 class SendInterprovincialTrialInvitationEmailJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-    public int $tries = 3;
+    public int $tries = 0;
 
     public function __construct(public int $logId, public int $eventId) { $this->afterCommit(); }
     public function middleware(): array { return [(new WithoutOverlapping('interpro-trial-email:'.$this->logId))->releaseAfter(5)->expireAfter(180), new RateLimited('outbound-mail')]; }
@@ -28,7 +28,7 @@ class SendInterprovincialTrialInvitationEmailJob implements ShouldQueue
     public function handle(): void
     {
         $log = BulkEmailLog::where('mail_type', 'interprovincial_trial_invitation')->find($this->logId);
-        if (! $log || $log->sent_at || in_array($log->status, ['sent', 'skipped'], true)) return;
+        if (! $log || $log->sent_at || in_array($log->status, ['sent', 'skipped', 'failed'], true)) return;
         if (! app(InvitationMailSecurity::class)->logMatchesSignedSnapshot($log, $this->eventId)) {
             $log->markAsSkipped('Invitation email snapshot integrity check failed.'); return;
         }
@@ -43,13 +43,23 @@ class SendInterprovincialTrialInvitationEmailJob implements ShouldQueue
         // SMTP is at-least-once: a worker can fail after transport acceptance but
         // before this state is committed. The stable log/dispatch keys prevent
         // separate queue requests; provider-level idempotency is unavailable.
-        if ($kind === 'initial') $invitation->update(['status' => 'sending']);
+        if ($kind === 'initial') {
+            $claimed = InterprovincialTrialInvitation::whereKey($invitation->id)->whereIn('status', $eligibleStates)->update(['status' => 'sending']);
+            if (! $claimed) {
+                $log->markAsSkipped('Invitation lifecycle changed before sending.');
+                return;
+            }
+        }
         $log->update(['status' => 'sending', 'failed_at' => null, 'error_message' => null]);
-        $sent = Mail::mailer(app(MailAccountManager::class)->getMailer())->to($log->recipient_email)
-            ->sendNow(new InterprovincialTrialInvitationMail($invitation, $log->payload ?? []));
-        if ($sent === null) throw new \RuntimeException('Invitation was not accepted by the mail transport.');
-        $log->markAsSent();
-        if ($kind === 'initial') $invitation->update(['status' => 'sent', 'sent_at' => now()]);
+        try {
+            $sent = Mail::mailer(app(MailAccountManager::class)->getMailer())->to($log->recipient_email)
+                ->sendNow(new InterprovincialTrialInvitationMail($invitation, $log->payload ?? []));
+            if ($sent === null) throw new \RuntimeException('Invitation was not accepted by the mail transport.');
+            $log->markAsSent();
+            if ($kind === 'initial') InterprovincialTrialInvitation::whereKey($invitation->id)->where('status', 'sending')->update(['status' => 'sent', 'sent_at' => now()]);
+        } catch (Throwable $exception) {
+            $this->failed($exception);
+        }
     }
 
     public function failed(Throwable $exception): void
@@ -58,7 +68,7 @@ class SendInterprovincialTrialInvitationEmailJob implements ShouldQueue
         if ($log && ! $log->sent_at) {
             $log->markAsFailed($exception->getMessage());
             if ((string) data_get($log->payload, 'kind', 'initial') === 'initial') {
-                InterprovincialTrialInvitation::whereKey($log->related_id)->whereNull('sent_at')->update(['status' => 'failed']);
+                InterprovincialTrialInvitation::whereKey($log->related_id)->where('event_id', $this->eventId)->whereIn('status', ['queued', 'sending', 'failed'])->whereNull('sent_at')->update(['status' => 'failed']);
             }
         }
     }

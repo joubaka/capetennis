@@ -12,6 +12,59 @@ use Illuminate\Validation\ValidationException;
 
 class RefundRequestService
 {
+    public function requestTrialTeamRefund(\App\Models\TrialParticipation $participation, User $actor, string $method, array $bankDetails = []): TeamPaymentOrder
+    {
+        abort_unless(in_array($method, ['bank', 'payfast'], true), 422);
+        return DB::transaction(function () use ($participation, $actor, $method, $bankDetails) {
+            app(\App\Services\InterprovincialTrials\TrialParticipationService::class)->lockForOrder((int) $participation->order_id, true);
+            $order = TeamPaymentOrder::with('event')->lockForUpdate()->findOrFail($participation->order_id);
+            $participation = \App\Models\TrialParticipation::lockForUpdate()->findOrFail($participation->id);
+            $manager = app(\App\Services\InterprovincialTrials\TrialProgrammeService::class)->canManage($order->event, $actor);
+            abort_unless($order->event->isInterprovincialTrials() && (int) $order->event_id === (int) $participation->event_id && (int) $order->player_id === (int) $participation->player_id
+                && (int) $participation->order_id === (int) $order->id && (int) $participation->payer_id === (int) $order->user_id && ($manager || (int) $order->user_id === (int) $actor->id), 403);
+            if (in_array($order->refund_status, ['pending', 'completed'], true)) return $order;
+            $deadline = \App\Models\TrialProgramme::where('event_id', $order->event_id)->first()?->withdrawal_deadline ?? $order->event->withdrawalCloseAt();
+            if (! $order->withdrawn_at || $order->withdrawn_at->gt($deadline) || ! $order->pay_status || $order->hasRefund() || $order->wallet_debited) {
+                throw ValidationException::withMessages(['refund' => 'Withdraw a paid participation before its deadline to request a refund.']);
+            }
+            $receipt = \App\Models\TrialParticipationReceipt::where('order_id', $order->id)->first();
+            $gross = round((float) ($receipt?->amount ?? ($order->payfast_paid && $order->payfast_pf_payment_id ? $order->total_amount : 0)), 2);
+            if ($gross <= 0 || $gross !== round((float) $order->total_amount, 2) || ($method === 'payfast' && (! $order->payfast_paid || ! $order->payfast_pf_payment_id))) {
+                throw ValidationException::withMessages(['refund' => 'No matching original payment is available for this refund method.']);
+            }
+            $fee = \App\Models\SiteSetting::calculateWithdrawalFee($gross);
+            $attributes = ['refund_method' => $method, 'refund_status' => 'pending', 'refund_gross' => $gross, 'refund_fee' => $fee, 'refund_net' => round($gross - $fee, 2)];
+            foreach (['refund_account_name', 'refund_bank_name', 'refund_account_number', 'refund_branch_code', 'refund_account_type'] as $field) {
+                if (array_key_exists($field, $bankDetails)) $attributes[$field] = $bankDetails[$field];
+            }
+            FinanceMutationScope::run('refund_state_write', fn () => $order->fill($attributes)->save());
+            activity('refund')->performedOn($order)->causedBy($actor)->withProperties(['gross' => $gross, 'fee' => $fee, 'net' => $attributes['refund_net'], 'method' => $method])->log('Regional participation refund requested');
+            return $order->fresh();
+        });
+    }
+    public function requestTrialManualRefund(CategoryEventRegistration $registration, User $actor): CategoryEventRegistration
+    {
+        $event = $registration->categoryEvent->event;
+        app(\App\Services\InterprovincialTrials\TrialProgrammeService::class)->authorize($event, $actor);
+        return FinanceMutationScope::run('refund_state_write', function () use ($registration, $actor) {
+            return DB::transaction(function () use ($registration, $actor) {
+                $locked = CategoryEventRegistration::with('categoryEvent.event')->lockForUpdate()->findOrFail($registration->id);
+                app(\App\Services\InterprovincialTrials\TrialProgrammeService::class)->authorize($locked->categoryEvent->event, $actor);
+                if (in_array($locked->refund_status, ['pending', 'completed'], true)) { return $locked; }
+                $this->assertRegistrationRefundEligible($locked, $actor, true);
+                $paid = $locked->paymentInfo();
+                $gross = round((float) ($paid['total_paid'] ?? 0), 2);
+                if ($gross <= 0 || $gross > round($locked->maxRefundableAmount(), 2)) {
+                    throw ValidationException::withMessages(['refund' => 'No exact reconciled paid amount is available.']);
+                }
+                $wallet = round((float) ($paid['wallet_paid'] ?? 0), 2);
+                $fee = \App\Models\SiteSetting::calculateWithdrawalFee(round($gross - $wallet, 2));
+                $locked->fill(['refund_method' => 'bank', 'refund_status' => 'pending', 'refund_gross' => $gross, 'refund_fee' => $fee, 'refund_net' => round($gross - $fee, 2)])->save();
+                activity('refund')->performedOn($locked)->causedBy($actor)->withProperties(['gross' => $gross, 'fee' => $fee, 'net' => round($gross - $fee, 2)])->log('Scoped Trials manual refund requested');
+                return $locked;
+            });
+        });
+    }
     public function requestRegistrationRefund(CategoryEventRegistration $registration, array $attributes, ?User $actor = null): CategoryEventRegistration
     {
         return FinanceMutationScope::run('refund_state_write', function () use ($registration, $attributes, $actor) {
@@ -64,12 +117,12 @@ class RefundRequestService
         });
     }
 
-    private function assertRegistrationRefundEligible(CategoryEventRegistration $registration, ?User $actor): void
+    private function assertRegistrationRefundEligible(CategoryEventRegistration $registration, ?User $actor, bool $scopedTrialOperator = false): void
     {
         $event = $registration->categoryEvent?->event;
         $isSuperUser = $actor && method_exists($actor, 'hasRole') && $actor->hasRole('super-user');
 
-        if (! $actor || ((int) $registration->user_id !== (int) $actor->id && ! $isSuperUser)) {
+        if (! $actor || ((int) $registration->user_id !== (int) $actor->id && ! $isSuperUser && ! $scopedTrialOperator)) {
             throw ValidationException::withMessages(['refund' => 'You may only request a refund for your own payment.']);
         }
         if ($registration->status !== 'withdrawn') {

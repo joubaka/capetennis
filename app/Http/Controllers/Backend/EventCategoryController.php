@@ -103,7 +103,7 @@ class EventCategoryController extends Controller
   {
     $this->authorize('event-category.manage', $categoryEvent->event);
 
-    if ($categoryEvent->activeRegistrations()->exists()) {
+    if ($categoryEvent->categoryEventRegistrations()->exists() || $categoryEvent->nominations()->exists() || $categoryEvent->draws()->exists() || \App\Models\InterprovincialTrialInvitation::where('category_event_id', $categoryEvent->id)->exists()) {
       return response()->json([
         'message' => 'Category has players and cannot be removed.'
       ], 422);
@@ -125,6 +125,9 @@ class EventCategoryController extends Controller
 
     $removed = $event->categoryEvents()
       ->whereDoesntHave('categoryEventRegistrations')
+      ->whereDoesntHave('nominations')
+      ->whereDoesntHave('draws')
+      ->whereNotIn('id', \App\Models\InterprovincialTrialInvitation::query()->select('category_event_id'))
       ->delete();
 
     return response()->json([

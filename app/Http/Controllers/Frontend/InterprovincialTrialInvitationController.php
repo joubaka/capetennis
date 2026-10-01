@@ -37,6 +37,11 @@ class InterprovincialTrialInvitationController extends Controller
             ->where('id', '>', $invitation->id)->where('status', '!=', 'prepared')->exists();
         abort_unless($tupleIsCurrent && $invitation->event?->isInterprovincialTrials(), 404);
 
+        if ($invitation->player_id === null) {
+            abort_unless(in_array($invitation->status, ['queued', 'sent'], true), 404);
+            return $this->createNomineeProfile($request, $invitation->event, $invitation->categoryEvent, $invitation->nomination, true);
+        }
+
         $canDecline = in_array((int) $invitation->player_id, $user->ownedPlayerIds(), true);
         $isPayer = $invitation->order && (int) $invitation->order->user_id === (int) $user->id;
 
@@ -45,6 +50,7 @@ class InterprovincialTrialInvitationController extends Controller
 
     public function register(Request $request, InterprovincialTrialInvitation $invitation, InvitationService $service)
     {
+        abort_unless($invitation->categoryEvent?->nominations_published, 404);
         $order = $service->accept($invitation, $request->user());
 
         if ((int) $order->pay_status === 1) {
@@ -52,6 +58,18 @@ class InterprovincialTrialInvitationController extends Controller
         }
 
         return redirect()->route('registration.checkout', $order);
+    }
+
+    public function createNomineeProfile(Request $request, Event $event, CategoryEvent $categoryEvent, EventNomination $nomination, bool $fromInvitation = false)
+    {
+        abort_unless((int) $categoryEvent->event_id === (int) $event->id
+            && (int) $nomination->event_id === (int) $event->id
+            && (int) $nomination->category_event_id === (int) $categoryEvent->id, 404);
+        abort_unless($fromInvitation || $categoryEvent->nominations_published, 404);
+        app(\App\Services\InterprovincialTrials\NominationProfileService::class)->authorize($nomination, $request->user());
+        $request->session()->put('trial_nomination_profile', ['nomination_id' => $nomination->id, 'user_id' => $request->user()->id, 'from_invitation' => $fromInvitation]);
+
+        return redirect()->route('player.profile.create', ['trial_nomination' => $nomination->id]);
     }
 
     public function registerNomination(
