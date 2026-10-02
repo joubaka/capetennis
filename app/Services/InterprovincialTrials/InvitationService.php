@@ -307,6 +307,40 @@ class InvitationService
                 if ((int) $existing->user_id !== (int) $user->id) throw ValidationException::withMessages(['invitation' => 'This invitation is already being processed.']);
                 return $existing;
             }
+            $existing = null;
+            if ($locked->status === InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT && $locked->order_id) {
+                $existing = RegistrationOrder::query()->lockForUpdate()->findOrFail($locked->order_id);
+                $items = $existing->items()->lockForUpdate()->get();
+                $item = $items->count() === 1 ? $items->first() : null;
+                abort_unless($item && (int) $item->registration_id === (int) $locked->registration_id
+                    && (int) $item->category_event_id === (int) $locked->category_event_id
+                    && (int) $item->player_id === (int) $locked->player_id
+                    && (int) $item->user_id === (int) $existing->user_id, 404);
+                $entry = CategoryEventRegistration::where('registration_id', $locked->registration_id)
+                    ->where('category_event_id', $locked->category_event_id)->lockForUpdate()->firstOrFail();
+                abort_unless((int) $entry->user_id === (int) $existing->user_id
+                    && $entry->registration->players()->count() === 1
+                    && $entry->registration->players()->where('players.id', $locked->player_id)->exists(), 404);
+                if ((int) $existing->pay_status === 1 || $existing->payfast_paid || $existing->wallet_debited
+                    || filled($existing->payfast_pf_payment_id) || filled($existing->wallet_transaction_id)
+                    || filled($entry->wallet_transaction_id) || (int) $entry->payment_status_id === 1 || filled($entry->pf_transaction_id)
+                    || $entry->withdrawn_at || $entry->refunded_at
+                    || \App\Models\Transaction::where('custom_int5', $existing->id)
+                        ->where(fn ($query) => $query->whereNull('custom_str5')->orWhere('custom_str5', ''))->exists()
+                    || \App\Models\WalletTransaction::where('source_id', $existing->id)
+                        ->where('source_type', 'event_registration_wallet_payment')->exists()) {
+                    throw ValidationException::withMessages(['payment' => 'This checkout already has payment or withdrawal evidence and cannot be restarted.']);
+                }
+                if ($existing->payfast_handed_off_at) {
+                    if ((int) $existing->user_id !== (int) $user->id) {
+                        throw ValidationException::withMessages([
+                            'invitation' => 'Payment is already being processed for this player. Please wait for it to resolve.',
+                        ]);
+                    }
+
+                    return $existing;
+                }
+            }
             $event = $locked->event;
             $category = $locked->categoryEvent;
             abort_unless($category?->nominations_published, 404);
@@ -330,61 +364,10 @@ class InvitationService
             if (! is_finite($fee) || $fee < 0 || (float) $rawFee !== $fee) {
                 throw ValidationException::withMessages(['invitation' => 'The configured entry fee is invalid.']);
             }
-            if ($locked->status === InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT && $locked->order_id) {
-                $existing = RegistrationOrder::query()->lockForUpdate()->findOrFail($locked->order_id);
-                $items = $existing->items()->lockForUpdate()->get();
-                $item = $items->count() === 1 ? $items->first() : null;
-                abort_unless($item && (int) $item->registration_id === (int) $locked->registration_id
-                    && (int) $item->category_event_id === (int) $locked->category_event_id
-                    && (int) $item->player_id === (int) $locked->player_id
-                    && (int) $item->user_id === (int) $existing->user_id, 404);
-                $entry = CategoryEventRegistration::where('registration_id', $locked->registration_id)
-                    ->where('category_event_id', $locked->category_event_id)->lockForUpdate()->firstOrFail();
-                if ((int) $existing->pay_status === 1 || $existing->payfast_paid || $existing->wallet_debited
-                    || filled($existing->payfast_pf_payment_id) || filled($existing->wallet_transaction_id)
-                    || (int) $entry->payment_status_id === 1 || filled($entry->pf_transaction_id)
-                    || $entry->withdrawn_at || $entry->refunded_at
-                    || \App\Models\Transaction::where('custom_int5', $existing->id)
-                        ->where(fn ($query) => $query->whereNull('custom_str5')->orWhere('custom_str5', ''))->exists()
-                    || \App\Models\WalletTransaction::where('source_id', $existing->id)
-                        ->where('source_type', 'event_registration_wallet_payment')->exists()) {
-                    throw ValidationException::withMessages(['payment' => 'This checkout already has payment or withdrawal evidence and cannot be restarted.']);
-                }
-                if ($existing->payfast_handed_off_at) {
-                    if ((int) $existing->user_id !== (int) $user->id) {
-                        throw ValidationException::withMessages([
-                            'invitation' => 'Payment is already being processed for this player. Please wait for it to resolve.',
-                        ]);
-                    }
-
-                    return $existing;
-                }
-
+            if ($existing) {
                 app(RegistrationPaymentService::class)->cancelPayment($existing);
                 $this->resetCancelledPaymentAttempt($locked, $existing);
                 $locked->refresh();
-            }
-
-            $event = $locked->event;
-            $category = $locked->categoryEvent;
-            if (! $event?->isInterprovincialTrials()
-                || ! $event->published || ! $event->hasOpenRegistrationLifecycle()
-                || (int) $event->signUp !== 1) {
-                throw ValidationException::withMessages(['invitation' => 'Registration for this trial is closed.']);
-            }
-            if (! $category || (int) $category->event_id !== (int) $event->id
-                || ! in_array($locked->status, ['queued', 'sent', 'open_registration'], true)) {
-                throw ValidationException::withMessages(['invitation' => 'This invitation is no longer available.']);
-            }
-            $closeAt = $event->registrationClosesAt()?->endOfDay();
-            if ($closeAt && now()->gt($closeAt)) {
-                throw ValidationException::withMessages(['invitation' => 'The registration deadline has passed.']);
-            }
-
-            try {
-                app(EntryEligibilityService::class)->assertCanRegister($category, (int) $locked->player_id);
-            } catch (\RuntimeException $exception) {
-                throw ValidationException::withMessages(['invitation' => $exception->getMessage()]);
             }
 
             $registration = Registration::create([]);
@@ -392,11 +375,6 @@ class InvitationService
             $registration->categoryEvents()->syncWithoutDetaching([
                 $category->id => ['payment_status_id' => 0, 'user_id' => $user->id, 'status' => 'pending_checkout'],
             ]);
-            $rawFee = $event->entryFee;
-            $fee = round((float) ($rawFee ?? 0), 2);
-            if (! is_finite($fee) || $fee < 0 || (float) $rawFee !== $fee) {
-                throw ValidationException::withMessages(['invitation' => 'The configured entry fee is invalid.']);
-            }
             $order = RegistrationOrder::create([
                 'user_id' => $user->id, 'payfast_amount_due' => $fee, 'total_fee' => $fee,
                 'wallet_reserved' => 0, 'wallet_debited' => false, 'payfast_paid' => false,
@@ -415,6 +393,14 @@ class InvitationService
                 'registration_id' => $registration->id, 'order_id' => $order->id,
                 'status' => InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT, 'accepted_at' => now(),
             ]);
+
+            if ($existing && (int) $existing->user_id !== (int) $user->id) {
+                activity('interprovincial_trial_invitation')->performedOn($locked)->causedBy($user)
+                    ->withProperties(['event_id' => $event->id, 'nomination_id' => $locked->nomination_id,
+                        'previous_order_id' => $existing->id, 'order_id' => $order->id,
+                        'previous_payer_id' => $existing->user_id, 'payer_id' => $user->id])
+                    ->log('Unpaid trial checkout restarted by sponsor');
+            }
 
             if ($fee === 0.0) {
                 $order = app(RegistrationPaymentService::class)->markFreeOrderPaid($order);

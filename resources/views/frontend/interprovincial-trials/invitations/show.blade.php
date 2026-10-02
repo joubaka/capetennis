@@ -9,7 +9,7 @@
   @if($registrationOpen)<div class="alert alert-secondary">Not registered.</div><form class="d-inline-block" method="POST" action="{{ route('interprovincial-trials.nominations.register', [$invitation->event, $invitation->categoryEvent, $invitation->nomination]) }}">@csrf<button class="btn btn-primary" type="submit">Register {{ $invitation->player->name }}</button></form>
   @else<div class="alert alert-info">Registration closed.</div>@endif
 @elseif($invitation->status === \App\Models\InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT)
-  @if($registrationOpen)<form class="d-inline-block" method="POST" action="{{ route('interprovincial-trials.invitations.register', $invitation) }}">@csrf<button class="btn btn-primary" type="submit">Register {{ $invitation->player->name }}</button></form>
+  @if($registrationOpen)<form class="d-inline-block" method="POST" action="{{ route('interprovincial-trials.invitations.register', $invitation) }}">@csrf<button class="btn btn-primary" type="submit">Resume registration</button></form>
   @else<div class="alert alert-info">Registration closed.</div>@endif
 @elseif(in_array($invitation->status, ['queued', 'sent'], true) && $registrationOpen)
   <form class="d-inline-block" method="POST" action="{{ route('interprovincial-trials.invitations.register', $invitation) }}">@csrf<button class="btn btn-primary" type="submit">Register {{ $invitation->player->name }}</button></form>

@@ -769,7 +769,8 @@ class DrawController extends Controller
       ->wherePivot('status', '!=', 'withdrawn')
       ->wherePivotNull('deleted_at')
       ->when($categoryEvent->event?->isInterprovincialTrials(), fn ($query) => $query
-        ->wherePivot('status', 'active')->wherePivot('payment_status_id', 1))
+        ->where('category_event_registrations.status', 'active')
+        ->where('category_event_registrations.payment_status_id', 1))
       ->get();
 
     foreach ($registrations as $registration) {

@@ -19,6 +19,46 @@ env:
   AWS_EC2_METADATA_DISABLED: "true"
 
 jobs:
+  mysql-registration-status:
+    name: MySQL Registration Status Regression
+    runs-on: ubuntu-latest
+    needs: quality
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-test-password
+          MYSQL_DATABASE: ct_testing
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -pci-test-password"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      APP_ENV: testing
+      APP_KEY: base64:YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=
+      DB_CONNECTION: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_DATABASE: ct_testing
+      DB_USERNAME: root
+      DB_PASSWORD: ci-test-password
+      LOG_CHANNEL: "null"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: pdo, pdo_mysql, mbstring, xml, json
+          coverage: none
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Test legacy MySQL registration status upgrade
+        run: php vendor/bin/phpunit tests/Feature/CategoryEventRegistrationStatusMigrationTest.php --fail-on-skipped
+
   # ---------------------------------------------------------------
   # Code quality gate — runs fast, blocks all other jobs if it fails
   # ---------------------------------------------------------------

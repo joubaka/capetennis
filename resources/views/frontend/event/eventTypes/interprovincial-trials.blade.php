@@ -62,8 +62,8 @@
                             @elseif($trialInvitation->status === \App\Models\InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT)
                               <span class="badge bg-label-secondary">Not registered</span>
                               @if($registrationOpen)
-                                @auth<form method="POST" action="{{ route('interprovincial-trials.nominations.register', [$event, $categoryEvent, $nomination]) }}">@csrf<button type="submit" class="btn btn-sm btn-primary">Register</button></form>
-                                @else<a class="btn btn-sm btn-primary" href="{{ route('login', ['redirect' => route('events.show', ['event' => $event, 'player' => $nomination->player_id, 'nomination' => $nomination->id], false).'#trial-nomination-'.$nomination->id]) }}">Sign in to register</a>@endauth
+                                @auth<form method="POST" action="{{ route('interprovincial-trials.nominations.register', [$event, $categoryEvent, $nomination]) }}">@csrf<button type="submit" class="btn btn-sm btn-primary">Resume registration</button></form>
+                                @else<a class="btn btn-sm btn-primary" href="{{ route('login', ['redirect' => route('events.show', ['event' => $event, 'player' => $nomination->player_id, 'nomination' => $nomination->id], false).'#trial-nomination-'.$nomination->id]) }}">Sign in to resume</a>@endauth
                               @endif
                             @elseif($trialInvitation->status === \App\Models\InterprovincialTrialInvitation::PAID_CONFIRMED)
                               <span class="badge bg-label-success">Registered</span>

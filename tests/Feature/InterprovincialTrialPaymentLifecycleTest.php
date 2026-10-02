@@ -306,6 +306,17 @@ class InterprovincialTrialPaymentLifecycleTest extends TestCase
             $this->assertSame(0, $draw->registrations()->count());
         }
         $this->assertSame(0, $draw->registrations()->count());
+        \Illuminate\Support\Facades\Event::fake([\App\Events\PaymentCompleted::class]);
+        app(\App\Domain\Payments\Services\RegistrationPaymentService::class)->finalizePayment($order, [
+            'pf_payment_id' => 'PF-DRAW-CONFIRMED',
+            'payfast_amount_due' => 125,
+            'payfast_amount_received' => 125,
+            'payment_method' => 'payfast',
+        ]);
+        $this->actingAs($this->admin)->post(route('draws.import-category', $draw))->assertOk();
+        $this->actingAs($this->admin)->post(route('draws.import-category', $draw))->assertOk();
+        $this->assertSame(1, $draw->registrations()->count());
+        $this->assertSame($entry->registration_id, $draw->registrations()->sole()->id);
     }
 
     public function test_pending_admin_withdrawal_and_withdrawn_manual_settlement_are_blocked(): void

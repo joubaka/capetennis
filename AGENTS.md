@@ -10,13 +10,14 @@
 
 ## Registration and withdrawal invariants
 
+- Open event registration is payer-sponsored: any otherwise eligible authenticated user may register an eligible player without owning or linking to that player. Preserve event-specific nomination, invitation, agreement, profile, publication and eligibility gates; sponsorship does not grant player ownership or access to another payer's checkout.
 - Supported flows include individual, team-player, admin/free, PayFast-only, wallet-only, and hybrid wallet/PayFast registrations.
 - Verify ownership and team/player/event relationships server-side. Never trust submitted financial values or identifiers without resolving them against the order.
 - Create paid admin entries through `EntryService::addPlayerAsAdmin()`.
 - Accept refund requests only after withdrawal. Enforce ownership, withdrawal state, deadlines, payment state, and idempotency.
 - Preserve original paid state as an audit record after refunds; refund status records the reversal.
 - Withdrawals must remove active draw, fixture, or roster participation. A late team withdrawal with no refund path must free its roster slot immediately.
-- Interprovincial Trials registration is payer-sponsored: sponsorship authorization must never depend on owning or linking to the nominee. While registration is open, any otherwise eligible authenticated user, including the normal agreement and profile gates, may register an exact currently published nominee without an email invitation; that actor becomes the payer without gaining player ownership or creating a `user_players` link. Only that payer may resume or cancel the resulting checkout; declining remains restricted to an account already linked to the nominated player.
+- Interprovincial Trials registration is payer-sponsored: sponsorship authorization must never depend on owning or linking to the nominee. While registration is open, any otherwise eligible authenticated user, including the normal agreement and profile gates, may register an exact currently published nominee without an email invitation; that actor becomes the payer without gaining player ownership or creating a `user_players` link. Any otherwise eligible authenticated user may restart an unpaid checkout before payment handoff through the canonical cancellation and reservation-release services, becoming the new payer without gaining player ownership. Only the current payer may access or cancel their order; paid or in-flight checkouts cannot be taken over; declining remains restricted to an account already linked to the nominated player.
 
 ## Mail, secrets, and dashboards
 
