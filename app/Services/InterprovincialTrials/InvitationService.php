@@ -161,15 +161,16 @@ class InvitationService
         app(InvitationMailSecurity::class)->assertAllowedFrom($composition['from_address']);
         $requestToken = (string) Str::uuid();
         $recipientHash = $this->attemptRecipientHash($selection['recipients']);
-        $compositionHash = $this->compositionHash($composition);
         $expiresAt = now()->addMinutes(15)->getTimestamp();
+        $rendered = $this->renderAttemptMessages($event, $selection['recipients'], $composition, $expiresAt);
+        $compositionHash = $this->compositionHash([...$composition, 'rendered' => $rendered]);
         return $selection + $composition + [
             'request_token' => $requestToken,
             'recipient_hash' => $recipientHash,
             'composition_hash' => $compositionHash,
             'review_expires_at' => $expiresAt,
             'review_proof' => app(InvitationMailSecurity::class)->reviewProof($actor->id, 'interpro:'.$event->id, $requestToken, $recipientHash, $compositionHash, $expiresAt),
-            'rendered_body' => view('emails.interprovincial-trials.invitation-preview', $composition)->render(),
+            'rendered_body' => collect($selection['recipients'])->map(fn ($recipient) => '<div class="card card-body mb-3"><p><strong>To:</strong> '.e($recipient['email']).'</p><h5>'.e($composition['subject']).'</h5>'.$rendered[$recipient['nomination_id']].'</div>')->implode(''),
             'sender_warning' => 'The From address must be verified by the configured mail provider or delivery may fail.',
         ];
     }
@@ -193,7 +194,8 @@ class InvitationService
                 throw ValidationException::withMessages(['recipients' => 'The recipients changed. Preview the exact list again.']);
             }
             $composition = $this->normalizeComposition($event, $request);
-            if (! hash_equals($request['composition_hash'], $this->compositionHash($composition))) {
+            $rendered = $this->renderAttemptMessages($event, $selection['recipients'], $composition, (int) $request['review_expires_at']);
+            if (! hash_equals($request['composition_hash'], $this->compositionHash([...$composition, 'rendered' => $rendered]))) {
                 throw ValidationException::withMessages(['message' => 'The reviewed email changed. Review the complete email again before sending.']);
             }
             if (! $selection['recipients']) {
@@ -245,6 +247,8 @@ class InvitationService
                         'related_type' => InterprovincialTrialInvitation::class, 'related_id' => $invitation->id,
                         'event_name' => $event->name, 'category_name' => $recipient['category'],
                     ];
+                $payload['rendered_html'] = $rendered[$recipient['nomination_id']];
+                $payload['rendered_subject'] = $composition['subject'];
                 $payload['payload_integrity'] = app(InvitationMailSecurity::class)->payloadIntegrity($payload);
                 $log = BulkEmailLog::create([
                     'mail_type' => 'interprovincial_trial_invitation',
@@ -1090,6 +1094,25 @@ class InvitationService
     private function compositionHash(array $composition): string
     {
         return hash_hmac('sha256', json_encode($composition, JSON_THROW_ON_ERROR), (string) config('app.key'));
+    }
+
+    /** Render without creating invitations, so reviewing never changes a nominee's lifecycle. */
+    private function renderAttemptMessages(Event $event, array $recipients, array $composition, int $reviewExpiresAt): array
+    {
+        $close = $event->registrationClosesAt()?->endOfDay();
+        $reviewAt = \Illuminate\Support\Carbon::createFromTimestamp($reviewExpiresAt)->subMinutes(15);
+        $linkExpires = $close && $close->gt($reviewAt) ? $close : $reviewAt->copy()->addDays(7);
+        $rendered = [];
+        foreach ($recipients as $recipient) {
+            $url = ! empty($recipient['invitation_id'])
+                ? \Illuminate\Support\Facades\URL::temporarySignedRoute('interprovincial-trials.invitations.show', $linkExpires, ['invitation' => $recipient['invitation_id']])
+                : route('events.show', ['event' => $event->id, 'nomination' => $recipient['nomination_id']]);
+            $rendered[$recipient['nomination_id']] = view('emails.interprovincial-trials.invitation', [
+                'recipientName' => $recipient['name'], 'messageBody' => $composition['body'], 'invitationUrl' => $url,
+            ])->render();
+        }
+
+        return $rendered;
     }
 
     private function moneyInCents(mixed $amount): int

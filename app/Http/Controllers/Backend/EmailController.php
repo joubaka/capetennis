@@ -31,6 +31,12 @@ class EmailController extends Controller
     if ($eventId) {
       $event = Event::findOrFail($eventId);
       $this->authorize('event-email.bulk-send', $event);
+      if ($event->isTeam()) {
+        return redirect()->route('backend.event-communications.index', $event)->with('success', 'Review recipients and the exact message in Communications before sending.');
+      }
+      if ($event->isInterprovincialTrials()) {
+        return redirect()->route('backend.interprovincial-trials.communications.index', $event)->with('success', 'Review recipients and the exact message in Communications before sending.');
+      }
     }
 
     // 🧩 Automatically pick mailer

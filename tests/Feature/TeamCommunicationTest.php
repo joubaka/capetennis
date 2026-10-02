@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Mail\TeamActionMail;
 use App\Events\PaymentCompleted;
 use App\Models\Event;
+use App\Models\EventCommunicationBatch;
 use App\Models\Player;
 use App\Models\Team;
 use App\Models\TeamPaymentOrder;
@@ -22,16 +23,15 @@ class TeamCommunicationTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_registration_confirmation_is_queued_to_payer(): void
+    public function test_registration_confirmation_is_prepared_for_review_to_payer(): void
     {
         Mail::fake();
         $order = $this->order();
 
         app(SendTeamRegistrationConfirmation::class)->handle(new PaymentCompleted($order));
 
-        Mail::assertQueued(TeamActionMail::class, fn ($mail) =>
-            $mail->hasTo($order->user->email) && $mail->action === 'registration'
-        );
+        Mail::assertNothingQueued();
+        $this->assertSame($order->user->email, EventCommunicationBatch::sole()->recipients[0]['email']);
     }
 
     public function test_withdrawal_notifies_payer_super_users_and_event_admins_once(): void
@@ -45,9 +45,10 @@ class TeamCommunicationTest extends TestCase
 
         app(TeamCommunicationService::class)->withdrawal($order->fresh(), ['refund_available' => true]);
 
-        Mail::assertQueuedCount(3);
+        Mail::assertNothingQueued();
+        $this->assertDatabaseCount('event_communication_batches', 3);
         foreach ([$order->user->email, $super->email, $admin->email] as $email) {
-            Mail::assertQueued(TeamActionMail::class, fn ($mail) => $mail->hasTo($email));
+            $this->assertContains($email, EventCommunicationBatch::all()->flatMap(fn ($batch) => array_column($batch->recipients, 'email'))->all());
         }
     }
 
@@ -73,8 +74,8 @@ class TeamCommunicationTest extends TestCase
 
         app(TeamCommunicationService::class)->withdrawal($order->fresh());
 
-        Mail::assertQueued(TeamActionMail::class, fn ($mail) => $mail->hasTo($super->email));
-        Mail::assertNotQueued(TeamActionMail::class, fn ($mail) => $mail->hasTo($order->user->email));
+        Mail::assertNothingQueued();
+        $this->assertSame($super->email, EventCommunicationBatch::sole()->recipients[0]['email']);
     }
 
     private function order(): TeamPaymentOrder

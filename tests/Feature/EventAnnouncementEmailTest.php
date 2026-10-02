@@ -6,7 +6,7 @@ use App\Jobs\SendBulkEmailJob;
 use App\Models\Announcement;
 use App\Models\BulkEmailLog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\{Log, Queue};
 use Tests\TestCase;
 
 class EventAnnouncementEmailTest extends TestCase
@@ -78,5 +78,38 @@ class EventAnnouncementEmailTest extends TestCase
         $this->assertEquals(1, BulkEmailLog::sent()->count());
         $this->assertEquals(1, BulkEmailLog::failed()->count());
         $this->assertEquals(1, BulkEmailLog::skipped()->count());
+    }
+    public function test_bulk_email_job_logs_only_a_keyed_recipient_reference(): void
+    {
+        $email = 'private-recipient@example.test';
+        $log = BulkEmailLog::create(['mail_type'=>'event_announcement','recipient_email'=>$email,'status'=>'sent','sent_at'=>now()]);
+        Log::spy();
+
+        (new SendBulkEmailJob($log->id))->handle();
+
+        Log::shouldHaveReceived('info')->once()->withArgs(function (string $message, array $context) use ($email): bool {
+            return str_contains($message,'already processed')
+                && ! array_key_exists('recipient',$context)
+                && ! str_contains(json_encode($context),$email)
+                && ($context['recipient_ref'] ?? '') !== substr(hash('sha256',$email),0,12)
+                && preg_match('/^[a-f0-9]{12}$/',$context['recipient_ref'] ?? '') === 1;
+        });
+    }
+    public function test_bulk_email_job_redacts_recipient_from_transport_failures(): void
+    {
+        $email = 'private-failure@example.test';
+        $log = BulkEmailLog::create(['mail_type'=>'event_announcement','recipient_email'=>$email,'status'=>'queued','queued_at'=>now()]);
+        $job = new class($log->id, true) extends SendBulkEmailJob {
+            protected function buildMailable(BulkEmailLog $log, string $fromAddress)
+            {
+                throw new \RuntimeException('SMTP refused '.$log->recipient_email);
+            }
+        };
+        Log::spy();
+
+        $job->handle();
+
+        $this->assertSame('SMTP refused [REDACTED_RECIPIENT]',$log->fresh()->error_message);
+        Log::shouldHaveReceived('error')->once()->withArgs(fn(string $message,array $context):bool=>!str_contains(json_encode($context),$email));
     }
 }

@@ -80,6 +80,7 @@ class RegistrationCategoryMoveController extends Controller
                 Mail::to($player->email)->send(new CategoryMovedMail([
                     'player_name'  => trim($player->name . ' ' . $player->surname),
                     'event_name'   => $event->name ?? 'Event',
+                    'event_context' => $event,
                     'old_category' => $oldCategoryName,
                     'new_category' => $newCategoryName,
                     'changed_by'   => auth()->user()->userName ?? auth()->user()->name ?? 'User',

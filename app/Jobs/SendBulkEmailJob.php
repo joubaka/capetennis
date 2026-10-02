@@ -70,11 +70,11 @@ class SendBulkEmailJob implements ShouldQueue
         }
 
         // Skip if already sent or skipped
-        if (in_array($log->status, ['sent', 'skipped'])) {
+        if (in_array($log->status, ['sent', 'skipped', 'sending', 'acceptance_unknown'])) {
             Log::info('[SendBulkEmailJob] Email already processed, skipping', [
                 'log_id' => $log->id,
                 'status' => $log->status,
-                'recipient' => $log->recipient_email,
+                'recipient_ref' => $this->recipientReference($log),
             ]);
             return;
         }
@@ -82,11 +82,13 @@ class SendBulkEmailJob implements ShouldQueue
         if ($this->manualRetryOnly && ! BulkEmailLog::whereKey($log->id)->where('status', 'queued')->whereNull('sent_at')->update(['status' => 'sending'])) {
             return;
         }
+        if (! $this->manualRetryOnly) $log->update(['status' => 'sending']);
+        $transportAccepted = false;
 
         Log::info('[SendBulkEmailJob] Sending bulk email', [
             'log_id' => $log->id,
             'mail_type' => $log->mail_type,
-            'recipient' => $log->recipient_email,
+            'recipient_ref' => $this->recipientReference($log),
             'attempt' => $this->attempts(),
         ]);
 
@@ -110,35 +112,55 @@ class SendBulkEmailJob implements ShouldQueue
                 return;
             }
 
+            // Only stored approved previews supply this flag; message content cannot set it.
+            $reviewed = !empty($log->payload['event_communication_batch_id'])
+                ? \App\Models\EventCommunicationBatch::whereKey($log->payload['event_communication_batch_id'])->where('event_id', $log->payload['event_id'] ?? 0)->whereNotNull('approved_at')->exists()
+                : (!empty($log->payload['preview_id']) && \App\Models\TrialMailPreview::whereKey($log->payload['preview_id'])->where('event_id', $log->payload['event_id'] ?? 0)->whereNotNull('committed_at')->exists());
+            $mailable->with('event_mail_reviewed', $reviewed);
+            if (! empty($log->payload['event_id'])) {
+                $mailable->with('review_event', \App\Models\Event::find($log->payload['event_id']));
+            }
+
             // Send the email
-            Mail::mailer($mailer)->to($log->recipient_email)->send($mailable);
+            $mailTransport = Mail::mailer($mailer);
+            $sent = $mailTransport->to($log->recipient_email)->sendNow($mailable);
+            $transportAccepted = $sent !== null;
 
             // Mark as sent
-            $log->markAsSent();
+            $log->recordTransportResult($sent, $mailTransport->getSymfonyTransport(), $mailer);
             $this->syncRankingReviewRecipient($log, 'sent');
 
             Log::info('[SendBulkEmailJob] Email sent successfully', [
                 'log_id' => $log->id,
-                'recipient' => $log->recipient_email,
+                'recipient_ref' => $this->recipientReference($log),
                 'mailer' => $mailer,
             ]);
 
         } catch (\Throwable $e) {
+            if ($transportAccepted) {
+                try {
+                    $log->update(['status' => 'acceptance_unknown', 'sent_at' => now(), 'error_message' => 'Transport returned successfully, but receipt storage failed. Check the mail server before attempting another send.']);
+                } catch (\Throwable) {
+                    Log::critical('Email transport returned successfully but evidence could not be stored; do not resend without server verification.', ['log_id' => $log->id]);
+                }
+                return;
+            }
+            $redactedError = $this->redactedError($e, $log);
             Log::error('[SendBulkEmailJob] Failed to send email', [
                 'log_id' => $log->id,
-                'recipient' => $log->recipient_email,
-                'error' => $e->getMessage(),
+                'recipient_ref' => $this->recipientReference($log),
+                'error' => $redactedError,
                 'attempt' => $this->attempts(),
             ]);
 
             // Mark as failed if this is the last attempt
-            if ($this->manualRetryOnly || $this->attempts() >= $this->tries) {
-                $log->markAsFailed($e->getMessage());
-                $this->syncRankingReviewRecipient($log, 'failed', $e->getMessage());
+            if (! $log->sent_at) {
+                $log->markAsFailed($redactedError);
+                $this->syncRankingReviewRecipient($log, 'failed', $redactedError);
             }
 
             // Rate-limit releases remain retryable; explicit SMTP failures require admin action.
-            if (! $this->manualRetryOnly) throw $e;
+            return;
         }
     }
 
@@ -269,18 +291,38 @@ class SendBulkEmailJob implements ShouldQueue
      */
     public function failed(\Throwable $exception): void
     {
+        $log = BulkEmailLog::find($this->logId);
+        $redactedError = $this->redactedError($exception, $log);
         Log::critical('[SendBulkEmailJob] Job failed permanently', [
             'log_id' => $this->logId,
-            'error' => $exception->getMessage(),
+            'recipient_ref' => $log ? $this->recipientReference($log) : null,
+            'error' => $redactedError,
             'attempts' => $this->attempts(),
         ]);
 
         // Ensure log is marked as failed
-        $log = BulkEmailLog::find($this->logId);
-        if ($log && $log->status !== 'failed') {
-            $log->markAsFailed($exception->getMessage());
-            $this->syncRankingReviewRecipient($log, 'failed', $exception->getMessage());
+        if ($log && ! $log->sent_at && ! in_array($log->status, ['failed', 'skipped', 'sending', 'acceptance_unknown'], true)) {
+            $log->markAsFailed($redactedError);
+            $this->syncRankingReviewRecipient($log, 'failed', $redactedError);
         }
+    }
+
+    private function recipientReference(BulkEmailLog $log): string
+    {
+        return substr(hash_hmac(
+            'sha256',
+            'bulk-email-recipient-reference|'.mb_strtolower(trim($log->recipient_email)),
+            (string) config('app.key'),
+        ), 0, 12);
+    }
+
+    private function redactedError(\Throwable $exception, ?BulkEmailLog $log): string
+    {
+        if (! $log || $log->recipient_email === '') {
+            return $exception->getMessage();
+        }
+
+        return str_ireplace($log->recipient_email, '[REDACTED_RECIPIENT]', $exception->getMessage());
     }
 
     private function syncRankingReviewRecipient(BulkEmailLog $log, string $status, ?string $error = null): void

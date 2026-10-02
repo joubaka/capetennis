@@ -525,6 +525,14 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::post('batches/{batch}/auto-replacement', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'toggleAutoReplacement'])->name('toggle-auto');
   });
 
+  Route::prefix('event/{event}/communications')->name('backend.event-communications.')->group(function () {
+    Route::get('/', [\App\Http\Controllers\Backend\EventCommunicationController::class, 'index'])->name('index');
+    Route::post('/preview', [\App\Http\Controllers\Backend\EventCommunicationController::class, 'preview'])->name('preview');
+    Route::post('/send', [\App\Http\Controllers\Backend\EventCommunicationController::class, 'send'])->name('send');
+    Route::post('/drafts/{draft}/preview', [\App\Http\Controllers\Backend\EventCommunicationController::class, 'reviewDraft'])->name('drafts.preview');
+    Route::post('/logs/{log}/retry-preview', [\App\Http\Controllers\Backend\EventCommunicationController::class, 'retryPreview'])->name('retry-preview');
+  });
+
   Route::prefix('team-selection')->name('backend.team-selection.')->group(function () {
     Route::get('events/{event}', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'index'])->name('index');
     Route::get('events/{event}/users', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'searchUsers'])->name('users.search');

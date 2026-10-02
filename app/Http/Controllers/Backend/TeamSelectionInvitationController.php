@@ -108,6 +108,8 @@ class TeamSelectionInvitationController extends Controller
 
     public function sendFinalReminder(Request $request, Event $event, EventRegion $eventRegion, RegionManagerAccessService $access, TeamSelectionReminderService $reminders)
     {
+        $this->authorizeRegion($event, $eventRegion, $request->user());
+        if ($event->isTeam()) return $this->reviewInCommunications($request, $event, ['scope' => 'region', 'region_id' => $eventRegion->region_id]);
         abort_unless($event->isTeam(), 404);
         abort_unless((int) $eventRegion->event_id === (int) $event->id, 404);
         abort_unless($access->isEventManager($request->user(), $event), 403);
@@ -241,7 +243,9 @@ class TeamSelectionInvitationController extends Controller
         $request->session()->put('team_selection_email_previews.'.$selectionImport->id, $campaign['hash']);
         $subject = $campaign['subject'];
 
-        return view('backend.team-selection.email-preview', compact('invitation', 'campaign', 'kind', 'subject'));
+        $previewVariants = $selectionImport->invitations()->with(['selectionImport.event', 'region', 'team', 'player'])->where('status', 'invited')->orderBy('queue_position')->get()->map(fn ($item) => ['invitation' => $item, 'status' => $item->status, 'kind' => 'invitation']);
+        $recipients = $previewVariants->map(fn ($variant) => ['name' => $variant['invitation']->player?->full_name, 'email' => app(\App\Services\TeamSelection\TeamSelectionContactService::class)->primaryEmail($variant['invitation']->player)])->all();
+        return view('backend.team-selection.email-preview', compact('invitation', 'campaign', 'kind', 'subject', 'previewVariants', 'recipients'));
     }
 
     public function restart(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamRankingImportService $service)
@@ -282,6 +286,8 @@ class TeamSelectionInvitationController extends Controller
 
     public function retryFailed(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitationService $service)
     {
+        $this->authorizeImport($event, $selectionImport, $request->user());
+        if ($event->isTeam()) return $this->reviewInCommunications($request, $event);
         abort_unless((int) $selectionImport->event_id === (int) $event->id, 404);
         $this->authorizeImport($event, $selectionImport, $request->user());
         $queued = $service->retryFailedEmails($selectionImport, $request->user());
@@ -436,6 +442,9 @@ class TeamSelectionInvitationController extends Controller
     {
         abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
         $this->authorizeImport($event, $selectionImport, $request->user());
+        if ($event->isTeam()) return $this->reviewInCommunications($request, $event, ['scope' => 'individual', 'individual_key' => 'player:'.$invitation->player_id]);
+        abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
+        $this->authorizeImport($event, $selectionImport, $request->user());
         $email = $service->sendRestoredInvitation($invitation, $request->user());
 
         return back()->with('success', "Invitation queued for {$email} after the restored team position was approved.");
@@ -475,6 +484,8 @@ class TeamSelectionInvitationController extends Controller
 
     public function sendPendingActivatedInvitations(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitationService $service)
     {
+        $this->authorizeImport($event, $selectionImport, $request->user());
+        if ($event->isTeam()) return $this->reviewInCommunications($request, $event);
         $this->authorizeImport($event, $selectionImport, $request->user());
         $data = $request->validate([
             'confirm_recipients' => ['accepted'],
@@ -697,6 +708,9 @@ class TeamSelectionInvitationController extends Controller
     {
         abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
         $this->authorizeImport($event, $selectionImport, $request->user());
+        if ($event->isTeam()) return $this->reviewInCommunications($request, $event, ['scope' => 'individual', 'individual_key' => 'player:'.$invitation->player_id]);
+        abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
+        $this->authorizeImport($event, $selectionImport, $request->user());
         $email = $service->resendInvitation($invitation, $request->user());
 
         return back()->with('success', "Invitation re-queued for {$email} using the saved campaign message.");
@@ -705,6 +719,7 @@ class TeamSelectionInvitationController extends Controller
     public function sendRosterMessage(Request $request, Event $event, EventRegion $eventRegion, BulkMailDispatcher $mailer, TeamSelectionEmailAudienceService $audiences)
     {
         $this->authorizeRegion($event, $eventRegion, $request->user());
+        if ($event->isTeam()) return $this->reviewInCommunications($request, $event, ['scope' => 'region', 'region_id' => $eventRegion->region_id]);
         $data = $request->validate([
             'target_type' => ['required', 'in:region,team,player,unlinked_imported,linked_unpaid,linked_all,filtered'],
             'team_id' => ['nullable', 'required_if:target_type,team,player', 'integer', 'exists:teams,id'],
@@ -775,6 +790,12 @@ class TeamSelectionInvitationController extends Controller
     public function storeAnnouncement(Request $request, Event $event, EventRegion $eventRegion, BulkMailDispatcher $mailer)
     {
         $this->authorizeRegion($event, $eventRegion, $request->user());
+        if ($event->isTeam() && $request->boolean('send_email')) {
+            $request->validate(['title' => 'required|string|max:255', 'message' => 'required|string|max:20000']);
+            TeamSelectionRegionAnnouncement::create(['event_id' => $event->id, 'event_region_id' => $eventRegion->id, 'region_id' => $eventRegion->region_id, 'created_by' => $request->user()->id, 'title' => $request->title, 'message' => $request->message]);
+
+            return $this->reviewInCommunications($request, $event, ['scope' => 'region', 'region_id' => $eventRegion->region_id]);
+        }
         $data = $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'message' => ['required', 'string', 'max:20000'],
@@ -817,6 +838,8 @@ class TeamSelectionInvitationController extends Controller
 
     public function retryAnnouncement(Request $request, Event $event, EventRegion $eventRegion, TeamSelectionRegionAnnouncement $announcement, BulkMailDispatcher $mailer)
     {
+        $this->authorizeRegion($event, $eventRegion, $request->user());
+        if ($event->isTeam()) return $this->reviewInCommunications($request, $event, ['scope' => 'region', 'region_id' => $eventRegion->region_id]);
         abort_unless((int) $announcement->event_region_id === (int) $eventRegion->id, 404);
         $this->authorizeRegion($event, $eventRegion, $request->user());
         $currentRecipients = $this->announcementRecipients($event, $eventRegion);
@@ -889,6 +912,13 @@ class TeamSelectionInvitationController extends Controller
         ]);
     }
 
+    private function reviewInCommunications(Request $request, Event $event, array $options = [])
+    {
+        return redirect()->route('backend.event-communications.index', $event)
+            ->withInput($options + ['subject' => $request->input('subject', $request->input('title', $event->name.' — Update')), 'body' => $request->input('message', ''), 'filter' => 'all', 'recipients' => 'both'])
+            ->with('success', 'Review the exact recipients and messages in Communications before approving this email.');
+    }
+
     public function previewEventRosterAudience(Request $request, Event $event, TeamSelectionEmailAudienceService $audiences, RegionManagerAccessService $access)
     {
         abort_unless($event->isTeam(), 404);
@@ -924,6 +954,8 @@ class TeamSelectionInvitationController extends Controller
 
     public function sendEventRosterMessage(Request $request, Event $event, BulkMailDispatcher $mailer, TeamSelectionEmailAudienceService $audiences, RegionManagerAccessService $access)
     {
+        abort_unless($access->isEventManager($request->user(), $event), 403);
+        if ($event->isTeam()) return $this->reviewInCommunications($request, $event);
         abort_unless($event->isTeam(), 404);
         abort_unless($access->isEventManager($request->user(), $event), 403);
         $data = $this->validateEventRosterAudience($request, true);

@@ -503,16 +503,13 @@ class InterprovincialTrialInvitationController extends Controller
     public function saveMessage(Request $request, Event $event, InterprovincialTrialInvitationBatch $batch, InvitationService $service) { abort(404); }
     public function review(Request $request,Event $event,InterprovincialTrialInvitationBatch $batch,InvitationService $service) { abort(404); }
     public function send(Request $request, Event $event,InterprovincialTrialInvitationBatch $batch,InvitationService $service) { abort(404); }
-    public function retry(Event $event,InterprovincialTrialInvitationBatch $batch,\App\Models\InterprovincialTrialInvitation $invitation,InvitationService $service) { $this->authorizeBatch($event,$batch); abort_unless((int)$invitation->batch_id===(int)$batch->id && (int)$invitation->event_id===(int)$event->id,404); $retried=$service->retryFailed($batch,$invitation); return back()->with('success',$retried?'The failed invitation was queued for retry.':'The invitation is already queued, sending, or sent.'); }
+    public function retry(Event $event,InterprovincialTrialInvitationBatch $batch,\App\Models\InterprovincialTrialInvitation $invitation,InvitationService $service) { $this->authorizeBatch($event,$batch); abort_unless((int)$invitation->batch_id===(int)$batch->id && (int)$invitation->event_id===(int)$event->id,404); return redirect()->route('backend.interprovincial-trials.communications.index',$event)->with('success','Review the exact recipient and message in Communications before approving a new send. No email was queued.'); }
     public function retryFollowUp(Event $event, InterprovincialTrialInvitation $invitation, InvitationService $service)
     {
         $this->authorizeEvent($event);
         abort_unless((int) $invitation->event_id === (int) $event->id, 404);
-        $retried = $service->retryFailedFollowUp($event, $invitation);
-
-        return back()->with('success', $retried
-            ? 'The failed follow-up was queued again with its original recipient and message.'
-            : 'There is no failed follow-up to retry.');
+        return redirect()->route('backend.interprovincial-trials.communications.index',$event)
+            ->with('success','Review the exact recipient and follow-up message in Communications before approving a new send. No email was queued.');
     }
     private function authorizeBatch(Event $event,InterprovincialTrialInvitationBatch $batch): void { $this->authorizeEvent($event); abort_unless((int)$batch->event_id===(int)$event->id,404); }
     private function authorizeEvent(Event $event): void { abort_unless($event->isInterprovincialTrials(),404); $u=request()->user(); abort_unless($u&&($u->hasRole('super-user')||($u->hasRole('admin')&&$u->is_event_admin($event->id))),403); }

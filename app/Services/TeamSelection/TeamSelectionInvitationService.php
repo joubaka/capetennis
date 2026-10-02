@@ -1052,7 +1052,7 @@ final class TeamSelectionInvitationService
                 'roster_rank' => $replacementRank,
                 'status' => TeamSelectionInvitation::INVITED,
                 'promoted_from_id' => $locked->id,
-                'invited_at' => $selectionImport->status === 'sent' ? now() : null,
+                'invited_at' => null,
                 'response_deadline_override' => $replacementDeadlines[0],
                 'payment_deadline_override' => $replacementDeadlines[1],
                 'snapshot_json' => [
@@ -1062,13 +1062,12 @@ final class TeamSelectionInvitationService
                     'total_points' => null,
                     'ranking_run_id' => $selectionImport->ranking_run_id,
                     'replaces_invitation_id' => $locked->id,
+                    'activation' => ['pending_manual_invitation' => $selectionImport->status === 'sent', 'source' => 'manual_replacement'],
                     'added_by' => $actor->id,
                     'reason' => $reason,
                 ],
             ]);
-            if ($selectionImport->status === 'sent' && $email) {
-                $this->queueMail($replacement, mb_strtolower(trim((string) $email)), 'replacement', $this->savedCampaignSnapshot($selectionImport));
-            }
+            // Roster replacement never authorises an email. Review its pending invitation separately.
             activity('team-selection')->performedOn($locked)->causedBy($actor)
                 ->withProperties([
                     'replacement_id' => $replacement->id,
@@ -1630,7 +1629,7 @@ final class TeamSelectionInvitationService
                     ],
                 ]),
             ]);
-            $this->moveFromHelperTeamsToPrimaryTeam($locked, suppressInvitationMail: true);
+            $this->moveFromHelperTeamsToPrimaryTeam($locked, $lockedImport, suppressInvitationMail: true);
             activity('team-selection')->performedOn($locked)->causedBy($actor)
                 ->withProperties([
                     'event_id' => $lockedImport->event_id,
@@ -1932,6 +1931,8 @@ final class TeamSelectionInvitationService
         bool $suppressInvitationMail = false,
     ): ?TeamSelectionInvitation
     {
+        // Promotion changes roster state; every replacement email needs a new manual review.
+        $suppressInvitationMail = true;
         $statusAllowsReplacement = $selectionImport->status === 'sent' || ($allowDraft && $selectionImport->status === 'draft');
         if (! $rank || ! $statusAllowsReplacement) {
             return null;
@@ -2137,6 +2138,13 @@ final class TeamSelectionInvitationService
             if ($existing) return false;
         }
 
+        $approvedMail = new \App\Mail\TeamSelectionInvitationMail($invitation, $kind, $campaign);
+        $renderedHtml = $approvedMail->render();
+        $renderedSubject = $approvedMail->envelope()->subject;
+        $payload = ['kind' => $kind, 'campaign' => $campaign, 'rendered_html' => $renderedHtml, 'rendered_subject' => $renderedSubject,
+            'event_id' => $invitation->event_id, 'recipient_email' => $email, 'recipient_name' => $invitation->player?->full_name,
+            'related_type' => TeamSelectionInvitation::class, 'related_id' => $invitation->id];
+        $payload['payload_integrity'] = app(\App\Services\InvitationMailSecurity::class)->payloadIntegrity($payload);
         $log = BulkEmailLog::create([
             'mail_type' => 'team_selection_invitation',
             'related_type' => TeamSelectionInvitation::class,
@@ -2144,7 +2152,7 @@ final class TeamSelectionInvitationService
             'recipient_email' => $email,
             'recipient_name' => $invitation->player?->full_name,
             'status' => 'queued',
-            'payload' => ['kind' => $kind, 'campaign' => $campaign],
+            'payload' => $payload,
             'queued_at' => now(),
         ]);
         SendTeamSelectionInvitationEmailJob::dispatch($log->id, $invitation->event_id);
@@ -2228,6 +2236,7 @@ final class TeamSelectionInvitationService
         $snapshot['recipient_hash'] = hash('sha256', json_encode($recipients, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
         $snapshot['recipient_count'] = $recipients->whereNotNull('email')->count();
         $snapshot['missing_email_count'] = $recipients->whereNull('email')->count();
+        $snapshot['message_hashes'] = $import->invitations()->with(['selectionImport.event', 'region', 'team', 'player'])->where('status', TeamSelectionInvitation::INVITED)->orderBy('id')->get()->mapWithKeys(fn ($invitation) => [$invitation->id => hash('sha256', (new \App\Mail\TeamSelectionInvitationMail($invitation, 'invitation', $snapshot))->render())])->all();
         $snapshot['hash'] = hash('sha256', json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
         return $snapshot;

@@ -74,7 +74,7 @@ class InterprovincialTrialSafeguardsTest extends TestCase
     {
         foreach (['accepted_pending_payment', 'paid_confirmed', 'withdrawn', 'declined'] as $status) {
             $invitation = $this->invitation($status);
-            $log = BulkEmailLog::create(['mail_type' => 'interprovincial_trial_invitation', 'related_type' => InterprovincialTrialInvitation::class, 'related_id' => $invitation->id, 'recipient_email' => 'family@example.test', 'status' => 'sending', 'payload' => ['kind' => 'initial']]);
+            $log = BulkEmailLog::create(['mail_type' => 'interprovincial_trial_invitation', 'related_type' => InterprovincialTrialInvitation::class, 'related_id' => $invitation->id, 'recipient_email' => 'family@example.test', 'status' => 'queued', 'payload' => ['kind' => 'initial']]);
             $job = new SendInterprovincialTrialInvitationEmailJob($log->id, $this->event->id);
             $job->failed(new \RuntimeException('Transport unavailable'));
             $this->assertSame($status, $invitation->fresh()->status);
@@ -130,18 +130,42 @@ class InterprovincialTrialSafeguardsTest extends TestCase
     public function test_initial_mail_success_does_not_overwrite_a_concurrent_acceptance(): void
     {
         $invitation = $this->invitation('queued');
-        $log = BulkEmailLog::create(['mail_type' => 'interprovincial_trial_invitation', 'related_type' => InterprovincialTrialInvitation::class, 'related_id' => $invitation->id, 'recipient_email' => 'family@example.test', 'status' => 'queued', 'payload' => ['kind' => 'initial']]);
+        $log = BulkEmailLog::create(['mail_type' => 'interprovincial_trial_invitation', 'related_type' => InterprovincialTrialInvitation::class, 'related_id' => $invitation->id, 'recipient_email' => 'family@example.test', 'status' => 'queued', 'payload' => ['kind' => 'initial', 'rendered_html' => '<p>Reviewed</p>', 'rendered_subject' => 'Reviewed', 'from_address' => 'sender@example.test', 'from_name' => 'Cape Tennis', 'reply_to' => 'sender@example.test']]);
         $this->mock(\App\Services\InvitationMailSecurity::class, fn ($mock) => $mock->shouldReceive('logMatchesSignedSnapshot')->once()->andReturn(true));
         $this->mock(\App\Services\MailAccountManager::class, fn ($mock) => $mock->shouldReceive('getMailer')->once()->andReturn('array'));
         $mailer = \Mockery::mock();
         $mailer->shouldReceive('to')->with('family@example.test')->once()->andReturnSelf();
         $mailer->shouldReceive('sendNow')->once()->andReturnUsing(function () use ($invitation) {
             $invitation->update(['status' => 'accepted_pending_payment']);
-            return new \stdClass;
+            $email = (new \Symfony\Component\Mime\Email)->from('sender@example.test')->to('family@example.test')->text('Reviewed');
+            return new \Illuminate\Mail\SentMessage(new \Symfony\Component\Mailer\SentMessage($email, \Symfony\Component\Mailer\Envelope::create($email)));
         });
+        $mailer->shouldReceive('getSymfonyTransport')->once()->andReturn(new \Illuminate\Mail\Transport\ArrayTransport);
         \Illuminate\Support\Facades\Mail::shouldReceive('mailer')->once()->with('array')->andReturn($mailer);
         (new SendInterprovincialTrialInvitationEmailJob($log->id, $this->event->id))->handle();
         $this->assertSame('accepted_pending_payment', $invitation->fresh()->status);
         $this->assertSame('sent', $log->fresh()->status);
+    }
+
+    public function test_initial_review_shows_each_exact_message_without_creating_invitations(): void
+    {
+        \Illuminate\Support\Facades\Bus::fake();
+        config(['mail.from.address' => 'sender@example.test', 'mail.from.name' => 'Cape Tennis']);
+        foreach (['First', 'Second'] as $name) {
+            EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id,
+                'nominee_name' => $name, 'nominee_surname' => 'Nominee', 'nominee_email' => strtolower($name).'@example.test']);
+        }
+        $service = app(\App\Services\InterprovincialTrials\InvitationService::class);
+        $preview = $service->previewAttempt($this->event, $this->admin, 'profileless');
+        $this->assertStringContainsString('Hello First Nominee', $preview['rendered_body']);
+        $this->assertStringContainsString('Hello Second Nominee', $preview['rendered_body']);
+        $this->assertStringNotContainsString('[recipient name]', $preview['rendered_body']);
+        $this->assertDatabaseCount('interprovincial_trial_invitations', 0);
+        $result = $service->queueAttempt($this->event, $this->admin, $preview);
+        $this->assertSame(2, $result['queued_count']);
+        foreach (BulkEmailLog::where('mail_type', 'interprovincial_trial_invitation')->get() as $log) {
+            $this->assertStringContainsString($log->payload['rendered_html'], $preview['rendered_body']);
+            $this->assertTrue(app(\App\Services\InvitationMailSecurity::class)->logMatchesSignedSnapshot($log, $this->event->id));
+        }
     }
 }

@@ -43,6 +43,18 @@ class AnnouncementController extends Controller
      */
   public function store(Request $request)
   {
+    $communicationEvent = Event::findOrFail($request->event_id);
+    $this->authorize('event.manage', $communicationEvent);
+    if ($request->boolean('send_email') && ($communicationEvent->isTeam() || $communicationEvent->isInterprovincialTrials())) {
+      $request->validate(['data' => 'required|string|max:30000']);
+      $announcement = new Announcement();
+      $announcement->message = $request->data;
+      $announcement->event_id = $communicationEvent->id;
+      $announcement->save();
+      return redirect()->route($communicationEvent->isTeam() ? 'backend.event-communications.index' : 'backend.interprovincial-trials.communications.index', $communicationEvent)
+        ->withInput(['scope' => 'nominations', 'audience' => 'nominations', 'filter' => 'all', 'recipients' => 'both', 'subject' => $communicationEvent->name.' — Announcement', 'body' => trim(strip_tags((string) $request->data))])
+        ->with('success', 'Choose all nominees or another audience, then review and approve the announcement email. No email has been sent.');
+    }
     Log::debug('[Announcement] 🚀 store() called', [
       'event_id' => $request->event_id,
       'send_email' => $request->send_email,

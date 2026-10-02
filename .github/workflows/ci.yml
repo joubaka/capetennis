@@ -15,6 +15,8 @@ env:
   NODE_VERSION: "18.20.8"
   DB_CONNECTION: sqlite
   DB_DATABASE: ":memory:"
+  CT_TEST_ARRAY_TRANSPORTS: "1"
+  AWS_EC2_METADATA_DISABLED: "true"
 
 jobs:
   # ---------------------------------------------------------------

@@ -9,6 +9,7 @@
       </div>
 
       <div class="card-body d-grid gap-2">
+        <a class="btn btn-outline-primary" href="{{ route('backend.event-communications.index', $event) }}"><i class="ti ti-mail me-1"></i>Communications &amp; send reports</a>
 
         <a class="btn btn-primary"
            href="{{ route('backend.team-selection.index', $event) }}">

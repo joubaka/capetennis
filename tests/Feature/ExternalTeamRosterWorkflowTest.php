@@ -916,8 +916,9 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'message' => 'Please link your account, register and complete payment.',
             'confirm_recipients' => 1,
             'recipient_hash' => hash('sha256', collect(['imported.player@example.test'])->toJson()),
-        ])->assertRedirect()->assertSessionHas('success');
-        $this->assertDatabaseHas('bulk_email_logs', [
+        ])->assertRedirect(route('backend.event-communications.index', $this->event))->assertSessionHas('success');
+        Queue::assertNothingPushed();
+        $this->assertDatabaseMissing('bulk_email_logs', [
             'mail_type' => 'region_email',
             'related_type' => EventRegion::class,
             'related_id' => $eventRegion->id,
@@ -943,8 +944,9 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'message' => 'Please complete registration and payment.',
             'confirm_recipients' => 1,
             'recipient_hash' => hash('sha256', collect(['linked.player@example.test'])->toJson()),
-        ])->assertRedirect()->assertSessionHas('success');
-        $this->assertDatabaseHas('bulk_email_logs', [
+        ])->assertRedirect(route('backend.event-communications.index', $this->event))->assertSessionHas('success');
+        Queue::assertNothingPushed();
+        $this->assertDatabaseMissing('bulk_email_logs', [
             'related_id' => $eventRegion->id,
             'recipient_email' => 'linked.player@example.test',
             'status' => 'queued',

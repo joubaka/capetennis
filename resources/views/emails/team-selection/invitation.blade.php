@@ -19,7 +19,7 @@
   ]).'#team-registration-'.$invitation->team_id.'-'.$invitation->player_id;
   $eventName = $eventDetails['name'] ?? $event?->name;
   $isCustomEmail = str_starts_with(($kind ?? 'invitation'), 'custom_');
-  $responseDeadline = $isCustomEmail ? null : $invitation->effectiveResponseDeadline();
+  $responseDeadline = $isCustomEmail ? null : (($kind ?? 'invitation') === 'invitation' && !empty($campaign['response_deadline']) ? \Illuminate\Support\Carbon::parse($campaign['response_deadline']) : $invitation->effectiveResponseDeadline());
   $shortReplacementWindow = ($kind ?? 'invitation') === 'replacement'
     && $invitation->invited_at
     && $responseDeadline

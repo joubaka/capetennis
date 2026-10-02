@@ -1793,6 +1793,8 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $batch = InterprovincialTrialInvitationBatch::create(['event_id' => $this->event->id, 'status' => InterprovincialTrialInvitationBatch::QUEUED, 'snapshot_hash' => str_repeat('a', 64), 'created_by_user_id' => $this->admin->id]);
         $invitation = InterprovincialTrialInvitation::create(['batch_id' => $batch->id, 'event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'nomination_id' => $nomination->id, 'player_id' => $player->id, 'recipient_email' => $owner->email, 'status' => InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT]);
         $payload = ['event_id' => $this->event->id, 'invitation_id' => $invitation->id, 'kind' => 'follow_up', 'subject' => 'Reminder', 'body' => 'Please complete registration.', 'from_address' => config('mail.from.address'), 'from_name' => config('mail.from.name'), 'reply_to' => config('mail.from.address'), 'recipient_email' => $owner->email, 'recipient_name' => 'Follow Up', 'related_type' => InterprovincialTrialInvitation::class, 'related_id' => $invitation->id];
+        $payload['rendered_html'] = '<p>Hello Follow Up,</p><p>Please complete registration.</p>';
+        $payload['rendered_subject'] = 'Reminder';
         $payload['payload_integrity'] = app(\App\Services\InvitationMailSecurity::class)->payloadIntegrity($payload);
         $log = BulkEmailLog::create(['mail_type' => 'interprovincial_trial_invitation', 'related_type' => InterprovincialTrialInvitation::class, 'related_id' => $invitation->id, 'recipient_email' => $owner->email, 'recipient_name' => 'Follow Up', 'status' => 'queued', 'payload' => $payload, 'queued_at' => now()]);
 
@@ -1807,7 +1809,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $this->assertSame(InterprovincialTrialInvitation::PAID_CONFIRMED, $invitation->fresh()->status);
     }
 
-    public function test_authorized_retry_reuses_the_failed_log_and_dispatch_with_nested_isolation(): void
+    public function test_legacy_initial_retry_requires_communication_review_and_preserves_nested_isolation(): void
     {
         Bus::fake();
         $owner = User::factory()->create();
@@ -1826,17 +1828,17 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         DB::table('event_admins')->insert(['event_id' => $other->id, 'user_id' => $this->admin->id]);
         $this->actingAs($this->admin)->post(route('backend.interprovincial-trials.invitations.retry', [$other, $batch, $invitation]))->assertNotFound();
 
-        $this->actingAs($this->admin)->post($retry)->assertRedirect()->assertSessionHas('success', 'The failed invitation was queued for retry.');
-        $this->actingAs($this->admin)->post($retry)->assertRedirect()->assertSessionHas('success', 'The invitation is already queued, sending, or sent.');
-        $this->assertSame('queued', $invitation->fresh()->status);
-        $this->assertSame('queued', $log->fresh()->status);
+        $this->actingAs($this->admin)->post($retry)->assertRedirect(route('backend.interprovincial-trials.communications.index', $this->event));
+        $this->actingAs($this->admin)->post($retry)->assertRedirect(route('backend.interprovincial-trials.communications.index', $this->event));
+        $this->assertSame('failed', $invitation->fresh()->status);
+        $this->assertSame('failed', $log->fresh()->status);
         $this->assertDatabaseCount('interprovincial_trial_invitations', 1);
         $this->assertDatabaseCount('interprovincial_trial_mail_dispatches', 1);
         $this->assertDatabaseCount('bulk_email_logs', 1);
-        Bus::assertDispatchedTimes(SendInterprovincialTrialInvitationEmailJob::class, 2);
+        Bus::assertDispatchedTimes(SendInterprovincialTrialInvitationEmailJob::class, 1);
     }
 
-    public function test_failed_follow_up_retry_reuses_exact_log_without_changing_invitation_state(): void
+    public function test_legacy_follow_up_retry_requires_review_without_changing_log_or_invitation(): void
     {
         Bus::fake();
         $owner = User::factory()->create(['email' => 'retry-follow-up@example.test']);
@@ -1863,18 +1865,18 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $other = Event::factory()->create(['eventType' => $this->event->eventType]);
         DB::table('event_admins')->insert(['event_id' => $other->id, 'user_id' => $this->admin->id]);
         $this->actingAs($this->admin)->post(route('backend.interprovincial-trials.invitations.retry-follow-up', [$other, $invitation]))->assertNotFound();
-        $this->actingAs($this->admin)->post($route)->assertRedirect()->assertSessionHas('success');
+        $this->actingAs($this->admin)->post($route)->assertRedirect(route('backend.interprovincial-trials.communications.index', $this->event))->assertSessionHas('success');
 
         $this->assertSame(InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT, $invitation->fresh()->status);
-        $this->assertSame('queued', $log->fresh()->status);
-        $this->assertSame('Reviewed exact body', $log->fresh()->payload['body']);
-        $this->assertTrue(app(\App\Services\InvitationMailSecurity::class)->logMatchesSignedSnapshot($log->fresh(), $this->event->id));
+        $this->assertSame('failed', $log->fresh()->status);
+        $this->assertSame('Original exact body', $log->fresh()->payload['body']);
+        $this->assertFalse(app(\App\Services\InvitationMailSecurity::class)->logMatchesSignedSnapshot($log->fresh(), $this->event->id));
         $this->assertDatabaseCount('interprovincial_trial_mail_dispatches', 1);
         $this->assertDatabaseCount('bulk_email_logs', 1);
-        Bus::assertDispatchedTimes(SendInterprovincialTrialInvitationEmailJob::class, 1);
+        Bus::assertNothingDispatched();
     }
 
-    public function test_unsigned_failed_follow_up_retry_refuses_when_reviewed_message_cannot_be_reconstructed(): void
+    public function test_legacy_unsigned_follow_up_retry_redirects_to_review_without_reconstructing_content(): void
     {
         Bus::fake();
         $owner = User::factory()->create(['email' => 'unsafe-legacy@example.test']);
@@ -1886,7 +1888,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $log = BulkEmailLog::create(['mail_type' => 'interprovincial_trial_invitation', 'related_type' => InterprovincialTrialInvitation::class, 'related_id' => $invitation->id, 'recipient_email' => 'mutable@example.test', 'status' => 'failed', 'payload' => ['kind' => 'follow_up', 'request_token' => $token], 'failed_at' => now()]);
         DB::table('interprovincial_trial_mail_dispatches')->insert(['invitation_id' => $invitation->id, 'bulk_email_log_id' => $log->id, 'request_token' => $token, 'kind' => 'follow_up', 'requested_by_user_id' => $this->admin->id, 'created_at' => now(), 'updated_at' => now()]);
 
-        $this->actingAs($this->admin)->post(route('backend.interprovincial-trials.invitations.retry-follow-up', [$this->event, $invitation]))->assertSessionHasErrors('invitation');
+        $this->actingAs($this->admin)->post(route('backend.interprovincial-trials.invitations.retry-follow-up', [$this->event, $invitation]))->assertRedirect(route('backend.interprovincial-trials.communications.index', $this->event));
         $this->assertSame('failed', $log->fresh()->status);
         $this->assertSame('mutable@example.test', $log->fresh()->recipient_email);
         Bus::assertNothingDispatched();

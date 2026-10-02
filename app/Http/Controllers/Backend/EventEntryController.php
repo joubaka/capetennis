@@ -275,6 +275,9 @@ class EventEntryController extends Controller
     // Authorize via the parent event
     $authEvent = Event::findOrFail($data['event_id']);
     $this->authorize('event-draw.view', $authEvent);
+    if ($authEvent->isTeam() || $authEvent->isInterprovincialTrials()) {
+      return redirect()->route($authEvent->isTeam() ? 'backend.event-communications.index' : 'backend.interprovincial-trials.communications.index', $authEvent)->with('success', 'Review recipients and the exact message in Communications before sending.');
+    }
 
     Log::info('📨 Bulk email request validated', [
       'payload' => collect($data)->except('message'),

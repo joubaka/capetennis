@@ -25,7 +25,7 @@ class SendTeamSelectionInvitationEmailJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 0;
-    public int $maxExceptions = 3;
+    public int $maxExceptions = 1;
     public int $timeout = 120;
     public int $retryDeadline;
 
@@ -53,7 +53,15 @@ class SendTeamSelectionInvitationEmailJob implements ShouldQueue
     public function handle(): void
     {
         $log = BulkEmailLog::where('mail_type', 'team_selection_invitation')->find($this->logId);
-        if (! $log || $log->sent_at || in_array($log->status, ['sent', 'skipped'], true)) return;
+        if (! $log || $log->sent_at || in_array($log->status, ['sent', 'failed', 'skipped', 'sending', 'acceptance_unknown'], true)) return;
+        if (empty($log->payload['rendered_html']) || empty($log->payload['rendered_subject'])) {
+            $log->markAsSkipped('This email needs a fresh exact content preview before it can be sent.');
+            return;
+        }
+        if (! app(\App\Services\InvitationMailSecurity::class)->logMatchesSignedSnapshot($log, $this->eventId)) {
+            $log->markAsSkipped('Invitation email snapshot integrity check failed.');
+            return;
+        }
         $invitation = TeamSelectionInvitation::with(['selectionImport.event', 'region', 'team', 'player'])->find($log->related_id);
         $kind = $log->payload['kind'] ?? 'invitation';
         $isCustomEmail = str_starts_with($kind, 'custom_');
@@ -89,19 +97,35 @@ class SendTeamSelectionInvitationEmailJob implements ShouldQueue
             $log->markAsSkipped('Invitation is no longer eligible to send.');
             return;
         }
-        $sent = Mail::mailer(app(MailAccountManager::class)->getMailer())->to($log->recipient_email)
-            ->sendNow(new TeamSelectionInvitationMail(
-                $invitation,
-                $log->payload['kind'] ?? 'invitation',
-                $log->payload['campaign'] ?? [],
-            ));
-        if ($sent === null) throw new \RuntimeException('Team invitation was not accepted by the mail transport.');
-        $log->update(['status' => 'sent', 'sent_at' => now(), 'failed_at' => null, 'error_message' => null]);
+        $log->update(['status' => 'sending']);
+        $mailer = app(MailAccountManager::class)->getMailer();
+        $mailTransport = Mail::mailer($mailer);
+        try {
+            $sent = $mailTransport->to($log->recipient_email)
+                ->sendNow((new \App\Mail\BulkEventMail(
+                    $log->payload['rendered_subject'], $log->payload['rendered_html'], 'Cape Tennis', 'info@capetennis.co.za',
+                ))->with('event_mail_reviewed', true));
+        } catch (Throwable $exception) {
+            $log->markAsFailed(str_ireplace($log->recipient_email, '[REDACTED_RECIPIENT]', $exception->getMessage()));
+            return;
+        }
+        try {
+            $log->recordTransportResult($sent, $mailTransport->getSymfonyTransport(), $mailer);
+        } catch (Throwable $exception) {
+            if ($sent === null) throw $exception;
+            try {
+                $log->update(['status' => 'acceptance_unknown', 'sent_at' => now(), 'error_message' => 'Transport returned successfully, but receipt storage failed. Check the mail server before attempting another send.']);
+            } catch (Throwable) {
+                \Illuminate\Support\Facades\Log::critical('Team email transport returned successfully but evidence could not be stored; do not resend without server verification.', ['log_id' => $log->id]);
+            }
+        }
     }
 
     public function failed(Throwable $exception): void
     {
         $log = BulkEmailLog::find($this->logId);
-        if ($log && ! $log->sent_at) $log->markAsFailed($exception->getMessage());
+        if ($log && ! $log->sent_at && ! in_array($log->status, ['sending', 'acceptance_unknown'], true)) {
+            $log->markAsFailed(str_ireplace($log->recipient_email, '[REDACTED_RECIPIENT]', $exception->getMessage()));
+        }
     }
 }

@@ -6,7 +6,6 @@ use App\Mail\TeamActionMail;
 use App\Models\TeamPaymentOrder;
 use App\Models\SiteSetting;
 use App\Models\User;
-use Illuminate\Support\Facades\Mail;
 
 final class TeamCommunicationService
 {
@@ -24,7 +23,7 @@ final class TeamCommunicationService
         }
         $order->loadMissing(['user', 'event', 'player']);
         if ($order->user?->email) {
-            Mail::to($order->user->email)->queue(new TeamActionMail($order, $action, $details));
+            $this->prepare($order, $action, $details, $order->user->email, $order->user->name);
         }
     }
 
@@ -45,7 +44,17 @@ final class TeamCommunicationService
             ->reject(fn ($email) => $email === strtolower((string) $order->user?->email));
 
         foreach ($recipients as $email) {
-            Mail::to($email)->queue(new TeamActionMail($order, 'withdrawal', $details + ['admin_copy' => true]));
+            $this->prepare($order, 'withdrawal', $details + ['admin_copy' => true], $email, 'Event administrator');
         }
+    }
+
+    private function prepare(TeamPaymentOrder $order, string $action, array $details, string $email, string $name): void
+    {
+        if (! $order->event || ! filter_var($email, FILTER_VALIDATE_EMAIL)) return;
+        $mail = new TeamActionMail($order, $action, $details);
+        $subject = $mail->envelope()->subject;
+        app(EventCommunicationService::class)->draftFixed($order->event, 'team-order:'.$order->id.':'.$action.':'.hash('sha256', mb_strtolower($email)), [[
+            'email' => mb_strtolower($email), 'name' => $name, 'kind' => 'players', 'subject' => $subject, 'html' => $mail->render(),
+        ]], $subject);
     }
 }

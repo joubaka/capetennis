@@ -50,6 +50,11 @@ class TrialCommunicationService
                 $queued += $stats['queued'];
             }
             $locked->update(['committed_at' => now()]);
+            if (! empty($locked->options['_schedule_id'])) {
+                $schedule = TrialMailSchedule::where('event_id', $event->id)->lockForUpdate()->findOrFail($locked->options['_schedule_id']);
+                $next = $schedule->repeat_hours ? now()->addHours($schedule->repeat_hours) : null;
+                $schedule->update(['next_send_at' => $next ?? $schedule->next_send_at, 'active' => $next !== null && (! $schedule->stop_at || $next->lte($schedule->stop_at))]);
+            }
             activity('interprovincial-trials')->performedOn($locked)->causedBy($actor)->withProperties(['recipient_count' => count($locked->recipients), 'snapshot_hash' => $locked->snapshot_hash])->log('Reviewed Trials messages queued');
             return ['queued' => $queued];
         });
@@ -91,7 +96,7 @@ class TrialCommunicationService
                 $schedule = TrialMailSchedule::create($attributes);
             }
             $preview->update(['committed_at' => now()]);
-            activity('interprovincial-trials')->performedOn($schedule)->causedBy($actor)->log('Trials reminder schedule approved');
+            activity('interprovincial-trials')->performedOn($schedule)->causedBy($actor)->log('Trials reminder saved for manual review');
             return $schedule;
         });
     }
@@ -115,10 +120,8 @@ class TrialCommunicationService
                     if (! $event || ! $actor || ! $this->programmes->canManage($event, $actor) || ($locked->stop_at && $locked->stop_at->isPast())) {
                         $locked->update(['active' => false]); return;
                     }
-                    $preview = $this->preview($event, $actor, $locked->options, $locked->subject, $locked->body);
-                    $this->commit($preview, $actor);
-                    $next = $locked->repeat_hours ? now()->addHours($locked->repeat_hours) : null;
-                    $locked->update(['next_send_at' => $next ?? $locked->next_send_at, 'active' => $next !== null && (! $locked->stop_at || $next->lte($locked->stop_at))]);
+                    // A due schedule is a reminder to review, never approval to send.
+                    // Keep it due until an actor previews and explicitly approves this occurrence.
                     $processed++;
                 });
             }
@@ -141,33 +144,51 @@ class TrialCommunicationService
     private function resolve(Event $event, array $options, string $subject, string $body): array
     {
         $audience = $options['audience'] ?? 'nominations'; $filter = $options['filter'] ?? 'all';
-        abort_unless(in_array($audience, ['nominations', 'teams'], true) && in_array($filter, ['all', 'not_registered', 'payment_pending', 'paid', 'declined', 'confirmed'], true), 422);
+        abort_unless(in_array($audience, ['all', 'nominations', 'teams'], true) && in_array($filter, ['all', 'not_registered', 'payment_pending', 'paid', 'declined', 'confirmed'], true), 422);
+        if (! empty($options['region_id'])) {
+            abort_unless(DB::table('event_regions')->where('event_id', $event->id)->where('region_id', $options['region_id'])->exists(), 404);
+            $programmeRegion = \App\Models\TrialProgramme::where('event_id', $event->id)->value('region_id');
+            if ($programmeRegion && (int) $programmeRegion !== (int) $options['region_id']) return [[], []];
+        }
         $rows = []; $excluded = [];
-        if ($audience === 'nominations') {
+        $restrictIndividuals = $audience === 'all' && (! empty($options['nominee_ids']) || ! empty($options['slot_ids']));
+        if (in_array($audience, ['nominations', 'all'], true)) {
+            $individualIds = $audience === 'all' ? ($options['nominee_ids'] ?? []) : ($options['individual_ids'] ?? []);
             $items = EventNomination::with(['player.user', 'player.users', 'categoryEvent'])->where('event_id', $event->id)
+                ->when($restrictIndividuals && empty($individualIds), fn ($q) => $q->whereRaw('1 = 0'))
                 ->when(! empty($options['category_ids']), fn ($q) => $q->whereIn('category_event_id', $options['category_ids']))
-                ->when(! empty($options['individual_ids']), fn ($q) => $q->whereIn('id', $options['individual_ids']))->orderBy('id')->get();
+                ->when(! empty($individualIds), fn ($q) => $q->whereIn('id', $individualIds))->orderBy('id')->get();
+            $lifecycles = InterprovincialTrialInvitation::where('event_id', $event->id)
+                ->whereIn('nomination_id', $items->pluck('id'))
+                ->where('status', '!=', 'prepared')
+                ->orderByDesc('id')->get()->unique('nomination_id')->keyBy('nomination_id');
             foreach ($items as $item) {
-                if (! $item->categoryEvent?->nominations_published) continue;
-                $lifecycle = InterprovincialTrialInvitation::where('event_id', $event->id)->where('nomination_id', $item->id)->where('status', '!=', 'prepared')->latest('id')->first();
+                $lifecycle = $lifecycles->get($item->id);
                 $status = $lifecycle?->status ?? 'not_registered';
                 if (! $this->matches($filter, $status)) continue;
                 $rows[] = ['id' => $item->id, 'player' => $item->player, 'name' => $item->player?->full_name ?? trim($item->nominee_name.' '.$item->nominee_surname), 'fallback' => $item->nominee_email, 'status' => $status,
                     'url' => route('events.show', $event->id).'?nomination='.$item->id];
             }
-        } else {
-            $draft = TrialSquadDraft::where('event_id', $event->id)->where('status','finalised')->whereNotNull('finalised_at')->latest('id')->first();
-            if ($draft) foreach ($draft->slots()->with(['player.user', 'player.users'])->whereNotNull('player_id')
+        }
+        if (in_array($audience, ['teams', 'all'], true)) {
+            $individualIds = $audience === 'all' ? ($options['slot_ids'] ?? []) : ($options['individual_ids'] ?? []);
+            $draft = TrialSquadDraft::where('event_id', $event->id)->latest('id')->first();
+            $slots = $draft?->slots()->with(['player.user', 'player.users', 'categoryEvent.category'])->whereNotNull('player_id')
+                ->when($restrictIndividuals && empty($individualIds), fn ($q) => $q->whereRaw('1 = 0'))
                 ->when(! empty($options['category_ids']), fn ($q) => $q->whereIn('category_event_id', $options['category_ids']))
-                ->when(! empty($options['individual_ids']), fn ($q) => $q->whereIn('id', $options['individual_ids']))
-                ->when(! empty($options['tiers']), fn ($q) => $q->whereIn('tier', $options['tiers']))->orderBy('id')->get() as $slot) {
+                ->when(! empty($individualIds), fn ($q) => $q->whereIn('id', $individualIds))
+                ->when(! empty($options['tiers']), fn ($q) => $q->whereIn('tier', $options['tiers']))->orderBy('id')->get() ?? collect();
+            $participations = \App\Models\TrialParticipation::with('order')->where('event_id', $event->id)
+                ->whereIn('player_id', $slots->pluck('player_id'))->get()->keyBy('player_id');
+            foreach ($slots as $slot) {
                 $status = $slot->response;
-                $participation = \App\Models\TrialParticipation::with('order')->where('event_id', $event->id)->where('player_id', $slot->player_id)->first();
+                $participation = $participations->get($slot->player_id);
                 if ($participation?->isPaid()) $status = 'paid';
                 if (! $this->matches($filter, $status)) continue;
-                $rows[] = ['id' => $slot->id, 'player' => $slot->player, 'name' => $slot->player->full_name.' ('.$slot->tier.')', 'fallback' => null, 'status' => $status, 'url' => route('events.show', $event->id).'?slot='.$slot->id.'#trial-squad-slot-'.$slot->id];
+                $rows[] = ['id' => $slot->id, 'player' => $slot->player, 'name' => $slot->player->full_name.' ('.$slot->categoryEvent?->category?->name.' — '.$slot->tier.')', 'fallback' => null, 'status' => $status, 'url' => route('events.show', $event->id).'?slot='.$slot->id.'#trial-squad-slot-'.$slot->id];
             }
         }
+        $programme = $audience === 'teams' ? \App\Models\TrialProgramme::where('event_id', $event->id)->first() : null;
         $groups = [];
         foreach ($rows as $row) {
             $player = $row['player'];
@@ -181,11 +202,32 @@ class TrialCommunicationService
             if (! $valid) $excluded[] = ['player' => $row['name'], 'reason' => 'No valid email'];
             foreach (array_keys($valid) as $email) $groups[$email][] = ['id' => $row['id'], 'name' => $row['name'], 'status' => $row['status'], 'url' => $row['url']];
         }
+        $recipientMode = $options['recipients'] ?? 'players';
+        abort_unless(in_array($recipientMode, ['players', 'managers', 'both'], true), 422);
+        if ($recipientMode !== 'players') {
+            $regionId = \App\Models\TrialProgramme::where('event_id', $event->id)->value('region_id');
+            $eventRegions = DB::table('event_regions')->where('event_id', $event->id)->pluck('region_id')->unique();
+            $regionId ??= $eventRegions->count() === 1 ? $eventRegions->sole() : null;
+            $managerEmails = DB::table('event_region_managers')
+                ->join('event_regions', 'event_regions.id', '=', 'event_region_managers.event_region_id')
+                ->join('users', 'users.id', '=', 'event_region_managers.user_id')
+                ->where('event_regions.event_id', $event->id)
+                ->where('event_regions.region_id', $regionId ?? -1)
+                ->pluck('users.email')->unique();
+            if ($managerEmails->isEmpty()) $excluded[] = ['player' => 'Regional manager', 'reason' => 'No manager assigned to this programme region'];
+            $summary = collect($rows)->map(fn ($row) => ['id' => $row['id'], 'name' => $row['name'], 'status' => $row['status'], 'url' => $row['url']])->all();
+            if ($recipientMode === 'managers') $groups = [];
+            foreach ($managerEmails as $email) {
+                $email = strtolower(trim((string) $email));
+                if (! filter_var($email, FILTER_VALIDATE_EMAIL)) { $excluded[] = ['player' => 'Regional manager', 'reason' => 'No valid email']; continue; }
+                if ($summary) $groups[$email] = $summary;
+            }
+        }
         ksort($groups); $recipients = [];
         foreach ($groups as $email => $players) {
-            $variables = ['{event}' => $event->name, '{players}' => collect($players)->map(fn ($p) => $p['name'].' — '.$p['url'])->implode("\n"),
-                '{fee}' => number_format((float) ($audience === 'teams' ? \App\Models\TrialProgramme::where('event_id', $event->id)->value('participation_fee') : $event->entryFee), 2),
-                '{deadline}' => $audience === 'teams' ? (string) \App\Models\TrialProgramme::where('event_id', $event->id)->value('response_deadline') : (string) $event->registrationClosesAt()?->format('Y-m-d'), '{url}' => route('events.show', $event->id)];
+            $variables = ['{event}' => $event->name, '{players}' => collect($players)->map(fn ($p) => $p['name'].' — '.$p['status'].' — '.$p['url'])->implode("\n"),
+                '{fee}' => number_format((float) ($audience === 'teams' ? $programme?->participation_fee : $event->entryFee), 2),
+                '{deadline}' => $audience === 'teams' ? (string) $programme?->response_deadline : (string) $event->registrationClosesAt()?->format('Y-m-d'), '{url}' => route('events.show', $event->id)];
             $renderedSubject = preg_replace('/[\r\n]+/', ' ', strtr($subject, $variables));
             $recipients[] = ['email' => $email, 'name' => collect($players)->pluck('name')->implode(', '), 'players' => $players, 'subject' => mb_substr($renderedSubject, 0, 255), 'body' => strtr($body, $variables)];
         }
