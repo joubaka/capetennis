@@ -185,7 +185,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $this->assertDatabaseCount('interprovincial_trial_invitations', 0);
     }
 
-    public function test_trial_pending_checkout_cannot_be_restarted_by_another_sponsor(): void
+    public function test_trial_pending_checkout_can_be_restarted_by_another_sponsor_without_player_ownership(): void
     {
         $player = Player::factory()->create();
         $nomination = EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id]);
@@ -194,12 +194,68 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $payer = User::factory()->create();
         $service = app(InvitationService::class);
         $order = $service->acceptPublishedNomination($this->event, $this->category, $nomination, $payer);
-        $before = $order->getRawOriginal();
+        $wallet = Wallet::create(['payable_type' => User::class, 'payable_id' => $payer->id]);
+        $wallet->transactions()->create(['type' => 'credit', 'amount' => 80, 'source_type' => 'test_credit']);
+        app(\App\Domain\Payments\Services\RegistrationPaymentService::class)->reservePayment($order, 80, 20);
+        $nextPayer = User::factory()->create();
         $this->withoutMiddleware([EnsureAgreementAccepted::class, EnsurePlayerProfileUpdated::class]);
-        $this->actingAs(User::factory()->create())->postJson(route('interprovincial-trials.nominations.register', [$this->event, $this->category, $nomination]))->assertUnprocessable();
-        $this->assertSame($before, $order->fresh()->getRawOriginal());
+        $this->actingAs($nextPayer)->post(route('interprovincial-trials.nominations.register', [$this->event, $this->category, $nomination]))->assertRedirect();
+        $newOrder = RegistrationOrder::latest('id')->firstOrFail();
+        $this->assertSame($nextPayer->id, $newOrder->user_id);
+        $this->assertEquals(100, $newOrder->total_fee);
+        $this->assertEquals(100, $newOrder->payfast_amount_due);
+        $this->assertEquals(0, $newOrder->wallet_reserved);
+        $this->assertFalse((bool) $newOrder->wallet_debited);
+        $this->assertSame('cancelled', $order->fresh()->status);
+        $this->assertEquals(0, $order->fresh()->wallet_reserved);
+        $this->assertEquals(80, $wallet->balance);
+        $this->assertDatabaseCount('wallet_transactions', 1);
+        $this->assertDatabaseMissing('user_players', ['player_id' => $player->id, 'user_id' => $nextPayer->id]);
+        $this->get(route('registration.checkout', $order))->assertForbidden();
+        $this->actingAs($payer)->get(route('registration.checkout', $newOrder))->assertForbidden();
+        $this->assertDatabaseCount('registration_orders', 2);
+        $this->assertDatabaseCount('registration_order_items', 2);
+        $this->assertSame(1, DB::table('category_event_registrations')->whereNull('deleted_at')->count());
+    }
+
+    public function test_sponsor_restart_rejects_handoff_settlement_and_closed_or_unpublished_gates_atomically(): void
+    {
+        $player = Player::factory()->create();
+        $nomination = EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id]);
+        $this->event->update(['entryFee' => 100]);
+        $this->category->update(['nominations_published' => true]);
+        $payer = User::factory()->create();
+        $nextPayer = User::factory()->create();
+        $service = app(InvitationService::class);
+        $order = $service->acceptPublishedNomination($this->event, $this->category, $nomination, $payer);
+        $invitation = InterprovincialTrialInvitation::sole();
+
+        foreach (['handoff', 'paid', 'wallet_debited', 'closed', 'unpublished', 'invalid_fee', 'wrong_event'] as $gate) {
+            if ($gate === 'handoff') $order->update(['payfast_handed_off_at' => now()]);
+            if ($gate === 'paid') $order->update(['payfast_paid' => true]);
+            if ($gate === 'wallet_debited') $order->update(['wallet_debited' => true]);
+            if ($gate === 'closed') $this->event->update(['signUp' => 0]);
+            if ($gate === 'unpublished') $this->category->update(['nominations_published' => false]);
+            if ($gate === 'invalid_fee') $this->event->update(['entryFee' => -1]);
+            if ($gate === 'wrong_event') $nomination->update(['event_id' => Event::factory()->create()->id]);
+            $before = $order->fresh()->getRawOriginal();
+            $invitationBefore = $invitation->fresh()->getRawOriginal();
+            try {
+                $service->accept($invitation->fresh(), $nextPayer);
+                $this->fail('Unsafe restart must reject '.$gate);
+            } catch (\Illuminate\Validation\ValidationException|\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+                $this->assertSame($before, $order->fresh()->getRawOriginal());
+                $this->assertSame($invitationBefore, $invitation->fresh()->getRawOriginal());
+            }
+            $order->update(['payfast_handed_off_at' => null, 'payfast_paid' => false, 'wallet_debited' => false]);
+            $this->event->update(['signUp' => 1, 'entryFee' => 100]);
+            $this->category->update(['nominations_published' => true]);
+            $nomination->update(['event_id' => $this->event->id]);
+        }
         $this->assertDatabaseCount('registration_orders', 1);
         $this->assertDatabaseCount('registration_order_items', 1);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->assertSame(1, DB::table('category_event_registrations')->whereNull('deleted_at')->count());
     }
 
     public function test_profileless_send_rejects_stale_email_or_resolved_nominee_preview(): void
