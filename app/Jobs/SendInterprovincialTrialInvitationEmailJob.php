@@ -65,7 +65,7 @@ class SendInterprovincialTrialInvitationEmailJob implements ShouldQueue
                     ->html($log->payload['rendered_html'])
                     ->from($log->payload['from_address'], $log->payload['from_name'])
                     ->replyTo($log->payload['reply_to'])
-                    ->with('event_mail_reviewed', true));
+                    ->with('event_mail_reviewed', true)->with('outbound_mail_log_id', $log->id));
             if ($sent === null) throw new \RuntimeException('Invitation was not accepted by the mail transport.');
         } catch (Throwable $exception) {
             $log->update(['status' => 'failed']);

@@ -70,6 +70,16 @@ final class ClothingOrderService
         }
 
         return DB::transaction(function () use ($user, $event, $region, $team, $player, $normalised, $requestToken) {
+            $lockedTeam = Team::query()->whereKey($team->id)->lockForUpdate()->firstOrFail();
+            if ($lockedTeam->noProfile) {
+                $slots = \App\Models\NoProfileTeamPlayer::query()->where('team_id', $lockedTeam->id)
+                    ->where('player_profile', $player->id)->lockForUpdate()->get();
+                $linked = $slots->count() === 1 ? TeamPlayer::withoutGlobalScopes()->where('team_id', $lockedTeam->id)
+                    ->where('rank', $slots->first()->rank)->lockForUpdate()->get() : collect();
+                if ($linked->count() !== 1 || (int) $linked->first()->player_id !== (int) $player->id) {
+                    throw ValidationException::withMessages(['player_id' => 'The roster profile link changed. Refresh the team before ordering clothing.']);
+                }
+            }
             $invitation = TeamSelectionInvitation::query()
                 ->where('event_id', $event->id)
                 ->where('team_id', $team->id)

@@ -127,6 +127,9 @@
         </button>
       </li>
       <li class="nav-item" role="presentation">
+        <button class="nav-link" id="sa-tab-mails" data-bs-toggle="tab" data-bs-target="#sa-pane-mails" type="button" role="tab"><i class="ti ti-mail me-1"></i>Mail history</button>
+      </li>
+      <li class="nav-item" role="presentation">
         <button class="nav-link" id="sa-tab-settings" data-bs-toggle="tab"
                 data-bs-target="#sa-pane-settings" type="button" role="tab">
           <i class="ti ti-settings me-1 text-secondary"></i>Settings
@@ -151,6 +154,9 @@
   </div>
 
   <div class="tab-content">
+    <div class="tab-pane fade p-3" id="sa-pane-mails" role="tabpanel">
+      @include('backend.superadmin.partials.mail-history')
+    </div>
 
     {{-- ══ TAB: OVERVIEW ══ --}}
     <div class="tab-pane fade show active p-3" id="sa-pane-overview" role="tabpanel">
@@ -2179,7 +2185,7 @@ $(function () {
   // Open a requested legacy workspace tab from the URL.
   (function () {
     var params = new URLSearchParams(window.location.search);
-    var allowedTabs = ['overview', 'finance', 'withdrawals', 'agreements', 'players', 'audit', 'settings', 'wallets', 'disciplinary'];
+    var allowedTabs = ['overview', 'finance', 'withdrawals', 'agreements', 'players', 'audit', 'settings', 'wallets', 'disciplinary', 'mails'];
     var requestedTab = params.get('tab');
     if (!allowedTabs.includes(requestedTab)) return;
     var el = document.getElementById('sa-tab-' + requestedTab);

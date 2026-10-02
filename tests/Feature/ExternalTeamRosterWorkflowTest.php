@@ -1029,6 +1029,122 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         ]), ['name' => 'Unauthorized', 'surname' => 'Change'])->assertForbidden();
     }
 
+    public function test_admin_relinks_imported_profile_atomically_without_ownership_or_communications(): void
+    {
+        Queue::fake();
+        [$region, $slot, $old, $replacement, $url] = $this->relinkScenario();
+        $owners = DB::table('user_players')->count();
+        $this->actingAs($this->admin)->getJson(route('backend.team-selection.imported-players.profiles.search', [$this->event, $region, $this->team, $slot]).'?q='.urlencode($replacement->name))
+            ->assertOk()->assertJsonFragment(['id' => $replacement->id]);
+        $payload = ['player_id' => $replacement->id, 'expected_player_id' => $old->id, 'expected_rank' => 1, 'confirm_replacement' => 1];
+        $this->actingAs($this->admin)->patch($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('no_profile_team_players', ['id' => $slot->id, 'player_profile' => $replacement->id, 'name' => 'Imported', 'claimed_by_user_id' => null, 'claimed_at' => null]);
+        $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'rank' => 1, 'player_id' => $replacement->id, 'pay_status' => 0]);
+        $this->assertDatabaseCount('team_players', 1);
+        $this->assertSame($owners, DB::table('user_players')->count());
+        $this->assertDatabaseHas('activity_log', ['description' => 'administrator replaced imported roster profile link']);
+        $this->actingAs($this->admin)->patchJson($url, $payload)->assertUnprocessable();
+        try {
+            app(\App\Domain\Payments\Services\TeamPaymentService::class)->ensureOrder($this->admin, $this->team, $old, $this->event, 100);
+            $this->fail('Stale checkout must not create an order.');
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            $this->assertArrayHasKey('player', $exception->errors());
+        }
+        $this->assertDatabaseCount('team_payment_orders', 0);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_relink_rejects_unauthorized_cross_team_stale_duplicate_and_checkout_state(): void
+    {
+        [$region, $slot, $old, $replacement, $url] = $this->relinkScenario();
+        $payload = ['player_id' => $replacement->id, 'expected_player_id' => $old->id, 'expected_rank' => 1, 'confirm_replacement' => 1];
+        $this->actingAs(User::factory()->create())->patchJson($url, $payload)->assertForbidden();
+        $manager = User::factory()->create();
+        \App\Models\EventRegionManager::create(['event_id' => $this->event->id, 'event_region_id' => $region->id, 'region_id' => $region->region_id, 'user_id' => $manager->id, 'assigned_by' => $this->admin->id]);
+        $this->actingAs($manager)->patchJson($url, $payload)->assertForbidden();
+        $this->actingAs($manager)->getJson(route('backend.team-selection.imported-players.profiles.search', [$this->event, $region, $this->team, $slot]).'?q=Player')->assertForbidden();
+        $otherEvent = Event::factory()->create(['eventType' => $this->event->eventType]);
+        $this->actingAs($this->admin)->patchJson(route('backend.team-selection.imported-players.profile.update', [$otherEvent, $region, $this->team, $slot]), $payload)->assertNotFound();
+        $this->actingAs($this->admin)->patchJson($url, array_replace($payload, ['expected_rank' => 2]))->assertUnprocessable();
+        $this->actingAs($this->admin)->patchJson($url, array_replace($payload, ['confirm_replacement' => 0]))->assertUnprocessable();
+        $duplicate = TeamPlayer::create(['team_id' => $this->team->id, 'rank' => 2, 'player_id' => $replacement->id, 'pay_status' => 0]);
+        $this->actingAs($this->admin)->patchJson($url, $payload)->assertUnprocessable();
+        $duplicate->delete();
+        $otherTeam = Team::factory()->create(['category_event_id' => $this->team->category_event_id, 'region_id' => $region->region_id]);
+        $otherLinked = TeamPlayer::create(['team_id' => $otherTeam->id, 'rank' => 1, 'player_id' => $replacement->id, 'pay_status' => 0]);
+        $this->actingAs($this->admin)->patchJson($url, $payload)->assertUnprocessable();
+        $otherLinked->delete();
+        TeamPaymentOrder::create(['team_id' => $this->team->id, 'event_id' => $this->event->id, 'player_id' => $old->id, 'user_id' => $this->admin->id, 'total_amount' => 100, 'wallet_reserved' => 50, 'payfast_amount_due' => 50, 'pay_status' => false]);
+        $this->actingAs($this->admin)->patchJson($url, $payload)->assertUnprocessable();
+        $this->assertDatabaseHas('no_profile_team_players', ['id' => $slot->id, 'player_profile' => $old->id]);
+        $this->assertDatabaseHas('team_payment_orders', ['player_id' => $old->id, 'total_amount' => 100, 'wallet_reserved' => 50]);
+        $this->assertDatabaseCount('team_payment_orders', 1);
+    }
+
+    public function test_relink_preserves_paid_audit_and_blocks_imported_fixture_assignment(): void
+    {
+        [$region, $slot, $old, $replacement, $url] = $this->relinkScenario();
+        $payload = ['player_id' => $replacement->id, 'expected_player_id' => $old->id, 'expected_rank' => 1, 'confirm_replacement' => 1];
+        $slot->update(['pay_status' => 1]);
+        $this->actingAs($this->admin)->patchJson($url, $payload)->assertUnprocessable();
+        $slot->update(['pay_status' => 0]);
+        $draw = \App\Models\Draw::factory()->create(['event_id' => $this->event->id, 'category_event_id' => $this->team->category_event_id]);
+        $fixture = \App\Models\TeamFixture::create(['draw_id' => $draw->id, 'fixture_type' => 1, 'match_nr' => 1, 'round_nr' => 1]);
+        \App\Models\TeamFixturePlayer::create(['team_fixture_id' => $fixture->id, 'slot_no' => 1, 'team1_no_profile_id' => $slot->id]);
+        $this->actingAs($this->admin)->patchJson($url, $payload)->assertUnprocessable();
+        $this->assertSame((int) $old->id, (int) $slot->fresh()->player_profile);
+        $this->assertDatabaseCount('team_fixture_players', 1);
+    }
+
+    public function test_relink_rejects_ineligible_player_without_changing_either_roster_record(): void
+    {
+        [$region, $slot, $old, $replacement, $url] = $this->relinkScenario();
+        $this->mock(\App\Services\PlayerEligibilityService::class)->shouldReceive('assertEligible')->once()->andThrow(new \RuntimeException('Player is not eligible for this event.'));
+        $this->actingAs($this->admin)->patchJson($url, ['player_id' => $replacement->id, 'expected_player_id' => $old->id, 'expected_rank' => 1, 'confirm_replacement' => 1])
+            ->assertUnprocessable()->assertJsonValidationErrors('player_id');
+        $this->assertDatabaseHas('no_profile_team_players', ['id' => $slot->id, 'player_profile' => $old->id]);
+        $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'player_id' => $old->id]);
+    }
+
+    public function test_clothing_checkout_rechecks_profile_after_relink_during_validation(): void
+    {
+        [$eventRegion, $slot, $old, $replacement] = $this->relinkScenario();
+        $region = TeamRegion::findOrFail($eventRegion->region_id);
+        $region->forceFill(['clothing_admin' => true, 'clothing_order' => true])->save();
+        $relinked = false;
+        DB::listen(function (\Illuminate\Database\Events\QueryExecuted $query) use (&$relinked, $slot, $old, $replacement): void {
+            if (! $relinked && str_starts_with($query->sql, 'select exists') && str_contains($query->sql, '`team_players`')) {
+                $relinked = true;
+                app(\App\Services\TeamSelection\ImportedTeamRosterService::class)->relink($this->event, $slot, $replacement->id, $old->id, 1, $this->admin);
+            }
+        });
+        try {
+            app(\App\Services\Clothing\ClothingOrderService::class)->create($this->admin, $this->event, $region, $this->team, $old, [1 => ['size' => 1, 'qty' => 1]], (string) \Illuminate\Support\Str::uuid());
+            $this->fail('Stale clothing checkout must be rejected.');
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            $this->assertArrayHasKey('player_id', $exception->errors());
+        }
+        $this->assertTrue($relinked);
+        $this->assertSame((int) $replacement->id, (int) $slot->fresh()->player_profile);
+        $this->assertDatabaseCount('clothing_orders', 0);
+    }
+
+    private function relinkScenario(): array
+    {
+        $type = DB::table('eventtypes')->insertGetId(['name' => 'Relink team event', 'type' => EventType::TEAM, 'code' => 'relink-team-event', 'created_at' => now(), 'updated_at' => now()]);
+        $this->event->update(['eventType' => $type]);
+        $region = TeamRegion::create(['region_name' => 'Relink region']);
+        $this->team->update(['region_id' => $region->id]);
+        $eventRegion = new EventRegion();
+        $eventRegion->forceFill(['event_id' => $this->event->id, 'region_id' => $region->id, 'ordering' => 1])->save();
+        $old = Player::factory()->create();
+        $replacement = Player::factory()->create();
+        $slot = NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 1, 'name' => 'Imported', 'surname' => 'Name', 'player_profile' => $old->id, 'claimed_by_user_id' => $this->admin->id, 'claimed_at' => now(), 'pay_status' => 0]);
+        TeamPlayer::create(['team_id' => $this->team->id, 'rank' => 1, 'player_id' => $old->id, 'pay_status' => 0]);
+
+        return [$eventRegion, $slot, $old, $replacement, route('backend.team-selection.imported-players.profile.update', [$this->event, $eventRegion, $this->team, $slot])];
+    }
+
     private function roster(string $contents): UploadedFile
     {
         return UploadedFile::fake()->createWithContent('external-roster.csv', $contents);

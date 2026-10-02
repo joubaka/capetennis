@@ -23,7 +23,16 @@ class TeamPaymentService
     {
         return FinanceMutationScope::run('payment_state_write', function () use ($user, $team, $player, $event, $total) {
             return DB::transaction(function () use ($user, $team, $player, $event, $total) {
-                Team::query()->whereKey($team->id)->lockForUpdate()->firstOrFail();
+                $lockedTeam = Team::query()->whereKey($team->id)->lockForUpdate()->firstOrFail();
+                if ($lockedTeam->noProfile) {
+                    $slot = \App\Models\NoProfileTeamPlayer::query()->where('team_id', $lockedTeam->id)
+                        ->where('player_profile', $player->id)->lockForUpdate()->get();
+                    $linked = $slot->count() === 1 ? TeamPlayer::query()->where('team_id', $lockedTeam->id)
+                        ->where('rank', $slot->first()->rank)->lockForUpdate()->get() : collect();
+                    if ($linked->count() !== 1 || (int) $linked->first()->player_id !== (int) $player->id) {
+                        throw ValidationException::withMessages(['player' => 'The roster profile link changed. Refresh the team before starting checkout.']);
+                    }
+                }
                 $excludedHistoricalOrderIds = TeamSelectionInvitation::query()
                     ->where('team_id', $team->id)
                     ->where('player_id', $player->id)

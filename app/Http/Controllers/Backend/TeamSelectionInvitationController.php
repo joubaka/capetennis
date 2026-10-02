@@ -1190,6 +1190,35 @@ class TeamSelectionInvitationController extends Controller
         return response()->json(['requires_confirmation' => false, 'message' => "Added {$updated} missing roster email(s). No other roster data was changed."]);
     }
 
+    public function searchImportedPlayerProfiles(Request $request, Event $event, EventRegion $eventRegion, Team $team, NoProfileTeamPlayer $noProfileTeamPlayer)
+    {
+        $this->authorizeImportedRosterSlot($event, $eventRegion, $team, $noProfileTeamPlayer, $request->user());
+        abort_unless(app(RegionManagerAccessService::class)->isEventManager($request->user(), $event), 403);
+        $data = $request->validate(['q' => ['required', 'string', 'min:2', 'max:100']]);
+        $players = Player::query();
+        foreach (preg_split('/\s+/u', trim($data['q']), -1, PREG_SPLIT_NO_EMPTY) ?: [] as $term) {
+            $players->where(fn ($q) => $q->where('name', 'like', "%{$term}%")->orWhere('surname', 'like', "%{$term}%"));
+        }
+
+        return response()->json(['results' => $players->orderBy('surname')->orderBy('name')->limit(20)->get()
+            ->map(fn (Player $player) => ['id' => $player->id, 'text' => $player->full_name.' · Profile #'.$player->id])]);
+    }
+
+    public function relinkImportedPlayer(Request $request, Event $event, EventRegion $eventRegion, Team $team, NoProfileTeamPlayer $noProfileTeamPlayer, ImportedTeamRosterService $rosters)
+    {
+        $this->authorizeImportedRosterSlot($event, $eventRegion, $team, $noProfileTeamPlayer, $request->user());
+        abort_unless(app(RegionManagerAccessService::class)->isEventManager($request->user(), $event), 403);
+        $data = $request->validate([
+            'player_id' => ['required', 'integer', 'min:1', 'exists:players,id'],
+            'expected_player_id' => ['required', 'integer', 'min:0'],
+            'expected_rank' => ['required', 'integer', 'min:1'],
+            'confirm_replacement' => ['accepted'],
+        ]);
+        $rosters->relink($event, $noProfileTeamPlayer, (int) $data['player_id'], (int) $data['expected_player_id'], (int) $data['expected_rank'], $request->user());
+
+        return back()->with('success', 'The roster profile link was replaced. Imported names were kept and no account ownership was added.');
+    }
+
     public function updateImportedPlayer(
         Request $request,
         Event $event,

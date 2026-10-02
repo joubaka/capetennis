@@ -28,6 +28,11 @@ class SuperAdminController extends Controller
 {
     public function __construct(private FinancialLedgerService $ledger) {}
 
+    public function mailHistory(Request $request)
+    {
+        return view('backend.superadmin.mail-history', app(\App\Services\SuperAdminMailHistory::class)->data($request));
+    }
+
     /**
      * Show the lightweight Super Admin landing page.
      */
@@ -92,6 +97,7 @@ class SuperAdminController extends Controller
      */
     public function workspace(Request $request)
     {
+        $mailHistory = app(\App\Services\SuperAdminMailHistory::class)->data($request);
         $oneYearAgo = Carbon::now()->subYear();
 
         // ── Top stat cards ──────────────────────────────────────────────────
@@ -367,7 +373,7 @@ class SuperAdminController extends Controller
             ->limit(250)
             ->get();
 
-        return view('backend.superadmin.index', compact(
+        return view('backend.superadmin.index', array_merge($mailHistory, compact(
             'totalUsers',
             'totalPlayers',
             'totalEvents',
@@ -408,7 +414,7 @@ class SuperAdminController extends Controller
             'disciplinaryStats',
             'recentViolations',
             'activeSuspensions'
-        ));
+        )));
     }
 
     /**

@@ -43,6 +43,21 @@
                   <span class="badge bg-label-info">Imported · Unlinked</span>
                   <div class="small text-muted mt-1">Profile can be linked from the public team page.</div>
                 @endif
+                @if(app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(auth()->user(), $event))
+                  <details class="mt-2">
+                    <summary class="small text-primary">{{ $linkedProfile ? 'Replace linked profile' : 'Link player profile' }}</summary>
+                    <form method="POST" action="{{ route('backend.team-selection.imported-players.profile.update', [$event, $eventRegion, $regionTeam, $slot]) }}" class="mt-2" style="min-width:220px">
+                      @csrf @method('PATCH')
+                      <input type="hidden" name="expected_player_id" value="{{ (int) $slot->player_profile }}">
+                      <input type="hidden" name="expected_rank" value="{{ $slot->rank }}">
+                      <label class="small" for="relink-player-{{ $slot->id }}">Replacement profile</label>
+                      <select id="relink-player-{{ $slot->id }}" name="player_id" class="form-select team-player-select" data-placeholder="Search player name…" data-search-url="{{ route('backend.team-selection.imported-players.profiles.search', [$event, $eventRegion, $regionTeam, $slot]) }}" required><option value=""></option></select>
+                      <label class="small d-flex gap-2 my-2"><input type="checkbox" name="confirm_replacement" value="1" required><span>Confirm replacing {{ $linkedProfile?->full_name ?: 'the unlinked position' }} with the selected profile.</span></label>
+                      <p class="small text-muted mb-2">Imported names stay unchanged. Profiles with registration, payment or fixture history cannot be relinked here.</p>
+                      <button class="btn btn-sm btn-outline-primary">Save profile link</button>
+                    </form>
+                  </details>
+                @endif
               </td>
               <td data-effective-contact>
                 <div data-effective-email>{{ $contactEmail ?: 'No email' }}</div>

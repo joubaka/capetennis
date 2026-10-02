@@ -77,7 +77,8 @@ class SendMastersInvitationEmailJob implements ShouldQueue
         try {
             $mailer = app(MailAccountManager::class)->getMailer();
             $sent = Mail::mailer($mailer)->to($log->recipient_email)->sendNow(
-                new MastersInvitationMail($invitation, $log->payload['kind'] ?? 'invitation', $log->payload ?? [])
+                (new MastersInvitationMail($invitation, $log->payload['kind'] ?? 'invitation', $log->payload ?? []))
+                    ->with('outbound_mail_log_id', $log->id)
             );
             if ($sent === null) {
                 throw new RuntimeException('Masters email sending was cancelled before transport acceptance.');

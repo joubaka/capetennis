@@ -298,16 +298,46 @@ class SuperAdminFinanceController extends Controller
     /*  FULL REFUND – single registration (individual event)               */
     /* ------------------------------------------------------------------ */
 
+    public function previewFullRefund(Request $request, Event $event, CategoryEventRegistration $registration,
+        \App\Domain\Refunds\Services\AdminRegistrationWalletRefundService $service)
+    {
+        abort_unless($request->user()?->hasRole('super-user'), 403);
+        $data = $request->validate(['reason' => 'required|string|max:2000', 'percentage' => 'nullable|numeric|min:0|max:100']);
+        return response()->json($service->preview($event, $registration, (float) ($data['percentage'] ?? 0), trim($data['reason'])));
+    }
+
     public function storeFullRefund(
         Request $request,
         Event $event,
         CategoryEventRegistration $registration,
         \App\Domain\Refunds\Services\RefundExecutionService $refundService
     ) {
+        abort_unless($request->user()?->hasRole('super-user'), 403);
+        abort_unless((int) $registration->categoryEvent?->event_id === (int) $event->id, 404);
         $request->validate([
             'method'     => 'required|in:wallet,bank',
             'percentage' => 'nullable|numeric|min:0|max:100',
+            'reason' => 'required_if:method,wallet|nullable|string|max:2000',
+            'preview_token' => 'required_if:method,wallet|nullable|string',
         ]);
+
+        if ($request->input('method') === 'wallet') {
+            $result = app(\App\Domain\Refunds\Services\AdminRegistrationWalletRefundService::class)->execute(
+                $event, $registration, $request->user(), (float) ($request->input('percentage') ?? 0),
+                trim($request->input('reason')), $request->input('preview_token')
+            );
+            $snapshot = $result['snapshot'];
+            $mailStatus = 'Confirmation email queued.';
+            try {
+                Mail::to($snapshot['to'])->send((new WalletRefundConfirmationMail(
+                    $result['registration'], $snapshot['reason'], $snapshot['payer_name'], $snapshot['cc'], $snapshot['reply_to'], $snapshot
+                ))->afterCommit());
+            } catch (\Throwable $exception) {
+                Log::warning('ADMIN FULL REFUND: wallet confirmation queue failed', ['registration_id' => $registration->id]);
+                $mailStatus = 'The wallet credit succeeded, but the confirmation email could not be queued. Contact the event admin.';
+            }
+            return back()->with('success', 'R' . number_format($snapshot['net'], 2) . " credited to {$result['payer']->name}'s wallet. " . $mailStatus);
+        }
 
         if ($registration->refund_status === CategoryEventRegistration::REFUND_COMPLETED) {
             return back()->withErrors('This registration has already been fully refunded.');
@@ -333,11 +363,6 @@ class SuperAdminFinanceController extends Controller
             ? "Partial refund ({$percentage}% deducted)"
             : 'Full refund';
 
-        // Mark status/withdrawal fields before entering the service
-        $registration->status       = 'withdrawn';
-        $registration->withdrawn_at = $registration->withdrawn_at ?? now();
-        $registration->save();
-
         $statusOverrides = [
             'refund_method' => $method,
             'refund_gross'  => $gross,
@@ -355,60 +380,8 @@ class SuperAdminFinanceController extends Controller
             'initiated_by'    => 'super_admin',
         ];
 
-        if ($method === 'wallet') {
-            $user = $registration->user;
-
-            if (!$user) {
-                return back()->withErrors('User not found for this registration.');
-            }
-
-            $wallet = $user->wallet ?? $user->wallet()->create([]);
-
-            try {
-                $refundService->executeWalletRefund(
-                    $registration,
-                    $wallet,
-                    $net,
-                    'admin_full_refund',
-                    $registration->id,
-                    $meta,
-                    $statusOverrides
-                );
-
-                activity('refund')
-                    ->performedOn($registration)
-                    ->causedBy(Auth::user())
-                    ->withProperties(array_merge($meta, ['method' => 'wallet', 'net' => $net]))
-                    ->log("Super-admin {$refundLabel} wallet refund R{$net}");
-
-                try {
-                    $registration->load(['categoryEvent.event', 'categoryEvent.category', 'players', 'user']);
-                    if (SiteSetting::emailEnabled('player_email_on_wallet_refund')) {
-                        Mail::to($user->email)->send(new WalletRefundConfirmationMail($registration));
-                    }
-                } catch (\Throwable $mailEx) {
-                    Log::warning('ADMIN FULL REFUND: wallet confirmation email failed', [
-                        'registration_id' => $registration->id,
-                        'user_email'      => $user->email,
-                        'error'           => $mailEx->getMessage(),
-                    ]);
-                }
-
-                return back()->with('success', "{$refundLabel} of R" . number_format($net, 2) . " credited to {$user->name}'s wallet. Confirmation email sent to {$user->email}.");
-
-            } catch (\Throwable $e) {
-                Log::error('ADMIN FULL REFUND FAILED (wallet/registration)', [
-                    'registration_id' => $registration->id,
-                    'error'           => $e->getMessage(),
-                ]);
-                return back()->withErrors('Wallet refund failed: ' . $e->getMessage());
-            }
-        }
-
         // ── Bank / PayFast path ───────────────────────────────────────────
-        $registration->update(array_merge($statusOverrides, [
-            'refund_status' => CategoryEventRegistration::REFUND_PENDING,
-        ]));
+        $registration = $refundService->claimAdminRegistrationBankRefund($registration, $event, $request->user(), $statusOverrides);
 
         $pfPaymentId = $payment['pf_payment_id'] ?? null;
 

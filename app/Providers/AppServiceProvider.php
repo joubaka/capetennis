@@ -47,6 +47,7 @@ class AppServiceProvider extends ServiceProvider
    */
   public function register()
   {
+    $this->app->scoped(\App\Services\OutboundMailHistory::class);
     $this->app->scoped(\App\Services\InterprovincialTrials\TrialRefreshQueue::class);
     // Cape Tennis owns its wallet schema and ledger migrations. Registering
     // Bavix's bundled migrations would recreate/alter incompatible tables.

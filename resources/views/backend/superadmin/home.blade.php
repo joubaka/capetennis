@@ -167,6 +167,7 @@
             <div class="sa-workspace-heading"><i class="ti ti-adjustments text-info"></i>Platform</div>
             <div class="sa-workspace-links">
               <a class="sa-workspace-link" href="{{ route('settings.index') }}">Settings</a>
+              <a class="sa-workspace-link" href="{{ route('backend.superadmin.mail-history') }}">Mail history</a>
               <a class="sa-workspace-link" href="{{ route('platform.health') }}">Platform health</a>
               <a class="sa-workspace-link" href="{{ route('superadmin.api-integrations.index') }}">API connections</a>
               <a class="sa-workspace-link" href="{{ url('backend/eventPhoto') }}">Photos</a>

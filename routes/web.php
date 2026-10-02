@@ -556,6 +556,8 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::post('events/{event}/regions/{eventRegion}/teams/publish', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'publishAllTeams'])->name('teams.publish-all');
     Route::patch('events/{event}/regions/{eventRegion}/teams/{team}/imported-players/{noProfileTeamPlayer}', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'updateImportedPlayer'])->name('imported-players.update');
     Route::patch('events/{event}/regions/{eventRegion}/teams/{team}/imported-players/{noProfileTeamPlayer}/email', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'updateImportedPlayerEmail'])->name('imported-players.email.update');
+    Route::get('events/{event}/regions/{eventRegion}/teams/{team}/imported-players/{noProfileTeamPlayer}/profiles', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'searchImportedPlayerProfiles'])->name('imported-players.profiles.search');
+    Route::patch('events/{event}/regions/{eventRegion}/teams/{team}/imported-players/{noProfileTeamPlayer}/profile', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'relinkImportedPlayer'])->name('imported-players.profile.update');
     Route::post('events/{event}/regions/{eventRegion}/teams/{team}/imported-players/{noProfileTeamPlayer}/move', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'moveImportedPlayer'])->name('imported-players.move');
     Route::put('events/{event}/regions/{eventRegion}/teams/{team}/imported-players/order', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'reorderImportedPlayers'])->name('imported-players.reorder');
     Route::post('events/{event}/imports/{selectionImport}/invitations/{invitation}/replace', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'replace'])->name('invitations.replace');
@@ -633,6 +635,9 @@ Route::prefix('backend')->middleware('auth')->group(function () {
   // Super Admin Dashboard
   // Platform Health Dashboard
   Route::middleware('role:super-user')->group(function () {
+    Route::get('superadmin/mail-history', [\App\Http\Controllers\Backend\SuperAdminController::class, 'mailHistory'])
+      ->name('backend.superadmin.mail-history');
+
     Route::get('superadmin/api-integrations', [\App\Http\Controllers\Backend\ApiIntegrationController::class, 'index'])
       ->name('superadmin.api-integrations.index');
 
@@ -706,6 +711,9 @@ Route::prefix('backend')->middleware('auth')->group(function () {
 
     Route::post('superadmin/finances/event/{event}/full-refund/registration/{registration}', [\App\Http\Controllers\Backend\SuperAdminFinanceController::class, 'storeFullRefund'])
       ->name('superadmin.finances.full-refund.registration');
+
+    Route::post('superadmin/finances/event/{event}/full-refund/registration/{registration}/preview', [\App\Http\Controllers\Backend\SuperAdminFinanceController::class, 'previewFullRefund'])
+      ->name('superadmin.finances.full-refund.registration.preview');
 
     Route::post('superadmin/finances/event/{event}/full-refund/team-order/{order}', [\App\Http\Controllers\Backend\SuperAdminFinanceController::class, 'storeFullRefundTeam'])
       ->name('superadmin.finances.full-refund.team');

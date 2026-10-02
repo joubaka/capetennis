@@ -36,6 +36,16 @@ class EventServiceProvider extends ServiceProvider
     protected $listen = [
         \Illuminate\Mail\Events\MessageSending::class => [
             \App\Listeners\RequireEventEmailReview::class,
+            [\App\Services\OutboundMailHistory::class, 'sending'],
+        ],
+        \Illuminate\Mail\Events\MessageSent::class => [
+            [\App\Services\OutboundMailHistory::class, 'sent'],
+        ],
+        \Illuminate\Queue\Events\JobProcessing::class => [
+            [\App\Services\OutboundMailHistory::class, 'resetAttempt'],
+        ],
+        \Illuminate\Queue\Events\JobExceptionOccurred::class => [
+            [\App\Services\OutboundMailHistory::class, 'interruptedAttempt'],
         ],
         Registered::class => [
             SendEmailVerificationNotification::class,

@@ -14,6 +14,28 @@ use Illuminate\Validation\ValidationException;
 
 class RefundExecutionService
 {
+    public function claimAdminRegistrationBankRefund(\App\Models\CategoryEventRegistration $entry, \App\Models\Event $event, User $actor, array $amounts): \App\Models\CategoryEventRegistration
+    {
+        abort_unless($actor->hasRole('super-user'), 403);
+        return DB::transaction(function () use ($entry, $event, $actor, $amounts) {
+            $locked = \App\Models\CategoryEventRegistration::lockForUpdate()->findOrFail($entry->id);
+            abort_unless((int) $locked->categoryEvent?->event_id === (int) $event->id, 404);
+            if (in_array($locked->refund_status, ['pending', 'completed'], true)) {
+                throw ValidationException::withMessages(['refund' => 'This refund is already completed or pending reconciliation.']);
+            }
+            $payment = $locked->paymentInfo();
+            $gross = round((float) ($payment['gross'] ?? 0) + (float) ($payment['wallet_paid'] ?? 0), 2);
+            if ($gross <= 0 || $gross !== (float) $amounts['refund_gross']) {
+                throw ValidationException::withMessages(['refund' => 'The paid amount changed. Refresh before refunding.']);
+            }
+            if ($locked->status !== 'withdrawn') {
+                app(\App\Domain\Entries\Services\EntryService::class)->withdrawEntryAsAdmin($locked, $actor);
+            }
+            FinanceMutationScope::run('refund_state_write', fn () => $locked->update($amounts + ['refund_status' => 'pending']));
+            return $locked;
+        });
+    }
+
     public function __construct(private LedgerService $ledgerService)
     {
     }

@@ -4,15 +4,87 @@ declare(strict_types=1);
 
 namespace App\Services\TeamSelection;
 
+use App\Domain\Payments\Services\TeamPaymentService;
+use App\Models\CategoryEventRegistration;
+use App\Models\ClothingOrder;
 use App\Models\Event;
 use App\Models\NoProfileTeamPlayer;
+use App\Models\Player;
+use App\Models\Team;
+use App\Models\TeamFixturePlayer;
+use App\Models\TeamPaymentOrder;
 use App\Models\TeamPlayer;
+use App\Models\TeamSelectionInvitation;
 use App\Models\User;
+use App\Services\PlayerEligibilityService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 final class ImportedTeamRosterService
 {
+    public function relink(
+        Event $event,
+        NoProfileTeamPlayer $slot,
+        int $playerId,
+        int $expectedPlayerId,
+        int $expectedRank,
+        User $actor,
+    ): void {
+        DB::transaction(function () use ($event, $slot, $playerId, $expectedPlayerId, $expectedRank, $actor): void {
+            $team = Team::query()->lockForUpdate()->findOrFail($slot->team_id);
+            abort_unless($team->noProfile && $team->category()->where('event_id', $event->id)->exists()
+                && app(RegionManagerAccessService::class)->isEventManager($actor, $event), 403);
+            app(TeamSelectionInvitationService::class)->assertRosterEditable($team);
+            $locked = NoProfileTeamPlayer::query()->lockForUpdate()->findOrFail($slot->id);
+            $fail = fn (string $message) => throw ValidationException::withMessages(['player_id' => $message]);
+            if ((int) $locked->team_id !== (int) $team->id || (int) $locked->player_profile !== $expectedPlayerId || (int) $locked->rank !== $expectedRank) {
+                $fail('The roster changed. Refresh the page before replacing its linked profile.');
+            }
+            if ($playerId === $expectedPlayerId) {
+                $fail('Choose a different player profile.');
+            }
+            $player = Player::query()->lockForUpdate()->findOrFail($playerId);
+            try {
+                app(PlayerEligibilityService::class)->assertEligible($player, $event);
+            } catch (\RuntimeException $exception) {
+                $fail($exception->getMessage());
+            }
+            $teamSlots = TeamPlayer::query()->withoutGlobalScopes()->where('team_id', $team->id)
+                ->where('rank', $locked->rank)->lockForUpdate()->get();
+            if ($teamSlots->count() !== 1 || (int) $teamSlots->first()->player_id !== $expectedPlayerId
+                || NoProfileTeamPlayer::query()->where('team_id', $team->id)->where('rank', $locked->rank)->count() !== 1) {
+                $fail('The linked roster position is inconsistent. Repair it before replacing the profile.');
+            }
+            // Current locking reads must observe another relink that committed while
+            // this transaction waited for the replacement player's lock.
+            if (TeamPlayer::query()->whereHas('team.category', fn ($q) => $q->where('event_id', $event->id))
+                ->where('player_id', $playerId)->lockForUpdate()->get()->isNotEmpty()
+                || NoProfileTeamPlayer::query()->whereHas('team.category', fn ($q) => $q->where('event_id', $event->id))
+                    ->where('player_profile', $playerId)->lockForUpdate()->get()->isNotEmpty()) {
+                $fail('That player is already linked to a roster in this event.');
+            }
+            $playerIds = array_filter([$expectedPlayerId, $playerId]);
+            if ((int) $locked->pay_status !== 0 || (int) $teamSlots->first()->pay_status !== 0
+                || TeamPaymentOrder::query()->where('event_id', $event->id)->whereIn('player_id', $playerIds)->lockForUpdate()->get()->isNotEmpty()
+                || ClothingOrder::query()->where('event_id', $event->id)->whereIn('player_id', $playerIds)->lockForUpdate()->get()->isNotEmpty()
+                || TeamSelectionInvitation::query()->where('event_id', $event->id)->whereIn('player_id', $playerIds)->lockForUpdate()->get()->isNotEmpty()
+                || CategoryEventRegistration::withTrashed()->whereHas('categoryEvent', fn ($q) => $q->where('event_id', $event->id))
+                    ->whereHas('registration.players', fn ($q) => $q->whereIn('players.id', $playerIds))->lockForUpdate()->get()->isNotEmpty()
+                || TeamFixturePlayer::query()->whereHas('fixture.draw', fn ($q) => $q->where('event_id', $event->id))
+                    ->where(fn ($q) => $q->whereIn('team1_id', $playerIds)->orWhereIn('team2_id', $playerIds)
+                        ->orWhere('team1_no_profile_id', $locked->id)->orWhere('team2_no_profile_id', $locked->id))->lockForUpdate()->get()->isNotEmpty()) {
+                $fail('This player has registration, payment, invitation or fixture history in this event. Profile relinking cannot transfer that history; use the existing withdrawal or selection workflow for participant replacement.');
+            }
+            $before = $locked->only(['player_profile', 'claimed_by_user_id', 'claimed_at']);
+            app(TeamPaymentService::class)->updateTeamPlayerSlot($teamSlots->first(), ['player_id' => $playerId]);
+            $locked->update(['player_profile' => $playerId, 'claimed_by_user_id' => null, 'claimed_at' => null]);
+            activity('team-roster')->performedOn($team)->causedBy($actor)->withProperties([
+                'event_id' => $event->id, 'slot_id' => $locked->id, 'rank' => $locked->rank,
+                'before' => $before, 'after_player_id' => $playerId,
+            ])->log('administrator replaced imported roster profile link');
+        });
+    }
+
     public function rename(
         Event $event,
         NoProfileTeamPlayer $slot,

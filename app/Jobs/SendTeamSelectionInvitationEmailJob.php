@@ -104,7 +104,7 @@ class SendTeamSelectionInvitationEmailJob implements ShouldQueue
             $sent = $mailTransport->to($log->recipient_email)
                 ->sendNow((new \App\Mail\BulkEventMail(
                     $log->payload['rendered_subject'], $log->payload['rendered_html'], 'Cape Tennis', 'info@capetennis.co.za',
-                ))->with('event_mail_reviewed', true));
+                ))->with('event_mail_reviewed', true)->with('outbound_mail_log_id', $log->id));
         } catch (Throwable $exception) {
             $log->markAsFailed(str_ireplace($log->recipient_email, '[REDACTED_RECIPIENT]', $exception->getMessage()));
             return;

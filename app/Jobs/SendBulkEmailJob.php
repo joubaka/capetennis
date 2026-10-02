@@ -111,6 +111,7 @@ class SendBulkEmailJob implements ShouldQueue
                 $this->syncRankingReviewRecipient($log, 'skipped', 'The ranking review circulation is no longer available.');
                 return;
             }
+            $mailable->with('outbound_mail_log_id', $log->id);
 
             // Only stored approved previews supply this flag; message content cannot set it.
             $reviewed = !empty($log->payload['event_communication_batch_id'])

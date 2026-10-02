@@ -710,6 +710,7 @@
         <form id="fullRefundForm" method="POST" action="">
           @csrf
           <input type="hidden" name="percentage" id="modalPercentageInput" value="0">
+          <input type="hidden" name="preview_token" id="refundPreviewToken">
           <div class="modal-header">
             <h5 class="modal-title" id="fullRefundModalLabel">
               <i class="ti ti-receipt-refund me-2 text-warning"></i>Issue Full Refund
@@ -770,7 +771,7 @@
                 <input class="form-check-input" type="radio" name="method" id="methodWallet" value="wallet" required>
                 <label class="form-check-label" for="methodWallet">
                   <i class="ti ti-wallet me-1 text-success"></i>
-                  <strong>Wallet</strong> — instant credit to player's Cape Tennis wallet
+                  <strong>Wallet</strong> — instant credit to the payer's Cape Tennis wallet
                 </label>
               </div>
 
@@ -780,6 +781,18 @@
                   <i class="ti ti-building-bank me-1 text-primary"></i>
                   <strong>Bank Transfer</strong> — marked as pending; process payment manually (or via PayFast if applicable)
                 </label>
+              </div>
+            </div>
+            <div id="walletRefundEmail" class="d-none">
+              <label for="refundReason" class="form-label fw-semibold">Reason for refund</label>
+              <textarea name="reason" id="refundReason" class="form-control mb-2" maxlength="2000" rows="3"></textarea>
+              <button type="button" id="previewRefundEmail" class="btn btn-outline-primary mb-2">Preview refund and email</button>
+              <div id="refundPreviewStatus" class="small mb-2" role="status"></div>
+              <div id="refundRecipients" class="small mb-2 text-break"></div>
+              <iframe id="refundEmailFrame" title="Refund confirmation email preview" class="w-100 border d-none" sandbox="" style="height: 350px"></iframe>
+              <div class="form-check mt-2">
+                <input type="checkbox" id="confirmRefundEmail" class="form-check-input">
+                <label for="confirmRefundEmail" class="form-check-label">I checked the amount, reason and email recipients.</label>
               </div>
             </div>
           </div>
@@ -943,8 +956,61 @@ if (fullRefundSearch) {
 const fullRefundModal = document.getElementById('fullRefundModal');
 if (fullRefundModal) {
   let modalGrossAmount = 0;
+  let individualRefund = false;
+  let previewRevision = 0;
+  const form = document.getElementById('fullRefundForm');
+  const reason = document.getElementById('refundReason');
+  const token = document.getElementById('refundPreviewToken');
+  const confirmed = document.getElementById('confirmRefundEmail');
+  function invalidatePreview() {
+    previewRevision++;
+    token.value = '';
+    confirmed.checked = false;
+    document.getElementById('refundEmailFrame').classList.add('d-none');
+    document.getElementById('refundRecipients').textContent = '';
+    document.getElementById('refundPreviewStatus').textContent = '';
+  }
+  function walletEmailState() {
+    const active = individualRefund && document.getElementById('methodWallet').checked;
+    document.getElementById('walletRefundEmail').classList.toggle('d-none', !active);
+    reason.required = active;
+    document.getElementById('fullRefundSubmit').disabled = active && (!token.value || !confirmed.checked);
+  }
+  reason.addEventListener('input', () => { invalidatePreview(); walletEmailState(); });
+  confirmed.addEventListener('change', walletEmailState);
+  fullRefundModal.querySelectorAll('input[name="method"]').forEach(input => input.addEventListener('change', walletEmailState));
+  document.getElementById('previewRefundEmail').addEventListener('click', async function () {
+    if (!reason.reportValidity()) return;
+    invalidatePreview();
+    const revision = previewRevision;
+    walletEmailState();
+    this.disabled = true;
+    try {
+      const url = new URL(form.action + '/preview', window.location.origin);
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': form.querySelector('input[name="_token"]').value },
+        body: JSON.stringify({ reason: reason.value, percentage: document.getElementById('modalPercentageInput').value })
+      });
+      const data = await response.json();
+      if (revision !== previewRevision) return;
+      if (!response.ok) throw new Error(Object.values(data.errors || {}).flat().join(' ') || 'Unable to preview refund.');
+      token.value = data.token;
+      document.getElementById('refundRecipients').textContent = 'To: ' + data.to + ' | CC: ' + data.cc.join(', ') + ' | Reply-To: ' + data.reply_to.join(', ') + ' | Wallet credit: R' + Number(data.net).toFixed(2);
+      const frame = document.getElementById('refundEmailFrame');
+      frame.srcdoc = data.html;
+      frame.classList.remove('d-none');
+      document.getElementById('refundPreviewStatus').textContent = 'Review the email below. It will be queued after the wallet credit succeeds.';
+    } catch (error) {
+      if (revision === previewRevision) document.getElementById('refundPreviewStatus').textContent = error.message;
+    } finally {
+      this.disabled = false;
+      walletEmailState();
+    }
+  });
 
   function updateRefundDisplay(percentage) {
+    invalidatePreview();
     const fee = Math.round(modalGrossAmount * (percentage / 100) * 100) / 100;
     const net = Math.round((modalGrossAmount - fee) * 100) / 100;
 
@@ -952,6 +1018,7 @@ if (fullRefundModal) {
     document.getElementById('modalFeeAmount').textContent = fee.toFixed(2);
     document.getElementById('percentageDisplay').textContent = percentage;
     document.getElementById('modalPercentageInput').value = percentage;
+    walletEmailState();
 
     if (percentage > 0) {
       document.getElementById('modalAmountNote').textContent = percentage + '% deducted (R ' + fee.toFixed(2) + ' handling fee)';
@@ -976,6 +1043,9 @@ if (fullRefundModal) {
     document.getElementById('modalPlayerName').textContent = btn.dataset.player || '—';
     document.getElementById('modalOriginalAmount').textContent = 'R ' + modalGrossAmount.toFixed(2);
     document.getElementById('fullRefundForm').action = btn.dataset.route || '';
+    individualRefund = form.action.includes('/registration/');
+    reason.value = '';
+    invalidatePreview();
 
     // Reset percentage controls
     document.getElementById('enablePercentage').checked = false;
@@ -986,6 +1056,7 @@ if (fullRefundModal) {
     // Reset radio buttons and re-enable submit button on each open
     fullRefundModal.querySelectorAll('input[name="method"]').forEach(r => r.checked = false);
     document.getElementById('fullRefundSubmit').disabled = false;
+    walletEmailState();
   });
 
   document.getElementById('enablePercentage').addEventListener('change', function () {
@@ -1003,7 +1074,12 @@ if (fullRefundModal) {
     updateRefundDisplay(parseInt(this.value, 10));
   });
 
-  document.getElementById('fullRefundForm').addEventListener('submit', function () {
+  document.getElementById('fullRefundForm').addEventListener('submit', function (event) {
+    if (individualRefund && document.getElementById('methodWallet').checked && (!token.value || !confirmed.checked)) {
+      event.preventDefault();
+      walletEmailState();
+      return;
+    }
     document.getElementById('fullRefundSubmit').disabled = true;
   });
 }
