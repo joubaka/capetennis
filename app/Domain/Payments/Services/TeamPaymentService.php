@@ -448,13 +448,26 @@ class TeamPaymentService
         });
     }
 
-    private function isWhollyUnpaid(TeamPaymentOrder $order): bool
+    public function assertUnpaidRosterCheckoutMayBeClosed(TeamPaymentOrder $order): void
+    {
+        $total = round((float) $order->total_amount, 2);
+        $due = round((float) $order->payfast_amount_due, 2);
+        if (! $this->isWhollyUnpaid($order, $order->withdrawn_at !== null)
+            || (float) $order->wallet_reserved !== 0.0 || $order->payfast_handed_off_at !== null
+            || $total < 0 || ($due !== 0.0 && $due !== $total)) {
+            throw ValidationException::withMessages([
+                'player_id' => 'The previous player has checkout or settlement evidence that cannot be closed during roster alignment.',
+            ]);
+        }
+    }
+
+    private function isWhollyUnpaid(TeamPaymentOrder $order, bool $allowWithdrawn = false): bool
     {
         return ! $order->pay_status
             && ! $order->payfast_paid
             && ! $order->wallet_debited
-            && blank($order->withdrawn_at)
-            && blank($order->withdrawn_by)
+            && ($allowWithdrawn || blank($order->withdrawn_at))
+            && ($allowWithdrawn || blank($order->withdrawn_by))
             && blank($order->payfast_pf_payment_id)
             && blank($order->payfast_raw_data)
             && blank($order->paid_privately_at)

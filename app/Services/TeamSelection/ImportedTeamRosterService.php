@@ -52,7 +52,9 @@ final class ImportedTeamRosterService
             $teamSlots = TeamPlayer::query()->withoutGlobalScopes()->where('team_id', $team->id)
                 ->where('rank', $locked->rank)->lockForUpdate()->get();
             $teamSlot = $teamSlots->first();
-            if ($teamSlots->count() > 1 || ($teamSlot && (int) $teamSlot->player_id > 0 && (int) $teamSlot->player_id !== $expectedPlayerId)
+            $alignsExistingReplacement = $teamSlot && (int) $teamSlot->player_id === $playerId;
+            if ($teamSlots->count() > 1 || ($teamSlot && (int) $teamSlot->player_id > 0
+                && (int) $teamSlot->player_id !== $expectedPlayerId && ! $alignsExistingReplacement)
                 || NoProfileTeamPlayer::query()->where('team_id', $team->id)->where('rank', $locked->rank)->count() !== 1) {
                 $fail('The linked roster position is inconsistent. Repair it before replacing the profile.');
             }
@@ -63,14 +65,31 @@ final class ImportedTeamRosterService
             // Current locking reads must observe another relink that committed while
             // this transaction waited for the replacement player's lock.
             if (TeamPlayer::query()->whereHas('team.category', fn ($q) => $q->where('event_id', $event->id))
-                ->where('player_id', $playerId)->lockForUpdate()->get()->isNotEmpty()
+                ->where('player_id', $playerId)
+                ->when($alignsExistingReplacement, fn ($q) => $q->where('id', '!=', $teamSlot->id))
+                ->lockForUpdate()->get()->isNotEmpty()
                 || NoProfileTeamPlayer::query()->whereHas('team.category', fn ($q) => $q->where('event_id', $event->id))
                     ->where('player_profile', $playerId)->lockForUpdate()->get()->isNotEmpty()) {
                 $fail('That player is already linked to a roster in this event.');
             }
             $playerIds = array_filter([$expectedPlayerId, $playerId]);
+            $orders = TeamPaymentOrder::query()->where('event_id', $event->id)->whereIn('player_id', $playerIds)->lockForUpdate()->get();
+            $staleOrders = collect();
+            foreach ($orders as $order) {
+                if (! $alignsExistingReplacement || (int) $order->player_id !== $expectedPlayerId || (int) $order->team_id !== (int) $team->id) {
+                    $fail('This player has payment history in this event. Profile relinking cannot transfer that history.');
+                }
+                if ($order->withdrawn_at !== null && $order->refund_status === 'completed' && $order->refunded_at !== null
+                    && round((float) $order->refund_gross, 2) === round((float) $order->total_amount, 2)
+                    && (float) $order->wallet_reserved === 0.0) {
+                    continue;
+                }
+                app(TeamPaymentService::class)->assertUnpaidRosterCheckoutMayBeClosed($order);
+                if ($order->withdrawn_at === null) {
+                    $staleOrders->push($order);
+                }
+            }
             if ((int) $locked->pay_status !== 0 || (int) $teamSlot?->pay_status !== 0
-                || TeamPaymentOrder::query()->where('event_id', $event->id)->whereIn('player_id', $playerIds)->lockForUpdate()->get()->isNotEmpty()
                 || ClothingOrder::query()->where('event_id', $event->id)->whereIn('player_id', $playerIds)->lockForUpdate()->get()->isNotEmpty()
                 || TeamSelectionInvitation::query()->where('event_id', $event->id)->whereIn('player_id', $playerIds)->lockForUpdate()->get()->isNotEmpty()
                 || CategoryEventRegistration::withTrashed()->whereHas('categoryEvent', fn ($q) => $q->where('event_id', $event->id))
@@ -80,12 +99,16 @@ final class ImportedTeamRosterService
                         ->orWhere('team1_no_profile_id', $locked->id)->orWhere('team2_no_profile_id', $locked->id))->lockForUpdate()->get()->isNotEmpty()) {
                 $fail('This player has registration, payment, invitation or fixture history in this event. Profile relinking cannot transfer that history; use the existing withdrawal or selection workflow for participant replacement.');
             }
+            foreach ($staleOrders as $staleOrder) {
+                app(TeamPaymentService::class)->closeUnpaidLifecycle($staleOrder, $actor);
+            }
             $before = $locked->only(['player_profile', 'claimed_by_user_id', 'claimed_at']);
             $mirrorBefore = $teamSlot?->only(['id', 'player_id', 'rank', 'pay_status']);
-            $repairKind = ! $teamSlot ? 'missing_mirror' : ((int) $teamSlot->player_id === 0 ? 'empty_mirror' : 'existing_link');
-            if ($teamSlot) {
+            $repairKind = $alignsExistingReplacement ? 'aligned_existing_replacement'
+                : (! $teamSlot ? 'missing_mirror' : ((int) $teamSlot->player_id === 0 ? 'empty_mirror' : 'existing_link'));
+            if ($teamSlot && ! $alignsExistingReplacement) {
                 app(TeamPaymentService::class)->updateTeamPlayerSlot($teamSlot, ['player_id' => $playerId]);
-            } else {
+            } elseif (! $teamSlot) {
                 $teamSlot = app(TeamPaymentService::class)->createUnpaidTeamPlayerSlot($team, $player, (int) $locked->rank);
             }
             $locked->update(['player_profile' => $playerId, 'claimed_by_user_id' => null, 'claimed_at' => null]);
@@ -93,6 +116,7 @@ final class ImportedTeamRosterService
                 'event_id' => $event->id, 'slot_id' => $locked->id, 'rank' => $locked->rank,
                 'before' => $before, 'after_player_id' => $playerId,
                 'mirror_before' => $mirrorBefore, 'mirror_after_id' => $teamSlot->id, 'mirror_repair' => $repairKind,
+                'closed_stale_order_ids' => $staleOrders->pluck('id')->all(),
             ])->log('administrator replaced imported roster profile link');
         });
     }

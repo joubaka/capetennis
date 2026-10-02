@@ -1193,6 +1193,167 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         $this->assertSame((int) $old->id, (int) $slot->fresh()->player_profile);
     }
 
+    public function test_relink_aligns_imported_profile_after_entries_replaced_the_same_mirror(): void
+    {
+        Queue::fake();
+        \Illuminate\Support\Facades\Mail::fake();
+        [$region, $slot, $old, $replacement, $url] = $this->relinkScenario();
+        $mirror = TeamPlayer::query()->where('team_id', $this->team->id)->firstOrFail();
+        // Entries changes only this mirror. Its null unpaid flag is represented
+        // as zero because the isolated test schema requires a non-null integer.
+        $mirror->update(['player_id' => $replacement->id, 'pay_status' => 0]);
+        $mirrorBefore = $mirror->fresh()->getAttributes();
+        $owners = DB::table('user_players')->count();
+        $this->assertSame((int) $old->id, (int) $slot->fresh()->player_profile);
+        $payload = ['player_id' => $replacement->id, 'expected_player_id' => $old->id, 'expected_rank' => 1, 'confirm_replacement' => 1];
+        $this->actingAs($this->admin)->patch($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame((int) $replacement->id, (int) $slot->fresh()->player_profile);
+        $this->assertSame($mirrorBefore, $mirror->fresh()->getAttributes());
+        $this->assertDatabaseCount('team_players', 1);
+        $this->assertSame($owners, DB::table('user_players')->count());
+        $audit = DB::table('activity_log')->where('description', 'administrator replaced imported roster profile link')->first();
+        $this->assertSame('aligned_existing_replacement', json_decode($audit->properties, true)['mirror_repair']);
+        $this->actingAs($this->admin)->patchJson($url, $payload)->assertUnprocessable();
+        Queue::assertNothingPushed();
+        \Illuminate\Support\Facades\Mail::assertNothingSent();
+    }
+
+    public function test_existing_replacement_mirror_alignment_still_rejects_duplicates_and_paid_history(): void
+    {
+        [$region, $slot, $old, $replacement, $url] = $this->relinkScenario();
+        $mirror = TeamPlayer::query()->where('team_id', $this->team->id)->firstOrFail();
+        $mirror->update(['player_id' => $replacement->id]);
+        $payload = ['player_id' => $replacement->id, 'expected_player_id' => $old->id, 'expected_rank' => 1, 'confirm_replacement' => 1];
+        $otherTeam = Team::factory()->create(['category_event_id' => $this->team->category_event_id]);
+        $duplicate = TeamPlayer::create(['team_id' => $otherTeam->id, 'rank' => 1, 'player_id' => $replacement->id, 'pay_status' => 0]);
+        $this->actingAs($this->admin)->patchJson($url, $payload)->assertUnprocessable();
+        $duplicate->delete();
+        $importedDuplicate = NoProfileTeamPlayer::create(['team_id' => $otherTeam->id, 'rank' => 1, 'name' => 'Another', 'surname' => 'Roster', 'player_profile' => $replacement->id, 'pay_status' => 0]);
+        $this->actingAs($this->admin)->patchJson($url, $payload)->assertUnprocessable();
+        $importedDuplicate->delete();
+        $mirror->update(['pay_status' => 1]);
+        $this->actingAs($this->admin)->patchJson($url, $payload)->assertUnprocessable();
+        $mirror->update(['pay_status' => 0]);
+        foreach ([$old, $replacement] as $historyPlayer) {
+            $order = TeamPaymentOrder::create(['team_id' => $this->team->id, 'event_id' => $this->event->id, 'player_id' => $historyPlayer->id, 'user_id' => $this->admin->id, 'total_amount' => 100, 'wallet_reserved' => 0, 'payfast_amount_due' => 0, 'pay_status' => true]);
+            $this->actingAs($this->admin)->patchJson($url, $payload)->assertUnprocessable();
+            $this->assertDatabaseHas('team_payment_orders', ['id' => $order->id, 'player_id' => $historyPlayer->id, 'pay_status' => true, 'total_amount' => 100]);
+            $order->delete();
+        }
+        $this->assertSame((int) $old->id, (int) $slot->fresh()->player_profile);
+        $this->assertDatabaseHas('team_players', ['id' => $mirror->id, 'rank' => 1, 'player_id' => $replacement->id, 'pay_status' => 0]);
+    }
+
+    public function test_alignment_closes_only_stale_unpaid_checkout_and_preserves_refunded_audit(): void
+    {
+        Queue::fake();
+        \Illuminate\Support\Facades\Mail::fake();
+        [$slot, $old, $replacement, $mirror, $retired, $active, $url] = $this->alignmentCheckoutScenario();
+        $retiredBefore = $retired->fresh()->getAttributes();
+        $mirrorBefore = $mirror->fresh()->getAttributes();
+        $moneyBefore = $active->fresh()->only(['total_amount', 'wallet_reserved', 'payfast_amount_due', 'pay_status', 'payfast_paid', 'wallet_debited']);
+        $owners = DB::table('user_players')->count();
+        $walletRows = WalletTransaction::count();
+        $payload = ['player_id' => $replacement->id, 'expected_player_id' => $old->id, 'expected_rank' => 1, 'confirm_replacement' => 1];
+        $this->actingAs($this->admin)->patch($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame((int) $replacement->id, (int) $slot->fresh()->player_profile);
+        $this->assertSame($retiredBefore, $retired->fresh()->getAttributes());
+        $this->assertSame($mirrorBefore, $mirror->fresh()->getAttributes());
+        $this->assertSame($moneyBefore, $active->fresh()->only(array_keys($moneyBefore)));
+        $this->assertNotNull($active->fresh()->withdrawn_at);
+        $this->assertSame((int) $this->admin->id, (int) $active->fresh()->withdrawn_by);
+        $this->assertSame($walletRows, WalletTransaction::count());
+        $this->assertSame($owners, DB::table('user_players')->count());
+        $audit = DB::table('activity_log')->where('description', 'administrator replaced imported roster profile link')->first();
+        $this->assertSame([$active->id], json_decode($audit->properties, true)['closed_stale_order_ids']);
+        $payments = app(\App\Domain\Payments\Services\TeamPaymentService::class);
+        try {
+            $payments->recordPayfastHandoff($active, User::findOrFail($active->user_id), 100);
+            $this->fail('Closed old checkout must not be handed off.');
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            $this->assertArrayHasKey('payment', $exception->errors());
+        }
+        try {
+            $payments->finalizePayment($active, ['payment_method' => 'payfast', 'payfast_amount_received' => 100, 'pf_payment_id' => 'must-not-settle']);
+            $this->fail('Closed old checkout must not finalize.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('cannot be paid', $exception->getMessage());
+        }
+        $this->assertDatabaseCount('team_payment_orders', 2);
+        Queue::assertNothingPushed();
+        \Illuminate\Support\Facades\Mail::assertNothingSent();
+    }
+
+    public function test_alignment_closes_wholly_unpaid_checkout_with_full_server_balance_due(): void
+    {
+        [$slot, $old, $replacement, $mirror, $retired, $active, $url] = $this->alignmentCheckoutScenario();
+        $active->update(['payfast_amount_due' => 100]);
+        $retiredBefore = $retired->fresh()->getAttributes();
+        $walletRows = WalletTransaction::count();
+        $this->actingAs($this->admin)->patch($url, ['player_id' => $replacement->id, 'expected_player_id' => $old->id, 'expected_rank' => 1, 'confirm_replacement' => 1])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertNotNull($active->fresh()->withdrawn_at);
+        $this->assertSame(100.0, $active->fresh()->total_amount);
+        $this->assertSame(0.0, $active->fresh()->payfast_amount_due);
+        $this->assertSame(0.0, $active->fresh()->wallet_reserved);
+        $this->assertFalse($active->fresh()->pay_status);
+        $this->assertFalse($active->fresh()->wallet_debited);
+        $this->assertSame($walletRows, WalletTransaction::count());
+        $this->assertSame($retiredBefore, $retired->fresh()->getAttributes());
+    }
+
+    public function test_alignment_rejects_checkout_evidence_and_late_guards_before_closure(): void
+    {
+        [$slot, $old, $replacement, $mirror, $retired, $active, $url] = $this->alignmentCheckoutScenario();
+        $payload = ['player_id' => $replacement->id, 'expected_player_id' => $old->id, 'expected_rank' => 1, 'confirm_replacement' => 1];
+        foreach ([['wallet_reserved' => 10], ['payfast_handed_off_at' => now()], ['payfast_pf_payment_id' => 'provider-evidence'], ['payfast_amount_due' => 50]] as $evidence) {
+            $active->update($evidence);
+            $this->actingAs($this->admin)->patchJson($url, $payload)->assertUnprocessable();
+            $this->assertNull($active->fresh()->withdrawn_at);
+            $active->update(['wallet_reserved' => 0, 'payfast_handed_off_at' => null, 'payfast_pf_payment_id' => null, 'payfast_amount_due' => 0]);
+        }
+        $draw = \App\Models\Draw::factory()->create(['event_id' => $this->event->id, 'category_event_id' => $this->team->category_event_id]);
+        $fixture = \App\Models\TeamFixture::create(['draw_id' => $draw->id, 'fixture_type' => 1, 'match_nr' => 1, 'round_nr' => 1]);
+        \App\Models\TeamFixturePlayer::create(['team_fixture_id' => $fixture->id, 'slot_no' => 1, 'team1_no_profile_id' => $slot->id]);
+        $this->actingAs($this->admin)->patchJson($url, $payload)->assertUnprocessable();
+        $this->assertNull($active->fresh()->withdrawn_at);
+        $this->assertSame((int) $old->id, (int) $slot->fresh()->player_profile);
+    }
+
+    public function test_failed_alignment_rolls_back_stale_checkout_closure(): void
+    {
+        [$slot, $old, $replacement, $mirror, $retired, $active] = $this->alignmentCheckoutScenario();
+        NoProfileTeamPlayer::updating(function (NoProfileTeamPlayer $changing) use ($slot): void {
+            if ((int) $changing->id === (int) $slot->id && $changing->isDirty('player_profile')) {
+                throw new \RuntimeException('Simulated imported-link write failure.');
+            }
+        });
+        try {
+            app(\App\Services\TeamSelection\ImportedTeamRosterService::class)->relink($this->event, $slot, $replacement->id, $old->id, 1, $this->admin);
+            $this->fail('The simulated failure must roll back the whole transaction.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Simulated imported-link write failure.', $exception->getMessage());
+        }
+        $this->assertNull($active->fresh()->withdrawn_at);
+        $this->assertNull($active->fresh()->withdrawn_by);
+        $this->assertSame((int) $old->id, (int) $slot->fresh()->player_profile);
+        $this->assertDatabaseMissing('activity_log', ['description' => 'administrator replaced imported roster profile link']);
+    }
+
+    private function alignmentCheckoutScenario(): array
+    {
+        [$region, $slot, $old, $replacement, $url] = $this->relinkScenario();
+        $mirror = TeamPlayer::query()->where('team_id', $this->team->id)->firstOrFail();
+        $mirror->update(['player_id' => $replacement->id]);
+        $retired = TeamPaymentOrder::create(['team_id' => $this->team->id, 'event_id' => $this->event->id, 'player_id' => $old->id, 'user_id' => User::factory()->create()->id,
+            'total_amount' => 100, 'wallet_reserved' => 0, 'payfast_amount_due' => 100, 'pay_status' => true, 'payfast_paid' => true,
+            'withdrawn_at' => now(), 'refund_status' => 'completed', 'refunded_at' => now(), 'refund_gross' => 100, 'refund_fee' => 5, 'refund_net' => 95]);
+        $active = TeamPaymentOrder::create(['team_id' => $this->team->id, 'event_id' => $this->event->id, 'player_id' => $old->id, 'user_id' => User::factory()->create()->id,
+            'total_amount' => 100, 'wallet_reserved' => 0, 'payfast_amount_due' => 0, 'pay_status' => false, 'payfast_paid' => false, 'wallet_debited' => false]);
+
+        return [$slot, $old, $replacement, $mirror, $retired, $active, $url];
+    }
+
     private function relinkScenario(): array
     {
         $type = DB::table('eventtypes')->insertGetId(['name' => 'Relink team event', 'type' => EventType::TEAM, 'code' => 'relink-team-event', 'created_at' => now(), 'updated_at' => now()]);
