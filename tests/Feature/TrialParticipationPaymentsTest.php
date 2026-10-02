@@ -90,6 +90,26 @@ class TrialParticipationPaymentsTest extends TestCase {
         $receipt=$service->verifyProof($proof,$this->admin,'BANK-123');$this->assertSame('eft',$receipt->method);$this->assertSame('verified',$proof->fresh()->status);
         $ledger=app(\App\Domain\Finance\Services\FinancialLedgerService::class)->buildForEvent($this->event);$this->assertSame(456.78,$ledger['totals']['gross_payments']);$this->assertSame(456.78,$ledger['totals']['net_revenue']);
     }
+    public function test_receipt_and_uploaded_proof_identity_are_immutable_audit_evidence():void {
+        Storage::fake('local');$service=app(TrialParticipationService::class);$participation=$service->begin($this->slot,$this->payer);
+        $proof=$service->uploadProof($participation,$this->payer,UploadedFile::fake()->create('proof.pdf',10,'application/pdf'));
+        $originalProofUpdatedAt=$proof->updated_at;$this->travel(1)->minute();
+        $receipt=$service->verifyProof($proof,$this->admin,'BANK-IMMUTABLE');
+        $this->assertTrue($proof->fresh()->updated_at->gt($originalProofUpdatedAt));
+        foreach ([['order_id'=>$receipt->order_id+1],['amount'=>1],['reference'=>'ALTERED']] as $changes) {
+            try {$receipt->fresh()->update($changes);$this->fail('Receipt audit evidence changed.');}catch(\RuntimeException $e){$this->assertStringContainsString('immutable',$e->getMessage());}
+        }
+        try {$receipt->fresh()->delete();$this->fail('Receipt audit evidence deleted.');}catch(\RuntimeException $e){$this->assertStringContainsString('retained',$e->getMessage());}
+        foreach ([['participation_id'=>$participation->id+1],['order_id'=>$participation->order_id+1],['payer_id'=>$this->payer->id+1],['path'=>'retargeted.pdf']] as $changes) {
+            try {$proof->fresh()->update($changes);$this->fail('Proof audit evidence changed.');}catch(\RuntimeException $e){$this->assertStringContainsString('immutable',$e->getMessage());}
+        }
+        try {$proof->fresh()->update(['reviewed_by'=>User::factory()->create()->id]);$this->fail('Completed review audit changed.');}catch(\RuntimeException $e){$this->assertStringContainsString('immutable',$e->getMessage());}
+        try {$proof->fresh()->delete();$this->fail('Proof audit evidence deleted.');}catch(\RuntimeException $e){$this->assertStringContainsString('retained',$e->getMessage());}
+        $this->assertDatabaseCount('trial_participation_receipts',1);$this->assertDatabaseCount('trial_participation_proofs',1);
+        $this->assertTrue((bool)$participation->order->fresh()->pay_status);$this->assertDatabaseCount('wallet_transactions',0);$this->assertDatabaseCount('transactions_pf',0);
+        $ledger=app(\App\Domain\Finance\Services\FinancialLedgerService::class)->buildForEvent($this->event);
+        $this->assertSame(456.78,$ledger['totals']['gross_payments']);$this->assertSame(456.78,$ledger['totals']['net_revenue']);
+    }
     public function test_handoff_blocks_manual_payment_and_cancellation():void {
         $service=app(TrialParticipationService::class);$participation=$service->begin($this->slot,$this->payer);app(TeamPaymentService::class)->recordPayfastHandoff($participation->order,$this->payer,456.78);
         try{$service->markPaid($participation,$this->admin,'BANK-123');$this->fail('Expected rejection');}catch(\Illuminate\Validation\ValidationException $e){$this->assertArrayHasKey('payment',$e->errors());}

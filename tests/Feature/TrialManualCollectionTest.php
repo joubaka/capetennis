@@ -47,6 +47,22 @@ class TrialManualCollectionTest extends TestCase {
         $receipt=$service->verifyProof($proof,$this->admin,'BANK-321');
         $this->assertSame('eft',$receipt->method); $this->assertSame('verified',$proof->fresh()->status);
     }
+    public function test_registration_proof_identity_is_immutable_but_review_lifecycle_remains_supported(): void {
+        Storage::fake('local');$service=app(ManualCollectionService::class);
+        \App\Models\TrialProgramme::create(['event_id'=>$this->event->id,'bank_details'=>'Example regional account']);
+        $proof=$service->uploadProof($this->order,$this->payer,UploadedFile::fake()->create('proof.pdf',20,'application/pdf'));
+        foreach ([['order_id'=>$this->order->id+1],['event_id'=>$this->event->id+1],['payer_id'=>$this->payer->id+1],['path'=>'retargeted.pdf']] as $changes) {
+            try {$proof->fresh()->update($changes);$this->fail('Proof audit evidence changed.');}catch(\RuntimeException $e){$this->assertStringContainsString('immutable',$e->getMessage());}
+        }
+        $originalProofUpdatedAt=$proof->updated_at;$this->travel(1)->minute();
+        $service->rejectProof($proof,$this->admin,'Payment could not be verified.');
+        $this->assertSame('rejected',$proof->fresh()->status);
+        $this->assertTrue($proof->fresh()->updated_at->gt($originalProofUpdatedAt));
+        try {$proof->fresh()->update(['reviewed_by_user_id'=>User::factory()->create()->id]);$this->fail('Completed review audit changed.');}catch(\RuntimeException $e){$this->assertStringContainsString('immutable',$e->getMessage());}
+        try {$proof->fresh()->delete();$this->fail('Proof audit evidence deleted.');}catch(\RuntimeException $e){$this->assertStringContainsString('retained',$e->getMessage());}
+        $this->assertDatabaseCount('trial_payment_proofs',1);$this->assertDatabaseCount('registration_manual_receipts',0);
+        $this->assertFalse((bool)$this->order->fresh()->pay_status);$this->assertDatabaseCount('wallet_transactions',0);$this->assertDatabaseCount('transactions_pf',0);
+    }
     public function test_unassigned_admin_cannot_settle_another_regions_order(): void {
         $stranger=User::factory()->create()->assignRole('admin');
         try { app(ManualCollectionService::class)->markPaid($this->order,$stranger,'BANK-123'); $this->fail('Expected denial'); } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) { $this->assertSame(403,$e->getStatusCode()); }
