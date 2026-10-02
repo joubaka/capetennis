@@ -21,8 +21,8 @@ class InterprovincialTrialCategoryMoveTest extends TestCase
         $type = DB::table('eventtypes')->insertGetId(['name' => 'Interpro Trials', 'type' => EventType::INDIVIDUAL, 'code' => EventType::INTERPROVINCIAL_TRIALS_CODE]);
         $event = Event::factory()->create(['eventType' => $type, 'published' => true, 'signUp' => true, 'status' => 'open', 'start_date' => now()->addMonth(), 'deadline' => 1]);
         DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
-        $source = CategoryEvent::factory()->create(['event_id' => $event->id, 'entry_fee' => 150]);
-        $target = CategoryEvent::factory()->create(['event_id' => $event->id]);
+        $source = CategoryEvent::factory()->create(['event_id' => $event->id, 'entry_fee' => 150, 'nominations_published' => true]);
+        $target = CategoryEvent::factory()->create(['event_id' => $event->id, 'nominations_published' => true]);
         $player = Player::factory()->create();
         $payer = User::factory()->create();
         $nomination = EventNomination::create(['event_id' => $event->id, 'category_event_id' => $source->id, 'player_id' => $player->id]);

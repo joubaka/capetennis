@@ -91,7 +91,8 @@ class MastersRegistrationBoundaryTest extends TestCase
     {
         [$event, $categoryEvent] = $this->individualEvent();
         $user = User::factory()->create();
-        $player = Player::factory()->create();
+        $owner = User::factory()->create();
+        $player = Player::factory()->create(['userId' => $owner->id]);
 
         $this->withoutMiddleware([
                 EnsureAgreementAccepted::class,
@@ -106,6 +107,9 @@ class MastersRegistrationBoundaryTest extends TestCase
             'category_event_id' => $categoryEvent->id,
             'user_id' => $user->id,
         ]);
+        $this->assertSame($owner->id, $player->fresh()->userId);
+        $this->assertDatabaseMissing('user_players', ['player_id' => $player->id, 'user_id' => $user->id]);
+        $this->assertDatabaseHas('registration_orders', ['user_id' => $user->id]);
     }
 
     public function test_unlinked_legacy_masters_order_cannot_start_payment(): void

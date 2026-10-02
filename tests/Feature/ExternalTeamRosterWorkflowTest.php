@@ -359,6 +359,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         $this->team->update(['noProfile' => false]);
         $user = User::factory()->create();
         $player = Player::factory()->create(['userId' => User::factory()->create()->id]);
+        $originalOwner = $player->userId;
         TeamPlayer::create([
             'team_id' => $this->team->id,
             'rank' => 1,
@@ -401,6 +402,9 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             $this->team, $player, $this->event,
         ]))->assertOk();
         $this->assertSame($handedOffAt, $order->fresh()->payfast_handed_off_at->toISOString());
+        $this->assertSame($originalOwner, $player->fresh()->userId);
+        $this->assertDatabaseMissing('user_players', ['player_id' => $player->id, 'user_id' => $user->id]);
+        $this->assertSame($user->id, $order->fresh()->user_id);
         $this->assertSame(1, DB::table('activity_log')
             ->where('subject_type', TeamPaymentOrder::class)
             ->where('subject_id', $order->id)
@@ -1113,7 +1117,8 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         $region->forceFill(['clothing_admin' => true, 'clothing_order' => true])->save();
         $relinked = false;
         DB::listen(function (\Illuminate\Database\Events\QueryExecuted $query) use (&$relinked, $slot, $old, $replacement): void {
-            if (! $relinked && str_starts_with($query->sql, 'select exists') && str_contains($query->sql, '`team_players`')) {
+            $teamPlayersTable = $query->connection->getQueryGrammar()->wrapTable('team_players');
+            if (! $relinked && str_starts_with($query->sql, 'select exists') && str_contains($query->sql, $teamPlayersTable)) {
                 $relinked = true;
                 app(\App\Services\TeamSelection\ImportedTeamRosterService::class)->relink($this->event, $slot, $replacement->id, $old->id, 1, $this->admin);
             }
