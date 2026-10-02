@@ -9,6 +9,21 @@ class SuperAdminMailHistory
 {
     public const STATUSES = ['queued', 'sending', 'sent', 'failed', 'skipped', 'acceptance_unknown'];
 
+    public static function typeLabel(?string $type): string
+    {
+        return match ($type) {
+            null, '' => 'Email',
+            'system_mail' => 'System email',
+            'masters_invitation' => 'Masters invitation',
+            'event_announcement' => 'Event announcement',
+            'team_selection_invitation' => 'Team selection invitation',
+            'ranking_review' => 'Ranking review',
+            'trial_communication' => 'Trials communication',
+            'interprovincial_trial_invitation' => 'Interprovincial Trials invitation',
+            default => \Illuminate\Support\Str::headline($type),
+        };
+    }
+
     public function data(Request $request): array
     {
         $filters = $request->validate([
@@ -44,11 +59,22 @@ class SuperAdminMailHistory
             $query->where('created_at', '<', \Carbon\Carbon::parse($filters['mail_until'])->addDay()->toDateString());
         }
 
+        $summary = BulkEmailLog::deliverySummary((clone $query)->select([]));
+        $types = BulkEmailLog::query()->select('mail_type')->whereNotNull('mail_type')->where('mail_type', '!=', '')->distinct()->orderBy('mail_type')->limit(101)->pluck('mail_type');
+        $typesLimited = $types->count() > 100;
+        $types = $types->take(100);
+        if (!empty($filters['mail_type']) && !$types->contains($filters['mail_type'])) {
+            $types->push($filters['mail_type']);
+        }
+
         return [
             'mailLogs' => $query->orderByDesc('id')->paginate(25, ['*'], 'mail_page')->withQueryString()
                 ->appends($request->routeIs('backend.superadmin.workspace') ? ['tab' => 'mails'] : []),
             'mailFilters' => $filters,
             'mailStatuses' => self::STATUSES,
+            'mailSummary' => $summary,
+            'mailTypes' => $types->mapWithKeys(fn ($type) => [$type => self::typeLabel($type)])->all(),
+            'mailTypesLimited' => $typesLimited,
         ];
     }
 }

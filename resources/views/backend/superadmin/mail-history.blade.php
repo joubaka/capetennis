@@ -3,11 +3,9 @@
 @section('title', 'Mail history')
 
 @section('content')
-<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-  <h1 class="h3 mb-0">Mail history</h1>
-  <a class="btn btn-outline-secondary" href="{{ route('backend.superadmin.index') }}">Super Admin dashboard</a>
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <div><h1 class="h3 mb-1">Mail history</h1><p class="text-muted mb-0">Check recipients, sending progress and acceptance evidence.</p></div>
+  <a class="btn btn-sm btn-outline-secondary" href="{{ route('backend.superadmin.index') }}">Dashboard</a>
 </div>
-<div class="card"><div class="card-body">
   @include('backend.superadmin.partials.mail-history')
-</div></div>
 @endsection
