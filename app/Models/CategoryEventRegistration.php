@@ -180,16 +180,15 @@ class CategoryEventRegistration extends Model
    */
   public function payfastTransaction()
   {
-    // Wallet-only payments have no PayFast record — avoid a useless join.
-    if ($this->payment_method === 'wallet' || empty($this->pf_transaction_id)) {
-      return $this->belongsTo(Transaction::class, 'pf_transaction_id', 'pf_payment_id')
-        ->whereRaw('1 = 0'); // always-empty relation
-    }
-
-    return $this->belongsTo(
-      Transaction::class,
+    // Relation definitions are also built on empty models for eager/existence
+    // queries. Apply entry-specific wallet semantics when keys are resolved.
+    $transaction = new Transaction;
+    return new \App\Models\Relations\PayfastTransactionRelation(
+      $transaction->newQuery()->whereNotNull('pf_payment_id')->where('pf_payment_id', '!=', ''),
+      $this,
       'pf_transaction_id',
-      'pf_payment_id'
+      'pf_payment_id',
+      __FUNCTION__
     );
   }
 

@@ -159,6 +159,7 @@ class SuperAdminFinanceController extends Controller
                 'payfastTransaction',
             ])
             ->whereHas('categoryEvent', fn ($q) => $q->where('event_id', $event->id))
+            ->where('payment_status_id', 1)
             ->whereHas('payfastTransaction', fn ($q) => $q->where('is_test', false))
             ->where(fn ($q) => $q
                 ->whereNull('refund_status')
