@@ -361,6 +361,20 @@ class TeamPaymentService
         });
     }
 
+    public function createUnpaidTeamPlayerSlot(Team $team, Player $player, int $rank): TeamPlayer
+    {
+        return FinanceMutationScope::run('team_payment_state_write', function () use ($team, $player, $rank) {
+            return DB::transaction(function () use ($team, $player, $rank) {
+                Team::query()->whereKey($team->id)->lockForUpdate()->firstOrFail();
+                if ($rank < 1 || TeamPlayer::query()->where('team_id', $team->id)->where('rank', $rank)->lockForUpdate()->get()->isNotEmpty()) {
+                    throw ValidationException::withMessages(['player_id' => 'This roster position changed. Refresh the team before linking the profile.']);
+                }
+
+                return TeamPlayer::create(['team_id' => $team->id, 'player_id' => $player->id, 'rank' => $rank, 'pay_status' => 0]);
+            });
+        });
+    }
+
     public function updateTeamPlayerSlot(TeamPlayer $teamPlayer, array $attributes): TeamPlayer
     {
         return FinanceMutationScope::run('team_payment_state_write', function () use ($teamPlayer, $attributes) {

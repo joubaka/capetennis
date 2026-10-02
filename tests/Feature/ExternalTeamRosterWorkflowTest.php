@@ -1129,6 +1129,70 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         $this->assertDatabaseCount('clothing_orders', 0);
     }
 
+    public function test_relink_safely_creates_a_missing_unpaid_roster_mirror(): void
+    {
+        [$region, $slot, $old, $replacement, $url] = $this->relinkScenario();
+        TeamPlayer::query()->where('team_id', $this->team->id)->delete();
+        $this->actingAs($this->admin)->patch($url, ['player_id' => $replacement->id, 'expected_player_id' => $old->id, 'expected_rank' => 1, 'confirm_replacement' => 1])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'rank' => 1, 'player_id' => $replacement->id, 'pay_status' => 0]);
+        $this->assertDatabaseCount('team_players', 1);
+        $this->assertSame((int) $replacement->id, (int) $slot->fresh()->player_profile);
+        $audit = DB::table('activity_log')->where('description', 'administrator replaced imported roster profile link')->first();
+        $this->assertSame('missing_mirror', json_decode($audit->properties, true)['mirror_repair']);
+        $order = app(\App\Domain\Payments\Services\TeamPaymentService::class)->ensureOrder($this->admin, $this->team, $replacement, $this->event, 100);
+        $this->assertSame(100.0, $order->total_amount);
+        $this->assertDatabaseCount('team_payment_orders', 1);
+    }
+
+    public function test_relink_safely_reuses_an_empty_unpaid_roster_mirror(): void
+    {
+        [$region, $slot, $old, $replacement, $url] = $this->relinkScenario();
+        $mirror = TeamPlayer::query()->where('team_id', $this->team->id)->firstOrFail();
+        $mirror->update(['player_id' => 0, 'pay_status' => 1]);
+        $this->actingAs($this->admin)->patchJson($url, ['player_id' => $replacement->id, 'expected_player_id' => $old->id, 'expected_rank' => 1, 'confirm_replacement' => 1])->assertUnprocessable();
+        $this->assertDatabaseHas('team_players', ['id' => $mirror->id, 'player_id' => 0, 'pay_status' => 1]);
+        $mirror->update(['pay_status' => 0]);
+        $this->actingAs($this->admin)->patch($url, ['player_id' => $replacement->id, 'expected_player_id' => $old->id, 'expected_rank' => 1, 'confirm_replacement' => 1])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('team_players', ['id' => $mirror->id, 'rank' => 1, 'player_id' => $replacement->id, 'pay_status' => 0]);
+        $this->assertDatabaseCount('team_players', 1);
+        $this->assertSame((int) $replacement->id, (int) $slot->fresh()->player_profile);
+        $audit = DB::table('activity_log')->where('description', 'administrator replaced imported roster profile link')->first();
+        $this->assertSame('empty_mirror', json_decode($audit->properties, true)['mirror_repair']);
+    }
+
+    public function test_missing_mirror_is_not_created_when_payment_history_blocks_relink(): void
+    {
+        [$region, $slot, $old, $replacement, $url] = $this->relinkScenario();
+        TeamPlayer::query()->where('team_id', $this->team->id)->delete();
+        TeamPaymentOrder::create(['team_id' => $this->team->id, 'event_id' => $this->event->id, 'player_id' => $old->id, 'user_id' => $this->admin->id, 'total_amount' => 100, 'wallet_reserved' => 0, 'payfast_amount_due' => 0, 'pay_status' => true]);
+        $this->actingAs($this->admin)->patchJson($url, ['player_id' => $replacement->id, 'expected_player_id' => $old->id, 'expected_rank' => 1, 'confirm_replacement' => 1])->assertUnprocessable();
+        $this->assertDatabaseCount('team_players', 0);
+        $this->assertDatabaseHas('team_payment_orders', ['player_id' => $old->id, 'pay_status' => true, 'total_amount' => 100]);
+        $this->assertSame((int) $old->id, (int) $slot->fresh()->player_profile);
+    }
+
+    public function test_relink_rejects_conflicting_positive_and_wrong_rank_mirrors(): void
+    {
+        [$region, $slot, $old, $replacement, $url] = $this->relinkScenario();
+        $mirror = TeamPlayer::query()->where('team_id', $this->team->id)->firstOrFail();
+        $payload = ['player_id' => $replacement->id, 'expected_player_id' => $old->id, 'expected_rank' => 1, 'confirm_replacement' => 1];
+        $other = Player::factory()->create();
+        $mirror->update(['player_id' => $other->id]);
+        $this->actingAs($this->admin)->patchJson($url, $payload)->assertUnprocessable();
+        $mirror->update(['player_id' => $old->id, 'rank' => 2]);
+        $this->actingAs($this->admin)->patchJson($url, $payload)->assertUnprocessable();
+        $this->assertSame((int) $old->id, (int) $slot->fresh()->player_profile);
+        $this->assertDatabaseCount('team_players', 1);
+        $this->assertDatabaseHas('team_players', ['id' => $mirror->id, 'rank' => 2, 'player_id' => $old->id]);
+        $mirror->update(['rank' => 1]);
+        TeamPlayer::create(['team_id' => $this->team->id, 'rank' => 1, 'player_id' => 0, 'pay_status' => 0]);
+        $this->actingAs($this->admin)->patchJson($url, $payload)->assertUnprocessable();
+        $this->assertDatabaseCount('team_players', 2);
+        $this->assertSame((int) $old->id, (int) $slot->fresh()->player_profile);
+    }
+
     private function relinkScenario(): array
     {
         $type = DB::table('eventtypes')->insertGetId(['name' => 'Relink team event', 'type' => EventType::TEAM, 'code' => 'relink-team-event', 'created_at' => now(), 'updated_at' => now()]);
