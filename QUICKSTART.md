@@ -42,13 +42,13 @@ chmod +x deploy.sh
 ./deploy.sh --install-command
 
 # Every deployment after setup
-deploy main
+deploy-ct main
 
 # Skip migrations
-deploy main --skip-migrations
+deploy-ct main --skip-migrations
 
 # Combined
-deploy main --skip-migrations --skip-deps
+deploy-ct main --skip-migrations --skip-deps
 ```
 
 For a small code, Blade, or already-built asset update that must keep the site online:
@@ -63,9 +63,9 @@ Live mode automatically skips Composer installation but runs the explicitly appr
 1. Confirm `APP_PATH`, `PUBLIC_HTML`, `GIT_BRANCH`, `DEPLOY_BRANCHES`, and the explicit `MIGRATION_PATHS` allowlist in `deploy.config`.
 2. Run `chmod +x deploy.sh && ./deploy.sh --install-command`.
 3. If prompted, add `$HOME/.local/bin` to your shell `PATH` and sign in again.
-4. Run `deploy main`.
+4. Run `deploy-ct main`.
 
-`deploy main` checks that the production worktree is clean, fetches and fast-forwards `origin/main`, installs locked Composer dependencies, clears caches, runs only the approved migration files, publishes and syncs public assets, rebuilds caches, and signals queue workers to restart. It deliberately does not run every pending migration. If an unapproved migration remains pending, deployment now stops before publishing caches or bringing the application back online and identifies the missing release approval.
+`deploy-ct main` checks that the production worktree is clean and preflights the exact `origin/main` migration set before taking the site offline. When pending release-allowlisted migrations exist and approval input was omitted, a direct interactive terminal prints the exact set and continues only after the operator types `DEPLOY`. Non-interactive runs with pending migrations must supply `--approved-migrations-b64`; the allowlist alone is never execution authorization. The script then fast-forwards `origin/main`, installs locked Composer dependencies, clears caches, runs only the exact approved migration files, publishes and syncs public assets, rebuilds caches, and signals queue workers to restart before bringing the site online. A failed maintenance deployment leaves the site offline. Build Mix assets with `npm run production` and include them in the release; deployment syncs the built assets and `mix-manifest.json`. If a pending migration is outside the allowlist or does not exactly match the approval, deployment stops before downtime or merge.
 
 ## What Happens During Deploy
 

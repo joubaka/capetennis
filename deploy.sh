@@ -25,7 +25,7 @@ RUN_MIGRATIONS="${RUN_MIGRATIONS:-false}"
 SYNC_FOLDERS="${SYNC_FOLDERS:-css js images vendors assets}"
 SYNC_ROOT_FILES="${SYNC_ROOT_FILES:-firebase-messaging-sw.js manifest.json manifest.webmanifest mix-manifest.json favicon.ico offline.html service-worker.js robots.txt}"
 SKIP_MIGRATIONS=false; SKIP_DEPS=false; LIVE_DEPLOY=false; RECONCILE_MASTERS_PAYMENTS=false; INSTALL_COMMAND=false; SHOW_HELP=false; REQUESTED_BRANCH=""; EXPECTED_SHA=""; APPROVED_MIGRATIONS_B64=""; APPROVED_MIGRATIONS_SET=false; APP_IS_DOWN=0; PREFLIGHT_DIR=""
-usage() { echo 'Usage: deploy main [--expected-sha SHA] [--approved-migrations-b64 BASE64] [--skip-migrations] [--skip-deps] [--live] [--reconcile-masters-payments]'; echo '       ./deploy.sh --install-command'; echo; echo '  --expected-sha SHA  Deploy exactly this 40-character origin/main commit and reject branch movement.'; echo '  --approved-migrations-b64 BASE64  Base64 of exact comma-separated pending paths, or "none".'; echo '  --live              Keep the site online and run the exact approved migrations; rejects Composer dependency changes.'; echo '                      In an interactive terminal, omitted migration approval is reviewed and confirmed before deployment.'; echo '  --reconcile-masters-payments  Explicitly apply the Masters payment reconciliation during maintenance deploys.'; }
+usage() { echo 'Usage: deploy main [--expected-sha SHA] [--approved-migrations-b64 BASE64] [--skip-migrations] [--skip-deps] [--live] [--reconcile-masters-payments]'; echo '       ./deploy.sh --install-command'; echo; echo '  --expected-sha SHA  Deploy exactly this 40-character origin/main commit and reject branch movement.'; echo '  --approved-migrations-b64 BASE64  Base64 of exact comma-separated pending paths, or "none".'; echo '  --live              Keep the site online and run the exact approved migrations; rejects Composer dependency changes.'; echo '                      A direct interactive terminal may review and confirm omitted pending migrations.'; echo '  --reconcile-masters-payments  Explicitly apply the Masters payment reconciliation during maintenance deploys.'; }
 install_command() {
     local dir="${DEPLOY_COMMAND_DIR:-$HOME/bin}"
     local path="$dir/deploy-ct"
@@ -52,10 +52,6 @@ while [ "$#" -gt 0 ]; do case "$1" in
     -*) fail "Unknown option: $1" ;; *) [ -z "$REQUESTED_BRANCH" ] || fail 'Only one deployment branch may be supplied'; REQUESTED_BRANCH="$1" ;;
 esac; shift; done
 [ "$SHOW_HELP" = true ] && { usage; exit 0; }; [ "$INSTALL_COMMAND" = true ] && { install_command; exit 0; }
-if [ "$APPROVED_MIGRATIONS_SET" = false ]; then
-    [ "$LIVE_DEPLOY" = true ] || fail 'An explicit per-run approved migration list is required for maintenance deployments'
-    [ -t 0 ] && [ -t 1 ] || fail 'Non-interactive deployments require --approved-migrations-b64'
-fi
 REQUESTED_BRANCH="${REQUESTED_BRANCH:-$GIT_BRANCH}"
 case "$REQUESTED_BRANCH" in *[!A-Za-z0-9._/-]*|/*|*..*) fail "Invalid deployment branch: $REQUESTED_BRANCH" ;; esac
 case " $DEPLOY_BRANCHES " in *" $REQUESTED_BRANCH "*) ;; *) fail "Branch '$REQUESTED_BRANCH' is not approved" ;; esac
@@ -67,7 +63,14 @@ if [ -n "$EXPECTED_SHA" ]; then
 fi
 [ "$RECONCILE_MASTERS_PAYMENTS" = false ] || [ "$LIVE_DEPLOY" = false ] || fail 'Masters payment reconciliation requires a maintenance deployment'
 cleanup_preflight() { [ -z "$PREFLIGHT_DIR" ] || { rm -f -- "$PREFLIGHT_DIR/deploy.config" "$PREFLIGHT_DIR/target-migrations" "$PREFLIGHT_DIR/approved-migrations" "$PREFLIGHT_DIR/pending-migrations" "$PREFLIGHT_DIR/post-pending-migrations" "$PREFLIGHT_DIR/empty-approval" "$PREFLIGHT_DIR/preflight-error" "$PREFLIGHT_DIR/preflight.php"; rmdir "$PREFLIGHT_DIR" 2>/dev/null || true; }; }
-restore_online() { local status=$?; [ "$APP_IS_DOWN" = 1 ] && run_php "$APP_PATH/artisan" up || true; cleanup_preflight; exit "$status"; }
+deployment_exit() {
+    local status=$?
+    if [ "$APP_IS_DOWN" = 1 ]; then
+        log ERROR 'Deployment interrupted; the site remains in maintenance mode. Resolve the failure and complete deployment before running artisan up.' >&2
+    fi
+    cleanup_preflight
+    exit "$status"
+}
 sync_public_html() {
     [ -z "$PUBLIC_HTML" ] || [ "$PUBLIC_HTML" = "$APP_PATH/public" ] && { log INFO 'Skipping separate public asset sync'; return; }
     mkdir -p "$PUBLIC_HTML"
@@ -115,9 +118,15 @@ else
     fi
     echo 'Exact pending migrations for the target commit:'
     if [ -s "$PREFLIGHT_DIR/approved-migrations" ]; then sed 's/^/  - /' "$PREFLIGHT_DIR/approved-migrations"; else echo '  (none)'; fi
-    printf 'Type DEPLOY to approve this exact migration set and continue: '
-    IFS= read -r INTERACTIVE_APPROVAL
-    [ "$INTERACTIVE_APPROVAL" = DEPLOY ] || fail 'Deployment cancelled; exact migration set was not approved'
+    if grep -Fxq 'database/migrations/2026_09_15_120000_reconcile_wilson_masters_registration_incidents.php' "$PREFLIGHT_DIR/approved-migrations"; then
+        fail 'The pending Wilson Masters incident repair requires deliberate --approved-migrations-b64 input after reviewing its payment impact'
+    fi
+    if [ -s "$PREFLIGHT_DIR/approved-migrations" ]; then
+        [ -t 0 ] && [ -t 1 ] || fail 'Non-interactive deployments with pending migrations require --approved-migrations-b64'
+        printf 'Type DEPLOY to approve this exact migration set and continue: '
+        IFS= read -r INTERACTIVE_APPROVAL
+        [ "$INTERACTIVE_APPROVAL" = DEPLOY ] || fail 'Deployment cancelled; exact migration set was not approved'
+    fi
 fi
 run_php "$PREFLIGHT_DIR/preflight.php" \
     --deploy-config="$PREFLIGHT_DIR/deploy.config" \
@@ -137,7 +146,8 @@ if [ "$LIVE_DEPLOY" = true ]; then
     SKIP_DEPS=true
     log INFO 'Live deployment selected; the site will remain online and approved migrations will run'
 else
-    run_php "$APP_PATH/artisan" down --retry=60; APP_IS_DOWN=1; trap restore_online EXIT
+    log INFO 'Full maintenance deployment selected: code, Composer, approved migrations, caches and public Mix assets'
+    run_php "$APP_PATH/artisan" down --retry=60; APP_IS_DOWN=1; trap deployment_exit EXIT
 fi
 git -C "$APP_PATH" merge --ff-only "$FETCHED_MAIN"
 # Read the migration list shipped with the release we just pulled.

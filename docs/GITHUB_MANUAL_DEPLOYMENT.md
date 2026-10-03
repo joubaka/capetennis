@@ -60,7 +60,7 @@ by this workflow. The deploy script's `--reconcile-masters-payments` flag is
 intentionally never passed by GitHub.
 
 `MIGRATION_PATHS` is a release allowlist, not authorization to execute everything
-in it. Every run requires a visible `approved_migrations` value. The read-only
+in it. Every GitHub workflow run requires a visible `approved_migrations` value. The read-only
 preflight fails when a pending target migration is absent from the release
 allowlist, an approved path is not pending, or the approved and pending sets
 differ. The Wilson Masters incident reconciliation migration is never inserted
@@ -68,10 +68,24 @@ or approved automatically: if it is pending, its full path must be deliberately
 included in that run's input after reviewing its production impact. The GitHub
 environment approval is not, by itself, migration authorization.
 
-For a direct server deployment, an operator may use the familiar
-`deploy-ct main --live` command in an interactive terminal. The script inspects
-the exact target commit, prints its exact pending migration set, and continues
-only when the operator types `DEPLOY`. Piped, scheduled, CI, and other
-non-interactive invocations must still supply `--approved-migrations-b64`; the
-interactive prompt is not an automation bypass. The explicit flag retains the
-same exact-set validation described above.
+For a direct server deployment, run `deploy-ct main` for a full maintenance update,
+or `deploy-ct main --live` for an online update without Composer changes.
+When migration input is omitted and pending release-allowlisted migrations exist,
+a direct interactive terminal prints the exact pending set and continues only when
+the operator types `DEPLOY`. Piped, scheduled, CI, and other non-interactive runs
+with pending migrations must supply `--approved-migrations-b64`; the release
+allowlist never authorizes execution by itself. The script rejects pending migrations
+outside the allowlist and approval values that do not exactly match the pending set.
+The Wilson Masters incident payment repair always requires deliberate
+`--approved-migrations-b64` input after reviewing its impact, even in an interactive
+terminal. GitHub deployments continue to require that input and their environment
+approval.
+
+The normal command takes the site offline after preflight, updates the full checkout
+and locked Composer dependencies, runs the selected migrations, rebuilds Laravel
+caches, syncs committed public assets and `mix-manifest.json` to the web root,
+restarts queues, and brings the site online after success.
+Mix assets must be built with `npm run production` and included in the release;
+the server publishes those built assets rather than running Node tooling.
+If a step fails after downtime begins, the site stays in maintenance mode.
+Resolve the failure and complete deployment before manually running `php artisan up`.

@@ -61,18 +61,32 @@ class DeploymentConfigTest extends TestCase
         $this->assertStringNotContainsString('merge --ff-only "${EXPECTED_SHA:-origin/main}"', $script);
     }
 
-    public function test_interactive_live_deploy_can_review_but_automation_still_requires_explicit_approval(): void
+    public function test_interactive_deploy_can_review_but_automation_still_requires_explicit_pending_approval(): void
     {
         $script = file_get_contents(dirname(__DIR__, 2).'/deploy.sh');
 
-        $this->assertStringContainsString('[ "$LIVE_DEPLOY" = true ] || fail', $script);
-        $this->assertStringContainsString('[ -t 0 ] && [ -t 1 ] || fail \'Non-interactive deployments require --approved-migrations-b64\'', $script);
+        $this->assertStringContainsString('[ -t 0 ] && [ -t 1 ] || fail \'Non-interactive deployments with pending migrations require --approved-migrations-b64\'', $script);
         $this->assertStringContainsString('Exact pending migrations for the target commit:', $script);
         $this->assertStringContainsString('Type DEPLOY to approve this exact migration set and continue:', $script);
+        $this->assertStringContainsString('IFS= read -r INTERACTIVE_APPROVAL', $script);
         $this->assertStringContainsString('[ "$INTERACTIVE_APPROVAL" = DEPLOY ] || fail', $script);
         $this->assertStringContainsString("'Migration preflight failed: Pending migrations lack explicit per-run approval: '*", $script);
-        $this->assertStringContainsString("*) printf '%s\\n' \"\$PREFLIGHT_MESSAGE\" >&2; fail 'Unable to determine an exact safe migration set'", $script);
+        $this->assertStringContainsString('Unable to determine an exact safe migration set', $script);
+        $this->assertStringContainsString('--approved-migrations-b64', $script);
         $this->assertSame(3, substr_count($script, 'run_php "$PREFLIGHT_DIR/preflight.php"'));
+        $this->assertStringContainsString('The pending Wilson Masters incident repair requires deliberate --approved-migrations-b64 input', $script);
+    }
+
+    public function test_maintenance_deployment_stays_offline_on_failure_and_syncs_assets_before_reopening(): void
+    {
+        $script = file_get_contents(dirname(__DIR__, 2).'/deploy.sh');
+        $handler = substr($script, strpos($script, 'deployment_exit()'), strpos($script, 'sync_public_html()') - strpos($script, 'deployment_exit()'));
+
+        $this->assertStringContainsString('trap deployment_exit EXIT', $script);
+        $this->assertStringNotContainsString('artisan" up', $handler);
+        $this->assertStringContainsString('mix-manifest.json', $script);
+        $this->assertLessThan(strpos($script, 'sync_public_html; run_php'), strpos($script, 'composer install'));
+        $this->assertLessThan(strpos($script, 'if [ "$LIVE_DEPLOY" = false ]; then run_php "$APP_PATH/artisan" up'), strpos($script, 'sync_public_html; run_php'));
     }
 
     public function test_deploy_does_not_execute_checkout_config_before_checkout_trust_checks(): void
