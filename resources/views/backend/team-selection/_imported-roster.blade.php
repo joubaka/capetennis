@@ -102,6 +102,7 @@
                 <span class="badge {{ $linkedEmail ? 'bg-label-success' : 'bg-label-info' }}" data-effective-email-source>{{ $linkedEmail ? 'Linked profile email' : ($linkedProfile ? 'No-profile fallback email' : 'No-profile email') }}</span>
                 <div class="small text-muted mt-1">{{ $contactCell ?: 'No cell number' }}</div>
                 @if($contactCell)<span class="badge {{ $linkedProfile?->cellNr ? 'bg-label-success' : 'bg-label-info' }}">{{ $linkedProfile?->cellNr ? 'Linked profile cell' : 'No-profile cell' }}</span>@endif
+                <button class="btn btn-sm btn-outline-secondary roster-email-button mt-2 {{ filter_var($contactEmail, FILTER_VALIDATE_EMAIL) ? '' : 'd-none' }}" data-imported-email-action type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="imported_player" data-team-id="{{ $regionTeam->id }}" data-slot-id="{{ $slot->id }}" data-recipient="{{ trim($slot->name.' '.$slot->surname) }} · {{ $contactEmail }}"><i class="ti ti-mail me-1" aria-hidden="true"></i>Email player</button>
               </td>
             </tr>
           @empty
@@ -116,13 +117,16 @@
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0">
         <thead><tr><th>Roster rank</th><th>Player</th><th>Profile status</th><th>Move</th></tr></thead>
-        <tbody class="imported-roster-sortable" data-reorder-url="{{ route('backend.team-selection.imported-players.reorder', [$event, $eventRegion, $regionTeam]) }}">
+        <tbody class="imported-roster-order">
           @foreach($importedRoster as $slot)
-            <tr draggable="true" data-slot-id="{{ $slot->id }}">
+            <tr data-slot-id="{{ $slot->id }}">
               <td><span class="badge bg-label-primary">Rank {{ $slot->rank }}</span></td>
-              <td><span class="drag-handle me-2" title="Drag to reorder"><i class="ti ti-grip-vertical"></i></span><strong data-imported-player-name>{{ trim($slot->name.' '.$slot->surname) }}</strong></td>
+              <td><strong data-imported-player-name>{{ trim($slot->name.' '.$slot->surname) }}</strong></td>
               <td><span class="badge {{ $slot->player_profile ? 'bg-label-success' : 'bg-label-info' }}">{{ $slot->player_profile ? 'Imported · Linked' : 'Imported · Unlinked' }}</span></td>
-              <td><span class="small text-muted"><i class="ti ti-grip-vertical me-1"></i>Drag row</span></td>
+              <td><div class="d-flex gap-1">
+                <form method="POST" action="{{ route('backend.team-selection.imported-players.move', [$event, $eventRegion, $regionTeam, $slot]) }}">@csrf<input type="hidden" name="direction" value="up"><button class="btn btn-sm btn-outline-primary" title="Move up" aria-label="Move {{ trim($slot->name.' '.$slot->surname) }} up" @disabled($loop->first)><i class="ti ti-arrow-up"></i></button></form>
+                <form method="POST" action="{{ route('backend.team-selection.imported-players.move', [$event, $eventRegion, $regionTeam, $slot]) }}">@csrf<input type="hidden" name="direction" value="down"><button class="btn btn-sm btn-outline-primary" title="Move down" aria-label="Move {{ trim($slot->name.' '.$slot->surname) }} down" @disabled($loop->last)><i class="ti ti-arrow-down"></i></button></form>
+              </div></td>
             </tr>
           @endforeach
         </tbody>

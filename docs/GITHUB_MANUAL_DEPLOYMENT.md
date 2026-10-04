@@ -70,10 +70,32 @@ environment approval is not, by itself, migration authorization.
 
 For a direct server deployment, run `deploy-ct main` for a full maintenance update,
 or `deploy-ct main --live` for an online update without Composer changes.
+No migration prompt appears when there are no pending migrations. The `DEPLOY`
+prompt is a database approval checkpoint, not an error; it happens before the
+checkout changes or maintenance mode begins. Git fast-forward compatibility,
+live-mode Composer changes, and Composer availability are checked before that
+checkpoint.
+
+For a reviewed direct deployment without an interactive pause, supply the exact
+pending paths in plain text and pin the target commit:
+
+```bash
+deploy-ct main --expected-sha <40-character-SHA> --approved-migrations database/migrations/<first>.php,database/migrations/<second>.php --live
+```
+
+Use `--approved-migrations none` when the target has no pending migrations.
+The command prints a ready-to-copy pinned command when it encounters a normal
+migration approval prompt. Review the listed migrations before using it.
+Plain-text approval uses the same exact-set validation as encoded approval;
+supplying either option is explicit authorization for that run. Supply approval
+only once. Existing GitHub automation can continue using the encoded option.
+The Wilson Masters repair continues to require the deliberate encoded option.
+
 When migration input is omitted and pending release-allowlisted migrations exist,
 a direct interactive terminal prints the exact pending set and continues only when
 the operator types `DEPLOY`. Piped, scheduled, CI, and other non-interactive runs
-with pending migrations must supply `--approved-migrations-b64`; the release
+with pending migrations must supply `--approved-migrations` or
+`--approved-migrations-b64`; the release
 allowlist never authorizes execution by itself. The script rejects pending migrations
 outside the allowlist and approval values that do not exactly match the pending set.
 The Wilson Masters incident payment repair always requires deliberate

@@ -40,7 +40,7 @@ class TeamSelectionInvitationController extends Controller
     {
         abort_unless($event->isTeam(), 404);
         $isEventManager = $access->isEventManager(request()->user(), $event);
-        $eventRegions = EventRegion::with(['events', 'managerAssignment.user', 'announcements.creator', 'announcements.emailLogs', 'region.clothingItems.sizes', 'rankingSource.series', 'rankingSource.imports.invitations.team', 'rankingSource.imports.invitations.player.user', 'rankingSource.imports.invitations.player.users', 'rankingSource.imports.invitations.emailLogs'])
+        $eventRegions = EventRegion::with(['events', 'managerAssignment.user', 'announcements.creator', 'announcements.emailLogs', 'region.clothingItems.sizes', 'rankingSource.series', 'rankingSource.imports.invitations.team', 'rankingSource.imports.invitations.player.user', 'rankingSource.imports.invitations.player.users', 'rankingSource.imports.invitations.emailLogs', 'rankingSource.imports.invitations.order'])
             ->where('event_id', $event->id)->orderBy('ordering')->get();
         if (! $isEventManager) {
             $eventRegions = $eventRegions->filter(fn (EventRegion $item) => $access->canManage(request()->user(), $item))->values();
@@ -466,6 +466,24 @@ class TeamSelectionInvitationController extends Controller
         return back()->with('success', "Invitation queued for {$email} after the restored team position was approved.");
     }
 
+    public function transferInvitationPayment(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamPaymentService $service)
+    {
+        abort_unless($request->user()->hasRole('super-user'), 403);
+        abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
+        $this->authorizeImport($event, $selectionImport, $request->user());
+        $data = $request->validate([
+            'order_id' => ['required', 'integer', 'min:1'],
+            'expected_player_id' => ['required', 'integer', 'min:1'],
+            'target_player_id' => ['required', 'integer', 'min:1'],
+            'reason' => ['required', 'string', 'max:1000'],
+            'confirm_transfer' => ['required', 'accepted'],
+        ]);
+        $service->transferInvitationCoverage($invitation, (int) $data['order_id'], (int) $data['expected_player_id'],
+            (int) $data['target_player_id'], $data['reason'], $request->user());
+
+        return back()->with('success', 'Payment moved to the selected player. The original player remains selected and unpaid; original payer and payment history were kept. No email was sent.');
+    }
+
     public function markPaidPrivately(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamPaymentService $service)
     {
         abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
@@ -735,7 +753,33 @@ class TeamSelectionInvitationController extends Controller
     public function sendRosterMessage(Request $request, Event $event, EventRegion $eventRegion, BulkMailDispatcher $mailer, TeamSelectionEmailAudienceService $audiences)
     {
         $this->authorizeRegion($event, $eventRegion, $request->user());
-        if ($event->isTeam()) return $this->reviewInCommunications($request, $event, ['scope' => 'region', 'region_id' => $eventRegion->region_id]);
+        if ($event->isTeam()) {
+            $target = $request->validate([
+                'target_type' => ['required', 'in:region,team,player,imported_player,unlinked_imported,linked_unpaid,linked_all,filtered'],
+                'team_id' => ['nullable', 'required_if:target_type,team,player,imported_player', 'integer'],
+                'invitation_id' => ['nullable', 'required_if:target_type,player', 'integer'],
+                'slot_id' => ['nullable', 'required_if:target_type,imported_player', 'integer'],
+            ]);
+            $options = ['scope' => 'region', 'region_id' => $eventRegion->region_id];
+            if (in_array($target['target_type'], ['team', 'player', 'imported_player'], true)) {
+                $team = Team::query()->withoutGlobalScopes()->with('category')->findOrFail($target['team_id']);
+                abort_unless((int) $team->region_id === (int) $eventRegion->region_id
+                    && (int) $team->category?->event_id === (int) $event->id, 404);
+                $options = ['scope' => 'team', 'team_id' => $team->id];
+                if ($target['target_type'] === 'player') {
+                    $invitation = TeamSelectionInvitation::query()->where('event_id', $event->id)
+                        ->where('region_id', $eventRegion->region_id)->where('team_id', $team->id)
+                        ->findOrFail($target['invitation_id']);
+                    $options = ['scope' => 'individual', 'individual_key' => 'player:'.$invitation->player_id];
+                } elseif ($target['target_type'] === 'imported_player') {
+                    $slot = $team->team_players_no_profile()->findOrFail($target['slot_id']);
+                    $options = ['scope' => 'individual', 'individual_key' => $slot->player_profile
+                        ? 'player:'.$slot->player_profile : 'imported:'.$slot->id];
+                }
+            }
+
+            return $this->reviewInCommunications($request, $event, $options);
+        }
         $data = $request->validate([
             'target_type' => ['required', 'in:region,team,player,unlinked_imported,linked_unpaid,linked_all,filtered'],
             'team_id' => ['nullable', 'required_if:target_type,team,player', 'integer', 'exists:teams,id'],

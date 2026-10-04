@@ -116,6 +116,7 @@ class EventCommunicationService
 
     public function plan(Event $event, User $actor, array $options, string $subject, string $body): array
     {
+        if (($options['scope'] ?? null) === 'rankings') return $this->rankingPlan($event, $actor, $options, $subject, $body);
         $regions = $this->regions($event, $actor);
         $rows = $this->entries($event, $actor);
         $scope = $options['scope'];
@@ -168,9 +169,64 @@ class EventCommunicationService
         }
         if ($messages->isEmpty()) throw ValidationException::withMessages(['audience' => 'No matching recipient has a valid email address. Choose another audience or add contacts.']);
         $plan = ['recipients' => $messages->sortBy([['email', 'asc'], ['subject', 'asc']])->values()->all(), 'issues' => $issues->unique()->sort()->values()->all()];
-        $plan['fingerprint'] = hash('sha256', json_encode([$event->id, $options, $subject, $body, $plan], JSON_THROW_ON_ERROR));
+        $plan['fingerprint'] = $this->planFingerprint([$event->id, $options, $subject, $body, $plan]);
 
         return $plan;
+    }
+
+    private function rankingPlan(Event $event, User $actor, array $options, string $subject, string $body): array
+    {
+        $audience = app(RegionalRankingMailAudience::class)->resolve($event, $actor, $options);
+        $rows = $audience['rows']->filter(fn ($row) => ! $row['excluded']);
+        $byEmail = collect();
+        foreach ($rows as $row) foreach ($row['emails'] as $email) $byEmail->put($email, $byEmail->get($email, collect())->push($row));
+        $recipients = $byEmail->map(function ($players, $email) use ($subject, $body) {
+            $details = $players->map(fn ($p) => $p['name'].' — '.$p['region'].' — '.$p['category'].' — Rank '.$p['rank'])->unique()->implode("\n");
+            return ['email' => $email, 'name' => $players->first()['name'], 'kind' => 'players', 'subject' => $subject, 'html' => nl2br(e($body."\n\nPlayer details:\n".$details)), 'ranking_review' => $players->values()->all()];
+        })->sortBy('email')->values()->all();
+        if (! $recipients) throw ValidationException::withMessages(['audience' => 'No matching recipient has a valid email address.']);
+        $issues = $rows->filter(fn ($row) => ! $row['emails'])->map(fn ($row) => $row['name'].' — no valid email address')->unique()->sort()->values()->all();
+        $plan = ['recipients' => $recipients, 'issues' => $issues];
+        $plan['fingerprint'] = $this->planFingerprint([$event->id, $options, $subject, $body, $plan, $audience['sources'], $audience['rows']->all()]);
+        return $plan;
+    }
+
+    private function planFingerprint(array $value): string
+    {
+        // MySQL JSON normalises object keys; fingerprint the same semantic plan after persistence.
+        $normalise = function (array $items) use (&$normalise): array {
+            if (! array_is_list($items)) ksort($items);
+            foreach ($items as $key => $item) if (is_array($item)) $items[$key] = $normalise($item);
+            return $items;
+        };
+
+        return hash('sha256', json_encode($normalise($value), JSON_THROW_ON_ERROR));
+    }
+
+    public function rankingOriginal(EventCommunicationBatch $batch): ?EventCommunicationBatch
+    {
+        $seen = [];
+        while (true) {
+            abort_if(in_array($batch->id, $seen, true), 422);
+            $seen[] = $batch->id;
+            if (($batch->options['scope'] ?? null) === 'rankings') return $batch;
+            if (($batch->options['source'] ?? null) !== 'retry') return null;
+            $batch = EventCommunicationBatch::where('event_id', $batch->event_id)->findOrFail($batch->options['original_batch_id']);
+        }
+    }
+
+    public function authorizeRankingBatch(EventCommunicationBatch $batch, User $actor): void
+    {
+        if ($this->rankingOriginal($batch)) abort_unless(app(RegionalRankingMailAudience::class)->canManage($batch->event, $actor), 403);
+    }
+
+    private function checkRankingRetry(EventCommunicationBatch $batch, User $actor): void
+    {
+        $this->authorizeRankingBatch($batch, $actor);
+        if ($original = $this->rankingOriginal($batch)) {
+            $plan = $this->plan($original->event, $actor, $original->options, $original->subject, $original->body);
+            if (! hash_equals($original->fingerprint, $plan['fingerprint'])) throw ValidationException::withMessages(['preview' => 'Ranking recipients changed. Prepare a fresh ranking preview.']);
+        }
     }
 
     public function preview(Event $event, User $actor, array $options, string $subject, string $body): EventCommunicationBatch
@@ -203,10 +259,11 @@ class EventCommunicationService
             return EventCommunicationBatch::create(['event_id' => $event->id, 'created_by' => $actor->id, 'token' => (string) Str::uuid(), 'subject' => $recipient['subject'], 'body' => '', 'options' => ['source' => 'invitation_retry', 'log_id' => $log->id, 'payload_fingerprint' => hash('sha256', json_encode($log->payload, JSON_THROW_ON_ERROR))], 'recipients' => [$recipient], 'issues' => [], 'fingerprint' => hash('sha256', json_encode($recipient, JSON_THROW_ON_ERROR))]);
         }
         $original = EventCommunicationBatch::where('event_id', $event->id)->where('created_by', $actor->id)->findOrFail($log->payload['event_communication_batch_id'] ?? 0);
+        $this->checkRankingRetry($original, $actor);
         abort_unless($log->status === 'failed' && ! $log->sent_at && (int) ($log->payload['event_id'] ?? 0) === (int) $event->id, 422);
         $recipient = ['email' => $log->recipient_email, 'name' => $log->recipient_name, 'kind' => $log->payload['recipient_kind'] ?? 'players', 'subject' => $log->payload['subject'], 'html' => $log->payload['body']];
 
-        return EventCommunicationBatch::create(['event_id' => $event->id, 'created_by' => $actor->id, 'token' => (string) Str::uuid(), 'subject' => $recipient['subject'], 'body' => '', 'options' => ['source' => 'retry', 'log_id' => $log->id, 'original_batch_id' => $original->id], 'recipients' => [$recipient], 'issues' => [], 'fingerprint' => hash('sha256', json_encode($recipient, JSON_THROW_ON_ERROR))]);
+        return EventCommunicationBatch::create(['event_id' => $event->id, 'created_by' => $actor->id, 'token' => (string) Str::uuid(), 'subject' => $recipient['subject'], 'body' => '', 'options' => ['source' => 'retry', 'log_id' => $log->id, 'original_batch_id' => $original->id, 'ranking_origin_id' => $this->rankingOriginal($original)?->id], 'recipients' => [$recipient], 'issues' => [], 'fingerprint' => hash('sha256', json_encode($recipient, JSON_THROW_ON_ERROR))]);
     }
 
     public function invitationLogs(Event $event, User $actor): \Illuminate\Database\Eloquent\Builder
@@ -240,6 +297,7 @@ class EventCommunicationService
 
     public function approve(EventCommunicationBatch $batch, User $actor, bool $acknowledgeMissing): array
     {
+        $this->authorizeRankingBatch($batch, $actor);
         $this->regions($batch->event, $actor);
         abort_unless((int) $batch->created_by === (int) $actor->id, 403);
 
@@ -263,6 +321,7 @@ class EventCommunicationService
                 return ['queued' => 1, 'duplicate' => false];
             }
             if (($batch->options['source'] ?? null) === 'retry') {
+                $this->checkRankingRetry($batch, $actor);
                 $log = BulkEmailLog::whereKey($batch->options['log_id'])->lockForUpdate()->firstOrFail();
                 abort_unless($log->status === 'failed' && ! $log->sent_at && (int) ($log->payload['event_id'] ?? 0) === (int) $batch->event_id && (int) ($log->payload['event_communication_batch_id'] ?? 0) === (int) $batch->options['original_batch_id'], 422);
                 $recipient = ['email' => $log->recipient_email, 'name' => $log->recipient_name, 'kind' => $log->payload['recipient_kind'] ?? 'players', 'subject' => $log->payload['subject'], 'html' => $log->payload['body']];

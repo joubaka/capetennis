@@ -43,9 +43,6 @@
   .selection-progress-step small { display: block; margin-top: .2rem; color: #68778c; }
   .regional-attention { display: flex; flex-wrap: wrap; gap: .5rem; }
   .region-action-status { padding: .45rem 1rem .3rem; color: #68778c; font-size: .75rem; }
-  .imported-roster-sortable tr[draggable="true"] { cursor: grab; }
-  .imported-roster-sortable tr.is-dragging { opacity: .45; }
-  .imported-roster-sortable .drag-handle { cursor: grab; touch-action: none; }
   .team-publication-button[disabled], .clothing-order-toggle[disabled] { cursor: wait; }
   @media (max-width: 767.98px) {
     .region-workspace-card > .card-body { padding: .75rem; }
@@ -86,6 +83,7 @@
     .regional-team-card .team-player-table td[data-label="Regional action"] { grid-column: 2; grid-row: 2; display: block; padding: 0; }
     .regional-team-card .team-player-table td[data-label="Selection / payment"] { grid-row: 3; padding-bottom: .65rem; border-bottom: 1px solid #edf0f4; margin-bottom: .25rem; }
     .regional-team-card .team-player-table td[data-label="Selection / payment"]::before { content: 'Status'; }
+    .regional-team-card .team-player-table [data-invitation-payment-transfer] { grid-column: 1 / -1; width: 100%; max-width: none !important; min-width: 0; }
     .regional-team-card .team-player-table .badge { white-space: normal; text-align: left; line-height: 1.35; }
     .regional-team-card .team-player-table .dropdown-menu { min-width: min(15rem, calc(100vw - 3rem)) !important; }
     .regional-team-card .team-player-table .dropdown-item { white-space: normal; }
@@ -329,7 +327,7 @@
                   <div class="col-md-6 col-xl-4 regional-help-step"><strong>Replace an unpaid player</strong><div class="text-muted">Select <strong>Show team</strong>, find the player, choose <strong>Change player</strong>, select the next reserve or another player profile, give a reason, then confirm. Paid players cannot be replaced here.</div></div>
                   <div class="col-md-6 col-xl-4 regional-help-step"><strong>Leave an unavailable player's place vacant</strong><div class="text-muted">Select <strong>Show team</strong>, open the player's action menu, choose <strong>Mark unavailable / release place</strong>, give a reason and confirm. No reserve is needed. This action is for unpaid players.</div></div>
                   <div class="col-md-6 col-xl-4 regional-help-step"><strong>Fill an open place</strong><div class="text-muted">Select <strong>Show team</strong>. A withdrawn or declined place shows <strong>Invite next reserve</strong>; an eligible reserve may also show <strong>Activate as Rank</strong>.</div></div>
-                  <div class="col-md-6 col-xl-4 regional-help-step"><strong>Change player order</strong><div class="text-muted">Select <strong>Show team</strong>, open <strong>Player order</strong>, then drag players into the required order.</div></div>
+                  <div class="col-md-6 col-xl-4 regional-help-step"><strong>Change player order</strong><div class="text-muted">Select <strong>Show team</strong>, open <strong>Player order</strong>, then use Move up or Move down to set the required order.</div></div>
                   <div class="col-md-6 col-xl-4 regional-help-step"><strong>Contact outstanding players</strong><div class="text-muted">Use <strong>Registration reminder</strong>@if($usesRegionalClothing) or <strong>Incomplete clothing reminder</strong>@endif above. Review the regional audience and exact recipient count before sending.</div></div>
                   @if($usesRegionalClothing)<div class="col-md-6 col-xl-4 regional-help-step"><strong>Manage clothing</strong><div class="text-muted">Use <strong>Clothing setup</strong> above to review items and sizes. Use <strong>Region actions</strong> to open or close clothing ordering.</div></div>@endif
                   <div class="col-md-6 col-xl-4 regional-help-step"><strong>Publish teams</strong><div class="text-muted">Resolve open places first, review each team, then select <strong>Publish all teams</strong>. Published teams can still be opened and reviewed.</div></div>
@@ -411,7 +409,7 @@
                             <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Actions for {{ $regionTeam->name }}"><i class="ti ti-dots-vertical"></i></button>
                             <div class="dropdown-menu dropdown-menu-end">
                               <button type="button" class="dropdown-item team-publication-button" data-url="{{ route('backend.team-selection.teams.publication.update', [$event, $eventRegion, $regionTeam]) }}" data-team-id="{{ $regionTeam->id }}" data-published="{{ $regionTeam->published ? '1' : '0' }}"><i class="ti ti-{{ $regionTeam->published ? 'world-off' : 'world-upload' }} me-2"></i><span>{{ $regionTeam->published ? 'Unpublish' : 'Publish' }}</span></button>
-                              @if($teamSelected->isNotEmpty())<button class="dropdown-item roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="team" data-team-id="{{ $regionTeam->id }}" data-recipient="{{ $teamSelected->count() }} active player(s) in {{ $regionTeam->name }}"><i class="ti ti-mail me-2"></i>Email team</button>@endif
+                              @if($activeImport ? $teamSelected->isNotEmpty() : $importedRoster->isNotEmpty())<button class="dropdown-item roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="team" data-team-id="{{ $regionTeam->id }}" data-recipient="{{ $activeImport ? $teamSelected->count() : $importedRoster->count() }} roster player(s) in {{ $regionTeam->name }}"><i class="ti ti-mail me-2"></i>Email team</button>@endif
                               <button class="dropdown-item team-settings-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#team-settings-{{ $regionTeam->id }}" aria-controls="team-settings-{{ $regionTeam->id }}" aria-expanded="false"><i class="ti ti-settings me-2"></i><span>Team settings</span></button>
                             </div>
                           </div>
@@ -491,7 +489,13 @@
                                     <div class="small text-muted">{{ $invitation->player?->cellNr ?: 'No cell number' }}</div>
                                   </td>
                                   <td data-label="Ranking">@if(data_get($invitation->snapshot_json, 'selection_source') === 'manual_system_profile')<strong>Manual addition</strong><div class="small text-muted">Not in ranking snapshot</div>@else<strong>#{{ $invitation->ranking_position }}</strong><div class="small text-muted">{{ number_format((float)$invitation->total_points, 2) }} pts</div>@endif</td>
-                                  <td data-label="Selection / payment"><span class="badge bg-label-{{ $statusTone }}">{{ str($invitation->status)->replace('_',' ')->title() }}</span>@if($invitation->decline_method === 'system_primary_team_promotion')<div class="small text-info mt-1">{{ $invitation->decline_reason }}</div>@else<div class="small text-muted mt-1">Read only</div>@endif</td>
+                                  <td data-label="Selection / payment">
+                                    <span class="badge bg-label-{{ $statusTone }}">{{ str($invitation->status)->replace('_',' ')->title() }}</span>
+                                    @if($invitation->decline_method === 'system_primary_team_promotion')<div class="small text-info mt-1">{{ $invitation->decline_reason }}</div>@else<div class="small text-muted mt-1">Read only</div>@endif
+                                    @if(auth()->user()->hasRole('super-user') && $invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED)
+                                      @include('backend.team-selection._invitation-payment-transfer')
+                                    @endif
+                                  </td>
                                   <td data-label="Email">
                                     <div>{{ $awaitingRestoredInvitation ? 'Restored — invitation not sent' : ($awaitingActivatedInvitation ? 'Pending invitation — not sent' : ($delivery ? $delivery->delivery_status_label : 'Not sent')) }}</div>@if($delivery?->accepted_at)<small class="d-block text-muted">{{ $delivery->accepted_at->format('d M Y H:i:s') }}</small>@endif @if($delivery?->transport_message_id)<small class="d-block text-muted text-break">Message ID: {{ $delivery->transport_message_id }}</small>@endif
                                     @if($activeImport->status === 'sent' && !$isReserve)
@@ -633,8 +637,8 @@
                                     <td>@if(data_get($orderedInvitation->snapshot_json, 'selection_source') === 'manual_system_profile')Manual addition <span class="text-muted">· not in ranking snapshot</span>@else#{{ $orderedInvitation->ranking_position }} <span class="text-muted">· {{ number_format((float)$orderedInvitation->total_points, 2) }} pts</span>@endif</td>
                                     <td>{{ str($orderedInvitation->status)->replace('_',' ')->title() }}</td>
                                     <td><div class="d-flex gap-1">
-                                      <form method="POST" action="{{ route('backend.team-selection.invitations.move', [$event, $activeImport, $orderedInvitation]) }}">@csrf<input type="hidden" name="direction" value="up"><button class="btn btn-sm btn-outline-primary" title="Move up" @disabled($loop->first)><i class="ti ti-arrow-up"></i></button></form>
-                                      <form method="POST" action="{{ route('backend.team-selection.invitations.move', [$event, $activeImport, $orderedInvitation]) }}">@csrf<input type="hidden" name="direction" value="down"><button class="btn btn-sm btn-outline-primary" title="Move down" @disabled($loop->last)><i class="ti ti-arrow-down"></i></button></form>
+                                      <form method="POST" action="{{ route('backend.team-selection.invitations.move', [$event, $activeImport, $orderedInvitation]) }}">@csrf<input type="hidden" name="direction" value="up"><button class="btn btn-sm btn-outline-primary" title="Move up" aria-label="Move {{ $orderedInvitation->player?->full_name }} up" @disabled($loop->first)><i class="ti ti-arrow-up"></i></button></form>
+                                      <form method="POST" action="{{ route('backend.team-selection.invitations.move', [$event, $activeImport, $orderedInvitation]) }}">@csrf<input type="hidden" name="direction" value="down"><button class="btn btn-sm btn-outline-primary" title="Move down" aria-label="Move {{ $orderedInvitation->player?->full_name }} down" @disabled($loop->last)><i class="ti ti-arrow-down"></i></button></form>
                                     </div></td>
                                   </tr>
                                 @endforeach
@@ -806,6 +810,7 @@
           <input type="hidden" name="target_type" value="team" data-roster-email-target>
           <input type="hidden" name="team_id" data-roster-email-team>
           <input type="hidden" name="invitation_id" data-roster-email-invitation>
+          <input type="hidden" name="slot_id" data-roster-email-slot>
           <input type="hidden" name="recipient_hash" data-roster-email-hash>
           <div class="modal-header"><div><h5 class="modal-title">Email selected roster</h5><div class="small text-muted" data-roster-email-recipient></div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
           <div class="modal-body">
@@ -1005,6 +1010,30 @@ document.addEventListener('DOMContentLoaded', function () {
       if (regionId) openWorkspace(regionId, button.dataset.openRegionTask);
     });
   });
+  const orderStateKey = `${workspaceStateKey}-player-order`;
+  document.querySelectorAll('[id^="team-order-"] form').forEach(function (form) {
+    form.addEventListener('submit', function () {
+      const panel = form.closest('[id^="region-panel-"]');
+      const order = form.closest('[id^="team-order-"]');
+      sessionStorage.setItem(orderStateKey, JSON.stringify({ regionId: panel.id.replace('region-panel-', ''), teamId: order.id.replace('team-order-', '') }));
+    });
+  });
+  const savedOrderState = sessionStorage.getItem(orderStateKey);
+  if (savedOrderState && window.bootstrap?.Tab && window.bootstrap?.Collapse) {
+    sessionStorage.removeItem(orderStateKey);
+    try {
+      const { regionId, teamId } = JSON.parse(savedOrderState);
+      const workspace = document.getElementById(`team-workspace-${teamId}`);
+      const orderTab = workspace?.querySelector(`[data-bs-target="#team-order-${teamId}"]`);
+      if (orderTab && workspace.closest('[id^="region-panel-"]')?.id === `region-panel-${regionId}`) {
+        openWorkspace(regionId, 'teams');
+        bootstrap.Collapse.getOrCreateInstance(workspace, { toggle: false }).show();
+        bootstrap.Tab.getOrCreateInstance(orderTab).show();
+      }
+    } catch (error) {
+      sessionStorage.removeItem(orderStateKey);
+    }
+  }
   document.querySelectorAll('[data-final-reminder-form]').forEach(function (reminderForm) {
     const summaries = JSON.parse(reminderForm.dataset.reminderSummaries || '{}');
     const hashes = JSON.parse(reminderForm.dataset.reminderHashes || '{}');
@@ -1212,6 +1241,12 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
+  const updateImportedEmailAction = function (row, email) {
+    const action = row.querySelector('[data-imported-email-action]');
+    if (!action) return;
+    const name = `${row.querySelector('[name="name"]').value} ${row.querySelector('[name="surname"]').value}`.trim();
+    action.dataset.recipient = `${name} · ${email}`;
+  };
   document.querySelectorAll('.imported-name-form').forEach(function (form) {
     form.addEventListener('submit', async function (event) {
       event.preventDefault();
@@ -1225,8 +1260,10 @@ document.addEventListener('DOMContentLoaded', function () {
         });
         if (!response.ok) throw await AppFeedback.responseError(response, 'The player name could not be saved.');
         const data = await response.json();
-        const orderName = document.querySelector(`.imported-roster-sortable [data-slot-id="${form.dataset.slotId}"] [data-imported-player-name]`);
+        const orderName = document.querySelector(`.imported-roster-order [data-slot-id="${form.dataset.slotId}"] [data-imported-player-name]`);
         if (orderName) orderName.textContent = `${data.player.name} ${data.player.surname}`.trim();
+        const row = form.closest('tr[data-slot-id]');
+        updateImportedEmailAction(row, row.querySelector('[data-effective-email]').textContent);
         AppFeedback.success(data.message);
       } catch (error) {
         AppFeedback.fromError(error, 'The player name could not be saved.');
@@ -1256,63 +1293,14 @@ document.addEventListener('DOMContentLoaded', function () {
         source.textContent = data.effective_email_source;
         source.classList.toggle('bg-label-success', data.effective_email_source === 'Linked profile email');
         source.classList.toggle('bg-label-info', data.effective_email_source !== 'Linked profile email');
+        const action = row.querySelector('[data-imported-email-action]');
+        action?.classList.toggle('d-none', !data.effective_email);
+        updateImportedEmailAction(row, data.effective_email);
         AppFeedback.success(data.message);
       } catch (error) {
         AppFeedback.fromError(error, 'The email could not be saved.');
       } finally {
         button.disabled = false;
-      }
-    });
-  });
-
-  document.querySelectorAll('.imported-roster-sortable').forEach(function (tbody) {
-    let dragged = null;
-    tbody.addEventListener('dragstart', function (event) {
-      dragged = event.target.closest('tr[data-slot-id]');
-      if (!dragged) return;
-      dragged.classList.add('is-dragging');
-      event.dataTransfer.effectAllowed = 'move';
-    });
-    tbody.addEventListener('dragover', function (event) {
-      if (!dragged) return;
-      event.preventDefault();
-      const target = event.target.closest('tr[data-slot-id]');
-      if (!target || target === dragged) return;
-      const below = event.clientY > target.getBoundingClientRect().top + target.offsetHeight / 2;
-      tbody.insertBefore(dragged, below ? target.nextSibling : target);
-    });
-    tbody.addEventListener('dragend', async function () {
-      if (!dragged) return;
-      dragged.classList.remove('is-dragging');
-      dragged = null;
-      const rows = Array.from(tbody.querySelectorAll('tr[data-slot-id]'));
-      rows.forEach(function (row, index) { row.querySelector('.badge').textContent = `Rank ${index + 1}`; });
-      try {
-        const response = await fetch(tbody.dataset.reorderUrl, {
-          method: 'PUT',
-          headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
-          },
-          body: JSON.stringify({ slot_ids: rows.map(row => Number(row.dataset.slotId)) }),
-        });
-        if (!response.ok) throw await AppFeedback.responseError(response, 'The player order could not be saved.');
-        const data = await response.json();
-        const playersBody = tbody.closest('.tab-content')?.querySelector('.imported-roster-players');
-        if (playersBody) {
-          rows.forEach(function (row, index) {
-            const playerRow = playersBody.querySelector(`tr[data-slot-id="${row.dataset.slotId}"]`);
-            if (!playerRow) return;
-            playerRow.querySelector('.badge').textContent = `Rank ${index + 1}`;
-            playersBody.appendChild(playerRow);
-          });
-        }
-        AppFeedback.success(data.message);
-      } catch (error) {
-        AppFeedback.fromError(error, 'The player order could not be saved. Refreshing the current roster.');
-        window.setTimeout(() => window.location.reload(), 900);
       }
     });
   });
@@ -1552,6 +1540,7 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!button) return;
       modal.querySelector('[data-roster-email-target]').value = button.dataset.targetType || 'team';
       modal.querySelector('[data-roster-email-team]').value = button.dataset.teamId || '';
+      modal.querySelector('[data-roster-email-slot]').value = button.dataset.slotId || '';
       modal.querySelector('[data-roster-email-invitation]').value = button.dataset.invitationId || '';
       modal.querySelector('[data-roster-email-hash]').value = button.dataset.recipientHash || '';
       modal.querySelector('[data-roster-email-recipient]').textContent = button.dataset.recipient || '';
@@ -1663,6 +1652,16 @@ document.addEventListener('DOMContentLoaded', function () {
 
   document.querySelectorAll('[data-replacement-modal][data-reopen]').forEach(function (modal) {
     if (typeof bootstrap !== 'undefined') bootstrap.Modal.getOrCreateInstance(modal).show();
+  });
+
+  document.querySelectorAll('[data-invitation-payment-transfer][open]').forEach(function (transfer) {
+    const regionPanel = transfer.closest('[id^="region-panel-"]');
+    const regionId = regionPanel?.id.replace('region-panel-', '');
+    if (regionId) openWorkspace(regionId, 'teams');
+    const workspace = transfer.closest('[id^="team-workspace-"]');
+    if (workspace && window.bootstrap?.Collapse) {
+      bootstrap.Collapse.getOrCreateInstance(workspace, { toggle: false }).show();
+    }
   });
 
   const addTeamId = @json(old('add_team_id'));

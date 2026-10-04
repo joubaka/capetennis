@@ -25,7 +25,7 @@ RUN_MIGRATIONS="${RUN_MIGRATIONS:-false}"
 SYNC_FOLDERS="${SYNC_FOLDERS:-css js images vendors assets}"
 SYNC_ROOT_FILES="${SYNC_ROOT_FILES:-firebase-messaging-sw.js manifest.json manifest.webmanifest mix-manifest.json favicon.ico offline.html service-worker.js robots.txt}"
 SKIP_MIGRATIONS=false; SKIP_DEPS=false; LIVE_DEPLOY=false; RECONCILE_MASTERS_PAYMENTS=false; INSTALL_COMMAND=false; SHOW_HELP=false; REQUESTED_BRANCH=""; EXPECTED_SHA=""; APPROVED_MIGRATIONS_B64=""; APPROVED_MIGRATIONS_SET=false; APP_IS_DOWN=0; PREFLIGHT_DIR=""
-usage() { echo 'Usage: deploy main [--expected-sha SHA] [--approved-migrations-b64 BASE64] [--skip-migrations] [--skip-deps] [--live] [--reconcile-masters-payments]'; echo '       ./deploy.sh --install-command'; echo; echo '  --expected-sha SHA  Deploy exactly this 40-character origin/main commit and reject branch movement.'; echo '  --approved-migrations-b64 BASE64  Base64 of exact comma-separated pending paths, or "none".'; echo '  --live              Keep the site online and run the exact approved migrations; rejects Composer dependency changes.'; echo '                      A direct interactive terminal may review and confirm omitted pending migrations.'; echo '  --reconcile-masters-payments  Explicitly apply the Masters payment reconciliation during maintenance deploys.'; }
+usage() { echo 'Usage: deploy main [--expected-sha SHA] [--approved-migrations PATHS|none] [--skip-migrations] [--skip-deps] [--live] [--reconcile-masters-payments]'; echo '       ./deploy.sh --install-command'; echo; echo '  --expected-sha SHA  Deploy exactly this 40-character origin/main commit and reject branch movement.'; echo '  --approved-migrations PATHS  Exact comma-separated pending paths, or "none"; no additional prompt.'; echo '  --approved-migrations-b64 BASE64  Encoded equivalent for existing automation.'; echo '  --live              Keep the site online and run the exact approved migrations; rejects Composer dependency changes.'; echo '                      A direct interactive terminal may review and confirm omitted pending migrations.'; echo '  --reconcile-masters-payments  Explicitly apply the Masters payment reconciliation during maintenance deploys.'; }
 install_command() {
     local dir="${DEPLOY_COMMAND_DIR:-$HOME/bin}"
     local path="$dir/deploy-ct"
@@ -44,10 +44,13 @@ install_command() {
     esac
     log INFO "Deployment shortcut ready: deploy-ct main"
 }
+PLAIN_MIGRATION_APPROVAL=false
 while [ "$#" -gt 0 ]; do case "$1" in
     --install-command) INSTALL_COMMAND=true ;; --skip-migrations) SKIP_MIGRATIONS=true ;; --skip-deps) SKIP_DEPS=true ;; --live) LIVE_DEPLOY=true ;; --reconcile-masters-payments) RECONCILE_MASTERS_PAYMENTS=true ;; -h|--help) SHOW_HELP=true ;;
     --expected-sha) [ "$#" -ge 2 ] || fail 'Missing value for --expected-sha'; EXPECTED_SHA="$2"; shift ;; --expected-sha=*) EXPECTED_SHA="${1#*=}" ;;
-    --approved-migrations-b64) [ "$#" -ge 2 ] || fail 'Missing value for --approved-migrations-b64'; APPROVED_MIGRATIONS_B64="$2"; APPROVED_MIGRATIONS_SET=true; shift ;; --approved-migrations-b64=*) APPROVED_MIGRATIONS_B64="${1#*=}"; APPROVED_MIGRATIONS_SET=true ;;
+    --approved-migrations) [ "$#" -ge 2 ] || fail 'Missing value for --approved-migrations'; [ "$APPROVED_MIGRATIONS_SET" = false ] || fail 'Supply migration approval only once'; APPROVED_MIGRATIONS_B64="$(printf '%s' "$2" | base64 | tr -d '\n')"; APPROVED_MIGRATIONS_SET=true; PLAIN_MIGRATION_APPROVAL=true; shift ;;
+    --approved-migrations=*) [ "$APPROVED_MIGRATIONS_SET" = false ] || fail 'Supply migration approval only once'; APPROVED_MIGRATIONS_B64="$(printf '%s' "${1#*=}" | base64 | tr -d '\n')"; APPROVED_MIGRATIONS_SET=true; PLAIN_MIGRATION_APPROVAL=true ;;
+    --approved-migrations-b64) [ "$#" -ge 2 ] || fail 'Missing value for --approved-migrations-b64'; [ "$APPROVED_MIGRATIONS_SET" = false ] || fail 'Supply migration approval only once'; APPROVED_MIGRATIONS_B64="$2"; APPROVED_MIGRATIONS_SET=true; shift ;; --approved-migrations-b64=*) [ "$APPROVED_MIGRATIONS_SET" = false ] || fail 'Supply migration approval only once'; APPROVED_MIGRATIONS_B64="${1#*=}"; APPROVED_MIGRATIONS_SET=true ;;
     --branch) [ "$#" -ge 2 ] || fail 'Missing value for --branch'; REQUESTED_BRANCH="$2"; shift ;; --branch=*) REQUESTED_BRANCH="${1#*=}" ;;
     -*) fail "Unknown option: $1" ;; *) [ -z "$REQUESTED_BRANCH" ] || fail 'Only one deployment branch may be supplied'; REQUESTED_BRANCH="$1" ;;
 esac; shift; done
@@ -82,6 +85,16 @@ FETCHED_MAIN="$(git -C "$APP_PATH" rev-parse origin/main)"
 if [ -n "$EXPECTED_SHA" ] && [ "$FETCHED_MAIN" != "$EXPECTED_SHA" ]; then
     fail "origin/main is $FETCHED_MAIN, not expected commit $EXPECTED_SHA"
 fi
+git -C "$APP_PATH" merge-base --is-ancestor HEAD "$FETCHED_MAIN" || fail 'Production checkout cannot fast-forward to origin/main; resolve local commits before deploying'
+if [ "$LIVE_DEPLOY" = true ]; then
+    LIVE_CHANGED_FILES="$(git -C "$APP_PATH" diff --name-only HEAD.."$FETCHED_MAIN")"
+    if printf '%s\n' "$LIVE_CHANGED_FILES" | grep -Eq '^composer\.(json|lock)$'; then
+        printf '%s\n' "$LIVE_CHANGED_FILES" | grep -E '^composer\.(json|lock)$' || true
+        fail 'Live deploy rejected: Composer dependency changes require the normal maintenance deployment'
+    fi
+    SKIP_DEPS=true
+fi
+[ "$SKIP_DEPS" = true ] || command -v composer >/dev/null 2>&1 || fail 'Composer is unavailable; install it before a maintenance deployment'
 PREFLIGHT_DIR="$(mktemp -d)"
 trap cleanup_preflight EXIT
 git -C "$APP_PATH" show "$FETCHED_MAIN:deploy.config" > "$PREFLIGHT_DIR/deploy.config"
@@ -92,10 +105,18 @@ if [ "$APPROVED_MIGRATIONS_SET" = true ]; then
         fail 'Approved migration input is not valid base64'
     fi
     [ -n "$APPROVED_MIGRATIONS" ] || fail 'Approved migration input must be "none" or an exact comma-separated list'
+    if [ "$PLAIN_MIGRATION_APPROVAL" = true ]; then
+        case "$APPROVED_MIGRATIONS" in
+            *$'\r'*|*$'\n'*) fail 'Plain migration approval must be a single comma-separated line' ;;
+        esac
+    fi
     if [ "$APPROVED_MIGRATIONS" = none ]; then
         : > "$PREFLIGHT_DIR/approved-migrations"
     else
         printf '%s' "$APPROVED_MIGRATIONS" | tr ',' '\n' > "$PREFLIGHT_DIR/approved-migrations"
+    fi
+    if [ "$PLAIN_MIGRATION_APPROVAL" = true ] && grep -Fxq 'database/migrations/2026_09_15_120000_reconcile_wilson_masters_registration_incidents.php' "$PREFLIGHT_DIR/approved-migrations"; then
+        fail 'The pending Wilson Masters incident repair requires deliberate --approved-migrations-b64 input after reviewing its payment impact'
     fi
 else
     : > "$PREFLIGHT_DIR/approved-migrations"
@@ -122,7 +143,13 @@ else
         fail 'The pending Wilson Masters incident repair requires deliberate --approved-migrations-b64 input after reviewing its payment impact'
     fi
     if [ -s "$PREFLIGHT_DIR/approved-migrations" ]; then
-        [ -t 0 ] && [ -t 1 ] || fail 'Non-interactive deployments with pending migrations require --approved-migrations-b64'
+        [ "$SKIP_MIGRATIONS" = false ] || fail 'Cannot skip migrations because the exact target commit has pending migrations'
+        log INFO 'Waiting for database migration approval; the checkout and site have not been changed.'
+        MIGRATION_APPROVAL_PATHS="$(paste -sd ',' "$PREFLIGHT_DIR/approved-migrations")"
+        printf 'For a reviewed run without a prompt, use: deploy-ct main --expected-sha %s --approved-migrations %s' "$FETCHED_MAIN" "$MIGRATION_APPROVAL_PATHS"
+        [ "$LIVE_DEPLOY" = false ] || printf ' --live'
+        printf '\n'
+        [ -t 0 ] && [ -t 1 ] || fail 'Non-interactive deployments with pending migrations require --approved-migrations or --approved-migrations-b64'
         printf 'Type DEPLOY to approve this exact migration set and continue: '
         IFS= read -r INTERACTIVE_APPROVAL
         [ "$INTERACTIVE_APPROVAL" = DEPLOY ] || fail 'Deployment cancelled; exact migration set was not approved'
@@ -138,12 +165,6 @@ if [ "$SKIP_MIGRATIONS" = true ] && [ -s "$PREFLIGHT_DIR/pending-migrations" ]; 
     fail 'Cannot skip migrations because the exact target commit has approved pending migrations'
 fi
 if [ "$LIVE_DEPLOY" = true ]; then
-    LIVE_CHANGED_FILES="$(git -C "$APP_PATH" diff --name-only HEAD.."$FETCHED_MAIN")"
-    if printf '%s\n' "$LIVE_CHANGED_FILES" | grep -Eq '^composer\.(json|lock)$'; then
-        printf '%s\n' "$LIVE_CHANGED_FILES" | grep -E '^composer\.(json|lock)$' || true
-        fail 'Live deploy rejected: Composer dependency changes require the normal maintenance deployment'
-    fi
-    SKIP_DEPS=true
     log INFO 'Live deployment selected; the site will remain online and approved migrations will run'
 else
     log INFO 'Full maintenance deployment selected: code, Composer, approved migrations, caches and public Mix assets'

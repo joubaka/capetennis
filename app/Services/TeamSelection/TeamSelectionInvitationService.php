@@ -274,18 +274,21 @@ final class TeamSelectionInvitationService
 
     public function attachOrder(TeamPaymentOrder $order): ?TeamSelectionInvitation
     {
-        $invitation = TeamSelectionInvitation::query()
-            ->where('event_id', $order->event_id)
-            ->where('team_id', $order->team_id)
-            ->where('player_id', $order->player_id)
-            ->where('status', TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT)
-            ->latest('id')
-            ->first();
-        if ($invitation && ! $invitation->order_id) {
-            $invitation->update(['order_id' => $order->id]);
-        }
+        return DB::transaction(function () use ($order): ?TeamSelectionInvitation {
+            $order = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
+            $invitation = TeamSelectionInvitation::query()->lockForUpdate()
+                ->where('event_id', $order->event_id)
+                ->where('team_id', $order->team_id)
+                ->where('player_id', $order->effective_player_id)
+                ->where('status', TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT)
+                ->latest('id')
+                ->first();
+            if ($invitation && ! $invitation->order_id) {
+                $invitation->update(['order_id' => $order->id]);
+            }
 
-        return $invitation?->fresh();
+            return $invitation?->fresh();
+        }, 3);
     }
 
     public function beginRegistration(int $eventId, int $teamId, int $playerId, User $user): ?TeamSelectionInvitation
@@ -334,14 +337,12 @@ final class TeamSelectionInvitationService
     public function confirmPaidOrder(TeamPaymentOrder $order): void
     {
         DB::transaction(function () use ($order) {
+            $order = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
             $invitation = TeamSelectionInvitation::query()->lockForUpdate()
-                ->where(function ($query) use ($order) {
-                    $query->where('order_id', $order->id)
-                        ->orWhere(fn ($fallback) => $fallback
-                            ->where('event_id', $order->event_id)
-                            ->where('team_id', $order->team_id)
-                            ->where('player_id', $order->player_id));
-                })
+                ->where('event_id', $order->event_id)
+                ->where('team_id', $order->team_id)
+                ->where('player_id', $order->effective_player_id)
+                ->where(fn ($query) => $query->where('order_id', $order->id)->orWhereNull('order_id'))
                 ->where('status', TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT)
                 ->first();
             if (! $invitation) return;

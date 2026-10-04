@@ -6,6 +6,30 @@ use PHPUnit\Framework\TestCase;
 
 class DeploymentConfigTest extends TestCase
 {
+    public function test_readable_approval_uses_exact_preflight_and_preserves_incident_repair_gate(): void
+    {
+        $script = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.sh');
+
+        $this->assertStringContainsString('--approved-migrations)', $script);
+        $this->assertStringContainsString('--approved-migrations=*)', $script);
+        $this->assertStringContainsString('Supply migration approval only once', $script);
+        $this->assertStringContainsString('printf \'%s\' "$2" | base64', $script);
+        $this->assertStringContainsString('[ "$PLAIN_MIGRATION_APPROVAL" = true ] && grep -Fxq', $script);
+        $this->assertStringContainsString('deploy-ct main --expected-sha %s --approved-migrations %s', $script);
+    }
+
+    public function test_predictable_checkout_and_dependency_failures_precede_migration_approval(): void
+    {
+        $script = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.sh');
+        $prompt = strpos($script, 'Type DEPLOY');
+
+        foreach (['merge-base --is-ancestor HEAD', 'Live deploy rejected:', 'Composer is unavailable;'] as $check) {
+            $position = strpos($script, $check);
+            $this->assertNotFalse($position);
+            $this->assertLessThan($prompt, $position);
+        }
+    }
+
     public function test_release_allowlists_every_new_migration_after_the_reviewed_baseline(): void
     {
         $root = dirname(__DIR__, 2);
@@ -65,7 +89,7 @@ class DeploymentConfigTest extends TestCase
     {
         $script = file_get_contents(dirname(__DIR__, 2).'/deploy.sh');
 
-        $this->assertStringContainsString('[ -t 0 ] && [ -t 1 ] || fail \'Non-interactive deployments with pending migrations require --approved-migrations-b64\'', $script);
+        $this->assertStringContainsString('[ -t 0 ] && [ -t 1 ] || fail \'Non-interactive deployments with pending migrations require --approved-migrations or --approved-migrations-b64\'', $script);
         $this->assertStringContainsString('Exact pending migrations for the target commit:', $script);
         $this->assertStringContainsString('Type DEPLOY to approve this exact migration set and continue:', $script);
         $this->assertStringContainsString('IFS= read -r INTERACTIVE_APPROVAL', $script);

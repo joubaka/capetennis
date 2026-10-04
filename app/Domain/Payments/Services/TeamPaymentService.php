@@ -17,12 +17,26 @@ class TeamPaymentService
 {
     public function transferImportedCoverage(Event $event, Team $team, int $orderId, int $expectedPlayerId, int $targetPlayerId, string $reason, User $actor): void
     {
+        $this->transferCoverage($event, $team, $orderId, $expectedPlayerId, $targetPlayerId, $reason, $actor);
+    }
+
+    public function transferInvitationCoverage(TeamSelectionInvitation $source, int $orderId, int $expectedPlayerId, int $targetPlayerId, string $reason, User $actor): void
+    {
+        $this->transferCoverage($source->event, $source->team, $orderId, $expectedPlayerId, $targetPlayerId, $reason, $actor, $source);
+    }
+
+    private function transferCoverage(Event $event, Team $team, int $orderId, int $expectedPlayerId, int $targetPlayerId, string $reason, User $actor, ?TeamSelectionInvitation $invitation = null): void
+    {
         abort_unless($actor->hasRole('super-user'), 403);
-        FinanceMutationScope::run('team_payment_state_write', function () use ($event, $team, $orderId, $expectedPlayerId, $targetPlayerId, $reason, $actor): void {
-            DB::transaction(function () use ($event, $team, $orderId, $expectedPlayerId, $targetPlayerId, $reason, $actor): void {
+        FinanceMutationScope::run('team_payment_state_write', function () use ($event, $team, $orderId, $expectedPlayerId, $targetPlayerId, $reason, $actor, $invitation): void {
+            DB::transaction(function () use ($event, $team, $orderId, $expectedPlayerId, $targetPlayerId, $reason, $actor, $invitation): void {
+                $event = Event::query()->lockForUpdate()->findOrFail($event->id);
+                $selectionImport = $invitation ? \App\Models\TeamSelectionImport::query()->lockForUpdate()->findOrFail($invitation->import_id) : null;
                 $lockedTeam = Team::query()->lockForUpdate()->findOrFail($team->id);
-                abort_unless($lockedTeam->noProfile && $lockedTeam->category()->where('event_id', $event->id)->exists(), 404);
-                app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($lockedTeam);
+                abort_unless(($invitation || $lockedTeam->noProfile) && $lockedTeam->category()->where('event_id', $event->id)->exists(), 404);
+                if (! $invitation) {
+                    app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($lockedTeam);
+                }
                 $fail = fn (string $message) => throw ValidationException::withMessages(['payment_transfer' => $message]);
                 if ($expectedPlayerId === $targetPlayerId || trim($reason) === '') {
                     $fail('Choose a different linked player and provide the transfer reason.');
@@ -32,12 +46,42 @@ class TeamPaymentService
                 $mirrors = TeamPlayer::query()->withoutGlobalScopes()->where('team_id', $team->id)->whereIn('player_id', $ids)->orderBy('id')->lockForUpdate()->get();
                 $source = $mirrors->firstWhere('player_id', $expectedPlayerId);
                 $target = $mirrors->firstWhere('player_id', $targetPlayerId);
-                if ($slots->count() !== 2 || $mirrors->count() !== 2 || ! $source || ! $target
-                    || $slots->firstWhere('player_profile', $expectedPlayerId)?->rank != $source->rank
-                    || $slots->firstWhere('player_profile', $targetPlayerId)?->rank != $target->rank
+                if ($mirrors->count() !== 2 || ! $source || ! $target
                     || (int) $source->pay_status !== 1 || (int) $target->pay_status !== 0
-                    || $slots->firstWhere('player_profile', $targetPlayerId)?->pay_status) {
+                    || ($lockedTeam->noProfile && ($slots->count() !== 2
+                        || $slots->firstWhere('player_profile', $expectedPlayerId)?->rank != $source->rank
+                        || (int) $slots->firstWhere('player_profile', $expectedPlayerId)?->pay_status !== 1
+                        || $slots->firstWhere('player_profile', $targetPlayerId)?->rank != $target->rank
+                        || $slots->firstWhere('player_profile', $targetPlayerId)?->pay_status))
+                    || (! $lockedTeam->noProfile && $slots->isNotEmpty())) {
                     $fail('Both players must occupy consistent linked roster positions, with the source paid and destination unpaid.');
+                }
+                foreach ($mirrors as $mirror) {
+                    if ((int) $mirror->rank < 1 || TeamPlayer::where('team_id', $team->id)->where('rank', $mirror->rank)->count() !== 1) {
+                        $fail('The roster positions are inconsistent.');
+                    }
+                }
+                $invitations = TeamSelectionInvitation::query()->where('event_id', $event->id)->whereIn('player_id', $ids)->orderBy('id')->lockForUpdate()->get();
+                $sourceInvitation = $invitation ? $invitations->firstWhere('id', $invitation->id) : null;
+                $targetInvitation = $invitation ? $invitations->firstWhere('player_id', $targetPlayerId) : null;
+                if ($invitation && (! $sourceInvitation || ! $targetInvitation || $invitations->count() !== 2
+                    || (int) $selectionImport->event_id !== (int) $event->id
+                    || (int) $selectionImport->region_id !== (int) $lockedTeam->region_id || $selectionImport->status !== 'sent'
+                    || \App\Models\TeamSelectionImport::where('event_id', $event->id)->where('region_id', $lockedTeam->region_id)->where('id', '>', $selectionImport->id)->exists()
+                    || (int) $sourceInvitation->player_id !== $expectedPlayerId || (int) $sourceInvitation->order_id !== $orderId
+                    || $sourceInvitation->status !== TeamSelectionInvitation::PAID_CONFIRMED
+                    || $targetInvitation->status !== TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT)) {
+                    $fail('Choose a selected unpaid player who has started registration in this active invitation campaign. Reserves must be activated and start registration first.');
+                }
+                if ($invitation) {
+                    foreach ([$sourceInvitation, $targetInvitation] as $selected) {
+                        $mirror = $mirrors->firstWhere('player_id', $selected->player_id);
+                        if ((int) $selected->import_id !== (int) $selectionImport->id || (int) $selected->team_id !== (int) $team->id
+                            || (int) $selected->region_id !== (int) $lockedTeam->region_id || ! $selected->roster_rank
+                            || (int) $selected->roster_rank !== (int) $mirror->rank) {
+                            $fail('The selected players no longer match this campaign and roster. Refresh before transferring.');
+                        }
+                    }
                 }
                 foreach ($slots as $slot) {
                     if (\App\Models\NoProfileTeamPlayer::where('team_id', $team->id)->where('rank', $slot->rank)->count() !== 1
@@ -58,6 +102,10 @@ class TeamPaymentService
                 }
                 try {
                     app(\App\Services\PlayerEligibilityService::class)->assertEligible($targetProfile, $event);
+                    if ($invitation) {
+                        app(\App\Domain\Teams\Services\ExternalTeamRosterService::class)->assertSelectedPlayerCanRegister($event, $lockedTeam, $targetProfile);
+                        app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->beginRegistration($event->id, $team->id, $targetPlayerId, $actor);
+                    }
                 } catch (\RuntimeException $exception) {
                     $fail($exception->getMessage());
                 }
@@ -102,8 +150,8 @@ class TeamPaymentService
                     && round(($walletPaid ? (float) $order->wallet_reserved : 0) + ($providerPaid ? (float) $order->payfast_amount_due : 0), 2) === $fee)) {
                     $fail('Verified settlement evidence is required for payment coverage transfer.');
                 }
-                if (\App\Models\TrialParticipation::where('order_id', $order->id)->exists()
-                    || TeamSelectionInvitation::where('event_id', $event->id)->whereIn('player_id', $ids)->lockForUpdate()->get()->isNotEmpty()
+                if (\App\Models\TrialParticipation::whereIn('order_id', $orders->pluck('id'))->exists()
+                    || (! $invitation && $invitations->isNotEmpty())
                     || \App\Models\CategoryEventRegistration::withTrashed()->whereHas('categoryEvent', fn ($q) => $q->where('event_id', $event->id))
                         ->whereHas('registration.players', fn ($q) => $q->whereIn('players.id', $ids))->lockForUpdate()->get()->isNotEmpty()
                     || \App\Models\TeamFixturePlayer::whereHas('fixture.draw', fn ($q) => $q->where('event_id', $event->id))
@@ -126,12 +174,19 @@ class TeamPaymentService
                     }
                     $this->assertUnpaidRosterCheckoutMayBeReset($targetOrder);
                 }
+                if ($invitation && $targetInvitation->order_id && ! $orders->contains(fn ($candidate) => (int) $candidate->id === (int) $targetInvitation->order_id && $candidate->effective_player_id === $targetPlayerId)) {
+                    $fail('The destination invitation has inconsistent checkout history.');
+                }
                 foreach ($orders as $targetOrder) {
                     if ((int) $targetOrder->id !== (int) $order->id && $targetOrder->effective_player_id === $targetPlayerId) {
                         $this->closeUnpaidLifecycle($targetOrder, $actor);
                     }
                 }
                 $order->forceFill(['beneficiary_player_id' => $targetPlayerId])->save();
+                if ($invitation) {
+                    $sourceInvitation->update(['order_id' => null, 'status' => TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, 'paid_at' => null]);
+                    $targetInvitation->update(['order_id' => $order->id, 'status' => TeamSelectionInvitation::PAID_CONFIRMED, 'paid_at' => now(), 'accepted_at' => $targetInvitation->accepted_at ?: now()]);
+                }
                 $this->updateTeamPlayerSlot($source, ['pay_status' => 0]);
                 $this->updateTeamPlayerSlot($target, ['pay_status' => 1]);
                 foreach ($slots as $slot) {
@@ -144,7 +199,7 @@ class TeamPaymentService
                 ]);
                 activity('team-payment')->performedOn($order)->causedBy($actor)->withProperties([
                     'from_player_id' => $expectedPlayerId, 'to_player_id' => $targetPlayerId, 'reason' => trim($reason),
-                ])->log('transferred settled imported team payment coverage');
+                ])->log('transferred settled team payment coverage');
             }, 3);
         });
     }
@@ -761,7 +816,7 @@ class TeamPaymentService
                 if (! $payer || ($order && (! $associatedUserIds->contains((int) $order->user_id)
                     || (int) $order->event_id !== (int) $locked->event_id
                     || (int) $order->team_id !== (int) $locked->team_id
-                    || (int) $order->player_id !== (int) $locked->player_id))) {
+                    || $order->effective_player_id !== (int) $locked->player_id))) {
                     throw ValidationException::withMessages(['payment' => 'A single canonical payer and matching checkout are required.']);
                 }
 
