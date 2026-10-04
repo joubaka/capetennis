@@ -188,7 +188,14 @@ class AuthServiceProvider extends ServiceProvider
 
             if ($subject instanceof \App\Models\TeamFixture
                 && $subject->teamTie
-                && $subject->teamTie->status === \App\Models\TeamTie::STATUS_COMPLETED) {
+                && $subject->teamTie->status === \App\Models\TeamTie::STATUS_COMPLETED
+                && $draw->team_scoring_rules === null) {
+                return false;
+            }
+
+            if ($subject instanceof \App\Models\TeamFixture && $draw->team_scoring_rules !== null
+                && (!$subject->teamTie?->published_at || !in_array($subject->teamTie->status,
+                    [\App\Models\TeamTie::STATUS_PUBLISHED, \App\Models\TeamTie::STATUS_COMPLETED], true))) {
                 return false;
             }
 

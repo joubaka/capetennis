@@ -15,6 +15,7 @@ use App\Models\TeamEventFormat;
 use App\Models\TeamEventFormatRubber;
 use App\Models\TeamTie;
 use App\Services\FeatureFlags;
+use App\Services\Draw\DrawMutationPolicy;
 use App\Services\TeamDrawGenerationService;
 use App\Services\TeamDrawRegenerationService;
 use App\Services\TeamTieGenerationService;
@@ -170,6 +171,10 @@ class TeamDrawController extends Controller
             'rubbers.*.player_count_per_team' => 'required|integer|min:1|max:4',
             'rubbers.*.singles_position'      => 'nullable|integer|min:1',
             'rubbers.*.reverse_from_position' => 'nullable|integer|min:1',
+            'rubbers.*.home_positions'         => 'nullable|array',
+            'rubbers.*.home_positions.*'       => 'required|integer|min:1|max:12',
+            'rubbers.*.away_positions'         => 'nullable|array',
+            'rubbers.*.away_positions.*'       => 'required|integer|min:1|max:12',
             'rubbers.*.is_required'           => 'boolean',
         ]);
 
@@ -262,6 +267,14 @@ class TeamDrawController extends Controller
                 'success' => false,
                 'message' => 'The selected format does not belong to this event.',
             ], 403);
+        }
+
+        if (!DrawMutationPolicy::for($draw)->canGenerateFixtures() || $event->hasRecordedResults()
+            || ($draw->team_format_snapshot !== null && (int) $draw->team_event_format_id !== (int) $validated['format_id'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The format cannot be changed after draw generation or while results are protected.',
+            ], 409);
         }
 
         $draw->team_event_format_id = $validated['format_id'];
@@ -522,13 +535,17 @@ class TeamDrawController extends Controller
         $this->authorize('validateTie', $tie);
 
         try {
-            $this->validator->assertTieComplete($tie);
+            DB::transaction(function () use ($tie) {
+                $draw = Draw::whereKey($tie->draw_id)->lockForUpdate()->firstOrFail();
+                $current = TeamTie::whereKey($tie->id)->lockForUpdate()->firstOrFail();
+                abort_if($draw->locked || $draw->published || $current->isLocked()
+                    || $current->published_at || $current->winner_team_id, 409, 'This tie cannot be reopened for validation.');
+                $this->validator->assertTieComplete($current);
+                $current->update(['status' => TeamTie::STATUS_VALIDATED]);
+            });
         } catch (\InvalidArgumentException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }
-
-        $tie->status = TeamTie::STATUS_VALIDATED;
-        $tie->save();
 
         return response()->json(['success' => true, 'message' => "Tie #{$tie->id} validated."]);
     }
@@ -542,16 +559,21 @@ class TeamDrawController extends Controller
     {
         $this->authorize('publishTie', $tie);
 
-        if ($tie->status !== TeamTie::STATUS_VALIDATED) {
-            return response()->json([
-                'success' => false,
-                'message' => "Tie #{$tie->id} must be validated before publishing (status: {$tie->status}).",
-            ], 422);
+        try {
+            DB::transaction(function () use ($tie) {
+                $draw = Draw::whereKey($tie->draw_id)->lockForUpdate()->firstOrFail();
+                $current = TeamTie::whereKey($tie->id)->lockForUpdate()->firstOrFail();
+                abort_if($draw->locked || $draw->published || $current->isLocked(), 409, 'This tie is protected against publication changes.');
+                if ($current->status !== TeamTie::STATUS_VALIDATED) {
+                    throw new \InvalidArgumentException("Tie #{$tie->id} must be validated before publishing.");
+                }
+                // Assignments can change after validation; check again at publication.
+                $this->validator->assertTieComplete($current);
+                $current->update(['status' => TeamTie::STATUS_PUBLISHED, 'published_at' => now()]);
+            });
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }
-
-        $tie->status       = TeamTie::STATUS_PUBLISHED;
-        $tie->published_at = now();
-        $tie->save();
 
         return response()->json(['success' => true, 'message' => "Tie #{$tie->id} published."]);
     }

@@ -16,7 +16,24 @@ class TeamFixtureScoreService
     public function save(TeamFixture $fixture, array $scores): void
     {
         DB::transaction(function () use ($fixture, $scores): void {
-            TeamFixture::whereKey($fixture->id)->lockForUpdate()->firstOrFail();
+            $draw = \App\Models\Draw::whereKey($fixture->draw_id)->lockForUpdate()->firstOrFail();
+            $tie = $fixture->team_tie_id ? \App\Models\TeamTie::whereKey($fixture->team_tie_id)->lockForUpdate()->firstOrFail() : null;
+            $current = TeamFixture::whereKey($fixture->id)->lockForUpdate()->firstOrFail();
+            abort_if($current->draw_id !== $draw->id || $current->team_tie_id !== $tie?->id || ($tie && $tie->draw_id !== $draw->id), 409, 'Fixture relationships changed.');
+            $canonical = $draw->team_scoring_rules !== null && $tie !== null;
+            abort_if($draw->locked || (!$canonical && $tie?->isCompleted()), 409, 'Scores are locked for this fixture.');
+
+            abort_if($canonical && (!$tie->published_at || !in_array($tie->status, [\App\Models\TeamTie::STATUS_PUBLISHED, \App\Models\TeamTie::STATUS_COMPLETED], true)),
+                409, 'Validate and publish the tie before entering scores.');
+
+            if ($canonical) {
+                $validated = app(TeamRubberResultService::class)->validate($current, $scores);
+                $scores = [];
+                foreach ($validated as $set) {
+                    $scores['set'.$set['set_nr'].'_home'] = $set['team1_score'];
+                    $scores['set'.$set['set_nr'].'_away'] = $set['team2_score'];
+                }
+            }
 
             foreach (range(1, 3) as $setNumber) {
                 $home = $scores["set{$setNumber}_home"] ?? null;
@@ -46,20 +63,28 @@ class TeamFixtureScoreService
                 }
             }
 
-            TeamFixture::whereKey($fixture->id)->update([
-                'match_status' => FixtureState::STATUS_COMPLETED,
-            ]);
+            $current->load('teamResults');
+            $outcome = $canonical ? app(TeamRubberResultService::class)->outcome($current) : null;
+            $current->update(['match_status' => !$canonical || $outcome['complete'] ? FixtureState::STATUS_COMPLETED
+                : ($current->teamResults->isEmpty() ? FixtureState::STATUS_PENDING : FixtureState::STATUS_PARTIAL)]);
+            if ($canonical) { app(TeamStandingsService::class)->refreshTie($tie); }
         });
     }
 
     public function delete(TeamFixture $fixture): void
     {
         DB::transaction(function () use ($fixture): void {
-            TeamFixture::whereKey($fixture->id)->lockForUpdate()->firstOrFail();
+            $draw = \App\Models\Draw::whereKey($fixture->draw_id)->lockForUpdate()->firstOrFail();
+            $tie = $fixture->team_tie_id ? \App\Models\TeamTie::whereKey($fixture->team_tie_id)->lockForUpdate()->firstOrFail() : null;
+            $current = TeamFixture::whereKey($fixture->id)->lockForUpdate()->firstOrFail();
+            abort_if($current->draw_id !== $draw->id || $current->team_tie_id !== $tie?->id || ($tie && $tie->draw_id !== $draw->id), 409, 'Fixture relationships changed.');
+            $canonical = $draw->team_scoring_rules !== null && $tie !== null;
+            abort_if($draw->locked || (!$canonical && $tie?->isCompleted()), 409, 'Scores are locked for this fixture.');
             TeamFixtureResult::where('team_fixture_id', $fixture->id)->delete();
             TeamFixture::whereKey($fixture->id)->update([
                 'match_status' => FixtureState::STATUS_PENDING,
             ]);
+            if ($canonical) { app(TeamStandingsService::class)->refreshTie($tie); }
         });
     }
 }

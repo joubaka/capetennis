@@ -87,7 +87,27 @@ final class TeamEventFormatDefinitionValidator
                 );
             }
 
-            if (in_array($type, [RubberType::REVERSE_DOUBLES, RubberType::REVERSE_MIXED_DOUBLES], true) && empty($rubber['reverse_from_position'])) {
+            $explicitPositions = ($rubber['home_positions'] ?? null) !== null || ($rubber['away_positions'] ?? null) !== null;
+            if ($explicitPositions) {
+                foreach (['home_positions', 'away_positions'] as $field) {
+                    $positions = $rubber[$field] ?? null;
+                    if (!is_array($positions) || !array_is_list($positions) || count($positions) !== $expectedCount) {
+                        throw TeamEventFormatDefinitionValidationException::single("rubbers.{$index}.{$field}", "Provide exactly {$expectedCount} roster position(s) for each side.");
+                    }
+                    $normalised = [];
+                    foreach ($positions as $position) {
+                        if (filter_var($position, FILTER_VALIDATE_INT) === false || (int) $position < 1 || (int) $position > $maxRoster) {
+                            throw TeamEventFormatDefinitionValidationException::single("rubbers.{$index}.{$field}", 'Roster positions must be integers within the maximum roster size.');
+                        }
+                        $normalised[] = (int) $position;
+                    }
+                    if (count(array_unique($normalised)) !== count($normalised)) {
+                        throw TeamEventFormatDefinitionValidationException::single("rubbers.{$index}.{$field}", 'A player cannot occupy both partner slots in one rubber.');
+                    }
+                }
+            }
+
+            if (!$explicitPositions && in_array($type, [RubberType::REVERSE_DOUBLES, RubberType::REVERSE_MIXED_DOUBLES], true) && empty($rubber['reverse_from_position'])) {
                 throw TeamEventFormatDefinitionValidationException::single(
                     "rubbers.{$index}.reverse_from_position",
                     "{$type} requires a reverse_from_position value."

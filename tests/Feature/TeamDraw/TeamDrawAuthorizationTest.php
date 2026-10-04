@@ -279,6 +279,11 @@ class TeamDrawAuthorizationTest extends TestCase
 
         $tie = $this->makeTie($this->teamDraw);
 
+        foreach ([$tie->homeTeam, $tie->awayTeam] as $team) {
+            $team->players()->attach(\App\Models\Player::factory()->create()->id, ['rank' => 1, 'pay_status' => 0]);
+        }
+        app(\App\Services\TeamTieGenerationService::class)->generateForTie($tie->fresh());
+
         $this->actingAs($this->superUser)
             ->postJson("/backend/team-draw/ties/{$tie->id}/validate")
             ->assertOk()

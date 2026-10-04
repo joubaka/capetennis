@@ -77,12 +77,32 @@ class TeamPlayerAutoAssignService
      * @param  Team|null              $awayTeam
      * @return array<int, array<string, mixed>>
      */
-    private function resolveSlots(
+    public function resolveSlots(
         TeamEventFormatRubber $template,
         ?Team                 $homeTeam,
         ?Team                 $awayTeam
     ): array {
         $code = (string) $template->rubber_code;
+
+        if ($template->home_positions !== null || $template->away_positions !== null) {
+            $count = $template->playerCountPerTeam();
+            $slots = [];
+            foreach (range(0, $count - 1) as $index) {
+                [$homeId, $homeNoProfileId] = isset($template->home_positions[$index])
+                    ? $this->playerAtRank($homeTeam, (int) $template->home_positions[$index]) : [null, null];
+                [$awayId, $awayNoProfileId] = isset($template->away_positions[$index])
+                    ? $this->playerAtRank($awayTeam, (int) $template->away_positions[$index]) : [null, null];
+                $slots[] = [
+                    'slot_no' => $index + 1,
+                    'team1_id' => $homeId,
+                    'team2_id' => $awayId,
+                    'team1_no_profile_id' => $homeNoProfileId,
+                    'team2_no_profile_id' => $awayNoProfileId,
+                ];
+            }
+
+            return $slots;
+        }
 
         if (in_array($code, [RubberType::MIXED_DOUBLES, RubberType::REVERSE_MIXED_DOUBLES], true)) {
             return $this->mixedSlots($homeTeam, $awayTeam, $code === RubberType::REVERSE_MIXED_DOUBLES);

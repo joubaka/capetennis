@@ -97,13 +97,12 @@ $isV2 = !is_null($fx->team_tie_id);
 @endphp
 
 @if($fx->fixtureResults->count())
-@php $lastSet = $fx->fixtureResults->last(); @endphp
-@if($lastSet->team1_score > $lastSet->team2_score)
+@php $winner = $fx->winnerSide(); @endphp
+@if($winner === 'home')
 @php $homeClass='winner-home'; $awayClass='loser-home'; @endphp
-@elseif($lastSet->team2_score > $lastSet->team1_score)
+@elseif($winner === 'away')
 @php $homeClass='loser-home'; $awayClass='winner-home'; @endphp
-@else
-@php $homeClass='draw-cell'; $awayClass='draw-cell'; @endphp
+
 @endif
 @endif
 

@@ -8,21 +8,21 @@
 
 @section('page-style')
 <style>
-  .region-workspace-card { border: 0; box-shadow: 0 .35rem 1.25rem rgba(31, 57, 104, .09); overflow: hidden; }
-  .region-workspace-card > .card-header { background: linear-gradient(115deg, #12345f, #1f5c9d); color: #fff; --bs-heading-color: #fff; }
+  .region-workspace-card { border: 0; box-shadow: 0 .35rem 1.25rem rgba(31, 57, 104, .09); overflow: visible; }
+  .region-workspace-card > .card-header { background: linear-gradient(115deg, #12345f, #1f5c9d); color: #fff; --bs-heading-color: #fff; border-radius: var(--bs-card-border-radius, .5rem) var(--bs-card-border-radius, .5rem) 0 0; }
   .region-workspace-card > .card-header h5 { color: #fff; font-weight: 700; text-shadow: 0 1px 1px rgba(0,0,0,.18); }
   .region-workspace-card > .card-header .region-workspace-meta { color: rgba(255,255,255,.9); font-weight: 600; }
   .region-workspace-card > .card-header .badge { border: 1px solid rgba(255,255,255,.5); }
   .regional-summary { display: flex; flex-wrap: wrap; gap: .35rem 1.25rem; padding: .7rem 1rem; border: 1px solid #dbe6f4; border-radius: .65rem; background: #f8fbff; }
   .regional-summary-item { color: #68778c; white-space: nowrap; }
   .regional-summary-item strong { color: #173f78; font-size: 1rem; }
-  .regional-team-card { border: 1px solid #dbe6f4; border-top: 4px solid #2374bb; box-shadow: 0 .2rem .7rem rgba(31, 57, 104, .07); }
-  .regional-team-card .card-header { background: linear-gradient(90deg, #f3f8ff, #fff8ef); }
+  .regional-team-card { border: 1px solid #dbe6f4; box-shadow: none; }
+  .regional-team-card .card-header { background: #f8fafc; }
   .regional-team-card .card-header[data-team-workspace-header] { cursor: pointer; }
   .regional-team-card .table > :not(caption) > * > * { padding: .7rem .65rem; }
   .regional-team-card .reserve-row { background: #fffaf0; }
   .regional-team-card .replacement-player-form { min-width: 20rem; max-width: min(26rem, 80vw); }
-  .regional-readonly { border-left: 4px solid #f59e0b; background: #fff9ed; }
+  .regional-readonly { border: 1px solid #e2e8f0; background: #fff; }
   .regional-readonly .dropdown-menu, .regional-team-card .dropdown-menu { min-width: 15rem; }
   .regional-help { border: 1px solid #cfe0f4; border-radius: .65rem; background: #f7fbff; }
   .regional-help > summary { cursor: pointer; list-style: none; padding: .85rem 1rem; }
@@ -74,7 +74,21 @@
     .regional-team-card .team-player-table td[data-mobile-full]::before { content: none; }
     .regional-team-card .replacement-player-form { min-width: 0; width: min(18rem, calc(100vw - 2rem)); max-width: 100%; }
     .region-task-tabs { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scroll-snap-type: x proximity; }
-    .region-task-tabs .nav-link { flex: 0 0 auto; min-width: max-content; scroll-snap-align: start; }
+    .region-task-tabs .nav-link { flex: 0 0 auto; width: auto !important; min-width: max-content; padding: .6rem .8rem; scroll-snap-align: start; }
+    .regional-team-card .team-player-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .25rem .65rem; box-shadow: none; padding: 1rem; }
+    .regional-team-card .team-player-table td { grid-column: 1 / -1; min-width: 0; width: auto; grid-template-columns: 5rem minmax(0, 1fr); font-size: .85rem; }
+    .regional-team-card .team-player-table td[data-label="Player"] { grid-column: 1; grid-row: 1; display: block; padding: 0; font-size: 1rem; }
+    .regional-team-card .team-player-table td[data-label="Player"]::before,
+    .regional-team-card .team-player-table td[data-label="Rank"]::before,
+    .regional-team-card .team-player-table td[data-label="Regional action"]::before { content: none; }
+    .regional-team-card .team-player-table td[data-label="Select"] { grid-column: 2; grid-row: 1; width: auto; display: block; padding: .1rem 0; }
+    .regional-team-card .team-player-table td[data-label="Rank"] { grid-column: 1; grid-row: 2; display: block; }
+    .regional-team-card .team-player-table td[data-label="Regional action"] { grid-column: 2; grid-row: 2; display: block; padding: 0; }
+    .regional-team-card .team-player-table td[data-label="Selection / payment"] { grid-row: 3; padding-bottom: .65rem; border-bottom: 1px solid #edf0f4; margin-bottom: .25rem; }
+    .regional-team-card .team-player-table td[data-label="Selection / payment"]::before { content: 'Status'; }
+    .regional-team-card .team-player-table .badge { white-space: normal; text-align: left; line-height: 1.35; }
+    .regional-team-card .team-player-table .dropdown-menu { min-width: min(15rem, calc(100vw - 3rem)) !important; }
+    .regional-team-card .team-player-table .dropdown-item { white-space: normal; }
     .selection-progress { grid-template-columns: 1fr; }
     .selection-progress-step { display: grid; grid-template-columns: 2rem 1fr; column-gap: .65rem; align-items: start; }
     .selection-progress-step::before { grid-row: 1 / span 2; margin-bottom: 0; }
@@ -496,8 +510,8 @@
                                     @php($hasRegionalActions = (bool) $reserveActivationRank || (in_array($invitation->status, [\App\Models\TeamSelectionInvitation::DECLINED, \App\Models\TeamSelectionInvitation::WITHDRAWN], true) && $invitation->vacated_roster_rank) || ($recipientEmail && !$isReserve) || $canMarkPaidPrivately || $openVacancy)
                                     @if($hasRegionalActions)
                                     <div class="dropdown">
-                                      <button class="btn btn-sm btn-icon btn-outline-secondary dropdown-toggle hide-arrow" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" aria-label="Regional actions for {{ $invitation->player?->full_name ?: 'player' }}">
-                                        <i class="ti ti-dots-vertical" aria-hidden="true"></i>
+                                      <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" aria-label="Regional actions for {{ $invitation->player?->full_name ?: 'player' }}">
+                                        Actions
                                       </button>
                                       <div class="dropdown-menu dropdown-menu-end p-1" style="min-width:15rem;">
                                     @if($awaitingRestoredInvitation)

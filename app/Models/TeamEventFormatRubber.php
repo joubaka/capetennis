@@ -21,6 +21,8 @@ class TeamEventFormatRubber extends Model
         'player_count_per_team',
         'singles_position',
         'reverse_from_position',
+        'home_positions',
+        'away_positions',
         'is_required',
     ];
 
@@ -29,6 +31,8 @@ class TeamEventFormatRubber extends Model
         'player_count_per_team' => 'integer',
         'singles_position'      => 'integer',
         'reverse_from_position' => 'integer',
+        'home_positions'        => 'array',
+        'away_positions'        => 'array',
         'is_required'           => 'boolean',
     ];
 

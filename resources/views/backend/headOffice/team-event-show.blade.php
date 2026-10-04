@@ -75,6 +75,9 @@
 ])
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 no-print">
   <div><h2 class="h4 mb-1">Tournament draws</h2><p class="text-muted mb-0">Create team ties or individual singles draws, allocate venues and manage fixtures.</p></div>
+  @can('team-draw.createFormat', $event)
+  <a class="btn btn-outline-primary" href="{{ route('backend.team-rules.edit', $event) }}">Event scoring rules</a>
+  @endcan
   <button class="btn btn-primary" id="createNewDrawBtn" data-bs-toggle="modal" data-bs-target="#createDrawModal">
       <i class="ti ti-plus me-1"></i> Create New Draw
   </button>
@@ -138,8 +141,14 @@
                    @if($draw->is_scheduled) <span class="text-info">| Scheduled</span> @endif
                 </div>
               </div>
-
-            
+              @if($draw->isTeamDraw())
+              @can('team-fixture.view', $draw)
+              @if($draw->team_format_snapshot !== null)
+              <a class="btn btn-sm btn-outline-primary me-2" href="{{ route('backend.team-draw.operations', $draw) }}">Team ties</a>
+              @endif
+              <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.team-draw.standings', $draw) }}">Standings</a>
+              @endcan
+              @endif
             </div>
           @empty
             <div class="text-center py-5">
@@ -196,10 +205,6 @@
   </div>
 
 </div>
-
-@endsection
-
-@section('modals')
 
 <!-- Modal: Create New Draw (Team Event) -->
 <div class="modal fade" id="createDrawModal" tabindex="-1" aria-hidden="true">
@@ -378,12 +383,12 @@
             </div>
           </div>
 
-          {{-- Format selection (v2 only, loaded async) --}}
-          @if($teamDrawV2Enabled ?? false)
+          {{-- Existing event formats are selectable without changing rollout settings. --}}
+          @if(($availableFormats ?? collect())->isNotEmpty())
           <div class="mb-3 d-none" id="formatSelectGroup">
-            <label for="format_id" class="form-label fw-bold">Tie Format <span class="text-muted fw-normal">(optional – attach later)</span></label>
+            <label for="format_id" class="form-label fw-bold">Tie Format <span class="text-muted fw-normal">(optional – use event default)</span></label>
             <select id="format_id" name="format_id" class="form-select">
-              <option value="">— Select format —</option>
+              <option value="">— Use event default —</option>
               @foreach($availableFormats ?? [] as $fmt)
                 <option value="{{ $fmt->id }}">{{ $fmt->name }}</option>
               @endforeach
@@ -396,8 +401,11 @@
 
         </div>
 
+        <div id="teamDrawPreview" class="px-4 pb-3 d-none" aria-live="polite"></div>
+
         <div class="modal-footer">
           <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" id="previewTeamDrawButton" class="btn btn-outline-primary d-none">Preview team ties</button>
           <button type="submit" class="btn btn-primary">Create Draw</button>
         </div>
 
@@ -444,4 +452,6 @@
   });
 
 </script>
+
+@endsection
 

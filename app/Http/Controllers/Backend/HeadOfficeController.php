@@ -238,7 +238,7 @@ class HeadOfficeController extends Controller
       'teamDrawTypes' => $teamDrawTypes,
       'individualDrawTypes' => $individualDrawTypes,
       'teamDrawV2Enabled' => FeatureFlags::enabled(FeatureFlags::TEAM_DRAW_V2, $event->id),
-      'availableFormats' => FeatureFlags::enabled(FeatureFlags::TEAM_DRAW_V2, $event->id)
+      'availableFormats' => Schema::hasTable('team_event_formats')
         ? TeamEventFormat::with('rubbers')->forEvent($event->id)->orderBy('name')->get()
         : collect(),
     ];
@@ -560,93 +560,39 @@ class HeadOfficeController extends Controller
     $this->authorize('team-draw.createFormat', $event);
 
     $validated = $request->validate([
+      'format_id' => ['nullable', 'integer', Rule::exists('team_event_formats', 'id')->where(fn ($query) => $query->where('event_id', $event->id)->orWhereNull('event_id'))],
       'draw_type_id'   => 'required|integer|exists:draw_types,id',
       'drawName'       => 'required|string|max:255',
       'category_ids'   => 'required|array|min:1',
       'category_ids.*' => ['integer', 'distinct', Rule::exists('category_events', 'id')->where('event_id', $event->id)],
     ]);
 
-    $draw = $this->createDraw($event->id, (int) $validated['draw_type_id'], $validated['drawName']);
-
-    \Log::debug('[createSingleDrawTeam] request payload', [
-      'event_id' => $event->id,
-      'draw_id' => $draw->id,
-      'draw_type_id' => (int) $validated['draw_type_id'],
-      'draw_name' => $validated['drawName'],
-      'category_ids' => $validated['category_ids'],
-    ]);
-
-    // Store the first category_event pivot on the draw for reference
-    $primaryCategoryEventId = $validated['category_ids'][0] ?? null;
-    if ($primaryCategoryEventId) {
-      $draw->category_event_id = $primaryCategoryEventId;
-      $draw->save();
-    }
-
-    // ── Resolve teams for all provided category_events ──────────────────────
+    $format = $this->resolveTeamDrawFormat($event, $validated['format_id'] ?? null);
     $teams = Team::whereIn('category_event_id', $validated['category_ids'])
-      ->with(['team_players', 'team_players_no_profile'])
-      ->get();
+      ->with(['team_players.player', 'team_players_no_profile'])->orderBy('id')->get();
 
-    // Sync teams to the draw
-    if ($teams->isNotEmpty()) {
+    [$draw, $ties, $placeholderFixturesCreated] = DB::transaction(function () use ($event, $validated, $teams, $format, $drawGenerator, $tieGenerator) {
+      $draw = $this->createDraw($event->id, (int) $validated['draw_type_id'], $validated['drawName']);
+      $draw->category_event_id = $validated['category_ids'][0];
+      $draw->save();
       $draw->teams_in_draw()->sync($teams->pluck('id')->all());
-    }
-
-    // ── Resolve the default format for this event ────────────────────────────
-    $format = null;
-    if (Schema::hasTable('team_event_formats')) {
-      $format = TeamEventFormat::where('event_id', $event->id)
-        ->where('is_default', true)
-        ->with('rubbers')
-        ->first();
-    }
-
-    // ── Generate ties / placeholder fixtures ───────────────────────────────
-    $ties = collect();
-    $placeholderFixturesCreated = 0;
-    $generatedRubbers = 0;
-    $canGenerateTeamDraw = Schema::hasTable('team_ties') && Schema::hasTable('team_fixtures');
-
-    if (!$canGenerateTeamDraw) {
-      if (Schema::hasTable('team_fixtures')) {
-        $placeholderFixturesCreated = $this->createPlaceholderTeamFixtures($draw, $teams, $format);
-      } else {
-        \Log::warning('[createSingleDrawTeam] team_fixtures table missing; cannot create placeholder fixtures', [
-          'draw_id' => $draw->id,
-          'team_ties_table' => Schema::hasTable('team_ties'),
-          'team_fixtures_table' => Schema::hasTable('team_fixtures'),
-        ]);
-      }
-    } elseif ($teams->count() < 2) {
-      if (Schema::hasTable('team_fixtures')) {
-        $placeholderFixturesCreated = $this->createPlaceholderTeamFixtures($draw, $teams, $format);
-      }
-    } else {
-      DB::transaction(function () use ($draw, $teams, $format, $tieGenerator, $drawGenerator, &$ties, &$generatedRubbers) {
-        // Standard round-robin schedule
+      $ties = collect();
+      $placeholders = 0;
+      $canGenerate = Schema::hasTable('team_ties') && Schema::hasTable('team_fixtures');
+      if ($canGenerate && $teams->count() >= 2) {
         $ties = $drawGenerator->generate($draw, $teams, $format);
-
-        // ── Generate rubbers (fixtures) for each tie ─────────────────────────
-        if ($format && $format->rubbers->isNotEmpty()) {
+        if ($format) {
           foreach ($ties as $tie) {
-            try {
-              $rubbers = $tieGenerator->generateFromFormat($tie, $format);
-              $generatedRubbers += $rubbers->count();
-            } catch (\Throwable $e) {
-              \Log::warning('[createSingleDrawTeam] Rubber generation skipped for tie', [
-                'tie_id' => $tie->id,
-                'reason' => $e->getMessage(),
-              ]);
-            }
+            $tieGenerator->generateFromFormat($tie, $format);
           }
+        } else {
+          $placeholders = $this->createPlaceholderTeamFixtures($draw, $teams);
         }
-      });
-
-      if ($generatedRubbers === 0 && Schema::hasTable('team_fixtures')) {
-        $placeholderFixturesCreated = $this->createPlaceholderTeamFixtures($draw, $teams, $format);
+      } elseif (Schema::hasTable('team_fixtures')) {
+        $placeholders = $this->createPlaceholderTeamFixtures($draw, $teams, $format);
       }
-    }
+      return [$draw, $ties, $placeholders];
+    });
 
     \Log::info('[createSingleDrawTeam] Draw + fixtures created', [
       'draw_id'   => $draw->id,
@@ -1103,6 +1049,7 @@ class HeadOfficeController extends Controller
     $this->authorize('team-draw.createFormat', $event);
 
     $validated = $request->validate([
+      'format_id' => ['nullable', 'integer', Rule::exists('team_event_formats', 'id')->where(fn ($query) => $query->where('event_id', $event->id)->orWhereNull('event_id'))],
       'draw_type_id'   => 'required|integer|exists:draw_types,id',
       'drawName'       => 'required|string|max:255',
       'category_ids'   => 'required|array|min:1',
@@ -1112,7 +1059,13 @@ class HeadOfficeController extends Controller
     $drawType = \App\Models\DrawType::find($validated['draw_type_id']);
     $categories = \App\Models\CategoryEvent::whereIn('id', $validated['category_ids'])->get();
 
+    $format = $this->resolveTeamDrawFormat($event, $validated['format_id'] ?? null);
+    $teams = Team::whereIn('category_event_id', $validated['category_ids'])
+      ->with(['team_players.player', 'team_players_no_profile'])->orderBy('id')->get();
+    $readiness = app(\App\Services\TeamDrawReadinessService::class)->preview($teams, $format);
+
     return response()->json([
+      'readiness' => $readiness,
       'preview'    => true,
       'drawName'   => $validated['drawName'],
       'draw_type'  => [
@@ -1122,6 +1075,18 @@ class HeadOfficeController extends Controller
       'categories' => $categories->map(fn ($c) => ['id' => $c->id, 'name' => $c->name ?? $c->category]),
       'event_id'   => $event->id,
     ]);
+  }
+
+  private function resolveTeamDrawFormat(Event $event, ?int $formatId): ?TeamEventFormat
+  {
+    if (!Schema::hasTable('team_event_formats')) {
+      return null;
+    }
+    if ($formatId !== null) {
+      return TeamEventFormat::forEvent($event->id)->with('rubbers')->findOrFail($formatId);
+    }
+    return TeamEventFormat::where('event_id', $event->id)->where('is_default', true)
+      ->with('rubbers')->first();
   }
 
   private function buildRegionFixturesForEvent(int $eventId)

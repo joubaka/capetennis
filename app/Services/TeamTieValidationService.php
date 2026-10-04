@@ -190,7 +190,7 @@ class TeamTieValidationService
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Assert that all rubbers in a tie have at least one player assigned per side.
+     * Assert required rubbers and their complete, distinct player slots exist.
      *
      * @param  TeamTie  $tie
      * @throws \InvalidArgumentException
@@ -198,16 +198,65 @@ class TeamTieValidationService
     public function assertTieComplete(TeamTie $tie): void
     {
         $rubbers = $tie->rubbers()->with('fixturePlayers')->get();
+        if ($rubbers->isEmpty()) {
+            throw new \InvalidArgumentException("Tie #{$tie->id} has no rubbers.");
+        }
+        $this->assertRequiredRubbersPresent($tie);
+        $snapshot = $tie->draw?->team_format_snapshot;
+        if (is_array($snapshot) && isset($snapshot['min_roster_size'], $snapshot['max_roster_size'])) {
+            $snapshotFormat = new TeamEventFormat($snapshot);
+            foreach ([$tie->homeTeam, $tie->awayTeam] as $team) {
+                if ($team) {
+                    $this->assertRosterSize($team, $snapshotFormat);
+                }
+            }
+        }
+        $seen = [1 => [], 2 => []];
         $incomplete = [];
 
         foreach ($rubbers as $rubber) {
-            $hasHome = $rubber->fixturePlayers->whereNotNull('team1_id')->isNotEmpty()
-                || $rubber->fixturePlayers->whereNotNull('team1_no_profile_id')->isNotEmpty();
-            $hasAway = $rubber->fixturePlayers->whereNotNull('team2_id')->isNotEmpty()
-                || $rubber->fixturePlayers->whereNotNull('team2_no_profile_id')->isNotEmpty();
-
-            if (!$hasHome || !$hasAway) {
+            $expected = (int) ($rubber->player_count_per_team ?: ($rubber->isSingles() ? 1 : 2));
+            $sides = [];
+            foreach ([1, 2] as $side) {
+                $sides[$side] = $rubber->fixturePlayers->map(function ($slot) use ($side) {
+                    $profile = $slot->{"team{$side}_id"};
+                    $imported = $slot->{"team{$side}_no_profile_id"};
+                    // A slot must identify exactly one player source.
+                    return $profile && !$imported ? "player:{$profile}"
+                        : ($imported && !$profile ? "imported:{$imported}" : null);
+                })->filter()->unique()->count();
+            }
+            if ($rubber->fixturePlayers->count() !== $expected || $sides[1] !== $expected || $sides[2] !== $expected) {
                 $incomplete[] = "Rubber #{$rubber->rubber_sequence} ({$rubber->rubber_name})";
+            }
+            if (is_array($snapshot)) {
+                foreach ([1 => $tie->homeTeam, 2 => $tie->awayTeam] as $side => $team) {
+                    if (!$team || ($team->category && (int) $team->category->event_id !== (int) $tie->draw->event_id)) {
+                        throw new \InvalidArgumentException('Tie teams must belong to the draw event.');
+                    }
+                    $profileIds = $rubber->fixturePlayers->pluck("team{$side}_id")->filter()->all();
+                    $importedIds = $rubber->fixturePlayers->pluck("team{$side}_no_profile_id")->filter()->all();
+                    if (array_diff($profileIds, $team->team_players->pluck('player_id')->all())
+                        || array_diff($importedIds, $team->team_players_no_profile->pluck('id')->all())) {
+                        throw new \InvalidArgumentException('Rubber players must belong to their assigned team.');
+                    }
+                    $keys = array_merge(array_map(fn ($id) => "player:{$id}", $profileIds), array_map(fn ($id) => "imported:{$id}", $importedIds));
+                    if (!($snapshot['allow_player_reuse'] ?? false) && array_intersect($seen[$side], $keys)) {
+                        throw new \InvalidArgumentException('This format does not allow a player to be reused within a tie.');
+                    }
+                    $seen[$side] = array_merge($seen[$side], $keys);
+                    $definition = collect($snapshot['rubbers'] ?? [])->firstWhere('sequence', $rubber->rubber_sequence);
+                    $genderRule = $definition['gender_rule'] ?? $rubber->gender_rule;
+                    if ($genderRule) {
+                        // Imported players have no recorded gender. Validate only known facts.
+                        $genders = Player::whereIn('id', $profileIds)->pluck('gender')->filter()->map(fn ($gender) => in_array($gender, [1, '1'], true) ? 'male' : (in_array($gender, [2, '2'], true) ? 'female' : strtolower((string) $gender)));
+                        if (in_array($genderRule, ['male', 'female'], true)) {
+                            $this->assertAllGender($genders, $genderRule, $rubber->rubber_code);
+                        } elseif ($genderRule === 'mixed' && $genders->count() === $expected) {
+                            $this->assertMixed($genders, $rubber->rubber_code);
+                        }
+                    }
+                }
             }
         }
 
@@ -217,6 +266,22 @@ class TeamTieValidationService
                 implode(', ', $incomplete) . '.'
             );
         }
+    }
+
+    public function assertRequiredRubbersPresent(TeamTie $tie): void
+    {
+        if (!$this->requiredRubbersPresent($tie)) {
+            throw new \InvalidArgumentException("Tie #{$tie->id} is missing required rubbers.");
+        }
+    }
+
+    public function requiredRubbersPresent(TeamTie $tie): bool
+    {
+        $snapshot = $tie->draw?->team_format_snapshot;
+        $required = is_array($snapshot)
+            ? collect($snapshot['rubbers'] ?? [])->filter(fn ($rubber) => $rubber['is_required'] ?? true)->pluck('sequence')->all()
+            : ($tie->draw?->teamEventFormat?->rubbers->where('is_required', true)->pluck('sequence')->all() ?? []);
+        return !array_diff($required, $tie->rubbers()->pluck('rubber_sequence')->all());
     }
 
     // ─────────────────────────────────────────────────────────────────────────

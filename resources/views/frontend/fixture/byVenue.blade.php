@@ -118,13 +118,13 @@ if (!function_exists('team_label')) {
               $homeClass = $awayClass = '';
               $status = 'Pending';
               if ($fx->fixtureResults && $fx->fixtureResults->count()) {
-                  $lastSet = $fx->fixtureResults->last();
-                  if ($lastSet->team1_score > $lastSet->team2_score) {
+                  $winner = $fx->winnerSide();
+                  if ($winner === 'home') {
                       $homeClass = 'winner-home'; $awayClass = 'loser-home'; $status = 'Home Win';
-                  } elseif ($lastSet->team2_score > $lastSet->team1_score) {
+                  } elseif ($winner === 'away') {
                       $homeClass = 'loser-home'; $awayClass = 'winner-home'; $status = 'Away Win';
                   } else {
-                      $homeClass = $awayClass = 'draw-cell'; $status = 'Draw';
+                      $status = 'In progress';
                   }
               }
 

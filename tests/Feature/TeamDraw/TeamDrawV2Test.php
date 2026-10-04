@@ -380,7 +380,7 @@ class TeamDrawV2Test extends TestCase
 
     // ─── 6. Override unlocks locked regeneration ───────────────────────────
 
-    public function test_generate_ties_succeeds_with_override_despite_locked_tie(): void
+    public function test_generate_ties_preserves_published_tie_despite_override(): void
     {
         $event = $this->makeEvent();
         $draw  = $this->makeDraw($event);
@@ -400,8 +400,9 @@ class TeamDrawV2Test extends TestCase
                 'team_ids'       => $teams->pluck('id')->all(),
                 'allow_override' => true,
             ])
-            ->assertOk()
-            ->assertJsonPath('success', true);
+            ->assertConflict()
+            ->assertJsonPath('success', false);
+        $this->assertSame(1, $draw->teamTies()->count());
     }
 
     // ─── 7. Rubber generation ──────────────────────────────────────────────
@@ -667,6 +668,13 @@ class TeamDrawV2Test extends TestCase
             'team2_id'        => $player2->id,
         ]);
 
+        foreach ($teams as $team) {
+            foreach (range(1, 2) as $rank) {
+                $team->players()->attach(\App\Models\Player::factory()->create()->id, ['rank' => $rank, 'pay_status' => 0]);
+            }
+        }
+        app(\App\Services\TeamTieGenerationService::class)->generateForTie($tie);
+
         $this->actingAs($this->admin)
             ->postJson("/backend/team-draw/ties/{$tie->id}/validate")
             ->assertOk()
@@ -694,6 +702,13 @@ class TeamDrawV2Test extends TestCase
             'away_team_id' => $teams[1]->id,
             'status'       => TeamTie::STATUS_VALIDATED,
         ]);
+
+        $rubber = \App\Models\TeamFixture::create(['draw_id' => $draw->id, 'team_tie_id' => $tie->id,
+            'round_nr' => 1, 'tie_nr' => 1, 'match_nr' => 1, 'rubber_sequence' => 1,
+            'rubber_code' => 'singles', 'player_count_per_team' => 1]);
+        \App\Models\TeamFixturePlayer::create(['team_fixture_id' => $rubber->id, 'slot_no' => 1,
+            'team1_id' => \App\Models\Player::factory()->create()->id,
+            'team2_id' => \App\Models\Player::factory()->create()->id]);
 
         $this->actingAs($this->admin)
             ->postJson("/backend/team-draw/ties/{$tie->id}/publish")

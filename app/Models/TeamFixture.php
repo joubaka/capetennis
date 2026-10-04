@@ -46,6 +46,20 @@ class TeamFixture extends Model
     'player_count_per_team',
   ];
 
+  public function winnerSide(): ?string
+  {
+    return app(\App\Services\TeamRubberResultService::class)->outcome($this)['winner'];
+  }
+
+  public function scopePublishedTeamTies($query)
+  {
+    return $query->where(function ($query) {
+      $query->whereHas('draw', fn ($draw) => $draw->whereNull('team_scoring_rules'))
+        ->orWhereHas('teamTie', fn ($tie) => $tie->whereNotNull('published_at')
+          ->whereIn('status', [TeamTie::STATUS_PUBLISHED, TeamTie::STATUS_COMPLETED]));
+    });
+  }
+
   /** ------------------------
    * Fixture Type Helpers
    * ---------------------- */
@@ -53,7 +67,7 @@ class TeamFixture extends Model
   {
     // Prefer rubber_code (v2 team draws) over legacy fixture_type
     if ($this->rubber_code !== null) {
-      return in_array($this->rubber_code, [RubberType::DOUBLES, RubberType::MIXED_DOUBLES], true);
+      return in_array($this->rubber_code, [RubberType::DOUBLES, RubberType::REVERSE_DOUBLES, RubberType::MIXED_DOUBLES, RubberType::REVERSE_MIXED_DOUBLES], true);
     }
 
     // Fall back to legacy integer fixture_type (1=singles, 2=doubles, 3=mixed_doubles, 4=reverse_singles)

@@ -26,7 +26,8 @@
     }
 
     // Open modal and prefill form
-    $('.edit-score-btn').on('click', function () {
+    $(document).on('click.teamScores', '.edit-score-btn', function (e) {
+      e.preventDefault();
       const fixtureId = $(this).data('id');
       const home = $(this).data('home') || 'Home';
       const away = $(this).data('away') || 'Away';
@@ -79,7 +80,8 @@
     });
 
     // Delete result via AJAX
-    $('.delete-result-btn').on('click', function () {
+    $(document).on('click.teamScores', '.delete-result-btn', function (e) {
+      e.preventDefault();
       if (!confirm('Delete the result for this fixture?')) return;
       const fixtureId = $(this).data('id');
       const actionUrl = $(this).data('action');
@@ -128,29 +130,7 @@
         $away.addClass('draw-cell');
       }
 
-      // Re-bind delete handler for new button
-      $(`#actions-col-${fixtureId} .delete-result-btn`).off('click').on('click', function () {
-        if (!confirm('Delete the result for this fixture?')) return;
-        const fixtureId = $(this).data('id');
-        const actionUrl = $(this).data('action');
-        $.ajax({
-          url: actionUrl,
-          type: 'DELETE',
-          data: { _token: $('meta[name="csrf-token"]').attr('content') },
-          success: function (data) {
-            if (!data.success) {
-              window.AppFeedback?.error(data.message || 'Could not delete the result.');
-              return;
-            }
-            updateFixtureRow(fixtureId, data.html, data.winner, data.actionsHtml);
-            window.AppFeedback?.success(data.message || 'Result deleted.');
-          },
-          error: function (xhr) {
-            window.AppFeedback?.error(xhr.responseJSON?.message || 'Could not delete the result. Please try again.');
-            console.log(xhr.responseText);
-          }
-        });
-      });
+
     }
   });
 

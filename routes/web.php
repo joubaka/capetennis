@@ -1376,6 +1376,11 @@ Route::delete(
   //order
   Route::resource('order', OrderController::class);
 
+  Route::get('/event/{event}/team-rules', [\App\Http\Controllers\Backend\TeamEventRulesController::class, 'edit'])->name('backend.team-rules.edit');
+  Route::put('/event/{event}/team-rules', [\App\Http\Controllers\Backend\TeamEventRulesController::class, 'update'])->name('backend.team-rules.update');
+  Route::get('/team-draw/{draw}/standings', [\App\Http\Controllers\Backend\TeamEventRulesController::class, 'standings'])->name('backend.team-draw.standings');
+  Route::get('/team-draw/{draw}/operations', [\App\Http\Controllers\Backend\TeamEventRulesController::class, 'operations'])->name('backend.team-draw.operations');
+
   Route::post('/event/{event}/preview-team-draw', [HeadOfficeController::class, 'previewSingleDrawTeam'])
      ->name('headoffice.previewTeamDraw');
 
@@ -2016,6 +2021,7 @@ Route::prefix('frontend')->middleware('auth')->group(function () {
 });
 
 //Frotend fixtures (public)
+Route::get('/team-draw/{draw}/standings', [\App\Http\Controllers\Backend\TeamEventRulesController::class, 'publicStandings'])->name('frontend.team-draw.standings');
 Route::get('frontend/fixtures/draw/index/{id}', [FrontFixtureController::class, 'drawFixtures'])->name('frontend.fixtures.index');
 Route::get('frontend/fixtures/draw/show/{id}', [FrontFixtureController::class, 'show'])->name('frontend.fixtures.show');
 Route::get('frontend/fixtures/draw/indexRound/{event}/{round}/{type}', [FrontFixtureController::class, 'drawFixturesRound'])->name('frontend.fixtures.indexRound');
@@ -2098,6 +2104,8 @@ Route::get('/backend/team-schedule/all-data/{event}', [TeamScheduleController::c
   ->middleware('auth')->name('backend.team-schedule.all.data');
 Route::post('/backend/team-schedule/all-auto/{event}', [TeamScheduleController::class, 'autoAll'])
   ->middleware('auth')->name('backend.team-schedule.all.auto');
+Route::post('/backend/team-schedule/all-clear/{event}', [TeamScheduleController::class, 'clearAll'])
+  ->middleware('auth')->name('backend.team-schedule.all.clear');
 
 // backend/team-fixtures/admin/{event}
 Route::get('backend/team-fixtures/admin/{event}', [\App\Http\Controllers\Backend\TeamFixtureController::class, 'admin'])

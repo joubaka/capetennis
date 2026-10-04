@@ -90,7 +90,10 @@ class TeamTieGenerationService
         }
 
         /** @var Collection<int, TeamEventFormatRubber> $rubberTemplates */
-        $rubberTemplates = $format->rubbers;
+        $snapshot = $tie->draw?->team_format_snapshot;
+        $rubberTemplates = is_array($snapshot) && isset($snapshot['rubbers'])
+            ? collect($snapshot['rubbers'])->map(fn (array $attributes) => new TeamEventFormatRubber($attributes))->sortBy('sequence')->values()
+            : $format->rubbers;
 
         if ($rubberTemplates->isEmpty()) {
             throw new \InvalidArgumentException(
@@ -99,6 +102,14 @@ class TeamTieGenerationService
         }
 
         return DB::transaction(function () use ($tie, $rubberTemplates) {
+            $draw = \App\Models\Draw::query()->lockForUpdate()->findOrFail($tie->draw_id);
+            $tie = TeamTie::query()->lockForUpdate()->findOrFail($tie->id);
+            $existing = $tie->rubbers()->lockForUpdate()->get();
+            if (!\App\Services\Draw\DrawMutationPolicy::for($draw)->canGenerateFixtures()
+                || $tie->isLocked()
+                || $existing->contains(fn ($fixture) => (int) $fixture->match_status !== \App\Domain\Draws\Enums\FixtureState::STATUS_PENDING || $fixture->fixtureResults()->exists())) {
+                throw new TeamDrawConflictException('A locked, published or played tie cannot have rubbers generated or reassigned.');
+            }
             $created = collect();
 
             // Ensure team relationships (and their players) are loaded once
@@ -125,8 +136,10 @@ class TeamTieGenerationService
                     ]
                 );
 
-                // Auto-assign players from both teams into the rubber's player slots
-                $this->playerAssigner->assignForRubber($rubber, $tie, $template);
+                // Repeating generation must preserve existing lineup decisions and results.
+                if ($rubber->wasRecentlyCreated) {
+                    $this->playerAssigner->assignForRubber($rubber, $tie, $template);
+                }
 
                 $created->push($rubber);
             }

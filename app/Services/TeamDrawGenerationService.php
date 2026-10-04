@@ -44,7 +44,8 @@ class TeamDrawGenerationService
         Draw           $draw,
         Collection     $teams,
         ?TeamEventFormat $format = null,
-        bool           $allowOverride = false
+        bool           $allowOverride = false,
+        bool           $captureSnapshot = true
     ): Collection {
         // Guard: do not destructively regenerate if any tie is locked
         if (!$allowOverride) {
@@ -63,7 +64,25 @@ class TeamDrawGenerationService
 
         $schedule = $this->buildRoundRobinSchedule($teams);
 
-        return DB::transaction(function () use ($draw, $schedule, $format) {
+        return DB::transaction(function () use ($draw, $schedule, $format, $allowOverride, $captureSnapshot) {
+            $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
+            \App\Models\TeamFixture::where('draw_id', $draw->id)->lockForUpdate()->get();
+            if (!\App\Services\Draw\DrawMutationPolicy::for($draw)->canGenerateFixtures()
+                || \App\Models\TeamFixture::where('draw_id', $draw->id)->whereHas('fixtureResults')->exists()
+                || \App\Models\TeamFixture::where('draw_id', $draw->id)->where('match_status', '!=', \App\Domain\Draws\Enums\FixtureState::STATUS_PENDING)->exists()
+                || $draw->teamTies()->locked()->exists()) {
+                throw new TeamDrawConflictException('This draw has protected state or recorded results and cannot be generated again.');
+            }
+            if ($format && $draw->team_format_snapshot !== null
+                && (int) ($draw->team_format_snapshot['id'] ?? 0) !== (int) $format->id) {
+                throw new TeamDrawConflictException('An existing draw must retain its original pairing format.');
+            }
+            if ($captureSnapshot && $format && $draw->team_format_snapshot === null
+                && !$draw->teamTies()->exists() && !\App\Models\TeamFixture::where('draw_id', $draw->id)->exists()) {
+                $event = \App\Models\Event::whereKey($draw->event_id)->lockForUpdate()->firstOrFail();
+                $draw->team_scoring_rules = app(TeamEventRulesService::class)->forEvent($event);
+                $draw->team_format_snapshot = $format->loadMissing('rubbers')->toArray();
+            }
             // Attach format if provided
             if ($format) {
                 $draw->team_event_format_id = $format->id;

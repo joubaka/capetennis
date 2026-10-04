@@ -8,10 +8,8 @@ use App\Models\TeamFixture;
 use App\Models\RankVenueMapping;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 use App\Models\Event;
-use App\Models\Venues;
-use App\Services\FixtureService;
+use App\Models\Venue;
 
 
 class TeamScheduleController extends Controller
@@ -59,103 +57,43 @@ class TeamScheduleController extends Controller
    */
   public function saveFixture(Request $request, Draw $draw)
   {
-    $this->authorize('team-schedule.manage', $draw);
-
-    $fx = TeamFixture::where('draw_id', $draw->id)->findOrFail($request->fixture_id);
-    $fx->scheduled_at = $request->scheduled_at ? Carbon::parse($request->scheduled_at) : null;
-    $fx->scheduled = 1;
-    $fx->venue_id = $request->venue_id ?: null;
-    $fx->court_label = $request->court_label ?: null;
-    $fx->duration_min = $request->duration_min ?: null;
-    $fx->save();
-
-    return response()->json(['status' => 'ok']);
+    return app(TeamFixtureController::class)->scheduleSave($request, $draw);
   }
+
 
   /**
    * Auto-schedule fixtures (apply duration/gap/venues/map)
    */
   public function autoSchedule(Request $request, Draw $draw)
   {
-    $this->authorize('team-schedule.manage', $draw);
-
-    $map = $request->input('rank_venue_map', []);
-    // Example stub logic: loop fixtures, assign sequentially
-    $fixtures = TeamFixture::where('draw_id', $draw->id)->get();
-    $assigned = [];
-    $start = Carbon::parse($request->start);
-    $duration = (int) $request->duration;
-    $gap = (int) $request->gap;
-
-    foreach ($fixtures as $i => $fx) {
-      $dt = (clone $start)->addMinutes(($duration + $gap) * $i);
-      $fx->scheduled_at = $dt;
-      $fx->duration_min = $duration;
-      $fx->scheduled = 1;
-      // apply rank→venue map if available
-      if ($fx->home_rank && isset($map[$fx->home_rank])) {
-        $fx->venue_id = $map[$fx->home_rank];
-      } else {
-        $fx->venue_id = $request->venues[$i % count($request->venues)] ?? null;
-      }
-    
-      $fx->save();
-      $assigned[] = $fx->id;
-    }
-
-    return response()->json(['assigned' => $assigned]);
+    return app(TeamFixtureController::class)->scheduleAuto($request, $draw);
   }
+
 
   /**
    * Clear all schedules for this draw
    */
   public function clearSchedule(Draw $draw)
   {
-    $this->authorize('team-schedule.manage', $draw);
-
-    TeamFixture::where('draw_id', $draw->id)->update([
-      'scheduled_at' => null,
-      'scheduled' => 0,
-      'venue_id' => null,
-      'court_label' => null,
-      'duration_min' => null,
-    ]);
-
-    return response()->json(['message' => 'All schedules cleared']);
+    return app(TeamFixtureController::class)->scheduleClear($draw);
   }
+
 
   /**
    * Reset + auto-schedule again
    */
   public function resetSchedule(Request $request, Draw $draw)
   {
-    $this->authorize('team-schedule.manage', $draw);
-
-    $this->clearSchedule($draw);
-    return $this->autoSchedule($request, $draw);
+    return app(TeamFixtureController::class)->scheduleReset($request, $draw);
   }
+
 
   /**
    * Persist rank→venue mapping
    */
   public function saveRankVenues(Request $request, Draw $draw)
   {
-    $this->authorize('team-schedule.manage', $draw);
-
-    $map = $request->input('rank_venue_map', []);
-
-    RankVenueMapping::where('draw_id', $draw->id)->delete();
-    foreach ($map as $rank => $venueId) {
-      if ($venueId) {
-        RankVenueMapping::create([
-          'draw_id' => $draw->id,
-          'rank' => $rank,
-          'venue_id' => $venueId,
-        ]);
-      }
-    }
-
-    return response()->json(['status' => 'ok']);
+    return app(TeamFixtureController::class)->saveRankVenues($request, $draw);
   }
 
   public function indexAll(Event $event)
@@ -199,7 +137,12 @@ class TeamScheduleController extends Controller
       ];
     }
 
-    $venues = \App\Models\Venues::select('id', 'name', 'num_courts')->get();
+    $venues = $event->draws->flatMap(fn ($draw) => $draw->venues)
+      ->groupBy('id')->map(fn ($group) => [
+        'id' => $group->first()->id,
+        'name' => $group->first()->name,
+        'num_courts' => $group->max(fn ($venue) => (int) $venue->pivot->num_courts),
+      ])->values();
     return response()->json([
       'draws' => $data,
       'venues' => $venues
@@ -210,23 +153,14 @@ class TeamScheduleController extends Controller
   {
     $this->authorize('team-schedule.manage', $event);
 
-    $scheduledCount = 0;
-    $clashes = [];
-    $skipped = [];
-
-    foreach ($event->draws as $draw) {
-      $result = app(FixtureService::class)->autoScheduleDraw($draw, $request->all());
-      $scheduledCount += $result['count'] ?? 0;
-      $clashes = array_merge($clashes, $result['clashes'] ?? []);
-      $skipped = array_merge($skipped, $result['skipped'] ?? []);
-    }
-
-    return response()->json([
-      'message' => 'Auto schedule completed for all categories',
-      'count' => $scheduledCount,
-      'clashes' => $clashes,
-      'skipped' => $skipped
-    ]);
+    $scheduler = app(\App\Services\TeamScheduleService::class);
+    return response()->json($scheduler->automatic($event->draws, $scheduler->validate($request)));
   }
 
+  public function clearAll(Event $event)
+  {
+    $this->authorize('team-schedule.manage', $event);
+    app(\App\Services\TeamScheduleService::class)->clear($event->draws);
+    return response()->json(['success' => true, 'message' => 'All schedules cleared for this event.']);
+  }
 }

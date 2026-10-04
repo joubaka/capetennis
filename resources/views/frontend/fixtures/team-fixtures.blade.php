@@ -3,6 +3,9 @@
 @section('title', 'Team Fixtures')
 
 @section('content')
+@if($draw->published && $draw->team_scoring_rules !== null)
+<div class="container-xxl pt-3"><a class="btn btn-outline-primary" href="{{ route('frontend.team-draw.standings', $draw) }}">Team standings</a></div>
+@endif
 <div class="container-xxl py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2 class="mb-0">
@@ -84,13 +87,11 @@
 
                             $homeClass = ''; $awayClass = '';
                             if ($fx->fixtureResults->count()) {
-                                $lastSet = $fx->fixtureResults->last();
-                                if ($lastSet->team1_score > $lastSet->team2_score) {
+                                $winner = $fx->winnerSide();
+                                if ($winner === 'home') {
                                     $homeClass = 'winner-home'; $awayClass = 'loser-home';
-                                } elseif ($lastSet->team2_score > $lastSet->team1_score) {
+                                } elseif ($winner === 'away') {
                                     $homeClass = 'loser-home'; $awayClass = 'winner-home';
-                                } else {
-                                    $homeClass = 'draw-cell'; $awayClass = 'draw-cell';
                                 }
                             }
                         @endphp

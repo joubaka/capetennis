@@ -75,16 +75,13 @@
                             $homeClass = '';
                             $awayClass = '';
                             if ($fx->fixtureResults->count()) {
-                                $lastSet = $fx->fixtureResults->last();
-                                if ($lastSet->team1_score > $lastSet->team2_score) {
+                                $winner = $fx->winnerSide();
+                                if ($winner === 'home') {
                                     $homeClass = 'winner-home';
                                     $awayClass = 'loser-home';
-                                } elseif ($lastSet->team2_score > $lastSet->team1_score) {
+                                } elseif ($winner === 'away') {
                                     $homeClass = 'loser-home';
                                     $awayClass = 'winner-home';
-                                } else {
-                                    $homeClass = 'draw-cell';
-                                    $awayClass = 'draw-cell';
                                 }
                             }
                         @endphp
@@ -180,6 +177,7 @@
 .loser-home { background-color: rgba(220,53,69,.25)!important; }
 .draw-cell { background-color: rgba(255,193,7,.25)!important; }
 @media (max-width: 576px) {
+    #editScoreModal .modal-dialog { margin: 0; }
     .table th, .table td { font-size: 0.85rem; padding: 0.25rem; }
     .modal-content { border-radius: 0; }
     .modal-header, .modal-footer { padding: 0.75rem; }

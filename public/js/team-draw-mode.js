@@ -6,6 +6,7 @@
 
   var data = window.HeadOffice || {};
   var submitButton = form.querySelector('button[type="submit"]');
+  var previewRevision = 0;
 
   function selectedMode() {
     var input = form.querySelector('input[name="draw_mode"]:checked');
@@ -21,7 +22,8 @@
     var isIndividual = mode === 'individual';
 
     $('#teamDrawTypeSection').toggleClass('d-none', !isTeam);
-    $('#formatSelectGroup').toggleClass('d-none', !isTeam);
+    $('#formatSelectGroup, #previewTeamDrawButton').toggleClass('d-none', !isTeam);
+    $('#teamDrawPreview').empty().addClass('d-none');
 
     if (isIndividual) {
       $('input[name="draw_type_id"]').prop('checked', false);
@@ -67,6 +69,80 @@
     setMode('');
   });
 
+  function teamPayload() {
+    var type = form.querySelector('input[name="draw_type_id"]:checked');
+    var name = ($('#drawName').val() || '').trim();
+    if (!name || !type) { showError('Enter a draw name and select a draw type'); return null; }
+    var mixed = type.value === '3' || type.dataset.mixed === '1';
+    var selectors = mixed ? ['category_choice_boys', 'category_choice_girls'] : ['category_choice'];
+    var categories = [];
+    for (var i = 0; i < selectors.length; i++) {
+      var category = form.querySelector('input[name="' + selectors[i] + '"]:checked');
+      if (!category) { showError(mixed ? 'Select both boys and girls categories' : 'Select a category'); return null; }
+      var id = category.dataset.pivotId || category.value;
+      if (categories.indexOf(id) === -1) categories.push(id);
+    }
+    return { _token: $('meta[name="csrf-token"]').attr('content'), drawName: name,
+      draw_type_id: type.value, category_ids: categories, format_id: $('#format_id').val() || null };
+  }
+
+  function responseError(xhr) {
+    if (xhr.responseJSON && xhr.responseJSON.errors) Object.values(xhr.responseJSON.errors).flat().forEach(showError);
+    else showError((xhr.responseJSON && xhr.responseJSON.message) || 'Could not process the draw');
+  }
+
+  function previewLine(parent, text, className) {
+    var line = document.createElement('div');
+    line.className = className || '';
+    line.textContent = text;
+    parent.appendChild(line);
+  }
+
+  function renderPreview(readiness) {
+    var container = document.getElementById('teamDrawPreview');
+    container.replaceChildren();
+    container.classList.remove('d-none');
+    previewLine(container, (readiness.format_name || 'No format') + ': ' + readiness.team_count + ' teams, ' +
+      readiness.round_count + ' rounds, ' + readiness.tie_count + ' ties, ' + readiness.rubber_count +
+      ' rubbers, ' + readiness.bye_count + ' byes.', 'fw-semibold mb-2');
+    (readiness.warnings || []).forEach(function (warning) { previewLine(container, warning, 'text-warning mb-1'); });
+    if (readiness.ready) previewLine(container, 'All required player slots are assigned. Review before publication.', 'text-success mb-2');
+    (readiness.rounds || []).forEach(function (round) {
+      var detail = document.createElement('details');
+      var summary = document.createElement('summary');
+      summary.textContent = 'Round ' + round.round_nr;
+      detail.appendChild(summary);
+      detail.className = 'border rounded p-2 mt-2';
+      (round.byes || []).forEach(function (bye) { previewLine(detail, bye.name + ' — bye', 'text-muted small'); });
+      (round.ties || []).forEach(function (tie) {
+        previewLine(detail, tie.home_team.name + ' vs ' + tie.away_team.name, 'fw-semibold mt-2');
+        (tie.rubbers || []).forEach(function (rubber) {
+          previewLine(detail, rubber.sequence + '. ' + rubber.name + ' (' + rubber.rubber_code.replace(/_/g, ' ') + ')', 'small');
+          (rubber.slots || []).forEach(function (slot) {
+            var home = slot.team1_name || 'Missing player';
+            var away = slot.team2_name || 'Missing player';
+            previewLine(detail, 'Slot ' + slot.slot_no + ': ' + home + ' vs ' + away, 'small text-muted');
+          });
+        });
+      });
+      container.appendChild(detail);
+    });
+  }
+
+  $('#previewTeamDrawButton').on('click', function () {
+    var payload = teamPayload();
+    if (!payload) return;
+    var button = this;
+    var revision = previewRevision;
+    button.disabled = true;
+    $.post(data.previewUrl, payload).done(function (response) {
+      if (revision === previewRevision && selectedMode() === 'team') renderPreview(response.readiness);
+    })
+      .fail(responseError).always(function () { button.disabled = false; });
+  });
+  form.addEventListener('change', function () { previewRevision++; $('#teamDrawPreview').empty().addClass('d-none'); });
+  form.addEventListener('input', function () { previewRevision++; $('#teamDrawPreview').empty().addClass('d-none'); });
+
   // Capture the individual submission before the legacy team-only handler.
   form.addEventListener('submit', function (event) {
     var mode = selectedMode();
@@ -78,7 +154,16 @@
       return;
     }
 
-    if (mode === 'team') return;
+    if (mode === 'team') {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      var payload = teamPayload();
+      if (!payload) return;
+      if (submitButton) submitButton.disabled = true;
+      $.post(data.createUrl, payload).done(function () { window.location.reload(); })
+        .fail(responseError).always(function () { if (submitButton) submitButton.disabled = false; });
+      return;
+    }
 
     event.preventDefault();
     event.stopImmediatePropagation();

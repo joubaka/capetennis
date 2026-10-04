@@ -915,6 +915,7 @@ class FixtureService
 
   public function rebuildForDraw(\App\Models\Draw $draw): void
   {
+    app(TeamDrawMutationGuard::class)->destructive($draw->fresh());
     \Log::info('[FixtureService::rebuildForDraw] Starting', [
       'draw_id' => $draw->id,
       'draw_name' => $draw->drawName,
@@ -939,6 +940,9 @@ class FixtureService
     }
 
     DB::transaction(function () use ($matches, $draw, $event) {
+      $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
+      \App\Models\TeamFixture::where('draw_id', $draw->id)->lockForUpdate()->get();
+      app(TeamDrawMutationGuard::class)->destructive($draw);
       // 🔎 Keep old fixture venue mapping
       $existingVenues = \App\Models\TeamFixture::where('draw_id', $draw->id)
         ->get(['id', 'region1', 'region2', 'round_nr', 'venue_id'])

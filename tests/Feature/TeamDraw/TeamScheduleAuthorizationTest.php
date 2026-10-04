@@ -196,8 +196,13 @@ class TeamScheduleAuthorizationTest extends TestCase
         $this->assertNotEquals(403, $response->status());
     }
 
-    // ── autoAll (event-scoped mutation) ─────────────────────────────────────
-    // NOTE: autoAll depends on FixtureService::autoScheduleDraw which is not yet
-    // implemented. Once that method exists, add guest/ordinary/admin/super-user
-    // tests here following the same pattern as saveFixture above.
+    public function test_auto_all_and_clear_all_require_event_authorization(): void
+    {
+        foreach (['backend.team-schedule.all.auto', 'backend.team-schedule.all.clear'] as $name) {
+            $this->postJson(route($name, $this->teamEvent))->assertUnauthorized();
+            $this->actingAs($this->ordinaryUser)->postJson(route($name, $this->teamEvent))->assertForbidden();
+            $this->actingAs($this->adminOther)->postJson(route($name, $this->teamEvent))->assertForbidden();
+            auth()->forgetGuards();
+        }
+    }
 }

@@ -50,6 +50,7 @@ class FrontFixtureController extends Controller
       'draw'
     ])
       ->where('draw_id', $draw->id)
+      ->when(!auth()->user()?->can('view', $draw), fn ($query) => $query->publishedTeamTies())
       ->orderBy('scheduled_at', 'asc')
       ->orderByRaw('CAST(round_nr AS UNSIGNED)')
       ->orderByRaw('CAST(tie_nr AS UNSIGNED)')
@@ -198,6 +199,7 @@ class FrontFixtureController extends Controller
         'region2Name'
       ])
         ->where('draw_id', $id)
+        ->when(!auth()->user()?->can('view', $draw), fn ($query) => $query->publishedTeamTies())
         ->orderBy('scheduled_at', 'asc')
         ->orderByRaw('CAST(round_nr AS UNSIGNED)')
         ->orderByRaw('CAST(tie_nr AS UNSIGNED)')
@@ -281,6 +283,7 @@ class FrontFixtureController extends Controller
       'fixtureResults', 'venue', 'region1Name', 'region2Name',
     ])
       ->whereIn('draw_id', $eventDraws)
+      ->where(fn ($query) => $query->publishedTeamTies())
       ->when($type === 'tie', fn ($query) => $query->where('tie_nr', $var))
       ->when($type !== 'tie', fn ($query) => $query->where('round_nr', $var))
       ->orderBy('scheduled_at')
@@ -347,19 +350,8 @@ class FrontFixtureController extends Controller
     app(TeamFixtureScoreService::class)->save($fixture, $validated);
 
     if ($request->ajax()) {
-      $fixture->load('fixtureResults');
-      $lastSet = $fixture->fixtureResults->last();
-      $winner = null;
-
-      if ($lastSet) {
-        if ($lastSet->team1_score > $lastSet->team2_score) {
-          $winner = 'home';
-        } elseif ($lastSet->team2_score > $lastSet->team1_score) {
-          $winner = 'away';
-        } else {
-          $winner = 'draw';
-        }
-      }
+      $fixture->load('fixtureResults', 'teamResults');
+      $winner = $fixture->winnerSide();
 
       return response()->json([
         'success' => true,

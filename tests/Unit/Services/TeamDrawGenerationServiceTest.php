@@ -167,7 +167,7 @@ class TeamDrawGenerationServiceTest extends TestCase
 
     // ─── 8. generate: override bypasses lock ──────────────────────────────
 
-    public function test_generate_succeeds_with_override_despite_locked_ties(): void
+    public function test_generate_preserves_published_ties_despite_override(): void
     {
         $draw  = $this->makeDraw();
         $teams = $this->fakeTeams(2);
@@ -181,9 +181,8 @@ class TeamDrawGenerationServiceTest extends TestCase
             'status'       => TeamTie::STATUS_PUBLISHED,
         ]);
 
-        $ties = $this->service->generate($draw, $teams, null, true);
-
-        $this->assertGreaterThan(0, $ties->count());
+        $this->expectException(\App\Domain\TeamDraw\TeamDrawConflictException::class);
+        $this->service->generate($draw, $teams, null, true);
     }
 
     // ─── 9. generate: attaches format ─────────────────────────────────────

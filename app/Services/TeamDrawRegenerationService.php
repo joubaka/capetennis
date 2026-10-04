@@ -68,6 +68,8 @@ class TeamDrawRegenerationService
         }
 
         return DB::transaction(function () use ($draw, $teams, $format, $regenerateRubbers, $allowOverride) {
+            $draw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
+            app(TeamDrawMutationGuard::class)->destructive($draw);
             Log::info('[TeamDrawRegenerationService] Starting regeneration', [
                 'draw_id'       => $draw->id,
                 'team_count'    => $teams->count(),
@@ -78,7 +80,7 @@ class TeamDrawRegenerationService
             $this->purgeDraftTies($draw, $allowOverride);
 
             // Rebuild ties
-            $ties = $this->drawGenerator->generate($draw, $teams, $format, $allowOverride);
+            $ties = $this->drawGenerator->generate($draw, $teams, $format, $allowOverride, captureSnapshot: false);
 
             // Optionally rebuild rubbers
             $rubbers = collect();
@@ -116,6 +118,8 @@ class TeamDrawRegenerationService
         }
 
         return DB::transaction(function () use ($draw, $format, $allowOverride) {
+            $draw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
+            app(TeamDrawMutationGuard::class)->destructive($draw);
             $all = collect();
 
             foreach ($draw->teamTies as $tie) {

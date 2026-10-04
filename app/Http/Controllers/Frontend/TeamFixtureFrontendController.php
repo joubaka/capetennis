@@ -18,6 +18,10 @@ class TeamFixtureFrontendController extends Controller
   public function index($draw)
   {
     $drawModel = \App\Models\Draw::findOrFail($draw);
+    app(\App\Services\PublicTournamentVisibility::class)->ensureEventIsVisible($drawModel->event, auth()->user());
+    app(\App\Services\PublicTournamentVisibility::class)->ensureDrawIsVisible($drawModel, auth()->user());
+
+    $isPrivileged = auth()->user()?->can('view', $drawModel) ?? false;
 
     // Block unpublished draws — only admin/super-user/convenor may view
     if (!$drawModel->published) {
@@ -42,6 +46,7 @@ class TeamFixtureFrontendController extends Controller
             'region2Name'
         ])
         ->where('draw_id', $draw)
+        ->when(!$isPrivileged, fn ($query) => $query->publishedTeamTies())
         ->orderBy('scheduled_at')
         ->orderBy('home_rank_nr')
         ->get();
@@ -74,7 +79,6 @@ class TeamFixtureFrontendController extends Controller
     }
 
     // Team-based draws use TeamFixture
-    $this->authorize('team-fixture.saveScore', $drawModel);
     $fixtures = \App\Models\TeamFixture::with([
             'draw',
             'venue',
@@ -88,6 +92,8 @@ class TeamFixtureFrontendController extends Controller
         ->orderBy('scheduled_at')
         ->orderBy('home_rank_nr')
         ->get();
+
+    $fixtures = $this->authorizedScoringFixtures($fixtures, $drawModel);
 
     return view('frontend.fixtures.enter-score', compact('fixtures'));
   }
@@ -118,43 +124,17 @@ class TeamFixtureFrontendController extends Controller
           'venue_id' => $fixture->venue_id,
       ]);
 
+      $fixture->refresh();
+      if (!$request->expectsJson()) { return back()->with('success', 'Scores saved.'); }
+
       // Prepare updated result HTML
       $resultHtml = view('frontend.fixtures.partials.result', ['fixture' => $fixture])->render();
 
       // Determine winner/loser for classes
-      $winner = null;
-      $lastSet = $fixture->fixtureResults->last();
-      if ($lastSet) {
-          if ($lastSet->team1_score > $lastSet->team2_score) $winner = 'home';
-          elseif ($lastSet->team2_score > $lastSet->team1_score) $winner = 'away';
-          else $winner = 'draw';
-      }
+      $fixture->load('fixtureResults', 'teamResults');
+      $winner = $fixture->winnerSide();
 
-      $homeNames = [];
-$awayNames = [];
-$homeRegionShort = $fixture->region1Name?->short_name ?? null;
-$awayRegionShort = $fixture->region2Name?->short_name ?? null;
-
-// Populate $homeNames and $awayNames as in your Blade
-if ($fixture->fixturePlayers) {
-    foreach ($fixture->fixturePlayers as $player) {
-        if ($player->player1) {
-            $homeNames[] = $player->player1->name;
-        }
-        if ($player->player2) {
-            $awayNames[] = $player->player2->name;
-        }
-    }
-}
-
-$homeLabel = count($homeNames) ? collect($homeNames)->implode(' + ') : 'TBD';
-$awayLabel = count($awayNames) ? collect($awayNames)->implode(' + ') : 'TBD';
-
-$actionsHtml = view('frontend.fixtures.partials.actions', [
-    'fixture' => $fixture,
-    'homeLabel' => $homeLabel,
-    'awayLabel' => $awayLabel
-])->render();
+      $actionsHtml = $this->scoreActions($fixture);
 
       return response()->json([
           'success' => true,
@@ -164,7 +144,7 @@ $actionsHtml = view('frontend.fixtures.partials.actions', [
       ]);
   }
 
-  public function deleteScore($fixtureId)
+  public function deleteScore(Request $request, $fixtureId)
   {
       $fixture = \App\Models\TeamFixture::findOrFail($fixtureId);
       $this->authorize('team-fixture.saveScore', $fixture);
@@ -177,34 +157,13 @@ $actionsHtml = view('frontend.fixtures.partials.actions', [
           'venue_id' => $fixture->venue_id,
       ]);
 
+      if (!$request->expectsJson()) { return back()->with('success', 'Scores deleted.'); }
+
       // Prepare updated result HTML
       $resultHtml = '<span class="text-muted">No result</span>';
 
-      $homeNames = [];
-$awayNames = [];
-$homeRegionShort = $fixture->region1Name?->short_name ?? null;
-$awayRegionShort = $fixture->region2Name?->short_name ?? null;
-
-// Populate $homeNames and $awayNames as in your Blade
-if ($fixture->fixturePlayers) {
-    foreach ($fixture->fixturePlayers as $player) {
-        if ($player->player1) {
-            $homeNames[] = $player->player1->name;
-        }
-        if ($player->player2) {
-            $awayNames[] = $player->player2->name;
-        }
-    }
-}
-
-$homeLabel = count($homeNames) ? collect($homeNames)->implode(' + ') : 'TBD';
-$awayLabel = count($awayNames) ? collect($awayNames)->implode(' + ') : 'TBD';
-
-$actionsHtml = view('frontend.fixtures.partials.actions', [
-    'fixture' => $fixture,
-    'homeLabel' => $homeLabel,
-    'awayLabel' => $awayLabel
-])->render();
+      $fixture->refresh();
+      $actionsHtml = $this->scoreActions($fixture);
 
       return response()->json([
           'success' => true,
@@ -218,17 +177,29 @@ $actionsHtml = view('frontend.fixtures.partials.actions', [
   {
       $venue = \App\Models\Venue::findOrFail($venueId);
       $user = auth()->user();
-      $eventIds = $user->hasRole('super-user')
-          ? Event::query()->pluck('id')
-          : collect(DB::table('event_admins')->where('user_id', $user->id)->pluck('event_id'))
-              ->merge(DB::table('event_convenors')->where('user_id', $user->id)->pluck('event_id'))
-              ->unique();
+      $superUser = $user->hasRole('super-user');
+      $eventIds = collect();
+      if (!$superUser) {
+          $eventIds = collect(DB::table('event_admins')->where('user_id', $user->id)->pluck('event_id'))
+              ->merge(\App\Models\EventConvenor::where('user_id', $user->id)->active()->pluck('event_id'))
+              ->unique()->filter(function ($eventId) use ($user, $venueId) {
+                  if ($user->is_event_score_keeper($eventId)) {
+                      return $user->canScoreVenue((int) $eventId, (int) $venueId);
+                  }
+                  return $user->is_event_admin($eventId) || $user->is_convenor($eventId);
+              })->values();
+          abort_if($eventIds->isEmpty(), 403);
+      }
 
       $fixtures = \App\Models\TeamFixture::where('venue_id', $venueId)
-          ->whereHas('draw', fn ($query) => $query->whereIn('event_id', $eventIds))
+          ->when(!$superUser, fn ($query) => $query->whereHas('draw', fn ($draw) => $draw->whereIn('event_id', $eventIds)))
           ->with(['fixtureResults', 'homeTeam', 'awayTeam'])
           ->orderBy('scheduled_at')
           ->get();
+      if (!$superUser) {
+          $fixtures = $fixtures->filter(fn ($fixture) => !$user->is_event_score_keeper($fixture->draw->event_id)
+              || $user->can('team-fixture.saveScore', $fixture))->values();
+      }
 
       return view('frontend.fixtures.venue-fixtures', compact('venue', 'fixtures'));
   }
@@ -240,7 +211,11 @@ $actionsHtml = view('frontend.fixtures.partials.actions', [
     public function enterScoresByEventVenue($eventId, $venueId)
     {
         $event = Event::findOrFail($eventId);
-        $this->authorize('event-draw.view', $event);
+        abort_unless(auth()->user()->hasRole('super-user') || auth()->user()->is_event_admin($event->id)
+            || auth()->user()->is_convenor($event->id), 403);
+        if (auth()->user()->is_event_score_keeper($event->id) && !auth()->user()->hasRole('super-user')) {
+            abort_unless(auth()->user()->canScoreVenue($event->id, (int) $venueId), 403);
+        }
         $fixtures = \App\Models\TeamFixture::with(['fixtureResults', 'homeTeam', 'awayTeam', 'draw'])
             ->where('venue_id', $venueId)
             ->whereHas('draw', function($q) use ($eventId) {
@@ -250,7 +225,47 @@ $actionsHtml = view('frontend.fixtures.partials.actions', [
             ->orderBy('round_nr')
             ->orderBy('home_rank_nr')
             ->get();
-   
+        if (auth()->user()->is_event_score_keeper($event->id) && !auth()->user()->hasRole('super-user')) {
+            $fixtures = $fixtures->filter(fn ($fixture) => auth()->user()->can('team-fixture.saveScore', $fixture))->values();
+        }
+
         return view('frontend.fixtures.enter-score', compact('fixtures'));
     }
+
+    private function authorizedScoringFixtures($fixtures, Draw $draw)
+    {
+        $user = auth()->user();
+        if ($user->is_event_score_keeper($draw->event_id) && !$user->hasRole('super-user')) {
+            $fixtures = $fixtures->filter(fn ($fixture) => $user->can('team-fixture.saveScore', $fixture))->values();
+            abort_if($fixtures->isEmpty(), 403);
+        } else {
+            $this->authorize('team-fixture.saveScore', $draw);
+        }
+
+        return $fixtures;
+    }
+
+    private function scoreActions(TeamFixture $fixture): string
+    {
+        $fixture->loadMissing('fixturePlayers.player1', 'fixturePlayers.player2', 'fixturePlayers.noProfile1',
+            'fixturePlayers.noProfile2', 'region1Name', 'region2Name');
+        $labels = [];
+        foreach (['home' => ['player1', 'noProfile1', 'region1Name'], 'away' => ['player2', 'noProfile2', 'region2Name']] as $side => [$profile, $imported, $region]) {
+            $names = [];
+            foreach ($fixture->fixturePlayers as $slot) {
+                $player = $slot->$profile ?? $slot->$imported;
+                if ($player) {
+                    $name = trim($player->name.' '.$player->surname);
+                    if ($fixture->$region?->short_name) {
+                        $name .= ' ('.$fixture->$region->short_name.')';
+                    }
+                    $names[] = $name;
+                }
+            }
+            $labels[$side.'Label'] = $names ? implode(' + ', $names) : 'TBD';
+        }
+
+        return view('frontend.fixtures.partials.actions', ['fixture' => $fixture] + $labels)->render();
+    }
+
 }

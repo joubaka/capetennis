@@ -72,6 +72,9 @@ function fx_score_display($r) {
 
 /* Determine winner for highlight */
 function fx_winner_classes($fx) {
+    if ($fx instanceof \App\Models\TeamFixture) {
+        return match ($fx->winnerSide()) { 'home' => ['winner-home','loser-home'], 'away' => ['loser-home','winner-home'], default => ['',''] };
+    }
     if ($fx->fixtureResults->isEmpty()) {
         return ['',''];
     }

@@ -29,7 +29,10 @@ class Draw extends Model
         'oop_created',
         'engine_mode',
         'team_event_format_id',
+        'team_scoring_rules',
+        'team_format_snapshot',
     ];
+    protected $casts = ['team_scoring_rules' => 'array', 'team_format_snapshot' => 'array'];
     public function drawFormat()
     {
         return $this->belongsTo(\App\Models\DrawFormats::class, 'drawType_id');

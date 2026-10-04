@@ -248,19 +248,20 @@ $(function () {
   // ========== SAVE FIXTURE ==========
   $('#drawSections').on('click','.btn-save',function(){
     const id=$(this).data('id');
+    const drawId=$(this).closest('.draw-card').data('draw');
     const dt=$(`.dtp[data-id="${id}"]`).val();
     const venue=$(`.venue-select[data-id="${id}"]`).val();
     const court=$(`.court-input[data-id="${id}"]`).val();
     const dur=$(`.dur-input[data-id="${id}"]`).val();
     log('💾 Saving fixture',{id,dt,venue,court,dur});
 
-    $.post(`{{ route('backend.team-schedule.save', 0) }}`.replace('/0','/'+id),{
+    $.post(`{{ route('backend.team-schedule.save', ['draw' => '__DRAW__']) }}`.replace('__DRAW__', drawId),{
       _token:csrf, fixture_id:id,
       scheduled_at:dt||null, venue_id:venue||null,
       court_label:court||null, duration_min:dur||null
     })
     .done(res=>{log('✅ Fixture saved',res);toastr.success('Saved');loadData();})
-    .fail(err=>{console.error('[ALL-SCHEDULE] ❌ Save failed',err);toastr.error('Save failed');});
+    .fail(err=>{console.error('[ALL-SCHEDULE] ❌ Save failed',err);toastr.error(err.responseJSON?.message || 'Save failed');});
   });
 
   // ========== AUTO-SCHEDULE ONE DRAW ==========
@@ -268,13 +269,14 @@ $(function () {
     const drawId=$(this).data('id');
     const payload=buildPayload();
     log('🚀 Auto-schedule draw',drawId,payload);
-    $.post(`/backend/team-schedule/auto/${drawId}`,payload)
+    $.post(`{{ route('backend.team-schedule.auto', ['draw' => '__DRAW__']) }}`.replace('__DRAW__', drawId),payload)
       .done(res=>{
         log(`✅ Auto-scheduled draw ${drawId}`,res);
         toastr.success(`Auto-scheduled ${res.assigned?.length ?? 0} matches`);
+        if (res.skipped?.length) toastr.warning(`${res.skipped.length} fixtures could not be scheduled: ${res.skipped[0].reason}`);
         loadData();
       })
-      .fail(err=>{console.error('[ALL-SCHEDULE] ❌ Auto-schedule failed',err);toastr.error('Auto-schedule failed');});
+      .fail(err=>{console.error('[ALL-SCHEDULE] ❌ Auto-schedule failed',err);toastr.error(err.responseJSON?.message || 'Auto-schedule failed');});
   });
 
   // ========== CLEAR DRAW ==========
@@ -282,9 +284,9 @@ $(function () {
     const drawId=$(this).data('id');
     if(!confirm('Clear all schedules for this draw?'))return;
     log('🧹 Clearing draw',drawId);
-    $.post(`/backend/team-schedule/clear/${drawId}`,{_token:csrf})
+    $.post(`{{ route('backend.draw.schedule.clear', ['draw' => '__DRAW__']) }}`.replace('__DRAW__', drawId),{_token:csrf})
       .done(res=>{log(`✅ Cleared draw ${drawId}`,res);toastr.success(res.message);loadData();})
-      .fail(err=>{console.error('[ALL-SCHEDULE] ❌ Clear failed',err);toastr.error('Clear failed');});
+      .fail(err=>{console.error('[ALL-SCHEDULE] ❌ Clear failed',err);toastr.error(err.responseJSON?.message || 'Clear failed');});
   });
 
   $('#drawSections').on('click','.btn-reload-draw',function(){
@@ -359,6 +361,7 @@ $(function () {
       .done(res=>{
         log('✅ Auto-schedule all success',res);
         toastr.success(`Auto-scheduled ${res.count??0} matches across all categories`);
+        if (res.skipped?.length) toastr.warning(`${res.skipped.length} fixtures could not be scheduled: ${res.skipped[0].reason}`);
         loadData();
       })
       .fail(err=>{console.error('[ALL-SCHEDULE] ❌ Auto-schedule all failed',err);toastr.error('Auto-schedule all failed');});
@@ -368,9 +371,9 @@ $(function () {
   $('#btn-clear-schedule').on('click',function(){
     if(!confirm('Clear ALL scheduled fixtures for this event?'))return;
     log('🧹 Clearing all schedules for event',eventId);
-    $.post(`{{ route('backend.draw.schedule.clear', 0) }}`.replace('/0','/'+eventId),{_token:csrf})
+    $.post(`{{ route('backend.team-schedule.all.clear', $event) }}`,{_token:csrf})
       .done(r=>{log('✅ Cleared all',r);toastr.success(r.message||'Cleared');loadData();})
-      .fail(err=>{console.error('[ALL-SCHEDULE] ❌ Failed to clear all',err);toastr.error('Failed to clear');});
+      .fail(err=>{console.error('[ALL-SCHEDULE] ❌ Failed to clear all',err);toastr.error(err.responseJSON?.message || 'Failed to clear');});
   });
 
   // ========== INIT ==========
