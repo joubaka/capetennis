@@ -176,6 +176,52 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertTransferToUnstartedInvitee(false);
     }
 
+    public function test_invitation_transfer_ignores_historical_invitations_without_mutating_them(): void
+    {
+        Queue::fake();
+        Mail::fake();
+        [, , $import, $source, $target, $order, , $admin, $url, $payload] = $this->invitationTransferScenario(false);
+        $declined = $target->replicate();
+        $declined->forceFill(['status' => TeamSelectionInvitation::DECLINED, 'roster_rank' => null])->save();
+        $older = $target->replicate();
+        $older->forceFill(['status' => TeamSelectionInvitation::WITHDRAWN, 'roster_rank' => null])->save();
+        $history = [$declined->fresh()->getAttributes(), $older->fresh()->getAttributes()];
+        $this->actingAs($admin)->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame($history, [$declined->fresh()->getAttributes(), $older->fresh()->getAttributes()]);
+        $this->assertSame((int) $target->player_id, $order->fresh()->effective_player_id);
+        $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $source->fresh()->status);
+        $this->assertDatabaseCount('team_payment_transfers', 1);
+        $this->postJson($url, $payload)->assertUnprocessable();
+        $this->assertDatabaseCount('team_payment_transfers', 1);
+        Queue::assertNothingPushed();
+        Mail::assertNothingSent();
+    }
+
+    public function test_invitation_transfer_rejects_duplicate_current_and_foreign_live_selection(): void
+    {
+        [, $team, $import, $source, $target, $order, , $admin, $url, $payload] = $this->invitationTransferScenario(false);
+        $duplicate = $target->replicate();
+        $duplicate->save();
+        $this->actingAs($admin)->postJson($url, $payload)->assertUnprocessable();
+        $duplicate->delete();
+        $region = TeamRegion::create(['region_name' => 'Conflicting transfer region']);
+        $foreignImport = $import->replicate();
+        $foreignImport->forceFill(['region_id' => $region->id, 'ranking_run_id' => 'foreign-transfer-selection'])->save();
+        $foreignTeam = Team::factory()->create(['category_event_id' => $team->category_event_id, 'region_id' => $region->id]);
+        $foreign = $target->replicate();
+        $foreign->forceFill(['import_id' => $foreignImport->id, 'region_id' => $region->id, 'team_id' => $foreignTeam->id])->save();
+        $this->postJson($url, $payload)->assertUnprocessable()->assertJsonValidationErrors('payment_transfer');
+        $this->assertDatabaseCount('team_payment_transfers', 0);
+        $this->assertSame((int) $source->player_id, $order->fresh()->effective_player_id);
+        $this->assertSame(TeamSelectionInvitation::INVITED, $target->fresh()->status);
+        $superseding = $foreignImport->replicate();
+        $superseding->forceFill(['ranking_run_id' => 'superseded-transfer-selection'])->save();
+        $history = $foreign->fresh()->getAttributes();
+        $this->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame($history, $foreign->fresh()->getAttributes());
+        $this->assertDatabaseCount('team_payment_transfers', 1);
+    }
+
     public function test_invitation_transfer_covers_a_newly_activated_unsent_invitee_without_starting_payment(): void
     {
         $this->assertTransferToUnstartedInvitee(true);
@@ -238,7 +284,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         Mail::assertNothingSent();
     }
 
-    public function test_invitation_transfer_requires_published_open_registration_and_active_unpaid_target(): void
+    public function test_invitation_transfer_requires_published_and_active_unpaid_target(): void
     {
         [$event, $team, , , $target, , $pending, $admin, $url, $payload] = $this->invitationTransferScenario();
         $this->actingAs($admin);
@@ -250,15 +296,35 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $team->update(['published' => false]);
         $this->postJson($url, $payload)->assertUnprocessable();
         $team->update(['published' => true]);
-        $event->update(['signUp' => false]);
-        $this->postJson($url, $payload)->assertUnprocessable();
-        foreach ([TeamSelectionInvitation::INVITED, TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT] as $status) {
-            $target->update(['status' => $status, 'response_deadline_override' => now()->subDay(), 'payment_deadline_override' => now()->subDay()]);
-            $this->postJson($url, $payload)->assertUnprocessable();
-            $this->assertSame($status, $target->fresh()->status);
-        }
         $this->assertDatabaseCount('team_payment_transfers', 0);
         $this->assertNull($pending->fresh()->withdrawn_at);
+    }
+
+    public function test_invitation_transfer_corrects_settled_coverage_after_registration_and_invitation_deadlines_close(): void
+    {
+        Queue::fake();
+        Mail::fake();
+        [$event, $team, , $source, $target, $order, , $admin, $url, $payload] = $this->invitationTransferScenario(false);
+        $event->update(['signUp' => false]);
+        $target->update(['response_deadline_override' => now()->subDay(), 'payment_deadline_override' => now()->subDay()]);
+        $ledger = DB::table('wallet_transactions')->get()->toJson();
+        try {
+            app(\App\Domain\Teams\Services\ExternalTeamRosterService::class)->assertSelectedPlayerCanRegister($event->fresh(), $team, $target->player);
+            $this->fail('Normal registration must remain closed.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('event', $exception->errors());
+        }
+        $this->actingAs($admin)->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame((int) $target->player_id, $order->fresh()->effective_player_id);
+        $this->assertSame(TeamSelectionInvitation::PAID_CONFIRMED, $target->fresh()->status);
+        $this->assertNull($target->fresh()->payment_started_at);
+        $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $source->fresh()->status);
+        $this->assertFalse((bool) $event->fresh()->signUp);
+        $this->assertSame($ledger, DB::table('wallet_transactions')->get()->toJson());
+        $this->assertDatabaseCount('team_payment_orders', 1);
+        $this->assertDatabaseCount('team_payment_transfers', 1);
+        Queue::assertNothingPushed();
+        Mail::assertNothingSent();
     }
 
     public function test_invitation_transfer_can_move_back_without_reusing_a_paid_order_for_source_checkout(): void

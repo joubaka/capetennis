@@ -62,6 +62,22 @@ class TeamPaymentService
                     }
                 }
                 $invitations = TeamSelectionInvitation::query()->where('event_id', $event->id)->whereIn('player_id', $ids)->orderBy('id')->lockForUpdate()->get();
+                if ($invitation) {
+                    $activeStatuses = [TeamSelectionInvitation::INVITED, TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, TeamSelectionInvitation::PAID_CONFIRMED];
+                    foreach ($invitations as $candidate) {
+                        if ((int) $candidate->roster_rank > 0 && in_array($candidate->status, $activeStatuses, true)
+                            && ((int) $candidate->team_id !== (int) $lockedTeam->id || (int) $candidate->region_id !== (int) $lockedTeam->region_id)
+                            && \App\Models\TeamSelectionImport::whereKey($candidate->import_id)->whereIn('status', ['draft', 'sent'])
+                                ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('team_selection_imports as newer')
+                                    ->whereColumn('newer.event_id', 'team_selection_imports.event_id')->whereColumn('newer.region_id', 'team_selection_imports.region_id')
+                                    ->whereColumn('newer.id', '>', 'team_selection_imports.id'))->exists()) {
+                            $fail('A selected profile belongs to another active campaign roster in this event.');
+                        }
+                    }
+                    $invitations = $invitations->filter(fn ($candidate) => (int) $candidate->import_id === (int) $selectionImport->id
+                        && (int) $candidate->team_id === (int) $lockedTeam->id && (int) $candidate->region_id === (int) $lockedTeam->region_id
+                        && (int) $candidate->roster_rank > 0 && in_array($candidate->status, $activeStatuses, true));
+                }
                 $sourceInvitation = $invitation ? $invitations->firstWhere('id', $invitation->id) : null;
                 $targetInvitation = $invitation ? $invitations->firstWhere('player_id', $targetPlayerId) : null;
                 if ($invitation && (! $sourceInvitation || ! $targetInvitation || $invitations->count() !== 2
