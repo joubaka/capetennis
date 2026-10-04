@@ -180,11 +180,12 @@ class TeamRankingInvitationWorkflowTest extends TestCase
     {
         Queue::fake();
         Mail::fake();
-        [, , $import, $source, $target, $order, , $admin, $url, $payload] = $this->invitationTransferScenario(false);
+        [, $team, $import, $source, $target, $order, , $admin, $url, $payload] = $this->invitationTransferScenario(false);
+        $historicalTeam = Team::factory()->create(['category_event_id' => $team->category_event_id, 'region_id' => $team->region_id]);
         $declined = $target->replicate();
-        $declined->forceFill(['status' => TeamSelectionInvitation::DECLINED, 'roster_rank' => null])->save();
-        $older = $target->replicate();
-        $older->forceFill(['status' => TeamSelectionInvitation::WITHDRAWN, 'roster_rank' => null])->save();
+        $declined->forceFill(['team_id' => $historicalTeam->id, 'status' => TeamSelectionInvitation::DECLINED, 'roster_rank' => null])->save();
+        $older = $source->replicate();
+        $older->forceFill(['team_id' => $historicalTeam->id, 'status' => TeamSelectionInvitation::WITHDRAWN, 'roster_rank' => null])->save();
         $history = [$declined->fresh()->getAttributes(), $older->fresh()->getAttributes()];
         $this->actingAs($admin)->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
         $this->assertSame($history, [$declined->fresh()->getAttributes(), $older->fresh()->getAttributes()]);
@@ -197,13 +198,10 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         Mail::assertNothingSent();
     }
 
-    public function test_invitation_transfer_rejects_duplicate_current_and_foreign_live_selection(): void
+    public function test_invitation_transfer_rejects_foreign_live_selection_and_ignores_superseded_history(): void
     {
         [, $team, $import, $source, $target, $order, , $admin, $url, $payload] = $this->invitationTransferScenario(false);
-        $duplicate = $target->replicate();
-        $duplicate->save();
-        $this->actingAs($admin)->postJson($url, $payload)->assertUnprocessable();
-        $duplicate->delete();
+        $this->actingAs($admin);
         $region = TeamRegion::create(['region_name' => 'Conflicting transfer region']);
         $foreignImport = $import->replicate();
         $foreignImport->forceFill(['region_id' => $region->id, 'ranking_run_id' => 'foreign-transfer-selection'])->save();
@@ -220,6 +218,42 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
         $this->assertSame($history, $foreign->fresh()->getAttributes());
         $this->assertDatabaseCount('team_payment_transfers', 1);
+    }
+
+    public function test_invitation_transfer_preserves_independent_paid_source_coverage_on_another_team(): void
+    {
+        Queue::fake();
+        Mail::fake();
+        [, $team, $import, $source, $target, $order, , $admin, $url, $payload] = $this->invitationTransferScenario(false);
+        $otherTeam = Team::factory()->create(['category_event_id' => $team->category_event_id, 'region_id' => $team->region_id]);
+        $otherOrder = $order->replicate();
+        $otherOrder->forceFill(['team_id' => $otherTeam->id])->save();
+        $otherDebit = \App\Models\WalletTransaction::where('source_type', 'team_registration_wallet_payment')->where('source_id', $order->id)->firstOrFail()->replicate();
+        $otherDebit->forceFill(['source_id' => $otherOrder->id])->save();
+        $otherInvitation = $source->replicate();
+        $otherInvitation->forceFill(['team_id' => $otherTeam->id, 'order_id' => $otherOrder->id])->save();
+        $otherMirror = TeamPlayer::create(['team_id' => $otherTeam->id, 'player_id' => $source->player_id, 'rank' => 1, 'pay_status' => 1]);
+        $sameTeamOrder = $order->replicate();
+        $sameTeamOrder->save();
+        $sourceBefore = $source->fresh()->getAttributes();
+        $targetBefore = $target->fresh()->getAttributes();
+        $orderBefore = $order->fresh()->getAttributes();
+        $this->actingAs($admin)->postJson($url, $payload)->assertUnprocessable()->assertJsonValidationErrors('payment_transfer');
+        $this->assertDatabaseCount('team_payment_transfers', 0);
+        $this->assertSame($sourceBefore, $source->fresh()->getAttributes());
+        $this->assertSame($targetBefore, $target->fresh()->getAttributes());
+        $this->assertSame($orderBefore, $order->fresh()->getAttributes());
+        $sameTeamOrder->delete();
+        $before = [$otherOrder->fresh()->getAttributes(), $otherInvitation->fresh()->getAttributes(), $otherMirror->fresh()->getAttributes()];
+        $ledger = DB::table('wallet_transactions')->get()->toJson();
+        $this->actingAs($admin)->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame($before, [$otherOrder->fresh()->getAttributes(), $otherInvitation->fresh()->getAttributes(), $otherMirror->fresh()->getAttributes()]);
+        $this->assertSame($ledger, DB::table('wallet_transactions')->get()->toJson());
+        $this->assertSame((int) $target->player_id, $order->fresh()->effective_player_id);
+        $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $source->fresh()->status);
+        $this->assertDatabaseCount('team_payment_transfers', 1);
+        Queue::assertNothingPushed();
+        Mail::assertNothingSent();
     }
 
     public function test_invitation_transfer_covers_a_newly_activated_unsent_invitee_without_starting_payment(): void
@@ -246,7 +280,6 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertNull($target->fresh()->payment_started_at);
         $this->assertNull($target->fresh()->invited_at);
         $page = $this->actingAs($admin)->get(route('backend.team-selection.index', $event))->assertOk();
-        if ($manualActivation && getenv('CT_UNSTARTED_TRANSFER_QA')) file_put_contents(storage_path('app/testing/invitation-payment-transfer-unstarted.html'), $page->getContent());
         $document = new \DOMDocument();
         @$document->loadHTML($page->getContent());
         $xpath = new \DOMXPath($document);
@@ -325,6 +358,94 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertDatabaseCount('team_payment_transfers', 1);
         Queue::assertNothingPushed();
         Mail::assertNothingSent();
+    }
+
+    public function test_super_user_can_correct_a_private_payment_mark_without_erasing_collection_audit_or_mutating_money(): void
+    {
+        Queue::fake();
+        Mail::fake();
+        [$event, $team, $import, $selected, , $order, , $admin] = $this->invitationTransferScenario(false);
+        DB::table('wallet_transactions')->where('source_type', 'team_registration_wallet_payment')->where('source_id', $order->id)->delete();
+        $order->forceFill(['wallet_reserved' => 0, 'wallet_debited' => false, 'payfast_amount_due' => 0, 'collection_status' => 'paid_privately', 'paid_privately_at' => now(), 'paid_privately_by' => $admin->id])->save();
+        activity('team-selection')->performedOn($selected)->causedBy($admin)->log('team selection invitation marked paid privately by manager');
+        $before = $order->fresh()->getAttributes();
+        $event->update(['entryFee' => (float) $event->entryFee + 10]);
+        $ledger = DB::table('wallet_transactions')->get()->toJson();
+        $url = route('backend.team-selection.invitations.undo-private-payment', [$event, $import, $selected]);
+        $payload = ['expected_order_id' => $order->id, 'expected_player_id' => $selected->player_id, 'expected_roster_rank' => $selected->roster_rank, 'reason' => 'Private mark entered by mistake', 'confirm_unpaid' => 1];
+        $this->actingAs($admin)->get(route('backend.team-selection.index', $event))->assertOk()->assertSee('Mark as unpaid (private payment)');
+        $this->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $selected->fresh()->status);
+        $this->assertNull($selected->fresh()->paid_at);
+        $this->assertSame((int) $order->id, (int) $selected->fresh()->order_id);
+        $after = $order->fresh();
+        $this->assertFalse((bool) $after->pay_status);
+        $this->assertNull($after->collection_status);
+        $this->assertNull($after->paid_privately_at);
+        $this->assertNull($after->paid_privately_by);
+        $this->assertSame((int) $before['user_id'], (int) $after->user_id);
+        $this->assertSame((int) $before['player_id'], (int) $after->player_id);
+        $this->assertSame(500.0, (float) $after->total_amount);
+        $this->assertSame(500.0, (float) $after->payfast_amount_due);
+        $this->assertNull($after->withdrawn_at);
+        $this->assertSame($ledger, DB::table('wallet_transactions')->get()->toJson());
+        $this->assertDatabaseHas('team_players', ['team_id' => $team->id, 'player_id' => $selected->player_id, 'rank' => $selected->roster_rank, 'pay_status' => 0]);
+        $audit = \Spatie\Activitylog\Models\Activity::where('description', 'super user corrected private team payment mark to unpaid')->firstOrFail();
+        $this->assertSame('paid_privately', data_get($audit->properties, 'original_order.collection_status'));
+        $this->assertSame($admin->id, (int) data_get($audit->properties, 'original_order.paid_privately_by'));
+        $this->assertSame($payload['reason'], data_get($audit->properties, 'reason'));
+        $this->assertDatabaseHas('activity_log', ['description' => 'team selection invitation marked paid privately by manager']);
+        $this->postJson($url, $payload)->assertUnprocessable();
+        $this->assertSame(1, \Spatie\Activitylog\Models\Activity::where('description', 'super user corrected private team payment mark to unpaid')->count());
+        $this->assertDatabaseCount('team_payment_orders', 1);
+        $resumed = app(TeamPaymentService::class)->ensureOrder($order->user, $team, $selected->player, $event->fresh(), 500);
+        $this->assertSame((int) $order->id, (int) $resumed->id);
+        $this->assertSame(500.0, (float) $resumed->payfast_amount_due);
+        Queue::assertNothingPushed();
+        Mail::assertNothingSent();
+    }
+
+    public function test_private_payment_undo_rejects_financial_evidence_authorization_stale_and_cross_event_requests(): void
+    {
+        [$event, $team, $import, $selected, , $order, , $admin] = $this->invitationTransferScenario(false);
+        $url = route('backend.team-selection.invitations.undo-private-payment', [$event, $import, $selected]);
+        $payload = ['expected_order_id' => $order->id, 'expected_player_id' => $selected->player_id, 'expected_roster_rank' => $selected->roster_rank, 'reason' => 'Correct error', 'confirm_unpaid' => 1];
+        $this->actingAs(User::factory()->create())->postJson($url, $payload)->assertForbidden();
+        $this->actingAs($admin)->postJson($url, $payload)->assertUnprocessable();
+        DB::table('wallet_transactions')->where('source_type', 'team_registration_wallet_payment')->where('source_id', $order->id)->delete();
+        $order->forceFill(['wallet_reserved' => 0, 'wallet_debited' => false, 'payfast_amount_due' => 0, 'collection_status' => 'paid_privately', 'paid_privately_at' => now(), 'paid_privately_by' => $admin->id])->save();
+        $base = $order->fresh()->getAttributes();
+        $proof = \App\Models\WalletTransaction::create(['wallet_id' => $order->user->wallet->id, 'type' => 'debit', 'amount' => 490,
+            'source_type' => 'team_registration_wallet_payment', 'source_id' => $order->id]);
+        $this->postJson($url, $payload)->assertUnprocessable();
+        $proof->delete();
+        foreach ([['wallet_debited' => true], ['wallet_reserved' => 1], ['payfast_paid' => true], ['payfast_pf_payment_id' => 'existing-proof'], ['payfast_handed_off_at' => now()], ['refund_status' => 'pending'], ['withdrawn_at' => now()], ['refund_waived_at' => now()]] as $changes) {
+            $order->forceFill($changes)->save();
+            $before = $order->fresh()->getAttributes();
+            $this->postJson($url, $payload)->assertUnprocessable();
+            $this->assertSame($before, $order->fresh()->getAttributes());
+            $order->forceFill($base)->save();
+        }
+        $receipt = new \App\Models\Transaction;
+        $receipt->forceFill(['pf_payment_id' => 'private-undo-proof', 'amount_gross' => 490, 'custom_str5' => 'TeamOrder', 'custom_int5' => $order->id])->save();
+        $this->postJson($url, $payload)->assertUnprocessable();
+        $receipt->delete();
+        $team->update(['noProfile' => true]);
+        $imported = \App\Models\NoProfileTeamPlayer::create(['team_id' => $team->id, 'rank' => $selected->roster_rank,
+            'name' => $selected->player->name, 'surname' => $selected->player->surname, 'player_profile' => $selected->player_id, 'pay_status' => 1]);
+        $draw = Draw::factory()->create(['event_id' => $event->id]);
+        $fixture = TeamFixture::create(['draw_id' => $draw->id, 'match_nr' => 1]);
+        $assignment = TeamFixturePlayer::create(['team_fixture_id' => $fixture->id, 'slot_no' => 1, 'team1_no_profile_id' => $imported->id]);
+        $this->postJson($url, $payload)->assertUnprocessable();
+        $this->assertSame(1, (int) $imported->fresh()->pay_status);
+        $assignment->delete();
+        $this->postJson($url, array_replace($payload, ['expected_roster_rank' => 2]))->assertUnprocessable();
+        $this->postJson($url, array_replace($payload, ['reason' => '']))->assertUnprocessable();
+        $this->postJson($url, array_diff_key($payload, ['confirm_unpaid' => 1]))->assertUnprocessable();
+        $otherEvent = Event::factory()->create();
+        $this->postJson(route('backend.team-selection.invitations.undo-private-payment', [$otherEvent, $import, $selected]), $payload)->assertNotFound();
+        $this->assertSame(TeamSelectionInvitation::PAID_CONFIRMED, $selected->fresh()->status);
+        $this->assertSame(0, \Spatie\Activitylog\Models\Activity::where('description', 'super user corrected private team payment mark to unpaid')->count());
     }
 
     public function test_invitation_transfer_can_move_back_without_reusing_a_paid_order_for_source_checkout(): void
@@ -4878,8 +4999,9 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
         $this->actingAs($manager)->get(route('backend.team-selection.index', $source->event))
             ->assertOk()
-            ->assertSee('Activate as Rank 3')
-            ->assertSee('Activate as Rank 4');
+            ->assertSee('Activate in position')
+            ->assertSee('value="3">Rank 3', false)
+            ->assertSee('value="4">Rank 4', false);
 
         $this->actingAs(User::factory()->create())->post(route('backend.team-selection.invitations.activate', [
             $source->event, $selectionImport, $firstReserve,
@@ -4913,6 +5035,93 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->actingAs($manager)->post(route('backend.team-selection.invitations.activate', [
             $source->event, $selectionImport, $thirdReserve,
         ]))->assertSessionHasErrors('activation');
+    }
+
+    public function test_any_reserve_can_choose_any_open_position_without_displacing_players_or_sending_mail(): void
+    {
+        Queue::fake();
+        Mail::fake();
+        [$source, $team] = $this->selectionSource();
+        $manager = User::factory()->create();
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $import = app(TeamRankingImportService::class)->import($source, $manager);
+        $team->update(['num_team_members' => 4]);
+        $reserves = $import->invitations()->where('status', TeamSelectionInvitation::RESERVE)->orderByDesc('queue_position')->get();
+        $reserve = $reserves->first();
+        $before = $import->invitations()->whereNotNull('roster_rank')->get()->map->getAttributes()->all();
+        $url = route('backend.team-selection.invitations.activate', [$source->event, $import, $reserve]);
+        $page = $this->actingAs($manager)->get(route('backend.team-selection.index', $source->event))->assertOk();
+        $document = new \DOMDocument();
+        @$document->loadHTML($page->getContent());
+        $xpath = new \DOMXPath($document);
+        foreach ($reserves as $candidate) {
+            $options = $xpath->query('//select[@id="open-position-'.$candidate->id.'"]/option');
+            $this->assertSame(['3', '4'], array_map(fn ($option) => $option->getAttribute('value'), iterator_to_array($options)));
+        }
+        $this->postJson($url, ['roster_rank' => 1])->assertUnprocessable();
+        $this->postJson($url, ['roster_rank' => 5])->assertUnprocessable();
+        $this->postJson($url, ['roster_rank' => 0])->assertUnprocessable();
+        $this->assertSame(TeamSelectionInvitation::RESERVE, $reserve->fresh()->status);
+        $this->post($url, ['roster_rank' => 4])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame(4, $reserve->fresh()->roster_rank);
+        $this->assertSame($before, $import->invitations()->whereIn('id', array_column($before, 'id'))->get()->map->getAttributes()->all());
+        $this->assertDatabaseHas('team_players', ['team_id' => $team->id, 'rank' => 4, 'player_id' => $reserve->player_id, 'pay_status' => 0]);
+        $this->assertDatabaseCount('team_payment_orders', 0);
+        Queue::assertNothingPushed();
+        Mail::assertNothingSent();
+    }
+
+    public function test_declined_player_can_restore_into_a_different_open_position_without_shifting_or_reopening_payment(): void
+    {
+        Queue::fake();
+        Mail::fake();
+        [$source, $team] = $this->selectionSource();
+        $manager = User::factory()->create();
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $import = app(TeamRankingImportService::class)->import($source, $manager);
+        $team->update(['num_team_members' => 4]);
+        $declined = $import->invitations()->where('roster_rank', 1)->firstOrFail();
+        $declined->update(['status' => TeamSelectionInvitation::DECLINED, 'vacated_roster_rank' => 1, 'roster_rank' => null, 'declined_at' => now()]);
+        TeamPlayer::where('team_id', $team->id)->where('rank', 1)->update(['player_id' => 0, 'pay_status' => 0]);
+        $other = $import->invitations()->where('roster_rank', 2)->firstOrFail();
+        $otherBefore = $other->fresh()->getAttributes();
+        $url = route('backend.team-selection.invitations.restore', [$source->event, $import, $declined]);
+        $this->actingAs($manager)->postJson($url, ['roster_rank' => 2])->assertUnprocessable();
+        $this->post($url, ['roster_rank' => 4])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame(4, $declined->fresh()->roster_rank);
+        $this->assertSame(1, $declined->fresh()->vacated_roster_rank);
+        $this->assertSame($otherBefore, $other->fresh()->getAttributes());
+        $this->postJson($url, ['roster_rank' => 3])->assertUnprocessable();
+        $this->assertDatabaseCount('team_payment_orders', 0);
+        Queue::assertNothingPushed();
+        Mail::assertNothingSent();
+    }
+
+    public function test_withdrawn_player_can_choose_an_open_position_with_fresh_registration_and_original_paid_order_unchanged(): void
+    {
+        Queue::fake();
+        Mail::fake();
+        [$event, $team, $import, $withdrawn, , $order, , $admin] = $this->invitationTransferScenario(false);
+        $team->update(['num_team_members' => 4]);
+        $order->update(['withdrawn_at' => now(), 'withdrawn_by' => $admin->id]);
+        $withdrawn->update(['status' => TeamSelectionInvitation::WITHDRAWN, 'vacated_roster_rank' => 1, 'roster_rank' => null, 'declined_at' => now()]);
+        TeamPlayer::where('team_id', $team->id)->where('rank', 1)->update(['player_id' => 0, 'pay_status' => 0]);
+        $before = $order->fresh()->getAttributes();
+        $ledger = DB::table('wallet_transactions')->get()->toJson();
+        $url = route('backend.team-selection.invitations.restore', [$event, $import, $withdrawn]);
+        $this->actingAs($admin)->post($url, ['roster_rank' => 4])->assertRedirect()->assertSessionHasNoErrors();
+        $restored = $withdrawn->fresh();
+        $this->assertSame(4, $restored->roster_rank);
+        $this->assertSame(TeamSelectionInvitation::INVITED, $restored->status);
+        $this->assertNull($restored->order_id);
+        $this->assertNull($restored->paid_at);
+        $this->assertTrue(data_get($restored->snapshot_json, 'restoration.fresh_registration_required'));
+        $this->assertContains($order->id, data_get($restored->snapshot_json, 'restoration.previous_order_ids'));
+        $this->assertSame($before, $order->fresh()->getAttributes());
+        $this->assertSame($ledger, DB::table('wallet_transactions')->get()->toJson());
+        $this->assertDatabaseCount('team_payment_orders', 1);
+        Queue::assertNothingPushed();
+        Mail::assertNothingSent();
     }
 
     public function test_silent_activation_suppresses_helper_team_auto_replacement_mail(): void

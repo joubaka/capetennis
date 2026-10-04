@@ -391,6 +391,7 @@
                   @php($teamReserves = $teamInvitations->where('status', \App\Models\TeamSelectionInvitation::RESERVE))
                   @php($eligibleTeamReserves = $teamReserves->filter(fn($reserve) => $recipientEmailFor($reserve)))
                   @php($openRosterRanks = (int) $regionTeam->num_team_members > 0 ? collect(range(1, (int) $regionTeam->num_team_members))->reject(fn($rank) => $teamSelected->contains(fn($selected) => (int) $selected->roster_rank === $rank))->values() : collect())
+                  @php($openRosterRanks = $openRosterRanks->filter(fn($rank) => $regionTeam->team_players->where('rank', $rank)->count() < 2 && !$regionTeam->team_players->contains(fn($slot) => (int) $slot->rank === $rank && ((int) $slot->player_id !== 0 || (int) $slot->pay_status !== 0)))->values())
                   @php($importedRoster = $regionTeam->team_players_no_profile->sortBy('rank')->values())
                   @php($linkedImportedCount = $importedRoster->whereNotNull('player_profile')->count())
                   <div class="col-12">
@@ -512,25 +513,40 @@
                                   </td>
                                   <td data-label="Regional action">
                                     @php($reserveActivationIndex = $isReserve ? $teamReserves->values()->search(fn($candidate) => (int) $candidate->id === (int) $invitation->id) : false)
-                                    @php($reserveActivationRank = $reserveActivationIndex !== false ? $openRosterRanks->get($reserveActivationIndex) : null)
+                                    @php($reserveActivationRank = $isReserve ? $openRosterRanks->first() : null)
                                     @php($canMarkPaidPrivately = !$isReserve && in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true))
-                                    @php($hasRegionalActions = (bool) $reserveActivationRank || (in_array($invitation->status, [\App\Models\TeamSelectionInvitation::DECLINED, \App\Models\TeamSelectionInvitation::WITHDRAWN], true) && $invitation->vacated_roster_rank) || ($recipientEmail && !$isReserve) || $canMarkPaidPrivately || $openVacancy)
+                                    @php($canUndoPrivatePayment = auth()->user()->hasRole('super-user') && $invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED && $invitation->order?->collection_status === 'paid_privately' && !$invitation->order->wallet_debited && !$invitation->order->payfast_paid && !$invitation->order->payfast_handed_off_at && !$invitation->order->payfast_pf_payment_id && !$invitation->order->payfast_raw_data && (float) $invitation->order->wallet_reserved === 0.0 && !$invitation->order->withdrawn_at && !$invitation->order->hasRefund())
+                                    @php($hasRegionalActions = (bool) $reserveActivationRank || (in_array($invitation->status, [\App\Models\TeamSelectionInvitation::DECLINED, \App\Models\TeamSelectionInvitation::WITHDRAWN], true) && $invitation->vacated_roster_rank) || ($recipientEmail && !$isReserve) || $canMarkPaidPrivately || $canUndoPrivatePayment || $openVacancy)
                                     @if($hasRegionalActions)
                                     <div class="dropdown">
                                       <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" aria-label="Regional actions for {{ $invitation->player?->full_name ?: 'player' }}">
                                         Actions
                                       </button>
-                                      <div class="dropdown-menu dropdown-menu-end p-1" style="min-width:15rem;">
+                                      <div class="dropdown-menu dropdown-menu-end p-1 {{ (int) old('undo_private_invitation_id') === (int) $invitation->id ? 'show' : '' }}" style="min-width:15rem;">
                                     @if($awaitingRestoredInvitation)
                                       <form method="POST" action="{{ route('backend.team-selection.invitations.email.send-restored', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('Send the invitation to this restored player now? Confirm the team positions are correct before continuing.');">@csrf<button class="dropdown-item text-success">Send invitation</button></form>
                                     @endif
                                     @if($canMarkPaidPrivately)
                                       <form method="POST" action="{{ route('backend.team-selection.invitations.mark-paid-privately', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('Confirm that payment was collected privately for this player? This will mark the team place paid, cancel any pending checkout, and will NOT be recorded as a PayFast reconciliation. No email will be sent.');">@csrf<button class="dropdown-item text-primary">Mark paid privately (not reconciled)</button></form>
                                     @endif
+                                    @if($canUndoPrivatePayment)
+                                      <details class="p-2" @if((int) old('undo_private_invitation_id') === (int) $invitation->id) open @endif><summary class="text-warning">Mark as unpaid (private payment)</summary>
+                                        <form method="POST" action="{{ route('backend.team-selection.invitations.undo-private-payment', [$event, $activeImport, $invitation]) }}" class="mt-2">
+                                          @csrf
+                                          <input type="hidden" name="undo_private_invitation_id" value="{{ $invitation->id }}">
+                                          <input type="hidden" name="expected_order_id" value="{{ $invitation->order_id }}"><input type="hidden" name="expected_player_id" value="{{ $invitation->player_id }}"><input type="hidden" name="expected_roster_rank" value="{{ $invitation->roster_rank }}">
+                                          @if((int) old('undo_private_invitation_id') === (int) $invitation->id && $errors->any())<div class="small text-danger mb-2">{{ $errors->first() }}</div>@endif
+                                          <label class="form-label small" for="undo-private-reason-{{ $invitation->id }}">Correction reason</label><input id="undo-private-reason-{{ $invitation->id }}" name="reason" type="text" class="form-control form-control-sm mb-2" maxlength="1000" value="{{ (int) old('undo_private_invitation_id') === (int) $invitation->id ? old('reason') : '' }}" required>
+                                          <label class="form-check small"><input type="checkbox" class="form-check-input" name="confirm_unpaid" value="1" required><span class="form-check-label">Correct this manual collection mark; no money will be refunded.</span></label>
+                                          <button class="btn btn-sm btn-outline-warning mt-2">Confirm mark as unpaid</button>
+                                        </form>
+                                      </details>
+                                    @endif
                                     @if($isReserve && $reserveActivationRank)
-                                      <form method="POST" action="{{ route('backend.team-selection.invitations.activate', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('Activate this reserve in the next open team place? No invitation email will be sent. You can review and send all pending newly activated invitations together later.');">@csrf<button class="dropdown-item text-success">Activate as Rank {{ $reserveActivationRank }}</button></form>
+                                      @include('backend.team-selection._open-position-action', ['restorePosition' => false])
                                     @endif
                                     @if(in_array($invitation->status, [\App\Models\TeamSelectionInvitation::DECLINED, \App\Models\TeamSelectionInvitation::WITHDRAWN], true) && $invitation->vacated_roster_rank)
+                                      @include('backend.team-selection._open-position-action', ['restorePosition' => true])
                                       <form method="POST" action="{{ route('backend.team-selection.invitations.restore', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('{{ $invitation->status === \App\Models\TeamSelectionInvitation::WITHDRAWN ? 'Restore this withdrawn player' : 'Restore this player' }} at Rank {{ $invitation->vacated_roster_rank }}? Active players at and below that rank will move down. {{ $invitation->status === \App\Models\TeamSelectionInvitation::WITHDRAWN ? 'Their old payment and withdrawal history stays unchanged, and they must register and pay again through a fresh order. ' : '' }}No email will be sent.');">@csrf<button class="dropdown-item text-primary">Restore at Rank {{ $invitation->vacated_roster_rank }}</button></form>
                                     @endif
                                       @if($recipientEmail && !$isReserve)<button class="dropdown-item text-success roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="player" data-team-id="{{ $regionTeam->id }}" data-invitation-id="{{ $invitation->id }}" data-recipient="{{ $invitation->player?->full_name }} · {{ $recipientEmail }}"><i class="ti ti-mail me-1" aria-hidden="true"></i>Email player</button>@endif

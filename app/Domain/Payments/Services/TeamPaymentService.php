@@ -65,13 +65,13 @@ class TeamPaymentService
                 if ($invitation) {
                     $activeStatuses = [TeamSelectionInvitation::INVITED, TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, TeamSelectionInvitation::PAID_CONFIRMED];
                     foreach ($invitations as $candidate) {
-                        if ((int) $candidate->roster_rank > 0 && in_array($candidate->status, $activeStatuses, true)
+                        if ((int) $candidate->player_id === $targetPlayerId && (int) $candidate->roster_rank > 0 && in_array($candidate->status, $activeStatuses, true)
                             && ((int) $candidate->team_id !== (int) $lockedTeam->id || (int) $candidate->region_id !== (int) $lockedTeam->region_id)
                             && \App\Models\TeamSelectionImport::whereKey($candidate->import_id)->whereIn('status', ['draft', 'sent'])
                                 ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('team_selection_imports as newer')
                                     ->whereColumn('newer.event_id', 'team_selection_imports.event_id')->whereColumn('newer.region_id', 'team_selection_imports.region_id')
                                     ->whereColumn('newer.id', '>', 'team_selection_imports.id'))->exists()) {
-                            $fail('A selected profile belongs to another active campaign roster in this event.');
+                            $fail('The destination player belongs to another active campaign roster in this event (team '.$candidate->team_id.').');
                         }
                     }
                     $invitations = $invitations->filter(fn ($candidate) => (int) $candidate->import_id === (int) $selectionImport->id
@@ -105,9 +105,10 @@ class TeamPaymentService
                         $fail('The roster positions are inconsistent.');
                     }
                 }
-                if (TeamPlayer::query()->where('team_id', '!=', $team->id)->whereIn('player_id', $ids)
+                $exclusiveRosterIds = $invitation ? [$targetPlayerId] : $ids;
+                if (TeamPlayer::query()->where('team_id', '!=', $team->id)->whereIn('player_id', $exclusiveRosterIds)
                     ->whereHas('team.category', fn ($q) => $q->where('event_id', $event->id))->lockForUpdate()->get()->isNotEmpty()
-                    || \App\Models\NoProfileTeamPlayer::query()->where('team_id', '!=', $team->id)->whereIn('player_profile', $ids)
+                    || \App\Models\NoProfileTeamPlayer::query()->where('team_id', '!=', $team->id)->whereIn('player_profile', $exclusiveRosterIds)
                         ->whereHas('team.category', fn ($q) => $q->where('event_id', $event->id))->lockForUpdate()->get()->isNotEmpty()) {
                     $fail('A selected profile is linked to another roster in this event.');
                 }
@@ -175,7 +176,8 @@ class TeamPaymentService
                     $fail('Selection, registration or fixture participation must be resolved through its existing workflow.');
                 }
                 foreach ($orders as $targetOrder) {
-                    if ((int) $targetOrder->id !== (int) $order->id && $targetOrder->effective_player_id === $expectedPlayerId) {
+                    if ((int) $targetOrder->id !== (int) $order->id && $targetOrder->effective_player_id === $expectedPlayerId
+                        && (! $invitation || (int) $targetOrder->team_id === (int) $team->id)) {
                         if ($targetOrder->withdrawn_at === null) {
                             $fail('The source has another active checkout in this event.');
                         }
@@ -770,6 +772,70 @@ class TeamPaymentService
             && ! $order->pay_status
             && ! $order->payfast_paid
             && ! $order->wallet_debited;
+    }
+
+    public function undoInvitationPrivatePayment(TeamSelectionInvitation $invitation, User $actor, int $expectedOrderId, int $expectedPlayerId, int $expectedRank, string $reason): void
+    {
+        abort_unless($actor->hasRole('super-user'), 403);
+        FinanceMutationScope::run('team_payment_state_write', function () use ($invitation, $actor, $expectedOrderId, $expectedPlayerId, $expectedRank, $reason): void {
+            DB::transaction(function () use ($invitation, $actor, $expectedOrderId, $expectedPlayerId, $expectedRank, $reason): void {
+                $event = Event::lockForUpdate()->findOrFail($invitation->event_id);
+                $import = \App\Models\TeamSelectionImport::lockForUpdate()->findOrFail($invitation->import_id);
+                $team = Team::withoutGlobalScopes()->lockForUpdate()->findOrFail($invitation->team_id);
+                $selected = TeamSelectionInvitation::lockForUpdate()->findOrFail($invitation->id);
+                $order = TeamPaymentOrder::lockForUpdate()->findOrFail($expectedOrderId);
+                $slots = TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('rank', $expectedRank)->lockForUpdate()->get();
+                $importedSlots = \App\Models\NoProfileTeamPlayer::where('team_id', $team->id)->where('rank', $expectedRank)->lockForUpdate()->get();
+                $fail = fn (string $message) => throw ValidationException::withMessages(['private_payment' => $message]);
+                if ($expectedRank < 1 || trim($reason) === '' || ! in_array($import->status, ['draft', 'sent'], true)
+                    || \App\Models\TeamSelectionImport::where('event_id', $event->id)->where('region_id', $import->region_id)->where('id', '>', $import->id)->exists()
+                    || (int) $import->event_id !== (int) $event->id || (int) $selected->event_id !== (int) $event->id
+                    || (int) $selected->import_id !== (int) $import->id || (int) $selected->region_id !== (int) $import->region_id
+                    || (int) $team->region_id !== (int) $import->region_id || ! $team->category()->where('event_id', $event->id)->exists()
+                    || (int) $selected->team_id !== (int) $team->id || (int) $selected->player_id !== $expectedPlayerId || (int) $selected->roster_rank !== $expectedRank
+                    || $selected->status !== TeamSelectionInvitation::PAID_CONFIRMED || (int) $selected->order_id !== $expectedOrderId
+                    || (int) $order->event_id !== (int) $event->id || (int) $order->team_id !== (int) $team->id
+                    || (int) $order->player_id !== $expectedPlayerId || $order->effective_player_id !== $expectedPlayerId
+                    || $order->collection_status !== 'paid_privately' || ! $order->pay_status
+                    || $slots->count() !== 1 || (int) $slots->first()->player_id !== $expectedPlayerId || (int) $slots->first()->pay_status !== 1) {
+                    $fail('Only a matching current private payment mark can be corrected. Refresh the player before trying again.');
+                }
+                if ($order->withdrawn_at || $order->withdrawn_by || $order->hasRefund() || $order->refunded_at
+                    || $order->refund_waived_at || $order->refund_waived_by || filled($order->refund_waiver_reason)
+                    || (float) $order->refund_gross !== 0.0 || (float) $order->refund_fee !== 0.0 || (float) $order->refund_net !== 0.0 || filled($order->refund_method)
+                    || $order->wallet_debited || $order->payfast_paid || $order->payfast_handed_off_at || filled($order->payfast_pf_payment_id) || filled($order->payfast_raw_data)
+                    || (float) $order->wallet_reserved !== 0.0 || (float) $order->payfast_amount_due !== 0.0
+                    || \App\Models\WalletTransaction::where('source_type', 'team_registration_wallet_payment')->where('source_id', $order->id)->exists()
+                    || \App\Models\Transaction::where('custom_str5', 'TeamOrder')->where('custom_int5', $order->id)->exists()
+                    || DB::table('team_payment_transfers')->where('order_id', $order->id)->exists()
+                    || \App\Models\TrialParticipation::where('order_id', $order->id)->exists()
+                    || TeamPaymentOrder::where('event_id', $event->id)->where('team_id', $team->id)->forPlayerHistory([$expectedPlayerId])
+                        ->whereKeyNot($order->id)->whereNull('withdrawn_at')->lockForUpdate()->exists()) {
+                    $fail('Payment, refund, withdrawal or transfer evidence prevents undoing this private collection mark.');
+                }
+                if (\App\Models\CategoryEventRegistration::withTrashed()->whereHas('categoryEvent', fn ($query) => $query->where('event_id', $event->id))
+                        ->whereHas('registration.players', fn ($query) => $query->where('players.id', $expectedPlayerId))->exists()
+                    || \App\Models\TeamFixturePlayer::whereHas('fixture.draw', fn ($query) => $query->where('event_id', $event->id))
+                        ->where(fn ($query) => $query->where('team1_id', $expectedPlayerId)->orWhere('team2_id', $expectedPlayerId)
+                            ->orWhereIn('team1_no_profile_id', $importedSlots->pluck('id'))->orWhereIn('team2_no_profile_id', $importedSlots->pluck('id')))->exists()) {
+                    $fail('Existing draw, fixture or registration participation must be resolved before correcting this mark.');
+                }
+                if (($team->noProfile && ($importedSlots->count() !== 1 || (int) $importedSlots->first()->player_profile !== $expectedPlayerId || (int) $importedSlots->first()->pay_status !== 1))
+                    || (! $team->noProfile && $importedSlots->isNotEmpty())) $fail('The imported and linked roster payment states do not agree.');
+                $amount = round((float) $event->entryFee + (float) \App\Models\TeamRegion::find($team->region_id)?->region_fee, 2);
+                if ($amount < 0) $fail('The server-calculated registration amount is invalid.');
+                activity('team-selection')->performedOn($selected)->causedBy($actor)->withProperties([
+                    'event_id' => $event->id, 'team_id' => $team->id, 'player_id' => $expectedPlayerId, 'order_id' => $order->id,
+                    'reason' => trim($reason), 'original_order' => $order->getAttributes(), 'original_invitation_status' => $selected->status,
+                    'original_invitation_paid_at' => $selected->paid_at?->toIso8601String(), 'new_amount_due' => $amount,
+                ])->log('super user corrected private team payment mark to unpaid');
+                $order->forceFill(['pay_status' => false, 'collection_status' => null, 'paid_privately_at' => null, 'paid_privately_by' => null,
+                    'total_amount' => $amount, 'payfast_amount_due' => $amount])->save();
+                $selected->update(['status' => TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, 'paid_at' => null]);
+                $this->updateTeamPlayerSlot($slots->first(), ['pay_status' => 0]);
+                foreach ($importedSlots as $slot) $slot->update(['pay_status' => 0]);
+            });
+        });
     }
 
     public function markInvitationPaidPrivately(TeamSelectionInvitation $invitation, User $actor): TeamSelectionInvitation

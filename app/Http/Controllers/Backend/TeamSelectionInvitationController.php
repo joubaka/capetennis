@@ -460,9 +460,11 @@ class TeamSelectionInvitationController extends Controller
         $this->authorizeImport($event, $selectionImport, $request->user());
         $wasWithdrawn = $invitation->status === TeamSelectionInvitation::WITHDRAWN
             || data_get($invitation->snapshot_json, 'restoration.kind') === TeamSelectionInvitation::WITHDRAWN;
+        $data = $request->validate(['roster_rank' => ['nullable', 'integer', 'min:1']]);
+        $targetRank = isset($data['roster_rank']) ? (int) $data['roster_rank'] : null;
         $restored = $wasWithdrawn
-            ? $service->restoreWithdrawnInvitation($invitation, $request->user())
-            : $service->restoreDeclinedInvitation($invitation, $request->user());
+            ? $service->restoreWithdrawnInvitation($invitation, $request->user(), $targetRank)
+            : $service->restoreDeclinedInvitation($invitation, $request->user(), $targetRank);
 
         return back()->with('success', ($restored->player?->full_name ?? 'The player')
             .' was restored at Rank '.$restored->roster_rank.'. The configured team size was retained and any unpaid overflow player returned to reserve. '
@@ -510,6 +512,17 @@ class TeamSelectionInvitationController extends Controller
             .' was marked paid privately. This is an administrative collection record and was not reconciled through PayFast.');
     }
 
+    public function undoPrivatePayment(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamPaymentService $service)
+    {
+        abort_unless($request->user()->hasRole('super-user'), 403);
+        abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
+        $this->authorizeImport($event, $selectionImport, $request->user());
+        $data = $request->validate(['expected_order_id' => ['required', 'integer', 'min:1'], 'expected_player_id' => ['required', 'integer', 'min:1'],
+            'expected_roster_rank' => ['required', 'integer', 'min:1'], 'reason' => ['required', 'string', 'max:1000'], 'confirm_unpaid' => ['required', 'accepted']]);
+        $service->undoInvitationPrivatePayment($invitation, $request->user(), (int) $data['expected_order_id'], (int) $data['expected_player_id'], (int) $data['expected_roster_rank'], $data['reason']);
+        return back()->with('success', 'The private payment mark was corrected to unpaid. The original collection audit was preserved; no money was refunded and no email was sent.');
+    }
+
     public function promoteReserveManually(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)
     {
         abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
@@ -523,7 +536,8 @@ class TeamSelectionInvitationController extends Controller
     {
         abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
         $this->authorizeImport($event, $selectionImport, $request->user());
-        $activated = $service->activateReserveInOpenPlace($invitation, $request->user());
+        $data = $request->validate(['roster_rank' => ['nullable', 'integer', 'min:1']]);
+        $activated = $service->activateReserveInOpenPlace($invitation, $request->user(), isset($data['roster_rank']) ? (int) $data['roster_rank'] : null);
         $delivery = $selectionImport->status === 'sent'
             ? ' No email was sent; this player is pending the next confirmed bulk invitation send.'
             : ' No email was sent; this player will be included when the draft campaign is confirmed.';
@@ -714,7 +728,10 @@ class TeamSelectionInvitationController extends Controller
                     ], true) && (int) $candidate->roster_rank === $rank
                 ))
                 ->values();
-            $reserveIndex = $reserves->search(fn (TeamSelectionInvitation $candidate) => $candidate->is($invitation));
+            $mirrors = TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->get();
+            $openRosterRanks = $openRosterRanks->filter(fn ($rank) => $rank <= (int) $team->num_team_members
+                && $mirrors->where('rank', $rank)->count() < 2
+                && ! $mirrors->contains(fn ($slot) => (int) $slot->rank === $rank && ((int) $slot->player_id !== 0 || (int) $slot->pay_status !== 0)))->values();
             $invitation->loadMissing(['player.user', 'player.users', 'emailLogs']);
 
             return response()->json([
@@ -732,7 +749,7 @@ class TeamSelectionInvitationController extends Controller
                     'invitation' => $invitation,
                     'recipientEmail' => $this->contacts->primaryEmail($invitation->player),
                     'rawContactEmails' => $this->contacts->rawEmails($invitation->player),
-                    'reserveActivationRank' => $reserveIndex === false ? null : $openRosterRanks->get($reserveIndex),
+                    'openRosterRanks' => $openRosterRanks,
                 ])->render(),
             ]);
         }

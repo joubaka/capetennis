@@ -790,23 +790,24 @@ final class TeamSelectionInvitationService
         });
     }
 
-    public function restoreDeclinedInvitation(TeamSelectionInvitation $invitation, User $actor): TeamSelectionInvitation
+    public function restoreDeclinedInvitation(TeamSelectionInvitation $invitation, User $actor, ?int $targetRank = null): TeamSelectionInvitation
     {
-        return $this->restoreInactiveInvitation($invitation, $actor, TeamSelectionInvitation::DECLINED);
+        return $this->restoreInactiveInvitation($invitation, $actor, TeamSelectionInvitation::DECLINED, $targetRank);
     }
 
-    public function restoreWithdrawnInvitation(TeamSelectionInvitation $invitation, User $actor): TeamSelectionInvitation
+    public function restoreWithdrawnInvitation(TeamSelectionInvitation $invitation, User $actor, ?int $targetRank = null): TeamSelectionInvitation
     {
-        return $this->restoreInactiveInvitation($invitation, $actor, TeamSelectionInvitation::WITHDRAWN);
+        return $this->restoreInactiveInvitation($invitation, $actor, TeamSelectionInvitation::WITHDRAWN, $targetRank);
     }
 
     private function restoreInactiveInvitation(
         TeamSelectionInvitation $invitation,
         User $actor,
-        string $expectedStatus
+        string $expectedStatus,
+        ?int $targetRank = null
     ): TeamSelectionInvitation
     {
-        return DB::transaction(function () use ($invitation, $actor, $expectedStatus): TeamSelectionInvitation {
+        return DB::transaction(function () use ($invitation, $actor, $expectedStatus, $targetRank): TeamSelectionInvitation {
             $selectionImport = $this->lockInvitationContext($invitation);
             $locked = TeamSelectionInvitation::query()->lockForUpdate()
                 ->with(['selectionImport', 'player'])
@@ -818,6 +819,9 @@ final class TeamSelectionInvitationService
                 && $locked->invited_at === null
                 && $locked->roster_rank
                 && data_get($locked->snapshot_json, 'restoration.kind') === $expectedStatus) {
+                if ($targetRank !== null && (int) $locked->roster_rank !== $targetRank) {
+                    throw ValidationException::withMessages(['restore' => 'This player is already restored in another position. Use player order to move them.']);
+                }
                 return $locked;
             }
             if ($locked->status !== $expectedStatus || ! $locked->vacated_roster_rank) {
@@ -852,7 +856,7 @@ final class TeamSelectionInvitationService
                 }
             }
 
-            $restoredRank = (int) $locked->vacated_roster_rank;
+            $restoredRank = $targetRank ?? (int) $locked->vacated_roster_rank;
             $team = Team::query()->withoutGlobalScopes()->lockForUpdate()->findOrFail($locked->team_id);
             $teamBelongsToImport = (int) $team->region_id === (int) $selectionImport->region_id
                 && $team->category_event_id
@@ -864,7 +868,7 @@ final class TeamSelectionInvitationService
                 ]);
             }
             $capacity = max(0, (int) $team->num_team_members);
-            if ($capacity < 1 || $restoredRank > $capacity) {
+            if ($capacity < 1 || $restoredRank < 1 || $restoredRank > $capacity) {
                 throw ValidationException::withMessages([
                     'restore' => 'The saved roster position is outside this team’s configured capacity.',
                 ]);
@@ -889,6 +893,28 @@ final class TeamSelectionInvitationService
                 ->where('rank', $restoredRank)
                 ->first();
             $targetSlotOccupied = $targetSlot && (int) $targetSlot->player_id > 0;
+            if ($targetRank !== null) {
+                if (TeamSelectionImport::where('event_id', $selectionImport->event_id)->where('region_id', $selectionImport->region_id)->where('id', '>', $selectionImport->id)->exists()
+                    || $targetInvitation || $targetSlotOccupied || ($targetSlot && (int) $targetSlot->pay_status !== 0)
+                    || TeamPlayer::withoutGlobalScopes()->where('team_id', $locked->team_id)->where('rank', $restoredRank)->count() > 1) {
+                    throw ValidationException::withMessages(['restore' => 'Choose a safe open position in the current team selection. Occupied positions will not be replaced.']);
+                }
+                try {
+                    app(\App\Services\PlayerEligibilityService::class)->assertEligible($locked->player, $selectionImport->event);
+                } catch (\RuntimeException $exception) {
+                    throw ValidationException::withMessages(['restore' => $exception->getMessage()]);
+                }
+                if ($expectedStatus === TeamSelectionInvitation::DECLINED && $locked->order_id) {
+                    $unpaidOrder = TeamPaymentOrder::query()->lockForUpdate()->find($locked->order_id);
+                    if ($unpaidOrder) {
+                        if ((int) $unpaidOrder->event_id !== (int) $selectionImport->event_id || (int) $unpaidOrder->team_id !== (int) $locked->team_id
+                            || $unpaidOrder->effective_player_id !== (int) $locked->player_id) {
+                            throw ValidationException::withMessages(['restore' => 'The previous checkout does not match this selected player and team.']);
+                        }
+                        app(TeamPaymentService::class)->closeUnpaidLifecycle($unpaidOrder, $actor);
+                    }
+                }
+            }
             if (($targetInvitation === null) !== ! $targetSlotOccupied
                 || ($targetInvitation && (int) $targetSlot->player_id !== (int) $targetInvitation->player_id)) {
                 throw ValidationException::withMessages([
@@ -1684,9 +1710,9 @@ final class TeamSelectionInvitationService
         });
     }
 
-    public function activateReserveInOpenPlace(TeamSelectionInvitation $invitation, User $actor): TeamSelectionInvitation
+    public function activateReserveInOpenPlace(TeamSelectionInvitation $invitation, User $actor, ?int $targetRank = null): TeamSelectionInvitation
     {
-        return DB::transaction(function () use ($invitation, $actor): TeamSelectionInvitation {
+        return DB::transaction(function () use ($invitation, $actor, $targetRank): TeamSelectionInvitation {
             Event::query()->lockForUpdate()->findOrFail($invitation->event_id);
             $lockedImport = TeamSelectionImport::query()->lockForUpdate()->findOrFail($invitation->import_id);
             if (! in_array($lockedImport->status, ['draft', 'sent'], true)) {
@@ -1701,7 +1727,21 @@ final class TeamSelectionInvitationService
             }
 
             $team = Team::query()->withoutGlobalScopes()->lockForUpdate()->findOrFail($locked->team_id);
+            if ((int) $team->region_id !== (int) $lockedImport->region_id || (int) $locked->event_id !== (int) $lockedImport->event_id
+                || (int) $locked->region_id !== (int) $lockedImport->region_id || ! $team->category()->where('event_id', $lockedImport->event_id)->exists()
+                || TeamSelectionImport::where('event_id', $lockedImport->event_id)->where('region_id', $lockedImport->region_id)->where('id', '>', $lockedImport->id)->exists()) {
+                throw ValidationException::withMessages(['activation' => 'This reserve no longer belongs to the current event, region and team selection.']);
+            }
+            try {
+                app(\App\Services\PlayerEligibilityService::class)->assertEligible($locked->player, $lockedImport->event);
+            } catch (\RuntimeException $exception) {
+                throw ValidationException::withMessages(['activation' => $exception->getMessage()]);
+            }
             $capacity = max(0, (int) $team->num_team_members);
+            if ($capacity < 1) throw ValidationException::withMessages(['activation' => 'This team has no configured places.']);
+            if ($targetRank !== null && ($targetRank < 1 || $targetRank > $capacity)) {
+                throw ValidationException::withMessages(['activation' => 'Choose an open rank within this team’s configured places.']);
+            }
             $activeRanks = TeamSelectionInvitation::query()->lockForUpdate()
                 ->where('import_id', $lockedImport->id)
                 ->where('team_id', $team->id)
@@ -1721,12 +1761,16 @@ final class TeamSelectionInvitationService
             $slots = TeamPlayer::query()->withoutGlobalScopes()->lockForUpdate()
                 ->where('team_id', $team->id)
                 ->whereBetween('rank', [1, max(1, $capacity)])
-                ->get()
-                ->keyBy('rank');
+                ->get();
+            if ($slots->count() !== $slots->pluck('rank')->unique()->count()) {
+                throw ValidationException::withMessages(['activation' => 'Duplicate roster positions must be resolved before activation.']);
+            }
+            $slots = $slots->keyBy('rank');
             $openRank = null;
             foreach (range(1, $capacity) as $rank) {
+                if ($targetRank !== null && $rank !== $targetRank) continue;
                 $slot = $slots->get($rank);
-                if (! in_array($rank, $activeRanks, true) && (! $slot || (int) $slot->player_id === 0)) {
+                if (! in_array($rank, $activeRanks, true) && (! $slot || ((int) $slot->player_id === 0 && (int) $slot->pay_status === 0))) {
                     $openRank = $rank;
                     break;
                 }
