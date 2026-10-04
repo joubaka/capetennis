@@ -21,6 +21,15 @@
     var isTeam = mode === 'team';
     var isIndividual = mode === 'individual';
 
+    $('#manualTeamCategories').prop('checked', false).prop('disabled', !isTeam);
+    $('#manualCategoryToggleGroup').toggleClass('d-none', !isTeam);
+    $('#manualCategoryChoices').addClass('d-none');
+    $('#manualCategoryChoices input').prop('disabled', true).prop('checked', false);
+    $('#individualCategoryChoices').toggleClass('d-none', !isIndividual);
+    $('#teamCategoryChoices').toggleClass('d-none', !isTeam);
+    $('#individualCategoryChoices input').prop('disabled', !isIndividual).prop('checked', false);
+    $('#teamCategoryChoices input').prop('disabled', !isTeam).prop('checked', false);
+
     $('#teamDrawTypeSection').toggleClass('d-none', !isTeam);
     $('#formatSelectGroup, #previewTeamDrawButton').toggleClass('d-none', !isTeam);
     $('#teamDrawPreview').empty().addClass('d-none');
@@ -40,12 +49,30 @@
     if (submitButton) {
       submitButton.textContent = isIndividual ? 'Create Singles Draw' : (isTeam ? 'Create Team Draw' : 'Create Draw');
     }
+    updateCategorySelection();
   }
+
+  function updateCategorySelection() {
+    var isTeam = selectedMode() === 'team';
+    var manual = isTeam && document.getElementById('manualTeamCategories').checked;
+    var type = form.querySelector('input[name="draw_type_id"]:checked');
+    var mixed = type && (type.value === '3' || type.dataset.mixed === '1');
+    $('#manualCategoryChoices').toggleClass('d-none', !manual);
+    $('#manualCategoryChoices input').prop('disabled', !manual);
+    $('#categorySection').toggleClass('d-none', (!isTeam && selectedMode() !== 'individual') || (isTeam && (manual || mixed)));
+    $('#type3Categories').toggleClass('d-none', !isTeam || manual || !mixed);
+    $('#teamCategoryChoices input, #type3Categories input').prop('disabled', !isTeam || manual);
+    if (manual) {
+      $('#teamCategoryChoices input, #type3Categories input').prop('checked', false);
+    }
+  }
+
+  $(document).on('change', '#manualTeamCategories, input[name="draw_type_id"]', updateCategorySelection);
 
   function updateIndividualName() {
     if (selectedMode() !== 'individual') return;
 
-    var category = form.querySelector('input[name="category_choice"]:checked');
+    var category = form.querySelector('input[name="category_choice"]:checked:not(:disabled)');
     if (!category) return;
 
     var label = form.querySelector('label[for="' + category.id + '"]');
@@ -76,11 +103,22 @@
     var mixed = type.value === '3' || type.dataset.mixed === '1';
     var selectors = mixed ? ['category_choice_boys', 'category_choice_girls'] : ['category_choice'];
     var categories = [];
-    for (var i = 0; i < selectors.length; i++) {
-      var category = form.querySelector('input[name="' + selectors[i] + '"]:checked');
+    if (document.getElementById('manualTeamCategories').checked) {
+      var choices = Array.from(form.querySelectorAll('input[name="manual_category_ids[]"]:checked:not(:disabled)'));
+      if (!choices.length) { showError('Select categories to combine'); return null; }
+      if (mixed && (!choices.some(function (choice) { return choice.dataset.gender === 'boys'; }) ||
+        !choices.some(function (choice) { return choice.dataset.gender === 'girls'; }))) {
+        showError('Select both boys and girls categories for mixed doubles'); return null;
+      }
+      categories = choices.map(function (choice) { return choice.value; });
+    } else for (var i = 0; i < selectors.length; i++) {
+      var category = form.querySelector('input[name="' + selectors[i] + '"]:checked:not(:disabled)');
       if (!category) { showError(mixed ? 'Select both boys and girls categories' : 'Select a category'); return null; }
-      var id = category.dataset.pivotId || category.value;
-      if (categories.indexOf(id) === -1) categories.push(id);
+      var ids = category.dataset.pivotIds ? JSON.parse(category.dataset.pivotIds) : [category.dataset.pivotId || category.value];
+      ids.forEach(function (id) {
+        id = String(id);
+        if (categories.indexOf(id) === -1) categories.push(id);
+      });
     }
     return { _token: $('meta[name="csrf-token"]').attr('content'), drawName: name,
       draw_type_id: type.value, category_ids: categories, format_id: $('#format_id').val() || null };
@@ -169,7 +207,7 @@
     event.stopImmediatePropagation();
 
     var drawName = ($('#drawName').val() || '').trim();
-    var category = form.querySelector('input[name="category_choice"]:checked');
+    var category = form.querySelector('input[name="category_choice"]:checked:not(:disabled)');
 
     if (!drawName) {
       showError('Please enter a draw name');

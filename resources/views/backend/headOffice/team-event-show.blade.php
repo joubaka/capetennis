@@ -271,33 +271,44 @@
           </div>
 
           @php
-            $standardCategories = [];
+            $standardCategories = $categories;
+            $teamCategories = \App\Support\TeamDrawCategoryGroups::make($categories);
             $mixedCategoryGroups = [];
-
-            foreach ($categories as $cat) {
-              $catName = trim($cat->name);
-              $catAge = $catName;
-              $catGender = null;
-
-              if (preg_match('/^(.*?)(?:\s*[-–]?\s*)(boys|girls|mixed)$/i', $catName, $matches)) {
-                $catAge = trim($matches[1]);
-                $catGender = strtolower($matches[2]);
-              }
-
-              $cat->parsed_age = $catAge;
-              $cat->parsed_gender = $catGender;
-
-              $standardCategories[] = $cat;
-              if (in_array($catGender, ['boys', 'girls'], true)) {
-                $mixedCategoryGroups[$catAge][$catGender][] = $cat;
+            foreach ($teamCategories as $cat) {
+              if (in_array($cat->parsed_gender, ['boys', 'girls'], true)) {
+                $mixedCategoryGroups[$cat->parsed_age][$cat->parsed_gender][] = $cat;
               }
             }
           @endphp
 
+          <div class="mb-3 d-none" id="manualCategoryToggleGroup">
+            <label class="form-check">
+              <input class="form-check-input" type="checkbox" id="manualTeamCategories">
+              <span class="form-check-label">Choose categories manually</span>
+            </label>
+            <div class="form-text">Select the categories whose teams should compete in this draw.</div>
+          </div>
+          <div class="mb-3 d-none" id="manualCategoryChoices">
+            <label class="form-label fw-bold">Categories to combine</label>
+            <div class="d-grid gap-2">
+              @foreach($standardCategories as $cat)
+                @php
+                  $group = collect($teamCategories)->first(fn ($group) => in_array((int) $cat->pivot_id, $group->pivot_ids, true));
+                @endphp
+                <label class="form-check m-0">
+                  <input class="form-check-input" type="checkbox" name="manual_category_ids[]"
+                         value="{{ $cat->pivot_id }}" data-gender="{{ $group?->parsed_gender }}" disabled>
+                  <span class="form-check-label">{{ $cat->name }} <span class="text-muted small">({{ $cat->teams_count }} teams · category {{ $cat->pivot_id }})</span></span>
+                </label>
+              @endforeach
+            </div>
+            <div class="form-text">For mixed doubles, select both boys and girls categories.</div>
+          </div>
+
           {{-- Category --}}
           <div class="mb-3 d-none" id="categorySection">
             <label class="form-label fw-bold">Category</label>
-            <div class="d-flex flex-wrap gap-2">
+            <div class="d-flex flex-wrap gap-2" id="individualCategoryChoices">
               @foreach($standardCategories as $cat)
                 <div class="form-check form-check-inline">
                   <input class="form-check-input" type="radio"
@@ -306,8 +317,25 @@
                          value="{{ $cat->pivot_id }}"
                          data-pivot-id="{{ $cat->pivot_id }}"
                          data-age="{{ $cat->name }}"
-                         data-gender="{{ $cat->parsed_gender }}">
+                         data-gender="">
                   <label class="form-check-label" for="cat{{ $cat->pivot_id }}">
+                    {{ $cat->name }}
+                  </label>
+                </div>
+              @endforeach
+            </div>
+            <div class="gap-2" id="teamCategoryChoices" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));">
+              @foreach($teamCategories as $cat)
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="radio"
+                         name="category_choice"
+                         id="teamcat{{ $cat->pivot_id }}"
+                         value="{{ $cat->pivot_id }}"
+                         data-pivot-id="{{ $cat->pivot_id }}"
+                         data-pivot-ids="{{ json_encode($cat->pivot_ids) }}"
+                         data-age="{{ $cat->name }}"
+                         data-gender="">
+                  <label class="form-check-label" for="teamcat{{ $cat->pivot_id }}">
                     {{ $cat->name }}
                   </label>
                 </div>
@@ -342,6 +370,7 @@
                                      name="category_choice_boys"
                                      value="{{ $cat->pivot_id }}"
                                      data-pivot-id="{{ $cat->pivot_id }}"
+                                     data-pivot-ids="{{ json_encode($cat->pivot_ids) }}"
                                      data-age="{{ $cat->parsed_age }}"
                                      data-gender="{{ $cat->parsed_gender }}">
                               <span class="form-check-label">{{ $cat->name }}</span>
@@ -360,6 +389,7 @@
                                      name="category_choice_girls"
                                      value="{{ $cat->pivot_id }}"
                                      data-pivot-id="{{ $cat->pivot_id }}"
+                                     data-pivot-ids="{{ json_encode($cat->pivot_ids) }}"
                                      data-age="{{ $cat->parsed_age }}"
                                      data-gender="{{ $cat->parsed_gender }}">
                               <span class="form-check-label">{{ $cat->name }}</span>

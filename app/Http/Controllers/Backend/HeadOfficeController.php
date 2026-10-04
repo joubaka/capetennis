@@ -158,11 +158,13 @@ class HeadOfficeController extends Controller
       ->where('event_id', $event->id)
       ->join('categories', 'category_events.category_id', '=', 'categories.id')
       ->orderBy('categories.name')
-      ->get([
+      ->select([
         'category_events.id as pivot_id',
         'category_events.category_id',
         'categories.name',
-      ]);
+      ])
+      ->withCount('teams')
+      ->get();
 
     /*
     |--------------------------------------------------------------------------

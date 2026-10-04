@@ -182,12 +182,63 @@ class TeamDrawReadinessWorkflowTest extends TestCase
         @$document->loadHTML($response->getContent());
         $xpath = new \DOMXPath($document);
         foreach ($linked as $category) {
-            $this->assertSame(1, $xpath->query('//input[@name="category_choice" and @value="'.$category->id.'"]')->length);
+            $this->assertSame(1, $xpath->query('//div[@id="individualCategoryChoices"]//input[@name="category_choice" and @value="'.$category->id.'"]')->length);
         }
         $this->assertSame(1, $xpath->query('//input[@name="category_choice_boys" and @value="'.$linked[0]->id.'"]')->length);
         $this->assertSame(1, $xpath->query('//input[@name="category_choice_girls" and @value="'.$linked[1]->id.'"]')->length);
-        $this->assertSame('u/13 Girls', $xpath->query('//input[@name="category_choice" and @value="'.$linked[1]->id.'"]')->item(0)->getAttribute('data-age'));
-        $this->assertSame(0, $xpath->query('//input[@name="category_choice" and @value="'.$other->id.'"]')->length);
+        $this->assertSame('u/13 Girls', $xpath->query('//div[@id="individualCategoryChoices"]//input[@name="category_choice" and @value="'.$linked[1]->id.'"]')->item(0)->getAttribute('data-age'));
+        $this->assertSame(0, $xpath->query('//div[@id="individualCategoryChoices"]//input[@name="category_choice" and @value="'.$other->id.'"]')->length);
+    }
+
+    public function test_grouped_team_categories_include_alias_teams_and_exclude_other_events(): void
+    {
+        $linked = [];
+        foreach (['u/10 Boys', 'u/10 Boys', 'u/10 Boys- A division', 'u/10 Girls', 'u/10 Girls- A division', 'u/10 Boys- B division'] as $name) {
+            $category = CategoryEvent::factory()->create(['event_id' => $this->event->id]);
+            DB::table('categories')->where('id', $category->category_id)->update(['name' => $name]);
+            Team::factory()->create(['category_event_id' => $category->id]);
+            $linked[] = $category;
+        }
+        $foreign = CategoryEvent::factory()->create();
+        DB::table('categories')->where('id', $foreign->category_id)->update(['name' => 'u/10 Boys']);
+        $response = $this->get(route('headOffice.show', $this->event))->assertOk();
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($document);
+        $choices = $xpath->query('//div[@id="teamCategoryChoices"]//input');
+        $boys = null;
+        foreach ($choices as $choice) {
+            if ($choice->getAttribute('data-age') === 'u/10 Boys') {
+                $this->assertNull($boys, 'Only one boys option should be rendered');
+                $boys = $choice;
+            }
+        }
+        $this->assertNotNull($boys);
+        $ids = json_decode($boys->getAttribute('data-pivot-ids'), true);
+        $this->assertEqualsCanonicalizing(array_map(fn ($category) => $category->id, array_slice($linked, 0, 3)), $ids);
+        $this->assertNotContains($foreign->id, $ids);
+        $this->assertSame(1, $xpath->query('//div[@id="teamCategoryChoices"]//input[@data-age="u/10 Boys- B division"]')->length);
+        $this->assertSame(1, $xpath->query('//input[@name="category_choice_girls" and @data-age="u/10"]')->length);
+        $format = $this->format();
+        $payload = array_replace($this->payload, ['category_ids' => $ids, 'format_id' => $format->id]);
+        $this->postJson(route('headoffice.previewTeamDraw', $this->event), $payload)->assertOk()->assertJsonPath('readiness.team_count', 3);
+        $this->assertDatabaseCount('draws', 0);
+        $response = $this->postJson(route('headoffice.createSingleDraw.team', $this->event), $payload)->assertOk();
+        $draw = Draw::findOrFail($response->json('draw.id'));
+        $this->assertSame(3, $draw->teams_in_draw()->count());
+        foreach (['headoffice.previewTeamDraw', 'headoffice.createSingleDraw.team'] as $route) {
+            $this->postJson(route($route, $this->event), array_replace($payload, ['category_ids' => [...$ids, $foreign->id]]))
+                ->assertUnprocessable();
+        }
+        $this->assertDatabaseCount('draws', 1);
+    }
+
+    public function test_non_under_age_gender_categories_remain_available_for_mixed_pairing(): void
+    {
+        $categories = [(object) ['name' => 'Open Boys', 'pivot_id' => 1], (object) ['name' => 'Open Girls', 'pivot_id' => 2]];
+        $groups = \App\Support\TeamDrawCategoryGroups::make($categories);
+        $this->assertSame(['boys', 'girls'], array_column($groups, 'parsed_gender'));
+        $this->assertSame(['Open', 'Open'], array_column($groups, 'parsed_age'));
     }
 
     public function test_existing_event_formats_are_selectable_without_legacy_rollout_flag(): void
