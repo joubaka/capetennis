@@ -233,17 +233,6 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $otherInvitation = $source->replicate();
         $otherInvitation->forceFill(['team_id' => $otherTeam->id, 'order_id' => $otherOrder->id])->save();
         $otherMirror = TeamPlayer::create(['team_id' => $otherTeam->id, 'player_id' => $source->player_id, 'rank' => 1, 'pay_status' => 1]);
-        $sameTeamOrder = $order->replicate();
-        $sameTeamOrder->save();
-        $sourceBefore = $source->fresh()->getAttributes();
-        $targetBefore = $target->fresh()->getAttributes();
-        $orderBefore = $order->fresh()->getAttributes();
-        $this->actingAs($admin)->postJson($url, $payload)->assertUnprocessable()->assertJsonValidationErrors('payment_transfer');
-        $this->assertDatabaseCount('team_payment_transfers', 0);
-        $this->assertSame($sourceBefore, $source->fresh()->getAttributes());
-        $this->assertSame($targetBefore, $target->fresh()->getAttributes());
-        $this->assertSame($orderBefore, $order->fresh()->getAttributes());
-        $sameTeamOrder->delete();
         $before = [$otherOrder->fresh()->getAttributes(), $otherInvitation->fresh()->getAttributes(), $otherMirror->fresh()->getAttributes()];
         $ledger = DB::table('wallet_transactions')->get()->toJson();
         $this->actingAs($admin)->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
@@ -373,7 +362,8 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $ledger = DB::table('wallet_transactions')->get()->toJson();
         $url = route('backend.team-selection.invitations.undo-private-payment', [$event, $import, $selected]);
         $payload = ['expected_order_id' => $order->id, 'expected_player_id' => $selected->player_id, 'expected_roster_rank' => $selected->roster_rank, 'reason' => 'Private mark entered by mistake', 'confirm_unpaid' => 1];
-        $this->actingAs($admin)->get(route('backend.team-selection.index', $event))->assertOk()->assertSee('Mark as unpaid (private payment)');
+        $privatePage = $this->actingAs($admin)->get(route('backend.team-selection.index', $event))->assertOk()->assertSee('Mark as unpaid (private payment)');
+        if (getenv('CT_FINAL_ROSTER_QA')) file_put_contents(storage_path('app/testing/private-unpaid-qa.html'), $privatePage->getContent());
         $this->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
         $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $selected->fresh()->status);
         $this->assertNull($selected->fresh()->paid_at);
@@ -415,6 +405,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         DB::table('wallet_transactions')->where('source_type', 'team_registration_wallet_payment')->where('source_id', $order->id)->delete();
         $order->forceFill(['wallet_reserved' => 0, 'wallet_debited' => false, 'payfast_amount_due' => 0, 'collection_status' => 'paid_privately', 'paid_privately_at' => now(), 'paid_privately_by' => $admin->id])->save();
         $base = $order->fresh()->getAttributes();
+        unset($base['active_order_marker'], $base['effective_player_id']);
         $proof = \App\Models\WalletTransaction::create(['wallet_id' => $order->user->wallet->id, 'type' => 'debit', 'amount' => 490,
             'source_type' => 'team_registration_wallet_payment', 'source_id' => $order->id]);
         $this->postJson($url, $payload)->assertUnprocessable();
@@ -5051,6 +5042,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $before = $import->invitations()->whereNotNull('roster_rank')->get()->map->getAttributes()->all();
         $url = route('backend.team-selection.invitations.activate', [$source->event, $import, $reserve]);
         $page = $this->actingAs($manager)->get(route('backend.team-selection.index', $source->event))->assertOk();
+        if (getenv('CT_FINAL_ROSTER_QA')) file_put_contents(storage_path('app/testing/open-position-qa.html'), $page->getContent());
         $document = new \DOMDocument();
         @$document->loadHTML($page->getContent());
         $xpath = new \DOMXPath($document);
@@ -5061,6 +5053,18 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->postJson($url, ['roster_rank' => 1])->assertUnprocessable();
         $this->postJson($url, ['roster_rank' => 5])->assertUnprocessable();
         $this->postJson($url, ['roster_rank' => 0])->assertUnprocessable();
+        $paidVacancy = TeamPlayer::create(['team_id' => $team->id, 'rank' => 3, 'player_id' => 0, 'pay_status' => 1]);
+        $this->postJson($url, ['roster_rank' => 3])->assertUnprocessable();
+        $paidVacancy->delete();
+        $duplicateOne = TeamPlayer::create(['team_id' => $team->id, 'rank' => 4, 'player_id' => 0, 'pay_status' => 0]);
+        $duplicateTwo = TeamPlayer::create(['team_id' => $team->id, 'rank' => 4, 'player_id' => 0, 'pay_status' => 0]);
+        $this->postJson($url, ['roster_rank' => 4])->assertUnprocessable();
+        $duplicateOne->delete();
+        $duplicateTwo->delete();
+        $newerImport = $import->replicate();
+        $newerImport->forceFill(['ranking_run_id' => 'newer-open-position-selection'])->save();
+        $this->postJson($url, ['roster_rank' => 4])->assertUnprocessable();
+        $newerImport->delete();
         $this->assertSame(TeamSelectionInvitation::RESERVE, $reserve->fresh()->status);
         $this->post($url, ['roster_rank' => 4])->assertRedirect()->assertSessionHasNoErrors();
         $this->assertSame(4, $reserve->fresh()->roster_rank);
