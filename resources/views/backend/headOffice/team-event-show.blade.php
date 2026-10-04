@@ -221,11 +221,13 @@
         <div class="modal-body">
 
           {{-- Draw Name --}}
-          <div class="mb-3">
+          <div class="mb-3" id="singleDrawNameGroup">
             <label for="drawName" class="form-label fw-bold">Draw Name</label>
             <input type="text" id="drawName" name="drawName" class="form-control"
-                   placeholder="e.g. U14 Boys – Round Robin" required>
+                   placeholder="Choose a category and draw type below" maxlength="255">
+            <div class="form-text">The name fills in automatically from your choices. You can edit it.</div>
           </div>
+          <div id="bulkDrawNameHelp" class="form-text mb-3 d-none">Each selected draw is named automatically by category and draw type.</div>
 
           <fieldset class="mb-3">
             <legend class="form-label fw-bold mb-2">Competition</legend>
@@ -324,7 +326,7 @@
                 @endphp
                 <label class="form-check m-0">
                   <input class="form-check-input" type="checkbox" name="manual_category_ids[]"
-                         value="{{ $cat->pivot_id }}" data-gender="{{ $group?->parsed_gender }}" disabled>
+                         value="{{ $cat->pivot_id }}" data-gender="{{ $group?->parsed_gender }}" data-name="{{ $group?->name ?? $cat->name }}" data-age="{{ $group?->parsed_age }}" disabled>
                   <span class="form-check-label">{{ $cat->name }} <span class="text-muted small">({{ $cat->teams_count }} teams · category {{ $cat->pivot_id }})</span></span>
                 </label>
               @endforeach

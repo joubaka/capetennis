@@ -30,8 +30,8 @@
                             {{-- Hide ID cell on mobile --}}
                             <td class="text-muted d-none d-sm-table-cell">{{ $fx->id }}</td>
                             
-                            <td class="fw-semibold">{{ $fx->homeTeam->name ?? $fx->home_team_name }}</td>
-                            <td class="fw-semibold">{{ $fx->awayTeam->name ?? $fx->away_team_name }}</td>
+                            <td class="fw-semibold">{{ $fx->home_side_name ?? $fx->home_team_name }}</td>
+                            <td class="fw-semibold">{{ $fx->away_side_name ?? $fx->away_team_name }}</td>
                             
                             <td>
                                 @if($fx->fixtureResults->count())

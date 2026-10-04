@@ -7,6 +7,7 @@
   var data = window.HeadOffice || {};
   var submitButton = form.querySelector('button[type="submit"]');
   var previewRevision = 0;
+  var nameCustomized = false;
   // This form owns category/type selection. Older bundles assumed mixed ID 3.
   $(document).off('change', 'input[name="draw_type_id"]');
   $(document).off('change', 'input[name="category_choice"], input[name="category_choice_boys"], input[name="category_choice_girls"]');
@@ -27,6 +28,9 @@
   }
 
   function setMode(mode) {
+    nameCustomized = false;
+    var nameInput = document.getElementById('drawName');
+    if (nameInput) nameInput.value = '';
     var isTeam = mode === 'team';
     var isIndividual = mode === 'individual';
     $('#bulkTeamGroup').toggleClass('d-none', !isTeam);
@@ -68,7 +72,9 @@
     var isTeam = selectedMode() === 'team';
     var bulk = isTeam && document.getElementById('bulkTeamDraws').checked;
     var drawNameInput = document.getElementById('drawName');
-    if (drawNameInput) drawNameInput.required = !bulk;
+    if (drawNameInput) drawNameInput.required = false;
+    $('#singleDrawNameGroup').toggleClass('d-none', bulk);
+    $('#bulkDrawNameHelp').toggleClass('d-none', !bulk);
     $('#bulkTeamChoices').toggleClass('d-none', !bulk);
     $('#teamDrawTypeSection, #manualCategoryToggleGroup').toggleClass('d-none', !isTeam || bulk);
     if (bulk) {
@@ -89,20 +95,55 @@
     if (manual) {
       $('#teamCategoryChoices input, #type3Categories input').prop('checked', false);
     }
+    updateAutomaticName();
   }
 
   $(document).on('change', '#bulkTeamDraws, #manualTeamCategories, input[name="draw_type_id"]', updateCategorySelection);
-  function updateTeamName() {
-    if (selectedMode() !== 'team' || document.getElementById('bulkTeamDraws').checked || document.getElementById('manualTeamCategories').checked) return;
-    var type = form.querySelector('input[name="draw_type_id"]:checked');
-    if (!type) return;
-    var mixed = type.dataset.code ? type.dataset.code === 'mixed_doubles' : type.value === '3';
-    var category = form.querySelector('input[name="' + (mixed ? 'category_choice_boys' : 'category_choice') + '"]:checked:not(:disabled)');
-    if (!category) return;
-    var label = form.querySelector('label[for="' + type.id + '"]');
-    if (label) $('#drawName').val(category.dataset.age + ' – ' + label.textContent.trim());
+  function categoryName(category) {
+    if (!category) return '';
+    var label = category.id ? form.querySelector('label[for="' + category.id + '"]') : null;
+    return (category.dataset.name || category.dataset.age || (label ? label.textContent : '') || '').trim();
   }
-  $(document).on('change', 'input[name="draw_type_id"], input[name="category_choice"], input[name="category_choice_boys"], input[name="category_choice_girls"]', updateTeamName);
+
+  function updateAutomaticName() {
+    if (nameCustomized || document.getElementById('bulkTeamDraws').checked) return;
+    var name = '';
+    var mode = selectedMode();
+    if (mode === 'individual') {
+      var category = form.querySelector('input[name="category_choice"]:checked:not(:disabled)');
+      var individualCategoryName = categoryName(category);
+      if (individualCategoryName) name = individualCategoryName + ' – Singles';
+    } else if (mode === 'team') {
+      var type = form.querySelector('input[name="draw_type_id"]:checked');
+      if (type) {
+        var code = type.dataset.code || (type.value === '3' ? 'mixed_doubles' : '');
+        var mixed = code === 'mixed_doubles';
+        var typeLabel = form.querySelector('label[for="' + type.id + '"]');
+        var typeName = { singles: 'Singles', reverse_singles: 'Reverse singles', doubles: 'Doubles', mixed_doubles: 'Mixed doubles' }[code]
+          || (typeLabel ? typeLabel.textContent.trim().replace(/^Team\s*-\s*/i, '') : '');
+        var selectionName = '';
+        if (document.getElementById('manualTeamCategories').checked) {
+          var choices = Array.from(form.querySelectorAll('input[name="manual_category_ids[]"]:checked:not(:disabled)'));
+          var labels = Array.from(new Set(choices.map(categoryName).filter(Boolean)));
+          if (mixed) {
+            var age = choices.length ? choices[0].dataset.age : '';
+            if (age && choices.every(function (choice) { return choice.dataset.age === age; }) &&
+              choices.some(function (choice) { return choice.dataset.gender === 'boys'; }) &&
+              choices.some(function (choice) { return choice.dataset.gender === 'girls'; })) selectionName = age;
+          } else selectionName = labels.join(' + ');
+          if (selectionName.length > 190) selectionName = labels[0] + ' + ' + (labels.length - 1) + ' categories';
+        } else if (mixed) {
+          var boys = form.querySelector('input[name="category_choice_boys"]:checked:not(:disabled)');
+          var girls = form.querySelector('input[name="category_choice_girls"]:checked:not(:disabled)');
+          if (boys && girls && boys.dataset.age && boys.dataset.age === girls.dataset.age) selectionName = boys.dataset.age;
+        } else selectionName = categoryName(form.querySelector('input[name="category_choice"]:checked:not(:disabled)'));
+        if (selectionName && typeName) name = selectionName + ' – ' + typeName;
+      }
+    }
+    var nameInput = document.getElementById('drawName');
+    if (nameInput) nameInput.value = name;
+  }
+  $(document).on('change', 'input[name="draw_type_id"], input[name="category_choice"], input[name="category_choice_boys"], input[name="category_choice_girls"], input[name="manual_category_ids[]"]', updateAutomaticName);
   $('#selectAllDrawTypes, #selectAllDrawCategories').on('click', function () {
     var name = this.id === 'selectAllDrawTypes' ? 'bulk_draw_types[]' : 'bulk_categories[]';
     var inputs = Array.from(form.querySelectorAll('input[name="' + name + '"]'));
@@ -112,16 +153,7 @@
   });
 
   function updateIndividualName() {
-    if (selectedMode() !== 'individual') return;
-
-    var category = form.querySelector('input[name="category_choice"]:checked:not(:disabled)');
-    if (!category) return;
-
-    var label = form.querySelector('label[for="' + category.id + '"]');
-    var categoryName = (category.dataset.age || (label ? label.textContent : '') || '').trim();
-    var nameInput = document.getElementById('drawName');
-
-    if (nameInput && categoryName) nameInput.value = categoryName + ' – Singles';
+    updateAutomaticName();
   }
 
   $(document).on('change', 'input[name="draw_mode"]', function () {
@@ -140,9 +172,10 @@
 
   function teamPayload() {
     if (document.getElementById('bulkTeamDraws').checked) return bulkPayload();
+    updateAutomaticName();
     var type = form.querySelector('input[name="draw_type_id"]:checked');
     var name = ($('#drawName').val() || '').trim();
-    if (!name || !type) { showError('Enter a draw name and select a draw type'); return null; }
+    if (!type) { showError('Select a draw type'); return null; }
     var mixed = type.dataset.code ? type.dataset.code === 'mixed_doubles' : (type.value === '3' || type.dataset.mixed === '1');
     var selectors = mixed ? ['category_choice_boys', 'category_choice_girls'] : ['category_choice'];
     var categories = [];
@@ -163,6 +196,7 @@
         if (categories.indexOf(id) === -1) categories.push(id);
       });
     }
+    if (!name) { showError('Choose compatible categories to name the draw automatically'); return null; }
     return { _token: $('meta[name="csrf-token"]').attr('content'), drawName: name,
       draw_type_id: type.value, category_ids: categories, format_id: $('#format_id').val() || null, batch_key: creationKey() };
   }
@@ -255,7 +289,10 @@
       .fail(responseError).always(function () { button.disabled = false; });
   });
   form.addEventListener('change', function () { batchKey = null; previewRevision++; $('#teamDrawPreview').empty().addClass('d-none'); });
-  form.addEventListener('input', function () { batchKey = null; previewRevision++; $('#teamDrawPreview').empty().addClass('d-none'); });
+  form.addEventListener('input', function (event) {
+    if (event.target && event.target.id === 'drawName') nameCustomized = !!event.target.value.trim();
+    batchKey = null; previewRevision++; $('#teamDrawPreview').empty().addClass('d-none');
+  });
 
   // Capture the individual submission before the legacy team-only handler.
   form.addEventListener('submit', function (event) {
@@ -282,6 +319,7 @@
     event.preventDefault();
     event.stopImmediatePropagation();
 
+    updateAutomaticName();
     var drawName = ($('#drawName').val() || '').trim();
     var category = form.querySelector('input[name="category_choice"]:checked:not(:disabled)');
 

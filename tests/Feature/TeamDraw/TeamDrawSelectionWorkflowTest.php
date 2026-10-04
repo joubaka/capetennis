@@ -237,4 +237,31 @@ class TeamDrawSelectionWorkflowTest extends TestCase
         $this->assertEquals($boysB->parsed_age, $girlsB->parsed_age);
         $this->assertNotEquals($boysB->parsed_age, collect($groups)->firstWhere('pivot_id', 12)->parsed_age);
     }
+
+    public function test_legacy_single_mixed_request_uses_identical_side_planning_and_safe_retry(): void
+    {
+        $item = $this->item();
+        $this->actingAs($this->admin)->postJson(route('headoffice.previewTeamDraw', $this->event), $item)
+            ->assertOk()->assertJsonPath('readiness.team_count', 2)->assertJsonPath('readiness.tie_count', 1);
+        $this->actingAs($this->admin)->postJson(route('headoffice.createSingleDraw.team', $this->event), $item)->assertOk();
+        $this->actingAs($this->admin)->postJson(route('headoffice.createSingleDraw.team', $this->event), $item)->assertOk();
+        $this->assertDatabaseCount('draws', 1);
+        $this->assertDatabaseCount('team_ties', 1);
+        $this->assertDatabaseCount('team_fixtures', 2);
+        $item['category_ids'] = [$this->categories['Boys']];
+        $this->actingAs($this->admin)->postJson(route('headoffice.createSingleDraw.team', $this->event), $item)->assertUnprocessable();
+        $this->assertDatabaseCount('draws', 1);
+    }
+
+    public function test_super_user_cannot_create_selected_team_draw_in_individual_event(): void
+    {
+        Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        $super = User::factory()->create()->assignRole('super-user');
+        DB::table('eventtypes')->insert(['id' => 1, 'name' => 'Individual', 'type' => EventType::INDIVIDUAL]);
+        $event = Event::factory()->create(['eventType' => 1]);
+        foreach (['headoffice.previewTeamDraw', 'headoffice.createSingleDraw.team'] as $route) {
+            $this->actingAs($super)->postJson(route($route, $event), ['batch_key' => 'wrong-kind', 'draws' => [$this->item()]])->assertForbidden();
+        }
+        $this->assertDatabaseCount('draws', 0);
+    }
 }

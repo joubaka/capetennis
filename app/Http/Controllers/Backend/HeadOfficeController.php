@@ -561,7 +561,7 @@ class HeadOfficeController extends Controller
   ) {
     $this->authorize('team-draw.createFormat', $event);
 
-    if ($request->has('draws') || $request->has('batch_key')) {
+    if ($request->has('draws') || $request->has('batch_key') || $this->useSelectedTeamDrawPlanner($request, $event)) {
       return $this->processTeamDrawSelection($request, $event, false);
     }
 
@@ -1054,7 +1054,7 @@ class HeadOfficeController extends Controller
   {
     $this->authorize('team-draw.createFormat', $event);
 
-    if ($request->has('draws') || $request->has('batch_key')) {
+    if ($request->has('draws') || $request->has('batch_key') || $this->useSelectedTeamDrawPlanner($request, $event)) {
       return $this->processTeamDrawSelection($request, $event, true);
     }
 
@@ -1087,8 +1087,25 @@ class HeadOfficeController extends Controller
     ]);
   }
 
+  private function useSelectedTeamDrawPlanner(Request $request, Event $event): bool
+  {
+    $typeId = $request->input('draw_type_id');
+    if (!is_scalar($typeId) || !is_numeric($typeId)) return false;
+    $type = \App\Models\DrawType::where('type', 'team')->find((int) $typeId);
+    if (!$type) return false;
+    $code = app(\App\Services\TeamDrawSelectionService::class)->code($type);
+    if (!$code) return false;
+    $categories = $request->input('category_ids');
+    $hasTeams = is_array($categories) && count($categories) <= 100
+      && Team::whereIn('category_event_id', array_filter($categories, fn ($id) => is_scalar($id) && is_numeric($id)))->count() >= 2;
+    if ($code !== RubberType::MIXED_DOUBLES && !$hasTeams) return false;
+    $request->merge(['batch_key' => hash('sha256', json_encode([$event->id, $request->user()->id, $request->only('drawName', 'draw_type_id', 'category_ids', 'format_id')]))]);
+    return true;
+  }
+
   private function processTeamDrawSelection(Request $request, Event $event, bool $preview)
   {
+    abort_unless((int) $event->eventTypeModel?->type === \App\Models\EventType::TEAM, 403, 'Team draws require a team event.');
     $rules = [
       'drawName' => 'required|string|max:255',
       'draw_type_id' => ['required', 'integer', Rule::exists('draw_types', 'id')->where('type', 'team')],
