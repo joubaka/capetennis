@@ -167,6 +167,29 @@ class TeamDrawReadinessWorkflowTest extends TestCase
             ->assertJsonPath('readiness.rubber_count', 0);
     }
 
+    public function test_gender_named_categories_remain_available_for_standard_and_mixed_draws(): void
+    {
+        $linked = [];
+        foreach (['u/13 Boys', 'u/13 Girls', 'u/12 Girls- A division'] as $name) {
+            $category = CategoryEvent::factory()->create(['event_id' => $this->event->id]);
+            DB::table('categories')->where('id', $category->category_id)->update(['name' => $name]);
+            $linked[] = $category;
+        }
+        $other = CategoryEvent::factory()->create();
+        DB::table('categories')->where('id', $other->category_id)->update(['name' => 'Other event girls']);
+        $response = $this->get(route('headOffice.show', $this->event))->assertOk();
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($document);
+        foreach ($linked as $category) {
+            $this->assertSame(1, $xpath->query('//input[@name="category_choice" and @value="'.$category->id.'"]')->length);
+        }
+        $this->assertSame(1, $xpath->query('//input[@name="category_choice_boys" and @value="'.$linked[0]->id.'"]')->length);
+        $this->assertSame(1, $xpath->query('//input[@name="category_choice_girls" and @value="'.$linked[1]->id.'"]')->length);
+        $this->assertSame('u/13 Girls', $xpath->query('//input[@name="category_choice" and @value="'.$linked[1]->id.'"]')->item(0)->getAttribute('data-age'));
+        $this->assertSame(0, $xpath->query('//input[@name="category_choice" and @value="'.$other->id.'"]')->length);
+    }
+
     public function test_existing_event_formats_are_selectable_without_legacy_rollout_flag(): void
     {
         $format = $this->format();

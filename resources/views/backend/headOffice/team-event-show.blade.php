@@ -244,7 +244,7 @@
                   <input class="form-check-input" type="radio" name="draw_mode" id="drawModeTeam" value="team">
                   <span class="form-check-label ms-1">
                     <span class="fw-semibold d-block">Team tie</span>
-                    <span class="text-muted small">Teams compete through singles or doubles rubbers.</span>
+                    <span class="text-muted small">Teams compete through singles, reverse singles, doubles and mixed doubles, as defined by the event format.</span>
                   </span>
                 </label>
               </div>
@@ -287,10 +287,9 @@
               $cat->parsed_age = $catAge;
               $cat->parsed_gender = $catGender;
 
+              $standardCategories[] = $cat;
               if (in_array($catGender, ['boys', 'girls'], true)) {
                 $mixedCategoryGroups[$catAge][$catGender][] = $cat;
-              } else {
-                $standardCategories[] = $cat;
               }
             }
           @endphp
@@ -306,7 +305,7 @@
                          id="cat{{ $cat->pivot_id }}"
                          value="{{ $cat->pivot_id }}"
                          data-pivot-id="{{ $cat->pivot_id }}"
-                         data-age="{{ $cat->parsed_age }}"
+                         data-age="{{ $cat->name }}"
                          data-gender="{{ $cat->parsed_gender }}">
                   <label class="form-check-label" for="cat{{ $cat->pivot_id }}">
                     {{ $cat->name }}
