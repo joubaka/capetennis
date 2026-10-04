@@ -368,7 +368,8 @@ class TeamDrawController extends Controller
 
             $teams = Team::whereIn('id', $validated['team_ids'])->get();
         } else {
-            $teams = app(\App\Services\TeamDrawSideResolver::class)->teams($draw);
+            try { $teams = app(\App\Services\TeamDrawSideResolver::class)->teams($draw); }
+            catch (\InvalidArgumentException $e) { return response()->json(['success' => false, 'message' => $e->getMessage()], 422); }
         }
 
         if ($teams->count() < 2) {
@@ -503,7 +504,8 @@ class TeamDrawController extends Controller
 
             $teams = Team::whereIn('id', $validated['team_ids'])->get();
         } else {
-            $teams = app(\App\Services\TeamDrawSideResolver::class)->teams($draw);
+            try { $teams = app(\App\Services\TeamDrawSideResolver::class)->teams($draw); }
+            catch (\InvalidArgumentException $e) { return response()->json(['success' => false, 'message' => $e->getMessage()], 422); }
         }
 
         if ($teams->count() < 2) {

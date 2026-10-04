@@ -90,7 +90,7 @@ class TeamDrawReadinessService
                         if (in_array($rule, ['male', 'female', 'mixed'], true) && $keys) {
                             $known = array_filter($genders, fn ($gender) => in_array($gender, ['male', 'female'], true));
                             if (count($known) !== count($keys)) {
-                                $warnings[] = "{$team->name}: verify unrecorded player genders for {$template->name}.";
+                                $warnings[] = "{$team->name}: verify unrecorded player genders before publication.";
                             }
                             if (in_array($rule, ['male', 'female'], true) && array_diff($known, [$rule])) {
                                 $warnings[] = "{$team->name}: {$template->name} requires {$rule} players.";

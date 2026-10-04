@@ -261,7 +261,7 @@
                   <input class="form-check-input" type="radio"
                          name="draw_type_id"
                          id="drawType{{ $drawType->id }}"
-                         value="{{ $drawType->id }}">
+                         value="{{ $drawType->id }}" data-code="{{ app(\App\Services\TeamDrawSelectionService::class)->code($drawType) }}">
                   <label class="form-check-label" for="drawType{{ $drawType->id }}">
                     {{ $drawType->drawTypeName }}
                   </label>

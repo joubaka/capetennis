@@ -13,7 +13,7 @@ class TeamDrawSideResolver
     {
         $map = $draw->team_draw_selection['mixed_sides'] ?? [];
         if (!$map) {
-            return $draw->teams_in_draw;
+            return $draw->team_draw_selection ? $draw->teams_in_draw->map(fn ($team) => $this->side($draw, $team)) : $draw->teams_in_draw;
         }
         return collect(array_keys($map))->map(fn ($id) => $this->side($draw, Team::findOrFail($id)));
     }
@@ -22,7 +22,13 @@ class TeamDrawSideResolver
     {
         if (!$team) return null;
         $map = $draw->team_draw_selection['mixed_sides'] ?? [];
-        if (!$map) return $team;
+        if (!$map) {
+            if ($draw->team_draw_selection && ((int) $team->category?->event_id !== (int) $draw->event_id
+                || !in_array((int) $team->category_event_id, $draw->team_draw_selection['category_ids'], true))) {
+                throw new \InvalidArgumentException('A source team no longer belongs to the selected event and categories.');
+            }
+            return $team;
+        }
         $entry = $map[$team->id] ?? null;
         if (!$entry) throw new \InvalidArgumentException('Team is not a selected mixed side.');
         $sources = Team::with(['category.category', 'team_players.player', 'team_players_no_profile'])
