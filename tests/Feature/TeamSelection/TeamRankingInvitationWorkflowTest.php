@@ -55,6 +55,144 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_manager_marks_unpaid_player_unavailable_without_promoting_or_sending_mail(): void
+    {
+        Queue::fake();
+        Mail::fake();
+        [$source, $team] = $this->selectionSource();
+        $manager = User::factory()->create();
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $import = app(TeamRankingImportService::class)->import($source, $manager);
+        $import->update(['auto_replacement_enabled' => true]);
+        $invitation = $import->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $rank = $invitation->roster_rank;
+        $reserves = $import->invitations()->where('status', TeamSelectionInvitation::RESERVE)->pluck('id')->all();
+        $order = app(TeamPaymentService::class)->ensureOrder(User::findOrFail($invitation->player->userId), $team, $invitation->player, $source->event, 490.00);
+        $order->update(['wallet_reserved' => 40.00, 'payfast_amount_due' => 450.00]);
+        app(TeamSelectionInvitationService::class)->attachOrder($order);
+        $invitation->update(['status' => TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, 'payment_started_at' => now()]);
+        $orderCount = TeamPaymentOrder::count();
+        $ledgerCount = \App\Models\WalletTransaction::count();
+        $url = route('backend.team-selection.invitations.unavailable', [$source->event, $import, $invitation]);
+        $data = ['reason' => 'Player cannot attend', 'confirm_unavailable' => '1', 'expected_team_id' => $invitation->team_id, 'expected_player_id' => $invitation->player_id, 'expected_roster_rank' => $invitation->roster_rank];
+        $this->actingAs($manager)->post($url, $data)->assertRedirect()->assertSessionHasNoErrors();
+        $this->post($url, $data)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame(TeamSelectionInvitation::DECLINED, $invitation->fresh()->status);
+        $this->assertSame($rank, $invitation->fresh()->vacated_roster_rank);
+        $this->assertNull($invitation->fresh()->roster_rank);
+        $this->assertSame('regional_manager_unavailable', $invitation->fresh()->decline_method);
+        $this->assertSame($manager->id, $invitation->fresh()->declined_by_user_id);
+        $this->assertSame($reserves, $import->invitations()->where('status', TeamSelectionInvitation::RESERVE)->pluck('id')->all());
+        $this->assertDatabaseHas('team_players', ['team_id' => $team->id, 'rank' => $rank, 'player_id' => 0, 'pay_status' => 0]);
+        $this->assertSame(0.00, (float) $order->fresh()->wallet_reserved);
+        $this->assertSame(490.00, (float) $order->fresh()->total_amount);
+        $this->assertSame(0, (int) $order->fresh()->pay_status);
+        $this->assertNotNull($order->fresh()->withdrawn_at);
+        $this->assertSame($orderCount, TeamPaymentOrder::count());
+        $this->assertSame($ledgerCount, \App\Models\WalletTransaction::count());
+        $this->assertSame(1, DB::table('activity_log')->where('description', 'regional manager marked selected player unavailable')->count());
+        Queue::assertNothingPushed();
+        Mail::assertNothingSent();
+    }
+
+    public function test_mark_unavailable_rejects_unauthorized_cross_event_and_unconfirmed_requests(): void
+    {
+        [$source] = $this->selectionSource();
+        $manager = User::factory()->create();
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $import = app(TeamRankingImportService::class)->import($source, $manager);
+        $invitation = $import->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $url = route('backend.team-selection.invitations.unavailable', [$source->event, $import, $invitation]);
+        $data = ['reason' => 'Unavailable', 'confirm_unavailable' => '1', 'expected_team_id' => $invitation->team_id, 'expected_player_id' => $invitation->player_id, 'expected_roster_rank' => $invitation->roster_rank];
+        $this->actingAs(User::factory()->create())->post($url, $data)->assertForbidden();
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.unavailable', [Event::factory()->create(), $import, $invitation]), $data)->assertNotFound();
+        $this->post($url, ['reason' => 'Unavailable'])->assertSessionHasErrors('confirm_unavailable');
+        $this->post($url, ['reason' => ' ', 'confirm_unavailable' => '1'])->assertSessionHasErrors('reason');
+        $otherImport = $import->replicate();
+        $otherImport->ranking_run_id = 'another-ranking-run';
+        $otherImport->save();
+        $this->post(route('backend.team-selection.invitations.unavailable', [$source->event, $otherImport, $invitation]), $data)->assertNotFound();
+        $invitation->update(['region_id' => TeamRegion::create(['region_name' => 'Other region'])->id]);
+        $this->post($url, $data)->assertNotFound();
+        $invitation->update(['region_id' => $import->region_id]);
+        $this->assertSame(TeamSelectionInvitation::INVITED, $invitation->fresh()->status);
+    }
+
+    public function test_mark_unavailable_blocks_paid_handed_off_or_stale_roster_without_mutation(): void
+    {
+        [$source, $team] = $this->selectionSource();
+        $manager = User::factory()->create();
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $import = app(TeamRankingImportService::class)->import($source, $manager);
+        $invitation = $import->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $order = app(TeamPaymentService::class)->ensureOrder(User::findOrFail($invitation->player->userId), $team, $invitation->player, $source->event, 490.00);
+        // An orphan checkout is still resolved server-side rather than trusting order_id.
+        $invitation->update(['order_id' => null]);
+        $url = route('backend.team-selection.invitations.unavailable', [$source->event, $import, $invitation]);
+        $data = ['reason' => 'Unavailable', 'confirm_unavailable' => '1', 'expected_team_id' => $invitation->team_id, 'expected_player_id' => $invitation->player_id, 'expected_roster_rank' => $invitation->roster_rank];
+        foreach ([['pay_status' => 1], ['pay_status' => 0, 'payfast_handed_off_at' => now()], ['payfast_handed_off_at' => null, 'payfast_paid' => 1]] as $state) {
+            $order->update($state);
+            $this->actingAs($manager)->post($url, $data)->assertSessionHasErrors('player_id');
+            $this->assertSame(TeamSelectionInvitation::INVITED, $invitation->fresh()->status);
+            $this->assertNull($order->fresh()->withdrawn_at);
+        }
+        $order->update(['payfast_paid' => 0]);
+        $import->update(['status' => 'cancelled']);
+        $this->post($url, $data)->assertSessionHasErrors('invitation');
+        $import->update(['status' => 'draft']);
+        TeamPlayer::where('team_id', $team->id)->where('player_id', $invitation->player_id)->update(['rank' => 99]);
+        $this->post($url, $data)->assertSessionHasErrors('invitation');
+        $this->assertSame(TeamSelectionInvitation::INVITED, $invitation->fresh()->status);
+        $this->assertSame(0, DB::table('activity_log')->where('description', 'regional manager marked selected player unavailable')->count());
+    }
+
+    public function test_mark_unavailable_leaves_a_vacancy_with_no_reserves_and_rejects_moved_player_form(): void
+    {
+        Queue::fake();
+        [$source, $team] = $this->selectionSource();
+        $manager = User::factory()->create();
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $import = app(TeamRankingImportService::class)->import($source, $manager);
+        $import->invitations()->where('status', TeamSelectionInvitation::RESERVE)->delete();
+        $invitation = $import->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $url = route('backend.team-selection.invitations.unavailable', [$source->event, $import, $invitation]);
+        $data = ['reason' => 'Unavailable', 'confirm_unavailable' => '1', 'expected_team_id' => $team->id, 'expected_player_id' => $invitation->player_id, 'expected_roster_rank' => $invitation->roster_rank];
+        $this->actingAs($manager)->get(route('backend.team-selection.index', $source->event))->assertOk()
+            ->assertSee('Mark unavailable / release place')->assertSee('expected_roster_rank');
+        $this->actingAs($manager)->post($url, array_replace($data, ['expected_roster_rank' => 99]))->assertSessionHasErrors('invitation');
+        $this->post($url, $data)->assertSessionHasNoErrors();
+        $this->get(route('backend.team-selection.index', $source->event))->assertOk()
+            ->assertSee('Vacancy open')->assertSee('Mark unavailable / release place');
+        $this->post(route('backend.team-selection.invitations.restore', [$source->event, $import, $invitation]))
+            ->assertSessionHasNoErrors();
+        $this->assertSame(TeamSelectionInvitation::INVITED, $invitation->fresh()->status);
+        $this->assertSame($data['expected_roster_rank'], $invitation->fresh()->roster_rank);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_mark_unavailable_preserves_fixture_history_and_blocks_settlement_evidence(): void
+    {
+        [$source, $team] = $this->selectionSource();
+        $manager = User::factory()->create();
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $import = app(TeamRankingImportService::class)->import($source, $manager);
+        $invitation = $import->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $url = route('backend.team-selection.invitations.unavailable', [$source->event, $import, $invitation]);
+        $data = ['reason' => 'Unavailable', 'confirm_unavailable' => '1', 'expected_team_id' => $team->id, 'expected_player_id' => $invitation->player_id, 'expected_roster_rank' => $invitation->roster_rank];
+        $draw = Draw::factory()->create(['event_id' => $source->event_id]);
+        $fixture = TeamFixture::create(['draw_id' => $draw->id, 'match_nr' => 1]);
+        $assignment = TeamFixturePlayer::create(['team_fixture_id' => $fixture->id, 'slot_no' => 1, 'team1_id' => $invitation->player_id]);
+        $this->actingAs($manager)->post($url, $data)->assertSessionHasErrors('invitation');
+        $this->assertDatabaseHas('team_fixture_players', ['id' => $assignment->id, 'team1_id' => $invitation->player_id]);
+        $assignment->delete();
+        $order = app(TeamPaymentService::class)->ensureOrder(User::findOrFail($invitation->player->userId), $team, $invitation->player, $source->event, 490.00);
+        $order->update(['payfast_pf_payment_id' => 'settlement-receipt']);
+        $this->post($url, $data)->assertSessionHasErrors('player_id');
+        $this->assertSame(TeamSelectionInvitation::INVITED, $invitation->fresh()->status);
+        $this->assertNull($order->fresh()->withdrawn_at);
+        $this->assertSame('settlement-receipt', $order->fresh()->payfast_pf_payment_id);
+    }
+
     public function test_filtered_team_email_audience_combines_age_group_gender_and_invitation_state(): void
     {
         [$source, $team, $players] = $this->selectionSource();

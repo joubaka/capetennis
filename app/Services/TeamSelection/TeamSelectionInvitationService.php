@@ -354,6 +354,83 @@ final class TeamSelectionInvitationService
         });
     }
 
+    public function markUnavailable(TeamSelectionInvitation $invitation, User $actor, string $reason, array $expected): void
+    {
+        if (trim($reason) === '') {
+            throw ValidationException::withMessages(['reason' => 'A reason is required.']);
+        }
+        DB::transaction(function () use ($invitation, $actor, $reason, $expected): void {
+            $selectionImport = $this->lockInvitationContext($invitation);
+            $locked = TeamSelectionInvitation::query()->lockForUpdate()->findOrFail($invitation->id);
+            $region = \App\Models\EventRegion::query()->where('event_id', $locked->event_id)
+                ->where('region_id', $selectionImport->region_id)->firstOrFail();
+            abort_unless(app(RegionManagerAccessService::class)->canManage($actor, $region), 403);
+            abort_unless((int) $locked->event_id === (int) $selectionImport->event_id
+                && (int) $locked->region_id === (int) $selectionImport->region_id
+                && $locked->team()->where('region_id', $selectionImport->region_id)
+                    ->whereHas('category', fn ($query) => $query->where('event_id', $locked->event_id))->exists(), 404);
+            if (! in_array($selectionImport->status, ['draft', 'sent'], true)) {
+                throw ValidationException::withMessages(['invitation' => 'This invitation campaign is no longer active.']);
+            }
+            if ($locked->team->noProfile || $locked->team->team_players_no_profile()->where('player_profile', $locked->player_id)->exists()) {
+                throw ValidationException::withMessages(['invitation' => 'This player has an imported roster place. Use its existing roster workflow.']);
+            }
+            $expectedRank = $locked->status === TeamSelectionInvitation::DECLINED && $locked->decline_method === 'regional_manager_unavailable'
+                ? $locked->vacated_roster_rank : $locked->roster_rank;
+            if ((int) $expected['expected_team_id'] !== (int) $locked->team_id
+                || (int) $expected['expected_player_id'] !== (int) $locked->player_id
+                || (int) $expected['expected_roster_rank'] !== (int) $expectedRank) {
+                throw ValidationException::withMessages(['invitation' => 'The selected player or roster place changed. Refresh the invitations.']);
+            }
+            if ($locked->status === TeamSelectionInvitation::DECLINED && $locked->decline_method === 'regional_manager_unavailable') {
+                return;
+            }
+            if (! in_array($locked->status, [TeamSelectionInvitation::INVITED, TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true) || ! $locked->roster_rank) {
+                throw ValidationException::withMessages(['invitation' => 'Only an unpaid selected player can be marked unavailable. Paid players must use the withdrawal process.']);
+            }
+            $payments = app(TeamPaymentService::class);
+            $orders = TeamPaymentOrder::query()->where('event_id', $locked->event_id)->where('team_id', $locked->team_id)
+                ->forBeneficiary((int) $locked->player_id)->lockForUpdate()->get();
+            if ($locked->order_id && ! $orders->contains('id', $locked->order_id)) {
+                throw ValidationException::withMessages(['payment' => 'The checkout does not match this player and team. Refresh the invitations.']);
+            }
+            if ($locked->payment_started_at && $orders->isEmpty()) {
+                throw ValidationException::withMessages(['payment' => 'The checkout is in progress. Refresh and resolve payment before releasing this place.']);
+            }
+            foreach ($orders as $order) {
+                $payments->assertUnpaidRosterCheckoutMayBeReset($order);
+            }
+            $slots = TeamPlayer::query()->withoutGlobalScopes()->where('team_id', $locked->team_id)
+                ->where('player_id', $locked->player_id)->lockForUpdate()->get();
+            if ($slots->count() !== 1 || (int) $slots->first()->rank !== (int) $locked->roster_rank) {
+                throw ValidationException::withMessages(['invitation' => 'The roster place changed. Refresh the invitations.']);
+            }
+            if ($slots->contains(fn ($slot) => (bool) $slot->pay_status)) {
+                throw ValidationException::withMessages(['payment' => 'This roster place has payment evidence. Use the withdrawal process.']);
+            }
+            if (\App\Models\TeamFixturePlayer::query()->where(fn ($query) => $query->where('team1_id', $locked->player_id)->orWhere('team2_id', $locked->player_id))
+                ->whereHas('fixture.draw', fn ($query) => $query->where('event_id', $locked->event_id))->lockForUpdate()->get()->isNotEmpty()) {
+                throw ValidationException::withMessages(['invitation' => 'This player has fixture participation. Resolve it through the withdrawal process first.']);
+            }
+            foreach ($orders as $order) {
+                $payments->closeUnpaidLifecycle($order, $actor);
+            }
+            foreach ($slots as $slot) {
+                $payments->updateTeamPlayerSlot($slot, ['player_id' => 0, 'pay_status' => 0]);
+            }
+            $rank = $locked->roster_rank;
+            $locked->update([
+                'status' => TeamSelectionInvitation::DECLINED, 'declined_at' => now(),
+                'decline_reason' => trim($reason), 'declined_by_user_id' => $actor->id,
+                'decline_method' => 'regional_manager_unavailable', 'payment_started_at' => null,
+                'vacated_roster_rank' => $rank, 'roster_rank' => null,
+            ]);
+            activity('team-selection')->performedOn($locked)->causedBy($actor)
+                ->withProperties(['reason' => trim($reason), 'vacated_rank' => $rank, 'replacement_id' => null])
+                ->log('regional manager marked selected player unavailable');
+        });
+    }
+
     public function decline(TeamSelectionInvitation $invitation, User $user, ?string $reason): ?TeamSelectionInvitation
     {
         return DB::transaction(function () use ($invitation, $user, $reason) {

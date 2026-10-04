@@ -366,6 +366,22 @@ class TeamSelectionInvitationController extends Controller
         ]);
     }
 
+    public function markUnavailable(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)
+    {
+        abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
+        $this->authorizeImport($event, $selectionImport, $request->user());
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'max:1000'],
+            'confirm_unavailable' => ['required', 'accepted'],
+            'expected_team_id' => ['required', 'integer', 'min:1'],
+            'expected_player_id' => ['required', 'integer', 'min:1'],
+            'expected_roster_rank' => ['required', 'integer', 'min:1'],
+        ]);
+        $service->markUnavailable($invitation, $request->user(), trim($data['reason']), $data);
+
+        return back()->with('success', 'Player marked unavailable. The team place is vacant; no reserve was promoted and no email was sent.');
+    }
+
     public function replace(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)
     {
         abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);

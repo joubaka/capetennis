@@ -313,6 +313,7 @@
               <div class="border-top p-3">
                 <div class="row g-3 small">
                   <div class="col-md-6 col-xl-4 regional-help-step"><strong>Replace an unpaid player</strong><div class="text-muted">Select <strong>Show team</strong>, find the player, choose <strong>Change player</strong>, select the next reserve or another player profile, give a reason, then confirm. Paid players cannot be replaced here.</div></div>
+                  <div class="col-md-6 col-xl-4 regional-help-step"><strong>Leave an unavailable player's place vacant</strong><div class="text-muted">Select <strong>Show team</strong>, open the player's action menu, choose <strong>Mark unavailable / release place</strong>, give a reason and confirm. No reserve is needed. This action is for unpaid players.</div></div>
                   <div class="col-md-6 col-xl-4 regional-help-step"><strong>Fill an open place</strong><div class="text-muted">Select <strong>Show team</strong>. A withdrawn or declined place shows <strong>Invite next reserve</strong>; an eligible reserve may also show <strong>Activate as Rank</strong>.</div></div>
                   <div class="col-md-6 col-xl-4 regional-help-step"><strong>Change player order</strong><div class="text-muted">Select <strong>Show team</strong>, open <strong>Player order</strong>, then drag players into the required order.</div></div>
                   <div class="col-md-6 col-xl-4 regional-help-step"><strong>Contact outstanding players</strong><div class="text-muted">Use <strong>Registration reminder</strong>@if($usesRegionalClothing) or <strong>Incomplete clothing reminder</strong>@endif above. Review the regional audience and exact recipient count before sending.</div></div>
@@ -513,6 +514,29 @@
                                     @endif
                                       @if($recipientEmail && !$isReserve)<button class="dropdown-item text-success roster-email-button" type="button" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="player" data-team-id="{{ $regionTeam->id }}" data-invitation-id="{{ $invitation->id }}" data-recipient="{{ $invitation->player?->full_name }} · {{ $recipientEmail }}"><i class="ti ti-mail me-1" aria-hidden="true"></i>Email player</button>@endif
                                     @if(!$isReserve && in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true))
+                                      @php($unavailableFormOpen = (int) old('unavailable_invitation_id') === (int) $invitation->id)
+                                      <button type="button" class="dropdown-item text-danger" data-bs-toggle="modal" data-bs-target="#unavailable-player-{{ $invitation->id }}">Mark unavailable / release place</button>
+                                      <div class="modal fade" id="unavailable-player-{{ $invitation->id }}" tabindex="-1" aria-labelledby="unavailable-player-title-{{ $invitation->id }}" aria-hidden="true" data-replacement-modal @if($unavailableFormOpen) data-reopen @endif>
+                                        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
+                                          <div class="modal-header"><h5 class="modal-title" id="unavailable-player-title-{{ $invitation->id }}">Mark unavailable — {{ $invitation->player?->full_name }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+                                          <div class="modal-body">
+                                            <p>{{ $regionTeam->name }} · Rank {{ $invitation->roster_rank }}</p>
+                                            <p>The unpaid invitation will be declined and this place will stay vacant. No reserve will be promoted and no email will be sent. Any unpaid wallet reservation will be released.</p>
+                                            <form method="POST" action="{{ route('backend.team-selection.invitations.unavailable', [$event, $activeImport, $invitation]) }}">
+                                              @csrf
+                                              <input type="hidden" name="unavailable_invitation_id" value="{{ $invitation->id }}">
+                                              <input type="hidden" name="expected_team_id" value="{{ $invitation->team_id }}">
+                                              <input type="hidden" name="expected_player_id" value="{{ $invitation->player_id }}">
+                                              <input type="hidden" name="expected_roster_rank" value="{{ $invitation->roster_rank }}">
+                                              @if($unavailableFormOpen && $errors->any())<div class="alert alert-danger" role="alert">@foreach($errors->all() as $message)<div>{{ $message }}</div>@endforeach</div>@endif
+                                              <label class="form-label" for="unavailable-reason-{{ $invitation->id }}">Reason</label>
+                                              <textarea id="unavailable-reason-{{ $invitation->id }}" name="reason" class="form-control mb-3" rows="3" maxlength="1000" required>{{ $unavailableFormOpen ? old('reason') : 'Player not available.' }}</textarea>
+                                              <div class="form-check mb-3"><input type="checkbox" class="form-check-input" id="confirm-unavailable-{{ $invitation->id }}" name="confirm_unavailable" value="1" required><label class="form-check-label" for="confirm-unavailable-{{ $invitation->id }}">I confirm this player is unavailable and the place should be left vacant.</label></div>
+                                              <button class="btn btn-danger w-100">Mark unavailable / release place</button>
+                                            </form>
+                                          </div>
+                                        </div></div>
+                                      </div>
                                       @php($replacementFormOpen = (int) old('replacement_invitation_id') === (int) $invitation->id)
                                       @php($replacementMode = $replacementFormOpen ? old('replacement_mode', 'next_reserve') : ($eligibleTeamReserves->isNotEmpty() ? 'next_reserve' : 'custom_profile'))
                                       @php($replacementMode = $replacementMode === 'next_reserve' && $eligibleTeamReserves->isEmpty() ? 'custom_profile' : $replacementMode)
