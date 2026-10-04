@@ -70,8 +70,8 @@ class TeamPaymentService
                     || \App\Models\TeamSelectionImport::where('event_id', $event->id)->where('region_id', $lockedTeam->region_id)->where('id', '>', $selectionImport->id)->exists()
                     || (int) $sourceInvitation->player_id !== $expectedPlayerId || (int) $sourceInvitation->order_id !== $orderId
                     || $sourceInvitation->status !== TeamSelectionInvitation::PAID_CONFIRMED
-                    || $targetInvitation->status !== TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT)) {
-                    $fail('Choose a selected unpaid player who has started registration in this active invitation campaign. Reserves must be activated and start registration first.');
+                    || ! in_array($targetInvitation->status, [TeamSelectionInvitation::INVITED, TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true))) {
+                    $fail('Choose a selected unpaid player in this active invitation campaign. Reserves must be activated first.');
                 }
                 if ($invitation) {
                     foreach ([$sourceInvitation, $targetInvitation] as $selected) {
@@ -103,8 +103,7 @@ class TeamPaymentService
                 try {
                     app(\App\Services\PlayerEligibilityService::class)->assertEligible($targetProfile, $event);
                     if ($invitation) {
-                        app(\App\Domain\Teams\Services\ExternalTeamRosterService::class)->assertSelectedPlayerCanRegister($event, $lockedTeam, $targetProfile);
-                        app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->beginRegistration($event->id, $team->id, $targetPlayerId, $actor);
+                        app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertEligibleForPaymentCoverage($targetInvitation);
                     }
                 } catch (\RuntimeException $exception) {
                     $fail($exception->getMessage());

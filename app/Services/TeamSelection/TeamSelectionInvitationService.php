@@ -291,6 +291,22 @@ final class TeamSelectionInvitationService
         }, 3);
     }
 
+    public function assertEligibleForPaymentCoverage(TeamSelectionInvitation $invitation): void
+    {
+        $invitation->loadMissing(['selectionImport.event', 'team', 'player']);
+        if (! in_array($invitation->status, [TeamSelectionInvitation::INVITED, TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true)) {
+            throw ValidationException::withMessages(['payment_transfer' => 'Only a selected unpaid player can receive payment coverage.']);
+        }
+        $deadline = $invitation->status === TeamSelectionInvitation::INVITED
+            ? $this->responseDeadline($invitation) : $this->paymentDeadline($invitation);
+        if ($this->deadlineBlocksRegistration($invitation, $deadline)) {
+            throw ValidationException::withMessages(['payment_transfer' => 'The registration or payment deadline for this selected player has passed.']);
+        }
+        app(ExternalTeamRosterService::class)->assertSelectedPlayerCanRegister(
+            $invitation->selectionImport->event, $invitation->team, $invitation->player
+        );
+    }
+
     public function beginRegistration(int $eventId, int $teamId, int $playerId, User $user): ?TeamSelectionInvitation
     {
         $invitation = TeamSelectionInvitation::query()->with('selectionImport')
