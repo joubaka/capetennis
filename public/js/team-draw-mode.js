@@ -63,6 +63,8 @@
   function updateCategorySelection() {
     var isTeam = selectedMode() === 'team';
     var bulk = isTeam && document.getElementById('bulkTeamDraws').checked;
+    var drawNameInput = document.getElementById('drawName');
+    if (drawNameInput) drawNameInput.required = !bulk;
     $('#bulkTeamChoices').toggleClass('d-none', !bulk);
     $('#teamDrawTypeSection, #manualCategoryToggleGroup').toggleClass('d-none', !isTeam || bulk);
     if (bulk) {
@@ -78,7 +80,8 @@
     $('#manualCategoryChoices input').prop('disabled', !manual);
     $('#categorySection').toggleClass('d-none', (!isTeam && selectedMode() !== 'individual') || (isTeam && (manual || mixed)));
     $('#type3Categories').toggleClass('d-none', !isTeam || manual || !mixed);
-    $('#teamCategoryChoices input, #type3Categories input').prop('disabled', !isTeam || manual);
+    $('#teamCategoryChoices input').prop('disabled', !isTeam || manual || mixed);
+    $('#type3Categories input').prop('disabled', !isTeam || manual || !mixed);
     if (manual) {
       $('#teamCategoryChoices input, #type3Categories input').prop('checked', false);
     }

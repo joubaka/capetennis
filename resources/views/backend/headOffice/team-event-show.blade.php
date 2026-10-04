@@ -287,7 +287,9 @@
               <div class="d-flex justify-content-between gap-2"><strong>Draw types to create</strong><button type="button" class="btn btn-sm btn-outline-secondary" id="selectAllDrawTypes">Select all types</button></div>
               <div class="d-grid gap-2 mt-2">
                 @foreach($teamDrawTypes as $drawType)
-                  @php($typeCode = app(\App\Services\TeamDrawSelectionService::class)->code($drawType))
+                  @php
+                    $typeCode = app(\App\Services\TeamDrawSelectionService::class)->code($drawType);
+                  @endphp
                   @if($typeCode)
                   <label class="form-check"><input class="form-check-input" type="checkbox" name="bulk_draw_types[]" value="{{ $drawType->id }}" data-code="{{ $typeCode }}" data-name="{{ $drawType->name }}"><span class="form-check-label">{{ $drawType->name }}</span></label>
                   @endif
@@ -296,7 +298,10 @@
               <div class="d-flex justify-content-between gap-2 mt-3"><strong>Categories to include</strong><button type="button" class="btn btn-sm btn-outline-secondary" id="selectAllDrawCategories">Select all categories</button></div>
               <div class="d-grid gap-2 mt-2">
                 @foreach($teamCategories as $cat)
-                <label class="form-check"><input class="form-check-input" type="checkbox" name="bulk_categories[]" value="{{ $cat->pivot_id }}" data-pivot-ids="{{ json_encode($cat->pivot_ids) }}" data-name="{{ $cat->name }}" data-age="{{ $cat->parsed_age }}" data-gender="{{ $cat->parsed_gender }}"><span class="form-check-label">{{ $cat->name }}</span></label>
+                @php
+                  $bulkCategoryKey = app(\App\Services\TeamDrawSideResolver::class)->categoryKey($cat->name);
+                @endphp
+                <label class="form-check"><input class="form-check-input" type="checkbox" name="bulk_categories[]" value="{{ $cat->pivot_id }}" data-pivot-ids="{{ json_encode($cat->pivot_ids) }}" data-name="{{ $cat->name }}" data-age="{{ $bulkCategoryKey['group'] }}" data-gender="{{ $bulkCategoryKey['gender'] }}"><span class="form-check-label">{{ $cat->name }}</span></label>
                 @endforeach
               </div>
               <div class="form-text">Each chosen category gets the selected singles, reverse singles and doubles draws. Mixed combines boys and girls of the same age and division within each region. Preview flags missing partners; deselect those categories or types before creating.</div>

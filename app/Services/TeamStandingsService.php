@@ -40,7 +40,7 @@ final class TeamStandingsService
             foreach (['home', 'away'] as $side) {
                 $team = $tie->{$side.'Team'};
                 if (!$team) { continue; }
-                $rows[$team->id] ??= ['team_id' => $team->id, 'name' => $team->name, 'played' => 0, 'wins' => 0, 'draws' => 0, 'losses' => 0, 'points' => 0, 'rubber_wins' => 0, 'rubber_losses' => 0, 'sets_for' => 0, 'sets_against' => 0, 'games_for' => 0, 'games_against' => 0];
+                $rows[$team->id] ??= ['team_id' => $team->id, 'name' => app(TeamDrawSideResolver::class)->label($draw, $team), 'played' => 0, 'wins' => 0, 'draws' => 0, 'losses' => 0, 'points' => 0, 'rubber_wins' => 0, 'rubber_losses' => 0, 'sets_for' => 0, 'sets_against' => 0, 'games_for' => 0, 'games_against' => 0];
             }
             if (!isset($rows[$tie->home_team_id], $rows[$tie->away_team_id])) { continue; }
             foreach ($tie->rubbers as $rubber) {

@@ -18,7 +18,8 @@ function submit(type, choices, manualChoices) {
     addEventListener(name, handler) { if (name === 'submit') submitHandler = handler; }
   };
   const toggle = { checked: false };
-  const document = { getElementById(id) { return id === 'createDrawForm' ? form : toggle; } };
+  const otherToggle = { checked: false };
+  const document = { getElementById(id) { return id === 'createDrawForm' ? form : (id === 'manualTeamCategories' ? toggle : otherToggle); } };
   function $(selector) {
     const chain = { on() { return chain; }, toggleClass() { return chain; }, prop() { return chain; },
       empty() { return chain; }, addClass() { return chain; }, removeClass() { return chain; },

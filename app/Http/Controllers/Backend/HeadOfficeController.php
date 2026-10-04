@@ -1098,9 +1098,14 @@ class HeadOfficeController extends Controller
     ];
     if ($request->has('draws')) {
       $batchRules = ['draws' => 'required|array|min:1|max:100', 'batch_key' => 'required|string|max:64|regex:/^[a-zA-Z0-9-]+$/'];
-      foreach ($rules as $key => $rule) $batchRules['draws.*.'.$key] = $rule;
+      foreach ($rules as $key => $rule) $batchRules['draws.*.'.$key] = is_array($rule) ? array_values(array_filter($rule, fn ($entry) => $entry !== 'distinct')) : $rule;
       $validated = $request->validate($batchRules);
       $items = $validated['draws'];
+      foreach ($items as $index => $item) {
+        if (count($item['category_ids']) !== count(array_unique($item['category_ids']))) {
+          throw \Illuminate\Validation\ValidationException::withMessages(["draws.$index.category_ids" => 'Select each category only once within a draw.']);
+        }
+      }
     } else {
       $validated = $request->validate($rules + ['batch_key' => 'required|string|max:64|regex:/^[a-zA-Z0-9-]+$/']);
       $items = [$validated];

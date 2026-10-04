@@ -21,6 +21,13 @@ final class TeamDrawCategoryGroups
                 $age = trim($matches[1]);
                 $gender = strtolower($matches[2]);
             }
+            if ($gender === null) {
+                $parsed = app(\App\Services\TeamDrawSideResolver::class)->categoryKey($name);
+                if ($parsed['gender'] !== null) {
+                    $age = $parsed['group'];
+                    $gender = $parsed['gender'];
+                }
+            }
             $key = mb_strtolower($name);
             if (!isset($groups[$key])) {
                 $groups[$key] = (object) ['name' => $name, 'parsed_age' => $age,

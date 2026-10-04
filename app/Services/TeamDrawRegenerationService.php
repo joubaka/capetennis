@@ -157,7 +157,12 @@ class TeamDrawRegenerationService
             $query->whereNotIn('status', [TeamTie::STATUS_PUBLISHED, TeamTie::STATUS_COMPLETED]);
         }
 
-        // CASCADE DELETE on team_ties.id → team_fixtures.team_tie_id handles rubber cleanup.
+        // Some historical schemas do not have the cascade. Remove only these
+        // guarded draft children explicitly so regeneration cannot leave orphans.
+        $tieIds = (clone $query)->pluck('id');
+        $fixtureIds = \App\Models\TeamFixture::whereIn('team_tie_id', $tieIds)->pluck('id');
+        \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)->get()->each->delete();
+        \App\Models\TeamFixture::whereIn('id', $fixtureIds)->delete();
         $query->delete();
     }
 }

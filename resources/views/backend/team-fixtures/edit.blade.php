@@ -6,7 +6,7 @@
 <div class="container-xxl">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <div><h4 class="mb-1">Edit rubber #{{ $team_fixture->id }}</h4>
-      <p class="text-muted mb-0">{{ $team_fixture->homeTeam?->name ?? 'Home' }} vs {{ $team_fixture->awayTeam?->name ?? 'Away' }}</p></div>
+      <p class="text-muted mb-0">{{ $team_fixture->home_side_name ?? 'Home' }} vs {{ $team_fixture->away_side_name ?? 'Away' }}</p></div>
     <a href="{{ url()->previous() }}" class="btn btn-outline-secondary">Back</a>
   </div>
   @if($errors->any())<div class="alert alert-danger"><ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif

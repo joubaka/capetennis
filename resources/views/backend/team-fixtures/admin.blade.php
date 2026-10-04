@@ -122,8 +122,8 @@
               <td>{{ optional($fx->draw)->drawName ?? '—' }}</td>
               <td>{{ $fx->round_nr ?? '—' }}</td>
               <td>{{ $fx->tie_nr ?? '—' }}</td>
-              <td>{{ $fx->teamTie?->homeTeam?->name ?? 'Legacy / TBD' }}</td>
-              <td>{{ $fx->teamTie?->awayTeam?->name ?? 'Legacy / TBD' }}</td>
+              <td>{{ $fx->teamTie?->home_side_name ?? 'Legacy / TBD' }}</td>
+              <td>{{ $fx->teamTie?->away_side_name ?? 'Legacy / TBD' }}</td>
               <td class="scheduled">
                 {{ $fx->scheduled_at ? \Carbon\Carbon::parse($fx->scheduled_at)->format('Y-m-d H:i') : '—' }}
               </td>
@@ -135,8 +135,8 @@
                   <button type="button"
                           class="btn btn-sm btn-primary open-score-modal"
                           data-id="{{ $fx->id }}"
-                          data-home="{{ $fx->teamTie?->homeTeam?->name ?? 'Home' }}"
-                          data-away="{{ $fx->teamTie?->awayTeam?->name ?? 'Away' }}"
+                          data-home="{{ $fx->teamTie?->home_side_name ?? 'Home' }}"
+                          data-away="{{ $fx->teamTie?->away_side_name ?? 'Away' }}"
                           data-bs-toggle="modal"
                           data-bs-target="#scoreModal">
                     Insert Scores

@@ -492,6 +492,10 @@ class TeamDrawController extends Controller
         $allowOverride      = (bool) ($validated['allow_override'] ?? false);
         $regenerateRubbers  = (bool) ($validated['regenerate_rubbers'] ?? false);
 
+        if ($draw->team_draw_selection && !empty($validated['team_ids'])) {
+            return response()->json(['success' => false, 'message' => 'The selected source teams cannot be overridden.'], 409);
+        }
+
         if (!empty($validated['team_ids'])) {
             if ($scopeError = $this->requireTeamsInScope($validated['team_ids'], $event)) {
                 return $scopeError;

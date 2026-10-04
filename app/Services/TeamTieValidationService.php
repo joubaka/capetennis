@@ -241,6 +241,9 @@ class TeamTieValidationService
                     }
                     $profileIds = $rubber->fixturePlayers->pluck("team{$side}_id")->filter()->all();
                     $importedIds = $rubber->fixturePlayers->pluck("team{$side}_no_profile_id")->filter()->all();
+                    if ($tie->draw->team_draw_selection['mixed_sides'] ?? []) {
+                        app(TeamDrawSideResolver::class)->assertMixedSources($tie->draw, $team->id, $profileIds, $importedIds);
+                    }
                     if (array_diff($profileIds, $team->team_players->pluck('player_id')->all())
                         || array_diff($importedIds, $team->team_players_no_profile->pluck('id')->all())) {
                         throw new \InvalidArgumentException('Rubber players must belong to their assigned team.');

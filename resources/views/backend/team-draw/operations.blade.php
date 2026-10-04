@@ -18,7 +18,7 @@
       @php($protected = $draw->locked || $draw->published || $tie->isLocked() || $tie->published_at || $tie->winner_team_id)
       <div class="card mb-3">
         <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-          <div><h3 class="h6 mb-1">{{ $tie->homeTeam?->name ?? 'Home' }} vs {{ $tie->awayTeam?->name ?? 'Away' }}</h3>
+          <div><h3 class="h6 mb-1">{{ $tie->home_side_name ?? 'Home' }} vs {{ $tie->away_side_name ?? 'Away' }}</h3>
             <span class="badge bg-label-secondary">{{ ucfirst($tie->status) }}</span>
           </div>
           <div class="d-flex flex-wrap gap-2">

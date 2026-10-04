@@ -498,6 +498,15 @@ class TeamFixtureController extends Controller
         ]);
       }
 
+      if ($draw->team_draw_selection['mixed_sides'] ?? []) {
+        foreach ([$tie->home_team_id => $homePlayers, $tie->away_team_id => $awayPlayers] as $teamId => $ids) {
+          if (count($ids) === 2) {
+            try { $resolver->assertMixedSources($draw, $teamId, $ids, []); }
+            catch (\InvalidArgumentException $e) { throw ValidationException::withMessages(['home_players' => $e->getMessage()]); }
+          }
+        }
+      }
+
       // ✅ Delete using Eloquent (fires events)
       $team_fixture->fixturePlayers()->each(fn($p) => $p->delete());
 

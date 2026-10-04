@@ -115,8 +115,8 @@ $awayRegionShort = $fx->region2Name?->short_name ?? null;
 
 // For v2 rubbers, use the tied team names as the context label
 if ($isV2) {
-    $homeRegionShort = optional(optional($fx->teamTie)->homeTeam)->name;
-    $awayRegionShort = optional(optional($fx->teamTie)->awayTeam)->name;
+    $homeRegionShort = $fx->teamTie?->home_side_name;
+    $awayRegionShort = $fx->teamTie?->away_side_name;
 }
 @endphp
 
@@ -173,10 +173,10 @@ elseif ($fpRow->team2_no_profile_id) {
 @php
 $homeLabel = count($homeNames)
     ? collect($homeNames)->implode(' + ')
-    : ($isV2 ? (optional(optional($fx->teamTie)->homeTeam)->name ?? 'TBD') : 'TBD');
+    : ($isV2 ? ($fx->teamTie?->home_side_name ?? 'TBD') : 'TBD');
 $awayLabel = count($awayNames)
     ? collect($awayNames)->implode(' + ')
-    : ($isV2 ? (optional(optional($fx->teamTie)->awayTeam)->name ?? 'TBD') : 'TBD');
+    : ($isV2 ? ($fx->teamTie?->away_side_name ?? 'TBD') : 'TBD');
 $display = $fx->scheduled_at ?? null;
 @endphp
 

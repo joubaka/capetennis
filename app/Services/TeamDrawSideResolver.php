@@ -47,12 +47,14 @@ class TeamDrawSideResolver
     public function categoryKey(string $name): array
     {
         $name = mb_strtolower(trim($name));
-        if (!preg_match('/^(u\s*\/\s*\d+)\s*(boys|girls)(.*)$/u', $name, $m)) {
+        if (!preg_match('/^(.*?)\s*(boys|girls)(.*)$/u', $name, $m)) {
             return ['group' => $name, 'gender' => null];
         }
         $division = trim(preg_replace('/^[\s\-–]+/u', '', $m[3]));
         if ($division === 'a division') $division = '';
-        return ['group' => 'u/'.preg_replace('/\D/', '', $m[1]).($division ? ' '.$division : ''), 'gender' => $m[2]];
+        $age = trim($m[1]);
+        if (preg_match('/^u\s*\/?\s*(\d+)$/', $age, $ageMatch)) $age = 'u/'.$ageMatch[1];
+        return ['group' => $age.($division ? ' '.$division : ''), 'gender' => $m[2]];
     }
 
     public function combine(Team $boys, Team $girls): Team
@@ -82,5 +84,20 @@ class TeamDrawSideResolver
         if (!$team) return null;
         $entry = $draw->team_draw_selection['mixed_sides'][$team->id] ?? null;
         return $entry ? $entry['name'] : $team->name;
+    }
+
+    public function assertMixedSources(Draw $draw, int $teamId, array $profiles, array $imported): void
+    {
+        $entry = $draw->team_draw_selection['mixed_sides'][$teamId] ?? null;
+        if (!$entry) return;
+        $counts = [];
+        foreach (['boys', 'girls'] as $gender) {
+            $source = Team::findOrFail($entry[$gender]);
+            $counts[$gender] = count(array_intersect($profiles, $source->team_players->pluck('player_id')->all()))
+                + count(array_intersect($imported, $source->team_players_no_profile->pluck('id')->all()));
+        }
+        if ($counts['boys'] !== 1 || $counts['girls'] !== 1 || count($profiles) + count($imported) !== 2) {
+            throw new \InvalidArgumentException('A mixed pair must contain exactly one player from each selected boys and girls source roster.');
+        }
     }
 }
