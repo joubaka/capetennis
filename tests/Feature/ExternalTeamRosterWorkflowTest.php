@@ -1599,6 +1599,130 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         }
     }
 
+    public function test_transfer_accepts_canonical_writer_receipt_without_stored_status(): void
+    {
+        [, , $old, $target, , $order, , $url, $payload] = $this->transferScenario();
+        $receipt = $this->canonicalTransferReceipt($order, $old);
+        $this->assertNull($receipt->fresh()->getAttributes()['payment_status'] ?? null);
+        $proof = $receipt->fresh()->getAttributes();
+
+        $this->actingAs($this->admin)->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertSame($target->id, $order->fresh()->effective_player_id);
+        $this->assertSame($old->id, $order->fresh()->player_id);
+        $this->assertSame($this->admin->id, $order->fresh()->user_id);
+        $this->assertSame($proof, $receipt->fresh()->getAttributes());
+        $this->assertDatabaseCount('transactions_pf', 1);
+        $this->assertDatabaseCount('team_payment_transfers', 1);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
+    public function test_transfer_accepts_canonical_receipt_on_legacy_schema_without_payment_status(): void
+    {
+        $this->withLegacyReceiptSchema(function (): void {
+            [, , $old, $target, , $order, , $url, $payload] = $this->transferScenario();
+            $receipt = $this->canonicalTransferReceipt($order, $old);
+            $proof = $receipt->fresh()->getAttributes();
+            $this->assertArrayNotHasKey('payment_status', $proof);
+            $this->actingAs($this->admin)->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
+            $this->assertSame($target->id, $order->fresh()->effective_player_id);
+            $this->assertSame($old->id, $order->fresh()->player_id);
+            $this->assertSame($this->admin->id, $order->fresh()->user_id);
+            $this->assertSame($proof, $receipt->fresh()->getAttributes());
+            $this->assertDatabaseCount('team_payment_transfers', 1);
+            $this->assertDatabaseCount('transactions_pf', 1);
+            $this->assertDatabaseCount('wallet_transactions', 0);
+        });
+    }
+
+    public function test_wallet_only_transfer_does_not_require_legacy_payfast_status_column(): void
+    {
+        $this->withLegacyReceiptSchema(function (): void {
+            [, , , $target, , $order, , $url, $payload] = $this->transferScenario();
+            $debit = WalletTransaction::firstOrFail()->getAttributes();
+            $this->actingAs($this->admin)->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
+            $this->assertSame($target->id, $order->fresh()->effective_player_id);
+            $this->assertSame($debit, WalletTransaction::firstOrFail()->getAttributes());
+            $this->assertDatabaseCount('team_payment_transfers', 1);
+            $this->assertDatabaseCount('transactions_pf', 0);
+            $this->assertDatabaseCount('wallet_transactions', 1);
+        });
+    }
+
+    public function test_transfer_rejects_unverified_canonical_receipts_without_mutation(): void
+    {
+        [, , $old, $target, , $order, $targetOrder, $url, $payload] = $this->transferScenario();
+        $receipt = $this->canonicalTransferReceipt($order, $old);
+        $proof = $receipt->fresh()->getAttributes();
+        $assertRejected = function () use ($old, $target, $order, $targetOrder, $url, $payload): void {
+            $this->actingAs($this->admin)->postJson($url, $payload)->assertUnprocessable()->assertJsonValidationErrors('payment_transfer');
+            $this->assertSame($old->id, $order->fresh()->effective_player_id);
+            $this->assertNull($targetOrder->fresh()->withdrawn_at);
+            $this->assertDatabaseCount('team_payment_transfers', 0);
+            $this->assertDatabaseCount('wallet_transactions', 0);
+            $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'player_id' => $target->id, 'pay_status' => 0]);
+        };
+        $order->update(['payfast_paid' => false]);
+        $assertRejected();
+        $order->update(['payfast_paid' => true]);
+        foreach (['amount_gross' => 99, 'custom_int2' => $target->id, 'custom_int3' => $this->event->id + 1,
+            'custom_int4' => User::factory()->create()->id, 'payment_status' => 'FAILED'] as $field => $value) {
+            $receipt->forceFill([$field => $value])->save();
+            $assertRejected();
+            $receipt->forceFill([$field => $proof[$field] ?? null])->save();
+        }
+        $this->assertDatabaseCount('transactions_pf', 1);
+    }
+
+    public function test_transfer_rejects_ambiguous_receipts_on_legacy_schema_without_unique_provider_id(): void
+    {
+        if (DB::connection()->getDriverName() !== 'sqlite') {
+            $this->markTestSkipped('Legacy schema DDL requires isolated SQLite; MySQL DDL commits the test transaction.');
+        }
+        \Illuminate\Support\Facades\Schema::table('transactions_pf', fn ($table) => $table->dropUnique('transactions_pf_pf_payment_id_unique'));
+        $duplicate = null;
+        try {
+            [, , $old, , , $order, $targetOrder, $url, $payload] = $this->transferScenario();
+            $receipt = $this->canonicalTransferReceipt($order, $old);
+            $duplicate = $receipt->replicate();
+            $duplicate->save();
+            $this->actingAs($this->admin)->postJson($url, $payload)->assertUnprocessable()->assertJsonValidationErrors('payment_transfer');
+            $this->assertSame($old->id, $order->fresh()->effective_player_id);
+            $this->assertNull($targetOrder->fresh()->withdrawn_at);
+            $this->assertDatabaseCount('transactions_pf', 2);
+            $this->assertDatabaseCount('team_payment_transfers', 0);
+        } finally {
+            $duplicate?->delete();
+            \Illuminate\Support\Facades\Schema::table('transactions_pf', fn ($table) => $table->unique('pf_payment_id'));
+        }
+    }
+
+    private function canonicalTransferReceipt(TeamPaymentOrder $order, Player $old): \App\Models\Transaction
+    {
+        WalletTransaction::query()->delete();
+        $order->update(['wallet_reserved' => 0, 'wallet_debited' => false, 'payfast_amount_due' => 100,
+            'payfast_paid' => true, 'payfast_pf_payment_id' => 'canonical-transfer-proof']);
+
+        return app(\App\Domain\Payments\Services\PaymentTransactionService::class)->record([
+            'pf_payment_id' => 'canonical-transfer-proof', 'amount_gross' => 100, 'payment_status' => 'COMPLETE',
+            'custom_str5' => 'TeamOrder', 'custom_int5' => $order->id, 'custom_int2' => $old->id,
+            'custom_int3' => $this->event->id, 'custom_int4' => $this->admin->id,
+        ], $order);
+    }
+
+    private function withLegacyReceiptSchema(callable $test): void
+    {
+        if (DB::connection()->getDriverName() !== 'sqlite') {
+            $this->markTestSkipped('Legacy schema DDL requires isolated SQLite; MySQL DDL commits the test transaction.');
+        }
+        \Illuminate\Support\Facades\Schema::table('transactions_pf', fn ($table) => $table->dropColumn('payment_status'));
+        try {
+            $test();
+        } finally {
+            \Illuminate\Support\Facades\Schema::table('transactions_pf', fn ($table) => $table->string('payment_status')->nullable());
+        }
+    }
+
     public function test_transfer_rejects_duplicate_or_foreign_wallet_ledger_evidence_without_mutation(): void
     {
         [, , $old, $target, , $order, $targetOrder, $url, $payload] = $this->transferScenario();

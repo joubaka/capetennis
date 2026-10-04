@@ -79,9 +79,17 @@ class TeamPaymentService
                 $walletPaid = $order->wallet_debited && round((float) $walletDebit->where('type', 'debit')->sum('amount'), 2) === round((float) $order->wallet_reserved, 2)
                     && (float) $order->wallet_reserved > 0 && $walletDebit->count() === 1
                     && $order->user->wallet()->whereKey($walletDebit->first()?->wallet_id)->exists();
-                $providerReceipt = \App\Models\Transaction::query()->where('custom_str5', 'TeamOrder')->where('custom_int5', $order->id)
-                    ->where('pf_payment_id', $order->payfast_pf_payment_id)->where('payment_status', 'COMPLETE')->lockForUpdate()->first();
+                $providerReceipts = $order->payfast_paid && (float) $order->payfast_amount_due > 0 && filled($order->payfast_pf_payment_id)
+                    ? \App\Models\Transaction::query()->where('custom_str5', 'TeamOrder')->where('custom_int5', $order->id)
+                        ->where('pf_payment_id', $order->payfast_pf_payment_id)->lockForUpdate()->get()
+                    : collect();
+                $providerReceipt = $providerReceipts->count() === 1 ? $providerReceipts->first() : null;
+                // The verified COMPLETE callback finalizes the order and writes its receipt atomically.
+                // Legacy receipts omit payment_status; the canonical writer also leaves it null.
+                // Reject a contradictory status when one is stored, without querying a legacy column.
+                $providerStatus = $providerReceipt?->getAttributes()['payment_status'] ?? null;
                 $providerPaid = $order->payfast_paid && filled($order->payfast_pf_payment_id) && $providerReceipt
+                    && ($providerStatus === null || $providerStatus === 'COMPLETE')
                     && round((float) $providerReceipt->amount_gross, 2) === round((float) $order->payfast_amount_due, 2)
                     && (int) $providerReceipt->custom_int2 === (int) $order->player_id
                     && (int) $providerReceipt->custom_int3 === (int) $order->event_id
