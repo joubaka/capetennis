@@ -561,6 +561,10 @@ class HeadOfficeController extends Controller
   ) {
     $this->authorize('team-draw.createFormat', $event);
 
+    if ($request->has('draws') || $request->has('batch_key')) {
+      return $this->processTeamDrawSelection($request, $event, false);
+    }
+
     $validated = $request->validate([
       'format_id' => ['nullable', 'integer', Rule::exists('team_event_formats', 'id')->where(fn ($query) => $query->where('event_id', $event->id)->orWhereNull('event_id'))],
       'draw_type_id'   => 'required|integer|exists:draw_types,id',
@@ -1050,6 +1054,10 @@ class HeadOfficeController extends Controller
   {
     $this->authorize('team-draw.createFormat', $event);
 
+    if ($request->has('draws') || $request->has('batch_key')) {
+      return $this->processTeamDrawSelection($request, $event, true);
+    }
+
     $validated = $request->validate([
       'format_id' => ['nullable', 'integer', Rule::exists('team_event_formats', 'id')->where(fn ($query) => $query->where('event_id', $event->id)->orWhereNull('event_id'))],
       'draw_type_id'   => 'required|integer|exists:draw_types,id',
@@ -1077,6 +1085,42 @@ class HeadOfficeController extends Controller
       'categories' => $categories->map(fn ($c) => ['id' => $c->id, 'name' => $c->name ?? $c->category]),
       'event_id'   => $event->id,
     ]);
+  }
+
+  private function processTeamDrawSelection(Request $request, Event $event, bool $preview)
+  {
+    $rules = [
+      'drawName' => 'required|string|max:255',
+      'draw_type_id' => ['required', 'integer', Rule::exists('draw_types', 'id')->where('type', 'team')],
+      'category_ids' => 'required|array|min:1|max:100',
+      'category_ids.*' => ['integer', 'distinct', Rule::exists('category_events', 'id')->where('event_id', $event->id)],
+      'format_id' => ['nullable', 'integer', Rule::exists('team_event_formats', 'id')->where(fn ($q) => $q->where('event_id', $event->id)->orWhereNull('event_id'))],
+    ];
+    if ($request->has('draws')) {
+      $batchRules = ['draws' => 'required|array|min:1|max:100', 'batch_key' => 'required|string|max:64|regex:/^[a-zA-Z0-9-]+$/'];
+      foreach ($rules as $key => $rule) $batchRules['draws.*.'.$key] = $rule;
+      $validated = $request->validate($batchRules);
+      $items = $validated['draws'];
+    } else {
+      $validated = $request->validate($rules + ['batch_key' => 'required|string|max:64|regex:/^[a-zA-Z0-9-]+$/']);
+      $items = [$validated];
+      unset($items[0]['batch_key']);
+    }
+    $service = app(\App\Services\TeamDrawSelectionService::class);
+    if (!$preview) {
+      $created = $service->create($event, $items, $validated['batch_key']);
+      return response()->json(['success' => true, 'draw' => $created[0], 'draws' => $created]);
+    }
+    $previews = [];
+    foreach ($items as $item) {
+      try {
+        $plan = $service->plan($event, $item);
+        $previews[] = ['drawName' => $item['drawName'], 'readiness' => $plan['preview']];
+      } catch (\InvalidArgumentException $e) {
+        $previews[] = ['drawName' => $item['drawName'], 'readiness' => ['can_create' => false, 'ready' => false, 'warnings' => [$e->getMessage()], 'rounds' => []]];
+      }
+    }
+    return response()->json(['preview' => true, 'draws' => $previews, 'drawName' => $items[0]['drawName'], 'readiness' => $previews[0]['readiness']]);
   }
 
   private function resolveTeamDrawFormat(Event $event, ?int $formatId): ?TeamEventFormat

@@ -109,7 +109,7 @@ class TeamDrawRegenerationService
      */
     public function regenerateRubbersOnly(Draw $draw, bool $allowOverride = false): Collection
     {
-        $format = $draw->teamEventFormat;
+        $format = $draw->team_format_snapshot ? new TeamEventFormat($draw->team_format_snapshot) : $draw->teamEventFormat;
 
         if (!$format) {
             throw new \InvalidArgumentException(

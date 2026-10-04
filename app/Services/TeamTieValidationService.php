@@ -86,7 +86,7 @@ class TeamTieValidationService
             return;
         }
 
-        $team = Team::with('team_players')->findOrFail($teamId);
+        $team = app(TeamDrawSideResolver::class)->side(Draw::findOrFail($drawId), Team::with('team_players')->findOrFail($teamId));
 
         $validIds = $team->team_players->pluck('player_id')->toArray();
 
@@ -203,6 +203,11 @@ class TeamTieValidationService
         }
         $this->assertRequiredRubbersPresent($tie);
         $snapshot = $tie->draw?->team_format_snapshot;
+        if ($tie->draw?->team_draw_selection) {
+            $resolver = app(TeamDrawSideResolver::class);
+            $tie->setRelation('homeTeam', $resolver->side($tie->draw, $tie->homeTeam));
+            $tie->setRelation('awayTeam', $resolver->side($tie->draw, $tie->awayTeam));
+        }
         if (is_array($snapshot) && isset($snapshot['min_roster_size'], $snapshot['max_roster_size'])) {
             $snapshotFormat = new TeamEventFormat($snapshot);
             foreach ([$tie->homeTeam, $tie->awayTeam] as $team) {

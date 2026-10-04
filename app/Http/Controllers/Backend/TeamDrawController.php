@@ -256,6 +256,10 @@ class TeamDrawController extends Controller
 
         $this->authorize('team-draw.updateTeamDraw', $draw);
 
+        if ($draw->team_draw_selection) {
+            return response()->json(['success' => false, 'message' => 'A category-selected draw retains its original teams and format. Create a new draw to change the selection.'], 409);
+        }
+
         $validated = $request->validate([
             'format_id' => 'required|integer|exists:team_event_formats,id',
         ]);
@@ -305,6 +309,10 @@ class TeamDrawController extends Controller
 
         $this->authorize('team-draw.updateTeamDraw', $draw);
 
+        if ($draw->team_draw_selection) {
+            return response()->json(['success' => false, 'message' => 'A category-selected draw retains its original teams. Create a new draw to change the selection.'], 409);
+        }
+
         $validated = $request->validate([
             'team_ids'   => 'required|array|min:2',
             'team_ids.*' => 'integer|exists:teams,id',
@@ -350,6 +358,9 @@ class TeamDrawController extends Controller
         $allowOverride = (bool) ($validated['allow_override'] ?? false);
 
         // Resolve teams: from request override or from draw's sync'd list
+        if ($draw->team_draw_selection && !empty($validated['team_ids'])) {
+            return response()->json(['success' => false, 'message' => 'The selected source teams cannot be overridden.'], 409);
+        }
         if (!empty($validated['team_ids'])) {
             if ($scopeError = $this->requireTeamsInScope($validated['team_ids'], $event)) {
                 return $scopeError;
@@ -357,7 +368,7 @@ class TeamDrawController extends Controller
 
             $teams = Team::whereIn('id', $validated['team_ids'])->get();
         } else {
-            $teams = $draw->teams_in_draw;
+            $teams = app(\App\Services\TeamDrawSideResolver::class)->teams($draw);
         }
 
         if ($teams->count() < 2) {
@@ -488,7 +499,7 @@ class TeamDrawController extends Controller
 
             $teams = Team::whereIn('id', $validated['team_ids'])->get();
         } else {
-            $teams = $draw->teams_in_draw;
+            $teams = app(\App\Services\TeamDrawSideResolver::class)->teams($draw);
         }
 
         if ($teams->count() < 2) {

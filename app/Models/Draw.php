@@ -32,7 +32,7 @@ class Draw extends Model
         'team_scoring_rules',
         'team_format_snapshot',
     ];
-    protected $casts = ['team_scoring_rules' => 'array', 'team_format_snapshot' => 'array'];
+    protected $casts = ['team_scoring_rules' => 'array', 'team_format_snapshot' => 'array', 'team_draw_selection' => 'array'];
     public function drawFormat()
     {
         return $this->belongsTo(\App\Models\DrawFormats::class, 'drawType_id');

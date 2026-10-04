@@ -7,6 +7,11 @@
   var data = window.HeadOffice || {};
   var submitButton = form.querySelector('button[type="submit"]');
   var previewRevision = 0;
+  var batchKey = null;
+  function creationKey() {
+    if (!batchKey) batchKey = window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(36).slice(2);
+    return batchKey;
+  }
 
   function selectedMode() {
     var input = form.querySelector('input[name="draw_mode"]:checked');
@@ -20,6 +25,9 @@
   function setMode(mode) {
     var isTeam = mode === 'team';
     var isIndividual = mode === 'individual';
+    $('#bulkTeamGroup').toggleClass('d-none', !isTeam);
+    $('#bulkTeamDraws').prop('checked', false);
+    $('#bulkTeamChoices').addClass('d-none');
 
     $('#manualTeamCategories').prop('checked', false).prop('disabled', !isTeam);
     $('#manualCategoryToggleGroup').toggleClass('d-none', !isTeam);
@@ -54,6 +62,15 @@
 
   function updateCategorySelection() {
     var isTeam = selectedMode() === 'team';
+    var bulk = isTeam && document.getElementById('bulkTeamDraws').checked;
+    $('#bulkTeamChoices').toggleClass('d-none', !bulk);
+    $('#teamDrawTypeSection, #manualCategoryToggleGroup').toggleClass('d-none', !isTeam || bulk);
+    if (bulk) {
+      $('#categorySection, #type3Categories, #manualCategoryChoices').addClass('d-none');
+      if (submitButton) submitButton.textContent = 'Create Selected Draws';
+      return;
+    }
+    if (submitButton && isTeam) submitButton.textContent = 'Create Team Draw';
     var manual = isTeam && document.getElementById('manualTeamCategories').checked;
     var type = form.querySelector('input[name="draw_type_id"]:checked');
     var mixed = type && (type.value === '3' || type.dataset.mixed === '1');
@@ -67,7 +84,14 @@
     }
   }
 
-  $(document).on('change', '#manualTeamCategories, input[name="draw_type_id"]', updateCategorySelection);
+  $(document).on('change', '#bulkTeamDraws, #manualTeamCategories, input[name="draw_type_id"]', updateCategorySelection);
+  $('#selectAllDrawTypes, #selectAllDrawCategories').on('click', function () {
+    var name = this.id === 'selectAllDrawTypes' ? 'bulk_draw_types[]' : 'bulk_categories[]';
+    var inputs = Array.from(form.querySelectorAll('input[name="' + name + '"]'));
+    var checked = !inputs.every(function (input) { return input.checked; });
+    inputs.forEach(function (input) { input.checked = checked; });
+    form.dispatchEvent(new Event('change', { bubbles: true }));
+  });
 
   function updateIndividualName() {
     if (selectedMode() !== 'individual') return;
@@ -97,6 +121,7 @@
   });
 
   function teamPayload() {
+    if (document.getElementById('bulkTeamDraws').checked) return bulkPayload();
     var type = form.querySelector('input[name="draw_type_id"]:checked');
     var name = ($('#drawName').val() || '').trim();
     if (!name || !type) { showError('Enter a draw name and select a draw type'); return null; }
@@ -121,7 +146,33 @@
       });
     }
     return { _token: $('meta[name="csrf-token"]').attr('content'), drawName: name,
-      draw_type_id: type.value, category_ids: categories, format_id: $('#format_id').val() || null };
+      draw_type_id: type.value, category_ids: categories, format_id: $('#format_id').val() || null, batch_key: creationKey() };
+  }
+
+  function bulkPayload() {
+    var types = Array.from(form.querySelectorAll('input[name="bulk_draw_types[]"]:checked'));
+    var categories = Array.from(form.querySelectorAll('input[name="bulk_categories[]"]:checked'));
+    if (!types.length || !categories.length) { showError('Select draw types and categories to create'); return null; }
+    var draws = [];
+    types.forEach(function (type) {
+      if (type.dataset.code === 'mixed_doubles') {
+        var groups = {};
+        categories.forEach(function (category) {
+          if (!['boys', 'girls'].includes(category.dataset.gender)) return;
+          var key = category.dataset.age;
+          if (!groups[key]) groups[key] = [];
+          groups[key] = groups[key].concat(JSON.parse(category.dataset.pivotIds));
+        });
+        Object.keys(groups).forEach(function (age) {
+          draws.push({ drawName: age + ' – Mixed doubles', draw_type_id: type.value, category_ids: groups[age], format_id: $('#format_id').val() || null });
+        });
+      } else categories.forEach(function (category) {
+        draws.push({ drawName: category.dataset.name + ' – ' + type.dataset.name.replace(/^Team\s*-\s*/i, ''),
+          draw_type_id: type.value, category_ids: JSON.parse(category.dataset.pivotIds), format_id: $('#format_id').val() || null });
+      });
+    });
+    if (!draws.length) { showError('Select boys and girls categories for mixed doubles'); return null; }
+    return { _token: $('meta[name="csrf-token"]').attr('content'), draws: draws, batch_key: creationKey() };
   }
 
   function responseError(xhr) {
@@ -136,11 +187,12 @@
     parent.appendChild(line);
   }
 
-  function renderPreview(readiness) {
+  function renderPreview(readiness, target) {
     var container = document.getElementById('teamDrawPreview');
+    if (target) container = target;
     container.replaceChildren();
     container.classList.remove('d-none');
-    previewLine(container, (readiness.format_name || 'No format') + ': ' + readiness.team_count + ' teams, ' +
+    if (readiness.team_count !== undefined) previewLine(container, (readiness.format_name || 'No format') + ': ' + readiness.team_count + ' teams, ' +
       readiness.round_count + ' rounds, ' + readiness.tie_count + ' ties, ' + readiness.rubber_count +
       ' rubbers, ' + readiness.bye_count + ' byes.', 'fw-semibold mb-2');
     (readiness.warnings || []).forEach(function (warning) { previewLine(container, warning, 'text-warning mb-1'); });
@@ -156,11 +208,9 @@
         previewLine(detail, tie.home_team.name + ' vs ' + tie.away_team.name, 'fw-semibold mt-2');
         (tie.rubbers || []).forEach(function (rubber) {
           previewLine(detail, rubber.sequence + '. ' + rubber.name + ' (' + rubber.rubber_code.replace(/_/g, ' ') + ')', 'small');
-          (rubber.slots || []).forEach(function (slot) {
-            var home = slot.team1_name || 'Missing player';
-            var away = slot.team2_name || 'Missing player';
-            previewLine(detail, 'Slot ' + slot.slot_no + ': ' + home + ' vs ' + away, 'small text-muted');
-          });
+          var home = (rubber.slots || []).map(function (slot) { return slot.team1_name || 'Missing player'; }).join(' + ');
+          var away = (rubber.slots || []).map(function (slot) { return slot.team2_name || 'Missing player'; }).join(' + ');
+          previewLine(detail, home + ' vs ' + away, 'small text-muted');
         });
       });
       container.appendChild(detail);
@@ -174,12 +224,20 @@
     var revision = previewRevision;
     button.disabled = true;
     $.post(data.previewUrl, payload).done(function (response) {
-      if (revision === previewRevision && selectedMode() === 'team') renderPreview(response.readiness);
+      if (revision !== previewRevision || selectedMode() !== 'team') return;
+      if (response.draws && response.draws.length > 1) {
+        var container = document.getElementById('teamDrawPreview'); container.replaceChildren(); container.classList.remove('d-none');
+        response.draws.forEach(function (draw) {
+          var section = document.createElement('details'); section.className = 'border rounded p-2 mt-2';
+          var summary = document.createElement('summary'); summary.textContent = draw.drawName + (draw.readiness.can_create === false ? ' — needs attention' : '');
+          section.appendChild(summary); var body = document.createElement('div'); section.appendChild(body); renderPreview(draw.readiness, body); container.appendChild(section);
+        });
+      } else renderPreview(response.readiness);
     })
       .fail(responseError).always(function () { button.disabled = false; });
   });
-  form.addEventListener('change', function () { previewRevision++; $('#teamDrawPreview').empty().addClass('d-none'); });
-  form.addEventListener('input', function () { previewRevision++; $('#teamDrawPreview').empty().addClass('d-none'); });
+  form.addEventListener('change', function () { batchKey = null; previewRevision++; $('#teamDrawPreview').empty().addClass('d-none'); });
+  form.addEventListener('input', function () { batchKey = null; previewRevision++; $('#teamDrawPreview').empty().addClass('d-none'); });
 
   // Capture the individual submission before the legacy team-only handler.
   form.addEventListener('submit', function (event) {

@@ -488,12 +488,9 @@ class TeamFixtureController extends Controller
       $homePlayers = $validated['home_players'] ?? [];
       $awayPlayers = $validated['away_players'] ?? [];
 
-      $validHome = DB::table('team_players')
-        ->where('team_id', $team_fixture->teamTie->home_team_id)
-        ->whereIn('player_id', $homePlayers)->pluck('player_id')->map(fn($id) => (int) $id)->all();
-      $validAway = DB::table('team_players')
-        ->where('team_id', $team_fixture->teamTie->away_team_id)
-        ->whereIn('player_id', $awayPlayers)->pluck('player_id')->map(fn($id) => (int) $id)->all();
+      $resolver = app(\App\Services\TeamDrawSideResolver::class);
+      $validHome = $resolver->side($draw, $tie->homeTeam)->team_players->pluck('player_id')->map(fn ($id) => (int) $id)->all();
+      $validAway = $resolver->side($draw, $tie->awayTeam)->team_players->pluck('player_id')->map(fn ($id) => (int) $id)->all();
 
       if (array_diff($homePlayers, $validHome) || array_diff($awayPlayers, $validAway)) {
         throw ValidationException::withMessages([

@@ -59,7 +59,7 @@ class TeamTieGenerationService
         }
 
         $draw   = $tie->draw;
-        $format = $draw?->teamEventFormat;
+        $format = $draw?->team_format_snapshot ? new TeamEventFormat($draw->team_format_snapshot) : $draw?->teamEventFormat;
 
         if (!$format) {
             throw new \InvalidArgumentException(
@@ -162,7 +162,7 @@ class TeamTieGenerationService
      */
     public function generateForAllTies(\App\Models\Draw $draw, bool $allowOverride = false): Collection
     {
-        $format = $draw->teamEventFormat;
+        $format = $draw->team_format_snapshot ? new TeamEventFormat($draw->team_format_snapshot) : $draw->teamEventFormat;
 
         if (!$format) {
             throw new \InvalidArgumentException(

@@ -186,4 +186,14 @@ class TeamFixture extends Model
   {
     return $this->belongsTo(\App\Models\TeamTie::class, 'team_tie_id');
   }
+
+  public function getHomeSideNameAttribute(): ?string
+  {
+    return $this->teamTie?->home_side_name ?? $this->homeTeam?->name;
+  }
+
+  public function getAwaySideNameAttribute(): ?string
+  {
+    return $this->teamTie?->away_side_name ?? $this->awayTeam?->name;
+  }
 }

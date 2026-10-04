@@ -44,8 +44,9 @@ class TeamPlayerAutoAssignService
         // Delete any existing assignments (idempotent re-run)
         $rubber->fixturePlayers()->delete();
 
-        $homeTeam = $tie->homeTeam;   // may be null (bye)
-        $awayTeam = $tie->awayTeam;   // may be null (bye)
+        $resolver = app(TeamDrawSideResolver::class);
+        $homeTeam = $resolver->side($tie->draw, $tie->homeTeam);
+        $awayTeam = $resolver->side($tie->draw, $tie->awayTeam);
 
         $slots = $this->resolveSlots($template, $homeTeam, $awayTeam);
 

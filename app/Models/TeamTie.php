@@ -56,6 +56,16 @@ class TeamTie extends Model
         return $this->belongsTo(Team::class, 'winner_team_id');
     }
 
+    public function getHomeSideNameAttribute(): ?string
+    {
+        return app(\App\Services\TeamDrawSideResolver::class)->label($this->draw, $this->homeTeam);
+    }
+
+    public function getAwaySideNameAttribute(): ?string
+    {
+        return app(\App\Services\TeamDrawSideResolver::class)->label($this->draw, $this->awayTeam);
+    }
+
     public function rubbers()
     {
         return $this->hasMany(TeamFixture::class, 'team_tie_id')->orderBy('rubber_sequence');
