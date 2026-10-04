@@ -59,6 +59,9 @@ jobs:
       - name: Test legacy MySQL registration status upgrade
         run: php vendor/bin/phpunit tests/Feature/CategoryEventRegistrationStatusMigrationTest.php --fail-on-skipped
 
+      - name: Test team event migrations and complete preset workflows on MySQL
+        run: php vendor/bin/phpunit tests/Feature/TeamDraw/TeamEventAdditiveMigrationTest.php tests/Feature/TeamDraw/TeamFullPresetAcceptanceTest.php --fail-on-skipped
+
   # ---------------------------------------------------------------
   # Code quality gate — runs fast, blocks all other jobs if it fails
   # ---------------------------------------------------------------

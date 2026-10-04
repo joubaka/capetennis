@@ -11,6 +11,16 @@ class TeamEventAdditiveMigrationTest extends TestCase
 {
     use DatabaseTruncation;
 
+    protected function beforeTruncatingDatabase(): void
+    {
+        // RefreshDatabase retains its in-memory PDO between tests, but this
+        // truncation test uses a new connection and needs its own schema.
+        if (config('database.default') === 'sqlite'
+            && config('database.connections.sqlite.database') === ':memory:') {
+            \Illuminate\Foundation\Testing\RefreshDatabaseState::$migrated = false;
+        }
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

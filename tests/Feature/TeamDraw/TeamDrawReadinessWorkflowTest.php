@@ -175,5 +175,3 @@ class TeamDrawReadinessWorkflowTest extends TestCase
             ->assertOk()->assertSee('id="format_id"', false)->assertSee($format->name);
     }
 }
-
-
