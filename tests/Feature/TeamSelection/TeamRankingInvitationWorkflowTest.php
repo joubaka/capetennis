@@ -5028,6 +5028,144 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         ]))->assertSessionHasErrors('activation');
     }
 
+    private function invitationCashRefundScenario(bool $hybrid = false): array
+    {
+        [$event, $team, $import, $selected, , $order, , $admin] = $this->invitationTransferScenario(false);
+        $event->update(['withdrawal_deadline' => now()->addWeek()]);
+        $providerGross = $hybrid ? 450 : 490;
+        if ($hybrid) DB::table('wallet_transactions')->where('source_id', $order->id)->update(['amount' => 40]);
+        else DB::table('wallet_transactions')->where('source_id', $order->id)->delete();
+        $order->update(['wallet_reserved' => $hybrid ? 40 : 0, 'wallet_debited' => $hybrid, 'payfast_amount_due' => $providerGross,
+            'payfast_paid' => true, 'payfast_pf_payment_id' => 'cash-order-'.$order->id, 'payfast_handed_off_at' => now()]);
+        $receipt = new \App\Models\Transaction;
+        $receipt->forceFill(['pf_payment_id' => $order->payfast_pf_payment_id, 'amount_gross' => $providerGross, 'payment_status' => 'COMPLETE',
+            'custom_str5' => 'TeamOrder', 'custom_int5' => $order->id, 'custom_int2' => $order->player_id, 'custom_int3' => $event->id, 'custom_int4' => $order->user_id])->save();
+        $amounts = app(\App\Domain\Refunds\Services\TeamRefundCalculator::class)->calculate($order->fresh());
+        $payload = ['expected_order_id' => $order->id, 'expected_player_id' => $selected->player_id, 'expected_roster_rank' => $selected->roster_rank,
+            'reference' => 'Cash receipt 001', 'reason' => 'Original payer received cash', 'confirm_cash_paid' => 1, 'disposition' => 'remove',
+            'refund_fingerprint' => TeamPaymentService::cashRefundFingerprint($order->fresh(), $amounts)];
+        return [$event, $team, $import, $selected, $order, $receipt, $admin, route('backend.team-selection.invitations.cash-refund', [$event, $import, $selected]), $payload, $amounts];
+    }
+
+    public function test_super_user_records_cash_refund_without_provider_dispatch_wallet_credit_or_replacing_the_withdrawn_player(): void
+    {
+        Queue::fake();
+        Mail::fake();
+        \Illuminate\Support\Facades\Http::preventStrayRequests();
+        [$event, $team, $import, $selected, $order, $receipt, $admin, $url, $payload, $amounts] = $this->invitationCashRefundScenario();
+        $import->update(['auto_replacement_enabled' => true]);
+        $reserveBefore = $import->invitations()->where('status', TeamSelectionInvitation::RESERVE)->get()->map->getAttributes()->all();
+        $orderBefore = $order->fresh()->getAttributes();
+        $receiptBefore = $receipt->fresh()->getAttributes();
+        $ledger = DB::table('wallet_transactions')->get()->toJson();
+        $otherTeam = Team::factory()->create(['category_event_id' => $team->category_event_id, 'region_id' => $team->region_id]);
+        TeamPlayer::create(['team_id' => $otherTeam->id, 'player_id' => $selected->player_id, 'rank' => 1, 'pay_status' => 0]);
+        $draw = Draw::factory()->create(['event_id' => $event->id]);
+        $tie = \App\Models\TeamTie::create(['draw_id' => $draw->id, 'round_nr' => 1, 'tie_nr' => 1, 'home_team_id' => $team->id, 'away_team_id' => $otherTeam->id, 'status' => 'draft']);
+        $fixture = TeamFixture::create(['draw_id' => $draw->id, 'team_tie_id' => $tie->id, 'match_nr' => 1]);
+        $assignment = TeamFixturePlayer::create(['team_fixture_id' => $fixture->id, 'slot_no' => 1, 'team1_id' => $selected->player_id, 'team2_id' => $selected->player_id]);
+        $page = $this->actingAs($admin)->get(route('backend.team-selection.index', $event))->assertOk()->assertSee('Payment management')->assertSee('PayFast payment')->assertSee('Record cash refund')->assertSee('Keep selected at same rank, unpaid');
+        if (getenv('CT_FINAL_ROSTER_QA')) file_put_contents(storage_path('app/testing/cash-refund-qa.html'), $page->getContent());
+        $this->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
+        $after = $order->fresh();
+        $this->assertTrue((bool) $after->pay_status);
+        $this->assertTrue((bool) $after->payfast_paid);
+        $this->assertSame((int) $orderBefore['user_id'], (int) $after->user_id);
+        $this->assertSame((int) $orderBefore['player_id'], (int) $after->player_id);
+        $this->assertSame('cash', $after->refund_method);
+        $this->assertSame('completed', $after->refund_status);
+        $this->assertSame($amounts['net'], (float) $after->refund_net);
+        $this->assertNotNull($after->withdrawn_at);
+        $this->assertSame(TeamSelectionInvitation::WITHDRAWN, $selected->fresh()->status);
+        $this->assertSame($reserveBefore, $import->invitations()->whereIn('id', array_column($reserveBefore, 'id'))->get()->map->getAttributes()->all());
+        $this->assertNull($assignment->fresh()->team1_id);
+        $this->assertSame((int) $selected->player_id, (int) $assignment->fresh()->team2_id);
+        $this->assertSame($receiptBefore, $receipt->fresh()->getAttributes());
+        $this->assertSame($ledger, DB::table('wallet_transactions')->get()->toJson());
+        $this->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
+        $this->postJson($url, array_replace($payload, ['reference' => 'different']))->assertUnprocessable();
+        $this->assertSame(1, \Spatie\Activitylog\Models\Activity::where('description', 'super user recorded team cash refund to original payer')->count());
+        Queue::assertNothingPushed();
+        Mail::assertNothingSent();
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+    }
+
+    public function test_recorded_hybrid_cash_refund_can_keep_same_selected_rank_unpaid_and_create_fresh_checkout_without_fake_withdrawal(): void
+    {
+        Queue::fake();
+        Mail::fake();
+        \Illuminate\Support\Facades\Http::preventStrayRequests();
+        [$event, $team, $import, $selected, $order, $receipt, $admin, $url, $payload, $amounts] = $this->invitationCashRefundScenario(true);
+        $payload['disposition'] = 'keep';
+        $rank = $selected->roster_rank;
+        $ledger = DB::table('wallet_transactions')->get()->toJson();
+        $receiptBefore = $receipt->fresh()->getAttributes();
+        $this->actingAs($admin)->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertNull($order->fresh()->withdrawn_at);
+        $this->assertNull($order->fresh()->withdrawn_by);
+        $this->assertTrue((bool) $order->fresh()->pay_status);
+        $this->assertTrue((bool) $order->fresh()->wallet_debited);
+        $this->assertSame('completed', $order->fresh()->refund_status);
+        $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $selected->fresh()->status);
+        $this->assertSame($rank, $selected->fresh()->roster_rank);
+        $this->assertNull($selected->fresh()->order_id);
+        $this->assertNull($selected->fresh()->paid_at);
+        $this->assertDatabaseHas('team_players', ['team_id' => $team->id, 'player_id' => $selected->player_id, 'rank' => $rank, 'pay_status' => 0]);
+        $this->assertSame($receiptBefore, $receipt->fresh()->getAttributes());
+        $this->assertSame($ledger, DB::table('wallet_transactions')->get()->toJson());
+        $this->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
+        $fresh = app(TeamPaymentService::class)->ensureOrder($order->user, $team, $selected->player, $event, 490);
+        $this->assertNotEquals($order->id, $fresh->id);
+        $this->assertFalse((bool) $fresh->pay_status);
+        app(TeamSelectionInvitationService::class)->attachOrder($fresh);
+        $this->assertSame((int) $fresh->id, (int) $selected->fresh()->order_id);
+        $this->postJson($url, $payload)->assertUnprocessable();
+        $this->assertDatabaseCount('team_payment_orders', 2);
+        try {
+            DB::transaction(function () use ($fresh) {
+                $duplicate = $fresh->replicate();
+                $duplicate->save();
+            });
+            $this->fail('Two active unpaid orders must remain impossible.');
+        } catch (QueryException $exception) {
+            $this->assertStringContainsString('team_payment_orders', $exception->getMessage());
+        }
+        $markerMigration = require database_path('migrations/2026_10_04_120000_allow_completed_refunded_team_order_history.php');
+        try {
+            $markerMigration->down();
+            $this->fail('Rollback must reject retained refund history beside a new active checkout.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('completed refund history', $exception->getMessage());
+        }
+        $this->assertSame(1, \Spatie\Activitylog\Models\Activity::where('description', 'super user recorded team cash refund to original payer')->count());
+        Queue::assertNothingPushed();
+        Mail::assertNothingSent();
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+    }
+
+    public function test_cash_refund_rejects_unverified_stale_unauthorized_and_expired_requests_without_payment_or_roster_changes(): void
+    {
+        [$event, $team, $import, $selected, $order, $receipt, $admin, $url, $payload] = $this->invitationCashRefundScenario();
+        $before = $order->fresh()->getAttributes();
+        $selectedBefore = $selected->fresh()->getAttributes();
+        $this->actingAs(User::factory()->create())->postJson($url, $payload)->assertForbidden();
+        $this->actingAs($admin)->postJson($url, array_replace($payload, ['refund_fingerprint' => str_repeat('0', 64)]))->assertUnprocessable();
+        $this->postJson($url, array_diff_key($payload, ['confirm_cash_paid' => 1]))->assertUnprocessable();
+        $this->postJson($url, array_replace($payload, ['expected_player_id' => Player::factory()->create()->id]))->assertUnprocessable();
+        $other = Event::factory()->create();
+        $this->postJson(route('backend.team-selection.invitations.cash-refund', [$other, $import, $selected]), $payload)->assertNotFound();
+        $receipt->forceFill(['payment_status' => 'FAILED'])->save();
+        $this->postJson($url, $payload)->assertUnprocessable();
+        $receipt->forceFill(['payment_status' => 'COMPLETE', 'amount_gross' => 489])->save();
+        $this->postJson($url, $payload)->assertUnprocessable();
+        $receipt->forceFill(['amount_gross' => 490])->save();
+        $event->update(['withdrawal_deadline' => now()->subMinute()]);
+        foreach (['remove', 'keep'] as $disposition) $this->postJson($url, array_replace($payload, ['disposition' => $disposition]))->assertUnprocessable();
+        $this->assertSame($before, $order->fresh()->getAttributes());
+        $this->assertSame($selectedBefore, $selected->fresh()->getAttributes());
+        $this->assertSame(0, \Spatie\Activitylog\Models\Activity::where('description', 'super user recorded team cash refund to original payer')->count());
+    }
+
     public function test_any_reserve_can_choose_any_open_position_without_displacing_players_or_sending_mail(): void
     {
         Queue::fake();

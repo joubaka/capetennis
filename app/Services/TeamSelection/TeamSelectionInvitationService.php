@@ -557,9 +557,9 @@ final class TeamSelectionInvitationService
         });
     }
 
-    public function markWithdrawn(int $eventId, int $teamId, int $playerId, ?User $actor = null): ?TeamSelectionInvitation
+    public function markWithdrawn(int $eventId, int $teamId, int $playerId, ?User $actor = null, bool $allowAutomaticReplacement = true): ?TeamSelectionInvitation
     {
-        return DB::transaction(function () use ($eventId, $teamId, $playerId, $actor) {
+        return DB::transaction(function () use ($eventId, $teamId, $playerId, $actor, $allowAutomaticReplacement) {
             $event = Event::query()->lockForUpdate()->findOrFail($eventId);
             $selectionImport = TeamSelectionImport::query()->where('event_id', $event->id)
                 ->whereHas('invitations', fn ($query) => $query->where('team_id', $teamId)->where('player_id', $playerId)
@@ -599,7 +599,7 @@ final class TeamSelectionInvitationService
                 'vacated_roster_rank' => $rank,
                 'roster_rank' => null,
             ]);
-            $reserve = $invitation->selectionImport?->auto_replacement_enabled
+            $reserve = $allowAutomaticReplacement && $invitation->selectionImport?->auto_replacement_enabled
                 ? $this->promoteNextReserve($invitation, $selectionImport, $rank)
                 : null;
 

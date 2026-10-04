@@ -261,7 +261,7 @@ class TeamPaymentService
                     ->lockForUpdate()
                     ->orderByDesc('id')
                     ->get();
-                $existing = $orders->first(fn (TeamPaymentOrder $order): bool => $order->withdrawn_at === null
+                $existing = $orders->first(fn (TeamPaymentOrder $order): bool => $order->withdrawn_at === null && $order->refund_status !== 'completed'
                     && ! in_array((int) $order->id, $excludedHistoricalOrderIds, true));
 
                 if ($existing) {
@@ -836,6 +836,141 @@ class TeamPaymentService
                 foreach ($importedSlots as $slot) $slot->update(['pay_status' => 0]);
             });
         });
+    }
+
+    public function assertVerifiedTeamPayfastSettlement(TeamPaymentOrder $order): void
+    {
+        $receipts = \App\Models\Transaction::where('custom_str5', 'TeamOrder')->where('custom_int5', $order->id)->lockForUpdate()->get();
+        $debits = \App\Models\WalletTransaction::where('source_type', 'team_registration_wallet_payment')->where('source_id', $order->id)->lockForUpdate()->get();
+        $walletGross = round((float) $order->wallet_reserved, 2);
+        $providerGross = round((float) $order->payfast_amount_due, 2);
+        $receipt = $receipts->count() === 1 ? $receipts->first() : null;
+        $walletValid = $walletGross === 0.0 ? ! $order->wallet_debited && $debits->isEmpty()
+            : $order->wallet_debited && $debits->count() === 1 && $debits->first()->type === 'debit'
+                && round((float) $debits->first()->amount, 2) === $walletGross
+                && $order->user && $order->user->wallet()->whereKey($debits->first()->wallet_id)->exists();
+        if (! $order->pay_status || ! $order->payfast_paid || $order->collection_status === 'paid_privately'
+            || $providerGross <= 0 || $walletGross < 0 || ! $walletValid || ! $receipt
+            || blank($order->payfast_pf_payment_id) || $receipt->pf_payment_id !== $order->payfast_pf_payment_id
+            || (filled($receipt->payment_status) && $receipt->payment_status !== 'COMPLETE')
+            || round((float) $receipt->amount_gross, 2) !== $providerGross
+            || (int) $receipt->custom_int2 !== (int) $order->player_id || (int) $receipt->custom_int3 !== (int) $order->event_id
+            || (int) $receipt->custom_int4 !== (int) $order->user_id
+            || round($walletGross + $providerGross, 2) !== round((float) $order->total_amount, 2)
+            || $this->hasUnresolvedPayfastHandoff($order)) {
+            throw ValidationException::withMessages(['cash_refund' => 'Exact verified PayFast and wallet settlement evidence is required before recording a cash refund.']);
+        }
+    }
+
+    public function recordInvitationCashRefund(TeamSelectionInvitation $invitation, User $actor, int $expectedOrderId, int $expectedPlayerId, int $expectedRank, string $reference, string $reason, string $disposition, string $expectedFingerprint): void
+    {
+        abort_unless($actor->hasRole('super-user'), 403);
+        DB::transaction(function () use ($invitation, $actor, $expectedOrderId, $expectedPlayerId, $expectedRank, $reference, $reason, $disposition, $expectedFingerprint): void {
+            $event = Event::lockForUpdate()->findOrFail($invitation->event_id);
+            $import = \App\Models\TeamSelectionImport::lockForUpdate()->findOrFail($invitation->import_id);
+            $team = Team::withoutGlobalScopes()->lockForUpdate()->findOrFail($invitation->team_id);
+            $selected = TeamSelectionInvitation::lockForUpdate()->findOrFail($invitation->id);
+            $order = TeamPaymentOrder::lockForUpdate()->findOrFail($expectedOrderId);
+            $fail = fn (string $message) => throw ValidationException::withMessages(['cash_refund' => $message]);
+            if ($expectedRank < 1 || trim($reference) === '' || trim($reason) === ''
+                || (int) $selected->event_id !== (int) $event->id || (int) $import->event_id !== (int) $event->id
+                || (int) $selected->import_id !== (int) $import->id || (int) $selected->team_id !== (int) $team->id
+                || (int) $selected->region_id !== (int) $import->region_id || (int) $team->region_id !== (int) $import->region_id
+                || ! $team->category()->where('event_id', $event->id)->exists()
+                || ! in_array($disposition, ['remove', 'keep'], true) || (int) $selected->player_id !== $expectedPlayerId
+                || (int) $order->event_id !== (int) $event->id || (int) $order->team_id !== (int) $team->id
+                || $order->effective_player_id !== $expectedPlayerId) $fail('This payment no longer matches the selected event, team and player.');
+            if ($order->refund_status === 'completed' && (($disposition === 'remove' && $selected->status === TeamSelectionInvitation::WITHDRAWN
+                && (int) $selected->vacated_roster_rank === $expectedRank && (int) $selected->order_id === $expectedOrderId)
+                || ($disposition === 'keep' && $selected->status === TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT && (int) $selected->roster_rank === $expectedRank
+                    && ! $selected->order_id && in_array($expectedOrderId, data_get($selected->snapshot_json, 'restoration.previous_order_ids', []), true)))) {
+                app(\App\Domain\Refunds\Services\RefundExecutionService::class)->recordTeamCashRefund($order, $actor, $reference, $reason, $disposition);
+                return;
+            }
+            if (! in_array($import->status, ['draft', 'sent'], true)
+                || \App\Models\TeamSelectionImport::where('event_id', $event->id)->where('region_id', $import->region_id)->where('id', '>', $import->id)->exists()
+                || $selected->status !== TeamSelectionInvitation::PAID_CONFIRMED || (int) $selected->roster_rank !== $expectedRank || (int) $selected->order_id !== $expectedOrderId
+                || $order->withdrawn_at || $order->hasRefund() || $order->refunded_at || $order->refund_waived_at || $order->refund_waived_by
+                || filled($order->refund_waiver_reason) || filled($order->refund_method)
+                || (float) $order->refund_gross !== 0.0 || (float) $order->refund_fee !== 0.0 || (float) $order->refund_net !== 0.0
+                || \App\Models\TrialParticipation::where('order_id', $order->id)->exists()
+                || DB::table('trial_provider_refund_attempts')->where('order_id', $order->id)->exists()) $fail('Only a current settled team payment without withdrawal or refund history can be recorded as a cash refund.');
+            $this->assertVerifiedTeamPayfastSettlement($order);
+            $amounts = app(\App\Domain\Refunds\Services\TeamRefundCalculator::class)->calculate($order);
+            if (! hash_equals(self::cashRefundFingerprint($order, $amounts), $expectedFingerprint)) $fail('The displayed refund calculation changed. Refresh and confirm the current cash amount.');
+            if (now()->gt($event->withdrawalCloseAt()) || $amounts['net'] <= 0) $fail('The standard withdrawal refund deadline or refundable amount does not allow this cash refund.');
+            $mirrors = TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('rank', $expectedRank)->lockForUpdate()->get();
+            $imported = \App\Models\NoProfileTeamPlayer::where('team_id', $team->id)->where('rank', $expectedRank)->lockForUpdate()->get();
+            if ($mirrors->count() !== 1 || (int) $mirrors->first()->player_id !== $expectedPlayerId || (int) $mirrors->first()->pay_status !== 1
+                || ($team->noProfile && ($imported->count() !== 1 || (int) $imported->first()->player_profile !== $expectedPlayerId || (int) $imported->first()->pay_status !== 1))
+                || (! $team->noProfile && $imported->isNotEmpty())) $fail('The selected player and paid roster position no longer agree.');
+            $originalMirror = $mirrors->first()->getAttributes();
+            $originalImported = $imported->map->getAttributes()->all();
+            $activeSelected = TeamSelectionInvitation::where('import_id', $import->id)->where('team_id', $team->id)->where('player_id', $expectedPlayerId)
+                ->whereIn('status', [TeamSelectionInvitation::INVITED, TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, TeamSelectionInvitation::PAID_CONFIRMED])
+                ->where('roster_rank', '>', 0)->lockForUpdate()->get();
+            if ($activeSelected->count() !== 1 || (int) $activeSelected->first()->id !== (int) $selected->id) $fail('The active selected invitation identity is inconsistent. Refresh before recording a cash refund.');
+            if ($disposition === 'keep') {
+                $requested = app(\App\Domain\Finance\Services\RefundRequestService::class)->requestRetainedTeamCashRefund($order, $selected, $actor, $reference, $reason);
+                app(\App\Domain\Refunds\Services\RefundExecutionService::class)->recordTeamCashRefund($requested, $actor, $reference, $reason, 'keep');
+                $previous = collect(data_get($selected->snapshot_json, 'restoration.previous_order_ids', []))->push($order->id)->unique()->values()->all();
+                $selected->update(['status' => TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, 'order_id' => null, 'paid_at' => null,
+                    'snapshot_json' => array_replace_recursive($selected->snapshot_json ?? [], ['restoration' => ['previous_order_ids' => $previous, 'fresh_registration_required' => true]])]);
+                $this->updateTeamPlayerSlot($mirrors->first(), ['pay_status' => 0]);
+                foreach ($imported as $slot) $slot->update(['pay_status' => 0]);
+                activity('team-selection')->performedOn($selected)->causedBy($actor)->withProperties([
+                    'order_id' => $order->id, 'original_roster_rank' => $expectedRank, 'original_roster_mirror' => $originalMirror,
+                    'original_imported_slots' => $originalImported, 'disposition' => 'keep', 'fresh_registration_required' => true,
+                ])->log('super user retained selected player unpaid after recorded cash refund');
+                return;
+            }
+            if (\App\Models\CategoryEventRegistration::withTrashed()->whereHas('categoryEvent', fn ($query) => $query->where('event_id', $event->id))
+                ->whereHas('registration.players', fn ($query) => $query->where('players.id', $expectedPlayerId))->exists()) $fail('Resolve existing individual registration participation before a team cash refund.');
+            $fixtures = \App\Models\TeamFixturePlayer::whereHas('fixture.draw', fn ($query) => $query->where('event_id', $event->id))
+                ->where(fn ($query) => $query->where('team1_id', $expectedPlayerId)->orWhere('team2_id', $expectedPlayerId)
+                    ->orWhereIn('team1_no_profile_id', $imported->pluck('id'))->orWhereIn('team2_no_profile_id', $imported->pluck('id')))->lockForUpdate()->get();
+            $fixtureChanges = [];
+            $otherRoster = TeamPlayer::withoutGlobalScopes()->where('team_id', '!=', $team->id)->where('player_id', $expectedPlayerId)
+                ->whereHas('team.category', fn ($query) => $query->where('event_id', $event->id))->lockForUpdate()->exists();
+            foreach ($fixtures as $fixturePlayer) {
+                $fixture = \App\Models\TeamFixture::without('fixturePlayers')->lockForUpdate()->findOrFail($fixturePlayer->team_fixture_id);
+                $tie = $fixture->team_tie_id ? \App\Models\TeamTie::lockForUpdate()->findOrFail($fixture->team_tie_id) : null;
+                $changes = [];
+                foreach ([1 => 'home_team_id', 2 => 'away_team_id'] as $side => $teamColumn) {
+                    $playerColumn = 'team'.$side.'_id';
+                    $importedColumn = 'team'.$side.'_no_profile_id';
+                    if ($imported->contains('id', $fixturePlayer->$importedColumn)) $changes[$importedColumn] = null;
+                    if ((int) $fixturePlayer->$playerColumn !== $expectedPlayerId) continue;
+                    if ($tie && (int) $tie->$teamColumn !== (int) $team->id) continue;
+                    if (! $tie && $otherRoster) $fail('A legacy fixture cannot identify which team this shared player represents. Resolve that fixture before recording a cash refund.');
+                    $changes[$playerColumn] = null;
+                }
+                if ($changes !== [] && ($fixture->fixtureResults()->lockForUpdate()->exists() || (int) $fixture->match_status === 2
+                    || $tie?->status === \App\Models\TeamTie::STATUS_COMPLETED)) $fail('Completed fixture participation must be resolved before recording this cash refund.');
+                $fixtureChanges[$fixturePlayer->id] = $changes;
+            }
+            $withdrawn = $this->recordWithdrawal($order, $actor);
+            foreach ($fixtures as $fixturePlayer) {
+                if ($fixtureChanges[$fixturePlayer->id] !== []) $fixturePlayer->update($fixtureChanges[$fixturePlayer->id]);
+            }
+            $this->updateTeamPlayerSlot($mirrors->first(), ['player_id' => 0, 'pay_status' => 0]);
+            foreach ($imported as $slot) $slot->delete();
+            activity('team-selection')->performedOn($selected)->causedBy($actor)->withProperties([
+                'order_id' => $order->id, 'original_roster_rank' => $expectedRank, 'original_roster_mirror' => $originalMirror,
+                'original_imported_slots' => $originalImported, 'automatic_replacement' => false, 'disposition' => 'remove',
+            ])->log('super user withdrew selected player for recorded cash refund');
+            app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->markWithdrawn($event->id, $team->id, $expectedPlayerId, $actor, allowAutomaticReplacement: false);
+            $requested = app(\App\Domain\Finance\Services\RefundRequestService::class)->requestTeamRefund($withdrawn, [
+                'refund_method' => 'cash', 'refund_status' => 'pending', 'refund_gross' => $amounts['gross'], 'refund_fee' => $amounts['fee'], 'refund_net' => $amounts['net'],
+            ], $actor);
+            app(\App\Domain\Refunds\Services\RefundExecutionService::class)->recordTeamCashRefund($requested, $actor, $reference, $reason);
+        });
+    }
+
+    public static function cashRefundFingerprint(TeamPaymentOrder $order, array $amounts): string
+    {
+        return hash('sha256', implode('|', [$order->id, $order->user_id, $order->effective_player_id,
+            number_format($amounts['gross'], 2, '.', ''), number_format($amounts['fee'], 2, '.', ''), number_format($amounts['net'], 2, '.', '')]));
     }
 
     public function markInvitationPaidPrivately(TeamSelectionInvitation $invitation, User $actor): TeamSelectionInvitation

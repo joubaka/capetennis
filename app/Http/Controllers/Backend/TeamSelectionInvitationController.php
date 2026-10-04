@@ -523,6 +523,18 @@ class TeamSelectionInvitationController extends Controller
         return back()->with('success', 'The private payment mark was corrected to unpaid. The original collection audit was preserved; no money was refunded and no email was sent.');
     }
 
+    public function recordCashRefund(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamPaymentService $service)
+    {
+        abort_unless($request->user()->hasRole('super-user'), 403);
+        abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
+        $this->authorizeImport($event, $selectionImport, $request->user());
+        $data = $request->validate(['expected_order_id' => ['required', 'integer', 'min:1'], 'expected_player_id' => ['required', 'integer', 'min:1'],
+            'expected_roster_rank' => ['required', 'integer', 'min:1'], 'reference' => ['required', 'string', 'max:255'],
+            'reason' => ['required', 'string', 'max:1000'], 'disposition' => ['required', 'in:remove,keep'], 'refund_fingerprint' => ['required', 'string', 'size:64'], 'confirm_cash_paid' => ['required', 'accepted']]);
+        $service->recordInvitationCashRefund($invitation, $request->user(), (int) $data['expected_order_id'], (int) $data['expected_player_id'], (int) $data['expected_roster_rank'], $data['reference'], $data['reason'], $data['disposition'], $data['refund_fingerprint']);
+        return back()->with('success', 'Cash refund recorded to the original payer. '.($data['disposition'] === 'keep' ? 'The player remains selected at the same rank and unpaid; a fresh checkout is required.' : 'The player was withdrawn and their roster place was freed.').' Original paid history was retained. No PayFast refund, wallet credit or email was sent.');
+    }
+
     public function promoteReserveManually(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)
     {
         abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);

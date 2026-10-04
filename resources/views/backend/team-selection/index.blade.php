@@ -495,6 +495,7 @@
                                   <td data-label="Ranking">@if(data_get($invitation->snapshot_json, 'selection_source') === 'manual_system_profile')<strong>Manual addition</strong><div class="small text-muted">Not in ranking snapshot</div>@else<strong>#{{ $invitation->ranking_position }}</strong><div class="small text-muted">{{ number_format((float)$invitation->total_points, 2) }} pts</div>@endif</td>
                                   <td data-label="Selection / payment">
                                     <span class="badge bg-label-{{ $statusTone }}">{{ str($invitation->status)->replace('_',' ')->title() }}</span>
+                                    @if($invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED)<div class="small text-muted mt-1">{{ $invitation->order?->collection_status === 'paid_privately' ? 'Manual / private collection' : ($invitation->order?->payfast_paid ? ($invitation->order->wallet_debited ? 'PayFast + wallet payment' : 'PayFast payment') : ($invitation->order?->wallet_debited ? 'Wallet payment' : 'Payment evidence unavailable')) }}</div>@endif
                                     @if($invitation->decline_method === 'system_primary_team_promotion')<div class="small text-info mt-1">{{ $invitation->decline_reason }}</div>@else<div class="small text-muted mt-1">Read only</div>@endif
                                     @if(auth()->user()->hasRole('super-user') && $invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED)
                                       @include('backend.team-selection._invitation-payment-transfer')
@@ -516,13 +517,20 @@
                                     @php($reserveActivationRank = $isReserve ? $openRosterRanks->first() : null)
                                     @php($canMarkPaidPrivately = !$isReserve && in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true))
                                     @php($canUndoPrivatePayment = auth()->user()->hasRole('super-user') && $invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED && $invitation->order?->collection_status === 'paid_privately' && !$invitation->order->wallet_debited && !$invitation->order->payfast_paid && !$invitation->order->payfast_handed_off_at && !$invitation->order->payfast_pf_payment_id && !$invitation->order->payfast_raw_data && (float) $invitation->order->wallet_reserved === 0.0 && !$invitation->order->withdrawn_at && !$invitation->order->hasRefund())
-                                    @php($hasRegionalActions = (bool) $reserveActivationRank || (in_array($invitation->status, [\App\Models\TeamSelectionInvitation::DECLINED, \App\Models\TeamSelectionInvitation::WITHDRAWN], true) && $invitation->vacated_roster_rank) || ($recipientEmail && !$isReserve) || $canMarkPaidPrivately || $canUndoPrivatePayment || $openVacancy)
+                                    @php($canManagePaidPayment = auth()->user()->hasRole('super-user') && $invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED)
+                                    @php($hasRegionalActions = (bool) $reserveActivationRank || (in_array($invitation->status, [\App\Models\TeamSelectionInvitation::DECLINED, \App\Models\TeamSelectionInvitation::WITHDRAWN], true) && $invitation->vacated_roster_rank) || ($recipientEmail && !$isReserve) || $canMarkPaidPrivately || $canUndoPrivatePayment || $canManagePaidPayment || $openVacancy)
                                     @if($hasRegionalActions)
                                     <div class="dropdown">
                                       <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" aria-label="Regional actions for {{ $invitation->player?->full_name ?: 'player' }}">
                                         Actions
                                       </button>
-                                      <div class="dropdown-menu dropdown-menu-end p-1 {{ (int) old('undo_private_invitation_id') === (int) $invitation->id ? 'show' : '' }}" style="min-width:15rem;">
+                                      <div class="dropdown-menu dropdown-menu-end p-1 {{ (int) old('undo_private_invitation_id') === (int) $invitation->id || (int) old('cash_refund_invitation_id') === (int) $invitation->id ? 'show' : '' }}" style="min-width:18rem;max-width:calc(100vw - 2rem);max-height:calc(100vh - 8rem);overflow-y:auto;white-space:normal;">
+                                    @if($canManagePaidPayment)
+                                      <div class="px-2 pt-1 small text-muted">Payment management · {{ $invitation->order_id ? 'Order #'.$invitation->order_id : 'No attached order' }}</div>
+                                      <div class="px-2 pb-2 small">{{ $invitation->order?->collection_status === 'paid_privately' ? 'Manual / private collection' : ($invitation->order?->payfast_paid ? ($invitation->order->wallet_debited ? 'PayFast + wallet payment' : 'PayFast payment') : ($invitation->order?->wallet_debited ? 'Wallet payment' : 'Payment evidence unavailable')) }}<br>Original payer: {{ $invitation->order?->user?->name ?: 'Payer unavailable' }}</div>
+                                      <button class="dropdown-item text-primary" type="button" data-show-payment-transfer="invitation-payment-transfer-{{ $invitation->id }}">Move payment to another player</button>
+                                      @include('backend.team-selection._cash-refund-action')
+                                    @endif
                                     @if($awaitingRestoredInvitation)
                                       <form method="POST" action="{{ route('backend.team-selection.invitations.email.send-restored', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('Send the invitation to this restored player now? Confirm the team positions are correct before continuing.');">@csrf<button class="dropdown-item text-success">Send invitation</button></form>
                                     @endif
@@ -1763,6 +1771,16 @@ document.addEventListener('DOMContentLoaded', function () {
     if (typeof bootstrap !== 'undefined') bootstrap.Modal.getOrCreateInstance(modal).show();
   });
 
+  document.querySelectorAll('[data-show-payment-transfer]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      const transfer = document.getElementById(button.dataset.showPaymentTransfer);
+      if (!transfer) return;
+      transfer.open = true;
+      transfer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const control = transfer.querySelector('select, summary');
+      if (control) control.focus({ preventScroll: true });
+    });
+  });
   document.querySelectorAll('[data-invitation-payment-transfer][open]').forEach(function (transfer) {
     const regionPanel = transfer.closest('[id^="region-panel-"]');
     const regionId = regionPanel?.id.replace('region-panel-', '');

@@ -8,7 +8,7 @@
     : ($transferTargets->isEmpty() ? 'No selected unpaid player is available. Activate a reserve first.' : null))));
   $transferFormOpen = (int) old('transfer_invitation_id') === (int) $invitation->id;
 @endphp
-<details class="mt-2" style="max-width:22rem;white-space:normal;" data-invitation-payment-transfer @if($transferFormOpen) open @endif>
+<details id="invitation-payment-transfer-{{ $invitation->id }}" class="mt-2" style="max-width:22rem;white-space:normal;" data-invitation-payment-transfer @if($transferFormOpen) open @endif>
   <summary class="small text-primary">Move payment to another player</summary>
   @if($transferFormOpen && $errors->any())<div class="alert alert-danger mt-2 small" role="alert">@foreach($errors->all() as $message)<div>{{ $message }}</div>@endforeach</div>@endif
   @if($transferUnavailable)
