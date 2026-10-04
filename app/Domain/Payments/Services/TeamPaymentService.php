@@ -862,10 +862,10 @@ class TeamPaymentService
         }
     }
 
-    public function recordInvitationCashRefund(TeamSelectionInvitation $invitation, User $actor, int $expectedOrderId, int $expectedPlayerId, int $expectedRank, string $reference, string $reason, string $disposition, string $expectedFingerprint): void
+    public function recordInvitationCashRefund(TeamSelectionInvitation $invitation, User $actor, int $expectedOrderId, int $expectedPlayerId, int $expectedRank, string $reference, string $reason, string $disposition, string $expectedFingerprint, bool $deadlineOverride = false, string $overrideReason = ''): void
     {
         abort_unless($actor->hasRole('super-user'), 403);
-        DB::transaction(function () use ($invitation, $actor, $expectedOrderId, $expectedPlayerId, $expectedRank, $reference, $reason, $disposition, $expectedFingerprint): void {
+        DB::transaction(function () use ($invitation, $actor, $expectedOrderId, $expectedPlayerId, $expectedRank, $reference, $reason, $disposition, $expectedFingerprint, $deadlineOverride, $overrideReason): void {
             $event = Event::lockForUpdate()->findOrFail($invitation->event_id);
             $import = \App\Models\TeamSelectionImport::lockForUpdate()->findOrFail($invitation->import_id);
             $team = Team::withoutGlobalScopes()->lockForUpdate()->findOrFail($invitation->team_id);
@@ -884,7 +884,7 @@ class TeamPaymentService
                 && (int) $selected->vacated_roster_rank === $expectedRank && (int) $selected->order_id === $expectedOrderId)
                 || ($disposition === 'keep' && $selected->status === TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT && (int) $selected->roster_rank === $expectedRank
                     && ! $selected->order_id && in_array($expectedOrderId, data_get($selected->snapshot_json, 'restoration.previous_order_ids', []), true)))) {
-                app(\App\Domain\Refunds\Services\RefundExecutionService::class)->recordTeamCashRefund($order, $actor, $reference, $reason, $disposition);
+                app(\App\Domain\Refunds\Services\RefundExecutionService::class)->recordTeamCashRefund($order, $actor, $reference, $reason, $disposition, $deadlineOverride, $overrideReason);
                 return;
             }
             if (! in_array($import->status, ['draft', 'sent'], true)
@@ -898,7 +898,8 @@ class TeamPaymentService
             $this->assertVerifiedTeamPayfastSettlement($order);
             $amounts = app(\App\Domain\Refunds\Services\TeamRefundCalculator::class)->calculate($order);
             if (! hash_equals(self::cashRefundFingerprint($order, $amounts), $expectedFingerprint)) $fail('The displayed refund calculation changed. Refresh and confirm the current cash amount.');
-            if (now()->gt($event->withdrawalCloseAt()) || $amounts['net'] <= 0) $fail('The standard withdrawal refund deadline or refundable amount does not allow this cash refund.');
+            if (now()->gt($event->withdrawalCloseAt()) && (! $deadlineOverride || trim($overrideReason) === '')) $fail('The refund deadline has passed. Explicitly confirm the super-admin deadline override and provide its reason.');
+            if ($amounts['net'] <= 0) $fail('The standard withdrawal calculation has no refundable amount.');
             $mirrors = TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('rank', $expectedRank)->lockForUpdate()->get();
             $imported = \App\Models\NoProfileTeamPlayer::where('team_id', $team->id)->where('rank', $expectedRank)->lockForUpdate()->get();
             if ($mirrors->count() !== 1 || (int) $mirrors->first()->player_id !== $expectedPlayerId || (int) $mirrors->first()->pay_status !== 1
@@ -911,8 +912,8 @@ class TeamPaymentService
                 ->where('roster_rank', '>', 0)->lockForUpdate()->get();
             if ($activeSelected->count() !== 1 || (int) $activeSelected->first()->id !== (int) $selected->id) $fail('The active selected invitation identity is inconsistent. Refresh before recording a cash refund.');
             if ($disposition === 'keep') {
-                $requested = app(\App\Domain\Finance\Services\RefundRequestService::class)->requestRetainedTeamCashRefund($order, $selected, $actor, $reference, $reason);
-                app(\App\Domain\Refunds\Services\RefundExecutionService::class)->recordTeamCashRefund($requested, $actor, $reference, $reason, 'keep');
+                $requested = app(\App\Domain\Finance\Services\RefundRequestService::class)->requestSelectedTeamCashRefund($order, $selected, $actor, $reference, $reason, 'keep', $deadlineOverride, $overrideReason);
+                app(\App\Domain\Refunds\Services\RefundExecutionService::class)->recordTeamCashRefund($requested, $actor, $reference, $reason, 'keep', $deadlineOverride, $overrideReason);
                 $previous = collect(data_get($selected->snapshot_json, 'restoration.previous_order_ids', []))->push($order->id)->unique()->values()->all();
                 $selected->update(['status' => TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, 'order_id' => null, 'paid_at' => null,
                     'snapshot_json' => array_replace_recursive($selected->snapshot_json ?? [], ['restoration' => ['previous_order_ids' => $previous, 'fresh_registration_required' => true]])]);
@@ -960,10 +961,8 @@ class TeamPaymentService
                 'original_imported_slots' => $originalImported, 'automatic_replacement' => false, 'disposition' => 'remove',
             ])->log('super user withdrew selected player for recorded cash refund');
             app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->markWithdrawn($event->id, $team->id, $expectedPlayerId, $actor, allowAutomaticReplacement: false);
-            $requested = app(\App\Domain\Finance\Services\RefundRequestService::class)->requestTeamRefund($withdrawn, [
-                'refund_method' => 'cash', 'refund_status' => 'pending', 'refund_gross' => $amounts['gross'], 'refund_fee' => $amounts['fee'], 'refund_net' => $amounts['net'],
-            ], $actor);
-            app(\App\Domain\Refunds\Services\RefundExecutionService::class)->recordTeamCashRefund($requested, $actor, $reference, $reason);
+            $requested = app(\App\Domain\Finance\Services\RefundRequestService::class)->requestSelectedTeamCashRefund($withdrawn, $selected->fresh(), $actor, $reference, $reason, 'remove', $deadlineOverride, $overrideReason);
+            app(\App\Domain\Refunds\Services\RefundExecutionService::class)->recordTeamCashRefund($requested, $actor, $reference, $reason, 'remove', $deadlineOverride, $overrideReason);
         });
     }
 

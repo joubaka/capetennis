@@ -5141,6 +5141,47 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         \Illuminate\Support\Facades\Http::assertNothingSent();
     }
 
+    public function test_expired_cash_refund_requires_explicit_super_user_override_for_remove(): void
+    {
+        $this->assertExpiredCashRefundOverride('remove');
+    }
+
+    public function test_expired_cash_refund_requires_explicit_super_user_override_for_keep(): void
+    {
+        $this->assertExpiredCashRefundOverride('keep');
+    }
+
+    private function assertExpiredCashRefundOverride(string $disposition): void
+    {
+        Queue::fake();
+        Mail::fake();
+        \Illuminate\Support\Facades\Http::preventStrayRequests();
+        [$event, $team, $import, $selected, $order, $receipt, $admin, $url, $payload, $amounts] = $this->invitationCashRefundScenario();
+        $event->update(['withdrawal_deadline' => now()->subDay()]);
+        $payload = array_replace($payload, ['disposition' => $disposition, 'confirm_admin_deadline_override' => 1, 'override_reason' => 'Original payer received cash after the deadline.']);
+        $ledger = \App\Models\WalletTransaction::all()->map->getAttributes()->all();
+        $paid = $order->fresh()->only(['pay_status', 'payfast_paid', 'payfast_pf_payment_id', 'player_id', 'user_id']);
+        $this->actingAs(User::factory()->create())->postJson($url, $payload)->assertForbidden();
+        $this->actingAs($admin)->postJson($url, array_replace($payload, ['override_reason' => '']))->assertUnprocessable();
+        $this->assertNull($order->fresh()->refund_status);
+        $this->postJson($url, $payload)->assertRedirect();
+        $this->assertSame('completed', $order->fresh()->refund_status);
+        $this->assertSame($paid, $order->fresh()->only(array_keys($paid)));
+        $this->assertSame($ledger, \App\Models\WalletTransaction::all()->map->getAttributes()->all());
+        $this->assertEquals($amounts['net'], $order->fresh()->refund_net);
+        $this->assertSame($disposition === 'keep' ? \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT : \App\Models\TeamSelectionInvitation::WITHDRAWN, $selected->fresh()->status);
+        $audit = \Spatie\Activitylog\Models\Activity::where('description', 'super user recorded team cash refund to original payer')->sole();
+        $this->assertTrue((bool) data_get($audit->properties, 'deadline_override'));
+        $this->assertSame($payload['override_reason'], data_get($audit->properties, 'override_reason'));
+        $this->assertEquals($admin->id, data_get($audit->properties, 'override_actor_id'));
+        $this->assertSame($event->fresh()->withdrawalCloseAt()->toIso8601String(), data_get($audit->properties, 'deadline'));
+        $this->postJson($url, $payload)->assertRedirect();
+        $this->postJson($url, array_replace($payload, ['override_reason' => 'Different reason']))->assertUnprocessable();
+        $this->assertSame(1, \Spatie\Activitylog\Models\Activity::where('description', 'super user recorded team cash refund to original payer')->count());
+        Queue::assertNothingPushed();
+        Mail::assertNothingSent();
+    }
+
     public function test_cash_refund_rejects_unverified_stale_unauthorized_and_expired_requests_without_payment_or_roster_changes(): void
     {
         [$event, $team, $import, $selected, $order, $receipt, $admin, $url, $payload] = $this->invitationCashRefundScenario();

@@ -530,8 +530,8 @@ class TeamSelectionInvitationController extends Controller
         $this->authorizeImport($event, $selectionImport, $request->user());
         $data = $request->validate(['expected_order_id' => ['required', 'integer', 'min:1'], 'expected_player_id' => ['required', 'integer', 'min:1'],
             'expected_roster_rank' => ['required', 'integer', 'min:1'], 'reference' => ['required', 'string', 'max:255'],
-            'reason' => ['required', 'string', 'max:1000'], 'disposition' => ['required', 'in:remove,keep'], 'refund_fingerprint' => ['required', 'string', 'size:64'], 'confirm_cash_paid' => ['required', 'accepted']]);
-        $service->recordInvitationCashRefund($invitation, $request->user(), (int) $data['expected_order_id'], (int) $data['expected_player_id'], (int) $data['expected_roster_rank'], $data['reference'], $data['reason'], $data['disposition'], $data['refund_fingerprint']);
+            'reason' => ['required', 'string', 'max:1000'], 'disposition' => ['required', 'in:remove,keep'], 'refund_fingerprint' => ['required', 'string', 'size:64'], 'confirm_cash_paid' => ['required', 'accepted'], 'confirm_admin_deadline_override' => ['sometimes', 'accepted'], 'override_reason' => ['nullable', 'string', 'max:1000']]);
+        $service->recordInvitationCashRefund($invitation, $request->user(), (int) $data['expected_order_id'], (int) $data['expected_player_id'], (int) $data['expected_roster_rank'], $data['reference'], $data['reason'], $data['disposition'], $data['refund_fingerprint'], $request->boolean('confirm_admin_deadline_override'), $data['override_reason'] ?? '');
         return back()->with('success', 'Cash refund recorded to the original payer. '.($data['disposition'] === 'keep' ? 'The player remains selected at the same rank and unpaid; a fresh checkout is required.' : 'The player was withdrawn and their roster place was freed.').' Original paid history was retained. No PayFast refund, wallet credit or email was sent.');
     }
 

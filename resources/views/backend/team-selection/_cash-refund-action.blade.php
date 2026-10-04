@@ -4,8 +4,8 @@
   $cashBlocked = !$cashOrder ? 'No payment order is attached. Paid Confirmed alone is not proof of money received.'
     : (!$cashOrder->payfast_paid || !$cashOrder->payfast_pf_payment_id ? 'A verified PayFast payment is required. Private collection marks use Mark as unpaid instead.'
     : ($cashOrder->withdrawn_at || $cashOrder->hasRefund() || $cashOrder->refund_waived_at ? 'This order already has withdrawal or refund history.'
-    : (now()->gt($event->withdrawalCloseAt()) ? 'The standard withdrawal refund deadline has passed.'
-    : ($cashAmounts['net'] <= 0 ? 'No amount is refundable under the current withdrawal policy.' : null))));
+    : ($cashAmounts['net'] <= 0 ? 'No amount is refundable under the current withdrawal policy.' : null)));
+  $cashDeadlineExpired = now()->gt($event->withdrawalCloseAt());
   $cashOpen = (int) old('cash_refund_invitation_id') === (int) $invitation->id;
 @endphp
 <details class="p-2" data-cash-refund-action @if($cashOpen) open @endif>
@@ -26,6 +26,11 @@
     </select>
     <label class="form-label small" for="cash-reference-{{ $invitation->id }}">Cash receipt / reference</label><input id="cash-reference-{{ $invitation->id }}" name="reference" class="form-control form-control-sm mb-2" maxlength="255" value="{{ $cashOpen ? old('reference') : '' }}" required>
     <label class="form-label small" for="cash-reason-{{ $invitation->id }}">Reason</label><input id="cash-reason-{{ $invitation->id }}" name="reason" class="form-control form-control-sm mb-2" maxlength="1000" value="{{ $cashOpen ? old('reason') : '' }}" required>
+    @if($cashDeadlineExpired)
+    <p class="small text-warning">The refund deadline {{ $event->withdrawalCloseAt()->format('d M Y H:i') }} has passed. Only a super admin may explicitly override it for this recorded cash refund.</p>
+    <label class="form-check small mb-2"><input class="form-check-input" type="checkbox" name="confirm_admin_deadline_override" value="1" required @checked($cashOpen && old('confirm_admin_deadline_override'))><span class="form-check-label">Override refund deadline</span></label>
+    <label class="form-label small" for="cash-override-reason-{{ $invitation->id }}">Deadline override reason</label><input id="cash-override-reason-{{ $invitation->id }}" name="override_reason" class="form-control form-control-sm mb-2" maxlength="1000" value="{{ $cashOpen ? old('override_reason') : '' }}" required>
+    @endif
     <label class="form-check small"><input class="form-check-input" type="checkbox" name="confirm_cash_paid" value="1" required><span class="form-check-label">I confirm R{{ number_format($cashAmounts['net'], 2) }} cash was handed to the original payer.</span></label>
     <button class="btn btn-sm btn-outline-warning mt-2">Confirm recorded cash refund</button>
   </form>

@@ -318,11 +318,11 @@ class RefundExecutionService
         return $completed;
     }
 
-    public function recordTeamCashRefund(\App\Models\TeamPaymentOrder $order, User $actor, string $reference, string $reason, string $disposition = 'remove'): \App\Models\TeamPaymentOrder
+    public function recordTeamCashRefund(\App\Models\TeamPaymentOrder $order, User $actor, string $reference, string $reason, string $disposition = 'remove', bool $deadlineOverride = false, string $overrideReason = ''): \App\Models\TeamPaymentOrder
     {
         abort_unless($actor->hasRole('super-user'), 403);
-        return FinanceMutationScope::run('refund_state_write', function () use ($order, $actor, $reference, $reason, $disposition) {
-            return DB::transaction(function () use ($order, $actor, $reference, $reason, $disposition) {
+        return FinanceMutationScope::run('refund_state_write', function () use ($order, $actor, $reference, $reason, $disposition, $deadlineOverride, $overrideReason) {
+            return DB::transaction(function () use ($order, $actor, $reference, $reason, $disposition, $deadlineOverride, $overrideReason) {
                 $locked = \App\Models\TeamPaymentOrder::with('event')->lockForUpdate()->findOrFail($order->id);
                 $fail = fn (string $message) => throw ValidationException::withMessages(['cash_refund' => $message]);
                 if ($locked->effective_player_id !== $order->effective_player_id || trim($reference) === '' || trim($reason) === '') {
@@ -334,6 +334,8 @@ class RefundExecutionService
                     if ($locked->refund_method === 'cash' && $audit && (int) $audit->causer_id === (int) $actor->id
                         && data_get($audit->properties, 'reference') === trim($reference) && data_get($audit->properties, 'reason') === trim($reason)
                         && data_get($audit->properties, 'disposition') === $disposition
+                        && (bool) data_get($audit->properties, 'deadline_override') === $deadlineOverride
+                        && data_get($audit->properties, 'override_reason', '') === trim($overrideReason)
                         && (int) data_get($audit->properties, 'payer_id') === (int) $locked->user_id
                         && (int) data_get($audit->properties, 'beneficiary_player_id') === $locked->effective_player_id
                         && (float) data_get($audit->properties, 'gross') === (float) $locked->refund_gross
@@ -343,16 +345,20 @@ class RefundExecutionService
                 }
                 $amounts = app(TeamRefundCalculator::class)->calculate($locked);
                 app(\App\Domain\Payments\Services\TeamPaymentService::class)->assertVerifiedTeamPayfastSettlement($locked);
-                $retainedRequest = $disposition === 'keep' ? \Spatie\Activitylog\Models\Activity::where('subject_type', get_class($locked))->where('subject_id', $locked->id)
-                    ->where('description', 'super user requested cash refund while retaining selected player unpaid')->latest('id')->first() : null;
-                $retainedEligible = $locked->event && $retainedRequest && (int) $retainedRequest->causer_id === (int) $actor->id
-                    && data_get($retainedRequest->properties, 'reference') === trim($reference) && data_get($retainedRequest->properties, 'reason') === trim($reason)
-                    && (int) data_get($retainedRequest->properties, 'payer_id') === (int) $locked->user_id
-                    && (int) data_get($retainedRequest->properties, 'beneficiary_player_id') === $locked->effective_player_id
-                    && \Carbon\CarbonImmutable::parse(data_get($retainedRequest->properties, 'operation_at'))->lte($locked->event->withdrawalCloseAt());
+                $cashRequest = \Spatie\Activitylog\Models\Activity::where('subject_type', get_class($locked))->where('subject_id', $locked->id)
+                    ->where('description', 'super user requested recorded cash refund for selected player')->latest('id')->first();
+                $requestEligible = $locked->event && $cashRequest && (int) $cashRequest->causer_id === (int) $actor->id
+                    && data_get($cashRequest->properties, 'reference') === trim($reference) && data_get($cashRequest->properties, 'reason') === trim($reason)
+                    && data_get($cashRequest->properties, 'disposition') === $disposition
+                    && (int) data_get($cashRequest->properties, 'payer_id') === (int) $locked->user_id
+                    && (int) data_get($cashRequest->properties, 'beneficiary_player_id') === $locked->effective_player_id
+                    && (bool) data_get($cashRequest->properties, 'deadline_override') === $deadlineOverride
+                    && data_get($cashRequest->properties, 'override_reason', '') === trim($overrideReason)
+                    && (\Carbon\CarbonImmutable::parse(data_get($cashRequest->properties, 'operation_at'))->lte($locked->event->withdrawalCloseAt())
+                        || ($deadlineOverride && trim($overrideReason) !== '' && (int) data_get($cashRequest->properties, 'override_actor_id') === (int) $actor->id));
                 if (! in_array($disposition, ['remove', 'keep'], true) || $locked->refund_status !== 'pending' || $locked->refund_method !== 'cash'
-                    || ($disposition === 'remove' && (! $locked->withdrawn_at || ! $locked->event || $locked->withdrawn_at->gt($locked->event->withdrawalCloseAt())))
-                    || ($disposition === 'keep' && ($locked->withdrawn_at || ! $retainedEligible))
+                    || ! $requestEligible || ($disposition === 'remove' && ! $locked->withdrawn_at)
+                    || ($disposition === 'keep' && $locked->withdrawn_at)
                     || ! $locked->pay_status || ! $locked->payfast_paid || $locked->collection_status === 'paid_privately'
                     || ! $locked->user_id || $locked->refund_waived_at || $locked->refunded_at
                     || (float) $locked->refund_gross !== $amounts['gross'] || (float) $locked->refund_fee !== $amounts['fee']
@@ -367,6 +373,8 @@ class RefundExecutionService
                     'original_player_id' => $locked->player_id, 'beneficiary_player_id' => $locked->effective_player_id,
                     'gross' => $amounts['gross'], 'fee' => $amounts['fee'], 'net' => $amounts['net'],
                     'reference' => trim($reference), 'reason' => trim($reason), 'method' => 'cash', 'disposition' => $disposition,
+                    'deadline' => data_get($cashRequest->properties, 'deadline'), 'operation_at' => data_get($cashRequest->properties, 'operation_at'),
+                    'deadline_override' => $deadlineOverride, 'override_reason' => trim($overrideReason), 'override_actor_id' => $deadlineOverride ? $actor->id : null,
                     'cash_already_paid_to_original_payer' => true, 'provider_refund_dispatched' => false, 'wallet_credited' => false,
                 ])->log('super user recorded team cash refund to original payer');
                 return $locked;

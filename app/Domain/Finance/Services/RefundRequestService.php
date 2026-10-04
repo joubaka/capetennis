@@ -120,29 +120,34 @@ class RefundRequestService
         });
     }
 
-    public function requestRetainedTeamCashRefund(TeamPaymentOrder $order, \App\Models\TeamSelectionInvitation $invitation, User $actor, string $reference, string $reason): TeamPaymentOrder
+    public function requestSelectedTeamCashRefund(TeamPaymentOrder $order, \App\Models\TeamSelectionInvitation $invitation, User $actor, string $reference, string $reason, string $disposition, bool $deadlineOverride = false, string $overrideReason = ''): TeamPaymentOrder
     {
         abort_unless($actor->hasRole('super-user'), 403);
-        return FinanceMutationScope::run('refund_state_write', function () use ($order, $invitation, $actor, $reference, $reason) {
-            return DB::transaction(function () use ($order, $invitation, $actor, $reference, $reason) {
+        return FinanceMutationScope::run('refund_state_write', function () use ($order, $invitation, $actor, $reference, $reason, $disposition, $deadlineOverride, $overrideReason) {
+            return DB::transaction(function () use ($order, $invitation, $actor, $reference, $reason, $disposition, $deadlineOverride, $overrideReason) {
                 $locked = TeamPaymentOrder::with('event')->lockForUpdate()->findOrFail($order->id);
                 $selected = \App\Models\TeamSelectionInvitation::lockForUpdate()->findOrFail($invitation->id);
-                if ($locked->withdrawn_at || $locked->hasRefund() || ! $locked->event || now()->gt($locked->event->withdrawalCloseAt())
-                    || $selected->status !== \App\Models\TeamSelectionInvitation::PAID_CONFIRMED || ! $selected->roster_rank
+                $late = $locked->event && now()->gt($locked->event->withdrawalCloseAt());
+                $selectionMatches = $disposition === 'keep'
+                    ? ! $locked->withdrawn_at && $selected->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED && (int) $selected->roster_rank > 0
+                    : $disposition === 'remove' && $locked->withdrawn_at && $selected->status === \App\Models\TeamSelectionInvitation::WITHDRAWN && (int) $selected->vacated_roster_rank > 0;
+                if (! $selectionMatches || $locked->hasRefund() || ! $locked->event || ($late && (! $deadlineOverride || trim($overrideReason) === ''))
                     || (int) $selected->order_id !== (int) $locked->id || (int) $selected->event_id !== (int) $locked->event_id
                     || (int) $selected->team_id !== (int) $locked->team_id || (int) $selected->player_id !== $locked->effective_player_id
                     || trim($reference) === '' || trim($reason) === '') {
-                    throw ValidationException::withMessages(['cash_refund' => 'Only an eligible current selected paid player can be retained after a recorded cash refund.']);
+                    throw ValidationException::withMessages(['cash_refund' => 'Only a matching selected payment with an explicit super-admin override for any expired deadline can receive a recorded cash refund.']);
                 }
                 app(\App\Domain\Payments\Services\TeamPaymentService::class)->assertVerifiedTeamPayfastSettlement($locked);
                 $amounts = app(\App\Domain\Refunds\Services\TeamRefundCalculator::class)->calculate($locked);
                 if ($amounts['net'] <= 0) throw ValidationException::withMessages(['cash_refund' => 'No policy refund amount is available.']);
                 $locked->fill(['refund_method' => 'cash', 'refund_status' => 'pending', 'refund_gross' => $amounts['gross'], 'refund_fee' => $amounts['fee'], 'refund_net' => $amounts['net']])->save();
                 activity('refund')->performedOn($locked)->causedBy($actor)->withProperties([
-                    'invitation_id' => $selected->id, 'roster_rank' => $selected->roster_rank, 'payer_id' => $locked->user_id,
+                    'invitation_id' => $selected->id, 'roster_rank' => $selected->roster_rank ?: $selected->vacated_roster_rank, 'payer_id' => $locked->user_id,
                     'beneficiary_player_id' => $locked->effective_player_id, 'operation_at' => now()->toIso8601String(),
-                    'reference' => trim($reference), 'reason' => trim($reason), 'disposition' => 'keep',
-                ])->log('super user requested cash refund while retaining selected player unpaid');
+                    'reference' => trim($reference), 'reason' => trim($reason), 'disposition' => $disposition,
+                    'deadline' => $locked->event->withdrawalCloseAt()->toIso8601String(), 'deadline_expired' => $late,
+                    'deadline_override' => $deadlineOverride, 'override_reason' => trim($overrideReason), 'override_actor_id' => $deadlineOverride ? $actor->id : null,
+                ])->log('super user requested recorded cash refund for selected player');
                 return $locked;
             });
         });
