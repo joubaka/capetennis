@@ -363,7 +363,6 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $url = route('backend.team-selection.invitations.undo-private-payment', [$event, $import, $selected]);
         $payload = ['expected_order_id' => $order->id, 'expected_player_id' => $selected->player_id, 'expected_roster_rank' => $selected->roster_rank, 'reason' => 'Private mark entered by mistake', 'confirm_unpaid' => 1];
         $privatePage = $this->actingAs($admin)->get(route('backend.team-selection.index', $event))->assertOk()->assertSee('Mark as unpaid (private payment)');
-        if (getenv('CT_FINAL_ROSTER_QA')) file_put_contents(storage_path('app/testing/private-unpaid-qa.html'), $privatePage->getContent());
         $this->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
         $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $selected->fresh()->status);
         $this->assertNull($selected->fresh()->paid_at);
@@ -5065,7 +5064,6 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $fixture = TeamFixture::create(['draw_id' => $draw->id, 'team_tie_id' => $tie->id, 'match_nr' => 1]);
         $assignment = TeamFixturePlayer::create(['team_fixture_id' => $fixture->id, 'slot_no' => 1, 'team1_id' => $selected->player_id, 'team2_id' => $selected->player_id]);
         $page = $this->actingAs($admin)->get(route('backend.team-selection.index', $event))->assertOk()->assertSee('Payment management')->assertSee('PayFast payment')->assertSee('Record cash refund')->assertSee('Keep selected at same rank, unpaid');
-        if (getenv('CT_FINAL_ROSTER_QA')) file_put_contents(storage_path('app/testing/cash-refund-qa.html'), $page->getContent());
         $this->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
         $after = $order->fresh();
         $this->assertTrue((bool) $after->pay_status);
@@ -5180,7 +5178,6 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $before = $import->invitations()->whereNotNull('roster_rank')->get()->map->getAttributes()->all();
         $url = route('backend.team-selection.invitations.activate', [$source->event, $import, $reserve]);
         $page = $this->actingAs($manager)->get(route('backend.team-selection.index', $source->event))->assertOk();
-        if (getenv('CT_FINAL_ROSTER_QA')) file_put_contents(storage_path('app/testing/open-position-qa.html'), $page->getContent());
         $document = new \DOMDocument();
         @$document->loadHTML($page->getContent());
         $xpath = new \DOMXPath($document);
