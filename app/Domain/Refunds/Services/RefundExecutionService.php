@@ -350,6 +350,7 @@ class RefundExecutionService
                 $requestEligible = $locked->event && $cashRequest && (int) $cashRequest->causer_id === (int) $actor->id
                     && data_get($cashRequest->properties, 'reference') === trim($reference) && data_get($cashRequest->properties, 'reason') === trim($reason)
                     && data_get($cashRequest->properties, 'disposition') === $disposition
+                    && data_get($cashRequest->properties, 'refund_fingerprint') === \App\Domain\Payments\Services\TeamPaymentService::cashRefundFingerprint($locked, $amounts)
                     && (int) data_get($cashRequest->properties, 'payer_id') === (int) $locked->user_id
                     && (int) data_get($cashRequest->properties, 'beneficiary_player_id') === $locked->effective_player_id
                     && (bool) data_get($cashRequest->properties, 'deadline_override') === $deadlineOverride

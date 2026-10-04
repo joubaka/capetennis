@@ -20,6 +20,7 @@
     <p class="small">Original payer: <strong>{{ $cashOrder->user?->name ?: 'Payer unavailable' }}</strong> · Order #{{ $cashOrder->id }}</p>
     <p class="small">Paid R{{ number_format($cashAmounts['gross'], 2) }} · Fee R{{ number_format($cashAmounts['fee'], 2) }} · <strong>Cash refund R{{ number_format($cashAmounts['net'], 2) }}</strong></p>
     <p class="small text-muted">This records cash already handed to the original payer. Choose whether to remove this player or keep them selected at the same rank, unpaid and requiring a fresh checkout. It does not refund through PayFast or credit a wallet.</p>
+    <p class="small text-muted">This action is silent. No automatic email is sent.</p>
     <label class="form-label small" for="cash-disposition-{{ $invitation->id }}">Player after refund</label>
     <select id="cash-disposition-{{ $invitation->id }}" name="disposition" class="form-select form-select-sm mb-2" required>
       <option value="">Choose remove or keep</option><option value="remove" @selected($cashOpen && old('disposition') === 'remove')>Remove player and free roster place</option><option value="keep" @selected($cashOpen && old('disposition') === 'keep')>Keep selected at same rank, unpaid</option>

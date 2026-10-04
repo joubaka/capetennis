@@ -13,6 +13,7 @@ use App\Models\Player;
 use App\Models\Series;
 use App\Models\SeriesRanking;
 use App\Models\Team;
+use App\Models\TeamPlayer;
 use App\Models\TeamSelectionImport;
 use App\Models\TeamSelectionInvitation;
 use App\Models\TeamSelectionRegionAnnouncement;

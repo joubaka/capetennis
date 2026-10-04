@@ -4345,7 +4345,14 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertJsonPath('message', 'Brandnew Reserveplayer was added as the next reserve. The published ranking snapshot and active roster were not changed.')
             ->assertJson(fn ($json) => $json
                 ->whereType('row_html', 'string')
-                ->where('row_html', fn (string $html) => str_contains($html, 'Activate as Rank 5'))
+                ->where('row_html', function (string $html): bool {
+                    $document = new \DOMDocument();
+                    @$document->loadHTML($html);
+                    $xpath = new \DOMXPath($document);
+                    $ranks = [];
+                    foreach ($xpath->query('//select[@name="roster_rank"]/option') as $option) $ranks[] = (int) $option->getAttribute('value');
+                    return $ranks === [3, 4, 5] && str_contains($html, 'Activate in position');
+                })
                 ->etc());
 
         $invitation = $selectionImport->invitations()->where('player_id', $player->id)->firstOrFail();
@@ -5163,7 +5170,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $paid = $order->fresh()->only(['pay_status', 'payfast_paid', 'payfast_pf_payment_id', 'player_id', 'user_id']);
         $this->actingAs(User::factory()->create())->postJson($url, $payload)->assertForbidden();
         $this->actingAs($admin)->postJson($url, array_replace($payload, ['override_reason' => '']))->assertUnprocessable();
-        $this->assertNull($order->fresh()->refund_status);
+        $this->assertSame('not_refunded', $order->fresh()->refund_status);
         $this->postJson($url, $payload)->assertRedirect();
         $this->assertSame('completed', $order->fresh()->refund_status);
         $this->assertSame($paid, $order->fresh()->only(array_keys($paid)));

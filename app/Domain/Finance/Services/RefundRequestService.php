@@ -145,6 +145,7 @@ class RefundRequestService
                     'invitation_id' => $selected->id, 'roster_rank' => $selected->roster_rank ?: $selected->vacated_roster_rank, 'payer_id' => $locked->user_id,
                     'beneficiary_player_id' => $locked->effective_player_id, 'operation_at' => now()->toIso8601String(),
                     'reference' => trim($reference), 'reason' => trim($reason), 'disposition' => $disposition,
+                    'refund_fingerprint' => \App\Domain\Payments\Services\TeamPaymentService::cashRefundFingerprint($locked, $amounts),
                     'deadline' => $locked->event->withdrawalCloseAt()->toIso8601String(), 'deadline_expired' => $late,
                     'deadline_override' => $deadlineOverride, 'override_reason' => trim($overrideReason), 'override_actor_id' => $deadlineOverride ? $actor->id : null,
                 ])->log('super user requested recorded cash refund for selected player');
