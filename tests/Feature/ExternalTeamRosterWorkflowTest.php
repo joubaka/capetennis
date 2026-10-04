@@ -1359,6 +1359,358 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         return [$slot, $old, $replacement, $mirror, $retired, $active, $url];
     }
 
+    public function test_unlink_resets_unpaid_profile_preserving_imported_slot_and_closing_checkout(): void
+    {
+        [$region, $slot, $old] = $this->relinkScenario();
+        $slot->update(['email' => 'imported@example.test', 'cell_nr' => '0123456789']);
+        $order = TeamPaymentOrder::create(['team_id' => $this->team->id, 'event_id' => $this->event->id,
+            'player_id' => $old->id, 'user_id' => $this->admin->id, 'total_amount' => 100,
+            'wallet_reserved' => 25, 'payfast_amount_due' => 75, 'pay_status' => false, 'payfast_paid' => false, 'wallet_debited' => false]);
+        $url = route('backend.team-selection.imported-players.profile.destroy', [$this->event, $region, $this->team, $slot]);
+        $payload = ['expected_player_id' => $old->id, 'expected_rank' => 1, 'confirm_unlink' => 1];
+        $walletRows = WalletTransaction::count();
+        $this->actingAs($this->admin)->delete($url, $payload)->assertRedirect();
+        $this->assertNull($slot->fresh()->player_profile);
+        $this->assertNull($slot->fresh()->claimed_by_user_id);
+        $this->assertNull($slot->fresh()->claimed_at);
+        $this->assertSame('Imported', $slot->fresh()->name);
+        $this->assertSame('imported@example.test', $slot->fresh()->email);
+        $this->assertSame('0123456789', $slot->fresh()->cell_nr);
+        $this->assertSame(1, (int) $slot->fresh()->rank);
+        $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'rank' => 1, 'player_id' => 0, 'pay_status' => 0]);
+        $this->assertNotNull($order->fresh()->withdrawn_at);
+        $this->assertSame(0.0, $order->fresh()->wallet_reserved);
+        $this->assertSame($walletRows, WalletTransaction::count());
+        $this->assertDatabaseMissing('user_players', ['player_id' => $old->id, 'user_id' => $this->admin->id]);
+        $this->assertDatabaseHas('activity_log', ['description' => 'administrator unlinked unpaid imported roster profile']);
+        $this->actingAs($this->admin)->deleteJson($url, $payload)->assertUnprocessable();
+        $replacement = Player::factory()->create(['name' => 'Imported', 'surname' => 'Name']);
+        app(ExternalTeamRosterService::class)->claim($this->admin, $this->event, $this->team, $slot->fresh(), $replacement);
+        $this->assertSame((int) $replacement->id, (int) $slot->fresh()->player_profile);
+        $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'rank' => 1, 'player_id' => $replacement->id, 'pay_status' => 0]);
+    }
+
+    public function test_unlink_blocks_unauthorized_stale_paid_invalid_reservation_and_handed_off_checkouts(): void
+    {
+        [$region, $slot, $old] = $this->relinkScenario();
+        $url = route('backend.team-selection.imported-players.profile.destroy', [$this->event, $region, $this->team, $slot]);
+        $payload = ['expected_player_id' => $old->id, 'expected_rank' => 1, 'confirm_unlink' => 1];
+        $this->actingAs(User::factory()->create())->deleteJson($url, $payload)->assertForbidden();
+        $manager = User::factory()->create();
+        \App\Models\EventRegionManager::create(['event_id' => $this->event->id, 'event_region_id' => $region->id, 'region_id' => $region->region_id, 'user_id' => $manager->id, 'assigned_by' => $this->admin->id]);
+        $this->actingAs($manager)->deleteJson($url, $payload)->assertForbidden();
+        $this->actingAs($this->admin)->deleteJson($url, array_merge($payload, ['expected_rank' => 2]))->assertUnprocessable();
+        $order = TeamPaymentOrder::create(['team_id' => $this->team->id, 'event_id' => $this->event->id,
+            'player_id' => $old->id, 'user_id' => $this->admin->id, 'total_amount' => 100,
+            'wallet_reserved' => 0, 'payfast_amount_due' => 100, 'pay_status' => false, 'payfast_paid' => false, 'wallet_debited' => false]);
+        foreach ([['pay_status' => true], ['wallet_reserved' => 10], ['payfast_handed_off_at' => now()], ['refund_status' => 'pending']] as $evidence) {
+            $order->update($evidence);
+            $this->actingAs($this->admin)->deleteJson($url, $payload)->assertUnprocessable();
+            $this->assertSame((int) $old->id, (int) $slot->fresh()->player_profile);
+            $this->assertNull($order->fresh()->withdrawn_at);
+            $order->update(['pay_status' => false, 'wallet_reserved' => 0, 'payfast_handed_off_at' => null, 'refund_status' => 'not_refunded']);
+        }
+    }
+
+    public function test_unlink_blocks_cross_event_paid_mirror_and_fixture_history(): void
+    {
+        [$region, $slot, $old] = $this->relinkScenario();
+        $url = route('backend.team-selection.imported-players.profile.destroy', [$this->event, $region, $this->team, $slot]);
+        $payload = ['expected_player_id' => $old->id, 'expected_rank' => 1, 'confirm_unlink' => 1];
+        $otherEvent = Event::factory()->create();
+        EventAdmin::create(['user_id' => $this->admin->id, 'event_id' => $otherEvent->id]);
+        $this->actingAs($this->admin)->deleteJson(route('backend.team-selection.imported-players.profile.destroy', [$otherEvent, $region, $this->team, $slot]), $payload)->assertNotFound();
+        $mirror = TeamPlayer::query()->where('team_id', $this->team->id)->firstOrFail();
+        $mirror->update(['pay_status' => 1]);
+        $this->actingAs($this->admin)->deleteJson($url, $payload)->assertUnprocessable();
+        $mirror->update(['pay_status' => 0]);
+        $draw = \App\Models\Draw::factory()->create(['event_id' => $this->event->id, 'category_event_id' => $this->team->category_event_id]);
+        $fixture = \App\Models\TeamFixture::create(['draw_id' => $draw->id, 'fixture_type' => 1, 'match_nr' => 1, 'round_nr' => 1]);
+        \App\Models\TeamFixturePlayer::create(['team_fixture_id' => $fixture->id, 'slot_no' => 1, 'team1_no_profile_id' => $slot->id]);
+        $this->actingAs($this->admin)->deleteJson($url, $payload)->assertUnprocessable();
+        $this->assertSame((int) $old->id, (int) $slot->fresh()->player_profile);
+        $this->assertSame((int) $old->id, (int) $mirror->fresh()->player_id);
+    }
+
+    public function test_unlink_blocks_wallet_ledger_evidence_despite_unpaid_order_flags(): void
+    {
+        [$region, $slot, $old] = $this->relinkScenario();
+        $order = TeamPaymentOrder::create(['team_id' => $this->team->id, 'event_id' => $this->event->id,
+            'player_id' => $old->id, 'user_id' => $this->admin->id, 'total_amount' => 100,
+            'wallet_reserved' => 0, 'payfast_amount_due' => 100, 'pay_status' => false, 'payfast_paid' => false, 'wallet_debited' => false]);
+        $wallet = $this->admin->wallet()->firstOrCreate();
+        $debit = WalletTransaction::create(['wallet_id' => $wallet->id, 'type' => 'debit', 'amount' => 100,
+            'source_type' => 'team_registration_wallet_payment', 'source_id' => $order->id]);
+        $before = $debit->fresh()->getAttributes();
+        $this->actingAs($this->admin)->deleteJson(
+            route('backend.team-selection.imported-players.profile.destroy', [$this->event, $region, $this->team, $slot]),
+            ['expected_player_id' => $old->id, 'expected_rank' => 1, 'confirm_unlink' => 1],
+        )->assertUnprocessable();
+        $this->assertSame($before, $debit->fresh()->getAttributes());
+        $this->assertNull($order->fresh()->withdrawn_at);
+        $this->assertSame((int) $old->id, (int) $slot->fresh()->player_profile);
+    }
+
+    public function test_transfer_moves_wallet_coverage_without_changing_receipt_ledger_profiles_or_payer(): void
+    {
+        [$region, $slot, $old, $target, $targetSlot, $order, $targetOrder, $url, $payload] = $this->transferScenario();
+        $original = $order->fresh()->getAttributes();
+        $ledger = WalletTransaction::firstOrFail()->getAttributes();
+        $this->actingAs($this->admin)->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
+        $order->refresh();
+        $this->assertSame((int) $old->id, (int) $order->player_id);
+        $this->assertSame((int) $target->id, $order->effective_player_id);
+        $this->assertSame($original['user_id'], $order->user_id);
+        $this->assertSame($original['total_amount'], $order->getRawOriginal('total_amount'));
+        $this->assertSame($ledger, WalletTransaction::firstOrFail()->getAttributes());
+        $this->assertDatabaseCount('team_payment_orders', 2);
+        $this->assertDatabaseCount('team_payment_transfers', 1);
+        $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'player_id' => $old->id, 'rank' => 1, 'pay_status' => 0]);
+        $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'player_id' => $target->id, 'rank' => 2, 'pay_status' => 1]);
+        $this->assertSame((int) $old->id, (int) $slot->fresh()->player_profile);
+        $this->assertSame((int) $target->id, (int) $targetSlot->fresh()->player_profile);
+        $this->assertNotNull($targetOrder->fresh()->withdrawn_at);
+        $this->assertSame(0.0, $targetOrder->fresh()->wallet_reserved);
+        $this->actingAs($this->admin)->postJson($url, $payload)->assertUnprocessable();
+        $this->assertDatabaseCount('team_payment_transfers', 1);
+        // A stale finalization callback must resolve the currently allocated beneficiary.
+        app(\App\Domain\Payments\Services\TeamPaymentService::class)->markPlayerPaid((new TeamPaymentOrder)->forceFill($original));
+        $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'player_id' => $old->id, 'pay_status' => 0]);
+        $this->actingAs($this->admin)->delete(route('backend.team-selection.imported-players.profile.destroy', [$this->event, $region, $this->team, $slot]),
+            ['expected_player_id' => $old->id, 'expected_rank' => 1, 'confirm_unlink' => 1])->assertRedirect();
+        $this->assertNull($slot->fresh()->player_profile);
+        $this->assertSame((int) $target->id, $order->fresh()->effective_player_id);
+        $this->assertDatabaseCount('team_payment_transfers', 1);
+    }
+
+    public function test_transfer_rejects_event_managers_cross_event_refunds_and_wrong_amounts(): void
+    {
+        [$region, $slot, $old, $target, $targetSlot, $order, $targetOrder, $url, $payload] = $this->transferScenario();
+        $manager = User::factory()->create();
+        EventAdmin::create(['user_id' => $manager->id, 'event_id' => $this->event->id]);
+        $this->actingAs($manager)->postJson($url, $payload)->assertForbidden();
+        $other = Event::factory()->create(['eventType' => $this->event->eventType]);
+        $this->actingAs($this->admin)->postJson(route('backend.team-selection.imported-players.payment.transfer', [$other, $region, $this->team, $slot]), $payload)->assertNotFound();
+        foreach ([['refund_status' => 'pending'], ['refund_status' => 'completed'], ['withdrawn_at' => now()], ['total_amount' => 99]] as $evidence) {
+            $order->update($evidence);
+            $this->actingAs($this->admin)->postJson($url, $payload)->assertUnprocessable();
+            $this->assertDatabaseCount('team_payment_transfers', 0);
+            $this->assertSame((int) $old->id, $order->fresh()->effective_player_id);
+            $order->update(['refund_status' => 'not_refunded', 'withdrawn_at' => null, 'total_amount' => 100]);
+        }
+        $targetOrder->update(['payfast_handed_off_at' => now()]);
+        $this->actingAs($this->admin)->postJson($url, $payload)->assertUnprocessable();
+        $this->assertNull($targetOrder->fresh()->withdrawn_at);
+    }
+
+    public function test_transfer_rejects_stale_withdrawal_and_keeps_current_payer_entitlement(): void
+    {
+        [$region, $slot, $old, $target, $targetSlot, $order, $targetOrder, $url, $payload] = $this->transferScenario();
+        $stale = $order->fresh();
+        $this->actingAs($this->admin)->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
+        try {
+            app(\App\Domain\Payments\Services\TeamPaymentService::class)->recordWithdrawal($stale, $this->admin);
+            $this->fail('Stale withdrawal must be rejected.');
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            $this->assertArrayHasKey('payment', $exception->errors());
+        }
+        $this->assertNull($order->fresh()->withdrawn_at);
+        $this->assertSame((int) $order->id, (int) TeamPaymentOrder::query()->where('user_id', $this->admin->id)->forBeneficiary($target->id)->where('pay_status', true)->firstOrFail()->id);
+        $this->assertNull(TeamPaymentOrder::query()->forBeneficiary($old->id)->whereNull('withdrawn_at')->first());
+    }
+
+    public function test_transfer_accepts_exact_payfast_and_hybrid_receipts_and_preserves_provider_history(): void
+    {
+        [$region, $slot, $old, $target, $targetSlot, $order, $targetOrder, $url, $payload] = $this->transferScenario();
+        $debit = WalletTransaction::firstOrFail();
+        $debit->update(['amount' => 40]);
+        $order->update(['wallet_reserved' => 40, 'payfast_amount_due' => 60, 'payfast_paid' => true,
+            'payfast_pf_payment_id' => 'transfer-hybrid-proof', 'payfast_handed_off_at' => now()]);
+        $receipt = new \App\Models\Transaction;
+        $receipt->forceFill(['pf_payment_id' => 'transfer-hybrid-proof', 'amount_gross' => 60, 'payment_status' => 'COMPLETE',
+            'custom_str5' => 'TeamOrder', 'custom_int5' => $order->id, 'custom_int2' => $old->id,
+            'custom_int3' => $this->event->id, 'custom_int4' => $this->admin->id])->save();
+        $proof = $receipt->fresh()->getAttributes();
+        $this->actingAs($this->admin)->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame($proof, $receipt->fresh()->getAttributes());
+        $this->assertSame('transfer-hybrid-proof', $order->fresh()->payfast_pf_payment_id);
+        $this->assertSame((int) $target->id, $order->fresh()->effective_player_id);
+        // Move the same receipt again from B to C, including B's safely closed unpaid checkout history.
+        $third = Player::factory()->create();
+        $thirdSlot = NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 3, 'name' => 'Third', 'surname' => 'Player', 'player_profile' => $third->id, 'pay_status' => 0]);
+        TeamPlayer::create(['team_id' => $this->team->id, 'rank' => 3, 'player_id' => $third->id, 'pay_status' => 0]);
+        $this->actingAs($this->admin)->post(route('backend.team-selection.imported-players.payment.transfer', [$this->event, $region, $this->team, $targetSlot]),
+            array_merge($payload, ['expected_player_id' => $target->id, 'target_player_id' => $third->id]))->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertDatabaseCount('team_payment_transfers', 2);
+        $this->assertSame((int) $old->id, (int) $order->fresh()->player_id);
+        $this->assertSame((int) $third->id, $order->fresh()->effective_player_id);
+        $this->assertSame($proof, $receipt->fresh()->getAttributes());
+    }
+
+    public function test_transfer_rejects_missing_or_invalid_payfast_settlement_evidence_without_mutation(): void
+    {
+        [, , $old, $target, , $order, $targetOrder, $url, $payload] = $this->transferScenario();
+        WalletTransaction::query()->delete();
+        $order->update([
+            'wallet_reserved' => 0,
+            'wallet_debited' => false,
+            'payfast_amount_due' => 100,
+            'payfast_paid' => true,
+            'payfast_pf_payment_id' => 'transfer-invalid-proof',
+        ]);
+
+        $assertRejected = function (string $case) use ($old, $target, $order, $targetOrder, $url, $payload): void {
+            $response = $this->actingAs($this->admin)->postJson($url, $payload);
+            $this->assertSame(422, $response->status(), $case);
+            $response->assertJsonValidationErrors('payment_transfer');
+            $this->assertDatabaseCount('team_payment_transfers', 0);
+            $this->assertSame((int) $old->id, $order->fresh()->effective_player_id, $case);
+            $this->assertNull($targetOrder->fresh()->withdrawn_at, $case);
+            $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'player_id' => $old->id, 'pay_status' => 1]);
+            $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'player_id' => $target->id, 'pay_status' => 0]);
+        };
+
+        $assertRejected('missing PayFast receipt');
+
+        $baseReceipt = [
+            'pf_payment_id' => 'transfer-invalid-proof',
+            'amount_gross' => 100,
+            'payment_status' => 'COMPLETE',
+            'custom_str5' => 'TeamOrder',
+            'custom_int5' => $order->id,
+            'custom_int2' => $old->id,
+            'custom_int3' => $this->event->id,
+            'custom_int4' => $this->admin->id,
+        ];
+        $otherPayer = User::factory()->create();
+        $otherEvent = Event::factory()->create();
+        foreach ([
+            'non-COMPLETE PayFast status' => ['payment_status' => 'FAILED'],
+            'wrong PayFast amount' => ['amount_gross' => 99],
+            'mismatched PayFast payer' => ['custom_int4' => $otherPayer->id],
+            'mismatched PayFast event' => ['custom_int3' => $otherEvent->id],
+            'mismatched PayFast player' => ['custom_int2' => $target->id],
+        ] as $case => $overrides) {
+            \App\Models\Transaction::query()->delete();
+            $receipt = new \App\Models\Transaction;
+            $receipt->forceFill(array_merge($baseReceipt, $overrides))->save();
+
+            $assertRejected($case);
+        }
+    }
+
+    public function test_transfer_rejects_duplicate_or_foreign_wallet_ledger_evidence_without_mutation(): void
+    {
+        [, , $old, $target, , $order, $targetOrder, $url, $payload] = $this->transferScenario();
+        $originalDebit = WalletTransaction::sole();
+
+        $duplicate = WalletTransaction::create([
+            'wallet_id' => $originalDebit->wallet_id,
+            'type' => 'debit',
+            'amount' => 100,
+            'source_type' => 'team_registration_wallet_payment',
+            'source_id' => $order->id,
+        ]);
+        $this->actingAs($this->admin)->postJson($url, $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('payment_transfer');
+        $this->assertDatabaseCount('team_payment_transfers', 0);
+        $this->assertSame((int) $old->id, $order->fresh()->effective_player_id);
+        $this->assertNull($targetOrder->fresh()->withdrawn_at);
+
+        $duplicate->delete();
+        $foreignWallet = User::factory()->create()->wallet()->firstOrCreate();
+        $originalDebit->update(['wallet_id' => $foreignWallet->id]);
+        $this->actingAs($this->admin)->postJson($url, $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('payment_transfer');
+        $this->assertDatabaseCount('team_payment_transfers', 0);
+        $this->assertSame((int) $old->id, $order->fresh()->effective_player_id);
+        $this->assertNull($targetOrder->fresh()->withdrawn_at);
+        $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'player_id' => $old->id, 'pay_status' => 1]);
+        $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'player_id' => $target->id, 'pay_status' => 0]);
+    }
+
+    public function test_transfer_accepts_payfast_only_and_allows_original_source_a_new_checkout(): void
+    {
+        [$region, $slot, $old, $target, $targetSlot, $order, $targetOrder, $url, $payload] = $this->transferScenario();
+        WalletTransaction::query()->delete();
+        $order->update(['wallet_reserved' => 0, 'wallet_debited' => false, 'payfast_amount_due' => 100,
+            'payfast_paid' => true, 'payfast_pf_payment_id' => 'transfer-payfast-proof']);
+        $receipt = new \App\Models\Transaction;
+        $receipt->forceFill(['pf_payment_id' => 'transfer-payfast-proof', 'amount_gross' => 100, 'payment_status' => 'COMPLETE',
+            'custom_str5' => 'TeamOrder', 'custom_int5' => $order->id, 'custom_int2' => $old->id,
+            'custom_int3' => $this->event->id, 'custom_int4' => $this->admin->id])->save();
+        $this->actingAs($this->admin)->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
+        $fresh = app(\App\Domain\Payments\Services\TeamPaymentService::class)->ensureOrder($this->admin, $this->team, $old, $this->event, 100);
+        $this->assertNotSame((int) $order->id, (int) $fresh->id);
+        $this->assertFalse($fresh->pay_status);
+        $this->assertSame((int) $old->id, $fresh->effective_player_id);
+        $this->assertSame((int) $target->id, $order->fresh()->effective_player_id);
+        $this->assertDatabaseCount('team_payment_transfers', 1);
+    }
+
+    public function test_transferred_coverage_withdrawal_remains_original_payer_scoped_and_admin_refund_credits_that_payer(): void
+    {
+        [$region, $slot, $old, $target, $targetSlot, $order, $targetOrder, $url, $payload] = $this->transferScenario();
+        $guardian = User::factory()->create();
+        $guardian->players()->attach($target->id);
+        $guardianWallet = $guardian->wallet()->firstOrCreate();
+        $this->actingAs($this->admin)->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
+        $this->actingAs($guardian)->post(route('team.player.withdraw', [$this->team, $target, $this->event->id]))->assertRedirect()->assertSessionHasErrors();
+        $this->assertNull($order->fresh()->withdrawn_at);
+        $this->actingAs($this->admin)->post(route('team.player.withdraw', [$this->team, $target, $this->event->id]))->assertRedirect();
+        $this->assertNotNull($order->fresh()->withdrawn_at);
+        $mirror = TeamPlayer::where('team_id', $this->team->id)->where('player_id', $target->id)->firstOrFail();
+        app(\App\Domain\Payments\Services\TeamPaymentService::class)->updateTeamPlayerSlot($mirror, ['pay_status' => 0]);
+        $this->actingAs($this->admin)->postJson(route('wallet.refund'), ['team_player_id' => $mirror->id])->assertOk();
+        $this->assertDatabaseHas('wallet_transactions', ['wallet_id' => $this->admin->wallet->id,
+            'type' => 'credit', 'amount' => 100, 'source_type' => 'team_refund', 'source_id' => $order->id]);
+        $this->assertDatabaseMissing('wallet_transactions', ['wallet_id' => $guardianWallet->id, 'type' => 'credit']);
+        $this->assertSame((int) $old->id, (int) $order->fresh()->player_id);
+        $this->assertSame('completed', $order->fresh()->refund_status);
+    }
+
+    public function test_transfer_rejects_restricted_target_and_rollbacks_refuse_allocation_history(): void
+    {
+        [$region, $slot, $old, $target, $targetSlot, $order, $targetOrder, $url, $payload] = $this->transferScenario();
+        $this->mock(\App\Services\PlayerEligibilityService::class)->shouldReceive('assertEligible')->once()->andThrow(new \RuntimeException('Destination is restricted.'));
+        $this->actingAs($this->admin)->postJson($url, $payload)->assertUnprocessable()->assertJsonValidationErrors('payment_transfer');
+        $this->assertDatabaseCount('team_payment_transfers', 0);
+        $targetOrder->update(['withdrawn_at' => now(), 'wallet_reserved' => 0]);
+        $order->forceFill(['beneficiary_player_id' => $target->id])->save();
+        $migration = require database_path('migrations/2026_10_03_120000_add_team_payment_beneficiary_transfers.php');
+        try {
+            $migration->down();
+            $this->fail('Rollback must preserve current allocation.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('cannot be rolled back', $exception->getMessage());
+        }
+        $this->assertTrue(\Illuminate\Support\Facades\Schema::hasColumn('team_payment_orders', 'beneficiary_player_id'));
+    }
+
+    private function transferScenario(): array
+    {
+        [$region, $slot, $old, $target] = $this->relinkScenario();
+        \Spatie\Permission\Models\Role::findOrCreate('super-user', 'web');
+        $this->admin->assignRole('super-user');
+        $this->event->update(['entryFee' => 100]);
+        $region->region->update(['region_fee' => 0]);
+        $slot->update(['pay_status' => 1]);
+        TeamPlayer::where('team_id', $this->team->id)->where('player_id', $old->id)->update(['pay_status' => 1]);
+        $targetSlot = NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 2, 'name' => 'Target', 'surname' => 'Player', 'player_profile' => $target->id, 'pay_status' => 0]);
+        TeamPlayer::create(['team_id' => $this->team->id, 'rank' => 2, 'player_id' => $target->id, 'pay_status' => 0]);
+        $order = TeamPaymentOrder::create(['user_id' => $this->admin->id, 'team_id' => $this->team->id, 'player_id' => $old->id, 'event_id' => $this->event->id,
+            'total_amount' => 100, 'wallet_reserved' => 100, 'payfast_amount_due' => 0, 'wallet_debited' => true, 'payfast_paid' => false, 'pay_status' => true]);
+        $wallet = $this->admin->wallet()->firstOrCreate();
+        WalletTransaction::create(['wallet_id' => $wallet->id, 'type' => 'debit', 'amount' => 100, 'source_type' => 'team_registration_wallet_payment', 'source_id' => $order->id]);
+        $targetOrder = TeamPaymentOrder::create(['user_id' => User::factory()->create()->id, 'team_id' => $this->team->id, 'player_id' => $target->id, 'event_id' => $this->event->id,
+            'total_amount' => 100, 'wallet_reserved' => 25, 'payfast_amount_due' => 75, 'wallet_debited' => false, 'payfast_paid' => false, 'pay_status' => false]);
+        $url = route('backend.team-selection.imported-players.payment.transfer', [$this->event, $region, $this->team, $slot]);
+        $payload = ['order_id' => $order->id, 'expected_player_id' => $old->id, 'target_player_id' => $target->id, 'reason' => 'Correct payment allocation', 'confirm_transfer' => 1];
+        return [$region, $slot, $old, $target, $targetSlot, $order, $targetOrder, $url, $payload];
+    }
+
     private function relinkScenario(): array
     {
         $type = DB::table('eventtypes')->insertGetId(['name' => 'Relink team event', 'type' => EventType::TEAM, 'code' => 'relink-team-event', 'created_at' => now(), 'updated_at' => now()]);

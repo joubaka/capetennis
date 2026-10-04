@@ -22,6 +22,62 @@ use Illuminate\Validation\ValidationException;
 
 final class ImportedTeamRosterService
 {
+    public function unlink(Event $event, NoProfileTeamPlayer $slot, int $expectedPlayerId, int $expectedRank, User $actor): void
+    {
+        DB::transaction(function () use ($event, $slot, $expectedPlayerId, $expectedRank, $actor): void {
+            $team = Team::query()->lockForUpdate()->findOrFail($slot->team_id);
+            abort_unless($team->noProfile && $team->category()->where('event_id', $event->id)->exists()
+                && app(RegionManagerAccessService::class)->isEventManager($actor, $event), 403);
+            app(TeamSelectionInvitationService::class)->assertRosterEditable($team);
+            $locked = NoProfileTeamPlayer::query()->lockForUpdate()->findOrFail($slot->id);
+            $fail = fn (string $message) => throw ValidationException::withMessages(['player_id' => $message]);
+            if ((int) $locked->team_id !== (int) $team->id || (int) $locked->player_profile !== $expectedPlayerId
+                || (int) $locked->rank !== $expectedRank || $expectedPlayerId < 1) {
+                $fail('The roster changed. Refresh the page before unlinking its profile.');
+            }
+            Player::query()->lockForUpdate()->findOrFail($expectedPlayerId);
+            $mirrors = TeamPlayer::query()->withoutGlobalScopes()->where('team_id', $team->id)
+                ->where('rank', $locked->rank)->lockForUpdate()->get();
+            $mirror = $mirrors->first();
+            if ($mirrors->count() > 1 || ($mirror && ! in_array((int) $mirror->player_id, [0, $expectedPlayerId], true))
+                || NoProfileTeamPlayer::query()->where('team_id', $team->id)->where('rank', $locked->rank)->count() !== 1
+                || TeamPlayer::query()->where('team_id', $team->id)->where('player_id', $expectedPlayerId)
+                    ->where('rank', '!=', $locked->rank)->lockForUpdate()->get()->isNotEmpty()) {
+                $fail('The linked roster position is inconsistent. Repair it before unlinking the profile.');
+            }
+            $orders = TeamPaymentOrder::query()->where('event_id', $event->id)->forBeneficiary($expectedPlayerId)->lockForUpdate()->get();
+            foreach ($orders as $order) {
+                if ((int) $order->team_id !== (int) $team->id) {
+                    $fail('This player has checkout history on another team in this event.');
+                }
+                app(TeamPaymentService::class)->assertUnpaidRosterCheckoutMayBeReset($order);
+            }
+            if ((int) $locked->pay_status !== 0 || (int) $mirror?->pay_status !== 0
+                || ClothingOrder::query()->where('event_id', $event->id)->where('player_id', $expectedPlayerId)->lockForUpdate()->get()->isNotEmpty()
+                || TeamSelectionInvitation::query()->where('event_id', $event->id)->where('player_id', $expectedPlayerId)->lockForUpdate()->get()->isNotEmpty()
+                || CategoryEventRegistration::withTrashed()->whereHas('categoryEvent', fn ($q) => $q->where('event_id', $event->id))
+                    ->whereHas('registration.players', fn ($q) => $q->where('players.id', $expectedPlayerId))->lockForUpdate()->get()->isNotEmpty()
+                || TeamFixturePlayer::query()->whereHas('fixture.draw', fn ($q) => $q->where('event_id', $event->id))
+                    ->where(fn ($q) => $q->where('team1_id', $expectedPlayerId)->orWhere('team2_id', $expectedPlayerId)
+                        ->orWhere('team1_no_profile_id', $locked->id)->orWhere('team2_no_profile_id', $locked->id))->lockForUpdate()->get()->isNotEmpty()) {
+                $fail('This profile has payment, registration, invitation or fixture history. Use the existing withdrawal or selection workflow.');
+            }
+            $before = $locked->only(['player_profile', 'claimed_by_user_id', 'claimed_at']);
+            foreach ($orders as $order) {
+                app(TeamPaymentService::class)->closeUnpaidLifecycle($order, $actor);
+            }
+            if ($mirror) {
+                app(TeamPaymentService::class)->updateTeamPlayerSlot($mirror, ['player_id' => 0]);
+            }
+            $locked->update(['player_profile' => null, 'claimed_by_user_id' => null, 'claimed_at' => null]);
+            activity('team-roster')->performedOn($team)->causedBy($actor)->withProperties([
+                'event_id' => $event->id, 'slot_id' => $locked->id, 'rank' => $locked->rank,
+                'before' => $before, 'after_player_id' => null, 'mirror_id' => $mirror?->id,
+                'closed_order_ids' => $orders->pluck('id')->all(),
+            ])->log('administrator unlinked unpaid imported roster profile');
+        });
+    }
+
     public function relink(
         Event $event,
         NoProfileTeamPlayer $slot,
@@ -73,7 +129,7 @@ final class ImportedTeamRosterService
                 $fail('That player is already linked to a roster in this event.');
             }
             $playerIds = array_filter([$expectedPlayerId, $playerId]);
-            $orders = TeamPaymentOrder::query()->where('event_id', $event->id)->whereIn('player_id', $playerIds)->lockForUpdate()->get();
+            $orders = TeamPaymentOrder::query()->where('event_id', $event->id)->forPlayerHistory($playerIds)->lockForUpdate()->get();
             $staleOrders = collect();
             foreach ($orders as $order) {
                 if (! $alignsExistingReplacement || (int) $order->player_id !== $expectedPlayerId || (int) $order->team_id !== (int) $team->id) {

@@ -51,7 +51,7 @@ class TeamPlayerWithdrawController extends Controller
 
     $activeOrder = TeamPaymentOrder::query()
       ->where('team_id', $team->id)
-      ->where('player_id', $player->id)
+      ->forBeneficiary($player->id)
       ->where('event_id', $eventId)
       ->whereNull('withdrawn_at')
       ->latest('id')
@@ -95,14 +95,22 @@ class TeamPlayerWithdrawController extends Controller
     }
 
     DB::transaction(function () use ($teamPlayer, $team, $player, $eventId, $user): void {
+      Team::query()->lockForUpdate()->findOrFail($team->id);
+      $teamPlayer = TeamPlayer::query()->lockForUpdate()->findOrFail($teamPlayer->id);
+      if ((int) $teamPlayer->player_id !== (int) $player->id || (int) $teamPlayer->pay_status !== 0) {
+        throw \Illuminate\Validation\ValidationException::withMessages(['payment' => 'The team registration changed. Refresh before withdrawing.']);
+      }
       $lockedOrder = TeamPaymentOrder::query()
         ->where('team_id', $team->id)
-        ->where('player_id', $player->id)
+        ->forBeneficiary($player->id)
         ->where('event_id', $eventId)
         ->whereNull('withdrawn_at')
         ->lockForUpdate()
         ->latest('id')
         ->first();
+      if ($lockedOrder && ($lockedOrder->pay_status || $lockedOrder->payfast_paid || $lockedOrder->wallet_debited)) {
+        throw \Illuminate\Validation\ValidationException::withMessages(['payment' => 'The registration is now paid. Only its payer may withdraw it.']);
+      }
       if ($lockedOrder && app(\App\Domain\Payments\Services\TeamPaymentService::class)
         ->hasUnresolvedPayfastHandoff($lockedOrder)) {
         throw \Illuminate\Validation\ValidationException::withMessages([
@@ -498,7 +506,7 @@ class TeamPlayerWithdrawController extends Controller
     return TeamPaymentOrder::query()
       ->where('user_id', $payer->id)
       ->where('team_id', $team->id)
-      ->where('player_id', $player->id)
+      ->forBeneficiary($player->id)
       ->where('event_id', $eventId)
       ->where('pay_status', true)
       ->first();

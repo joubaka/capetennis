@@ -21,6 +21,7 @@ class FinancialMutationObserver
             'pay_status',
         ],
         \App\Models\TeamPaymentOrder::class => [
+            'beneficiary_player_id',
             'wallet_reserved',
             'wallet_debited',
             'payfast_paid',

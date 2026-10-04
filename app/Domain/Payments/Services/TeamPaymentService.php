@@ -15,6 +15,132 @@ use Illuminate\Validation\ValidationException;
 
 class TeamPaymentService
 {
+    public function transferImportedCoverage(Event $event, Team $team, int $orderId, int $expectedPlayerId, int $targetPlayerId, string $reason, User $actor): void
+    {
+        abort_unless($actor->hasRole('super-user'), 403);
+        FinanceMutationScope::run('team_payment_state_write', function () use ($event, $team, $orderId, $expectedPlayerId, $targetPlayerId, $reason, $actor): void {
+            DB::transaction(function () use ($event, $team, $orderId, $expectedPlayerId, $targetPlayerId, $reason, $actor): void {
+                $lockedTeam = Team::query()->lockForUpdate()->findOrFail($team->id);
+                abort_unless($lockedTeam->noProfile && $lockedTeam->category()->where('event_id', $event->id)->exists(), 404);
+                app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($lockedTeam);
+                $fail = fn (string $message) => throw ValidationException::withMessages(['payment_transfer' => $message]);
+                if ($expectedPlayerId === $targetPlayerId || trim($reason) === '') {
+                    $fail('Choose a different linked player and provide the transfer reason.');
+                }
+                $ids = [$expectedPlayerId, $targetPlayerId];
+                $slots = \App\Models\NoProfileTeamPlayer::query()->where('team_id', $team->id)->whereIn('player_profile', $ids)->orderBy('id')->lockForUpdate()->get();
+                $mirrors = TeamPlayer::query()->withoutGlobalScopes()->where('team_id', $team->id)->whereIn('player_id', $ids)->orderBy('id')->lockForUpdate()->get();
+                $source = $mirrors->firstWhere('player_id', $expectedPlayerId);
+                $target = $mirrors->firstWhere('player_id', $targetPlayerId);
+                if ($slots->count() !== 2 || $mirrors->count() !== 2 || ! $source || ! $target
+                    || $slots->firstWhere('player_profile', $expectedPlayerId)?->rank != $source->rank
+                    || $slots->firstWhere('player_profile', $targetPlayerId)?->rank != $target->rank
+                    || (int) $source->pay_status !== 1 || (int) $target->pay_status !== 0
+                    || $slots->firstWhere('player_profile', $targetPlayerId)?->pay_status) {
+                    $fail('Both players must occupy consistent linked roster positions, with the source paid and destination unpaid.');
+                }
+                foreach ($slots as $slot) {
+                    if (\App\Models\NoProfileTeamPlayer::where('team_id', $team->id)->where('rank', $slot->rank)->count() !== 1
+                        || TeamPlayer::where('team_id', $team->id)->where('rank', $slot->rank)->count() !== 1) {
+                        $fail('The roster positions are inconsistent.');
+                    }
+                }
+                if (TeamPlayer::query()->where('team_id', '!=', $team->id)->whereIn('player_id', $ids)
+                    ->whereHas('team.category', fn ($q) => $q->where('event_id', $event->id))->lockForUpdate()->get()->isNotEmpty()
+                    || \App\Models\NoProfileTeamPlayer::query()->where('team_id', '!=', $team->id)->whereIn('player_profile', $ids)
+                        ->whereHas('team.category', fn ($q) => $q->where('event_id', $event->id))->lockForUpdate()->get()->isNotEmpty()) {
+                    $fail('A selected profile is linked to another roster in this event.');
+                }
+                $players = Player::query()->whereIn('id', $ids)->orderBy('id')->lockForUpdate()->get();
+                $targetProfile = $players->firstWhere('id', $targetPlayerId);
+                if (! $targetProfile) {
+                    $fail('The destination profile no longer exists.');
+                }
+                try {
+                    app(\App\Services\PlayerEligibilityService::class)->assertEligible($targetProfile, $event);
+                } catch (\RuntimeException $exception) {
+                    $fail($exception->getMessage());
+                }
+                $orders = TeamPaymentOrder::query()->where('event_id', $event->id)->forPlayerHistory($ids)->orderBy('id')->lockForUpdate()->get();
+                $order = $orders->firstWhere('id', $orderId);
+                if (! $order || (int) $order->team_id !== (int) $team->id || $order->effective_player_id !== $expectedPlayerId
+                    || ! $order->pay_status || $order->withdrawn_at || $order->hasRefund()
+                    || $order->refunded_at || $order->refund_waived_at
+                    || (float) $order->refund_gross !== 0.0 || (float) $order->refund_fee !== 0.0 || (float) $order->refund_net !== 0.0
+                    || $order->refund_method) {
+                    $fail('The paid order changed or has withdrawal/refund history. Refresh before transferring coverage.');
+                }
+                $fee = round((float) Event::findOrFail($event->id)->entryFee + (float) \App\Models\TeamRegion::find($team->region_id)?->region_fee, 2);
+                if ($fee <= 0 || round((float) $order->total_amount, 2) !== $fee) {
+                    $fail('The settled amount must exactly match the current team registration fee.');
+                }
+                $walletDebit = \App\Models\WalletTransaction::query()->where('source_type', 'team_registration_wallet_payment')
+                    ->where('source_id', $order->id)->lockForUpdate()->get();
+                $walletPaid = $order->wallet_debited && round((float) $walletDebit->where('type', 'debit')->sum('amount'), 2) === round((float) $order->wallet_reserved, 2)
+                    && (float) $order->wallet_reserved > 0 && $walletDebit->count() === 1
+                    && $order->user->wallet()->whereKey($walletDebit->first()?->wallet_id)->exists();
+                $providerReceipt = \App\Models\Transaction::query()->where('custom_str5', 'TeamOrder')->where('custom_int5', $order->id)
+                    ->where('pf_payment_id', $order->payfast_pf_payment_id)->where('payment_status', 'COMPLETE')->lockForUpdate()->first();
+                $providerPaid = $order->payfast_paid && filled($order->payfast_pf_payment_id) && $providerReceipt
+                    && round((float) $providerReceipt->amount_gross, 2) === round((float) $order->payfast_amount_due, 2)
+                    && (int) $providerReceipt->custom_int2 === (int) $order->player_id
+                    && (int) $providerReceipt->custom_int3 === (int) $order->event_id
+                    && (int) $providerReceipt->custom_int4 === (int) $order->user_id;
+                if ($order->collection_status === 'paid_privately' || $this->hasUnresolvedPayfastHandoff($order)
+                    || ((float) $order->wallet_reserved > 0 && ! $walletPaid)
+                    || ((float) $order->payfast_amount_due > 0 && ! $providerPaid)
+                    || round((float) $order->wallet_reserved + (float) $order->payfast_amount_due, 2) !== $fee
+                    || ! (($walletPaid || $providerPaid)
+                    && round(($walletPaid ? (float) $order->wallet_reserved : 0) + ($providerPaid ? (float) $order->payfast_amount_due : 0), 2) === $fee)) {
+                    $fail('Verified settlement evidence is required for payment coverage transfer.');
+                }
+                if (\App\Models\TrialParticipation::where('order_id', $order->id)->exists()
+                    || TeamSelectionInvitation::where('event_id', $event->id)->whereIn('player_id', $ids)->lockForUpdate()->get()->isNotEmpty()
+                    || \App\Models\CategoryEventRegistration::withTrashed()->whereHas('categoryEvent', fn ($q) => $q->where('event_id', $event->id))
+                        ->whereHas('registration.players', fn ($q) => $q->whereIn('players.id', $ids))->lockForUpdate()->get()->isNotEmpty()
+                    || \App\Models\TeamFixturePlayer::whereHas('fixture.draw', fn ($q) => $q->where('event_id', $event->id))
+                        ->where(fn ($q) => $q->whereIn('team1_id', $ids)->orWhereIn('team2_id', $ids)
+                            ->orWhereIn('team1_no_profile_id', $slots->pluck('id'))->orWhereIn('team2_no_profile_id', $slots->pluck('id')))->lockForUpdate()->get()->isNotEmpty()) {
+                    $fail('Selection, registration or fixture participation must be resolved through its existing workflow.');
+                }
+                foreach ($orders as $targetOrder) {
+                    if ((int) $targetOrder->id !== (int) $order->id && $targetOrder->effective_player_id === $expectedPlayerId) {
+                        if ($targetOrder->withdrawn_at === null) {
+                            $fail('The source has another active checkout in this event.');
+                        }
+                        $this->assertUnpaidRosterCheckoutMayBeReset($targetOrder);
+                    }
+                    if ((int) $targetOrder->id === (int) $order->id || $targetOrder->effective_player_id !== $targetPlayerId) {
+                        continue;
+                    }
+                    if ((int) $targetOrder->team_id !== (int) $team->id) {
+                        $fail('The destination has checkout history on another team.');
+                    }
+                    $this->assertUnpaidRosterCheckoutMayBeReset($targetOrder);
+                }
+                foreach ($orders as $targetOrder) {
+                    if ((int) $targetOrder->id !== (int) $order->id && $targetOrder->effective_player_id === $targetPlayerId) {
+                        $this->closeUnpaidLifecycle($targetOrder, $actor);
+                    }
+                }
+                $order->forceFill(['beneficiary_player_id' => $targetPlayerId])->save();
+                $this->updateTeamPlayerSlot($source, ['pay_status' => 0]);
+                $this->updateTeamPlayerSlot($target, ['pay_status' => 1]);
+                foreach ($slots as $slot) {
+                    $slot->update(['pay_status' => (int) $slot->player_profile === $targetPlayerId ? 1 : 0]);
+                }
+                DB::table('team_payment_transfers')->insert([
+                    'order_id' => $order->id, 'event_id' => $event->id, 'team_id' => $team->id,
+                    'original_player_id' => $order->player_id, 'from_player_id' => $expectedPlayerId,
+                    'to_player_id' => $targetPlayerId, 'actor_id' => $actor->id, 'reason' => trim($reason), 'created_at' => now(),
+                ]);
+                activity('team-payment')->performedOn($order)->causedBy($actor)->withProperties([
+                    'from_player_id' => $expectedPlayerId, 'to_player_id' => $targetPlayerId, 'reason' => trim($reason),
+                ])->log('transferred settled imported team payment coverage');
+            }, 3);
+        });
+    }
+
     public function __construct(private PaymentOrchestrator $paymentOrchestrator)
     {
     }
@@ -50,7 +176,7 @@ class TeamPaymentService
                     ->all();
                 $orders = TeamPaymentOrder::query()
                     ->where('team_id', $team->id)
-                    ->where('player_id', $player->id)
+                    ->forBeneficiary($player->id)
                     ->where('event_id', $event->id)
                     ->lockForUpdate()
                     ->orderByDesc('id')
@@ -317,9 +443,10 @@ class TeamPaymentService
     {
         return FinanceMutationScope::run('team_payment_state_write', function () use ($order) {
             return DB::transaction(function () use ($order) {
+                $order = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
                 $teamPlayer = TeamPlayer::query()
                     ->where('team_id', $order->team_id)
-                    ->where('player_id', $order->player_id)
+                    ->where('player_id', $order->effective_player_id)
                     ->lockForUpdate()
                     ->first();
 
@@ -339,9 +466,10 @@ class TeamPaymentService
     {
         return FinanceMutationScope::run('team_payment_state_write', function () use ($order, $clearSlot) {
             return DB::transaction(function () use ($order, $clearSlot) {
+                $order = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
                 $teamPlayer = TeamPlayer::query()
                     ->where('team_id', $order->team_id)
-                    ->where('player_id', $order->player_id)
+                    ->where('player_id', $order->effective_player_id)
                     ->lockForUpdate()
                     ->first();
 
@@ -394,6 +522,9 @@ class TeamPaymentService
             return DB::transaction(function () use ($order, $actor) {
                 app(\App\Services\InterprovincialTrials\TrialParticipationService::class)->lockForOrder((int)$order->id);
             $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
+                if ($locked->effective_player_id !== $order->effective_player_id) {
+                    throw ValidationException::withMessages(['payment' => 'Payment coverage changed. Refresh before withdrawing this player.']);
+                }
 
                 if ($this->hasUnresolvedPayfastHandoff($locked)) {
                     throw ValidationException::withMessages([
@@ -446,6 +577,24 @@ class TeamPaymentService
 
             return $this->recordWithdrawal($cancelled, $actor);
         });
+    }
+
+    public function assertUnpaidRosterCheckoutMayBeReset(TeamPaymentOrder $order): void
+    {
+        $total = round((float) $order->total_amount, 2);
+        $reserved = round((float) $order->wallet_reserved, 2);
+        $due = round((float) $order->payfast_amount_due, 2);
+        if (! $this->isWhollyUnpaid($order, $order->withdrawn_at !== null)
+            || $order->payfast_handed_off_at !== null
+            || \App\Models\Transaction::query()->where('custom_int5', $order->id)->where('custom_str5', 'TeamOrder')->lockForUpdate()->get()->isNotEmpty()
+            || \App\Models\WalletTransaction::query()->where('source_id', $order->id)->where('source_type', 'team_registration_wallet_payment')->lockForUpdate()->get()->isNotEmpty()
+            || $total < 0 || $reserved < 0 || $reserved > $total
+            || ($order->withdrawn_at !== null && $reserved !== 0.0)
+            || ($due !== round($total - $reserved, 2) && ! ($due === 0.0 && $reserved === 0.0))) {
+            throw ValidationException::withMessages([
+                'player_id' => 'This checkout has payment or settlement evidence and cannot be reset.',
+            ]);
+        }
     }
 
     public function assertUnpaidRosterCheckoutMayBeClosed(TeamPaymentOrder $order): void

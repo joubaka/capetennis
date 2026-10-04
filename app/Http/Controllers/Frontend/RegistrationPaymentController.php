@@ -654,7 +654,7 @@ class RegistrationPaymentController extends Controller
         $user,
         \App\Models\Event::findOrFail($order->event_id),
         \App\Models\Team::findOrFail($order->team_id),
-        \App\Models\Player::findOrFail($order->player_id)
+        \App\Models\Player::findOrFail($order->effective_player_id)
       );
     } catch (\Illuminate\Validation\ValidationException $exception) {
       return back()->withErrors($exception->errors());
@@ -673,14 +673,14 @@ class RegistrationPaymentController extends Controller
     if ($payfastDue <= 0) {
       return redirect()->route('team.payment.payfast', [
         'team' => $order->team_id,
-        'player' => $order->player_id,
+        'player' => $order->effective_player_id,
         'event' => $order->event_id,
       ]);
     }
 
     return redirect()->route('team.payment.payfast', [
       'team' => $order->team_id,
-      'player' => $order->player_id,
+      'player' => $order->effective_player_id,
       'event' => $order->event_id,
     ]);
   }
@@ -715,7 +715,7 @@ class RegistrationPaymentController extends Controller
         $user,
         \App\Models\Event::findOrFail($order->event_id),
         \App\Models\Team::findOrFail($order->team_id),
-        \App\Models\Player::findOrFail($order->player_id)
+        \App\Models\Player::findOrFail($order->effective_player_id)
       );
     } catch (\Illuminate\Validation\ValidationException $exception) {
       return redirect()->route('events.index')->withErrors($exception->errors());
@@ -766,7 +766,7 @@ class RegistrationPaymentController extends Controller
 
     return redirect()->route('team.payment.payfast', [
       'team' => $order->team_id,
-      'player' => $order->player_id,
+      'player' => $order->effective_player_id,
       'event' => $order->event_id,
     ])
       ->withErrors('Payment cancelled. No wallet funds were deducted.');

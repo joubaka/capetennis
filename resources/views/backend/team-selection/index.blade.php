@@ -516,8 +516,15 @@
                                       @php($replacementFormOpen = (int) old('replacement_invitation_id') === (int) $invitation->id)
                                       @php($replacementMode = $replacementFormOpen ? old('replacement_mode', 'next_reserve') : ($eligibleTeamReserves->isNotEmpty() ? 'next_reserve' : 'custom_profile'))
                                       @php($replacementMode = $replacementMode === 'next_reserve' && $eligibleTeamReserves->isEmpty() ? 'custom_profile' : $replacementMode)
-                                      <details @if($replacementFormOpen) open @endif>
-                                        <summary class="dropdown-item text-warning">Change player</summary>
+                                      <button type="button" class="dropdown-item text-warning" data-bs-toggle="modal" data-bs-target="#replace-player-{{ $invitation->id }}">Change player</button>
+                                      <div class="modal fade" id="replace-player-{{ $invitation->id }}" tabindex="-1" aria-labelledby="replace-player-title-{{ $invitation->id }}" aria-hidden="true" data-replacement-modal @if($replacementFormOpen) data-reopen @endif>
+                                        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+                                          <div class="modal-content">
+                                            <div class="modal-header">
+                                              <h5 class="modal-title" id="replace-player-title-{{ $invitation->id }}">Change player — {{ $invitation->player?->full_name }}</h5>
+                                              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                            </div>
+                                            <div class="modal-body">
                                         <form method="POST" action="{{ route('backend.team-selection.invitations.replace', [$event, $activeImport, $invitation]) }}"
                                               class="mt-2 replacement-player-form" data-replacement-player-form
                                               onsubmit="return confirm('Replace this unpaid player? The roster change is audited and cannot be undone.');">
@@ -548,7 +555,10 @@
                                                  value="Player not available." placeholder="Required reason" required>
                                           <button class="btn btn-sm btn-warning w-100">Confirm replacement</button>
                                         </form>
-                                      </details>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
                                     @endif
                                     @if($openVacancy && $eligibleTeamReserves->isNotEmpty())
                                       <form method="POST" action="{{ route('backend.team-selection.invitations.promote-reserve', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('Invite the next reserve now? Their own response and payment deadlines will start now.');">@csrf<button class="dropdown-item text-warning">Invite next reserve</button></form>
@@ -1555,6 +1565,11 @@ document.addEventListener('DOMContentLoaded', function () {
     sync();
   });
 
+  // Escape positioned dropdowns and scrollable team tables before opening dialogs.
+  document.querySelectorAll('[data-replacement-modal]').forEach(function (modal) {
+    document.body.appendChild(modal);
+  });
+
   const syncReplacementProfile = function (modeSelect) {
     const form = modeSelect.closest('[data-replacement-player-form]');
     const profileWrap = form?.querySelector('[data-custom-replacement-profile]');
@@ -1594,6 +1609,7 @@ document.addEventListener('DOMContentLoaded', function () {
       select.select2({
         width: '100%',
         placeholder: select.data('placeholder'),
+        dropdownParent: select.closest('.modal').length ? select.closest('.modal') : window.jQuery(document.body),
         minimumInputLength: 2,
         ajax: {
           url: select.data('search-url'),
@@ -1606,6 +1622,10 @@ document.addEventListener('DOMContentLoaded', function () {
       });
     });
   }
+
+  document.querySelectorAll('[data-replacement-modal][data-reopen]').forEach(function (modal) {
+    if (typeof bootstrap !== 'undefined') bootstrap.Modal.getOrCreateInstance(modal).show();
+  });
 
   const addTeamId = @json(old('add_team_id'));
   if (addTeamId && typeof bootstrap !== 'undefined') {

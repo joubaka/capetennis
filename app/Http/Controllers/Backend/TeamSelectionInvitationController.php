@@ -1204,6 +1204,38 @@ class TeamSelectionInvitationController extends Controller
             ->map(fn (Player $player) => ['id' => $player->id, 'text' => $player->full_name.' · Profile #'.$player->id])]);
     }
 
+    public function transferImportedPayment(Request $request, Event $event, EventRegion $eventRegion, Team $team, NoProfileTeamPlayer $noProfileTeamPlayer, TeamPaymentService $payments)
+    {
+        abort_unless($request->user()->hasRole('super-user'), 403);
+        $this->authorizeImportedRosterSlot($event, $eventRegion, $team, $noProfileTeamPlayer, $request->user());
+        $data = $request->validate([
+            'order_id' => ['required', 'integer', 'min:1'],
+            'expected_player_id' => ['required', 'integer', 'min:1'],
+            'target_player_id' => ['required', 'integer', 'min:1'],
+            'reason' => ['required', 'string', 'max:1000'],
+            'confirm_transfer' => ['accepted'],
+        ]);
+        abort_unless((int) $noProfileTeamPlayer->player_profile === (int) $data['expected_player_id'], 422);
+        $payments->transferImportedCoverage($event, $team, (int) $data['order_id'], (int) $data['expected_player_id'],
+            (int) $data['target_player_id'], $data['reason'], $request->user());
+
+        return back()->with('success', 'Paid registration coverage was moved to the selected player. Original payment and payer records were kept.');
+    }
+
+    public function unlinkImportedPlayer(Request $request, Event $event, EventRegion $eventRegion, Team $team, NoProfileTeamPlayer $noProfileTeamPlayer, ImportedTeamRosterService $rosters)
+    {
+        $this->authorizeImportedRosterSlot($event, $eventRegion, $team, $noProfileTeamPlayer, $request->user());
+        abort_unless(app(RegionManagerAccessService::class)->isEventManager($request->user(), $event), 403);
+        $data = $request->validate([
+            'expected_player_id' => ['required', 'integer', 'min:1'],
+            'expected_rank' => ['required', 'integer', 'min:1'],
+            'confirm_unlink' => ['accepted'],
+        ]);
+        $rosters->unlink($event, $noProfileTeamPlayer, (int) $data['expected_player_id'], (int) $data['expected_rank'], $request->user());
+
+        return back()->with('success', 'The unpaid profile link was reset. Imported roster details were kept.');
+    }
+
     public function relinkImportedPlayer(Request $request, Event $event, EventRegion $eventRegion, Team $team, NoProfileTeamPlayer $noProfileTeamPlayer, ImportedTeamRosterService $rosters)
     {
         $this->authorizeImportedRosterSlot($event, $eventRegion, $team, $noProfileTeamPlayer, $request->user());

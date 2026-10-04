@@ -77,6 +77,13 @@ class RefundExecutionService
                 /** @var Model $locked */
                 $locked = $entityClass::query()->lockForUpdate()->findOrFail($refundEntity->getKey());
 
+                if ($locked instanceof \App\Models\TeamPaymentOrder
+                    && ($locked->effective_player_id !== $refundEntity->effective_player_id
+                        || ($locked->beneficiary_player_id !== null
+                            && (! $locked->withdrawn_at || ! $locked->user->wallet()->whereKey($wallet->id)->exists())))) {
+                    throw ValidationException::withMessages(['refund' => 'Transferred payment refunds require the current withdrawn allocation and the original payer wallet.']);
+                }
+
                 if (($locked->refund_status ?? null) === 'completed') {
                     return $locked;
                 }

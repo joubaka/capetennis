@@ -1,4 +1,5 @@
 @php($importedRoster = $regionTeam->team_players_no_profile->sortBy('rank')->values())
+@php($transferOrders = auth()->user()->hasRole('super-user') ? \App\Models\TeamPaymentOrder::query()->where('event_id', $event->id)->where('team_id', $regionTeam->id)->whereNull('withdrawn_at')->where('pay_status', true)->get()->keyBy('effective_player_id') : collect())
 
 <ul class="nav nav-tabs px-3 pt-3" role="tablist">
   <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#team-players-{{ $regionTeam->id }}" type="button"><i class="ti ti-users me-1"></i>Players</button></li>
@@ -36,6 +37,30 @@
                 @endif
               </td>
               <td>
+                @if($linkedProfile && auth()->user()->hasRole('super-user') && ($coverageOrder = $transferOrders->get($slot->player_profile)))
+                  <details class="mt-2">
+                    <summary class="small text-primary">Move payment to another player</summary>
+                    <form method="POST" action="{{ route('backend.team-selection.imported-players.payment.transfer', [$event, $eventRegion, $regionTeam, $slot]) }}" class="mt-2" style="min-width:220px">
+                      @csrf
+                      <input type="hidden" name="order_id" value="{{ $coverageOrder->id }}">
+                      <input type="hidden" name="expected_player_id" value="{{ $slot->player_profile }}">
+                      <label class="small" for="transfer-target-{{ $slot->id }}">Unpaid player in this team</label>
+                      <select id="transfer-target-{{ $slot->id }}" name="target_player_id" class="form-select form-select-sm" required>
+                        <option value="">Choose player</option>
+                        @foreach($importedRoster as $candidate)
+                          @if($candidate->player_profile && $candidate->player_profile != $slot->player_profile && !$transferOrders->has($candidate->player_profile) && !$candidate->pay_status)
+                            <option value="{{ $candidate->player_profile }}">{{ $candidate->profile?->full_name ?: trim($candidate->name.' '.$candidate->surname) }} · Rank {{ $candidate->rank }}</option>
+                          @endif
+                        @endforeach
+                      </select>
+                      <label class="small mt-2" for="transfer-reason-{{ $slot->id }}">Reason</label>
+                      <input id="transfer-reason-{{ $slot->id }}" name="reason" maxlength="1000" class="form-control form-control-sm" required>
+                      <p class="small text-muted mt-2">Use this payment for the selected player. Any later refund goes to the original payer.</p>
+                      <label class="small d-flex gap-2 my-2"><input type="checkbox" name="confirm_transfer" value="1" required><span>Confirm this player becomes unpaid and the selected player becomes paid.</span></label>
+                      <button class="btn btn-sm btn-outline-primary">Move payment</button>
+                    </form>
+                  </details>
+                @endif
                 @if($linkedProfile)
                   <span class="badge bg-label-success">Imported · Linked</span>
                   <div class="small text-muted mt-1">{{ $linkedProfile->full_name }}</div>
@@ -44,6 +69,19 @@
                   <div class="small text-muted mt-1">Profile can be linked from the public team page.</div>
                 @endif
                 @if(app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(auth()->user(), $event))
+                  @if($linkedProfile && !(int) $slot->pay_status)
+                    <details class="mt-2">
+                      <summary class="small text-danger">Unlink unpaid profile / reset</summary>
+                      <form method="POST" action="{{ route('backend.team-selection.imported-players.profile.destroy', [$event, $eventRegion, $regionTeam, $slot]) }}" class="mt-2" style="min-width:220px">
+                        @csrf @method('DELETE')
+                        <input type="hidden" name="expected_player_id" value="{{ (int) $slot->player_profile }}">
+                        <input type="hidden" name="expected_rank" value="{{ $slot->rank }}">
+                        <p class="small text-muted">Keeps the imported name, contact and rank and releases unpaid wallet reservations. Paid, in-flight or previously participating profiles cannot be reset here.</p>
+                        <label class="small d-flex gap-2 my-2"><input type="checkbox" name="confirm_unlink" value="1" required><span>Confirm unlinking {{ $linkedProfile->full_name }}.</span></label>
+                        <button class="btn btn-sm btn-outline-danger">Unlink profile and reset</button>
+                      </form>
+                    </details>
+                  @endif
                   <details class="mt-2">
                     <summary class="small text-primary">{{ $linkedProfile ? 'Replace linked profile' : 'Link player profile' }}</summary>
                     <form method="POST" action="{{ route('backend.team-selection.imported-players.profile.update', [$event, $eventRegion, $regionTeam, $slot]) }}" class="mt-2" style="min-width:220px">

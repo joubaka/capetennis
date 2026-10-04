@@ -42,6 +42,7 @@ class TeamPaymentOrder extends Model
   ];
 
   protected $casts = [
+    'beneficiary_player_id' => 'integer',
     'wallet_reserved' => 'float',
     'payfast_amount_due' => 'float',
     'total_amount' => 'float',
@@ -77,6 +78,31 @@ class TeamPaymentOrder extends Model
   public function player()
   {
     return $this->belongsTo(Player::class);
+  }
+
+  public function beneficiary()
+  {
+    return $this->belongsTo(Player::class, 'beneficiary_player_id');
+  }
+
+  public function effectivePlayer()
+  {
+    return $this->belongsTo(Player::class, 'effective_player_id');
+  }
+
+  public function getEffectivePlayerIdAttribute(): int
+  {
+    return (int) ($this->beneficiary_player_id ?? $this->player_id);
+  }
+
+  public function scopeForBeneficiary($query, int $playerId)
+  {
+    return $query->whereRaw('COALESCE(beneficiary_player_id, player_id) = ?', [$playerId]);
+  }
+
+  public function scopeForPlayerHistory($query, array $playerIds)
+  {
+    return $query->where(fn ($q) => $q->whereIn('player_id', $playerIds)->orWhereIn('beneficiary_player_id', $playerIds));
   }
 
   public function event()

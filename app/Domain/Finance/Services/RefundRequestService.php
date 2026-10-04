@@ -99,6 +99,9 @@ class RefundRequestService
                     ->with('event')
                     ->lockForUpdate()
                     ->findOrFail($order->id);
+                if ($locked->effective_player_id !== $order->effective_player_id) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['payment' => 'Payment coverage changed. Refresh before requesting a refund.']);
+                }
 
                 if (($attributes['refund_status'] ?? null) === 'pending'
                     && in_array($locked->refund_status, ['pending', 'completed'], true)) {

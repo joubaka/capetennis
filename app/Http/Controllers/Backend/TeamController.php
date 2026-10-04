@@ -1137,7 +1137,7 @@ class TeamController extends Controller
     }
 
     try {
-      app(\App\Services\PlayerEligibilityService::class)->assertEligible((int) $order->player_id, (int) $order->event_id);
+      app(\App\Services\PlayerEligibilityService::class)->assertEligible((int) $order->effective_player_id, (int) $order->event_id);
     } catch (\RuntimeException $exception) {
       return redirect()->route('events.index')->withErrors($exception->getMessage());
     }
@@ -1162,7 +1162,7 @@ class TeamController extends Controller
     ]);
 
     $teamWalletEvent = optional($order->event)->name ?? 'Team Event';
-    $teamWalletPlayer = \App\Models\Player::find($order->player_id);
+    $teamWalletPlayer = \App\Models\Player::find($order->effective_player_id);
 
     activity('registration')
       ->performedOn($order)
@@ -1191,7 +1191,7 @@ class TeamController extends Controller
     }
 
     try {
-      app(\App\Services\PlayerEligibilityService::class)->assertEligible((int) $order->player_id, (int) $order->event_id);
+      app(\App\Services\PlayerEligibilityService::class)->assertEligible((int) $order->effective_player_id, (int) $order->event_id);
     } catch (\RuntimeException $exception) {
       return back()->withErrors($exception->getMessage());
     }
@@ -1208,7 +1208,7 @@ class TeamController extends Controller
 
     return redirect()->route('team.payment.payfast', [
       $order->team_id,
-      $order->player_id,
+      $order->effective_player_id,
       $order->event_id
     ]);
   }
@@ -1223,7 +1223,7 @@ class TeamController extends Controller
 
     try {
       app(ExternalTeamRosterService::class)->assertCanRegister(
-        auth()->user(), $order->event, $order->team, $order->player
+        auth()->user(), $order->event, $order->team, $order->effectivePlayer
       );
     } catch (\Illuminate\Validation\ValidationException $exception) {
       return redirect()->back()->withErrors($exception->errors());
@@ -1259,7 +1259,7 @@ class TeamController extends Controller
     }
 
     try {
-      app(\App\Services\PlayerEligibilityService::class)->assertEligible((int) $order->player_id, (int) $order->event_id);
+      app(\App\Services\PlayerEligibilityService::class)->assertEligible((int) $order->effective_player_id, (int) $order->event_id);
     } catch (\RuntimeException $exception) {
       return back()->withErrors($exception->getMessage());
     }

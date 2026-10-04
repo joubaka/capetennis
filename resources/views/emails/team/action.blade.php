@@ -9,7 +9,7 @@
 } }}
 
 **Event:** {{ $order->event?->name ?? 'Team event' }}
-**Player:** {{ $order->player?->full_name ?? trim(($order->player?->name ?? '').' '.($order->player?->surname ?? '')) }}
+**Player:** {{ $order->effectivePlayer?->full_name ?? trim(($order->effectivePlayer?->name ?? '').' '.($order->effectivePlayer?->surname ?? '')) }}
 **Team:** {{ $order->team?->name ?? ('Team #'.$order->team_id) }}
 
 @if(isset($details['gross']))

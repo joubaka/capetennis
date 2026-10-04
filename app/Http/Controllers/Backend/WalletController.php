@@ -89,7 +89,7 @@ class WalletController extends Controller
         }
 
         $order = TeamPaymentOrder::where('team_id', $team->id)
-            ->where('player_id', $player->id)
+            ->forBeneficiary($player->id)
             ->where('event_id', $eventId)
             ->where('pay_status', true)
             ->first();
@@ -120,7 +120,7 @@ class WalletController extends Controller
         }
 
         // Get the player's primary user
-        $playerUser = $player->users->first();
+        $playerUser = $order->user;
 
         if (!$playerUser) {
             return response()->json([
@@ -215,7 +215,7 @@ class WalletController extends Controller
 
             // Find the payment order
             $order = TeamPaymentOrder::where('team_id', $team->id)
-                ->where('player_id', $player->id)
+                ->forBeneficiary($player->id)
                 ->where('event_id', $eventId)
                 ->where('pay_status', true)
                 ->first();
@@ -229,7 +229,7 @@ class WalletController extends Controller
             }
 
             $refundAmount = $order->maxRefundableAmount();
-            $playerUser = $player->users->first();
+            $playerUser = $order->user;
 
             if (!$playerUser) {
                 $errors[] = "No user found for {$player->name}";

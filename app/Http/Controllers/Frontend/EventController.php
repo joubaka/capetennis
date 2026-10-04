@@ -453,7 +453,7 @@ class EventController extends Controller
         ->where('event_id', $event->id)
         ->where('pay_status', true)
         ->get()
-        ->keyBy(fn (TeamPaymentOrder $order) => $order->team_id.'-'.$order->player_id);
+        ->keyBy(fn (TeamPaymentOrder $order) => $order->team_id.'-'.$order->effective_player_id);
     }
 
     // ---------------------------------------------------------
