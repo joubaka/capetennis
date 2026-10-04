@@ -49,7 +49,7 @@
                         <option value="">Choose player</option>
                         @foreach($importedRoster as $candidate)
                           @if($candidate->player_profile && $candidate->player_profile != $slot->player_profile && !$transferOrders->has($candidate->player_profile) && !$candidate->pay_status)
-                            <option value="{{ $candidate->player_profile }}">{{ $candidate->profile?->full_name ?: trim($candidate->name.' '.$candidate->surname) }} · Rank {{ $candidate->rank }}</option>
+                            <option value="{{ $candidate->player_profile }}" data-rank-slot-id="{{ $candidate->id }}" data-rank-player-name="{{ $candidate->profile?->full_name ?: trim($candidate->name.' '.$candidate->surname) }}">{{ $candidate->profile?->full_name ?: trim($candidate->name.' '.$candidate->surname) }} · Rank {{ $candidate->rank }}</option>
                           @endif
                         @endforeach
                       </select>
@@ -117,11 +117,11 @@
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0">
         <thead><tr><th>Roster rank</th><th>Player</th><th>Profile status</th><th>Move</th></tr></thead>
-        <tbody class="imported-roster-order">
+        <tbody class="imported-roster-order roster-order-sortable" data-reorder-url="{{ route('backend.team-selection.imported-players.reorder', [$event, $eventRegion, $regionTeam]) }}" data-reorder-field="slot_ids">
           @foreach($importedRoster as $slot)
-            <tr data-slot-id="{{ $slot->id }}">
+            <tr draggable="true" data-order-id="{{ $slot->id }}" data-slot-id="{{ $slot->id }}">
               <td><span class="badge bg-label-primary">Rank {{ $slot->rank }}</span></td>
-              <td><strong data-imported-player-name>{{ trim($slot->name.' '.$slot->surname) }}</strong></td>
+              <td><span class="drag-handle me-2" title="Drag to reorder"><i class="ti ti-grip-vertical"></i></span><strong data-imported-player-name>{{ trim($slot->name.' '.$slot->surname) }}</strong></td>
               <td><span class="badge {{ $slot->player_profile ? 'bg-label-success' : 'bg-label-info' }}">{{ $slot->player_profile ? 'Imported · Linked' : 'Imported · Unlinked' }}</span></td>
               <td><div class="d-flex gap-1">
                 <form method="POST" action="{{ route('backend.team-selection.imported-players.move', [$event, $eventRegion, $regionTeam, $slot]) }}">@csrf<input type="hidden" name="direction" value="up"><button class="btn btn-sm btn-outline-primary" title="Move up" aria-label="Move {{ trim($slot->name.' '.$slot->surname) }} up" @disabled($loop->first)><i class="ti ti-arrow-up"></i></button></form>

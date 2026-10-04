@@ -727,6 +727,56 @@ final class TeamSelectionInvitationService
         });
     }
 
+    public function reorderRoster(TeamSelectionImport $selectionImport, Team $team, array $invitationIds, User $actor, array $expectedIds): void
+    {
+        DB::transaction(function () use ($selectionImport, $team, $invitationIds, $actor, $expectedIds): void {
+            Event::query()->lockForUpdate()->findOrFail($selectionImport->event_id);
+            $import = TeamSelectionImport::query()->lockForUpdate()->findOrFail($selectionImport->id);
+            if (!in_array($import->status, ['draft', 'sent'], true)) {
+                throw ValidationException::withMessages(['order' => 'This selection import is no longer active. Refresh and try again.']);
+            }
+            $lockedTeam = Team::query()->withoutGlobalScopes()->with('category')->lockForUpdate()->findOrFail($team->id);
+            abort_unless((int) $lockedTeam->category?->event_id === (int) $import->event_id
+                && (int) $lockedTeam->region_id === (int) $import->region_id, 404);
+            $selected = TeamSelectionInvitation::query()->where('import_id', $import->id)
+                ->where('event_id', $import->event_id)->where('region_id', $import->region_id)
+                ->where('team_id', $lockedTeam->id)->whereNotNull('roster_rank')
+                ->whereIn('status', [TeamSelectionInvitation::INVITED, TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, TeamSelectionInvitation::PAID_CONFIRMED])
+                ->orderBy('roster_rank')->orderBy('id')->lockForUpdate()->get();
+            $currentIds = $selected->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $requestedIds = array_map('intval', $invitationIds);
+            if (array_map('intval', $expectedIds) !== $currentIds || !$selected->count() || count($requestedIds) !== count(array_unique($requestedIds))
+                || collect($requestedIds)->sort()->values()->all() !== collect($currentIds)->sort()->values()->all()) {
+                throw ValidationException::withMessages(['order' => 'The selected roster changed. Refresh and try again.']);
+            }
+            $ranks = $selected->pluck('roster_rank')->map(fn ($rank) => (int) $rank)->all();
+            $slots = TeamPlayer::query()->withoutGlobalScopes()->where('team_id', $lockedTeam->id)
+                ->whereIn('rank', $ranks)->orderBy('id')->lockForUpdate()->get();
+            if (min($ranks) < 1 || count(array_unique($ranks)) !== count($ranks) || $slots->count() !== $selected->count()
+                || $selected->contains(fn ($invitation) => $slots->where('rank', $invitation->roster_rank)
+                    ->where('player_id', $invitation->player_id)->count() !== 1)) {
+                throw ValidationException::withMessages(['order' => 'The roster positions no longer match the selection. Refresh and try again.']);
+            }
+            $slotsByRank = $slots->keyBy('rank');
+            if ($requestedIds === $currentIds) return;
+            $invitationsById = $selected->keyBy('id');
+            $originalRanks = $selected->mapWithKeys(fn ($invitation) => [$invitation->id => (int) $invitation->roster_rank]);
+            $temporaryBase = min(0, (int) TeamPlayer::query()->withoutGlobalScopes()->where('team_id', $lockedTeam->id)->min('rank')) - $selected->count() - 1;
+            foreach ($selected as $offset => $invitation) {
+                $slotsByRank->get($invitation->roster_rank)->update(['rank' => $temporaryBase + $offset]);
+                $invitation->update(['roster_rank' => null]);
+            }
+            foreach ($requestedIds as $offset => $id) {
+                $slotsByRank->get($originalRanks->get($id))->update(['rank' => $ranks[$offset]]);
+                $invitationsById->get($id)->update(['roster_rank' => $ranks[$offset]]);
+            }
+            activity('team-selection')->performedOn($lockedTeam)->causedBy($actor)
+                ->withProperties(['event_id' => $import->event_id, 'import_id' => $import->id,
+                    'previous_invitation_ids' => $currentIds, 'invitation_ids' => $requestedIds, 'ranks' => $ranks])
+                ->log('regional manager reordered selected roster by drag and drop');
+        });
+    }
+
     public function restoreDeclinedInvitation(TeamSelectionInvitation $invitation, User $actor): TeamSelectionInvitation
     {
         return $this->restoreInactiveInvitation($invitation, $actor, TeamSelectionInvitation::DECLINED);

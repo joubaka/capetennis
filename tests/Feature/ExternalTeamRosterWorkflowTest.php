@@ -911,12 +911,12 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             ->assertSee('Linked profile email')
             ->assertSee('No-profile email')
             ->assertSee('class="imported-roster-players"', false)
-            ->assertSee('class="imported-roster-order"', false)
+            ->assertSee('class="imported-roster-order roster-order-sortable"', false)
             ->assertSee('aria-label="Move Linked Player up"', false)
             ->assertSee('aria-label="Move Imported Name down"', false)
             ->assertSee('data-target-type="imported_player"', false)
             ->assertSee('Email team')
-            ->assertDontSee('draggable="true"', false);
+            ->assertSee('draggable="true"', false);
 
         $this->actingAs($this->admin)->post(route('backend.team-selection.roster-email.send', [$this->event, $eventRegion]), [
             'target_type' => 'unlinked_imported',
@@ -1837,6 +1837,27 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         $url = route('backend.team-selection.imported-players.payment.transfer', [$this->event, $region, $this->team, $slot]);
         $payload = ['order_id' => $order->id, 'expected_player_id' => $old->id, 'target_player_id' => $target->id, 'reason' => 'Correct payment allocation', 'confirm_transfer' => 1];
         return [$region, $slot, $old, $target, $targetSlot, $order, $targetOrder, $url, $payload];
+    }
+
+    public function test_imported_ajax_reorder_preserves_rank_gaps_and_rejects_stale_order_or_mirror(): void
+    {
+        [$region, $first, $profile] = $this->relinkScenario();
+        $second = NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 3, 'name' => 'No', 'surname' => 'Profile', 'pay_status' => 0]);
+        $mirror = TeamPlayer::create(['team_id' => $this->team->id, 'rank' => 3, 'player_id' => 0, 'pay_status' => 0]);
+        $url = route('backend.team-selection.imported-players.reorder', [$this->event, $region, $this->team]);
+        $payload = ['slot_ids' => [$second->id, $first->id], 'expected_ids' => [$first->id, $second->id]];
+        $this->actingAs($this->admin)->putJson($url, $payload)->assertOk()->assertJsonPath('order.0.rank', 1)->assertJsonPath('order.1.rank', 3);
+        $this->assertSame(3, (int) $first->fresh()->rank);
+        $this->assertSame(1, (int) $mirror->fresh()->rank);
+        $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'player_id' => $profile->id, 'rank' => 3, 'pay_status' => 0]);
+        $this->putJson($url, $payload)->assertUnprocessable();
+        $payload = ['slot_ids' => [$first->id, $second->id], 'expected_ids' => [$second->id, $first->id]];
+        TeamPlayer::query()->where('team_id', $this->team->id)->where('player_id', $profile->id)->update(['player_id' => 0]);
+        $this->putJson($url, $payload)->assertUnprocessable();
+        $this->assertSame(3, (int) $first->fresh()->rank);
+        $this->assertSame(1, DB::table('activity_log')->where('description', 'regional manager reordered imported roster by drag and drop')->count());
+        $this->assertDatabaseCount('team_payment_orders', 0);
+        $this->assertDatabaseCount('wallet_transactions', 0);
     }
 
     public function test_roster_email_actions_preserve_team_and_imported_player_scope_without_dispatch(): void

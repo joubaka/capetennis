@@ -438,6 +438,22 @@ class TeamSelectionInvitationController extends Controller
         return back()->with('success', 'Regional roster order updated.');
     }
 
+    public function reorderRoster(Request $request, Event $event, TeamSelectionImport $selectionImport, Team $team, TeamSelectionInvitationService $service)
+    {
+        $this->authorizeTeamImport($event, $selectionImport, $team, $request->user());
+        $data = $request->validate([
+            'invitation_ids' => ['required', 'array', 'min:1', 'max:50'],
+            'invitation_ids.*' => ['required', 'integer', 'distinct'],
+            'expected_ids' => ['required', 'array', 'min:1', 'max:50'],
+            'expected_ids.*' => ['required', 'integer', 'distinct'],
+        ]);
+        $service->reorderRoster($selectionImport, $team, $data['invitation_ids'], $request->user(), $data['expected_ids']);
+
+        return response()->json(['message' => 'Regional roster order updated.', 'order' => $selectionImport->invitations()
+            ->where('team_id', $team->id)->whereIn('id', $data['invitation_ids'])->orderBy('roster_rank')
+            ->get(['id', 'roster_rank'])->map(fn ($invitation) => ['id' => $invitation->id, 'rank' => $invitation->roster_rank])]);
+    }
+
     public function restoreDeclined(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)
     {
         abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
@@ -1383,10 +1399,13 @@ class TeamSelectionInvitationController extends Controller
         $data = $request->validate([
             'slot_ids' => ['required', 'array', 'min:1', 'max:50'],
             'slot_ids.*' => ['required', 'integer'],
+            'expected_ids' => ['nullable', 'array', 'min:1', 'max:50'],
+            'expected_ids.*' => ['required', 'integer', 'distinct'],
         ]);
-        $rosters->reorder($event, $team->id, $data['slot_ids'], $request->user());
+        $rosters->reorder($event, $team->id, $data['slot_ids'], $request->user(), $data['expected_ids'] ?? null);
 
-        return response()->json(['message' => 'The imported roster order was updated.']);
+        return response()->json(['message' => 'The imported roster order was updated.', 'order' => $team->team_players_no_profile()
+            ->orderBy('rank')->get(['id', 'rank'])->map(fn ($slot) => ['id' => $slot->id, 'rank' => $slot->rank])]);
     }
 
     public function destroyAnnouncement(Request $request, Event $event, EventRegion $eventRegion, TeamSelectionRegionAnnouncement $announcement)

@@ -5504,6 +5504,91 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         Queue::assertNotPushed(\App\Jobs\SendBulkEmailJob::class);
     }
 
+    public function test_drag_reorder_preserves_selected_rank_gaps_snapshots_and_payment_history(): void
+    {
+        Queue::fake();
+        [$source, $team] = $this->selectionSource();
+        $admin = User::factory()->create();
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $admin->id]);
+        $import = app(TeamRankingImportService::class)->import($source, $admin);
+        $selected = $import->invitations()->where('status', TeamSelectionInvitation::INVITED)->orderBy('roster_rank')->get();
+        $first = $selected->first();
+        $second = $selected->last();
+        $first->update(['status' => TeamSelectionInvitation::PAID_CONFIRMED]);
+        TeamPlayer::query()->withoutGlobalScopes()->where('team_id', $team->id)->where('player_id', $first->player_id)->update(['pay_status' => 1]);
+        $second->update(['roster_rank' => 3, 'snapshot_json' => ['selection_source' => 'manual_system_profile', 'original' => 'preserve']]);
+        TeamPlayer::query()->withoutGlobalScopes()->where('team_id', $team->id)->where('player_id', $second->player_id)->update(['rank' => 3]);
+        $order = TeamPaymentOrder::create(['user_id' => $admin->id, 'team_id' => $team->id, 'event_id' => $source->event_id,
+            'player_id' => $first->player_id, 'total_amount' => 490, 'wallet_reserved' => 0, 'payfast_amount_due' => 490,
+            'wallet_debited' => false, 'payfast_paid' => true, 'pay_status' => true]);
+        $first->update(['order_id' => $order->id]);
+        $before = $selected->mapWithKeys(fn ($item) => [$item->id => $item->fresh()->getAttributes()]);
+        $beforeOrder = $order->fresh()->getAttributes();
+        $ledgerCount = \App\Models\WalletTransaction::count();
+        $ids = [$first->id, $second->id];
+        $url = route('backend.team-selection.teams.order', [$source->event, $import, $team]);
+        $this->actingAs($admin)->get(route('backend.team-selection.index', $source->event))->assertOk();
+        $this->actingAs($admin)->putJson($url, ['invitation_ids' => array_reverse($ids), 'expected_ids' => $ids])
+            ->assertOk()->assertJsonPath('order.0.id', $second->id)->assertJsonPath('order.0.rank', 1)
+            ->assertJsonPath('order.1.rank', 3);
+        foreach ($selected as $item) {
+            $original = $before[$item->id];
+            $after = $item->fresh()->getAttributes();
+            unset($original['roster_rank'], $original['updated_at'], $after['roster_rank'], $after['updated_at']);
+            $this->assertSame($original, $after);
+            $this->assertDatabaseHas('team_players', ['team_id' => $team->id, 'player_id' => $item->player_id,
+                'rank' => $item->fresh()->roster_rank, 'pay_status' => $item->id === $first->id ? 1 : 0]);
+        }
+        $this->assertSame($beforeOrder, $order->fresh()->getAttributes());
+        $this->assertSame($ledgerCount, \App\Models\WalletTransaction::count());
+        $this->assertDatabaseCount('team_payment_orders', 1);
+        $this->assertSame(1, DB::table('activity_log')->where('description', 'regional manager reordered selected roster by drag and drop')->count());
+        $this->putJson($url, ['invitation_ids' => array_reverse($ids), 'expected_ids' => array_reverse($ids)])->assertOk();
+        $this->assertSame(1, DB::table('activity_log')->where('description', 'regional manager reordered selected roster by drag and drop')->count());
+        $this->putJson($url, ['invitation_ids' => $ids, 'expected_ids' => $ids])->assertUnprocessable();
+        Queue::assertNothingPushed();
+    }
+
+    public function test_drag_reorder_rejects_invalid_sets_foreign_context_and_mismatched_mirrors(): void
+    {
+        Queue::fake();
+        [$source, $team] = $this->selectionSource();
+        $admin = User::factory()->create();
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $admin->id]);
+        $import = app(TeamRankingImportService::class)->import($source, $admin);
+        $ids = $import->invitations()->where('status', TeamSelectionInvitation::INVITED)->orderBy('roster_rank')->pluck('id')->all();
+        $reserve = $import->invitations()->where('status', TeamSelectionInvitation::RESERVE)->firstOrFail();
+        $url = route('backend.team-selection.teams.order', [$source->event, $import, $team]);
+        foreach ([[$ids[0]], [$ids[0], $ids[0]], [$ids[0], $reserve->id], [$ids[0], 999999]] as $invalid) {
+            $this->actingAs($admin)->putJson($url, ['invitation_ids' => $invalid, 'expected_ids' => $ids])->assertUnprocessable();
+        }
+        $payload = ['invitation_ids' => array_reverse($ids), 'expected_ids' => $ids];
+        $this->actingAs(User::factory()->create())->putJson($url, $payload)->assertForbidden();
+        $this->actingAs($admin)->putJson(route('backend.team-selection.teams.order', [Event::factory()->create(), $import, $team]), $payload)->assertNotFound();
+        $this->putJson(route('backend.team-selection.teams.order', [$source->event, $import, Team::factory()->create()]), $payload)->assertNotFound();
+        $otherRegion = TeamRegion::create(['region_name' => 'Other reorder region']);
+        $otherEventRegion = new EventRegion();
+        $otherEventRegion->forceFill(['event_id' => $source->event_id, 'region_id' => $otherRegion->id, 'ordering' => 2])->save();
+        $otherImport = TeamSelectionImport::create(['source_id' => $source->id, 'event_id' => $source->event_id,
+            'region_id' => $otherRegion->id, 'series_id' => $source->series_id, 'ranking_run_id' => $import->ranking_run_id.'-other-region',
+            'imported_by' => $admin->id, 'status' => 'draft', 'imported_at' => now()]);
+        $eventRegion = EventRegion::where('event_id', $source->event_id)->where('region_id', $source->region_id)->firstOrFail();
+        $manager = User::factory()->create();
+        EventRegionManager::create(['event_id' => $source->event_id, 'event_region_id' => $eventRegion->id,
+            'region_id' => $source->region_id, 'user_id' => $manager->id, 'assigned_by' => $admin->id]);
+        $this->actingAs($manager)->putJson(route('backend.team-selection.teams.order', [$source->event, $otherImport, $team]), $payload)->assertForbidden();
+        $this->actingAs($admin);
+        $mirror = TeamPlayer::query()->withoutGlobalScopes()->where('team_id', $team->id)->where('rank', 1)->firstOrFail();
+        $mirror->update(['player_id' => 0]);
+        $this->putJson($url, $payload)->assertUnprocessable();
+        $import->update(['status' => 'restarted']);
+        $this->putJson($url, $payload)->assertUnprocessable();
+        $this->assertSame($ids, $import->invitations()->whereIn('id', $ids)->orderBy('roster_rank')->pluck('id')->all());
+        $this->assertSame(0, DB::table('activity_log')->where('description', 'regional manager reordered selected roster by drag and drop')->count());
+        $this->assertDatabaseCount('team_payment_orders', 0);
+        Queue::assertNothingPushed();
+    }
+
     private function transportReceipt(): \Illuminate\Mail\SentMessage
     {
         $email = (new \Symfony\Component\Mime\Email)->from('sender@example.test')->to('recipient@example.test')->text('Reviewed message');

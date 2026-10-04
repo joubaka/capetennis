@@ -43,6 +43,9 @@
   .selection-progress-step small { display: block; margin-top: .2rem; color: #68778c; }
   .regional-attention { display: flex; flex-wrap: wrap; gap: .5rem; }
   .region-action-status { padding: .45rem 1rem .3rem; color: #68778c; font-size: .75rem; }
+  .roster-order-sortable tr[draggable="true"] { cursor: grab; }
+  .roster-order-sortable tr.is-dragging { opacity: .45; }
+  .roster-order-sortable[aria-busy="true"] { opacity: .65; cursor: wait; }
   .team-publication-button[disabled], .clothing-order-toggle[disabled] { cursor: wait; }
   @media (max-width: 767.98px) {
     .region-workspace-card > .card-body { padding: .75rem; }
@@ -327,7 +330,7 @@
                   <div class="col-md-6 col-xl-4 regional-help-step"><strong>Replace an unpaid player</strong><div class="text-muted">Select <strong>Show team</strong>, find the player, choose <strong>Change player</strong>, select the next reserve or another player profile, give a reason, then confirm. Paid players cannot be replaced here.</div></div>
                   <div class="col-md-6 col-xl-4 regional-help-step"><strong>Leave an unavailable player's place vacant</strong><div class="text-muted">Select <strong>Show team</strong>, open the player's action menu, choose <strong>Mark unavailable / release place</strong>, give a reason and confirm. No reserve is needed. This action is for unpaid players.</div></div>
                   <div class="col-md-6 col-xl-4 regional-help-step"><strong>Fill an open place</strong><div class="text-muted">Select <strong>Show team</strong>. A withdrawn or declined place shows <strong>Invite next reserve</strong>; an eligible reserve may also show <strong>Activate as Rank</strong>.</div></div>
-                  <div class="col-md-6 col-xl-4 regional-help-step"><strong>Change player order</strong><div class="text-muted">Select <strong>Show team</strong>, open <strong>Player order</strong>, then use Move up or Move down to set the required order.</div></div>
+                  <div class="col-md-6 col-xl-4 regional-help-step"><strong>Change player order</strong><div class="text-muted">Select <strong>Show team</strong>, open <strong>Player order</strong>, then drag players into the required order or use Move up and Move down.</div></div>
                   <div class="col-md-6 col-xl-4 regional-help-step"><strong>Contact outstanding players</strong><div class="text-muted">Use <strong>Registration reminder</strong>@if($usesRegionalClothing) or <strong>Incomplete clothing reminder</strong>@endif above. Review the regional audience and exact recipient count before sending.</div></div>
                   @if($usesRegionalClothing)<div class="col-md-6 col-xl-4 regional-help-step"><strong>Manage clothing</strong><div class="text-muted">Use <strong>Clothing setup</strong> above to review items and sizes. Use <strong>Region actions</strong> to open or close clothing ordering.</div></div>@endif
                   <div class="col-md-6 col-xl-4 regional-help-step"><strong>Publish teams</strong><div class="text-muted">Resolve open places first, review each team, then select <strong>Publish all teams</strong>. Published teams can still be opened and reviewed.</div></div>
@@ -473,7 +476,7 @@
                                 @php($canSelectCustomInvitation = $activeImport->status === 'sent' && in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, \App\Models\TeamSelectionInvitation::PAID_CONFIRMED], true) && $invitation->roster_rank && (bool) $recipientEmail)
                                 @php($rankLabel = $isReserve ? 'Reserve '.$invitation->queue_position : ($isInactive ? ($invitation->status === \App\Models\TeamSelectionInvitation::DECLINED ? 'Declined' : ($invitation->status === \App\Models\TeamSelectionInvitation::WITHDRAWN ? 'Withdrawn' : 'Removed')) : 'Rank '.$invitation->roster_rank))
                                 @php($statusTone = $isInactive ? 'danger' : ($invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED ? 'success' : ($isReserve ? 'warning' : 'info')))
-                                <tr class="{{ $isReserve ? 'reserve-row' : '' }}">
+                                <tr data-order-player-id="{{ $invitation->id }}" class="{{ $isReserve ? 'reserve-row' : '' }}">
                                   <td data-label="Select">@if($canSelectCustomInvitation)<input class="form-check-input" type="checkbox" name="invitation_ids[]" value="{{ $invitation->id }}" form="custom-player-email-form-{{ $activeImport->id }}" data-custom-email-player="{{ $regionTeam->id }}" aria-label="Select {{ $invitation->player?->full_name ?: 'player' }} for a custom email">@endif</td>
                                   <td data-label="Rank"><span class="badge {{ $isInactive ? 'bg-label-danger' : ($isReserve ? 'bg-label-warning' : 'bg-label-primary') }}">{{ $rankLabel }}</span></td>
                                   <td data-label="Player"><strong>{{ $invitation->player?->full_name ?: 'Missing player' }}</strong>@if(!$invitation->player?->profile_complete)<div class="small text-warning">Profile incomplete</div>@endif</td>
@@ -538,7 +541,7 @@
                                         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
                                           <div class="modal-header"><h5 class="modal-title" id="unavailable-player-title-{{ $invitation->id }}">Mark unavailable — {{ $invitation->player?->full_name }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
                                           <div class="modal-body">
-                                            <p>{{ $regionTeam->name }} · Rank {{ $invitation->roster_rank }}</p>
+                                            <p>{{ $regionTeam->name }} · Rank <span data-current-roster-rank>{{ $invitation->roster_rank }}</span></p>
                                             <p>The unpaid invitation will be declined and this place will stay vacant. No reserve will be promoted and no email will be sent. Any unpaid wallet reservation will be released.</p>
                                             <form method="POST" action="{{ route('backend.team-selection.invitations.unavailable', [$event, $activeImport, $invitation]) }}">
                                               @csrf
@@ -629,11 +632,11 @@
                           <div class="table-responsive">
                             <table class="table table-sm align-middle mb-0">
                               <thead><tr><th>Roster rank</th><th>Player</th><th>Published ranking</th><th>Selection status</th><th>Move</th></tr></thead>
-                              <tbody>
+                              <tbody class="roster-order-sortable" data-reorder-url="{{ route('backend.team-selection.teams.order', [$event, $activeImport, $regionTeam]) }}" data-reorder-field="invitation_ids">
                                 @foreach($teamSelected->sortBy('roster_rank') as $orderedInvitation)
-                                  <tr>
+                                  <tr draggable="true" data-order-id="{{ $orderedInvitation->id }}">
                                     <td><span class="badge bg-label-primary">Rank {{ $orderedInvitation->roster_rank }}</span></td>
-                                    <td><strong>{{ $orderedInvitation->player?->full_name }}</strong></td>
+                                    <td><span class="drag-handle me-2" title="Drag to reorder"><i class="ti ti-grip-vertical"></i></span><strong>{{ $orderedInvitation->player?->full_name }}</strong></td>
                                     <td>@if(data_get($orderedInvitation->snapshot_json, 'selection_source') === 'manual_system_profile')Manual addition <span class="text-muted">· not in ranking snapshot</span>@else#{{ $orderedInvitation->ranking_position }} <span class="text-muted">· {{ number_format((float)$orderedInvitation->total_points, 2) }} pts</span>@endif</td>
                                     <td>{{ str($orderedInvitation->status)->replace('_',' ')->title() }}</td>
                                     <td><div class="d-flex gap-1">
@@ -1010,30 +1013,6 @@ document.addEventListener('DOMContentLoaded', function () {
       if (regionId) openWorkspace(regionId, button.dataset.openRegionTask);
     });
   });
-  const orderStateKey = `${workspaceStateKey}-player-order`;
-  document.querySelectorAll('[id^="team-order-"] form').forEach(function (form) {
-    form.addEventListener('submit', function () {
-      const panel = form.closest('[id^="region-panel-"]');
-      const order = form.closest('[id^="team-order-"]');
-      sessionStorage.setItem(orderStateKey, JSON.stringify({ regionId: panel.id.replace('region-panel-', ''), teamId: order.id.replace('team-order-', '') }));
-    });
-  });
-  const savedOrderState = sessionStorage.getItem(orderStateKey);
-  if (savedOrderState && window.bootstrap?.Tab && window.bootstrap?.Collapse) {
-    sessionStorage.removeItem(orderStateKey);
-    try {
-      const { regionId, teamId } = JSON.parse(savedOrderState);
-      const workspace = document.getElementById(`team-workspace-${teamId}`);
-      const orderTab = workspace?.querySelector(`[data-bs-target="#team-order-${teamId}"]`);
-      if (orderTab && workspace.closest('[id^="region-panel-"]')?.id === `region-panel-${regionId}`) {
-        openWorkspace(regionId, 'teams');
-        bootstrap.Collapse.getOrCreateInstance(workspace, { toggle: false }).show();
-        bootstrap.Tab.getOrCreateInstance(orderTab).show();
-      }
-    } catch (error) {
-      sessionStorage.removeItem(orderStateKey);
-    }
-  }
   document.querySelectorAll('[data-final-reminder-form]').forEach(function (reminderForm) {
     const summaries = JSON.parse(reminderForm.dataset.reminderSummaries || '{}');
     const hashes = JSON.parse(reminderForm.dataset.reminderHashes || '{}');
@@ -1303,6 +1282,120 @@ document.addEventListener('DOMContentLoaded', function () {
         button.disabled = false;
       }
     });
+  });
+
+  document.querySelectorAll('.roster-order-sortable').forEach(function (tbody) {
+    let dragged = null;
+    let originalRows = [];
+    let busy = false;
+    let busyControls = [];
+    const teamContent = tbody.closest('.tab-content');
+    teamContent.addEventListener('submit', function (event) {
+      if (busy) { event.preventDefault(); event.stopImmediatePropagation(); }
+    }, true);
+    const rows = () => Array.from(tbody.querySelectorAll('tr[data-order-id]'));
+    const restore = () => originalRows.forEach(row => tbody.appendChild(row));
+    const refreshButtons = function () {
+      const current = rows();
+      current.forEach(function (row, index) {
+        row.querySelector('[name="direction"][value="up"]')?.closest('form')?.querySelector('button')?.toggleAttribute('disabled', busy || index === 0);
+        row.querySelector('[name="direction"][value="down"]')?.closest('form')?.querySelector('button')?.toggleAttribute('disabled', busy || index === current.length - 1);
+        row.draggable = !busy;
+      });
+      tbody.setAttribute('aria-busy', String(busy));
+    };
+    const save = async function () {
+      const ordered = rows();
+      if (ordered.every((row, index) => row === originalRows[index])) { refreshButtons(); return; }
+      busy = true;
+      busyControls = Array.from(teamContent.querySelectorAll('form button, form input, form select, form textarea')).filter(control => !control.disabled);
+      busyControls.forEach(control => { control.disabled = true; });
+      refreshButtons();
+      try {
+        const response = await fetch(tbody.dataset.reorderUrl, {
+          method: 'PUT',
+          headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+          body: JSON.stringify({ [tbody.dataset.reorderField]: ordered.map(row => Number(row.dataset.orderId)), expected_ids: originalRows.map(row => Number(row.dataset.orderId)) }),
+        });
+        if (!response.ok) throw await AppFeedback.responseError(response, 'The player order could not be saved.');
+        const data = await response.json();
+        const order = data.order;
+        if (!Array.isArray(order) || order.length !== ordered.length || new Set(order.map(item => String(item.id))).size !== ordered.length
+          || order.some(item => !ordered.some(row => row.dataset.orderId === String(item.id)) || !Number.isInteger(Number(item.rank)) || Number(item.rank) < 1)) throw new Error('The saved roster could not be displayed. Refresh the page.');
+        const content = tbody.closest('.tab-content');
+        const players = content.querySelector('.imported-roster-players, [data-team-invitations]');
+        const playerRows = [];
+        order.forEach(function (item) {
+          const row = ordered.find(candidate => candidate.dataset.orderId === String(item.id));
+          row.querySelector('.badge').textContent = `Rank ${item.rank}`;
+          tbody.appendChild(row);
+          const playerRow = players?.querySelector(`[data-slot-id="${item.id}"], [data-order-player-id="${item.id}"]`);
+          if (playerRow) {
+            const rank = playerRow.querySelector('[data-label="Rank"] .badge') || playerRow.querySelector('.badge');
+            rank.textContent = `Rank ${item.rank}`;
+            playerRow.querySelectorAll('[name="expected_rank"], [name="expected_roster_rank"]').forEach(input => { input.value = item.rank; });
+            playerRow.querySelectorAll('[data-current-roster-rank]').forEach(label => { label.textContent = item.rank; });
+            playerRows.push(playerRow);
+          }
+          content.querySelectorAll(`[data-rank-slot-id="${item.id}"]`).forEach(option => { option.textContent = `${option.dataset.rankPlayerName} · Rank ${item.rank}`; });
+        });
+        if (players) playerRows.reverse().forEach(row => players.prepend(row));
+        AppFeedback.success(data.message);
+      } catch (error) {
+        restore();
+        AppFeedback.fromError(error, 'The player order could not be saved.');
+      } finally {
+        busy = false;
+        busyControls.forEach(control => { control.disabled = false; });
+        busyControls = [];
+        refreshButtons();
+      }
+    };
+    tbody.addEventListener('submit', function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (busy || dragged) return;
+      const row = event.target.closest('tr[data-order-id]');
+      const direction = event.target.querySelector('[name="direction"]')?.value;
+      if (!row || !['up', 'down'].includes(direction)) return;
+      originalRows = rows();
+      const neighbor = direction === 'up' ? row.previousElementSibling : row.nextElementSibling;
+      if (!neighbor) return;
+      tbody.insertBefore(row, direction === 'up' ? neighbor : neighbor.nextElementSibling);
+      void save();
+    });
+    tbody.addEventListener('dragstart', function (event) {
+      if (busy || event.target.closest('button, input, form')) { event.preventDefault(); return; }
+      dragged = event.target.closest('tr[data-order-id]');
+      if (!dragged || dragged.parentElement !== tbody) { dragged = null; return; }
+      originalRows = rows();
+      dragged.classList.add('is-dragging');
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', dragged.dataset.orderId);
+    });
+    tbody.addEventListener('dragover', function (event) {
+      if (!dragged || busy) return;
+      event.preventDefault();
+      const target = event.target.closest('tr[data-order-id]');
+      if (!target || target.parentElement !== tbody || target === dragged) return;
+      const below = event.clientY > target.getBoundingClientRect().top + target.offsetHeight / 2;
+      tbody.insertBefore(dragged, below ? target.nextSibling : target);
+    });
+    tbody.addEventListener('drop', function (event) {
+      if (!dragged || busy) return;
+      event.preventDefault();
+      dragged.classList.remove('is-dragging');
+      dragged = null;
+      void save();
+    });
+    tbody.addEventListener('dragend', function () {
+      if (!dragged) return;
+      dragged.classList.remove('is-dragging');
+      dragged = null;
+      restore();
+      refreshButtons();
+    });
+    refreshButtons();
   });
 
   document.querySelectorAll('.roster-contact-import-form').forEach(function (form) {

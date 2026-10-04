@@ -292,26 +292,33 @@ final class ImportedTeamRosterService
         });
     }
 
-    public function reorder(Event $event, int $teamId, array $slotIds, User $actor): void
+    public function reorder(Event $event, int $teamId, array $slotIds, User $actor, ?array $expectedIds = null): void
     {
-        DB::transaction(function () use ($event, $teamId, $slotIds, $actor): void {
+        DB::transaction(function () use ($event, $teamId, $slotIds, $actor, $expectedIds): void {
             $slots = NoProfileTeamPlayer::query()->where('team_id', $teamId)
                 ->lockForUpdate()->orderBy('rank')->get();
             $currentIds = $slots->pluck('id')->map(fn ($id) => (int) $id)->all();
             $requestedIds = array_map('intval', $slotIds);
-            if (count($requestedIds) !== count(array_unique($requestedIds))
+            if (($expectedIds !== null && array_map('intval', $expectedIds) !== $currentIds)
+                || count($requestedIds) !== count(array_unique($requestedIds))
                 || collect($requestedIds)->sort()->values()->all() !== collect($currentIds)->sort()->values()->all()) {
                 throw ValidationException::withMessages(['order' => 'The roster changed. Refresh the page and try the order again.']);
             }
+            if ($requestedIds === $currentIds) return;
 
             $temporaryBase = min((int) $slots->min('rank'), (int) (TeamPlayer::query()->withoutGlobalScopes()
                 ->where('team_id', $teamId)->min('rank') ?? 1)) - count($slots) - 1;
-            $teamSlots = TeamPlayer::query()->withoutGlobalScopes()->where('team_id', $teamId)
-                ->lockForUpdate()->get()->keyBy('rank');
-            if ($teamSlots->count() !== $slots->count()) {
+            $teamSlotRows = TeamPlayer::query()->withoutGlobalScopes()->where('team_id', $teamId)
+                ->lockForUpdate()->get();
+            $teamSlots = $teamSlotRows->keyBy('rank');
+            if ($teamSlotRows->count() !== $slots->count() || $teamSlots->count() !== $slots->count()
+                || $teamSlotRows->pluck('rank')->map(fn ($rank) => (int) $rank)->sort()->values()->all()
+                    !== $slots->pluck('rank')->map(fn ($rank) => (int) $rank)->sort()->values()->all()
+                || $slots->contains(fn ($slot) => $slot->player_profile && (int) $teamSlots->get($slot->rank)?->player_id !== (int) $slot->player_profile)) {
                 throw ValidationException::withMessages(['order' => 'The linked roster positions are incomplete. Ask the tournament administrator to repair them before reordering.']);
             }
             $originalRanks = $slots->mapWithKeys(fn (NoProfileTeamPlayer $slot) => [$slot->id => (int) $slot->rank]);
+            $destinationRanks = $originalRanks->values()->all();
             foreach ($slots as $offset => $slot) {
                 $slot->update(['rank' => $temporaryBase + $offset]);
             }
@@ -320,12 +327,13 @@ final class ImportedTeamRosterService
             }
 
             foreach ($requestedIds as $index => $slotId) {
-                NoProfileTeamPlayer::query()->whereKey($slotId)->update(['rank' => $index + 1]);
-                $teamSlots->get($originalRanks->get($slotId))->update(['rank' => $index + 1]);
+                NoProfileTeamPlayer::query()->whereKey($slotId)->update(['rank' => $destinationRanks[$index]]);
+                $teamSlots->get($originalRanks->get($slotId))->update(['rank' => $destinationRanks[$index]]);
             }
 
             activity('team-roster')->performedOn($slots->first()->team)->causedBy($actor)
-                ->withProperties(['event_id' => $event->id, 'team_id' => $teamId, 'slot_ids' => $requestedIds])
+                ->withProperties(['event_id' => $event->id, 'team_id' => $teamId,
+                    'previous_slot_ids' => $currentIds, 'slot_ids' => $requestedIds, 'ranks' => $destinationRanks])
                 ->log('regional manager reordered imported roster by drag and drop');
         });
     }
