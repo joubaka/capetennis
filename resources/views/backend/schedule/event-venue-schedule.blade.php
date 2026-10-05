@@ -433,8 +433,17 @@
         <select id="gender-waves" class="form-select">
           <option value="combined" @selected($scheduleDraft['gender_waves'] === 'combined')>Combine boys and girls</option>
           <option value="boys_then_girls" @selected($scheduleDraft['gender_waves'] === 'boys_then_girls')>Boys first, then girls in each round</option>
+          <option value="girls_then_boys" @selected($scheduleDraft['gender_waves'] === 'girls_then_boys')>Girls first, then boys in each round</option>
         </select>
-        <div class="form-text">At venues shared by boys and girls, finish the boys' wave before starting the girls' wave, then repeat for the next round. The round wave sets the minimum interval between wave starts. Mixed draws and saved matches keep their usual scheduling rules.</div>
+        <div class="form-text">At shared venues, schedule the first gender completely before the other gender in each round. Choose which gender starts, then repeat that order in the next round. The round wave sets the minimum interval between wave starts. Mixed draws and saved matches keep their usual scheduling rules.</div>
+      </div>
+      <div class="mt-3">
+        <label class="form-label" for="tie-allocation">Team tie allocation</label>
+        <select id="tie-allocation" class="form-select">
+          <option value="balanced" @selected($scheduleDraft['tie_allocation'] === 'balanced')>Share court allocation between ties</option>
+          <option value="complete_tie" @selected($scheduleDraft['tie_allocation'] === 'complete_tie')>Allocate one complete tie at a time</option>
+        </select>
+        <div class="form-text">Allocate all available rubbers in one tie before assigning the next tie. Other ties may still play at the same time on free courts. Rest, gender waves and qualifying dependencies still apply; blocked rubbers remain for review.</div>
       </div>
       <div id="rank-preferences" class="border rounded p-3 mt-4">
         <h6 class="mb-1">Venue preferences by team roster rank (optional)</h6>
@@ -935,6 +944,7 @@
     reschedule_existing: document.getElementById('reschedule-existing').checked,
     round_progression: document.getElementById('round-progression').value,
     gender_waves: document.getElementById('gender-waves').value,
+    tie_allocation: document.getElementById('tie-allocation').value,
     rank_venue_preferences: applicableRankRules(), rank_preference_draw_ids:rankScopeIds,
     cross_band_policy: document.getElementById('cross-band-policy').value,
   });
@@ -1031,7 +1041,7 @@
     markAllocationsDirty();
   }));
   document.querySelectorAll('.draw-choice').forEach(input => input.addEventListener('change', () => invalidatePreview()));
-  document.querySelectorAll('.draw-start, .venue-start, #schedule-start, #schedule-end, #schedule-duration, #schedule-wave, #schedule-gap, #schedule-rest, #round-progression, #gender-waves, #reschedule-existing')
+  document.querySelectorAll('.draw-start, .venue-start, #schedule-start, #schedule-end, #schedule-duration, #schedule-wave, #schedule-gap, #schedule-rest, #round-progression, #gender-waves, #tie-allocation, #reschedule-existing')
     .forEach(input => input.addEventListener('change', markScheduleDirty));
   document.getElementById('reschedule-existing')?.addEventListener('change', event => {
     if (!event.currentTarget.checked) replanVenueIds = [];
@@ -1640,7 +1650,7 @@
   let venueManagementChanged = false;
   let venueManagementPending = false;
   const venueDraftKey = 'venue-management-draft-{{ $event->id }}-{{ auth()->id() }}';
-  const venueDraftControls = () => [...document.querySelectorAll('.draw-choice, .assignment-choice, .court-allocation, .draw-start, .venue-start, #schedule-start, #schedule-end, #schedule-duration, #schedule-wave, #schedule-gap, #schedule-rest, #round-progression, #gender-waves, #reschedule-existing, #cross-band-policy')];
+  const venueDraftControls = () => [...document.querySelectorAll('.draw-choice, .assignment-choice, .court-allocation, .draw-start, .venue-start, #schedule-start, #schedule-end, #schedule-duration, #schedule-wave, #schedule-gap, #schedule-rest, #round-progression, #gender-waves, #tie-allocation, #reschedule-existing, #cross-band-policy')];
   const venueControlKey = input => JSON.stringify([input.id, input.className, input.dataset.draw, input.dataset.venue, input.type === 'checkbox' ? input.value : null]);
   const rememberVenueDraft = () => {
     rememberRankRules();

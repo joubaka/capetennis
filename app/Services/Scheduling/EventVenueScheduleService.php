@@ -17,7 +17,10 @@ final class EventVenueScheduleService
         $roundProgression = $options['round_progression'] ?? 'team_ready';
         if (! in_array($roundProgression, ['team_ready', 'all_round'], true)) throw new \InvalidArgumentException('Choose a valid round progression rule.');
         $genderWaves = $options['gender_waves'] ?? 'combined';
-        if (! in_array($genderWaves, ['combined', 'boys_then_girls'], true)) throw new \InvalidArgumentException('Choose a valid gender wave order.');
+        if (! in_array($genderWaves, ['combined', 'boys_then_girls', 'girls_then_boys'], true)) throw new \InvalidArgumentException('Choose a valid gender wave order.');
+        $firstGender = $genderWaves === 'girls_then_boys' ? 'girls' : 'boys';
+        $tieAllocation = $options['tie_allocation'] ?? 'balanced';
+        if (! in_array($tieAllocation, ['balanced', 'complete_tie'], true)) throw new \InvalidArgumentException('Choose a valid team tie allocation rule.');
         $start = Carbon::parse($options['start']);
         $end = ! empty($options['end']) ? Carbon::parse($options['end']) : null;
         $duration = (int) ($options['duration'] ?? 75);
@@ -95,6 +98,7 @@ final class EventVenueScheduleService
             foreach (($draw->isTeamDraw() ? app(UnifiedTeamScheduleService::class)->nodes($draw, $roundProgression) : $this->nodesForDraw($draw, $start, $waveMinutes)) as $id => $node) {
                 $node['draw_start'] = $drawStarts[$draw->id] ?? $start->copy();
                 $node['gender'] = $this->drawGender($draw);
+                $node['tie_allocation_key'] = $this->tieAllocationKey($node);
                 if (($node['fixture_kind'] ?? 'individual') === 'team' && count($node['participants']) < 2 * (int) ($node['fixture']->player_count_per_team ?: ($node['fixture']->isDoubles() ? 2 : 1)) && ! $node['played']) {
                     $warnings[] = $draw->drawName.' rubber '.($node['match'] ?: $node['fixture']->id).' has unassigned players; player conflicts cannot yet be checked.';
                 }
@@ -154,7 +158,7 @@ final class EventVenueScheduleService
         unset($node);
 
         $sharedGenderVenues = [];
-        if ($genderWaves === 'boys_then_girls') {
+        if ($genderWaves !== 'combined') {
             foreach (array_keys($courtLabels) as $venueId) {
                 $genders = collect($nodes)->filter(fn ($node) => isset($node['venue_courts'][$venueId]))->pluck('gender');
                 if ($genders->contains('boys') && $genders->contains('girls')) $sharedGenderVenues[$venueId] = true;
@@ -171,6 +175,9 @@ final class EventVenueScheduleService
             }
         }
         $scheduledPerDraw = [];
+        $activeTie = null;
+        $activeTieLabel = null;
+        $incompleteTies = [];
         $blocked = [];
         while ($pending) {
             $best = null;
@@ -191,10 +198,10 @@ final class EventVenueScheduleService
                 foreach ($node['venue_courts'] as $venueId => $courts) {
                     $venueRelease = isset($venueStarts[$venueId]) ? $release->max($venueStarts[$venueId])->copy() : $release;
                     if (isset($sharedGenderVenues[$venueId]) && $node['gender']) {
-                        $phase = 2 * ($node['wave'] - 1) + ($node['gender'] === 'girls' ? 1 : 0);
+                        $phase = 2 * ($node['wave'] - 1) + ($node['gender'] === $firstGender ? 0 : 1);
                         foreach ($nodes as $earlierId => $earlier) {
                             if (! $earlier['gender'] || $earlier['automatic']) continue;
-                            $earlierPhase = 2 * ($earlier['wave'] - 1) + ($earlier['gender'] === 'girls' ? 1 : 0);
+                            $earlierPhase = 2 * ($earlier['wave'] - 1) + ($earlier['gender'] === $firstGender ? 0 : 1);
                             if ($earlierPhase >= $phase) continue;
                             if (isset($pending[$earlierId]) && isset($earlier['venue_courts'][$venueId])) {
                                 $blocked[$id] = 'An earlier gender wave must be scheduled first at this shared venue.';
@@ -223,6 +230,7 @@ final class EventVenueScheduleService
                             }
                         }
                         $choice = ['id' => $id, 'time' => $at, 'venue_id' => $venueId, 'court' => (string) $court,
+                            'tie_priority' => $activeTie && $node['tie_allocation_key'] === $activeTie ? 0 : 1,
                             'fairness' => $scheduledPerDraw[$node['draw_id']] ?? 0,
                             'rank_penalty' => ($node['rank_preference']['venue_id'] ?? null) && (int) $node['rank_preference']['venue_id'] !== (int) $venueId ? 1 : 0,
                             'venue_changes' => $calendar->venueChanges($node['participants'], $at, (int) $venueId)];
@@ -230,9 +238,22 @@ final class EventVenueScheduleService
                     }
                 }
             }
-            if ($best === null) break;
+            if ($best === null) {
+                if ($activeTie && ! isset($incompleteTies[$activeTie])) {
+                    $warnings[] = $activeTieLabel.' could not be completely allocated because its remaining rubbers are blocked. Those rubbers remain for review.';
+                }
+                break;
+            }
             $id = $best['id'];
             $node = $nodes[$id];
+            if ($tieAllocation === 'complete_tie') {
+                if ($activeTie && $node['tie_allocation_key'] !== $activeTie && ! isset($incompleteTies[$activeTie])) {
+                    $warnings[] = $activeTieLabel.' could not be completely allocated before switching ties because its remaining rubbers are blocked. Other matches use available courts; any unallocated rubbers remain for review.';
+                    $incompleteTies[$activeTie] = true;
+                }
+                $activeTie = $node['tie_allocation_key'];
+                $activeTieLabel = $node['draw_name'].' ('.implode(' vs ', $node['participant_names']).')';
+            }
             if ($node['rank_preference']['warning'] ?? null) $warnings[] = $node['draw_name'].' match '.$node['match'].': '.$node['rank_preference']['warning'];
             if ($best['rank_penalty']) $warnings[] = $node['draw_name'].' match '.$node['match'].': the preferred roster rank venue is unavailable in this window; another assigned venue is used.';
             foreach ($best['venue_changes'] as $change) {
@@ -257,19 +278,21 @@ final class EventVenueScheduleService
                 'venue_changes' => $best['venue_changes'], 'rank_preference' => $node['rank_preference'],
             ];
             unset($pending[$id], $blocked[$id]);
+            if ($activeTie && ! collect($pending)->contains(fn ($remaining) => $remaining['tie_allocation_key'] === $activeTie)) $activeTie = null;
         }
 
         foreach ($genderSlots as $id => $slot) {
             $node = $nodes[$id];
             if (! $node['fixed'] || ! $node['gender'] || ! isset($sharedGenderVenues[$slot['venue_id']])) continue;
-            $phase = 2 * ($node['wave'] - 1) + ($node['gender'] === 'girls' ? 1 : 0);
+            $phase = 2 * ($node['wave'] - 1) + ($node['gender'] === $firstGender ? 0 : 1);
             foreach ($genderSlots as $earlierId => $earlierSlot) {
                 $earlier = $nodes[$earlierId];
                 if (! $earlier['gender'] || $earlier['automatic'] || $earlierSlot['venue_id'] !== $slot['venue_id']) continue;
-                $earlierPhase = 2 * ($earlier['wave'] - 1) + ($earlier['gender'] === 'girls' ? 1 : 0);
+                $earlierPhase = 2 * ($earlier['wave'] - 1) + ($earlier['gender'] === $firstGender ? 0 : 1);
                 if ($earlierPhase < $phase && $earlierSlot['time']->copy()
                     ->addMinutes(max($waveMinutes, $earlierSlot['duration'] + $courtGap))->gt($slot['time'])) {
-                    $warnings[] = $node['draw_name'].' match '.$node['match'].': the saved time does not follow boys then girls waves. Replan this venue to change saved times.';
+                    $order = $firstGender === 'girls' ? 'girls then boys' : 'boys then girls';
+                    $warnings[] = $node['draw_name'].' match '.$node['match'].": the saved time does not follow {$order} waves. Replan this venue to change saved times.";
                     break;
                 }
             }
@@ -366,6 +389,7 @@ final class EventVenueScheduleService
             'allow_partial' => (bool) ($options['allow_partial'] ?? false),
             'rank_venue_preferences' => $rankRules, 'cross_band_policy' => $crossBandPolicy,
             'gender_waves' => $genderWaves,
+            'tie_allocation' => $tieAllocation,
             'draw_starts' => $drawStarts->map(fn ($time, $drawId) => ['draw_id' => (int) $drawId,
                 'start' => $time->format('Y-m-d H:i:s')])->values()->all(),
             'venue_starts' => $venueStarts->map(fn ($time, $venueId) => ['venue_id' => (int) $venueId,
@@ -752,10 +776,24 @@ final class EventVenueScheduleService
 
     private function isEarlier(array $candidate, array $best, array $nodes): bool
     {
-        return ([$candidate['rank_penalty'] ?? 0, count($candidate['venue_changes'] ?? []), $candidate['time']->timestamp, $candidate['fairness'], $nodes[$candidate['id']]['wave'],
+        return ([$candidate['tie_priority'] ?? 1, $candidate['rank_penalty'] ?? 0, count($candidate['venue_changes'] ?? []), $candidate['time']->timestamp, $candidate['fairness'], $nodes[$candidate['id']]['wave'],
             $nodes[$candidate['id']]['play_order'], $candidate['id']]
-            <=> [$best['rank_penalty'] ?? 0, count($best['venue_changes'] ?? []), $best['time']->timestamp, $best['fairness'], $nodes[$best['id']]['wave'],
+            <=> [$best['tie_priority'] ?? 1, $best['rank_penalty'] ?? 0, count($best['venue_changes'] ?? []), $best['time']->timestamp, $best['fairness'], $nodes[$best['id']]['wave'],
                 $nodes[$best['id']]['play_order'], $best['id']]) < 0;
+    }
+
+    private function tieAllocationKey(array $node): ?string
+    {
+        if (($node['fixture_kind'] ?? 'individual') !== 'team') return null;
+        $fixture = $node['fixture'];
+        $scope = 'draw:'.$node['draw_id'].':';
+        if ($fixture->team_tie_id) return $scope.'tie:'.$fixture->team_tie_id;
+        $regions = array_filter([(int) $fixture->region1, (int) $fixture->region2]);
+        sort($regions);
+        if ($fixture->tie_nr || count($regions) === 2) {
+            return $scope.'round:'.$node['round'].':legacy:'.(int) $fixture->tie_nr.':'.implode('-', $regions);
+        }
+        return $scope.'rubber:'.$fixture->id;
     }
 
     private function drawGender(Draw $draw): ?string
