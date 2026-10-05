@@ -33,9 +33,9 @@ class FixtureRosterPresentationTest extends TestCase
             $team = Team::factory()->create(['category_event_id' => $category->id,
                 'region_id' => $region->id, 'name' => $name.' A']);
             $profile = Player::factory()->create(['name' => $name, 'surname' => 'Player']);
-            TeamPlayer::create(['team_id' => $team->id, 'player_id' => $profile->id, 'rank' => 2]);
-            $imported = NoProfileTeamPlayer::create(['team_id' => $team->id, 'name' => $name, 'surname' => 'Partner', 'rank' => 3]);
-            $second = NoProfileTeamPlayer::create(['team_id' => $team->id, 'name' => $name, 'surname' => 'Second', 'rank' => 4]);
+            TeamPlayer::create(['team_id' => $team->id, 'player_id' => $profile->id, 'rank' => 2, 'pay_status' => 0]);
+            $imported = NoProfileTeamPlayer::create(['team_id' => $team->id, 'name' => $name, 'surname' => 'Partner', 'rank' => 3, 'pay_status' => 0]);
+            $second = NoProfileTeamPlayer::create(['team_id' => $team->id, 'name' => $name, 'surname' => 'Second', 'rank' => 4, 'pay_status' => 0]);
             $teams[] = compact('team', 'profile', 'imported', 'second', 'region');
         }
         $venue = new Venue();
