@@ -6,6 +6,20 @@ use PHPUnit\Framework\TestCase;
 
 class DeploymentConfigTest extends TestCase
 {
+    public function test_fast_ci_quality_gate_checks_deployment_configuration_after_dependencies(): void
+    {
+        $workflow = (string) file_get_contents(dirname(__DIR__, 2).'/.github/workflows/ci.yml');
+        $this->assertSame(1, preg_match('/^  quality:\r?\n(.*?)(?=^  [a-zA-Z0-9_-]+:|\z)/ms', $workflow, $matches));
+        $quality = $matches[1];
+        $command = 'php vendor/bin/phpunit tests/Unit/DeploymentConfigTest.php --fail-on-skipped';
+        $dependencies = strpos($quality, 'composer install --no-interaction');
+        $check = strpos($quality, $command);
+
+        $this->assertNotFalse($dependencies);
+        $this->assertNotFalse($check);
+        $this->assertLessThan($check, $dependencies, 'Deployment checks must run after dependencies are installed.');
+    }
+
     public function test_readable_approval_uses_exact_preflight_and_preserves_incident_repair_gate(): void
     {
         $script = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.sh');

@@ -81,6 +81,9 @@ jobs:
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
 
+      - name: Check deployment migration allowlist and approval safeguards
+        run: php vendor/bin/phpunit tests/Unit/DeploymentConfigTest.php --fail-on-skipped
+
       - name: Check for dd() / dump() / var_dump()
         run: php scripts/check-debug-calls.php app database routes
 

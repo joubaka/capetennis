@@ -33,6 +33,7 @@
 - Run focused tests first and the complete feature suite for cross-cutting registration or payment changes.
 - Verify `git diff --check`, route registration, and Blade compilation before committing.
 - Do not run all pending production migrations blindly; inspect and run only those required for deployment.
+- When adding a migration, review and include its exact path in `deploy.config` `MIGRATION_PATHS` (or document an explicitly reviewed manual-only exception in `DeploymentConfigTest`). Run `php vendor/bin/phpunit tests/Unit/DeploymentConfigTest.php --fail-on-skipped` before handoff; allowlisting does not authorize production execution.
 
 ## Default local implementation authority
 
