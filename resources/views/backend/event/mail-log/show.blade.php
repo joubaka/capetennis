@@ -48,7 +48,7 @@
 
 @endforeach
 
-{{ $history->links() }}
+{{ $history->links('pagination::bootstrap-5') }}
 
 </div></div>
 

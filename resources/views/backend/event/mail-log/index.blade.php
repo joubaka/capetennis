@@ -15,5 +15,5 @@
 @forelse($logs as $log)
 <div class="col-12 col-lg-6"><article class="card h-100"><div class="card-body" style="overflow-wrap:anywhere"><h2 class="h6"><a href="{{ route('backend.event-mail-log.show', [$event,$log]) }}">{{ \App\Services\EventMailLogService::subject($log) }}</a></h2><p class="mb-1">{{ $log->recipient_name }} {{ $log->recipient_email }}</p><p class="mb-1"><strong>{{ $log->delivery_status_label }}</strong> · {{ $log->created_at->format('d M Y H:i') }} SAST</p><small>{{ \App\Services\SuperAdminMailHistory::typeLabel($log->mail_type) }} · {{ data_get($log->payload,'recipient_kind','Recipient') }}</small>@if($reason=\App\Services\EventMailLogService::explanation($log))<p class="text-body mb-0 mt-2">{{ $reason }}</p>@endif</div></article></div>
 @empty<div class="col-12"><p>No email records match this event and your permitted audience.</p></div>@endforelse
-</div><div class="mt-3">{{ $logs->links() }}</div>
+</div><div class="mt-3">{{ $logs->links('pagination::bootstrap-5') }}</div>
 @endsection
