@@ -43,6 +43,17 @@
 
     <div class="card-body">
       @role('super-user')
+        @php
+          $whatsAppNumber = preg_replace('/[\s().-]+/', '', trim((string) $player->cellNr));
+          if (str_starts_with($whatsAppNumber, '+')) {
+            $whatsAppNumber = substr($whatsAppNumber, 1);
+          } elseif (str_starts_with($whatsAppNumber, '00')) {
+            $whatsAppNumber = substr($whatsAppNumber, 2);
+          } elseif (preg_match('/^0[1-9][0-9]{8}$/', $whatsAppNumber)) {
+            $whatsAppNumber = '27' . substr($whatsAppNumber, 1);
+          }
+          $hasWhatsAppNumber = preg_match('/^[1-9][0-9]{7,14}$/', $whatsAppNumber);
+        @endphp
         <div class="row g-3 mb-4" aria-label="Player contact details">
           <div class="col-sm-6">
             <div class="border rounded p-3 h-100">
@@ -54,6 +65,11 @@
             <div class="border rounded p-3 h-100">
               <div class="text-muted small mb-1">Telephone number</div>
               <div class="text-break">{{ filled($player->cellNr) ? $player->cellNr : 'Not provided' }}</div>
+              @if($hasWhatsAppNumber)
+                <a href="https://wa.me/{{ $whatsAppNumber }}" class="btn btn-outline-success btn-sm mt-2" target="_blank" rel="noopener noreferrer">
+                  <i class="ti ti-brand-whatsapp me-1" aria-hidden="true"></i> WhatsApp
+                </a>
+              @endif
             </div>
           </div>
         </div>

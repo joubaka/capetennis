@@ -447,16 +447,25 @@ class PublicRankingVisibilityTest extends TestCase
         $this->row($series, $list, $category, $player, RankingStatus::Published, 'run-live', now());
         $url = route('frontend.ranking.player-detail', [$series, $player]);
 
-        $this->get($url)->assertOk()->assertDontSee($player->email)->assertDontSee($player->cellNr);
+        $this->get($url)->assertOk()->assertDontSee($player->email)->assertDontSee($player->cellNr)->assertDontSee('https://wa.me/', false);
         $this->actingAs(User::factory()->create())->get($url)
-            ->assertOk()->assertDontSee($player->email)->assertDontSee($player->cellNr);
+            ->assertOk()->assertDontSee($player->email)->assertDontSee($player->cellNr)->assertDontSee('https://wa.me/', false);
 
         \Spatie\Permission\Models\Role::findOrCreate('super-user', 'web');
         $this->actingAs(User::factory()->create()->assignRole('super-user'))->get($url)
-            ->assertOk()->assertSee('Telephone number')->assertSee($player->email)->assertSee($player->cellNr);
+            ->assertOk()->assertSee('Telephone number')->assertSee($player->email)->assertSee($player->cellNr)
+            ->assertSee('https://wa.me/27821234567', false);
+
+        foreach (['+27 (82) 123-4567', '0027821234567', '27821234567'] as $number) {
+            $player->update(['cellNr' => $number]);
+            $this->get($url)->assertOk()->assertSee('https://wa.me/27821234567', false);
+        }
+
+        $player->update(['cellNr' => 'not a number']);
+        $this->get($url)->assertOk()->assertDontSee('https://wa.me/', false);
 
         $player->update(['email' => null, 'cellNr' => null]);
-        $this->get($url)->assertOk()->assertSee('Not provided');
+        $this->get($url)->assertOk()->assertSee('Not provided')->assertDontSee('https://wa.me/', false);
     }
 
     private function row(
