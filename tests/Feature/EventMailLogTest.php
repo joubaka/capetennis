@@ -259,10 +259,36 @@ class EventMailLogTest extends TestCase
         $event = Event::factory()->create();
         $actor = $this->manager($event);
         $this->actingAs($actor)->getJson(route('backend.event-mail-log.index',['event'=>$event,'from'=>'2026-10-06','until'=>'2026-10-05']))->assertUnprocessable()->assertJsonValidationErrors('until');
+        $indexUrl = route('backend.event-mail-log.index',$event);
+        $this->from($indexUrl)->get(route('backend.event-mail-log.index',['event'=>$event,'from'=>'2026-10-06','until'=>'2026-10-05']))->assertRedirect($indexUrl)->assertSessionHasErrors('until');
+        $this->get($indexUrl)->assertOk()->assertSee('Check email log filters')->assertSee('aria-invalid="true"',false);
         for ($i=0; $i<101; $i++) $this->log($event)->update(['mail_type'=>'type_'.str_pad((string)$i,3,'0',STR_PAD_LEFT)]);
         $this->get(route('backend.event-mail-log.index',$event))->assertOk()
             ->assertViewHas('types', fn ($types) => $types->count()===100)
             ->assertViewHas('typesLimited',true)->assertSee('first 100 permitted email types');
+        $this->get(route('backend.event-mail-log.index',['event'=>$event,'mail_type'=>'type_100']))->assertOk()
+            ->assertViewHas('types',fn ($types) => $types->count()===101 && $types->has('type_100'))
+            ->assertViewHas('logs',fn ($logs) => $logs->total()===1);
+        $this->get(route('backend.event-mail-log.index',['event'=>$event,'mail_type'=>'no_visible_records']))->assertOk()
+            ->assertSee('Selected type (no permitted records): no_visible_records')
+            ->assertViewHas('logs',fn ($logs) => $logs->total()===0);
+
+    }
+
+    public function test_sent_shortcut_includes_confirmed_and_historical_sends_but_excludes_sandbox_and_unsent_attempts(): void
+    {
+        $event = Event::factory()->create();
+        $actor = $this->manager($event);
+        $accepted = $this->log($event, [], 'sent');
+        $accepted->update(['accepted_at'=>now(),'evidence_status'=>'server_accepted']);
+        $historical = $this->log($event, [], 'sent');
+        foreach (['failed','skipped','acceptance_unknown','queued','sending'] as $status) $this->log($event, [], $status);
+        $sandbox = $this->log($event, [], 'sent');
+        $sandbox->update(['accepted_at'=>now(),'evidence_status'=>'sandbox_accepted']);
+        $this->actingAs($actor)->get(route('backend.event-mail-log.index',['event'=>$event,'outcome'=>'sent_complete']))->assertOk()
+            ->assertViewHas('logs', fn ($logs) => $logs->total()===2 && $logs->pluck('id')->sort()->values()->all()===collect([$accepted->id,$historical->id])->sort()->values()->all())
+            ->assertViewHas('facets', fn ($facets) => $facets['sent_complete']===2 && $facets['server_accepted']===1)
+            ->assertSee('Server accepted: 1')->assertSee('Sent includes completed and historical sends');
     }
 
 }

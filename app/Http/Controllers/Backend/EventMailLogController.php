@@ -9,11 +9,11 @@ use Illuminate\Http\Request;
 class EventMailLogController extends Controller
 {
     private const OUTCOMES = [
-        'pending' => 'Waiting / sending', 'accepted' => 'Server accepted',
+        'pending' => 'Waiting / sending', 'sent_complete' => 'Sent (excluding sandbox)', 'accepted' => 'Server accepted',
         'failed' => 'Failed', 'skipped' => 'Excluded / duplicate',
         'unverified' => 'Completed, evidence unverified', 'uncertain' => 'Acceptance uncertain',
         'sandbox' => 'Sandbox accepted', 'queued' => 'Waiting in queue',
-        'sending' => 'Sending', 'sent' => 'Completed transport (all evidence)',
+        'sending' => 'Sending', 'sent' => 'Completed transport (including sandbox)',
     ];
 
     public function index(Request $request, Event $event, EventMailLogService $service)
@@ -52,6 +52,7 @@ class EventMailLogController extends Controller
         $copySummary = BulkEmailLog::deliverySummary($this->audienceQuery(clone $query, 'copies'));
         $query = $this->audienceQuery($query, $filters['audience'] ?? 'all');
         $facets = BulkEmailLog::deliverySummary(clone $query);
+        $facets['sent_complete'] = (clone $query)->where('status', 'sent')->where(fn ($q) => $q->whereNull('evidence_status')->orWhere('evidence_status', '!=', 'sandbox_accepted'))->count();
         $facets['uncertain'] = (clone $query)->where('status', 'acceptance_unknown')->count();
         $facets['unverified'] -= $facets['uncertain'];
         $outcome = $filters['outcome'] ?? match ($filters['status'] ?? null) {
@@ -74,6 +75,7 @@ class EventMailLogController extends Controller
     private function outcomeQuery(\Illuminate\Database\Eloquent\Builder $query, string $outcome): void
     {
         match ($outcome) {
+            'sent_complete' => $query->where('status', 'sent')->where(fn ($q) => $q->whereNull('evidence_status')->orWhere('evidence_status', '!=', 'sandbox_accepted')),
             'pending' => $query->whereIn('status', ['queued', 'sending']),
             'accepted' => $query->where('status', 'sent')->where('evidence_status', 'server_accepted')->whereNotNull('accepted_at'),
             'sandbox' => $query->where('status', 'sent')->where('evidence_status', 'sandbox_accepted')->whereNotNull('accepted_at'),
