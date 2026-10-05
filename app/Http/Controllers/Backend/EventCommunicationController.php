@@ -16,7 +16,8 @@ class EventCommunicationController extends Controller
         $canRankingMail = $rankingAudience->canManage($event, $request->user());
         $rankingLists = $canRankingMail ? $rankingAudience->lists($event) : collect();
         $teams = Team::withoutGlobalScopes()->whereHas('category', fn ($q) => $q->where('event_id', $event->id))->whereIn('region_id', $regions->pluck('region_id'))->when($request->filled('team_search'), fn ($q) => $q->where('name', 'like', '%'.mb_substr($request->query('team_search'), 0, 100).'%'))->orderBy('name')->limit(500)->get();
-        $search = trim((string) $request->query('search', ''));
+        $search = mb_substr(trim((string) $request->query('search', '')), 0, 100);
+        $teamAudience = $event->isTeam() || $event->isInterprovincialTrials();
         $individuals = $service->individualOptions($event, $request->user(), $search);
         $batches = EventCommunicationBatch::where('event_id', $event->id)->where('created_by', $request->user()->id)->when(! $canRankingMail, fn ($q) => $q->where(fn ($q) => $q->whereNull('options->scope')->orWhere('options->scope', '!=', 'rankings'))->whereNull('options->ranking_origin_id'))->latest()->paginate(15);
         $batch = $request->filled('batch') ? EventCommunicationBatch::where('event_id', $event->id)->where('created_by', $request->user()->id)->findOrFail($request->query('batch')) : $batches->first();
@@ -31,7 +32,7 @@ class EventCommunicationController extends Controller
         $drafts = $service->managesWholeEvent($event, $request->user())
             ? EventCommunicationBatch::where('event_id', $event->id)->where('status', 'draft')->latest()->paginate(10, ['*'], 'drafts_page') : collect();
 
-        return view('backend.event.communications.index', compact('event', 'regions', 'teams', 'individuals', 'batches', 'batch', 'summary', 'logs', 'search', 'drafts', 'invitationLogs', 'invitationSummary', 'canRankingMail', 'rankingLists'));
+        return view('backend.event.communications.index', compact('event', 'regions', 'teams', 'individuals', 'batches', 'batch', 'summary', 'logs', 'search', 'drafts', 'invitationLogs', 'invitationSummary', 'canRankingMail', 'rankingLists', 'teamAudience'));
     }
 
     public function reviewDraft(Request $request, Event $event, EventCommunicationBatch $draft, EventCommunicationService $service)
@@ -54,7 +55,7 @@ class EventCommunicationController extends Controller
     public function preview(Request $request, Event $event, EventCommunicationService $service)
     {
         $data = $request->validate([
-            'scope' => 'required|in:all,nominations,region,team,individual,rankings',
+            'scope' => 'required|in:all,registrations,invitations,nominations,region,team,individual,rankings',
             'ranking_region_ids' => 'nullable|array|max:500',
             'ranking_region_ids.*' => 'integer',
             'ranking_list_ids' => 'nullable|array|max:500',
@@ -91,6 +92,13 @@ class EventCommunicationController extends Controller
         $batch = EventCommunicationBatch::where('event_id', $event->id)->where('token', $request->token)->firstOrFail();
         $stats = $service->approve($batch, $request->user(), $request->boolean('acknowledge_missing'));
 
-        return redirect()->route('backend.event-communications.index', ['event' => $event, 'batch' => $batch->id])->with('success', $stats['duplicate'] ? 'This approved batch was already queued. No duplicate emails were created.' : "{$stats['queued']} emails queued. Check the send report below for mail-server acceptance.");
+        $failed = $stats['failed'] ?? 0;
+        $skipped = $stats['skipped'] ?? 0;
+        $severity = $stats['duplicate'] ? 'info' : (! $stats['queued'] ? 'error' : ($failed || $skipped ? 'warning' : 'success'));
+        $message = $stats['duplicate']
+            ? 'This batch was already approved. No additional emails were queued.'
+            : "{$stats['queued']} emails queued; {$failed} failed to queue; {$skipped} skipped. Check the send report for mail-server acceptance.";
+
+        return redirect()->route('backend.event-communications.index', ['event' => $event, 'batch' => $batch->id])->with($severity, $message);
     }
 }

@@ -1,12 +1,13 @@
 @extends('layouts.backend')
 @section('title', 'Review event emails')
 @section('content')
+@include('backend.event.partials.header', ['eventWorkspaceActive' => 'communications', 'eventWorkspaceRegionalOnly' => !app(\App\Services\EventCommunicationService::class)->managesWholeEvent($event, auth()->user())])
 <h4>{{ $event->name }} â€” Review emails</h4>
 <p>{{ count($batch->recipients) }} emails. Nothing is sent until you approve below.</p>
 @if(($batch->options['scope'] ?? null)==='rankings')
 
 <div class="card card-body mb-3"><h5>Review ranked players</h5>
-<p>Matched ranking rows: {{ $rankingReview['counts']['matched'] }} · Included: {{ $rankingReview['counts']['included'] }} · Missing contacts: {{ $rankingReview['counts']['missing_contacts'] }}</p>
+<p>Matched ranking rows: {{ $rankingReview['counts']['matched'] }}  -  Included: {{ $rankingReview['counts']['included'] }}  -  Missing contacts: {{ $rankingReview['counts']['missing_contacts'] }}</p>
 <p>Excluded (counts can overlap): team listed {{ $rankingReview['counts']['team_listed'] }}, declined {{ $rankingReview['counts']['declined'] }}, reserves {{ $rankingReview['counts']['reserves'] }}, withdrawn {{ $rankingReview['counts']['withdrawn'] }}, manually {{ $rankingReview['counts']['manual'] }}.</p>
 <form method="post" action="{{ route('backend.event-communications.preview',$event) }}">@csrf
 @foreach($batch->options as $key=>$value)@if($key!=='excluded_player_ids')@if(is_array($value))@foreach($value as $item)<input type="hidden" name="{{ $key }}[]" value="{{ $item }}">@endforeach @else<input type="hidden" name="{{ $key }}" value="{{ $value }}">@endif @endif @endforeach

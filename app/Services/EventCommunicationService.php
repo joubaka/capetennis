@@ -21,7 +21,11 @@ class EventCommunicationService
 
             return EventRegion::with(['events', 'region'])->where('event_id', $event->id)->get();
         }
-        abort_unless($event->isTeam(), 404);
+        if (! $event->isTeam()) {
+            abort_unless($this->access->isEventManager($actor, $event), 403);
+
+            return collect();
+        }
         $regions = EventRegion::with(['events', 'region'])->where('event_id', $event->id)->get();
         $allowed = $regions->filter(fn ($region) => $this->access->canManage($actor, $region));
         abort_unless($this->access->isEventManager($actor, $event) || $allowed->isNotEmpty(), 403);
@@ -39,6 +43,9 @@ class EventCommunicationService
     public function entries(Event $event, User $actor): Collection
     {
         $regions = $this->regions($event, $actor);
+        if (! $event->isTeam() && ! $event->isInterprovincialTrials()) {
+            return $this->registrationEntries($event);
+        }
         $rows = collect();
         $imports = TeamSelectionImport::where('event_id', $event->id)->whereIn('status', ['draft', 'sent'])->orderBy('id')->get()->groupBy('region_id')->map(fn ($group) => $group->last()->id);
         $invitations = TeamSelectionInvitation::with(['player.user', 'player.users', 'team.category.category'])->where('event_id', $event->id)->whereIn('import_id', $imports)->get()->keyBy(fn ($i) => $i->team_id.':'.$i->player_id);
@@ -89,10 +96,122 @@ class EventCommunicationService
         return $rows->sortBy([['team', 'asc'], ['name', 'asc']])->values();
     }
 
+    /** Keep category-specific statuses until filtering, then deduplicate email messages. */
+    private function registrationEntries(Event $event): Collection
+    {
+        $rows = collect();
+        $registrations = $event->registrations()->with(['players.user', 'players.users', 'categoryEvent.category'])->get();
+        foreach ($registrations as $registration) {
+            $status = str_starts_with((string) $registration->status, 'withdrawn')
+                ? 'withdrawn'
+                : ((int) $registration->payment_status_id === 1 ? 'paid_confirmed' : 'accepted_pending_payment');
+            foreach ($registration->players as $player) {
+                $rows->push([
+                    'key' => 'player:'.$player->id,
+                    'name' => $player->full_name,
+                    'emails' => $this->contacts->emails($player)->all(),
+                    'status' => $status,
+                    'team_id' => null,
+                    'region_id' => null,
+                    'category' => $registration->categoryEvent?->category?->name ?? '',
+                    'category_event_id' => $registration->category_event_id,
+                    'team' => '',
+                    'nominated' => false,
+                    'registered' => true,
+                    'invited' => false,
+                ]);
+            }
+        }
+        $nominations = EventNomination::with(['player.user', 'player.users', 'categoryEvent.category'])
+            ->where('event_id', $event->id)
+            ->where(fn ($q) => $q->whereNull('category_event_id')->orWhereHas('categoryEvent', fn ($q) => $q->where('event_id', $event->id)))
+            ->get();
+        foreach ($nominations as $nomination) {
+            $key = $nomination->player_id ? 'player:'.$nomination->player_id : 'nominee:'.$nomination->id;
+            $emails = $nomination->player ? $this->contacts->emails($nomination->player) : collect();
+            if (filter_var($nomination->nominee_email, FILTER_VALIDATE_EMAIL)) {
+                $emails->push(mb_strtolower(trim($nomination->nominee_email)));
+            }
+            $existing = $rows->filter(fn ($row) => $row['key'] === $key && (int) $row['category_event_id'] === (int) $nomination->category_event_id);
+            if ($existing->isNotEmpty()) {
+                foreach ($existing as $index => $row) {
+                    $rows->put($index, [...$row, 'nominated' => true, 'emails' => collect($row['emails'])->concat($emails)->unique()->values()->all()]);
+                }
+                continue;
+            }
+            $rows->push([
+                'key' => $key,
+                'name' => $nomination->display_name,
+                'emails' => $emails->unique()->values()->all(),
+                'status' => 'not_registered',
+                'team_id' => null,
+                'region_id' => null,
+                'category' => $nomination->categoryEvent?->category?->name ?? 'Nominee',
+                'category_event_id' => $nomination->category_event_id,
+                'team' => '',
+                'nominated' => true,
+                'registered' => false,
+                'invited' => false,
+            ]);
+        }
+
+        if ($event->isMasters()) {
+            foreach ($this->mastersInvitations($event)->with(['player.user', 'player.users', 'categoryEvent.category'])->get() as $invitation) {
+                if (! $invitation->player) continue;
+                $key = 'player:'.$invitation->player_id;
+                $existing = $rows->filter(fn ($row) => $row['key'] === $key && (int) $row['category_event_id'] === (int) $invitation->category_event_id);
+                if ($existing->isNotEmpty()) {
+                    foreach ($existing as $index => $row) {
+                        $rows->put($index, [...$row, 'invited' => true, 'status' => $row['registered'] ? $row['status'] : $invitation->status]);
+                    }
+                    continue;
+                }
+                $rows->push([
+                    'key' => $key, 'name' => $invitation->player->full_name,
+                    'emails' => $this->contacts->emails($invitation->player)->all(),
+                    'status' => $invitation->status, 'team_id' => null, 'region_id' => null,
+                    'category' => $invitation->categoryEvent?->category?->name ?? '',
+                    'category_event_id' => $invitation->category_event_id,
+                    'team' => '', 'nominated' => false, 'registered' => false, 'invited' => true,
+                ]);
+            }
+        }
+
+        return $rows->sortBy([['name', 'asc'], ['category', 'asc']])->values();
+    }
+
+    private function mastersInvitations(Event $event): \Illuminate\Database\Eloquent\Builder
+    {
+        return \App\Models\MastersInvitation::where('event_id', $event->id)
+            ->whereHas('batch', fn ($q) => $q->where('event_id', $event->id)->whereIn('status', ['generated', 'ready_for_invitation', 'sent']))
+            ->whereHas('categoryEvent', fn ($q) => $q->where('event_id', $event->id))
+            ->whereIn('status', ['reserve', 'invited', 'accepted_pending_payment', 'paid_confirmed', 'declined', 'withdrawn']);
+    }
+
     public function individualOptions(Event $event, User $actor, string $search): Collection
     {
         $regions = $this->regions($event, $actor);
         if ($search === '') return collect();
+        if (! $event->isTeam() && ! $event->isInterprovincialTrials()) {
+            $term = '%'.addcslashes(mb_substr(trim($search), 0, 100), '%_\\').'%';
+            $registrationIds = $event->registrations()->select('category_event_registrations.registration_id');
+            $playerIds = DB::table('player_registrations')->whereIn('registration_id', $registrationIds)->select('player_id');
+            $nominations = EventNomination::where('event_id', $event->id)
+                ->where(fn ($q) => $q->whereNull('category_event_id')->orWhereHas('categoryEvent', fn ($q) => $q->where('event_id', $event->id)));
+            $players = Player::where(function ($q) use ($playerIds, $nominations, $event) {
+                $q->whereIn('id', $playerIds)->orWhereIn('id', (clone $nominations)->select('player_id'));
+                if ($event->isMasters()) $q->orWhereIn('id', $this->mastersInvitations($event)->select('player_id'));
+            })
+                ->where(fn ($q) => $q->where('name', 'like', $term)->orWhere('surname', 'like', $term))
+                ->orderBy('surname')->orderBy('id')->limit(100)->get()
+                ->map(fn ($player) => ['key' => 'player:'.$player->id, 'name' => $player->full_name]);
+            $nominees = $nominations->whereNull('player_id')
+                ->where(fn ($q) => $q->where('nominee_name', 'like', $term)->orWhere('nominee_surname', 'like', $term))
+                ->orderBy('nominee_surname')->orderBy('id')->limit(100)->get()
+                ->map(fn ($nominee) => ['key' => 'nominee:'.$nominee->id, 'name' => $nominee->display_name]);
+
+            return $players->concat($nominees)->sortBy('name')->take(100)->values();
+        }
         $teamIds = Team::withoutGlobalScopes()->whereHas('category', fn ($q) => $q->where('event_id', $event->id))->whereIn('region_id', $regions->pluck('region_id'))->select('id');
         $playerIds = TeamPlayer::withoutGlobalScopes()->whereIn('team_id', clone $teamIds)->select('player_id');
         $importedIds = NoProfileTeamPlayer::whereIn('team_id', clone $teamIds)->whereNotNull('player_profile')->select('player_profile');
@@ -116,6 +235,15 @@ class EventCommunicationService
 
     public function plan(Event $event, User $actor, array $options, string $subject, string $body): array
     {
+        if (! $event->isTeam() && ! $event->isInterprovincialTrials()) {
+            $this->regions($event, $actor);
+            abort_unless(in_array($options['scope'] ?? null, ($event->isMasters() ? ['all', 'registrations', 'nominations', 'individual', 'invitations'] : ['all', 'registrations', 'nominations', 'individual']), true)
+                && ($options['recipients'] ?? null) === 'players', 422);
+        }
+        if ($event->isTeam() || $event->isInterprovincialTrials()) {
+            $this->regions($event, $actor);
+            abort_unless(in_array($options['scope'] ?? null, ['all', 'nominations', 'region', 'team', 'individual', 'rankings'], true), 422);
+        }
         if (($options['scope'] ?? null) === 'rankings') return $this->rankingPlan($event, $actor, $options, $subject, $body);
         $regions = $this->regions($event, $actor);
         $rows = $this->entries($event, $actor);
@@ -130,6 +258,10 @@ class EventCommunicationService
         } elseif ($scope === 'individual') {
             $rows = $rows->where('key', $options['individual_key']);
             abort_if($rows->isEmpty(), 404);
+        } elseif ($scope === 'invitations') {
+            $rows = $rows->where('invited', true);
+        } elseif ($scope === 'registrations') {
+            $rows = $rows->where('registered', true);
         } elseif ($scope === 'nominations') {
             $rows = $rows->where('nominated', true);
         }
@@ -150,7 +282,7 @@ class EventCommunicationService
             $byEmail = collect();
             foreach ($rows as $row) foreach ($row['emails'] as $email) $byEmail->put($email, ($byEmail->get($email, collect()))->push($row));
             foreach ($byEmail as $email => $players) {
-                $text = $body."\n\nPlayer details:\n".$players->map(fn ($p) => $p['name'].' — '.$p['team'].' — '.Str::headline($p['status']))->unique()->implode("\n");
+                $text = $body."\n\nPlayer details:\n".$players->map(fn ($p) => $p['name'].' — '.($p['team'] ?: $p['category']).' — '.Str::headline($p['status']))->unique()->implode("\n");
                 $messages->push(['email' => $email, 'name' => $players->first()['name'], 'kind' => 'players', 'subject' => $subject, 'html' => nl2br(e($text))]);
             }
         }
@@ -345,13 +477,15 @@ class EventCommunicationService
             if ($batch->issues && ! $acknowledgeMissing) throw ValidationException::withMessages(['acknowledge_missing' => 'Acknowledge the missing contacts shown in the preview.']);
             $batch->update(['status' => 'approved', 'approved_at' => now()]);
             $draft?->update(['status' => 'approved', 'approved_at' => now()]);
-            $queued = 0;
+            $stats = ['queued' => 0, 'failed' => 0, 'skipped' => 0, 'duplicate' => false];
             foreach ($batch->recipients as $recipient) {
-                $result = $this->mailer->dispatch($batch->event->isInterprovincialTrials() ? 'trial_communication' : 'team_email', $batch, [$recipient], ['event_id' => $batch->event_id, 'created_by' => $actor->id, 'region_id' => ($batch->options['scope'] ?? null) === 'region' ? $batch->options['region_id'] : null, 'team_id' => ($batch->options['scope'] ?? null) === 'team' ? $batch->options['team_id'] : null, 'event_communication_batch_id' => $batch->id, 'subject' => $recipient['subject'], 'body' => $recipient['html'], 'recipient_kind' => $recipient['kind'], 'from_name' => $actor->name, 'reply_to' => $actor->email, 'manual_retry_only' => true], true);
-                $queued += $result['queued'];
+                $result = $this->mailer->dispatch($batch->event->isInterprovincialTrials() ? 'trial_communication' : ($batch->event->isTeam() ? 'team_email' : 'bulk_event_mail'), $batch, [$recipient], ['event_id' => $batch->event_id, 'created_by' => $actor->id, 'region_id' => ($batch->options['scope'] ?? null) === 'region' ? $batch->options['region_id'] : null, 'team_id' => ($batch->options['scope'] ?? null) === 'team' ? $batch->options['team_id'] : null, 'event_communication_batch_id' => $batch->id, 'subject' => $recipient['subject'], 'body' => $recipient['html'], 'recipient_kind' => $recipient['kind'], 'from_name' => $actor->name, 'reply_to' => $actor->email, 'manual_retry_only' => true], true);
+                foreach (['queued', 'failed', 'skipped'] as $outcome) {
+                    $stats[$outcome] += $result[$outcome] ?? 0;
+                }
             }
 
-            return ['queued' => $queued, 'duplicate' => false];
+            return $stats;
         });
     }
 }

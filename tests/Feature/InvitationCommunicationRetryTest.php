@@ -49,7 +49,7 @@ class InvitationCommunicationRetryTest extends TestCase
     {
         [$event, $actor, $log] = $this->fixture();
         $service = app(EventCommunicationService::class);
-        $original = $log->payload;
+        $original = $log->fresh()->payload;
         $preview = $service->previewRetry($event, $log, $actor);
         Bus::assertNothingDispatched();
         $this->assertSame(1, $service->approve($preview, $actor, false)['queued']);
@@ -64,7 +64,7 @@ class InvitationCommunicationRetryTest extends TestCase
     {
         [$event, $actor, $log] = $this->fixture(true);
         $service = app(EventCommunicationService::class);
-        $original = $log->payload;
+        $original = $log->fresh()->payload;
         $preview = $service->previewRetry($event, $log, $actor);
         $this->assertSame(1, $service->approve($preview, $actor, false)['queued']);
         $this->assertSame($original, $log->fresh()->payload);
@@ -86,7 +86,7 @@ class InvitationCommunicationRetryTest extends TestCase
         $service->send($import, $deadlines, $actor, true);
         $log = BulkEmailLog::where('related_type', TeamSelectionInvitation::class)->where('related_id', $invitation->id)->sole();
         $this->assertTrue(app(InvitationMailSecurity::class)->logMatchesSignedSnapshot($log, $event->id));
-        $original = $log->payload;
+        $original = $log->fresh()->payload;
         $log->markAsFailed('Temporary transport failure');
         Bus::fake();
         $retry = app(EventCommunicationService::class)->previewRetry($event, $log, $actor);
@@ -139,4 +139,36 @@ class InvitationCommunicationRetryTest extends TestCase
         Mail::assertNothingSent();
         Bus::assertNothingDispatched();
     }
+
+    public function test_nested_signed_snapshot_survives_mysql_roundtrip_but_not_content_or_list_mutation(): void
+    {
+        [$event, $actor, $log] = $this->fixture();
+        $security = app(InvitationMailSecurity::class);
+        $payload = $log->payload;
+        $payload['campaign'] = ['message' => 'Exact approved message', 'options' => ['z' => 'last', 'a' => 'first'], 'sections' => ['first', 'second']];
+        $payload['payload_integrity'] = $security->payloadIntegrity($payload);
+        $log->update(['payload' => $payload]);
+        $stored = $log->fresh();
+        $this->assertTrue($security->logMatchesSignedSnapshot($stored, $event->id));
+        foreach ([
+            ['rendered_subject', 'Changed subject'],
+            ['rendered_html', '<p>Changed body</p>'],
+            ['campaign.options.a', 'Changed nested option'],
+            ['campaign.sections', ['second', 'first']],
+        ] as [$field, $value]) {
+            $tampered = $stored->replicate();
+            $changed = $stored->payload;
+            data_set($changed, $field, $value);
+            $tampered->payload = $changed;
+            $this->assertFalse($security->logMatchesSignedSnapshot($tampered, $event->id));
+        }
+        // An old signature remains valid only when its exact stored JSON still verifies.
+        $legacy = $stored->payload;
+        unset($legacy['payload_integrity']);
+        ksort($legacy);
+        $legacy['payload_integrity'] = hash_hmac('sha256', json_encode($legacy, JSON_THROW_ON_ERROR), (string) config('app.key'));
+        $stored->payload = $legacy;
+        $this->assertTrue($security->logMatchesSignedSnapshot($stored, $event->id));
+    }
+
 }

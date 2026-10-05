@@ -41,8 +41,33 @@ class InvitationMailSecurity
     public function payloadIntegrity(array $payload): string
     {
         unset($payload['payload_integrity']);
-        ksort($payload);
+        return $this->signPayload($this->canonicalPayload($payload));
+    }
+
+    private function canonicalPayload(array $payload): array
+    {
+        if (! array_is_list($payload)) ksort($payload);
+        foreach ($payload as $key => $value) {
+            if (is_array($value)) $payload[$key] = $this->canonicalPayload($value);
+        }
+
+        return $payload;
+    }
+
+    private function signPayload(array $payload): string
+    {
         return hash_hmac('sha256', json_encode($payload, JSON_THROW_ON_ERROR), (string) config('app.key'));
+    }
+
+    private function hasValidIntegrity(array $payload): bool
+    {
+        if (hash_equals((string) $payload['payload_integrity'], $this->payloadIntegrity($payload))) return true;
+        // Retain already-valid historical signatures; never reconstruct or waive a failed proof.
+        $signature = (string) $payload['payload_integrity'];
+        unset($payload['payload_integrity']);
+        ksort($payload);
+
+        return hash_equals($signature, $this->signPayload($payload));
     }
 
     public function logMatchesSignedSnapshot(BulkEmailLog $log, ?int $eventId = null): bool
@@ -50,7 +75,7 @@ class InvitationMailSecurity
         $payload = $log->payload ?? [];
         return isset($payload['payload_integrity'], $payload['recipient_email'], $payload['related_type'], $payload['related_id'])
             && array_key_exists('recipient_name', $payload)
-            && hash_equals($payload['payload_integrity'], $this->payloadIntegrity($payload))
+            && $this->hasValidIntegrity($payload)
             && hash_equals((string) $payload['recipient_email'], (string) $log->recipient_email)
             && hash_equals((string) $payload['recipient_name'], (string) $log->recipient_name)
             && hash_equals((string) $payload['related_type'], (string) $log->related_type)

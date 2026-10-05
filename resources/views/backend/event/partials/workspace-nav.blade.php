@@ -1,6 +1,7 @@
 @php
   $eventWorkspaceRegionalOnly = $eventWorkspaceRegionalOnly ?? false;
   $eventWorkspaceActive = $eventWorkspaceActive ?? match (true) {
+    request()->routeIs('backend.event-communications.*', 'backend.interprovincial-trials.communications.*') => 'communications',
     request()->routeIs('backend.interprovincial-trials.*') => 'invitations',
     request()->routeIs('backend.event-venue-schedule.*') => 'schedule',
     request()->routeIs('headOffice.*', 'admin.events.draws') => 'draws',
@@ -18,8 +19,8 @@
 @endphp
 <x-backend.context-nav label="Event navigation">
   @if($eventWorkspaceRegionalOnly)
-    <a href="{{ route('backend.team-selection.index', $event) }}" aria-current="page"><i class="ti ti-users" aria-hidden="true"></i>Teams</a>
-    <a href="{{ route('backend.event-communications.index', $event) }}"><i class="ti ti-mail" aria-hidden="true"></i>Communications</a>
+    <a href="{{ route('backend.team-selection.index', $event) }}" @if($eventWorkspaceActive !== 'communications') aria-current="page" @endif><i class="ti ti-users" aria-hidden="true"></i>Teams</a>
+    <a href="{{ route('backend.event-communications.index', $event) }}" @if($eventWorkspaceActive === 'communications') aria-current="page" @endif><i class="ti ti-mail" aria-hidden="true"></i>Communications</a>
   @else
   @can('event-draw.view', $event)
     <a href="{{ route('admin.events.overview', $event) }}" @if($eventWorkspaceActive === 'overview') aria-current="page" @endif><i class="ti ti-layout-grid" aria-hidden="true"></i>Event overview</a>
@@ -38,11 +39,11 @@
       && (auth()->user()?->hasRole('super-user')
         || (auth()->user()?->hasRole('admin') && auth()->user()?->is_event_admin($event->id)));
   @endphp
-  @if($event->isTeam() && auth()->user() && app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(auth()->user(), $event))
-    <a href="{{ route('backend.event-communications.index', $event) }}"><i class="ti ti-mail" aria-hidden="true"></i>Communications</a>
+  @if(!$event->isInterprovincialTrials() && auth()->user() && app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(auth()->user(), $event))
+    <a href="{{ route('backend.event-communications.index', $event) }}" @if($eventWorkspaceActive === 'communications') aria-current="page" @endif><i class="ti ti-mail" aria-hidden="true"></i>Communications</a>
   @endif
   @if($event->isInterprovincialTrials() && auth()->user() && app(\App\Services\InterprovincialTrials\TrialProgrammeService::class)->canManage($event, auth()->user()))
-    <a href="{{ route('backend.interprovincial-trials.communications.index', $event) }}"><i class="ti ti-mail" aria-hidden="true"></i>Communications</a>
+    <a href="{{ route('backend.interprovincial-trials.communications.index', $event) }}" @if($eventWorkspaceActive === 'communications') aria-current="page" @endif><i class="ti ti-mail" aria-hidden="true"></i>Communications</a>
   @endif
   @if($canManageInterprovincialInvitations)
     <a href="{{ route('backend.interprovincial-trials.invitations.index', $event) }}"
