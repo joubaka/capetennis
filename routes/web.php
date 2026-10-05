@@ -1159,6 +1159,10 @@ Route::delete(
     ->name('backend.event-venue-schedule.assignments');
   Route::post('events/{event}/venue-schedule/venues', [EventVenueScheduleController::class, 'addVenue'])
     ->name('backend.event-venue-schedule.venues');
+  Route::delete('events/{event}/venue-schedule/venues/{venue}', [EventVenueScheduleController::class, 'removeVenue'])
+    ->name('backend.event-venue-schedule.venues.remove');
+  Route::delete('events/{event}/venue-schedule/draws/{draw}/venues/{venue}', [EventVenueScheduleController::class, 'removeDrawVenue'])
+    ->name('backend.event-venue-schedule.draw-venues.remove');
   Route::post('events/{event}/venue-schedule/courts', [EventVenueScheduleController::class, 'addCourt'])
     ->name('backend.event-venue-schedule.courts');
   Route::post('events/{event}/draws/bulk-publication', BulkDrawPublicationController::class)
@@ -2004,6 +2008,8 @@ Route::delete(
   Route::patch('/series/{series}/category-best-num', [SeriesController::class, 'updateCategoryBestNum'])->name('series.category-best-num');
 
   Route::post('/series/{series}/email-players', [EmailController::class, 'sendToSeriesPlayers'])->name('series.email.players');
+  Route::get('/series/{series}/email-review', [\App\Http\Controllers\Backend\SeriesCommunicationController::class, 'review'])->name('series.email.review');
+  Route::post('/series/{series}/email-review', [\App\Http\Controllers\Backend\SeriesCommunicationController::class, 'send'])->name('series.email.approve');
 
   //import export
   Route::get('exportRegistrations/{id}', [ImportExportController::class, 'exportRegistrations'])->name('export.registrations');

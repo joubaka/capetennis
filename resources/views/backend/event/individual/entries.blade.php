@@ -798,6 +798,7 @@ if (mailForm) {
         })
         .then(r => r.json())
         .then(res => {
+            if (res.review_required && res.review_url) { window.location.assign(res.review_url); return; }
             sendMailModal.hide();
             const feedback = !res.success ? 'error' : (res.stats?.skipped || res.stats?.failed ? 'warning' : 'success');
             toastr[feedback](res.message || `${res.queued} emails queued. Check the event Email Log.`);

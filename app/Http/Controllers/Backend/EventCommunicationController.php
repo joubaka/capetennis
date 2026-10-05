@@ -11,6 +11,13 @@ class EventCommunicationController extends Controller
 {
     public function index(Request $request, Event $event, EventCommunicationService $service)
     {
+        if ($request->has('individual_search')) {
+            $data = $request->validate(['individual_search' => 'nullable|string|max:100']);
+
+            return response()->json(['individuals' => $service->individualOptions($event, $request->user(), trim($data['individual_search'] ?? ''))->values()])
+                ->header('Cache-Control', 'private, no-store');
+        }
+
         $regions = $service->regions($event, $request->user());
         $rankingAudience = app(\App\Services\RegionalRankingMailAudience::class);
         $canRankingMail = $rankingAudience->canManage($event, $request->user());
@@ -32,7 +39,18 @@ class EventCommunicationController extends Controller
         $drafts = $service->managesWholeEvent($event, $request->user())
             ? EventCommunicationBatch::where('event_id', $event->id)->where('status', 'draft')->latest()->paginate(10, ['*'], 'drafts_page') : collect();
 
-        return view('backend.event.communications.index', compact('event', 'regions', 'teams', 'individuals', 'batches', 'batch', 'summary', 'logs', 'search', 'drafts', 'invitationLogs', 'invitationSummary', 'canRankingMail', 'rankingLists', 'teamAudience'));
+        $scope = $request->validate(['report_scope' => 'nullable|in:all,invitations,batch'])['report_scope'] ?? ($request->filled('batch') ? 'batch' : 'all');
+        $historyQuery = app(\App\Services\EventMailLogService::class)->query($event, $request->user());
+        if ($scope === 'invitations') $historyQuery->whereIn('id', $service->invitationLogs($event, $request->user())->select('id'));
+        if ($scope === 'batch') {
+            abort_unless($batch, 422, 'Select a reviewed batch before filtering its report.');
+            $historyQuery->whereIn('id', $batchLogs->select('id'));
+        }
+        $historyReport = app(\App\Services\MailReportFilters::class)->data($request, $historyQuery);
+        $reportContext = ['report_scope' => $scope];
+        if ($batch && $request->filled('batch')) $reportContext['batch'] = $batch->id;
+
+        return view('backend.event.communications.index', compact('event', 'regions', 'teams', 'individuals', 'batches', 'batch', 'summary', 'logs', 'search', 'drafts', 'invitationLogs', 'invitationSummary', 'canRankingMail', 'rankingLists', 'teamAudience', 'historyReport', 'reportContext'));
     }
 
     public function reviewDraft(Request $request, Event $event, EventCommunicationBatch $draft, EventCommunicationService $service)
@@ -55,7 +73,7 @@ class EventCommunicationController extends Controller
     public function preview(Request $request, Event $event, EventCommunicationService $service)
     {
         $data = $request->validate([
-            'scope' => 'required|in:all,registrations,invitations,nominations,region,team,individual,rankings',
+            'scope' => 'required|in:all,registrations,invitations,nominations,region,team,individual,rankings,legacy_registered,direct',
             'ranking_region_ids' => 'nullable|array|max:500',
             'ranking_region_ids.*' => 'integer',
             'ranking_list_ids' => 'nullable|array|max:500',
@@ -69,13 +87,16 @@ class EventCommunicationController extends Controller
             'exclude_withdrawn' => 'nullable|boolean',
             'region_id' => 'nullable|required_if:scope,region|integer',
             'team_id' => 'nullable|required_if:scope,team|integer',
+            'category_event_id' => 'nullable|integer',
+            'registration_id' => 'nullable|integer',
+            'direct_email' => 'nullable|required_if:scope,direct|email|max:255',
             'individual_key' => 'nullable|required_if:scope,individual|string|max:80',
             'filter' => 'required|in:all,not_registered,payment_pending,paid,declined,withdrawn,reserves',
             'recipients' => 'required|in:players,managers,both',
             'subject' => 'required|string|max:200',
             'body' => 'required|string|max:30000',
         ]);
-        $options = array_intersect_key($data, array_flip(['scope', 'region_id', 'team_id', 'individual_key', 'filter', 'recipients']));
+        $options = array_intersect_key($data, array_flip(['scope', 'region_id', 'team_id', 'individual_key', 'category_event_id', 'registration_id', 'direct_email', 'filter', 'recipients']));
         if ($data['scope'] === 'rankings') {
             $options = array_intersect_key($data, array_flip(['scope', 'ranking_region_ids', 'ranking_list_ids', 'rank_numbers', 'excluded_player_ids', 'exclude_team_listed', 'exclude_declined', 'exclude_reserves', 'exclude_withdrawn']));
             $options += ['filter' => 'all', 'recipients' => 'players'];
@@ -92,12 +113,21 @@ class EventCommunicationController extends Controller
         $batch = EventCommunicationBatch::where('event_id', $event->id)->where('token', $request->token)->firstOrFail();
         $stats = $service->approve($batch, $request->user(), $request->boolean('acknowledge_missing'));
 
+        $pending = 0;
+        $submissionLogs = $batch->logs();
+        if (! $stats['duplicate'] && (clone $submissionLogs)->exists()) {
+            $stats['queued'] = (clone $submissionLogs)->where('payload->queue_state','enqueued')->count();
+            $stats['failed'] = (clone $submissionLogs)->where('payload->queue_state','submission_failed')->count();
+            $stats['skipped'] = (clone $submissionLogs)->where('status','skipped')->count();
+            $pending = (clone $submissionLogs)->where('payload->queue_state','prepared')->count();
+        }
         $failed = $stats['failed'] ?? 0;
         $skipped = $stats['skipped'] ?? 0;
-        $severity = $stats['duplicate'] ? 'info' : (! $stats['queued'] ? 'error' : ($failed || $skipped ? 'warning' : 'success'));
+        $severity = $stats['duplicate'] ? 'info' : (! $stats['queued'] ? ($pending ? 'warning' : 'error') : ($failed || $skipped || $pending ? 'warning' : 'success'));
         $message = $stats['duplicate']
             ? 'This batch was already approved. No additional emails were queued.'
             : "{$stats['queued']} emails queued; {$failed} failed to queue; {$skipped} skipped. Check the send report for mail-server acceptance.";
+        if ($pending) $message .= " {$pending} queue submissions are unconfirmed.";
 
         return redirect()->route('backend.event-communications.index', ['event' => $event, 'batch' => $batch->id])->with($severity, $message);
     }

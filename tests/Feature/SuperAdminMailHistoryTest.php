@@ -43,7 +43,7 @@ class SuperAdminMailHistoryTest extends TestCase
         $this->actingAs($this->admin())->get(route('backend.superadmin.mail-history'))
             ->assertOk()->assertSee('Notice 26')->assertDontSee('Notice 0')
             ->assertDontSee('PRIVATE_BODY_TOKEN')->assertDontSee('SECRET_TRANSPORT_PASSWORD')
-            ->assertSee('Sent — acceptance unverified')
+            ->assertSee('Sent - evidence unverified')
             ->assertViewHas('mailLogs', fn ($logs) => $logs->total() === 27 && $logs->count() === 25 && $logs->first()->payload === null);
         $this->get(route('backend.superadmin.mail-history', ['mail_page' => 2]))->assertSee('Notice 0')->assertDontSee('Notice 26');
     }
@@ -53,7 +53,7 @@ class SuperAdminMailHistoryTest extends TestCase
         $accepted = BulkEmailLog::create(['mail_type' => 'event_announcement', 'recipient_email' => 'target@example.test', 'status' => 'sent', 'evidence_status' => 'server_accepted', 'accepted_at' => now(), 'payload' => ['subject' => 'Reviewed notice']]);
         BulkEmailLog::create(['mail_type' => 'system_mail', 'recipient_email' => 'other@example.test', 'status' => 'failed']);
         $this->actingAs($this->admin())->get(route('backend.superadmin.mail-history', ['mail_recipient' => 'target', 'mail_subject' => 'Reviewed', 'mail_type' => 'event_announcement', 'mail_status' => 'sent', 'mail_from' => now()->toDateString(), 'mail_until' => now()->toDateString()]))
-            ->assertOk()->assertSee('Mail server accepted')->assertDontSee('other@example.test')
+            ->assertOk()->assertSee('Server accepted')->assertDontSee('other@example.test')
             ->assertViewHas('mailLogs', fn ($logs) => $logs->count() === 1 && $logs->first()->id === $accepted->id);
         $this->get(route('backend.superadmin.mail-history', ['mail_until' => now()->toDateString()]))->assertOk();
         $this->get(route('backend.superadmin.mail-history', ['mail_status' => 'delivered']))->assertSessionHasErrors('mail_status');
@@ -226,7 +226,11 @@ class SuperAdminMailHistoryTest extends TestCase
         $this->assertArrayHasKey('type_104', $data['mailTypes']);
         $this->assertSame(1, $data['mailSummary']['total']);
         $html = view('backend.superadmin.partials.mail-history', $data + ['errors' => new \Illuminate\Support\ViewErrorBag])->render();
-        $this->assertStringContainsString('Showing the first 100 recorded mail types', $html);
+        $this->assertStringContainsString('value="type_104" selected', $html);
+        $this->assertStringContainsString('name="mail_type"', $html);
+        $this->assertStringContainsString('value="type_000"', $html);
+        $changed = $request->duplicate(['mail_type'=>'type_000']);
+        $this->assertSame('type_000', app(\App\Services\SuperAdminMailHistory::class)->data($changed)['mailLogs']->first()->mail_type);
         $this->assertStringNotContainsString('SECRET_TRANSPORT_PASSWORD', $html);
     }
 
@@ -260,8 +264,8 @@ class SuperAdminMailHistoryTest extends TestCase
         }
         $this->actingAs($this->admin());
         foreach (['standalone' => route('backend.superadmin.mail-history'), 'workspace' => route('backend.superadmin.workspace', ['tab' => 'mails'])] as $surface => $url) {
-            $response = $this->get($url)->assertOk()->assertSee('In progress')->assertSee('Outcome unverified')
-                ->assertSee('data-label="Recipient"', false)->assertSee('mail_page=2', false)
+            $response = $this->get($url)->assertOk()->assertSee('Pending')->assertSee('Acceptance uncertain')
+                ->assertSee('mail-report-row', false)->assertSee('mail_page=2', false)
                 ->assertViewHas('mailSummary', fn ($summary) => $summary['total'] === 27);
             if (getenv('CT_MAIL_HISTORY_UI_PREVIEW') === '1') {
                 $folder = storage_path('framework/testing/mail-history-preview');

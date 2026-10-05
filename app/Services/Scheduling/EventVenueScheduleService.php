@@ -16,6 +16,8 @@ final class EventVenueScheduleService
     {
         $roundProgression = $options['round_progression'] ?? 'team_ready';
         if (! in_array($roundProgression, ['team_ready', 'all_round'], true)) throw new \InvalidArgumentException('Choose a valid round progression rule.');
+        $genderWaves = $options['gender_waves'] ?? 'combined';
+        if (! in_array($genderWaves, ['combined', 'boys_then_girls'], true)) throw new \InvalidArgumentException('Choose a valid gender wave order.');
         $start = Carbon::parse($options['start']);
         $end = ! empty($options['end']) ? Carbon::parse($options['end']) : null;
         $duration = (int) ($options['duration'] ?? 75);
@@ -92,6 +94,7 @@ final class EventVenueScheduleService
             }
             foreach (($draw->isTeamDraw() ? app(UnifiedTeamScheduleService::class)->nodes($draw, $roundProgression) : $this->nodesForDraw($draw, $start, $waveMinutes)) as $id => $node) {
                 $node['draw_start'] = $drawStarts[$draw->id] ?? $start->copy();
+                $node['gender'] = $this->drawGender($draw);
                 if (($node['fixture_kind'] ?? 'individual') === 'team' && count($node['participants']) < 2 * (int) ($node['fixture']->player_count_per_team ?: ($node['fixture']->isDoubles() ? 2 : 1)) && ! $node['played']) {
                     $warnings[] = $draw->drawName.' rubber '.($node['match'] ?: $node['fixture']->id).' has unassigned players; player conflicts cannot yet be checked.';
                 }
@@ -150,7 +153,23 @@ final class EventVenueScheduleService
         }
         unset($node);
 
+        $sharedGenderVenues = [];
+        if ($genderWaves === 'boys_then_girls') {
+            foreach (array_keys($courtLabels) as $venueId) {
+                $genders = collect($nodes)->filter(fn ($node) => isset($node['venue_courts'][$venueId]))->pluck('gender');
+                if ($genders->contains('boys') && $genders->contains('girls')) $sharedGenderVenues[$venueId] = true;
+            }
+        }
+
         $plan = [];
+        $genderSlots = [];
+        foreach ($nodes as $id => $node) {
+            $slot = $this->nodeSlot($node);
+            if (($node['fixed'] || $node['played']) && $slot?->time) {
+                $genderSlots[$id] = ['venue_id' => (int) $slot->venue_id, 'time' => Carbon::parse($slot->time),
+                    'duration' => (int) ($slot->duration_minutes ?: $duration)];
+            }
+        }
         $scheduledPerDraw = [];
         $blocked = [];
         while ($pending) {
@@ -171,6 +190,23 @@ final class EventVenueScheduleService
                 }
                 foreach ($node['venue_courts'] as $venueId => $courts) {
                     $venueRelease = isset($venueStarts[$venueId]) ? $release->max($venueStarts[$venueId])->copy() : $release;
+                    if (isset($sharedGenderVenues[$venueId]) && $node['gender']) {
+                        $phase = 2 * ($node['wave'] - 1) + ($node['gender'] === 'girls' ? 1 : 0);
+                        foreach ($nodes as $earlierId => $earlier) {
+                            if (! $earlier['gender'] || $earlier['automatic']) continue;
+                            $earlierPhase = 2 * ($earlier['wave'] - 1) + ($earlier['gender'] === 'girls' ? 1 : 0);
+                            if ($earlierPhase >= $phase) continue;
+                            if (isset($pending[$earlierId]) && isset($earlier['venue_courts'][$venueId])) {
+                                $blocked[$id] = 'An earlier gender wave must be scheduled first at this shared venue.';
+                                continue 2;
+                            }
+                            $earlierSlot = $genderSlots[$earlierId] ?? null;
+                            if ($earlierSlot && $earlierSlot['venue_id'] === (int) $venueId) {
+                                $venueRelease = $venueRelease->copy()->max($earlierSlot['time']->copy()
+                                    ->addMinutes(max($waveMinutes, $earlierSlot['duration'] + $courtGap)));
+                            }
+                        }
+                    }
                     foreach ($courts as $court) {
                         $at = $calendar->nextAvailableForMatch($venueRelease, $duration + $courtGap,
                             $duration + $playerRest, $venueId, (string) $court, $node['participants'],
@@ -205,6 +241,7 @@ final class EventVenueScheduleService
             $calendar->reserveWithRest($best['venue_id'], $best['court'], $best['time'], $duration + $courtGap,
                 $duration + $playerRest, $node['participants'], $node['participant_group']);
             $finished[$id] = $best['time']->copy()->addMinutes($duration + $playerRest);
+            $genderSlots[$id] = ['venue_id' => (int) $best['venue_id'], 'time' => $best['time']->copy(), 'duration' => $duration];
             $scheduledPerDraw[$node['draw_id']] = ($scheduledPerDraw[$node['draw_id']] ?? 0) + 1;
             $plan[] = [
                 'fixture_id' => $node['fixture']->id, 'fixture_kind' => $node['fixture_kind'] ?? 'individual',
@@ -220,6 +257,22 @@ final class EventVenueScheduleService
                 'venue_changes' => $best['venue_changes'], 'rank_preference' => $node['rank_preference'],
             ];
             unset($pending[$id], $blocked[$id]);
+        }
+
+        foreach ($genderSlots as $id => $slot) {
+            $node = $nodes[$id];
+            if (! $node['fixed'] || ! $node['gender'] || ! isset($sharedGenderVenues[$slot['venue_id']])) continue;
+            $phase = 2 * ($node['wave'] - 1) + ($node['gender'] === 'girls' ? 1 : 0);
+            foreach ($genderSlots as $earlierId => $earlierSlot) {
+                $earlier = $nodes[$earlierId];
+                if (! $earlier['gender'] || $earlier['automatic'] || $earlierSlot['venue_id'] !== $slot['venue_id']) continue;
+                $earlierPhase = 2 * ($earlier['wave'] - 1) + ($earlier['gender'] === 'girls' ? 1 : 0);
+                if ($earlierPhase < $phase && $earlierSlot['time']->copy()
+                    ->addMinutes(max($waveMinutes, $earlierSlot['duration'] + $courtGap))->gt($slot['time'])) {
+                    $warnings[] = $node['draw_name'].' match '.$node['match'].': the saved time does not follow boys then girls waves. Replan this venue to change saved times.';
+                    break;
+                }
+            }
         }
 
         $unscheduled = [];
@@ -312,6 +365,7 @@ final class EventVenueScheduleService
             'replan_venue_ids' => collect($replanVenues)->sort()->values()->all(),
             'allow_partial' => (bool) ($options['allow_partial'] ?? false),
             'rank_venue_preferences' => $rankRules, 'cross_band_policy' => $crossBandPolicy,
+            'gender_waves' => $genderWaves,
             'draw_starts' => $drawStarts->map(fn ($time, $drawId) => ['draw_id' => (int) $drawId,
                 'start' => $time->format('Y-m-d H:i:s')])->values()->all(),
             'venue_starts' => $venueStarts->map(fn ($time, $venueId) => ['venue_id' => (int) $venueId,
@@ -704,6 +758,22 @@ final class EventVenueScheduleService
                 $nodes[$best['id']]['play_order'], $best['id']]) < 0;
     }
 
+    private function drawGender(Draw $draw): ?string
+    {
+        $gender = strtolower(trim((string) $draw->gender));
+        if ($gender !== '') {
+            return match ($gender) {
+                'boys', 'boy', 'male', 'men', '1' => 'boys',
+                'girls', 'girl', 'female', 'women', '2' => 'girls',
+                default => null,
+            };
+        }
+        $name = strtolower((string) $draw->drawName);
+        if (preg_match('/\bmixed\b/', $name)) return null;
+        if (preg_match('/\b(girls?|female|women)\b/', $name)) return 'girls';
+        return preg_match('/\b(boys?|male|men)\b/', $name) ? 'boys' : null;
+    }
+
     private function revision(Event $event, array $input): string
     {
         $drawIds = $event->draws()->pluck('id');
@@ -718,7 +788,7 @@ final class EventVenueScheduleService
             'team_ties' => DB::table('team_ties')->whereIn('draw_id', $drawIds)->orderBy('id')->get()->all(),
             'input' => $input,
             'draws' => DB::table('draws')->whereIn('id', $drawIds)->orderBy('id')
-                ->get(['id', 'locked', 'published', 'updated_at'])->all(),
+                ->get(['id', 'locked', 'published', 'gender', 'drawName', 'updated_at'])->all(),
             'venues' => DB::table('draw_venues')->whereIn('draw_id', $drawIds)->orderBy('draw_id')->orderBy('venue_id')->get()->all(),
             'courts' => DB::table('event_venue_courts')->where('event_id', $event->id)->orderBy('venue_id')->orderBy('id')->get()->all(),
             'court_allocations' => DB::table('draw_venue_court_allocations')->whereIn('draw_id', $drawIds)

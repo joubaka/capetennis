@@ -46,6 +46,27 @@ class UniversalEventCommunicationsTest extends TestCase
         return $overrides + ['scope' => 'all', 'filter' => 'all', 'recipients' => 'players'];
     }
 
+    public function test_inline_individual_search_is_authorized_and_event_scoped(): void
+    {
+        [$event, $actor] = $this->event();
+        [$other] = $this->event();
+        $local = Player::factory()->create(['name' => 'Searchable', 'surname' => 'Local']);
+        $foreign = Player::factory()->create(['name' => 'Searchable', 'surname' => 'Foreign']);
+        $this->entry($event, $local);
+        $this->entry($other, $foreign);
+        $url = route('backend.event-communications.index', ['event' => $event, 'individual_search' => 'Searchable']);
+        $this->actingAs($actor)->getJson($url)->assertOk()
+            ->assertExactJson(['individuals' => [['key' => 'player:'.$local->id, 'name' => $local->full_name]]]);
+        $this->getJson(route('backend.event-communications.index', ['event' => $event, 'individual_search' => 'No match']))
+            ->assertOk()->assertExactJson(['individuals' => []]);
+        $this->getJson(route('backend.event-communications.index', ['event' => $event, 'individual_search' => str_repeat('a', 101)]))
+            ->assertUnprocessable();
+        $this->actingAs(User::factory()->create())->getJson($url)->assertForbidden();
+        $this->assertDatabaseCount('event_communication_batches', 0);
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        Mail::assertNothingSent();
+    }
+
     public function test_all_nine_workflow_types_have_a_functional_authorized_composer(): void
     {
         foreach ([1, 2, 3, 4, 5, 6, 7, 'masters', 'interprovincial-trials'] as $kind) {
@@ -71,7 +92,7 @@ class UniversalEventCommunicationsTest extends TestCase
         $foreign = Player::factory()->create(['name' => 'Foreign', 'email' => 'foreign@example.test', 'userId' => null]);
         $this->entry($event, $player, ['payment_status_id' => 1]);
         $this->entry($other, $foreign, ['payment_status_id' => 1]);
-        $this->actingAs($actor)->get(route('backend.event-communications.index', ['event' => $event, 'search' => 'Local']))->assertOk()->assertSee($player->full_name)->assertDontSee($foreign->full_name);
+        $this->actingAs($actor)->get(route('backend.event-communications.index', ['event' => $event, 'search' => 'Local']))->assertOk()->assertSee('Compose and review an email')->assertDontSee($foreign->full_name);
         $service = app(EventCommunicationService::class);
         $batch = $service->preview($event, $actor, $this->audienceOptions(), 'Clothing', 'Collect clothing');
         $this->assertSame(['local@example.test'], array_column($batch->recipients, 'email'));
@@ -170,7 +191,9 @@ class UniversalEventCommunicationsTest extends TestCase
         \App\Models\MastersInvitation::create(['batch_id' => $foreignBatch->id, 'event_id' => $event->id, 'category_event_id' => $foreignCategory->id, 'player_id' => $foreign->id, 'ranking_position' => 2, 'queue_position' => 2, 'status' => 'invited']);
         $service = app(EventCommunicationService::class);
         $this->actingAs($actor)->get(route('backend.event-communications.index', ['event' => $event, 'search' => 'Native']))
-            ->assertOk()->assertSee('Native Invitee')->assertDontSee('Native Foreign')->assertSee('Invited players');
+            ->assertOk()->assertDontSee('Native Foreign')->assertSee('Invited players');
+        $this->getJson(route('backend.event-communications.index', ['event'=>$event, 'individual_search'=>'Native']))
+            ->assertOk()->assertExactJson(['individuals'=>[['key'=>'player:'.$player->id,'name'=>$player->full_name]]]);
         $preview = $service->preview($event, $actor, $this->audienceOptions(['scope' => 'invitations']), 'Clothing', 'Arrangements');
         $this->assertSame(['native@example.test'], array_column($preview->recipients, 'email'));
         $all = $service->plan($event, $actor, $this->audienceOptions(), 'Clothing', 'Arrangements');
@@ -218,6 +241,40 @@ class UniversalEventCommunicationsTest extends TestCase
             }
         }
         $this->assertDatabaseCount('event_communication_batches', 0);
+        Mail::assertNothingSent();
+    }
+
+    public function test_legacy_registered_review_excludes_nominees_and_other_registration_targets(): void
+    {
+        [$event,$actor]=$this->event();
+        $selected=Player::factory()->create(['email'=>'selected@example.test','userId'=>null]);
+        $other=Player::factory()->create(['email'=>'other@example.test','userId'=>null]);
+        $entry=$this->entry($event,$selected);
+        $this->entry($event,$other);
+        EventNomination::create(['event_id'=>$event->id,'category_event_id'=>$entry->category_event_id,'nominee_name'=>'Unregistered','nominee_surname'=>'Nominee','nominee_email'=>'nominee@example.test']);
+        $service=app(EventCommunicationService::class);
+        $all=$service->plan($event,$actor,$this->audienceOptions(['scope'=>'legacy_registered']),'Update','Body');
+        $this->assertSame(['other@example.test','selected@example.test'],array_column($all['recipients'],'email'));
+        foreach (['category_event_id'=>$entry->category_event_id,'registration_id'=>$entry->registration_id] as $field=>$id) {
+            $plan=$service->plan($event,$actor,$this->audienceOptions(['scope'=>'legacy_registered',$field=>$id]),'Update','Body');
+            $this->assertSame(['selected@example.test'],array_column($plan['recipients'],'email'));
+        }
+        $this->actingAs($actor)->getJson(route('backend.event-communications.index',['event'=>$event,'individual_search'=>'Selected']))->assertOk();
+        Mail::assertNothingSent();
+    }
+
+    public function test_masters_invitation_history_shortcut_is_event_and_batch_scoped(): void
+    {
+        [$event,$actor]=$this->event(1,EventType::MASTERS_CODE);
+        [$foreign]=$this->event(1,EventType::MASTERS_CODE);
+        foreach ([$event,$foreign] as $item) {
+            $category=CategoryEvent::factory()->create(['event_id'=>$item->id]);
+            $batch=\App\Models\MastersInvitationBatch::create(['event_id'=>$item->id,'series_id'=>1,'ranking_run_id'=>'report','created_by'=>$actor->id,'top_x'=>1,'status'=>'sent']);
+            $invite=\App\Models\MastersInvitation::create(['batch_id'=>$batch->id,'event_id'=>$item->id,'category_event_id'=>$category->id,'player_id'=>Player::factory()->create()->id,'ranking_position'=>1,'queue_position'=>1,'status'=>'invited']);
+            BulkEmailLog::create(['mail_type'=>'masters_invitation','related_type'=>\App\Models\MastersInvitation::class,'related_id'=>$invite->id,'recipient_email'=>'invite'.$item->id.'@example.test','status'=>'failed','payload'=>['event_id'=>$item->id,'subject'=>'Invitation '.$item->id]]);
+        }
+        $this->actingAs($actor)->get(route('backend.event-communications.index',['event'=>$event,'report_scope'=>'invitations','history_outcome'=>'failed']))
+            ->assertOk()->assertViewHas('historyReport',fn($report)=>$report['logs']->total()===1 && $report['logs']->first()->recipient_email==='invite'.$event->id.'@example.test');
         Mail::assertNothingSent();
     }
 

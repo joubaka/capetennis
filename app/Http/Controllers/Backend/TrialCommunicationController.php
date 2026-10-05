@@ -10,11 +10,14 @@ class TrialCommunicationController extends Controller {
 
     public function index(Event $event, TrialProgrammeService $programmes) {
         $programmes->authorize($event, request()->user());
-        $logQuery=BulkEmailLog::where('mail_type','trial_communication')->where('payload->event_id',$event->id);
+        $logQuery=app(\App\Services\EventMailLogService::class)->query($event,request()->user());
         $batch=request()->filled('batch') ? \App\Models\TrialMailPreview::where('event_id',$event->id)->whereNotNull('committed_at')->findOrFail(request()->query('batch')) : null;
         if ($batch) $logQuery->where('payload->preview_id',$batch->id);
+        $historyReport = app(\App\Services\MailReportFilters::class)->data(request(),clone $logQuery);
         return view('backend.interprovincial-trials.communications', ['event'=>$event,
             'batch'=>$batch,
+            'historyReport'=>$historyReport,
+            'reportContext'=>$batch ? ['batch'=>$batch->id] : [],
             'pendingDrafts'=>\App\Models\EventCommunicationBatch::where('event_id',$event->id)->where('status','draft')->where('options->source','transaction')->latest()->limit(100)->get(),
             'transactionBatches'=>\App\Models\EventCommunicationBatch::where('event_id',$event->id)->where('created_by',request()->user()->id)->whereNotNull('approved_at')->latest()->limit(100)->get(),
             'batches'=>\App\Models\TrialMailPreview::where('event_id',$event->id)->whereNotNull('committed_at')->latest('id')->limit(100)->get(),
@@ -43,7 +46,14 @@ class TrialCommunicationController extends Controller {
     }
     public function send(Request $request, Event $event, TrialCommunicationService $service) {
         $stats=$service->commit($this->previewFor($event,$request),$request->user());
-        return redirect()->route('backend.interprovincial-trials.communications.index',$event)->with('success',$stats['queued'].' combined messages queued.');
+        $preview = $this->previewFor($event,$request);
+        $logs = BulkEmailLog::where('payload->event_id',$event->id)->where('payload->preview_id',$preview->id);
+        $queued = (clone $logs)->where('payload->queue_state','enqueued')->count();
+        $pending = (clone $logs)->where('payload->queue_state','prepared')->count();
+        $failed = (clone $logs)->where('payload->queue_state','submission_failed')->count();
+        $severity = !$queued ? ($pending ? 'warning' : 'info') : ($failed || $pending ? 'warning' : 'success');
+        if ($failed && !$queued && !$pending) $severity='error';
+        return redirect()->route('backend.interprovincial-trials.communications.index',['event'=>$event,'batch'=>$preview->id])->with($severity,"{$queued} messages submitted to the queue; {$pending} submissions unconfirmed; {$failed} failed to queue.");
     }
     public function templates(Request $request, Event $event, TrialCommunicationService $service) {
         $data=$request->validate(['name'=>'required|string|max:255','subject'=>'required|string|max:255','body'=>'required|string|max:50000']);

@@ -67,81 +67,11 @@ class EmailController extends Controller
 
   public function sendEmail(Request $request)
   {
-    $this->dispatchStats = array_fill_keys(array_keys($this->dispatchStats), 0);
-    $this->reportUrl = null;
-    $this->reportUrls = [];
-    $request->validate(['event_id' => 'required|integer|exists:events,id', 'campaign_key' => 'nullable|uuid', 'emailSubject' => 'required|string|max:255', 'message' => 'required|string']);
-    $this->campaignKey = $request->campaign_key ?? (string) \Illuminate\Support\Str::uuid();
-    // Resolve event and authorize
-    $eventId = $request->event_id;
-    if ($eventId) {
-      $event = Event::findOrFail($eventId);
-      $this->authorize('event-email.bulk-send', $event);
-      if ($event->isTeam()) {
-        return redirect()->route('backend.event-communications.index', $event)->with('success', 'Review recipients and the exact message in Communications before sending.');
-      }
-      if ($event->isInterprovincialTrials()) {
-        return redirect()->route('backend.interprovincial-trials.communications.index', $event)->with('success', 'Review recipients and the exact message in Communications before sending.');
-      }
-    }
-
-    // 🧩 Automatically pick mailer
-    $mailer = app(MailAccountManager::class)->getMailer();
-
-    Log::debug('[Mail] Incoming request', [
-      'target_type' => $request->target_type,
-      'to' => $request->to,
-      'team_id' => $request->team_id,
-      'event_id' => $request->event_id,
-      'region_id' => $request->region_id,
-      'catEvent' => $request->catEvent,
-    ]);
-
-    $details = [
-      'campaign_key' => $this->campaignKey,
-      'team' => $request->team_id,
-      'event' => $request->event_id,
-      'region' => $request->region_id,
-      'categoryEvent' => $request->catEvent,
-      'fromName' => trim($request->fromName ?? 'Cape Tennis Admin'),
-
-      'fromEmail' => match ($mailer) {
-        'noreply1' => 'noreply1@capetennis.co.za',
-        'noreply2' => 'noreply2@capetennis.co.za',
-        default => 'noreply@capetennis.co.za',
-      },
-
-      'replyTo' => filter_var($request->replyTo, FILTER_VALIDATE_EMAIL)
-        ? $request->replyTo
-        : (auth()->user()->email ?? 'info@capetennis.co.za'),
-
-      'message' => $request->message,
-      'bcc' => $request->bcc,
-      'subject' => $request->emailSubject,
-    ];
-
-    Log::info('[Mail] Preparing email', [
-      'mailer' => $mailer,
-      'subject' => $details['subject'],
-      'from' => $details['fromEmail'],
-      'to' => $request->to,
-      'target' => $request->target_type,
-    ]);
-
-    $recipient = $request->to;
-
-    /*
-    |--------------------------------------------------------------------------
-    | 🧠 SINGLE PLAYER
-    |--------------------------------------------------------------------------
-    */
-    if ($request->target_type === 'player' && is_numeric($recipient)) {
-
-      Log::debug('[Mail] Route: SINGLE PLAYER', [
-        'player_id' => $recipient,
-      ]);
-
-      $player = Player::whereKey($recipient)->where(function ($query) use ($event) {
+    $request->validate(['event_id'=>'required|integer|exists:events,id','campaign_key'=>'nullable|uuid','emailSubject'=>'required|string|max:200','message'=>'required|string|max:30000']);
+    $event = Event::findOrFail($request->event_id);
+    $this->authorize('event-email.bulk-send',$event);
+    if (is_numeric($request->to)) {
+      $player = Player::whereKey($request->to)->where(function ($query) use ($event) {
         $query->whereHas('registrations.categoryEventRegistrations.categoryEvent', fn ($q) => $q->where('event_id', $event->id))
           ->orWhereHas('teams.category', fn ($q) => $q->where('event_id', $event->id))
           ->orWhereIn('id', EventNomination::where('event_id', $event->id)->whereHas('categoryEvent', fn ($q) => $q->where('event_id', $event->id))->whereNotNull('player_id')->select('player_id'))
@@ -150,132 +80,55 @@ class EmailController extends Controller
           ->orWhereIn('id', \App\Models\MastersInvitation::where('event_id', $event->id)->whereHas('batch', fn ($q) => $q->where('event_id', $event->id))->whereHas('categoryEvent', fn ($q) => $q->where('event_id', $event->id))->select('player_id'));
       })->first();
 
-      if (!$player) {
-        Log::warning('[Mail] Player not found', ['player_id' => $recipient]);
-        return response()->json([
-          'success' => false,
-          'message' => 'Invalid player selected.'
-        ], 404);
-      }
-
-      $details['email'] = trim(strtolower((string) $player->email));
-      $result = $this->sendToIndividual($details, $mailer);
-
-      Log::info('[Mail] Player email sent', [
-        'player_id' => $player->id,
-        'email' => $details['email'],
-      ]);
-      Log::info('[Mail] 🏁 COMPLETED REQUEST', [
-        'target_type' => $request->target_type,
-        'recipient' => $recipient,
-        'subject' => $details['subject'],
-        'mailer' => $mailer,
-      ]);
-
-      return response()->json([
-        'success' => ($result['title'] ?? null) !== 'error',
-        'mailer' => $mailer,
-        'result' => $result,
-      ]);
+      abort_unless($player,404,'Invalid player selected.');
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | 🧠 TEAM EMAIL
-    |--------------------------------------------------------------------------
-    */
-    if ($request->target_type === 'team' && is_numeric($request->team_id)) {
+    return $this->reviewEventResponse($request,$event);
+  }
 
-      Log::debug('[Mail] Route: TEAM', [
-        'team_id' => $request->team_id,
-      ]);
-
-      $result = $this->sendToTeam($details, $mailer);
-
-      Log::info('[Mail] Team email completed', [
-        'team_id' => $request->team_id,
-        'result' => $result,
-      ]);
-
-      return response()->json([
-        'success' => ($result['title'] ?? null) !== 'error',
-        'mailer' => $mailer,
-        'result' => $result,
-      ]);
+  private function reviewEventResponse(Request $request, Event $event)
+  {
+    abort_unless(app(\App\Services\EventCommunicationService::class)->managesWholeEvent($event,$request->user()),403);
+    $options = ['scope'=>'all', 'recipients'=>'players'];
+    if ($request->target_type === 'player' || is_numeric($request->to) || filter_var($request->to, FILTER_VALIDATE_EMAIL)) {
+      $options = is_numeric($request->to) ? ['scope'=>'individual', 'individual_key'=>'player:'.$request->to, 'recipients'=>'players'] : ['scope'=>'direct', 'direct_email'=>$request->to, 'recipients'=>'players'];
+      if ($options['scope']==='direct') $request->validate(['to'=>'required|email|max:255']);
+    } elseif ($request->target_type === 'team') {
+      $options = ['scope'=>'team', 'team_id'=>$request->team_id, 'recipients'=>'players'];
+    } elseif ($request->target_type === 'region') {
+      $options = ['scope'=>'region', 'region_id'=>$request->region_id, 'recipients'=>'players'];
+    } elseif ($request->filled('category_event_id')) {
+      $options = ['scope'=>'legacy_registered', 'category_event_id'=>$request->category_event_id, 'recipients'=>'players'];
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | 🎯 LEGACY / DROPDOWN RECIPIENTS
-    |--------------------------------------------------------------------------
-    */
-    Log::debug('[Mail] Route: LEGACY', [
-      'recipient' => $recipient,
-    ]);
-
-    switch ($recipient) {
-
-      case 'All players in event':
-        Log::debug('[Mail] Legacy: All players in event');
-        $result = $this->sendToEventType($details, $mailer);
-        break;
-
-      // ✅ ADD THIS MISSING CASE
-      case 'All players in team':
-        Log::debug('[Mail] Legacy: All players in team', ['team_id' => $details['team']]);
-        $result = $this->sendToTeam($details, $mailer);
-        break;
-
-      case 'All players in nominations':
-      case 'All nominated players':
-        Log::debug('[Mail] Legacy: Nominations');
-        $result = $this->sendToNominations($details, $mailer);
-        break;
-
-      case 'All Unregistered players in Event':
-        Log::debug('[Mail] Legacy: Unregistered event');
-        $result = $this->sendToAllUnregisteredInEvent($details, $mailer);
-        break;
-
-      case 'All Unregistered players in Region':
-        Log::debug('[Mail] Legacy: Unregistered region');
-        $result = $this->sendToUnregisteredInRegion($details, $mailer);
-        break;
-
-      case 'All Unregistered players in Team':
-        Log::debug('[Mail] Legacy: Unregistered team');
-        $result = $this->sendToEventUnregisteredTeam($details, $mailer);
-        break;
-
-      case 'All players in region':
-        Log::debug('[Mail] Legacy: Region');
-        $result = $this->sendToRegion($details, $mailer);
-        break;
-
-      case 'All players in category':
-        Log::debug('[Mail] Legacy: Category');
-        $result = $this->sendToAllPlayersInCategory($details, $mailer);
-        break;
-
-      default:
-        Log::debug('[Mail] Legacy: Direct email', [
-          'email' => $recipient,
-        ]);
-        $details['email'] = trim(strtolower($recipient));
-        $result = $this->sendToIndividual($details, $mailer);
-        break;
+    $target = mb_strtolower(trim((string) $request->to));
+    if (! is_numeric($request->to) && ! filter_var($request->to, FILTER_VALIDATE_EMAIL) && $request->target_type !== 'player') {
+      $groups = [
+        'all players in event'=>'event', 'all players in region'=>'region', 'all players in category'=>'category',
+        'all players in team'=>'team', 'all players in nominations'=>'nominations', 'all nominated players'=>'nominations',
+        'all unregistered players in event'=>'event', 'all unregistered players in region'=>'region', 'all unregistered players in team'=>'team',
+      ];
+      $group = $groups[$target] ?? (in_array($request->target_type,['team','region'],true) ? $request->target_type : null);
+      abort_unless($group, 422, 'Select a supported recipient group.');
+      $options = match ($group) {
+        'region'=>['scope'=>'region', 'region_id'=>$request->region_id ?? $request->region, 'recipients'=>'players'],
+        'team'=>['scope'=>'team', 'team_id'=>$request->team_id, 'recipients'=>'players'],
+        'category'=>['scope'=>'legacy_registered', 'category_event_id'=>$request->categoryEvent ?? $request->category_event_id ?? $request->catEvent, 'recipients'=>'players'],
+        'nominations'=>['scope'=>'nominations', 'recipients'=>'players'],
+        default=>['scope'=>!$event->isTeam() && !$event->isInterprovincialTrials() && !str_contains($target,'unregistered') ? 'legacy_registered' : 'all', 'recipients'=>'players'],
+      };
+      $options['filter'] = str_contains($target,'unregistered') ? 'not_registered' : 'all';
     }
+    $options['filter'] ??= 'all';
+    if ($options['scope']==='team') Team::withoutGlobalScopes()->whereHas('category',fn($q)=>$q->where('event_id',$event->id))->findOrFail($options['team_id']);
+    if ($options['scope']==='region') abort_unless($event->regions()->where('team_regions.id',$options['region_id'])->exists(),404);
+    if ($options['scope']==='legacy_registered' && isset($options['category_event_id'])) $event->categoryEvents()->findOrFail($options['category_event_id']);
+    $request->session()->flash('compose_options',$options);
+    $request->session()->flash('compose_subject',$request->emailSubject);
+    $request->session()->flash('compose_body',trim(strip_tags(preg_replace('/<\/(p|div|li)>|<br\s*\/?\s*>/i',"\n",$request->message))));
+    $url = route('backend.event-communications.index',['event'=>$event,'compose'=>1]);
 
-    Log::info('[Mail] ✅ Email batch complete', [
-      'mailer' => $mailer,
-      'to' => $recipient,
-    ]);
-
-    return response()->json([
-      'success' => ($result['title'] ?? null) !== 'error',
-      'mailer' => $mailer,
-      'result' => $result,
-    ]);
+    if ($request->expectsJson()) return response()->json(['success'=>true,'review_required'=>true,'review_url'=>$url,'result'=>['title'=>'info','report_url'=>$url,'message'=>'No emails queued. Review recipients, sender and copy choices in Communications before approving.']]);
+    return redirect($url)->with('info','No emails queued. Review recipients, sender and copy choices before approving.');
   }
 
   /**
@@ -625,87 +478,14 @@ class EmailController extends Controller
     $this->dispatchStats = array_fill_keys(array_keys($this->dispatchStats), 0);
     $this->reportUrl = null;
     $this->reportUrls = [];
-    // Authorize: user must be admin for at least one event in the series
-    $eventIds = $series->events()->pluck('id')->toArray();
-    if (empty($eventIds)) {
-      abort(403);
-    }
-
-    $authorized = false;
-    foreach ($eventIds as $eventId) {
-      $event = Event::find($eventId);
-      if ($event && auth()->user()->can('event-email.send', $event)) {
-        $authorized = true;
-        break;
-      }
-    }
-    if (!$authorized) {
-      abort(403);
-    }
-
-    $mailer = app(MailAccountManager::class)->getMailer();
-
-    $request->validate([
-      'campaign_key' => 'nullable|uuid',
-      'emailSubject' => 'required|string|max:255',
-      'message' => 'required|string',
+    $data = $request->validate([
+      'campaign_key'=>'required|uuid','emailSubject'=>'required|string|max:200','message'=>'required|string|max:30000',
+      'fromName'=>'nullable|string|max:100','replyTo'=>'nullable|email|max:255',
     ]);
+    app(\App\Services\SeriesCommunicationService::class)->preview($series,$request->user(),$data['campaign_key'],$data['emailSubject'],$data['message'],trim($data['fromName'] ?? $request->user()->name),$data['replyTo'] ?? $request->user()->email);
+    $reviewUrl = route('series.email.review',['series'=>$series,'intent'=>$data['campaign_key']]);
 
-    Log::info('[sendToSeriesPlayers] ▶️ START', [
-      'series_id' => $series->id,
-      'series_name' => $series->name,
-      'mailer' => $mailer,
-      'user_id' => auth()->id(),
-    ]);
-
-    $details = [
-      'campaign_key' => $request->campaign_key ?? (string) \Illuminate\Support\Str::uuid(),
-      'fromName' => trim($request->fromName ?? 'Cape Tennis Admin'),
-      'fromEmail' => match ($mailer) {
-        'noreply1' => 'noreply1@capetennis.co.za',
-        'noreply2' => 'noreply2@capetennis.co.za',
-        default => 'noreply@capetennis.co.za',
-      },
-      'replyTo' => filter_var($request->replyTo, FILTER_VALIDATE_EMAIL)
-        ? $request->replyTo
-        : (auth()->user()->email ?? 'info@capetennis.co.za'),
-      'message' => $request->message,
-      'subject' => $request->emailSubject,
-    ];
-
-    // Collect unique emails across all events in the series
-    $events = $series->events()->with('registrations.players')->get();
-    foreach ($events as $seriesEvent) $this->authorize('event-email.send', $seriesEvent);
-    $recipients = [];
-
-    foreach ($events as $event) {
-      $eventRecipients = [];
-      foreach ($event->registrations as $registration) {
-        foreach ($registration->players ?? collect() as $player) {
-          $email = trim(strtolower((string) $player->email));
-          $eventRecipients[] = ['email' => $email, 'name' => $player->full_name];
-        }
-      }
-      $this->composeDispatch('series_email', $series, $eventRecipients, [...$details, 'event' => $event->id]);
-    }
-
-    $queuedCount = $this->dispatchStats['queued'];
-
-    // Use BulkMailDispatcher for throttled sending
-
-
-    $this->sendToOwner($details, $mailer);
-    $this->sendToSender($details, $mailer);
-
-    Log::info('[sendToSeriesPlayers] ✅ FINISHED', [
-      'series_id' => $series->id,
-      'total_unique_players' => $queuedCount,
-    ]);
-
-    return response()->json([
-      'success' => $this->dispatchStats['queued'] > 0,
-      ...$this->dispatchResult(),
-    ]);
+    return response()->json(['success'=>true,'review_required'=>true,'review_url'=>$reviewUrl,'message'=>'No emails queued. Review every event recipient and exact message before approving this intent.']);
   }
 
   /** ✅ Helper: queue the job safely */

@@ -74,15 +74,7 @@ class EventMailLogController extends Controller
 
     private function outcomeQuery(\Illuminate\Database\Eloquent\Builder $query, string $outcome): void
     {
-        match ($outcome) {
-            'sent_complete' => $query->where('status', 'sent')->where(fn ($q) => $q->whereNull('evidence_status')->orWhere('evidence_status', '!=', 'sandbox_accepted')),
-            'pending' => $query->whereIn('status', ['queued', 'sending']),
-            'accepted' => $query->where('status', 'sent')->where('evidence_status', 'server_accepted')->whereNotNull('accepted_at'),
-            'sandbox' => $query->where('status', 'sent')->where('evidence_status', 'sandbox_accepted')->whereNotNull('accepted_at'),
-            'unverified' => $query->where('status', 'sent')->where(fn ($q) => $q->whereNull('accepted_at')->orWhereNull('evidence_status')->orWhereNotIn('evidence_status', ['server_accepted', 'sandbox_accepted'])),
-            'uncertain' => $query->where('status', 'acceptance_unknown'),
-            default => $query->where('status', $outcome),
-        };
+        app(\App\Services\MailReportFilters::class)->outcome($query, $outcome);
     }
 
     public function show(Request $request, Event $event, BulkEmailLog $log, EventMailLogService $service)

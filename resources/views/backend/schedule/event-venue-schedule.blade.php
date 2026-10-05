@@ -2,8 +2,33 @@
 
 @section('title', 'Schedule – '.$event->name)
 
+@section('vendor-style')
+  <link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}">
+@endsection
+
+@section('vendor-script')
+  <script src="{{ asset('assets/vendor/libs/select2/select2.js') }}"></script>
+@endsection
+
 @section('page-style')
 <style>
+  #rank-preferences .rank-band-row { min-width:0; border:1px solid var(--schedule-border); border-radius:.75rem; padding:1rem; background:#fff; }
+  #rank-preferences .rank-band-header { display:flex; align-items:center; justify-content:space-between; gap:.75rem; margin-bottom:.8rem; }
+  #rank-preferences .rank-band-fields { display:grid; grid-template-columns:minmax(9rem,.65fr) minmax(0,1.5fr) minmax(0,1fr); gap:1rem; }
+  #rank-preferences .rank-band-fields > div { min-width:0; }
+  #rank-preferences .rank-range { display:flex; align-items:center; gap:.5rem; }
+  #rank-preferences .rank-range input { min-width:0; }
+  #rank-preferences .select2-container { max-width:100%; }
+  #rank-preferences .select2-selection--multiple { min-height:2.5rem; }
+  #rank-preferences .select2-selection__choice { max-width:100%; white-space:normal; overflow-wrap:anywhere; }
+  #rank-preferences .select2-selection__rendered { min-width:0; }
+  #rank-preferences .select2-selection--multiple .select2-selection__rendered { max-height:6rem; overflow-y:auto; }
+  #rank-preferences .rank-scope-chips { display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.6rem; max-height:8rem; overflow-y:auto; }
+  #rank-preferences .rank-scope-chips span { padding:.25rem .5rem; border:1px solid var(--schedule-border); border-radius:.4rem; font-weight:400; }
+  #rank-preferences .rank-band-scope-details summary { cursor:pointer; }
+  #rank-preferences .select2-dropdown { z-index:1100; }
+  @media (max-width:991px) { #rank-preferences .rank-band-fields { grid-template-columns:repeat(2,minmax(0,1fr)); } #rank-preferences .rank-draw-field { grid-column:1 / -1; grid-row:2; } }
+  @media (max-width:575px) { #rank-preferences .rank-band-fields { grid-template-columns:minmax(0,1fr); gap:.8rem; } #rank-preferences .rank-draw-field { grid-column:auto; grid-row:auto; } }
   .schedule-workspace { --schedule-border:#e6e8ee; --schedule-muted:#667085; --schedule-soft:#f7f8fa; }
   .schedule-workspace .workspace-header { max-width: 52rem; }
   .schedule-workspace .workspace-actions .btn { white-space: nowrap; }
@@ -258,10 +283,13 @@
                       $orderedCourts = $selectedCourts->concat($availableCourts);
                     @endphp
                     <div class="venue-assignment">
-                      <div class="d-flex align-items-center gap-2">
+                      <div class="d-flex flex-wrap align-items-center gap-2">
                         <label class="d-flex align-items-center gap-2 mb-0 flex-grow-1"><input class="form-check-input assignment-choice mt-0" data-draw="{{ $draw['id'] }}" data-venue-name="{{ $venue['name'] }}" type="checkbox" value="{{ $venue['id'] }}" {{ $venueAssigned ? 'checked' : '' }} {{ $draw['locked'] ? 'disabled' : '' }}><span class="fw-semibold">{{ $venue['name'] }}</span></label>
                         <span class="small text-muted" data-court-summary="{{ $draw['id'] }}-{{ $venue['id'] }}">{{ $venueAssigned ? (empty($allocatedLabels) ? 'All '.$venue['courts'] : count($allocatedLabels).' of '.$venue['courts']) : 'Not used' }}</span>
                         <button class="btn btn-sm btn-text-secondary court-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#courts-{{ $draw['id'] }}-{{ $venue['id'] }}" aria-expanded="false" aria-controls="courts-{{ $draw['id'] }}-{{ $venue['id'] }}">Choose courts</button>
+                        @if($venueAssigned)
+                        <button class="btn btn-sm btn-outline-danger remove-draw-venue" type="button" data-draw="{{ $draw['id'] }}" data-venue="{{ $venue['id'] }}" data-url="{{ route('backend.event-venue-schedule.draw-venues.remove', [$event, $draw['id'], $venue['id']]) }}" aria-label="Remove {{ $venue['name'] }} from {{ $draw['name'] }}" {{ $draw['locked'] ? 'disabled' : '' }}>Remove</button>
+                        @endif
                       </div>
                       <div class="collapse" id="courts-{{ $draw['id'] }}-{{ $venue['id'] }}"><div class="court-choices">
                         @foreach($orderedCourts as $court)
@@ -298,7 +326,7 @@
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
           <div class="modal-content">
             <div class="modal-header">
-              <div><h5 class="modal-title" id="venue-management-title">Edit venues & courts</h5><div class="small text-muted">{{ $venues->count() }} assigned venues · {{ $venues->sum('courts') }} courts available</div></div>
+              <div><h5 class="modal-title" id="venue-management-title">Edit venues & courts</h5><div class="small text-muted" id="venue-management-counts">{{ $venues->count() }} assigned venues · {{ $venues->sum('courts') }} courts available</div></div>
               <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body venue-management-body">
@@ -322,12 +350,15 @@
               <div class="col-sm-6"><label class="form-label small" for="new-venue-ball">Court type</label><select id="new-venue-ball" class="form-select form-select-sm"><option value="standard">Standard</option><option value="yellow">Yellow ball</option><option value="orange">Orange ball</option><option value="green">Green ball</option><option value="red">Red ball</option></select></div>
             </div>
             <button type="button" id="add-venue" class="btn btn-sm btn-primary mt-3" data-audit-ignore="true"><i class="ti ti-plus me-1"></i><span id="add-venue-label">Add existing venue</span></button>
+            <div class="form-text">Keep adding or editing venues here. Choose Done when finished.</div>
             <div id="venue-add-status" class="small text-muted mt-2" role="status" aria-live="polite"></div>
           </div>
+          <div id="venue-editor-list">
           @forelse($venues as $venue)
-          <details class="venue-editor">
+          <details class="venue-editor" data-venue="{{ $venue['id'] }}">
             <summary><strong class="flex-grow-1">{{ $venue['name'] }}</strong><span class="badge bg-label-primary">{{ $venue['courts'] }} courts</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>
             <div class="venue-editor-body">
+            <div class="d-flex justify-content-end mt-2"><button type="button" class="btn btn-sm btn-outline-danger remove-venue" data-url="{{ route('backend.event-venue-schedule.venues.remove', [$event, $venue['id']]) }}">Remove from this event</button></div>
             <div class="small fw-semibold mt-3 mb-2">Edit this venue's court setup</div>
             <div class="row g-2 venue-court-setup" data-url="{{ route('backend.event-venue-schedule.courts.configure', [$event, $venue['id']]) }}">
               <div class="col-sm-4"><label class="visually-hidden">Total courts at {{ $venue['name'] }}</label><input type="number" class="form-control form-control-sm setup-court-count" value="{{ $venue['courts'] }}" min="1" max="100" aria-label="Total courts at {{ $venue['name'] }}"></div>
@@ -352,6 +383,7 @@
           @empty
             <div class="alert alert-warning mb-0">Add the first venue and its courts before creating allocations.</div>
           @endforelse
+          </div>
             </div>
             <div class="modal-footer"><button type="button" class="btn btn-primary" data-bs-dismiss="modal">Done</button></div>
           </div>
@@ -395,6 +427,14 @@
           <div class="form-text">Individual matches always follow their qualifying dependencies.</div>
         </div>
         <div class="col-md-6 small text-muted align-self-center">Ties may use multiple venues. We prefer each player's previous venue and warn when a move is needed. Published schedules can be adjusted; matches with play stay protected.</div>
+      </div>
+      <div class="mt-3">
+        <label class="form-label" for="gender-waves">Gender waves at shared venues</label>
+        <select id="gender-waves" class="form-select">
+          <option value="combined" @selected($scheduleDraft['gender_waves'] === 'combined')>Combine boys and girls</option>
+          <option value="boys_then_girls" @selected($scheduleDraft['gender_waves'] === 'boys_then_girls')>Boys first, then girls in each round</option>
+        </select>
+        <div class="form-text">At venues shared by boys and girls, finish the boys' wave before starting the girls' wave, then repeat for the next round. The round wave sets the minimum interval between wave starts. Mixed draws and saved matches keep their usual scheduling rules.</div>
       </div>
       <div id="rank-preferences" class="border rounded p-3 mt-4">
         <h6 class="mb-1">Venue preferences by team roster rank (optional)</h6>
@@ -794,22 +834,80 @@
     allRankRules = coalesceRankRules(allRankRules);
   };
   const allowedRankVenues = rule => rankVenues.filter(venue => rule.draw_ids.length && rule.draw_ids.every(id => document.querySelector(`.assignment-choice[data-draw="${id}"][value="${venue.id}"]`)?.checked));
+  const rankSelects = container => [...container.querySelectorAll('.rank-band-draws, .rank-band-venue')];
+  const destroyRankSelects = container => {
+    if (!window.jQuery?.fn?.select2) return;
+    rankSelects(container).forEach(select => {
+      const control = window.jQuery(select);
+      control.off('.rankBands');
+      if (control.hasClass('select2-hidden-accessible')) control.select2('destroy');
+    });
+  };
+  const initializeRankSelects = container => {
+    if (!window.jQuery?.fn?.select2) return;
+    rankSelects(container).forEach(select => {
+      const control = window.jQuery(select);
+      const multiple = select.classList.contains('rank-band-draws');
+      control.select2({width:'100%', dropdownParent:window.jQuery('#rank-preferences'),
+        placeholder:multiple ? 'Search draws / categories' : 'Choose assigned venue',
+        closeOnSelect:!multiple, minimumResultsForSearch:0});
+      control.on('change.rankBands', event => {
+        if (!event.originalEvent) select.dispatchEvent(new Event('change', {bubbles:true}));
+      });
+    });
+  };
+  const rankVenueOptions = rule => {
+    const venues = allowedRankVenues(rule);
+    const stale = rule.venue_id && !venues.some(venue => Number(venue.id) === Number(rule.venue_id));
+    return `<option value="">Choose assigned venue</option>${stale ? `<option value="${Number(rule.venue_id)}" selected>Saved venue needs review</option>` : ''}${venues.map(venue => `<option value="${Number(venue.id)}" ${Number(rule.venue_id)===Number(venue.id)?'selected':''}>${escapeHtml(venue.name)}</option>`).join('')}`;
+  };
+  const rankVenueHint = rule => !rule.draw_ids.length ? 'Select draws for this band.' : (allowedRankVenues(rule).length ? 'Only venues assigned to every selected draw are listed.' : 'No common venue. Select fewer draws or assign the same venue to them.');
+  const updateRankReview = rules => {
+    const stale = rules.some(rule => rule.venue_id && !allowedRankVenues(rule).some(venue => Number(venue.id) === Number(rule.venue_id)));
+    document.getElementById('rank-band-review').classList.toggle('d-none', !stale);
+    document.getElementById('rank-band-review').textContent = 'A saved preferred venue is no longer assigned to these draws. That mapping is ignored during preview and removed when you save; other draws keep their bands.';
+  };
+  const updateRankVenueOptions = row => {
+    const select = row.querySelector('.rank-band-venue');
+    const rule = {draw_ids:[...row.querySelector('.rank-band-draws').selectedOptions].map(option => Number(option.value)), venue_id:Number(select.value)};
+    const container = {querySelectorAll:() => [select]};
+    destroyRankSelects(container);
+    select.innerHTML = rankVenueOptions(rule);
+    row.querySelector('.rank-venue-hint').textContent = rankVenueHint(rule);
+    initializeRankSelects(container);
+  };
+  let rankBandSequence = 0;
   const renderRankRows = rawRules => {
     const rules = coalesceRankRules(rawRules);
     const draws = selectedRankDraws();
     rankScopeIds = draws.map(draw => Number(draw.id));
-    document.getElementById('rank-band-scope').textContent = draws.length ? `Editing: ${draws.map(draw => draw.name).join(' / ')}` : 'Select a team draw to configure roster rank bands.';
+    const scope = document.getElementById('rank-band-scope');
+    scope.innerHTML = draws.length
+      ? `<details class="rank-band-scope-details"><summary>${rules.length} rank ${rules.length===1?'band':'bands'} · Editing ${draws.length} team ${draws.length===1?'draw':'draws'} <span class="text-muted fw-normal">View categories</span></summary><div class="rank-scope-chips">${draws.map(draw => `<span>${escapeHtml(draw.name)}</span>`).join('')}</div></details>`
+      : 'Select a team draw to configure roster rank bands.';
     ['add-rank-band','default-rank-bands'].forEach(id => document.getElementById(id).disabled = !draws.length);
-    const stale = rules.some(rule => rule.venue_id && !allowedRankVenues(rule).some(venue => Number(venue.id)===Number(rule.venue_id)));
-    document.getElementById('rank-band-review').classList.toggle('d-none', !stale);
-    document.getElementById('rank-band-review').textContent = 'A saved preferred venue is no longer assigned to these draws. That mapping is ignored during preview and removed when you save; other draws keep their bands.';
-    document.getElementById('rank-band-rows').innerHTML = rules.map(rule => `<div class="rank-band-row border rounded p-2"><div class="row g-2"><div class="col-6 col-md-2"><label class="form-label small">From roster rank<input class="form-control rank-band-min" type="number" min="1" max="100" value="${escapeHtml(rule.min_rank)}"></label></div><div class="col-6 col-md-2"><label class="form-label small">To roster rank<input class="form-control rank-band-max" type="number" min="1" max="100" value="${escapeHtml(rule.max_rank)}"></label></div><div class="col-md-4"><label class="form-label small d-block">Draws / categories<select class="form-select rank-band-draws" multiple size="2">${draws.map(draw => `<option value="${draw.id}" ${rule.draw_ids.map(Number).includes(Number(draw.id))?'selected':''}>${escapeHtml(draw.name)}</option>`).join('')}</select></label></div><div class="col-md-4"><label class="form-label small d-block">Preferred venue<select class="form-select rank-band-venue"><option value="">Choose assigned venue</option>${rule.venue_id && !allowedRankVenues(rule).some(venue => Number(venue.id)===Number(rule.venue_id)) ? `<option value="${rule.venue_id}" selected>Saved venue needs review</option>` : ''}${allowedRankVenues(rule).map(venue => `<option value="${venue.id}" ${Number(rule.venue_id)===Number(venue.id)?'selected':''}>${escapeHtml(venue.name)}</option>`).join('')}</select></label></div></div><button class="btn btn-sm btn-outline-danger remove-rank-band" type="button">Remove band</button></div>`).join('');
+    updateRankReview(rules);
+    const rows = document.getElementById('rank-band-rows');
+    destroyRankSelects(rows);
+    rows.innerHTML = rules.map((rule, index) => {
+      const id = `rank-band-${++rankBandSequence}`;
+      return `<div class="rank-band-row"><div class="rank-band-header"><strong>Rank band ${index + 1}</strong><button class="btn btn-sm btn-outline-danger remove-rank-band" type="button" aria-label="Remove roster rank band ${index + 1}">Remove</button></div><div class="rank-band-fields"><div><label class="form-label small" for="${id}-min">Roster rank range</label><div class="rank-range"><input id="${id}-min" class="form-control rank-band-min" aria-label="From roster rank for band ${index + 1}" type="number" min="1" max="100" value="${escapeHtml(rule.min_rank)}"><span class="text-muted">to</span><input id="${id}-max" class="form-control rank-band-max" aria-label="To roster rank for band ${index + 1}" type="number" min="1" max="100" value="${escapeHtml(rule.max_rank)}"></div></div><div class="rank-draw-field"><label class="form-label small" for="${id}-draws">Draws / categories <span class="rank-band-selected-count text-muted fw-normal" aria-live="polite">${rule.draw_ids.length} selected</span></label><select id="${id}-draws" class="form-select rank-band-draws" multiple size="3">${draws.map(draw => `<option value="${Number(draw.id)}" ${rule.draw_ids.map(Number).includes(Number(draw.id))?'selected':''}>${escapeHtml(draw.name)}</option>`).join('')}</select></div><div><label class="form-label small" for="${id}-venue">Preferred venue</label><select id="${id}-venue" class="form-select rank-band-venue">${rankVenueOptions(rule)}</select><div class="rank-venue-hint form-text">${rankVenueHint(rule)}</div></div></div></div>`;
+    }).join('');
+    initializeRankSelects(rows);
   };
   const loadRankScope = () => renderRankRows(allRankRules.map(rule => ({...rule, draw_ids:rule.draw_ids.filter(id => selectedRankDraws().some(draw => Number(draw.id)===Number(id)))})).filter(rule => rule.draw_ids.length));
   document.querySelectorAll('.draw-choice').forEach(input => input.addEventListener('change', () => { rememberRankRules(); loadRankScope(); }));
-  document.getElementById('rank-band-rows').addEventListener('change', event => { if(event.target.classList.contains('rank-band-draws') || event.target.classList.contains('rank-band-venue')) renderRankRows(readRankRules()); markScheduleDirty(); });
+  document.getElementById('rank-band-rows').addEventListener('change', event => {
+    if (event.target.classList.contains('rank-band-draws')) {
+      const row=event.target.closest('.rank-band-row');
+      row.querySelector('.rank-band-selected-count').textContent = `${event.target.selectedOptions.length} selected`;
+      updateRankVenueOptions(row);
+    }
+    updateRankReview(readRankRules());
+    markScheduleDirty();
+  });
   document.querySelectorAll('.assignment-choice').forEach(input => input.addEventListener('change', () => renderRankRows(readRankRules())));
-  document.getElementById('rank-band-rows').addEventListener('click', event => { const button=event.target.closest('.remove-rank-band'); if(button){button.closest('.rank-band-row').remove();markScheduleDirty();} });
+  document.getElementById('rank-band-rows').addEventListener('click', event => { const button=event.target.closest('.remove-rank-band'); if(button){const row=button.closest('.rank-band-row');destroyRankSelects(row);row.remove();renderRankRows(readRankRules());markScheduleDirty();} });
   document.getElementById('add-rank-band').addEventListener('click', () => { renderRankRows(readRankRules().concat([{draw_ids:rankScopeIds, min_rank:1,max_rank:4,venue_id:null}]));markScheduleDirty(); });
   document.getElementById('default-rank-bands').addEventListener('click', () => { renderRankRows(readRankRules().concat([[1,4],[5,6],[7,8]].map(([min_rank,max_rank]) => ({draw_ids:rankScopeIds,min_rank,max_rank,venue_id:null}))));markScheduleDirty(); });
   document.getElementById('cross-band-policy').addEventListener('change', markScheduleDirty);
@@ -825,6 +923,7 @@
     venue_starts: [...document.querySelectorAll('.venue-start')].filter(input => input.value).map(input => ({venue_id:Number(input.dataset.venue), start:input.value})),
     reschedule_existing: document.getElementById('reschedule-existing').checked,
     round_progression: document.getElementById('round-progression').value,
+    gender_waves: document.getElementById('gender-waves').value,
     rank_venue_preferences: applicableRankRules(), rank_preference_draw_ids:rankScopeIds,
     cross_band_policy: document.getElementById('cross-band-policy').value,
   });
@@ -921,7 +1020,7 @@
     markAllocationsDirty();
   }));
   document.querySelectorAll('.draw-choice').forEach(input => input.addEventListener('change', () => invalidatePreview()));
-  document.querySelectorAll('.draw-start, .venue-start, #schedule-start, #schedule-end, #schedule-duration, #schedule-wave, #schedule-gap, #schedule-rest, #round-progression, #reschedule-existing')
+  document.querySelectorAll('.draw-start, .venue-start, #schedule-start, #schedule-end, #schedule-duration, #schedule-wave, #schedule-gap, #schedule-rest, #round-progression, #gender-waves, #reschedule-existing')
     .forEach(input => input.addEventListener('change', markScheduleDirty));
   document.getElementById('reschedule-existing')?.addEventListener('change', event => {
     if (!event.currentTarget.checked) replanVenueIds = [];
@@ -1493,42 +1592,129 @@
     showWorkflowStep(2);
     document.getElementById('generate-preview').click();
   }));
-  document.getElementById('add-venue')?.addEventListener('click', async event => {
-    const button = event.currentTarget; button.disabled = true;
+  const deleteVenueAssociation = async url => {
+    const response = await fetch(url, {method:'DELETE', headers:{'Content-Type':'application/json', Accept:'application/json', 'X-CSRF-TOKEN':csrf}, body:'{}'});
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || 'Unable to remove this venue.');
+    return result;
+  };
+  document.querySelectorAll('.remove-draw-venue').forEach(button => button.addEventListener('click', async () => {
+    if (!confirm('Remove this venue from this age group? The event and other age groups will keep the venue.')) return;
+    button.disabled = true;
+    const drawId = Number(button.dataset.draw), venueId = Number(button.dataset.venue);
+    try {
+      const result = await deleteVenueAssociation(button.dataset.url);
+      const assignment = document.querySelector(`.assignment-choice[data-draw="${drawId}"][value="${venueId}"]`);
+      if (assignment) assignment.checked = false;
+      document.querySelectorAll(`.court-allocation[data-draw="${drawId}"][data-venue="${venueId}"]`).forEach(input => { input.checked = false; });
+      rememberRankRules();
+      allRankRules = allRankRules.map(rule => Number(rule.venue_id) === venueId
+        ? {...rule, draw_ids:rule.draw_ids.filter(id => Number(id) !== drawId)} : rule).filter(rule => rule.draw_ids.length);
+      loadRankScope();
+      updateCourtSummary(drawId, venueId);
+      updateDrawSummary(drawId);
+      invalidatePreview();
+      button.remove();
+      setStatus(document.getElementById('allocation-status'), result.message, 'success');
+    } catch (error) {
+      setStatus(document.getElementById('allocation-status'), error.message, 'danger');
+      button.disabled = false;
+    }
+  }));
+  const venueModal = document.getElementById('venue-management-modal');
+  let venueManagementChanged = false;
+  let venueManagementPending = false;
+  const venueDraftKey = 'venue-management-draft-{{ $event->id }}-{{ auth()->id() }}';
+  const venueDraftControls = () => [...document.querySelectorAll('.draw-choice, .assignment-choice, .court-allocation, .draw-start, .venue-start, #schedule-start, #schedule-end, #schedule-duration, #schedule-wave, #schedule-gap, #schedule-rest, #round-progression, #gender-waves, #reschedule-existing, #cross-band-policy')];
+  const venueControlKey = input => JSON.stringify([input.id, input.className, input.dataset.draw, input.dataset.venue, input.type === 'checkbox' ? input.value : null]);
+  const rememberVenueDraft = () => {
+    rememberRankRules();
+    try {
+      sessionStorage.setItem(venueDraftKey, JSON.stringify({
+        savedAt:Date.now(), allocationsDirty, scheduleDirty, rankRules:allRankRules,
+        controls:venueDraftControls().map(input => ({key:venueControlKey(input), value:input.value, checked:input.checked})),
+      }));
+    } catch (_) { /* Browser storage may be unavailable. Saved settings remain on the server. */ }
+  };
+  venueModal.addEventListener('hide.bs.modal', event => {
+    if (venueManagementPending) {
+      event.preventDefault();
+      setStatus(document.getElementById('venue-add-status'), 'Wait for the venue update to finish before closing.', 'warning');
+    }
+  });
+  venueModal.addEventListener('hidden.bs.modal', () => {
+    if (!venueManagementChanged) return;
+    rememberVenueDraft();
+    window.location.reload();
+  });
+  const refreshVenueEditors = async () => {
+    venueManagementChanged = true;
+    invalidatePreview('Venues changed. Generate a new preview after finishing venue edits.');
+    const response = await fetch(window.location.href, {headers:{Accept:'text/html'}, cache:'no-store'});
+    if (!response.ok) throw new Error('The venue was updated. Close this window to refresh the venue list.');
+    const page = new DOMParser().parseFromString(await response.text(), 'text/html');
+    const editors = page.getElementById('venue-editor-list');
+    const choices = page.getElementById('new-venue-id');
+    if (!editors || !choices) throw new Error('The venue was updated. Close this window to refresh the venue list.');
+    document.getElementById('venue-editor-list').innerHTML = editors.innerHTML;
+    existingVenue.innerHTML = choices.innerHTML;
+    document.getElementById('venue-management-counts').textContent = page.getElementById('venue-management-counts').textContent;
+  };
+  const venueAction = async (button, action) => {
+    if (venueManagementPending) return;
+    venueManagementPending = true;
+    button.disabled = true;
+    try { await action(); }
+    catch (error) { if (!error.stalePreview) setStatus(document.getElementById('venue-add-status'), error.message, 'danger'); }
+    finally { venueManagementPending = false; button.disabled = false; }
+  };
+  document.getElementById('add-venue')?.addEventListener('click', event => venueAction(event.currentTarget, async () => {
     const creating = !newVenueName.disabled;
     if ((!creating && !existingVenue.value) || (creating && !newVenueName.value.trim())) {
       setStatus(document.getElementById('venue-add-status'), creating ? 'Enter a name for the new venue.' : 'Choose an existing venue.', 'danger');
       (creating ? newVenueName : existingVenue).focus();
-      button.disabled = false;
       return;
     }
-    setStatus(document.getElementById('venue-add-status'), creating ? 'Creating the venue and courts…' : 'Adding the venue and courts…');
-    try { const result = await post(venueUrl, {venue_id:Number(existingVenue.value) || null, name:newVenueName.value.trim() || null, courts:Number(document.getElementById('new-venue-courts').value), ball_type:document.getElementById('new-venue-ball').value}); setStatus(document.getElementById('venue-add-status'), result.message + ' Refreshing…', 'success'); window.location.reload(); }
-    catch (error) { if (error.stalePreview) return; setStatus(document.getElementById('venue-add-status'), error.message, 'danger'); button.disabled = false; }
+    setStatus(document.getElementById('venue-add-status'), creating ? 'Creating the venue and courts...' : 'Adding the venue and courts...');
+    const result = await post(venueUrl, {venue_id:Number(existingVenue.value) || null, name:newVenueName.value.trim() || null, courts:Number(document.getElementById('new-venue-courts').value), ball_type:document.getElementById('new-venue-ball').value});
+    venueManagementChanged = true;
+    const addedOption = [...existingVenue.options].find(option => Number(option.value) === Number(result.venue.id));
+    if (addedOption) addedOption.remove();
+    existingVenue.value = '';
+    newVenueName.value = '';
+    setStatus(document.getElementById('venue-add-status'), result.message + ' Add another venue or choose Done.', 'success');
+    await refreshVenueEditors();
+    (creating ? newVenueName : existingVenue).focus();
+  }));
+  venueModal.addEventListener('click', event => {
+    const button = event.target.closest('.add-court, .update-court-setup, .update-court-type, .remove-venue');
+    if (!button) return;
+    return venueAction(button, async () => {
+      let result;
+      if (button.classList.contains('remove-venue')) {
+        const editor = button.closest('.venue-editor');
+        const name = editor.querySelector('summary strong').textContent;
+        if (!confirm(`Remove ${name} from this event? Its draw allocations will be removed. The venue remains available for other events.`)) return;
+        result = await deleteVenueAssociation(button.dataset.url);
+      } else if (button.classList.contains('update-court-setup')) {
+        const setup = button.closest('.venue-court-setup');
+        const ballType = setup.querySelector('.setup-court-ball').value;
+        if (ballType === 'mixed') throw new Error('Choose one court type before updating all courts.');
+        if (button.dataset.hasCustom === '1' && !confirm('Updating all courts will replace specially named courts with numbered courts. Continue?')) return;
+        result = await post(setup.dataset.url, {courts:Number(setup.querySelector('.setup-court-count').value), ball_type:ballType});
+      } else {
+        const venueId = Number(button.dataset.venue);
+        const adding = button.classList.contains('add-court');
+        const label = adding ? document.querySelector(`.add-court-label[data-venue="${venueId}"]`).value.trim() : button.dataset.label;
+        if (!label) throw new Error('Enter a court label first.');
+        const ballType = adding ? document.querySelector(`.add-court-ball[data-venue="${venueId}"]`).value
+          : document.querySelector(`.edit-court-ball[data-venue="${venueId}"][data-label="${CSS.escape(label)}"]`).value;
+        result = await post(courtUrl, {venue_id:venueId, label, ball_type:ballType});
+      }
+      setStatus(document.getElementById('venue-add-status'), result.message || 'Court updated.', 'success');
+      await refreshVenueEditors();
+    });
   });
-  document.querySelectorAll('.add-court').forEach(button => button.addEventListener('click', async event => {
-    const venueId = Number(event.currentTarget.dataset.venue); event.currentTarget.disabled = true;
-    const label = document.querySelector(`.add-court-label[data-venue="${venueId}"]`).value;
-    const ballType = document.querySelector(`.add-court-ball[data-venue="${venueId}"]`).value;
-    if (!label.trim()) { setStatus(document.getElementById('allocation-status'), 'Enter a court label first.', 'danger'); event.currentTarget.disabled = false; return; }
-    try { await post(courtUrl, {venue_id:venueId, label, ball_type:ballType}); window.location.reload(); }
-    catch (error) { if (error.stalePreview) return; setStatus(document.getElementById('allocation-status'), error.message, 'danger'); event.currentTarget.disabled = false; }
-  }));
-  document.querySelectorAll('.update-court-setup').forEach(button => button.addEventListener('click', async event => {
-    const setup = event.currentTarget.closest('.venue-court-setup'); const status = setup.querySelector('.setup-status'); event.currentTarget.disabled = true; status.textContent = 'Updating…';
-    const ballType = setup.querySelector('.setup-court-ball').value;
-    if (ballType === 'mixed') { setStatus(status, 'Choose one court type before updating all courts.', 'danger'); event.currentTarget.disabled = false; return; }
-    if (event.currentTarget.dataset.hasCustom === '1' && !confirm('Updating all courts will replace specially named courts with numbered courts. Continue?')) { event.currentTarget.disabled = false; return; }
-    try { const result = await post(setup.dataset.url, {courts:Number(setup.querySelector('.setup-court-count').value), ball_type:ballType}); setStatus(status, result.message + ' Refreshing…', 'success'); window.location.reload(); }
-    catch (error) { if (error.stalePreview) return; setStatus(status, error.message, 'danger'); event.currentTarget.disabled = false; }
-  }));
-  document.querySelectorAll('.update-court-type').forEach(button => button.addEventListener('click', async event => {
-    const venueId = Number(event.currentTarget.dataset.venue); const label = event.currentTarget.dataset.label;
-    const type = document.querySelector(`.edit-court-ball[data-venue="${venueId}"][data-label="${CSS.escape(label)}"]`).value;
-    event.currentTarget.disabled = true;
-    try { await post(courtUrl, {venue_id:venueId, label, ball_type:type}); window.location.reload(); }
-    catch (error) { if (error.stalePreview) return; setStatus(document.getElementById('allocation-status'), error.message, 'danger'); event.currentTarget.disabled = false; }
-  }));
   document.getElementById('apply-preview').addEventListener('click', async event => {
     if (!payload || !revision) return;
     const button = event.currentTarget;
@@ -1555,6 +1741,28 @@
     catch (error) { if (error.stalePreview) return; setStatus(document.getElementById('schedule-status'), error.message, 'danger'); setStatus(document.getElementById('review-status'), error.message, 'danger'); notify(error.message, 'danger'); button.disabled = false; }
     finally { if (!completed) stopScheduleActivity(); button.innerHTML = originalButtonHtml; }
   });
+  try {
+    const restored = JSON.parse(sessionStorage.getItem(venueDraftKey) || 'null');
+    sessionStorage.removeItem(venueDraftKey);
+    if (restored && Date.now() - restored.savedAt < 10 * 60 * 1000) {
+      const controls = new Map(restored.controls.map(control => [control.key, control]));
+      venueDraftControls().forEach(input => {
+        const control = controls.get(venueControlKey(input));
+        if (!control) return;
+        if (input.type === 'checkbox') { if (!input.disabled) input.checked = control.checked; }
+        else input.value = control.value;
+      });
+      allRankRules = restored.rankRules.filter(rule => rankVenues.some(venue => Number(venue.id) === Number(rule.venue_id)));
+      loadRankScope();
+      document.querySelectorAll('.draw-start').forEach(input => {
+        input.disabled = !document.querySelector(`.draw-choice[value="${input.dataset.draw}"]`)?.checked;
+      });
+      document.querySelectorAll('.court-allocation').forEach(input => updateCourtSummary(input.dataset.draw, input.dataset.venue));
+      drawIds.forEach(updateDrawSummary);
+      allocationsDirty = restored.allocationsDirty;
+      scheduleDirty = restored.scheduleDirty;
+    }
+  } catch (_) { /* Continue with the saved server settings when browser storage is unavailable. */ }
   showWorkflowStep(1);
 })();
 </script>

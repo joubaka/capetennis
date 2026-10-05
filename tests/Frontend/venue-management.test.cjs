@@ -1,0 +1,117 @@
+const fs = require('node:fs');
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const source = fs.readFileSync('resources/views/backend/schedule/event-venue-schedule.blade.php', 'utf8');
+const modalSource = source.slice(source.indexOf('  const deleteVenueAssociation ='), source.indexOf("  document.getElementById('apply-preview').addEventListener"));
+
+function element(values = {}) {
+  return Object.assign({value:'', disabled:false, textContent:'', innerHTML:'', dataset:{}, listeners:{},
+    focus(){}, addEventListener(name, callback){this.listeners[name] = callback;},
+    classList:{contains(){return false;}}, querySelector(){return null;},
+  }, values);
+}
+
+function harness({post, fetch, drawRemoval} = {}) {
+  const calls = [], stored = new Map();
+  let reloads = 0;
+  const modal = element(), add = element();
+  const existing = element({value:'12', options:[]}), name = element({disabled:true});
+  const nodes = {'venue-management-modal':modal, 'add-venue':add, 'venue-add-status':element(), 'allocation-status':element(),
+    'new-venue-courts':element({value:'4'}), 'new-venue-ball':element({value:'yellow'}),
+    'venue-editor-list':element(), 'venue-management-counts':element()};
+  const fresh = {'venue-editor-list':element({innerHTML:'fresh editors'}),
+    'new-venue-id':element({innerHTML:'remaining venues'}), 'venue-management-counts':element({textContent:'2 assigned venues · 8 courts available'})};
+  const assignment=element({checked:true}), court=element({checked:true}), unrelatedCourt=element({checked:true});
+  const document = {getElementById:id => nodes[id], querySelector:() => assignment,
+    querySelectorAll:selector => selector==='.remove-draw-venue' ? (drawRemoval?[drawRemoval]:[]) : selector.startsWith('.court-allocation[data-draw=')?[court]:[]};
+  const window = {location:{href:'/schedule', reload(){reloads++;}}};
+  const sessionStorage = {setItem:(key,value) => stored.set(key,value)};
+  const DOMParser = class {parseFromString(){return {getElementById:id => fresh[id]};}};
+  const fetchClient = async (url, options) => {
+    calls.push({url, options});
+    if (fetch) return fetch(url, options);
+    return {ok:true, text:async() => '<html/>', json:async() => ({message:'Removed.'})};
+  };
+  new Function('document','window','sessionStorage','DOMParser','fetch','post','existingVenue','newVenueName',
+    `const csrf='test', venueUrl='/venues', courtUrl='/courts';
+     let allocationsDirty=true, scheduleDirty=true, allRankRules=[];
+     const rememberRankRules=()=>{}, invalidatePreview=()=>{}, confirm=()=>true;
+     const loadRankScope=()=>{}, updateCourtSummary=()=>{}, updateDrawSummary=()=>{};
+     const setStatus=(node,message)=>{node.textContent=message;};
+     ${modalSource}`)(document,window,sessionStorage,DOMParser,fetchClient,
+      post || (async() => ({message:'Added.', venue:{id:12}})),existing,name);
+  return {modal,add,existing,name,nodes,calls,stored,assignment,court,unrelatedCourt,reloads:() => reloads,
+    addVenue:() => add.listeners.click({currentTarget:add}),
+    click:button => modal.listeners.click({target:{closest:() => button}}),
+    close:() => modal.listeners['hidden.bs.modal']()};
+}
+
+test('multiple existing and new venues can be added without closing or reloading', async () => {
+  const requests = [];
+  const api = harness({post:async(url,body) => {requests.push(body);return {message:'Added.',venue:{id:requests.length}};}});
+  await api.addVenue();
+  api.existing.value='20';
+  await api.addVenue();
+  api.name.disabled=false;api.name.value='New Club';api.existing.value='';
+  await api.addVenue();
+  assert.equal(requests.length,3);
+  assert.equal(requests[2].name,'New Club');
+  assert.equal(api.name.value,'');
+  assert.equal(api.add.disabled,false);
+  assert.equal(api.reloads(),0);
+  assert.equal(api.nodes['venue-editor-list'].innerHTML,'fresh editors');
+  assert.equal(api.nodes['venue-management-counts'].textContent,'2 assigned venues · 8 courts available');
+  api.close();
+  assert.equal(api.reloads(),1);
+  assert.equal(api.stored.size,1,'Closing remembers unsaved allocation and timing values.');
+});
+
+test('closing is blocked while a venue mutation is pending', async () => {
+  let complete;
+  const api = harness({post:() => new Promise(resolve => {complete=resolve;})});
+  const operation=api.addVenue();
+  let prevented=false;
+  api.modal.listeners['hide.bs.modal']({preventDefault(){prevented=true;}});
+  assert.equal(prevented,true);
+  assert.equal(api.reloads(),0);
+  complete({message:'Added.',venue:{id:12}});
+  await operation;
+});
+
+test('DELETE errors remain in the modal and do not refresh or reload', async () => {
+  const api=harness({fetch:async() => ({ok:false,json:async() => ({message:'This venue has saved matches.'})})});
+  const button=element({dataset:{url:'/venues/12'}, classList:{contains:name => name==='remove-venue'},
+    closest:() => ({querySelector:() => ({textContent:'Club'})})});
+  await api.click(button);
+  assert.equal(api.calls[0].options.method,'DELETE');
+  assert.equal(api.calls[0].options.headers['X-CSRF-TOKEN'],'test');
+  assert.equal(api.nodes['venue-add-status'].textContent,'This venue has saved matches.');
+  assert.equal(api.calls.length,1);
+  assert.equal(button.disabled,false);
+  api.close();assert.equal(api.reloads(),0);
+});
+
+test('editing court counts uses AJAX and refreshes the modal before Done', async () => {
+  let submitted;
+  const api=harness({post:async(url,body) => {submitted={url,body};return {message:'Updated.'};}});
+  const setup={dataset:{url:'/venues/12/courts'},querySelector:selector => ({value:selector==='.setup-court-count'?'6':'green'})};
+  const button=element({dataset:{hasCustom:'0'},classList:{contains:name => name==='update-court-setup'},closest:() => setup});
+  await api.click(button);
+  assert.deepEqual(submitted,{url:'/venues/12/courts',body:{courts:6,ball_type:'green'}});
+  assert.equal(api.calls.length,1);
+  assert.equal(api.reloads(),0);
+  api.close();assert.equal(api.reloads(),1);
+});
+
+test('removing an age-group venue updates its selection and leaves other choices intact without reloading', async () => {
+  let removed=false;
+  const button=element({dataset:{draw:'3',venue:'12',url:'/draws/3/venues/12'},remove(){removed=true;}});
+  const api=harness({drawRemoval:button});
+  await button.listeners.click();
+  assert.equal(api.calls[0].options.method,'DELETE');
+  assert.equal(api.assignment.checked,false);
+  assert.equal(api.court.checked,false);
+  assert.equal(api.unrelatedCourt.checked,true);
+  assert.equal(removed,true);
+  assert.equal(api.reloads(),0);
+});

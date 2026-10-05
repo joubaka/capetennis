@@ -269,4 +269,18 @@ class BulkMailDispatcherTest extends TestCase
         $this->assertSame(0, (new BulkMailDispatcher)->resendFailed('test_email')['queued']);
         Queue::assertNothingPushed();
     }
+    public function test_signed_payload_is_unchanged_when_queue_submission_fails(): void
+    {
+        $payload=['event_id'=>123,'subject'=>'Signed','payload_integrity'=>'existing-signature','nested'=>['key'=>'value']];
+        $queue=\Mockery::mock(\Illuminate\Contracts\Queue\Queue::class);
+        $queue->shouldReceive('push')->andThrow(new \RuntimeException('Queue unavailable'));
+        $factory=\Mockery::mock(\Illuminate\Contracts\Queue\Factory::class);
+        $factory->shouldReceive('connection')->andReturn($queue);
+        $this->app->instance(\Illuminate\Contracts\Queue\Factory::class,$factory);
+        \Illuminate\Support\Facades\DB::transaction(fn()=>app(BulkMailDispatcher::class)->dispatch('masters_invitation',null,['signed@example.test'],$payload));
+        $log=BulkEmailLog::where('recipient_email','signed@example.test')->sole();
+        $this->assertEquals($payload,$log->payload);
+        $this->assertSame('failed',$log->status);
+    }
+
 }

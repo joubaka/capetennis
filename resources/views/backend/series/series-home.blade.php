@@ -387,7 +387,7 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
         <button type="button" class="btn btn-danger" id="btnSendSeriesEmail">
-          <i class="ti ti-send me-1"></i> Send to All Players
+          <i class="ti ti-send me-1"></i> Review All Recipients
         </button>
       </div>
     </div>
@@ -459,6 +459,7 @@ document.addEventListener('DOMContentLoaded', function () {
     placeholder: 'Compose your message...',
   });
 
+  document.getElementById('seriesEmailModal').addEventListener('show.bs.modal', () => { window.seriesEmailCampaignKey = null; });
   document.getElementById('btnSendSeriesEmail').addEventListener('click', function () {
     const btn = this;
     const subject = document.getElementById('seriesEmailSubject').value.trim();
@@ -475,12 +476,10 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
 
-    if (!confirm('Are you sure you want to email ALL players in this series?')) {
-      return;
-    }
+
 
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Sending...';
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Preparing review...';
 
     fetch("{{ route('series.email.players', $series) }}", {
       method: 'POST',
@@ -502,6 +501,9 @@ document.addEventListener('DOMContentLoaded', function () {
       return r.json();
     })
     .then(data => {
+      if (data.review_required && data.review_url) { window.location.assign(data.review_url); return; }
+      // A completed server response ends this intent even if queue submission failed.
+      window.seriesEmailCampaignKey = null;
       if (data.report_url) window.location.assign(data.report_url);
       if (data.report_urls?.length > 1) {
         const reports = document.createElement('div');
@@ -543,7 +545,7 @@ document.addEventListener('DOMContentLoaded', function () {
     })
     .finally(() => {
       btn.disabled = false;
-      btn.innerHTML = '<i class="ti ti-send me-1"></i> Send to All Players';
+      btn.innerHTML = '<i class="ti ti-send me-1"></i> Review All Recipients';
     });
   });
 });

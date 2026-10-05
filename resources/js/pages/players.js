@@ -284,6 +284,7 @@
 
     $.post(api.sendMail, $(this).serialize())
       .done(res => {
+        if (res.review_required && res.review_url) { window.location.assign(res.review_url); return; }
         let message = '';
         let title = 'Email Queued';
 

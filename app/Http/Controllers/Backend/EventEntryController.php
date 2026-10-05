@@ -276,143 +276,20 @@ class EventEntryController extends Controller
     // Authorize via the parent event
     $authEvent = Event::findOrFail($data['event_id']);
     $this->authorize('event-draw.view', $authEvent);
-    if ($authEvent->isTeam() || $authEvent->isInterprovincialTrials()) {
-      return redirect()->route($authEvent->isTeam() ? 'backend.event-communications.index' : 'backend.interprovincial-trials.communications.index', $authEvent)->with('success', 'Review recipients and the exact message in Communications before sending.');
+    abort_unless(app(\App\Services\EventCommunicationService::class)->managesWholeEvent($authEvent,$request->user()),403);
+    if ($data['scope']==='player') {
+      Registration::whereKey($data['registration_id'])->whereHas('categoryEventRegistrations.categoryEvent',fn($q)=>$q->where('event_id',$authEvent->id))->firstOrFail();
+    } elseif ($data['scope']==='category') {
+      CategoryEvent::where('event_id',$authEvent->id)->findOrFail($data['category_event_id']);
     }
+    $request->session()->flash('compose_options', ['scope'=>'legacy_registered', 'registration_id'=>$data['scope']==='player' ? $data['registration_id'] : null, 'category_event_id'=>$data['scope']==='category' ? $data['category_event_id'] : null, 'recipients'=>'players']);
+    $request->session()->flash('compose_subject',$data['subject']);
+    $request->session()->flash('compose_body',trim(strip_tags(preg_replace('/<\/(p|div|li)>|<br\s*\/?\s*>/i',"\n",$data['message']))));
+    $url = route('backend.event-communications.index',['event'=>$authEvent,'compose'=>1]);
+    if ($request->expectsJson()) return response()->json(['success'=>true,'review_required'=>true,'review_url'=>$url,'report_url'=>$url,'message'=>'No emails queued. Review recipients and exact messages before approving.']);
 
-    Log::info('📨 Bulk email request validated', [
-      'payload' => collect($data)->except('message'),
-      'preview' => str($data['message'])->limit(120),
-    ]);
-
-    $emails = collect();
-
-    /* =========================
-       RESOLVE RECIPIENTS
-    ========================= */
-    if ($data['scope'] === 'player') {
-
-      $reg = Registration::query()
-        ->with('players')
-        ->whereKey($data['registration_id'])
-        ->whereHas('categoryEventRegistrations', function ($query) use ($authEvent) {
-          $query->where('payment_status_id', 1)
-            ->where('status', '!=', 'withdrawn')
-            ->whereHas('categoryEvent', fn ($categoryQuery) => $categoryQuery->where('event_id', $authEvent->id));
-        })
-        ->firstOrFail();
-      $emails = $reg->players->pluck('email');
-
-      Log::info('📍 Scope: player', [
-        'registration_id' => $reg->id,
-        'players' => $reg->players->pluck('id'),
-      ]);
-
-    } elseif ($data['scope'] === 'category') {
-
-      $categoryEvent = CategoryEvent::with([
-        'categoryEventRegistrations' => function ($query) {
-            $query->where('payment_status_id', 1)
-              ->where('status', '!=', 'withdrawn')
-              ->with('registration.players');
-        }
-      ])
-        ->where('event_id', $authEvent->id)
-        ->findOrFail($data['category_event_id']);
-
-      $emails = $categoryEvent->categoryEventRegistrations
-        ->flatMap(fn($r) => $r->registration->players)
-        ->pluck('email');
-
-      Log::info('📍 Scope: category', [
-        'category_event_id' => $categoryEvent->id,
-        'registrations' => $categoryEvent->categoryEventRegistrations->pluck('registration_id'),
-      ]);
-
-    } else {
-
-      $event = Event::with(['registrations' => function ($query) use ($authEvent) {
-          $query->whereHas('categoryEventRegistrations', function ($q) use ($authEvent) {
-              $q->where('payment_status_id', 1)
-                ->where('status', '!=', 'withdrawn')
-                ->whereHas('categoryEvent', fn ($categoryQuery) => $categoryQuery->where('event_id', $authEvent->id));
-          })->with('players');
-      }])->findOrFail($authEvent->id);
-
-      $emails = $event->registrations
-        ->flatMap(fn($r) => $r->players)
-        ->pluck('email');
-
-      Log::info('📍 Scope: event', [
-        'event_id' => $event->id,
-        'registration_count' => $event->registrations->count(),
-      ]);
-    }
-
-    /* =========================
-       CLEAN EMAIL LIST
-    ========================= */
-    $emails = $emails->values();
-
-    Log::info('📧 Final email list prepared', [
-      'total' => $emails->count(),
-      'sample' => $emails->take(5),
-    ]);
-
-    if ($emails->isEmpty()) {
-      return response()->json([
-        'success' => false,
-        'message' => 'No valid email recipients found.',
-      ], 422);
-    }
-
-    /* =========================
-       DISPATCH BULK EMAILS WITH THROTTLING
-    ========================= */
-    $dispatcher = app(BulkMailDispatcher::class);
-
-    // Determine related model for duplicate detection
-    $related = null;
-    if ($data['scope'] === 'category' && !empty($data['category_event_id'])) {
-      $related = CategoryEvent::find($data['category_event_id']);
-    } elseif ($data['scope'] === 'event') {
-      $related = Event::find($data['event_id']);
-    }
-
-    $campaignKey = $data['campaign_key'] ?? (string) \Illuminate\Support\Str::uuid();
-    $stats = $dispatcher->dispatch(
-      mailType: 'bulk_event_mail',
-      related: $related,
-      recipients: $emails,
-      payload: [
-        'campaign_key' => $campaignKey,
-        'event_id' => $authEvent->id, 'created_by' => auth()->id(), 'manual_retry_only' => true,
-        'scope' => $data['scope'],
-        'subject' => $data['subject'],
-        'body' => $data['message'],
-        'from_name' => $data['from_name'],
-        'reply_to' => $data['reply_to'],
-      ],
-      allowDuplicates: false
-    );
-
-    Log::info('✅ Bulk email dispatch completed', [
-      'stats' => $stats,
-      'scope' => $data['scope'],
-      'event_id' => $data['event_id'],
-    ]);
-
-    return response()->json([
-      'success' => $stats['queued'] > 0,
-      'queued' => $stats['queued'],
-      'report_url' => route('backend.event-mail-log.index', ['event' => $authEvent->id, 'campaign' => $campaignKey]),
-      'message' => "{$stats['queued']} emails queued; {$stats['skipped']} skipped; {$stats['failed']} could not be queued. Check the event Email Log.",
-      'stats' => $stats,
-    ]);
+    return redirect($url)->with('info','No emails queued. Review recipients and exact messages before approving.');
   }
-
-
-
 
 
   public function availableRegistrations(Request $request, CategoryEvent $categoryEvent)

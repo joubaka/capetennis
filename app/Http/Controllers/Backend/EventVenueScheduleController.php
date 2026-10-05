@@ -97,6 +97,7 @@ final class EventVenueScheduleController extends Controller
             'venue_starts' => [],
             'reschedule_existing' => false,
             'round_progression' => 'team_ready',
+            'gender_waves' => 'combined',
             'rank_venue_preferences' => [], 'cross_band_policy' => 'highest_ranked',
         ], $storedScheduleDraft);
         foreach (['start', 'end'] as $key) {
@@ -253,6 +254,92 @@ final class EventVenueScheduleController extends Controller
         ]);
     }
 
+    public function removeVenue(Event $event, Venue $venue)
+    {
+        $this->authorize('event.manage', $event);
+
+        return DB::transaction(function () use ($event, $venue) {
+            Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
+            DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
+            $drawIds = $event->draws()->pluck('id');
+            $belongs = $event->venues()->whereKey($venue->id)->exists()
+                || DB::table('draw_venues')->whereIn('draw_id', $drawIds)->where('venue_id', $venue->id)->exists();
+            abort_unless($belongs, 404);
+
+            $protected = DB::table('draw_venues')->join('draws', 'draws.id', '=', 'draw_venues.draw_id')
+                ->where('draws.event_id', $event->id)->where('draw_venues.venue_id', $venue->id)
+                ->where(fn ($query) => $query->where('draws.locked', true)->orWhere('draws.published', true))->exists();
+            $protectedAllocation = DB::table('draw_venue_court_allocations')->join('draws', 'draws.id', '=', 'draw_venue_court_allocations.draw_id')
+                ->where('draws.event_id', $event->id)->where('draw_venue_court_allocations.venue_id', $venue->id)
+                ->where(fn ($query) => $query->where('draws.locked', true)->orWhere('draws.published', true))->exists();
+            if ($protected || $protectedAllocation) {
+                return response()->json(['message' => 'This venue is assigned to a locked or published draw and cannot be removed.'], 422);
+            }
+
+            $fixtureIds = Fixture::whereIn('draw_id', $drawIds)->pluck('id');
+            $scheduled = OrderOfPlay::where('venue_id', $venue->id)
+                ->where(fn ($query) => $query->whereIn('draw_id', $drawIds)->orWhereIn('fixture_id', $fixtureIds))->exists();
+            $teamScheduled = TeamFixture::whereIn('draw_id', $drawIds)->where('venue_id', $venue->id)
+                ->whereNotNull('scheduled_at')->exists();
+            if ($scheduled || $teamScheduled) {
+                return response()->json(['message' => 'This venue has saved matches. Clear or move those bookings before removing it.'], 422);
+            }
+
+            DB::table('draw_venue_court_allocations')->whereIn('draw_id', $drawIds)->where('venue_id', $venue->id)->delete();
+            DB::table('draw_venues')->whereIn('draw_id', $drawIds)->where('venue_id', $venue->id)->delete();
+            DB::table('event_venue_courts')->where('event_id', $event->id)->where('venue_id', $venue->id)->delete();
+            $event->venues()->detach($venue->id);
+            $this->removeVenuePreferences($event, $venue);
+
+            return response()->json(['message' => "{$venue->name} removed from this event.", 'venue_id' => $venue->id]);
+        });
+    }
+
+    public function removeDrawVenue(Event $event, \App\Models\Draw $draw, Venue $venue)
+    {
+        $this->authorize('event.manage', $event);
+        abort_unless((int) $draw->event_id === (int) $event->id, 404);
+
+        return DB::transaction(function () use ($event, $draw, $venue) {
+            Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
+            DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
+            $draw->refresh();
+            abort_unless($draw->venues()->whereKey($venue->id)->exists(), 404);
+            if ($draw->locked || $draw->published) {
+                return response()->json(['message' => 'A venue cannot be removed from a locked or published age group.'], 422);
+            }
+            $fixtureIds = Fixture::where('draw_id', $draw->id)->pluck('id');
+            $scheduled = OrderOfPlay::where('venue_id', $venue->id)
+                ->where(fn ($query) => $query->where('draw_id', $draw->id)->orWhereIn('fixture_id', $fixtureIds))->exists();
+            $teamScheduled = TeamFixture::where('draw_id', $draw->id)->where('venue_id', $venue->id)
+                ->whereNotNull('scheduled_at')->exists();
+            if ($scheduled || $teamScheduled) {
+                return response()->json(['message' => 'This age group has saved matches at the venue. Clear or move those bookings before removing it.'], 422);
+            }
+            DB::table('draw_venue_court_allocations')->where('draw_id', $draw->id)->where('venue_id', $venue->id)->delete();
+            $draw->venues()->detach($venue->id);
+            $this->removeVenuePreferences($event, $venue, (int) $draw->id);
+
+            return response()->json(['message' => "{$venue->name} removed from {$draw->drawName}.",
+                'draw_id' => $draw->id, 'venue_id' => $venue->id]);
+        });
+    }
+
+    private function removeVenuePreferences(Event $event, Venue $venue, ?int $drawId = null): void
+    {
+        $draft = DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->lockForUpdate()->first();
+        if (! $draft) return;
+        $options = json_decode((string) $draft->options, true) ?: [];
+        $options['rank_venue_preferences'] = collect($options['rank_venue_preferences'] ?? [])->map(function ($rule) use ($venue, $drawId) {
+            if ((int) ($rule['venue_id'] ?? 0) === (int) $venue->id) {
+                $rule['draw_ids'] = $drawId === null ? [] : array_values(array_filter($rule['draw_ids'] ?? [], fn ($id) => (int) $id !== $drawId));
+            }
+            return $rule;
+        })->filter(fn ($rule) => ! empty($rule['draw_ids']))->values()->all();
+        DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)
+            ->update(['options' => json_encode($options), 'updated_at' => now()]);
+    }
+
     public function addCourt(Request $request, Event $event)
     {
         $this->authorize('event.manage', $event);
@@ -356,6 +443,7 @@ final class EventVenueScheduleController extends Controller
             'schedule.venue_starts.*.start' => ['required', 'date'],
             'schedule.reschedule_existing' => ['required', 'boolean'],
             'schedule.round_progression' => ['sometimes', 'in:team_ready,all_round'],
+            'schedule.gender_waves' => ['sometimes', 'in:combined,boys_then_girls'],
             'schedule.rank_preference_draw_ids' => ['sometimes', 'array', 'max:200'],
             'schedule.rank_preference_draw_ids.*' => ['integer', 'distinct'],
             'schedule.rank_venue_preferences' => ['sometimes', 'array', 'max:50'],
@@ -713,6 +801,7 @@ final class EventVenueScheduleController extends Controller
             'venue_starts.*.venue_id' => ['required', 'integer'],
             'venue_starts.*.start' => ['nullable', 'date'],
             'round_progression' => ['sometimes', 'in:team_ready,all_round'],
+            'gender_waves' => ['sometimes', 'in:combined,boys_then_girls'],
             'rank_venue_preferences' => ['sometimes', 'array', 'max:50'],
             'rank_venue_preferences.*.draw_ids' => ['required', 'array', 'min:1', 'max:200'],
             'rank_venue_preferences.*.draw_ids.*' => ['integer'],

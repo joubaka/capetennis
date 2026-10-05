@@ -26,6 +26,7 @@ class BulkMailDispatcher
         array $payload = [],
         bool $allowDuplicates = false
     ): array {
+        if (empty($payload['payload_integrity'])) $payload['queue_state'] = 'prepared';
         $recipients = $this->normalizeRecipients($recipients);
         $stats = ['total' => $recipients->count(), 'queued' => 0, 'skipped' => 0, 'invalid' => 0, 'duplicate' => 0, 'failed' => 0];
         $seen = [];
@@ -38,7 +39,7 @@ class BulkMailDispatcher
                 $stats['skipped']++;
                 continue;
             }
-            $identity = [$mailType, $attributes['related_type'], $attributes['related_id'], $recipient['email'], $payload['campaign_key'] ?? null, ! empty($payload['campaign_key']) ? ($payload['created_by'] ?? null) : null, ! empty($payload['campaign_key']) ? ($payload['recipient_kind'] ?? null) : null, ! empty($payload['campaign_key']) && $mailType !== 'series_email' ? ($payload['event_id'] ?? null) : null];
+            $identity = [$mailType, $attributes['related_type'], $attributes['related_id'], $recipient['email'], $payload['campaign_key'] ?? null, ! empty($payload['campaign_key']) ? ($payload['created_by'] ?? null) : null, ! empty($payload['campaign_key']) ? ($payload['recipient_kind'] ?? null) : null, ! empty($payload['campaign_key']) ? ($payload['event_id'] ?? null) : null];
             $key = $allowDuplicates ? null : hash('sha256', json_encode($identity, JSON_THROW_ON_ERROR));
             $legacyDuplicate = ! $allowDuplicates && empty($payload['campaign_key']) && BulkEmailLog::where('mail_type', $mailType)
                 ->where('related_type', $attributes['related_type'])->where('related_id', $attributes['related_id'])
@@ -60,12 +61,44 @@ class BulkMailDispatcher
                 $stats['skipped']++;
                 continue;
             }
-            try {
-                SendBulkEmailJob::dispatch($log->id, (bool) ($payload['manual_retry_only'] ?? false))->afterCommit();
-                $stats['queued']++;
-            } catch (\Throwable $exception) {
-                $log->markAsFailed('Email could not be queued. Please review the email log before retrying.');
-                $stats['failed']++;
+            $submitted = false;
+            $submissionFailed = false;
+            $submit = function () use ($log, &$submitted, &$submissionFailed): void {
+                try {
+                    \Illuminate\Support\Facades\Bus::dispatch((new SendBulkEmailJob($log->id, (bool) ($log->payload['manual_retry_only'] ?? false)))->beforeCommit());
+                } catch (\Throwable) {
+                    try {
+                        $claimed = BulkEmailLog::whereKey($log->id)->where('status','queued')->whereNull('sent_at')->whereNull('accepted_at')
+                            ->update(['status'=>'failed','failed_at'=>now(),'error_message'=>'Email could not be queued. Please review the email log before retrying.', ... (empty($log->payload['payload_integrity']) ? ['payload->queue_state'=>'submission_failed'] : [])]);
+                        $submissionFailed = (bool) $claimed;
+                        if ($claimed && ($current=$log->fresh())) {
+                            app(EventMailAttemptRecorder::class)->record($current);
+                            app(EventMailLogService::class)->recordIssue($current);
+                        }
+                    } catch (\Throwable) {
+                        Log::warning('Queue failure evidence could not be saved.', ['log_id'=>$log->id]);
+                    }
+                    return;
+                }
+                $submitted = true;
+                // A marker failure cannot undo accepted submission or stop later recipients.
+                try {
+                    if (empty($log->payload['payload_integrity'])) {
+                        BulkEmailLog::whereKey($log->id)->update(['payload->queue_state'=>'enqueued']);
+                    }
+                } catch (\Throwable) {
+                    Log::warning('Queue submission confirmation could not be saved.', ['log_id'=>$log->id]);
+                }
+            };
+            if (\Illuminate\Support\Facades\DB::transactionLevel()>0) {
+                \Illuminate\Support\Facades\DB::afterCommit($submit);
+                // Internal reservation count; user-facing results read persisted submission outcomes after commit.
+                if ($submissionFailed) $stats['failed']++;
+                else $stats['queued']++;
+            } else {
+                $submit();
+                if ($submissionFailed) $stats['failed']++;
+                else $stats['queued']++;
             }
         }
         return $stats;

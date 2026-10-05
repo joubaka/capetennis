@@ -235,6 +235,32 @@ class EventCommunicationService
 
     public function plan(Event $event, User $actor, array $options, string $subject, string $body): array
     {
+        if (($options['scope'] ?? null) === 'legacy_registered') {
+            $this->regions($event, $actor);
+            abort_unless($this->managesWholeEvent($event, $actor), 403);
+            $rows = $this->registrationEntries($event)->where('registered', true);
+            if (! empty($options['category_event_id'])) {
+                abort_unless($event->categoryEvents()->whereKey($options['category_event_id'])->exists(), 404);
+                $rows = $rows->where('category_event_id', (int) $options['category_event_id']);
+            }
+            if (! empty($options['registration_id'])) {
+                $registration = $event->registrations()->where('registration_id', $options['registration_id'])->firstOrFail();
+                $keys = $registration->players->map(fn ($player) => 'player:'.$player->id);
+                $rows = $rows->whereIn('key', $keys);
+            }
+            $rows = $rows->filter(fn ($row) => match ($options['filter'] ?? 'all') {
+                'paid' => $row['status'] === 'paid_confirmed',
+                'not_registered' => ! in_array($row['status'], ['paid_confirmed', 'withdrawn'], true),
+                default => true,
+            });
+            return $this->legacyPlan($event, $options, $rows, $subject, $body);
+        }
+        if (($options['scope'] ?? null) === 'direct') {
+            $this->regions($event, $actor);
+            abort_unless($this->managesWholeEvent($event, $actor), 403);
+            abort_unless(filter_var($options['direct_email'] ?? '', FILTER_VALIDATE_EMAIL), 422);
+            return $this->legacyPlan($event, $options, collect([['name' => $options['direct_email'], 'emails' => [mb_strtolower($options['direct_email'])]]]), $subject, $body);
+        }
         if (! $event->isTeam() && ! $event->isInterprovincialTrials()) {
             $this->regions($event, $actor);
             abort_unless(in_array($options['scope'] ?? null, ($event->isMasters() ? ['all', 'registrations', 'nominations', 'individual', 'invitations'] : ['all', 'registrations', 'nominations', 'individual']), true)
@@ -303,6 +329,22 @@ class EventCommunicationService
         $plan = ['recipients' => $messages->sortBy([['email', 'asc'], ['subject', 'asc']])->values()->all(), 'issues' => $issues->unique()->sort()->values()->all()];
         $plan['fingerprint'] = $this->planFingerprint([$event->id, $options, $subject, $body, $plan]);
 
+        return $plan;
+    }
+
+    private function legacyPlan(Event $event, array $options, Collection $rows, string $subject, string $body): array
+    {
+        $recipients = collect();
+        $issues = collect();
+        foreach ($rows as $row) {
+            if (empty($row['emails'])) $issues->push($row['name'].' - no valid email address');
+            foreach ($row['emails'] as $email) {
+                $recipients->put($email, ['email' => $email, 'name' => $row['name'], 'kind' => 'players', 'subject' => $subject, 'html' => nl2br(e($body))]);
+            }
+        }
+        if ($recipients->isEmpty()) throw ValidationException::withMessages(['audience' => 'No matching recipient has a valid email address.']);
+        $plan = ['recipients' => $recipients->sortBy('email')->values()->all(), 'issues' => $issues->unique()->sort()->values()->all()];
+        $plan['fingerprint'] = $this->planFingerprint([$event->id, $options, $subject, $body, $plan]);
         return $plan;
     }
 
@@ -406,6 +448,14 @@ class EventCommunicationService
 
             return BulkEmailLog::where('mail_type', 'interprovincial_trial_invitation')->where('related_type', \App\Models\InterprovincialTrialInvitation::class)->whereIn('related_id', $ids);
         }
+        if ($event->isMasters()) {
+            $ids = \App\Models\MastersInvitation::where('event_id', $event->id)
+                ->whereHas('batch', fn ($query) => $query->where('event_id', $event->id))
+                ->whereHas('categoryEvent', fn ($query) => $query->where('event_id', $event->id))->select('id');
+
+            return BulkEmailLog::where('mail_type', 'masters_invitation')
+                ->where('related_type', \App\Models\MastersInvitation::class)->whereIn('related_id', $ids);
+        }
         $ids = TeamSelectionInvitation::where('event_id', $event->id)
             ->whereHas('selectionImport', fn ($q) => $q->where('event_id', $event->id)->whereColumn('team_selection_imports.region_id', 'team_selection_invitations.region_id'))
             ->whereHas('team.category', fn ($q) => $q->where('event_id', $event->id))
@@ -429,6 +479,7 @@ class EventCommunicationService
 
     public function approve(EventCommunicationBatch $batch, User $actor, bool $acknowledgeMissing): array
     {
+        abort_if(($batch->options['source'] ?? null)==='series_compose',422,'Approve this intent from its series review, which checks every event together.');
         $this->authorizeRankingBatch($batch, $actor);
         $this->regions($batch->event, $actor);
         abort_unless((int) $batch->created_by === (int) $actor->id, 403);

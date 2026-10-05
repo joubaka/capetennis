@@ -47,7 +47,7 @@ class SuperAdminMailHistory
         if (! empty($filters['mail_subject'])) {
             $query->whereRaw($subjectExpression.' LIKE ?', ['%'.$filters['mail_subject'].'%']);
         }
-        foreach (['mail_type' => 'mail_type', 'mail_status' => 'status'] as $filter => $column) {
+        foreach (['mail_status' => 'status'] as $filter => $column) {
             if (! empty($filters[$filter])) {
                 $query->where($column, $filters[$filter]);
             }
@@ -59,7 +59,11 @@ class SuperAdminMailHistory
             $query->where('created_at', '<', \Carbon\Carbon::parse($filters['mail_until'])->addDay()->toDateString());
         }
 
-        $summary = BulkEmailLog::deliverySummary((clone $query)->select([]));
+        $summaryQuery = clone $query;
+        if (! empty($filters['mail_type'])) {
+            $summaryQuery->where('mail_type', $filters['mail_type']);
+        }
+        $summary = BulkEmailLog::deliverySummary($summaryQuery->select([]));
         $types = BulkEmailLog::query()->select('mail_type')->whereNotNull('mail_type')->where('mail_type', '!=', '')->distinct()->orderBy('mail_type')->limit(101)->pluck('mail_type');
         $typesLimited = $types->count() > 100;
         $types = $types->take(100);
@@ -67,9 +71,12 @@ class SuperAdminMailHistory
             $types->push($filters['mail_type']);
         }
 
+        $mailReport = app(MailReportFilters::class)->data($request, clone $query, 'mail_', 'mail_page');
+        if ($request->routeIs('backend.superadmin.workspace')) $mailReport['logs']->appends(['tab'=>'mails']);
+
         return [
-            'mailLogs' => $query->orderByDesc('id')->paginate(25, ['*'], 'mail_page')->withQueryString()
-                ->appends($request->routeIs('backend.superadmin.workspace') ? ['tab' => 'mails'] : []),
+            'mailLogs' => $mailReport['logs'],
+            'mailReport' => $mailReport,
             'mailFilters' => $filters,
             'mailStatuses' => self::STATUSES,
             'mailSummary' => $summary,

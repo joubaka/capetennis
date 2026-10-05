@@ -3,7 +3,7 @@
 namespace Tests\Feature\Draw;
 
 use App\Jobs\SendBulkEmailJob;
-use App\Models\{Announcement, BulkEmailLog, CategoryEvent, CategoryEventRegistration, Draw, DrawGroup, DrawSetting, Event, Fixture, FixtureResult, OrderOfPlay, Player, Registration, User, Venue};
+use App\Models\{Announcement, BulkEmailLog, CategoryEvent, CategoryEventRegistration, Draw, DrawGroup, DrawSetting, Event, Fixture, FixtureResult, OrderOfPlay, Player, Registration, TeamFixture, User, Venue};
 use App\Services\Draw\FlexibleMonradService;
 use App\Services\Scheduling\EventVenueScheduleService;
 use App\Services\Scheduling\RoundRobinPlayoffScheduleService;
@@ -23,6 +23,155 @@ class EventVenueScheduleTest extends TestCase
     {
         parent::setUp();
         Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+    }
+
+    public function test_gender_waves_finish_all_boys_before_girls_and_repeat_each_round(): void
+    {
+        $event = Event::factory()->create();
+        $venue = $this->venue($event, 'Shared Venue');
+        $draws = collect(['Girls', 'Boys'])->map(fn ($gender) => Draw::factory()->create([
+            'event_id' => $event->id, 'gender' => $gender, 'drawName' => 'Under 12 '.$gender,
+        ]));
+        foreach ($draws as $draw) {
+            $draw->venues()->attach($venue->id, ['num_courts' => 2]);
+            foreach ([1 => 3, 2 => 1] as $round => $count) {
+                foreach (range(1, $count) as $match) {
+                    Fixture::factory()->create([
+                        'draw_id' => $draw->id, 'round' => $round, 'match_nr' => ($round - 1) * 3 + $match,
+                        'bracket_id' => 1, 'registration1_id' => Registration::factory()->create()->id,
+                        'registration2_id' => Registration::factory()->create()->id,
+                    ]);
+                }
+            }
+        }
+        $service = app(EventVenueScheduleService::class);
+        $options = $this->schedulingOptions() + ['gender_waves' => 'boys_then_girls'];
+        $preview = $service->preview($event, $options);
+        $matches = collect($preview['matches']);
+        $boys = $draws->firstWhere('gender', 'Boys');
+        $girls = $draws->firstWhere('gender', 'Girls');
+        $this->assertCount(8, $matches);
+        $this->assertSame([], $preview['unscheduled']);
+        $this->assertSame('2026-09-10 08:00:00', $matches->where('draw_id', $boys->id)->where('round', 1)->min('scheduled_at'));
+        $this->assertSame('2026-09-10 10:45:00', $matches->where('draw_id', $girls->id)->where('round', 1)->min('scheduled_at'));
+        $this->assertSame('2026-09-10 13:30:00', $matches->where('draw_id', $boys->id)->where('round', 2)->min('scheduled_at'));
+        $this->assertSame('2026-09-10 15:00:00', $matches->where('draw_id', $girls->id)->where('round', 2)->min('scheduled_at'));
+        $this->assertNotSame($preview['revision'], $service->preview($event, $this->schedulingOptions())['revision']);
+        try {
+            $service->apply($event, $this->schedulingOptions(), $preview['revision']);
+            $this->fail('Changing the gender wave option must invalidate the preview.');
+        } catch (\InvalidArgumentException $exception) {
+            $this->assertStringContainsString('preview', strtolower($exception->getMessage()));
+        }
+        $this->assertSame(0, OrderOfPlay::whereIn('draw_id', $draws->pluck('id'))->count());
+        $this->assertSame(8, $service->apply($event, $options, $preview['revision'])['count']);
+        $this->assertSame(8, OrderOfPlay::whereIn('draw_id', $draws->pluck('id'))->count());
+    }
+
+    public function test_gender_waves_leave_single_gender_venues_and_mixed_draws_combined(): void
+    {
+        $event = Event::factory()->create();
+        $boysVenue = $this->venue($event, 'Boys Venue');
+        $girlsVenue = $this->venue($event, 'Girls Venue');
+        foreach ([['Boys', $boysVenue], ['Girls', $girlsVenue], ['Mixed', $girlsVenue]] as [$gender, $venue]) {
+            $draw = Draw::factory()->create(['event_id' => $event->id, 'gender' => $gender]);
+            $draw->venues()->attach($venue->id, ['num_courts' => 2]);
+            Fixture::factory()->create([
+                'draw_id' => $draw->id, 'round' => 1, 'match_nr' => 1, 'bracket_id' => 1,
+                'registration1_id' => Registration::factory()->create()->id,
+                'registration2_id' => Registration::factory()->create()->id,
+            ]);
+        }
+        $preview = app(EventVenueScheduleService::class)->preview($event, $this->schedulingOptions() + ['gender_waves' => 'boys_then_girls']);
+        $this->assertCount(3, $preview['matches']);
+        $this->assertSame(['2026-09-10 08:00:00'], collect($preview['matches'])->pluck('scheduled_at')->unique()->values()->all());
+    }
+
+    public function test_gender_waves_preserve_saved_matches_and_warn_when_their_order_conflicts(): void
+    {
+        $event = Event::factory()->create();
+        $venue = $this->venue($event, 'Saved Venue');
+        foreach (['Girls', 'Boys'] as $gender) {
+            $draw = Draw::factory()->create(['event_id' => $event->id, 'drawName' => $gender]);
+            $draw->venues()->attach($venue->id, ['num_courts' => 1]);
+            $fixture = Fixture::factory()->create([
+                'draw_id' => $draw->id, 'round' => 1, 'match_nr' => 1, 'bracket_id' => 1,
+                'registration1_id' => Registration::factory()->create()->id,
+                'registration2_id' => Registration::factory()->create()->id,
+            ]);
+            OrderOfPlay::create([
+                'draw_id' => $draw->id, 'fixture_id' => $fixture->id, 'venue_id' => $venue->id,
+                'court' => '1', 'time' => $gender === 'Girls' ? '2026-09-10 08:00:00' : '2026-09-10 10:00:00',
+                'duration_minutes' => 75,
+            ]);
+        }
+        $before = OrderOfPlay::orderBy('id')->pluck('time', 'id')->all();
+        $service = app(EventVenueScheduleService::class);
+        $options = $this->schedulingOptions() + ['gender_waves' => 'boys_then_girls'];
+        $preview = $service->preview($event, $options);
+        $this->assertSame([], $preview['matches']);
+        $this->assertStringContainsString('saved time does not follow boys then girls waves', implode(' ', $preview['warnings']));
+        $this->assertSame(0, $service->apply($event, $options, $preview['revision'])['count']);
+        $this->assertSame($before, OrderOfPlay::orderBy('id')->pluck('time', 'id')->all());
+    }
+
+    public function test_gender_waves_do_not_delay_a_venue_when_boys_are_scheduled_elsewhere(): void
+    {
+        $event = Event::factory()->create();
+        $firstVenue = $this->venue($event, 'A Venue');
+        $secondVenue = $this->venue($event, 'B Venue');
+        $boys = Draw::factory()->create(['event_id' => $event->id, 'gender' => 'Boys']);
+        $girls = Draw::factory()->create(['event_id' => $event->id, 'gender' => 'Girls']);
+        $boys->venues()->attach([$firstVenue->id => ['num_courts' => 1], $secondVenue->id => ['num_courts' => 1]]);
+        $girls->venues()->attach($secondVenue->id, ['num_courts' => 1]);
+        foreach ([$boys, $girls] as $draw) {
+            Fixture::factory()->create([
+                'draw_id' => $draw->id, 'round' => 1, 'match_nr' => 1, 'bracket_id' => 1,
+                'registration1_id' => Registration::factory()->create()->id,
+                'registration2_id' => Registration::factory()->create()->id,
+            ]);
+        }
+        $preview = app(EventVenueScheduleService::class)->preview($event, $this->schedulingOptions() + ['gender_waves' => 'boys_then_girls']);
+        $this->assertSame([], $preview['unscheduled']);
+        $this->assertSame($firstVenue->id, collect($preview['matches'])->firstWhere('draw_id', $boys->id)['venue_id']);
+        $this->assertSame('2026-09-10 08:00:00', collect($preview['matches'])->firstWhere('draw_id', $girls->id)['scheduled_at']);
+    }
+
+    public function test_gender_wave_order_is_validated_by_preview_and_apply(): void
+    {
+        $event = Event::factory()->create();
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        foreach (['preview', 'apply'] as $action) {
+            $this->actingAs($admin)->postJson(route('backend.event-venue-schedule.'.$action, $event),
+                $this->schedulingOptions() + ['gender_waves' => 'girls_only', 'revision' => str_repeat('a', 64)])
+                ->assertUnprocessable()->assertJsonValidationErrors('gender_waves');
+        }
+    }
+
+    public function test_gender_waves_schedule_team_rubbers_and_preserve_round_dependencies(): void
+    {
+        $event = Event::factory()->create();
+        $venue = $this->venue($event, 'Team Venue');
+        foreach (['Girls', 'Boys'] as $gender) {
+            $draw = Draw::factory()->create(['event_id' => $event->id, 'gender' => $gender, 'drawName' => $gender]);
+            $draw->forceFill(['team_category_id' => 1])->save();
+            $draw->venues()->attach($venue->id, ['num_courts' => 2]);
+            foreach ([1, 2] as $round) {
+                TeamFixture::create(['draw_id' => $draw->id, 'fixture_type' => 1,
+                    'round_nr' => $round, 'match_nr' => $round, 'rubber_sequence' => 1]);
+            }
+        }
+        $service = app(EventVenueScheduleService::class);
+        $options = $this->schedulingOptions() + ['gender_waves' => 'boys_then_girls', 'round_progression' => 'all_round'];
+        $preview = $service->preview($event, $options);
+        $this->assertSame([], $preview['unscheduled']);
+        $this->assertSame(['Boys', 'Girls', 'Boys', 'Girls'], collect($preview['matches'])->pluck('draw_name')->all());
+        $this->assertSame(['2026-09-10 08:00:00', '2026-09-10 09:30:00', '2026-09-10 11:00:00', '2026-09-10 12:30:00'],
+            collect($preview['matches'])->pluck('scheduled_at')->all());
+        $this->assertSame(4, $service->apply($event, $options, $preview['revision'])['count']);
+        $this->assertSame(4, TeamFixture::whereNotNull('scheduled_at')->count());
+        $this->assertSame(0, OrderOfPlay::count());
     }
 
     public function test_it_mixes_draws_on_one_shared_physical_court_pool(): void
@@ -580,6 +729,7 @@ class EventVenueScheduleTest extends TestCase
                 'court_allocations' => [['venue_id' => $venue->id, 'court_labels' => ['2', '8']]],
             ])->all(),
             'schedule' => $this->schedulingOptions() + [
+                'gender_waves' => 'boys_then_girls',
                 'draw_starts' => [['draw_id' => $draws->last()->id, 'start' => '2026-09-10 10:30:00']],
                 'venue_starts' => [['venue_id' => $venue->id, 'start' => '2026-09-10 09:15:00']],
                 'reschedule_existing' => true,
@@ -591,6 +741,8 @@ class EventVenueScheduleTest extends TestCase
             'event_id' => $event->id,
             'updated_by' => $admin->id,
         ]);
+        $savedOptions = json_decode(DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true);
+        $this->assertSame('boys_then_girls', $savedOptions['gender_waves']);
         foreach ($draws as $draw) {
             $this->assertDatabaseHas('draw_venues', [
                 'draw_id' => $draw->id, 'venue_id' => $venue->id, 'num_courts' => 8,
