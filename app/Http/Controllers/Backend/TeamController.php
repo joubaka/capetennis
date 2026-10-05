@@ -35,6 +35,33 @@ use App\Services\PlayerIdentityService;
 
 class TeamController extends Controller
 {
+    /** Serialize legacy roster writes with audited competition transitions. */
+    public function callAction($method, $parameters)
+    {
+        $rosterWrites = ['destroy', 'toggleNoProfile', 'insertPlayer', 'order_player_list', 'changeCategory', 'importNoProfile',
+            'importNoProfileTeams', 'importFromRanking', 'updateNoProfile', 'addPlayers', 'updateRoster'];
+        if (!in_array($method, $rosterWrites, true)) return parent::callAction($method, $parameters);
+        $event = collect($parameters)->first(fn ($value) => $value instanceof Event);
+        $team = collect($parameters)->first(fn ($value) => $value instanceof Team);
+        $request = request();
+        if (!$team && $request->input('team_id', $request->input('team'))) {
+            $team = Team::find($request->input('team_id', $request->input('team')));
+        }
+        if (!$team && $method === 'insertPlayer') $team = TeamPlayer::find($request->input('pivot'))?->team;
+        if (!$team && in_array($method, ['destroy', 'toggleNoProfile'], true)) $team = Team::find($parameters['id'] ?? null);
+        if (!$team && $method === 'updateNoProfile') {
+            $identity = NoProfileTeamPlayer::find($parameters['id'] ?? null);
+            $team = $identity?->team_id ? Team::find($identity->team_id) : null;
+        }
+        $eventId = $event?->id ?? $team?->category?->event_id;
+        if (!$eventId) return parent::callAction($method, $parameters);
+        return DB::transaction(function () use ($method, $parameters, $eventId) {
+            Event::whereKey($eventId)->lockForUpdate()->firstOrFail();
+            abort_if(\App\Models\TeamSubstitution::where('event_id', $eventId)->lockForUpdate()->exists(), 409,
+                'This event has audited replacements. Generic roster edits and imports are blocked; use the replacement wizard to preserve history.');
+            return parent::callAction($method, $parameters);
+        });
+    }
     /**
      * Display a listing of the resource.
      *
@@ -867,6 +894,7 @@ class TeamController extends Controller
   public function updateNoProfile(Request $request, $id)
   {
     $np = NoProfileTeamPlayer::findOrFail($id);
+    abort_if(!$np->team_id, 409, 'Standalone competition identities are immutable. Use an audited replacement instead.');
     $team = $np->team;
     $this->authorize('team.players.manage', $team);
     app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
@@ -883,62 +911,9 @@ class TeamController extends Controller
 
   public function replacePlayer(Request $request)
   {
-    $validated = $request->validate([
-      'pivot_id' => 'required|integer|exists:team_players,id',
-      'player_id' => 'required|integer|exists:players,id',
-      'team_id' => 'required|integer|exists:teams,id',
-    ]);
-
-    $team = Team::findOrFail($validated['team_id']);
+    $team = Team::findOrFail($request->input('team_id'));
     $this->authorize('team.players.manage', $team);
-    app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
-
-    DB::beginTransaction();
-
-    try {
-      $slot = \App\Models\TeamPlayer::with('player')
-        ->where('id', $validated['pivot_id'])
-        ->where('team_id', $validated['team_id'])
-        ->firstOrFail();
-
-      // 🔹 Replace player in SAME slot
-      $slot->update([
-        'player_id' => $validated['player_id'],
-        'no_profile_id' => null,
-        'pay_status' => null,
-      ]);
-
-      $player = \App\Models\Player::findOrFail($validated['player_id']);
-
-      DB::commit();
-
-      return response()->json([
-        'success' => true,
-        'message' => 'Player replaced successfully',
-        'slot' => [
-          'pivot_id' => $slot->id,
-          'rank' => $slot->rank,
-          'pay_status' => (int) $slot->pay_status,
-          'player' => [
-            'name' => $player->name,
-            'surname' => $player->surname,
-            'email' => $player->email,
-            'cell' => $player->cellNr,
-          ],
-        ],
-      ]);
-    } catch (\Throwable $e) {
-      DB::rollBack();
-
-      \Log::error('Replace player failed', [
-        'error' => $e->getMessage(),
-      ]);
-
-      return response()->json([
-        'success' => false,
-        'message' => 'Failed to replace player',
-      ], 500);
-    }
+    return response()->json(['message' => 'Use the replacement wizard to preview affected matches and preserve participant/payment history.', 'url' => route('backend.team-substitutions.show', $team)], 409);
   }
 
   public function availablePlayers(Request $request)

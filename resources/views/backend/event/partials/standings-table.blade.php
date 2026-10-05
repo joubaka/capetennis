@@ -1,0 +1,5 @@
+<div class="table-responsive" tabindex="0" role="region" aria-label="Standings table; scroll sideways for all statistics"><table class="table align-middle mb-0 text-nowrap">
+  <thead><tr><th scope="col">Rank</th><th scope="col">Team / region</th><th scope="col">Ties played</th><th scope="col">Ties won</th><th scope="col">Ties drawn</th><th scope="col">Ties lost</th><th scope="col">Points</th><th scope="col">Rubbers W–L</th><th scope="col">Sets F–A</th><th scope="col">Games F–A</th></tr></thead>
+  <tbody>@forelse($rows as $row)<tr><td>{{ $row['rank'] ?? '—' }}</td><th scope="row">{{ $row['name'] }}</th><td>{{ $row['played'] }}</td><td>{{ $row['wins'] }}</td><td>{{ $row['draws'] }}</td><td>{{ $row['losses'] }}</td><td>{{ $row['points'] }}</td><td>{{ $row['rubber_wins'] }}–{{ $row['rubber_losses'] }}</td><td>{{ $row['sets_for'] }}–{{ $row['sets_against'] }}</td><td>{{ $row['games_for'] }}–{{ $row['games_against'] }}</td></tr>
+  @empty<tr><td colspan="10">No matching competition results or participants.</td></tr>@endforelse</tbody>
+</table></div>

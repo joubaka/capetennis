@@ -14,6 +14,15 @@ class PostLoginDestination
     public function captureExplicit(Request $request): void
     {
         if (! $request->has('redirect')) {
+            if ($request->isMethod('GET') && $request->routeIs('login')
+                && ! $request->session()->has('url.intended')) {
+                $previous = $request->headers->get('referer') ?: $request->session()->previousUrl();
+                $path = $this->localPath($request, $previous);
+                if ($this->isAllowedDestination($path)) {
+                    $request->session()->put(self::EXPLICIT_SESSION_KEY, $path);
+                }
+            }
+
             return;
         }
 
@@ -35,7 +44,7 @@ class PostLoginDestination
         // Never leave an old explicit or intended destination behind after a
         // completed login decision, regardless of which destination wins.
         $request->session()->forget(self::EXPLICIT_SESSION_KEY);
-        $intended = (string) $request->session()->pull('url.intended', '');
+        $intended = $this->localPath($request, (string) $request->session()->pull('url.intended', ''));
 
         if ($this->isAllowedDestination($explicit)) {
             return $explicit;
@@ -52,6 +61,27 @@ class PostLoginDestination
         }
 
         return '/';
+    }
+
+    private function localPath(Request $request, ?string $url): string
+    {
+        if ($this->isSafeLocalPath($url)) {
+            return $url;
+        }
+
+        $parts = parse_url($url ?? '');
+        $origin = parse_url($request->getSchemeAndHttpHost());
+        if ($parts === false || ! isset($parts['scheme'], $parts['host'])
+            || isset($parts['user']) || isset($parts['pass'])
+            || strtolower($parts['scheme']) !== strtolower($origin['scheme'])
+            || strtolower($parts['host']) !== strtolower($origin['host'])
+            || ($parts['port'] ?? null) !== ($origin['port'] ?? null)) {
+            return '';
+        }
+
+        $path = ($parts['path'] ?? '/').(isset($parts['query']) ? '?'.$parts['query'] : '');
+
+        return $this->isSafeLocalPath($path) ? $path : '';
     }
 
     public function isSafeLocalPath(?string $path): bool

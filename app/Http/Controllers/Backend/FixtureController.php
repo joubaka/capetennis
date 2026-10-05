@@ -232,6 +232,8 @@ class FixtureController extends Controller
         'set_player2.*' => 'nullable|integer|min:0',
       ]);
       $scores = $this->normalizeLegacyScores($validated['set_player1'], $validated['set_player2']);
+      $revision = $request->validate(['participant_revision' => 'nullable|string|size:64']);
+      $scores['participant_revision'] = $revision['participant_revision'] ?? null;
       app(TeamFixtureScoreService::class)->save($fixtureForAuth, $scores);
 
       return $fixtureForAuth->fresh()->teamResults;
@@ -588,7 +590,8 @@ class FixtureController extends Controller
       }
     }
 
-    TeamFixtureResult::where('team_fixture_id', $id)->delete();
+    abort_unless($tf, 404);
+    app(TeamFixtureScoreService::class)->delete($tf);
     return redirect()->back();
   }
   public function deleteIndResult($id)

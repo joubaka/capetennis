@@ -49,7 +49,7 @@
       </a>
 
       <a class="btn btn-sm btn-info"
-         href="{{ $isTeamEvent ? route('backend.team-schedule.page', $draw->id) : route('backend.draw.roundrobin.show', $draw->id).'#schedule' }}">
+         href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]) }}">
         <i class="ti ti-calendar-event me-1"></i>Schedule
       </a>
 

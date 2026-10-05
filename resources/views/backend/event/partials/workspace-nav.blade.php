@@ -2,8 +2,10 @@
   $eventWorkspaceRegionalOnly = $eventWorkspaceRegionalOnly ?? false;
   $eventWorkspaceActive = $eventWorkspaceActive ?? match (true) {
     request()->routeIs('backend.interprovincial-trials.*') => 'invitations',
-    request()->routeIs('headOffice.*', 'admin.events.draws', 'backend.event-venue-schedule.*') => 'draws',
+    request()->routeIs('backend.event-venue-schedule.*') => 'schedule',
+    request()->routeIs('headOffice.*', 'admin.events.draws') => 'draws',
     request()->routeIs('admin.events.results.*', 'backend.scoreboard.team.show') => 'results',
+    request()->routeIs('admin.events.standings') => 'standings',
     request()->routeIs('admin.events.finances*') => 'finances',
     request()->routeIs('admin.events.settings*') => 'settings',
     request()->routeIs('admin.events.entries*', 'admin.events.teams') => 'entries',
@@ -23,7 +25,10 @@
     <a href="{{ route('admin.events.overview', $event) }}" @if($eventWorkspaceActive === 'overview') aria-current="page" @endif><i class="ti ti-layout-grid" aria-hidden="true"></i>Event overview</a>
     <a href="{{ route($event->isTeam() ? 'admin.events.teams' : 'admin.events.entries.new', $event) }}" @if($eventWorkspaceActive === 'entries') aria-current="page" @endif><i class="ti ti-users" aria-hidden="true"></i>{{ $event->isTeam() ? 'Teams' : 'Entries' }}</a>
     <a href="{{ route('headOffice.show', $event->id) }}" @if($eventWorkspaceActive === 'draws') aria-current="page" @endif><i class="ti ti-tournament" aria-hidden="true"></i>Draws</a>
-    <a href="{{ route($event->isTeam() ? 'backend.scoreboard.team.show' : 'admin.events.results.individual', $event) }}" @if($eventWorkspaceActive === 'results') aria-current="page" @endif><i class="ti ti-trophy" aria-hidden="true"></i>Results</a>
+    @can('event.manage', $event)
+      <a href="{{ route('backend.event-venue-schedule.index', $event) }}" @if($eventWorkspaceActive === 'schedule') aria-current="page" @endif><i class="ti ti-calendar-event" aria-hidden="true"></i>Schedule</a>
+    @endcan
+    <a href="{{ route($event->isTeam() ? 'admin.events.standings' : 'admin.events.results.individual', $event) }}" @if(in_array($eventWorkspaceActive, ['results', 'standings'])) aria-current="page" @endif><i class="ti ti-trophy" aria-hidden="true"></i>{{ $event->isTeam() ? 'Standings' : 'Results' }}</a>
   @endcan
   @can('event-finance.view', $event)
     <a href="{{ route('admin.events.finances', $event) }}" @if($eventWorkspaceActive === 'finances') aria-current="page" @endif><i class="ti ti-report-money" aria-hidden="true"></i>Finances</a>

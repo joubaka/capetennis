@@ -3,7 +3,7 @@
 namespace App\Services\Scheduling;
 
 use App\Domain\Draws\Services\ScheduleAvailability;
-use App\Models\{Draw, DrawAuditLog, Event, Fixture, OrderOfPlay, Venue};
+use App\Models\{Draw, DrawAuditLog, Event, Fixture, OrderOfPlay, TeamFixture, Venue};
 use App\Services\Draw\FlexibleMonradService;
 use App\Services\ScheduleEngine;
 use Carbon\Carbon;
@@ -14,6 +14,8 @@ final class EventVenueScheduleService
 {
     public function preview(Event $event, array $options): array
     {
+        $roundProgression = $options['round_progression'] ?? 'team_ready';
+        if (! in_array($roundProgression, ['team_ready', 'all_round'], true)) throw new \InvalidArgumentException('Choose a valid round progression rule.');
         $start = Carbon::parse($options['start']);
         $end = ! empty($options['end']) ? Carbon::parse($options['end']) : null;
         $duration = (int) ($options['duration'] ?? 75);
@@ -68,12 +70,15 @@ final class EventVenueScheduleService
         $excluded = [];
         $warnings = [];
         foreach ($draws as $draw) {
-            if ($draw->locked || $draw->published) {
-                $warnings[] = "{$draw->drawName} was not changed because the draw is locked or published.";
+            if ($draw->locked) {
+                $warnings[] = "{$draw->drawName} was not changed because the draw is locked.";
                 continue;
             }
-            foreach ($this->nodesForDraw($draw, $start, $waveMinutes) as $id => $node) {
+            foreach (($draw->isTeamDraw() ? app(UnifiedTeamScheduleService::class)->nodes($draw, $roundProgression) : $this->nodesForDraw($draw, $start, $waveMinutes)) as $id => $node) {
                 $node['draw_start'] = $drawStarts[$draw->id] ?? $start->copy();
+                if (($node['fixture_kind'] ?? 'individual') === 'team' && count($node['participants']) < 2 * (int) ($node['fixture']->player_count_per_team ?: ($node['fixture']->isDoubles() ? 2 : 1)) && ! $node['played']) {
+                    $warnings[] = $draw->drawName.' rubber '.($node['match'] ?: $node['fixture']->id).' has unassigned players; player conflicts cannot yet be checked.';
+                }
                 $node['venue_courts'] = [];
                 foreach ($draw->venues as $venue) {
                     $venueId = (int) $venue->id;
@@ -82,7 +87,7 @@ final class EventVenueScheduleService
                         ->filter(fn ($label) => in_array((string) $label, $courtLabels[$venueId], true))->values()->all();
                     $node['venue_courts'][$venueId] = $restricted ?: $courtLabels[$venueId];
                 }
-                $slot = $node['fixture']->orderOfPlay;
+                $slot = $this->nodeSlot($node);
                 if ($slot?->time && in_array((int) $slot->venue_id, $replanVenues, true)) {
                     $node['venue_courts'] = collect($node['venue_courts'])
                         ->only([(int) $slot->venue_id])->all();
@@ -95,7 +100,10 @@ final class EventVenueScheduleService
         }
 
         $allRegistrations = collect($nodes)->flatMap(fn ($node) => $node['participants'])->unique()->values()->all();
-        $calendar = ScheduleAvailability::load(array_keys($courtLabels), $allRegistrations, $excluded, null, $playerRest);
+        $excludedIndividual = array_values(array_filter($excluded, 'is_int'));
+        $excludedTeam = collect($excluded)->filter(fn ($id) => is_string($id) && str_starts_with($id, 'team:'))->map(fn ($id) => (int) substr($id, 5))->all();
+        $calendar = ScheduleAvailability::load(array_keys($courtLabels), $allRegistrations, $excludedIndividual, null, $playerRest, $excludedTeam);
+        $availabilityRevision = $calendar->fingerprint();
         $pending = [];
         $finished = [];
         foreach ($nodes as $id => &$node) {
@@ -104,14 +112,14 @@ final class EventVenueScheduleService
             if ($node['automatic']) {
                 $finished[$id] = $node['not_before']->copy();
             } elseif ($node['played']) {
-                $slot = $node['fixture']->orderOfPlay;
+                $slot = $this->nodeSlot($node);
                 $finished[$id] = $slot?->time
-                    ? Carbon::parse($slot->time)->addMinutes($slot->occupiedMinutes($duration) + $playerRest)
+                    ? Carbon::parse($slot->time)->addMinutes((int) ($slot->duration_minutes ?: $duration) + $playerRest)
                     : $node['not_before']->copy();
             } elseif ($node['fixed']) {
-                $slot = $node['fixture']->orderOfPlay;
+                $slot = $this->nodeSlot($node);
                 $finished[$id] = Carbon::parse($slot->time)
-                    ->addMinutes($slot->occupiedMinutes($duration) + $playerRest);
+                    ->addMinutes((int) ($slot->duration_minutes ?: $duration) + $playerRest);
             } else {
                 $pending[$id] = $node;
             }
@@ -140,8 +148,19 @@ final class EventVenueScheduleService
                             $duration + $playerRest, $venueId, (string) $court, $node['participants'],
                             $node['participant_group']);
                         if ($end && $at->copy()->addMinutes($duration)->gt($end)) continue;
+                        if (($node['fixture_kind'] ?? 'individual') === 'team') {
+                            foreach ($nodes as $later) {
+                                if ((! $later['fixed'] && ! $later['played']) || ! in_array($id, $later['dependencies'], true)) continue;
+                                $laterSlot = $this->nodeSlot($later);
+                                if ($laterSlot?->time && $at->copy()->addMinutes($duration + $playerRest)->gt(Carbon::parse($laterSlot->time))) {
+                                    $blocked[$id] = 'A saved later team tie leaves insufficient time for this rubber and required rest.';
+                                    continue 2;
+                                }
+                            }
+                        }
                         $choice = ['id' => $id, 'time' => $at, 'venue_id' => $venueId, 'court' => (string) $court,
-                            'fairness' => $scheduledPerDraw[$node['draw_id']] ?? 0];
+                            'fairness' => $scheduledPerDraw[$node['draw_id']] ?? 0,
+                            'venue_changes' => $calendar->venueChanges($node['participants'], $at, (int) $venueId)];
                         if ($best === null || $this->isEarlier($choice, $best, $nodes)) $best = $choice;
                     }
                 }
@@ -149,12 +168,16 @@ final class EventVenueScheduleService
             if ($best === null) break;
             $id = $best['id'];
             $node = $nodes[$id];
+            foreach ($best['venue_changes'] as $change) {
+                $warnings[] = $this->venueWarning($change, $venues);
+            }
             $calendar->reserveWithRest($best['venue_id'], $best['court'], $best['time'], $duration + $courtGap,
                 $duration + $playerRest, $node['participants'], $node['participant_group']);
             $finished[$id] = $best['time']->copy()->addMinutes($duration + $playerRest);
             $scheduledPerDraw[$node['draw_id']] = ($scheduledPerDraw[$node['draw_id']] ?? 0) + 1;
             $plan[] = [
-                'fixture_id' => $id, 'draw_id' => $node['draw_id'], 'draw_name' => $node['draw_name'],
+                'fixture_id' => $node['fixture']->id, 'fixture_kind' => $node['fixture_kind'] ?? 'individual',
+                'fixture_key' => ($node['fixture_kind'] ?? 'individual').':'.$node['fixture']->id, 'draw_id' => $node['draw_id'], 'draw_name' => $node['draw_name'],
                 'stage' => $node['stage'], 'round' => $node['round'], 'match' => $node['match'],
                 'play_order' => $node['play_order'], 'wave' => $node['wave'],
                 'dependencies' => $node['dependencies'],
@@ -163,6 +186,7 @@ final class EventVenueScheduleService
                 'venue_name' => $venues[$best['venue_id']]->name, 'court' => $best['court'],
                 'duration' => $duration, 'participants' => $node['participant_names'],
                 'participant_ids' => $node['participants'], 'venue_courts' => $node['venue_courts'],
+                'venue_changes' => $best['venue_changes'],
             ];
             unset($pending[$id], $blocked[$id]);
         }
@@ -172,7 +196,8 @@ final class EventVenueScheduleService
             $reason = $blocked[$id] ?? ($end ? 'No valid court time remains before the scheduling window ends.'
                 : 'A qualifying match is not schedulable in this plan.');
             $unscheduled[] = [
-                'fixture_id' => $id, 'draw_id' => $node['draw_id'], 'draw_name' => $node['draw_name'],
+                'fixture_id' => $node['fixture']->id, 'fixture_kind' => $node['fixture_kind'] ?? 'individual',
+                'fixture_key' => ($node['fixture_kind'] ?? 'individual').':'.$node['fixture']->id, 'draw_id' => $node['draw_id'], 'draw_name' => $node['draw_name'],
                 'stage' => $node['stage'], 'round' => $node['round'], 'match' => $node['match'],
                 'play_order' => $node['play_order'], 'wave' => $node['wave'],
                 'dependencies' => $node['dependencies'],
@@ -194,7 +219,7 @@ final class EventVenueScheduleService
             'fixture.draw', 'fixture.registration1.players', 'fixture.registration2.players',
         ])
             ->whereIn('venue_id', $venueIds)->whereNotNull('time')
-            ->when($excluded, fn ($query) => $query->whereNotIn('fixture_id', $excluded))
+            ->when($excludedIndividual, fn ($query) => $query->whereNotIn('fixture_id', $excludedIndividual))
             ->where('time', '>=', $start->copy()->subMinutes(600))->where('time', '<', $displayEnd)
             ->orderBy('time')->orderBy('venue_id')->orderBy('court')->limit(2000)->get()
             ->filter(fn (OrderOfPlay $slot) => Carbon::parse($slot->time)->addMinutes($slot->occupiedMinutes($duration))->gt($start))
@@ -207,7 +232,7 @@ final class EventVenueScheduleService
                 ])->filter()->map(fn ($registration) => $registration->displayName())
                     ->filter(fn ($name) => $name && $name !== 'Unassigned')->values()->all();
                 return [
-                    'fixture_id' => $slot->fixture_id, 'draw_id' => $fixture?->draw_id ?? $slot->draw_id,
+                    'fixture_id' => $slot->fixture_id, 'fixture_kind' => 'individual', 'fixture_key' => 'individual:'.$slot->fixture_id, 'draw_id' => $fixture?->draw_id ?? $slot->draw_id,
                     'draw_name' => $fixture?->draw?->drawName ?? $slot->draw?->drawName ?? 'Existing booking',
                     'round' => max(1, (int) ($fixture?->round ?? $slot->round_number)),
                     'match' => $fixture?->match_nr, 'scheduled_at' => $startsAt->format('Y-m-d H:i:s'),
@@ -221,8 +246,30 @@ final class EventVenueScheduleService
                     'editable' => isset($node) && ! $node['played'],
                 ];
             })->values()->all() : [];
+        if ($displayEnd) {
+            $existingMatches = array_merge($existingMatches, TeamFixture::with(['fixturePlayers.noProfile1', 'fixturePlayers.noProfile2', 'teamTie.homeTeam', 'teamTie.awayTeam'])
+                ->whereIn('venue_id', $venueIds)->whereNotIn('id', $excludedTeam)->whereNotNull('scheduled_at')
+                ->where('scheduled_at', '>=', $start->copy()->subMinutes(600))->where('scheduled_at', '<', $displayEnd)
+                ->orderBy('scheduled_at')->limit(2000)->get()
+                ->filter(fn ($fixture) => Carbon::parse($fixture->scheduled_at)->addMinutes((int) ($fixture->duration_min ?: 120) + (int) ($fixture->gap_minutes ?? 0))->gt($start))
+                ->map(function ($fixture) use ($nodes) {
+                    $node = $nodes['team:'.$fixture->id] ?? null;
+                    return ['fixture_id' => $fixture->id, 'fixture_kind' => 'team', 'fixture_key' => 'team:'.$fixture->id,
+                        'draw_id' => $fixture->draw_id, 'draw_name' => $fixture->draw?->drawName ?? 'Existing booking',
+                        'round' => max(1, (int) $fixture->round_nr), 'match' => $fixture->match_nr ?: $fixture->rubber_sequence,
+                        'scheduled_at' => Carbon::parse($fixture->scheduled_at)->format('Y-m-d H:i:s'),
+                        'ends_at' => Carbon::parse($fixture->scheduled_at)->addMinutes((int) ($fixture->duration_min ?: 120) + (int) ($fixture->gap_minutes ?? 0))->format('Y-m-d H:i:s'),
+                        'venue_id' => (int) $fixture->venue_id, 'court' => ScheduleAvailability::courtKey((string) $fixture->court_label),
+                        'duration' => (int) ($fixture->duration_min ?: 120),
+                        'participants' => $node['participant_names'] ?? [$fixture->teamTie?->home_side_name ?: 'Home team', $fixture->teamTie?->away_side_name ?: 'Away team'],
+                        'participant_ids' => $node['participants'] ?? [], 'venue_courts' => $node['venue_courts'] ?? [],
+                        'wave' => $node['wave'] ?? null, 'dependencies' => $node['dependencies'] ?? [],
+                        'not_before' => isset($node['not_before']) ? $node['not_before']->format('Y-m-d H:i:s') : null,
+                        'editable' => isset($node) && ! $node['played']];
+                })->values()->all());
+        }
         $input = compact('duration', 'waveMinutes', 'courtGap', 'playerRest') + [
-            'start' => $start->format('Y-m-d H:i:s'), 'end' => $end?->format('Y-m-d H:i:s'),
+            'start' => $start->format('Y-m-d H:i:s'), 'end' => $end?->format('Y-m-d H:i:s'), 'round_progression' => $roundProgression,
             'draw_ids' => $draws->pluck('id')->sort()->values()->all(), 'venue_ids' => $venueIds->sort()->values()->all(),
             'replan_venue_ids' => collect($replanVenues)->sort()->values()->all(),
             'draw_starts' => $drawStarts->map(fn ($time, $drawId) => ['draw_id' => (int) $drawId,
@@ -237,9 +284,9 @@ final class EventVenueScheduleService
                 'courts' => count($courtLabels[$venue->id]), 'court_labels' => $courtLabels[$venue->id]])->values()->all(),
             'matches' => $plan, 'existing_matches' => $existingMatches,
             'unscheduled' => $unscheduled, 'warnings' => $warnings,
-            'automatic_byes' => collect($nodes)->where('automatic', true)->count(),
-            'automatic_fixture_ids' => collect($nodes)->where('automatic', true)->keys()->values()->all(),
-            'revision' => $this->revision($event, $input), 'input' => $input,
+            'automatic_byes' => collect($nodes)->filter(fn ($node) => $node['automatic'] && ! $node['played'])->count(),
+            'automatic_fixture_ids' => collect($nodes)->filter(fn ($node) => $node['automatic'] && ! $node['played'])->keys()->values()->all(),
+            'revision' => $this->revision($event, $input + ['availability_revision' => $availabilityRevision]), 'input' => $input,
         ];
     }
 
@@ -248,9 +295,13 @@ final class EventVenueScheduleService
         return DB::transaction(function () use ($event, $options, $expectedRevision) {
             $applyVenueIds = array_values(array_unique(array_map('intval', $options['apply_venue_ids'] ?? [])));
             unset($options['apply_venue_ids']);
+            Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
             DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
-            $drawIds = $event->draws()->orderBy('id')->pluck('id');
+            $drawIds = $event->draws()->orderBy('id')->lockForUpdate()->pluck('id');
             DB::table('draws')->whereIn('id', $drawIds)->orderBy('id')->lockForUpdate()->get();
+            $teamIds = TeamFixture::whereIn('draw_id', $drawIds)->orderBy('id')->lockForUpdate()->pluck('id');
+            DB::table('team_fixture_results')->whereIn('team_fixture_id', $teamIds)->orderBy('id')->lockForUpdate()->get();
+            DB::table('team_fixture_players')->whereIn('team_fixture_id', $teamIds)->orderBy('id')->lockForUpdate()->get();
             $fixtureIds = DB::table('fixtures')->whereIn('draw_id', $drawIds)->orderBy('id')->lockForUpdate()->pluck('id');
             DB::table('order_of_plays')->whereIn('fixture_id', $fixtureIds)->orderBy('fixture_id')->lockForUpdate()->get();
             DB::table('fixture_results')->whereIn('fixture_id', $fixtureIds)->orderBy('fixture_id')->orderBy('id')->lockForUpdate()->get();
@@ -281,8 +332,8 @@ final class EventVenueScheduleService
                 throw new \InvalidArgumentException('This venue has no new or changed fixtures to apply.');
             }
             if ($applyVenueIds) {
-                $selectedFixtureIds = $matches->pluck('fixture_id')->all();
-                $otherPlannedFixtureIds = collect($preview['matches'])->pluck('fixture_id')->diff($selectedFixtureIds)->all();
+                $selectedFixtureIds = $matches->map(fn ($row) => $row['fixture_kind'] === 'team' ? $row['fixture_key'] : $row['fixture_id'])->all();
+                $otherPlannedFixtureIds = collect($preview['matches'])->map(fn ($row) => $row['fixture_kind'] === 'team' ? $row['fixture_key'] : $row['fixture_id'])->diff($selectedFixtureIds)->all();
                 if ($matches->contains(fn ($row) => array_intersect($row['dependencies'] ?? [], $otherPlannedFixtureIds))) {
                     throw new \InvalidArgumentException('This venue contains a match that depends on an unapplied match at another venue. Apply the prerequisite venue first or apply the combined schedule.');
                 }
@@ -295,8 +346,22 @@ final class EventVenueScheduleService
                 OrderOfPlay::whereIn('fixture_id', $automaticFixtureIds)->delete();
                 Fixture::whereIn('id', $automaticFixtureIds)->update(['scheduled' => 0]);
             }
+            $auditAssignments = [];
             foreach ($matches as $row) {
+                if ($row['fixture_kind'] === 'team') {
+                    $fixture = TeamFixture::whereKey($row['fixture_id'])->where('draw_id', $row['draw_id'])->firstOrFail();
+                    $auditAssignments[$row['draw_id']][] = ['fixture_kind' => 'team', 'fixture_id' => $fixture->id,
+                        'before' => $fixture->only(['scheduled_at', 'venue_id', 'court_label', 'duration_min', 'gap_minutes']),
+                        'after' => array_intersect_key($row, array_flip(['scheduled_at', 'venue_id', 'court', 'duration']))];
+                    $fixture->forceFill(['scheduled_at' => $row['scheduled_at'], 'venue_id' => $row['venue_id'],
+                        'court_label' => $row['court'], 'duration_min' => $row['duration'],
+                        'gap_minutes' => (int) ($preview['input']['courtGap'] ?? 0), 'scheduled' => 1, 'clash_flag' => false])->save();
+                    continue;
+                }
                 $fixture = Fixture::whereKey($row['fixture_id'])->where('draw_id', $row['draw_id'])->firstOrFail();
+                $auditAssignments[$row['draw_id']][] = ['fixture_kind' => 'individual', 'fixture_id' => $fixture->id,
+                    'before' => $fixture->orderOfPlay?->only(['time', 'venue_id', 'court', 'duration_minutes']),
+                    'after' => array_intersect_key($row, array_flip(['scheduled_at', 'venue_id', 'court', 'duration']))];
                 OrderOfPlay::updateOrCreate(['fixture_id' => $fixture->id], [
                     'draw_id' => $row['draw_id'], 'venue_id' => $row['venue_id'], 'court' => $row['court'],
                     'time' => $row['scheduled_at'], 'duration_minutes' => $row['duration'],
@@ -308,7 +373,7 @@ final class EventVenueScheduleService
                 DrawAuditLog::record((int) $drawId, 'event_venue_schedule_applied', null, [
                     'event_id' => $event->id, 'matches' => $rows->count(), 'revision' => $expectedRevision,
                     'venue_ids' => $rows->pluck('venue_id')->unique()->values()->all(),
-                    'partial' => (bool) $applyVenueIds,
+                    'partial' => (bool) $applyVenueIds, 'assignments' => $auditAssignments[$drawId] ?? [],
                 ]);
             }
             return ['count' => count($scheduledFixtureIds), 'revision' => $expectedRevision,
@@ -316,7 +381,44 @@ final class EventVenueScheduleService
         });
     }
 
+    public function removalError(Event $event, array $individualFixtureIds = [], array $teamFixtureIds = []): ?string
+    {
+        if ($teamFixtureIds && ($error = app(UnifiedTeamScheduleService::class)->removalError($event, $teamFixtureIds))) return $error;
+        $drawIds = Fixture::whereIn('id', $individualFixtureIds)->whereHas('draw', fn ($q) => $q->where('event_id', $event->id))->pluck('draw_id')->unique();
+        foreach (Draw::with(['drawFixtures.orderOfPlay', 'drawFixtures.fixtureResults', 'flexibleMonrad', 'groups'])->whereIn('id', $drawIds)->get() as $draw) {
+            foreach ($this->nodesForDraw($draw, Carbon::now(), 90) as $id => $node) {
+                if (in_array($id, $individualFixtureIds) || ! $node['fixture']->orderOfPlay?->time) continue;
+                if (array_intersect($individualFixtureIds, $node['dependencies'])) return 'A saved later match depends on this assignment. Return the dependent match to planning too.';
+            }
+        }
+        return null;
+    }
+
     public function unapply(Event $event, ?int $drawId = null, ?int $venueId = null, ?int $fixtureId = null): array
+    {
+        if ($fixtureId !== null) return $this->unapplyIndividual($event, $drawId, $venueId, $fixtureId);
+        if (collect([$drawId, $venueId])->filter(fn ($id) => $id !== null)->count() !== 1) {
+            throw new \InvalidArgumentException('Choose one draw or one venue to return to planning.');
+        }
+        return DB::transaction(function () use ($event, $drawId, $venueId) {
+            Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
+            DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
+            $hasTeam = TeamFixture::whereHas('draw', fn ($q) => $q->where('event_id', $event->id))
+                ->whereNotNull('scheduled_at')->when($drawId !== null, fn ($q) => $q->where('draw_id', $drawId))
+                ->when($venueId !== null, fn ($q) => $q->where('venue_id', $venueId))->exists();
+            $hasIndividual = Fixture::whereHas('draw', fn ($q) => $q->where('event_id', $event->id))
+                ->when($drawId !== null, fn ($q) => $q->where('draw_id', $drawId))
+                ->whereHas('orderOfPlay', fn ($q) => $q->whereNotNull('time')
+                    ->when($venueId !== null, fn ($q) => $q->where('venue_id', $venueId)))->exists();
+            if (! $hasTeam) return $this->unapplyIndividual($event, $drawId, $venueId);
+            $team = app(UnifiedTeamScheduleService::class)->unapply($event, $drawId, $venueId);
+            $individual = $hasIndividual ? $this->unapplyIndividual($event, $drawId, $venueId) : ['count' => 0];
+            $count = $team['count'] + $individual['count'];
+            return ['count' => $count, 'message' => $count.' matches returned to planning. Fixtures and results were preserved.'];
+        });
+    }
+
+    private function unapplyIndividual(Event $event, ?int $drawId = null, ?int $venueId = null, ?int $fixtureId = null): array
     {
         if (collect([$drawId, $venueId, $fixtureId])->filter(fn ($id) => $id !== null)->count() !== 1) {
             throw new \InvalidArgumentException('Choose one match, one draw, or one venue to return to planning.');
@@ -324,6 +426,7 @@ final class EventVenueScheduleService
         if ($fixtureId !== null) return $this->unapplyFixture($event, $fixtureId);
 
         return DB::transaction(function () use ($event, $drawId, $venueId) {
+            Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
             DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
             $eventDrawIds = $event->draws()->orderBy('id')->pluck('id');
             if ($drawId !== null && ! $eventDrawIds->contains($drawId)) {
@@ -343,10 +446,10 @@ final class EventVenueScheduleService
                     ? 'This draw has no applied matches to return to planning.'
                     : 'This venue has no applied matches for this event.');
             }
-            if ($fixtures->contains(fn (Fixture $fixture) => $fixture->draw?->locked || $fixture->draw?->published)) {
-                throw new \InvalidArgumentException('A locked or published draw is included. Unlock or unpublish it before removing scheduled times.');
+            if ($fixtures->contains(fn (Fixture $fixture) => $fixture->draw?->locked)) {
+                throw new \InvalidArgumentException('A locked draw is included. Unlock it before removing scheduled times.');
             }
-            if ($fixtures->contains(fn (Fixture $fixture) => $fixture->fixtureResults->isNotEmpty())) {
+            if ($fixtures->contains(fn (Fixture $fixture) => ($fixture->fixtureResults->isNotEmpty() || (int) $fixture->match_status !== 0))) {
                 throw new \InvalidArgumentException('Played matches cannot be returned to planning.');
             }
 
@@ -359,6 +462,7 @@ final class EventVenueScheduleService
             }
 
             $bookingFixtureIds = $bookings->pluck('fixture_id')->unique()->values();
+            if ($error = $this->removalError($event, $bookingFixtureIds->all())) throw new \InvalidArgumentException($error);
             OrderOfPlay::whereIn('id', $bookings->pluck('id'))->delete();
             Fixture::whereIn('id', $bookingFixtureIds)->update(['scheduled' => 0]);
 
@@ -387,8 +491,9 @@ final class EventVenueScheduleService
         if (! $fixture) throw new \InvalidArgumentException('This match does not belong to the event.');
         if (! $fixture->orderOfPlay?->time) throw new \InvalidArgumentException('This match has no applied assignment to remove.');
         if ($fixture->draw?->locked) throw new \InvalidArgumentException('Unlock the draw before removing this match assignment.');
-        if ($fixture->fixtureResults->isNotEmpty()) throw new \InvalidArgumentException('A played match cannot be returned to planning.');
+        if (($fixture->fixtureResults->isNotEmpty() || (int) $fixture->match_status !== 0)) throw new \InvalidArgumentException('A played match cannot be returned to planning.');
 
+        if ($error = $this->removalError($event, [$fixture->id])) throw new \InvalidArgumentException($error);
         if ($fixture->draw->usesFlexibleMonrad()) {
             app(\App\Services\Draw\FlexibleMonradScheduler::class)
                 ->saveFixture($fixture->draw, $fixture->id, null, 0, '', null);
@@ -417,7 +522,7 @@ final class EventVenueScheduleService
                     : (($source['type'] ?? null) === 'bye' ? 'Bye' : 'Unassigned draw position'))->all();
                 $nodes[$match['id']] = $this->node($draw, $fixture, array_values(array_filter(array_map(
                     fn ($source) => isset($source['match']) ? ($keyToId[$source['match']] ?? null) : null,
-                    $match['sources']))), $participants[$key] ?? [], (bool) $match['automatic'], (bool) $match['sets'],
+                    $match['sources']))), $participants[$key] ?? [], (bool) $match['automatic'], (bool) $match['sets'] || $fixture->fixtureResults->isNotEmpty() || (int) $fixture->match_status !== 0,
                     $sourceLabels);
             }
             return $nodes;
@@ -464,7 +569,7 @@ final class EventVenueScheduleService
             ksort($labels);
             $dependencies = array_values(array_unique($feeders[$fixture->id] ?? []));
             $nodes[$fixture->id] = $this->node($draw, $fixture, $dependencies,
-                $participants[$fixture->id] ?? [], $automatic, $fixture->fixtureResults->isNotEmpty(), $labels);
+                $participants[$fixture->id] ?? [], $automatic, ($fixture->fixtureResults->isNotEmpty() || (int) $fixture->match_status !== 0), $labels);
         }
         return $nodes;
     }
@@ -491,7 +596,23 @@ final class EventVenueScheduleService
         ];
     }
 
-    private function wave(int $id, array &$nodes, array $visiting = []): int
+    private function nodeSlot(array $node): ?OrderOfPlay
+    {
+        return ($node['fixture_kind'] ?? 'individual') === 'team'
+            ? app(UnifiedTeamScheduleService::class)->slot($node['fixture']) : $node['fixture']->orderOfPlay;
+    }
+
+    private function venueWarning(array $change, Collection $venues): string
+    {
+        [$kind, $id] = explode(':', $change['participant_id'], 2);
+        $player = $kind === 'profile' ? \App\Models\Player::find($id) : \App\Models\NoProfileTeamPlayer::find($id);
+        $name = $player ? trim($player->name.' '.$player->surname) : 'Player '.$id;
+        $from = $venues[$change['from_venue_id']]->name ?? Venue::find($change['from_venue_id'])?->name ?? 'another venue';
+        $to = $venues[$change['to_venue_id']]->name ?? 'another venue';
+        return $name.' changes venue from '.$from.' to '.$to.'.';
+    }
+
+    private function wave(int|string $id, array &$nodes, array $visiting = []): int
     {
         if (isset($nodes[$id]['calculated_wave'])) return $nodes[$id]['calculated_wave'];
         if (isset($visiting[$id])) throw new \InvalidArgumentException('The draw contains a circular match dependency.');
@@ -519,9 +640,9 @@ final class EventVenueScheduleService
 
     private function isEarlier(array $candidate, array $best, array $nodes): bool
     {
-        return ([$candidate['time']->timestamp, $candidate['fairness'], $nodes[$candidate['id']]['wave'],
+        return ([count($candidate['venue_changes'] ?? []), $candidate['time']->timestamp, $candidate['fairness'], $nodes[$candidate['id']]['wave'],
             $nodes[$candidate['id']]['play_order'], $candidate['id']]
-            <=> [$best['time']->timestamp, $best['fairness'], $nodes[$best['id']]['wave'],
+            <=> [count($best['venue_changes'] ?? []), $best['time']->timestamp, $best['fairness'], $nodes[$best['id']]['wave'],
                 $nodes[$best['id']]['play_order'], $best['id']]) < 0;
     }
 
@@ -531,7 +652,12 @@ final class EventVenueScheduleService
         $fixtures = DB::table('fixtures')->whereIn('draw_id', $drawIds)->orderBy('id')
             ->get(['id', 'draw_id', 'registration1_id', 'registration2_id', 'winner_registration',
                 'parent_fixture_id', 'loser_parent_fixture_id', 'round', 'stage', 'play_order', 'updated_at']);
+        $teamIds = DB::table('team_fixtures')->whereIn('draw_id', $drawIds)->pluck('id');
         $state = [
+            'team_fixtures' => DB::table('team_fixtures')->whereIn('draw_id', $drawIds)->orderBy('id')->get()->all(),
+            'team_players' => DB::table('team_fixture_players')->whereIn('team_fixture_id', $teamIds)->orderBy('id')->get()->all(),
+            'team_results' => DB::table('team_fixture_results')->whereIn('team_fixture_id', $teamIds)->orderBy('id')->get()->all(),
+            'team_ties' => DB::table('team_ties')->whereIn('draw_id', $drawIds)->orderBy('id')->get()->all(),
             'input' => $input,
             'draws' => DB::table('draws')->whereIn('id', $drawIds)->orderBy('id')
                 ->get(['id', 'locked', 'published', 'updated_at'])->all(),

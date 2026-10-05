@@ -47,6 +47,11 @@ class Team extends Model
       ->orderBy('rank');
   }
 
+  public function competitionSubstitutions()
+  {
+    return $this->hasMany(TeamSubstitution::class)->orderBy('id');
+  }
+
   public function unpayed_players()
   {
     return $this->belongsToMany(Player::class, 'team_players')

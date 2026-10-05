@@ -17,6 +17,8 @@ final class TeamDrawMutationGuard
 
     public function fixture(TeamFixture $fixture): void
     {
+        abort_if(\App\Models\TeamSubstitution::where('event_id', $fixture->draw->event_id)->exists(), 409,
+            'This event has audited replacements. Use the replacement wizard for lineup changes; scheduling existing fixtures remains available.');
         $this->schedule($fixture->draw);
         abort_if($fixture->fixtureResults()->exists()
             || (int) $fixture->match_status !== FixtureState::STATUS_PENDING
@@ -25,6 +27,8 @@ final class TeamDrawMutationGuard
 
     public function destructive(Draw $draw): void
     {
+        abort_if(\App\Models\TeamSubstitution::where('event_id', $draw->event_id)->exists(), 409,
+            'This event has substitution history. Preserve its fixture identities; use targeted fixture scheduling or a new draw instead of destructive regeneration.');
         $this->schedule($draw);
         abort_if($draw->published, 409, 'Unpublish the draw before replacing or clearing fixtures.');
         abort_if($draw->teamTies()->locked()->exists(), 409, 'Published or completed ties cannot be replaced or cleared.');

@@ -30,7 +30,9 @@ final class RoundRobinPlayoffScheduleService
         }
 
         return DB::transaction(function () use ($draw) {
-            Draw::whereKey($draw->id)->lockForUpdate()->first();
+            $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
+            $draw->loadMissing(['settings', 'groups']);
+            if ($draw->locked) return collect();
             $created = collect();
             $matchNr = max(999, (int) $draw->drawFixtures()->max('match_nr'));
 
@@ -40,7 +42,7 @@ final class RoundRobinPlayoffScheduleService
                 if ($existing) {
                     // Retrofit an unplayed fixture created by the older button,
                     // replacing provisional player names with stable sources.
-                    if ($stageFixtures->count() === 1 && ! $existing->fixtureResults()->exists()
+                    if ($stageFixtures->count() === 1 && (int) $existing->match_status === 0 && ! $existing->fixtureResults()->exists()
                         && ! $existing->registration1_source_group_id
                         && ! $existing->registration2_source_group_id) {
                         $existing->update([

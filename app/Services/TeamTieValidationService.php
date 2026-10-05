@@ -244,8 +244,20 @@ class TeamTieValidationService
                     if ($tie->draw->team_draw_selection['mixed_sides'] ?? []) {
                         app(TeamDrawSideResolver::class)->assertMixedSources($tie->draw, $team->id, $profileIds, $importedIds);
                     }
-                    if (array_diff($profileIds, $team->team_players->pluck('player_id')->all())
-                        || array_diff($importedIds, $team->team_players_no_profile->pluck('id')->all())) {
+                    $historicalProfiles = []; $historicalImported = [];
+                    $map = $tie->draw->team_draw_selection['mixed_sides'][$team->id] ?? null;
+                    $sourceIds = $map ? [$map['boys'], $map['girls']] : [$team->id];
+                    foreach ($rubber->fixturePlayers as $slot) {
+                        $participant = $slot->participant_snapshot[$side] ?? null;
+                        if (!$participant || !in_array($participant['source_team_id'], $sourceIds, true)) continue;
+                        $source = \App\Models\Team::find($participant['source_team_id']);
+                        if ($source && app(TeamParticipantHistoryService::class)->matches($slot, $side, $source, (int) $tie->draw->event_id)) {
+                            if ($participant['profile_id']) $historicalProfiles[] = $participant['profile_id'];
+                            if ($participant['imported_id']) $historicalImported[] = $participant['imported_id'];
+                        }
+                    }
+                    if (array_diff($profileIds, array_merge($team->team_players->pluck('player_id')->all(), $historicalProfiles))
+                        || array_diff($importedIds, array_merge($team->team_players_no_profile->pluck('id')->all(), $historicalImported))) {
                         throw new \InvalidArgumentException('Rubber players must belong to their assigned team.');
                     }
                     $keys = array_merge(array_map(fn ($id) => "player:{$id}", $profileIds), array_map(fn ($id) => "imported:{$id}", $importedIds));

@@ -64,6 +64,7 @@
 @endsection
 
 @section('page-script')
+@include('backend.team-fixtures.partials.participant-revision-script')
 <script src="{{ asset(mix('js/draw-fixtures-show.js')) }}"></script>
 <script>
     function generatePDF() {
@@ -244,7 +245,7 @@
                         <td>{{ optional($fx->venue)->name ?? '—' }}</td>
                         <td class="text-end d-print-none">
                             <button id="edit-btn-{{ $fx->id }}" class="btn btn-sm btn-icon btn-label-primary edit-score-btn"
-                                data-id="{{ $fx->id }}"
+                                data-id="{{ $fx->id }}" data-participant-revision="{{ $fx instanceof \App\Models\TeamFixture ? app(\App\Services\TeamParticipantHistoryService::class)->revision($fx) : '' }}"
                                 data-action="{{ route('backend.team-fixtures.update', $fx->id) }}"
                                 data-home="{{ e($homeLabel) }}"
                                 data-away="{{ e($awayLabel) }}"
@@ -258,7 +259,7 @@
 
                             @if($fx->fixtureResults->count())
                                 <button type="button" class="btn btn-sm btn-icon btn-label-danger delete-result-btn ms-1"
-                                    data-id="{{ $fx->id }}">
+                                    data-id="{{ $fx->id }}" data-participant-revision="{{ $fx instanceof \App\Models\TeamFixture ? app(\App\Services\TeamParticipantHistoryService::class)->revision($fx) : '' }}">
                                     <i class="ti ti-trash"></i>
                                 </button>
                             @endif

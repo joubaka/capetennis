@@ -30,13 +30,16 @@ final class TeamStandingsService
             : ($tie->published_at ? TeamTie::STATUS_PUBLISHED : ($tie->status === TeamTie::STATUS_COMPLETED ? TeamTie::STATUS_VALIDATED : $tie->status))]);
     }
 
-    public function forDraw(Draw $draw, bool $publishedOnly = false): array
+    public function forDraw(Draw $draw, bool $publishedOnly = false, ?array $teamIds = null): array
     {
         $rows = [];
         $rules = app(TeamEventRulesService::class)->forDraw($draw);
         $results = app(TeamRubberResultService::class);
         $ties = $draw->teamTies()->when($publishedOnly, fn ($query) => $query->whereNotNull('published_at')->whereIn('status', [TeamTie::STATUS_PUBLISHED, TeamTie::STATUS_COMPLETED]))->with(['homeTeam', 'awayTeam', 'rubbers.teamResults', 'rubbers.draw'])->get();
         foreach ($ties as $tie) {
+            // Event summaries must reject an entire malformed pairing, not only its foreign side.
+            if ($teamIds !== null && (!in_array($tie->home_team_id, $teamIds, true) || !in_array($tie->away_team_id, $teamIds, true))) { continue; }
+            if ($teamIds !== null && $tie->rubbers->contains(fn ($rubber) => (int) $rubber->draw_id !== (int) $draw->id)) { continue; }
             foreach (['home', 'away'] as $side) {
                 $team = $tie->{$side.'Team'};
                 if (!$team) { continue; }

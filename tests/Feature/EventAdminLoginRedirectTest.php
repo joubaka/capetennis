@@ -17,6 +17,31 @@ class EventAdminLoginRedirectTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_login_returns_to_same_site_referrer_with_query_string(): void
+    {
+        $user = User::factory()->create();
+        $this->from(url('/events?status=open'))->get('/login')->assertOk();
+        $this->post('/login', ['email' => $user->email, 'password' => 'password'])
+            ->assertRedirect('/events?status=open');
+    }
+
+    public function test_absolute_same_site_intended_destination_wins_over_referrer(): void
+    {
+        $user = User::factory()->create();
+        $this->withSession(['url.intended' => url('/events?continue=1')])
+            ->from(url('/'))->get('/login')->assertOk();
+        $this->post('/login', ['email' => $user->email, 'password' => 'password'])
+            ->assertRedirect('/events?continue=1');
+    }
+
+    public function test_external_referrer_is_not_a_login_destination(): void
+    {
+        $user = User::factory()->create();
+        $this->from('https://evil.example/events')->get('/login')->assertOk();
+        $this->post('/login', ['email' => $user->email, 'password' => 'password'])
+            ->assertRedirect('/');
+    }
+
     public function test_event_admin_login_falls_back_to_work_hub(): void
     {
         $user = User::factory()->create();

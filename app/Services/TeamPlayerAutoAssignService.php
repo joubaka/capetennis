@@ -45,8 +45,8 @@ class TeamPlayerAutoAssignService
         $rubber->fixturePlayers()->delete();
 
         $resolver = app(TeamDrawSideResolver::class);
-        $homeTeam = $resolver->side($tie->draw, $tie->homeTeam);
-        $awayTeam = $resolver->side($tie->draw, $tie->awayTeam);
+        $homeTeam = $resolver->side($tie->draw, $tie->homeTeam, (int) $rubber->round_nr, (int) $rubber->id);
+        $awayTeam = $resolver->side($tie->draw, $tie->awayTeam, (int) $rubber->round_nr, (int) $rubber->id);
 
         $slots = $this->resolveSlots($template, $homeTeam, $awayTeam);
 
@@ -57,6 +57,7 @@ class TeamPlayerAutoAssignService
             ));
         }
 
+        app(TeamParticipantHistoryService::class)->captureFixture($rubber);
         Log::debug('[TeamPlayerAutoAssignService] Players assigned', [
             'rubber_id' => $rubber->id,
             'tie_id'    => $tie->id,

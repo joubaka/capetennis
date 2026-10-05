@@ -405,7 +405,7 @@ class EventVenueScheduleTest extends TestCase
             $service->unapply($event->fresh(), $draw->id, null);
             $this->fail('A locked draw schedule was unapplied.');
         } catch (\InvalidArgumentException $exception) {
-            $this->assertStringContainsString('locked or published', $exception->getMessage());
+            $this->assertStringContainsString('locked', $exception->getMessage());
         }
 
         $draw->update(['locked' => false]);
@@ -527,11 +527,11 @@ class EventVenueScheduleTest extends TestCase
         $this->assertDatabaseMissing('order_of_plays', ['fixture_id' => $fixtures[1]->id]);
 
         $this->postJson($url, array_replace($assignment, [
-            'fixture_id' => $fixtures[1]->id, 'scheduled_at' => '2026-09-10 08:45:00',
+            'fixture_id' => $fixtures[1]->id, 'scheduled_at' => '2026-09-10 11:00:00',
         ]))->assertOk();
         $this->assertDatabaseHas('order_of_plays', [
             'fixture_id' => $fixtures[1]->id, 'venue_id' => $venue->id, 'court' => '2',
-            'time' => '2026-09-10 08:45:00', 'duration_minutes' => 75,
+            'time' => '2026-09-10 11:00:00', 'duration_minutes' => 75,
         ]);
 
         DB::table('draw_venue_court_allocations')->insert([
@@ -600,7 +600,7 @@ class EventVenueScheduleTest extends TestCase
         DB::table('events')->where('id', $event->id)->update(['venues' => 'Legacy venue description']);
         $this->get(route('backend.event-venue-schedule.index', $event))
             ->assertOk()
-            ->assertSee('Schedule every assigned age group')
+            ->assertSee('Schedule every assigned draw / category')
             ->assertSee('Print all-match pack')
             ->assertSee(route('headoffice.drawPack', $event), false)
             ->assertSeeInOrder(['Shared Venue', $availableVenue->name])
@@ -624,7 +624,7 @@ class EventVenueScheduleTest extends TestCase
             ->assertSee('id="reschedule-existing" checked', false)
             ->assertSee('data-workflow-nav="3"', false)
             ->assertSee('full-page-stepper', false)
-            ->assertSee('Score this age group')
+            ->assertSee('Score this draw / category')
             ->assertSee(route('frontend.scoring.workspace', ['event' => $event, 'draw' => $draws->first(), 'all_venues' => 1]))
             ->assertSee('ageGroupScheduleSummary', false)
             ->assertSee('draw-accent-0', false)
@@ -659,7 +659,7 @@ class EventVenueScheduleTest extends TestCase
             ->assertSee('the remaining unsaved suggestions were adapted around it')
             ->assertSee('Match selected. Choose an Available slot.')
             ->assertSee('Choose a match for this slot')
-            ->assertSee('Search by age group, match or player')
+            ->assertSee('Search by draw / category, match or player')
             ->assertSee('result?.unscheduled')
             ->assertSee('Participants determined by feeder path')
             ->assertSee('openMatchPicker(slot)', false)

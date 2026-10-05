@@ -134,7 +134,7 @@
                   <a href="{{ route('backend.team-fixtures.edit', $fx->id) }}" class="btn btn-sm btn-outline-info">Edit</a>
                   <button type="button"
                           class="btn btn-sm btn-primary open-score-modal"
-                          data-id="{{ $fx->id }}"
+                          data-id="{{ $fx->id }}" data-participant-revision="{{ app(\App\Services\TeamParticipantHistoryService::class)->revision($fx) }}"
                           data-home="{{ $fx->teamTie?->home_side_name ?? 'Home' }}"
                           data-away="{{ $fx->teamTie?->away_side_name ?? 'Away' }}"
                           data-bs-toggle="modal"
@@ -186,6 +186,7 @@
 </div>
 
 @section('page-script')
+@include('backend.team-fixtures.partials.participant-revision-script')
 <script>
   document.addEventListener('DOMContentLoaded', function () {
     flatpickr('.flatpickr', { enableTime: true, dateFormat: "Y-m-d H:i" });

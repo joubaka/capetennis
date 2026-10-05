@@ -16,10 +16,13 @@ class TeamFixtureScoreService
     public function save(TeamFixture $fixture, array $scores): void
     {
         DB::transaction(function () use ($fixture, $scores): void {
+            $event = \App\Models\Event::whereKey($fixture->draw->event_id)->lockForUpdate()->firstOrFail();
             $draw = \App\Models\Draw::whereKey($fixture->draw_id)->lockForUpdate()->firstOrFail();
+            abort_if((int) $draw->event_id !== (int) $event->id, 409, 'Fixture event changed.');
             $tie = $fixture->team_tie_id ? \App\Models\TeamTie::whereKey($fixture->team_tie_id)->lockForUpdate()->firstOrFail() : null;
             $current = TeamFixture::whereKey($fixture->id)->lockForUpdate()->firstOrFail();
             abort_if($current->draw_id !== $draw->id || $current->team_tie_id !== $tie?->id || ($tie && $tie->draw_id !== $draw->id), 409, 'Fixture relationships changed.');
+            app(TeamParticipantHistoryService::class)->assertRevision($current, (int) $draw->event_id, $scores['participant_revision'] ?? null);
             $canonical = $draw->team_scoring_rules !== null && $tie !== null;
             abort_if($draw->locked || (!$canonical && $tie?->isCompleted()), 409, 'Scores are locked for this fixture.');
 

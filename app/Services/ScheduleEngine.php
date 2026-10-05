@@ -139,6 +139,7 @@ class ScheduleEngine
     if ($gap < 0 || $gap > 1440) throw new \InvalidArgumentException('The gap must be between 0 and 1440 minutes.');
     $start = Carbon::parse($startTime);
     return DB::transaction(function () use ($drawId, $duration, $venues, $start, $round, $brackets, $rounds, $gap) {
+        DB::table('venues')->orderBy('id')->limit(1)->lockForUpdate()->get();
       $draw = Draw::whereKey($drawId)->lockForUpdate()->firstOrFail();
       DB::table('events')->where('id', $draw->event_id)->lockForUpdate()->get();
       DB::table('venues')->whereIn('id', array_keys($venues))->orderBy('id')->lockForUpdate()->get();
@@ -256,6 +257,7 @@ class ScheduleEngine
     ?int $duration, bool $allowPublished = false, bool $requireCourtDurationFit = true): ?OrderOfPlay
   {
     return DB::transaction(function () use ($draw, $fixtureId, $start, $venueId, $court, $duration, $allowPublished, $requireCourtDurationFit) {
+        DB::table('venues')->orderBy('id')->limit(1)->lockForUpdate()->get();
       $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
       DB::table('events')->where('id', $draw->event_id)->lockForUpdate()->get();
       abort_if($draw->locked || (! $allowPublished && $draw->published), 409, 'Unpublish and unlock the draw before scheduling.');
@@ -265,6 +267,7 @@ class ScheduleEngine
         );
       }
       $fixture = $draw->drawFixtures()->lockForUpdate()->findOrFail($fixtureId);
+            abort_if($fixture->fixtureResults()->exists() || (int) $fixture->match_status !== 0, 409, 'A match with play or results cannot be rescheduled.');
       $duration ??= (int) ($fixture->orderOfPlay?->duration_minutes ?: 75);
       if ($start) {
         DB::table('venues')->where('id', $venueId)->lockForUpdate()->get();

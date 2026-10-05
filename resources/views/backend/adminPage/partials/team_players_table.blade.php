@@ -1,3 +1,18 @@
+<a class="btn btn-sm btn-outline-primary mb-2" href="{{ route('backend.team-substitutions.show', $team) }}">Competition player replacements</a>
+@if($team->competitionSubstitutions()->exists())
+@php($competitionRoster = app(\App\Services\TeamDrawSideResolver::class)->activeRoster($team))
+<div class="alert alert-info">
+<strong>Effective competition roster</strong>
+@php
+$competitionEntries = $competitionRoster->team_players->map(fn ($member) => ['rank' => $member->rank, 'name' => $member->player?->full_name])
+    ->concat($competitionRoster->team_players_no_profile->map(fn ($member) => ['rank' => $member->rank, 'name' => trim($member->name.' '.$member->surname).' · imported']))->sortBy('rank');
+@endphp
+@foreach($competitionEntries as $entry)
+<div>({{ $entry['rank'] }}) {{ $entry['name'] }}</div>
+@endforeach
+<div class="small mt-2">Round cutoffs and selected-match stand-ins follow the recorded replacement scope. The table below is the original registration and payment roster.</div>
+</div>
+@endif
 <table class="table table-sm align-middle table-bordered text-nowrap" data-team-id="{{ $team->id }}">
   <thead class="table-light">
     <tr>

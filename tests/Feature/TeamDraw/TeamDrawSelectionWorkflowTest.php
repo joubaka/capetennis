@@ -103,6 +103,7 @@ class TeamDrawSelectionWorkflowTest extends TestCase
         $fixture->home_rank_nr = 4;
         $fixture->away_rank_nr = null;
         $fixture->setRelation('teamTie', null);
+        foreach ($fixture->fixturePlayers as $row) $row->participant_snapshot = null;
         $fixture->setRelation('region1Name', TeamRegion::first());
         $fixture->region1Name->short_name = null;
         app(\App\Services\TeamFixtureLineupPresenter::class)->prepare(collect([$fixture]));

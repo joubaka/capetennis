@@ -13,10 +13,12 @@ final class FlexibleMonradScheduler
         ?int $duration, bool $requireCourtDurationFit = true): ?OrderOfPlay
     {
         return DB::transaction(function () use ($draw, $fixtureId, $start, $venueId, $court, $duration, $requireCourtDurationFit) {
+            DB::table('venues')->orderBy('id')->limit(1)->lockForUpdate()->get();
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
             DB::table('events')->where('id', $draw->event_id)->lockForUpdate()->get();
             abort_if($draw->locked, 409, 'The draw is locked.');
             $fixture = $draw->drawFixtures()->lockForUpdate()->findOrFail($fixtureId);
+            abort_if($fixture->fixtureResults()->exists() || (int) $fixture->match_status !== 0, 409, 'A match with play or results cannot be rescheduled.');
             $duration ??= (int) ($fixture->orderOfPlay?->duration_minutes ?: 75);
             if ($start) {
                 DB::table('venues')->where('id', $venueId)->lockForUpdate()->get();
@@ -130,6 +132,7 @@ final class FlexibleMonradScheduler
         if ($duration < 1 || $duration > 1440) throw new \InvalidArgumentException('Match duration must be between 1 and 1440 minutes.');
         $start = Carbon::parse($startTime);
         return DB::transaction(function () use ($drawId, $duration, $venues, $start) {
+            DB::table('venues')->orderBy('id')->limit(1)->lockForUpdate()->get();
             $draw = Draw::whereKey($drawId)->lockForUpdate()->firstOrFail();
             DB::table('events')->where('id', $draw->event_id)->lockForUpdate()->get();
             if ($draw->locked || $draw->published) throw new \InvalidArgumentException('Unpublish and unlock the draw before auto-scheduling.');

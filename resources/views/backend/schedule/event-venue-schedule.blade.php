@@ -1,6 +1,6 @@
 @extends('layouts.backend')
 
-@section('title', 'Venue Schedule – '.$event->name)
+@section('title', 'Schedule – '.$event->name)
 
 @section('page-style')
 <style>
@@ -95,6 +95,7 @@
   .schedule-workspace .court-grid-scroll thead th { position:sticky; top:0; z-index:3; background:var(--bs-body-bg); box-shadow:0 1px 0 var(--schedule-border); }
   .schedule-workspace .court-grid-scroll tr > :first-child { position:sticky; left:0; z-index:2; min-width:8.75rem; background:var(--bs-body-bg); box-shadow:1px 0 0 var(--schedule-border); }
   .schedule-workspace .court-grid-scroll thead tr > :first-child { z-index:4; }
+  @media (max-width: 575.98px) { .schedule-workspace .court-grid-scroll tr > :first-child { min-width:6rem; width:6rem; max-width:6rem; white-space:normal !important; } }
   .schedule-workspace .court-grid-scroll::-webkit-scrollbar { width:12px; height:12px; }
   .schedule-workspace .court-grid-scroll::-webkit-scrollbar-thumb { border:3px solid transparent; border-radius:999px; background:rgba(var(--bs-secondary-rgb), .45); background-clip:padding-box; }
   .schedule-workspace .court-grid-scroll { scrollbar-color:rgba(var(--bs-secondary-rgb), .55) transparent; scrollbar-width:auto; }
@@ -136,7 +137,7 @@
 @endphp
 <div class="container-xxl flex-grow-1 container-p-y schedule-workspace">
   @include('backend.event.partials.header', [
-    'eventWorkspaceActive' => 'more',
+    'eventWorkspaceActive' => 'schedule',
     'eventWorkspaceIcon' => 'ti-calendar-event',
     'eventWorkspaceSubtitle' => 'Event venue schedule',
   ])
@@ -144,7 +145,7 @@
     <div class="workspace-header">
       <div class="text-uppercase text-primary fw-semibold small">Event schedule workspace</div>
       <h3 class="mb-1">{{ $event->name }}</h3>
-      <p class="text-muted mb-0">Schedule every assigned age group in three clear steps: assign courts, set the timing, then review.</p>
+      <p class="text-muted mb-0">Schedule every assigned draw / category in three clear steps: assign courts, set the timing, then review.</p>
     </div>
     <div class="d-flex flex-wrap gap-2 workspace-actions">
       @if($draws->isNotEmpty())
@@ -168,17 +169,17 @@
 
   <details class="workspace-section mb-3" id="court-allocation-step" open>
     @php
-      $firstSelectedDrawId = $draws->first(fn($draw) => $draw['selected'] && ! $draw['locked'] && ! $draw['published'])['id'] ?? null;
+      $firstSelectedDrawId = $draws->first(fn($draw) => $draw['selected'] && ! $draw['locked'])['id'] ?? null;
     @endphp
     <summary>
       <span class="step-number">1</span>
-      <span class="section-title"><h5>Assign age groups to courts</h5><small class="text-muted"><span id="selected-draw-count">{{ $draws->filter(fn($draw) => $draw['selected'] && ! $draw['locked'] && ! $draw['published'])->count() }}</span> age groups included · open only the one you are editing</small></span>
+      <span class="section-title"><h5>Assign draws / categories to courts</h5><small class="text-muted"><span id="selected-draw-count">{{ $draws->filter(fn($draw) => $draw['selected'] && ! $draw['locked'])->count() }}</span> draws / categories included · open only the one you are editing</small></span>
       <i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i>
     </summary>
     <div class="section-body">
       <div class="draw-list">
           @forelse($draws as $draw)
-            <details class="draw-panel draw-accent-{{ $loop->index % 6 }} {{ $draw['locked'] || $draw['published'] ? 'text-muted' : '' }}" data-draw-panel="{{ $draw['id'] }}" {{ $firstSelectedDrawId === $draw['id'] ? 'open' : '' }}>
+            <details class="draw-panel draw-accent-{{ $loop->index % 6 }} {{ $draw['locked'] ? 'text-muted' : '' }}" data-draw-panel="{{ $draw['id'] }}" {{ $firstSelectedDrawId === $draw['id'] ? 'open' : '' }}>
               <summary>
                 <span class="draw-heading">
                   <span class="draw-name fw-semibold">{{ $draw['name'] }}</span>
@@ -194,7 +195,7 @@
                     @endforelse
                   </span>
                 </span>
-                @if($draw['locked'] || $draw['published'])
+                @if($draw['locked'])
                   <span class="badge bg-label-secondary">{{ $draw['published'] ? 'Published' : 'Locked' }}</span>
                 @endif
                 <i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i>
@@ -202,21 +203,21 @@
               <div class="draw-panel-body">
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
                   <label class="form-check d-flex align-items-center gap-2 mb-0">
-                    <input class="form-check-input draw-choice mt-0" type="checkbox" value="{{ $draw['id'] }}" {{ $draw['locked'] || $draw['published'] ? 'disabled' : ($draw['selected'] ? 'checked' : '') }}>
+                    <input class="form-check-input draw-choice mt-0" type="checkbox" value="{{ $draw['id'] }}" {{ $draw['locked'] ? 'disabled' : ($draw['selected'] ? 'checked' : '') }}>
                     <span class="fw-semibold">Include in this schedule</span>
                   </label>
                   <div class="d-flex flex-wrap align-items-end gap-2">
-                    @if($unapplyRouteAvailable && $draw['applied_match_count'] > 0 && ! $draw['locked'] && ! $draw['published'])
+                    @if($unapplyRouteAvailable && $draw['applied_match_count'] > 0 && ! $draw['locked'])
                       <button type="button" class="btn btn-sm btn-outline-danger" data-unapply-draw="{{ $draw['id'] }}" data-draw-name="{{ $draw['name'] }}">
                         <i class="ti ti-calendar-off me-1" aria-hidden="true"></i>Unapply {{ $draw['applied_match_count'] }} scheduled {{ Str::plural('match', $draw['applied_match_count']) }}
                       </button>
                     @endif
                     @can('event.score', $event)
-                      <a class="btn btn-sm btn-outline-success" href="{{ route('frontend.scoring.workspace', ['event' => $event, 'draw' => $draw['id'], 'all_venues' => 1]) }}" title="Open this age group for scoring even when its matches are not scheduled">
-                        <i class="ti ti-scoreboard me-1" aria-hidden="true"></i>Score this age group
+                      <a class="btn btn-sm btn-outline-success" href="{{ route('frontend.scoring.workspace', ['event' => $event, 'draw' => $draw['id'], 'all_venues' => 1]) }}" title="Open this draw / category for scoring even when its matches are not scheduled">
+                        <i class="ti ti-scoreboard me-1" aria-hidden="true"></i>Score this draw / category
                       </a>
                     @endcan
-                    <label class="small text-muted">Start later (optional)<input class="form-control form-control-sm draw-start mt-1" data-draw="{{ $draw['id'] }}" type="datetime-local" value="{{ $scheduleDraft['draw_starts']->get($draw['id'], '') }}" {{ $draw['locked'] || $draw['published'] ? 'disabled' : '' }}></label>
+                    <label class="small text-muted">Start later (optional)<input class="form-control form-control-sm draw-start mt-1" data-draw="{{ $draw['id'] }}" type="datetime-local" value="{{ $scheduleDraft['draw_starts']->get($draw['id'], '') }}" {{ $draw['locked'] ? 'disabled' : '' }}></label>
                   </div>
                 </div>
                 <div class="small text-uppercase fw-semibold text-muted mb-1">Permitted venues</div>
@@ -236,14 +237,14 @@
                     @endphp
                     <div class="venue-assignment">
                       <div class="d-flex align-items-center gap-2">
-                        <label class="d-flex align-items-center gap-2 mb-0 flex-grow-1"><input class="form-check-input assignment-choice mt-0" data-draw="{{ $draw['id'] }}" data-venue-name="{{ $venue['name'] }}" type="checkbox" value="{{ $venue['id'] }}" {{ $venueAssigned ? 'checked' : '' }} {{ $draw['locked'] || $draw['published'] ? 'disabled' : '' }}><span class="fw-semibold">{{ $venue['name'] }}</span></label>
+                        <label class="d-flex align-items-center gap-2 mb-0 flex-grow-1"><input class="form-check-input assignment-choice mt-0" data-draw="{{ $draw['id'] }}" data-venue-name="{{ $venue['name'] }}" type="checkbox" value="{{ $venue['id'] }}" {{ $venueAssigned ? 'checked' : '' }} {{ $draw['locked'] ? 'disabled' : '' }}><span class="fw-semibold">{{ $venue['name'] }}</span></label>
                         <span class="small text-muted" data-court-summary="{{ $draw['id'] }}-{{ $venue['id'] }}">{{ $venueAssigned ? (empty($allocatedLabels) ? 'All '.$venue['courts'] : count($allocatedLabels).' of '.$venue['courts']) : 'Not used' }}</span>
                         <button class="btn btn-sm btn-text-secondary court-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#courts-{{ $draw['id'] }}-{{ $venue['id'] }}" aria-expanded="false" aria-controls="courts-{{ $draw['id'] }}-{{ $venue['id'] }}">Choose courts</button>
                       </div>
                       <div class="collapse" id="courts-{{ $draw['id'] }}-{{ $venue['id'] }}"><div class="court-choices">
                         @foreach($orderedCourts as $court)
                           @php $courtChecked = $venueAssigned && (empty($allocatedLabels) || in_array($court['label'], $allocatedLabels)); @endphp
-                          <label class="court-choice"><input class="form-check-input court-allocation mt-0" data-draw="{{ $draw['id'] }}" data-venue="{{ $venue['id'] }}" type="checkbox" value="{{ $court['label'] }}" {{ $courtChecked ? 'checked' : '' }} {{ $draw['locked'] || $draw['published'] ? 'disabled' : '' }}>Court {{ $court['label'] }}@if($court['ball_type']) · {{ ucfirst($court['ball_type']) }}@endif</label>
+                          <label class="court-choice"><input class="form-check-input court-allocation mt-0" data-draw="{{ $draw['id'] }}" data-venue="{{ $venue['id'] }}" type="checkbox" value="{{ $court['label'] }}" {{ $courtChecked ? 'checked' : '' }} {{ $draw['locked'] ? 'disabled' : '' }}>Court {{ $court['label'] }}@if($court['ball_type']) · {{ ucfirst($court['ball_type']) }}@endif</label>
                         @endforeach
                       </div></div>
                     </div>
@@ -362,9 +363,20 @@
         <div class="col-6 col-md-1"><label class="form-label" for="schedule-gap">Court gap</label><input id="schedule-gap" type="number" class="form-control" value="{{ $scheduleDraft['court_gap'] }}" min="0" max="120"></div>
         <div class="col-6 col-md-1"><label class="form-label" for="schedule-rest">Rest</label><input id="schedule-rest" type="number" class="form-control" value="{{ $scheduleDraft['player_rest'] }}" min="0" max="480"></div>
       </div>
+      <div class="row g-3 mt-1">
+        <div class="col-md-6">
+          <label class="form-label" for="round-progression">Team round progression</label>
+          <select id="round-progression" class="form-select">
+            <option value="team_ready" @selected($scheduleDraft['round_progression'] === 'team_ready')>Next tie when the team is ready and rested</option>
+            <option value="all_round" @selected($scheduleDraft['round_progression'] === 'all_round')>Finish the whole round before the next round</option>
+          </select>
+          <div class="form-text">Individual matches always follow their qualifying dependencies.</div>
+        </div>
+        <div class="col-md-6 small text-muted align-self-center">Ties may use multiple venues. We prefer each player's previous venue and warn when a move is needed. Published schedules can be adjusted; matches with play stay protected.</div>
+      </div>
       <div class="mt-4">
         <div class="fw-semibold">Venue opening times</div>
-        <div class="small text-muted mb-2">Leave blank to use the main schedule start. A later age-group start still takes priority.</div>
+        <div class="small text-muted mb-2">Leave blank to use the main schedule start. A later draw/category start still takes priority.</div>
         <div class="row g-2">
           @foreach($venues as $venue)
             <div class="col-md-6 col-xl-4">
@@ -458,7 +470,7 @@
         <label class="form-label visually-hidden" for="manual-match-picker-search">Search matches</label>
         <div class="input-group mb-3">
           <span class="input-group-text"><i class="ti ti-search" aria-hidden="true"></i></span>
-          <input type="search" id="manual-match-picker-search" class="form-control" placeholder="Search by age group, match or player" autocomplete="off">
+          <input type="search" id="manual-match-picker-search" class="form-control" placeholder="Search by draw / category, match or player" autocomplete="off">
         </div>
         <div class="small text-muted mb-2">Selecting a match saves it in this box immediately, removes it from this list, and adapts the remaining unsaved suggestions. Match order, participant conflicts and player rest are checked before saving.</div>
         <div class="list-group" id="manual-match-picker-list"></div>
@@ -526,7 +538,7 @@
   const drawsUrl = @json(route('headOffice.show', ['headOffice' => $event->id, 'schedule' => 'applied']));
   const eventName = @json($event->name);
   const manualMode = @json(request()->boolean('manual'));
-  const drawIds = @json($draws->reject(fn($draw) => $draw['locked'] || $draw['published'])->pluck('id')->values());
+  const drawIds = @json($draws->reject(fn($draw) => $draw['locked'])->pluck('id')->values());
   let payload = null;
   let revision = null;
   let replanVenueIds = [];
@@ -546,7 +558,7 @@
     {after: 2200, percent: 36, label: 'Checking match order, byes, and player rest…'},
     {after: 5000, percent: 58, label: 'Finding available court times across venues…'},
     {after: 9000, percent: 74, label: 'Resolving court and player conflicts…'},
-    {after: 15000, percent: 86, label: 'Balancing age groups across the timetable…'},
+    {after: 15000, percent: 86, label: 'Balancing draws / categories across the timetable…'},
     {after: 25000, percent: 94, label: 'Finalising and validating the preview…'},
   ];
   const applyActivityStages = [
@@ -727,6 +739,7 @@
     draw_starts: [...document.querySelectorAll('.draw-start')].filter(input => input.value).map(input => ({draw_id:Number(input.dataset.draw), start:input.value})),
     venue_starts: [...document.querySelectorAll('.venue-start')].filter(input => input.value).map(input => ({venue_id:Number(input.dataset.venue), start:input.value})),
     reschedule_existing: document.getElementById('reschedule-existing').checked,
+    round_progression: document.getElementById('round-progression').value,
   });
   const selectedAssignedVenueIds = () => [...new Set(
     values('.draw-choice').flatMap(drawId => [...document.querySelectorAll(`.assignment-choice[data-draw="${drawId}"]:checked`)].map(input => Number(input.value)))
@@ -811,7 +824,7 @@
     markAllocationsDirty();
   }));
   document.querySelectorAll('.draw-choice').forEach(input => input.addEventListener('change', () => invalidatePreview()));
-  document.querySelectorAll('.draw-start, .venue-start, #schedule-start, #schedule-end, #schedule-duration, #schedule-wave, #schedule-gap, #schedule-rest, #reschedule-existing')
+  document.querySelectorAll('.draw-start, .venue-start, #schedule-start, #schedule-end, #schedule-duration, #schedule-wave, #schedule-gap, #schedule-rest, #round-progression, #reschedule-existing')
     .forEach(input => input.addEventListener('change', markScheduleDirty));
   document.getElementById('reschedule-existing')?.addEventListener('change', event => {
     if (!event.currentTarget.checked) replanVenueIds = [];
@@ -847,6 +860,14 @@
   document.querySelectorAll('[data-venue-mode]').forEach(button => button.addEventListener('click', () => setVenueMode(button.dataset.venueMode)));
   const card = (value, label, tone='primary') => `<div class="col-6 col-md-3"><div class="card"><div class="card-body py-3"><div class="fs-4 fw-bold text-${tone}">${value}</div><small class="text-muted">${label}</small></div></div></div>`;
   const asDate = value => new Date(String(value).replace(' ', 'T'));
+  const fixtureKey = match => match.fixture_key || `${match.fixture_kind || 'individual'}:${match.fixture_id}`;
+  const matchLabel = match => match.fixture_kind === 'team'
+    ? `Rubber ${match.match || '—'} · ${match.stage || 'Team match'}`
+    : `Match ${match.match || '—'}`;
+  const fixtureRef = key => {
+    const parts = String(key).split(':');
+    return {fixture_kind: parts.length > 1 ? parts[0] : 'individual', fixture_id: Number(parts.at(-1))};
+  };
   const dateKey = value => asDate(value).getTime();
   const formatSlotTime = date => date.toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
   const assignmentTime = date => {
@@ -924,10 +945,10 @@
             ? '<span class="badge bg-label-success mt-1">Saved</span>'
             : '<span class="badge bg-label-primary mt-1">Suggested · not saved</span>';
           const card = movable
-            ? `<button type="button" class="manual-match-card" draggable="true" data-manual-fixture="${starts.fixture_id}" aria-pressed="false" title="Drag this match to an available slot"><span class="fw-semibold">${escapeHtml(starts.draw_name)}</span><span class="small d-block">${round} · Match ${escapeHtml(starts.match || '—')}</span>${state}<span class="small text-muted d-block mt-1">${escapeHtml(path)}</span></button>`
-            : `<div class="fw-semibold">${escapeHtml(starts.draw_name)}</div><div class="small">${round} · Match ${escapeHtml(starts.match || '—')}</div>${state}<div class="small text-muted mt-1">${escapeHtml(path)}</div>`;
+            ? `<button type="button" class="manual-match-card" draggable="true" data-manual-fixture="${fixtureKey(starts)}" aria-pressed="false" title="Drag this match to an available slot"><span class="fw-semibold">${escapeHtml(starts.draw_name)}</span><span class="small d-block">${round} · ${escapeHtml(matchLabel(starts))}</span>${state}<span class="small text-muted d-block mt-1">${escapeHtml(path)}</span></button>`
+            : `<div class="fw-semibold">${escapeHtml(starts.draw_name)}</div><div class="small">${round} · ${escapeHtml(matchLabel(starts))}</div>${state}<div class="small text-muted mt-1">${escapeHtml(path)}</div>`;
           const remove = starts.fixed && starts.editable && unapplyUrl
-            ? `<button type="button" class="btn btn-sm btn-outline-danger manual-match-remove" data-unapply-fixture="${starts.fixture_id}" data-match-label="${escapeHtml(starts.draw_name)} Match ${escapeHtml(starts.match || '—')}"><i class="ti ti-calendar-off me-1" aria-hidden="true"></i>Remove from schedule</button>`
+            ? `<button type="button" class="btn btn-sm btn-outline-danger manual-match-remove" data-unapply-fixture="${fixtureKey(starts)}" data-match-label="${escapeHtml(starts.draw_name)} ${escapeHtml(matchLabel(starts))}"><i class="ti ti-calendar-off me-1" aria-hidden="true"></i>Remove from schedule</button>`
             : '';
           return `<td><div class="manual-match-cell">${card}${remove}</div></td>`;
         }
@@ -956,7 +977,7 @@
     document.getElementById('preview-view-controls').classList.add('d-flex');
     document.getElementById('venue-timelines').innerHTML = result.venues.map(venue => {
       const rows = venueRows(result, venue.id);
-      return `<details class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap align-items-center gap-2"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span class="venue-age-group-summary">${ageGroupScheduleSummary(rows)}</span><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Time</th><th>Court</th><th>Age group / draw</th><th>Round</th><th>Match</th><th>Players / qualification path</th><th>State</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td class="text-nowrap fw-semibold">${escapeHtml(row.scheduled_at.slice(0,16))}</td><td>${escapeHtml(row.court)}</td><td>${escapeHtml(row.draw_name)}</td><td>${row.wave ? `Wave ${row.wave} · R${row.round}` : `R${row.round}`}</td><td class="text-nowrap fw-semibold">Match ${escapeHtml(row.match || '—')}</td><td>${escapeHtml((row.participants || []).join(' / ') || 'Participants determined by draw')}</td><td>${row.fixed ? '<span class="badge bg-label-success">Saved</span>' : '<span class="badge bg-label-primary">Suggested · not saved</span>'}</td><td>${row.fixed && unapplyUrl ? `<button type="button" class="btn btn-sm btn-outline-danger" data-unapply-fixture="${row.fixture_id}" data-match-label="${escapeHtml(row.draw_name)} Match ${escapeHtml(row.match || '—')}">Remove</button>` : '<span class="text-muted">—</span>'}</td></tr>`).join('') || '<tr><td colspan="8" class="text-center text-muted py-4">No fixtures allocated.</td></tr>'}</tbody></table></div></details>`;
+      return `<details class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap align-items-center gap-2"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span class="venue-age-group-summary">${ageGroupScheduleSummary(rows)}</span><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Time</th><th>Court</th><th>Draw / category</th><th>Round</th><th>Match</th><th>Players / qualification path</th><th>State</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td class="text-nowrap fw-semibold">${escapeHtml(row.scheduled_at.slice(0,16))}</td><td>${escapeHtml(row.court)}</td><td>${escapeHtml(row.draw_name)}</td><td>${row.wave ? `Wave ${row.wave} · R${row.round}` : `R${row.round}`}</td><td class="text-nowrap fw-semibold">Match ${escapeHtml(row.match || '—')}</td><td>${escapeHtml((row.participants || []).join(' / ') || 'Participants determined by draw')}</td><td>${row.fixed ? '<span class="badge bg-label-success">Saved</span>' : '<span class="badge bg-label-primary">Suggested · not saved</span>'}</td><td>${row.fixed && row.editable && unapplyUrl ? `<button type="button" class="btn btn-sm btn-outline-danger" data-unapply-fixture="${fixtureKey(row)}" data-match-label="${escapeHtml(row.draw_name)} ${escapeHtml(matchLabel(row))}">Remove</button>` : '<span class="text-muted">—</span>'}</td></tr>`).join('') || '<tr><td colspan="8" class="text-center text-muted py-4">No fixtures allocated.</td></tr>'}</tbody></table></div></details>`;
     }).join('');
     document.getElementById('venue-slot-grids').innerHTML = result.venues.map(venue => slotGrid(result, venue)).join('');
     const appliedVenueIds = [...new Set([
@@ -996,16 +1017,20 @@
     document.getElementById('venue-slot-grids').classList.add('pe-none');
     try {
       const saved = await post(manualAssignmentUrl, {
-        fixture_id:Number(fixtureId), scheduled_at:slot.dataset.time,
+        ...fixtureRef(fixtureId), scheduled_at:slot.dataset.time,
         venue_id:Number(slot.dataset.venue), court:slot.dataset.court,
         duration:Number(document.getElementById('schedule-duration').value),
         court_gap:Number(document.getElementById('schedule-gap').value),
         player_rest:Number(document.getElementById('schedule-rest').value),
+        round_progression:document.getElementById('round-progression').value,
       });
       selectedManualFixture = null;
       replanVenueIds = replanVenueIds.filter(id => id !== Number(slot.dataset.venue));
       payload = buildPayload();
       render(await post(previewUrl, payload));
+      if (saved.warnings?.length) {
+        document.getElementById('preview-warnings').insertAdjacentHTML('afterbegin', saved.warnings.map(message => `<div class="alert alert-warning py-2">${escapeHtml(message)}</div>`).join(''));
+      }
       setStatus(status, saved.message + ' It is saved; the remaining unsaved suggestions were adapted around it.', 'success');
     } catch (error) {
       setStatus(status, error.message, 'danger');
@@ -1024,7 +1049,7 @@
       ...(result?.matches || []),
       ...(result?.unscheduled || []),
     ];
-    return [...new Map(rows.map(match => [Number(match.fixture_id), match])).values()]
+    return [...new Map(rows.map(match => [fixtureKey(match), match])).values()]
       .sort((left, right) => String(left.draw_name).localeCompare(String(right.draw_name), undefined, {numeric:true})
         || Number(left.wave || left.round) - Number(right.wave || right.round)
         || Number(left.match || left.fixture_id) - Number(right.match || right.fixture_id));
@@ -1045,7 +1070,7 @@
       const current = match.scheduled_at ? `Suggested · not saved: ${match.scheduled_at.slice(0, 16)} · Court ${match.court}` : 'Unscheduled';
       const searchable = `${match.draw_name} match ${match.match || ''} ${players}`.toLowerCase();
       const sequence = match.wave ? `Wave ${match.wave} · Round ${match.round}` : `Round ${match.round}`;
-      return `<button type="button" class="list-group-item list-group-item-action manual-match-picker-option" data-picker-fixture="${match.fixture_id}" data-search="${escapeHtml(searchable)}"><span class="fw-semibold d-block">${escapeHtml(match.draw_name)} · Match ${escapeHtml(match.match || '—')}</span><span class="d-block">${escapeHtml(players)}</span><span class="match-picker-meta d-block">${sequence} · ${escapeHtml(current)}</span></button>`;
+      return `<button type="button" class="list-group-item list-group-item-action manual-match-picker-option" data-picker-fixture="${fixtureKey(match)}" data-search="${escapeHtml(searchable)}"><span class="fw-semibold d-block">${escapeHtml(match.draw_name)} · ${escapeHtml(matchLabel(match))}</span><span class="d-block">${escapeHtml(players)}</span><span class="match-picker-meta d-block">${sequence} · ${escapeHtml(current)}</span></button>`;
     }).join('');
   };
   const openMatchPicker = async slot => {
@@ -1060,15 +1085,22 @@
     matchPickerModal.addEventListener('shown.bs.modal', () => matchPickerSearch.focus(), {once:true});
     const candidates = pickerCandidates().filter(match => canUseCourt(match, slot.dataset.venue, slot.dataset.court));
     try {
-      const options = await post(manualOptionsUrl, {
-        fixture_ids:candidates.map(match => Number(match.fixture_id)), scheduled_at:slot.dataset.time,
-        venue_id:Number(slot.dataset.venue), court:slot.dataset.court,
-        duration:Number(document.getElementById('schedule-duration').value),
-        court_gap:Number(document.getElementById('schedule-gap').value),
-        player_rest:Number(document.getElementById('schedule-rest').value),
-      });
-      const eligible = new Set((options.eligible_fixture_ids || []).map(Number));
-      renderPickerCandidates(candidates.filter(match => eligible.has(Number(match.fixture_id))));
+      const eligible = new Set();
+      for (const kind of ['individual', 'team']) {
+        const matches = candidates.filter(match => (match.fixture_kind || 'individual') === kind);
+        for (let offset = 0; offset < matches.length; offset += 200) {
+          const options = await post(manualOptionsUrl, {
+            fixture_kind:kind, fixture_ids:matches.slice(offset, offset + 200).map(match => Number(match.fixture_id)), scheduled_at:slot.dataset.time,
+            venue_id:Number(slot.dataset.venue), court:slot.dataset.court,
+            duration:Number(document.getElementById('schedule-duration').value),
+            court_gap:Number(document.getElementById('schedule-gap').value),
+            player_rest:Number(document.getElementById('schedule-rest').value),
+        round_progression:document.getElementById('round-progression').value,
+          });
+          (options.eligible_fixture_ids || []).forEach(id => eligible.add(`${kind}:${id}`));
+        }
+      }
+      renderPickerCandidates(candidates.filter(match => eligible.has(fixtureKey(match))));
       filterMatchPicker();
     } catch (error) {
       matchPickerList.innerHTML = '';
@@ -1083,12 +1115,12 @@
     const slot = pendingManualSlot;
     pendingManualSlot = null;
     bootstrap.Modal.getOrCreateInstance(matchPickerModal).hide();
-    placeMatchManually(Number(option.dataset.pickerFixture), slot);
+    placeMatchManually(option.dataset.pickerFixture, slot);
   });
   slotGrids.addEventListener('dragstart', event => {
     const match = event.target.closest('[data-manual-fixture]');
     if (!match) return;
-    selectedManualFixture = Number(match.dataset.manualFixture);
+    selectedManualFixture = match.dataset.manualFixture;
     event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData('text/plain', String(selectedManualFixture));
   });
@@ -1117,7 +1149,7 @@
     if (!slot) return;
     event.preventDefault();
     slot.classList.remove('is-drag-over');
-    placeMatchManually(Number(event.dataTransfer.getData('text/plain') || selectedManualFixture), slot);
+    placeMatchManually(event.dataTransfer.getData('text/plain') || selectedManualFixture, slot);
   });
   slotGrids.addEventListener('dragend', () => {
     slotGrids.querySelectorAll('.is-drag-over').forEach(slot => slot.classList.remove('is-drag-over'));
@@ -1125,7 +1157,7 @@
   slotGrids.addEventListener('click', event => {
     const match = event.target.closest('[data-manual-fixture]');
     if (match) {
-      selectedManualFixture = Number(match.dataset.manualFixture);
+      selectedManualFixture = match.dataset.manualFixture;
       slotGrids.querySelectorAll('[data-manual-fixture]').forEach(option => {
         const selected = option === match;
         option.classList.toggle('is-selected', selected);
@@ -1181,7 +1213,7 @@
       return;
     }
     if (applyButton) {
-      if (!payload || !revision || !confirm(`Apply only ${applyButton.dataset.venueName}? Its fixtures will stay fixed in future planning previews until you explicitly change this venue.`)) {
+      if (!payload || !revision) {
         matching.forEach(control => { control.disabled = false; });
         return;
       }
@@ -1208,7 +1240,6 @@
   document.getElementById('venue-slot-grids').addEventListener('click', handleVenueAction);
   const refreshAllAppliedVenues = async replanning => {
     const button = document.getElementById(replanning ? 'replan-all-applied' : 'keep-all-applied');
-    if (replanning && !confirm('Build replacement times for every applied venue? The saved schedule stays unchanged until you review and apply the new preview.')) return;
     const originalButtonHtml = button.innerHTML;
     button.disabled = true;
     button.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span> Building preview…';
@@ -1262,7 +1293,7 @@
     event.stopPropagation();
     control.disabled = true;
     try {
-      const result = await post(unapplyUrl, {fixture_id:Number(control.dataset.unapplyFixture)});
+      const result = await post(unapplyUrl, fixtureRef(control.dataset.unapplyFixture));
       payload = buildPayload();
       render(await post(previewUrl, payload));
       setStatus(document.getElementById('schedule-status'), result.message + ' The saved booking is removed and the unsaved suggestions were refreshed.', 'success');
@@ -1303,8 +1334,9 @@
   }));
 
   document.getElementById('generate-preview').addEventListener('click', async event => {
-    if ((allocationsDirty || scheduleDirty) && ! await saveAllocationsAndTiming(event.currentTarget)) return;
-    const button = event.currentTarget; payload = buildPayload(); revision = null; button.disabled = true;
+    const button = event.currentTarget;
+    if ((allocationsDirty || scheduleDirty) && ! await saveAllocationsAndTiming(button)) return;
+    payload = buildPayload(); revision = null; button.disabled = true;
     const originalButtonHtml = button.innerHTML;
     button.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span> Building preview…';
     document.getElementById('apply-preview').disabled = true;
@@ -1400,7 +1432,7 @@
     catch (error) { setStatus(document.getElementById('allocation-status'), error.message, 'danger'); event.currentTarget.disabled = false; }
   }));
   document.getElementById('apply-preview').addEventListener('click', async event => {
-    if (!payload || !revision || !confirm('Apply this combined schedule to every selected draw?')) return;
+    if (!payload || !revision) return;
     const button = event.currentTarget;
     const originalButtonHtml = button.innerHTML;
     button.disabled = true;

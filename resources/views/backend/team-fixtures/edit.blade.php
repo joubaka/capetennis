@@ -12,6 +12,7 @@
   @if($errors->any())<div class="alert alert-danger"><ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
   <form method="POST" action="{{ route('backend.team-fixtures.update', $team_fixture) }}">
     @csrf @method('PUT')
+    <input type="hidden" name="participant_revision" value="{{ app(\App\Services\TeamParticipantHistoryService::class)->revision($team_fixture) }}">
     <div class="card mb-3"><div class="card-header">Schedule</div><div class="card-body row g-3">
       <div class="col-md-4"><label class="form-label" for="scheduled_at">Time</label><input class="form-control" type="datetime-local" id="scheduled_at" name="scheduled_at" value="{{ old('scheduled_at', $team_fixture->scheduled_at?->format('Y-m-d\TH:i')) }}"></div>
       <div class="col-md-4"><label class="form-label" for="venue_id">Venue</label><select class="form-select" id="venue_id" name="venue_id"><option value="">Unassigned</option>@foreach($venues as $venue)<option value="{{ $venue->id }}" @selected(old('venue_id', $team_fixture->venue_id) == $venue->id)>{{ $venue->name }}</option>@endforeach</select></div>

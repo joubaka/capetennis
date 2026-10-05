@@ -36,6 +36,7 @@ class TeamFixture extends Model
     'venue_id',
     'court_label',
     'duration_min',
+    'gap_minutes',
     'match_status',
     // v2 rubber fields
     'team_tie_id',

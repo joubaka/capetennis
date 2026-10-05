@@ -99,9 +99,8 @@ class TeamScheduleController extends Controller
   public function indexAll(Event $event)
   {
     $this->authorize('team-schedule.view', $event);
-
-    $event->load('draws');
-    return view('backend.team-schedule.all', compact('event'));
+    $this->authorize('event.manage', $event);
+    return redirect()->route('backend.event-venue-schedule.index', $event);
   }
 
   public function dataAll(Event $event)

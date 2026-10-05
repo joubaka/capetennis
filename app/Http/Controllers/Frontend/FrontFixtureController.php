@@ -345,6 +345,7 @@ class FrontFixtureController extends Controller
       $rules["set{$i}_away"] = "nullable|required_with:set{$i}_home|integer|min:0";
     }
 
+    $rules['participant_revision'] = 'nullable|string|size:64';
     $validated = $request->validate($rules);
 
     app(TeamFixtureScoreService::class)->save($fixture, $validated);

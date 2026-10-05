@@ -2,7 +2,7 @@
 
 <a href="javascript:void(0);"
    class="btn btn-sm btn-outline-primary edit-score-btn"
-   data-id="{{ $fixture->id }}"
+   data-id="{{ $fixture->id }}" data-participant-revision="{{ app(\App\Services\TeamParticipantHistoryService::class)->revision($fixture) }}"
    data-home="{{ e($homeLabel) }}"
    data-away="{{ e($awayLabel) }}"
    data-action="{{ route('frontend.fixtures.score.store', $fixture->id) }}"
@@ -16,7 +16,7 @@
 @if($fixture->fixtureResults->count())
     <a href="javascript:void(0);"
        class="btn btn-sm btn-outline-danger delete-result-btn"
-       data-id="{{ $fixture->id }}"
+       data-id="{{ $fixture->id }}" data-participant-revision="{{ app(\App\Services\TeamParticipantHistoryService::class)->revision($fixture) }}"
        data-action="{{ route('frontend.fixtures.score.delete', $fixture->id) }}">
         <i class="bi bi-trash"></i> Delete Result
     </a>

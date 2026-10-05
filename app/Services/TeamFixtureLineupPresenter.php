@@ -41,6 +41,10 @@ class TeamFixtureLineupPresenter
         $positions = $template[$side.'_positions'] ?? [];
         $players = [];
         foreach ($fixture->fixturePlayers->sortBy('slot_no')->values() as $index => $row) {
+            $historical = $row->participant_snapshot[$home ? 1 : 2] ?? null;
+            $sideNumber = $home ? 1 : 2;
+            if ($historical && (($historical['profile_id'] ?? null) !== ($row->{'team'.$sideNumber.'_id'} ? (int) $row->{'team'.$sideNumber.'_id'} : null)
+                || ($historical['imported_id'] ?? null) !== ($row->{'team'.$sideNumber.'_no_profile_id'} ? (int) $row->{'team'.$sideNumber.'_no_profile_id'} : null))) $historical = null;
             $profile = $home ? $row->player1 : $row->player2;
             $imported = $home ? $row->noProfile1 : $row->noProfile2;
             $member = null;
@@ -49,12 +53,12 @@ class TeamFixtureLineupPresenter
                     : ($imported ? $source->team_players_no_profile->firstWhere('id', $imported->id) : null);
                 if ($member) break;
             }
-            $rank = $member?->rank;
+            $rank = $historical['rank'] ?? $member?->rank;
             if (!$rank && isset($positions[$index])) {
                 $rank = $entry ? (int) ceil($positions[$index] / 2) : $positions[$index];
             }
             $rank ??= $fixture->{$side.'_rank_nr'};
-            $name = $profile?->full_name ?? ($imported ? trim($imported->name.' '.$imported->surname) : 'TBD');
+            $name = $historical['name'] ?? $profile?->full_name ?? ($imported ? trim($imported->name.' '.$imported->surname) : 'TBD');
             $players[] = ['name' => $name, 'rank' => (int) $rank > 0 ? (int) $rank : null];
         }
         return ['region' => $label, 'players' => $players];

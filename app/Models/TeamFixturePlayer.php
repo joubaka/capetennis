@@ -14,6 +14,8 @@ class TeamFixturePlayer extends Model
 
     protected $table = 'team_fixture_players';
 
+    protected $casts = ['participant_snapshot' => 'array'];
+
     protected $fillable = [
       'team_fixture_id',
       'slot_no',

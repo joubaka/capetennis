@@ -2,7 +2,7 @@
 
 namespace App\Domain\Draws\Services;
 
-use App\Models\{Draw, Fixture, FlexibleMonradDraw, OrderOfPlay};
+use App\Models\{Draw, Fixture, FlexibleMonradDraw, OrderOfPlay, TeamFixture};
 use App\Services\Draw\FlexibleMonradService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -14,17 +14,25 @@ final class ScheduleAvailability
     private array $related = [];
 
     public static function load(array $venues, array $registrations, array $excludeFixtures = [], ?Draw $draw = null,
-        ?int $participantRest = null): self
+        ?int $participantRest = null, array $excludeTeamFixtures = []): self
     {
         $calendar = new self();
         $registrations = array_values(array_unique(array_filter($registrations)));
-        $players = DB::table('player_registrations')->whereIn('registration_id', $registrations)->get();
+        $profileIds = collect($registrations)->filter(fn ($id) => is_string($id) && str_starts_with($id, 'profile:'))
+            ->map(fn ($id) => (int) substr($id, 8))->all();
+        $registrationIds = array_values(array_filter($registrations, fn ($id) => is_numeric($id)));
+        $players = DB::table('player_registrations')->whereIn('registration_id', $registrationIds)
+            ->orWhereIn('player_id', $profileIds)->get();
         $memberships = DB::table('player_registrations')->whereIn('player_id', $players->pluck('player_id'))->get();
         foreach ($registrations as $id) {
             $playerIds = $players->where('registration_id', $id)->pluck('player_id')->all();
-            $calendar->related[$id] = array_unique(array_merge([$id], $memberships->whereIn('player_id', $playerIds)->pluck('registration_id')->all()));
+            $calendar->related[$id] = array_unique(array_merge([$id], array_map(fn ($playerId) => 'profile:'.$playerId, $playerIds), $memberships->whereIn('player_id', $playerIds)->pluck('registration_id')->all()));
         }
-        $allIds = array_unique(array_merge($registrations, $memberships->pluck('registration_id')->all()));
+        foreach ($memberships->groupBy('registration_id') as $id => $rows) {
+            $calendar->related[$id] = array_unique(array_merge($calendar->related[$id] ?? [$id],
+                $rows->pluck('player_id')->map(fn ($playerId) => 'profile:'.$playerId)->all()));
+        }
+        $allIds = array_unique(array_merge($registrationIds, $memberships->pluck('registration_id')->all()));
         // Future Monrad fixtures can have no resolved participants yet. Reserve their possible entrants too.
         $monrads = $allIds ? FlexibleMonradDraw::whereNotNull('graph')->when($draw, fn ($q) => $q->where('draw_id', '!=', $draw->id))->where(function ($q) use ($allIds) {
             foreach ($allIds as $id) $q->orWhereJsonContains('graph->players', (int) $id);
@@ -49,7 +57,7 @@ final class ScheduleAvailability
                 // Older trials bookings omit draw_id; the linked fixture owns the booking.
                 $q->whereIn('venue_id', $venues)->orWhereHas('fixture', fn ($f) => $f->where(fn ($linked) =>
                     $linked->whereIn('draw_id', $reservationDraws)->orWhereIn('registration1_id', $allIds)->orWhereIn('registration2_id', $allIds)));
-            })->get();
+            })->orderBy('id')->get();
         $monrad = $draw?->usesFlexibleMonrad() ?? false;
         foreach ($bookings as $slot) {
             $resolved = array_filter([$slot->fixture?->registration1_id, $slot->fixture?->registration2_id]);
@@ -65,7 +73,32 @@ final class ScheduleAvailability
             $calendar->reserveWithRest((int) $slot->venue_id, (string) $slot->court, Carbon::parse($slot->time),
                 $occupied, $participantMinutes, $participants);
         }
+        $teamBookings = TeamFixture::with(['fixturePlayers.noProfile1', 'fixturePlayers.noProfile2'])
+            ->whereNotNull('scheduled_at')->whereNotIn('id', $excludeTeamFixtures)
+            ->where(function ($query) use ($venues, $players, $registrations, $profileIds) {
+                $query->whereIn('venue_id', $venues)->orWhereHas('fixturePlayers', function ($slots) use ($players, $registrations, $profileIds) {
+                    $profiles = array_unique(array_merge($profileIds, $players->pluck('player_id')->all()));
+                    $noProfiles = collect($registrations)->filter(fn ($id) => is_string($id) && str_starts_with($id, 'no-profile:'))
+                        ->map(fn ($id) => (int) substr($id, 11))->all();
+                    $slots->whereIn('team1_id', $profiles)->orWhereIn('team2_id', $profiles)
+                        ->orWhereIn('team1_no_profile_id', $noProfiles)->orWhereIn('team2_no_profile_id', $noProfiles)
+                        ->orWhereHas('noProfile1', fn ($q) => $q->whereIn('player_profile', $profiles))
+                        ->orWhereHas('noProfile2', fn ($q) => $q->whereIn('player_profile', $profiles));
+                });
+            })->orderBy('id')->get();
+        foreach ($teamBookings as $fixture) {
+            $minutes = (int) ($fixture->duration_min ?: 120);
+            $calendar->reserveWithRest((int) $fixture->venue_id, (string) $fixture->court_label,
+                Carbon::parse($fixture->scheduled_at), $minutes + (int) ($fixture->gap_minutes ?? 0),
+                $minutes + max(0, $participantRest ?? (int) ($fixture->gap_minutes ?? 0)),
+                app(\App\Services\Scheduling\UnifiedTeamScheduleService::class)->participants($fixture));
+        }
         return $calendar;
+    }
+
+    public function fingerprint(): string
+    {
+        return hash('sha256', json_encode(['slots' => $this->slots, 'identities' => $this->related], JSON_THROW_ON_ERROR));
     }
 
     public static function legacyParticipants($fixtures): array
@@ -117,6 +150,32 @@ final class ScheduleAvailability
         return $result;
     }
 
+    public static function courtKey(string $court): string
+    {
+        $court = trim($court);
+        if (preg_match('/^(?:Court\\s*)?(\\d+)$/i', $court, $matches)) return (string) (int) $matches[1];
+        return $court;
+    }
+
+    private function identities(array $ids): array
+    {
+        $expanded = [];
+        foreach (array_filter($ids) as $id) $expanded = array_merge($expanded, $this->related[$id] ?? [$id]);
+        return array_values(array_unique($expanded));
+    }
+
+    public function venueChanges(array $ids, Carbon $at, int $venue): array
+    {
+        $changes = [];
+        foreach ($this->identities($ids) as $id) {
+            if (! is_string($id) || (! str_starts_with($id, 'profile:') && ! str_starts_with($id, 'no-profile:'))) continue;
+            $prior = array_filter($this->slots, fn ($slot) => $slot['start']->lte($at) && in_array($id, $slot['registrations'], true) && $slot['venue']);
+            usort($prior, fn ($a, $b) => $b['start'] <=> $a['start']);
+            if ($prior && $prior[0]['venue'] !== $venue) $changes[] = ['participant_id' => $id, 'from_venue_id' => $prior[0]['venue'], 'to_venue_id' => $venue];
+        }
+        return $changes;
+    }
+
     public function reserve(int $venue, string $court, Carbon $start, int $duration, array $registrations): void
     {
         $this->reserveWithRest($venue, $court, $start, $duration, $duration, $registrations);
@@ -125,9 +184,9 @@ final class ScheduleAvailability
     public function reserveWithRest(int $venue, string $court, Carbon $start, int $courtMinutes,
         int $participantMinutes, array $registrations, ?string $participantGroup = null): void
     {
-        $this->slots[] = ['venue' => $venue, 'court' => ctype_digit($court) ? (string) (int) $court : $court,
+        $this->slots[] = ['venue' => $venue, 'court' => self::courtKey($court),
             'start' => $start->copy(), 'court_end' => $start->copy()->addMinutes($courtMinutes),
-            'participant_end' => $start->copy()->addMinutes($participantMinutes), 'registrations' => $registrations,
+            'participant_end' => $start->copy()->addMinutes($participantMinutes), 'registrations' => $this->identities($registrations),
             'participant_group' => $participantGroup];
     }
 
@@ -139,9 +198,8 @@ final class ScheduleAvailability
     public function nextAvailableForMatch(Carbon $start, int $courtMinutes, int $participantMinutes,
         int $venue, string $court, array $registrations, ?string $participantGroup = null): Carbon
     {
-        $ids = [];
-        foreach (array_filter($registrations) as $id) $ids = array_merge($ids, $this->related[$id] ?? [$id]);
-        $court = ctype_digit($court) ? (string) (int) $court : $court;
+        $ids = $this->identities($registrations);
+        $court = self::courtKey($court);
         $slots = array_filter($this->slots, fn ($s) => ($s['venue'] === $venue && $s['court'] === $court)
             || (! $participantGroup || $s['participant_group'] !== $participantGroup)
                 && array_intersect($ids, $s['registrations']));

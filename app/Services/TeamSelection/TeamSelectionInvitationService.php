@@ -1363,8 +1363,11 @@ final class TeamSelectionInvitationService
         });
     }
 
-    public function assertRosterEditable(Team $team): void
+    public function assertRosterEditable(Team $team, bool $competitionTransition = false): void
     {
+        if (!$competitionTransition && \App\Models\TeamSubstitution::where('event_id', $team->category->event_id)->exists()) {
+            throw ValidationException::withMessages(['team' => 'This event has competition substitution history. Use the replacement wizard; generic roster edits are blocked to preserve fixture and payment history.']);
+        }
         $managed = TeamSelectionInvitation::query()
             ->where('team_id', $team->id)
             ->whereHas('selectionImport', fn ($query) => $query->whereIn('status', ['draft', 'sent']))

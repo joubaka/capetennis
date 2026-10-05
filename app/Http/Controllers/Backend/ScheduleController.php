@@ -19,22 +19,8 @@ class ScheduleController extends Controller
   public function schedulePage(Draw $draw)
   {
     $this->authorize('view', $draw);
-    $draw->load(['event', 'venues']);
-
-    // Cavaliers Trials (eventType 5)
-    if ($draw->event->eventType == 5 && ! $draw->usesFlexibleMonrad()) {
-    
-      return view('backend.schedule.cavaliers-trials-schedule', [
-        'draw' => $draw,
-        'event' => $draw->event,
-      ]);
-    }
-
-    // Default (individual schedule)
-    return view('backend.schedule.individual-schedule', [
-      'draw' => $draw,
-      'event' => $draw->event,
-    ]);
+    $this->authorize('event.manage', $draw->event);
+    return redirect()->route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]);
   }
 
 

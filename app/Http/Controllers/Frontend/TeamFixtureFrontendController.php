@@ -111,7 +111,8 @@ class TeamFixtureFrontendController extends Controller
           $rules["set{$i}_home"] = "{$required}|required_with:set{$i}_away|integer|min:0";
           $rules["set{$i}_away"] = "{$required}|required_with:set{$i}_home|integer|min:0";
       }
-      $validated = $request->validate($rules);
+      $rules['participant_revision'] = 'nullable|string|size:64';
+    $validated = $request->validate($rules);
 
       app(TeamFixtureScoreService::class)->save($fixture, $validated);
       DrawAuditLog::record($fixture->draw_id, $previousSets ? 'score_corrected' : 'score_saved', $fixture->id, [

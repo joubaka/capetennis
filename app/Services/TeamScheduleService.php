@@ -17,11 +17,12 @@ final class TeamScheduleService
     public function save(Draw $draw, array $data): void
     {
         DB::transaction(function () use ($draw, $data) {
+            DB::table('venues')->orderBy('id')->limit(1)->lockForUpdate()->get();
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
             $this->lockScheduler();
             $fixture = TeamFixture::where('draw_id', $draw->id)->whereKey($data['fixture_id'])->lockForUpdate()->firstOrFail();
             $fixture->setRelation('draw', $draw);
-            $fields = array_intersect_key($data, array_flip(['scheduled_at', 'venue_id', 'court_label', 'duration_min']));
+            $fields = array_intersect_key($data, array_flip(['scheduled_at', 'venue_id', 'court_label', 'duration_min', 'gap_minutes']));
             $fixture->fill($fields);
             if (!$fixture->isDirty()) {
                 return;
@@ -43,6 +44,12 @@ final class TeamScheduleService
                 $end = $start->copy()->addMinutes((int) ($fixture->duration_min ?: 120));
                 $court = $this->court($fixture->court_label);
                 $players = $this->players($fixture);
+                $identityIds = app(\App\Services\Scheduling\UnifiedTeamScheduleService::class)->participants($fixture);
+                $calendar = \App\Domain\Draws\Services\ScheduleAvailability::load([$fixture->venue_id], $identityIds, [], null, 0, [$fixture->id]);
+                if ($calendar->nextAvailable($start, (int) ($fixture->duration_min ?: 120) + (int) ($fixture->gap_minutes ?? 0), (int) $fixture->venue_id,
+                    (string) $fixture->court_label, $identityIds)->gt($start)) {
+                    throw ValidationException::withMessages(['scheduled_at' => 'This time overlaps a court or player booking.']);
+                }
                 foreach (TeamFixture::with('fixturePlayers')->whereKeyNot($fixture->id)
                     ->whereNotNull('scheduled_at')->where('scheduled_at', '<', $end)->lockForUpdate()->get() as $existing) {
                     $booking = $this->booking($existing, Carbon::parse($existing->scheduled_at),
@@ -87,6 +94,7 @@ final class TeamScheduleService
     public function automatic(Collection $draws, array $data, bool $reset = false): array
     {
         return DB::transaction(function () use ($draws, $data, $reset) {
+            DB::table('venues')->orderBy('id')->limit(1)->lockForUpdate()->get();
             $guard = app(TeamDrawMutationGuard::class);
             $lockedDraws = Draw::whereIn('id', $draws->pluck('id'))->orderBy('id')->lockForUpdate()->get();
             $this->lockScheduler();
@@ -143,6 +151,9 @@ final class TeamScheduleService
             }
             $rounds = collect(is_array($data['round'] ?? null) ? $data['round'] : explode(',', (string) ($data['round'] ?? '')))
                 ->map(fn ($round) => trim((string) $round))->filter(fn ($round) => $round !== '')->values();
+            $identityIds = TeamFixture::with(['fixturePlayers.noProfile1', 'fixturePlayers.noProfile2'])->whereIn('draw_id', $lockedDraws->pluck('id'))->get()
+                ->flatMap(fn ($fixture) => app(\App\Services\Scheduling\UnifiedTeamScheduleService::class)->participants($fixture))->unique()->all();
+            $calendar = \App\Domain\Draws\Services\ScheduleAvailability::load($allVenueIds, $identityIds, [], null, $gap);
             $assigned = [];
             $skipped = [];
             foreach ($lockedDraws as $draw) {
@@ -160,6 +171,7 @@ final class TeamScheduleService
                     $mapped = $data['rank_venue_map'][$rank] ?? null;
                     $venues = $venuesByDraw[$draw->id]->when($mapped, fn ($v) => $v->where('id', $mapped));
                     $players = $this->players($fixture);
+                    $identityIds = app(\App\Services\Scheduling\UnifiedTeamScheduleService::class)->participants($fixture);
                     $best = null;
                     foreach ($venues as $venue) {
                         $courts = max(1, (int) ($venue->pivot->num_courts ?? 1));
@@ -182,6 +194,8 @@ final class TeamScheduleService
                                     }
                                 }
                             } while ($moved && $candidate->copy()->addMinutes($duration)->lte($end));
+                            $candidate = $calendar->nextAvailableForMatch($candidate, $duration + $gap, $duration + $gap,
+                                (int) $venue->id, (string) $court, $identityIds);
                             if ($candidate->copy()->addMinutes($duration)->lte($end)
                                 && ($best === null || $candidate->lt($best['start']))) {
                                 $best = ['start' => $candidate, 'venue' => (int) $venue->id, 'court' => $court];
@@ -194,7 +208,8 @@ final class TeamScheduleService
                     }
                     $fixture->forceFill(['scheduled_at' => $best['start'], 'venue_id' => $best['venue'],
                         'court_label' => "Court {$best['court']}", 'duration_min' => $duration,
-                        'scheduled' => 1, 'clash_flag' => false])->save();
+                        'gap_minutes' => $gap, 'scheduled' => 1, 'clash_flag' => false])->save();
+                    $calendar->reserveWithRest($best['venue'], (string) $best['court'], $best['start'], $duration + $gap, $duration + $gap, $identityIds);
                     $bookings[] = $this->booking($fixture, $best['start'], $best['start']->copy()->addMinutes($duration));
                     $assigned[] = ['fixture_id' => $fixture->id, 'draw_id' => $draw->id, 'venue_id' => $best['venue'],
                         'court' => $fixture->court_label, 'scheduled_at' => $best['start']->format('Y-m-d H:i'), 'duration' => $duration];
@@ -208,6 +223,7 @@ final class TeamScheduleService
     public function clear(Collection $draws): void
     {
         DB::transaction(function () use ($draws) {
+            DB::table('venues')->orderBy('id')->limit(1)->lockForUpdate()->get();
             $locked = Draw::whereIn('id', $draws->pluck('id'))->orderBy('id')->lockForUpdate()->get();
             $this->lockScheduler();
             TeamFixture::whereIn('draw_id', $locked->pluck('id'))->orderBy('id')->lockForUpdate()->get();
@@ -221,7 +237,7 @@ final class TeamScheduleService
     private function clearRows(array $ids): void
     {
         TeamFixture::whereIn('draw_id', $ids)->update(['scheduled_at' => null, 'venue_id' => null,
-            'court_label' => null, 'duration_min' => null, 'clash_flag' => false, 'scheduled' => 0]);
+            'court_label' => null, 'duration_min' => null, 'gap_minutes' => 0, 'clash_flag' => false, 'scheduled' => 0]);
     }
 
     private function lockScheduler(): void

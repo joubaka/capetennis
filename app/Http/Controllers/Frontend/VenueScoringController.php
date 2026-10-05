@@ -217,11 +217,18 @@ class VenueScoringController extends Controller
     public function setTeamFixturePlaying(Request $request, Event $event, TeamFixture $fixture): JsonResponse
     {
         $this->authorize('event.score', $event);
-        $validated = $request->validate(['playing' => ['sometimes', 'boolean']]);
+        $validated = $request->validate(['playing' => ['sometimes', 'boolean'], 'participant_revision' => ['nullable', 'string', 'size:64']]);
         $playing = array_key_exists('playing', $validated) ? (bool) $validated['playing'] : true;
 
         return DB::transaction(function () use ($request, $event, $fixture, $playing): JsonResponse {
-            $fixture = TeamFixture::query()->lockForUpdate()->with(['draw', 'fixtureResults'])->findOrFail($fixture->id);
+            \App\Models\Event::whereKey($event->id)->lockForUpdate()->firstOrFail();
+            $draw = \App\Models\Draw::whereKey($fixture->draw_id)->lockForUpdate()->firstOrFail();
+            $tie = $fixture->team_tie_id ? \App\Models\TeamTie::whereKey($fixture->team_tie_id)->lockForUpdate()->firstOrFail() : null;
+            $fixture = TeamFixture::query()->lockForUpdate()->findOrFail($fixture->id);
+            abort_if($fixture->draw_id !== $draw->id || $fixture->team_tie_id !== $tie?->id, 409, 'Fixture relationships changed.');
+            $fixture->setRelation('draw', $draw);
+            $fixture->setRelation('fixtureResults', $fixture->fixtureResults()->lockForUpdate()->get());
+            app(\App\Services\TeamParticipantHistoryService::class)->assertRevision($fixture, (int) $draw->event_id, $request->input('participant_revision'));
 
             abort_unless((int) $fixture->draw?->event_id === (int) $event->id, 404);
             $this->authorize('team-fixture.saveScore', $fixture);

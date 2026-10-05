@@ -1206,6 +1206,11 @@ Route::delete(
   Route::post('team-fixtures/replace-player', [\App\Http\Controllers\Backend\TeamFixtureController::class, 'replacePlayerInEvent'])
     ->name('backend.team-fixtures.replacePlayer')
     ->middleware(['auth', 'role:super-user|admin']);
+
+  Route::get('teams/{team}/substitutions', [\App\Http\Controllers\Backend\TeamSubstitutionController::class, 'show'])->name('backend.team-substitutions.show')->middleware(['auth', 'role:super-user|admin']);
+  Route::get('teams/{team}/substitutions/players', [\App\Http\Controllers\Backend\TeamSubstitutionController::class, 'players'])->name('backend.team-substitutions.players')->middleware(['auth', 'role:super-user|admin']);
+  Route::post('teams/{team}/substitutions/preview', [\App\Http\Controllers\Backend\TeamSubstitutionController::class, 'preview'])->name('backend.team-substitutions.preview')->middleware(['auth', 'role:super-user|admin']);
+  Route::post('teams/{team}/substitutions', [\App\Http\Controllers\Backend\TeamSubstitutionController::class, 'store'])->name('backend.team-substitutions.store')->middleware(['auth', 'role:super-user|admin']);
   // Add this GET route (inside your backend prefix/middleware group) so admin can open the replace form.
 // Place it near other backend/team-fixtures routes.
 
@@ -1389,6 +1394,8 @@ Route::delete(
      ->name('headoffice.previewTeamDraw');
 
   // Team event scoreboard (admin/backend view)
+  Route::get('event/{event}/standings', [\App\Http\Controllers\Backend\EventStandingsController::class, 'show'])
+    ->name('admin.events.standings');
   Route::get('event/{event}/team-scoreboard', [ScoreboardController::class, 'showScoreboard'])
     ->name('backend.scoreboard.team.show');
 

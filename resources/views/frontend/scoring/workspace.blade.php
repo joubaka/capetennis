@@ -381,7 +381,7 @@
               <div class="match-actions">
                 @unless($hasScore)
                 <button type="button" class="btn btn-sm {{ $isPlaying ? 'btn-outline-secondary' : 'btn-outline-warning' }} score-action js-toggle-match"
-                        data-playing-url="{{ $playingUrl }}"
+                        data-playing-url="{{ $playingUrl }}" data-participant-revision="{{ $engine === 'team' ? app(\App\Services\TeamParticipantHistoryService::class)->revision($match) : '' }}"
                         data-playing="{{ $isPlaying ? 'false' : 'true' }}"
                         aria-label="Mark {{ $home }} versus {{ $away }} as {{ $isPlaying ? 'off' : 'on' }} court">
                   {{ $isPlaying ? 'Mark off court' : 'Mark as on court' }}
@@ -389,7 +389,7 @@
                 @endunless
                 <button type="button" class="btn btn-sm btn-primary score-action js-open-score"
                       data-fixture="{{ $match->id }}" data-home="{{ $home }}" data-away="{{ $away }}"
-                      data-engine="{{ $engine }}"
+                      data-engine="{{ $engine }}" data-participant-revision="{{ $engine === 'team' ? app(\App\Services\TeamParticipantHistoryService::class)->revision($match) : '' }}"
                       data-store="{{ $isFlexible ? $flexibleUrl : $normalStore }}"
                       data-delete="{{ $isFlexible ? $flexibleUrl : $normalDelete }}"
                       data-revision="{{ $draw->flexibleMonrad?->revision ?? 0 }}"
@@ -629,7 +629,7 @@ document.addEventListener('DOMContentLoaded', function () {
       const playing = toggleButton.dataset.playing === 'true';
       if (!playing && !confirm('Mark these players off court? The match will return to Awaiting court.')) return;
       toggleButton.disabled = true;
-      request(toggleButton.dataset.playingUrl, 'POST', {playing: playing})
+      request(toggleButton.dataset.playingUrl, 'POST', {playing: playing, participant_revision: toggleButton.dataset.participantRevision || undefined})
         .then(async function (result) {
           await refreshWorkspace(window.location.href);
           showWorkspaceNotice(result.message, playing ? 'success' : 'warning');
@@ -705,7 +705,7 @@ document.addEventListener('DOMContentLoaded', function () {
           await request(active.store, 'PUT', {sets: sets, revision: Number(active.revision), reset_dependents: true});
         }
       } else if (active.engine === 'team') {
-        const teamPayload = {};
+        const teamPayload = {participant_revision: active.participantRevision};
         sets.forEach(function (set, index) {
           teamPayload['set' + (index + 1) + '_home'] = set[0];
           teamPayload['set' + (index + 1) + '_away'] = set[1];

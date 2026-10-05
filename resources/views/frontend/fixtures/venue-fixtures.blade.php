@@ -39,6 +39,7 @@
                                 @endif
                                 @can('team-fixture.saveScore', $fx)
                                     <form method="POST" action="{{ route('frontend.fixtures.score.store', $fx->id) }}">
+                                        <input type="hidden" name="participant_revision" value="{{ app(\App\Services\TeamParticipantHistoryService::class)->revision($fx) }}">
                                         @csrf
                                         @for($set = 1; $set <= ($fx->draw->team_scoring_rules ? app(\App\Services\TeamRubberResultService::class)->rules($fx)['sets_to_win'] * 2 - 1 : 3); $set++)
                                             @php $existing = $fx->fixtureResults->firstWhere('set_nr', $set); @endphp

@@ -2,6 +2,7 @@
 
 {{-- Page JS --}}
 @section('page-script')
+@include('backend.team-fixtures.partials.participant-revision-script')
 <script src="{{ asset(mix('js/insert-score.js')) }}"></script>
 @endsection
 @section('title', 'Enter Fixture Scores')
@@ -185,6 +186,3 @@
 }
 </style>
 @endsection
-
-
-

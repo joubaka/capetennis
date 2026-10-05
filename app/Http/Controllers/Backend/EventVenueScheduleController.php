@@ -4,11 +4,12 @@ namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
 use App\Domain\Draws\Services\ScheduleConflictService;
-use App\Models\{DrawAuditLog, Event, Fixture, OrderOfPlay, Venue};
+use App\Models\{DrawAuditLog, Event, Fixture, OrderOfPlay, TeamFixture, Venue};
 use App\Services\EventAnnouncementService;
 use App\Services\ScheduleEngine;
 use App\Services\Scheduling\EventVenueScheduleService;
 use App\Services\Scheduling\RoundRobinPlayoffScheduleService;
+use App\Services\Scheduling\UnifiedTeamScheduleService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -40,6 +41,13 @@ final class EventVenueScheduleController extends Controller
             ->whereIn('fixtures.draw_id', $eventDraws->pluck('id'))->whereNotNull('order_of_plays.time')
             ->groupBy('fixtures.draw_id')->selectRaw('fixtures.draw_id, COUNT(*) as aggregate')
             ->pluck('aggregate', 'fixtures.draw_id');
+        $teamScheduledCounts = TeamFixture::whereIn('draw_id', $eventDraws->pluck('id'))
+            ->whereNotNull('scheduled_at')->selectRaw('draw_id, COUNT(*) as aggregate')
+            ->groupBy('draw_id')->pluck('aggregate', 'draw_id');
+        $scheduledCounts = $scheduledCounts->map(fn ($count, $id) => (int) $count + (int) ($teamScheduledCounts[$id] ?? 0));
+        foreach ($teamScheduledCounts as $id => $count) {
+            if (! $scheduledCounts->has($id)) $scheduledCounts[$id] = (int) $count;
+        }
 
         $draws = $eventDraws->map(function ($draw) use ($courtAllocations, $scheduledCounts, $selectionSupplied, $requestedDrawIds) {
             $allocations = [];
@@ -52,6 +60,7 @@ final class EventVenueScheduleController extends Controller
                 'court_allocations' => $allocations,
                 'applied_match_count' => (int) ($scheduledCounts[$draw->id] ?? 0),
                 'locked' => (bool) $draw->locked, 'published' => (bool) $draw->published,
+                'is_team' => $draw->isTeamDraw(),
                 'selected' => ! $selectionSupplied || $requestedDrawIds->contains((int) $draw->id)];
         });
         $venues = $availableVenues->map(function ($venue) use ($drawVenues, $courtRows) {
@@ -87,6 +96,7 @@ final class EventVenueScheduleController extends Controller
             'draw_starts' => [],
             'venue_starts' => [],
             'reschedule_existing' => false,
+            'round_progression' => 'team_ready',
         ], $storedScheduleDraft);
         foreach (['start', 'end'] as $key) {
             if (! empty($scheduleDraft[$key])) {
@@ -164,32 +174,37 @@ final class EventVenueScheduleController extends Controller
             'courts' => ['required', 'integer', 'min:1', 'max:100'],
             'ball_type' => ['required', 'in:orange,green,yellow,red,standard'],
         ]);
-        $drawIds = $event->draws()->pluck('id');
-        $belongs = $event->venues()->whereKey($venue->id)->exists()
-            || DB::table('draw_venues')->whereIn('draw_id', $drawIds)->where('venue_id', $venue->id)->exists();
-        abort_unless($belongs, 404);
+        return DB::transaction(function () use ($event, $venue, $data) {
+            Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
+            DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
+            $drawIds = $event->draws()->pluck('id');
+            $belongs = $event->venues()->whereKey($venue->id)->exists()
+                || DB::table('draw_venues')->whereIn('draw_id', $drawIds)->where('venue_id', $venue->id)->exists();
+            abort_unless($belongs, 404);
 
-        $labels = array_map('strval', range(1, $data['courts']));
-        $existing = DB::table('event_venue_courts')->where('event_id', $event->id)
-            ->where('venue_id', $venue->id)->pluck('label')->map(fn ($label) => (string) $label);
-        $removed = $existing->diff($labels)->values();
-        if ($removed->isNotEmpty()) {
-            $lockedAllocation = DB::table('draw_venue_court_allocations')->join('draws', 'draws.id', '=', 'draw_venue_court_allocations.draw_id')
-                ->where('draws.event_id', $event->id)->where('draw_venue_court_allocations.venue_id', $venue->id)
-                ->whereIn('draw_venue_court_allocations.court_label', $removed)
-                ->where(fn ($query) => $query->where('draws.locked', true)->orWhere('draws.published', true))->exists();
-            if ($lockedAllocation) return response()->json([
-                'message' => 'A court being removed is allocated to a locked or published draw and cannot be changed.',
-            ], 422);
-            $fixtureIds = Fixture::whereIn('draw_id', $drawIds)->pluck('id');
-            $scheduled = OrderOfPlay::where('venue_id', $venue->id)->whereIn('court', $removed)
-                ->where(fn ($query) => $query->whereIn('draw_id', $drawIds)->orWhereIn('fixture_id', $fixtureIds))->exists();
-            if ($scheduled) return response()->json([
-                'message' => 'A court being removed already has scheduled matches. Clear those bookings before reducing or replacing the courts.',
-            ], 422);
-        }
+            $labels = array_map('strval', range(1, $data['courts']));
+            $existing = DB::table('event_venue_courts')->where('event_id', $event->id)
+                ->where('venue_id', $venue->id)->pluck('label')->map(fn ($label) => (string) $label);
+            $removed = $existing->diff($labels)->values();
+            if ($removed->isNotEmpty()) {
+                $lockedAllocation = DB::table('draw_venue_court_allocations')->join('draws', 'draws.id', '=', 'draw_venue_court_allocations.draw_id')
+                    ->where('draws.event_id', $event->id)->where('draw_venue_court_allocations.venue_id', $venue->id)
+                    ->whereIn('draw_venue_court_allocations.court_label', $removed)
+                    ->where(fn ($query) => $query->where('draws.locked', true)->orWhere('draws.published', true))->exists();
+                if ($lockedAllocation) return response()->json([
+                    'message' => 'A court being removed is allocated to a locked or published draw and cannot be changed.',
+                ], 422);
+                $fixtureIds = Fixture::whereIn('draw_id', $drawIds)->pluck('id');
+                $scheduled = OrderOfPlay::where('venue_id', $venue->id)->whereIn('court', $removed)
+                    ->where(fn ($query) => $query->whereIn('draw_id', $drawIds)->orWhereIn('fixture_id', $fixtureIds))->exists();
+                $teamScheduled = TeamFixture::whereIn('draw_id', $drawIds)->where('venue_id', $venue->id)
+                    ->whereNotNull('scheduled_at')->get()->contains(fn ($fixture) => $removed->contains(
+                        \App\Domain\Draws\Services\ScheduleAvailability::courtKey((string) $fixture->court_label)));
+                if ($scheduled || $teamScheduled) return response()->json([
+                    'message' => 'A court being removed already has scheduled matches. Clear those bookings before reducing or replacing the courts.',
+                ], 422);
+            }
 
-        DB::transaction(function () use ($event, $venue, $drawIds, $labels, $removed, $data) {
             if ($removed->isNotEmpty()) {
                 DB::table('draw_venue_court_allocations')->whereIn('draw_id', $drawIds)->where('venue_id', $venue->id)
                     ->whereIn('court_label', $removed)->delete();
@@ -204,9 +219,9 @@ final class EventVenueScheduleController extends Controller
             $event->venues()->syncWithoutDetaching([$venue->id => ['num_courts' => $data['courts']]]);
             DB::table('draw_venues')->whereIn('draw_id', $drawIds)->where('venue_id', $venue->id)
                 ->update(['num_courts' => $data['courts'], 'updated_at' => now()]);
-        });
 
-        return response()->json(['message' => "{$venue->name} now has {$data['courts']} {$data['ball_type']} courts."]);
+            return response()->json(['message' => "{$venue->name} now has {$data['courts']} {$data['ball_type']} courts."]);
+        });
     }
 
     public function updateAssignments(Request $request, Event $event)
@@ -235,6 +250,7 @@ final class EventVenueScheduleController extends Controller
             'schedule.venue_starts.*.venue_id' => ['required', 'integer', 'distinct'],
             'schedule.venue_starts.*.start' => ['required', 'date'],
             'schedule.reschedule_existing' => ['required', 'boolean'],
+            'schedule.round_progression' => ['sometimes', 'in:team_ready,all_round'],
         ]);
         $draws = $event->draws()->whereIn('id', collect($data['assignments'])->pluck('draw_id'))->get()->keyBy('id');
         if ($draws->count() !== count($data['assignments'])) abort(422, 'One or more draws do not belong to this event.');
@@ -254,10 +270,13 @@ final class EventVenueScheduleController extends Controller
         $unscheduled = 0;
         try {
             DB::transaction(function () use ($data, $draws, $courtCounts, $event, $request, &$unscheduled) {
+                Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
+                DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
+                $draws = $event->draws()->whereIn('id', $draws->keys())->orderBy('id')->lockForUpdate()->get()->keyBy('id');
                 foreach ($data['assignments'] as $assignment) {
                     $draw = $draws[(int) $assignment['draw_id']];
-                    if ($draw->locked || $draw->published) {
-                        throw new \InvalidArgumentException("{$draw->drawName} is locked or published and its venue allocation cannot change.");
+                    if ($draw->locked) {
+                        throw new \InvalidArgumentException("{$draw->drawName} is locked and its venue allocation cannot change.");
                     }
                     $venueIds = array_map('intval', $assignment['venue_ids']);
                     $allocationVenueIds = collect($assignment['court_allocations'])->pluck('venue_id')->map(fn ($venueId) => (int) $venueId);
@@ -273,15 +292,28 @@ final class EventVenueScheduleController extends Controller
                     }
                     $before = $draw->venues()->pluck('venues.id')->map(fn ($id) => (int) $id)->all();
                     $removed = array_diff($before, $venueIds);
+                    Fixture::where('draw_id', $draw->id)->orderBy('id')->lockForUpdate()->get();
+                    TeamFixture::where('draw_id', $draw->id)->orderBy('id')->lockForUpdate()->get();
                     $affected = OrderOfPlay::whereHas('fixture', fn ($query) => $query->where('draw_id', $draw->id))
                         ->whereIn('venue_id', $removed);
-                    if ((clone $affected)->whereHas('fixture.fixtureResults')->exists()) {
+                    if ((clone $affected)->whereHas('fixture', fn ($query) => $query->whereHas('fixtureResults')->orWhere('match_status', '!=', 0))->exists()) {
                         throw new \InvalidArgumentException("{$draw->drawName} has played matches at a venue being removed.");
                     }
                     $affectedFixtureIds = (clone $affected)->pluck('fixture_id');
+                    $teamAffected = TeamFixture::where('draw_id', $draw->id)->whereIn('venue_id', $removed);
+                    if ((clone $teamAffected)->where(fn ($query) => $query->whereHas('fixtureResults')
+                        ->orWhere('match_status', '!=', 0)->orWhereHas('teamTie', fn ($ties) => $ties->where('status', 'completed')))->exists()) {
+                        throw new \InvalidArgumentException("{$draw->drawName} has play at a venue being removed.");
+                    }
+                    $teamAffectedIds = (clone $teamAffected)->pluck('id');
+                    $removalError = app(EventVenueScheduleService::class)->removalError($event, $affectedFixtureIds->all(), $teamAffectedIds->all());
+                    if ($removalError) throw new \InvalidArgumentException($removalError);
                     $unscheduled += $affectedFixtureIds->count();
+                    $unscheduled += $teamAffectedIds->count();
                     $affected->delete();
                     Fixture::whereIn('id', $affectedFixtureIds)->update(['scheduled' => 0]);
+                    TeamFixture::whereIn('id', $teamAffectedIds)->update(['scheduled_at' => null, 'scheduled' => 0,
+                        'venue_id' => null, 'court_label' => null, 'duration_min' => null, 'clash_flag' => false]);
                     $draw->venues()->sync(collect($venueIds)->mapWithKeys(fn ($venueId) => [
                         $venueId => ['num_courts' => $courtCounts[$venueId]],
                     ])->all());
@@ -296,6 +328,15 @@ final class EventVenueScheduleController extends Controller
                             ->where('venue_id', $venueId)->where('active', true)->pluck('label')->map(fn ($label) => (string) $label)->all();
                         if (array_diff($allocation['court_labels'], $validLabels)) {
                             throw new \InvalidArgumentException('A selected court is not active at this venue.');
+                        }
+                        $occupied = OrderOfPlay::whereHas('fixture', fn ($query) => $query->where('draw_id', $draw->id))
+                            ->where('venue_id', $venueId)->whereNotNull('time')->pluck('court');
+                        $occupied = $occupied->merge(TeamFixture::where('draw_id', $draw->id)->where('venue_id', $venueId)
+                            ->whereNotNull('scheduled_at')->pluck('court_label'))
+                            ->map(fn ($label) => \App\Domain\Draws\Services\ScheduleAvailability::courtKey((string) $label));
+                        $permitted = collect($allocation['court_labels'])->map(fn ($label) => \App\Domain\Draws\Services\ScheduleAvailability::courtKey((string) $label));
+                        if ($occupied->diff($permitted)->isNotEmpty()) {
+                            throw new \InvalidArgumentException('Move the scheduled matches before removing their court allocation.');
                         }
                         foreach (array_unique($allocation['court_labels']) as $label) {
                             DB::table('draw_venue_court_allocations')->insert([
@@ -361,6 +402,7 @@ final class EventVenueScheduleController extends Controller
             'draw_id' => ['nullable', 'integer'],
             'venue_id' => ['nullable', 'integer'],
             'fixture_id' => ['nullable', 'integer'],
+            'fixture_kind' => ['sometimes', 'in:individual,team'],
         ]);
         $drawId = isset($data['draw_id']) ? (int) $data['draw_id'] : null;
         $venueId = isset($data['venue_id']) ? (int) $data['venue_id'] : null;
@@ -369,6 +411,9 @@ final class EventVenueScheduleController extends Controller
             return response()->json(['message' => 'Choose one match, one draw, or one venue to return to planning.'], 422);
         }
         try {
+            if ($fixtureId && ($data['fixture_kind'] ?? 'individual') === 'team') {
+                return response()->json(app(UnifiedTeamScheduleService::class)->unapply($event, null, null, $fixtureId));
+            }
             return response()->json($scheduler->unapply($event, $drawId, $venueId, $fixtureId));
         } catch (\InvalidArgumentException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
@@ -381,16 +426,31 @@ final class EventVenueScheduleController extends Controller
         $this->authorize('event.manage', $event);
         $data = $request->validate([
             'fixture_id' => ['required', 'integer'],
+            'fixture_kind' => ['sometimes', 'in:individual,team'],
             'scheduled_at' => ['required', 'date'],
             'venue_id' => ['required', 'integer'],
             'court' => ['required', 'string', 'max:50', 'regex:/\S/'],
             'duration' => ['required', 'integer', 'min:15', 'max:480'],
             'court_gap' => ['required', 'integer', 'min:0', 'max:120'],
             'player_rest' => ['required', 'integer', 'min:0', 'max:480'],
+            'round_progression' => ['sometimes', 'in:team_ready,all_round'],
         ]);
 
         try {
+            if (($data['fixture_kind'] ?? 'individual') === 'team') {
+                $target = TeamFixture::whereHas('draw', fn ($query) => $query->where('event_id', $event->id))->findOrFail($data['fixture_id']);
+                $warnings = app(UnifiedTeamScheduleService::class)->warnings($target, $data);
+                $fixture = app(UnifiedTeamScheduleService::class)->assign($event, $data);
+                return response()->json([
+                    'warnings' => $warnings,
+                    'message' => 'Rubber assigned to '.$fixture->venue->name.' · Court '.$fixture->court_label.' · '.$fixture->scheduled_at->format('d M Y H:i').'.',
+                    'assignment' => ['fixture_id' => $fixture->id, 'fixture_kind' => 'team', 'fixture_key' => 'team:'.$fixture->id,
+                        'venue_id' => (int) $fixture->venue_id, 'court' => $fixture->court_label,
+                        'scheduled_at' => $fixture->scheduled_at->format('Y-m-d H:i:s')],
+                ]);
+            }
             $slot = DB::transaction(function () use ($data, $event, $conflicts, $scheduleEngine) {
+                Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
                 DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
                 $fixture = Fixture::with(['draw.venues', 'draw.flexibleMonrad', 'draw.settings', 'fixtureResults', 'orderOfPlay'])
                     ->whereHas('draw', fn ($draws) => $draws->where('event_id', $event->id))
@@ -403,7 +463,7 @@ final class EventVenueScheduleController extends Controller
                 if ($error) throw new \InvalidArgumentException($error);
 
                 $slot = $scheduleEngine->saveFixture($fixture->draw, $fixture->id, $data['scheduled_at'],
-                    $venueId, $court, (int) $data['duration'], false, false);
+                    $venueId, $court, (int) $data['duration'], true, true);
                 $slot->update(['gap_minutes' => (int) $data['court_gap']]);
                 DrawAuditLog::record($fixture->draw_id, 'event_venue_match_manually_scheduled', null, [
                     'event_id' => $event->id, 'fixture_id' => $fixture->id, 'venue_id' => $venueId,
@@ -430,13 +490,30 @@ final class EventVenueScheduleController extends Controller
         $data = $request->validate([
             'fixture_ids' => ['required', 'array', 'max:200'],
             'fixture_ids.*' => ['required', 'integer', 'distinct'],
+            'fixture_kind' => ['sometimes', 'in:individual,team'],
             'scheduled_at' => ['required', 'date'],
             'venue_id' => ['required', 'integer'],
             'court' => ['required', 'string', 'max:50', 'regex:/\S/'],
             'duration' => ['required', 'integer', 'min:15', 'max:480'],
             'court_gap' => ['required', 'integer', 'min:0', 'max:120'],
             'player_rest' => ['required', 'integer', 'min:0', 'max:480'],
+            'round_progression' => ['sometimes', 'in:team_ready,all_round'],
         ]);
+
+        if (($data['fixture_kind'] ?? 'individual') === 'team') {
+            $fixtures = TeamFixture::whereIn('id', $data['fixture_ids'])
+                ->whereHas('draw', fn ($draws) => $draws->where('event_id', $event->id))->get()->keyBy('id');
+            $eligible = [];
+            $blocked = [];
+            foreach ($data['fixture_ids'] as $id) {
+                $fixture = $fixtures->get((int) $id);
+                $error = $fixture ? app(UnifiedTeamScheduleService::class)->manualError($event, $fixture, $data)
+                    : 'This rubber is not available in the selected event.';
+                if ($error) $blocked[(string) $id] = $error;
+                else $eligible[] = (int) $id;
+            }
+            return response()->json(['eligible_fixture_ids' => $eligible, 'blocked' => $blocked]);
+        }
 
         $fixtures = Fixture::with(['draw.venues', 'draw.flexibleMonrad', 'draw.settings', 'fixtureResults', 'orderOfPlay'])
             ->whereIn('id', $data['fixture_ids'])
@@ -459,10 +536,10 @@ final class EventVenueScheduleController extends Controller
     private function manualAssignmentError(Event $event, Fixture $fixture, int $venueId, string $court,
         array $data, ScheduleConflictService $conflicts): ?string
     {
-        if ($fixture->draw->locked || $fixture->draw->published) {
-            return 'Unpublish and unlock the draw before manually scheduling this match.';
+        if ($fixture->draw->locked) {
+            return 'Unlock the draw before manually scheduling this match.';
         }
-        if ($fixture->fixtureResults->isNotEmpty()) return 'A played match cannot be moved to another slot.';
+        if ($fixture->fixtureResults->isNotEmpty() || (int) $fixture->match_status !== 0) return 'A match with play cannot be moved to another slot.';
 
         $assignedVenue = $fixture->draw->venues->firstWhere('id', $venueId);
         if (! $assignedVenue) return 'The selected venue is not assigned to this draw.';
@@ -480,7 +557,7 @@ final class EventVenueScheduleController extends Controller
 
         return $conflicts->conflict($fixture->draw, $fixture, $venueId, $court,
             $data['scheduled_at'], (int) $data['duration'], (int) $data['player_rest'],
-            (int) $data['court_gap'], false);
+            (int) $data['court_gap'], true);
     }
 
     private function validatedOptions(Request $request): array
@@ -501,6 +578,7 @@ final class EventVenueScheduleController extends Controller
             'venue_starts' => ['nullable', 'array'],
             'venue_starts.*.venue_id' => ['required', 'integer'],
             'venue_starts.*.start' => ['nullable', 'date'],
+            'round_progression' => ['sometimes', 'in:team_ready,all_round'],
         ]);
     }
 }

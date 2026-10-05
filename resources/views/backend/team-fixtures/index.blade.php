@@ -16,6 +16,7 @@
 
 {{-- Page JS --}}
 @section('page-script')
+@include('backend.team-fixtures.partials.participant-revision-script')
 <script src="{{ asset(mix('js/draw-fixtures-show.js')) }}"></script>
 @endsection
 
@@ -158,7 +159,7 @@ $display = $fx->scheduled_at;
   <a href="javascript:void(0);"
      id="edit-btn-{{ $fx->id }}"
      class="btn btn-sm btn-outline-primary edit-score-btn"
-     data-id="{{ $fx->id }}"
+     data-id="{{ $fx->id }}" data-participant-revision="{{ app(\App\Services\TeamParticipantHistoryService::class)->revision($fx) }}"
      data-action="{{ route('backend.team-fixtures.update', $fx->id) }}"
      data-home="{{ e($homeLabel) }}"
      data-away="{{ e($awayLabel) }}"

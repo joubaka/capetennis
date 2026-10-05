@@ -51,7 +51,7 @@
           </a>
 
           <a class="btn btn-sm btn-info"
-             href="{{ $isTeamDraw ? route('backend.team-schedule.page', $draw->id) : $individualScheduleUrl }}">
+             href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]) }}">
             <i class="ti ti-calendar me-1"></i>
             Schedule
           </a>

@@ -37,6 +37,7 @@ class TeamDrawSelectionService
         $categories = CategoryEvent::with('category')->where('event_id', $event->id)->whereIn('id', $ids)->get();
         if ($categories->count() !== count($ids)) throw new \InvalidArgumentException('Every category must belong to this event.');
         $teams = Team::with(['category.category', 'team_players.player', 'team_players_no_profile'])->whereIn('category_event_id', $ids)->orderBy('id')->get();
+        $teams = $teams->map(fn ($team) => $this->sides->activeRoster($team));
         $selection = ['category_ids' => $ids, 'rubber_code' => $code, 'mixed_sides' => []];
         $errors = [];
         if ($code === RubberType::MIXED_DOUBLES) {

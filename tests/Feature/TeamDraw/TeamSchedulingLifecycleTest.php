@@ -131,10 +131,8 @@ class TeamSchedulingLifecycleTest extends TestCase
         DB::table('venues')->insert(['name' => 'Unrelated venue']);
         $this->getJson(route('backend.team-schedule.all.data', $this->event))->assertOk()
             ->assertJsonCount(1, 'venues')->assertJsonPath('draws.0.id', $this->draw->id);
-        $this->get(route('backend.team-schedule.all', $this->event))->assertOk()
-            ->assertSee(route('backend.team-schedule.all.clear', $this->event), false)
-            ->assertSee(route('backend.team-schedule.save', ['draw' => '__DRAW__']), false)
-            ->assertSee("closest('.draw-card').data('draw')", false);
+        $this->get(route('backend.team-schedule.all', $this->event))
+            ->assertRedirect(route('backend.event-venue-schedule.index', $this->event));
     }
 
     public function test_no_capacity_reports_skipped_without_overwriting_bookings(): void

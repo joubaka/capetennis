@@ -319,6 +319,7 @@ class TeamFixtureController extends Controller
       $rules["set{$i}_home"] = "nullable|required_with:set{$i}_away|integer|min:0";
       $rules["set{$i}_away"] = "nullable|required_with:set{$i}_home|integer|min:0";
     }
+    $rules['participant_revision'] = 'nullable|string|size:64';
     $validated = $request->validate($rules);
 
     app(TeamFixtureScoreService::class)->save($team_fixture, $validated);
@@ -379,9 +380,11 @@ class TeamFixtureController extends Controller
       $rules["set{$i}_away"] = "nullable|required_with:set{$i}_home|integer|min:0";
     }
 
+    $rules['participant_revision'] = 'nullable|string|size:64';
     $validated = $request->validate($rules);
 
     DB::transaction(function () use ($team_fixture, $validated) {
+      \App\Models\Event::whereKey($team_fixture->draw->event_id)->lockForUpdate()->firstOrFail();
       $schedule = array_intersect_key($validated, array_flip(['scheduled_at', 'venue_id', 'court_label', 'duration_min']));
       if ($schedule !== []) {
         $schedule['fixture_id'] = $team_fixture->id;
@@ -559,12 +562,8 @@ class TeamFixtureController extends Controller
   public function schedulePage(Draw $draw)
   {
     $this->authorize('team-fixture.view', $draw);
-
-    $draw->load(['event', 'venues']);
-    return view('backend.team-schedule.schedule', [
-      'draw' => $draw,
-      'event' => $draw->event,
-    ]);
+    $this->authorize('event.manage', $draw->event);
+    return redirect()->route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]);
   }
 
   public function scheduleData(Draw $draw)
@@ -905,38 +904,9 @@ class TeamFixtureController extends Controller
 
   public function replacePlayerForm(Request $request)
   {
-    // If an event context is provided (query param `event` or `event_id`), auto-select it
-    $eventId = $request->query('event') ?? $request->query('event_id') ?? null;
-    $event = $eventId ? Event::with('regions')->find($eventId) : null;
-
-    // Events list for dropdown (still useful if user wants to change)
-    $events = Event::orderBy('start_date', 'desc')->get(['id', 'name']);
-
-    // Prepare teams + players grouped by team if event present
-    $teams = collect();
-    if ($event) {
-        // Teams in the event's regions (same logic used elsewhere in controller)
-        $teamRegionIds = $event->regions->pluck('id')->toArray();
-        $teams = Team::whereIn('region_id', $teamRegionIds)
-            // eager load team_players -> player if relation exists, otherwise fallback
-            ->with(['team_players.player'])
-            ->orderBy('name')
-            ->get();
-    }
-
-    // No-profile players independent list for generic selection
-    $noProfiles = NoProfileTeamPlayer::orderBy('name')->get(['id', 'name', 'surname', 'team_id']);
-
-    // Registered players list used in "new" selector (can be large; you may want AJAX in future)
-    $players = Player::orderBy('name')->get(['id', 'name', 'surname']);
-
-    return view('backend.team-fixtures.replace-player', compact(
-        'events',
-        'event',
-        'teams',
-        'players',
-        'noProfiles'
-    ));
+    $eventIds = $this->managedEventIds($request);
+    $teams = Team::whereHas('category', fn($q) => $q->when($eventIds !== null, fn($q) => $q->whereIn('event_id', $eventIds))->when($request->query('event_id') ?? $request->query('event'), fn($q, $id) => $q->where('event_id', $id)))->with('category.event')->orderBy('name')->paginate(50)->withQueryString();
+    return view('backend.team-fixtures.substitution-teams', compact('teams'));
   }
 
   /**
@@ -944,35 +914,7 @@ class TeamFixtureController extends Controller
    */
   public function createNoProfile(Request $request)
   {
-    $data = $request->validate([
-        'team_id' => ['nullable', 'integer', Rule::exists('teams', 'id')],
-        'name' => 'required|string|max:80',
-        'surname' => 'nullable|string|max:80',
-        'rank' => 'nullable|integer',
-    ]);
-
-    // ✅ Calculate next rank if not provided
-    $rank = $data['rank'] ?? null;
-    if ($rank === null && isset($data['team_id'])) {
-        $rank = NoProfileTeamPlayer::where('team_id', $data['team_id'])->max('rank') + 1;
-    }
-    $rank = $rank ?: 1; // Fallback to 1 if still null
-
-    $np = NoProfileTeamPlayer::create([
-        'team_id' => $data['team_id'] ?? null,
-        'name' => $data['name'],
-        'surname' => $data['surname'] ?? null,
-        'pay_status' => 0,
-        'rank' => $rank,
-    ]);
-
-    return response()->json([
-        'success' => true,
-        'id' => $np->id,
-        'label' => trim($np->name . ' ' . $np->surname),
-        'team_id' => $np->team_id,
-        'rank' => $np->rank,
-    ]);
+    abort(409, 'Use the team roster workflow for roster additions or the replacement wizard for a standalone competition identity.');
   }
 
   /**
@@ -985,161 +927,9 @@ class TeamFixtureController extends Controller
    */
   public function replacePlayerInEvent(Request $request)
   {
-    $data = $request->validate([
-        'event_id' => 'required|integer|exists:events,id',
-        'old_id' => 'required|string',
-        'new_id' => 'required|string',
-        'side' => 'nullable|in:home,away,both',
-    ]);
-
-    $event = \App\Models\Event::findOrFail($data['event_id']);
-    $this->authorize('individual-draw.create', $event); // reuse admin/convenor gate
-
-    if ($data['old_id'] === $data['new_id']) {
-        if ($request->ajax()) {
-            return response()->json(['success' => false, 'message' => 'Old and new values are identical.'], 422);
-        }
-        return redirect()->back()->withErrors('Old and new values are identical.');
-    }
-
-    $side = $data['side'] ?? 'both';
-
-    // Parse prefixed ids: "p_{id}" or "np_{id}"
-    [$oldType, $oldRaw] = explode('_', $data['old_id'], 2) + [null, null];
-    [$newType, $newRaw] = explode('_', $data['new_id'], 2) + [null, null];
-
-    $oldIsPlayer = $oldType === 'p' && is_numeric($oldRaw) && Player::where('id', $oldRaw)->exists();
-    $newIsPlayer = $newType === 'p' && is_numeric($newRaw) && Player::where('id', $newRaw)->exists();
-    $oldIsNoProfile = $oldType === 'np' && is_numeric($oldRaw) && NoProfileTeamPlayer::where('id', $oldRaw)->exists();
-    $newIsNoProfile = $newType === 'np' && is_numeric($newRaw) && NoProfileTeamPlayer::where('id', $newRaw)->exists();
-
-    if (!($oldIsPlayer || $oldIsNoProfile) || !($newIsPlayer || $newIsNoProfile)) {
-        if ($request->ajax()) {
-            return response()->json(['success' => false, 'message' => 'Invalid old/new selection.'], 422);
-        }
-        return redirect()->back()->withErrors('Invalid old/new selection.');
-    }
-
-    $oldId = (int)$oldRaw;
-    $newId = (int)$newRaw;
-
-    $result = DB::transaction(function () use ($data, $side, $oldId, $newId, $oldIsPlayer, $newIsPlayer, $oldIsNoProfile, $newIsNoProfile) {
-        $fixtureIds = TeamFixture::whereHas('draw', function ($q) use ($data) {
-            $q->where('event_id', $data['event_id']);
-        })
-            ->whereDoesntHave('fixtureResults')
-            ->pluck('id');
-
-        if ($fixtureIds->isEmpty()) {
-            return [
-                'success' => true,
-                'updated_home' => 0,
-                'updated_away' => 0,
-                'fixtures_scanned' => 0,
-            ];
-        }
-
-        $updatedHome = 0;
-        $updatedAway = 0;
-
-        // ✅ HOME replacements using Eloquent (fires events)
-        if ($side === 'home' || $side === 'both') {
-            // Clone or create fresh query for each lookup
-            if ($oldIsPlayer) {
-                $records = \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)
-                    ->where('team1_id', $oldId)
-                    ->get();
-            } else {
-                $records = \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)
-                    ->where('team1_no_profile_id', $oldId)
-                    ->get();
-            }
-
-            foreach ($records as $record) {
-                if ($newIsPlayer) {
-                    $record->team1_id = $newId;
-                    $record->team1_no_profile_id = null;
-                } else {
-                    $record->team1_no_profile_id = $newId;
-                    $record->team1_id = null;
-                }
-                $record->save();
-                $updatedHome++;
-            }
-        }
-
-        // ✅ AWAY replacements using Eloquent (fires events)
-        if ($side === 'away' || $side === 'both') {
-            // Fresh query for away side
-            if ($oldIsPlayer) {
-                $records = \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)
-                    ->where('team2_id', $oldId)
-                    ->get();
-            } else {
-                $records = \App\Models\TeamFixturePlayer::whereIn('team_fixture_id', $fixtureIds)
-                    ->where('team2_no_profile_id', $oldId)
-                    ->get();
-            }
-
-            foreach ($records as $record) {
-                if ($newIsPlayer) {
-                    $record->team2_id = $newId;
-                    $record->team2_no_profile_id = null;
-                } else {
-                    $record->team2_no_profile_id = $newId;
-                    $record->team2_id = null;
-                }
-                $record->save();
-                $updatedAway++;
-            }
-        }
-
-        // CSV fallback unchanged...
-        
-        \Log::info('[replacePlayerInEvent]', [
-            'event_id' => $data['event_id'],
-            'updated_home' => $updatedHome,
-            'updated_away' => $updatedAway,
-            'fixtures_scanned' => $fixtureIds->count(),
-        ]);
-
-        return [
-            'success' => true,
-            'updated_home' => $updatedHome,
-            'updated_away' => $updatedAway,
-            'fixtures_scanned' => $fixtureIds->count(),
-        ];
-    });
-
-    // Build human-friendly labels for old/new (may be player or no-profile)
-    $oldLabel = $oldIsPlayer
-        ? (optional(Player::find($oldId))->full_name ?? "Player #{$oldId}")
-        : (optional(NoProfileTeamPlayer::find($oldId))->name ? trim(optional(NoProfileTeamPlayer::find($oldId))->name . ' ' . optional(NoProfileTeamPlayer::find($oldId))->surname) : "NP #{$oldId}");
-
-    $newLabel = $newIsPlayer
-        ? (optional(Player::find($newId))->full_name ?? "Player #{$newId}")
-        : (optional(NoProfileTeamPlayer::find($newId))->name ? trim(optional(NoProfileTeamPlayer::find($newId))->name . ' ' . optional(NoProfileTeamPlayer::find($newId))->surname) : "NP #{$newId}");
-
-    $message = sprintf(
-        'Replaced "%s" with "%s". Fixtures scanned: %d — home updated: %d, away updated: %d',
-        $oldLabel,
-        $newLabel,
-        $result['fixtures_scanned'],
-        $result['updated_home'],
-        $result['updated_away']
-    );
-
-    // Return JSON for AJAX with message and labels
-    if ($request->ajax()) {
-        return response()->json(array_merge($result, [
-            'message' => $message,
-            'old_label' => $oldLabel,
-            'new_label' => $newLabel,
-        ]));
-    }
-
-    // Non-AJAX: redirect back to caller head office page (preserve UX)
-    return redirect()->route('headOffice.show', $data['event_id'])->with('success', $message);
+    $event = Event::findOrFail($request->input('event_id'));
+    $this->authorize('individual-draw.create', $event);
+    return response()->json(['message' => 'Global participant replacement is disabled. Choose the source team and use its replacement wizard; completed and started matches remain unchanged.'], 409);
   }
 
   public function playerFixtures(Request $request): JsonResponse
