@@ -142,6 +142,24 @@ class TeamController extends Controller
         //
     }
 
+    public function rename(Request $request, Event $event, Team $team)
+    {
+        abort_unless((int) $team->category?->event_id === (int) $event->id, 404);
+        $this->authorize('team.update', $team);
+
+        $name = $request->input('name');
+        $request->merge(['name' => is_string($name) ? trim($name) : $name]);
+        $validated = $request->validateWithBag('teamRename', [
+            'name' => ['required', 'string', 'max:255'],
+        ]);
+
+        $team->update(['name' => $validated['name']]);
+
+        return redirect()->route('admin.events.teams', $event)
+            ->with('team_rename_success', 'Team name updated.')
+            ->with('renamed_team_id', $team->id);
+    }
+
     /**
      * Remove the specified resource from storage.
      *

@@ -582,6 +582,76 @@ class TeamControllerAuthorizationTest extends TestCase
         $this->assertDatabaseHas('teams', ['id' => $team->id, 'published' => 0]);
     }
 
+    public function test_team_name_update_changes_only_name_for_the_event_admin(): void
+    {
+        $before = $this->team->fresh()->getAttributes();
+        $teamCount = Team::count();
+        $slotCount = TeamPlayer::count();
+
+        $this->actingAs($this->admin)
+            ->patch(route('backend.team.name.update', [$this->event, $this->team]), [
+                'name' => '  Overberg U/10 Boys  ',
+                'published' => 1,
+                'category_event_id' => $this->otherCategoryEvent->id,
+                'region_id' => 999,
+            ])
+            ->assertRedirect(route('admin.events.teams', $this->event));
+
+        $after = $this->team->fresh()->getAttributes();
+        $this->assertSame('Overberg U/10 Boys', $after['name']);
+        unset($before['name'], $before['updated_at'], $after['name'], $after['updated_at']);
+        $this->assertSame($before, $after);
+        $this->assertSame($teamCount, Team::count());
+        $this->assertSame($slotCount, TeamPlayer::count());
+        $this->assertSame('Team B', $this->otherTeam->fresh()->name);
+    }
+
+    public function test_team_name_update_rejects_unauthorized_actors_and_cross_event_teams(): void
+    {
+        foreach ([$this->ordinaryUser, $this->otherAdmin] as $actor) {
+            $this->actingAs($actor)
+                ->patchJson(route('backend.team.name.update', [$this->event, $this->team]), ['name' => 'Rejected'])
+                ->assertForbidden();
+        }
+
+        $this->actingAs($this->admin)
+            ->patchJson(route('backend.team.name.update', [$this->event, $this->otherTeam]), ['name' => 'Rejected'])
+            ->assertNotFound();
+        $this->actingAs($this->admin)
+            ->patchJson(route('backend.team.name.update', [$this->otherEvent, $this->otherTeam]), ['name' => 'Rejected'])
+            ->assertForbidden();
+        $this->assertSame('Team A', $this->team->fresh()->name);
+        $this->assertSame('Team B', $this->otherTeam->fresh()->name);
+    }
+
+    public function test_team_name_update_validates_blank_type_and_length(): void
+    {
+        foreach (['   ', str_repeat('x', 256), ['invalid']] as $name) {
+            $this->actingAs($this->admin)
+                ->patchJson(route('backend.team.name.update', [$this->event, $this->team]), ['name' => $name])
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors('name');
+            $this->assertSame('Team A', $this->team->fresh()->name);
+        }
+
+        $this->actingAs($this->convenor)
+            ->patch(route('backend.team.name.update', [$this->event, $this->team]), ['name' => str_repeat('x', 255)])
+            ->assertRedirect();
+        $this->assertSame(str_repeat('x', 255), $this->team->fresh()->name);
+    }
+
+    public function test_team_name_update_redirects_validation_errors_to_named_bag(): void
+    {
+        $this->actingAs($this->admin)
+            ->from(route('admin.events.teams', $this->event))
+            ->patch(route('backend.team.name.update', [$this->event, $this->team]), [
+                'name' => ' ', 'rename_team_id' => $this->team->id,
+            ])
+            ->assertRedirect(route('admin.events.teams', $this->event))
+            ->assertSessionHasErrors(['name'], null, 'teamRename')
+            ->assertSessionHasInput('rename_team_id', $this->team->id);
+    }
+
     public function test_bulk_publish_rejects_a_region_not_attached_to_the_event(): void
     {
         $region = TeamRegion::create(['region_name' => 'Detached Region']);

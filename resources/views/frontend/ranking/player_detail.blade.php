@@ -42,6 +42,23 @@
     </div>
 
     <div class="card-body">
+      @role('super-user')
+        <div class="row g-3 mb-4" aria-label="Player contact details">
+          <div class="col-sm-6">
+            <div class="border rounded p-3 h-100">
+              <div class="text-muted small mb-1">Email</div>
+              <div class="text-break">{{ filled($player->email) ? $player->email : 'Not provided' }}</div>
+            </div>
+          </div>
+          <div class="col-sm-6">
+            <div class="border rounded p-3 h-100">
+              <div class="text-muted small mb-1">Telephone number</div>
+              <div class="text-break">{{ filled($player->cellNr) ? $player->cellNr : 'Not provided' }}</div>
+            </div>
+          </div>
+        </div>
+      @endrole
+
       @if(!$rankingRecord)
         <div class="alert alert-warning mb-0">
           No ranking data found for this player in {{ $series->name }}.

@@ -63,6 +63,54 @@ class TeamDrawSelectionWorkflowTest extends TestCase
         return $this->actingAs($this->admin)->postJson(route($preview ? 'headoffice.previewTeamDraw' : 'headoffice.createSingleDraw.team', $this->event), ['batch_key' => $key, 'draws' => $items]);
     }
 
+    public function test_fixture_index_displays_regions_once_and_original_player_ranks(): void
+    {
+        $items = [$this->item('Doubles', [$this->categories['Boys']]), $this->item('Singles Reverse', [$this->categories['Boys']]), $this->item()];
+        $this->request($items)->assertOk();
+        $fixtures = TeamFixture::with(['fixturePlayers.player1', 'fixturePlayers.player2', 'fixturePlayers.noProfile1', 'fixturePlayers.noProfile2', 'teamTie'])->get();
+        app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures);
+        $doubles = $fixtures->firstWhere('rubber_code', 'doubles')->lineup_display;
+        $this->assertSame([1, 2], array_column($doubles['home']['players'], 'rank'));
+        $this->assertSame([1, 2], array_column($doubles['away']['players'], 'rank'));
+        $reverse = $fixtures->firstWhere('rubber_code', 'reverse_singles')->lineup_display;
+        $this->assertSame([1], array_column($reverse['home']['players'], 'rank'));
+        $this->assertSame([2], array_column($reverse['away']['players'], 'rank'));
+        $mixed = $fixtures->where('rubber_code', 'mixed_doubles')->values();
+        $this->assertSame([1, 1], array_column($mixed[0]->lineup_display['home']['players'], 'rank'));
+        $this->assertSame([2, 2], array_column($mixed[1]->lineup_display['home']['players'], 'rank'));
+        $response = $this->actingAs($this->admin)->get(route('backend.team-fixtures.index'))->assertOk();
+        $response->assertSee('class="fixture-region">East</div>', false)->assertSee('class="fixture-region">West</div>', false);
+        $response->assertSee('East Boys Player 1')->assertSee('East Girls Player 1');
+        $this->assertStringNotContainsString('>()</span>', $response->getContent());
+        if (getenv('TEAM_FIXTURE_QA') === '1') {
+            $html = preg_replace('~https?://[^/"\s]+/~', '/', $response->getContent());
+            file_put_contents(public_path('_fixture-lineup-qa.html'), $html);
+        }
+    }
+
+    public function test_fixture_lineup_resolves_linked_profiles_and_legacy_rank_fallbacks(): void
+    {
+        $this->request([$this->item('Doubles', [$this->categories['Boys']])])->assertOk();
+        $fixture = TeamFixture::first();
+        $profile = Player::factory()->create(['name' => 'Roux', 'surname' => 'Example']);
+        TeamPlayer::create(['team_id' => $this->teams['East']['Boys']->id, 'player_id' => $profile->id, 'rank' => 2]);
+        $fixture->fixturePlayers->last()->update(['team1_id' => $profile->id, 'team1_no_profile_id' => null]);
+        $fixture->refresh()->load(['fixturePlayers.player1', 'fixturePlayers.player2', 'fixturePlayers.noProfile1', 'fixturePlayers.noProfile2', 'teamTie']);
+        app(\App\Services\TeamFixtureLineupPresenter::class)->prepare(collect([$fixture]));
+        $this->assertSame(['name' => 'Roux Example', 'rank' => 2], $fixture->lineup_display['home']['players'][1]);
+        $fixture->team_tie_id = null;
+        $fixture->rubber_sequence = null;
+        $fixture->home_rank_nr = 4;
+        $fixture->away_rank_nr = null;
+        $fixture->setRelation('teamTie', null);
+        $fixture->setRelation('region1Name', TeamRegion::first());
+        $fixture->region1Name->short_name = null;
+        app(\App\Services\TeamFixtureLineupPresenter::class)->prepare(collect([$fixture]));
+        $this->assertSame('East', $fixture->lineup_display['home']['region']);
+        $this->assertSame(4, $fixture->lineup_display['home']['players'][1]['rank']);
+        $this->assertNull($fixture->lineup_display['away']['players'][0]['rank']);
+    }
+
     public function test_mixed_preview_combines_sources_and_names_imported_players_without_writes(): void
     {
         $response = $this->request([$this->item()], true)->assertOk()->assertJsonPath('readiness.team_count', 2)->assertJsonPath('readiness.tie_count', 1)->assertJsonPath('readiness.rubber_count', 2);

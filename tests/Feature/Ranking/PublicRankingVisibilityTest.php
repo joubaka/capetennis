@@ -438,6 +438,27 @@ class PublicRankingVisibilityTest extends TestCase
             ->assertSee('Not available');
     }
 
+    public function test_player_contacts_are_visible_only_to_super_users(): void
+    {
+        $series = Series::factory()->create(['leaderboard_published' => true]);
+        $category = Category::factory()->create();
+        $list = RankingList::factory()->create(['series_id' => $series->id, 'category_id' => $category->id]);
+        $player = Player::factory()->create(['email' => 'ranking-contact@example.test', 'cellNr' => '0821234567']);
+        $this->row($series, $list, $category, $player, RankingStatus::Published, 'run-live', now());
+        $url = route('frontend.ranking.player-detail', [$series, $player]);
+
+        $this->get($url)->assertOk()->assertDontSee($player->email)->assertDontSee($player->cellNr);
+        $this->actingAs(User::factory()->create())->get($url)
+            ->assertOk()->assertDontSee($player->email)->assertDontSee($player->cellNr);
+
+        \Spatie\Permission\Models\Role::findOrCreate('super-user', 'web');
+        $this->actingAs(User::factory()->create()->assignRole('super-user'))->get($url)
+            ->assertOk()->assertSee('Telephone number')->assertSee($player->email)->assertSee($player->cellNr);
+
+        $player->update(['email' => null, 'cellNr' => null]);
+        $this->get($url)->assertOk()->assertSee('Not provided');
+    }
+
     private function row(
         Series $series,
         RankingList $list,

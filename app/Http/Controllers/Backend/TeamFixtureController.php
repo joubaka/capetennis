@@ -30,13 +30,19 @@ class TeamFixtureController extends Controller
   {
     $eventIds = $this->managedEventIds($request);
     $query = TeamFixture::query()->with([
-      'draw:id,drawName,event_id',
+      'draw:id,drawName,event_id,team_draw_selection,team_format_snapshot',
       'draw.event:id,name',
       'team1:id,name,surname',
       'team2:id,name,surname',
-      'region1Name:id,short_name',
-      'region2Name:id,short_name',
+      'region1Name:id,short_name,region_name',
+      'region2Name:id,short_name,region_name',
       'teamTie:id,draw_id,round_nr,tie_nr,home_team_id,away_team_id',
+      'fixturePlayers.player1',
+      'fixturePlayers.player2',
+      'fixturePlayers.noProfile1',
+      'fixturePlayers.noProfile2',
+      'fixtureResults',
+      'venue',
       'teamTie.homeTeam:id,name',
       'teamTie.awayTeam:id,name',
     ]);
@@ -113,8 +119,9 @@ class TeamFixtureController extends Controller
 
     // ============================================================
 
-    $event = Draw::find($request->draw_id)?->event;
-    $fixtures = $query->get();
+    $event = Draw::when($eventIds !== null, fn($draw) => $draw->whereIn('event_id', $eventIds))->find($request->draw_id)?->event;
+    $fixtures = $query->paginate(100)->withQueryString();
+    app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures->getCollection());
 
     $events = Event::when($eventIds !== null, fn($query) => $query->whereIn('id', $eventIds))
       ->orderBy('start_date', 'desc')->get(['id', 'name', 'start_date']);
@@ -334,7 +341,7 @@ class TeamFixtureController extends Controller
     $this->authorize('team-fixture.view', $team_fixture);
 
     $team_fixture->loadMissing([
-      'draw:id,drawName,event_id',
+      'draw:id,drawName,event_id,team_draw_selection,team_format_snapshot',
       'draw.event:id,name',
       'homeTeam:id,name',
       'awayTeam:id,name',
@@ -851,7 +858,7 @@ class TeamFixtureController extends Controller
 
     return TeamFixture::query()
       ->with([
-        'draw:id,drawName,event_id',
+        'draw:id,drawName,event_id,team_draw_selection,team_format_snapshot',
         'team1', 'team2', 'venue', 'region1Name', 'region2Name',
         'fixturePlayers.player1', 'fixturePlayers.player2',
         'fixturePlayers.noProfile1', 'fixturePlayers.noProfile2',

@@ -41,6 +41,9 @@
 
 
 <style>
+.fixture-region { font-weight: 600; color: #18324b; margin-bottom: .25rem; }
+.fixture-player { min-width: 11rem; white-space: normal; line-height: 1.5; }
+.fixture-rank { color: #697a8d; font-variant-numeric: tabular-nums; }
 .winner-home { background-color: rgba(40,167,69,.25)!important; }
 .loser-home { background-color: rgba(220,53,69,.25)!important; }
 .draw-cell { background-color: rgba(255,193,7,.25)!important; }
@@ -108,78 +111,12 @@ $isV2 = !is_null($fx->team_tie_id);
 
 
 @php
-$homeNames=[];
-$awayNames=[];
-$homeRegionShort = $fx->region1Name?->short_name ?? null;
-$awayRegionShort = $fx->region2Name?->short_name ?? null;
-
-// For v2 rubbers, use the tied team names as the context label
-if ($isV2) {
-    $homeRegionShort = $fx->teamTie?->home_side_name;
-    $awayRegionShort = $fx->teamTie?->away_side_name;
-}
+$home = $fx->lineup_display['home'];
+$away = $fx->lineup_display['away'];
+$homeLabel = $home['region'].' — '.collect($home['players'])->pluck('name')->implode(' + ');
+$awayLabel = $away['region'].' — '.collect($away['players'])->pluck('name')->implode(' + ');
+$display = $fx->scheduled_at;
 @endphp
-
-
-@foreach($fx->fixturePlayers as $fpRow)
-
-{{-- Player Debug --}}
-@if(app()->environment('local'))
-@php
-\Log::debug('[TeamFixtures] FixturePlayer Row', [
-    'fixture_id'=>$fx->id,
-    'team1_id'=>$fpRow->team1_id,
-    'team1_no_profile_id'=>$fpRow->team1_no_profile_id,
-    'team2_id'=>$fpRow->team2_id,
-    'team2_no_profile_id'=>$fpRow->team2_no_profile_id
-]);
-@endphp
-@endif
-
-@php
-// HOME
-if ($fpRow->team1_id && $fpRow->player1) {
-    $name = $fpRow->player1->full_name;
-    if($homeRegionShort) $name.=" ({$homeRegionShort})";
-    $homeNames[]=$name;
-}
-elseif ($fpRow->team1_no_profile_id) {
-    $np = \App\Models\NoProfileTeamPlayer::find($fpRow->team1_no_profile_id);
-    if($np){
-        $name = trim($np->name.' '.$np->surname);
-        if($homeRegionShort) $name.=" ({$homeRegionShort})";
-        $homeNames[]=$name;
-    }
-}
-
-// AWAY
-if ($fpRow->team2_id && $fpRow->player2) {
-    $name = $fpRow->player2->full_name;
-    if($awayRegionShort) $name.=" ({$awayRegionShort})";
-    $awayNames[]=$name;
-}
-elseif ($fpRow->team2_no_profile_id) {
-    $np2 = \App\Models\NoProfileTeamPlayer::find($fpRow->team2_no_profile_id);
-    if($np2){
-        $name = trim($np2->name.' '.$np2->surname);
-        if($awayRegionShort) $name.=" ({$awayRegionShort})";
-        $awayNames[]=$name;
-    }
-}
-@endphp
-@endforeach
-
-
-@php
-$homeLabel = count($homeNames)
-    ? collect($homeNames)->implode(' + ')
-    : ($isV2 ? ($fx->teamTie?->home_side_name ?? 'TBD') : 'TBD');
-$awayLabel = count($awayNames)
-    ? collect($awayNames)->implode(' + ')
-    : ($isV2 ? ($fx->teamTie?->away_side_name ?? 'TBD') : 'TBD');
-$display = $fx->scheduled_at ?? null;
-@endphp
-
 
 <tr id="row-{{ $fx->id }}">
 <td>{{ $fx->id }}</td>
@@ -188,11 +125,17 @@ $display = $fx->scheduled_at ?? null;
 <td>{{ $fx->home_rank_nr ?? ($isV2 ? ($fx->rubber_name ?? $fx->rubber_code ?? '—') : '—') }}</td>
 
 <td class="home-cell {{ $homeClass }}">
-({{ $fx->home_rank_nr }}) {{ $homeLabel }}
+<div class="fixture-region">{{ $home['region'] }}</div>
+@forelse($home['players'] as $player)
+<div class="fixture-player">@if($player['rank'])<span class="fixture-rank">({{ $player['rank'] }})</span> @endif{{ $player['name'] }}@unless($player['rank']) <span class="text-muted small">— rank unavailable</span>@endunless</div>
+@empty <span class="text-muted">TBD</span> @endforelse
 </td>
 
 <td class="away-cell {{ $awayClass }}">
-({{ $fx->away_rank_nr }}) {{ $awayLabel }}
+<div class="fixture-region">{{ $away['region'] }}</div>
+@forelse($away['players'] as $player)
+<div class="fixture-player">@if($player['rank'])<span class="fixture-rank">({{ $player['rank'] }})</span> @endif{{ $player['name'] }}@unless($player['rank']) <span class="text-muted small">— rank unavailable</span>@endunless</div>
+@empty <span class="text-muted">TBD</span> @endforelse
 </td>
 
 <td id="result-col-{{ $fx->id }}">
@@ -236,6 +179,7 @@ $display = $fx->scheduled_at ?? null;
 
 </table>
 </div>
+<div class="px-3 pt-3">{{ $fixtures->links() }}</div>
 </div>
 </div>
 

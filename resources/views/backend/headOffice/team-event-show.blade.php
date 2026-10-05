@@ -17,6 +17,27 @@
 
 @section('page-style')
 <link rel="stylesheet" href="{{asset('assets/vendor/css/pages/page-user-view.css')}}" />
+<style>
+  .event-draw-list { display: grid; gap: 1rem; }
+  .event-draw-card { min-width: 0; padding: 1rem; border: 1px solid var(--bs-border-color, #dbdade); border-radius: .75rem; }
+  .event-draw-card .list-group-item { padding: 0; border: 0; background: transparent; }
+  .event-draw-card .user-info { width: 100%; min-width: 0; }
+  .event-draw-card h6 { overflow-wrap: anywhere; }
+  .event-draw-card .btn-group { display: flex; flex-wrap: wrap; gap: .5rem; width: 100%; }
+  .event-draw-card .btn-group > .btn-group { width: 100%; margin: 0; }
+  .event-draw-card .btn-group > .btn { flex: 0 1 auto; min-height: 44px; margin: 0; border-radius: .375rem !important; white-space: normal; }
+  .event-draw-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; margin-top: .75rem; }
+  .event-draw-links { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
+  .event-draw-links .btn { min-height: 44px; white-space: normal; }
+  @media (max-width: 575.98px) {
+    .event-draw-header { flex-direction: column; align-items: flex-start !important; gap: .25rem; }
+    .event-draw-body { padding-inline: 1rem; }
+    .event-draw-card { padding: .875rem; }
+    .event-draw-card .btn-group > .btn { flex: 1 1 calc(50% - .5rem); padding-inline: .5rem; }
+    .event-draw-card .user-info > .btn-group > .btn:first-child { flex-basis: 100%; }
+    .event-draw-links .btn { flex: 1 1 0; }
+  }
+</style>
 @endsection
 
 @section('vendor-script')
@@ -116,37 +137,35 @@
 
   <div class="col-xl-7 col-lg-6">
     <div class="card mb-4">
-      <div class="card-header d-flex justify-content-between align-items-center">
+      <div class="card-header event-draw-header d-flex justify-content-between align-items-center">
         <h5 class="mb-0">Manage Draws</h5>
-        <small class="text-muted">Click a draw to view details</small>
+        <small class="text-muted">Open fixtures or manage a draw below</small>
       </div>
 
-      <div class="card-body pt-0">
-        <div class="list-group list-group-flush">
+      <div class="card-body event-draw-body pt-0">
+        <div class="event-draw-list">
           @forelse($event->draws as $draw)
-            <div class="list-group-item list-group-item-action d-flex align-items-center py-3">
-              <div class="flex-grow-1">
-                <div class="d-flex align-items-center mb-1">
-                  <h6 class="mb-0 me-2">@include('backend.draw._includes.draw_tab_team')</h6>
+            <div class="event-draw-card">
+                @include('backend.draw._includes.draw_tab_team')
+                <div class="event-draw-meta text-muted small">
                   @if($draw->is_published)
-                    <span class="badge badge-dot bg-primary" title="Published"></span>
+                    <span class="badge bg-label-primary">Published</span>
                   @elseif($draw->is_done)
-                    <span class="badge badge-dot bg-success" title="Completed"></span>
+                    <span class="badge bg-label-success">Completed</span>
                   @else
-                    <span class="badge badge-dot bg-warning" title="Draft"></span>
+                    <span class="badge bg-label-warning">Draft</span>
                   @endif
-                </div>
-                <div class="text-muted small">
                    <span class="me-2"><i class="ti ti-calendar-event ti-xs"></i> {{ $draw->created_at->format('d M, Y') }}</span>
-                   @if($draw->is_scheduled) <span class="text-info">| Scheduled</span> @endif
+                   @if($draw->is_scheduled) <span class="text-info">Scheduled</span> @endif
                 </div>
-              </div>
               @if($draw->isTeamDraw())
               @can('team-fixture.view', $draw)
+              <div class="event-draw-links">
               @if($draw->team_format_snapshot !== null)
               <a class="btn btn-sm btn-outline-primary me-2" href="{{ route('backend.team-draw.operations', $draw) }}">Team ties</a>
               @endif
               <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.team-draw.standings', $draw) }}">Standings</a>
+              </div>
               @endcan
               @endif
             </div>

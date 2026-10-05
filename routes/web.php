@@ -1416,6 +1416,7 @@ Route::delete(
   Route::post('event/{event}/region/{region}/teams/publish', [TeamController::class, 'publishRegionTeams'])
     ->name('backend.region.teams.publish');
   Route::post('team/category/change/{id}', [TeamController::class, 'changeCategory'])->name('team.change.category');
+  Route::patch('event/{event}/team/{team}/name', [TeamController::class, 'rename'])->name('backend.team.name.update');
   Route::get('team/payment/{team}/{player}/{event}', [TeamController::class, 'team_payment_payfast'])->middleware('auth')->name('team.payment.payfast');
   Route::post('team/payment/{team}/{player}/{event}/payfast-handoff', [TeamController::class, 'team_payment_payfast'])->middleware('auth')->name('team.payment.payfast.handoff');
   Route::post('team/orderPlayerList', [TeamController::class, 'order_player_list'])->name('team.order.player.list');

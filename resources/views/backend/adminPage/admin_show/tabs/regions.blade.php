@@ -20,6 +20,13 @@
 
     <div class="card-body">
 
+        @if(session('team_rename_success'))
+          <div class="alert alert-success" role="status">{{ session('team_rename_success') }}</div>
+        @endif
+        @if($errors->teamRename->any())
+          <div class="alert alert-danger" role="alert">{{ $errors->teamRename->first('name') }} Open Edit Team Name to correct it.</div>
+        @endif
+
         <div class="accordion" id="regionsAccordion">
 
           @if ($event->regions->isEmpty())
@@ -33,6 +40,8 @@
             @php
               $regionTeamCount = $region->teams->count();
               $regionUnpublishedCount = $region->teams->where('published', false)->count();
+              $renameTeamId = $errors->teamRename->any() ? old('rename_team_id') : session('renamed_team_id');
+              $renameRegionOpen = $renameTeamId && $region->teams->contains('id', (int) $renameTeamId);
             @endphp
 
             {{-- 🔹 REGION WRAPPER (AJAX TARGET) --}}
@@ -42,11 +51,11 @@
                  data-pivot-id="{{ $region->pivot->id }}">
 
               <h2 class="accordion-header" id="heading-{{ $region->id }}">
-                <button class="accordion-button collapsed fw-semibold"
+                <button class="accordion-button {{ $renameRegionOpen ? '' : 'collapsed' }} fw-semibold"
                         type="button"
                         data-bs-toggle="collapse"
                         data-bs-target="#collapse-{{ $region->id }}"
-                        aria-expanded="false">
+                        aria-expanded="{{ $renameRegionOpen ? 'true' : 'false' }}">
                   <span class="badge bg-label-secondary me-2">#{{ $region->id }}</span>
                   <span class="region-name">{{ $region->region_name }}</span>
                   <span class="ms-2 text-muted small">
@@ -56,7 +65,7 @@
               </h2>
 
               <div id="collapse-{{ $region->id }}"
-                   class="accordion-collapse collapse"
+                   class="accordion-collapse collapse {{ $renameRegionOpen ? 'show' : '' }}"
                    data-bs-parent="#regionsAccordion">
 
                 <div class="accordion-body pt-2">
@@ -119,11 +128,11 @@
                       @foreach ($region->teams as $team)
 
                         {{-- 🔹 TEAM ROW (AJAX TARGET) --}}
-                        <div class="list-group-item d-flex justify-content-between align-items-start py-3 px-3 border-0 border-bottom"
+                        <div class="list-group-item d-flex flex-wrap gap-2 justify-content-between align-items-start py-3 px-3 border-0 border-bottom"
                              data-team-row
                              data-team-id="{{ $team->id }}">
 
-                          <div>
+                          <div class="flex-grow-1" style="min-width:0; overflow-wrap:anywhere">
                             <div class="fw-medium">{{ $team->name }}</div>
 
                             <small class="text-muted d-block mb-1 category-{{ $team->id }}">
@@ -139,6 +148,19 @@
                                     data-bs-target="#edit-team-category-modal">
                               <i class="ti ti-edit me-25"></i> Edit Category
                             </button>
+                            @can('team.update', $team)
+                              <details class="mt-2" @if($errors->teamRename->any() && (int) old('rename_team_id') === (int) $team->id) open @endif>
+                                <summary class="btn btn-xs btn-outline-secondary">Edit Team Name</summary>
+                                <form method="POST" action="{{ route('backend.team.name.update', [$event, $team]) }}" class="mt-2">
+                                  @csrf
+                                  @method('PATCH')
+                                  <input type="hidden" name="rename_team_id" value="{{ $team->id }}">
+                                  <label class="form-label" for="team-name-{{ $team->id }}">Team name</label>
+                                  <input class="form-control" id="team-name-{{ $team->id }}" name="name" maxlength="255" required value="{{ (int) old('rename_team_id') === (int) $team->id ? old('name', $team->name) : $team->name }}">
+                                  <button type="submit" class="btn btn-sm btn-primary mt-2">Save Team Name</button>
+                                </form>
+                              </details>
+                            @endcan
                           </div>
 
                           <div class="text-end" style="min-width:180px">
@@ -154,6 +176,7 @@
                               <i class="ti {{ $team->published ? 'ti-eye-off' : 'ti-eye' }} me-1"></i>
                               {{ $team->published ? 'Unpublish Team' : 'Publish Team' }}
                             </button>
+
 
                             {{-- ✅ NOPROFILE TOGGLE --}}
                             <a href="javascript:void(0)"
