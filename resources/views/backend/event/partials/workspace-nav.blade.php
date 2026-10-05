@@ -28,7 +28,7 @@
     @can('event.manage', $event)
       <a href="{{ route('backend.event-venue-schedule.index', $event) }}" @if($eventWorkspaceActive === 'schedule') aria-current="page" @endif><i class="ti ti-calendar-event" aria-hidden="true"></i>Schedule</a>
     @endcan
-    <a href="{{ route($event->isTeam() ? 'admin.events.standings' : 'admin.events.results.individual', $event) }}" @if(in_array($eventWorkspaceActive, ['results', 'standings'])) aria-current="page" @endif><i class="ti ti-trophy" aria-hidden="true"></i>{{ $event->isTeam() ? 'Standings' : 'Results' }}</a>
+    <a href="{{ route($event->isTeam() ? 'admin.events.standings' : 'admin.events.results.individual', $event) }}" @if(in_array($eventWorkspaceActive, ['results', 'standings'])) aria-current="page" @endif><i class="ti ti-trophy" aria-hidden="true"></i>Standings</a>
   @endcan
   @can('event-finance.view', $event)
     <a href="{{ route('admin.events.finances', $event) }}" @if($eventWorkspaceActive === 'finances') aria-current="page" @endif><i class="ti ti-report-money" aria-hidden="true"></i>Finances</a>

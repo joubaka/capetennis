@@ -97,7 +97,7 @@
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 no-print">
   <div><h2 class="h4 mb-1">Tournament draws</h2><p class="text-muted mb-0">Create team ties or individual singles draws, allocate venues and manage fixtures.</p></div>
   @can('event.manage', $event)
-    <a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.index', $event) }}"><i class="ti ti-calendar-event me-1"></i>Schedule all matches</a>
+    <a class="btn btn-primary" href="{{ route('backend.event-venue-schedule.index', $event) }}"><i class="ti ti-calendar-event me-1"></i>Schedule all draws & matches</a>
   @endcan
   @can('team-draw.createFormat', $event)
   <a class="btn btn-outline-primary" href="{{ route('backend.team-rules.edit', $event) }}">Event scoring rules</a>

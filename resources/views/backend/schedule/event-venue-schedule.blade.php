@@ -146,6 +146,7 @@
       <div class="text-uppercase text-primary fw-semibold small">Event schedule workspace</div>
       <h3 class="mb-1">{{ $event->name }}</h3>
       <p class="text-muted mb-0">Schedule every assigned draw / category in three clear steps: assign courts, set the timing, then review.</p>
+      <p class="text-muted small mt-2 mb-0">Choose any combination of draws across all age groups in this event. Team and individual matches share the same court calendar.</p>
     </div>
     <div class="d-flex flex-wrap gap-2 workspace-actions">
       @if($draws->isNotEmpty())
