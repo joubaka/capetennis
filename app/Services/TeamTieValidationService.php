@@ -202,7 +202,7 @@ class TeamTieValidationService
             throw new \InvalidArgumentException("Tie #{$tie->id} has no rubbers.");
         }
         $this->assertRequiredRubbersPresent($tie);
-        $snapshot = $tie->draw?->team_format_snapshot;
+        $snapshot = $tie->format_snapshot ?? $tie->draw?->team_format_snapshot;
         if ($tie->draw?->team_draw_selection) {
             $resolver = app(TeamDrawSideResolver::class);
             $tie->setRelation('homeTeam', $resolver->side($tie->draw, $tie->homeTeam));
@@ -297,7 +297,7 @@ class TeamTieValidationService
 
     public function requiredRubbersPresent(TeamTie $tie): bool
     {
-        $snapshot = $tie->draw?->team_format_snapshot;
+        $snapshot = $tie->format_snapshot ?? $tie->draw?->team_format_snapshot;
         $required = is_array($snapshot)
             ? collect($snapshot['rubbers'] ?? [])->filter(fn ($rubber) => $rubber['is_required'] ?? true)->pluck('sequence')->all()
             : ($tie->draw?->teamEventFormat?->rubbers->where('is_required', true)->pluck('sequence')->all() ?? []);

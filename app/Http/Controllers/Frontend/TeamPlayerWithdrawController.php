@@ -95,6 +95,7 @@ class TeamPlayerWithdrawController extends Controller
     }
 
     DB::transaction(function () use ($teamPlayer, $team, $player, $eventId, $user): void {
+      app(\App\Services\TeamDrawAdaptationService::class)->lockEvent((int) $eventId);
       Team::query()->lockForUpdate()->findOrFail($team->id);
       $teamPlayer = TeamPlayer::query()->lockForUpdate()->findOrFail($teamPlayer->id);
       if ((int) $teamPlayer->player_id !== (int) $player->id || (int) $teamPlayer->pay_status !== 0) {
@@ -530,6 +531,7 @@ class TeamPlayerWithdrawController extends Controller
     $playerId = (int) $player->id;
 
     DB::transaction(function () use ($teamPlayer, $player, $eventId, $teamId, $playerId, $actor): void {
+      app(\App\Services\TeamDrawAdaptationService::class)->lockEvent((int) $eventId);
       $this->removePlayerFromUnplayedFixtures($player, $eventId);
       $teamPlayer->forceFill(['player_id' => 0, 'pay_status' => 0])->save();
       app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)

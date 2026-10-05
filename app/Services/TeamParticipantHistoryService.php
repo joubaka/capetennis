@@ -11,6 +11,8 @@ class TeamParticipantHistoryService
     public function assertRevision(\App\Models\TeamFixture $fixture, int $eventId, mixed $expected): void
     {
         $hasHistory = \App\Models\TeamSubstitution::where('event_id', $eventId)->lockForUpdate()->first(['id']) !== null;
+        $hasHistory = $hasHistory || \App\Models\DrawAuditLog::where('draw_id', $fixture->draw_id)
+            ->where('action', 'team_draw_adapted')->exists();
         if ($expected === null && !$hasHistory) return;
         abort_unless(is_string($expected) && hash_equals($this->revision($fixture, true), $expected), 409,
             'Fixture participants changed or this page is outdated. Reload the fixture before scoring or starting play.');

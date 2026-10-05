@@ -101,7 +101,7 @@ final class UnifiedTeamScheduleService
                 return 'This rubber starts before the preceding team tie and required rest finish.';
             }
         }
-        foreach ($nodes as $later) {
+        foreach (($data['adaptation'] ?? false) ? [] : $nodes as $later) {
             if (! in_array('team:'.$fixture->id, $later['dependencies'], true) || ! $later['fixture']->scheduled_at) continue;
             if ($start->copy()->addMinutes($duration + $rest)->gt(Carbon::parse($later['fixture']->scheduled_at))) {
                 return 'This rubber and required rest finish after a saved later team tie starts.';

@@ -909,7 +909,7 @@ class TeamPaymentService
     {
         abort_unless($actor->hasRole('super-user'), 403);
         DB::transaction(function () use ($invitation, $actor, $expectedOrderId, $expectedPlayerId, $expectedRank, $reference, $reason, $disposition, $expectedFingerprint, $deadlineOverride, $overrideReason): void {
-            $event = Event::lockForUpdate()->findOrFail($invitation->event_id);
+            $event = app(\App\Services\TeamDrawAdaptationService::class)->lockEvent((int) $invitation->event_id);
             $import = \App\Models\TeamSelectionImport::lockForUpdate()->findOrFail($invitation->import_id);
             $team = Team::withoutGlobalScopes()->lockForUpdate()->findOrFail($invitation->team_id);
             $selected = TeamSelectionInvitation::lockForUpdate()->findOrFail($invitation->id);

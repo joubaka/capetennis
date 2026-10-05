@@ -23,7 +23,7 @@ class TeamSubstitutionService
 
     private function plan(Team $team, array $input, User $actor): array
     {
-        $event = Event::whereKey($team->category->event_id)->lockForUpdate()->firstOrFail();
+        $event = app(TeamDrawAdaptationService::class)->lockEvent($team->category->event_id);
         $team = Team::without(['team_players', 'team_players_no_profile'])->lockForUpdate()->findOrFail($team->id);
         $category = \App\Models\CategoryEvent::lockForUpdate()->findOrFail($team->category_event_id);
         if ((int) $category->event_id !== (int) $event->id) $this->fail('The team event changed. Reload before replacing.');
@@ -191,7 +191,7 @@ class TeamSubstitutionService
     public function execute(Team $team, array $input, User $actor): TeamSubstitution
     {
         return DB::transaction(function () use ($team, $input, $actor) {
-            Event::whereKey($team->category->event_id)->lockForUpdate()->firstOrFail();
+            app(TeamDrawAdaptationService::class)->lockEvent($team->category->event_id);
             $team = Team::lockForUpdate()->findOrFail($team->id);
             Gate::forUser($actor)->authorize('team.players.manage', $team);
             $eventId = $team->category->event_id;
@@ -239,8 +239,13 @@ class TeamSubstitutionService
                 $changedIds[$row->team_fixture_id] = true;
             }
             if (count($changedIds ?? []) !== count($plan['selected_ids'])) $this->fail('The reviewed source assignments changed. Preview again.');
+
+            $reports = [];
+            foreach (\App\Models\Draw::where('event_id', $eventId)->get() as $draw) {
+                if ($draw->isTeamDraw()) $reports[$draw->id] = app(TeamDrawAdaptationService::class)->adaptDraw($draw, null, false, false, $plan['selected_ids']);
+            }
             return TeamSubstitution::create(['event_id' => $eventId, 'team_id' => $team->id, 'actor_id' => $actor->id,
-                'request_key' => $input['request_key'], 'fingerprint' => $input['fingerprint'], 'details' => $plan + ['input_hash' => hash('sha256', json_encode($planInput)), 'reason' => $input['reason'], 'scope' => $input['scope'], 'from_round' => $input['from_round'] ?? null, 'old_type' => $input['old_type'], 'old_id' => $input['old_id'], 'new_type' => $input['new_type'], 'new_identity_id' => $incoming->id, 'anchor_type' => $anchorType, 'anchor_id' => $anchorId], 'created_at' => now()]);
+                'request_key' => $input['request_key'], 'fingerprint' => $input['fingerprint'], 'details' => $plan + ['adaptation' => $reports, 'input_hash' => hash('sha256', json_encode($planInput)), 'reason' => $input['reason'], 'scope' => $input['scope'], 'from_round' => $input['from_round'] ?? null, 'old_type' => $input['old_type'], 'old_id' => $input['old_id'], 'new_type' => $input['new_type'], 'new_identity_id' => $incoming->id, 'anchor_type' => $anchorType, 'anchor_id' => $anchorId], 'created_at' => now()]);
         });
     }
 }

@@ -309,26 +309,23 @@ class TeamDrawController extends Controller
 
         $this->authorize('team-draw.updateTeamDraw', $draw);
 
-        if ($draw->team_draw_selection) {
-            return response()->json(['success' => false, 'message' => 'A category-selected draw retains its original teams. Create a new draw to change the selection.'], 409);
-        }
-
         $validated = $request->validate([
-            'team_ids'   => 'required|array|min:2',
+            'team_ids' => 'sometimes|array',
             'team_ids.*' => 'integer|exists:teams,id',
         ]);
-
-        if ($scopeError = $this->requireTeamsInScope($validated['team_ids'], $event)) {
-            return $scopeError;
+        $ids = $validated['team_ids'] ?? null;
+        if ($ids !== null && ($scopeError = $this->requireTeamsInScope($ids, $event))) return $scopeError;
+        if ($draw->team_draw_selection && $ids !== null) {
+            $categories = $draw->team_draw_selection['category_ids'];
+            if (Team::whereIn('id', $ids)->whereNotIn('category_event_id', $categories)->exists()) {
+                return response()->json(['success' => false, 'message' => 'Keep teams within the selected categories.'], 422);
+            }
+            // Category-selected draws refresh all current sources, including composite mixed sides.
+            $ids = null;
         }
-
-        $draw->teams_in_draw()->sync($validated['team_ids']);
-
-        return response()->json([
-            'success'  => true,
-            'message'  => 'Teams updated for draw.',
-            'team_ids' => $validated['team_ids'],
-        ]);
+        $report = app(\App\Services\TeamDrawAdaptationService::class)->adaptDraw($draw, $ids);
+        return response()->json(['success' => true, 'message' => 'Upcoming draw matches refreshed.',
+            'team_ids' => $draw->teams_in_draw()->pluck('teams.id')->all(), 'adaptation' => $report, 'warnings' => $report['warnings']]);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -553,10 +550,12 @@ class TeamDrawController extends Controller
 
         try {
             DB::transaction(function () use ($tie) {
+                app(\App\Services\TeamDrawAdaptationService::class)->lockEvent($tie->draw->event_id);
                 $draw = Draw::whereKey($tie->draw_id)->lockForUpdate()->firstOrFail();
                 $current = TeamTie::whereKey($tie->id)->lockForUpdate()->firstOrFail();
-                abort_if($draw->locked || $draw->published || $current->isLocked()
-                    || $current->published_at || $current->winner_team_id, 409, 'This tie cannot be reopened for validation.');
+                abort_if($draw->locked || $current->isLocked()
+                    || $current->published_at || $current->winner_team_id
+                    || $current->rubbers()->where(fn ($q) => $q->where('match_status', '!=', 0)->orWhereHas('fixtureResults'))->exists(), 409, 'This tie cannot be reopened for validation.');
                 $this->validator->assertTieComplete($current);
                 $current->update(['status' => TeamTie::STATUS_VALIDATED]);
             });
@@ -578,9 +577,11 @@ class TeamDrawController extends Controller
 
         try {
             DB::transaction(function () use ($tie) {
+                app(\App\Services\TeamDrawAdaptationService::class)->lockEvent($tie->draw->event_id);
                 $draw = Draw::whereKey($tie->draw_id)->lockForUpdate()->firstOrFail();
                 $current = TeamTie::whereKey($tie->id)->lockForUpdate()->firstOrFail();
-                abort_if($draw->locked || $draw->published || $current->isLocked(), 409, 'This tie is protected against publication changes.');
+                abort_if($draw->locked || $current->isLocked() || $current->published_at || $current->winner_team_id
+                    || $current->rubbers()->where(fn ($q) => $q->where('match_status', '!=', 0)->orWhereHas('fixtureResults'))->exists(), 409, 'This tie is protected against publication changes.');
                 if ($current->status !== TeamTie::STATUS_VALIDATED) {
                     throw new \InvalidArgumentException("Tie #{$tie->id} must be validated before publishing.");
                 }

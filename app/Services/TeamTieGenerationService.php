@@ -59,7 +59,8 @@ class TeamTieGenerationService
         }
 
         $draw   = $tie->draw;
-        $format = $draw?->team_format_snapshot ? new TeamEventFormat($draw->team_format_snapshot) : $draw?->teamEventFormat;
+        $snapshot = $tie->format_snapshot ?? $draw?->team_format_snapshot;
+        $format = $snapshot ? new TeamEventFormat($snapshot) : $draw?->teamEventFormat;
 
         if (!$format) {
             throw new \InvalidArgumentException(
@@ -90,7 +91,7 @@ class TeamTieGenerationService
         }
 
         /** @var Collection<int, TeamEventFormatRubber> $rubberTemplates */
-        $snapshot = $tie->draw?->team_format_snapshot;
+        $snapshot = $tie->format_snapshot ?? $tie->draw?->team_format_snapshot;
         $rubberTemplates = is_array($snapshot) && isset($snapshot['rubbers'])
             ? collect($snapshot['rubbers'])->map(fn (array $attributes) => new TeamEventFormatRubber($attributes))->sortBy('sequence')->values()
             : $format->rubbers;

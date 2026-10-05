@@ -192,6 +192,7 @@ class PlayerController extends Controller
     }
 
     $result = DB::transaction(function () use ($validated, $claimContext, $request) {
+      if ($claimContext) app(\App\Services\TeamDrawAdaptationService::class)->lockEvent((int) $claimContext['event']->id);
       $result = $this->playerIdentity->findOrCreate([
         'name' => $validated['player_name'],
         'surname' => $validated['player_surname'],
@@ -673,6 +674,7 @@ class PlayerController extends Controller
     );
 
     DB::transaction(function () use ($request, $claim, $player, $validated): void {
+      app(\App\Services\TeamDrawAdaptationService::class)->lockEvent((int) $claim['event']->id);
       $player = Player::whereKey($player->id)->lockForUpdate()->firstOrFail();
       $player->update([
         'dateOfBirth' => $validated['dateOfBirth'],

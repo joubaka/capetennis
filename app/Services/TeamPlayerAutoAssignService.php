@@ -256,7 +256,7 @@ class TeamPlayerAutoAssignService
         }
 
         // Profile players ordered by rank
-        $profilePlayer = $team->team_players->firstWhere('rank', $rank);
+        $profilePlayer = $team->team_players->first(fn ($member) => (int) $member->rank === $rank && (int) $member->player_id > 0);
         if ($profilePlayer) {
             return [$profilePlayer->player_id, null];
         }

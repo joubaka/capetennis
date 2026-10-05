@@ -364,6 +364,34 @@ class TeamSubstitutionWorkflowTest extends TestCase
         $this->assertDatabaseCount('team_fixture_results', 1);
     }
 
+    public function test_ordinary_draw_adaptation_requires_a_current_participant_revision_for_play(): void
+    {
+        Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        $this->admin->assignRole('super-user');
+        $this->actingAs($this->admin);
+        [$oldId] = $this->source('profile');
+        $fixture = $this->fixture('profile', $oldId, 1);
+        $history = app(\App\Services\TeamParticipantHistoryService::class);
+        $oldRevision = $history->revision($fixture);
+        $fixture->fixturePlayers()->first()->update(['team1_id' => $this->incoming->id]);
+        \App\Models\DrawAuditLog::record($fixture->draw_id, 'team_draw_adapted', null,
+            ['report' => ['updated_lineups' => 1]]);
+
+        $scores = ['set1_home' => 6, 'set1_away' => 2];
+        $scoreUrl = route('backend.team-fixtures.insertScore', $fixture);
+        $startUrl = route('frontend.scoring.team-fixtures.playing', [$this->event, $fixture]);
+        $this->postJson($scoreUrl, $scores)->assertStatus(409);
+        $this->postJson($scoreUrl, $scores + ['participant_revision' => $oldRevision])->assertStatus(409);
+        $this->postJson($startUrl, ['playing' => true, 'participant_revision' => $oldRevision])->assertStatus(409);
+        $this->assertDatabaseCount('team_substitutions', 0);
+        $this->assertDatabaseCount('team_fixture_results', 0);
+        $this->assertSame(0, (int) $fixture->fresh()->match_status);
+        $revision = $history->revision($fixture->fresh());
+        $this->postJson($startUrl, ['playing' => true, 'participant_revision' => $revision])->assertOk();
+        $this->postJson($scoreUrl, $scores + ['participant_revision' => $revision])->assertRedirect();
+        $this->assertDatabaseCount('team_fixture_results', 1);
+    }
+
     public function test_imported_identity_details_cannot_create_same_person_again(): void
     {
         [$oldId] = $this->source('imported');

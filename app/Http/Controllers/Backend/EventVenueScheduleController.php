@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
 use App\Domain\Draws\Services\ScheduleConflictService;
-use App\Models\{DrawAuditLog, Event, Fixture, OrderOfPlay, TeamFixture, Venue};
+use App\Models\{DrawAuditLog, Event, Fixture, OrderOfPlay, TeamFixture, TeamTie, Venue};
 use App\Services\EventAnnouncementService;
 use App\Services\ScheduleEngine;
 use App\Services\Scheduling\EventVenueScheduleService;
@@ -110,8 +110,27 @@ final class EventVenueScheduleController extends Controller
             ->filter(fn ($row) => isset($row['venue_id'], $row['start']) && $availableVenues->contains('id', (int) $row['venue_id']))
             ->mapWithKeys(fn ($row) => [(int) $row['venue_id'] => \Carbon\Carbon::parse($row['start'])->format('Y-m-d\TH:i')]);
 
+        $latestAdaptationIds = DrawAuditLog::whereIn('draw_id', $eventDraws->pluck('id'))
+            ->where('action', 'team_draw_adapted')->selectRaw('MAX(id)')->groupBy('draw_id');
+        $adaptationLogs = DrawAuditLog::whereIn('id', $latestAdaptationIds)->latest('id')->limit(20)->get();
+        $pendingAdaptedCounts = TeamFixture::withoutEagerLoads()->whereIn('draw_id', $adaptationLogs->pluck('draw_id'))
+            ->whereNull('scheduled_at')->where('match_status', 0)->whereDoesntHave('fixtureResults')
+            ->selectRaw('draw_id, COUNT(*) AS pending_count')->groupBy('draw_id')->pluck('pending_count', 'draw_id');
+        $reviewTieIds = $adaptationLogs->flatMap(fn ($log) => $log->payload['report']['review_tie_ids'] ?? [])->unique();
+        $draftReviewTieIds = TeamTie::whereIn('id', $reviewTieIds)->whereIn('draw_id', $eventDraws->pluck('id'))
+            ->where('status', TeamTie::STATUS_DRAFT)->pluck('id')->all();
+        $adaptationNotices = $adaptationLogs->map(function ($log) use ($eventDraws, $pendingAdaptedCounts, $draftReviewTieIds) {
+            $report = $log->payload['report'] ?? [];
+            $pending = (int) ($pendingAdaptedCounts[$log->draw_id] ?? 0);
+            $needsReview = (bool) ($report['review_required'] ?? false)
+                || (bool) array_intersect($report['review_tie_ids'] ?? [], $draftReviewTieIds);
+            return ['draw_name' => $eventDraws->firstWhere('id', $log->draw_id)?->drawName,
+                'pending_count' => $pending, 'review_required' => $needsReview,
+                'warnings' => array_slice($report['warnings'] ?? [], 0, 5)];
+        })->filter(fn ($notice) => $notice['pending_count'] > 0 || $notice['review_required'])->values();
+
         return view('backend.schedule.event-venue-schedule', compact(
-            'event', 'draws', 'venues', 'allVenues', 'announcementDraft', 'scheduleDraft'
+            'event', 'draws', 'venues', 'allVenues', 'announcementDraft', 'scheduleDraft', 'adaptationNotices'
         ));
     }
 

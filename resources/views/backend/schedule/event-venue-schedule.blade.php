@@ -162,6 +162,26 @@
     </div>
   </div>
 
+  @if(($adaptationNotices ?? collect())->isNotEmpty())
+    <div class="alert alert-warning mb-3" role="status" data-schedule-adaptation-notice>
+      <strong>Team changes updated the draws.</strong>
+      <p class="mb-2">Review the changes below. Generate a combined preview for matches that need new times; valid bookings stay fixed.</p>
+      <ul class="mb-0">
+        @foreach($adaptationNotices as $notice)
+          <li><strong>{{ $notice['draw_name'] }}</strong>:
+            @if($notice['pending_count'] > 0)
+              {{ $notice['pending_count'] }} {{ \Illuminate\Support\Str::plural('match', $notice['pending_count']) }} to schedule.
+            @else
+              Draw changes need review.
+            @endif
+            @if($notice['warnings'])
+              <span class="d-block small">{{ implode(' ', $notice['warnings']) }}</span>
+            @endif
+          </li>
+        @endforeach
+      </ul>
+    </div>
+  @endif
   <div class="workflow-rail mb-3" aria-label="Schedule workflow">
     <button type="button" class="workflow-step is-active" data-workflow-nav="1"><span class="step-number">1</span><span class="workflow-label">Court allocation</span></button>
     <button type="button" class="workflow-step" data-workflow-nav="2" data-audit-ignore="true"><span class="step-number">2</span><span class="workflow-label">Timing rules</span></button>

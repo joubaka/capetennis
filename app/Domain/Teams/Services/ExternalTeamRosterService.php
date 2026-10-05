@@ -80,6 +80,7 @@ class ExternalTeamRosterService
     public function import(Team $team, array $rows, User $actor): void
     {
         DB::transaction(function () use ($team, $rows, $actor): void {
+            app(\App\Services\TeamDrawAdaptationService::class)->lockEvent($team->category->event_id);
             Team::whereKey($team->id)->lockForUpdate()->firstOrFail();
 
             foreach ($rows as $row) {
@@ -108,6 +109,7 @@ class ExternalTeamRosterService
             activity('team-roster')->performedOn($team)->causedBy($actor)
                 ->withProperties(['team_id' => $team->id, 'row_count' => count($rows), 'ranks' => array_column($rows, 'rank')])
                 ->log('External team roster imported');
+            app(\App\Services\TeamDrawAdaptationService::class)->adaptEvent($team->category->event_id);
         });
     }
 
@@ -140,6 +142,7 @@ class ExternalTeamRosterService
         $this->playerEligibility->assertEligible($player, $event);
 
         DB::transaction(function () use ($user, $event, $team, $slot, $player): void {
+            app(\App\Services\TeamDrawAdaptationService::class)->lockEvent($event->id);
             $lockedSlot = NoProfileTeamPlayer::whereKey($slot->id)->lockForUpdate()->firstOrFail();
             if ((int) $lockedSlot->team_id !== (int) $team->id || $lockedSlot->player_profile) {
                 throw ValidationException::withMessages(['player' => 'This roster position is no longer available.']);
@@ -181,6 +184,7 @@ class ExternalTeamRosterService
             activity('team-roster')->performedOn($team)->causedBy($user)
                 ->withProperties(['event_id' => $event->id, 'slot_id' => $lockedSlot->id, 'rank' => $lockedSlot->rank, 'player_id' => $player->id])
                 ->log('External roster position claimed');
+            app(\App\Services\TeamDrawAdaptationService::class)->adaptEvent($event);
         });
     }
 
@@ -202,6 +206,7 @@ class ExternalTeamRosterService
         if (! $this->registrationIsOpen($event)) throw ValidationException::withMessages(['event' => 'Registration for this event is closed.']);
 
         return DB::transaction(function () use ($event, $team, $player): TeamPlayer {
+            app(\App\Services\TeamDrawAdaptationService::class)->lockEvent($event->id);
             if (! $team->noProfile) {
                 $teamPlayer = TeamPlayer::query()
                     ->where('team_id', $team->id)
@@ -266,6 +271,7 @@ class ExternalTeamRosterService
             $this->playerEligibility->assertEligible($player, $event);
             if ($teamPlayer->isDirty() || ! $teamPlayer->exists) {
                 $teamPlayer->save();
+                app(\App\Services\TeamDrawAdaptationService::class)->adaptEvent($event);
             }
 
             return $teamPlayer;

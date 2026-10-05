@@ -38,7 +38,7 @@ class TeamController extends Controller
     /** Serialize legacy roster writes with audited competition transitions. */
     public function callAction($method, $parameters)
     {
-        $rosterWrites = ['destroy', 'toggleNoProfile', 'insertPlayer', 'order_player_list', 'changeCategory', 'importNoProfile',
+        $rosterWrites = ['store', 'addToRegion', 'destroy', 'toggleNoProfile', 'insertPlayer', 'order_player_list', 'changeCategory', 'importNoProfile',
             'importNoProfileTeams', 'importFromRanking', 'updateNoProfile', 'addPlayers', 'updateRoster'];
         if (!in_array($method, $rosterWrites, true)) return parent::callAction($method, $parameters);
         $event = collect($parameters)->first(fn ($value) => $value instanceof Event);
@@ -53,13 +53,23 @@ class TeamController extends Controller
             $identity = NoProfileTeamPlayer::find($parameters['id'] ?? null);
             $team = $identity?->team_id ? Team::find($identity->team_id) : null;
         }
-        $eventId = $event?->id ?? $team?->category?->event_id;
+        $eventId = $event?->id ?? $team?->category?->event_id ?? CategoryEvent::find($request->input('category_event_id'))?->event_id;
         if (!$eventId) return parent::callAction($method, $parameters);
         return DB::transaction(function () use ($method, $parameters, $eventId) {
-            Event::whereKey($eventId)->lockForUpdate()->firstOrFail();
-            abort_if(\App\Models\TeamSubstitution::where('event_id', $eventId)->lockForUpdate()->exists(), 409,
+            $adaptation = app(\App\Services\TeamDrawAdaptationService::class);
+            $adaptation->lockEvent($eventId);
+            abort_if(!in_array($method, ['store', 'addToRegion'], true) && \App\Models\TeamSubstitution::where('event_id', $eventId)->lockForUpdate()->exists(), 409,
                 'This event has audited replacements. Generic roster edits and imports are blocked; use the replacement wizard to preserve history.');
-            return parent::callAction($method, $parameters);
+            $response = parent::callAction($method, $parameters);
+            if (!($response instanceof \Symfony\Component\HttpFoundation\Response) || $response->getStatusCode() < 400) {
+                $reports = $adaptation->adaptEvent($eventId);
+                $warnings = collect($reports)->flatMap(fn ($report) => $report['warnings'])->unique()->values()->all();
+                if ($response instanceof \Illuminate\Http\JsonResponse) {
+                    $body = $response->getData(true);
+                    $response->setData(array_merge($body, ['adaptation' => $reports, 'warnings' => $warnings]));
+                } elseif ($warnings) session()->flash('schedule_adaptation_warning', implode(' ', $warnings));
+            }
+            return $response;
         });
     }
     /**
@@ -93,10 +103,8 @@ class TeamController extends Controller
     // Authorize: must provide category_event_id and be able to create team in that category
     $categoryEventId = $request->input('category_event_id');
     if ($categoryEventId) {
-      $categoryEvent = CategoryEvent::find($categoryEventId);
-      if ($categoryEvent) {
-        $this->authorize('team.create', $categoryEvent);
-      }
+      $categoryEvent = CategoryEvent::findOrFail($categoryEventId);
+      $this->authorize('team.create', $categoryEvent);
     }
 
     $request->validate([
@@ -111,6 +119,7 @@ class TeamController extends Controller
     $team->year = $request->year;
     $team->published = $request->published ?? 0;
     $team->num_team_members = $request->num_players ?? 0;
+    $team->category_event_id = $categoryEventId;
     $team->region_id = $request->region_id; // ✅ Direct foreign key
     $team->save();
 
@@ -199,6 +208,14 @@ class TeamController extends Controller
         $this->authorize('team.delete', $team);
         app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
 
+        abort_if(\App\Models\TeamTie::where(fn ($q) => $q->where('home_team_id', $team->id)->orWhere('away_team_id', $team->id))
+            ->where(fn ($q) => $q->where('status', \App\Models\TeamTie::STATUS_COMPLETED)->orWhereHas('rubbers', fn ($r) => $r->where('match_status', '!=', 0)->orWhereHas('fixtureResults')))->exists(), 409,
+            'This team has played history. Remove it from upcoming draw membership instead of deleting it.');
+        \App\Models\TeamTie::where(fn ($q) => $q->where('home_team_id', $team->id)->orWhere('away_team_id', $team->id))->get()->each(function ($tie) {
+            $tie->rubbers()->get()->each(fn ($fixture) => $fixture->fixturePlayers()->delete());
+            $tie->rubbers()->delete();
+            $tie->delete();
+        });
         Team::where('id', $id)->delete();
         return 'deleted';
     }

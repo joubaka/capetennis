@@ -33,3 +33,11 @@
   </x-backend.page-header>
   @include('backend.event.partials.workspace-nav')
 </div>
+@if(session('schedule_adaptation_warning'))
+  <div class="alert alert-warning mb-3" role="status">
+    {{ session('schedule_adaptation_warning') }}
+    @can('event.manage', $event)
+      <a class="alert-link ms-1" href="{{ route('backend.event-venue-schedule.index', $event) }}">Review updated schedule</a>
+    @endcan
+  </div>
+@endif

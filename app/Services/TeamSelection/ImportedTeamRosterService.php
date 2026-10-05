@@ -25,6 +25,7 @@ final class ImportedTeamRosterService
     public function unlink(Event $event, NoProfileTeamPlayer $slot, int $expectedPlayerId, int $expectedRank, User $actor): void
     {
         DB::transaction(function () use ($event, $slot, $expectedPlayerId, $expectedRank, $actor): void {
+            app(\App\Services\TeamDrawAdaptationService::class)->lockEvent($event->id);
             $team = Team::query()->lockForUpdate()->findOrFail($slot->team_id);
             abort_unless($team->noProfile && $team->category()->where('event_id', $event->id)->exists()
                 && app(RegionManagerAccessService::class)->isEventManager($actor, $event), 403);
@@ -75,6 +76,7 @@ final class ImportedTeamRosterService
                 'before' => $before, 'after_player_id' => null, 'mirror_id' => $mirror?->id,
                 'closed_order_ids' => $orders->pluck('id')->all(),
             ])->log('administrator unlinked unpaid imported roster profile');
+            app(\App\Services\TeamDrawAdaptationService::class)->adaptEvent($event);
         });
     }
 
@@ -87,6 +89,7 @@ final class ImportedTeamRosterService
         User $actor,
     ): void {
         DB::transaction(function () use ($event, $slot, $playerId, $expectedPlayerId, $expectedRank, $actor): void {
+            app(\App\Services\TeamDrawAdaptationService::class)->lockEvent($event->id);
             $team = Team::query()->lockForUpdate()->findOrFail($slot->team_id);
             abort_unless($team->noProfile && $team->category()->where('event_id', $event->id)->exists()
                 && app(RegionManagerAccessService::class)->isEventManager($actor, $event), 403);
@@ -174,6 +177,7 @@ final class ImportedTeamRosterService
                 'mirror_before' => $mirrorBefore, 'mirror_after_id' => $teamSlot->id, 'mirror_repair' => $repairKind,
                 'closed_stale_order_ids' => $staleOrders->pluck('id')->all(),
             ])->log('administrator replaced imported roster profile link');
+            app(\App\Services\TeamDrawAdaptationService::class)->adaptEvent($event);
         });
     }
 
@@ -212,6 +216,7 @@ final class ImportedTeamRosterService
         User $actor,
     ): void {
         DB::transaction(function () use ($event, $slot, $direction, $actor): void {
+            app(\App\Services\TeamDrawAdaptationService::class)->lockEvent($event->id);
             $locked = NoProfileTeamPlayer::query()->lockForUpdate()->findOrFail($slot->id);
             $target = NoProfileTeamPlayer::query()
                 ->where('team_id', $locked->team_id)
@@ -267,6 +272,7 @@ final class ImportedTeamRosterService
                     'from_rank' => $currentRank,
                     'to_rank' => $targetRank,
                 ])->log('regional manager reordered imported roster');
+            app(\App\Services\TeamDrawAdaptationService::class)->adaptEvent($event);
         });
     }
 
@@ -295,6 +301,7 @@ final class ImportedTeamRosterService
     public function reorder(Event $event, int $teamId, array $slotIds, User $actor, ?array $expectedIds = null): void
     {
         DB::transaction(function () use ($event, $teamId, $slotIds, $actor, $expectedIds): void {
+            app(\App\Services\TeamDrawAdaptationService::class)->lockEvent($event->id);
             $slots = NoProfileTeamPlayer::query()->where('team_id', $teamId)
                 ->lockForUpdate()->orderBy('rank')->get();
             $currentIds = $slots->pluck('id')->map(fn ($id) => (int) $id)->all();
@@ -335,6 +342,7 @@ final class ImportedTeamRosterService
                 ->withProperties(['event_id' => $event->id, 'team_id' => $teamId,
                     'previous_slot_ids' => $currentIds, 'slot_ids' => $requestedIds, 'ranks' => $destinationRanks])
                 ->log('regional manager reordered imported roster by drag and drop');
+            app(\App\Services\TeamDrawAdaptationService::class)->adaptEvent($event);
         });
     }
 }

@@ -265,7 +265,10 @@ class TeamDrawSelectionWorkflowTest extends TestCase
     {
         $this->request([$this->item()])->assertOk();
         $draw = Draw::first();
-        foreach (['sync-teams', 'generate-ties', 'regenerate'] as $operation) {
+        $originalMap = $draw->team_draw_selection['mixed_sides'];
+        $this->actingAs($this->admin)->postJson(route('team-draw.sync-teams', $draw), [])->assertOk();
+        $this->assertSame($originalMap, $draw->fresh()->team_draw_selection['mixed_sides']);
+        foreach (['generate-ties', 'regenerate'] as $operation) {
             $this->actingAs($this->admin)->postJson(route('team-draw.'.$operation, $draw), ['team_ids' => [$this->teams['East']['Boys']->id, $this->teams['East']['Girls']->id]])->assertStatus(409);
         }
         $this->assertDatabaseCount('team_ties', 1);

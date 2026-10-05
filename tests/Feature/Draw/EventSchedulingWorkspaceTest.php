@@ -116,4 +116,30 @@ class EventSchedulingWorkspaceTest extends TestCase
             file_put_contents(storage_path('framework/testing/scheduling-workspace.html'), $response->getContent());
         }
     }
+
+    public function test_adaptation_notice_keeps_pending_matches_visible_until_they_are_scheduled(): void
+    {
+        [$event, $draw, $venue] = $this->setupEvent();
+        $pending = $this->rubber($draw);
+        $logs = \App\Models\DrawAuditLog::class;
+        $logs::create(['draw_id' => $draw->id, 'action' => 'team_draw_adapted',
+            'payload' => ['report' => ['added_fixture_ids' => [$pending->id], 'warnings' => ['A new team added a pairing.']]]]);
+        // A later lineup change must not hide the previously added unscheduled match.
+        $logs::create(['draw_id' => $draw->id, 'action' => 'team_draw_adapted',
+            'payload' => ['report' => ['updated_lineups' => 1, 'warnings' => []]]]);
+        $other = Draw::factory()->create(['event_id' => Event::factory()->create()->id]);
+        $logs::create(['draw_id' => $other->id, 'action' => 'team_draw_adapted',
+            'payload' => ['report' => ['warnings' => ['Other event private warning']]]]);
+
+        $url = route('backend.event-venue-schedule.index', $event);
+        $response = $this->get($url)->assertOk()->assertSee('data-schedule-adaptation-notice', false)
+            ->assertSee('1 match to schedule.')->assertDontSee('Other event private warning');
+        if (getenv('CT_ADAPTATION_BROWSER_FIXTURE') === '1') {
+            file_put_contents(storage_path('framework/testing/scheduling-adaptation-workspace.html'), $response->getContent());
+        }
+        $this->assertNull($pending->fresh()->scheduled_at);
+        $pending->update(['scheduled_at' => '2026-10-10 08:00:00', 'venue_id' => $venue->id,
+            'court_label' => '1', 'duration_min' => 60]);
+        $this->get($url)->assertOk()->assertDontSee('data-schedule-adaptation-notice', false);
+    }
 }

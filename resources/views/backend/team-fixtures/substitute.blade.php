@@ -63,7 +63,35 @@ document.getElementById('newType').addEventListener('change',event=>{document.ge
 document.getElementById('replacementScope').addEventListener('change',event=>{document.getElementById('roundField').hidden=event.target.value!=='round';});
 document.getElementById('searchPlayers').addEventListener('click',async()=>{try{const term=document.getElementById('playerSearch').value;if(term.length<2)return message('Enter at least two letters.');const response=await fetch(urls.search+'?search='+encodeURIComponent(term),{headers:{Accept:'application/json'}});const players=await response.json();if(!response.ok)throw new Error('Player search unavailable');const select=document.getElementById('incomingProfile');select.replaceChildren(new Option('Choose a profile',''));players.forEach(p=>select.add(new Option(p.name+' '+p.surname,p.id)));invalidate();}catch(error){message(error.message);}});
 document.getElementById('previewReplacement').addEventListener('click',async()=>{invalidate();const requestedRevision=revision;try{const response=await post(urls.preview,data());if(requestedRevision!==revision)return;plan=response;output.replaceChildren();const summary=document.createElement('p');summary.textContent=plan.old_name+' → '+plan.new_name+' · source rank '+plan.source_rank+' · '+plan.selected_ids.length+' matches selected';output.append(summary);(plan.warnings||[]).forEach(text=>{const warning=document.createElement('p');warning.className='alert alert-warning';warning.textContent=text;output.append(warning);});plan.fixtures.forEach(fixture=>{const label=document.createElement('label');label.className='d-block border rounded p-2 mb-2';const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.className='form-check-input me-2';checkbox.checked=fixture.selected;checkbox.disabled=fixture.protected||data().scope!=='specific';checkbox.addEventListener('change',()=>{checkbox.checked?selected.add(fixture.id):selected.delete(fixture.id);invalidate();message('Preview again to review the selected matches.');});label.append(checkbox,document.createTextNode(fixture.draw+' · Round '+fixture.round+' · #'+fixture.id+(fixture.protected?' · protected':'')+(fixture.published?' · published':'') ));const matchup=document.createElement('div');matchup.className='small mt-1';const sideText=side=>side.region+': '+side.players.map(p=>(p.rank?'('+p.rank+') ':' ')+p.name).join(' + ');matchup.textContent=sideText(fixture.home)+' vs '+sideText(fixture.away)+(fixture.selected?' → replacement '+plan.new_name:' · unchanged');label.append(matchup);output.append(label);});confirm.disabled=data().scope==='specific'&&!plan.selected_ids.length;message('Review the preview before confirming.');}catch(error){message(error.message);}});
-confirm.addEventListener('click',async()=>{if(!plan)return;confirm.disabled=true;try{const result=await post(urls.apply,{...data(),fingerprint:plan.fingerprint,request_key:requestKey});message('Replacement recorded #'+result.id+'. Original results and financial history preserved.');plan=null;requestKey=crypto.randomUUID();}catch(error){message(error.message);confirm.disabled=false;}});
+confirm.addEventListener('click', async () => {
+  if (!plan) return;
+  confirm.disabled = true;
+  try {
+    const result = await post(urls.apply, {...data(), fingerprint:plan.fingerprint, request_key:requestKey});
+    message('Replacement recorded #' + result.id + '. Upcoming matches and their bookings were checked.');
+    output.replaceChildren();
+    const reports = Object.values(result.adaptation || result.details?.adaptation || {});
+    const warnings = [...new Set(reports.flatMap(report => report.warnings || []))];
+    warnings.forEach(text => {
+      const warning = document.createElement('p');
+      warning.className = 'alert alert-warning';
+      warning.textContent = text;
+      output.append(warning);
+    });
+    if (reports.some(report => (report.added_fixture_ids || []).length || (report.cleared_fixture_ids || []).length)) {
+      const link = document.createElement('a');
+      link.className = 'btn btn-primary';
+      link.href = @json(route('backend.event-venue-schedule.index', $team->category->event_id));
+      link.textContent = 'Review updated schedule';
+      output.append(link);
+    }
+    plan = null;
+    requestKey = crypto.randomUUID();
+  } catch (error) {
+    message(error.message);
+    confirm.disabled = false;
+  }
+});
 });
 </script>
 @endsection

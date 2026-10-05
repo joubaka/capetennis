@@ -20,10 +20,12 @@ class TeamTie extends Model
         'status',
         'winner_team_id',
         'published_at',
+        'format_snapshot',
     ];
 
     protected $casts = [
         'published_at' => 'datetime',
+        'format_snapshot' => 'array',
         'round_nr'     => 'integer',
         'tie_nr'       => 'integer',
     ];

@@ -36,7 +36,7 @@ final class TeamSelectionInvitationService
      */
     public function updateTeamSettings(Team $team, Event $event, int $regionId, array $attributes, User $actor): array
     {
-        return DB::transaction(function () use ($team, $event, $regionId, $attributes, $actor): array {
+        return $this->withRosterAdaptation((int) $event->id, function () use ($team, $event, $regionId, $attributes, $actor): array {
             Event::query()->lockForUpdate()->findOrFail($event->id);
             $requestedPlaces = (int) $attributes['num_team_members'];
             $activeImport = TeamSelectionImport::query()
@@ -242,6 +242,7 @@ final class TeamSelectionInvitationService
     public function accept(TeamSelectionInvitation $invitation, User $user): TeamSelectionInvitation
     {
         return DB::transaction(function () use ($invitation, $user) {
+            app(\App\Services\TeamDrawAdaptationService::class)->lockEvent((int) $invitation->event_id);
             $locked = TeamSelectionInvitation::query()->lockForUpdate()
                 ->with(['selectionImport.event', 'team', 'player'])->findOrFail($invitation->id);
             if ($locked->status === TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT) {
@@ -373,7 +374,7 @@ final class TeamSelectionInvitationService
         if (trim($reason) === '') {
             throw ValidationException::withMessages(['reason' => 'A reason is required.']);
         }
-        DB::transaction(function () use ($invitation, $actor, $reason, $expected): void {
+        $this->withRosterAdaptation((int) $invitation->event_id, function () use ($invitation, $actor, $reason, $expected): void {
             $selectionImport = $this->lockInvitationContext($invitation);
             $locked = TeamSelectionInvitation::query()->lockForUpdate()->findOrFail($invitation->id);
             $region = \App\Models\EventRegion::query()->where('event_id', $locked->event_id)
@@ -447,7 +448,7 @@ final class TeamSelectionInvitationService
 
     public function decline(TeamSelectionInvitation $invitation, User $user, ?string $reason): ?TeamSelectionInvitation
     {
-        return DB::transaction(function () use ($invitation, $user, $reason) {
+        return $this->withRosterAdaptation((int) $invitation->event_id, function () use ($invitation, $user, $reason) {
             $selectionImport = $this->lockInvitationContext($invitation);
             $locked = TeamSelectionInvitation::query()->lockForUpdate()->with('selectionImport')->findOrFail($invitation->id);
             $locked->setRelation('selectionImport', $selectionImport);
@@ -559,7 +560,7 @@ final class TeamSelectionInvitationService
 
     public function markWithdrawn(int $eventId, int $teamId, int $playerId, ?User $actor = null, bool $allowAutomaticReplacement = true): ?TeamSelectionInvitation
     {
-        return DB::transaction(function () use ($eventId, $teamId, $playerId, $actor, $allowAutomaticReplacement) {
+        return $this->withRosterAdaptation((int) $eventId, function () use ($eventId, $teamId, $playerId, $actor, $allowAutomaticReplacement) {
             $event = Event::query()->lockForUpdate()->findOrFail($eventId);
             $selectionImport = TeamSelectionImport::query()->where('event_id', $event->id)
                 ->whereHas('invitations', fn ($query) => $query->where('team_id', $teamId)->where('player_id', $playerId)
@@ -616,7 +617,7 @@ final class TeamSelectionInvitationService
 
     public function replaceWithNextReserve(TeamSelectionInvitation $invitation, User $actor, string $reason): TeamSelectionInvitation
     {
-        return DB::transaction(function () use ($invitation, $actor, $reason) {
+        return $this->withRosterAdaptation((int) $invitation->event_id, function () use ($invitation, $actor, $reason) {
             $selectionImport = $this->lockInvitationContext($invitation);
             $locked = TeamSelectionInvitation::query()->lockForUpdate()
                 ->with(['selectionImport', 'team'])->findOrFail($invitation->id);
@@ -669,7 +670,7 @@ final class TeamSelectionInvitationService
 
     public function moveRosterRank(TeamSelectionInvitation $invitation, User $actor, string $direction): void
     {
-        DB::transaction(function () use ($invitation, $actor, $direction): void {
+        $this->withRosterAdaptation((int) $invitation->event_id, function () use ($invitation, $actor, $direction): void {
             $selectionImport = $this->lockInvitationContext($invitation);
             $current = TeamSelectionInvitation::query()->findOrFail($invitation->id);
             if ((int) $current->import_id !== (int) $selectionImport->id || ! in_array($current->status, [
@@ -742,7 +743,7 @@ final class TeamSelectionInvitationService
 
     public function reorderRoster(TeamSelectionImport $selectionImport, Team $team, array $invitationIds, User $actor, array $expectedIds): void
     {
-        DB::transaction(function () use ($selectionImport, $team, $invitationIds, $actor, $expectedIds): void {
+        $this->withRosterAdaptation((int) $selectionImport->event_id, function () use ($selectionImport, $team, $invitationIds, $actor, $expectedIds): void {
             Event::query()->lockForUpdate()->findOrFail($selectionImport->event_id);
             $import = TeamSelectionImport::query()->lockForUpdate()->findOrFail($selectionImport->id);
             if (!in_array($import->status, ['draft', 'sent'], true)) {
@@ -807,7 +808,7 @@ final class TeamSelectionInvitationService
         ?int $targetRank = null
     ): TeamSelectionInvitation
     {
-        return DB::transaction(function () use ($invitation, $actor, $expectedStatus, $targetRank): TeamSelectionInvitation {
+        return $this->withRosterAdaptation((int) $invitation->event_id, function () use ($invitation, $actor, $expectedStatus, $targetRank): TeamSelectionInvitation {
             $selectionImport = $this->lockInvitationContext($invitation);
             $locked = TeamSelectionInvitation::query()->lockForUpdate()
                 ->with(['selectionImport', 'player'])
@@ -1134,7 +1135,7 @@ final class TeamSelectionInvitationService
         User $actor,
         string $reason,
     ): TeamSelectionInvitation {
-        return DB::transaction(function () use ($invitation, $player, $actor, $reason): TeamSelectionInvitation {
+        return $this->withRosterAdaptation((int) $invitation->event_id, function () use ($invitation, $player, $actor, $reason): TeamSelectionInvitation {
             $selectionImport = $this->lockInvitationContext($invitation);
             $locked = TeamSelectionInvitation::query()->lockForUpdate()
                 ->with(['selectionImport', 'team'])->findOrFail($invitation->id);
@@ -1601,7 +1602,7 @@ final class TeamSelectionInvitationService
                 'replacement_id' => null,
             ];
             if ($apply) {
-                $row['replacement_id'] = DB::transaction(function () use ($candidate): ?int {
+                $row['replacement_id'] = $this->withRosterAdaptation((int) $candidate->event_id, function () use ($candidate): ?int {
                     $selectionImport = $this->lockInvitationContext($candidate);
                     $locked = TeamSelectionInvitation::query()->lockForUpdate()
                         ->with(['selectionImport', 'player'])->findOrFail($candidate->id);
@@ -1673,7 +1674,7 @@ final class TeamSelectionInvitationService
 
     public function promoteNextReserveManually(TeamSelectionInvitation $vacated, User $actor): TeamSelectionInvitation
     {
-        return DB::transaction(function () use ($vacated, $actor): TeamSelectionInvitation {
+        return $this->withRosterAdaptation((int) $vacated->event_id, function () use ($vacated, $actor): TeamSelectionInvitation {
             $selectionImport = $this->lockInvitationContext($vacated);
             $locked = TeamSelectionInvitation::query()->lockForUpdate()
                 ->with(['selectionImport', 'player'])->findOrFail($vacated->id);
@@ -1715,7 +1716,7 @@ final class TeamSelectionInvitationService
 
     public function activateReserveInOpenPlace(TeamSelectionInvitation $invitation, User $actor, ?int $targetRank = null): TeamSelectionInvitation
     {
-        return DB::transaction(function () use ($invitation, $actor, $targetRank): TeamSelectionInvitation {
+        return $this->withRosterAdaptation((int) $invitation->event_id, function () use ($invitation, $actor, $targetRank): TeamSelectionInvitation {
             Event::query()->lockForUpdate()->findOrFail($invitation->event_id);
             $lockedImport = TeamSelectionImport::query()->lockForUpdate()->findOrFail($invitation->import_id);
             if (! in_array($lockedImport->status, ['draft', 'sent'], true)) {
@@ -2282,6 +2283,21 @@ final class TeamSelectionInvitationService
                     'player_id' => $primarySelection->player_id,
                 ])->log('moved helper player into primary regional team');
         }
+    }
+
+    private function withRosterAdaptation(int $eventId, callable $action): mixed
+    {
+        return DB::transaction(function () use ($eventId, $action) {
+            $adaptation = app(\App\Services\TeamDrawAdaptationService::class);
+            $adaptation->lockEvent($eventId);
+            $result = $action();
+            $reports = $adaptation->adaptEvent($eventId);
+            $warnings = collect($reports)->flatMap(fn ($report) => $report['warnings'] ?? [])->unique()->values();
+            if ($warnings->isNotEmpty() && app()->bound('session.store')) {
+                session()->flash('schedule_adaptation_warning', $warnings->take(5)->implode(' '));
+            }
+            return $result;
+        });
     }
 
     private function lockInvitationContext(TeamSelectionInvitation $invitation): TeamSelectionImport
