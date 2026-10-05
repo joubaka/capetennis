@@ -442,6 +442,7 @@ class FinancialLedgerService
             'user',
             'player',
             'team.regions',
+            'team.category',
             'items.itemType',
             'items.size',
         ])
@@ -738,6 +739,7 @@ class FinancialLedgerService
                     'tx_id'         => null,
                     'paid_at'       => $wt->created_at,
                     'order'         => null,
+                    'team_order_id' => $order?->id,
                     'entryCount'    => 1,
                     'payfastGross'  => 0,
                     'walletUsed'    => $gross,

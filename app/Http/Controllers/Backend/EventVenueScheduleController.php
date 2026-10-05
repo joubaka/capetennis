@@ -20,6 +20,7 @@ final class EventVenueScheduleController extends Controller
         $this->authorize('event.manage', $event);
         $event->load('draws.venues');
         $eventDraws = $event->draws;
+        $availableRounds = app(EventVenueScheduleService::class)->availableDrawRounds($eventDraws);
         $selectionSupplied = $request->has('draw_ids');
         $requestedDrawIds = collect($request->validate([
             'draw_ids' => ['sometimes', 'array', 'max:200'],
@@ -49,7 +50,7 @@ final class EventVenueScheduleController extends Controller
             if (! $scheduledCounts->has($id)) $scheduledCounts[$id] = (int) $count;
         }
 
-        $draws = $eventDraws->map(function ($draw) use ($courtAllocations, $scheduledCounts, $selectionSupplied, $requestedDrawIds) {
+        $draws = $eventDraws->map(function ($draw) use ($courtAllocations, $scheduledCounts, $selectionSupplied, $requestedDrawIds, $availableRounds) {
             $allocations = [];
             foreach ($draw->venues as $venue) {
                 $allocations[$venue->id] = ($courtAllocations[$draw->id.'|'.$venue->id] ?? collect())
@@ -61,6 +62,7 @@ final class EventVenueScheduleController extends Controller
                 'applied_match_count' => (int) ($scheduledCounts[$draw->id] ?? 0),
                 'locked' => (bool) $draw->locked, 'published' => (bool) $draw->published,
                 'is_team' => $draw->isTeamDraw(),
+                'rounds' => $availableRounds[$draw->id] ?? [],
                 'selected' => ! $selectionSupplied || $requestedDrawIds->contains((int) $draw->id)];
         });
         $venues = $availableVenues->map(function ($venue) use ($drawVenues, $courtRows) {
@@ -94,6 +96,7 @@ final class EventVenueScheduleController extends Controller
             'court_gap' => 5,
             'player_rest' => 60,
             'draw_starts' => [],
+            'draw_rounds' => [],
             'venue_starts' => [],
             'reschedule_existing' => false,
             'round_progression' => 'team_ready',
@@ -110,6 +113,9 @@ final class EventVenueScheduleController extends Controller
         $scheduleDraft['draw_starts'] = collect($scheduleDraft['draw_starts'] ?? [])
             ->filter(fn ($row) => isset($row['draw_id'], $row['start']) && $eventDraws->contains('id', (int) $row['draw_id']))
             ->mapWithKeys(fn ($row) => [(int) $row['draw_id'] => \Carbon\Carbon::parse($row['start'])->format('Y-m-d\TH:i')]);
+        $scheduleDraft['draw_rounds'] = collect($scheduleDraft['draw_rounds'] ?? [])
+            ->filter(fn ($row) => isset($row['draw_id'], $row['rounds']) && $eventDraws->contains('id', (int) $row['draw_id']))
+            ->mapWithKeys(fn ($row) => [(int) $row['draw_id'] => array_map('intval', $row['rounds'])]);
         $scheduleDraft['venue_starts'] = collect($scheduleDraft['venue_starts'] ?? [])
             ->filter(fn ($row) => isset($row['venue_id'], $row['start']) && $availableVenues->contains('id', (int) $row['venue_id']))
             ->mapWithKeys(fn ($row) => [(int) $row['venue_id'] => \Carbon\Carbon::parse($row['start'])->format('Y-m-d\TH:i')]);
@@ -448,6 +454,10 @@ final class EventVenueScheduleController extends Controller
             'schedule.gender_waves' => ['sometimes', 'in:combined,boys_then_girls,girls_then_boys'],
             'schedule.gender_wave_release' => ['sometimes', 'in:whole_wave,court_ready'],
             'schedule.tie_allocation' => ['sometimes', 'in:balanced,complete_tie'],
+            'schedule.draw_rounds' => ['sometimes', 'array', 'max:200'],
+            'schedule.draw_rounds.*.draw_id' => ['required', 'integer', 'distinct'],
+            'schedule.draw_rounds.*.rounds' => ['required', 'array', 'min:1', 'max:100'],
+            'schedule.draw_rounds.*.rounds.*' => ['required', 'integer', 'min:1'],
             'schedule.rank_preference_draw_ids' => ['sometimes', 'array', 'max:200'],
             'schedule.rank_preference_draw_ids.*' => ['integer', 'distinct'],
             'schedule.rank_venue_preferences' => ['sometimes', 'array', 'max:50'],
@@ -480,6 +490,7 @@ final class EventVenueScheduleController extends Controller
                 Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
                 DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
                 $draws = $event->draws()->whereIn('id', $draws->keys())->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+                $data['schedule']['draw_rounds'] = app(EventVenueScheduleService::class)->normalizeDrawRounds($draws->values(), $data['schedule']['draw_rounds'] ?? []);
                 foreach ($data['assignments'] as $assignment) {
                     $draw = $draws[(int) $assignment['draw_id']];
                     if ($draw->locked) {
@@ -557,6 +568,8 @@ final class EventVenueScheduleController extends Controller
                     ]);
                 }
                 $stored = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true) ?: [];
+                $data['schedule']['draw_rounds'] = array_merge(collect($stored['draw_rounds'] ?? [])
+                    ->filter(fn ($row) => ! $draws->has((int) ($row['draw_id'] ?? 0)))->values()->all(), $data['schedule']['draw_rounds']);
                 $retainedRules = app(\App\Services\Scheduling\RankVenuePreferences::class)->assigned($event, $stored['rank_venue_preferences'] ?? []);
                 if (collect($retainedRules)->sum(fn ($rule) => count($rule['draw_ids'])) < collect($stored['rank_venue_preferences'] ?? [])->sum(fn ($rule) => count($rule['draw_ids']))) {
                     $rankWarnings[] = 'Roster rank venue preferences for removed venue assignments were cleared. Other draws keep their preferences.';
@@ -808,6 +821,10 @@ final class EventVenueScheduleController extends Controller
             'gender_waves' => ['sometimes', 'in:combined,boys_then_girls,girls_then_boys'],
             'gender_wave_release' => ['sometimes', 'in:whole_wave,court_ready'],
             'tie_allocation' => ['sometimes', 'in:balanced,complete_tie'],
+            'draw_rounds' => ['sometimes', 'array', 'max:200'],
+            'draw_rounds.*.draw_id' => ['required', 'integer', 'distinct'],
+            'draw_rounds.*.rounds' => ['required', 'array', 'min:1', 'max:100'],
+            'draw_rounds.*.rounds.*' => ['required', 'integer', 'min:1'],
             'rank_venue_preferences' => ['sometimes', 'array', 'max:50'],
             'rank_venue_preferences.*.draw_ids' => ['required', 'array', 'min:1', 'max:200'],
             'rank_venue_preferences.*.draw_ids.*' => ['integer'],

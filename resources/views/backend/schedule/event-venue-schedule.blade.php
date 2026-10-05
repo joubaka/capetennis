@@ -265,6 +265,19 @@
                       </a>
                     @endcan
                     <label class="small text-muted">Start later (optional)<input class="form-control form-control-sm draw-start mt-1" data-draw="{{ $draw['id'] }}" type="datetime-local" value="{{ $scheduleDraft['draw_starts']->get($draw['id'], '') }}" {{ $draw['locked'] ? 'disabled' : '' }}></label>
+                    @if(count($draw['rounds']))
+                      @php($chosenRounds = $scheduleDraft['draw_rounds']->get($draw['id'], []))
+                      <details class="small mt-2">
+                        <summary class="fw-semibold">Rounds to schedule this day</summary>
+                        <div class="d-flex flex-wrap gap-2 mt-2">
+                          <label><input type="checkbox" class="form-check-input draw-round-choice" data-draw="{{ $draw['id'] }}" value="all" @checked(!$chosenRounds) @disabled($draw['locked'])> All rounds</label>
+                          @foreach($draw['rounds'] as $round)
+                            <label><input type="checkbox" class="form-check-input draw-round-choice" data-draw="{{ $draw['id'] }}" value="{{ $round }}" @checked(in_array($round, $chosenRounds, true)) @disabled($draw['locked'])> Round {{ $round }}</label>
+                          @endforeach
+                        </div>
+                        <div class="text-muted mt-1">Choose specific rounds for this day's window. Other rounds keep saved bookings. Earlier qualifying matches must already be scheduled.</div>
+                      </details>
+                    @endif
                   </div>
                 </div>
                 <div class="small text-uppercase fw-semibold text-muted mb-1">Permitted venues</div>
@@ -668,6 +681,15 @@
 
   const values = selector => [...document.querySelectorAll(selector + ':checked')].map(el => Number(el.value));
   const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[char]));
+  const lineupDetails = row => ['home', 'away'].map(side => {
+    const lineup = row.lineup?.[side];
+    if (!lineup) return '';
+    const players = lineup.players?.length ? lineup.players : [{name:'TBD', rank:null}];
+    return `<div class="small text-muted mt-1">${players.map(player => {
+      const rank = Number.isInteger(player.rank) && player.rank > 0 ? `Rank ${player.rank}` : 'Rank unassigned';
+      return `${escapeHtml(rank)} · ${escapeHtml(player.name || 'TBD')}${lineup.region ? ` (${escapeHtml(lineup.region)})` : ''}`;
+    }).join(' / ')}</div>`;
+  }).join('');
   const setStatus = (element, message, tone = 'muted') => {
     element.textContent = message;
     element.classList.remove('text-muted', 'text-danger', 'text-success', 'text-warning');
@@ -940,6 +962,20 @@
   document.getElementById('default-rank-bands').addEventListener('click', () => { renderRankRows(readRankRules().concat([[1,4],[5,6],[7,8]].map(([min_rank,max_rank]) => ({draw_ids:[],min_rank,max_rank,venue_id:null}))));markScheduleDirty(); });
   document.getElementById('cross-band-policy').addEventListener('change', markScheduleDirty);
   loadRankScope();
+  const readDrawRounds = () => [...document.querySelectorAll('.draw-round-choice:checked')]
+    .filter(input => input.value !== 'all').reduce((rows, input) => {
+      const id = Number(input.dataset.draw);
+      let row = rows.find(row => row.draw_id === id);
+      if (!row) { row = {draw_id:id, rounds:[]}; rows.push(row); }
+      row.rounds.push(Number(input.value));
+      return rows;
+    }, []);
+  document.querySelectorAll('.draw-round-choice').forEach(input => input.addEventListener('change', () => {
+    const choices = [...document.querySelectorAll(`.draw-round-choice[data-draw="${input.dataset.draw}"]`)];
+    if (input.checked) choices.filter(choice => (input.value === 'all' ? choice.value !== 'all' : choice.value === 'all')).forEach(choice => choice.checked = false);
+    if (!choices.some(choice => choice.checked)) choices.find(choice => choice.value === 'all').checked = true;
+    markScheduleDirty();
+  }));
   const buildScheduleDraft = () => ({
     start: document.getElementById('schedule-start').value,
     end: document.getElementById('schedule-end').value || null,
@@ -948,6 +984,7 @@
     court_gap: Number(document.getElementById('schedule-gap').value),
     player_rest: Number(document.getElementById('schedule-rest').value),
     draw_starts: [...document.querySelectorAll('.draw-start')].filter(input => input.value).map(input => ({draw_id:Number(input.dataset.draw), start:input.value})),
+    draw_rounds: readDrawRounds().filter(row => drawIds.includes(row.draw_id)),
     venue_starts: [...document.querySelectorAll('.venue-start')].filter(input => input.value).map(input => ({venue_id:Number(input.dataset.venue), start:input.value})),
     reschedule_existing: document.getElementById('reschedule-existing').checked,
     round_progression: document.getElementById('round-progression').value,
@@ -964,6 +1001,7 @@
     ...buildScheduleDraft(),
     allow_partial: true,
     draw_ids: values('.draw-choice'),
+    draw_rounds: readDrawRounds().filter(row => values('.draw-choice').includes(row.draw_id)),
     replan_venue_ids: document.getElementById('reschedule-existing').checked ? selectedAssignedVenueIds() : replanVenueIds,
     draw_starts: [...document.querySelectorAll('.draw-start')].filter(input => input.value && document.querySelector(`.draw-choice[value="${input.dataset.draw}"]`)?.checked).map(input => ({draw_id:Number(input.dataset.draw), start:input.value}))
   });
@@ -1198,13 +1236,13 @@
     document.getElementById('preview-summary').classList.remove('d-none');
     document.getElementById('preview-summary').innerHTML = card(result.matches.length, 'Suggested · not saved', 'primary') + card((result.existing_matches || []).length, 'Saved · kept fixed', 'success') + card(result.automatic_byes, 'Automatic byes') + card(result.venues.length, 'Venues') + card(result.unscheduled.length, 'Unscheduled', result.unscheduled.length ? 'danger' : 'success');
     let warnings = (result.warnings || []).map(message => `<div class="alert alert-warning py-2">${escapeHtml(message)}</div>`).join('');
-    if (result.unscheduled.length) warnings += `<div class="alert alert-danger"><strong>Matches remaining to schedule:</strong><div class="small mb-2">Save the matches that fit this batch; remaining matches stay in planning.</div><ul class="mb-0">${result.unscheduled.map(row => `<li>${escapeHtml(row.draw_name)} Wave ${row.wave} · R${row.round} · Match ${row.match}: ${escapeHtml(row.reason)}</li>`).join('')}</ul></div>`;
+    if (result.unscheduled.length) warnings += `<div class="alert alert-danger"><strong>Matches remaining to schedule:</strong><div class="small mb-2">Save the matches that fit this batch; remaining matches stay in planning.</div><ul class="mb-0">${result.unscheduled.map(row => `<li>${escapeHtml(row.draw_name)} Wave ${row.wave} · R${row.round} · Match ${row.match}: ${escapeHtml(row.reason)}${lineupDetails(row)}</li>`).join('')}</ul></div>`;
     document.getElementById('preview-warnings').innerHTML = warnings;
     document.getElementById('preview-view-controls').classList.remove('d-none');
     document.getElementById('preview-view-controls').classList.add('d-flex');
     document.getElementById('venue-timelines').innerHTML = result.venues.map(venue => {
       const rows = venueRows(result, venue.id);
-      return `<details class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap align-items-center gap-2"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span class="venue-age-group-summary">${ageGroupScheduleSummary(rows)}</span><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Time</th><th>Court</th><th>Draw / category</th><th>Round</th><th>Match</th><th>Players / qualification path</th><th>State</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td class="text-nowrap fw-semibold">${escapeHtml(row.scheduled_at.slice(0,16))}</td><td>${escapeHtml(row.court)}</td><td>${escapeHtml(row.draw_name)}</td><td>${row.wave ? `Wave ${row.wave} · R${row.round}` : `R${row.round}`}</td><td class="text-nowrap fw-semibold">Match ${escapeHtml(row.match || '—')}</td><td>${escapeHtml((row.participants || []).join(' / ') || 'Participants determined by draw')}</td><td>${row.fixed ? '<span class="badge bg-label-success">Saved</span>' : '<span class="badge bg-label-primary">Suggested · not saved</span>'}</td><td>${row.fixed && row.editable && unapplyUrl ? `<button type="button" class="btn btn-sm btn-outline-danger" data-unapply-fixture="${fixtureKey(row)}" data-match-label="${escapeHtml(row.draw_name)} ${escapeHtml(matchLabel(row))}">Remove</button>` : '<span class="text-muted">—</span>'}</td></tr>`).join('') || '<tr><td colspan="8" class="text-center text-muted py-4">No fixtures allocated.</td></tr>'}</tbody></table></div></details>`;
+      return `<details class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap align-items-center gap-2"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span class="venue-age-group-summary">${ageGroupScheduleSummary(rows)}</span><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Time</th><th>Court</th><th>Draw / category</th><th>Round</th><th>Match</th><th>Players / qualification path</th><th>State</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td class="text-nowrap fw-semibold">${escapeHtml(row.scheduled_at.slice(0,16))}</td><td>${escapeHtml(row.court)}</td><td>${escapeHtml(row.draw_name)}</td><td>${row.wave ? `Wave ${row.wave} · R${row.round}` : `R${row.round}`}</td><td class="text-nowrap fw-semibold">Match ${escapeHtml(row.match || '—')}</td><td>${escapeHtml((row.participants || []).join(' / ') || 'Participants determined by draw')}${lineupDetails(row)}</td><td>${row.fixed ? '<span class="badge bg-label-success">Saved</span>' : '<span class="badge bg-label-primary">Suggested · not saved</span>'}</td><td>${row.fixed && row.editable && unapplyUrl ? `<button type="button" class="btn btn-sm btn-outline-danger" data-unapply-fixture="${fixtureKey(row)}" data-match-label="${escapeHtml(row.draw_name)} ${escapeHtml(matchLabel(row))}">Remove</button>` : '<span class="text-muted">—</span>'}</td></tr>`).join('') || '<tr><td colspan="8" class="text-center text-muted py-4">No fixtures allocated.</td></tr>'}</tbody></table></div></details>`;
     }).join('');
     document.getElementById('venue-slot-grids').innerHTML = result.venues.map(venue => slotGrid(result, venue)).join('');
     const appliedVenueIds = [...new Set([
@@ -1659,7 +1697,7 @@
   let venueManagementChanged = false;
   let venueManagementPending = false;
   const venueDraftKey = 'venue-management-draft-{{ $event->id }}-{{ auth()->id() }}';
-  const venueDraftControls = () => [...document.querySelectorAll('.draw-choice, .assignment-choice, .court-allocation, .draw-start, .venue-start, #schedule-start, #schedule-end, #schedule-duration, #schedule-wave, #schedule-gap, #schedule-rest, #round-progression, #gender-waves, #gender-wave-release, #tie-allocation, #reschedule-existing, #cross-band-policy')];
+  const venueDraftControls = () => [...document.querySelectorAll('.draw-choice, .assignment-choice, .court-allocation, .draw-round-choice, .draw-start, .venue-start, #schedule-start, #schedule-end, #schedule-duration, #schedule-wave, #schedule-gap, #schedule-rest, #round-progression, #gender-waves, #gender-wave-release, #tie-allocation, #reschedule-existing, #cross-band-policy')];
   const venueControlKey = input => JSON.stringify([input.id, input.className, input.dataset.draw, input.dataset.venue, input.type === 'checkbox' ? input.value : null]);
   const rememberVenueDraft = () => {
     rememberRankRules();

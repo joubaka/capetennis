@@ -126,9 +126,10 @@ class EventVenueSchedulingOptionsTest extends TestCase
         $firstRubber = $this->rubber($draw, $first, 1, $player->id);
         $delayedRubber = $this->rubber($draw, $first, 2, $player->id);
         if ($strategy === 'legacy_opponents') $delayedRubber->update(['region1' => $first['region2'], 'region2' => $first['region1']]);
-        $otherFirst = $this->rubber($draw, $second, 1);
-        $this->rubber($draw, $second, 2);
-        $this->rubber($draw, $second, 3);
+        // Keep the first tie's first rubber unambiguously first, independent of string ID sorting.
+        $otherFirst = $this->rubber($draw, $second, 3);
+        $this->rubber($draw, $second, 4);
+        $this->rubber($draw, $second, 5);
         $service = app(EventVenueScheduleService::class);
         $balanced = $service->preview($event, $this->schedulingOptions());
         $options = $this->schedulingOptions() + ['tie_allocation' => 'complete_tie'];
@@ -190,6 +191,7 @@ class EventVenueSchedulingOptionsTest extends TestCase
         $event = Event::factory()->create();
         $venue = $this->venue($event);
         $draw = $this->draw($event, $venue, 'Girls', 2);
+        $this->rubber($draw, ['team_tie_id' => $this->tie($draw, 1, 1)->id], 1);
         foreach (['1', '2'] as $label) {
             DB::table('event_venue_courts')->insert(['event_id' => $event->id, 'venue_id' => $venue->id,
                 'label' => $label, 'active' => true, 'created_at' => now(), 'updated_at' => now()]);
@@ -200,13 +202,14 @@ class EventVenueSchedulingOptionsTest extends TestCase
             'venues' => [['id' => $venue->id, 'courts' => 2]],
             'assignments' => [['draw_id' => $draw->id, 'venue_ids' => [$venue->id],
                 'court_allocations' => [['venue_id' => $venue->id, 'court_labels' => ['1', '2']]]]],
-            'schedule' => $this->schedulingOptions() + ['gender_waves' => 'girls_then_boys', 'gender_wave_release' => 'court_ready', 'tie_allocation' => 'complete_tie',
+            'schedule' => $this->schedulingOptions() + ['gender_waves' => 'girls_then_boys', 'gender_wave_release' => 'court_ready', 'tie_allocation' => 'complete_tie', 'draw_rounds' => [['draw_id' => $draw->id, 'rounds' => [1]]],
                 'draw_starts' => [], 'venue_starts' => [], 'reschedule_existing' => false],
         ])->assertOk();
         $saved = json_decode(DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true);
         $this->assertSame('girls_then_boys', $saved['gender_waves']);
         $this->assertSame('complete_tie', $saved['tie_allocation']);
         $this->assertSame('court_ready', $saved['gender_wave_release']);
+        $this->assertEquals([['draw_id' => $draw->id, 'rounds' => [1]]], $saved['draw_rounds']);
         foreach (['preview', 'apply'] as $action) {
             $this->postJson(route('backend.event-venue-schedule.'.$action, $event), $this->schedulingOptions() + [
                 'tie_allocation' => 'finish_playing', 'revision' => str_repeat('a', 64),
@@ -222,8 +225,19 @@ class EventVenueSchedulingOptionsTest extends TestCase
         ])->assertUnprocessable()->assertJsonValidationErrors('schedule.gender_wave_release');
         $this->assertSame($saved, json_decode(DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true));
         foreach (['preview', 'apply'] as $action) {
-            $this->postJson(route('backend.event-venue-schedule.'.$action, $event), $this->schedulingOptions() + ['gender_wave_release' => 'invalid'])
+            $this->postJson(route('backend.event-venue-schedule.'.$action, $event), $this->schedulingOptions() + ['gender_wave_release' => 'invalid', 'revision' => str_repeat('a', 64)])
                 ->assertUnprocessable()->assertJsonValidationErrors('gender_wave_release');
+        }
+        $foreign = Draw::factory()->create();
+        foreach ([['draw_id' => $draw->id, 'rounds' => [99]], ['draw_id' => $foreign->id, 'rounds' => [1]]] as $invalidRound) {
+            $this->postJson(route('backend.event-venue-schedule.assignments', $event), [
+                'venues' => [['id' => $venue->id, 'courts' => 2]],
+                'assignments' => [['draw_id' => $draw->id, 'venue_ids' => [$venue->id],
+                    'court_allocations' => [['venue_id' => $venue->id, 'court_labels' => ['1', '2']]]]],
+                'schedule' => $this->schedulingOptions() + ['draw_rounds' => [$invalidRound], 'draw_starts' => [], 'venue_starts' => [], 'reschedule_existing' => false],
+            ])->assertUnprocessable();
+            $this->assertSame($saved, json_decode(DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true));
+            $this->assertSame(2, DB::table('draw_venue_court_allocations')->where('draw_id', $draw->id)->count());
         }
     }
 
@@ -233,6 +247,133 @@ class EventVenueSchedulingOptionsTest extends TestCase
         $venue->forceFill(['name' => 'Shared Courts'])->save();
         $event->venues()->attach($venue->id, ['num_courts' => 8]);
         return $venue;
+    }
+
+    public static function roundStorage(): array { return [['individual'], ['team']]; }
+
+    #[DataProvider('roundStorage')]
+    public function test_round_subset_schedules_reverse_singles_first_round_and_preserves_omitted_bookings(string $storage): void
+    {
+        $event = Event::factory()->create();
+        $venue = $this->venue($event);
+        $draws = [];
+        foreach (['Singles', 'Reverse singles'] as $name) {
+            $draw = $storage === 'team' ? $this->draw($event, $venue, $name, 3)
+                : Draw::factory()->create(['event_id' => $event->id, 'drawName' => $name]);
+            if ($storage === 'individual') $draw->venues()->attach($venue->id, ['num_courts' => 3]);
+            $draws[] = $draw;
+            foreach ([1, 2, 3] as $round) {
+                $fixture = $storage === 'team' ? $this->rubber($draw, ['team_tie_id' => $this->tie($draw, $round, 1)->id, 'round_nr' => $round], $round)
+                    : Fixture::factory()->create(['draw_id' => $draw->id, 'round' => $round, 'match_nr' => $round, 'bracket_id' => 1,
+                        'registration1_id' => Registration::factory()->create()->id, 'registration2_id' => Registration::factory()->create()->id]);
+                if ($name === 'Reverse singles' && $round === 2) $omitted = $fixture;
+            }
+        }
+        if ($storage === 'team') $omitted->forceFill(['scheduled_at' => '2026-09-10 09:30:00', 'venue_id' => $venue->id,
+            'court_label' => '3', 'duration_min' => 75, 'scheduled' => 1])->save();
+        else OrderOfPlay::create(['fixture_id' => $omitted->id, 'draw_id' => $draws[1]->id, 'venue_id' => $venue->id,
+            'court' => '3', 'time' => '2026-09-10 09:30:00', 'duration_minutes' => 75]);
+        $before = $storage === 'team' ? $omitted->fresh()->getAttributes() : $omitted->orderOfPlay()->first()->getAttributes();
+        $options = $this->schedulingOptions() + ['draw_rounds' => [['draw_id' => $draws[1]->id, 'rounds' => [1]]], 'replan_venue_ids' => [$venue->id]];
+        $service = app(EventVenueScheduleService::class);
+        $preview = $service->preview($event, $options);
+        $this->assertCount(4, $preview['matches']);
+        $this->assertSame([], $preview['unscheduled']);
+        $this->assertSame([1], collect($preview['matches'])->where('draw_id', $draws[1]->id)->pluck('round')->all());
+        $this->assertSame([1, 2, 3], collect($preview['matches'])->where('draw_id', $draws[0]->id)->pluck('round')->sort()->values()->all());
+        $this->assertFalse(collect($preview['existing_matches'])->firstWhere('fixture_id', $omitted->id)['editable']);
+        $this->assertSame(4, $service->apply($event, $options, $preview['revision'])['count']);
+        $this->assertSame($before, $storage === 'team' ? $omitted->fresh()->getAttributes() : $omitted->orderOfPlay()->first()->getAttributes());
+        $all = $service->preview($event, $this->schedulingOptions());
+        $this->assertCount(1, $all['matches']);
+    }
+
+    public function test_selected_later_round_keeps_omitted_unsaved_feeder_unresolved_and_omitted_byes_untouched(): void
+    {
+        $event = Event::factory()->create();
+        $venue = $this->venue($event);
+        $draw = Draw::factory()->create(['event_id' => $event->id]);
+        $draw->venues()->attach($venue->id, ['num_courts' => 2]);
+        $later = Fixture::factory()->create(['draw_id' => $draw->id, 'round' => 2, 'match_nr' => 2, 'bracket_id' => 1,
+            'registration1_id' => Registration::factory()->create()->id, 'registration2_id' => Registration::factory()->create()->id]);
+        Fixture::factory()->create(['draw_id' => $draw->id, 'round' => 1, 'match_nr' => 1, 'bracket_id' => 1, 'parent_fixture_id' => $later->id,
+            'registration1_id' => Registration::factory()->create()->id, 'registration2_id' => Registration::factory()->create()->id]);
+        $bye = Fixture::factory()->create(['draw_id' => $draw->id, 'round' => 3, 'bracket_id' => 1,
+            'registration1_id' => Registration::factory()->create()->id, 'registration2_id' => null, 'winner_registration' => null]);
+        $options = $this->schedulingOptions() + ['draw_rounds' => [['draw_id' => $draw->id, 'rounds' => [2]]], 'allow_partial' => true];
+        $service = app(EventVenueScheduleService::class);
+        $preview = $service->preview($event, $options);
+        $this->assertSame([], $preview['matches']);
+        $this->assertCount(1, $preview['unscheduled']);
+        $this->assertStringContainsString('unselected round', $preview['unscheduled'][0]['reason']);
+        $this->assertSame(0, $preview['automatic_byes']);
+        $this->assertSame([], $preview['automatic_fixture_ids']);
+        $before = $bye->fresh()->getAttributes();
+        $this->assertSame(0, $service->apply($event, $options, $preview['revision'])['count']);
+        $this->assertSame($before, $bye->fresh()->getAttributes());
+    }
+
+    public function test_nonexistent_duplicate_and_foreign_round_choices_are_rejected(): void
+    {
+        $event = Event::factory()->create();
+        $venue = $this->venue($event);
+        $draw = $this->draw($event, $venue, 'Boys', 2);
+        $this->rubber($draw, ['team_tie_id' => $this->tie($draw, 1, 1)->id], 1);
+        $foreign = Draw::factory()->create();
+        foreach ([[['draw_id' => $draw->id, 'rounds' => [2]]], [['draw_id' => $draw->id, 'rounds' => [1, 1]]],
+            [['draw_id' => $foreign->id, 'rounds' => [1]]]] as $choices) {
+            try {
+                app(EventVenueScheduleService::class)->preview($event, $this->schedulingOptions() + ['draw_rounds' => $choices]);
+                $this->fail('Invalid round selection was accepted.');
+            } catch (\InvalidArgumentException $exception) { $this->assertNotSame('', $exception->getMessage()); }
+        }
+        $this->assertSame(0, TeamFixture::whereNotNull('scheduled_at')->count());
+    }
+
+    public function test_team_lineup_details_include_all_players_ranks_and_regions_in_each_schedule_state(): void
+    {
+        $event = Event::factory()->create();
+        $venue = $this->venue($event);
+        $draw = $this->draw($event, $venue, 'Girls', 3);
+        $home = TeamRegion::create(['region_name' => 'Western Cape', 'short_name' => 'WC']);
+        $away = TeamRegion::create(['region_name' => 'KwaZulu-Natal', 'short_name' => 'KZN']);
+        $rubber = $this->rubber($draw, ['team_tie_id' => $this->tie($draw, 1, 1)->id], 77);
+        $rubber->forceFill(['region1' => $home->id, 'region2' => $away->id, 'home_rank_nr' => 3, 'away_rank_nr' => 4,
+            'fixture_type' => 2, 'player_count_per_team' => 2])->save();
+        $imported = \App\Models\NoProfileTeamPlayer::create(['team_id' => Team::factory()->create()->id,
+            'name' => 'Imported', 'surname' => 'Player', 'rank' => 3, 'pay_status' => 0, 'date_of_birth' => '2010-01-01']);
+        $rubber->fixturePlayers()->create(['slot_no' => 2, 'team1_no_profile_id' => $imported->id]);
+        $foreignEvent = Event::factory()->create();
+        $foreignDraw = $this->draw($foreignEvent, $venue, 'Foreign private category', 3);
+        $foreignPlayer = Player::factory()->create(['name' => 'ForeignSecret', 'surname' => 'Person']);
+        $foreign = $this->rubber($foreignDraw, ['team_tie_id' => $this->tie($foreignDraw, 1, 1)->id], 1, $foreignPlayer->id);
+        $foreign->forceFill(['scheduled_at' => '2026-09-10 08:00:00', 'venue_id' => $venue->id,
+            'court_label' => '3', 'duration_min' => 75, 'scheduled' => 1])->save();
+        $service = app(EventVenueScheduleService::class);
+        $preview = $service->preview($event, $this->schedulingOptions());
+        $foreignBooking = collect($preview['existing_matches'])->firstWhere('fixture_id', $foreign->id);
+        $this->assertSame([], $foreignBooking['lineup']);
+        $this->assertSame('Existing booking', $foreignBooking['draw_name']);
+        $this->assertSame(['Existing booking'], $foreignBooking['participants']);
+        $this->assertStringNotContainsString('ForeignSecret', json_encode($preview));
+        $this->assertStringNotContainsString('Foreign private category', json_encode($preview));
+        $lineup = $preview['matches'][0]['lineup'];
+        $this->assertSame('WC', $lineup['home']['region']);
+        $this->assertSame('KZN', $lineup['away']['region']);
+        $this->assertCount(2, $lineup['home']['players']);
+        $this->assertCount(2, $lineup['away']['players']);
+        $this->assertSame(['name' => 'Imported Player', 'rank' => 3], $lineup['home']['players'][1]);
+        $this->assertSame('TBD', $lineup['away']['players'][1]['name']);
+        $this->assertSame(4, $lineup['away']['players'][0]['rank']);
+        $this->assertSame(['name', 'rank'], array_keys($lineup['home']['players'][0]));
+        $this->assertStringNotContainsString('date_of_birth', json_encode($lineup));
+        $this->assertSame(1, $service->apply($event, $this->schedulingOptions(), $preview['revision'])['count']);
+        $draw->update(['locked' => true]);
+        $saved = $service->preview($event, $this->schedulingOptions());
+        $this->assertSame($lineup, collect($saved['existing_matches'])->firstWhere('fixture_id', $rubber->id)['lineup']);
+        $draw->update(['locked' => false]);
+        $unscheduled = $service->preview($event, array_replace($this->schedulingOptions(), ['end' => '2026-09-10 08:30:00', 'replan_venue_ids' => [$venue->id]]));
+        $this->assertSame($lineup, $unscheduled['unscheduled'][0]['lineup']);
     }
 
     private function draw(Event $event, Venue $venue, string $gender, int $courts): Draw
