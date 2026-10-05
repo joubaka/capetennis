@@ -459,7 +459,10 @@ class EmailControllerAuthorizationTest extends TestCase
   public function test_legacy_direct_email_preserves_address_for_full_manager_review(): void
   {
     $this->actingAs($this->admin)->postJson(route('email.send'), ['event_id'=>$this->eventA->id,'target_type'=>'player','to'=>'chosen@example.test','emailSubject'=>'Clothing','message'=>'Update'])
-      ->assertOk()->assertJsonPath('review_required',true)->assertSessionHas('compose_options',fn($options)=>$options['scope']==='direct' && $options['direct_email']==='chosen@example.test');
+      ->assertOk()->assertJsonPath('review_required',true)->assertSessionHas('compose_options',fn($options)=>$options['scope']==='direct' && $options['direct_email']==='chosen@example.test')
+      ->assertSessionHas('info', fn($notice)=>str_contains($notice,'account name and email') && str_contains($notice,'Prior BCC choices are not carried over'));
+    $this->get(route('backend.event-communications.index',['event'=>$this->eventA,'compose'=>1]))
+      ->assertOk()->assertSee('Prior BCC choices are not carried over')->assertSee('Communications uses your account name and email');
     $this->post(route('backend.event-communications.preview',$this->eventA),['scope'=>'direct','direct_email'=>'chosen@example.test','filter'=>'all','recipients'=>'players','subject'=>'Clothing','body'=>'Update'])
       ->assertOk()->assertViewHas('batch',fn($batch)=>count($batch->recipients)===1 && $batch->recipients[0]['email']==='chosen@example.test');
     Queue::assertNothingPushed();

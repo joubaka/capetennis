@@ -62,3 +62,60 @@ test('preferred venues use the common assignments and explain empty intersection
   assert.match(api.rankVenueHint({draw_ids:[10,99],venue_id:0}),/No common venue/);
   assert.match(api.rankVenueHint({draw_ids:[],venue_id:0}),/Select draws/);
 });
+
+test('new and preset rank bands start with empty draws while saved selections remain intact',()=>{
+  const handlers=new Map();
+  let rendered;
+  const saved={draw_ids:[10,11],min_rank:1,max_rank:4,venue_id:1};
+  const addSource=source.slice(source.indexOf("  document.getElementById('add-rank-band').addEventListener"),source.indexOf("  document.getElementById('cross-band-policy').addEventListener"));
+  new Function('document','readRankRules','renderRankRows','markScheduleDirty',addSource)(
+    {getElementById:id=>({addEventListener:(event,handler)=>handlers.set(id,handler)})},
+    ()=>[saved],rows=>{rendered=rows;},()=>{});
+  handlers.get('add-rank-band')();
+  assert.deepEqual(rendered[0],saved);
+  assert.deepEqual(rendered[1].draw_ids,[]);
+  handlers.get('default-rank-bands')();
+  assert.deepEqual(rendered[0],saved);
+  assert.deepEqual(rendered.slice(1).map(rule=>rule.draw_ids),[[],[],[]]);
+});
+
+test('unfinished bands stay separate and are submitted for required-draw validation',()=>{
+  const helperSource=source.slice(source.indexOf('  const coalesceRankRules ='),source.indexOf('  const rememberRankRules ='));
+  const rules=[{draw_ids:[],min_rank:1,max_rank:4,venue_id:0},{draw_ids:[],min_rank:1,max_rank:4,venue_id:0},
+    {draw_ids:[],min_rank:5,max_rank:6,venue_id:1}];
+  const api=new Function('readRankRules','document',`${helperSource};return{coalesceRankRules,applicableRankRules};`)(()=>rules,{querySelector:()=>({checked:true})});
+  assert.deepEqual(api.coalesceRankRules(rules),rules,'Repeated Add must retain separate editable blank cards.');
+  assert.deepEqual(api.applicableRankRules(),rules,'Incomplete draw selections must reach validation rather than silently disappear.');
+});
+
+test('unfinished bands survive remembering and reloading the selected draw scope',()=>{
+  const rememberSource=source.slice(source.indexOf('  const rememberRankRules ='),source.indexOf('  const allowedRankVenues ='));
+  const scopeSource=source.slice(source.indexOf('  const loadRankScope ='),source.indexOf("  document.querySelectorAll('.draw-choice').forEach",source.indexOf('  const loadRankScope =')));
+  const helperSource=source.slice(source.indexOf('  const coalesceRankRules ='),source.indexOf('  const applicableRankRules ='));
+  let rendered;
+  const blank={draw_ids:[],min_rank:1,max_rank:4,venue_id:0};
+  const api=new Function('readRankRules','selectedRankDraws','renderRankRows',
+    `let allRankRules=[],rankScopeIds=[10];${helperSource}${rememberSource}${scopeSource};return{rememberRankRules,loadRankScope};`)(
+      ()=>[blank],()=>[{id:11}],rules=>{rendered=rules;});
+  api.rememberRankRules();api.loadRankScope();
+  assert.deepEqual(rendered,[blank]);
+});
+
+test('blank cards render no selected draw options and saved cards retain their selections',()=>{
+  const renderSource=source.slice(source.indexOf('  const renderRankRows ='),source.indexOf('  const loadRankScope ='));
+  const nodes=new Map();
+  const document={getElementById:id=>{if(!nodes.has(id))nodes.set(id,{innerHTML:'',disabled:false});return nodes.get(id);}};
+  const render=new Function('document',`let rankScopeIds=[],rankBandSequence=0;
+    const selectedRankDraws=()=>[{id:10,name:'Boys'},{id:11,name:'Girls'}],coalesceRankRules=rules=>rules;
+    const updateRankReview=()=>{},destroyRankSelects=()=>{},initializeRankSelects=()=>{},escapeHtml=String;
+    const rankVenueOptions=()=>'<option value="">Choose assigned venue</option>',rankVenueHint=()=>'';
+    ${renderSource};return renderRankRows;`)(document);
+  render([{draw_ids:[],min_rank:1,max_rank:4,venue_id:0}]);
+  const blank=nodes.get('rank-band-rows').innerHTML;
+  assert.doesNotMatch(blank,/<option[^>]+selected/);
+  assert.match(blank,/0 selected/);
+  render([{draw_ids:[11],min_rank:1,max_rank:4,venue_id:0}]);
+  const saved=nodes.get('rank-band-rows').innerHTML;
+  assert.match(saved,/<option value="11" selected>Girls/);
+  assert.doesNotMatch(saved,/<option value="10" selected/);
+});

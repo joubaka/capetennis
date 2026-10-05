@@ -127,8 +127,11 @@ class EmailController extends Controller
     $request->session()->flash('compose_body',trim(strip_tags(preg_replace('/<\/(p|div|li)>|<br\s*\/?\s*>/i',"\n",$request->message))));
     $url = route('backend.event-communications.index',['event'=>$event,'compose'=>1]);
 
-    if ($request->expectsJson()) return response()->json(['success'=>true,'review_required'=>true,'review_url'=>$url,'result'=>['title'=>'info','report_url'=>$url,'message'=>'No emails queued. Review recipients, sender and copy choices in Communications before approving.']]);
-    return redirect($url)->with('info','No emails queued. Review recipients, sender and copy choices before approving.');
+    $notice = 'No emails queued. Communications uses your account name and email for the sender name and reply-to address. Prior BCC choices are not carried over. Review the exact recipients and message before approving.';
+    $request->session()->flash('info', $notice);
+
+    if ($request->expectsJson()) return response()->json(['success'=>true,'review_required'=>true,'review_url'=>$url,'result'=>['title'=>'info','report_url'=>$url,'message'=>$notice]]);
+    return redirect($url)->with('info', $notice);
   }
 
   /**

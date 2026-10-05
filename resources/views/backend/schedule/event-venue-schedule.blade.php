@@ -821,13 +821,22 @@
   }));
   const coalesceRankRules = rules => {
     const groups = new Map();
-    rules.forEach(rule => { const key = `${rule.min_rank}:${rule.max_rank}:${rule.venue_id}`; const group = groups.get(key) || {...rule,draw_ids:[]}; group.draw_ids=[...new Set(group.draw_ids.concat(rule.draw_ids.map(Number)))]; groups.set(key,group); });
-    return [...groups.values()].filter(rule => rule.draw_ids.length);
+    const unfinished = [];
+    rules.forEach(rule => {
+      if (!rule.draw_ids.length) { unfinished.push(rule); return; }
+      const key = `${rule.min_rank}:${rule.max_rank}:${rule.venue_id}`;
+      const group = groups.get(key) || {...rule,draw_ids:[]};
+      group.draw_ids=[...new Set(group.draw_ids.concat(rule.draw_ids.map(Number)))];
+      groups.set(key,group);
+    });
+    return [...groups.values(), ...unfinished];
   };
-  const applicableRankRules = () => readRankRules().map(rule => {
+  const applicableRankRules = () => readRankRules().flatMap(rule => {
+    if (!rule.draw_ids.length) return [rule];
     const saved = Number(rule.venue_id) > 0;
-    return saved ? {...rule,draw_ids:rule.draw_ids.filter(id => document.querySelector(`.assignment-choice[data-draw="${id}"][value="${rule.venue_id}"]`)?.checked)} : rule;
-  }).filter(rule => rule.draw_ids.length);
+    const drawIds = saved ? rule.draw_ids.filter(id => document.querySelector(`.assignment-choice[data-draw="${id}"][value="${rule.venue_id}"]`)?.checked) : rule.draw_ids;
+    return drawIds.length ? [{...rule,draw_ids:drawIds}] : [];
+  });
   const rememberRankRules = () => {
     allRankRules = allRankRules.map(rule => ({...rule, draw_ids:rule.draw_ids.filter(id => !rankScopeIds.includes(Number(id)))}))
       .filter(rule => rule.draw_ids.length).concat(readRankRules());
@@ -895,7 +904,9 @@
     }).join('');
     initializeRankSelects(rows);
   };
-  const loadRankScope = () => renderRankRows(allRankRules.map(rule => ({...rule, draw_ids:rule.draw_ids.filter(id => selectedRankDraws().some(draw => Number(draw.id)===Number(id)))})).filter(rule => rule.draw_ids.length));
+  const loadRankScope = () => renderRankRows(allRankRules
+    .filter(rule => !rule.draw_ids.length || rule.draw_ids.some(id => selectedRankDraws().some(draw => Number(draw.id)===Number(id))))
+    .map(rule => ({...rule, draw_ids:rule.draw_ids.filter(id => selectedRankDraws().some(draw => Number(draw.id)===Number(id)))})));
   document.querySelectorAll('.draw-choice').forEach(input => input.addEventListener('change', () => { rememberRankRules(); loadRankScope(); }));
   document.getElementById('rank-band-rows').addEventListener('change', event => {
     if (event.target.classList.contains('rank-band-draws')) {
@@ -908,8 +919,8 @@
   });
   document.querySelectorAll('.assignment-choice').forEach(input => input.addEventListener('change', () => renderRankRows(readRankRules())));
   document.getElementById('rank-band-rows').addEventListener('click', event => { const button=event.target.closest('.remove-rank-band'); if(button){const row=button.closest('.rank-band-row');destroyRankSelects(row);row.remove();renderRankRows(readRankRules());markScheduleDirty();} });
-  document.getElementById('add-rank-band').addEventListener('click', () => { renderRankRows(readRankRules().concat([{draw_ids:rankScopeIds, min_rank:1,max_rank:4,venue_id:null}]));markScheduleDirty(); });
-  document.getElementById('default-rank-bands').addEventListener('click', () => { renderRankRows(readRankRules().concat([[1,4],[5,6],[7,8]].map(([min_rank,max_rank]) => ({draw_ids:rankScopeIds,min_rank,max_rank,venue_id:null}))));markScheduleDirty(); });
+  document.getElementById('add-rank-band').addEventListener('click', () => { renderRankRows(readRankRules().concat([{draw_ids:[], min_rank:1,max_rank:4,venue_id:null}]));markScheduleDirty(); });
+  document.getElementById('default-rank-bands').addEventListener('click', () => { renderRankRows(readRankRules().concat([[1,4],[5,6],[7,8]].map(([min_rank,max_rank]) => ({draw_ids:[],min_rank,max_rank,venue_id:null}))));markScheduleDirty(); });
   document.getElementById('cross-band-policy').addEventListener('change', markScheduleDirty);
   loadRankScope();
   const buildScheduleDraft = () => ({
@@ -1608,8 +1619,12 @@
       if (assignment) assignment.checked = false;
       document.querySelectorAll(`.court-allocation[data-draw="${drawId}"][data-venue="${venueId}"]`).forEach(input => { input.checked = false; });
       rememberRankRules();
-      allRankRules = allRankRules.map(rule => Number(rule.venue_id) === venueId
-        ? {...rule, draw_ids:rule.draw_ids.filter(id => Number(id) !== drawId)} : rule).filter(rule => rule.draw_ids.length);
+      allRankRules = allRankRules.flatMap(rule => {
+        if (!rule.draw_ids.length) return [rule];
+        const remaining = Number(rule.venue_id) === venueId
+          ? {...rule, draw_ids:rule.draw_ids.filter(id => Number(id) !== drawId)} : rule;
+        return remaining.draw_ids.length ? [remaining] : [];
+      });
       loadRankScope();
       updateCourtSummary(drawId, venueId);
       updateDrawSummary(drawId);
@@ -1752,7 +1767,7 @@
         if (input.type === 'checkbox') { if (!input.disabled) input.checked = control.checked; }
         else input.value = control.value;
       });
-      allRankRules = restored.rankRules.filter(rule => rankVenues.some(venue => Number(venue.id) === Number(rule.venue_id)));
+      allRankRules = restored.rankRules.filter(rule => !Number(rule.venue_id) || rankVenues.some(venue => Number(venue.id) === Number(rule.venue_id)));
       loadRankScope();
       document.querySelectorAll('.draw-start').forEach(input => {
         input.disabled = !document.querySelector(`.draw-choice[value="${input.dataset.draw}"]`)?.checked;
