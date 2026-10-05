@@ -290,6 +290,9 @@
           @php
             $standardCategories = $categories;
             $teamCategories = \App\Support\TeamDrawCategoryGroups::make($categories);
+            $individualCategories = \App\Support\IndividualDrawCategoryChoices::make($categories);
+            $duplicateCategoryNames = collect($categories)->groupBy(fn ($cat) => mb_strtolower(trim($cat->name)))
+              ->filter(fn ($rows) => $rows->count() > 1)->keys();
             $mixedCategoryGroups = [];
             foreach ($teamCategories as $cat) {
               if (in_array($cat->parsed_gender, ['boys', 'girls'], true)) {
@@ -352,22 +355,43 @@
           {{-- Category --}}
           <div class="mb-3 d-none" id="categorySection">
             <label class="form-label fw-bold">Category</label>
-            <div class="d-flex flex-wrap gap-2" id="individualCategoryChoices">
-              @foreach($standardCategories as $cat)
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="radio"
-                         name="category_choice"
-                         id="cat{{ $cat->pivot_id }}"
-                         value="{{ $cat->pivot_id }}"
-                         data-pivot-id="{{ $cat->pivot_id }}"
-                         data-age="{{ $cat->name }}"
-                         data-gender="">
-                  <label class="form-check-label" for="cat{{ $cat->pivot_id }}">
-                    {{ $cat->name }}
-                  </label>
-                </div>
+            <div class="d-grid gap-2" id="individualCategoryChoices">
+              @foreach($individualCategories as $cat)
+                <label class="form-check m-0" for="cat{{ $cat->pivot_id }}">
+                  <input class="form-check-input" type="radio" name="category_choice"
+                         id="cat{{ $cat->pivot_id }}" value="{{ $cat->pivot_id }}"
+                         data-pivot-id="{{ $cat->pivot_id }}" data-age="{{ $cat->name }}"
+                         data-source-name="{{ $cat->source_name }}"
+                         data-source-label="{{ $cat->source_name }}{{ $cat->duplicate_name ? ' (category '.$cat->pivot_id.')' : '' }}" data-gender="">
+                  <span class="form-check-label">{{ $cat->name }}</span>
+                </label>
               @endforeach
+              @if(empty($individualCategories))
+                <div class="text-muted">No standard categories available. Choose a category manually.</div>
+              @endif
             </div>
+            <div class="d-none" id="individualCategoryToggleGroup">
+              <label class="form-check mt-3">
+                <input class="form-check-input" type="checkbox" id="manualIndividualCategories">
+                <span class="form-check-label">Choose category manually</span>
+              </label>
+              <div class="form-text">Automatic choices link to one standard category. Use manual selection for a specific division or duplicate category.</div>
+            </div>
+            <div class="d-none mt-2" id="manualIndividualCategoryChoices">
+              <div class="d-grid gap-2">
+                @foreach($standardCategories as $cat)
+                  <label class="form-check m-0" for="individualManualCat{{ $cat->pivot_id }}">
+                    <input class="form-check-input" type="radio" name="category_choice"
+                           id="individualManualCat{{ $cat->pivot_id }}" value="{{ $cat->pivot_id }}"
+                           data-pivot-id="{{ $cat->pivot_id }}" data-age="{{ $cat->name }}"
+                           data-source-name="{{ $cat->name }}"
+                           data-source-label="{{ $cat->name }}{{ $duplicateCategoryNames->contains(mb_strtolower(trim($cat->name))) ? ' (category '.$cat->pivot_id.')' : '' }}" data-gender="" disabled>
+                    <span class="form-check-label">{{ $cat->name }} @if($duplicateCategoryNames->contains(mb_strtolower(trim($cat->name))))<span class="text-muted small">(category {{ $cat->pivot_id }})</span>@endif</span>
+                  </label>
+                @endforeach
+              </div>
+            </div>
+            <div class="form-text d-none" id="individualCategorySource" aria-live="polite"></div>
             <div class="gap-2" id="teamCategoryChoices" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));">
               @foreach($teamCategories as $cat)
                 <div class="form-check form-check-inline">

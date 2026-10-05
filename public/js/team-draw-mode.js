@@ -39,6 +39,11 @@
     $('#bulkTeamDraws').prop('checked', false);
     $('#bulkTeamChoices').addClass('d-none');
 
+    $('#manualIndividualCategories').prop('checked', false).prop('disabled', !isIndividual);
+    $('#manualIndividualCategoryChoices').addClass('d-none');
+    $('#manualIndividualCategoryChoices input').prop('disabled', true).prop('checked', false);
+    $('#individualCategoryToggleGroup').toggleClass('d-none', !isIndividual);
+    $('#individualCategorySource').empty().addClass('d-none');
     $('#manualTeamCategories').prop('checked', false).prop('disabled', !isTeam);
     $('#manualCategoryToggleGroup').toggleClass('d-none', !isTeam);
     $('#manualCategoryChoices').addClass('d-none');
@@ -72,6 +77,12 @@
 
   function updateCategorySelection() {
     var isTeam = selectedMode() === 'team';
+    var isIndividual = selectedMode() === 'individual';
+    var individualManual = isIndividual && document.getElementById('manualIndividualCategories').checked;
+    $('#individualCategoryChoices').toggleClass('d-none', !isIndividual || individualManual);
+    $('#individualCategoryChoices input').prop('disabled', !isIndividual || individualManual);
+    $('#manualIndividualCategoryChoices').toggleClass('d-none', !individualManual);
+    $('#manualIndividualCategoryChoices input').prop('disabled', !individualManual);
     var bulk = isTeam && document.getElementById('bulkTeamDraws').checked;
     var drawNameInput = document.getElementById('drawName');
     if (drawNameInput) drawNameInput.required = false;
@@ -102,6 +113,10 @@
   }
 
   $(document).on('change', '#bulkTeamDraws, #manualTeamCategories, input[name="draw_type_id"]', updateCategorySelection);
+  $(document).on('change', '#manualIndividualCategories', function () {
+    $('#individualCategoryChoices input, #manualIndividualCategoryChoices input').prop('checked', false);
+    updateCategorySelection();
+  });
   function categoryName(category) {
     if (!category) return '';
     var label = category.id ? form.querySelector('label[for="' + category.id + '"]') : null;
@@ -110,6 +125,8 @@
 
   function updateDrawNameVisibility() {
     var category = form.querySelector('input[name="category_choice"]:checked:not(:disabled)');
+    var source = selectedMode() === 'individual' && category ? (category.dataset.sourceLabel || category.dataset.sourceName || categoryName(category)) : '';
+    $('#individualCategorySource').text(source ? 'Linked category: ' + source + '. Players come only from this category.' : '').toggleClass('d-none', !source);
     var ready = selectedMode() === 'individual' && !!data.individualDrawTypeId && !!category;
     $('#singleDrawNameGroup').toggleClass('d-none', !ready);
   }
@@ -366,7 +383,8 @@
       _token: $('meta[name="csrf-token"]').attr('content'),
       drawName: drawName,
       draw_type_id: data.individualDrawTypeId,
-      category_event_id: category.dataset.pivotId || category.value
+      category_event_id: category.dataset.pivotId || category.value,
+      category_selection_mode: document.getElementById('manualIndividualCategories').checked ? 'manual' : 'automatic'
     }).done(function (response) {
       window.location.assign(response.setup_url);
     }).fail(function (xhr) {

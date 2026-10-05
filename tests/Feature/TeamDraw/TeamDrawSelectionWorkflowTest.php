@@ -162,15 +162,43 @@ class TeamDrawSelectionWorkflowTest extends TestCase
         $this->assertDatabaseCount('draws', 1);
     }
 
-    public function test_missing_mixed_partner_blocks_entire_selected_batch(): void
+    public function test_missing_mixed_partner_allows_selected_batch_and_normal_byes(): void
     {
         $region = TeamRegion::create(['region_name' => 'North']);
-        Team::factory()->create(['category_event_id' => $this->categories['Boys'], 'region_id' => $region->id, 'name' => 'North Boys']);
-        $this->request([$this->item()], true)->assertOk()->assertJsonPath('readiness.team_count', 2)->assertJsonPath('readiness.can_create', false);
-        $this->request([$this->item('Singles', [$this->categories['Boys']]), $this->item()])->assertUnprocessable();
+        foreach (['Boys', 'Girls'] as $gender) {
+            $team = Team::factory()->create(['category_event_id' => $this->categories[$gender], 'region_id' => $region->id, 'name' => 'North '.$gender]);
+            for ($rank = 1; $rank <= 2; $rank++) {
+                NoProfileTeamPlayer::create(['team_id' => $team->id, 'rank' => $rank, 'name' => 'North '.$gender, 'surname' => 'Player '.$rank, 'pay_status' => 0]);
+            }
+        }
+        $missingRegion = TeamRegion::create(['region_name' => 'South']);
+        $missing = Team::factory()->create(['category_event_id' => $this->categories['Boys'], 'region_id' => $missingRegion->id, 'name' => 'South Boys']);
+        $this->request([$this->item()], true)->assertOk()
+            ->assertJsonPath('readiness.team_count', 3)->assertJsonPath('readiness.can_create', true)
+            ->assertJsonPath('readiness.tie_count', 3)->assertJsonPath('readiness.bye_count', 3);
         $this->assertDatabaseCount('draws', 0);
         $this->assertDatabaseCount('team_fixtures', 0);
-        $this->request([$this->item('Singles', [$this->categories['Girls']])], false, 'valid-subset')->assertOk();
+        $items = [$this->item('Singles', [$this->categories['Boys']]), $this->item()];
+        $this->request($items)->assertOk();
+        $this->request($items)->assertOk();
+        $this->assertDatabaseCount('draws', 2);
+        $mixed = Draw::where('drawType_id', $this->types['Mixed Doubles'])->firstOrFail();
+        $this->assertCount(3, $mixed->teamTies);
+        $this->assertSame(6, TeamFixture::where('draw_id', $mixed->id)->count());
+        $this->assertArrayNotHasKey($missing->id, $mixed->team_draw_selection['mixed_sides']);
+    }
+
+    public function test_roster_position_default_does_not_raise_a_configuration_warning(): void
+    {
+        $response = $this->request([$this->item()], true)->assertOk();
+        $this->assertStringNotContainsString('no format is configured', implode(' ', $response->json('readiness.warnings')));
+        $rubbers = $response->json('readiness.rounds.0.ties.0.rubbers');
+        foreach ($rubbers as $index => $rubber) {
+            foreach ($rubber['slots'] as $slot) {
+                $this->assertStringEndsWith('Player '.($index + 1), $slot['team1_name']);
+                $this->assertStringEndsWith('Player '.($index + 1), $slot['team2_name']);
+            }
+        }
     }
 
     public function test_ambiguous_sources_and_cross_event_categories_are_rejected(): void

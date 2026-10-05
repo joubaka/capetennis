@@ -217,16 +217,72 @@ class HeadOfficeDrawAuthorizationTest extends TestCase
         $response->assertJsonPath('setup_url', route('draw.setup.show', $draw));
     }
 
+    public function test_automatic_individual_selection_links_only_the_standard_category(): void
+    {
+        $alias = CategoryEvent::factory()->create(['event_id' => $this->individualEvent->id,
+            'category_id' => \App\Models\Category::factory()->create(['name' => 'u / 13 Boys'])->id]);
+        $standard = CategoryEvent::factory()->create(['event_id' => $this->individualEvent->id,
+            'category_id' => \App\Models\Category::factory()->create(['name' => 'u/13 Boys'])->id]);
+        $this->actingAs($this->admin)->postJson($this->individualDrawUrl(), [
+            'drawName' => 'Standard draw', 'category_event_id' => $standard->id,
+            'category_selection_mode' => 'automatic',
+        ])->assertOk()->assertJsonPath('draw.category_event_id', $standard->id);
+        $this->actingAs($this->admin)->postJson($this->individualDrawUrl(), [
+            'drawName' => 'Alias automatic', 'category_event_id' => $alias->id,
+            'category_selection_mode' => 'automatic',
+        ])->assertUnprocessable()->assertJsonValidationErrors('category_event_id');
+        $this->assertSame(1, Draw::where('event_id', $this->individualEvent->id)->count());
+        $draw = Draw::where('event_id', $this->individualEvent->id)->firstOrFail();
+        $standardRegistration = \App\Models\Registration::factory()->create();
+        $standardRegistration->players()->attach(\App\Models\Player::factory()->create()->id);
+        $standardRegistration->categoryEvents()->attach($standard->id, ['status' => 'active', 'payment_status_id' => 1]);
+        $aliasRegistration = \App\Models\Registration::factory()->create();
+        $aliasRegistration->players()->attach(\App\Models\Player::factory()->create()->id);
+        $aliasRegistration->categoryEvents()->attach($alias->id, ['status' => 'active', 'payment_status_id' => 1]);
+        $this->assertSame([$standardRegistration->id], app(\App\Services\Draw\FlexibleMonradService::class)
+            ->eligible($draw)->pluck('id')->all());
+        $this->assertSame([$standardRegistration->id], app(\App\Services\Draw\GroupAssignmentService::class)
+            ->eligible($draw)->pluck('registration_id')->all());
+    }
+
+    public function test_new_category_selection_modes_require_one_exact_category(): void
+    {
+        foreach (['automatic', 'manual'] as $mode) {
+            $this->actingAs($this->admin)->postJson($this->individualDrawUrl(), [
+                'drawName' => 'Missing category', 'category_selection_mode' => $mode,
+            ])->assertUnprocessable()->assertJsonValidationErrors('category_event_id');
+        }
+        $this->assertSame(0, Draw::where('event_id', $this->individualEvent->id)->count());
+    }
+
+    public function test_specific_divisions_require_manual_selection_and_remain_exact(): void
+    {
+        $division = CategoryEvent::factory()->create(['event_id' => $this->individualEvent->id,
+            'category_id' => \App\Models\Category::factory()->create(['name' => 'u/13 Boys A division'])->id]);
+        $payload = ['drawName' => 'Division draw', 'category_event_id' => $division->id];
+        $this->actingAs($this->admin)->postJson($this->individualDrawUrl(), $payload + [
+            'category_selection_mode' => 'automatic',
+        ])->assertUnprocessable();
+        $this->assertSame(0, Draw::where('event_id', $this->individualEvent->id)->count());
+        $this->postJson($this->individualDrawUrl(), $payload + [
+            'category_selection_mode' => 'manual',
+        ])->assertOk()->assertJsonPath('draw.category_event_id', $division->id);
+        $this->assertSame(1, Draw::where('event_id', $this->individualEvent->id)->count());
+    }
+
     public function test_individual_draw_rejects_a_category_from_another_event(): void
     {
         $foreignCategory = CategoryEvent::factory()->create(['event_id' => $this->otherEvent->id]);
 
-        $this->actingAs($this->admin)
-            ->postJson($this->individualDrawUrl(), [
-                'drawName' => 'Wrong category',
-                'category_event_id' => $foreignCategory->id,
-            ])
-            ->assertUnprocessable();
+        foreach ([null, 'automatic', 'manual'] as $mode) {
+            $this->actingAs($this->admin)
+                ->postJson($this->individualDrawUrl(), [
+                    'drawName' => 'Wrong category',
+                    'category_event_id' => $foreignCategory->id,
+                    'category_selection_mode' => $mode,
+                ])
+                ->assertUnprocessable();
+        }
 
         $this->assertDatabaseMissing('draws', ['event_id' => $this->individualEvent->id, 'drawName' => 'Wrong category']);
     }

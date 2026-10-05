@@ -8,6 +8,7 @@ function dialog(initialMode = 'team') {
   const name = { id: 'drawName', value: '', required: false };
   const bulk = { checked: false };
   const manual = { checked: false };
+  const individualManual = { checked: false };
   const handlers = [];
   const formHandlers = {};
   const classes = {};
@@ -24,7 +25,7 @@ function dialog(initialMode = 'team') {
     addEventListener(event, handler) { formHandlers[event] = handler; },
     reset() { state.mode = ''; state.type = null; state.choices = {}; state.manual = []; }
   };
-  const document = { getElementById(id) { return { createDrawForm: form, drawName: name, bulkTeamDraws: bulk, manualTeamCategories: manual }[id] || {}; } };
+  const document = { getElementById(id) { return { createDrawForm: form, drawName: name, bulkTeamDraws: bulk, manualTeamCategories: manual, manualIndividualCategories: individualManual }[id] || {}; } };
   function $(selector) {
     const chain = {
       on(event, target, handler) { handlers.push({ event, selector: typeof target === 'string' ? target : selector, handler: handler || target }); return chain; },
@@ -33,10 +34,11 @@ function dialog(initialMode = 'team') {
       prop(key, value) {
         if (selector === '#bulkTeamDraws') bulk[key] = value;
         if (selector === '#manualTeamCategories') manual[key] = value;
+        if (selector === '#manualIndividualCategories') individualManual[key] = value;
         if (key === 'checked' && value === false && typeof selector === 'string' && selector.includes('CategoryChoices input')) state.choices = {};
         return chain;
       },
-      css() { return chain; }, addClass() { return chain; }, removeClass() { return chain; }, empty() { return chain; },
+      text() { return chain; }, css() { return chain; }, addClass() { return chain; }, removeClass() { return chain; }, empty() { return chain; },
       val(value) { if (selector === '#drawName') { if (value !== undefined) name.value = value; return name.value; } return ''; }, attr() { return 'csrf'; }
     };
     return chain;
@@ -48,7 +50,7 @@ function dialog(initialMode = 'team') {
       .forEach(h => h.handler.call(field === 'draw_mode' ? { value: state.mode } : {}));
   }
   state.mode = initialMode; change('draw_mode');
-  return { state, name, bulk, manual, classes, change, close() { handlers.find(h => h.event === 'hidden.bs.modal').handler(); }, customize(value) { name.value = value; formHandlers.input({ target: name }); } };
+  return { state, name, bulk, manual, individualManual, classes, change, close() { handlers.find(h => h.event === 'hidden.bs.modal').handler(); }, customize(value) { name.value = value; formHandlers.input({ target: name }); } };
 }
 
 test('single names fill from selected type and category and update automatically', () => {
@@ -126,4 +128,26 @@ test('bulk hides unused name field, explains automatic naming and requires no na
   assert.equal(ui.classes['#singleDrawNameGroup'], true);
   assert.equal(ui.classes['#bulkDrawNameHelp'], false);
   assert.equal(ui.name.required, false);
+});
+
+
+test('individual manual category mode clears hidden selection and preserves a custom name', () => {
+  const ui = dialog('individual');
+  ui.state.choices.category_choice = { value: '201', dataset: { age: 'u/13 Boys', pivotId: '201' } };
+  ui.change('category_choice');
+  assert.equal(ui.name.value, 'u/13 Boys – Singles');
+  ui.customize('Schools final');
+  ui.individualManual.checked = true; ui.change('manualIndividualCategories');
+  assert.equal(ui.classes['#individualCategoryChoices'], true);
+  assert.equal(ui.classes['#manualIndividualCategoryChoices'], false);
+  assert.equal(ui.classes['#singleDrawNameGroup'], true);
+  ui.state.choices.category_choice = { value: '204', dataset: { age: 'u/13 Boys A division', pivotId: '204' } };
+  ui.change('category_choice');
+  assert.equal(ui.name.value, 'Schools final');
+  ui.individualManual.checked = false; ui.change('manualIndividualCategories');
+  assert.equal(ui.classes['#individualCategoryChoices'], false);
+  assert.equal(ui.classes['#manualIndividualCategoryChoices'], true);
+  assert.equal(ui.classes['#singleDrawNameGroup'], true);
+  ui.close();
+  assert.equal(ui.individualManual.checked, false);
 });

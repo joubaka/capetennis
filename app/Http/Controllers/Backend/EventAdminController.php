@@ -645,12 +645,26 @@ class EventAdminController extends Controller
         'integer',
         \Illuminate\Validation\Rule::exists('draw_types', 'id')->where('type', 'individual'),
       ],
+      'category_selection_mode' => ['nullable', 'in:automatic,manual'],
       'category_event_id' => [
+        'required_with:category_selection_mode',
         'nullable',
         'integer',
         \Illuminate\Validation\Rule::exists('category_events', 'id')->where('event_id', $event->id),
       ],
     ]);
+
+    if (($validated['category_selection_mode'] ?? null) === 'automatic') {
+      $categories = CategoryEvent::query()->where('event_id', $event->id)
+        ->join('categories', 'categories.id', '=', 'category_events.category_id')
+        ->get(['category_events.id as pivot_id', 'categories.name']);
+      $standardIds = array_map(fn ($choice) => $choice->pivot_id, \App\Support\IndividualDrawCategoryChoices::make($categories));
+      if (! in_array((int) ($validated['category_event_id'] ?? 0), $standardIds, true)) {
+        throw \Illuminate\Validation\ValidationException::withMessages([
+          'category_event_id' => 'Choose a standard category, or use manual selection for a specific division or duplicate category.',
+        ]);
+      }
+    }
 
     $individualDrawTypes = DrawType::query()->where('type', 'individual')->orderBy('id')->get();
     $drawTypeId = $validated['draw_type_id']

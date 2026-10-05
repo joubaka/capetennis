@@ -50,10 +50,13 @@ class TeamDrawSelectionService
             foreach ($teams->groupBy('region_id') as $region => $sources) {
                 $boys = $sources->filter(fn ($t) => $this->sides->categoryKey($t->category->category->name)['gender'] === 'boys');
                 $girls = $sources->filter(fn ($t) => $this->sides->categoryKey($t->category->category->name)['gender'] === 'girls');
-                if (!$region || $boys->count() !== 1 || $girls->count() !== 1) {
+                if (!$region || $boys->count() > 1 || $girls->count() > 1) {
                     $errors[] = $sources->pluck('name')->implode(', ').': connect exactly one boys and one girls team in the same region; missing or ambiguous partner.';
                     continue;
                 }
+                // A region without both source teams does not field a mixed side.
+                // Schedule the available sides normally, including round-robin byes.
+                if ($boys->isEmpty() || $girls->isEmpty()) continue;
                 $side = $this->sides->combine($boys->first(), $girls->first());
                 $selection['mixed_sides'][$side->id] = ['boys' => $boys->first()->id, 'girls' => $girls->first()->id, 'region_id' => (int) $region, 'name' => $side->name];
                 $complete->push($side);
@@ -62,7 +65,6 @@ class TeamDrawSelectionService
         }
         $format = !empty($item['format_id']) ? TeamEventFormat::forEvent($event->id)->with('rubbers')->findOrFail($item['format_id'])
             : TeamEventFormat::where('event_id', $event->id)->where('is_default', true)->with('rubbers')->first();
-        $derived = !$format;
         if ($format) {
             $snapshot = $format->toArray();
             $snapshot['rubbers'] = $format->rubbers->where('rubber_code', $code)->values()->map->toArray()->all();
@@ -82,7 +84,6 @@ class TeamDrawSelectionService
         $effective = new TeamEventFormat($snapshot);
         $effective->setRelation('rubbers', collect($snapshot['rubbers'])->map(fn ($r) => new TeamEventFormatRubber($r)));
         $preview = $this->readiness->preview($teams, $effective);
-        if ($derived) $preview['warnings'][] = 'Using current roster positions because no format is configured. Check player readiness and pairings before publication.';
         $preview['warnings'] = array_values(array_unique(array_merge($preview['warnings'], $errors)));
         $preview['ready'] = !$preview['warnings'];
         $preview['can_create'] = !$errors && $teams->count() >= 2;
