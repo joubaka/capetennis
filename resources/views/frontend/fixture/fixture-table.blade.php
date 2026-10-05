@@ -4,7 +4,7 @@
   .draw-cell   { background-color: rgba(255,193,7,0.25) !important;  color:#856404 !important; }
 
   @media (max-width: 768px) {
-      #fixturesTable td, #fixturesTable th {
+      .fixtures-table td, .fixtures-table th {
           font-size: 0.85rem;
           padding: 0.4rem;
       }
@@ -12,35 +12,7 @@
 </style>
 
 @php
-/* ============================================================
-   REGION BADGES — ONLY FOR TEAM FIXTURES
-   ============================================================ */
-if (!function_exists('region_badge_class')) {
-    function region_badge_class(?string $short): string {
-        if (!$short) return 'bg-label-secondary';
-
-        $map = [
-            'Plat' => 'bg-label-primary',
-            'Wine' => 'bg-label-info',
-            'Drak' => 'bg-label-success',
-            'Eden' => 'bg-label-warning',
-            'BO'   => 'bg-label-danger',
-            'WP'   => 'bg-label-dark',
-        ];
-
-        $palette = [
-            'bg-label-primary','bg-label-success','bg-label-warning',
-            'bg-label-danger','bg-label-info','bg-label-dark','bg-label-secondary'
-        ];
-
-        return $map[$short] ?? $palette[abs(crc32($short)) % count($palette)];
-    }
-}
-
-/* ============================================================
-   PLAYER / TEAM NAME HELPERS — SUPPORT BOTH FIXTURE TYPES
-   ============================================================ */
-function fx_player1($fx) {
+$fxPlayer1 = function ($fx) {
     if ($fx instanceof \App\Models\TeamFixture && $fx->team1) {
         return $fx->team1->pluck('full_name')->implode(' + ');
     }
@@ -48,9 +20,9 @@ function fx_player1($fx) {
         return $fx->registration1->players->pluck('full_name')->implode(' + ');
     }
     return 'TBD';
-}
+};
 
-function fx_player2($fx) {
+$fxPlayer2 = function ($fx) {
     if ($fx instanceof \App\Models\TeamFixture && $fx->team2) {
         return $fx->team2->pluck('full_name')->implode(' + ');
     }
@@ -58,20 +30,20 @@ function fx_player2($fx) {
         return $fx->registration2->players->pluck('full_name')->implode(' + ');
     }
     return 'TBD';
-}
+};
 
 /* ============================================================
    SCORE HELPERS — SUPPORT BOTH TEAM & INDIVIDUAL
    ============================================================ */
-function fx_score_display($r) {
+$fxScoreDisplay = function ($r) {
     if (isset($r->team1_score)) {
         return $r->team1_score . ' - ' . $r->team2_score;
     }
     return $r->registration1_score . ' - ' . $r->registration2_score;
-}
+};
 
 /* Determine winner for highlight */
-function fx_winner_classes($fx) {
+$fxWinnerClasses = function ($fx) {
     if ($fx instanceof \App\Models\TeamFixture) {
         return match ($fx->winnerSide()) { 'home' => ['winner-home','loser-home'], 'away' => ['loser-home','winner-home'], default => ['',''] };
     }
@@ -95,15 +67,16 @@ function fx_winner_classes($fx) {
     if ($h > $a) return ['winner-home','loser-home'];
     if ($a > $h) return ['loser-home','winner-home'];
     return ['draw-cell','draw-cell'];
-}
+};
 @endphp
 
 
 <div class="card">
+  @unless($hideFixtureHeader ?? false)
   <div class="card-header d-flex justify-content-between align-items-center">
     <div>
       <h3 class="mb-1">{{ $draw->drawName }} {{ $draw->age }}</h3>
-      <span class="badge bg-label-success">Draw published</span>
+      <span class="badge {{ $draw->published ? 'bg-label-success' : 'bg-label-warning' }}">{{ $draw->published ? 'Draw published' : 'Draft preview · Draw not published' }}</span>
       <span class="badge {{ $draw->oop_published ? 'bg-label-success' : 'bg-label-secondary' }}">
         {{ $draw->oop_published ? 'Match times published' : 'Match times to follow' }}
       </span>
@@ -113,16 +86,17 @@ function fx_winner_classes($fx) {
     </a>
   </div>
 
+  @endunless
   <div class="card-body">
 
-    @unless($draw->oop_published)
+    @unless($draw->oop_published || ($hideFixtureHeader ?? false))
       <div class="alert alert-info" role="status">
         The draw is available, but match times and venues have not been published yet.
       </div>
     @endunless
 
     <div class="table-responsive">
-      <table class="table table-bordered align-middle" id="fixturesTable">
+      <table class="table table-bordered align-middle fixtures-table" id="{{ $fixtureTableId ?? 'fixturesTable' }}">
         <thead class="table-dark">
           <tr>
             <th class="d-table-cell d-md-none text-center" style="width:5%">+</th>
@@ -138,7 +112,7 @@ function fx_winner_classes($fx) {
 
           @forelse($fixtures as $fx)
 
-          @php [$homeClass, $awayClass] = fx_winner_classes($fx); @endphp
+          @php [$homeClass, $awayClass] = $fxWinnerClasses($fx); @endphp
 
           <tr id="row-{{ $fx->id }}">
 
@@ -153,41 +127,27 @@ function fx_winner_classes($fx) {
               </button>
             </td>
 
-            {{-- PLAYER / TEAM 1 --}}
+            {{-- PLAYER / TEAM LABELS --}}
             <td class="{{ $homeClass }}">
-                @if($fx instanceof \App\Models\TeamFixture)
-                    ({{ $fx->home_rank_nr }})
-                @endif
-
-                {{ fx_player1($fx) }}
-
-                @if($fx instanceof \App\Models\TeamFixture && $fx->region1Name?->short_name)
-                  <span class="badge rounded-pill {{ region_badge_class($fx->region1Name->short_name) }} ms-1">
-                      {{ $fx->region1Name->short_name }}
-                  </span>
-                @endif
+              @if($fx instanceof \App\Models\TeamFixture)
+                @include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['home']])
+              @else
+                {{ $fxPlayer1($fx) }}
+              @endif
             </td>
-
-            {{-- PLAYER / TEAM 2 --}}
             <td class="{{ $awayClass }}">
-                @if($fx instanceof \App\Models\TeamFixture)
-                    ({{ $fx->away_rank_nr }})
-                @endif
-
-                {{ fx_player2($fx) }}
-
-                @if($fx instanceof \App\Models\TeamFixture && $fx->region2Name?->short_name)
-                  <span class="badge rounded-pill {{ region_badge_class($fx->region2Name->short_name) }} ms-1">
-                      {{ $fx->region2Name->short_name }}
-                  </span>
-                @endif
+              @if($fx instanceof \App\Models\TeamFixture)
+                @include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['away']])
+              @else
+                {{ $fxPlayer2($fx) }}
+              @endif
             </td>
 
             {{-- SCORE --}}
             <td class="text-center" id="result-col-{{ $fx->id }}">
                 @forelse($fx->fixtureResults as $r)
                     <span class="badge bg-info text-dark me-1">
-                        {{ fx_score_display($r) }}
+                        {{ $fxScoreDisplay($r) }}
                     </span>
                 @empty
                     <span class="text-muted">No score</span>
@@ -212,11 +172,11 @@ function fx_winner_classes($fx) {
           <tr id="details-{{ $fx->id }}" class="d-none d-md-none bg-light">
             <td colspan="6">
               <div class="p-2">
-                <strong>Player/Team 1:</strong> {{ fx_player1($fx) }}<br>
-                <strong>Player/Team 2:</strong> {{ fx_player2($fx) }}<br>
+                <strong>Player/Team 1:</strong> @if($fx instanceof \App\Models\TeamFixture)@include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['home']])@else{{ $fxPlayer1($fx) }}@endif<br>
+                <strong>Player/Team 2:</strong> @if($fx instanceof \App\Models\TeamFixture)@include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['away']])@else{{ $fxPlayer2($fx) }}@endif<br>
                 <strong>Score:</strong>
                 @forelse($fx->fixtureResults as $r)
-                    {{ fx_score_display($r) }}
+                    {{ $fxScoreDisplay($r) }}
                 @empty
                     No score
                 @endforelse<br>
@@ -239,6 +199,7 @@ function fx_winner_classes($fx) {
   </div>
 </div>
 
+@once
 <script>
 // Expand/Collapse details on mobile
 $(document).on('click', '.toggle-details', function () {
@@ -251,3 +212,4 @@ $(document).on('click', '.toggle-details', function () {
     .attr('aria-label', expanded ? 'Hide match details' : 'Show match details');
 });
 </script>
+@endonce

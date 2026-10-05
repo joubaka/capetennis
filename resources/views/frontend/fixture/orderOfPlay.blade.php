@@ -96,29 +96,6 @@
 </style>
 
 @php
-  // 🎨 Color palette for region badges
-  $colorPalette = ['primary', 'success', 'info', 'warning', 'danger', 'secondary', 'dark'];
-
-  // 🧠 Global color map to ensure same region keeps color, and no duplicates until palette exhausted
-  $regionColorMap = [];
-  $colorIndex = 0;
-
-  $regionBadge = function ($region, $palette) use (&$regionColorMap, &$colorIndex) {
-      if (!$region) return '';
-
-      $short = $region->short_name ?? $region->name ?? 'Unknown';
-      $id = $region->id ?? crc32($short);
-
-      // If this region doesn't have a color yet, assign next available color
-      if (!isset($regionColorMap[$id])) {
-          $regionColorMap[$id] = $palette[$colorIndex % count($palette)];
-          $colorIndex++;
-      }
-
-      $color = $regionColorMap[$id];
-      return '<span class="badge bg-' . $color . '">' . e($short) . '</span>';
-  };
-
   // 🔗 Build base URL for toggle buttons
   $baseRoute = url("event/{$event->id}/venue/{$venue->id}/order");
 
@@ -188,14 +165,10 @@
               <td>{{ \Carbon\Carbon::parse($fx->scheduled_at)->format('H:i') }}</td>
               <td>{{ $fx->draw->drawName }}</td>
               <td>
-                ({{ $fx->home_rank_nr }})
-                {{ $fx->team1->pluck('full_name')->implode(' + ') ?: 'TBD' }}
-                {!! $regionBadge($fx->region1Name, $colorPalette) !!}
+                @include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['home']])
               </td>
               <td>
-                ({{ $fx->away_rank_nr }})
-                {{ $fx->team2->pluck('full_name')->implode(' + ') ?: 'TBD' }}
-                {!! $regionBadge($fx->region2Name, $colorPalette) !!}
+                @include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['away']])
               </td>
               <td class="fw-bold text-center">{{ $fx->result ?? '' }}</td>
             </tr>
@@ -208,14 +181,10 @@
             <td>{{ \Carbon\Carbon::parse($fx->scheduled_at)->format('H:i') }}</td>
             <td>{{ $fx->draw->drawName }}</td>
             <td>
-              ({{ $fx->home_rank_nr }})
-              {{ $fx->team1->pluck('full_name')->implode(' + ') ?: 'TBD' }}
-              {!! $regionBadge($fx->region1Name, $colorPalette) !!}
+              @include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['home']])
             </td>
             <td>
-              ({{ $fx->away_rank_nr }})
-              {{ $fx->team2->pluck('full_name')->implode(' + ') ?: 'TBD' }}
-              {!! $regionBadge($fx->region2Name, $colorPalette) !!}
+              @include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['away']])
             </td>
             <td class="fw-bold text-center">{{ $fx->result ?? '' }}</td>
           </tr>

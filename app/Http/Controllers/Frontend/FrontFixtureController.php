@@ -58,9 +58,7 @@ class FrontFixtureController extends Controller
       ->get();
 
     $this->hidePrivateSchedule($draw, $fixtures);
-    if ($isTeamEvent && ! auth()->user()?->can('view', $draw)) {
-      $fixtures = $fixtures->sortBy(fn ($fixture) => $fixture->scheduled_at ?? '9999-12-31')->values();
-    }
+    app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures);
 
     if (! auth()->user()?->can('view', $draw)) {
       $fixtures = $fixtures->sortBy(fn ($fixture) => $fixture->scheduled_at ?? '9999-12-31')->values();
@@ -206,10 +204,9 @@ class FrontFixtureController extends Controller
       ])
         ->where('draw_id', $id)
         ->when(!auth()->user()?->can('view', $draw), fn ($query) => $query->publishedTeamTies())
-        ->orderBy('scheduled_at', 'asc')
         ->orderByRaw('CAST(round_nr AS UNSIGNED)')
         ->orderByRaw('CAST(tie_nr AS UNSIGNED)')
-        ->orderByRaw('CAST(home_rank_nr AS UNSIGNED)')
+        ->orderBy('rubber_sequence')
         ->orderBy('match_nr')
         ->get();
 
@@ -230,6 +227,7 @@ class FrontFixtureController extends Controller
     }
 
     $this->hidePrivateSchedule($draw, $fixtures);
+    if ($isTeamEvent) app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures);
     
     // ---------------------------------------------------------
     // Empty fixtures
@@ -299,6 +297,8 @@ class FrontFixtureController extends Controller
 
     app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($fixtures);
     $fixtures = $fixtures->sortBy(fn ($fixture) => $fixture->scheduled_at ?? '9999-12-31')->values();
+
+    app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures);
 
     return view('frontend.fixture.draw-fixtures-show-team', [
       'fixtures' => $fixtures,

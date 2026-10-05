@@ -10,6 +10,79 @@
   var nameCustomized = false;
   var individualNameDraft = '';
   var individualNameCustomized = false;
+  var creationPending = false;
+  var creationTimer = null;
+  var creationPercent = 0;
+  var creationControls = [];
+  var creationButtonText = '';
+  var previewPending = false;
+
+  function stopCreationTimer() {
+    if (creationTimer !== null) window.clearInterval(creationTimer);
+    creationTimer = null;
+  }
+
+  function renderCreationPercent(percent) {
+    creationPercent = percent;
+    $('#drawCreationPercent').text(percent + '%');
+    $('#drawCreationBar').css('width', percent + '%').attr('aria-valuenow', percent);
+  }
+
+  function resetCreationProgress() {
+    stopCreationTimer();
+    renderCreationPercent(0);
+    $('#drawCreationProgress, #drawCreationError').addClass('d-none');
+    $('#drawCreationError').empty();
+  }
+
+  function startCreationProgress() {
+    creationPending = true;
+    creationButtonText = submitButton ? submitButton.textContent : '';
+    creationControls = Array.from(form.querySelectorAll('input, select, textarea, button')).map(function (control) {
+      var state = { control: control, disabled: control.disabled };
+      control.disabled = true;
+      return state;
+    });
+    if (submitButton) submitButton.textContent = 'Creating…';
+    form.setAttribute('aria-busy', 'true');
+    resetCreationProgress();
+    $('#drawCreationProgress, #drawCreationSpinner').removeClass('d-none');
+    $('#drawCreationStatus').text('Creating draws… Estimated progress');
+    creationTimer = window.setInterval(function () {
+      renderCreationPercent(Math.min(95, creationPercent + Math.max(1, Math.ceil((95 - creationPercent) * 0.08))));
+      if (creationPercent === 95) stopCreationTimer();
+    }, 700);
+  }
+
+  function completeCreationProgress() {
+    stopCreationTimer();
+    renderCreationPercent(100);
+    $('#drawCreationSpinner').addClass('d-none');
+    $('#drawCreationStatus').text('Draw creation confirmed. Opening draws…');
+    // Keep controls and dismissal locked until navigation completes.
+    form.setAttribute('aria-busy', 'false');
+  }
+
+  function failCreationProgress(xhr) {
+    stopCreationTimer();
+    creationPending = false;
+    creationControls.forEach(function (state) { state.control.disabled = state.disabled; });
+    var previewButton = document.getElementById('previewTeamDrawButton');
+    if (previewButton) previewButton.disabled = previewPending;
+    if (submitButton) {
+      submitButton.disabled = false;
+      submitButton.textContent = creationButtonText;
+    }
+    form.setAttribute('aria-busy', 'false');
+    renderCreationPercent(0);
+    $('#drawCreationProgress, #drawCreationSpinner').addClass('d-none');
+    var errors = xhr.responseJSON && xhr.responseJSON.errors;
+    var message = errors ? Object.values(errors).flat().join(' ') :
+      ((xhr.responseJSON && xhr.responseJSON.message) || 'Could not confirm draw creation. Check your draws before retrying.');
+    $('#drawCreationError').text(message).removeClass('d-none');
+    responseError(xhr);
+  }
+
   // This form owns category/type selection. Older bundles assumed mixed ID 3.
   $(document).off('change', 'input[name="draw_type_id"]');
   $(document).off('change', 'input[name="category_choice"], input[name="category_choice_boys"], input[name="category_choice_girls"]');
@@ -192,7 +265,12 @@
     window.setTimeout(updateIndividualName, 0);
   });
 
+  $(document).on('hide.bs.modal', '#createDrawModal', function (event) {
+    if (creationPending) event.preventDefault();
+  });
   $(document).on('hidden.bs.modal', '#createDrawModal', function () {
+    if (creationPending) return;
+    resetCreationProgress();
     form.reset();
     individualNameDraft = '';
     individualNameCustomized = false;
@@ -301,10 +379,12 @@
   }
 
   $('#previewTeamDrawButton').on('click', function () {
+    if (creationPending) return;
     var payload = teamPayload();
     if (!payload) return;
     var button = this;
     var revision = previewRevision;
+    previewPending = true;
     button.disabled = true;
     $.post(data.previewUrl, payload).done(function (response) {
       if (revision !== previewRevision || selectedMode() !== 'team') return;
@@ -317,7 +397,7 @@
         });
       } else renderPreview(response.readiness);
     })
-      .fail(responseError).always(function () { button.disabled = false; });
+      .fail(responseError).always(function () { previewPending = false; button.disabled = creationPending; });
   });
   form.addEventListener('change', function () { batchKey = null; previewRevision++; $('#teamDrawPreview').empty().addClass('d-none'); });
   form.addEventListener('input', function (event) {
@@ -331,6 +411,11 @@
 
   // Capture the individual submission before the legacy team-only handler.
   form.addEventListener('submit', function (event) {
+    if (creationPending) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
     var mode = selectedMode();
 
     if (!mode) {
@@ -345,9 +430,15 @@
       event.stopImmediatePropagation();
       var payload = teamPayload();
       if (!payload) return;
-      if (submitButton) submitButton.disabled = true;
-      $.post(data.createUrl, payload).done(function () { window.location.reload(); })
-        .fail(responseError).always(function () { if (submitButton) submitButton.disabled = false; });
+      startCreationProgress();
+      $.post(data.createUrl, payload).done(function (response) {
+        if (!response || response.success !== true) {
+          failCreationProgress({ responseJSON: { message: 'Could not confirm draw creation. Check your draws before retrying.' } });
+          return;
+        }
+        completeCreationProgress();
+        window.location.reload();
+      }).fail(failCreationProgress);
       return;
     }
 
@@ -373,11 +464,7 @@
       return;
     }
 
-    var originalText = submitButton ? submitButton.textContent : '';
-    if (submitButton) {
-      submitButton.disabled = true;
-      submitButton.textContent = 'Creating…';
-    }
+    startCreationProgress();
 
     $.post(data.individualCreateUrl, {
       _token: $('meta[name="csrf-token"]').attr('content'),
@@ -386,19 +473,13 @@
       category_event_id: category.dataset.pivotId || category.value,
       category_selection_mode: document.getElementById('manualIndividualCategories').checked ? 'manual' : 'automatic'
     }).done(function (response) {
+      if (!response || response.success !== true || !response.setup_url) {
+        failCreationProgress({ responseJSON: { message: 'Could not confirm draw creation. Check your draws before retrying.' } });
+        return;
+      }
+      completeCreationProgress();
       window.location.assign(response.setup_url);
-    }).fail(function (xhr) {
-      if (xhr.responseJSON && xhr.responseJSON.errors) {
-        Object.values(xhr.responseJSON.errors).flat().forEach(showError);
-      } else {
-        showError((xhr.responseJSON && xhr.responseJSON.message) || 'Error creating singles draw');
-      }
-    }).always(function () {
-      if (submitButton) {
-        submitButton.disabled = false;
-        submitButton.textContent = originalText;
-      }
-    });
+    }).fail(failCreationProgress);
   }, true);
 
   setMode(selectedMode());

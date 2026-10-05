@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 
 function dialog(initialMode = 'team') {
-  const state = { mode: '', type: null, choices: {}, manual: [] };
+  const state = { mode: '', type: null, choices: {}, manual: [], bulkTypes: [], bulkCategories: [] };
   const name = { id: 'drawName', value: '', required: false };
   const bulk = { checked: false };
   const manual = { checked: false };
@@ -12,20 +12,35 @@ function dialog(initialMode = 'team') {
   const handlers = [];
   const formHandlers = {};
   const classes = {};
+  const values = {};
+  const attributes = {};
+  const requests = [];
+  const timers = new Map();
+  const navigation = [];
+  const errors = [];
+  const submitButton = { disabled: false, textContent: 'Create Draw' };
+  const previewButton = { disabled: false };
+  let timerId = 0;
   const form = {
     querySelector(selector) {
-      if (selector.includes('button[type')) return {};
+      if (selector.includes('button[type')) return submitButton;
       if (selector.includes('draw_mode')) return { value: state.mode };
       if (selector.includes('draw_type_id')) return state.type;
       if (selector.startsWith('label[')) return { textContent: 'Team - Singles' };
       const match = selector.match(/name="([^"]+)"/);
       return match ? state.choices[match[1]] || null : null;
     },
-    querySelectorAll() { return state.manual; },
+    querySelectorAll(selector) {
+      if (selector === 'input, select, textarea, button') return [submitButton, previewButton, name, bulk, manual, individualManual, ...Object.values(state.choices)];
+      if (selector.includes('bulk_draw_types[]')) return state.bulkTypes;
+      if (selector.includes('bulk_categories[]')) return state.bulkCategories;
+      return state.manual;
+    },
+    setAttribute(key, value) { attributes[key] = value; },
     addEventListener(event, handler) { formHandlers[event] = handler; },
     reset() { state.mode = ''; state.type = null; state.choices = {}; state.manual = []; }
   };
-  const document = { getElementById(id) { return { createDrawForm: form, drawName: name, bulkTeamDraws: bulk, manualTeamCategories: manual, manualIndividualCategories: individualManual }[id] || {}; } };
+  const document = { getElementById(id) { return { createDrawForm: form, drawName: name, bulkTeamDraws: bulk, manualTeamCategories: manual, manualIndividualCategories: individualManual, previewTeamDrawButton: previewButton }[id] || {}; } };
   function $(selector) {
     const chain = {
       on(event, target, handler) { handlers.push({ event, selector: typeof target === 'string' ? target : selector, handler: handler || target }); return chain; },
@@ -38,19 +53,33 @@ function dialog(initialMode = 'team') {
         if (key === 'checked' && value === false && typeof selector === 'string' && selector.includes('CategoryChoices input')) state.choices = {};
         return chain;
       },
-      text() { return chain; }, css() { return chain; }, addClass() { return chain; }, removeClass() { return chain; }, empty() { return chain; },
-      val(value) { if (selector === '#drawName') { if (value !== undefined) name.value = value; return name.value; } return ''; }, attr() { return 'csrf'; }
+      text(value) { values[selector] = value; return chain; }, css(key, value) { values[selector + ':' + key] = value; return chain; }, addClass() { classes[selector] = true; return chain; }, removeClass() { classes[selector] = false; return chain; }, empty() { return chain; },
+      val(value) { if (selector === '#drawName') { if (value !== undefined) name.value = value; return name.value; } return ''; }, attr(key, value) { if (value !== undefined) { attributes[selector + ':' + key] = value; return chain; } return 'csrf'; }
     };
     return chain;
   }
-  const window = { HeadOffice: { individualDrawTypeId: 88 }, jQuery: $, setTimeout(callback) { callback(); } };
+  $.post = function (url, payload) {
+    const handlers = {};
+    const request = { url, payload, resolve(response) { if (handlers.done) handlers.done(response); if (handlers.always) handlers.always(); },
+      reject(xhr) { if (handlers.fail) handlers.fail(xhr); if (handlers.always) handlers.always(); } };
+    requests.push(request);
+    const chain = { done(handler) { handlers.done = handler; return chain; }, fail(handler) { handlers.fail = handler; return chain; }, always(handler) { handlers.always = handler; return chain; } };
+    return chain;
+  };
+  const window = { HeadOffice: { individualDrawTypeId: 88, createUrl: '/team', individualCreateUrl: '/individual' }, jQuery: $,
+    location: { reload() { navigation.push('reload'); }, assign(url) { navigation.push(url); } },
+    toastr: { error(message) { errors.push(message); } },
+    setTimeout(callback) { callback(); }, setInterval(callback) { timers.set(++timerId, callback); return timerId; }, clearInterval(id) { timers.delete(id); } };
   vm.runInNewContext(fs.readFileSync('public/js/team-draw-mode.js', 'utf8'), { window, document });
   function change(field) {
     handlers.filter(h => h.event === 'change' && (h.selector.includes('name="' + field + '"') || h.selector.includes('#' + field)))
       .forEach(h => h.handler.call(field === 'draw_mode' ? { value: state.mode } : {}));
   }
   state.mode = initialMode; change('draw_mode');
-  return { state, name, bulk, manual, individualManual, classes, change, close() { handlers.find(h => h.event === 'hidden.bs.modal').handler(); }, customize(value) { name.value = value; formHandlers.input({ target: name }); } };
+  return { state, name, bulk, manual, individualManual, classes, values, attributes, requests, timers, navigation, errors, submitButton, change,
+    tick() { [...timers.values()].forEach(callback => callback()); },
+    submit() { formHandlers.submit({ preventDefault() {}, stopImmediatePropagation() {} }); },
+    hide() { let prevented = false; handlers.find(h => h.event === 'hide.bs.modal').handler({ preventDefault() { prevented = true; } }); return prevented; }, close() { handlers.find(h => h.event === 'hidden.bs.modal').handler(); }, customize(value) { name.value = value; formHandlers.input({ target: name }); } };
 }
 
 test('single names fill from selected type and category and update automatically', () => {
@@ -150,4 +179,87 @@ test('individual manual category mode clears hidden selection and preserves a cu
   assert.equal(ui.classes['#singleDrawNameGroup'], true);
   ui.close();
   assert.equal(ui.individualManual.checked, false);
+});
+
+
+test('individual creation shows estimated progress, prevents duplicate requests and completes only on confirmation', () => {
+  const ui = dialog('individual');
+  ui.state.choices.category_choice = { value: '201', disabled: false, dataset: { age: 'u/13 Boys', pivotId: '201' } };
+  ui.change('category_choice');
+  ui.submit();
+  assert.equal(ui.requests.length, 1);
+  assert.equal(ui.requests[0].url, '/individual');
+  assert.equal(ui.values['#drawCreationPercent'], '0%');
+  assert.equal(ui.attributes['aria-busy'], 'true');
+  assert.equal(ui.submitButton.disabled, true);
+  assert.equal(ui.hide(), true);
+  ui.close(); // Even an unexpected hidden event must not reset an in-flight request.
+  assert.equal(ui.state.mode, 'individual');
+  ui.submit();
+  assert.equal(ui.requests.length, 1);
+  for (let i = 0; i < 100; i++) ui.tick();
+  assert.equal(ui.values['#drawCreationPercent'], '95%');
+  assert.equal(ui.attributes['#drawCreationBar:aria-valuenow'], 95);
+  assert.equal(ui.navigation.length, 0);
+  ui.requests[0].resolve({ success: true, setup_url: '/draw/setup' });
+  assert.equal(ui.values['#drawCreationPercent'], '100%');
+  assert.equal(ui.timers.size, 0);
+  assert.equal(ui.submitButton.disabled, true);
+  assert.deepEqual(ui.navigation, ['/draw/setup']);
+});
+
+test('team creation errors stop progress, restore controls and permit a retry with the same creation key', () => {
+  const ui = dialog('team');
+  ui.state.type = { id: 'singles', value: '19', dataset: { code: 'singles' } };
+  ui.state.choices.category_choice = { value: '201', disabled: false, dataset: { age: 'u/13 Boys', pivotId: '201' } };
+  ui.change('category_choice');
+  ui.submit(); ui.tick();
+  assert.equal(ui.requests.length, 1);
+  assert.notEqual(ui.values['#drawCreationPercent'], '0%');
+  ui.requests[0].reject({ responseJSON: { errors: { category_ids: ['Select two teams.'] } } });
+  assert.equal(ui.values['#drawCreationPercent'], '0%');
+  assert.equal(ui.values['#drawCreationError'], 'Select two teams.');
+  assert.equal(ui.timers.size, 0);
+  assert.equal(ui.submitButton.disabled, false);
+  assert.equal(ui.state.choices.category_choice.disabled, false);
+  assert.equal(ui.hide(), false);
+  assert.deepEqual(ui.errors, ['Select two teams.']);
+  ui.submit();
+  assert.equal(ui.requests.length, 2);
+  assert.equal(ui.requests[0].payload.batch_key, ui.requests[1].payload.batch_key);
+  ui.requests[1].resolve({ success: true });
+  assert.equal(ui.values['#drawCreationPercent'], '100%');
+  assert.deepEqual(ui.navigation, ['reload']);
+});
+
+test('unconfirmed creation response never displays completed progress', () => {
+  const ui = dialog('individual');
+  ui.state.choices.category_choice = { value: '201', dataset: { age: 'u/13 Boys', pivotId: '201' } };
+  ui.change('category_choice'); ui.submit();
+  ui.requests[0].resolve({ success: false });
+  assert.equal(ui.values['#drawCreationPercent'], '0%');
+  assert.equal(ui.submitButton.disabled, false);
+  assert.equal(ui.navigation.length, 0);
+  assert.match(ui.values['#drawCreationError'], /Check your draws before retrying/);
+});
+
+
+test('bulk creation uses one request with estimated progress and confirmed completion', () => {
+  const ui = dialog('team');
+  ui.bulk.checked = true; ui.change('bulkTeamDraws');
+  ui.state.bulkTypes = [{ value: '19', dataset: { code: 'singles', name: 'Team-Singles' } }];
+  ui.state.bulkCategories = [{ value: '201', dataset: { name: 'u/13 Boys', age: 'u/13', gender: 'boys', pivotIds: '[201]' } },
+    { value: '206', dataset: { name: 'u/13 Girls', age: 'u/13', gender: 'girls', pivotIds: '[206]' } }];
+  ui.submit();
+  assert.equal(ui.requests.length, 1);
+  assert.equal(ui.requests[0].url, '/team');
+  assert.equal(ui.requests[0].payload.draws.length, 2);
+  assert.equal(ui.values['#drawCreationPercent'], '0%');
+  ui.tick(); ui.submit();
+  assert.equal(ui.requests.length, 1);
+  assert.equal(ui.hide(), true);
+  ui.requests[0].resolve({ success: true, draws: [{ id: 1 }, { id: 2 }] });
+  assert.equal(ui.values['#drawCreationPercent'], '100%');
+  assert.equal(ui.timers.size, 0);
+  assert.deepEqual(ui.navigation, ['reload']);
 });

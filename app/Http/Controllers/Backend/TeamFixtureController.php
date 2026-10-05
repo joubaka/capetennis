@@ -859,7 +859,9 @@ class TeamFixtureController extends Controller
         'fixtureResults',
       ])
       ->whereIn('id', $fixtureIds)->get();
-    return $publication->projectFixtures($fixtures)->sortBy('scheduled_at')->values();
+    $fixtures = $publication->projectFixtures($fixtures)->sortBy('scheduled_at')->values();
+    app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures);
+    return $fixtures;
   }
 
 

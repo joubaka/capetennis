@@ -508,6 +508,19 @@
 
         <div id="teamDrawPreview" class="px-4 pb-3 d-none" aria-live="polite"></div>
 
+        <div id="drawCreationProgress" class="px-4 pb-3 d-none">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span id="drawCreationSpinner" class="spinner-border spinner-border-sm text-primary flex-shrink-0" aria-hidden="true"></span>
+            <span id="drawCreationStatus" class="small" role="status" aria-live="polite">Creating draws… Estimated progress</span>
+            <strong id="drawCreationPercent" class="small ms-auto flex-shrink-0">0%</strong>
+          </div>
+          <div class="progress" style="height: 8px;">
+            <div id="drawCreationBar" class="progress-bar" role="progressbar" aria-label="Estimated draw creation progress"
+                 aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" style="width: 0%;"></div>
+          </div>
+        </div>
+        <div id="drawCreationError" class="alert alert-danger mx-4 mb-3 d-none" role="alert"></div>
+
         <div class="modal-footer">
           <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
           <button type="button" id="previewTeamDrawButton" class="btn btn-outline-primary d-none">Preview team ties</button>

@@ -2,17 +2,7 @@
 use App\Helpers\Fixtures;
 ?>
 
-@php
-    // 🎨 Region color mapping
-    $regionColors = [
-        'Wine' => 'bg-label-success',   // green
-        'Drak' => 'bg-label-secondary', // grey
-        'Eden' => 'bg-label-info',      // blue
-        'Over' => 'bg-label-warning',   // yellow
-        'Cape' => 'bg-label-primary',   // blue/purple
-        'default' => 'bg-label-light',    // fallback
-    ];
-@endphp
+@php $lastRound = null; $lastTieKey = null; @endphp
 
 <h3>
     {{ $fixtures[0]->draw->drawName }} {{ $fixtures[0]->draw->age }}
@@ -36,27 +26,18 @@ use App\Helpers\Fixtures;
     <tbody class="table-border-bottom-0">
 
       @foreach ($fixtures as $key => $fixture)
-        @php
-            $color1 = $regionColors[$fixture->region1Name->short_name] ?? 'bg-label-light';
-            $color2 = $regionColors[$fixture->region2Name->short_name] ?? 'bg-label-light';
-        @endphp
-
-        @if ($fixture->rank_nr == 1)
-          <tr class="m-4">
-            <td colspan="8">
-              <h4>
-                {{ $fixture->region1Name->region_name }}
-                <span class="badge {{ $color1 }}">{{ $fixture->region1Name->short_name }}</span>
-                vs
-                {{ $fixture->region2Name->region_name }}
-                <span class="badge {{ $color2 }}">{{ $fixture->region2Name->short_name }}</span>
-              </h4>
-            </td>
-          </tr>
+        @php $tieKey = implode('-', [$fixture->draw_id, $fixture->team_tie_id ?: implode('-', [$fixture->tie_nr, $fixture->region1, $fixture->region2])]); @endphp
+        @if($lastRound !== (int) $fixture->round_nr)
+          <tr class="table-dark"><th colspan="7">Round {{ $fixture->round_nr ?: '—' }}</th></tr>
+          @php $lastRound = (int) $fixture->round_nr; $lastTieKey = null; @endphp
+        @endif
+        @if($lastTieKey !== $tieKey)
+          <tr class="table-light"><th colspan="7">{{ $fixture->tie_display['home'] }} vs {{ $fixture->tie_display['away'] }}</th></tr>
+          @php $lastTieKey = $tieKey; @endphp
         @endif
 
         <tr id='{{ $fixture->id }}'>
-          <td>{{ $fixture->rank_nr }}</td>
+          <td>{{ $fixture->rubber_sequence ?: $fixture->rank_nr }}</td>
 
           {{-- 🧩 TEAM DISPLAY --}}
           @php
@@ -65,20 +46,14 @@ use App\Helpers\Fixtures;
 
           {{-- === TEAM 1 === --}}
           <td class="{{ $winner == 1 ? 'bg-label-success border border-2 border-success' : '' }}">
-            <span class="badge {{ $color1 }}">
-              {{ $fixture->team1[0]->getFullNameAttribute() ?? Fixtures::getNoProfileTeam($fixture, 1, $fixture->rank_nr) }}
-              ({{ $fixture->region1Name->short_name }})
-            </span>
+            @include('frontend.fixture.lineup-side', ['lineup' => $fixture->lineup_display['home']])
           </td>
 
           <td>vs</td>
 
           {{-- === TEAM 2 === --}}
           <td class="{{ $winner == 2 ? 'bg-label-success border border-2 border-success' : '' }}">
-            <span class="badge {{ $color2 }}">
-              {{ $fixture->team2[0]->getFullNameAttribute() ?? Fixtures::getNoProfileTeam($fixture, 2, $fixture->rank_nr) }}
-              ({{ $fixture->region2Name->short_name }})
-            </span>
+            @include('frontend.fixture.lineup-side', ['lineup' => $fixture->lineup_display['away']])
           </td>
 
           {{-- === SCHEDULE === --}}
@@ -107,8 +82,8 @@ use App\Helpers\Fixtures;
             @else
               <button type="button"
                       data-id="{{ $fixture }}"
-                      data-reg1="{{ $fixture->team1->count() > 1 ? $fixture->team1[0]->getFullNameAttribute() . '/' . $fixture->team1[1]->getFullNameAttribute() : $fixture->team1[0]->getFullNameAttribute() }}"
-                      data-reg2="{{ $fixture->team2->count() > 1 ? $fixture->team2[0]->getFullNameAttribute() . '/' . $fixture->team2[1]->getFullNameAttribute() : $fixture->team2[0]->getFullNameAttribute() }}"
+                      data-reg1="{{ collect($fixture->lineup_display['home']['players'])->pluck('name')->implode(' + ') }}"
+                      data-reg2="{{ collect($fixture->lineup_display['away']['players'])->pluck('name')->implode(' + ') }}"
                       class="btn btn-sm btn-secondary insertResult"
                       data-bs-toggle="modal"
                       data-bs-target="#tennisResultModal">Insert Score</button>

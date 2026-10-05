@@ -128,39 +128,6 @@ if (!function_exists('team_label')) {
                   }
               }
 
-              $homeNames = [];
-              $awayNames = [];
-              $homeRegionShort = $fx->region1Name?->short_name ?? null;
-              $awayRegionShort = $fx->region2Name?->short_name ?? null;
-
-              foreach($fx->fixturePlayers as $fpRow) {
-                  if ($fpRow->team1_id && $fpRow->player1) {
-                      $name = $fpRow->player1->full_name;
-                      if($homeRegionShort) $name .= " ({$homeRegionShort})";
-                      $homeNames[] = $name;
-                  } elseif ($fpRow->team1_no_profile_id) {
-                      $np = $fpRow->noProfile1;
-                      if($np){
-                          $name = trim($np->name.' '.$np->surname);
-                          if($homeRegionShort) $name .= " ({$homeRegionShort})";
-                          $homeNames[] = $name;
-                      }
-                  }
-                  if ($fpRow->team2_id && $fpRow->player2) {
-                      $name = $fpRow->player2->full_name;
-                      if($awayRegionShort) $name .= " ({$awayRegionShort})";
-                      $awayNames[] = $name;
-                  } elseif ($fpRow->team2_no_profile_id) {
-                      $np2 = $fpRow->noProfile2;
-                      if($np2){
-                          $name = trim($np2->name.' '.$np2->surname);
-                          if($awayRegionShort) $name .= " ({$awayRegionShort})";
-                          $awayNames[] = $name;
-                      }
-                  }
-              }
-              $homeLabel = count($homeNames) ? collect($homeNames)->implode(' + ') : 'TBD';
-              $awayLabel = count($awayNames) ? collect($awayNames)->implode(' + ') : 'TBD';
             @endphp
             <tr id="row-{{ $fx->id }}">
               <td class="fw-bold">
@@ -172,10 +139,10 @@ if (!function_exists('team_label')) {
               </td>
               <td>{{ optional($fx->draw)->drawName ?? '-' }}</td>
               <td class="home-cell {{ $homeClass }}">
-                ({{ $fx->home_rank_nr }}) {{ $homeLabel }}
+                @include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['home']])
               </td>
               <td class="away-cell {{ $awayClass }}">
-                ({{ $fx->away_rank_nr }}) {{ $awayLabel }}
+                @include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['away']])
               </td>
               <td id="result-col-{{ $fx->id }}" class="text-center">
                 @forelse($fx->fixtureResults as $r)

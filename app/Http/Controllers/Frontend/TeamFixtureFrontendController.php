@@ -56,6 +56,8 @@ class TeamFixtureFrontendController extends Controller
       $fixtures = $fixtures->sortBy(fn ($fixture) => $fixture->scheduled_at ?? '9999-12-31')->values();
     }
 
+    app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures);
+
     // Group fixtures by day
     $fixturesByDay = $fixtures->groupBy(function($fx) {
         return $fx->scheduled_at ? Carbon::parse($fx->scheduled_at)->toDateString() : 'Schedule to be announced';

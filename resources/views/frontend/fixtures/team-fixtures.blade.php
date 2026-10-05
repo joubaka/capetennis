@@ -47,39 +47,6 @@
                     <tbody>
                     @forelse($fixtures as $fx)
                         @php
-                            $homeNames = [];
-                            $awayNames = [];
-                            $homeRegionShort = $fx->region1Name?->short_name ?? null;
-                            $awayRegionShort = $fx->region2Name?->short_name ?? null;
-
-                            foreach ($fx->fixturePlayers as $fpRow) {
-                                if ($fpRow->team1_id && $fpRow->player1) {
-                                    $name = $fpRow->player1->full_name;
-                                    if ($homeRegionShort) $name .= " ({$homeRegionShort})";
-                                    $homeNames[] = $name;
-                                } elseif ($fpRow->team1_no_profile_id) {
-                                    $np = \App\Models\NoProfileTeamPlayer::find($fpRow->team1_no_profile_id);
-                                    if ($np) {
-                                        $name = trim($np->name . ' ' . $np->surname);
-                                        if ($homeRegionShort) $name .= " ({$homeRegionShort})";
-                                        $homeNames[] = $name;
-                                    }
-                                }
-                                if ($fpRow->team2_id && $fpRow->player2) {
-                                    $name = $fpRow->player2->full_name;
-                                    if ($awayRegionShort) $name .= " ({$awayRegionShort})";
-                                    $awayNames[] = $name;
-                                } elseif ($fpRow->team2_no_profile_id) {
-                                    $np2 = \App\Models\NoProfileTeamPlayer::find($fpRow->team2_no_profile_id);
-                                    if ($np2) {
-                                        $name = trim($np2->name . ' ' . $np2->surname);
-                                        if ($awayRegionShort) $name .= " ({$awayRegionShort})";
-                                        $awayNames[] = $name;
-                                    }
-                                }
-                            }
-                            $homeLabel = count($homeNames) ? collect($homeNames)->implode(' + ') : 'TBD';
-                            $awayLabel = count($awayNames) ? collect($awayNames)->implode(' + ') : 'TBD';
                             $display = $fx->scheduled_at ?? null;
                             $result = $fx->fixtureResults->count()
                                 ? $fx->fixtureResults->map(fn($r) => "{$r->team1_score}-{$r->team2_score}")->implode(', ')
@@ -115,16 +82,16 @@
                                 @endif
                             </td>
 
-                            <td class="fw-bold text-secondary d-none d-md-table-cell">{{ $fx->home_rank_nr ?? '—' }}</td>
+                            <td class="fw-bold text-secondary d-none d-md-table-cell">{{ $fx->rubber_sequence ?: ($fx->home_rank_nr ?? '—') }}</td>
                             
                             <td class="fw-semibold text-end {{ $homeClass }} text-wrap" style="max-width:150px;">
-                                {{ $homeLabel }}
+                                @include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['home']])
                             </td>
                             <td class="text-center p-0" style="width:24px;">
                                 <small class="text-muted">vs</small>
                             </td>
                             <td class="fw-semibold {{ $awayClass }} text-wrap" style="max-width:150px;">
-                                {{ $awayLabel }}
+                                @include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['away']])
                             </td>
                             <td>
                                 @if($result)
