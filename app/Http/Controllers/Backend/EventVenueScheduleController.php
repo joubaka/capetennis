@@ -98,6 +98,7 @@ final class EventVenueScheduleController extends Controller
             'reschedule_existing' => false,
             'round_progression' => 'team_ready',
             'gender_waves' => 'combined',
+            'gender_wave_release' => 'whole_wave',
             'tie_allocation' => 'balanced',
             'rank_venue_preferences' => [], 'cross_band_policy' => 'highest_ranked',
         ], $storedScheduleDraft);
@@ -445,6 +446,7 @@ final class EventVenueScheduleController extends Controller
             'schedule.reschedule_existing' => ['required', 'boolean'],
             'schedule.round_progression' => ['sometimes', 'in:team_ready,all_round'],
             'schedule.gender_waves' => ['sometimes', 'in:combined,boys_then_girls,girls_then_boys'],
+            'schedule.gender_wave_release' => ['sometimes', 'in:whole_wave,court_ready'],
             'schedule.tie_allocation' => ['sometimes', 'in:balanced,complete_tie'],
             'schedule.rank_preference_draw_ids' => ['sometimes', 'array', 'max:200'],
             'schedule.rank_preference_draw_ids.*' => ['integer', 'distinct'],
@@ -804,6 +806,7 @@ final class EventVenueScheduleController extends Controller
             'venue_starts.*.start' => ['nullable', 'date'],
             'round_progression' => ['sometimes', 'in:team_ready,all_round'],
             'gender_waves' => ['sometimes', 'in:combined,boys_then_girls,girls_then_boys'],
+            'gender_wave_release' => ['sometimes', 'in:whole_wave,court_ready'],
             'tie_allocation' => ['sometimes', 'in:balanced,complete_tie'],
             'rank_venue_preferences' => ['sometimes', 'array', 'max:50'],
             'rank_venue_preferences.*.draw_ids' => ['required', 'array', 'min:1', 'max:200'],

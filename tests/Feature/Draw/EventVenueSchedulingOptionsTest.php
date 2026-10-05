@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Draw;
 
-use App\Models\{Draw, Event, Fixture, OrderOfPlay, Player, Registration, TeamFixture, TeamRegion, TeamTie, User, Venue};
+use App\Models\{Draw, Event, Fixture, OrderOfPlay, Player, Registration, Team, TeamFixture, TeamRegion, TeamTie, User, Venue};
 use App\Services\Scheduling\EventVenueScheduleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -28,7 +28,7 @@ class EventVenueSchedulingOptionsTest extends TestCase
             $draw = $this->draw($event, $venue, $gender, 8);
             foreach ([1, 2] as $round) {
                 foreach ([1, 2] as $number) {
-                    $tie = TeamTie::create(['draw_id' => $draw->id, 'round_nr' => $round, 'tie_nr' => $number, 'status' => 'draft']);
+                    $tie = $this->tie($draw, $round, $number);
                     foreach (range(1, 4) as $sequence) $this->rubber($draw, ['team_tie_id' => $tie->id, 'round_nr' => $round, 'tie_nr' => $number], $sequence);
                 }
             }
@@ -55,6 +55,59 @@ class EventVenueSchedulingOptionsTest extends TestCase
         return [['canonical'], ['legacy_opponents']];
     }
 
+    #[DataProvider('genderOrders')]
+    public function test_court_ready_reuses_free_courts_between_gender_waves_for_two_rounds(string $order, string $first, string $second): void
+    {
+        $event = Event::factory()->create();
+        $venue = $this->venue($event);
+        foreach ([$second, $first] as $gender) {
+            $draw = $this->draw($event, $venue, $gender, 3);
+            foreach ([1, 2] as $round) {
+                $tie = $this->tie($draw, $round, 1);
+                foreach (range(1, 4) as $sequence) $this->rubber($draw, ['team_tie_id' => $tie->id, 'round_nr' => $round], $sequence);
+            }
+        }
+        $service = app(EventVenueScheduleService::class);
+        $options = array_replace($this->schedulingOptions(), ['duration' => 45, 'wave_minutes' => 45,
+            'player_rest' => 0, 'gender_waves' => $order, 'tie_allocation' => 'complete_tie', 'round_progression' => 'all_round']);
+        $strict = $service->preview($event, $options);
+        $ready = $service->preview($event, $options + ['gender_wave_release' => 'court_ready']);
+        $this->assertCount(16, $ready['matches']);
+        $this->assertSame([], $ready['unscheduled']);
+        $this->assertNotSame($strict['revision'], $ready['revision']);
+        $strictSecond = collect($strict['matches'])->where('draw_name', $second)->where('round', 1)->min('scheduled_at');
+        $this->assertSame('2026-09-10 09:30:00', $strictSecond);
+        $wave = collect($ready['matches'])->where('scheduled_at', '2026-09-10 08:45:00');
+        $this->assertCount(3, $wave);
+        $this->assertCount(1, $wave->where('draw_name', $first)->where('round', 1));
+        $this->assertCount(2, $wave->where('draw_name', $second)->where('round', 1));
+        $this->assertCount(3, $wave->pluck('court')->unique());
+        foreach ([$first, $second] as $gender) {
+            $starts = collect($ready['matches'])->where('draw_name', $gender)->where('round', 2)->pluck('scheduled_at');
+            $this->assertCount(4, $starts);
+            $this->assertTrue($starts->every(fn ($at) => $at >= '2026-09-10 09:30:00'));
+        }
+        $this->assertSame(16, $service->apply($event, $options + ['gender_wave_release' => 'court_ready'], $ready['revision'])['count']);
+    }
+
+    public function test_court_ready_keeps_player_rest_and_minimum_wave_interval(): void
+    {
+        $event = Event::factory()->create();
+        $venue = $this->venue($event);
+        $girls = $this->draw($event, $venue, 'Girls', 3);
+        $boys = $this->draw($event, $venue, 'Boys', 3);
+        $player = Player::factory()->create();
+        $this->rubber($girls, ['team_tie_id' => $this->tie($girls, 1, 1)->id], 1, $player->id);
+        $boy = $this->rubber($boys, ['team_tie_id' => $this->tie($boys, 1, 1)->id], 1, $player->id);
+        $options = array_replace($this->schedulingOptions(), ['duration' => 45, 'wave_minutes' => 45,
+            'player_rest' => 60, 'gender_waves' => 'girls_then_boys', 'gender_wave_release' => 'court_ready']);
+        $service = app(EventVenueScheduleService::class);
+        $rest = $service->preview($event, $options);
+        $this->assertSame('2026-09-10 09:45:00', collect($rest['matches'])->firstWhere('fixture_id', $boy->id)['scheduled_at']);
+        $interval = $service->preview($event, array_replace($options, ['player_rest' => 0, 'wave_minutes' => 90]));
+        $this->assertSame('2026-09-10 09:30:00', collect($interval['matches'])->firstWhere('fixture_id', $boy->id)['scheduled_at']);
+    }
+
     #[DataProvider('tieIdentityStrategies')]
     public function test_complete_tie_reserves_rest_delayed_rubber_before_other_ties_without_delaying_their_start(string $strategy): void
     {
@@ -62,8 +115,8 @@ class EventVenueSchedulingOptionsTest extends TestCase
         $venue = $this->venue($event);
         $draw = $this->draw($event, $venue, 'Boys', 2);
         if ($strategy === 'canonical') {
-            $first = ['team_tie_id' => TeamTie::create(['draw_id' => $draw->id, 'round_nr' => 1, 'tie_nr' => 1, 'status' => 'draft'])->id];
-            $second = ['team_tie_id' => TeamTie::create(['draw_id' => $draw->id, 'round_nr' => 1, 'tie_nr' => 2, 'status' => 'draft'])->id];
+            $first = ['team_tie_id' => $this->tie($draw, 1, 1)->id];
+            $second = ['team_tie_id' => $this->tie($draw, 1, 2)->id];
         } else {
             $regions = collect(range(1, 4))->map(fn ($number) => TeamRegion::create(['region_name' => 'Region '.$number, 'short_name' => 'R'.$number]));
             $first = ['tie_nr' => 7, 'region1' => $regions[0]->id, 'region2' => $regions[1]->id];
@@ -137,20 +190,40 @@ class EventVenueSchedulingOptionsTest extends TestCase
         $event = Event::factory()->create();
         $venue = $this->venue($event);
         $draw = $this->draw($event, $venue, 'Girls', 2);
+        foreach (['1', '2'] as $label) {
+            DB::table('event_venue_courts')->insert(['event_id' => $event->id, 'venue_id' => $venue->id,
+                'label' => $label, 'active' => true, 'created_at' => now(), 'updated_at' => now()]);
+        }
         $admin = User::factory()->create()->assignRole('admin');
         DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
         $this->actingAs($admin)->postJson(route('backend.event-venue-schedule.assignments', $event), [
             'venues' => [['id' => $venue->id, 'courts' => 2]],
-            'assignments' => [['draw_id' => $draw->id, 'venue_ids' => [$venue->id], 'court_allocations' => []]],
-            'schedule' => $this->schedulingOptions() + ['gender_waves' => 'girls_then_boys', 'tie_allocation' => 'complete_tie'],
+            'assignments' => [['draw_id' => $draw->id, 'venue_ids' => [$venue->id],
+                'court_allocations' => [['venue_id' => $venue->id, 'court_labels' => ['1', '2']]]]],
+            'schedule' => $this->schedulingOptions() + ['gender_waves' => 'girls_then_boys', 'gender_wave_release' => 'court_ready', 'tie_allocation' => 'complete_tie',
+                'draw_starts' => [], 'venue_starts' => [], 'reschedule_existing' => false],
         ])->assertOk();
         $saved = json_decode(DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true);
         $this->assertSame('girls_then_boys', $saved['gender_waves']);
         $this->assertSame('complete_tie', $saved['tie_allocation']);
+        $this->assertSame('court_ready', $saved['gender_wave_release']);
         foreach (['preview', 'apply'] as $action) {
             $this->postJson(route('backend.event-venue-schedule.'.$action, $event), $this->schedulingOptions() + [
                 'tie_allocation' => 'finish_playing', 'revision' => str_repeat('a', 64),
             ])->assertUnprocessable()->assertJsonValidationErrors('tie_allocation');
+            $this->assertSame($saved, json_decode(DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true));
+            $this->assertSame(0, TeamFixture::whereNotNull('scheduled_at')->count());
+            $this->assertSame(0, OrderOfPlay::count());
+        }
+        $this->postJson(route('backend.event-venue-schedule.assignments', $event), [
+            'venues' => [['id' => $venue->id, 'courts' => 2]],
+            'assignments' => [['draw_id' => $draw->id, 'venue_ids' => [$venue->id], 'court_allocations' => []]],
+            'schedule' => $this->schedulingOptions() + ['gender_wave_release' => 'invalid', 'draw_starts' => [], 'venue_starts' => [], 'reschedule_existing' => false],
+        ])->assertUnprocessable()->assertJsonValidationErrors('schedule.gender_wave_release');
+        $this->assertSame($saved, json_decode(DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true));
+        foreach (['preview', 'apply'] as $action) {
+            $this->postJson(route('backend.event-venue-schedule.'.$action, $event), $this->schedulingOptions() + ['gender_wave_release' => 'invalid'])
+                ->assertUnprocessable()->assertJsonValidationErrors('gender_wave_release');
         }
     }
 
@@ -168,6 +241,12 @@ class EventVenueSchedulingOptionsTest extends TestCase
         $draw->forceFill(['team_category_id' => 1])->save();
         $draw->venues()->attach($venue->id, ['num_courts' => $courts]);
         return $draw;
+    }
+
+    private function tie(Draw $draw, int $round, int $number): TeamTie
+    {
+        return TeamTie::create(['draw_id' => $draw->id, 'round_nr' => $round, 'tie_nr' => $number,
+            'home_team_id' => Team::factory()->create()->id, 'away_team_id' => Team::factory()->create()->id, 'status' => 'draft']);
     }
 
     private function rubber(Draw $draw, array $tie, int $sequence, ?int $playerId = null): TeamFixture
