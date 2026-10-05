@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-function dialog() {
+function dialog(initialMode = 'team') {
   const state = { mode: '', type: null, choices: {}, manual: [] };
   const name = { id: 'drawName', value: '', required: false };
   const bulk = { checked: false };
@@ -36,19 +36,19 @@ function dialog() {
         if (key === 'checked' && value === false && typeof selector === 'string' && selector.includes('CategoryChoices input')) state.choices = {};
         return chain;
       },
-      addClass() { return chain; }, removeClass() { return chain; }, empty() { return chain; },
+      css() { return chain; }, addClass() { return chain; }, removeClass() { return chain; }, empty() { return chain; },
       val(value) { if (selector === '#drawName') { if (value !== undefined) name.value = value; return name.value; } return ''; }, attr() { return 'csrf'; }
     };
     return chain;
   }
-  const window = { jQuery: $, setTimeout(callback) { callback(); } };
+  const window = { HeadOffice: { individualDrawTypeId: 88 }, jQuery: $, setTimeout(callback) { callback(); } };
   vm.runInNewContext(fs.readFileSync('public/js/team-draw-mode.js', 'utf8'), { window, document });
   function change(field) {
     handlers.filter(h => h.event === 'change' && (h.selector.includes('name="' + field + '"') || h.selector.includes('#' + field)))
       .forEach(h => h.handler.call(field === 'draw_mode' ? { value: state.mode } : {}));
   }
-  state.mode = 'team'; change('draw_mode');
-  return { state, name, bulk, manual, classes, change, customize(value) { name.value = value; formHandlers.input({ target: name }); } };
+  state.mode = initialMode; change('draw_mode');
+  return { state, name, bulk, manual, classes, change, close() { handlers.find(h => h.event === 'hidden.bs.modal').handler(); }, customize(value) { name.value = value; formHandlers.input({ target: name }); } };
 }
 
 test('single names fill from selected type and category and update automatically', () => {
@@ -90,16 +90,32 @@ test('manual alias category names deduplicate and use selected type', () => {
   assert.equal(ui.name.value, 'u/13 – Mixed doubles');
 });
 
-test('custom edited name survives category changes and resets when changing competition', () => {
-  const ui = dialog();
-  ui.state.type = { id: 'single', value: '1', dataset: { code: 'singles' } };
-  ui.state.choices.category_choice = { dataset: { age: 'u/13 Boys' } };
-  ui.change('category_choice');
+test('individual names appear after category choice and custom names survive category and mode changes', () => {
+  const ui = dialog('');
+  assert.equal(ui.classes['#singleDrawNameGroup'], true);
+  ui.state.mode = 'individual'; ui.change('draw_mode');
+  assert.equal(ui.classes['#singleDrawNameGroup'], true);
+  ui.state.choices.category_choice = { dataset: { age: 'u/13 Boys' } }; ui.change('category_choice');
+  assert.equal(ui.classes['#singleDrawNameGroup'], false);
+  assert.equal(ui.name.value, 'u/13 Boys – Singles');
   ui.customize('Schools championship');
   ui.state.choices.category_choice.dataset.age = 'u/12 Boys'; ui.change('category_choice');
   assert.equal(ui.name.value, 'Schools championship');
+  ui.state.mode = 'team'; ui.change('draw_mode');
+  ui.state.type = { id: 'single', value: '1', dataset: { code: 'singles' } };
+  ui.state.choices.category_choice = { dataset: { age: 'u/12 Boys' } }; ui.change('category_choice');
+  assert.equal(ui.classes['#singleDrawNameGroup'], true);
+  assert.equal(ui.name.value, 'u/12 Boys – Singles');
   ui.state.mode = 'individual'; ui.change('draw_mode');
+  assert.equal(ui.classes['#singleDrawNameGroup'], true);
+  ui.state.choices.category_choice = { dataset: { age: 'u/13 Girls' } }; ui.change('category_choice');
+  assert.equal(ui.classes['#singleDrawNameGroup'], false);
+  assert.equal(ui.name.value, 'Schools championship');
+  ui.close();
+  assert.equal(ui.state.mode, '');
   assert.equal(ui.name.value, '');
+  assert.equal(ui.classes['#singleDrawNameGroup'], true);
+  ui.state.mode = 'individual'; ui.change('draw_mode');
   ui.state.choices.category_choice = { dataset: { age: 'u/12 Boys' } }; ui.change('category_choice');
   assert.equal(ui.name.value, 'u/12 Boys – Singles');
 });

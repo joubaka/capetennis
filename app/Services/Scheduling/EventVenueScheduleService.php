@@ -268,10 +268,18 @@ final class EventVenueScheduleService
                         'editable' => isset($node) && ! $node['played']];
                 })->values()->all());
         }
+        if (($options['allow_partial'] ?? false) && $unscheduled && $replanVenues) {
+            // Unplaced replanned matches retain their original bookings. Build the
+            // fitting batch around those originals rather than occupying their slots.
+            $kept = $this->preview($event, array_replace($options, ['replan_venue_ids' => []]));
+            $kept['warnings'][] = 'Some matches did not fit. Existing bookings were kept fixed so saving this batch cannot overlap a retained match. Use a larger window to change those bookings.';
+            return $kept;
+        }
         $input = compact('duration', 'waveMinutes', 'courtGap', 'playerRest') + [
             'start' => $start->format('Y-m-d H:i:s'), 'end' => $end?->format('Y-m-d H:i:s'), 'round_progression' => $roundProgression,
             'draw_ids' => $draws->pluck('id')->sort()->values()->all(), 'venue_ids' => $venueIds->sort()->values()->all(),
             'replan_venue_ids' => collect($replanVenues)->sort()->values()->all(),
+            'allow_partial' => (bool) ($options['allow_partial'] ?? false),
             'draw_starts' => $drawStarts->map(fn ($time, $drawId) => ['draw_id' => (int) $drawId,
                 'start' => $time->format('Y-m-d H:i:s')])->values()->all(),
             'venue_starts' => $venueStarts->map(fn ($time, $venueId) => ['venue_id' => (int) $venueId,
@@ -316,10 +324,10 @@ final class EventVenueScheduleService
             if (array_diff($applyVenueIds, $previewVenueIds)) {
                 throw new \InvalidArgumentException('One or more venues selected for applying are not available in this preview.');
             }
-            if (! $applyVenueIds && $preview['unscheduled']) {
+            if (! ($options['allow_partial'] ?? false) && ! $applyVenueIds && $preview['unscheduled']) {
                 throw new \InvalidArgumentException('The preview contains unscheduled matches. Resolve them before applying.');
             }
-            if ($applyVenueIds && collect($preview['unscheduled'])->contains(function ($row) use ($applyVenueIds) {
+            if (! ($options['allow_partial'] ?? false) && $applyVenueIds && collect($preview['unscheduled'])->contains(function ($row) use ($applyVenueIds) {
                 $permittedVenueIds = array_map('intval', array_keys($row['venue_courts'] ?? []));
                 return (bool) array_intersect($applyVenueIds, $permittedVenueIds);
             })) {
@@ -337,6 +345,24 @@ final class EventVenueScheduleService
                 if ($matches->contains(fn ($row) => array_intersect($row['dependencies'] ?? [], $otherPlannedFixtureIds))) {
                     throw new \InvalidArgumentException('This venue contains a match that depends on an unapplied match at another venue. Apply the prerequisite venue first or apply the combined schedule.');
                 }
+            }
+            // Validate the exact applied subset against every booking that remains.
+            // Preview can replan other venues which are not part of this save.
+            $calendar = ScheduleAvailability::load($matches->pluck('venue_id')->unique()->all(),
+                $matches->flatMap(fn ($row) => $row['participant_ids'] ?? [])->unique()->all(),
+                $matches->where('fixture_kind', 'individual')->pluck('fixture_id')->all(), null,
+                (int) ($preview['input']['playerRest'] ?? 60), $matches->where('fixture_kind', 'team')->pluck('fixture_id')->all());
+            $calendarDraws = Draw::whereIn('id', $matches->pluck('draw_id'))->with('flexibleMonrad')->get()->keyBy('id');
+            foreach ($matches->sortBy('scheduled_at') as $row) {
+                $at = Carbon::parse($row['scheduled_at']);
+                $courtMinutes = (int) $row['duration'] + (int) ($preview['input']['courtGap'] ?? 0);
+                $playerMinutes = (int) $row['duration'] + (int) ($preview['input']['playerRest'] ?? 60);
+                $group = $calendarDraws[$row['draw_id']]->usesFlexibleMonrad() ? 'flexible-draw-'.$row['draw_id'] : null;
+                $available = $calendar->nextAvailableForMatch($at, $courtMinutes, $playerMinutes,
+                    (int) $row['venue_id'], (string) $row['court'], $row['participant_ids'] ?? [], $group);
+                if (! $available->eq($at)) throw new \InvalidArgumentException('This batch overlaps a booking that is being kept. Save the combined schedule or generate a new preview with those bookings fixed.');
+                $calendar->reserveWithRest((int) $row['venue_id'], (string) $row['court'], $at,
+                    $courtMinutes, $playerMinutes, $row['participant_ids'] ?? [], $group);
             }
             $scheduledFixtureIds = $matches->pluck('fixture_id')->all();
             $appliedDrawIds = $matches->pluck('draw_id')->unique()->values();

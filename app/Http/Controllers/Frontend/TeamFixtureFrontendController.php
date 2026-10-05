@@ -51,9 +51,14 @@ class TeamFixtureFrontendController extends Controller
         ->orderBy('home_rank_nr')
         ->get();
 
+    if (! $isPrivileged) {
+      app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($fixtures);
+      $fixtures = $fixtures->sortBy(fn ($fixture) => $fixture->scheduled_at ?? '9999-12-31')->values();
+    }
+
     // Group fixtures by day
     $fixturesByDay = $fixtures->groupBy(function($fx) {
-        return Carbon::parse($fx->scheduled_at)->toDateString();
+        return $fx->scheduled_at ? Carbon::parse($fx->scheduled_at)->toDateString() : 'Schedule to be announced';
     });
 
     return view('frontend.fixtures.team-fixtures', [

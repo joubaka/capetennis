@@ -39,6 +39,7 @@ final class PublicTournamentVisibility
     {
         return $event->draws()
             ->where('published', true)
-            ->when($scheduleRequired, fn ($query) => $query->where('oop_published', true));
+            ->when($scheduleRequired, fn ($query) => $query->where('oop_published', true)
+                ->whereIn('id', \Illuminate\Support\Facades\DB::table('published_schedule_assignments')->where('event_id', $event->id)->select('draw_id')));
     }
 }

@@ -242,15 +242,6 @@
 
         <div class="modal-body">
 
-          {{-- Draw Name --}}
-          <div class="mb-3" id="singleDrawNameGroup">
-            <label for="drawName" class="form-label fw-bold">Draw Name</label>
-            <input type="text" id="drawName" name="drawName" class="form-control"
-                   placeholder="Choose a category and draw type below" maxlength="255">
-            <div class="form-text">The name fills in automatically from your choices. You can edit it.</div>
-          </div>
-          <div id="bulkDrawNameHelp" class="form-text mb-3 d-none">Each selected draw is named automatically by category and draw type.</div>
-
           <fieldset class="mb-3">
             <legend class="form-label fw-bold mb-2">Competition</legend>
             <div class="row g-2">
@@ -275,6 +266,8 @@
             </div>
             <div class="form-text">Choose individual singles for a normal player draw.</div>
           </fieldset>
+
+          <div id="bulkDrawNameHelp" class="form-text mb-3 d-none">Team draw names are generated automatically from the selected categories and draw types.</div>
 
           {{-- Draw Type --}}
           <div class="mb-3 d-none" id="teamDrawTypeSection">
@@ -392,6 +385,14 @@
                 </div>
               @endforeach
             </div>
+          </div>
+
+          {{-- Draw Name --}}
+          <div class="mb-3 d-none" id="singleDrawNameGroup">
+            <label for="drawName" class="form-label fw-bold">Draw Name</label>
+            <input type="text" id="drawName" name="drawName" class="form-control"
+                   placeholder="Choose a category to suggest a name" maxlength="255">
+            <div class="form-text">The name fills in automatically from your choices. You can edit it.</div>
           </div>
 
           <div class="mb-3 d-none" id="type3Categories">

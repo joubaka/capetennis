@@ -32,7 +32,9 @@ class FlexibleMonradController extends Controller
     {
         app(PublicTournamentVisibility::class)->ensureDrawIsVisible($draw, auth()->user());
         abort_unless($draw->flexibleMonrad?->graph, 404);
-        return $this->page($draw, true);
+        $response = response($this->page($draw, true));
+        if (! $draw->published) $response->headers->set('Cache-Control', 'private, no-store, max-age=0');
+        return $response;
     }
 
     public function demo()
@@ -127,13 +129,28 @@ class FlexibleMonradController extends Controller
         $workflow = $draw->settings?->workflow ?? 'custom_monrad';
         $label = DrawSetupController::OPTIONS[$workflow][0] ?? 'Custom Monrad';
         if ($public) {
+            $draftPreview = ! $draw->published && (auth()->user()?->can('view', $draw) ?? false);
             $ids = $draw->flexibleMonrad->graph['players'];
             $state['players'] = $state['players']->whereIn('id', $ids)->values();
             unset($state['revision']);
+            $fixtures = $draw->drawFixtures()->with('orderOfPlay.venue')->get();
+            if (! $draftPreview) app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($fixtures);
+            $fixtures = $fixtures->keyBy('id');
+            foreach ($state['matches'] as &$match) {
+                $schedule = $fixtures->get((int) $match['id'])?->orderOfPlay;
+                if ($schedule?->time) {
+                    $match['schedule'] = ['time' => $schedule->time, 'court' => $schedule->court,
+                        'venue' => $schedule->venue?->name];
+                } else {
+                    $match['schedule_hidden'] = true;
+                    unset($match['schedule']);
+                }
+            }
+            unset($match);
             if (! $draw->oop_published) {
                 foreach ($state['matches'] as &$match) unset($match['schedule']);
                 unset($match);
-            } else {
+            } elseif (! $draftPreview) {
                 $visibleFixtureIds = app(PublicDrawScheduleVisibility::class)->visibleFixtureIds($draw);
                 if ($visibleFixtureIds !== null) {
                     foreach ($state['matches'] as &$match) {

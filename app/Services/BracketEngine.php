@@ -33,6 +33,10 @@ class BracketEngine
       ->orderBy('match_nr')
       ->get();
 
+    if (request()->routeIs('public.*') || ! auth()->user()?->can('view', $draw)) {
+      app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($this->fixtures);
+    }
+
     Log::info("📦 Fixtures loaded", [
       'count' => $this->fixtures->count(),
     ]);

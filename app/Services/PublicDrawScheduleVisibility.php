@@ -22,81 +22,35 @@ class PublicDrawScheduleVisibility
             return null;
         }
 
-        $fixtures = $draw->drawFixtures()
-            ->with(['fixtureResults', 'orderOfPlay'])
-            ->whereHas('orderOfPlay', fn ($query) => $query->whereNotNull('time'))
-            ->get()
-            ->filter(fn (Fixture $fixture) => $fixture->fixtureResults->isEmpty())
-            ->sortBy(fn (Fixture $fixture) => sprintf(
-                '%s_%010d',
-                $fixture->orderOfPlay?->time ?? '9999-12-31 23:59:59',
-                $fixture->id
-            ));
-
-        if ($fixtures->isEmpty()) {
-            return collect();
-        }
-
-        $isRoundRobin = in_array($draw->settings?->workflow, [
-            'round_robin',
-            'round_robin_playoffs',
-        ], true) || $fixtures->contains(fn (Fixture $fixture) =>
-            strtoupper((string) $fixture->stage) === 'RR' || $fixture->draw_group_id !== null
-        );
-        $seenRegistrationIds = [];
-        $visibleFixtureIds = [];
-
-        foreach ($fixtures as $fixture) {
-            $registrationIds = collect([
-                $fixture->registration1_id,
-                $fixture->registration2_id,
-            ])->filter(fn ($id) => (int) $id > 0)->map(fn ($id) => (int) $id)->unique();
-
-            // Odd round robins require the union of every player's earliest
-            // upcoming fixture: the player with the opening-round bye otherwise
-            // receives no time because their first match is an opponent's second.
-            // Other formats retain the stricter all-participants-first rule.
-            if ($registrationIds->isNotEmpty()
-                && ($isRoundRobin
-                    ? $registrationIds->contains(fn (int $id) => ! isset($seenRegistrationIds[$id]))
-                    : $registrationIds->every(fn (int $id) => ! isset($seenRegistrationIds[$id])))) {
-                $visibleFixtureIds[] = (int) $fixture->id;
-            }
-
-            foreach ($registrationIds as $registrationId) {
-                $seenRegistrationIds[$registrationId] = true;
-            }
-        }
-
-        return collect($visibleFixtureIds)->unique()->values();
+        return app(\App\Services\Scheduling\SchedulePublicationService::class)->publishedRows($draw->event)
+            ->where('draw_id', $draw->id)->where('fixture_kind', 'individual')->pluck('fixture_id')
+            ->map(fn ($id) => (int) $id)->values();
     }
 
     public function restrictRoundRobinHub(Draw $draw, array $hub): array
     {
         $visibleIds = $this->visibleFixtureIds($draw);
-        if ($visibleIds === null) {
-            return $hub;
-        }
-
-        $isVisible = fn ($id): bool => $visibleIds->contains((int) $id);
-
-        foreach ($hub['rrFixtures'] as &$groupFixtures) {
-            foreach ($groupFixtures as &$fixture) {
-                if (! $isVisible($fixture['id'] ?? null)) {
-                    $fixture = $this->hideScheduledTime($fixture);
-                }
+        $published = app(\App\Services\Scheduling\SchedulePublicationService::class)->publishedRows($draw->event)
+            ->where('draw_id', $draw->id)->where('fixture_kind', 'individual')->keyBy('fixture_id');
+        $project = function (array $fixture) use ($published, $visibleIds): array {
+            $row = $published->get((int) ($fixture['id'] ?? 0));
+            if (! $row || ($visibleIds !== null && ! $visibleIds->contains((int) ($fixture['id'] ?? 0)))) {
+                $fixture['time'] = null; $fixture['court'] = null; $fixture['venue_id'] = null;
+                $fixture['venue'] = null; $fixture['venue_name'] = null; $fixture['scheduled_at'] = null; $fixture['scheduled_date'] = null; $fixture['schedule_hidden'] = true;
+                return $fixture;
             }
+            $fixture['time'] = $row['scheduled_at']; $fixture['court'] = $row['court'];
+            $fixture['venue_id'] = $row['venue_id']; $fixture['venue'] = $row['venue_name']; $fixture['venue_name'] = $row['venue_name']; $fixture['scheduled_at'] = $row['scheduled_at'];
+            $fixture['scheduled_date'] = substr($row['scheduled_at'], 0, 10);
+            $fixture['schedule_hidden'] = false;
+            return $fixture;
+        };
+        foreach ($hub['rrFixtures'] as &$groupFixtures) {
+            foreach ($groupFixtures as &$fixture) $fixture = $project($fixture);
             unset($fixture);
         }
         unset($groupFixtures);
-
-        $hub['oops'] = collect($hub['oops'])->map(function (array $fixture) use ($isVisible): array {
-            if (! $isVisible($fixture['id'] ?? null)) {
-                $fixture = $this->hideScheduledTime($fixture);
-            }
-
-            return $fixture;
-        });
+        $hub['oops'] = collect($hub['oops'])->map($project);
 
         return $hub;
     }

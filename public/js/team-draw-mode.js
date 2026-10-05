@@ -8,6 +8,8 @@
   var submitButton = form.querySelector('button[type="submit"]');
   var previewRevision = 0;
   var nameCustomized = false;
+  var individualNameDraft = '';
+  var individualNameCustomized = false;
   // This form owns category/type selection. Older bundles assumed mixed ID 3.
   $(document).off('change', 'input[name="draw_type_id"]');
   $(document).off('change', 'input[name="category_choice"], input[name="category_choice_boys"], input[name="category_choice_girls"]');
@@ -28,9 +30,9 @@
   }
 
   function setMode(mode) {
-    nameCustomized = false;
+    nameCustomized = mode === 'individual' && individualNameCustomized;
     var nameInput = document.getElementById('drawName');
-    if (nameInput) nameInput.value = '';
+    if (nameInput) nameInput.value = nameCustomized ? individualNameDraft : '';
     var isTeam = mode === 'team';
     var isIndividual = mode === 'individual';
     $('#bulkTeamGroup').toggleClass('d-none', !isTeam);
@@ -73,8 +75,8 @@
     var bulk = isTeam && document.getElementById('bulkTeamDraws').checked;
     var drawNameInput = document.getElementById('drawName');
     if (drawNameInput) drawNameInput.required = false;
-    $('#singleDrawNameGroup').toggleClass('d-none', bulk);
-    $('#bulkDrawNameHelp').toggleClass('d-none', !bulk);
+    updateDrawNameVisibility();
+    $('#bulkDrawNameHelp').toggleClass('d-none', !isTeam);
     $('#bulkTeamChoices').toggleClass('d-none', !bulk);
     $('#teamDrawTypeSection, #manualCategoryToggleGroup').toggleClass('d-none', !isTeam || bulk);
     if (bulk) {
@@ -88,7 +90,8 @@
     var mixed = type && (type.dataset.code ? type.dataset.code === 'mixed_doubles' : (type.value === '3' || type.dataset.mixed === '1'));
     $('#manualCategoryChoices').toggleClass('d-none', !manual);
     $('#manualCategoryChoices input').prop('disabled', !manual);
-    $('#categorySection').toggleClass('d-none', (!isTeam && selectedMode() !== 'individual') || (isTeam && (manual || mixed)));
+    // Clear inline visibility left by an older cached draw bundle when reopening.
+    $('#categorySection').css('display', '').toggleClass('d-none', (!isTeam && selectedMode() !== 'individual') || (isTeam && (manual || mixed)));
     $('#type3Categories').toggleClass('d-none', !isTeam || manual || !mixed);
     $('#teamCategoryChoices input').prop('disabled', !isTeam || manual || mixed);
     $('#type3Categories input').prop('disabled', !isTeam || manual || !mixed);
@@ -105,7 +108,14 @@
     return (category.dataset.name || category.dataset.age || (label ? label.textContent : '') || '').trim();
   }
 
+  function updateDrawNameVisibility() {
+    var category = form.querySelector('input[name="category_choice"]:checked:not(:disabled)');
+    var ready = selectedMode() === 'individual' && !!data.individualDrawTypeId && !!category;
+    $('#singleDrawNameGroup').toggleClass('d-none', !ready);
+  }
+
   function updateAutomaticName() {
+    updateDrawNameVisibility();
     if (nameCustomized || document.getElementById('bulkTeamDraws').checked) return;
     var name = '';
     var mode = selectedMode();
@@ -167,6 +177,10 @@
 
   $(document).on('hidden.bs.modal', '#createDrawModal', function () {
     form.reset();
+    individualNameDraft = '';
+    individualNameCustomized = false;
+    batchKey = null;
+    previewRevision++;
     setMode('');
   });
 
@@ -290,7 +304,11 @@
   });
   form.addEventListener('change', function () { batchKey = null; previewRevision++; $('#teamDrawPreview').empty().addClass('d-none'); });
   form.addEventListener('input', function (event) {
-    if (event.target && event.target.id === 'drawName') nameCustomized = !!event.target.value.trim();
+    if (event.target && event.target.id === 'drawName' && selectedMode() === 'individual') {
+      individualNameDraft = event.target.value;
+      individualNameCustomized = !!event.target.value.trim();
+      nameCustomized = individualNameCustomized;
+    }
     batchKey = null; previewRevision++; $('#teamDrawPreview').empty().addClass('d-none');
   });
 

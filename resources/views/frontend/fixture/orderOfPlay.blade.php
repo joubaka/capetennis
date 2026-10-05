@@ -100,17 +100,14 @@
   $colorPalette = ['primary', 'success', 'info', 'warning', 'danger', 'secondary', 'dark'];
 
   // 🧠 Global color map to ensure same region keeps color, and no duplicates until palette exhausted
-  static $regionColorMap = [];
-  static $colorIndex = 0;
+  $regionColorMap = [];
+  $colorIndex = 0;
 
-  function regionBadge($region, $palette) {
+  $regionBadge = function ($region, $palette) use (&$regionColorMap, &$colorIndex) {
       if (!$region) return '';
 
       $short = $region->short_name ?? $region->name ?? 'Unknown';
       $id = $region->id ?? crc32($short);
-
-      // Access global variables
-      global $regionColorMap, $colorIndex;
 
       // If this region doesn't have a color yet, assign next available color
       if (!isset($regionColorMap[$id])) {
@@ -120,7 +117,7 @@
 
       $color = $regionColorMap[$id];
       return '<span class="badge bg-' . $color . '">' . e($short) . '</span>';
-  }
+  };
 
   // 🔗 Build base URL for toggle buttons
   $baseRoute = url("event/{$event->id}/venue/{$venue->id}/order");
@@ -193,12 +190,12 @@
               <td>
                 ({{ $fx->home_rank_nr }})
                 {{ $fx->team1->pluck('full_name')->implode(' + ') ?: 'TBD' }}
-                {!! regionBadge($fx->region1Name, $colorPalette) !!}
+                {!! $regionBadge($fx->region1Name, $colorPalette) !!}
               </td>
               <td>
                 ({{ $fx->away_rank_nr }})
                 {{ $fx->team2->pluck('full_name')->implode(' + ') ?: 'TBD' }}
-                {!! regionBadge($fx->region2Name, $colorPalette) !!}
+                {!! $regionBadge($fx->region2Name, $colorPalette) !!}
               </td>
               <td class="fw-bold text-center">{{ $fx->result ?? '' }}</td>
             </tr>
@@ -213,12 +210,12 @@
             <td>
               ({{ $fx->home_rank_nr }})
               {{ $fx->team1->pluck('full_name')->implode(' + ') ?: 'TBD' }}
-              {!! regionBadge($fx->region1Name, $colorPalette) !!}
+              {!! $regionBadge($fx->region1Name, $colorPalette) !!}
             </td>
             <td>
               ({{ $fx->away_rank_nr }})
               {{ $fx->team2->pluck('full_name')->implode(' + ') ?: 'TBD' }}
-              {!! regionBadge($fx->region2Name, $colorPalette) !!}
+              {!! $regionBadge($fx->region2Name, $colorPalette) !!}
             </td>
             <td class="fw-bold text-center">{{ $fx->result ?? '' }}</td>
           </tr>

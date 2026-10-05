@@ -100,14 +100,19 @@ class MyTennisService
             ->whereHas('draw', fn ($query) => $query
                 ->where('published', true)
                 ->where('oop_published', true))
-            ->whereHas('orderOfPlay', fn ($query) => $query->whereNotNull('time'))
+            ->whereIn('id', \Illuminate\Support\Facades\DB::table('published_schedule_assignments')
+                ->where('fixture_kind', 'individual')
+                ->where('scheduled_at', '>=', now())
+                ->select('fixture_id'))
             ->whereHas('draw.event', fn ($query) => $query
-                ->whereNull('end_date')
-                ->orWhereDate('end_date', '>=', today()))
+                ->visibleTo(auth()->user())
+                ->where(fn ($dates) => $dates->whereNull('end_date')
+                    ->orWhereDate('end_date', '>=', today())))
             ->limit(500)
             ->get();
 
-        $matches = $matches->sortBy(fn (Fixture $fixture) => sprintf(
+        app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($matches);
+        $matches = $matches->filter(fn (Fixture $fixture) => $fixture->orderOfPlay?->time)->sortBy(fn (Fixture $fixture) => sprintf(
             '%s_%010d',
             $fixture->orderOfPlay?->time ?? '9999-12-31 23:59:59',
             $fixture->id

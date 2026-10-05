@@ -132,6 +132,7 @@
 @endsection
 
 @section('content')
+<div class="container-xxl pt-3"><a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar',$event) }}">Saved schedule · all days</a></div>
 @php
   $unapplyRouteAvailable = \Illuminate\Support\Facades\Route::has('backend.event-venue-schedule.unapply');
 @endphp
@@ -443,7 +444,7 @@
     <div class="section-body">
       <div class="d-flex flex-wrap gap-2 mb-3">
         <button type="button" id="back-to-rules" class="btn btn-outline-secondary"><i class="ti ti-arrow-left me-1"></i>Back: timing</button>
-        <button type="button" id="apply-preview" class="btn btn-success" data-audit-ignore="true" disabled><i class="ti ti-device-floppy me-1"></i>Apply schedule</button>
+        <button type="button" id="apply-preview" class="btn btn-success" data-audit-ignore="true" disabled><i class="ti ti-device-floppy me-1"></i>Save matches that fit</button>
         <a id="continue-to-draws" class="btn btn-primary d-none" href="{{ route('headOffice.show', ['headOffice' => $event->id, 'schedule' => 'applied']) }}"><i class="ti ti-arrow-right me-1"></i>Continue to tournament draws</a>
         <span id="review-status" class="align-self-center text-muted small" role="status" aria-live="polite">Review every venue before applying.</span>
       </div>
@@ -556,7 +557,7 @@
   const venueUrl = @json(route('backend.event-venue-schedule.venues', $event));
   const courtUrl = @json(route('backend.event-venue-schedule.courts', $event));
   const announcementUrl = @json(route('admin.events.announcements.store', $event));
-  const drawsUrl = @json(route('headOffice.show', ['headOffice' => $event->id, 'schedule' => 'applied']));
+  const drawsUrl = @json(route('backend.event-venue-schedule.calendar', $event));
   const eventName = @json($event->name);
   const manualMode = @json(request()->boolean('manual'));
   const drawIds = @json($draws->reject(fn($draw) => $draw['locked'])->pluck('id')->values());
@@ -767,6 +768,7 @@
   )];
   const buildPayload = () => ({
     ...buildScheduleDraft(),
+    allow_partial: true,
     draw_ids: values('.draw-choice'),
     replan_venue_ids: document.getElementById('reschedule-existing').checked ? selectedAssignedVenueIds() : replanVenueIds,
     draw_starts: [...document.querySelectorAll('.draw-start')].filter(input => input.value && document.querySelector(`.draw-choice[value="${input.dataset.draw}"]`)?.checked).map(input => ({draw_id:Number(input.dataset.draw), start:input.value}))
@@ -935,7 +937,7 @@
     else if (planned) state = `<span class="badge bg-label-primary">${planned} suggested · not saved</span>`;
     if (replanning) state = '<span class="badge bg-label-warning">Replanning this venue</span>';
     if (unresolved) state += `<span class="badge bg-label-danger ms-2">${unresolved} unresolved</span>`;
-    const apply = planned && !unresolved ? `<button type="button" class="btn btn-sm btn-success" data-apply-venue="${venue.id}" data-venue-name="${escapeHtml(venue.name)}"><i class="ti ti-check me-1" aria-hidden="true"></i>Apply this venue</button>` : '';
+    const apply = planned ? `<button type="button" class="btn btn-sm btn-success" data-apply-venue="${venue.id}" data-venue-name="${escapeHtml(venue.name)}"><i class="ti ti-check me-1" aria-hidden="true"></i>Save venue matches</button>` : '';
     const change = fixed && !replanning ? `<button type="button" class="btn btn-sm btn-outline-primary" data-replan-venue="${venue.id}" data-venue-name="${escapeHtml(venue.name)}">Change this venue</button>` : '';
     const unapply = unapplyUrl && fixed && !replanning ? `<button type="button" class="btn btn-sm btn-outline-danger" data-unapply-venue="${venue.id}" data-venue-name="${escapeHtml(venue.name)}"><i class="ti ti-calendar-off me-1" aria-hidden="true"></i>Unapply venue times</button>` : '';
     const keep = replanning ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-keep-venue="${venue.id}">Keep current applied schedule</button>` : '';
@@ -992,7 +994,7 @@
     document.getElementById('preview-summary').classList.remove('d-none');
     document.getElementById('preview-summary').innerHTML = card(result.matches.length, 'Suggested · not saved', 'primary') + card((result.existing_matches || []).length, 'Saved · kept fixed', 'success') + card(result.automatic_byes, 'Automatic byes') + card(result.venues.length, 'Venues') + card(result.unscheduled.length, 'Unscheduled', result.unscheduled.length ? 'danger' : 'success');
     let warnings = (result.warnings || []).map(message => `<div class="alert alert-warning py-2">${escapeHtml(message)}</div>`).join('');
-    if (result.unscheduled.length) warnings += `<div class="alert alert-danger"><strong>Resolve before applying the combined schedule:</strong><div class="small mb-2">A venue can only be applied when none of its selected matches remain unresolved.</div><ul class="mb-0">${result.unscheduled.map(row => `<li>${escapeHtml(row.draw_name)} Wave ${row.wave} · R${row.round} · Match ${row.match}: ${escapeHtml(row.reason)}</li>`).join('')}</ul></div>`;
+    if (result.unscheduled.length) warnings += `<div class="alert alert-danger"><strong>Matches remaining to schedule:</strong><div class="small mb-2">Save the matches that fit this batch; remaining matches stay in planning.</div><ul class="mb-0">${result.unscheduled.map(row => `<li>${escapeHtml(row.draw_name)} Wave ${row.wave} · R${row.round} · Match ${row.match}: ${escapeHtml(row.reason)}</li>`).join('')}</ul></div>`;
     document.getElementById('preview-warnings').innerHTML = warnings;
     document.getElementById('preview-view-controls').classList.remove('d-none');
     document.getElementById('preview-view-controls').classList.add('d-flex');
@@ -1014,7 +1016,7 @@
     const scheduleComplete = !result.unscheduled.length && !hasSuggestions && (result.existing_matches || []).length > 0;
     const applyPreview = document.getElementById('apply-preview');
     const continueToDraws = document.getElementById('continue-to-draws');
-    applyPreview.disabled = result.unscheduled.length > 0 || !hasSuggestions;
+    applyPreview.disabled = !hasSuggestions;
     applyPreview.classList.toggle('d-none', scheduleComplete);
     continueToDraws.classList.toggle('d-none', !scheduleComplete);
     const previewMessage = result.unscheduled.length
@@ -1243,7 +1245,7 @@
         replanVenueIds = replanVenueIds.filter(id => id !== venueId);
         payload = {...buildPayload(), replan_venue_ids:replanVenueIds};
         render(await post(previewUrl, payload));
-        setStatus(document.getElementById('schedule-status'), `Applied ${applied.count} fixtures at ${applyButton.dataset.venueName}. They are now fixed in planning.`, 'success');
+        setStatus(document.getElementById('schedule-status'), `Applied ${applied.count} fixtures at ${applyButton.dataset.venueName}. They are saved privately and kept fixed in planning.`, 'success');
       } catch (error) {
         setStatus(document.getElementById('schedule-status'), error.message, 'danger');
         matching.forEach(control => { control.disabled = false; });
@@ -1457,7 +1459,7 @@
     const button = event.currentTarget;
     const originalButtonHtml = button.innerHTML;
     button.disabled = true;
-    button.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span> Applying schedule…';
+    button.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span> Saving schedule…';
     setStatus(document.getElementById('schedule-status'), 'Applying and revalidating…');
     setStatus(document.getElementById('review-status'), 'Applying and revalidating…');
     startScheduleActivity(applyActivityStages, 'Progress is estimated while the server applies the fixtures and rebuilds the final schedule.');
@@ -1468,11 +1470,11 @@
       payload = {...buildPayload(), replan_venue_ids:[]};
       setScheduleActivityPhase(revalidationActivityStages);
       render(await post(previewUrl, payload));
-      setStatus(document.getElementById('schedule-status'), `Applied ${applied.count} fixtures. Opening tournament draws…`, 'success');
-      setStatus(document.getElementById('review-status'), `Applied ${applied.count} fixtures. Opening tournament draws…`, 'success');
-      notify(`Applied ${applied.count} fixtures.`, 'success');
+      setStatus(document.getElementById('schedule-status'), `Saved ${applied.count} matches privately. Opening saved schedule…`, 'success');
+      setStatus(document.getElementById('review-status'), `Saved ${applied.count} matches privately. Opening saved schedule…`, 'success');
+      notify(`Saved ${applied.count} matches privately.`, 'success');
       completed = true;
-      finishScheduleActivity('Schedule applied. Opening tournament draws…');
+      finishScheduleActivity('Schedule applied. Opening saved schedule…');
       window.setTimeout(() => window.location.assign(drawsUrl), 1000);
     }
     catch (error) { setStatus(document.getElementById('schedule-status'), error.message, 'danger'); setStatus(document.getElementById('review-status'), error.message, 'danger'); notify(error.message, 'danger'); button.disabled = false; }

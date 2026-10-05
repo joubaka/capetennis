@@ -104,9 +104,11 @@ class FlexibleMonradTest extends TestCase
             ->assertJsonPath('oop_published', true)
             ->assertJsonPath('preview_only', true);
 
-        $this->get(route('public.flexible-monrad.show', $draw))
+        $previewResponse = $this->get(route('public.flexible-monrad.show', $draw))
             ->assertOk()
             ->assertSee('2026-09-05 08:00:00');
+        $this->assertStringContainsString('private', (string) $previewResponse->headers->get('Cache-Control'));
+        $this->assertStringContainsString('no-store', (string) $previewResponse->headers->get('Cache-Control'));
 
         auth()->logout();
         $this->get(route('public.flexible-monrad.show', $draw))->assertForbidden();

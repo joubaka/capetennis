@@ -788,16 +788,11 @@ class TeamFixtureController extends Controller
     $venue = Venue::findOrFail($venueId);
     abort_unless(
       $event->venues()->whereKey($venue->id)->exists()
-        || $this->publicVenueFixtureQuery($event, $venue)->exists(),
+        || $this->publicVenueFixtures($event, $venue)->isNotEmpty(),
       404
     );
 
-    $fixtures = $this->publicVenueFixtureQuery($event, $venue)
-      ->orderBy('scheduled_at', 'asc')
-      ->orderBy('round_nr', 'asc')
-      ->orderBy('tie_nr', 'asc')
-      ->orderBy('home_rank_nr', 'asc')
-      ->get();
+    $fixtures = $this->publicVenueFixtures($event, $venue);
 
     // 🧭 Custom weekday order (Fri → Sat → Sun)
     $order = ['Fri' => 1, 'Sat' => 2, 'Sun' => 3];
@@ -821,7 +816,7 @@ class TeamFixtureController extends Controller
     $venue = Venue::findOrFail($venueId);
     abort_unless(
       $event->venues()->whereKey($venue->id)->exists()
-        || $this->publicVenueFixtureQuery($event, $venue)->exists(),
+        || $this->publicVenueFixtures($event, $venue)->isNotEmpty(),
       404
     );
 
@@ -831,31 +826,31 @@ class TeamFixtureController extends Controller
       404
     );
 
-    $query = $this->publicVenueFixtureQuery($event, $venue);
-    $availableDates = (clone $query)->get()
+    $fixtures = $this->publicVenueFixtures($event, $venue);
+    $availableDates = $fixtures
       ->map(fn(TeamFixture $fixture) => Carbon::parse($fixture->scheduled_at)->toDateString())
       ->unique()
       ->sort()
       ->values();
 
     if (strtolower($date) !== 'all') {
-      $query->whereDate('scheduled_at', $date);
+      $fixtures = $fixtures->filter(fn ($fixture) => Carbon::parse($fixture->scheduled_at)->toDateString() === $date)->values();
     }
 
-    $fixtures = $query->orderBy('scheduled_at')->get();
+    $fixtures = $fixtures->sortBy('scheduled_at')->values();
 
     return view('frontend.fixture.orderOfPlay', compact(
       'event', 'venue', 'fixtures', 'date', 'availableDates'
     ));
   }
 
-  private function publicVenueFixtureQuery(Event $event, Venue $venue)
+  private function publicVenueFixtures(Event $event, Venue $venue)
   {
-    $drawIds = app(PublicTournamentVisibility::class)
-      ->publishedDrawsFor($event, scheduleRequired: true)
-      ->pluck('id');
+    $publication = app(\App\Services\Scheduling\SchedulePublicationService::class);
+    $fixtureIds = $publication->publishedRows($event)->where('fixture_kind', 'team')
+      ->where('venue_id', $venue->id)->pluck('fixture_id');
 
-    return TeamFixture::query()
+    $fixtures = TeamFixture::query()
       ->with([
         'draw:id,drawName,event_id,team_draw_selection,team_format_snapshot',
         'team1', 'team2', 'venue', 'region1Name', 'region2Name',
@@ -863,10 +858,8 @@ class TeamFixtureController extends Controller
         'fixturePlayers.noProfile1', 'fixturePlayers.noProfile2',
         'fixtureResults',
       ])
-      ->whereIn('draw_id', $drawIds)
-      ->where('venue_id', $venue->id)
-      ->whereNotNull('scheduled_at')
-      ->when(Schema::hasColumn('team_fixtures', 'scheduled'), fn($q) => $q->where('scheduled', 1));
+      ->whereIn('id', $fixtureIds)->get();
+    return $publication->projectFixtures($fixtures)->sortBy('scheduled_at')->values();
   }
 
 

@@ -104,6 +104,10 @@ final class BracketRenderService
 
         $stageOrder = ['RR' => 0, 'MAIN' => 1, 'PLATE' => 2, 'CONS' => 3];
 
+        if (request()->routeIs('public.*') || ! auth()->user()?->can('view', $draw)) {
+            app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($draw->drawFixtures);
+        }
+
         return $draw->drawFixtures
             ->sortBy(fn($fx) => sprintf(
                 '%02d_%02d_%04d',

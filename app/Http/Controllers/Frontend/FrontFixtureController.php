@@ -13,7 +13,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use App\Services\DrawService;
 use App\Services\TeamFixtureScoreService;
-use App\Services\PublicDrawScheduleVisibility;
 use App\Services\PublicTournamentVisibility;
 
 
@@ -59,6 +58,13 @@ class FrontFixtureController extends Controller
       ->get();
 
     $this->hidePrivateSchedule($draw, $fixtures);
+    if ($isTeamEvent && ! auth()->user()?->can('view', $draw)) {
+      $fixtures = $fixtures->sortBy(fn ($fixture) => $fixture->scheduled_at ?? '9999-12-31')->values();
+    }
+
+    if (! auth()->user()?->can('view', $draw)) {
+      $fixtures = $fixtures->sortBy(fn ($fixture) => $fixture->scheduled_at ?? '9999-12-31')->values();
+    }
 
     if ($fixtures->isEmpty()) {
       abort(404, 'No fixtures found for this draw.');
@@ -291,6 +297,9 @@ class FrontFixtureController extends Controller
 
     abort_if($fixtures->isEmpty(), 404, 'No published matches found.');
 
+    app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($fixtures);
+    $fixtures = $fixtures->sortBy(fn ($fixture) => $fixture->scheduled_at ?? '9999-12-31')->values();
+
     return view('frontend.fixture.draw-fixtures-show-team', [
       'fixtures' => $fixtures,
       'draw' => $fixtures->first()->draw,
@@ -315,24 +324,7 @@ class FrontFixtureController extends Controller
       return;
     }
 
-    $visibleIds = app(PublicDrawScheduleVisibility::class)->visibleFixtureIds($draw);
-    if ($visibleIds === null) {
-      return;
-    }
-
-    foreach ($fixtures as $fixture) {
-      if ($visibleIds->contains((int) $fixture->id)) {
-        continue;
-      }
-
-      $fixture->setAttribute('scheduled_at', null);
-      $fixture->setAttribute('venue_id', null);
-      $fixture->setRelation('venue', null);
-      $fixture->setRelation('schedule', null);
-      if ($fixture->relationLoaded('orderOfPlay')) {
-        $fixture->setRelation('orderOfPlay', null);
-      }
-    }
+    app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($fixtures);
   }
 
   public function saveScore(Request $request, TeamFixture $fixture)

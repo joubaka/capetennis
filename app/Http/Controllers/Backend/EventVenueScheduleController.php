@@ -134,6 +134,91 @@ final class EventVenueScheduleController extends Controller
         ));
     }
 
+    public function calendar(Request $request, Event $event, \App\Services\Scheduling\SchedulePublicationService $publication)
+    {
+        $this->authorize('event.manage', $event);
+        $scope = $this->calendarScope($request, $event);
+        $working = $publication->workingRows($event);
+        $published = $publication->publishedRows($event)->keyBy('fixture_key');
+        $publishedAssignments = $publication->publishedAssignments($event)->keyBy('fixture_key');
+        $days = $working->concat($published->values())->groupBy(fn ($row) => substr($row['scheduled_at'], 0, 10))
+            ->map(fn ($rows) => $rows->pluck('fixture_key')->unique()->count())->sortKeys();
+        if ($event->start_date) {
+            $start = \Carbon\Carbon::parse($event->start_date)->startOfDay();
+            $end = $event->end_date ? \Carbon\Carbon::parse($event->end_date)->startOfDay() : $start->copy();
+            for ($day = $start->copy(), $i = 0; $day->lte($end) && $i < 31; $day->addDay(), $i++) {
+                if (! $days->has($day->toDateString())) $days->put($day->toDateString(), 0);
+            }
+            $days = $days->sortKeys();
+        }
+        $date = $scope['date'] ?? 'all';
+        $scope['date'] = $date;
+        $filter = fn ($row) => ($date === 'all' || substr($row['scheduled_at'], 0, 10) === $date)
+            && (empty($scope['venue_id']) || (int) $row['venue_id'] === (int) $scope['venue_id'])
+            && (empty($scope['draw_id']) || (int) $row['draw_id'] === (int) $scope['draw_id']);
+        $rows = $working->filter($filter)->map(function ($row) use ($publishedAssignments, $published) {
+            $public = $publishedAssignments->get($row['fixture_key']);
+            $same = $public && collect(['scheduled_at', 'venue_id', 'court', 'duration'])->every(fn ($key) => (string) $row[$key] === (string) $public[$key]);
+            return $row + ['publication_state' => $same ? ($published->has($row['fixture_key']) ? 'Published' : 'Not publicly visible') : ($public ? 'Updates private' : 'Private')];
+        });
+        $workingKeys = $rows->pluck('fixture_key');
+        $retained = $published->values()->filter($filter)->reject(fn ($row) => $workingKeys->contains($row['fixture_key']));
+        $venues = $event->venues()->get()->concat($event->draws()->with('venues')->get()->flatMap(fn ($draw) => $draw->venues))->unique('id')->sortBy('name');
+        $draws = $event->draws()->orderBy('drawName')->get();
+        $rows = $rows->take(1000)->values(); $retained = $retained->take(1000)->values();
+        $drawIds = $draws->pluck('id');
+        $unscheduledCount = Fixture::whereIn('draw_id', $drawIds)->when(! empty($scope['draw_id']), fn ($q) => $q->where('draw_id', $scope['draw_id']))
+            ->where('match_status', 0)->whereDoesntHave('fixtureResults')->whereDoesntHave('orderOfPlay', fn ($q) => $q->whereNotNull('time'))->count()
+            + TeamFixture::whereIn('draw_id', $drawIds)->when(! empty($scope['draw_id']), fn ($q) => $q->where('draw_id', $scope['draw_id']))->where('match_status', 0)->whereDoesntHave('fixtureResults')->whereNull('scheduled_at')->count();
+        $revision = $publication->revision($event);
+        return view('backend.schedule.saved-calendar', compact('event', 'scope', 'days', 'date', 'rows', 'retained', 'venues', 'draws', 'revision', 'unscheduledCount'));
+    }
+
+    public function publishScope(Request $request, Event $event, \App\Services\Scheduling\SchedulePublicationService $publication)
+    {
+        return $this->changePublication($request, $event, $publication, false);
+    }
+
+    public function hideScope(Request $request, Event $event, \App\Services\Scheduling\SchedulePublicationService $publication)
+    {
+        return $this->changePublication($request, $event, $publication, true);
+    }
+
+    public function publicPreview(Request $request, Event $event, \App\Services\Scheduling\SchedulePublicationService $publication)
+    {
+        $this->authorize('event.manage', $event);
+        $scope = $this->calendarScope($request, $event);
+        $rows = $publication->publishedRows($event)->filter(fn ($row) => (empty($scope['date']) || $scope['date'] === 'all' || substr($row['scheduled_at'], 0, 10) === $scope['date'])
+            && (empty($scope['venue_id']) || (int) $row['venue_id'] === (int) $scope['venue_id'])
+            && (empty($scope['draw_id']) || (int) $row['draw_id'] === (int) $scope['draw_id']))->take(1000)->values();
+        return view('backend.schedule.public-schedule-preview', compact('event', 'rows', 'scope'));
+    }
+
+    private function changePublication(Request $request, Event $event, \App\Services\Scheduling\SchedulePublicationService $publication, bool $hide)
+    {
+        $this->authorize('event.manage', $event);
+        $request->validate(['revision' => ['required', 'string', 'size:64'], 'date' => ['required', 'date_format:Y-m-d'], 'venue_id' => ['nullable', 'integer']]);
+        $scope = $this->calendarScope($request, $event);
+        try {
+            $scope['revision'] = (string) $request->string('revision');
+            $count = $hide ? $publication->hide($event, $scope) : $publication->publish($event, $scope);
+            unset($scope['revision']);
+            return redirect()->route('backend.event-venue-schedule.calendar', ['event' => $event->id] + $scope)
+                ->with('success', $hide ? "Hidden {$count} public match times." : "Published {$count} saved match times. Other saved changes remain private.");
+        } catch (\InvalidArgumentException $exception) {
+            return back()->withErrors(['schedule' => $exception->getMessage()]);
+        }
+    }
+
+    private function calendarScope(Request $request, Event $event): array
+    {
+        $scope = $request->validate(['date' => ['nullable', \Illuminate\Validation\Rule::when($request->input('date') !== 'all', ['date_format:Y-m-d'])], 'venue_id' => ['nullable', 'integer'], 'draw_id' => ['nullable', 'integer']]);
+        if (! empty($scope['draw_id'])) abort_unless($event->draws()->whereKey($scope['draw_id'])->exists(), 422, 'Choose a draw in this event.');
+        if (! empty($scope['venue_id'])) abort_unless($event->venues()->whereKey($scope['venue_id'])->exists()
+            || DB::table('draw_venues')->whereIn('draw_id', $event->draws()->pluck('id'))->where('venue_id', $scope['venue_id'])->exists(), 422, 'Choose a venue in this event.');
+        return array_filter($scope, fn ($value) => $value !== null);
+    }
+
     public function addVenue(Request $request, Event $event)
     {
         $this->authorize('event.manage', $event);
@@ -462,7 +547,7 @@ final class EventVenueScheduleController extends Controller
                 $fixture = app(UnifiedTeamScheduleService::class)->assign($event, $data);
                 return response()->json([
                     'warnings' => $warnings,
-                    'message' => 'Rubber assigned to '.$fixture->venue->name.' · Court '.$fixture->court_label.' · '.$fixture->scheduled_at->format('d M Y H:i').'.',
+                    'message' => 'Rubber assigned to '.$fixture->venue->name.' Â· Court '.$fixture->court_label.' Â· '.$fixture->scheduled_at->format('d M Y H:i').'.',
                     'assignment' => ['fixture_id' => $fixture->id, 'fixture_kind' => 'team', 'fixture_key' => 'team:'.$fixture->id,
                         'venue_id' => (int) $fixture->venue_id, 'court' => $fixture->court_label,
                         'scheduled_at' => $fixture->scheduled_at->format('Y-m-d H:i:s')],
@@ -496,7 +581,7 @@ final class EventVenueScheduleController extends Controller
         }
 
         return response()->json([
-            'message' => 'Match assigned to '.$slot->venue->name.' · Court '.$slot->court.' · '.
+            'message' => 'Match assigned to '.$slot->venue->name.' Â· Court '.$slot->court.' Â· '.
                 \Carbon\Carbon::parse($slot->time)->format('d M Y H:i').'.',
             'assignment' => ['fixture_id' => (int) $slot->fixture_id, 'venue_id' => (int) $slot->venue_id,
                 'court' => (string) $slot->court, 'scheduled_at' => \Carbon\Carbon::parse($slot->time)->format('Y-m-d H:i:s')],
@@ -590,6 +675,7 @@ final class EventVenueScheduleController extends Controller
             'draw_ids' => ['nullable', 'array'], 'draw_ids.*' => ['integer'],
             'venue_ids' => ['nullable', 'array'], 'venue_ids.*' => ['integer'],
             'replan_venue_ids' => ['nullable', 'array'], 'replan_venue_ids.*' => ['integer'],
+            'allow_partial' => ['sometimes', 'boolean'],
             'apply_venue_ids' => ['nullable', 'array'], 'apply_venue_ids.*' => ['integer'],
             'draw_starts' => ['nullable', 'array'],
             'draw_starts.*.draw_id' => ['required', 'integer'],

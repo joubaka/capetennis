@@ -55,6 +55,11 @@ class Brackets
   }
   public static function play_time($x, $y, $bracket_fix)
   {
+    $draw = $bracket_fix->draw;
+    if (request()->routeIs('public.*') || ! auth()->user()?->can('view', $draw)) {
+      $bracket_fix = clone $bracket_fix;
+      app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures(collect([$bracket_fix]));
+    }
     // Base offsets
     $originalY = $y - 10; // existing design
     $xvenue = $x;
@@ -74,7 +79,7 @@ class Brackets
     // Visibility
     $draw = $bracket_fix->draw;
     $isPublished = optional($draw)->oop_published == 1;
-    $isAdmin = Auth::check() && Auth::user()->id == 584;
+    $isAdmin = ! request()->routeIs('public.*') && (auth()->user()?->can('view', $draw) ?? false);
 
     if (!($isPublished || $isAdmin)) {
       return '';

@@ -15,34 +15,12 @@ final class DrawSchedulePublicationService
             throw new \RuntimeException('Add at least one match time before publishing the schedule.');
         }
 
-        DB::transaction(function () use ($draw) {
-            $draw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
-            if ($draw->oop_published) {
-                return;
-            }
-
-            $draw->update(['oop_published' => true]);
-            DrawAuditLog::record($draw->id, 'schedule_published', null, [
-                'draw_published' => (bool) $draw->published,
-                'preview_only' => ! (bool) $draw->published,
-            ]);
-        });
+        app(\App\Services\Scheduling\SchedulePublicationService::class)->publish($draw->event, ['draw_id' => $draw->id]);
     }
 
     public function unpublish(Draw $draw): void
     {
-        DB::transaction(function () use ($draw) {
-            $draw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
-            if (! $draw->oop_published) {
-                return;
-            }
-
-            $draw->update(['oop_published' => false]);
-            DrawAuditLog::record($draw->id, 'schedule_unpublished', null, [
-                'draw_published' => (bool) $draw->published,
-                'preview_only' => false,
-            ]);
-        });
+        app(\App\Services\Scheduling\SchedulePublicationService::class)->hide($draw->event, ['draw_id' => $draw->id]);
     }
 
     private function hasScheduledMatch(Draw $draw): bool

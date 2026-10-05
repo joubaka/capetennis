@@ -631,7 +631,7 @@ class EventVenueScheduleTest extends TestCase
             ->assertSee('showWorkflowStep(3)', false)
             ->assertSee('id="schedule-activity"', false)
             ->assertSee('id="schedule-activity-bar"', false)
-            ->assertSee('Applying schedule…')
+            ->assertSee('Saving schedule…')
             ->assertSee('Rebuilding the applied schedule view…')
             ->assertSee('100% · Complete')
             ->assertSee('window.location.assign(drawsUrl)', false)

@@ -13,6 +13,7 @@ use App\Models\Registration;
 use App\Models\User;
 use App\Services\MyTennisService;
 use App\Services\PublicDrawScheduleVisibility;
+use App\Services\Scheduling\SchedulePublicationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -102,6 +103,7 @@ class MyTennisServiceTest extends TestCase
             'court' => '3',
         ]);
 
+        app(SchedulePublicationService::class)->publish($event, ['draw_id' => $draw->id]);
         $service = app(MyTennisService::class);
         $publicVisibility = app(PublicDrawScheduleVisibility::class);
 
@@ -121,32 +123,36 @@ class MyTennisServiceTest extends TestCase
                 ['id' => 999999, 'time' => null, 'venue_name' => null, 'court' => null],
             ]),
         ]);
-        $this->assertSame('2026-09-06 08:00:00', $restrictedHub['oops'][0]['time']);
-        $this->assertSame('2026-09-06 09:00:00', $restrictedHub['oops'][1]['time']);
+        $this->assertSame($first->orderOfPlay->time, $restrictedHub['oops'][0]['time']);
+        $this->assertSame($sameRound->orderOfPlay->time, $restrictedHub['oops'][1]['time']);
         $this->assertNull($restrictedHub['oops'][2]['time']);
         $this->assertTrue($restrictedHub['oops'][2]['schedule_hidden']);
-        $this->assertSame('2026-09-06', $restrictedHub['oops'][2]['scheduled_date']);
-        $this->assertSame('Centre Court', $restrictedHub['oops'][2]['venue_name']);
+        $this->assertNull($restrictedHub['oops'][2]['scheduled_date']);
+        $this->assertNull($restrictedHub['oops'][2]['venue_name']);
         $this->assertNull($restrictedHub['oops'][2]['court']);
         $this->assertNull($restrictedHub['rrFixtures'][0][2]['time']);
         $this->assertTrue($restrictedHub['rrFixtures'][0][2]['schedule_hidden']);
-        $this->assertSame('2026-09-06', $restrictedHub['rrFixtures'][0][2]['scheduled_date']);
-        $this->assertSame('Centre Court', $restrictedHub['rrFixtures'][0][2]['venue_name']);
-        $this->assertArrayNotHasKey('schedule_hidden', $restrictedHub['oops'][3]);
-        $this->assertArrayNotHasKey('schedule_hidden', $restrictedHub['rrFixtures'][0][3]);
+        $this->assertNull($restrictedHub['rrFixtures'][0][2]['scheduled_date']);
+        $this->assertNull($restrictedHub['rrFixtures'][0][2]['venue_name']);
+        $this->assertTrue($restrictedHub['oops'][3]['schedule_hidden']);
+        $this->assertTrue($restrictedHub['rrFixtures'][0][3]['schedule_hidden']);
 
         $settings->update(['schedule_visibility' => DrawSetting::SCHEDULE_VISIBILITY_FULL]);
+        request()->attributes->remove('published_schedule_rows_'.$event->id);
         $this->assertSame([$first->id], $service->nextScheduledMatchFor($player)->pluck('id')->all());
         $this->assertNull($publicVisibility->visibleFixtureIds($draw->fresh()));
 
         $settings->update(['schedule_visibility' => DrawSetting::SCHEDULE_VISIBILITY_CURRENT_ROUND]);
         FixtureResult::factory()->create(['fixture_id' => $first->id]);
+        request()->attributes->remove('published_schedule_rows_'.$event->id);
         $this->assertSame([$following->id], $service->nextScheduledMatchFor($player)->pluck('id')->all());
         $this->assertEqualsCanonicalizing([$sameRound->id, $following->id], $publicVisibility->visibleFixtureIds($draw->fresh())->all());
         FixtureResult::factory()->create(['fixture_id' => $sameRound->id]);
+        request()->attributes->remove('published_schedule_rows_'.$event->id);
         $this->assertSame([$following->id], $publicVisibility->visibleFixtureIds($draw->fresh())->all());
 
         $draw->update(['oop_published' => false]);
+        request()->attributes->remove('published_schedule_rows_'.$event->id);
         $this->assertTrue($service->nextScheduledMatchFor($player)->isEmpty(), 'An unpublished schedule must not appear on the player dashboard.');
         $this->assertTrue($publicVisibility->visibleFixtureIds($draw->fresh())->isEmpty(), 'An unpublished schedule must expose no public fixture times.');
     }
@@ -202,6 +208,7 @@ class MyTennisServiceTest extends TestCase
             ]);
         }
 
+        app(SchedulePublicationService::class)->publish($event, ['draw_id' => $draw->id]);
         $visibility = app(PublicDrawScheduleVisibility::class);
 
         $this->assertSame(
@@ -211,6 +218,7 @@ class MyTennisServiceTest extends TestCase
         );
 
         FixtureResult::factory()->create(['fixture_id' => $opening->id]);
+        request()->attributes->remove('published_schedule_rows_'.$event->id);
 
         $this->assertSame(
             [$byePlayersFirstMatch->id, $laterMatch->id],

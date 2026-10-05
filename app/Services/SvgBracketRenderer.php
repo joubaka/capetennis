@@ -210,6 +210,11 @@ class SvgBracketRenderer
     /** OOP TIME + VENUE */
     protected function getOop(Fixture $fx)
     {
+        $draw = $fx->draw;
+        if (request()->routeIs('public.*') || ! auth()->user()?->can('view', $draw)) {
+            $fx = clone $fx;
+            app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures(collect([$fx]));
+        }
         if (!$fx->oop || !$fx->draws || $fx->draws->oop_published != 1) {
             return "";
         }
