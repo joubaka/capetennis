@@ -66,10 +66,10 @@ class SendInterprovincialTrialInvitationEmailJob implements ShouldQueue
                     ->from($log->payload['from_address'], $log->payload['from_name'])
                     ->replyTo($log->payload['reply_to'])
                     ->with('event_mail_reviewed', true)->with('outbound_mail_log_id', $log->id));
-            if ($sent === null) throw new \RuntimeException('Invitation was not accepted by the mail transport.');
+            if ($sent === null) { $log->markAsSkipped('The message was held before transport. Review before sending.'); return; }
         } catch (Throwable $exception) {
-            $log->update(['status' => 'failed']);
-            $this->failed($exception);
+            app(\App\Services\MailFailureOutcome::class)->record($log, $exception, true);
+            if ($log->status === 'failed') $this->failed($exception);
             return;
         }
         try {
@@ -90,7 +90,7 @@ class SendInterprovincialTrialInvitationEmailJob implements ShouldQueue
     {
         $log = BulkEmailLog::find($this->logId);
         if ($log && ! $log->sent_at && ! in_array($log->status, ['sending', 'acceptance_unknown'], true)) {
-            $log->markAsFailed(str_ireplace($log->recipient_email, '[REDACTED_RECIPIENT]', $exception->getMessage()));
+            $log->markAsFailed('The queued message could not be prepared. Review before retrying.');
             if ((string) data_get($log->payload, 'kind', 'initial') === 'initial') {
                 InterprovincialTrialInvitation::whereKey($log->related_id)->where('event_id', $this->eventId)->whereIn('status', ['queued', 'sending', 'failed'])->whereNull('sent_at')->update(['status' => 'failed']);
             }

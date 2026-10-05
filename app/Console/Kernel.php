@@ -12,6 +12,7 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
+        $schedule->command('mail:record-event-issues')->everyFiveMinutes()->withoutOverlapping();
         // Process queued jobs safely on a shared server.
         // --stop-when-empty: exits as soon as the queue is empty (not a daemon).
         // --max-time=270: hard stop after 4.5 min so the process is gone before

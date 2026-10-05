@@ -1,6 +1,7 @@
 @extends('layouts.backend')
 @section('title', 'Trials communications')
 @section('content')
+<a class="btn btn-outline-primary mb-3" href="{{ route('backend.event-mail-log.index',$event) }}">Event email log</a>
 <form method="get" class="mb-3"><label>Find an individual <input name="person_search" value="{{ request('person_search') }}" class="form-control" maxlength="100"></label><button class="btn btn-outline-primary">Search players</button><p class="text-muted">Selectors show up to 500 matches. Search by name to find another individual.</p></form>
 <h4>{{ $event->name }} — Invitations and reminders</h4>
 <p>Choose recipients, edit the whole message, then review exact combined emails before sending. Invitations are optional.</p>

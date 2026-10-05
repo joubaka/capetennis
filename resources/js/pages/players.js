@@ -297,15 +297,17 @@
           message = `Email queued successfully\nMailer: ${res.mailer}`;
         }
 
-        toastr.success(message, title, {
+        const feedback = !res.success || res.result?.title === 'error' ? 'error' : (res.result?.title === 'warning' ? 'warning' : 'success');
+        toastr[feedback](message, feedback === 'error' ? 'Email Issue' : title, {
           timeOut: 6000,
           extendedTimeOut: 2000,
           closeButton: true,
           progressBar: true,
-          escapeHtml: false
+          escapeHtml: true
         });
 
-        bootstrap.Modal.getInstance(
+        if (res.result?.report_url) window.location.assign(res.result.report_url);
+        if (res.success) bootstrap.Modal.getInstance(
           document.getElementById('sendMailModal')
         )?.hide();
       })

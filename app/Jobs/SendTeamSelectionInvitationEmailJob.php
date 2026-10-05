@@ -106,13 +106,13 @@ class SendTeamSelectionInvitationEmailJob implements ShouldQueue
                     $log->payload['rendered_subject'], $log->payload['rendered_html'], 'Cape Tennis', 'info@capetennis.co.za',
                 ))->with('event_mail_reviewed', true)->with('outbound_mail_log_id', $log->id));
         } catch (Throwable $exception) {
-            $log->markAsFailed(str_ireplace($log->recipient_email, '[REDACTED_RECIPIENT]', $exception->getMessage()));
+            app(\App\Services\MailFailureOutcome::class)->record($log, $exception, true);
             return;
         }
         try {
             $log->recordTransportResult($sent, $mailTransport->getSymfonyTransport(), $mailer);
         } catch (Throwable $exception) {
-            if ($sent === null) throw $exception;
+            if ($sent === null) { $log->markAsSkipped('The message was held before transport. Review before sending.'); return; }
             try {
                 $log->update(['status' => 'acceptance_unknown', 'sent_at' => now(), 'error_message' => 'Transport returned successfully, but receipt storage failed. Check the mail server before attempting another send.']);
             } catch (Throwable) {
@@ -125,7 +125,7 @@ class SendTeamSelectionInvitationEmailJob implements ShouldQueue
     {
         $log = BulkEmailLog::find($this->logId);
         if ($log && ! $log->sent_at && ! in_array($log->status, ['sending', 'acceptance_unknown'], true)) {
-            $log->markAsFailed(str_ireplace($log->recipient_email, '[REDACTED_RECIPIENT]', $exception->getMessage()));
+            $log->markAsFailed('The queued message could not be prepared. Review before retrying.');
         }
     }
 }

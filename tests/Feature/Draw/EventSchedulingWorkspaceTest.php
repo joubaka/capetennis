@@ -15,7 +15,7 @@ class EventSchedulingWorkspaceTest extends TestCase
     private function setupEvent(): array
     {
         Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
-        $event = Event::factory()->create(['name' => 'Scheduling verification event']);
+        $event = Event::factory()->create(['name' => 'Scheduling verification event', 'start_date' => '2026-10-09', 'end_date' => '2026-10-11']);
         $admin = User::factory()->create()->assignRole('admin');
         DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
         $this->actingAs($admin);

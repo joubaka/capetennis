@@ -114,6 +114,9 @@
         <div id="announcementRecipientReview" class="border rounded p-3 mt-3 d-none">
           <div class="d-flex justify-content-between gap-3 mb-2">
             <strong>Exact email recipients</strong>
+            @if($announcementExcluded->isNotEmpty())
+              <div class="alert alert-warning mt-2 mb-2">{{ $announcementExcluded->count() }} player(s) have no valid contact address and will be recorded as skipped.</div>
+            @endif
             <span class="badge bg-primary">{{ $announcementRecipients->count() }}</span>
           </div>
           @if($announcementRecipients->isEmpty())
@@ -316,9 +319,10 @@ announcementForm.addEventListener('submit', async e => {
     });
     if (!response.ok) throw await AppFeedback.responseError(response, 'Could not save the announcement.');
     const result = await response.json();
-    AppFeedback.afterReload(result.message || (id ? 'Announcement updated.' : 'Announcement published.'));
+    AppFeedback.afterReload(result.message || (id ? 'Announcement updated.' : 'Announcement published.'), result.mail_level || 'success');
     modal.hide();
-    location.reload();
+    if (result.report_url) window.location.assign(result.report_url);
+    else location.reload();
   } catch (error) {
     AppFeedback.fromError(error, 'Could not save the announcement.');
     setFormFeedback(error.messages?.[0] || error.message || 'Could not save the announcement.');

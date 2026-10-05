@@ -36,6 +36,8 @@ class EmailControllerAuthorizationTest extends TestCase
   protected function setUp(): void
   {
     parent::setUp();
+    Queue::fake();
+    $this->mock(\App\Services\MailAccountManager::class)->shouldReceive('getMailer')->andReturn('array');
 
     // Create roles
     Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
@@ -103,6 +105,7 @@ class EmailControllerAuthorizationTest extends TestCase
   public function test_guest_cannot_send_email()
   {
     $player = Player::factory()->create(['email' => 'test@example.com']);
+    $this->teamA->players()->attach($player->id, ['rank' => 1, 'pay_status' => 0]);
 
     $response = $this->postJson(route('email.send'), [
       'target_type' => 'player',
@@ -120,6 +123,7 @@ class EmailControllerAuthorizationTest extends TestCase
   {
     $this->actingAs($this->superUser);
     $player = Player::factory()->create(['email' => 'test@example.com']);
+    $this->teamA->players()->attach($player->id, ['rank' => 1, 'pay_status' => 0]);
 
     $response = $this->postJson(route('email.send'), [
       'target_type' => 'player',
@@ -137,6 +141,7 @@ class EmailControllerAuthorizationTest extends TestCase
   {
     $this->actingAs($this->admin);
     $player = Player::factory()->create(['email' => 'test@example.com']);
+    $this->teamA->players()->attach($player->id, ['rank' => 1, 'pay_status' => 0]);
 
     $response = $this->postJson(route('email.send'), [
       'target_type' => 'player',
@@ -154,6 +159,7 @@ class EmailControllerAuthorizationTest extends TestCase
   {
     $this->actingAs($this->admin);
     $player = Player::factory()->create(['email' => 'test@example.com']);
+    $this->teamA->players()->attach($player->id, ['rank' => 1, 'pay_status' => 0]);
 
     $response = $this->postJson(route('email.send'), [
       'target_type' => 'player',
@@ -171,6 +177,7 @@ class EmailControllerAuthorizationTest extends TestCase
   {
     $this->actingAs($this->ordinaryUser);
     $player = Player::factory()->create(['email' => 'test@example.com']);
+    $this->teamA->players()->attach($player->id, ['rank' => 1, 'pay_status' => 0]);
 
     $response = $this->postJson(route('email.send'), [
       'target_type' => 'player',
@@ -188,6 +195,7 @@ class EmailControllerAuthorizationTest extends TestCase
   {
     $this->actingAs($this->convenor);
     $player = Player::factory()->create(['email' => 'test@example.com']);
+    $this->teamA->players()->attach($player->id, ['rank' => 1, 'pay_status' => 0]);
 
     $response = $this->postJson(route('email.send'), [
       'target_type' => 'player',
@@ -320,6 +328,7 @@ class EmailControllerAuthorizationTest extends TestCase
   {
     $this->actingAs($this->admin);
     $player = Player::factory()->create(['email' => 'test@example.com']);
+    $this->teamA->players()->attach($player->id, ['rank' => 1, 'pay_status' => 0]);
 
     // Can send for Event A
     $response = $this->postJson(route('email.send'), [
@@ -398,6 +407,7 @@ class EmailControllerAuthorizationTest extends TestCase
   {
     $this->actingAs($this->convenor);
     $player = Player::factory()->create(['email' => 'test@example.com']);
+    $this->teamA->players()->attach($player->id, ['rank' => 1, 'pay_status' => 0]);
 
     // Convenor can send email for their event
     $response = $this->postJson(route('email.send'), [
@@ -423,4 +433,82 @@ class EmailControllerAuthorizationTest extends TestCase
 
     $response->assertStatus(403);
   }
+  public function test_small_audience_send_is_logged_and_repeated_campaign_reports_zero_queued(): void
+  {
+    Queue::fake();
+    $player = Player::factory()->create(['email' => 'small-audience@example.test']);
+    $this->teamA->players()->attach($player->id, ['rank' => 1, 'pay_status' => 0]);
+    $payload = ['event_id' => $this->eventA->id, 'target_type' => 'player', 'to' => $player->id,
+      'campaign_key' => (string) \Illuminate\Support\Str::uuid(), 'emailSubject' => 'Clothing', 'message' => 'Collect your clothing', 'fromName' => 'Manager'];
+    $this->actingAs($this->admin)->postJson(route('email.send'), $payload)
+      ->assertOk()->assertJsonPath('success', true)->assertJsonPath('result.queued', 1);
+    $this->postJson(route('email.send'), $payload)
+      ->assertOk()->assertJsonPath('success', false)->assertJsonPath('result.queued', 0)->assertJsonPath('result.skipped', 1);
+    $payload['campaign_key'] = (string) \Illuminate\Support\Str::uuid();
+    $payload['message'] = 'Practice and clothing reminder';
+    $this->postJson(route('email.send'), $payload)
+      ->assertOk()->assertJsonPath('success', true)->assertJsonPath('result.queued', 1);
+    $this->assertSame(2, BulkEmailLog::where('recipient_email', $player->email)->where('status', 'queued')->count());
+    $this->assertSame($this->eventA->id, (int) BulkEmailLog::where('recipient_email', $player->email)->first()->payload['event_id']);
+  }
+
+  public function test_invalid_single_address_reports_failure_and_preserves_exclusion_in_event_log(): void
+  {
+    Queue::fake();
+    $player = Player::factory()->create(['email' => 'invalid-address']);
+    $this->teamA->players()->attach($player->id, ['rank' => 1, 'pay_status' => 0]);
+    $this->actingAs($this->admin)->postJson(route('email.send'), ['event_id' => $this->eventA->id,
+      'target_type' => 'player', 'to' => $player->id, 'emailSubject' => 'Clothing', 'message' => 'Update'])
+      ->assertOk()->assertJsonPath('success', false)->assertJsonPath('result.queued', 0)->assertJsonPath('result.invalid', 1);
+    $this->assertDatabaseHas('bulk_email_logs', ['recipient_email' => 'invalid-address', 'status' => 'skipped']);
+  }
+
+  public function test_series_sender_must_be_authorized_for_every_event_before_any_mail_is_queued(): void
+  {
+    Queue::fake();
+    $this->eventB->update(['series_id' => $this->seriesA->id]);
+    $this->actingAs($this->admin)->postJson(route('series.email.players', $this->seriesA), [
+      'emailSubject' => 'Series update', 'message' => 'Update',
+    ])->assertForbidden();
+    Queue::assertNothingPushed();
+    $this->assertDatabaseCount('bulk_email_logs', 0);
+  }
+  public function test_event_compose_rejects_omitted_event_without_queueing(): void
+  {
+    $this->actingAs($this->admin)->postJson(route('email.send'), ['to' => 'person@example.test',
+      'emailSubject' => 'Clothing', 'message' => 'Update'])->assertUnprocessable()->assertJsonValidationErrors('event_id');
+    Queue::assertNothingPushed();
+  }
+
+  public function test_numeric_player_from_another_event_is_not_resolved_or_emailed(): void
+  {
+    $other = Player::factory()->create(['email' => 'other-event@example.test']);
+    $category = CategoryEvent::factory()->create(['event_id' => $this->eventB->id]);
+    $team = Team::factory()->create(['category_event_id' => $category->id]);
+    $team->players()->attach($other->id, ['rank' => 1, 'pay_status' => 0]);
+    $this->actingAs($this->admin)->postJson(route('email.send'), ['event_id' => $this->eventA->id,
+      'target_type' => 'player', 'to' => $other->id, 'emailSubject' => 'Clothing', 'message' => 'Update'])->assertNotFound();
+    Queue::assertNothingPushed();
+    $this->assertDatabaseCount('bulk_email_logs', 0);
+  }
+
+  public function test_series_result_links_each_event_report_with_its_actual_outcomes(): void
+  {
+    $this->eventB->update(['series_id' => $this->seriesA->id]);
+    $shared = Player::factory()->create(['email' => 'series-shared@example.test']);
+    $extra = Player::factory()->create(['email' => 'series-extra@example.test']);
+    foreach ([$this->eventA, $this->eventB] as $event) {
+      $registration = \App\Models\Registration::factory()->create();
+      $registration->players()->attach($shared->id);
+      if ($event->id === $this->eventB->id) $registration->players()->attach($extra->id);
+      $category = CategoryEvent::factory()->create(['event_id' => $event->id]);
+      \App\Models\CategoryEventRegistration::factory()->create(['registration_id' => $registration->id, 'category_event_id' => $category->id]);
+    }
+    $this->actingAs($this->superUser)->postJson(route('series.email.players', $this->seriesA), [
+      'emailSubject' => 'Series update', 'message' => 'Update', 'campaign_key' => (string) \Illuminate\Support\Str::uuid(),
+    ])->assertOk()->assertJsonPath('queued', 2)->assertJsonPath('skipped', 1)->assertJsonPath('report_url', null)
+      ->assertJsonCount(2, 'report_urls')->assertJsonPath('report_urls.0.queued', 1)
+      ->assertJsonPath('report_urls.1.queued', 1)->assertJsonPath('report_urls.1.skipped', 1);
+  }
+
 }

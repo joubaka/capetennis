@@ -21,6 +21,12 @@ class TrialCommunicationsTest extends TestCase {
         $this->player->users()->attach($parent->id);
         $this->nomination=EventNomination::create(['event_id'=>$this->event->id,'category_event_id'=>$this->category->id,'player_id'=>$this->player->id]);
     }
+    public function test_retry_does_not_queue_failed_record_with_acceptance_and_reports_false(): void {
+        $log=BulkEmailLog::create(['mail_type'=>'trial_communication','recipient_email'=>'person@example.test','status'=>'failed','accepted_at'=>now(),'payload'=>['event_id'=>$this->event->id,'created_by'=>$this->admin->id]]);
+        $this->assertFalse(app(TrialCommunicationService::class)->retry($log,$this->admin));
+        $this->assertSame('failed',$log->fresh()->status);
+        Bus::assertNotDispatched(\App\Jobs\SendBulkEmailJob::class);
+    }
     private function preview(string $filter='all') {
         return app(TrialCommunicationService::class)->preview($this->event,$this->admin,['audience'=>'nominations','filter'=>$filter],'Editable {event}','Only this text: {players} <script>alert(1)</script> {fee} {url}');
     }

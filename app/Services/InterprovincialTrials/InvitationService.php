@@ -240,7 +240,7 @@ class InvitationService
                         'event_id' => $event->id,
                         'invitation_id' => $invitation->id,
                         'mode' => $request['mode'], 'kind' => $kind, 'request_token' => $request['request_token'],
-                        'requested_by_user_id' => $actor->id, 'recipient_hash' => $request['recipient_hash'],
+                        'requested_by_user_id' => $actor->id, 'created_by' => $actor->id, 'recipient_hash' => $request['recipient_hash'],
                         'message_hash' => $messageHash, 'subject' => $request['subject'], 'body' => $request['body'],
                         'from_address' => $composition['from_address'], 'from_name' => $composition['from_name'], 'reply_to' => $composition['reply_to'],
                         'recipient_email' => $recipient['email'], 'recipient_name' => $recipient['name'],
@@ -902,7 +902,7 @@ class InvitationService
             if (! $log || $log->mail_type !== 'interprovincial_trial_invitation'
                 || $log->related_type !== InterprovincialTrialInvitation::class
                 || (int) $log->related_id !== (int) $locked->id
-                || $log->status !== 'failed' || $log->sent_at) {
+                || $log->status !== 'failed' || $log->sent_at || $log->accepted_at) {
                 throw ValidationException::withMessages(['invitation' => 'The failed invitation does not have a matching failed email log.']);
             }
             if (! app(InvitationMailSecurity::class)->logMatchesSignedSnapshot($log, $lockedBatch->event_id)) {
@@ -911,7 +911,7 @@ class InvitationService
             }
 
             $locked->update(['status' => 'queued', 'queued_at' => now()]);
-            $log->update(['status' => 'queued', 'queued_at' => now(), 'failed_at' => null, 'skipped_at' => null, 'error_message' => null]);
+            $log->update(['status' => 'queued', 'retry_actor_id' => auth()->id(), 'queued_at' => now(), 'failed_at' => null, 'skipped_at' => null, 'error_message' => null]);
             DB::afterCommit(fn () => $this->dispatchInvitationLog($log->id, $lockedBatch->event_id));
 
             return true;
@@ -953,6 +953,7 @@ class InvitationService
 
             $log->update([
                 'status' => 'queued',
+                'retry_actor_id' => auth()->id(),
                 'queued_at' => now(),
                 'failed_at' => null,
                 'skipped_at' => null,
@@ -1169,7 +1170,7 @@ class InvitationService
         if (! $recipient || ! filter_var($recipient->email, FILTER_VALIDATE_EMAIL) || blank($batch->email_subject) || blank($batch->email_body)) {
             throw ValidationException::withMessages(['invitation' => 'The legacy email cannot be safely reconstructed from the current invitation and reviewed batch.']);
         }
-        $payload = ['event_id' => $batch->event_id, 'invitation_id' => $invitation->id, 'mode' => $kind === 'initial' ? 'initial' : 'not_registered', 'kind' => $kind, 'request_token' => $requestToken, 'requested_by_user_id' => $batch->created_by_user_id, 'snapshot_hash' => $batch->snapshot_hash, 'message_hash' => $batch->message_hash, 'content_version' => $batch->content_version, 'subject' => $batch->email_subject, 'body' => $batch->email_body, 'from_address' => config('mail.from.address'), 'from_name' => config('mail.from.name'), 'reply_to' => config('mail.from.address'), 'recipient_email' => $recipient->email, 'recipient_name' => $invitation->player?->full_name, 'related_type' => InterprovincialTrialInvitation::class, 'related_id' => $invitation->id, 'event_name' => $batch->event?->name, 'category_name' => $invitation->categoryEvent?->category?->name];
+        $payload = ['event_id' => $batch->event_id, 'invitation_id' => $invitation->id, 'mode' => $kind === 'initial' ? 'initial' : 'not_registered', 'kind' => $kind, 'request_token' => $requestToken, 'requested_by_user_id' => $batch->created_by_user_id, 'created_by' => $batch->created_by_user_id, 'snapshot_hash' => $batch->snapshot_hash, 'message_hash' => $batch->message_hash, 'content_version' => $batch->content_version, 'subject' => $batch->email_subject, 'body' => $batch->email_body, 'from_address' => config('mail.from.address'), 'from_name' => config('mail.from.name'), 'reply_to' => config('mail.from.address'), 'recipient_email' => $recipient->email, 'recipient_name' => $invitation->player?->full_name, 'related_type' => InterprovincialTrialInvitation::class, 'related_id' => $invitation->id, 'event_name' => $batch->event?->name, 'category_name' => $invitation->categoryEvent?->category?->name];
         $payload['payload_integrity'] = app(InvitationMailSecurity::class)->payloadIntegrity($payload);
         return $payload;
     }

@@ -55,6 +55,27 @@ class EventAnnouncementAudienceTest extends TestCase
         Queue::assertPushed(SendBulkEmailJob::class, 2);
     }
 
+    public function test_announcement_log_preserves_event_and_initiating_actor(): void
+    {
+        [$admin, $event, $category] = $this->eventAdmin();
+        $this->nominate($event, $category, 'announce@example.test');
+        $this->publishWithCurrentAudience($admin, $event)->assertOk()->assertJsonPath('mail_level', 'success');
+        $payload = BulkEmailLog::sole()->payload;
+        $this->assertSame($event->id, $payload['event_id']);
+        $this->assertSame($admin->id, $payload['created_by']);
+    }
+
+    public function test_zero_queued_announcement_returns_error_feedback_while_preserving_publication_result(): void
+    {
+        [$admin, $event, $category] = $this->eventAdmin();
+        $this->nominate($event, $category, 'announce@example.test');
+        $this->mock(\App\Services\BulkMailDispatcher::class)->shouldReceive('dispatch')->once()
+            ->andReturn(['total' => 1, 'queued' => 0, 'skipped' => 0, 'failed' => 1, 'invalid' => 0, 'duplicate' => 0]);
+        $this->publishWithCurrentAudience($admin, $event)->assertOk()->assertJsonPath('success', true)
+            ->assertJsonPath('mail_level', 'error')->assertJsonPath('mail.queued', 0)->assertJsonPath('mail.failed', 1);
+        $this->assertDatabaseCount('announcements', 1);
+    }
+
     public function test_player_in_both_groups_is_queued_once(): void
     {
         [$admin, $event, $category] = $this->eventAdmin();
@@ -116,7 +137,8 @@ class EventAnnouncementAudienceTest extends TestCase
 
         $this->assertSame(['valid@example.com'], $recipients->all());
         $this->publishWithCurrentAudience($admin, $event)->assertOk()
-            ->assertJsonPath('mail.queued', 1);
+            ->assertJsonPath('mail.queued', 1)->assertJsonPath('mail.skipped', 2)->assertJsonPath('mail.invalid', 2)
+            ->assertJsonPath('mail_level', 'warning');
         $this->assertDatabaseMissing('bulk_email_logs', ['recipient_email' => 'other-event@example.com']);
         $this->assertDatabaseMissing('bulk_email_logs', ['recipient_email' => 'other-paid@example.com']);
     }
@@ -144,6 +166,23 @@ class EventAnnouncementAudienceTest extends TestCase
             ->assertJsonPath('mail.queued', 1);
 
         $this->assertDatabaseHas('bulk_email_logs', ['recipient_email' => 'roster@example.com']);
+    }
+
+    public function test_team_announcement_audience_isolated_when_another_event_shares_its_region(): void
+    {
+        [, $event, $category] = $this->eventAdmin();
+        $type = DB::table('eventtypes')->insertGetId(['name' => 'Scoped announcement team', 'type' => EventType::TEAM]);
+        $event->update(['eventType' => $type]);
+        $other = Event::factory()->create(['eventType' => $type]);
+        $otherCategory = CategoryEvent::factory()->create(['event_id' => $other->id]);
+        $region = TeamRegion::create(['region_name' => 'Shared announcement region']);
+        foreach ([$event, $other] as $item) $item->regions()->attach($region->id, ['ordering' => 1]);
+        foreach ([[$category, 'scoped@example.test'], [$otherCategory, 'foreign@example.test']] as [$teamCategory, $email]) {
+            $team = Team::factory()->create(['category_event_id' => $teamCategory->id, 'region_id' => $region->id]);
+            $player = Player::factory()->create(['email' => $email, 'userId' => null]);
+            $team->players()->attach($player, ['rank' => 1, 'pay_status' => 0]);
+        }
+        $this->assertSame(['scoped@example.test'], app(EventAnnouncementService::class)->recipientEmails($event)->all());
     }
 
     public function test_primary_contact_falls_back_to_linked_account_and_email_dedupe_is_case_insensitive(): void

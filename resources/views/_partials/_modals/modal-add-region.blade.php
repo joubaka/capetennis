@@ -20,6 +20,7 @@
               @endforeach
             </select>
           </div>
+        <div class="mb-3"><label for="regionShortName" class="form-label">Short name (optional)</label><input id="regionShortName" name="short_name" class="form-control" maxlength="20"><div class="form-text">For a new region. Leave blank to use an automatic abbreviation. Existing regions keep their saved short name.</div></div>
         </form>
       </div>
 

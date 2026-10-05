@@ -1,6 +1,7 @@
 @extends('layouts.backend')
 @section('title', 'Event communications')
 @section('content')
+<a class="btn btn-outline-primary mb-3" href="{{ route('backend.event-mail-log.index',$event) }}">Event email log</a>
 <form method="get" class="mb-3"><label>Find a team <input name="team_search" value="{{ request('team_search') }}" class="form-control" maxlength="100"></label><button class="btn btn-outline-primary">Search teams</button></form>
 <h4>{{ $event->name }} — Email communications</h4>
 <p>Choose an audience at any event stage. Review every recipient and message before approving the send.</p>

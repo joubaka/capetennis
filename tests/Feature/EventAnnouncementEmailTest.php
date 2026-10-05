@@ -109,7 +109,36 @@ class EventAnnouncementEmailTest extends TestCase
 
         $job->handle();
 
-        $this->assertSame('SMTP refused [REDACTED_RECIPIENT]',$log->fresh()->error_message);
+        $this->assertSame('The message could not be sent. Review the message, recipient and queue before retrying.',$log->fresh()->error_message);
         Log::shouldHaveReceived('error')->once()->withArgs(fn(string $message,array $context):bool=>!str_contains(json_encode($context),$email));
     }
+
+    public function test_all_jobs_claim_queued_records_atomically_and_never_send_a_failed_record(): void
+    {
+        $log = BulkEmailLog::create(['mail_type' => 'event_announcement', 'recipient_email' => 'person@example.test', 'status' => 'failed']);
+        $job = new class($log->id) extends SendBulkEmailJob {
+            protected function buildMailable(BulkEmailLog $log, string $fromAddress) { throw new \RuntimeException('Should never build'); }
+        };
+        $job->handle();
+        $this->assertSame('failed', $log->fresh()->status);
+        $this->assertNull($log->fresh()->error_message);
+    }
+    public function test_duplicate_unreviewed_worker_cannot_claim_a_send_in_progress(): void
+    {
+        $log = BulkEmailLog::create(['mail_type' => 'event_announcement', 'recipient_email' => 'person@example.test', 'status' => 'queued']);
+        $job = new class($log->id) extends SendBulkEmailJob {
+            public int $builds = 0;
+            protected function buildMailable(BulkEmailLog $log, string $fromAddress)
+            {
+                $this->builds++;
+                (new SendBulkEmailJob($log->id))->handle();
+                return null;
+            }
+        };
+        $job->handle();
+        $this->assertSame(1, $job->builds);
+        $this->assertSame('skipped', $log->fresh()->status);
+        $this->assertNull($log->fresh()->sent_at);
+    }
+
 }

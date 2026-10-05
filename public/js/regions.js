@@ -1,1 +1,883 @@
-!function(e,t){if("object"==typeof exports&&"object"==typeof module)module.exports=t();else if("function"==typeof define&&define.amd)define([],t);else{var n=t();for(var o in n)("object"==typeof exports?exports:e)[o]=n[o]}}(self,function(){return function(){function e(e){return function(e){if(Array.isArray(e))return t(e)}(e)||function(e){if("undefined"!=typeof Symbol&&null!=e[Symbol.iterator]||null!=e["@@iterator"])return Array.from(e)}(e)||function(e,n){if(e){if("string"==typeof e)return t(e,n);var o={}.toString.call(e).slice(8,-1);return"Object"===o&&e.constructor&&(o=e.constructor.name),"Map"===o||"Set"===o?Array.from(e):"Arguments"===o||/^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(o)?t(e,n):void 0}}(e)||function(){throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method.")}()}function t(e,t){(null==t||t>e.length)&&(t=e.length);for(var n=0,o=Array(t);n<t;n++)o[n]=e[n];return o}return function(t,n,o){"use strict";function a(e,t){console.group("❌ ".concat(e)),console.log("status:",t.status),console.log("responseText:",t.responseText),console.log("responseJSON:",t.responseJSON),console.groupEnd()}console.log("📍 regions.js loaded");var i=n.APP_URL||n.location.origin,r=t('meta[name="csrf-token"]').attr("content");t.ajaxSetup({headers:{"X-CSRF-TOKEN":r,Accept:"application/json"}});var s={addRegionToEvent:"".concat(i,"/backend/eventRegion")};n.importNoProfileUrl=n.importNoProfileUrl||null;var l=null,c=null,d=null;function m(){d=Date.now(),t("#import-timer").text("00:00"),c=setInterval(function(){var e,n,o,a,i=Date.now()-d;t("#import-timer").text((e=i,n=Math.floor(e/1e3),o=Math.floor(n/60).toString().padStart(2,"0"),a=(n%60).toString().padStart(2,"0"),"".concat(o,":").concat(a)))},250)}function u(){c&&(clearInterval(c),c=null),t("#import-timer").text("00:00")}function p(e,t){var n=t?"1":"0";e.data("state",n).attr("data-state",n).toggleClass("btn-warning",t).toggleClass("btn-success",!t).html(t?'<i class="ti ti-eye-off me-1"></i> Unpublish Team':'<i class="ti ti-eye me-1"></i> Publish Team')}function g(e){var n=e.find(".publishRegionTeams").first();if(n.length){var o=e.find(".publishTeam"),a=o.filter(function(){return"1"!==String(t(this).data("state"))}).length;n.data("team-count",o.length).attr("data-team-count",o.length).data("unpublished-count",a).attr("data-unpublished-count",a).prop("disabled",0===o.length||0===a).html(0===a&&o.length>0?'<i class="ti ti-check me-1"></i> All Teams Published':'<i class="ti ti-eye me-1"></i> Publish All Teams')}}t("#import-noprofile-modal").on("hidden.bs.modal",function(){t("#import-file").val(""),t("#import-team-id").val(""),t("#import-region-id").val(""),t("#import-team-name").text(""),t("#import-confirmed").val("0"),t("#import-submit-btn").text("Preview roster"),t("#import-preview").addClass("d-none"),t("#import-preview-body").empty(),t("#import-errors").addClass("d-none").empty(),u(),t("#import-spinner").hide(),t("#import-status").hide(),t("#import-message").text("Ready to import. Choose a file."),t("#import-submit-btn").prop("disabled",!1),t("#import-file").prop("disabled",!1),t("#import-cancel-btn").prop("disabled",!1)}),t("#modalToggle").on("shown.bs.modal",function(){var e=t("#select2Region");e.length&&(e.hasClass("select2-hidden-accessible")&&e.select2("destroy"),console.log("🔽 Init Select2 (Region)"),e.select2({dropdownParent:t("#modalToggle"),width:"100%",placeholder:"Select a region or type new one",allowClear:!0,tags:!0,tokenSeparators:[","],searching:!0,minimumInputLength:1,createTag:function(n){var o=t.trim(n.term);return""===o||o.length<2||e.find('option:contains("'.concat(o,'")')).length>0?null:{id:o,text:o,isNew:!0}},templateResult:function(e){return e.isNew?t('<span style="color: #28a745; font-weight: bold;">✨ Create: "'+e.text+'"</span>'):e.text},templateSelection:function(e){return e.isNew,e.text}}),e.on("change",function(){console.log("📍 Region selected:",e.val())}))}),t(o).on("click","#addRegionToEventButton",function(){var e=t('input[name="event_id"]').val(),n=t("#select2Region").val();if(console.log("➕ Add region clicked",{eventId:e,regionId:n}),e&&n){var r=t(this);r.prop("disabled",!0),t.post(s.addRegionToEvent,{event_id:e,region_id:n}).done(function(n){var a;console.log("✅ Region added",n),console.log("Response keys:",Object.keys(n)),console.log("ID:",n.id),console.log("Region Name:",n.region_name),console.log("Pivot ID:",n.pivot_id),t(".noRegions").remove();var r='\n    <div class="accordion-item mb-2 border rounded"\n         data-region-row\n         data-region-id="'.concat(n.id,'"\n         data-pivot-id="').concat(n.pivot_id,'">\n\n      <h2 class="accordion-header" id="heading-').concat(n.id,'">\n        <button class="accordion-button collapsed fw-semibold"\n                type="button"\n                data-bs-toggle="collapse"\n                data-bs-target="#collapse-').concat(n.id,'">\n          <span class="badge bg-label-secondary me-2">#').concat(n.id,'</span>\n          <span class="region-name">').concat(b(n.region_name),'</span>\n          <span class="ms-2 text-muted small">(0 Teams)</span>\n        </button>\n      </h2>\n\n      <div id="collapse-').concat(n.id,'" class="accordion-collapse collapse"\n           data-bs-parent="#regionsAccordion">\n        <div class="accordion-body pt-2">\n\n          <div class="d-flex justify-content-end mb-2 gap-2">\n            <button type="button"\n                    class="btn btn-sm btn-outline-secondary renameRegionEvent"\n                    data-id="').concat(n.pivot_id,'"\n                    data-name="').concat(b(n.region_name),'"\n                    data-event-count="1">\n              <i class="ti ti-edit me-1"></i> Rename Region\n            </button>\n\n            <a href="javascript:void(0)"\n               class="text-danger removeRegionEvent"\n               data-id="').concat(n.pivot_id,'">\n              <i class="ti ti-trash me-1"></i> Remove Region\n            </a>\n\n            <button type="button"\n                    class="btn btn-sm btn-success publishRegionTeams"\n                    data-url="').concat(i,"/backend/event/").concat(e,"/region/").concat(n.id,'/teams/publish"\n                    data-team-count="0"\n                    data-unpublished-count="0"\n                    disabled>\n              <i class="ti ti-eye me-1"></i> Publish All Teams\n            </button>\n\n            <a href="javascript:void(0)"\n               class="btn btn-sm btn-outline-primary import-region-teams-btn"\n               data-region-name="').concat(b(n.region_name),'"\n               data-team-prefix="').concat(b(n.region_name),'"\n               data-import-url="').concat(i,"/backend/event/").concat(e,"/region/").concat(n.id,'/external-teams/import"\n               data-bs-toggle="modal"\n               data-bs-target="#import-region-teams-modal">\n              <i class="ti ti-file-spreadsheet me-1"></i> Import Teams\n            </a>\n\n            <a href="javascript:void(0)"\n               class="btn btn-sm btn-primary addTeam"\n               data-regionid="').concat(n.id,'"\n               data-bs-toggle="modal"\n               data-bs-target="#addTeamModal">\n              <i class="ti ti-plus me-1"></i> Add Team\n            </a>\n          </div>\n\n          <div class="teams-container">\n            <div class="alert alert-light border text-center py-2 no-teams-alert">\n              No teams in this region yet.\n            </div>\n          </div>\n\n        </div>\n      </div>\n    </div>\n  ');t("#regionsAccordion .noRegions").remove(),t("#regionsAccordion").prepend(r),null===(a=bootstrap.Modal.getInstance(o.getElementById("modalToggle")))||void 0===a||a.hide(),toastr.success("Region added")}).fail(function(e){var t;console.error("❌ AJAX Error:"),console.error("Status:",e.status),console.error("Response:",e.responseText),console.error("JSON:",e.responseJSON),a("Add region failed",e),toastr.error((null===(t=e.responseJSON)||void 0===t?void 0:t.message)||"Failed to add region")}).always(function(){r.prop("disabled",!1)})}else toastr.error("Please select a region")}),t(o).on("click",".renameRegionEvent",function(e){e.preventDefault();var n=t(this),o=n.data("id"),a=String(n.attr("data-name")||""),s=Number(n.data("event-count")||1),l=s>1?'<div class="alert alert-warning py-2 mt-3 mb-0">This shared region is used by '.concat(s," events. Renaming it changes the name in all of them.</div>"):'<div class="text-muted small mt-2">Teams, clothing and event links will stay unchanged.</div>';Swal.fire({title:"Rename region",html:l,input:"text",inputValue:a,inputLabel:"Region name",inputAttributes:{maxlength:255,autocapitalize:"words"},showCancelButton:!0,confirmButtonText:"Save name",showLoaderOnConfirm:!0,inputValidator:function(e){return String(e||"").trim()?void 0:"Enter a region name."},preConfirm:function(e){return t.ajax({url:"".concat(i,"/backend/eventRegion/").concat(o),method:"PATCH",data:{_token:r,region_name:e}}).catch(function(e){var t;Swal.showValidationMessage((null===(t=e.responseJSON)||void 0===t?void 0:t.message)||"Failed to rename region.")})},allowOutsideClick:function(){return!Swal.isLoading()}}).then(function(e){if(e.isConfirmed&&e.value){var t=e.value,o=t.region_name,a=n.closest("[data-region-row]");a.find(".region-name").first().text(o),a.find(".renameRegionEvent").attr("data-name",o),a.find(".import-region-teams-btn").attr("data-region-name",o),toastr.success(t.message||"Region renamed.")}})}),t(o).on("click",".removeRegionEvent",function(e){e.preventDefault();var n=t(this),o=n.data("id"),s=n.closest("[data-region-row]");console.log("🗑 removeRegionEvent",{pivotId:o}),Swal.fire({title:"Remove region?",icon:"warning",showCancelButton:!0,confirmButtonText:"Remove"}).then(function(e){e.isConfirmed&&t.ajax({url:"".concat(i,"/backend/eventRegion/").concat(o),method:"DELETE",data:{_token:r}}).done(function(){toastr.success("Region removed"),s.fadeOut(200,function(){return s.remove()})}).fail(function(e){var t;a("Remove region failed",e),toastr.error((null===(t=e.responseJSON)||void 0===t?void 0:t.message)||"Failed to remove region")})})}),t(o).on("click",".publishTeam",function(e){e.preventDefault();var n=t(this),o=n.data("id"),s=String(n.data("state"));console.log("📣 publishTeam",{teamId:o,state:s});var l="1"===s?"Unpublish":"Publish",c="1"!==s;Swal.fire({title:"".concat(l," team?"),icon:"question",showCancelButton:!0,confirmButtonText:l}).then(function(e){e.isConfirmed&&(n.prop("disabled",!0),t.post(n.data("url")||"".concat(i,"/backend/team/publishTeam/").concat(o),{_token:r,published:c?1:0}).done(function(e){p(n,!!e.published),g(n.closest("[data-region-row]")),toastr.success(e.message||"Team ".concat(l.toLowerCase(),"ed."))}).fail(function(e){var t;a("Publish update failed",e),toastr.error((null===(t=e.responseJSON)||void 0===t?void 0:t.message)||"Could not update the team publication status.")}).always(function(){return n.prop("disabled",!1)}))})}),t(o).on("click",".publishRegionTeams",function(e){e.preventDefault();var n=t(this),o=n.closest("[data-region-row]"),i=Number(n.data("unpublished-count"))||0;n.prop("disabled")||0===i||Swal.fire({title:"Publish all teams in this region?",text:"".concat(i," unpublished ").concat(1===i?"team":"teams"," will become visible."),icon:"question",showCancelButton:!0,confirmButtonText:"Publish all"}).then(function(e){e.isConfirmed&&(n.prop("disabled",!0),t.post(n.data("url"),{_token:r}).done(function(e){o.find(".publishTeam").each(function(){p(t(this),!0)}),g(o),toastr.success(e.message||"All teams in this region are published.")}).fail(function(e){var t;a("Publish region teams failed",e),toastr.error((null===(t=e.responseJSON)||void 0===t?void 0:t.message)||"Could not publish the teams in this region."),g(o)}))})}),t(o).on("click",".toggleNoProfile",function(e){e.preventDefault();var n=t(this),o=n.data("url"),i=String(n.data("state"));console.log("🟡 toggleNoProfile",{url:o,state:i});var s="1"===i?"Disable":"Enable";Swal.fire({title:"".concat(s," NoProfile?"),icon:"question",showCancelButton:!0,confirmButtonText:s}).then(function(e){e.isConfirmed&&t.ajax({url:o,method:"PATCH",data:{_token:r}}).done(function(){var e="1"===i?"0":"1";n.data("state",e),n.toggleClass("btn-danger btn-success").html("1"===e?'<i class="ti ti-user-off me-1"></i> Disable NoProfile':'<i class="ti ti-user me-1"></i> Enable NoProfile'),toastr.success("NoProfile ".concat(s.toLowerCase(),"d"))}).fail(function(e){return a("NoProfile toggle failed",e)})})});var f=null;function b(e){return t("<div>").text(null==e?"":String(e)).html()}function v(){var e=arguments.length>0&&void 0!==arguments[0]&&arguments[0];t("#bulk-import-confirmed").val("0"),t("#bulk-import-preview").addClass("d-none"),t("#bulk-import-preview-body").empty(),t("#bulk-import-errors").addClass("d-none").empty(),e&&(t("#bulk-import-sheet").html('<option value="">Auto-detect the best worksheet</option>'),t("#bulk-import-sheet-wrap").addClass("d-none")),k()}function h(e){t("#bulk-import-status").toggleClass("d-none",!e),t("#bulk-import-submit, #bulk-import-cancel, #bulk-import-file, #bulk-import-prefix, #bulk-import-expected, #bulk-import-sheet, #bulk-import-fill-missing").prop("disabled",e),e||k()}function y(e,n){var o=t("#bulk-import-sheet"),a=n||o.val()||"";o.html('<option value="">Auto-detect the best worksheet</option>'),(e||[]).forEach(function(e){var n="".concat(e.name," — ").concat(e.complete_team_count,"/").concat(e.team_count," complete teams");t("<option>").val(e.name).text(n).appendTo(o)}),(e||[]).length>1&&t("#bulk-import-sheet-wrap").removeClass("d-none"),n&&o.val(a)}function k(){if("1"===t("#bulk-import-confirmed").val()){var e=t(".bulk-team-select:checked").length;t("#bulk-import-submit").text(e?"Confirm import of ".concat(e," team").concat(1===e?"":"s"):"Select a complete team").prop("disabled",0===e)}else{var n,a,i=Boolean(null===(n=o.getElementById("bulk-import-file"))||void 0===n||null===(a=n.files)||void 0===a?void 0:a.length);t("#bulk-import-submit").text("Preview teams").prop("disabled",!i)}}t(o).on("click",".edit-team-category",function(){var e=t(this).data("team");f=(null==e?void 0:e.id)||null,console.log("✏️ Edit category clicked",{teamId:f,teamData:e}),t("#edit-team-category-title").text("Edit Category: ".concat((null==e?void 0:e.name)||"Team")),t('#edit-team-category-modal input[name="team"]').val(f),t('#edit-team-category-modal input[name="category"]').prop("checked",!1)}),t(o).on("click","#change-team-category-button",function(e){e.preventDefault();var n=t('#edit-team-category-modal input[name="team"]').val(),s=t('#edit-team-category-modal input[name="category"]:checked').val();console.log("💾 Save category clicked",{teamId:n,categoryId:s}),n&&s?t.ajax({url:"".concat(i,"/backend/team/category/change/").concat(n),method:"POST",data:{_token:r,team:n,data:s}}).done(function(e){var a;console.log("✅ Category updated",e),t(".category-".concat(n)).html('\n          Category: <span class="fw-semibold text-primary">'.concat(e,"</span>\n        ")),null===(a=bootstrap.Modal.getInstance(o.getElementById("edit-team-category-modal")))||void 0===a||a.hide(),toastr.success("Category updated")}).fail(function(e){a("Change category failed",e),toastr.error("Failed to update category")}):toastr.error("Please select a category")}),t(o).on("click",".removeTeam",function(e){e.preventDefault();var n=t(this).closest("[data-team-row]"),o=t(this).data("id");console.log("🗑 Delete team clicked",o),o?Swal.fire({title:"Delete team?",text:"This will permanently delete the team.",icon:"warning",showCancelButton:!0,confirmButtonText:"Delete"}).then(function(e){if(e.isConfirmed){var s="".concat(i,"/backend/team/").concat(o);console.log("➡️ DELETE",s),t.ajax({url:s,method:"DELETE",data:{_token:r}}).done(function(){toastr.success("Team deleted"),n.fadeOut(200,function(){return n.remove()})}).fail(function(e){var t;a("Delete team failed",e),toastr.error((null===(t=e.responseJSON)||void 0===t?void 0:t.message)||"Failed to delete team")})}}):toastr.error("Missing team id")}),t(o).on("click",".addTeam",function(){var e=t(this).data("regionid");return console.log("🎯 [.addTeam] Click detected"),console.log("   Region ID:",e),e?(t("#region_id").val(e),console.log("✅ [.addTeam] Set region_id to:",t("#region_id").val()),!0):(console.error("❌ [.addTeam] No region ID found!"),toastr.error("Region ID is missing"),!1)}),t(o).on("click","#updateTeamButton",function(e){e.preventDefault(),console.log("🎯 [#updateTeamButton] Click detected");var n=t('input[name="team_name"]').val(),a=t('input[name="num_players"]').val(),s=t('input[name="year"]').val(),l=t("#region_id").val(),c=t('input[name="published"]').val();if(console.log("📋 [#updateTeamButton] Form data:"),console.log("   Team Name:",n),console.log("   Region ID:",l),!n||!l)return console.error("❌ Missing required fields"),void toastr.error("Please enter team name");console.log("✅ Sending POST request to create team..."),t.post("".concat(i,"/backend/team"),{_token:r,name:n,num_players:a,year:s,region_id:l,published:c}).done(function(e){var n;console.log("✅ Team created successfully"),console.log("   Team ID:",e.id),t("#teamForm")[0].reset();var a=t('[data-region-id="'.concat(l,'"]')),r=a.find(".teams-container");r.find(".no-teams-alert").remove();var s='\n            <div class="list-group-item d-flex justify-content-between align-items-start py-3 px-3 border-0 border-bottom" data-team-row data-team-id="'.concat(e.id,'">\n              <div>\n                <div class="fw-medium">').concat(e.name,'</div>\n                <small class="text-muted d-block mb-1 category-').concat(e.id,'">\n                  Category: <span class="fw-semibold text-primary">None</span>\n                </small>\n                <button class="btn btn-xs bg-label-info edit-team-category" data-team=\'').concat(JSON.stringify({id:e.id,name:e.name}),'\' data-bs-toggle="modal" data-bs-target="#edit-team-category-modal">\n                  <i class="ti ti-edit me-25"></i> Edit Category\n                </button>\n              </div>\n              <div class="text-end" style="min-width:180px">\n                <button type="button" class="publishTeam btn btn-xs w-100 mb-2 btn-success" data-id="').concat(e.id,'" data-url="').concat(i,"/backend/team/publishTeam/").concat(e.id,'" data-state="0">\n                  <i class="ti ti-eye me-1"></i> Publish Team\n                </button>\n                <a href="javascript:void(0)" class="toggleNoProfile btn btn-xs w-100 mb-2 btn-info" data-url="').concat(i,"/backend/teams/toggle-noprofile/").concat(e.id,'" data-state="0">\n                  <i class="ti ti-user me-1"></i> Enable NoProfile\n                </a>\n                <a href="javascript:void(0)" class="text-danger small removeTeam" data-id="').concat(e.id,'">\n                  <i class="ti ti-trash me-25"></i> Delete\n                </a>\n              </div>\n            </div>\n          '),c=r.find(".list-group");0===c.length&&(r.append('<div class="list-group"></div>'),c=r.find(".list-group")),c.append(s),g(a);var d=a.find(".ms-2.text-muted.small").text().match(/\d+/),m=d?parseInt(d[0]):0;a.find(".ms-2.text-muted.small").text("(".concat(m+1," Teams)")),toastr.success("Team added to region"),null===(n=bootstrap.Modal.getInstance(o.getElementById("addTeamModal")))||void 0===n||n.hide()}).fail(function(e){console.error("❌ Team creation failed"),console.error("   Status:",e.status),console.error("   Response:",e),toastr.error("Failed to create team")})}),t(o).on("click",".import-noprofile-btn",function(){var e=t(this).data("region-id"),o=t(this).data("team-id"),a=t(this).data("team-name");n.importNoProfileUrl=t(this).data("import-url"),t("#import-team-id").val(o),t("#import-region-id").val(e),t("#import-team-name").text(a),t("#import-template-link").attr("href",t(this).data("template-url")),t("#import-confirmed").val("0"),t("#import-submit-btn").text("Preview roster"),t("#import-preview").addClass("d-none"),t("#import-preview-body").empty(),t("#import-errors").addClass("d-none").empty(),t("#import-file").val(""),t("#import-message").text("Ready to import. Choose a file."),t("#import-status").hide(),u()}),t("#import-file").on("change",function(){t("#import-confirmed").val("0"),t("#import-submit-btn").text("Preview roster"),t("#import-preview").addClass("d-none"),t("#import-preview-body").empty(),t("#import-errors").addClass("d-none").empty()}),t("#import-submit-btn").on("click",function(){var e=o.getElementById("import-noprofile-form"),a=new FormData(e),i=t("#import-file"),s=t("#import-submit-btn"),l=t("#import-cancel-btn");i.val()?(t("#import-status").show(),t("#import-spinner").show(),s.prop("disabled",!0),i.prop("disabled",!0),l.prop("disabled",!0),t("#import-message").text("Uploading and processing — please wait..."),m(),t.ajax({url:n.importNoProfileUrl,method:"POST",data:a,processData:!1,contentType:!1,headers:{"X-CSRF-TOKEN":r},success:function(e){if(u(),t("#import-spinner").hide(),t("#import-message").text(e.message||"Import complete"),s.prop("disabled",!1),i.prop("disabled",!1),l.prop("disabled",!1),e.requires_confirmation){var n=e.preview||[];return t("#import-preview-body").html(n.map(function(e){return"\n            <tr>\n              <td>".concat(e.rank,"</td>\n              <td>").concat(t("<div>").text("".concat(e.name," ").concat(e.surname)).html(),"</td>\n              <td>").concat(e.date_of_birth||"—",'</td>\n              <td><span class="badge ').concat(e.candidate_count?"bg-label-warning":"bg-label-secondary",'">').concat(e.candidate_count,"</span></td>\n            </tr>\n          ")}).join("")),t("#import-preview").removeClass("d-none"),t("#import-confirmed").val("1"),s.text("Confirm import of ".concat(e.row_count," players")),void toastr.info("Review the roster, then confirm the import.")}toastr.success(e.message||"Import finished"),setTimeout(function(){return location.reload()},700)},error:function(e){u(),t("#import-spinner").hide(),s.prop("disabled",!1),i.prop("disabled",!1),l.prop("disabled",!1);var n=e.responseJSON||{},o=n.message||"Import failed. Please check the file format.";t("#import-message").text(o);var a=n.errors||[],r=Array.isArray(a)?a:Object.values(a).flat();r.length&&t("#import-errors").removeClass("d-none").html('<strong>Nothing was imported.</strong><ul class="mb-0 mt-1">'.concat(r.map(function(e){return"<li>".concat(t("<div>").text(e).html(),"</li>")}).join(""),"</ul>")),toastr.error(o),console.error("Import failed",e)}})):toastr.error("Please select a file to import.")}),t(o).on("click",".import-region-teams-btn",function(){l=t(this).data("import-url"),t("#bulk-import-region-name").text(t(this).data("region-name")),t("#bulk-import-prefix").val(t(this).data("team-prefix")),t("#bulk-import-expected").val("8"),t("#bulk-import-file").val(""),v(!0)}),t("#import-region-teams-modal").on("hidden.bs.modal",function(){var e;l=null,null===(e=t("#bulk-team-import-form")[0])||void 0===e||e.reset(),h(!1),v(!0)}),t("#bulk-import-file, #bulk-import-prefix, #bulk-import-expected, #bulk-import-fill-missing").on("change input",function(){v(t(this).is("#bulk-import-file"))}),t("#bulk-import-sheet").on("change",function(){v(!1)}),t(o).on("change",".bulk-team-select",k),t("#bulk-import-select-complete").on("click",function(){t(".bulk-team-select:not(:disabled)").prop("checked",!0),k()}),t("#bulk-import-submit").on("click",function(){var n=o.getElementById("bulk-team-import-form");if(l)if(n.checkValidity())if("1"!==t("#bulk-import-confirmed").val()||0!==t(".bulk-team-select:checked").length){var a=new FormData(n);h(!0),t("#bulk-import-errors").addClass("d-none").empty(),t.ajax({url:l,method:"POST",data:a,processData:!1,contentType:!1,headers:{"X-CSRF-TOKEN":r,Accept:"application/json"},success:function(e){if(y(e.sheets,e.selected_sheet),e.requires_confirmation)return function(e){var n=(e.teams||[]).map(function(e){var t=e.placeholder_count?'<span class="badge bg-label-warning">Ready with '.concat(e.placeholder_count," placeholder").concat(1===e.placeholder_count?"":"s","</span>"):e.errors.length?'<ul class="small text-danger mb-0 ps-3">'.concat(e.errors.map(function(e){return"<li>".concat(b(e),"</li>")}).join(""),"</ul>"):'<span class="badge bg-label-success">Complete</span>',n=e.players.map(function(e){return'<li class="'.concat(e.is_placeholder?"text-warning":"",'"><span class="text-muted">').concat(e.rank,".</span> ").concat(b(e.name)," ").concat(b(e.surname)).concat(e.is_placeholder?' <span class="badge bg-label-warning ms-1">Placeholder</span>':"","</li>")}).join("");return'\n        <tr>\n          <td class="text-center">\n            <input class="form-check-input bulk-team-select" type="checkbox"\n                   name="selected_team_keys[]" value="'.concat(b(e.key),'"\n                   ').concat(e.selectable?"checked":"disabled",'>\n          </td>\n          <td>\n            <div class="fw-medium">').concat(b(e.category),'</div>\n            <div class="small text-muted">Source: ').concat(b(e.source_heading),"</div>\n          </td>\n          <td>").concat(b(e.team_name),'</td>\n          <td class="text-center">\n            <details>\n              <summary>').concat(e.player_count,'</summary>\n              <ol class="small text-start mb-0 mt-1 ps-3">').concat(n,"</ol>\n            </details>\n          </td>\n          <td>").concat(b(e.action),"</td>\n          <td>").concat(t,"</td>\n        </tr>")}).join("");t("#bulk-import-preview-body").html(n),t("#bulk-import-summary").text("".concat(e.selected_sheet,": ").concat(e.complete_team_count," teams ready, ").concat(e.complete_player_count," roster slots")+(e.placeholder_player_count?", including ".concat(e.placeholder_player_count," placeholder").concat(1===e.placeholder_player_count?"":"s","."):".")),t("#bulk-import-preview").removeClass("d-none"),t("#bulk-import-confirmed").val("1"),k()}(e),void toastr.info(e.message);toastr.success(e.message||"Teams imported."),setTimeout(function(){return location.reload()},700)},error:function(n){var o=n.responseJSON||{};y(o.sheets,null);var a=o.message||"Import failed. Nothing was imported.";!function(n){var o=arguments.length>1&&void 0!==arguments[1]?arguments[1]:[],a=e(new Set((Array.isArray(o)?o:Object.values(o).flat()).filter(function(e){return e&&e!==n})));t("#bulk-import-errors").removeClass("d-none").html("<strong>".concat(b(n),"</strong>")+(a.length?'<ul class="mb-0 mt-1">'.concat(a.map(function(e){return"<li>".concat(b(e),"</li>")}).join(""),"</ul>"):""))}(a,o.errors||[]),toastr.error(a)},complete:function(){h(!1),k()}})}else toastr.error("Select at least one team ready to import.");else n.reportValidity();else toastr.error("Choose a region before importing teams.")}),n.addEventListener("beforeunload",function(e){var t="You have unsaved changes. Are you sure you want to leave?";return e.returnValue=t,t})}(jQuery,window,document),{}}()});
+/******/ (function() { // webpackBootstrap
+/*!***************************************!*\
+  !*** ./resources/js/pages/regions.js ***!
+  \***************************************/
+function _toConsumableArray(r) { return _arrayWithoutHoles(r) || _iterableToArray(r) || _unsupportedIterableToArray(r) || _nonIterableSpread(); }
+function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
+function _unsupportedIterableToArray(r, a) { if (r) { if ("string" == typeof r) return _arrayLikeToArray(r, a); var t = {}.toString.call(r).slice(8, -1); return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray(r, a) : void 0; } }
+function _iterableToArray(r) { if ("undefined" != typeof Symbol && null != r[Symbol.iterator] || null != r["@@iterator"]) return Array.from(r); }
+function _arrayWithoutHoles(r) { if (Array.isArray(r)) return _arrayLikeToArray(r); }
+function _arrayLikeToArray(r, a) { (null == a || a > r.length) && (a = r.length); for (var e = 0, n = Array(a); e < a; e++) n[e] = r[e]; return n; }
+/*
+ * Admin — Regions & Teams JS
+ */
+
+(function ($, window, document) {
+  'use strict';
+
+  console.log('📍 regions.js loaded');
+  function logXhrFail(label, xhr) {
+    console.group("\u274C ".concat(label));
+    console.log('status:', xhr.status);
+    console.log('responseText:', xhr.responseText);
+    console.log('responseJSON:', xhr.responseJSON);
+    console.groupEnd();
+  }
+  var APP_URL = window.APP_URL || window.location.origin;
+  var CSRF = $('meta[name="csrf-token"]').attr('content');
+  $.ajaxSetup({
+    headers: {
+      'X-CSRF-TOKEN': CSRF,
+      'Accept': 'application/json'
+    }
+  });
+  var api = {
+    addRegionToEvent: "".concat(APP_URL, "/backend/eventRegion") // ✅ Use direct URL
+  };
+
+  // Provide import URL (matches routes/web.php)
+  window.importNoProfileUrl = window.importNoProfileUrl || null;
+  var bulkTeamImportUrl = null;
+
+  // Timer state (optional small timer)
+  var importTimerInterval = null;
+  var importStartTime = null;
+  function formatElapsed(ms) {
+    var totalSeconds = Math.floor(ms / 1000);
+    var minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+    var seconds = (totalSeconds % 60).toString().padStart(2, '0');
+    return "".concat(minutes, ":").concat(seconds);
+  }
+  function startImportTimer() {
+    importStartTime = Date.now();
+    $('#import-timer').text('00:00');
+    importTimerInterval = setInterval(function () {
+      var elapsed = Date.now() - importStartTime;
+      $('#import-timer').text(formatElapsed(elapsed));
+    }, 250);
+  }
+  function stopImportTimer() {
+    if (importTimerInterval) {
+      clearInterval(importTimerInterval);
+      importTimerInterval = null;
+    }
+    $('#import-timer').text('00:00');
+  }
+
+  // Import UI helpers: show/hide spinner + lock/unlock controls
+  function showImportUI() {
+    $('#import-status').show();
+    $('#import-spinner').show();
+    $('#import-message').text('Uploading and processing — please wait...');
+    $('#import-submit-btn').prop('disabled', true);
+    $('#import-file').prop('disabled', true);
+    $('#import-cancel-btn').prop('disabled', true);
+    startImportTimer();
+  }
+  function hideImportUI() {
+    stopImportTimer();
+    $('#import-spinner').hide();
+    $('#import-status').hide();
+    $('#import-message').text('Ready to import. Choose a file.');
+    $('#import-submit-btn').prop('disabled', false);
+    $('#import-file').prop('disabled', false);
+    $('#import-cancel-btn').prop('disabled', false);
+  }
+
+  // Ensure import UI is reset when modal is hidden (user closed modal or after import)
+  $('#import-noprofile-modal').on('hidden.bs.modal', function () {
+    // reset file input + team fields
+    $('#import-file').val('');
+    $('#import-team-id').val('');
+    $('#import-region-id').val('');
+    $('#import-team-name').text('');
+    $('#import-confirmed').val('0');
+    $('#import-submit-btn').text('Preview roster');
+    $('#import-preview').addClass('d-none');
+    $('#import-preview-body').empty();
+    $('#import-errors').addClass('d-none').empty();
+    hideImportUI();
+  });
+
+  // ===============================
+  // Select2 – Add Region
+  // ===============================
+  function initRegionSelect2() {
+    var $select = $('#select2Region');
+    if (!$select.length) return;
+    if ($select.hasClass('select2-hidden-accessible')) {
+      $select.select2('destroy');
+    }
+    console.log('🔽 Init Select2 (Region)');
+    $select.select2({
+      dropdownParent: $('#modalToggle'),
+      width: '100%',
+      placeholder: 'Select a region or type new one',
+      allowClear: true,
+      tags: true,
+      tokenSeparators: [','],
+      searching: true,
+      minimumInputLength: 1,
+      createTag: function createTag(params) {
+        var term = $.trim(params.term);
+        if (term === '' || term.length < 2) return null;
+        var existingOption = $select.find("option:contains(\"".concat(term, "\")")).length > 0;
+        if (existingOption) return null;
+        return {
+          id: term,
+          text: term,
+          isNew: true
+        };
+      },
+      templateResult: function templateResult(data) {
+        if (data.isNew) {
+          return $('<span style="color: #28a745; font-weight: bold;">✨ Create: "' + escapeHtml(data.text) + '"</span>');
+        }
+        return data.text;
+      },
+      templateSelection: function templateSelection(data) {
+        return data.isNew ? data.text : data.text;
+      }
+    });
+    $select.on('change', function () {
+      console.log('📍 Region selected:', $select.val());
+    });
+  }
+  $('#modalToggle').on('shown.bs.modal', initRegionSelect2).on('hidden.bs.modal', function () {
+    return $('#regionShortName').val('');
+  });
+
+  // ===============================
+  // Add Region to Event
+  // ===============================
+  $(document).on('click', '#addRegionToEventButton', function () {
+    var eventId = $('input[name="event_id"]').val();
+    var regionId = $('#select2Region').val();
+    console.log('➕ Add region clicked', {
+      eventId: eventId,
+      regionId: regionId
+    });
+    if (!eventId || !regionId) {
+      toastr.error('Please select a region');
+      return;
+    }
+    var $button = $(this);
+    $button.prop('disabled', true);
+    $.post(api.addRegionToEvent, {
+      event_id: eventId,
+      region_id: regionId,
+      short_name: $('#regionShortName').val()
+    }).done(function (res) {
+      var _bootstrap$Modal$getI;
+      console.log('✅ Region added', res);
+      console.log('Response keys:', Object.keys(res));
+      console.log('ID:', res.id);
+      console.log('Region Name:', res.region_name);
+      console.log('Pivot ID:', res.pivot_id);
+      $('.noRegions').remove();
+      var html = "\n    <div class=\"accordion-item mb-2 border rounded\"\n         data-region-row\n         data-region-id=\"".concat(res.id, "\"\n         data-pivot-id=\"").concat(res.pivot_id, "\">\n\n      <h2 class=\"accordion-header\" id=\"heading-").concat(res.id, "\">\n        <button class=\"accordion-button collapsed fw-semibold\"\n                type=\"button\"\n                data-bs-toggle=\"collapse\"\n                data-bs-target=\"#collapse-").concat(res.id, "\">\n          <span class=\"badge bg-label-secondary me-2\">#").concat(res.id, "</span>\n          <span class=\"region-name\">").concat(escapeHtml(res.region_name), "</span><span class=\"region-short-name ms-2 text-muted\">(").concat(escapeHtml(res.abbreviation), ")</span>\n          <span class=\"ms-2 text-muted small\">(0 Teams)</span>\n        </button>\n      </h2>\n\n      <div id=\"collapse-").concat(res.id, "\" class=\"accordion-collapse collapse\"\n           data-bs-parent=\"#regionsAccordion\">\n        <div class=\"accordion-body pt-2\">\n\n          <div class=\"d-flex flex-wrap justify-content-end mb-2 gap-2\">\n            <button type=\"button\"\n                    class=\"btn btn-sm btn-outline-secondary renameRegionEvent\"\n                    data-id=\"").concat(res.pivot_id, "\"\n                    data-name=\"").concat(escapeHtml(res.region_name), "\"\n                    data-short-name=\"").concat(escapeHtml(res.short_name || ''), "\" data-event-count=\"").concat(res.event_count || 1, "\">\n              <i class=\"ti ti-edit me-1\"></i> Edit Region\n            </button>\n\n            <a href=\"javascript:void(0)\"\n               class=\"text-danger removeRegionEvent\"\n               data-id=\"").concat(res.pivot_id, "\">\n              <i class=\"ti ti-trash me-1\"></i> Remove Region\n            </a>\n\n            <button type=\"button\"\n                    class=\"btn btn-sm btn-success publishRegionTeams\"\n                    data-url=\"").concat(APP_URL, "/backend/event/").concat(eventId, "/region/").concat(res.id, "/teams/publish\"\n                    data-team-count=\"0\"\n                    data-unpublished-count=\"0\"\n                    disabled>\n              <i class=\"ti ti-eye me-1\"></i> Publish All Teams\n            </button>\n\n            <a href=\"javascript:void(0)\"\n               class=\"btn btn-sm btn-outline-primary import-region-teams-btn\"\n               data-region-name=\"").concat(escapeHtml(res.region_name), "\"\n               data-team-prefix=\"").concat(escapeHtml(res.short_name || res.region_name), "\"\n               data-import-url=\"").concat(APP_URL, "/backend/event/").concat(eventId, "/region/").concat(res.id, "/external-teams/import\"\n               data-bs-toggle=\"modal\"\n               data-bs-target=\"#import-region-teams-modal\">\n              <i class=\"ti ti-file-spreadsheet me-1\"></i> Import Teams\n            </a>\n\n            <a href=\"javascript:void(0)\"\n               class=\"btn btn-sm btn-primary addTeam\"\n               data-regionid=\"").concat(res.id, "\"\n               data-bs-toggle=\"modal\"\n               data-bs-target=\"#addTeamModal\">\n              <i class=\"ti ti-plus me-1\"></i> Add Team\n            </a>\n          </div>\n\n          <div class=\"teams-container\">\n            <div class=\"alert alert-light border text-center py-2 no-teams-alert\">\n              No teams in this region yet.\n            </div>\n          </div>\n\n        </div>\n      </div>\n    </div>\n  ");
+
+      // Remove the "no regions" alert if present, then prepend new region
+      $('#regionsAccordion .noRegions').remove();
+      if (!$('#regionsAccordion [data-region-row]').filter(function () {
+        return String($(this).attr('data-region-id')) === String(res.id);
+      }).length) $('#regionsAccordion').prepend(html);
+      (_bootstrap$Modal$getI = bootstrap.Modal.getInstance(document.getElementById('modalToggle'))) === null || _bootstrap$Modal$getI === void 0 || _bootstrap$Modal$getI.hide();
+      $('#regionShortName').val('');
+      toastr.success('Region added');
+    }).fail(function (xhr) {
+      var _xhr$responseJSON;
+      console.error('❌ AJAX Error:');
+      console.error('Status:', xhr.status);
+      console.error('Response:', xhr.responseText);
+      console.error('JSON:', xhr.responseJSON);
+      logXhrFail('Add region failed', xhr);
+      toastr.error(((_xhr$responseJSON = xhr.responseJSON) === null || _xhr$responseJSON === void 0 ? void 0 : _xhr$responseJSON.message) || 'Failed to add region');
+    }).always(function () {
+      $button.prop('disabled', false);
+    });
+  });
+
+  // ===============================
+  // Edit Region
+  // ===============================
+  $(document).on('click', '.renameRegionEvent', function (e) {
+    e.preventDefault();
+    var $button = $(this);
+    var pivotId = $button.data('id');
+    var currentName = String($button.attr('data-name') || '');
+    var eventCount = Number($button.data('event-count') || 1);
+    var sharedWarning = eventCount > 1 ? "<div class=\"alert alert-warning py-2 mt-3 mb-0\">This shared region is used by ".concat(eventCount, " events. Renaming it changes the name in all of them.</div>") : '<div class="text-muted small mt-2">Teams, clothing and event links will stay unchanged.</div>';
+    Swal.fire({
+      title: 'Edit region',
+      showDenyButton: false,
+      didOpen: function didOpen() {
+        var _Swal$getDenyButton;
+        (_Swal$getDenyButton = Swal.getDenyButton()) === null || _Swal$getDenyButton === void 0 || _Swal$getDenyButton.remove();
+      },
+      html: "<label for=\"editRegionName\" class=\"form-label\">Region name</label><input id=\"editRegionName\" class=\"form-control\" maxlength=\"255\" value=\"".concat(escapeHtml(currentName), "\"><label for=\"editRegionShortName\" class=\"form-label mt-3\">Short name (optional)</label><input id=\"editRegionShortName\" class=\"form-control\" maxlength=\"20\" value=\"").concat(escapeHtml($button.attr('data-short-name') || ''), "\"><div class=\"text-muted small mt-2\">Leave blank to use an automatic abbreviation.</div>").concat(sharedWarning),
+      showCancelButton: true,
+      confirmButtonText: 'Save region',
+      showLoaderOnConfirm: true,
+      preConfirm: function preConfirm() {
+        var regionName = $('#editRegionName').val().trim();
+        if (!regionName) {
+          Swal.showValidationMessage('Enter a region name.');
+          return false;
+        }
+        return $.ajax({
+          url: "".concat(APP_URL, "/backend/eventRegion/").concat(pivotId),
+          method: 'PATCH',
+          data: {
+            _token: CSRF,
+            region_name: regionName,
+            short_name: $('#editRegionShortName').val().trim()
+          }
+        })["catch"](function (xhr) {
+          var _xhr$responseJSON2;
+          Swal.showValidationMessage(((_xhr$responseJSON2 = xhr.responseJSON) === null || _xhr$responseJSON2 === void 0 ? void 0 : _xhr$responseJSON2.message) || 'Failed to save region.');
+        });
+      },
+      allowOutsideClick: function allowOutsideClick() {
+        return !Swal.isLoading();
+      }
+    }).then(function (result) {
+      if (!result.isConfirmed || !result.value) return;
+      var response = result.value;
+      var name = response.region_name;
+      var $row = $button.closest('[data-region-row]');
+      $row.find('.region-name').first().text(name);
+      $row.find('.renameRegionEvent').attr('data-name', name).attr('data-short-name', response.short_name || '');
+      $row.find('.region-short-name').text('(' + response.abbreviation + ')');
+      $row.find('.import-region-teams-btn').attr('data-region-name', name).attr('data-team-prefix', response.short_name || name).data('region-name', name).data('team-prefix', response.short_name || name);
+      toastr.success(response.message || 'Region renamed.');
+    });
+  });
+
+  // ===============================
+  // Remove Region
+  // ===============================
+  $(document).on('click', '.removeRegionEvent', function (e) {
+    e.preventDefault();
+    var $btn = $(this);
+    var pivotId = $btn.data('id');
+    var $row = $btn.closest('[data-region-row]');
+    console.log('🗑 removeRegionEvent', {
+      pivotId: pivotId
+    });
+    Swal.fire({
+      title: 'Remove region?',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Remove'
+    }).then(function (r) {
+      if (!r.isConfirmed) return;
+      $.ajax({
+        url: "".concat(APP_URL, "/backend/eventRegion/").concat(pivotId),
+        method: 'DELETE',
+        data: {
+          _token: CSRF
+        }
+      }).done(function () {
+        toastr.success('Region removed');
+        $row.fadeOut(200, function () {
+          return $row.remove();
+        });
+      }).fail(function (xhr) {
+        var _xhr$responseJSON3;
+        logXhrFail('Remove region failed', xhr);
+        toastr.error(((_xhr$responseJSON3 = xhr.responseJSON) === null || _xhr$responseJSON3 === void 0 ? void 0 : _xhr$responseJSON3.message) || 'Failed to remove region');
+      });
+    });
+  });
+
+  // ===============================
+  // Publish / Unpublish Team
+  // ===============================
+  function renderTeamPublicationButton($btn, published) {
+    var state = published ? '1' : '0';
+    $btn.data('state', state).attr('data-state', state).toggleClass('btn-warning', published).toggleClass('btn-success', !published).html(published ? '<i class="ti ti-eye-off me-1"></i> Unpublish Team' : '<i class="ti ti-eye me-1"></i> Publish Team');
+  }
+  function syncRegionPublicationButton($regionRow) {
+    var $bulkBtn = $regionRow.find('.publishRegionTeams').first();
+    if (!$bulkBtn.length) return;
+    var $teamButtons = $regionRow.find('.publishTeam');
+    var unpublishedCount = $teamButtons.filter(function () {
+      return String($(this).data('state')) !== '1';
+    }).length;
+    $bulkBtn.data('team-count', $teamButtons.length).attr('data-team-count', $teamButtons.length).data('unpublished-count', unpublishedCount).attr('data-unpublished-count', unpublishedCount).prop('disabled', $teamButtons.length === 0 || unpublishedCount === 0).html(unpublishedCount === 0 && $teamButtons.length > 0 ? '<i class="ti ti-check me-1"></i> All Teams Published' : '<i class="ti ti-eye me-1"></i> Publish All Teams');
+  }
+  $(document).on('click', '.publishTeam', function (e) {
+    e.preventDefault();
+    var $btn = $(this);
+    var teamId = $btn.data('id');
+    var state = String($btn.data('state'));
+    console.log('📣 publishTeam', {
+      teamId: teamId,
+      state: state
+    });
+    var action = state === '1' ? 'Unpublish' : 'Publish';
+    var targetState = state !== '1';
+    Swal.fire({
+      title: "".concat(action, " team?"),
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: action
+    }).then(function (r) {
+      if (!r.isConfirmed) return;
+      $btn.prop('disabled', true);
+      $.post($btn.data('url') || "".concat(APP_URL, "/backend/team/publishTeam/").concat(teamId), {
+        _token: CSRF,
+        published: targetState ? 1 : 0
+      }).done(function (res) {
+        renderTeamPublicationButton($btn, !!res.published);
+        syncRegionPublicationButton($btn.closest('[data-region-row]'));
+        toastr.success(res.message || "Team ".concat(action.toLowerCase(), "ed."));
+      }).fail(function (xhr) {
+        var _xhr$responseJSON4;
+        logXhrFail('Publish update failed', xhr);
+        toastr.error(((_xhr$responseJSON4 = xhr.responseJSON) === null || _xhr$responseJSON4 === void 0 ? void 0 : _xhr$responseJSON4.message) || 'Could not update the team publication status.');
+      }).always(function () {
+        return $btn.prop('disabled', false);
+      });
+    });
+  });
+
+  // ===============================
+  // Publish every team in one event region
+  // ===============================
+  $(document).on('click', '.publishRegionTeams', function (e) {
+    e.preventDefault();
+    var $btn = $(this);
+    var $regionRow = $btn.closest('[data-region-row]');
+    var unpublishedCount = Number($btn.data('unpublished-count')) || 0;
+    if ($btn.prop('disabled') || unpublishedCount === 0) return;
+    Swal.fire({
+      title: 'Publish all teams in this region?',
+      text: "".concat(unpublishedCount, " unpublished ").concat(unpublishedCount === 1 ? 'team' : 'teams', " will become visible."),
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Publish all'
+    }).then(function (r) {
+      if (!r.isConfirmed) return;
+      $btn.prop('disabled', true);
+      $.post($btn.data('url'), {
+        _token: CSRF
+      }).done(function (res) {
+        $regionRow.find('.publishTeam').each(function () {
+          renderTeamPublicationButton($(this), true);
+        });
+        syncRegionPublicationButton($regionRow);
+        toastr.success(res.message || 'All teams in this region are published.');
+      }).fail(function (xhr) {
+        var _xhr$responseJSON5;
+        logXhrFail('Publish region teams failed', xhr);
+        toastr.error(((_xhr$responseJSON5 = xhr.responseJSON) === null || _xhr$responseJSON5 === void 0 ? void 0 : _xhr$responseJSON5.message) || 'Could not publish the teams in this region.');
+        syncRegionPublicationButton($regionRow);
+      });
+    });
+  });
+
+  // ===============================
+  // Toggle NoProfile
+  // ===============================
+  $(document).on('click', '.toggleNoProfile', function (e) {
+    e.preventDefault();
+    var $btn = $(this);
+    var url = $btn.data('url');
+    var state = String($btn.data('state'));
+    console.log('🟡 toggleNoProfile', {
+      url: url,
+      state: state
+    });
+    var action = state === '1' ? 'Disable' : 'Enable';
+    Swal.fire({
+      title: "".concat(action, " NoProfile?"),
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: action
+    }).then(function (r) {
+      if (!r.isConfirmed) return;
+      $.ajax({
+        url: url,
+        method: 'PATCH',
+        data: {
+          _token: CSRF
+        }
+      }).done(function () {
+        var newState = state === '1' ? '0' : '1';
+        $btn.data('state', newState);
+        $btn.toggleClass('btn-danger btn-success').html(newState === '1' ? '<i class="ti ti-user-off me-1"></i> Disable NoProfile' : '<i class="ti ti-user me-1"></i> Enable NoProfile');
+        toastr.success("NoProfile ".concat(action.toLowerCase(), "d"));
+      }).fail(function (xhr) {
+        return logXhrFail('NoProfile toggle failed', xhr);
+      });
+    });
+  });
+
+  // ===============================
+  // Edit Team Category – Open Modal
+  // ===============================
+  var selectedTeamId = null;
+  $(document).on('click', '.edit-team-category', function () {
+    var teamData = $(this).data('team');
+    selectedTeamId = (teamData === null || teamData === void 0 ? void 0 : teamData.id) || null;
+    console.log('✏️ Edit category clicked', {
+      teamId: selectedTeamId,
+      teamData: teamData
+    });
+
+    // Set modal title
+    $('#edit-team-category-title').text("Edit Category: ".concat((teamData === null || teamData === void 0 ? void 0 : teamData.name) || 'Team'));
+
+    // Store team id in hidden input
+    $('#edit-team-category-modal input[name="team"]').val(selectedTeamId);
+
+    // Clear previous selection
+    $('#edit-team-category-modal input[name="category"]').prop('checked', false);
+  });
+
+  // ===============================
+  // Edit Team Category – Save (AJAX)
+  // ===============================
+  $(document).on('click', '#change-team-category-button', function (e) {
+    e.preventDefault();
+    var teamId = $('#edit-team-category-modal input[name="team"]').val();
+    var categoryId = $('#edit-team-category-modal input[name="category"]:checked').val();
+    console.log('💾 Save category clicked', {
+      teamId: teamId,
+      categoryId: categoryId
+    });
+    if (!teamId || !categoryId) {
+      toastr.error('Please select a category');
+      return;
+    }
+    $.ajax({
+      url: "".concat(APP_URL, "/backend/team/category/change/").concat(teamId),
+      method: 'POST',
+      data: {
+        _token: CSRF,
+        team: teamId,
+        data: categoryId
+      }
+    }).done(function (newCategoryName) {
+      var _bootstrap$Modal$getI2;
+      console.log('✅ Category updated', newCategoryName);
+
+      // Update the category label in the team row
+      $(".category-".concat(teamId)).html("\n          Category: <span class=\"fw-semibold text-primary\">".concat(newCategoryName, "</span>\n        "));
+
+      // Close modal
+      (_bootstrap$Modal$getI2 = bootstrap.Modal.getInstance(document.getElementById('edit-team-category-modal'))) === null || _bootstrap$Modal$getI2 === void 0 || _bootstrap$Modal$getI2.hide();
+      toastr.success('Category updated');
+    }).fail(function (xhr) {
+      logXhrFail('Change category failed', xhr);
+      toastr.error('Failed to update category');
+    });
+  });
+
+  // =====================================================
+  // DELETE TEAM (AJAX)
+  // =====================================================
+  $(document).on('click', '.removeTeam', function (e) {
+    e.preventDefault();
+    var $row = $(this).closest('[data-team-row]');
+    var teamId = $(this).data('id');
+    console.log('🗑 Delete team clicked', teamId);
+    if (!teamId) {
+      toastr.error('Missing team id');
+      return;
+    }
+    Swal.fire({
+      title: 'Delete team?',
+      text: 'This will permanently delete the team.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Delete'
+    }).then(function (r) {
+      if (!r.isConfirmed) return;
+      var url = "".concat(APP_URL, "/backend/team/").concat(teamId);
+      console.log('➡️ DELETE', url);
+      $.ajax({
+        url: url,
+        method: 'DELETE',
+        data: {
+          _token: CSRF
+        }
+      }).done(function () {
+        toastr.success('Team deleted');
+        $row.fadeOut(200, function () {
+          return $row.remove();
+        });
+      }).fail(function (xhr) {
+        var _xhr$responseJSON6;
+        logXhrFail('Delete team failed', xhr);
+        toastr.error(((_xhr$responseJSON6 = xhr.responseJSON) === null || _xhr$responseJSON6 === void 0 ? void 0 : _xhr$responseJSON6.message) || 'Failed to delete team');
+      });
+    });
+  });
+
+  // ===============================
+  // Add Team Button – Capture Region ID
+  // ===============================
+  $(document).on('click', '.addTeam', function () {
+    // ❌ NO e.preventDefault() here!
+    // Just capture and store the region ID
+
+    var regionId = $(this).data('regionid');
+    console.log('🎯 [.addTeam] Click detected');
+    console.log('   Region ID:', regionId);
+    if (!regionId) {
+      console.error('❌ [.addTeam] No region ID found!');
+      toastr.error('Region ID is missing');
+      return false; // Prevent modal from opening if no region ID
+    }
+
+    // Set region_id in the modal form
+    $('#region_id').val(regionId);
+    console.log('✅ [.addTeam] Set region_id to:', $('#region_id').val());
+
+    // Return true to allow Bootstrap to open the modal
+    return true;
+  });
+
+  // ===============================
+  // Create Team (Save to Region)
+  // ===============================
+  $(document).on('click', '#updateTeamButton', function (e) {
+    e.preventDefault(); // Prevent the data-bs-dismiss from closing immediately
+    console.log('🎯 [#updateTeamButton] Click detected');
+    var teamName = $('input[name="team_name"]').val();
+    var numPlayers = $('input[name="num_players"]').val();
+    var year = $('input[name="year"]').val();
+    var regionId = $('#region_id').val();
+    var published = $('input[name="published"]').val();
+    console.log('📋 [#updateTeamButton] Form data:');
+    console.log('   Team Name:', teamName);
+    console.log('   Region ID:', regionId);
+    if (!teamName || !regionId) {
+      console.error('❌ Missing required fields');
+      toastr.error('Please enter team name');
+      return;
+    }
+    console.log('✅ Sending POST request to create team...');
+
+    // POST to create team in region
+    $.post("".concat(APP_URL, "/backend/team"), {
+      _token: CSRF,
+      name: teamName,
+      num_players: numPlayers,
+      year: year,
+      region_id: regionId,
+      published: published
+    }).done(function (res) {
+      var _bootstrap$Modal$getI3;
+      console.log('✅ Team created successfully');
+      console.log('   Team ID:', res.id);
+
+      // Clear form
+      $('#teamForm')[0].reset();
+
+      // Find region row's teams container
+      var $regionRow = $("[data-region-id=\"".concat(regionId, "\"]"));
+      var $teamsContainer = $regionRow.find('.teams-container');
+
+      // Remove "no teams" alert
+      $teamsContainer.find('.no-teams-alert').remove();
+      var teamRowHtml = "\n            <div class=\"list-group-item d-flex justify-content-between align-items-start py-3 px-3 border-0 border-bottom\" data-team-row data-team-id=\"".concat(res.id, "\">\n              <div>\n                <div class=\"fw-medium\">").concat(res.name, "</div>\n                <small class=\"text-muted d-block mb-1 category-").concat(res.id, "\">\n                  Category: <span class=\"fw-semibold text-primary\">None</span>\n                </small>\n                <button class=\"btn btn-xs bg-label-info edit-team-category\" data-team='").concat(JSON.stringify({
+        id: res.id,
+        name: res.name
+      }), "' data-bs-toggle=\"modal\" data-bs-target=\"#edit-team-category-modal\">\n                  <i class=\"ti ti-edit me-25\"></i> Edit Category\n                </button>\n              </div>\n              <div class=\"text-end\" style=\"min-width:180px\">\n                <button type=\"button\" class=\"publishTeam btn btn-xs w-100 mb-2 btn-success\" data-id=\"").concat(res.id, "\" data-url=\"").concat(APP_URL, "/backend/team/publishTeam/").concat(res.id, "\" data-state=\"0\">\n                  <i class=\"ti ti-eye me-1\"></i> Publish Team\n                </button>\n                <a href=\"javascript:void(0)\" class=\"toggleNoProfile btn btn-xs w-100 mb-2 btn-info\" data-url=\"").concat(APP_URL, "/backend/teams/toggle-noprofile/").concat(res.id, "\" data-state=\"0\">\n                  <i class=\"ti ti-user me-1\"></i> Enable NoProfile\n                </a>\n                <a href=\"javascript:void(0)\" class=\"text-danger small removeTeam\" data-id=\"").concat(res.id, "\">\n                  <i class=\"ti ti-trash me-25\"></i> Delete\n                </a>\n              </div>\n            </div>\n          ");
+      var $teamList = $teamsContainer.find('.list-group');
+      if ($teamList.length === 0) {
+        $teamsContainer.append('<div class="list-group"></div>');
+        $teamList = $teamsContainer.find('.list-group');
+      }
+      $teamList.append(teamRowHtml);
+      syncRegionPublicationButton($regionRow);
+
+      // Update team count
+      var headerText = $regionRow.find('.ms-2.text-muted.small').text();
+      var match = headerText.match(/\d+/);
+      var currentCount = match ? parseInt(match[0]) : 0;
+      $regionRow.find('.ms-2.text-muted.small').text("(".concat(currentCount + 1, " Teams)"));
+      toastr.success('Team added to region');
+
+      // Now close the modal
+      (_bootstrap$Modal$getI3 = bootstrap.Modal.getInstance(document.getElementById('addTeamModal'))) === null || _bootstrap$Modal$getI3 === void 0 || _bootstrap$Modal$getI3.hide();
+    }).fail(function (xhr) {
+      console.error('❌ Team creation failed');
+      console.error('   Status:', xhr.status);
+      console.error('   Response:', xhr);
+      toastr.error('Failed to create team');
+    });
+  });
+
+  // When clicking import on a team row, populate modal
+  $(document).on('click', '.import-noprofile-btn', function () {
+    var regionId = $(this).data('region-id');
+    var teamId = $(this).data('team-id');
+    var teamName = $(this).data('team-name');
+    window.importNoProfileUrl = $(this).data('import-url');
+    // Populate modal fields
+    $('#import-team-id').val(teamId);
+    $('#import-region-id').val(regionId);
+    $('#import-team-name').text(teamName);
+    $('#import-template-link').attr('href', $(this).data('template-url'));
+    $('#import-confirmed').val('0');
+    $('#import-submit-btn').text('Preview roster');
+    $('#import-preview').addClass('d-none');
+    $('#import-preview-body').empty();
+    $('#import-errors').addClass('d-none').empty();
+    $('#import-file').val(''); // Clear file input
+    // Reset status
+    $('#import-message').text('Ready to import. Choose a file.');
+    $('#import-status').hide();
+    stopImportTimer();
+  });
+  $('#import-file').on('change', function () {
+    $('#import-confirmed').val('0');
+    $('#import-submit-btn').text('Preview roster');
+    $('#import-preview').addClass('d-none');
+    $('#import-preview-body').empty();
+    $('#import-errors').addClass('d-none').empty();
+  });
+
+  // Handle import form submission - show spinner while importing
+  $('#import-submit-btn').on('click', function () {
+    var form = document.getElementById('import-noprofile-form');
+    var formData = new FormData(form);
+    var $file = $('#import-file');
+    var $btn = $('#import-submit-btn');
+    var $cancel = $('#import-cancel-btn');
+    if (!$file.val()) {
+      toastr.error('Please select a file to import.');
+      return;
+    }
+
+    // UI: show spinner/status, disable controls, start small timer
+    $('#import-status').show();
+    $('#import-spinner').show();
+    $btn.prop('disabled', true);
+    $file.prop('disabled', true);
+    $cancel.prop('disabled', true);
+    $('#import-message').text('Uploading and processing — please wait...');
+    startImportTimer();
+    $.ajax({
+      url: window.importNoProfileUrl,
+      method: 'POST',
+      data: formData,
+      processData: false,
+      contentType: false,
+      headers: {
+        'X-CSRF-TOKEN': CSRF
+      },
+      success: function success(response) {
+        stopImportTimer();
+        $('#import-spinner').hide();
+        $('#import-message').text(response.message || 'Import complete');
+        $btn.prop('disabled', false);
+        $file.prop('disabled', false);
+        $cancel.prop('disabled', false);
+        if (response.requires_confirmation) {
+          var rows = response.preview || [];
+          $('#import-preview-body').html(rows.map(function (row) {
+            return "\n            <tr>\n              <td>".concat(row.rank, "</td>\n              <td>").concat($('<div>').text("".concat(row.name, " ").concat(row.surname)).html(), "</td>\n              <td>").concat(row.date_of_birth || '—', "</td>\n              <td><span class=\"badge ").concat(row.candidate_count ? 'bg-label-warning' : 'bg-label-secondary', "\">").concat(row.candidate_count, "</span></td>\n            </tr>\n          ");
+          }).join(''));
+          $('#import-preview').removeClass('d-none');
+          $('#import-confirmed').val('1');
+          $btn.text("Confirm import of ".concat(response.row_count, " players"));
+          toastr.info('Review the roster, then confirm the import.');
+          return;
+        }
+        toastr.success(response.message || 'Import finished');
+        setTimeout(function () {
+          return location.reload();
+        }, 700);
+      },
+      error: function error(xhr) {
+        stopImportTimer();
+        $('#import-spinner').hide();
+        $btn.prop('disabled', false);
+        $file.prop('disabled', false);
+        $cancel.prop('disabled', false);
+        var payload = xhr.responseJSON || {};
+        var msg = payload.message || 'Import failed. Please check the file format.';
+        $('#import-message').text(msg);
+        var rawErrors = payload.errors || [];
+        var errors = Array.isArray(rawErrors) ? rawErrors : Object.values(rawErrors).flat();
+        if (errors.length) {
+          $('#import-errors').removeClass('d-none').html("<strong>Nothing was imported.</strong><ul class=\"mb-0 mt-1\">".concat(errors.map(function (error) {
+            return "<li>".concat($('<div>').text(error).html(), "</li>");
+          }).join(''), "</ul>"));
+        }
+        toastr.error(msg);
+        console.error('Import failed', xhr);
+      }
+    });
+  });
+  function escapeHtml(value) {
+    return $('<div>').text(value == null ? '' : String(value)).html().replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function resetBulkImportPreview() {
+    var clearSheets = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : false;
+    $('#bulk-import-confirmed').val('0');
+    $('#bulk-import-preview').addClass('d-none');
+    $('#bulk-import-preview-body').empty();
+    $('#bulk-import-errors').addClass('d-none').empty();
+    if (clearSheets) {
+      $('#bulk-import-sheet').html('<option value="">Auto-detect the best worksheet</option>');
+      $('#bulk-import-sheet-wrap').addClass('d-none');
+    }
+    updateBulkImportActionButton();
+  }
+  function setBulkImportBusy(busy) {
+    $('#bulk-import-status').toggleClass('d-none', !busy);
+    $('#bulk-import-submit, #bulk-import-cancel, #bulk-import-file, #bulk-import-prefix, #bulk-import-expected, #bulk-import-sheet, #bulk-import-fill-missing').prop('disabled', busy);
+    if (!busy) {
+      updateBulkImportActionButton();
+    }
+  }
+  function renderWorkbookSheets(sheets, selectedSheet) {
+    var $select = $('#bulk-import-sheet');
+    var currentValue = selectedSheet || $select.val() || '';
+    $select.html('<option value="">Auto-detect the best worksheet</option>');
+    (sheets || []).forEach(function (sheet) {
+      var label = "".concat(sheet.name, " \u2014 ").concat(sheet.complete_team_count, "/").concat(sheet.team_count, " complete teams");
+      $('<option>').val(sheet.name).text(label).appendTo($select);
+    });
+    if ((sheets || []).length > 1) {
+      $('#bulk-import-sheet-wrap').removeClass('d-none');
+    }
+    if (selectedSheet) {
+      $select.val(currentValue);
+    }
+  }
+  function updateBulkImportActionButton() {
+    if ($('#bulk-import-confirmed').val() !== '1') {
+      var _document$getElementB;
+      var hasWorkbook = Boolean((_document$getElementB = document.getElementById('bulk-import-file')) === null || _document$getElementB === void 0 || (_document$getElementB = _document$getElementB.files) === null || _document$getElementB === void 0 ? void 0 : _document$getElementB.length);
+      $('#bulk-import-submit').text('Preview teams').prop('disabled', !hasWorkbook);
+      return;
+    }
+    var selected = $('.bulk-team-select:checked').length;
+    $('#bulk-import-submit').text(selected ? "Confirm import of ".concat(selected, " team").concat(selected === 1 ? '' : 's') : 'Select a complete team').prop('disabled', selected === 0);
+  }
+  function showBulkImportErrors(message) {
+    var rawErrors = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : [];
+    var errors = _toConsumableArray(new Set((Array.isArray(rawErrors) ? rawErrors : Object.values(rawErrors).flat()).filter(function (error) {
+      return error && error !== message;
+    })));
+    $('#bulk-import-errors').removeClass('d-none').html("<strong>".concat(escapeHtml(message), "</strong>") + (errors.length ? "<ul class=\"mb-0 mt-1\">".concat(errors.map(function (error) {
+      return "<li>".concat(escapeHtml(error), "</li>");
+    }).join(''), "</ul>") : ''));
+  }
+  function renderBulkImportTeams(response) {
+    var rows = (response.teams || []).map(function (team) {
+      var validation = team.placeholder_count ? "<span class=\"badge bg-label-warning\">Ready with ".concat(team.placeholder_count, " placeholder").concat(team.placeholder_count === 1 ? '' : 's', "</span>") : team.errors.length ? "<ul class=\"small text-danger mb-0 ps-3\">".concat(team.errors.map(function (error) {
+        return "<li>".concat(escapeHtml(error), "</li>");
+      }).join(''), "</ul>") : '<span class="badge bg-label-success">Complete</span>';
+      var players = team.players.map(function (player) {
+        return "<li class=\"".concat(player.is_placeholder ? 'text-warning' : '', "\"><span class=\"text-muted\">").concat(player.rank, ".</span> ").concat(escapeHtml(player.name), " ").concat(escapeHtml(player.surname)).concat(player.is_placeholder ? ' <span class="badge bg-label-warning ms-1">Placeholder</span>' : '', "</li>");
+      }).join('');
+      return "\n        <tr>\n          <td class=\"text-center\">\n            <input class=\"form-check-input bulk-team-select\" type=\"checkbox\"\n                   name=\"selected_team_keys[]\" value=\"".concat(escapeHtml(team.key), "\"\n                   ").concat(team.selectable ? 'checked' : 'disabled', ">\n          </td>\n          <td>\n            <div class=\"fw-medium\">").concat(escapeHtml(team.category), "</div>\n            <div class=\"small text-muted\">Source: ").concat(escapeHtml(team.source_heading), "</div>\n          </td>\n          <td>").concat(escapeHtml(team.team_name), "</td>\n          <td class=\"text-center\">\n            <details>\n              <summary>").concat(team.player_count, "</summary>\n              <ol class=\"small text-start mb-0 mt-1 ps-3\">").concat(players, "</ol>\n            </details>\n          </td>\n          <td>").concat(escapeHtml(team.action), "</td>\n          <td>").concat(validation, "</td>\n        </tr>");
+    }).join('');
+    $('#bulk-import-preview-body').html(rows);
+    $('#bulk-import-summary').text("".concat(response.selected_sheet, ": ").concat(response.complete_team_count, " teams ready, ").concat(response.complete_player_count, " roster slots") + (response.placeholder_player_count ? ", including ".concat(response.placeholder_player_count, " placeholder").concat(response.placeholder_player_count === 1 ? '' : 's', ".") : '.'));
+    $('#bulk-import-preview').removeClass('d-none');
+    $('#bulk-import-confirmed').val('1');
+    updateBulkImportActionButton();
+  }
+  $(document).on('click', '.import-region-teams-btn', function () {
+    bulkTeamImportUrl = $(this).data('import-url');
+    $('#bulk-import-region-name').text($(this).data('region-name'));
+    $('#bulk-import-prefix').val($(this).data('team-prefix'));
+    $('#bulk-import-expected').val('8');
+    $('#bulk-import-file').val('');
+    resetBulkImportPreview(true);
+  });
+  $('#import-region-teams-modal').on('hidden.bs.modal', function () {
+    var _$$;
+    bulkTeamImportUrl = null;
+    (_$$ = $('#bulk-team-import-form')[0]) === null || _$$ === void 0 || _$$.reset();
+    setBulkImportBusy(false);
+    resetBulkImportPreview(true);
+  });
+  $('#bulk-import-file, #bulk-import-prefix, #bulk-import-expected, #bulk-import-fill-missing').on('change input', function () {
+    resetBulkImportPreview($(this).is('#bulk-import-file'));
+  });
+  $('#bulk-import-sheet').on('change', function () {
+    resetBulkImportPreview(false);
+  });
+  $(document).on('change', '.bulk-team-select', updateBulkImportActionButton);
+  $('#bulk-import-select-complete').on('click', function () {
+    $('.bulk-team-select:not(:disabled)').prop('checked', true);
+    updateBulkImportActionButton();
+  });
+  $('#bulk-import-submit').on('click', function () {
+    var form = document.getElementById('bulk-team-import-form');
+    if (!bulkTeamImportUrl) {
+      toastr.error('Choose a region before importing teams.');
+      return;
+    }
+    if (!form.checkValidity()) {
+      form.reportValidity();
+      return;
+    }
+    if ($('#bulk-import-confirmed').val() === '1' && $('.bulk-team-select:checked').length === 0) {
+      toastr.error('Select at least one team ready to import.');
+      return;
+    }
+
+    // Disabled form controls are omitted from FormData. Capture the upload before
+    // locking the controls so the selected workbook and import settings are sent.
+    var formData = new FormData(form);
+    setBulkImportBusy(true);
+    $('#bulk-import-errors').addClass('d-none').empty();
+    $.ajax({
+      url: bulkTeamImportUrl,
+      method: 'POST',
+      data: formData,
+      processData: false,
+      contentType: false,
+      headers: {
+        'X-CSRF-TOKEN': CSRF,
+        'Accept': 'application/json'
+      },
+      success: function success(response) {
+        renderWorkbookSheets(response.sheets, response.selected_sheet);
+        if (response.requires_confirmation) {
+          renderBulkImportTeams(response);
+          toastr.info(response.message);
+          return;
+        }
+        toastr.success(response.message || 'Teams imported.');
+        setTimeout(function () {
+          return location.reload();
+        }, 700);
+      },
+      error: function error(xhr) {
+        var payload = xhr.responseJSON || {};
+        renderWorkbookSheets(payload.sheets, null);
+        var message = payload.message || 'Import failed. Nothing was imported.';
+        showBulkImportErrors(message, payload.errors || []);
+        toastr.error(message);
+      },
+      complete: function complete() {
+        setBulkImportBusy(false);
+        updateBulkImportActionButton();
+      }
+    });
+  });
+
+  // ===============================
+  // Extra confirm dialog for leave
+  // ===============================
+  window.addEventListener('beforeunload', function (e) {
+    var confirmationMessage = 'You have unsaved changes. Are you sure you want to leave?';
+    e.returnValue = confirmationMessage; // Gecko + WebKit browsers
+    return confirmationMessage; // Gecko + WebKit browsers
+  });
+})(jQuery, window, document);
+/******/ })()
+;

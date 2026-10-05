@@ -23,9 +23,55 @@ use App\Models\TeamSelectionInvitation;
 
 class EmailController extends Controller
 {
+  private array $dispatchStats = ['total' => 0, 'queued' => 0, 'skipped' => 0, 'invalid' => 0, 'duplicate' => 0, 'failed' => 0];
+  private ?string $campaignKey = null;
+  private ?string $reportUrl = null;
+  private array $reportUrls = [];
+
+  private function composeDispatch(string $mailType, $related, array $recipients, array $details): array
+  {
+    $this->campaignKey ??= (string) \Illuminate\Support\Str::uuid();
+    if ($related instanceof TeamRegion) {
+      $scopeEvent = Event::findOrFail($details['event'] ?? 0);
+      abort_unless($scopeEvent->regions()->whereKey($related->id)->exists(), 404);
+    }
+    $campaign = hash('sha256', ($details['campaign_key'] ?? $this->campaignKey).'|'.auth()->id());
+    if (! empty($details['event'])) $this->reportUrl = route('backend.event-mail-log.index', ['event' => $details['event'], 'campaign' => $campaign]);
+    $stats = app(BulkMailDispatcher::class)->dispatch($mailType, $related, $recipients, [
+      'campaign_key' => $campaign,
+      'event_id' => ! empty($details['event']) ? (int) $details['event'] : null, 'created_by' => auth()->id(),
+      'team_id' => $related instanceof Team ? $related->id : null, 'region_id' => $related instanceof TeamRegion ? $related->id : ($related instanceof Team ? $related->region_id : null),
+      'subject' => $details['subject'], 'message' => $details['message'],
+      'from_name' => $details['fromName'], 'reply_to' => $details['replyTo'],
+      'recipient_kind' => $details['recipient_kind'] ?? 'players', 'manual_retry_only' => true,
+    ]);
+    if (($details['recipient_kind'] ?? 'players') === 'players') {
+      foreach ($this->dispatchStats as $key => $value) $this->dispatchStats[$key] += $stats[$key];
+      if (! empty($details['event'])) {
+        $eventId = (int) $details['event'];
+        $report = $this->reportUrls[$eventId] ?? ['event_id' => $eventId, 'url' => $this->reportUrl, 'queued' => 0, 'skipped' => 0, 'failed' => 0];
+        foreach (['queued', 'skipped', 'failed'] as $key) $report[$key] += $stats[$key];
+        $this->reportUrls[$eventId] = $report;
+      }
+    }
+    return $stats;
+  }
+
+  private function dispatchResult(): array
+  {
+    $stats = $this->dispatchStats;
+    return [...$stats, 'report_url' => count($this->reportUrls) > 1 ? null : $this->reportUrl, 'report_urls' => array_values($this->reportUrls), 'title' => $stats['queued'] === 0 ? 'error' : (($stats['skipped'] || $stats['failed']) ? 'warning' : 'success'),
+      'message' => "{$stats['queued']} recipient emails queued; {$stats['skipped']} skipped (invalid: {$stats['invalid']}, duplicate: {$stats['duplicate']}); {$stats['failed']} could not be queued. Check the event Email Log for results."];
+  }
+
 
   public function sendEmail(Request $request)
   {
+    $this->dispatchStats = array_fill_keys(array_keys($this->dispatchStats), 0);
+    $this->reportUrl = null;
+    $this->reportUrls = [];
+    $request->validate(['event_id' => 'required|integer|exists:events,id', 'campaign_key' => 'nullable|uuid', 'emailSubject' => 'required|string|max:255', 'message' => 'required|string']);
+    $this->campaignKey = $request->campaign_key ?? (string) \Illuminate\Support\Str::uuid();
     // Resolve event and authorize
     $eventId = $request->event_id;
     if ($eventId) {
@@ -52,6 +98,7 @@ class EmailController extends Controller
     ]);
 
     $details = [
+      'campaign_key' => $this->campaignKey,
       'team' => $request->team_id,
       'event' => $request->event_id,
       'region' => $request->region_id,
@@ -94,28 +141,24 @@ class EmailController extends Controller
         'player_id' => $recipient,
       ]);
 
-      $player = Player::find($recipient);
+      $player = Player::whereKey($recipient)->where(function ($query) use ($event) {
+        $query->whereHas('registrations.categoryEventRegistrations.categoryEvent', fn ($q) => $q->where('event_id', $event->id))
+          ->orWhereHas('teams.category', fn ($q) => $q->where('event_id', $event->id))
+          ->orWhereIn('id', EventNomination::where('event_id', $event->id)->whereHas('categoryEvent', fn ($q) => $q->where('event_id', $event->id))->whereNotNull('player_id')->select('player_id'))
+          ->orWhereIn('id', TeamSelectionInvitation::where('event_id', $event->id)->whereHas('selectionImport', fn ($q) => $q->where('event_id', $event->id))->whereHas('team.category', fn ($q) => $q->where('event_id', $event->id))->select('player_id'))
+          ->orWhereIn('id', \App\Models\InterprovincialTrialInvitation::where('event_id', $event->id)->whereHas('batch', fn ($q) => $q->where('event_id', $event->id))->whereHas('categoryEvent', fn ($q) => $q->where('event_id', $event->id))->select('player_id'))
+          ->orWhereIn('id', \App\Models\MastersInvitation::where('event_id', $event->id)->whereHas('batch', fn ($q) => $q->where('event_id', $event->id))->whereHas('categoryEvent', fn ($q) => $q->where('event_id', $event->id))->select('player_id'));
+      })->first();
 
       if (!$player) {
         Log::warning('[Mail] Player not found', ['player_id' => $recipient]);
         return response()->json([
           'success' => false,
           'message' => 'Invalid player selected.'
-        ], 422);
+        ], 404);
       }
 
-      if (empty($player->email)) {
-        Log::warning('[Mail] Player has no email', [
-          'player_id' => $player->id,
-          'name' => "{$player->name} {$player->surname}",
-        ]);
-        return response()->json([
-          'success' => false,
-          'message' => 'Player has no email address.'
-        ], 422);
-      }
-
-      $details['email'] = trim(strtolower($player->email));
+      $details['email'] = trim(strtolower((string) $player->email));
       $result = $this->sendToIndividual($details, $mailer);
 
       Log::info('[Mail] Player email sent', [
@@ -130,7 +173,7 @@ class EmailController extends Controller
       ]);
 
       return response()->json([
-        'success' => true,
+        'success' => ($result['title'] ?? null) !== 'error',
         'mailer' => $mailer,
         'result' => $result,
       ]);
@@ -155,7 +198,7 @@ class EmailController extends Controller
       ]);
 
       return response()->json([
-        'success' => true,
+        'success' => ($result['title'] ?? null) !== 'error',
         'mailer' => $mailer,
         'result' => $result,
       ]);
@@ -229,7 +272,7 @@ class EmailController extends Controller
     ]);
 
     return response()->json([
-      'success' => true,
+      'success' => ($result['title'] ?? null) !== 'error',
       'mailer' => $mailer,
       'result' => $result,
     ]);
@@ -252,7 +295,7 @@ class EmailController extends Controller
         $details['region'] = $region->id;
         $this->sendToRegion($details, $mailer);
       }
-      return ['message' => 'Emails sent to all regions', 'title' => 'success'];
+      return $this->dispatchResult();
     }
 
     return ['message' => 'Unsupported event type', 'title' => 'error'];
@@ -261,14 +304,10 @@ class EmailController extends Controller
   /** ✅ Individual player */
   public function sendToIndividual(array $details, string $mailer)
   {
-    if (empty($details['email'])) {
-      return ['message' => 'No valid email address provided.', 'title' => 'error'];
-    }
-
     $this->queueMail($details, $mailer);
     $this->sendToOwner($details, $mailer);
 
-    return ['message' => 'Email sent successfully to 1 player.', 'title' => 'success'];
+    return $this->dispatchResult();
   }
 
   /** ✅ All players registered in event */
@@ -311,7 +350,7 @@ class EmailController extends Controller
         $playerCount++;
 
         if (!empty($player->email)) {
-          $recipients[] = trim(strtolower($player->email));
+          $recipients[] = trim(strtolower((string) $player->email));
 
           Log::debug('[sendToEvent] 📧 Collected email', [
             'player_id' => $player->id ?? null,
@@ -319,6 +358,7 @@ class EmailController extends Controller
             'email' => $player->email
           ]);
         } else {
+          $recipients[] = ['email' => '', 'name' => $player->full_name];
           $missingEmail++;
           Log::warning('[sendToEvent] ⚠️ Player missing email', [
             'player_id' => $player->id ?? null,
@@ -330,34 +370,8 @@ class EmailController extends Controller
 
     // Use BulkMailDispatcher for throttled sending (prevents Exim 10-email limit)
     $recipientCount = count($recipients);
-    if ($recipientCount >= config('mail.bulk_mail.batch_threshold', 10)) {
-      Log::info('[EmailController] Using BulkMailDispatcher for event email', [
-        'event_id' => $event->id,
-        'recipient_count' => $recipientCount,
-      ]);
-
-      app(BulkMailDispatcher::class)->dispatch(
-        mailType: 'event_email',
-        related: $event,
-        recipients: $recipients,
-        payload: [
-          'subject' => $details['subject'],
-          'message' => $details['message'],
-          'from_name' => $details['fromName'],
-          'reply_to' => $details['replyTo'],
-        ]
-      );
-
-      $queuedCount = $recipientCount;
-    } else {
-      // For small events, use direct queueing
-      $queuedCount = 0;
-      foreach ($recipients as $email) {
-        $details['email'] = $email;
-        $this->queueMail($details, $mailer);
-        $queuedCount++;
-      }
-    }
+    $stats = $this->composeDispatch('event_email', $event, $recipients, $details);
+    $queuedCount = $stats['queued'];
 
     // Send to event owner (if applicable)
     try {
@@ -373,10 +387,7 @@ class EmailController extends Controller
       'missing_email' => $missingEmail
     ]);
 
-    return [
-      'message' => "Emails queued for {$queuedCount} players (missing email: {$missingEmail})",
-      'title' => 'success'
-    ];
+    return $this->dispatchResult();
   }
 
   /** ✅ All nominations */
@@ -388,57 +399,33 @@ class EmailController extends Controller
     // Collect all nomination emails
     $recipients = [];
     foreach ($nominations as $nom) {
-      if (!empty($nom->player->email)) {
-        $recipients[] = trim(strtolower($nom->player->email));
-      }
+      $recipients[] = ['email' => $nom->player?->email ?? $nom->nominee_email ?? '', 'name' => $nom->display_name];
     }
 
     // Use BulkMailDispatcher for throttled sending
     $recipientCount = count($recipients);
-    if ($recipientCount >= config('mail.bulk_mail.batch_threshold', 10)) {
-      Log::info('[EmailController] Using BulkMailDispatcher for nomination email', [
-        'event_id' => $eventId,
-        'recipient_count' => $recipientCount,
-      ]);
-
-      $event = Event::find($eventId);
-      app(BulkMailDispatcher::class)->dispatch(
-        mailType: 'nomination_email',
-        related: $event,
-        recipients: $recipients,
-        payload: [
-          'subject' => $details['subject'],
-          'message' => $details['message'],
-          'from_name' => $details['fromName'],
-          'reply_to' => $details['replyTo'],
-        ]
-      );
-    } else {
-      // For small nomination lists, use direct queueing
-      foreach ($recipients as $email) {
-        $details['email'] = $email;
-        $this->queueMail($details, $mailer);
-      }
-    }
+    $event = Event::find($eventId);
+    $stats = $this->composeDispatch('nomination_email', $event, $recipients, $details);
+    $queuedCount = $stats['queued'];
 
     $this->sendToOwner($details, $mailer);
     $this->sendToSender($details, $mailer);
-    return ['message' => 'Emails sent to all nominations.', 'title' => 'success'];
+    return $this->dispatchResult();
   }
 
   /** ✅ Unpaid players in team */
   public function sendToEventUnregisteredTeam(array $details, string $mailer)
   {
-    $region = TeamRegion::with('teams.players')->find($details['region']);
-    if (!$region)
-      return ['message' => 'Region not found', 'title' => 'error'];
+    $event = Event::findOrFail($details['event'] ?? 0);
+    $region = $event->regions()->whereKey($details['region'])->firstOrFail();
+    $teams = $this->teamsForEmailScope($event, $region->id);
 
     // Collect unpaid player emails
     $recipients = [];
-    foreach ($region->teams as $team) {
+    foreach ($teams as $team) {
       foreach ($team->players as $p) {
-        if ($p->pivot->pay_status == 0 && !empty($p->email)) {
-          $recipients[] = trim(strtolower($p->email));
+        if ($p->pivot->pay_status == 0) {
+          $recipients[] = trim(strtolower((string) $p->email));
         }
       }
     }
@@ -446,34 +433,12 @@ class EmailController extends Controller
     $count = count($recipients);
 
     // Use BulkMailDispatcher for throttled sending
-    if ($count >= config('mail.bulk_mail.batch_threshold', 10)) {
-      Log::info('[EmailController] Using BulkMailDispatcher for unregistered team email', [
-        'region_id' => $region->id,
-        'recipient_count' => $count,
-      ]);
-
-      app(BulkMailDispatcher::class)->dispatch(
-        mailType: 'unregistered_team_email',
-        related: $region,
-        recipients: $recipients,
-        payload: [
-          'subject' => $details['subject'],
-          'message' => $details['message'],
-          'from_name' => $details['fromName'],
-          'reply_to' => $details['replyTo'],
-        ]
-      );
-    } else {
-      // For small lists, use direct queueing
-      foreach ($recipients as $email) {
-        $details['email'] = $email;
-        $this->queueMail($details, $mailer);
-      }
-    }
+    $stats = $this->composeDispatch('unregistered_team_email', $region, $recipients, $details);
+    $queuedCount = $stats['queued'];
 
     $this->sendToOwner($details, $mailer);
     $this->sendToSender($details, $mailer);
-    return ['message' => "$count unpaid players emailed.", 'title' => 'success'];
+    return $this->dispatchResult();
   }
 
   /** ✅ All players in team */
@@ -488,40 +453,16 @@ class EmailController extends Controller
     // ✅ Collect player emails
     $recipients = [];
     foreach ($team->players as $player) {
-      if (!empty($player->email)) {
-        $recipients[] = trim(strtolower($player->email));
-      }
+      $recipients[] = ['email' => $player->email ?? '', 'name' => $player->full_name];
     }
-    $recipients = array_values(array_unique($recipients));
+    $recipients = array_values($recipients);
 
     // ✅ Use BulkMailDispatcher for throttled sending (prevents Exim 10-email limit)
-    if (count($recipients) >= config('mail.bulk_mail.batch_threshold', 10)) {
-      Log::info('[EmailController] Using BulkMailDispatcher for team email', [
-        'team_id' => $team->id,
-        'recipient_count' => count($recipients),
-      ]);
-
-      app(BulkMailDispatcher::class)->dispatch(
-        mailType: 'team_email',
-        related: $team,
-        recipients: $recipients,
-        payload: [
-          'subject' => $details['subject'],
-          'message' => $details['message'],
-          'from_name' => $details['fromName'],
-          'reply_to' => $details['replyTo'],
-        ]
-      );
-    } else {
-      // For small teams, use direct queueing
-      foreach ($recipients as $email) {
-        $details['email'] = $email;
-        $this->queueMail($details, $mailer);
-      }
-    }
+    $stats = $this->composeDispatch('team_email', $team, $recipients, $details);
+    $queuedCount = $stats['queued'];
 
     $this->sendToOwner($details, $mailer);
-    return ['message' => 'Emails sent to all players in team.', 'title' => 'success'];
+    return $this->dispatchResult();
   }
 
   /** ✅ All players in region */
@@ -568,7 +509,7 @@ class EmailController extends Controller
         $playerCount++;
 
         if (!empty($player->email)) {
-          $email = trim(strtolower($player->email));
+          $email = trim(strtolower((string) $player->email));
           $recipients[] = $email;
 
           Log::debug('[sendToRegion] 📧 Collected email', [
@@ -577,6 +518,7 @@ class EmailController extends Controller
             'email' => $email,
           ]);
         } else {
+          $recipients[] = ['email' => '', 'name' => $player->full_name];
           $missingEmail++;
           Log::warning('[sendToRegion] ⚠️ Player missing email', [
             'player_id' => $player->id,
@@ -587,36 +529,10 @@ class EmailController extends Controller
     }
 
     // ✅ Use BulkMailDispatcher for throttled sending (prevents Exim 10-email limit)
-    $recipients = array_values(array_unique($recipients));
+    $recipients = array_values($recipients);
     $recipientCount = count($recipients);
-    if ($recipientCount >= config('mail.bulk_mail.batch_threshold', 10)) {
-      Log::info('[EmailController] Using BulkMailDispatcher for region email', [
-        'region_id' => $region->id,
-        'recipient_count' => $recipientCount,
-      ]);
-
-      app(BulkMailDispatcher::class)->dispatch(
-        mailType: 'region_email',
-        related: $region,
-        recipients: $recipients,
-        payload: [
-          'subject' => $details['subject'],
-          'message' => $details['message'],
-          'from_name' => $details['fromName'],
-          'reply_to' => $details['replyTo'],
-        ]
-      );
-
-      $queuedCount = $recipientCount;
-    } else {
-      // For small regions, use direct queueing
-      $queuedCount = 0;
-      foreach ($recipients as $email) {
-        $details['email'] = $email;
-        $this->queueMail($details, $mailer);
-        $queuedCount++;
-      }
-    }
+    $stats = $this->composeDispatch('region_email', $region, $recipients, $details);
+    $queuedCount = $stats['queued'];
 
     $this->sendToOwner($details, $mailer);
     $this->sendToSender($details, $mailer);
@@ -628,10 +544,7 @@ class EmailController extends Controller
       'missing_email' => $missingEmail,
     ]);
 
-    return [
-      'message' => "Emails queued for {$queuedCount} players in region (missing email: {$missingEmail})",
-      'title' => 'success'
-    ];
+    return $this->dispatchResult();
   }
 
   /** ✅ All players in category */
@@ -664,6 +577,7 @@ class EmailController extends Controller
       ])
       ->find($categoryEventId);
 
+    if ($category && (int) $category->event_id !== (int) ($details['event'] ?? 0)) abort(404);
     if (!$category) {
       \Log::warning('[Mail] CategoryEvent not found', ['category_event_id' => $categoryEventId]);
       return [
@@ -682,9 +596,7 @@ class EmailController extends Controller
 
       foreach ($players as $p) {
         $email = trim(strtolower((string) $p->email));
-        if ($email !== '') {
-          $recipients[$email] = $email; // Using email as key for automatic deduplication
-        }
+        $recipients[] = ['email' => $email, 'name' => $p->full_name];
       }
     }
 
@@ -698,45 +610,21 @@ class EmailController extends Controller
     ]);
 
     // Use BulkMailDispatcher for throttled sending
-    if ($total >= config('mail.bulk_mail.batch_threshold', 10)) {
-      Log::info('[EmailController] Using BulkMailDispatcher for category email', [
-        'category_event_id' => $categoryEventId,
-        'recipient_count' => $total,
-      ]);
-
-      app(BulkMailDispatcher::class)->dispatch(
-        mailType: 'category_email',
-        related: $category,
-        recipients: $recipients,
-        payload: [
-          'subject' => $details['subject'],
-          'message' => $details['message'],
-          'from_name' => $details['fromName'],
-          'reply_to' => $details['replyTo'],
-        ]
-      );
-    } else {
-      // For small categories, use direct queueing
-      foreach ($recipients as $email) {
-        $details['email'] = $email;
-        $this->queueMail($details, $mailer);
-      }
-    }
+    $stats = $this->composeDispatch('category_email', $category, $recipients, $details);
+    $queuedCount = $stats['queued'];
 
     $this->sendToOwner($details, $mailer);
 
-    return [
-      'title' => 'success',
-      'message' => "Emails queued to {$total} unique recipients.",
-      'total' => $total,
-      'recipients' => array_map(fn($email) => ['email' => $email], $recipients),
-    ];
+    return $this->dispatchResult();
   }
 
 
   /** ✅ All players across all events in a series */
   public function sendToSeriesPlayers(Request $request, Series $series)
   {
+    $this->dispatchStats = array_fill_keys(array_keys($this->dispatchStats), 0);
+    $this->reportUrl = null;
+    $this->reportUrls = [];
     // Authorize: user must be admin for at least one event in the series
     $eventIds = $series->events()->pluck('id')->toArray();
     if (empty($eventIds)) {
@@ -758,6 +646,7 @@ class EmailController extends Controller
     $mailer = app(MailAccountManager::class)->getMailer();
 
     $request->validate([
+      'campaign_key' => 'nullable|uuid',
       'emailSubject' => 'required|string|max:255',
       'message' => 'required|string',
     ]);
@@ -770,6 +659,7 @@ class EmailController extends Controller
     ]);
 
     $details = [
+      'campaign_key' => $request->campaign_key ?? (string) \Illuminate\Support\Str::uuid(),
       'fromName' => trim($request->fromName ?? 'Cape Tennis Admin'),
       'fromEmail' => match ($mailer) {
         'noreply1' => 'noreply1@capetennis.co.za',
@@ -785,47 +675,24 @@ class EmailController extends Controller
 
     // Collect unique emails across all events in the series
     $events = $series->events()->with('registrations.players')->get();
+    foreach ($events as $seriesEvent) $this->authorize('event-email.send', $seriesEvent);
     $recipients = [];
 
     foreach ($events as $event) {
+      $eventRecipients = [];
       foreach ($event->registrations as $registration) {
         foreach ($registration->players ?? collect() as $player) {
           $email = trim(strtolower((string) $player->email));
-          if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $recipients[$email] = $email; // Using email as key for automatic deduplication
-          }
+          $eventRecipients[] = ['email' => $email, 'name' => $player->full_name];
         }
       }
+      $this->composeDispatch('series_email', $series, $eventRecipients, [...$details, 'event' => $event->id]);
     }
 
-    $recipients = array_values($recipients); // Convert to indexed array
-    $queuedCount = count($recipients);
+    $queuedCount = $this->dispatchStats['queued'];
 
     // Use BulkMailDispatcher for throttled sending
-    if ($queuedCount >= config('mail.bulk_mail.batch_threshold', 10)) {
-      Log::info('[EmailController] Using BulkMailDispatcher for series email', [
-        'series_id' => $series->id,
-        'recipient_count' => $queuedCount,
-      ]);
 
-      app(BulkMailDispatcher::class)->dispatch(
-        mailType: 'series_email',
-        related: $series,
-        recipients: $recipients,
-        payload: [
-          'subject' => $details['subject'],
-          'message' => $details['message'],
-          'from_name' => $details['fromName'],
-          'reply_to' => $details['replyTo'],
-        ]
-      );
-    } else {
-      // For small series, use direct queueing
-      foreach ($recipients as $email) {
-        $details['email'] = $email;
-        $this->queueMail($details, $mailer);
-      }
-    }
 
     $this->sendToOwner($details, $mailer);
     $this->sendToSender($details, $mailer);
@@ -836,52 +703,17 @@ class EmailController extends Controller
     ]);
 
     return response()->json([
-      'success' => true,
-      'title' => 'success',
-      'message' => "Emails queued for {$queuedCount} unique players across {$events->count()} events in series.",
+      'success' => $this->dispatchStats['queued'] > 0,
+      ...$this->dispatchResult(),
     ]);
   }
 
   /** ✅ Helper: queue the job safely */
   protected function queueMail(array $details, string $mailer = 'smtp')
   {
-    $email = trim(strtolower($details['email'] ?? ''));
-
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-      Log::warning('[Mail] ❌ Skipped invalid email', [
-        'email' => $email,
-        'subject' => $details['subject'] ?? null,
-      ]);
-      return false;
-    }
-
-    $details['mailer'] = $mailer;
-    $details['email'] = $email;
-
-    try {
-
-      dispatch(new SendEmailJob($details))->onQueue('default');
-
-      Log::info('[Mail] 📬 QUEUED', [
-        'to' => $email,
-        'mailer' => $mailer,
-        'subject' => $details['subject'] ?? null,
-        'event' => $details['event'] ?? null,
-        'team' => $details['team'] ?? null,
-        'region' => $details['region'] ?? null,
-      ]);
-
-      return true;
-
-    } catch (\Throwable $e) {
-
-      Log::error('[Mail] 💥 QUEUE FAILED', [
-        'to' => $email,
-        'error' => $e->getMessage(),
-      ]);
-
-      return false;
-    }
+    $event = ! empty($details['event']) ? Event::findOrFail($details['event']) : null;
+    $stats = $this->composeDispatch('generic_bulk_email', $event, [$details['email'] ?? ''], $details);
+    return $stats['queued'] > 0;
   }
 
   /** ✅ Admin copy */
@@ -893,6 +725,7 @@ class EmailController extends Controller
     }
 
     $adminEmail = SiteSetting::get('admin_notification_email', 'support@capetennis.co.za');
+    $details['recipient_kind'] = 'admin_copy';
     $details['email'] = $adminEmail ?: 'support@capetennis.co.za';
     $this->queueMail($details, $mailer);
   }
@@ -901,6 +734,7 @@ class EmailController extends Controller
   public function sendToSender(array $details, string $mailer)
   {
     if (!empty($details['replyTo'])) {
+      $details['recipient_kind'] = 'sender_copy';
       $details['email'] = trim(strtolower($details['replyTo']));
       $this->queueMail($details, $mailer);
     }
@@ -917,43 +751,21 @@ class EmailController extends Controller
     $recipients = [];
     foreach ($this->teamsForEmailScope($event) as $team) {
       foreach ($team->players as $player) {
-        if ($player->pivot->pay_status == 0 && !empty($player->email)) {
-          $recipients[] = trim(strtolower($player->email));
+        if ($player->pivot->pay_status == 0) {
+          $recipients[] = trim(strtolower((string) $player->email));
         }
       }
     }
-    $recipients = array_values(array_unique($recipients));
+    $recipients = array_values($recipients);
     $count = count($recipients);
 
     // Use BulkMailDispatcher for throttled sending
-    if ($count >= config('mail.bulk_mail.batch_threshold', 10)) {
-      Log::info('[EmailController] Using BulkMailDispatcher for unregistered event email', [
-        'event_id' => $event->id,
-        'recipient_count' => $count,
-      ]);
-
-      app(BulkMailDispatcher::class)->dispatch(
-        mailType: 'unregistered_event_email',
-        related: $event,
-        recipients: $recipients,
-        payload: [
-          'subject' => $details['subject'],
-          'message' => $details['message'],
-          'from_name' => $details['fromName'],
-          'reply_to' => $details['replyTo'],
-        ]
-      );
-    } else {
-      // For small lists, use direct queueing
-      foreach ($recipients as $email) {
-        $details['email'] = $email;
-        $this->queueMail($details, $mailer);
-      }
-    }
+    $stats = $this->composeDispatch('unregistered_event_email', $event, $recipients, $details);
+    $queuedCount = $stats['queued'];
 
     $this->sendToOwner($details, $mailer);
     $this->sendToSender($details, $mailer);
-    return ['message' => "$count unregistered players emailed across entire event.", 'title' => 'success'];
+    return $this->dispatchResult();
   }
 
   /** ✅ Unregistered (unpaid) players in specific region */
@@ -969,44 +781,22 @@ class EmailController extends Controller
     $recipients = [];
     foreach ($teams as $team) {
       foreach ($team->players as $player) {
-        if ($player->pivot->pay_status == 0 && !empty($player->email)) {
-          $recipients[] = trim(strtolower($player->email));
+        if ($player->pivot->pay_status == 0) {
+          $recipients[] = trim(strtolower((string) $player->email));
         }
       }
     }
 
-    $recipients = array_values(array_unique($recipients));
+    $recipients = array_values($recipients);
     $count = count($recipients);
 
     // Use BulkMailDispatcher for throttled sending
-    if ($count >= config('mail.bulk_mail.batch_threshold', 10)) {
-      Log::info('[EmailController] Using BulkMailDispatcher for unregistered region email', [
-        'region_id' => $region->id,
-        'recipient_count' => $count,
-      ]);
-
-      app(BulkMailDispatcher::class)->dispatch(
-        mailType: 'unregistered_region_email',
-        related: $region,
-        recipients: $recipients,
-        payload: [
-          'subject' => $details['subject'],
-          'message' => $details['message'],
-          'from_name' => $details['fromName'],
-          'reply_to' => $details['replyTo'],
-        ]
-      );
-    } else {
-      // For small lists, use direct queueing
-      foreach ($recipients as $email) {
-        $details['email'] = $email;
-        $this->queueMail($details, $mailer);
-      }
-    }
+    $stats = $this->composeDispatch('unregistered_region_email', $region, $recipients, $details);
+    $queuedCount = $stats['queued'];
 
     $this->sendToOwner($details, $mailer);
     $this->sendToSender($details, $mailer);
-    return ['message' => "$count unregistered players emailed in region: {$region->region_name}.", 'title' => 'success'];
+    return $this->dispatchResult();
   }
 
   /**

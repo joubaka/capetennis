@@ -30,6 +30,7 @@ class RequireEventEmailReview
                 'event_ids' => $events->pluck('id')->all(),
             ]);
 
+            app(\App\Services\OutboundMailHistory::class)->held($mail);
             return false;
         }
         $event = $scoped->first();
@@ -41,6 +42,7 @@ class RequireEventEmailReview
         $source = 'transaction-mail:'.$event->id.':'.hash('sha256', json_encode([$subject, $recipients], JSON_THROW_ON_ERROR));
         $this->communications->draftFixed($event, $source, $recipients, $subject);
 
+        app(\App\Services\OutboundMailHistory::class)->held($mail);
         return false;
     }
 

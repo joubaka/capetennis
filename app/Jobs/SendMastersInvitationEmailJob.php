@@ -59,7 +59,7 @@ class SendMastersInvitationEmailJob implements ShouldQueue
     public function handle(): void
     {
         $log = $this->emailLog();
-        if (!$log || $log->sent_at || in_array($log->status, ['sent', 'skipped'], true)) {
+        if (!$log || $log->sent_at || in_array($log->status, ['sent', 'skipped', 'sending', 'acceptance_unknown', 'failed'], true)) {
             return;
         }
         if (! app(InvitationMailSecurity::class)->logMatchesSignedSnapshot($log, $this->eventId)) {
@@ -74,14 +74,18 @@ class SendMastersInvitationEmailJob implements ShouldQueue
             return;
         }
 
+        $log->update(['status'=>'sending']);
+        $transportStarted = false;
         try {
             $mailer = app(MailAccountManager::class)->getMailer();
+            $transportStarted = true;
             $sent = Mail::mailer($mailer)->to($log->recipient_email)->sendNow(
                 (new MastersInvitationMail($invitation, $log->payload['kind'] ?? 'invitation', $log->payload ?? []))
                     ->with('outbound_mail_log_id', $log->id)
             );
             if ($sent === null) {
-                throw new RuntimeException('Masters email sending was cancelled before transport acceptance.');
+                $log->markAsSkipped('The message was held before transport. Review before sending.');
+                return;
             }
 
             $log->update([
@@ -89,14 +93,8 @@ class SendMastersInvitationEmailJob implements ShouldQueue
                 'failed_at' => null, 'error_message' => null,
             ]);
         } catch (Throwable $exception) {
-            // Retain the underlying transport error even if a later reservation
-            // terminates with a generic retry-deadline exception.
-            $log->update(['error_message' => $exception->getMessage()]);
-            Log::error('Masters invitation email attempt failed', [
-                'log_id' => $this->logId, 'event_id' => $this->eventId,
-                'attempt' => $this->attempts(), 'error' => $exception->getMessage(),
-            ]);
-            throw $exception;
+            app(\App\Services\MailFailureOutcome::class)->record($log, $exception, $transportStarted);
+            Log::error('Masters email attempt did not complete', ['log_id'=>$this->logId,'event_id'=>$this->eventId]);
         }
     }
 
@@ -104,8 +102,8 @@ class SendMastersInvitationEmailJob implements ShouldQueue
     {
         $log = $this->emailLog();
         // A late/duplicate failed job must never overwrite a successful send.
-        if ($log && !$log->sent_at && !in_array($log->status, ['sent', 'skipped'], true)) {
-            $log->markAsFailed($log->error_message ?: $exception->getMessage());
+        if ($log && !$log->sent_at && !in_array($log->status, ['sent', 'skipped', 'sending', 'acceptance_unknown', 'failed'], true)) {
+            $log->markAsFailed('The queued message could not be prepared. Review before retrying.');
         }
     }
 

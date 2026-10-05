@@ -123,7 +123,7 @@ class TeamSelectionInvitationController extends Controller
         ]);
         $stats = $reminders->send($event, $eventRegion, $data['kind'], $data['audience'], $data['send_token'], $data['recipient_hash'], $request->user());
 
-        return back()->with('success', "Queued {$stats['queued']} reminder email(s) covering {$stats['players']} player(s) in {$eventRegion->region?->region_name}.");
+        return redirect()->route('backend.event-mail-log.index', ['event' => $event->id, 'campaign' => $data['send_token']])->with($stats['severity'], "Queued {$stats['queued']} reminder email(s) covering {$stats['players']} player(s); {$stats['skipped']} skipped; {$stats['failed']} could not be queued.");
     }
 
     public function link(Request $request, Event $event, EventRegion $eventRegion, TeamRankingImportService $service)

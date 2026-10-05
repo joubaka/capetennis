@@ -46,7 +46,7 @@ class TrialCommunicationService
             foreach ($locked->recipients as $recipient) {
                 $stats = $this->dispatcher->dispatch('trial_communication', $locked, [['email' => $recipient['email'], 'name' => $recipient['name']]],
                     ['subject' => $recipient['subject'], 'body' => nl2br(e($recipient['body'])), 'manual_retry_only' => true,
-                        'event_id' => $event->id, 'preview_id' => $locked->id, 'actor_id' => $actor->id], true);
+                        'event_id' => $event->id, 'preview_id' => $locked->id, 'actor_id' => $actor->id, 'created_by' => $actor->id], true);
                 $queued += $stats['queued'];
             }
             $locked->update(['committed_at' => now()]);
@@ -133,11 +133,15 @@ class TrialCommunicationService
     {
         abort_unless($log->mail_type === 'trial_communication', 404);
         $this->programmes->authorize(Event::findOrFail(data_get($log->payload, 'event_id')), $actor);
-        $claimed = BulkEmailLog::whereKey($log->id)->where('status', 'failed')->whereNull('sent_at')->update(['status' => 'queued', 'failed_at' => null, 'error_message' => null]);
-        if ($claimed) {
-            \App\Jobs\SendBulkEmailJob::dispatch($log->id, true)->afterCommit();
-            activity('interprovincial-trials')->performedOn($log)->causedBy($actor)->log('Failed Trials message manually retried');
-        }
+        $claimed = DB::transaction(function () use ($log, $actor): bool {
+            $current = BulkEmailLog::whereKey($log->id)->lockForUpdate()->firstOrFail();
+            if ($current->status !== 'failed' || $current->sent_at || $current->accepted_at) return false;
+            $current->update(['status' => 'queued', 'retry_actor_id' => $actor->id, 'queued_at' => now(), 'failed_at' => null, 'error_message' => null,
+                'payload' => [...$current->payload, 'retry_actor_id' => $actor->id]]);
+            \App\Jobs\SendBulkEmailJob::dispatch($current->id, true)->afterCommit();
+            activity('interprovincial-trials')->performedOn($current)->causedBy($actor)->log('Failed Trials message manually retried');
+            return true;
+        });
         return (bool) $claimed;
     }
 

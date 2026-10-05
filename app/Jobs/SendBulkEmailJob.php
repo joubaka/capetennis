@@ -79,11 +79,14 @@ class SendBulkEmailJob implements ShouldQueue
             return;
         }
 
-        if ($this->manualRetryOnly && ! BulkEmailLog::whereKey($log->id)->where('status', 'queued')->whereNull('sent_at')->update(['status' => 'sending'])) {
+        if (! BulkEmailLog::whereKey($log->id)->where('status', 'queued')->whereNull('sent_at')->whereNull('accepted_at')->update(['status' => 'sending'])) {
             return;
         }
-        if (! $this->manualRetryOnly) $log->update(['status' => 'sending']);
+
+        $log->refresh();
+        app(\App\Services\EventMailAttemptRecorder::class)->record($log);
         $transportAccepted = false;
+        $transportStarted = false;
 
         Log::info('[SendBulkEmailJob] Sending bulk email', [
             'log_id' => $log->id,
@@ -107,7 +110,7 @@ class SendBulkEmailJob implements ShouldQueue
             $mailable = $this->buildMailable($log, $fromAddress);
 
             if (!$mailable) {
-                $log->markAsSkipped('Unknown mail type: ' . $log->mail_type);
+                $log->markAsSkipped('This email type is no longer available.');
                 $this->syncRankingReviewRecipient($log, 'skipped', 'The ranking review circulation is no longer available.');
                 return;
             }
@@ -124,8 +127,10 @@ class SendBulkEmailJob implements ShouldQueue
 
             // Send the email
             $mailTransport = Mail::mailer($mailer);
+            $transportStarted = true;
             $sent = $mailTransport->to($log->recipient_email)->sendNow($mailable);
             $transportAccepted = $sent !== null;
+            if ($sent === null) $transportStarted = false;
 
             // Mark as sent
             $log->recordTransportResult($sent, $mailTransport->getSymfonyTransport(), $mailer);
@@ -156,8 +161,8 @@ class SendBulkEmailJob implements ShouldQueue
 
             // Mark as failed if this is the last attempt
             if (! $log->sent_at) {
-                $log->markAsFailed($redactedError);
-                $this->syncRankingReviewRecipient($log, 'failed', $redactedError);
+                app(\App\Services\MailFailureOutcome::class)->record($log, $e, $transportStarted);
+                $this->syncRankingReviewRecipient($log, $log->status, $redactedError);
             }
 
             // Rate-limit releases remain retryable; explicit SMTP failures require admin action.
@@ -303,8 +308,8 @@ class SendBulkEmailJob implements ShouldQueue
 
         // Ensure log is marked as failed
         if ($log && ! $log->sent_at && ! in_array($log->status, ['failed', 'skipped', 'sending', 'acceptance_unknown'], true)) {
-            $log->markAsFailed($redactedError);
-            $this->syncRankingReviewRecipient($log, 'failed', $redactedError);
+            $log->markAsFailed('The mail service did not accept this email. Review the event Email Log before retrying.');
+            $this->syncRankingReviewRecipient($log, $log->status, $redactedError);
         }
     }
 

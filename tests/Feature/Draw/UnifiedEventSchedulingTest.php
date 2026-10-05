@@ -15,7 +15,7 @@ class UnifiedEventSchedulingTest extends TestCase
 
     private function setupDraw(bool $team = true): array
     {
-        $event = Event::factory()->create();
+        $event = Event::factory()->create(['start_date' => '2026-10-09', 'end_date' => '2026-10-11']);
         $draw = Draw::factory()->create(['event_id' => $event->id]);
         if ($team) {
             $type = DB::table('draw_types')->insertGetId(['type' => 'team', 'drawTypeName' => 'Team', 'btn_color' => 'primary']);
@@ -110,6 +110,80 @@ class UnifiedEventSchedulingTest extends TestCase
         $this->assertSame($other->id, $preview['matches'][0]['venue_id']);
         $this->assertCount(1, $preview['matches'][0]['venue_changes']);
         $this->assertTrue(collect($preview['warnings'])->contains(fn ($warning) => str_contains($warning, $player->name)));
+    }
+
+    public function test_selected_draw_and_hermanus_venues_ignore_unrelated_history_but_keep_global_player_conflicts(): void
+    {
+        [$event, $draw, $venue] = $this->setupDraw();
+        $draw->update(['drawName' => 'u/10 Boys']);
+        $venue->forceFill(['name' => 'Hermanus Sports Club'])->save();
+        $venues = [$venue];
+        foreach (['Hermanus High School', 'Hermanus Primary School'] as $name) {
+            $extra = Venue::forceCreate(['name' => $name]);
+            $draw->venues()->attach($extra->id, ['num_courts' => 1]);
+            $venues[] = $extra;
+        }
+        $robertson = Venue::forceCreate(['name' => 'Laerskool Robertson']);
+        $unselected = Draw::factory()->create(['event_id' => $event->id, 'drawName' => 'u/12 Girls']);
+        $unselected->venues()->attach($robertson->id, ['num_courts' => 1]);
+        $wrongPlayer = Player::factory()->create(['name' => 'Unselected', 'surname' => 'Player']);
+        $wrongFixture = $this->rubber($unselected);
+        TeamFixturePlayer::create(['team_fixture_id' => $wrongFixture->id, 'team1_id' => $wrongPlayer->id]);
+        $player = Player::factory()->create(['name' => 'Selected', 'surname' => 'Player']);
+        $next = $this->rubber($draw);
+        TeamFixturePlayer::create(['team_fixture_id' => $next->id, 'team1_id' => $player->id]);
+        $foreignEvent = Event::factory()->create(['start_date' => '2026-09-01', 'end_date' => '2026-09-03']);
+        $foreignDraw = Draw::factory()->create(['event_id' => $foreignEvent->id]);
+        foreach (['2026-09-01 08:00:00', '2026-10-10 08:00:00'] as $time) {
+            $prior = $this->rubber($foreignDraw, ['scheduled_at' => $time, 'venue_id' => $robertson->id,
+                'court_label' => '1', 'duration_min' => 60]);
+            TeamFixturePlayer::create(['team_fixture_id' => $prior->id, 'team1_id' => $player->id]);
+        }
+        $options = $this->schedulingOptions(['draw_ids' => [$draw->id], 'venue_ids' => array_map(fn ($v) => $v->id, $venues)]);
+        $preview = app(EventVenueScheduleService::class)->preview($event, $options);
+        $this->assertCount(1, $preview['matches']);
+        $this->assertSame($next->id, $preview['matches'][0]['fixture_id']);
+        $this->assertSame('2026-10-10 09:30:00', $preview['matches'][0]['scheduled_at']);
+        $this->assertEmpty($preview['matches'][0]['venue_changes']);
+        $this->assertFalse(collect($preview['warnings'])->contains(fn ($w) => str_contains($w, 'Robertson')));
+        $this->assertEqualsCanonicalizing(array_map(fn ($v) => $v->id, $venues), array_column($preview['venues'], 'id'));
+        $this->assertSame([], app(UnifiedTeamScheduleService::class)->warnings($next,
+            ['scheduled_at' => '2026-10-10 10:00:00', 'venue_id' => $venue->id]));
+        $this->assertNull($next->fresh()->scheduled_at);
+        if (getenv('CT_CONTINUITY_BROWSER_FIXTURE') === '1') {
+            $admin = \App\Models\User::factory()->create();
+            \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+            $admin->assignRole('admin');
+            DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+            foreach ($venues as $v) $event->venues()->syncWithoutDetaching([$v->id => ['num_courts' => 2]]);
+            $response = $this->actingAs($admin)->get(route('backend.event-venue-schedule.index', ['event' => $event, 'draw_ids' => [$draw->id]]))->assertOk();
+            file_put_contents(storage_path('framework/testing/scheduler-continuity.html'), $response->getContent());
+            file_put_contents(storage_path('framework/testing/scheduler-continuity.json'), json_encode($preview, JSON_THROW_ON_ERROR));
+        }
+    }
+
+    public function test_event_window_is_part_of_the_preview_availability_revision_even_without_bookings(): void
+    {
+        [$event] = $this->setupDraw();
+        $before = \App\Domain\Draws\Services\ScheduleAvailability::load([], [], [], null, 0, [], $event,
+            \Carbon\Carbon::parse('2026-10-10'))->fingerprint();
+        $event->forceFill(['end_date' => '2026-10-12']);
+        $after = \App\Domain\Draws\Services\ScheduleAvailability::load([], [], [], null, 0, [], $event,
+            \Carbon\Carbon::parse('2026-10-10'))->fingerprint();
+        $this->assertNotSame($before, $after);
+    }
+
+    public function test_same_event_history_outside_the_weekend_is_not_a_venue_anchor(): void
+    {
+        [$event, $draw, $venue] = $this->setupDraw();
+        $other = Venue::forceCreate(['name' => 'Earlier event venue']);
+        $player = Player::factory()->create();
+        $earlier = $this->rubber($draw, ['scheduled_at' => '2026-09-01 08:00:00', 'venue_id' => $other->id,
+            'court_label' => '1', 'duration_min' => 60]);
+        $next = $this->rubber($draw, ['match_nr' => 2]);
+        foreach ([$earlier, $next] as $fixture) TeamFixturePlayer::create(['team_fixture_id' => $fixture->id, 'team1_id' => $player->id]);
+        $this->assertSame([], app(UnifiedTeamScheduleService::class)->warnings($next,
+            ['scheduled_at' => '2026-10-10 08:00:00', 'venue_id' => $venue->id]));
     }
 
     public function test_round_progression_can_wait_for_all_round_rubbers_or_only_the_teams(): void

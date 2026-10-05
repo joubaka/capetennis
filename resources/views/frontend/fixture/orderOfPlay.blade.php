@@ -135,7 +135,7 @@
     @endif
   </div>
 
-  <table class="table table-bordered align-middle">
+  <div class="table-responsive"><table class="table table-bordered align-middle">
     <thead class="table-dark">
       <tr>
         <th style="width: 6%">Time</th>
@@ -195,7 +195,7 @@
         @endforelse
       @endif
     </tbody>
-  </table>
+  </table></div>
 
   <div class="mt-4 text-end">
     <button class="btn btn-primary" onclick="window.print()">🖨 Print</button>

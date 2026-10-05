@@ -84,7 +84,7 @@ class EventAnnouncementService
      *
      * @return Collection<int, array{email:string,name:string}>
      */
-    public function recipients(Event $event): Collection
+    private function audiencePlayers(Event $event): Collection
     {
         $event->loadMissing('eventTypeModel');
 
@@ -101,31 +101,34 @@ class EventAnnouncementService
 
         $teamPlayers = collect();
         if ($event->isTeam()) {
-            $event->loadMissing('regions.teams.players.user', 'regions.teams.players.users');
-            $teamPlayers = $event->regions
-                ->flatMap->teams
-                ->flatMap->players;
+            $teamIds = \App\Models\TeamSelectionInvitation::where('event_id', $event->id)->select('team_id');
+            $teamPlayers = \App\Models\Team::withoutGlobalScopes()->where(function ($q) use ($event, $teamIds) {
+                $q->whereHas('category', fn ($category) => $category->where('event_id', $event->id))->orWhereIn('id', $teamIds);
+            })->with('players.user', 'players.users')->get()->flatMap->players;
         }
 
         return $nominatedPlayers
             ->merge($registeredPlayers)
             ->merge($teamPlayers)
             ->filter(fn ($player): bool => $player instanceof Player)
-            ->unique('id')
-            ->map(function (Player $player): ?array {
-                $email = $this->contacts->primaryEmail($player);
-                if (! $email) {
-                    return null;
-                }
+            ->unique('id')->values();
+    }
 
-                $name = trim($player->name.' '.$player->surname);
+    /** Resolve contacts and exclusions together before recipient confirmation. */
+    public function audienceSnapshot(Event $event): array
+    {
+        $players = $this->audiencePlayers($event)->map(fn (Player $player) => [
+            'email' => $this->contacts->primaryEmail($player), 'name' => trim($player->name.' '.$player->surname),
+        ]);
+        return [
+            'recipients' => $players->filter(fn ($row) => filled($row['email']))->unique('email')->sortBy('email')->values(),
+            'excluded' => $players->filter(fn ($row) => blank($row['email']))->map(fn ($row) => [...$row, 'email' => ''])->values(),
+        ];
+    }
 
-                return ['email' => $email, 'name' => $name];
-            })
-            ->filter()
-            ->unique('email')
-            ->sortBy('email')
-            ->values();
+    public function recipients(Event $event): Collection
+    {
+        return $this->audienceSnapshot($event)['recipients'];
     }
 
     /** @return Collection<int, string> */
@@ -147,7 +150,7 @@ class EventAnnouncementService
      * @param  Collection<int, array{email:string,name:string}>  $recipients
      * @return array{total: int, queued: int, skipped: int, invalid: int, duplicate: int}
      */
-    public function dispatch(Announcement $announcement, Collection $recipients): array
+    public function dispatch(Announcement $announcement, Collection $recipients, ?\App\Models\User $actor = null, ?Collection $excluded = null): array
     {
         $event = $announcement->event;
         if (! $event) {
@@ -157,9 +160,10 @@ class EventAnnouncementService
         return app(BulkMailDispatcher::class)->dispatch(
             mailType: 'event_announcement',
             related: $announcement,
-            recipients: $recipients,
+            recipients: $recipients->concat($excluded ?? collect()),
             payload: [
-                'event_name' => $event->name,
+                'event_id' => $event->id, 'created_by' => $actor?->id,
+                'recipient_kind' => 'players', 'event_name' => $event->name,
                 'title' => $announcement->title,
                 'message' => $announcement->message,
             ],

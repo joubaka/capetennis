@@ -60,6 +60,6 @@ class TrialCommunicationController extends Controller {
     public function retry(Request $request, Event $event, BulkEmailLog $log, TrialCommunicationService $service) {
         app(TrialProgrammeService::class)->authorize($event,$request->user());
         $request->validate(['approved_retry'=>'required|accepted']);
-        abort_unless((int)data_get($log->payload,'event_id')===(int)$event->id,404); $service->retry($log,$request->user()); return back()->with('success','Failed message queued for manual retry if eligible.');
+        abort_unless((int)data_get($log->payload,'event_id')===(int)$event->id,404); $queued=$service->retry($log,$request->user()); return back()->with($queued?'success':'warning',$queued?'One failed message queued for manual retry. Check the Email Log for acceptance.':'No email queued. This message is no longer eligible for retry.');
     }
 }

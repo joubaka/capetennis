@@ -260,7 +260,7 @@ class EventCommunicationService
         }
         $original = EventCommunicationBatch::where('event_id', $event->id)->where('created_by', $actor->id)->findOrFail($log->payload['event_communication_batch_id'] ?? 0);
         $this->checkRankingRetry($original, $actor);
-        abort_unless($log->status === 'failed' && ! $log->sent_at && (int) ($log->payload['event_id'] ?? 0) === (int) $event->id, 422);
+        abort_unless($log->status === 'failed' && ! $log->sent_at && ! $log->accepted_at && (int) ($log->payload['event_id'] ?? 0) === (int) $event->id, 422);
         $recipient = ['email' => $log->recipient_email, 'name' => $log->recipient_name, 'kind' => $log->payload['recipient_kind'] ?? 'players', 'subject' => $log->payload['subject'], 'html' => $log->payload['body']];
 
         return EventCommunicationBatch::create(['event_id' => $event->id, 'created_by' => $actor->id, 'token' => (string) Str::uuid(), 'subject' => $recipient['subject'], 'body' => '', 'options' => ['source' => 'retry', 'log_id' => $log->id, 'original_batch_id' => $original->id, 'ranking_origin_id' => $this->rankingOriginal($original)?->id], 'recipients' => [$recipient], 'issues' => [], 'fingerprint' => hash('sha256', json_encode($recipient, JSON_THROW_ON_ERROR))]);
@@ -310,7 +310,7 @@ class EventCommunicationService
                 $recipient = $this->invitationRetryRecipient($batch->event, $log);
                 abort_unless(hash_equals($batch->fingerprint, hash('sha256', json_encode($recipient, JSON_THROW_ON_ERROR)))
                     && hash_equals($batch->options['payload_fingerprint'], hash('sha256', json_encode($log->payload, JSON_THROW_ON_ERROR))), 422);
-                $log->update(['status' => 'queued', 'queued_at' => now(), 'failed_at' => null, 'error_message' => null]);
+                $log->update(['status' => 'queued', 'queued_at' => now(), 'failed_at' => null, 'error_message' => null, 'retry_actor_id' => $actor->id]);
                 $batch->update(['status' => 'approved', 'approved_at' => now()]);
                 if ($log->mail_type === 'team_selection_invitation') {
                     \App\Jobs\SendTeamSelectionInvitationEmailJob::dispatch($log->id, $batch->event_id)->afterCommit();
@@ -323,10 +323,10 @@ class EventCommunicationService
             if (($batch->options['source'] ?? null) === 'retry') {
                 $this->checkRankingRetry($batch, $actor);
                 $log = BulkEmailLog::whereKey($batch->options['log_id'])->lockForUpdate()->firstOrFail();
-                abort_unless($log->status === 'failed' && ! $log->sent_at && (int) ($log->payload['event_id'] ?? 0) === (int) $batch->event_id && (int) ($log->payload['event_communication_batch_id'] ?? 0) === (int) $batch->options['original_batch_id'], 422);
+                abort_unless($log->status === 'failed' && ! $log->sent_at && ! $log->accepted_at && (int) ($log->payload['event_id'] ?? 0) === (int) $batch->event_id && (int) ($log->payload['event_communication_batch_id'] ?? 0) === (int) $batch->options['original_batch_id'], 422);
                 $recipient = ['email' => $log->recipient_email, 'name' => $log->recipient_name, 'kind' => $log->payload['recipient_kind'] ?? 'players', 'subject' => $log->payload['subject'], 'html' => $log->payload['body']];
                 abort_unless(hash_equals($batch->fingerprint, hash('sha256', json_encode($recipient, JSON_THROW_ON_ERROR))), 422);
-                $log->update(['status' => 'queued', 'queued_at' => now(), 'failed_at' => null, 'error_message' => null, 'payload' => [...$log->payload, 'origin_batch_id' => $log->payload['origin_batch_id'] ?? $batch->options['original_batch_id'], 'event_communication_batch_id' => $batch->id]]);
+                $log->update(['status' => 'queued', 'queued_at' => now(), 'failed_at' => null, 'error_message' => null, 'retry_actor_id' => $actor->id, 'payload' => [...$log->payload, 'origin_batch_id' => $log->payload['origin_batch_id'] ?? $batch->options['original_batch_id'], 'event_communication_batch_id' => $batch->id]]);
                 $batch->update(['status' => 'approved', 'approved_at' => now()]);
                 \App\Jobs\SendBulkEmailJob::dispatch($log->id, true)->afterCommit();
 
@@ -347,7 +347,7 @@ class EventCommunicationService
             $draft?->update(['status' => 'approved', 'approved_at' => now()]);
             $queued = 0;
             foreach ($batch->recipients as $recipient) {
-                $result = $this->mailer->dispatch($batch->event->isInterprovincialTrials() ? 'trial_communication' : 'team_email', $batch, [$recipient], ['event_id' => $batch->event_id, 'event_communication_batch_id' => $batch->id, 'subject' => $recipient['subject'], 'body' => $recipient['html'], 'recipient_kind' => $recipient['kind'], 'from_name' => $actor->name, 'reply_to' => $actor->email, 'manual_retry_only' => true], true);
+                $result = $this->mailer->dispatch($batch->event->isInterprovincialTrials() ? 'trial_communication' : 'team_email', $batch, [$recipient], ['event_id' => $batch->event_id, 'created_by' => $actor->id, 'region_id' => ($batch->options['scope'] ?? null) === 'region' ? $batch->options['region_id'] : null, 'team_id' => ($batch->options['scope'] ?? null) === 'team' ? $batch->options['team_id'] : null, 'event_communication_batch_id' => $batch->id, 'subject' => $recipient['subject'], 'body' => $recipient['html'], 'recipient_kind' => $recipient['kind'], 'from_name' => $actor->name, 'reply_to' => $actor->email, 'manual_retry_only' => true], true);
                 $queued += $result['queued'];
             }
 

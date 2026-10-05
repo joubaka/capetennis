@@ -16,6 +16,9 @@ class BulkEmailLog extends Model
 
     protected $fillable = [
         'mail_type',
+        'attempt_number',
+        'retry_actor_id',
+        'deduplication_key',
         'related_type',
         'related_id',
         'recipient_email',
@@ -41,6 +44,24 @@ class BulkEmailLog extends Model
         'skipped_at' => 'datetime',
         'accepted_at' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        static::updating(function (self $log): void {
+            if ($log->isDirty('status') && $log->status === 'queued' && $log->getOriginal('status') === 'failed') {
+                app(\App\Services\EventMailAttemptRecorder::class)->recordOriginal($log);
+                $log->attempt_number = max(1, (int) $log->getOriginal('attempt_number')) + 1;
+            }
+        });
+        static::saved(function (self $log): void {
+            if ($log->wasRecentlyCreated || $log->wasChanged(['status', 'payload', 'accepted_at'])) {
+                app(\App\Services\EventMailAttemptRecorder::class)->record($log);
+            }
+            if (($log->wasRecentlyCreated || $log->wasChanged('status')) && in_array($log->status, ['failed', 'skipped', 'acceptance_unknown'], true)) {
+                app(\App\Services\EventMailLogService::class)->recordIssue($log);
+            }
+        });
+    }
 
     /**
      * Scope to get only queued emails.
@@ -119,6 +140,7 @@ class BulkEmailLog extends Model
             $this->status === 'sent' && $this->evidence_status === 'sandbox_accepted' => 'Sandbox accepted',
             $this->status === 'sent' => 'Sent — acceptance unverified',
             $this->status === 'sending' => 'Sending',
+            $this->status === 'queued' && data_get($this->payload, 'queue_state') === 'prepared' => 'Queue submission unverified',
             $this->status === 'acceptance_unknown' => 'Acceptance unverified — check mail server',
             $this->status === 'failed' => 'Failed',
             $this->status === 'skipped' => 'Skipped',

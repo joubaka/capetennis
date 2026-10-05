@@ -42,11 +42,13 @@ class EventServiceProvider extends ServiceProvider
             [\App\Services\OutboundMailHistory::class, 'sent'],
         ],
         \Illuminate\Queue\Events\JobProcessing::class => [
-            [\App\Services\OutboundMailHistory::class, 'resetAttempt'],
+            [\App\Services\OutboundMailHistory::class, 'processing'],
         ],
         \Illuminate\Queue\Events\JobExceptionOccurred::class => [
             [\App\Services\OutboundMailHistory::class, 'interruptedAttempt'],
         ],
+        \Illuminate\Queue\Events\JobQueued::class => [[\App\Services\OutboundMailHistory::class, 'queued']],
+        \Illuminate\Queue\Events\JobProcessed::class => [[\App\Services\OutboundMailHistory::class, 'processed']],
         Registered::class => [
             SendEmailVerificationNotification::class,
         ],
@@ -85,7 +87,7 @@ class EventServiceProvider extends ServiceProvider
      */
     public function boot()
     {
-        //
+        \Illuminate\Support\Facades\Queue::createPayloadUsing(fn ($connection, $queue, $payload) => app(\App\Services\OutboundMailHistory::class)->queuePayload($connection, $queue, $payload));
     }
 
     /**

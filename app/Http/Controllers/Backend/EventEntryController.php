@@ -268,6 +268,7 @@ class EventEntryController extends Controller
       'subject' => 'required|string|max:255',
       'message' => 'required|string',
 
+      'campaign_key' => 'nullable|uuid',
       'from_name' => 'required|string|max:100',
       'reply_to' => 'required|email|max:255',
     ]);
@@ -351,7 +352,7 @@ class EventEntryController extends Controller
     /* =========================
        CLEAN EMAIL LIST
     ========================= */
-    $emails = $emails->filter()->unique()->values();
+    $emails = $emails->values();
 
     Log::info('📧 Final email list prepared', [
       'total' => $emails->count(),
@@ -378,17 +379,21 @@ class EventEntryController extends Controller
       $related = Event::find($data['event_id']);
     }
 
+    $campaignKey = $data['campaign_key'] ?? (string) \Illuminate\Support\Str::uuid();
     $stats = $dispatcher->dispatch(
       mailType: 'bulk_event_mail',
       related: $related,
       recipients: $emails,
       payload: [
+        'campaign_key' => $campaignKey,
+        'event_id' => $authEvent->id, 'created_by' => auth()->id(), 'manual_retry_only' => true,
+        'scope' => $data['scope'],
         'subject' => $data['subject'],
         'body' => $data['message'],
         'from_name' => $data['from_name'],
         'reply_to' => $data['reply_to'],
       ],
-      allowDuplicates: true // Allow resending to same recipients if admin chooses
+      allowDuplicates: false
     );
 
     Log::info('✅ Bulk email dispatch completed', [
@@ -398,9 +403,10 @@ class EventEntryController extends Controller
     ]);
 
     return response()->json([
-      'success' => true,
-      'sent' => $stats['queued'],
-      'queued' => true,
+      'success' => $stats['queued'] > 0,
+      'queued' => $stats['queued'],
+      'report_url' => route('backend.event-mail-log.index', ['event' => $authEvent->id, 'campaign' => $campaignKey]),
+      'message' => "{$stats['queued']} emails queued; {$stats['skipped']} skipped; {$stats['failed']} could not be queued. Check the event Email Log.",
       'stats' => $stats,
     ]);
   }

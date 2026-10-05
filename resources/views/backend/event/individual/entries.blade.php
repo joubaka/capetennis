@@ -799,7 +799,9 @@ if (mailForm) {
         .then(r => r.json())
         .then(res => {
             sendMailModal.hide();
-            toastr.success(`Email sent to ${res.sent} recipient${res.sent !== 1 ? 's' : ''}`);
+            const feedback = !res.success ? 'error' : (res.stats?.skipped || res.stats?.failed ? 'warning' : 'success');
+            toastr[feedback](res.message || `${res.queued} emails queued. Check the event Email Log.`);
+            if (res.report_url) window.location.assign(res.report_url);
         })
         .catch(() => toastr.error('Email failed. Please try again.'));
     });

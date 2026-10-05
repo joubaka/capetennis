@@ -468,6 +468,8 @@ document.addEventListener('DOMContentLoaded', function () {
       toastr.error('Subject is required.');
       return;
     }
+    window.seriesEmailCampaignKey ??= window.crypto?.randomUUID ? window.crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const value = Math.floor(Math.random() * 16); return (c === 'x' ? value : (value & 3) | 8).toString(16); });
+    const seriesEmailCampaignKey = window.seriesEmailCampaignKey;
     if (!message || message === '<p><br></p>') {
       toastr.error('Message is required.');
       return;
@@ -488,6 +490,7 @@ document.addEventListener('DOMContentLoaded', function () {
         'Accept': 'application/json',
       },
       body: JSON.stringify({
+        campaign_key: seriesEmailCampaignKey,
         emailSubject: subject,
         message: message,
         fromName: document.getElementById('seriesEmailFromName').value.trim(),
@@ -499,8 +502,29 @@ document.addEventListener('DOMContentLoaded', function () {
       return r.json();
     })
     .then(data => {
+      if (data.report_url) window.location.assign(data.report_url);
+      if (data.report_urls?.length > 1) {
+        const reports = document.createElement('div');
+        reports.className = 'alert alert-info mt-3';
+        const heading = document.createElement('strong');
+        heading.textContent = 'Per-event email reports';
+        reports.append(heading);
+        const list = document.createElement('ul');
+        data.report_urls.forEach(report => {
+          const item = document.createElement('li');
+          const link = document.createElement('a');
+          link.href = report.url;
+          link.textContent = `Event ${report.event_id}: ${report.queued} queued, ${report.skipped} skipped, ${report.failed} queue failures`;
+          item.append(link);
+          list.append(item);
+        });
+        reports.append(list);
+        document.querySelector('.container-xl').prepend(reports);
+      }
       if (data.success) {
-        toastr.success(data.message, 'Emails Queued', { timeOut: 5000, closeButton: true });
+        window.seriesEmailCampaignKey = null;
+        const feedback = data.skipped || data.failed ? 'warning' : 'success';
+        toastr[feedback](data.message, 'Emails Queued', { timeOut: 5000, closeButton: true });
         bootstrap.Modal.getInstance(document.getElementById('seriesEmailModal')).hide();
 
         // Show persistent success alert on page

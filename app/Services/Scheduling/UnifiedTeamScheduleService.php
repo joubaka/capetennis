@@ -119,15 +119,15 @@ final class UnifiedTeamScheduleService
     {
         $at = Carbon::parse($data['scheduled_at'] ?? $data['start']);
         $ids = $this->participants($fixture);
-        $calendar = ScheduleAvailability::load([(int) $data['venue_id']], $ids, [], null, 0, [$fixture->id]);
-        return array_map(function ($change) {
+        $calendar = ScheduleAvailability::load([(int) $data['venue_id']], $ids, [], null, 0, [$fixture->id], $fixture->draw?->event, $at);
+        return array_merge(app(RankVenuePreferences::class)->manualWarnings($fixture, (int) $data['venue_id']), array_map(function ($change) {
             [$kind, $id] = explode(':', $change['participant_id'], 2);
             $player = $kind === 'profile' ? \App\Models\Player::find($id) : \App\Models\NoProfileTeamPlayer::find($id);
             $name = $player ? trim($player->name.' '.$player->surname) : 'Player '.$id;
             $from = Venue::find($change['from_venue_id'])?->name ?: 'another venue';
             $to = Venue::find($change['to_venue_id'])?->name ?: 'another venue';
             return $name.' changes venue from '.$from.' to '.$to.'.';
-        }, $calendar->venueChanges($ids, $at, (int) $data['venue_id']));
+        }, $calendar->venueChanges($ids, $at, (int) $data['venue_id'])));
     }
 
     public function assign(Event $event, array $data): TeamFixture

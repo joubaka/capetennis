@@ -419,7 +419,7 @@ final class MastersInvitationService
                     Log::warning('Masters invitation email skipped', $report['details'][array_key_last($report['details'])]);
                     continue;
                 }
-                $payload = ['invitation_id' => $invitation->id, 'event_id' => $lockedBatch->event_id, 'kind' => 'invitation', 'request_token' => $request['request_token'], 'requested_by_user_id' => $actor->id, 'recipient_hash' => $request['recipient_hash'], 'composition_hash' => $request['composition_hash'], 'recipient_name' => $recipientRow['name'], 'recipient_email' => $email, 'related_type' => MastersInvitation::class, 'related_id' => $invitation->id] + $composition;
+                $payload = ['invitation_id' => $invitation->id, 'event_id' => $lockedBatch->event_id, 'kind' => 'invitation', 'request_token' => $request['request_token'], 'requested_by_user_id' => $actor->id, 'created_by' => $actor->id, 'recipient_hash' => $request['recipient_hash'], 'composition_hash' => $request['composition_hash'], 'recipient_name' => $recipientRow['name'], 'recipient_email' => $email, 'related_type' => MastersInvitation::class, 'related_id' => $invitation->id] + $composition;
                 $payload['payload_integrity'] = app(InvitationMailSecurity::class)->payloadIntegrity($payload);
                 $log = BulkEmailLog::create(['mail_type' => 'masters_invitation', 'related_type' => MastersInvitation::class, 'related_id' => $invitation->id, 'recipient_email' => $email, 'recipient_name' => $recipientRow['name'], 'status' => 'queued', 'payload' => $payload, 'queued_at' => now()]);
                 DB::afterCommit(fn () => $this->dispatchMastersInvitationLog($log->id, $lockedBatch->event_id));
@@ -576,7 +576,7 @@ final class MastersInvitationService
         $invitation->loadMissing(['player.user', 'player.users', 'batch.event', 'categoryEvent.category']);
         $user = $this->playerUser($invitation->player);
         if ($user?->email) {
-            $payload = ['invitation_id' => $invitation->id, 'event_id' => $invitation->batch->event_id, 'kind' => $kind, 'recipient_email' => $user->email, 'recipient_name' => $invitation->player?->full_name, 'related_type' => MastersInvitation::class, 'related_id' => $invitation->id];
+            $payload = ['invitation_id' => $invitation->id, 'event_id' => $invitation->batch->event_id, 'created_by' => $invitation->batch->created_by, 'kind' => $kind, 'recipient_email' => $user->email, 'recipient_name' => $invitation->player?->full_name, 'related_type' => MastersInvitation::class, 'related_id' => $invitation->id];
             $payload['payload_integrity'] = app(InvitationMailSecurity::class)->payloadIntegrity($payload);
             $log = BulkEmailLog::create(['mail_type' => 'masters_invitation', 'related_type' => MastersInvitation::class, 'related_id' => $invitation->id, 'recipient_email' => $user->email, 'recipient_name' => $invitation->player?->full_name, 'status' => 'queued', 'payload' => $payload, 'queued_at' => now()]);
             $this->dispatchMastersInvitationLog($log->id, $invitation->batch->event_id);
@@ -919,7 +919,7 @@ final class MastersInvitationService
                 ->lockForUpdate()
                 ->first();
             if (! $log) {
-                $payload = ['invitation_id' => $replacement->id, 'event_id' => $replacement->event_id, 'kind' => 'replacement', 'correction_key' => $correctionKey, 'recipient_email' => $recipient->email, 'recipient_name' => $lockedTarget->full_name, 'related_type' => MastersInvitation::class, 'related_id' => $replacement->id];
+                $payload = ['invitation_id' => $replacement->id, 'event_id' => $replacement->event_id, 'created_by' => $actor->id, 'kind' => 'replacement', 'correction_key' => $correctionKey, 'recipient_email' => $recipient->email, 'recipient_name' => $lockedTarget->full_name, 'related_type' => MastersInvitation::class, 'related_id' => $replacement->id];
                 $payload['payload_integrity'] = app(InvitationMailSecurity::class)->payloadIntegrity($payload);
                 $log = BulkEmailLog::create([
                     'mail_type' => 'masters_invitation',
@@ -933,7 +933,7 @@ final class MastersInvitationService
                 ]);
             }
             if (! app(InvitationMailSecurity::class)->logMatchesSignedSnapshot($log, (int) $replacement->event_id)) {
-                $payload = ['invitation_id' => $replacement->id, 'event_id' => $replacement->event_id, 'kind' => 'replacement', 'correction_key' => $correctionKey, 'recipient_email' => $recipient->email, 'recipient_name' => $lockedTarget->full_name, 'related_type' => MastersInvitation::class, 'related_id' => $replacement->id];
+                $payload = ['invitation_id' => $replacement->id, 'event_id' => $replacement->event_id, 'created_by' => $actor->id, 'kind' => 'replacement', 'correction_key' => $correctionKey, 'recipient_email' => $recipient->email, 'recipient_name' => $lockedTarget->full_name, 'related_type' => MastersInvitation::class, 'related_id' => $replacement->id];
                 $payload['payload_integrity'] = app(InvitationMailSecurity::class)->payloadIntegrity($payload);
                 $log->update(['recipient_email' => $recipient->email, 'recipient_name' => $lockedTarget->full_name, 'payload' => $payload]);
             }

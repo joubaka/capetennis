@@ -62,16 +62,8 @@ final class TeamSelectionReminderService
         }
 
         $mailType = 'team_selection_'.$kind.'_reminder';
-        $stats = ['queued' => 0, 'skipped' => 0, 'players' => 0];
+        $stats = ['total' => 0, 'queued' => 0, 'skipped' => 0, 'invalid' => 0, 'duplicate' => 0, 'failed' => 0, 'players' => 0];
         foreach ($recipients as $recipient) {
-            $alreadyQueued = BulkEmailLog::query()->where('mail_type', $mailType)
-                ->where('related_type', Event::class)->where('related_id', $event->id)
-                ->where('recipient_email', $recipient['email'])
-                ->where('payload->send_token', $token)->exists();
-            if ($alreadyQueued) {
-                $stats['skipped']++;
-                continue;
-            }
             $content = $this->content($event, $kind, $recipient['players'], $usesRegionalClothing);
             $sent = $this->mailer->dispatch($mailType, $event, [[
                 'email' => $recipient['email'], 'name' => $recipient['name'],
@@ -79,11 +71,12 @@ final class TeamSelectionReminderService
                 'subject' => $content['subject'], 'message' => $content['html'],
                 'from_name' => $actor->name ?: 'Cape Tennis',
                 'reply_to' => $actor->email ?: config('mail.from.address'),
-                'send_token' => $token, 'kind' => $kind, 'audience' => $audience,
-                'event_region_id' => $eventRegion->id,
-            ], true);
-            $stats['queued'] += (int) $sent['queued'];
-            $stats['players'] += count($recipient['players']);
+                'campaign_key' => $token, 'send_token' => $token, 'kind' => $kind, 'audience' => $audience,
+                'event_region_id' => $eventRegion->id, 'region_id' => $eventRegion->region_id,
+                'event_id' => $event->id, 'created_by' => $actor->id,
+            ], false);
+            foreach (['total', 'queued', 'skipped', 'invalid', 'duplicate', 'failed'] as $key) $stats[$key] += (int) $sent[$key];
+            if ($sent['queued'] > 0) $stats['players'] += count($recipient['players']);
         }
 
         activity('team-selection')->performedOn($event)->causedBy($actor)->withProperties($stats + [
@@ -91,6 +84,7 @@ final class TeamSelectionReminderService
             'event_region_id' => $eventRegion->id, 'region_id' => $eventRegion->region_id,
         ])->log('sent regional final team selection reminder');
 
+        $stats['severity'] = $stats['queued'] === 0 ? 'error' : (($stats['skipped'] || $stats['failed']) ? 'warning' : 'success');
         return $stats;
     }
 

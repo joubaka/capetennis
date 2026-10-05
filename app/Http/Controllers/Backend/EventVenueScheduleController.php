@@ -97,6 +97,7 @@ final class EventVenueScheduleController extends Controller
             'venue_starts' => [],
             'reschedule_existing' => false,
             'round_progression' => 'team_ready',
+            'rank_venue_preferences' => [], 'cross_band_policy' => 'highest_ranked',
         ], $storedScheduleDraft);
         foreach (['start', 'end'] as $key) {
             if (! empty($scheduleDraft[$key])) {
@@ -355,6 +356,15 @@ final class EventVenueScheduleController extends Controller
             'schedule.venue_starts.*.start' => ['required', 'date'],
             'schedule.reschedule_existing' => ['required', 'boolean'],
             'schedule.round_progression' => ['sometimes', 'in:team_ready,all_round'],
+            'schedule.rank_preference_draw_ids' => ['sometimes', 'array', 'max:200'],
+            'schedule.rank_preference_draw_ids.*' => ['integer', 'distinct'],
+            'schedule.rank_venue_preferences' => ['sometimes', 'array', 'max:50'],
+            'schedule.rank_venue_preferences.*.draw_ids' => ['required', 'array', 'min:1', 'max:200'],
+            'schedule.rank_venue_preferences.*.draw_ids.*' => ['integer'],
+            'schedule.rank_venue_preferences.*.min_rank' => ['required', 'integer', 'min:1', 'max:100'],
+            'schedule.rank_venue_preferences.*.max_rank' => ['required', 'integer', 'min:1', 'max:100'],
+            'schedule.rank_venue_preferences.*.venue_id' => ['required', 'integer'],
+            'schedule.cross_band_policy' => ['sometimes', 'in:highest_ranked,manual'],
         ]);
         $draws = $event->draws()->whereIn('id', collect($data['assignments'])->pluck('draw_id'))->get()->keyBy('id');
         if ($draws->count() !== count($data['assignments'])) abort(422, 'One or more draws do not belong to this event.');
@@ -372,8 +382,9 @@ final class EventVenueScheduleController extends Controller
         }
 
         $unscheduled = 0;
+        $rankWarnings = [];
         try {
-            DB::transaction(function () use ($data, $draws, $courtCounts, $event, $request, &$unscheduled) {
+            DB::transaction(function () use ($data, $draws, $courtCounts, $event, $request, &$unscheduled, &$rankWarnings) {
                 Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
                 DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
                 $draws = $event->draws()->whereIn('id', $draws->keys())->orderBy('id')->lockForUpdate()->get()->keyBy('id');
@@ -453,6 +464,24 @@ final class EventVenueScheduleController extends Controller
                         'before' => $before, 'after' => $venueIds, 'unscheduled_matches' => $affectedFixtureIds->count(),
                     ]);
                 }
+                $stored = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true) ?: [];
+                $retainedRules = app(\App\Services\Scheduling\RankVenuePreferences::class)->assigned($event, $stored['rank_venue_preferences'] ?? []);
+                if (collect($retainedRules)->sum(fn ($rule) => count($rule['draw_ids'])) < collect($stored['rank_venue_preferences'] ?? [])->sum(fn ($rule) => count($rule['draw_ids']))) {
+                    $rankWarnings[] = 'Roster rank venue preferences for removed venue assignments were cleared. Other draws keep their preferences.';
+                }
+                if (array_key_exists('rank_venue_preferences', $data['schedule'])) {
+                    $scope = array_map('intval', $data['schedule']['rank_preference_draw_ids'] ?? collect($data['schedule']['rank_venue_preferences'])->flatMap(fn ($rule) => $rule['draw_ids'])->unique()->all());
+                    if (array_diff($scope, $event->draws()->pluck('id')->all())) throw new \InvalidArgumentException('Rank preference draws must belong to this event.');
+                    if ($event->draws()->whereIn('id', $scope)->get()->contains(fn ($draw) => ! $draw->isTeamDraw())) throw new \InvalidArgumentException('Roster rank preference scope must contain team draws only.');
+                    $newRules = app(\App\Services\Scheduling\RankVenuePreferences::class)->normalize($event, $data['schedule']['rank_venue_preferences']);
+                    if (array_diff(collect($newRules)->flatMap(fn ($rule) => $rule['draw_ids'])->all(), $scope)) throw new \InvalidArgumentException('Rank preferences must use the selected preference draws.');
+                    $data['schedule']['rank_venue_preferences'] = array_merge(
+                        app(\App\Services\Scheduling\RankVenuePreferences::class)->retained($retainedRules, $scope), $newRules);
+                } else {
+                    $data['schedule']['rank_venue_preferences'] = $retainedRules;
+                }
+                $data['schedule']['cross_band_policy'] ??= $stored['cross_band_policy'] ?? 'highest_ranked';
+                unset($data['schedule']['rank_preference_draw_ids']);
                 DB::table('event_venue_schedule_drafts')->updateOrInsert(
                     ['event_id' => $event->id],
                     [
@@ -467,7 +496,7 @@ final class EventVenueScheduleController extends Controller
             return response()->json(['message' => $exception->getMessage()], 422);
         }
 
-        return response()->json(['message' => 'Court allocations and timing saved.', 'unscheduled' => $unscheduled]);
+        return response()->json(['message' => 'Court allocations and timing saved.'.($rankWarnings ? ' '.implode(' ', $rankWarnings) : ''), 'warnings' => $rankWarnings, 'unscheduled' => $unscheduled]);
     }
 
     public function preview(Request $request, Event $event, EventVenueScheduleService $scheduler,
@@ -684,6 +713,13 @@ final class EventVenueScheduleController extends Controller
             'venue_starts.*.venue_id' => ['required', 'integer'],
             'venue_starts.*.start' => ['nullable', 'date'],
             'round_progression' => ['sometimes', 'in:team_ready,all_round'],
+            'rank_venue_preferences' => ['sometimes', 'array', 'max:50'],
+            'rank_venue_preferences.*.draw_ids' => ['required', 'array', 'min:1', 'max:200'],
+            'rank_venue_preferences.*.draw_ids.*' => ['integer'],
+            'rank_venue_preferences.*.min_rank' => ['required', 'integer', 'min:1', 'max:100'],
+            'rank_venue_preferences.*.max_rank' => ['required', 'integer', 'min:1', 'max:100'],
+            'rank_venue_preferences.*.venue_id' => ['required', 'integer'],
+            'cross_band_policy' => ['sometimes', 'in:highest_ranked,manual'],
         ]);
     }
 }

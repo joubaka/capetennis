@@ -525,6 +525,14 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::post('batches/{batch}/auto-replacement', [\App\Http\Controllers\Backend\MastersInvitationController::class, 'toggleAutoReplacement'])->name('toggle-auto');
   });
 
+  Route::get('email/issues', [\App\Http\Controllers\Backend\EventMailLogController::class, 'issues'])->name('backend.email-issues');
+  Route::prefix('event/{event}/email-log')->name('backend.event-mail-log.')->group(function () {
+    Route::get('/{log}/retry-preview', [\App\Http\Controllers\Backend\EventMailLogController::class, 'retryPreview'])->name('retry-preview');
+    Route::post('/{log}/retry', [\App\Http\Controllers\Backend\EventMailLogController::class, 'retry'])->name('retry');
+    Route::get('/', [\App\Http\Controllers\Backend\EventMailLogController::class, 'index'])->name('index');
+    Route::get('/{log}', [\App\Http\Controllers\Backend\EventMailLogController::class, 'show'])->name('show');
+    Route::post('/issues/{issue}/acknowledge', [\App\Http\Controllers\Backend\EventMailLogController::class, 'acknowledge'])->name('acknowledge');
+  });
   Route::prefix('event/{event}/communications')->name('backend.event-communications.')->group(function () {
     Route::get('/', [\App\Http\Controllers\Backend\EventCommunicationController::class, 'index'])->name('index');
     Route::post('/preview', [\App\Http\Controllers\Backend\EventCommunicationController::class, 'preview'])->name('preview');
@@ -2319,4 +2327,3 @@ Route::middleware('auth')->group(function () {
   Route::post('/events/{event}/scoring/team-fixtures/{fixture}/playing', [\App\Http\Controllers\Frontend\VenueScoringController::class, 'setTeamFixturePlaying'])
     ->name('frontend.scoring.team-fixtures.playing');
 });
-

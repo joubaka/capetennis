@@ -70,7 +70,9 @@ class BulkMailDispatcherTest extends TestCase
             payload: []
         );
 
-        $this->assertEquals(2, $stats['total']); // Only unique emails
+        $this->assertEquals(4, $stats['total']);
+        $this->assertEquals(2, $stats['duplicate']);
+        $this->assertEquals(2, $stats['skipped']);
         $this->assertEquals(2, $stats['queued']);
         Queue::assertPushed(SendBulkEmailJob::class, 2);
     }
@@ -92,8 +94,10 @@ class BulkMailDispatcherTest extends TestCase
             payload: []
         );
 
-        // After normalization: valid@example.com, another@example.com
-        $this->assertEquals(2, $stats['total']);
+        // Every attempted recipient remains visible, including exclusions.
+        $this->assertEquals(4, $stats['total']);
+        $this->assertEquals(2, $stats['invalid']);
+        $this->assertEquals(2, $stats['skipped']);
         $this->assertEquals(2, $stats['queued']);
         Queue::assertPushed(SendBulkEmailJob::class, 2);
     }
@@ -234,5 +238,35 @@ class BulkMailDispatcherTest extends TestCase
         $this->assertEquals('sent', $sent->fresh()->status); // Should remain sent
 
         Queue::assertPushed(SendBulkEmailJob::class, 2);
+    }
+
+    public function test_follow_up_campaign_is_allowed_but_repeated_submission_is_suppressed(): void
+    {
+        $dispatcher = new BulkMailDispatcher;
+        $first = $dispatcher->dispatch('region_email', null, ['person@example.test'], ['campaign_key' => 'first', 'subject' => 'Camp', 'body' => 'Original']);
+        $followUp = $dispatcher->dispatch('region_email', null, ['person@example.test'], ['campaign_key' => 'follow-up', 'subject' => 'Camp', 'body' => 'Clothing update']);
+        $repeat = $dispatcher->dispatch('region_email', null, ['person@example.test'], ['campaign_key' => 'follow-up', 'subject' => 'Camp', 'body' => 'Clothing update']);
+        $this->assertSame(1, $first['queued']);
+        $this->assertSame(1, $followUp['queued']);
+        $this->assertSame(0, $repeat['queued']);
+        $this->assertSame(1, $repeat['duplicate']);
+        Queue::assertPushed(SendBulkEmailJob::class, 2);
+        $this->assertSame(2, BulkEmailLog::whereNotNull('deduplication_key')->count());
+        $this->assertSame(3, BulkEmailLog::count());
+    }
+
+    public function test_unique_reservation_is_enforced_by_the_database(): void
+    {
+        $attributes = ['mail_type' => 'region_email', 'recipient_email' => 'person@example.test', 'status' => 'queued', 'deduplication_key' => str_repeat('a', 64)];
+        BulkEmailLog::create($attributes);
+        $this->expectException(\Illuminate\Database\UniqueConstraintViolationException::class);
+        BulkEmailLog::create($attributes);
+    }
+
+    public function test_failed_with_acceptance_evidence_is_never_requeued(): void
+    {
+        BulkEmailLog::create(['mail_type' => 'test_email', 'recipient_email' => 'person@example.test', 'status' => 'failed', 'accepted_at' => now()]);
+        $this->assertSame(0, (new BulkMailDispatcher)->resendFailed('test_email')['queued']);
+        Queue::assertNothingPushed();
     }
 }

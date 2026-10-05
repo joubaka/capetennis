@@ -55,102 +55,26 @@ class AnnouncementController extends Controller
         ->withInput(['scope' => 'nominations', 'audience' => 'nominations', 'filter' => 'all', 'recipients' => 'both', 'subject' => $communicationEvent->name.' — Announcement', 'body' => trim(strip_tags((string) $request->data))])
         ->with('success', 'Choose all nominees or another audience, then review and approve the announcement email. No email has been sent.');
     }
-    Log::debug('[Announcement] 🚀 store() called', [
-      'event_id' => $request->event_id,
-      'send_email' => $request->send_email,
-      'data_length' => strlen($request->data ?? ''),
-    ]);
-
-    $sendMail = (int) $request->send_email;
-
-    // 🧾 Save announcement
-    $announcement = new Announcement();
-    $announcement->message = $request->data;
-    $announcement->event_id = $request->event_id;
-    $announcement->save();
-
-    Log::debug('[Announcement] 💾 Announcement saved', [
-      'announcement_id' => $announcement->id,
-    ]);
-
-    $event = Event::with(['eventType', 'region_in_events.teams.players', 'registrations.players'])->findOrFail($request->event_id);
-    $emails = collect();
-
-    Log::debug('[Announcement] 📋 Event loaded', [
-      'event_name' => $event->name,
-      'event_type' => $event->eventType?->type ?? 'null',
-    ]);
-
-    // 🎾 Team-based events (type 3)
-    if ($event->eventType && $event->eventType->type == 3) {
-      foreach ($event->region_in_events as $region) {
-        foreach ($region->teams as $team) {
-          foreach ($team->players as $player) {
-            if (!empty($player->email)) {
-              $emails->push(strtolower(trim($player->email)));
-            }
-          }
-        }
-      }
+    $request->validate(['data' => 'required|string|max:30000']);
+    $announcement = Announcement::create(['event_id' => $communicationEvent->id, 'message' => $request->data]);
+    if (! $request->boolean('send_email')) {
+      return response()->json(['success' => true, 'message' => 'Announcement created successfully (no emails sent).']);
     }
-    // 🧍‍♂️ Player-based events
-    else {
-      foreach ($event->registrations as $reg) {
-        foreach ($reg->players as $player) {
-          if (!empty($player->email)) {
-            $emails->push(strtolower(trim($player->email)));
-          }
-        }
-      }
-    }
-
-    // ✅ Always include admin
-    $emails->push('hermanustennisacademy@gmail.com');
-
-    // 🧹 Clean list (remove blanks + duplicates)
-    $emails = $emails->filter()->unique()->values();
-
-    Log::debug('[Announcement] 📧 Email list built', [
-      'count' => $emails->count(),
-      'emails' => $emails->take(5)->toArray(), // Log first 5 only
+    $service = app(\App\Services\EventAnnouncementService::class);
+    $snapshot = $service->audienceSnapshot($communicationEvent);
+    $stats = $service->dispatch($announcement, $snapshot['recipients'], $request->user(), $snapshot['excluded']);
+    // Administrative copies are tracked separately from recipient results.
+    $adminEmail = \App\Models\SiteSetting::get('admin_notification_email', 'support@capetennis.co.za');
+    if ($adminEmail) app(\App\Services\BulkMailDispatcher::class)->dispatch('event_announcement', $announcement, [$adminEmail], [
+      'event_id' => $communicationEvent->id, 'created_by' => $request->user()->id, 'recipient_kind' => 'admin_copy',
+      'event_name' => $communicationEvent->name, 'title' => $announcement->title, 'message' => $announcement->message,
     ]);
-
-    // 💌 Prepare announcement data
-    $data = [
-      'message' => $request->data,
-      'event' => $event->name,
-    ];
-
-    // 🚀 Send emails (via event)
-    if ($sendMail === 1) {
-      Log::info('[Announcement] 📤 Dispatching events for emails', [
-        'count' => $emails->count(),
-      ]);
-
-      foreach ($emails as $email) {
-        $data['email'] = $email;
-        
-        Log::debug('[Announcement] 🎯 Firing AnnouncementPost event', [
-          'email' => $email,
-        ]);
-        
-        event(new AnnouncementPost($data));
-      }
-
-      Log::info('[Announcement] ✅ All events dispatched');
-
-      return response()->json([
-        'success' => true,
-        'message' => "Announcement created and emails queued.",
-        'emails_count' => $emails->count()
-      ]);
-    }
-
-    Log::info('[Announcement] ⏭️ No emails sent (sendMail not checked)');
-
+    $severity = $stats['queued'] === 0 ? 'error' : (($stats['skipped'] || $stats['failed']) ? 'warning' : 'success');
     return response()->json([
-      'success' => true,
-      'message' => "Announcement created successfully (no emails sent).",
+      'success' => true, 'mail' => $stats, 'mail_level' => $severity,
+      'emails_count' => $stats['queued'],
+      'report_url' => route('backend.event-mail-log.index', $communicationEvent),
+      'message' => "Announcement created; {$stats['queued']} recipient emails queued; {$stats['skipped']} skipped; {$stats['failed']} could not be queued. Check the event Email Log.",
     ]);
   }
 

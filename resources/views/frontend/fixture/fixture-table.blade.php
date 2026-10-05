@@ -202,6 +202,7 @@ $fxWinnerClasses = function ($fx) {
 @once
 <script>
 // Expand/Collapse details on mobile
+document.addEventListener('DOMContentLoaded', function () {
 $(document).on('click', '.toggle-details', function () {
   const target = $(this).data('target');
   const $row = $(target);
@@ -210,6 +211,7 @@ $(document).on('click', '.toggle-details', function () {
   const expanded = !$row.hasClass('d-none');
   $(this).attr('aria-expanded', expanded ? 'true' : 'false')
     .attr('aria-label', expanded ? 'Hide match details' : 'Show match details');
+});
 });
 </script>
 @endonce

@@ -1116,6 +1116,7 @@ final class TeamSelectionInvitationService
                     'kind' => 'invitation',
                     'campaign' => $this->savedCampaignSnapshot($locked->selectionImport),
                     'manual_restored_send' => true,
+                    'event_id' => $locked->event_id, 'region_id' => $locked->region_id, 'created_by' => $actor->id,
                 ],
                 'queued_at' => now(),
             ]);
@@ -1483,7 +1484,7 @@ final class TeamSelectionInvitationService
                 ->where('mail_type', 'team_selection_invitation')
                 ->where('related_type', TeamSelectionInvitation::class)
                 ->whereIn('related_id', $invitations->keys())
-                ->where('status', 'failed')
+                ->where('status', 'failed')->whereNull('sent_at')->whereNull('accepted_at')
                 ->lockForUpdate()
                 ->get();
             $queued = 0;
@@ -1496,6 +1497,7 @@ final class TeamSelectionInvitationService
                 $log->update([
                     'recipient_email' => $email,
                     'status' => 'queued',
+                    'retry_actor_id' => $actor->id,
                     'queued_at' => now(),
                     'failed_at' => null,
                     'error_message' => null,
@@ -1541,6 +1543,7 @@ final class TeamSelectionInvitationService
                     'kind' => $locked->promoted_from_id ? 'replacement' : 'invitation',
                     'campaign' => $this->savedCampaignSnapshot($locked->selectionImport),
                     'manual_resend' => true,
+                    'event_id' => $locked->event_id, 'region_id' => $locked->region_id, 'created_by' => $actor->id,
                 ],
                 'queued_at' => now(),
             ]);
@@ -2346,7 +2349,7 @@ final class TeamSelectionInvitationService
         $renderedHtml = $approvedMail->render();
         $renderedSubject = $approvedMail->envelope()->subject;
         $payload = ['kind' => $kind, 'campaign' => $campaign, 'rendered_html' => $renderedHtml, 'rendered_subject' => $renderedSubject,
-            'event_id' => $invitation->event_id, 'recipient_email' => $email, 'recipient_name' => $invitation->player?->full_name,
+            'event_id' => $invitation->event_id, 'region_id' => $invitation->region_id, 'created_by' => $invitation->selectionImport?->prepared_by ?? $invitation->selectionImport?->imported_by, 'recipient_email' => $email, 'recipient_name' => $invitation->player?->full_name,
             'related_type' => TeamSelectionInvitation::class, 'related_id' => $invitation->id];
         $payload['payload_integrity'] = app(\App\Services\InvitationMailSecurity::class)->payloadIntegrity($payload);
         $log = BulkEmailLog::create([

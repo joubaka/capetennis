@@ -66,9 +66,25 @@ final class EventVenueScheduleService
         $allocations = DB::table('draw_venue_court_allocations')->whereIn('draw_id', $draws->pluck('id'))
             ->get()->groupBy(fn ($row) => $row->draw_id.'|'.$row->venue_id);
 
+        $preferenceService = app(RankVenuePreferences::class);
+        $storedDraft = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true) ?: [];
+        $rankRuleWarnings = [];
+        $rankRules = [];
+        if (array_key_exists('rank_venue_preferences', $options)) {
+            $rankRules = $preferenceService->normalize($event, $options['rank_venue_preferences']);
+        } else {
+            foreach ($preferenceService->active($storedDraft['rank_venue_preferences'] ?? [], $draws->pluck('id')->all()) as $rule) {
+                try { $rankRules = array_merge($rankRules, $preferenceService->normalize($event, [$rule])); }
+                catch (\InvalidArgumentException $exception) { $rankRuleWarnings[] = 'A saved roster rank venue preference needs review. Normal venue scheduling is used: '.$exception->getMessage(); }
+            }
+        }
+        $rankRules = $preferenceService->active($rankRules, $draws->pluck('id')->all());
+        $crossBandPolicy = $options['cross_band_policy'] ?? $storedDraft['cross_band_policy'] ?? 'highest_ranked';
+        if (! in_array($crossBandPolicy, ['highest_ranked', 'manual'], true)) throw new \InvalidArgumentException('Choose a valid cross-band rule.');
+
         $nodes = [];
         $excluded = [];
-        $warnings = [];
+        $warnings = $rankRuleWarnings;
         foreach ($draws as $draw) {
             if ($draw->locked) {
                 $warnings[] = "{$draw->drawName} was not changed because the draw is locked.";
@@ -99,10 +115,18 @@ final class EventVenueScheduleService
             }
         }
 
+        $rankChoices = $preferenceService->choices(collect($nodes)->filter(fn ($node) => ($node['fixture_kind'] ?? '') === 'team')
+            ->map(fn ($node) => $node['fixture'])->values(), $rankRules, $crossBandPolicy);
+        foreach ($nodes as &$node) {
+            $node['rank_preference'] = $rankChoices[$node['fixture']->id] ?? null;
+            if (($node['fixture_kind'] ?? '') !== 'team') $node['rank_preference'] = null;
+        }
+        unset($node);
+
         $allRegistrations = collect($nodes)->flatMap(fn ($node) => $node['participants'])->unique()->values()->all();
         $excludedIndividual = array_values(array_filter($excluded, 'is_int'));
         $excludedTeam = collect($excluded)->filter(fn ($id) => is_string($id) && str_starts_with($id, 'team:'))->map(fn ($id) => (int) substr($id, 5))->all();
-        $calendar = ScheduleAvailability::load(array_keys($courtLabels), $allRegistrations, $excludedIndividual, null, $playerRest, $excludedTeam);
+        $calendar = ScheduleAvailability::load(array_keys($courtLabels), $allRegistrations, $excludedIndividual, null, $playerRest, $excludedTeam, $event, $start);
         $availabilityRevision = $calendar->fingerprint();
         $pending = [];
         $finished = [];
@@ -132,6 +156,10 @@ final class EventVenueScheduleService
         while ($pending) {
             $best = null;
             foreach ($pending as $id => $node) {
+                if ($node['rank_preference']['manual'] ?? false) {
+                    $blocked[$id] = $node['rank_preference']['warning'];
+                    continue;
+                }
                 if (! $node['venue_courts']) {
                     $blocked[$id] = 'No permitted venue with courts is selected.';
                     continue;
@@ -160,6 +188,7 @@ final class EventVenueScheduleService
                         }
                         $choice = ['id' => $id, 'time' => $at, 'venue_id' => $venueId, 'court' => (string) $court,
                             'fairness' => $scheduledPerDraw[$node['draw_id']] ?? 0,
+                            'rank_penalty' => ($node['rank_preference']['venue_id'] ?? null) && (int) $node['rank_preference']['venue_id'] !== (int) $venueId ? 1 : 0,
                             'venue_changes' => $calendar->venueChanges($node['participants'], $at, (int) $venueId)];
                         if ($best === null || $this->isEarlier($choice, $best, $nodes)) $best = $choice;
                     }
@@ -168,6 +197,8 @@ final class EventVenueScheduleService
             if ($best === null) break;
             $id = $best['id'];
             $node = $nodes[$id];
+            if ($node['rank_preference']['warning'] ?? null) $warnings[] = $node['draw_name'].' match '.$node['match'].': '.$node['rank_preference']['warning'];
+            if ($best['rank_penalty']) $warnings[] = $node['draw_name'].' match '.$node['match'].': the preferred roster rank venue is unavailable in this window; another assigned venue is used.';
             foreach ($best['venue_changes'] as $change) {
                 $warnings[] = $this->venueWarning($change, $venues);
             }
@@ -186,7 +217,7 @@ final class EventVenueScheduleService
                 'venue_name' => $venues[$best['venue_id']]->name, 'court' => $best['court'],
                 'duration' => $duration, 'participants' => $node['participant_names'],
                 'participant_ids' => $node['participants'], 'venue_courts' => $node['venue_courts'],
-                'venue_changes' => $best['venue_changes'],
+                'venue_changes' => $best['venue_changes'], 'rank_preference' => $node['rank_preference'],
             ];
             unset($pending[$id], $blocked[$id]);
         }
@@ -280,6 +311,7 @@ final class EventVenueScheduleService
             'draw_ids' => $draws->pluck('id')->sort()->values()->all(), 'venue_ids' => $venueIds->sort()->values()->all(),
             'replan_venue_ids' => collect($replanVenues)->sort()->values()->all(),
             'allow_partial' => (bool) ($options['allow_partial'] ?? false),
+            'rank_venue_preferences' => $rankRules, 'cross_band_policy' => $crossBandPolicy,
             'draw_starts' => $drawStarts->map(fn ($time, $drawId) => ['draw_id' => (int) $drawId,
                 'start' => $time->format('Y-m-d H:i:s')])->values()->all(),
             'venue_starts' => $venueStarts->map(fn ($time, $venueId) => ['venue_id' => (int) $venueId,
@@ -294,7 +326,7 @@ final class EventVenueScheduleService
             'unscheduled' => $unscheduled, 'warnings' => $warnings,
             'automatic_byes' => collect($nodes)->filter(fn ($node) => $node['automatic'] && ! $node['played'])->count(),
             'automatic_fixture_ids' => collect($nodes)->filter(fn ($node) => $node['automatic'] && ! $node['played'])->keys()->values()->all(),
-            'revision' => $this->revision($event, $input + ['availability_revision' => $availabilityRevision]), 'input' => $input,
+            'revision' => $this->revision($event, $input + ['availability_revision' => $availabilityRevision, 'rank_revision' => $rankChoices]), 'input' => $input,
         ];
     }
 
@@ -666,9 +698,9 @@ final class EventVenueScheduleService
 
     private function isEarlier(array $candidate, array $best, array $nodes): bool
     {
-        return ([count($candidate['venue_changes'] ?? []), $candidate['time']->timestamp, $candidate['fairness'], $nodes[$candidate['id']]['wave'],
+        return ([$candidate['rank_penalty'] ?? 0, count($candidate['venue_changes'] ?? []), $candidate['time']->timestamp, $candidate['fairness'], $nodes[$candidate['id']]['wave'],
             $nodes[$candidate['id']]['play_order'], $candidate['id']]
-            <=> [count($best['venue_changes'] ?? []), $best['time']->timestamp, $best['fairness'], $nodes[$best['id']]['wave'],
+            <=> [$best['rank_penalty'] ?? 0, count($best['venue_changes'] ?? []), $best['time']->timestamp, $best['fairness'], $nodes[$best['id']]['wave'],
                 $nodes[$best['id']]['play_order'], $best['id']]) < 0;
     }
 

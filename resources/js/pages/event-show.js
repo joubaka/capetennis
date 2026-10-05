@@ -376,23 +376,18 @@
         $('.mySpinner').addClass('d-none');
         $('#addAnnouncementButton, input[name="sendMail"]').prop('disabled', false);
 
-        let message = 'Announcement created successfully.';
-        if (sendEmail === 1) {
-          const count = resp?.emails_count ?? null;
-          message = count
-            ? `Announcement sent to ${count} recipient${count === 1 ? '' : 's'}.`
-            : 'Announcement sent successfully.';
-        }
+        const message = resp.message || 'Announcement created successfully.';
+        const feedback = resp.mail_level || 'success';
 
         Swal.fire({
-          icon: 'success',
-          title: '✅ Announcement Created',
+          icon: feedback,
+          title: 'Announcement Created',
           text: message,
           timer: 2500,
           showConfirmButton: false
         });
 
-        setTimeout(() => location.reload(), 2500);
+        setTimeout(() => resp.report_url ? window.location.assign(resp.report_url) : location.reload(), 2500);
       })
       .fail(function (xhr) {
         $('.mySpinner').addClass('d-none');

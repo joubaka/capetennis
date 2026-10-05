@@ -26,10 +26,12 @@ class TeamFixtureLineupPresenter
         $regionIds = $fixtures->flatMap(fn ($fixture) => $fixture->fixturePlayers->flatMap(fn ($row) => collect($row->participant_snapshot ?? [])->pluck('region_id')))->filter()->unique();
         $historicalRegions = \App\Models\TeamRegion::whereIn('id', $regionIds)->get()->keyBy('id');
         foreach ($fixtures as $fixture) {
+            $rankSources = ['home' => [], 'away' => []];
             $fixture->setAttribute('lineup_display', [
-                'home' => $this->side($fixture, 'home', $teams, $historicalRegions),
-                'away' => $this->side($fixture, 'away', $teams, $historicalRegions),
+                'home' => $this->side($fixture, 'home', $teams, $historicalRegions, $rankSources['home']),
+                'away' => $this->side($fixture, 'away', $teams, $historicalRegions, $rankSources['away']),
             ]);
+            $fixture->setAttribute('lineup_rank_sources', $rankSources);
             $fixture->setAttribute('tie_display', [
                 'home' => $this->teamLabel($fixture, 'home', $teams),
                 'away' => $this->teamLabel($fixture, 'away', $teams),
@@ -37,7 +39,7 @@ class TeamFixtureLineupPresenter
         }
     }
 
-    private function side(TeamFixture $fixture, string $side, Collection $teams, Collection $historicalRegions): array
+    private function side(TeamFixture $fixture, string $side, Collection $teams, Collection $historicalRegions, array &$rankSources): array
     {
         $home = $side === 'home';
         $tie = $this->tie($fixture);
@@ -78,16 +80,22 @@ class TeamFixtureLineupPresenter
                 if ($member) break;
             }
             $rank = $historical['rank'] ?? $member?->rank;
+            $rankSource = ($profile || $imported) && (int) $rank > 0 ? ($historical ? 'snapshot' : 'roster') : null;
             if (!$rank && isset($positions[$index])) {
                 $rank = $entry ? (int) ceil($positions[$index] / 2) : $positions[$index];
             }
-            $rank ??= $fixture->{$side.'_rank_nr'};
+            if ($rank === null) {
+                $rank = $fixture->{$side.'_rank_nr'};
+                if (($profile || $imported) && (int) $rank > 0) $rankSource = 'legacy';
+            }
+            $rankSources[] = $rankSource;
             $name = $historical['name'] ?? $profile?->full_name ?? ($imported ? trim($imported->name.' '.$imported->surname) : 'TBD');
             $players[] = ['name' => $name, 'rank' => (int) $rank > 0 ? (int) $rank : null];
         }
         if (!$players) {
             $legacyRank = $fixture->{$side.'_rank_nr'};
             foreach (($home ? $fixture->team1 : $fixture->team2) as $profile) {
+                $rankSources[] = (int) $legacyRank > 0 ? 'legacy' : null;
                 $players[] = ['name' => $profile->full_name, 'rank' => (int) $legacyRank > 0 ? (int) $legacyRank : null];
             }
         }

@@ -184,6 +184,10 @@ $navbarDetached = ($navbarDetached ?? '');
   @endif
 
   <div class="navbar-nav-right d-flex align-items-center" id="navbar-collapse">
+    @if(auth()->check() && \Illuminate\Support\Facades\Schema::hasTable('event_mail_issues'))
+      @php($emailIssueCount=\App\Models\EventMailIssue::where('user_id',Auth::id())->whereNull('read_at')->count())
+      @if($emailIssueCount)<a class="btn btn-sm btn-outline-danger me-2" href="{{ route('backend.email-issues') }}" aria-label="{{ $emailIssueCount }} email issues need attention">Email issues <span class="badge bg-danger">{{ $emailIssueCount }}</span></a>@endif
+    @endif
 
     <!-- Style Switcher -->
     @unless($backendWorkspace ?? false)
@@ -277,6 +281,9 @@ $navbarDetached = ($navbarDetached ?? '');
           <li><div class="dropdown-divider"></div></li>
 
           @auth
+          @if(\Illuminate\Support\Facades\Schema::hasTable('event_mail_issues'))
+          <li><a class="dropdown-item" href="{{ route('backend.email-issues') }}">Email issues <span class="badge bg-danger">{{ \App\Models\EventMailIssue::where('user_id',Auth::id())->whereNull('read_at')->count() }}</span></a></li>
+          @endif
           <li>
             <a class="dropdown-item" href="{{ route('my.tennis') }}">
               <i class="ti ti-ball-tennis me-2"></i>

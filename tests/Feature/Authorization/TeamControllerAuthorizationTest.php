@@ -500,6 +500,54 @@ class TeamControllerAuthorizationTest extends TestCase
         $this->assertDatabaseHas('teams', ['id' => $otherEventTeam->id, 'published' => 0]);
     }
 
+    public function test_region_short_name_can_be_saved_cleared_and_preserved_by_legacy_updates(): void
+    {
+        $region = TeamRegion::create(['region_name' => 'Overberg', 'short_name' => 'Old']);
+        $this->event->regions()->attach($region->id);
+        $pivot = $this->event->regions()->whereKey($region->id)->firstOrFail()->pivot;
+        $this->actingAs($this->admin)->patchJson(route('eventRegion.update', $pivot->id), [
+            'region_name' => 'Overberg', 'short_name' => ' OV ',
+        ])->assertOk()->assertJson(['short_name' => 'OV', 'abbreviation' => 'OV']);
+        $this->patchJson(route('eventRegion.update', $pivot->id), ['region_name' => 'Overberg'])
+            ->assertOk()->assertJson(['short_name' => 'OV']);
+        $this->patchJson(route('eventRegion.update', $pivot->id), ['region_name' => 'Overberg', 'short_name' => ''])
+            ->assertOk()->assertJson(['short_name' => null, 'abbreviation' => 'Over']);
+        $this->assertSame(1, $region->events()->count());
+        if (getenv('CT_ROSTER_BROWSER_FIXTURE') === '1') {
+            \Illuminate\Support\Facades\DB::table('eventtypes')->insertOrIgnore(['id' => 3, 'name' => 'Team', 'type' => \App\Models\EventType::TEAM]);
+            $this->event->update(['eventType' => 3]);
+            $this->team->update(['region_id' => $region->id]);
+            $html = $this->get(route('admin.events.teams', $this->event))->assertOk()->getContent();
+            file_put_contents(storage_path('framework/testing/region-short-name.html'), $html);
+        }
+    }
+
+    public function test_attaching_existing_region_does_not_change_its_global_short_name(): void
+    {
+        $region = TeamRegion::create(['region_name' => 'Shared Code Region', 'short_name' => 'SCR']);
+        $this->otherEvent->regions()->attach($region->id);
+        $this->actingAs($this->admin)->postJson(route('eventRegion.store'), [
+            'event_id' => $this->event->id, 'region_id' => $region->id, 'short_name' => 'Changed',
+        ])->assertOk()->assertJson(['short_name' => 'SCR']);
+        $this->assertSame('SCR', $region->fresh()->short_name);
+        $pivot = $this->event->regions()->whereKey($region->id)->firstOrFail()->pivot;
+        $this->patchJson(route('eventRegion.update', $pivot->id), [
+            'region_name' => 'Shared Code Region', 'short_name' => 'Changed',
+        ])->assertStatus(409);
+        $this->assertSame('SCR', $region->fresh()->short_name);
+    }
+
+    public function test_new_region_short_name_and_invalid_length_are_validated(): void
+    {
+        $this->actingAs($this->admin)->postJson(route('eventRegion.store'), [
+            'event_id' => $this->event->id, 'region_id' => 'New Local Region', 'short_name' => 'NLR',
+        ])->assertOk()->assertJson(['short_name' => 'NLR', 'abbreviation' => 'NLR']);
+        $this->postJson(route('eventRegion.store'), [
+            'event_id' => $this->event->id, 'region_id' => 'Never Created Region', 'short_name' => str_repeat('x', 21),
+        ])->assertUnprocessable()->assertJsonValidationErrors('short_name');
+        $this->assertDatabaseMissing('team_regions', ['region_name' => 'Never Created Region']);
+    }
+
     public function test_event_admin_can_rename_a_region_attached_only_to_their_event(): void
     {
         $region = TeamRegion::create(['region_name' => 'Cavaliers - North 2026']);

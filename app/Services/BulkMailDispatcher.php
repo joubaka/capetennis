@@ -26,107 +26,48 @@ class BulkMailDispatcher
         array $payload = [],
         bool $allowDuplicates = false
     ): array {
-        $recipients = collect($recipients);
-        $stats = [
-            'total' => 0,
-            'queued' => 0,
-            'skipped' => 0,
-            'invalid' => 0,
-            'duplicate' => 0,
-        ];
-
-        Log::info('[BulkMailDispatcher] Starting bulk email dispatch', [
-            'mail_type' => $mailType,
-            'related_type' => $related ? get_class($related) : null,
-            'related_id' => $related?->id ?? null,
-            'recipient_count' => $recipients->count(),
-            'allow_duplicates' => $allowDuplicates,
-        ]);
-
-        // Extract and normalize recipient emails
-        $normalizedRecipients = $this->normalizeRecipients($recipients);
-
-        $stats['total'] = $normalizedRecipients->count();
-        $seenInBatch = [];
-
-        foreach ($normalizedRecipients as $recipient) {
-            // Validate email
-            if (empty($recipient['email']) || !filter_var($recipient['email'], FILTER_VALIDATE_EMAIL)) {
+        $recipients = $this->normalizeRecipients($recipients);
+        $stats = ['total' => $recipients->count(), 'queued' => 0, 'skipped' => 0, 'invalid' => 0, 'duplicate' => 0, 'failed' => 0];
+        $seen = [];
+        foreach ($recipients as $recipient) {
+            $attributes = ['mail_type' => $mailType, 'related_type' => $related ? get_class($related) : null,
+                'related_id' => $related?->id, 'recipient_email' => $recipient['email'], 'recipient_name' => $recipient['name'], 'payload' => $payload];
+            if (! filter_var($recipient['email'], FILTER_VALIDATE_EMAIL)) {
+                BulkEmailLog::create([...$attributes, 'status' => 'skipped', 'skipped_at' => now(), 'error_message' => 'Missing or invalid email address']);
                 $stats['invalid']++;
-                Log::warning('[BulkMailDispatcher] Invalid email skipped', [
-                    'email' => $recipient['email'] ?? 'empty',
-                ]);
-                continue;
-            }
-
-            // Check for duplicates within this batch.
-            if (!$allowDuplicates && isset($seenInBatch[$recipient['email']])) {
-                $stats['duplicate']++;
                 $stats['skipped']++;
-
-                Log::info('[BulkMailDispatcher] Duplicate email skipped in batch', [
-                    'email' => $recipient['email'],
-                    'mail_type' => $mailType,
-                ]);
-
                 continue;
             }
-
-            $seenInBatch[$recipient['email']] = true;
-
-            // Also prevent a retry or repeated request from queueing the same
-            // logical message again. Failed/skipped attempts remain retryable.
-            if (!$allowDuplicates && BulkEmailLog::query()
-                ->where('mail_type', $mailType)
-                ->where('related_type', $related ? get_class($related) : null)
-                ->where('related_id', $related?->id ?? null)
-                ->where('recipient_email', $recipient['email'])
-                ->whereIn('status', ['queued', 'sent'])
-                ->exists()) {
-                BulkEmailLog::create([
-                    'mail_type' => $mailType,
-                    'related_type' => $related ? get_class($related) : null,
-                    'related_id' => $related?->id ?? null,
-                    'recipient_email' => $recipient['email'],
-                    'recipient_name' => $recipient['name'] ?? null,
-                    'status' => 'skipped',
-                    'error_message' => 'Duplicate email suppressed',
-                    'payload' => $payload,
-                    'skipped_at' => now(),
-                ]);
-
+            $identity = [$mailType, $attributes['related_type'], $attributes['related_id'], $recipient['email'], $payload['campaign_key'] ?? null, ! empty($payload['campaign_key']) ? ($payload['created_by'] ?? null) : null, ! empty($payload['campaign_key']) ? ($payload['recipient_kind'] ?? null) : null, ! empty($payload['campaign_key']) && $mailType !== 'series_email' ? ($payload['event_id'] ?? null) : null];
+            $key = $allowDuplicates ? null : hash('sha256', json_encode($identity, JSON_THROW_ON_ERROR));
+            $legacyDuplicate = ! $allowDuplicates && empty($payload['campaign_key']) && BulkEmailLog::where('mail_type', $mailType)
+                ->where('related_type', $attributes['related_type'])->where('related_id', $attributes['related_id'])
+                ->where('recipient_email', $recipient['email'])->whereIn('status', ['queued', 'sending', 'sent', 'acceptance_unknown'])->exists();
+            if (isset($seen[$recipient['email']]) || $legacyDuplicate || ($key && BulkEmailLog::where('deduplication_key', $key)->exists())) {
+                BulkEmailLog::create([...$attributes, 'status' => 'skipped', 'skipped_at' => now(), 'error_message' => 'Duplicate email suppressed for this campaign']);
                 $stats['duplicate']++;
                 $stats['skipped']++;
                 continue;
             }
-
-            // Create log entry
-            $log = BulkEmailLog::create([
-                'mail_type' => $mailType,
-                'related_type' => $related ? get_class($related) : null,
-                'related_id' => $related?->id ?? null,
-                'recipient_email' => $recipient['email'],
-                'recipient_name' => $recipient['name'] ?? null,
-                'status' => 'queued',
-                'payload' => $payload,
-                'queued_at' => now(),
-            ]);
-
-            // Dispatch job immediately (bulk email server handles rate)
-            if ($payload['manual_retry_only'] ?? false) {
-                SendBulkEmailJob::dispatch($log->id, true)->afterCommit();
-            } else {
-                SendBulkEmailJob::dispatch($log->id);
+            $seen[$recipient['email']] = true;
+            try {
+                // The unique reservation closes the check/create race between concurrent requests.
+                $log = BulkEmailLog::create([...$attributes, 'deduplication_key' => $key, 'status' => 'queued', 'queued_at' => now()]);
+            } catch (\Illuminate\Database\UniqueConstraintViolationException $exception) {
+                if (! $key || ! BulkEmailLog::where('deduplication_key', $key)->exists()) throw $exception;
+                BulkEmailLog::create([...$attributes, 'status' => 'skipped', 'skipped_at' => now(), 'error_message' => 'Duplicate email suppressed for this campaign']);
+                $stats['duplicate']++;
+                $stats['skipped']++;
+                continue;
             }
-
-            $stats['queued']++;
+            try {
+                SendBulkEmailJob::dispatch($log->id, (bool) ($payload['manual_retry_only'] ?? false))->afterCommit();
+                $stats['queued']++;
+            } catch (\Throwable $exception) {
+                $log->markAsFailed('Email could not be queued. Please review the email log before retrying.');
+                $stats['failed']++;
+            }
         }
-
-        Log::info('[BulkMailDispatcher] Bulk email dispatch completed', [
-            'mail_type' => $mailType,
-            'stats' => $stats,
-        ]);
-
         return $stats;
     }
 
@@ -161,8 +102,6 @@ class BulkMailDispatcher
 
             return ['email' => '', 'name' => null];
         })
-            ->filter(fn($r) => !empty($r['email'])) // Remove empty emails
-            ->unique('email') // Remove duplicate emails
             ->values();
     }
 
@@ -181,7 +120,7 @@ class BulkMailDispatcher
                 ->where('related_id', $related->id);
         }
 
-        $failedLogs = $query->get();
+        $failedLogs = $query->whereNull('sent_at')->whereNull('accepted_at')->get();
 
         if ($failedLogs->isEmpty()) {
             Log::info('[BulkMailDispatcher] No failed emails to resend', [
@@ -202,12 +141,14 @@ class BulkMailDispatcher
 
         foreach ($failedLogs as $log) {
             // Reset status to queued
-            $log->update([
-                'status' => 'queued',
-                'queued_at' => now(),
-                'failed_at' => null,
-                'error_message' => null,
-            ]);
+            $claimed = \Illuminate\Support\Facades\DB::transaction(function () use ($log): bool {
+                $current = BulkEmailLog::whereKey($log->id)->lockForUpdate()->firstOrFail();
+                if ($current->status !== 'failed' || $current->sent_at || $current->accepted_at) return false;
+                $current->update(['status' => 'queued', 'queued_at' => now(), 'failed_at' => null,
+                    'error_message' => null, 'retry_actor_id' => auth()->id()]);
+                return true;
+            });
+            if (! $claimed) continue;
 
             // Dispatch job with delay
             SendBulkEmailJob::dispatch($log->id, (bool) data_get($log->payload, 'manual_retry_only', false))

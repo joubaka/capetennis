@@ -28,12 +28,15 @@ class EventAnnouncementController extends Controller
       }
     ]);
 
-    $announcementRecipients = $announcements->recipients($event);
+    $snapshot = $announcements->audienceSnapshot($event);
+    $announcementRecipients = $snapshot['recipients'];
+    $announcementExcluded = $snapshot['excluded'];
     $announcementRecipientHash = hash('sha256', $announcementRecipients->pluck('email')->toJson());
 
     return view('backend.event.announcements', compact(
       'event',
       'announcementRecipients',
+      'announcementExcluded',
       'announcementRecipientHash',
     ));
   }
@@ -62,7 +65,9 @@ class EventAnnouncementController extends Controller
     $this->ensureMessageHasContent($data['message']);
 
     if (!empty($data['sendMail'])) {
-      $recipients = $announcements->recipients($event);
+      $snapshot = $announcements->audienceSnapshot($event);
+      $recipients = $snapshot['recipients'];
+      $excluded = $snapshot['excluded'];
       if ($recipients->isEmpty()) {
         throw ValidationException::withMessages([
           'sendMail' => 'There are no valid nominated or registered player email addresses for this event.',
@@ -89,7 +94,7 @@ class EventAnnouncementController extends Controller
     $mailStats = null;
     if (!empty($data['sendMail'])) {
       Log::info('[EventAnnouncement] 📧 Sending emails...');
-      $mailStats = $announcements->dispatch($announcement, $recipients);
+      $mailStats = $announcements->dispatch($announcement, $recipients, $request->user(), $excluded);
     } else {
       Log::info('[EventAnnouncement] ⏭️ sendMail not checked, skipping emails');
     }
@@ -102,6 +107,8 @@ class EventAnnouncementController extends Controller
       'success' => true,
       'id' => $announcement->id,
       'mail' => $mailStats,
+      'mail_level' => $mailStats !== null && $mailStats['queued'] === 0 ? 'error' : (($mailStats['skipped'] ?? 0) || ($mailStats['failed'] ?? 0) ? 'warning' : 'success'),
+      'report_url' => $mailStats !== null ? route('backend.event-mail-log.index', $event) : null,
       'message' => $message,
     ]);
   }

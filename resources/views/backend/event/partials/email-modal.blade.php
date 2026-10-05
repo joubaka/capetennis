@@ -3,6 +3,7 @@
   <div class="modal-dialog modal-lg modal-dialog-centered">
     <form id="sendMailForm" class="modal-content">
       @csrf
+      <input type="hidden" name="campaign_key" value="{{ (string) \Illuminate\Support\Str::uuid() }}">
 
       <input type="hidden" name="event_id" value="{{ $event->id }}">
       <input type="hidden" name="scope" id="mail_scope">
@@ -53,3 +54,13 @@
     </form>
   </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const modal = document.getElementById('sendMailModal');
+  modal?.addEventListener('show.bs.modal', function () {
+    const input = modal.querySelector('[name="campaign_key"]');
+    if (input) input.value = window.crypto?.randomUUID ? window.crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const value = Math.floor(Math.random() * 16); return (c === 'x' ? value : (value & 3) | 8).toString(16); });
+  });
+});
+</script>

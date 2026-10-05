@@ -65,7 +65,7 @@ class BulkEmailDeliveryEvidenceTest extends TestCase
         $sent = $this->sent();
         $sent->getOriginalMessage()->getHeaders()->addTextHeader('X-SES-Message-ID', 'ses-provider-receipt');
         $log = $this->log();
-        $log->recordTransportResult($sent, new SesTransport($this->createMock(SesClient::class)), 'ses');
+        $log->recordTransportResult($sent, new SesTransport($this->createStub(SesClient::class)), 'ses');
 
         $this->assertSame('ses-provider-receipt', $log->transport_message_id);
         $this->assertSame('server_accepted', $log->evidence_status);

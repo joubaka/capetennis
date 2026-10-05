@@ -42,6 +42,7 @@ class EventRegionController extends Controller
     $validated = $request->validate([
       'event_id' => ['required', 'integer', 'exists:events,id'],
       'region_id' => ['required'],
+      'short_name' => ['nullable', 'string', 'max:20'],
     ]);
 
     $event = Event::findOrFail($validated['event_id']);
@@ -62,6 +63,7 @@ class EventRegionController extends Controller
       if (!$region) {
         $region = TeamRegion::create([
           'region_name' => $cleanName,
+          'short_name' => trim($validated['short_name'] ?? '') ?: null,
         ]);
       }
     }
@@ -78,6 +80,9 @@ class EventRegionController extends Controller
     return response()->json([
       'id' => $region->id,          // region id
       'region_name' => $region->region_name, // clean name
+      'short_name' => $region->short_name,
+      'abbreviation' => \App\Support\RegionAbbreviation::label($region),
+      'event_count' => $region->events()->count(),
       'pivot_id' => $pivotId              // pivot id for detach/remove
     ]);
   }
@@ -121,6 +126,7 @@ class EventRegionController extends Controller
 
     $validated = $request->validate([
       'region_name' => ['required', 'string', 'max:255'],
+      'short_name' => ['sometimes', 'nullable', 'string', 'max:20'],
     ]);
     $name = preg_replace('/\s+/u', ' ', trim($validated['region_name']));
     if ($name === '') {
@@ -144,7 +150,11 @@ class EventRegionController extends Controller
       ], 409);
     }
 
-    $region->update(['region_name' => $name]);
+    $attributes = ['region_name' => $name];
+    if (array_key_exists('short_name', $validated)) {
+      $attributes['short_name'] = trim($validated['short_name'] ?? '') ?: null;
+    }
+    $region->update($attributes);
 
     return response()->json([
       'message' => $eventCount > 1
@@ -152,6 +162,8 @@ class EventRegionController extends Controller
         : 'Region renamed.',
       'region_id' => $region->id,
       'region_name' => $region->region_name,
+      'short_name' => $region->short_name,
+      'abbreviation' => \App\Support\RegionAbbreviation::label($region),
       'event_count' => $eventCount,
     ]);
   }

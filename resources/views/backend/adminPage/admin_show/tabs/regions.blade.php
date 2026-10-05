@@ -1,3 +1,4 @@
+<style>#regionsAccordion .accordion-header > .accordion-button{flex-wrap:wrap;gap:.35rem;min-width:0}#regionsAccordion .region-name,#regionsAccordion .region-short-name{min-width:0;max-width:100%;overflow-wrap:anywhere}#regionsAccordion .accordion-header > .accordion-button::after{flex-shrink:0}</style>
        {{-- ✅ Regions + Teams merged --}}
 {{-- ============================= --}}
 {{-- REGIONS TAB --}}
@@ -57,7 +58,7 @@
                         data-bs-target="#collapse-{{ $region->id }}"
                         aria-expanded="{{ $renameRegionOpen ? 'true' : 'false' }}">
                   <span class="badge bg-label-secondary me-2">#{{ $region->id }}</span>
-                  <span class="region-name">{{ $region->region_name }}</span>
+                  <span class="region-name">{{ $region->region_name }}</span><span class="region-short-name ms-2 text-muted">({{ \App\Support\RegionAbbreviation::label($region) }})</span>
                   <span class="ms-2 text-muted small">
                     ({{ $region->teams->count() }} Teams)
                   </span>
@@ -76,8 +77,9 @@
                             class="btn btn-sm btn-outline-secondary renameRegionEvent"
                             data-id="{{ $region->pivot->id }}"
                             data-name="{{ $region->region_name }}"
+                            data-short-name="{{ $region->short_name }}"
                             data-event-count="{{ $region->events()->count() }}">
-                      <i class="ti ti-edit me-1"></i> Rename Region
+                      <i class="ti ti-edit me-1"></i> Edit Region
                     </button>
 
                     <a href="javascript:void(0)"

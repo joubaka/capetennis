@@ -10,6 +10,7 @@
 
       <form id="sendMailForm">
         @csrf
+      <input type="hidden" name="campaign_key" value="{{ (string) \Illuminate\Support\Str::uuid() }}">
 
         {{-- Event context --}}
         <input type="hidden" name="event_id" id="event_id" value="{{ $event->id }}">
@@ -109,3 +110,13 @@
     </div>
   </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const modal = document.getElementById('sendMailModal');
+  modal?.addEventListener('show.bs.modal', function () {
+    const input = modal.querySelector('[name="campaign_key"]');
+    if (input) input.value = window.crypto?.randomUUID ? window.crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const value = Math.floor(Math.random() * 16); return (c === 'x' ? value : (value & 3) | 8).toString(16); });
+  });
+});
+</script>

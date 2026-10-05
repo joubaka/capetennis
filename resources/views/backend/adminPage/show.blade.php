@@ -47,6 +47,7 @@
 
 
 @section('content')
+<div class="mb-3"><a class="btn btn-outline-primary" href="{{ route('backend.event-mail-log.index',$event) }}">Email log</a></div>
   @include('backend.event.partials.header')
 
 

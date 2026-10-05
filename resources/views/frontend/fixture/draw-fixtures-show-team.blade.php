@@ -3,6 +3,7 @@
 @section('title', ($draw->drawName ?? 'Tournament') . ' matches')
 
 @section('content')
+<style>.fixture-round > summary .when-open,.fixture-tie > summary .when-open{display:none}.fixture-round[open] > summary .when-open,.fixture-tie[open] > summary .when-open{display:inline}.fixture-round[open] > summary .when-closed,.fixture-tie[open] > summary .when-closed{display:none}.fixture-tie > summary{padding:.75rem;border:1px solid #d9dee3;border-radius:.4rem;background:#f5f7fa}.fixture-toggle{font-size:.8rem;color:#315785;font-weight:600}</style>
   <div class="card mb-3">
     <div class="card-body d-flex justify-content-between align-items-start gap-3 flex-wrap">
       <div>
@@ -24,6 +25,7 @@
     <details class="fixture-round card mb-3" @if($loop->first) open @endif>
       <summary class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap" style="cursor: pointer;">
         <h4 class="mb-0">Round {{ $round ?: '—' }} <span class="text-muted small">▾</span></h4>
+        <span class="fixture-toggle"><span class="when-closed">▸ Click to show ties</span><span class="when-open">▾ Click to hide ties</span></span>
         <span class="text-muted">{{ $ties->count() }} {{ $ties->count() === 1 ? 'tie' : 'ties' }} · {{ $roundFixtures->count() }} matches</span>
       </summary>
       <div class="card-body">
@@ -36,7 +38,7 @@
               <span class="text-muted">Tie {{ $firstFixture->tie_nr ?: $loop->iteration }} ·</span>
               {{ $firstFixture->tie_display['home'] }} <span class="text-muted">vs</span> {{ $firstFixture->tie_display['away'] }}
             </h5>
-              <span class="text-muted small">{{ $tieFixtures->count() }} matches ▾</span>
+              <span class="text-muted small">{{ $tieFixtures->count() }} matches <span class="fixture-toggle"><span class="when-closed">▸ Click to show matches</span><span class="when-open">▾ Click to hide matches</span></span></span>
             </summary>
             @include('frontend.fixture.fixture-table', ['fixtures' => $tieFixtures->sortBy(fn ($fixture) => (int) ($fixture->rubber_sequence ?: $fixture->match_nr)),
               'hideFixtureHeader' => true, 'fixtureTableId' => 'fixturesTable-'.$round.'-'.$tieKey])

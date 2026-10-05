@@ -73,6 +73,48 @@ class SuperAdminMailHistoryTest extends TestCase
         }
     }
 
+    public function test_event_system_mail_preserves_exact_content_and_trusted_event_association(): void
+    {
+        $event = \App\Models\Event::factory()->create();
+        $tracker = app(OutboundMailHistory::class);
+        $email = (new Email)->from('from@example.test')->to('to@example.test')->subject('Event message')->html('<p>Clothing update</p>');
+        $tracker->sending(new MessageSending($email, ['data' => ['event' => $event]]));
+        $log = BulkEmailLog::sole();
+        $this->assertSame($event->id, $log->payload['event_id']);
+        $this->assertSame('<p>Clothing update</p>', $log->payload['rendered_html']);
+    }
+
+    public function test_mixed_event_system_mail_is_not_attributed_to_one_event(): void
+    {
+        $first = \App\Models\Event::factory()->create();
+        $second = \App\Models\Event::factory()->create();
+        app(OutboundMailHistory::class)->sending(new MessageSending((new Email)->from('from@example.test')->to('to@example.test')->subject('Mixed')->html('private'), ['first' => $first, 'second' => $second]));
+        $this->assertSame(['rendered_subject' => 'Mixed'], BulkEmailLog::sole()->payload);
+    }
+
+    public function test_financial_system_mail_is_event_attributed_without_exposing_its_body(): void
+    {
+        $category = \App\Models\CategoryEvent::factory()->create();
+        $registration = new \App\Models\CategoryEventRegistration;
+        $registration->setRelation('categoryEvent', $category);
+        $email = (new Email)->from('from@example.test')->to('to@example.test')->subject('Refund')->html('PRIVATE_BANK_DETAILS');
+        app(OutboundMailHistory::class)->sending(new MessageSending($email, ['registration' => $registration]));
+        $payload = BulkEmailLog::sole()->payload;
+        $this->assertSame((int) $category->event_id, $payload['event_id']);
+        $this->assertArrayNotHasKey('rendered_html', $payload);
+        $this->assertArrayNotHasKey('rendered_text', $payload);
+    }
+
+    public function test_multi_event_registration_order_is_not_attributed_to_its_first_item(): void
+    {
+        $first = \App\Models\CategoryEvent::factory()->create();
+        $second = \App\Models\CategoryEvent::factory()->create();
+        $order = \App\Models\RegistrationOrder::create(['user_id' => User::factory()->create()->id]);
+        foreach ([$first, $second] as $category) \Illuminate\Support\Facades\DB::table('registration_order_items')->insert(['order_id' => $order->id, 'category_event_id' => $category->id]);
+        app(OutboundMailHistory::class)->sending(new MessageSending((new Email)->from('from@example.test')->to('to@example.test')->subject('Mixed order')->html('PRIVATE_PAYMENT_DATA'), ['order' => $order]));
+        $this->assertSame(['rendered_subject' => 'Mixed order'], BulkEmailLog::sole()->payload);
+    }
+
     public function test_transport_clone_correlates_and_existing_campaign_is_not_duplicated(): void
     {
         $tracker = app(OutboundMailHistory::class);
@@ -88,6 +130,9 @@ class SuperAdminMailHistoryTest extends TestCase
     public function test_interrupted_queue_attempt_does_not_overwrite_sent_or_previous_attempts(): void
     {
         $tracker = app(OutboundMailHistory::class);
+        $job = \Mockery::mock(\Illuminate\Contracts\Queue\Job::class);
+        $job->shouldReceive('payload')->andReturn([]);
+        $tracker->processing(new \Illuminate\Queue\Events\JobProcessing('database', $job));
         $email = (new Email)->from('from@example.test')->to('first@example.test')->subject('First')->text('body');
         $tracker->sending(new MessageSending($email));
         $tracker->resetAttempt();

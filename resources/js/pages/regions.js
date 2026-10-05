@@ -122,7 +122,7 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
       },
       templateResult: function (data) {
         if (data.isNew) {
-          return $('<span style="color: #28a745; font-weight: bold;">✨ Create: "' + data.text + '"</span>');
+          return $('<span style="color: #28a745; font-weight: bold;">✨ Create: "' + escapeHtml(data.text) + '"</span>');
         }
         return data.text;
       },
@@ -132,7 +132,7 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
     $select.on('change', () => { console.log('📍 Region selected:', $select.val()); });
   }
 
-  $('#modalToggle').on('shown.bs.modal', initRegionSelect2);
+  $('#modalToggle').on('shown.bs.modal', initRegionSelect2).on('hidden.bs.modal', () => $('#regionShortName').val(''));
 
   // ===============================
   // Add Region to Event
@@ -151,7 +151,7 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
     const $button = $(this);
     $button.prop('disabled', true);
 
-    $.post(api.addRegionToEvent, { event_id: eventId, region_id: regionId })
+    $.post(api.addRegionToEvent, { event_id: eventId, region_id: regionId, short_name: $('#regionShortName').val() })
       .done(res => {
         console.log('✅ Region added', res);
         console.log('Response keys:', Object.keys(res));
@@ -173,7 +173,7 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
                 data-bs-toggle="collapse"
                 data-bs-target="#collapse-${res.id}">
           <span class="badge bg-label-secondary me-2">#${res.id}</span>
-          <span class="region-name">${escapeHtml(res.region_name)}</span>
+          <span class="region-name">${escapeHtml(res.region_name)}</span><span class="region-short-name ms-2 text-muted">(${escapeHtml(res.abbreviation)})</span>
           <span class="ms-2 text-muted small">(0 Teams)</span>
         </button>
       </h2>
@@ -182,13 +182,13 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
            data-bs-parent="#regionsAccordion">
         <div class="accordion-body pt-2">
 
-          <div class="d-flex justify-content-end mb-2 gap-2">
+          <div class="d-flex flex-wrap justify-content-end mb-2 gap-2">
             <button type="button"
                     class="btn btn-sm btn-outline-secondary renameRegionEvent"
                     data-id="${res.pivot_id}"
                     data-name="${escapeHtml(res.region_name)}"
-                    data-event-count="1">
-              <i class="ti ti-edit me-1"></i> Rename Region
+                    data-short-name="${escapeHtml(res.short_name || '')}" data-event-count="${res.event_count || 1}">
+              <i class="ti ti-edit me-1"></i> Edit Region
             </button>
 
             <a href="javascript:void(0)"
@@ -209,7 +209,7 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
             <a href="javascript:void(0)"
                class="btn btn-sm btn-outline-primary import-region-teams-btn"
                data-region-name="${escapeHtml(res.region_name)}"
-               data-team-prefix="${escapeHtml(res.region_name)}"
+               data-team-prefix="${escapeHtml(res.short_name || res.region_name)}"
                data-import-url="${APP_URL}/backend/event/${eventId}/region/${res.id}/external-teams/import"
                data-bs-toggle="modal"
                data-bs-target="#import-region-teams-modal">
@@ -238,12 +238,13 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
 
         // Remove the "no regions" alert if present, then prepend new region
         $('#regionsAccordion .noRegions').remove();
-        $('#regionsAccordion').prepend(html);
+        if (!$('#regionsAccordion [data-region-row]').filter(function () { return String($(this).attr('data-region-id')) === String(res.id); }).length) $('#regionsAccordion').prepend(html);
 
         bootstrap.Modal
           .getInstance(document.getElementById('modalToggle'))
           ?.hide();
 
+        $('#regionShortName').val('');
         toastr.success('Region added');
       })
       .fail(xhr => {
@@ -261,7 +262,7 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
   });
 
   // ===============================
-  // Rename Region
+  // Edit Region
   // ===============================
   $(document).on('click', '.renameRegionEvent', function (e) {
     e.preventDefault();
@@ -275,23 +276,22 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
       : '<div class="text-muted small mt-2">Teams, clothing and event links will stay unchanged.</div>';
 
     Swal.fire({
-      title: 'Rename region',
-      html: sharedWarning,
-      input: 'text',
-      inputValue: currentName,
-      inputLabel: 'Region name',
-      inputAttributes: { maxlength: 255, autocapitalize: 'words' },
+      title: 'Edit region',
+      showDenyButton: false,
+      didOpen: () => { Swal.getDenyButton()?.remove(); },
+      html: `<label for="editRegionName" class="form-label">Region name</label><input id="editRegionName" class="form-control" maxlength="255" value="${escapeHtml(currentName)}"><label for="editRegionShortName" class="form-label mt-3">Short name (optional)</label><input id="editRegionShortName" class="form-control" maxlength="20" value="${escapeHtml($button.attr('data-short-name') || '')}"><div class="text-muted small mt-2">Leave blank to use an automatic abbreviation.</div>${sharedWarning}`,
       showCancelButton: true,
-      confirmButtonText: 'Save name',
+      confirmButtonText: 'Save region',
       showLoaderOnConfirm: true,
-      inputValidator: value => !String(value || '').trim() ? 'Enter a region name.' : undefined,
-      preConfirm: regionName => $.ajax({
-        url: `${APP_URL}/backend/eventRegion/${pivotId}`,
-        method: 'PATCH',
-        data: { _token: CSRF, region_name: regionName }
-      }).catch(xhr => {
-        Swal.showValidationMessage(xhr.responseJSON?.message || 'Failed to rename region.');
-      }),
+      preConfirm: () => {
+        const regionName = $('#editRegionName').val().trim();
+        if (!regionName) { Swal.showValidationMessage('Enter a region name.'); return false; }
+        return $.ajax({
+          url: `${APP_URL}/backend/eventRegion/${pivotId}`,
+          method: 'PATCH',
+          data: { _token: CSRF, region_name: regionName, short_name: $('#editRegionShortName').val().trim() }
+        }).catch(xhr => { Swal.showValidationMessage(xhr.responseJSON?.message || 'Failed to save region.'); });
+      },
       allowOutsideClick: () => !Swal.isLoading()
     }).then(result => {
       if (!result.isConfirmed || !result.value) return;
@@ -300,8 +300,9 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
       const name = response.region_name;
       const $row = $button.closest('[data-region-row]');
       $row.find('.region-name').first().text(name);
-      $row.find('.renameRegionEvent').attr('data-name', name);
-      $row.find('.import-region-teams-btn').attr('data-region-name', name);
+      $row.find('.renameRegionEvent').attr('data-name', name).attr('data-short-name', response.short_name || '');
+      $row.find('.region-short-name').text('(' + response.abbreviation + ')');
+      $row.find('.import-region-teams-btn').attr('data-region-name', name).attr('data-team-prefix', response.short_name || name).data('region-name', name).data('team-prefix', response.short_name || name);
       toastr.success(response.message || 'Region renamed.');
     });
   });
@@ -835,7 +836,7 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
   });
 
   function escapeHtml(value) {
-    return $('<div>').text(value == null ? '' : String(value)).html();
+    return $('<div>').text(value == null ? '' : String(value)).html().replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   function resetBulkImportPreview(clearSheets = false) {
