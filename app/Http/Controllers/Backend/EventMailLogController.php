@@ -8,25 +8,81 @@ use App\Services\{EventMailLogService, SuperAdminMailHistory};
 use Illuminate\Http\Request;
 class EventMailLogController extends Controller
 {
+    private const OUTCOMES = [
+        'pending' => 'Waiting / sending', 'accepted' => 'Server accepted',
+        'failed' => 'Failed', 'skipped' => 'Excluded / duplicate',
+        'unverified' => 'Completed, evidence unverified', 'uncertain' => 'Acceptance uncertain',
+        'sandbox' => 'Sandbox accepted', 'queued' => 'Waiting in queue',
+        'sending' => 'Sending', 'sent' => 'Completed transport (all evidence)',
+    ];
+
     public function index(Request $request, Event $event, EventMailLogService $service)
     {
-        $filters = $request->validate(['status' => 'nullable|in:' . implode(',', SuperAdminMailHistory::STATUSES), 'search' => 'nullable|string|max:200', 'campaign' => 'nullable|string|max:100']);
-        $query = $service->query($event, $request->user());
-        if (!empty($filters['campaign'])) {
-            $query->where('payload->campaign_key', $filters['campaign']);
+        $filters = $request->validate([
+            'status' => 'nullable|in:'.implode(',', SuperAdminMailHistory::STATUSES),
+            'outcome' => 'nullable|in:'.implode(',', array_keys(self::OUTCOMES)),
+            'search' => 'nullable|string|max:200', 'campaign' => 'nullable|string|max:100',
+            'mail_type' => 'nullable|string|max:100', 'audience' => 'nullable|in:all,recipients,copies',
+            'from' => 'nullable|date_format:Y-m-d',
+            'until' => array_filter(['nullable', 'date_format:Y-m-d', $request->filled('from') ? 'after_or_equal:from' : null]),
+        ]);
+        $authorized = $service->query($event, $request->user());
+        $types = (clone $authorized)->select('mail_type')->whereNotNull('mail_type')->where('mail_type', '!=', '')->distinct()->orderBy('mail_type')->limit(101)->pluck('mail_type');
+        $typesLimited = $types->count() > 100;
+        $types = $types->take(100)->mapWithKeys(fn ($type) => [$type => SuperAdminMailHistory::typeLabel($type)]);
+        if (! empty($filters['mail_type']) && ! $types->has($filters['mail_type'])) {
+            $selectedExists = (clone $authorized)->where('mail_type', $filters['mail_type'])->exists();
+            $types->put($filters['mail_type'], $selectedExists
+                ? SuperAdminMailHistory::typeLabel($filters['mail_type'])
+                : 'Selected type (no permitted records): '.$filters['mail_type']);
         }
-        $summary = BulkEmailLog::deliverySummary((clone $query)->where(fn($q) => $q->whereNull('payload->recipient_kind')->orWhereNotIn('payload->recipient_kind', ['admin_copy', 'sender_copy'])));
-        $copySummary = BulkEmailLog::deliverySummary((clone $query)->whereIn('payload->recipient_kind', ['admin_copy', 'sender_copy']));
-        if (!empty($filters['status'])) {
-            $query->where('status', $filters['status']);
+        $query = clone $authorized;
+        if (! empty($filters['campaign'])) $query->where('payload->campaign_key', $filters['campaign']);
+        if (! empty($filters['mail_type'])) $query->where('mail_type', $filters['mail_type']);
+        if (! empty($filters['search'])) {
+            $query->where(function ($q) use ($filters) {
+                $term = '%'.$filters['search'].'%';
+                $q->where('recipient_name', 'like', $term)->orWhere('recipient_email', 'like', $term)
+                    ->orWhere('payload->subject', 'like', $term)->orWhere('payload->rendered_subject', 'like', $term)->orWhere('payload->title', 'like', $term);
+            });
         }
-        if (!empty($filters['search'])) {
-            $query->where(fn($q) => $q->where('recipient_email', 'like', '%' . $filters['search'] . '%')->orWhere('payload->subject', 'like', '%' . $filters['search'] . '%')->orWhere('payload->rendered_subject', 'like', '%' . $filters['search'] . '%')->orWhere('payload->title', 'like', '%' . $filters['search'] . '%'));
-        }
+        if (! empty($filters['from'])) $query->where('created_at', '>=', $filters['from'].' 00:00:00');
+        if (! empty($filters['until'])) $query->where('created_at', '<', \Carbon\Carbon::parse($filters['until'])->addDay()->toDateString());
+        $summary = BulkEmailLog::deliverySummary($this->audienceQuery(clone $query, 'recipients'));
+        $copySummary = BulkEmailLog::deliverySummary($this->audienceQuery(clone $query, 'copies'));
+        $query = $this->audienceQuery($query, $filters['audience'] ?? 'all');
+        $facets = BulkEmailLog::deliverySummary(clone $query);
+        $facets['uncertain'] = (clone $query)->where('status', 'acceptance_unknown')->count();
+        $facets['unverified'] -= $facets['uncertain'];
+        $outcome = $filters['outcome'] ?? match ($filters['status'] ?? null) {
+            'acceptance_unknown' => 'uncertain', default => $filters['status'] ?? null,
+        };
+        if ($outcome) $this->outcomeQuery($query, $outcome);
         $logs = $query->latest('id')->paginate(25)->withQueryString();
-        $logs->each(fn($log) => $service->recordIssue($log));
-        return view('backend.event.mail-log.index', compact('event', 'logs', 'summary', 'copySummary', 'filters'));
+        $logs->each(fn ($log) => $service->recordIssue($log));
+        $outcomes = self::OUTCOMES;
+        return view('backend.event.mail-log.index', compact('event', 'logs', 'summary', 'copySummary', 'facets', 'filters', 'types', 'typesLimited', 'outcomes', 'outcome'));
     }
+
+    private function audienceQuery(\Illuminate\Database\Eloquent\Builder $query, string $audience): \Illuminate\Database\Eloquent\Builder
+    {
+        if ($audience === 'copies') $query->whereIn('payload->recipient_kind', ['admin_copy', 'sender_copy']);
+        if ($audience === 'recipients') $query->where(fn ($q) => $q->whereNull('payload->recipient_kind')->orWhereNotIn('payload->recipient_kind', ['admin_copy', 'sender_copy']));
+        return $query;
+    }
+
+    private function outcomeQuery(\Illuminate\Database\Eloquent\Builder $query, string $outcome): void
+    {
+        match ($outcome) {
+            'pending' => $query->whereIn('status', ['queued', 'sending']),
+            'accepted' => $query->where('status', 'sent')->where('evidence_status', 'server_accepted')->whereNotNull('accepted_at'),
+            'sandbox' => $query->where('status', 'sent')->where('evidence_status', 'sandbox_accepted')->whereNotNull('accepted_at'),
+            'unverified' => $query->where('status', 'sent')->where(fn ($q) => $q->whereNull('accepted_at')->orWhereNull('evidence_status')->orWhereNotIn('evidence_status', ['server_accepted', 'sandbox_accepted'])),
+            'uncertain' => $query->where('status', 'acceptance_unknown'),
+            default => $query->where('status', $outcome),
+        };
+    }
+
     public function show(Request $request, Event $event, BulkEmailLog $log, EventMailLogService $service)
     {
         $log = $service->query($event, $request->user())->whereKey($log->id)->firstOrFail();

@@ -204,4 +204,65 @@ class EventMailLogTest extends TestCase
             ->assertViewHas('summary',fn ($summary)=>$summary['total']===1 && $summary['queued']===0 && $summary['skipped']===1)
             ->assertViewHas('copySummary',fn ($summary)=>$summary['total']===1 && $summary['queued']===1);
     }
+    public function test_outcome_filters_distinguish_acceptance_unverified_and_uncertain_with_honest_facets(): void
+    {
+        $event = Event::factory()->create();
+        $actor = $this->manager($event);
+        $accepted = $this->log($event, [], 'sent');
+        $accepted->update(['accepted_at'=>now(), 'evidence_status'=>'server_accepted']);
+        $unverified = $this->log($event, [], 'sent');
+        $uncertain = $this->log($event, [], 'acceptance_unknown');
+        $sandbox = $this->log($event, [], 'sent');
+        $sandbox->update(['accepted_at'=>now(), 'evidence_status'=>'sandbox_accepted']);
+        $this->actingAs($actor);
+        foreach (['accepted'=>$accepted, 'unverified'=>$unverified, 'uncertain'=>$uncertain, 'sandbox'=>$sandbox] as $outcome=>$expected) {
+            $this->get(route('backend.event-mail-log.index', ['event'=>$event, 'outcome'=>$outcome]))->assertOk()
+                ->assertViewHas('logs', fn ($logs) => $logs->total()===1 && $logs->first()->id===$expected->id)
+                ->assertViewHas('facets', fn ($facets) => $facets['total']===4 && $facets['server_accepted']===1 && $facets['unverified']===1 && $facets['uncertain']===1);
+        }
+        $this->get(route('backend.event-mail-log.index', $event))->assertOk()->assertSee('this does not mean they failed')->assertDontSee('Some emails need attention');
+    }
+
+    public function test_combined_name_date_type_audience_filters_and_pagination_preserve_campaign_and_event_isolation(): void
+    {
+        $event = Event::factory()->create();
+        $actor = $this->manager($event);
+        for ($i=0; $i<26; $i++) {
+            $log = $this->log($event, ['campaign_key'=>'clothing-campaign', 'recipient_kind'=>'players'], 'failed');
+            $log->forceFill(['recipient_name'=>'Alice Example', 'created_at'=>'2026-10-05 12:00:00'])->save();
+        }
+        $copy = $this->log($event, ['campaign_key'=>'clothing-campaign', 'recipient_kind'=>'sender_copy'], 'failed');
+        $copy->forceFill(['recipient_name'=>'Alice Example', 'created_at'=>'2026-10-05 13:00:00'])->save();
+        $later = $this->log($event, ['campaign_key'=>'clothing-campaign'], 'failed');
+        $later->forceFill(['recipient_name'=>'Alice Example', 'created_at'=>'2026-10-06 00:00:00'])->save();
+        $foreign = $this->log(Event::factory()->create(), ['campaign_key'=>'clothing-campaign'], 'failed');
+        $foreign->forceFill(['recipient_name'=>'Alice Example', 'mail_type'=>'private_foreign_mail', 'created_at'=>'2026-10-05 12:00:00'])->save();
+        $filters = ['search'=>'Alice', 'from'=>'2026-10-05', 'until'=>'2026-10-05', 'mail_type'=>'event_email', 'audience'=>'recipients', 'outcome'=>'failed', 'campaign'=>'clothing-campaign'];
+        $this->actingAs($actor)->get(route('backend.event-mail-log.index', ['event'=>$event,...$filters]))->assertOk()
+            ->assertViewHas('logs', function ($logs) use ($filters) {
+                parse_str(parse_url($logs->nextPageUrl(), PHP_URL_QUERY), $next);
+                return $logs->total()===26 && $logs->count()===25 && count(array_diff_assoc($filters,$next))===0;
+            })
+            ->assertViewHas('facets', fn ($facets) => $facets['total']===26)
+            ->assertViewHas('types', fn ($types) => !$types->has('private_foreign_mail'))
+            ->assertSee('Campaign: clothing-campaign')->assertSee('View all event emails');
+        $this->get(route('backend.event-mail-log.index', ['event'=>$event,...$filters,'page'=>2]))->assertOk()
+            ->assertViewHas('logs', fn ($logs) => $logs->count()===1 && $logs->total()===26);
+        $this->get(route('backend.event-mail-log.index', ['event'=>$event,...$filters,'audience'=>'copies']))->assertOk()
+            ->assertViewHas('facets', fn ($facets) => $facets['total']===1)
+            ->assertViewHas('copySummary', fn ($summary) => $summary['failed']===1);
+        $this->actingAs(User::factory()->create())->get(route('backend.event-mail-log.index', ['event'=>$event,...$filters]))->assertForbidden();
+    }
+
+    public function test_date_validation_and_scoped_type_options_are_bounded(): void
+    {
+        $event = Event::factory()->create();
+        $actor = $this->manager($event);
+        $this->actingAs($actor)->getJson(route('backend.event-mail-log.index',['event'=>$event,'from'=>'2026-10-06','until'=>'2026-10-05']))->assertUnprocessable()->assertJsonValidationErrors('until');
+        for ($i=0; $i<101; $i++) $this->log($event)->update(['mail_type'=>'type_'.str_pad((string)$i,3,'0',STR_PAD_LEFT)]);
+        $this->get(route('backend.event-mail-log.index',$event))->assertOk()
+            ->assertViewHas('types', fn ($types) => $types->count()===100)
+            ->assertViewHas('typesLimited',true)->assertSee('first 100 permitted email types');
+    }
+
 }
