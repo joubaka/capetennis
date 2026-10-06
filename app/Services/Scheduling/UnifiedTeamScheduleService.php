@@ -42,7 +42,7 @@ final class UnifiedTeamScheduleService
     public function nodes(Draw $draw, string $progression): array
     {
         $fixtures = TeamFixture::with(['fixturePlayers.noProfile1', 'fixturePlayers.noProfile2',
-            'teamTie.homeTeam', 'teamTie.awayTeam', 'region1Name', 'region2Name'])
+            'teamTie.homeTeam', 'teamTie.awayTeam', 'region1Name', 'region2Name', 'fixtureResults'])
             ->where('draw_id', $draw->id)->orderBy('round_nr')->orderBy('tie_nr')->orderBy('rubber_sequence')->orderBy('id')->get();
         $nodes = [];
         foreach ($fixtures as $fixture) {

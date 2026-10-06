@@ -57,6 +57,8 @@ final class EventVenueScheduleController extends Controller
                     ->pluck('court_label')->map(fn ($label) => (string) $label)->all();
             }
             return ['id' => $draw->id, 'name' => $draw->drawName,
+                'programme_age' => app(\App\Services\Scheduling\ScheduleProgramme::class)->age($draw),
+                'rubber_code' => $draw->team_draw_selection['rubber_code'] ?? null,
                 'venues' => $draw->venues->pluck('id')->map(fn ($id) => (int) $id)->all(),
                 'court_allocations' => $allocations,
                 'applied_match_count' => (int) ($scheduledCounts[$draw->id] ?? 0),
@@ -610,7 +612,7 @@ final class EventVenueScheduleController extends Controller
         $this->authorize('event.manage', $event);
         try {
             $options = $this->validatedOptions($request);
-            $playoffs->prepareEvent($event, $options['draw_ids'] ?? []);
+            if (empty($options['programme'])) $playoffs->prepareEvent($event, $options['draw_ids'] ?? []);
 
             return response()->json($scheduler->preview($event->fresh(), $options));
         } catch (\InvalidArgumentException $exception) {
@@ -625,7 +627,7 @@ final class EventVenueScheduleController extends Controller
         $request->validate(['revision' => ['required', 'string', 'size:64']]);
         try {
             $options = $this->validatedOptions($request);
-            $playoffs->prepareEvent($event, $options['draw_ids'] ?? []);
+            if (empty($options['programme'])) $playoffs->prepareEvent($event, $options['draw_ids'] ?? []);
 
             return response()->json($scheduler->apply($event->fresh(), $options, (string) $request->string('revision')));
         } catch (\InvalidArgumentException $exception) {
@@ -802,6 +804,17 @@ final class EventVenueScheduleController extends Controller
     {
         return $request->validate([
             'start' => ['required', 'date'], 'end' => ['nullable', 'date', 'after:start'],
+            'programme' => ['sometimes', 'array:days,rounds'],
+            'programme.days' => ['required_with:programme', 'array', 'size:3'],
+            'programme.days.*.start' => ['required', 'date'],
+            'programme.days.*.end' => ['required', 'date'],
+            'programme.days.*.break_start' => ['nullable', 'date'],
+            'programme.days.*.break_end' => ['nullable', 'date'],
+            'programme.rounds' => ['required_with:programme', 'array', 'min:1', 'max:2000'],
+            'programme.rounds.*.draw_id' => ['required', 'integer'],
+            'programme.rounds.*.round' => ['required', 'integer', 'min:1'],
+            'programme.rounds.*.day' => ['required', 'integer', 'between:1,3'],
+            'programme.rounds.*.sequence' => ['required', 'integer', 'between:1,100'],
             'duration' => ['required', 'integer', 'min:15', 'max:480'],
             'wave_minutes' => ['required', 'integer', 'min:15', 'max:480'],
             'court_gap' => ['required', 'integer', 'min:0', 'max:120'],

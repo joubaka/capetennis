@@ -1349,6 +1349,10 @@ public function json(Draw $draw)
       'num_courts' => 'present|array|size:'.count($venueIds),
       'num_courts.*' => 'required|integer|min:1',
       'age_group_default' => 'sometimes|boolean',
+      'age_group_default_scope' => 'sometimes|in:age,gender',
+      'age_group_draw_selection' => 'sometimes|boolean',
+      'age_group_draw_ids' => 'sometimes|array',
+      'age_group_draw_ids.*' => 'required|integer|distinct',
     ]);
 
     // Build sync data for pivot
@@ -1362,7 +1366,9 @@ public function json(Draw $draw)
     // Save
     $affectedDrawIds = [];
     if ($request->boolean('age_group_default')) {
-      $affectedDrawIds = app(\App\Services\Scheduling\AgeGroupVenueDefaultService::class)->save($draw, $syncData, $request->user());
+      $affectedDrawIds = app(\App\Services\Scheduling\AgeGroupVenueDefaultService::class)->save($draw, $syncData, $request->user(),
+        $validated['age_group_default_scope'] ?? 'gender',
+        $request->boolean('age_group_draw_selection') || $request->has('age_group_draw_ids') ? ($validated['age_group_draw_ids'] ?? []) : null);
     } else {
       $draw->venues()->sync($syncData);
     }

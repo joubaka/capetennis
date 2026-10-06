@@ -647,6 +647,10 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::delete('/violation-type/{violationType}', [DisciplineSettingsController::class, 'destroyViolationType'])->name('backend.disciplinary.violation-type.destroy');
   });
 
+  Route::get('player-performance', [\App\Http\Controllers\Backend\PlayerPerformancePilotController::class, 'index'])->middleware('role:super-user')->name('backend.player-performance.index');
+  Route::get('player-performance/players', [\App\Http\Controllers\Backend\PlayerPerformancePilotController::class, 'directory'])->middleware('role:super-user')->name('backend.player-performance.directory');
+  Route::get('player-performance/players/{player}', [\App\Http\Controllers\Backend\PlayerPerformancePilotController::class, 'show'])->middleware('role:super-user')->name('backend.player-performance.show');
+
   // Super Admin Dashboard
   // Platform Health Dashboard
   Route::middleware('role:super-user')->group(function () {

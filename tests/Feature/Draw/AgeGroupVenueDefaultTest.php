@@ -5,11 +5,23 @@ namespace Tests\Feature\Draw;
 use App\Models\{Category, CategoryEvent, Draw, Event, User};
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class AgeGroupVenueDefaultTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Match the real venue schema so queries cannot rely on the legacy
+        // testing-only event_id column. Event membership uses event_venues.
+        // SQLite DDL is transactional; avoid implicit commits in MySQL tests.
+        if (DB::getDriverName() === 'sqlite' && Schema::hasColumn('venues', 'event_id')) {
+            Schema::table('venues', fn ($table) => $table->dropColumn('event_id'));
+        }
+    }
 
     private function draw(Event $event, string $category): Draw
     {
@@ -25,7 +37,7 @@ class AgeGroupVenueDefaultTest extends TestCase
         DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $actor->id]);
         $venues = [];
         foreach (range(1, 3) as $number) {
-            $id = DB::table('venues')->insertGetId(['name' => 'Venue '.$number, 'event_id' => $event->id, 'created_at' => now(), 'updated_at' => now()]);
+            $id = DB::table('venues')->insertGetId(['name' => 'Venue '.$number, 'created_at' => now(), 'updated_at' => now()]);
             DB::table('event_venues')->insert(['event_id' => $event->id, 'venue_id' => $id, 'num_courts' => 3]);
             $venues[] = $id;
         }
@@ -55,7 +67,8 @@ class AgeGroupVenueDefaultTest extends TestCase
         [$event, $actor, $payload] = $this->setupEvent();
         $source = $this->draw($event, 'u/10 Boys');
         $this->actingAs(User::factory()->create())->postJson(route('backend.draw.venues.store', $source), $payload)->assertForbidden();
-        $foreign = DB::table('venues')->insertGetId(['name' => 'Foreign', 'event_id' => Event::factory()->create()->id, 'created_at' => now(), 'updated_at' => now()]);
+        $foreign = DB::table('venues')->insertGetId(['name' => 'Foreign', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('event_venues')->insert(['event_id' => Event::factory()->create()->id, 'venue_id' => $foreign, 'num_courts' => 3]);
         $payload['venue_id'][0] = $foreign;
         $this->actingAs($actor)->postJson(route('backend.draw.venues.store', $source), $payload)->assertUnprocessable();
         $this->assertDatabaseCount('event_age_group_venue_defaults', 0);
@@ -88,7 +101,7 @@ class AgeGroupVenueDefaultTest extends TestCase
         $this->assertDatabaseCount('event_age_group_venue_defaults', 0);
     }
 
-    public function test_mixed_category_selection_and_missing_metadata_do_not_inherit_or_define_defaults(): void
+    public function test_mixed_same_age_selection_resolves_but_mixed_ages_cannot_define_defaults(): void
     {
         [$event, $actor, $payload] = $this->setupEvent();
         $boys = $this->draw($event, 'u/10 Boys');
@@ -97,7 +110,8 @@ class AgeGroupVenueDefaultTest extends TestCase
         $mixed = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => $boys->category_event_id,
             'team_draw_selection' => ['category_ids' => [$boys->category_event_id, $girls->category_event_id]], 'published' => false, 'locked' => false]);
         $this->assertCount(0, $mixed->fresh()->venues);
-        $this->actingAs($actor)->postJson(route('backend.draw.venues.store', $mixed), $payload)->assertUnprocessable();
+        $this->assertSame(['age' => 10, 'gender' => 'mixed'], app(\App\Services\Scheduling\AgeGroupVenueDefaultService::class)->key($mixed));
+        $this->actingAs($actor)->postJson(route('backend.draw.venues.store', $mixed), $payload)->assertRedirect();
         $older = $this->draw($event, 'u/11 Boys');
         $mixed->team_draw_selection = ['category_ids' => [$boys->category_event_id, $older->category_event_id]];
         $mixed->save();
@@ -136,10 +150,40 @@ class AgeGroupVenueDefaultTest extends TestCase
         [$event, $actor, $payload] = $this->setupEvent();
         $source = $this->draw($event, 'u/10 Boys');
         DB::table('event_venues')->where('event_id', $event->id)->delete();
-        $venueId = DB::table('venues')->insertGetId(['name' => 'Shared global venue', 'event_id' => null, 'created_at' => now(), 'updated_at' => now()]);
+        $venueId = DB::table('venues')->insertGetId(['name' => 'Shared global venue', 'created_at' => now(), 'updated_at' => now()]);
         $payload['venue_id'][0] = $venueId;
         $this->actingAs($actor)->postJson(route('backend.draw.venues.store', $source), $payload)->assertRedirect();
         $this->assertDatabaseHas('event_venues', ['event_id' => $event->id, 'venue_id' => $venueId, 'num_courts' => 2]);
+    }
+
+    public function test_venue_assigned_only_to_a_foreign_draw_cannot_set_defaults(): void
+    {
+        [$event, $actor, $payload] = $this->setupEvent();
+        $source = $this->draw($event, 'u/10 Boys');
+        $foreignDraw = $this->draw(Event::factory()->create(), 'u/10 Boys');
+        $venueId = DB::table('venues')->insertGetId(['name' => 'Foreign draw venue']);
+        $foreignDraw->venues()->attach($venueId, ['num_courts' => 2]);
+        $payload['venue_id'][0] = $venueId;
+
+        $this->actingAs($actor)->postJson(route('backend.draw.venues.store', $source), $payload)->assertUnprocessable();
+        $this->assertDatabaseCount('event_age_group_venue_defaults', 0);
+        $this->assertDatabaseCount('draw_venues', 1);
+        $this->assertDatabaseHas('draw_venues', ['draw_id' => $foreignDraw->id, 'venue_id' => $venueId]);
+    }
+
+    public function test_existing_event_draw_venue_without_event_association_can_set_defaults(): void
+    {
+        [$event, $actor, $payload] = $this->setupEvent();
+        $source = $this->draw($event, 'u/10 Boys');
+        $venueId = DB::table('venues')->insertGetId(['name' => 'Legacy draw venue']);
+        $source->venues()->attach($venueId, ['num_courts' => 2]);
+        $payload['venue_id'][0] = $venueId;
+
+        $this->actingAs($actor)->post(route('backend.draw.venues.store', $source), $payload,
+            ['X-Requested-With' => 'XMLHttpRequest'])->assertOk();
+        $this->assertDatabaseHas('event_venues', ['event_id' => $event->id, 'venue_id' => $venueId, 'num_courts' => 2]);
+        $this->assertDatabaseHas('draw_venues', ['draw_id' => $source->id, 'venue_id' => $venueId, 'num_courts' => 2]);
+        $this->assertDatabaseCount('event_age_group_venue_defaults', 1);
     }
 
     public function test_future_draw_does_not_restore_removed_venues_or_exceed_current_court_counts(): void
@@ -166,5 +210,88 @@ class AgeGroupVenueDefaultTest extends TestCase
         $this->assertDatabaseHas('team_fixtures', ['id' => $fixtureId, 'scheduled' => 1, 'venue_id' => $payload['venue_id'][0], 'court_label' => '1']);
         $this->assertDatabaseCount('draw_venues', 1);
         $this->assertDatabaseCount('event_age_group_venue_defaults', 0);
+    }
+
+    public function test_whole_age_default_covers_all_genders_disciplines_and_future_draws(): void
+    {
+        [$event, $actor, $payload] = $this->setupEvent();
+        $boys = $this->draw($event, 'u/10 Boys');
+        $girls = $this->draw($event, 'u/10 Girls B division');
+        $mixed = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => $boys->category_event_id,
+            'team_draw_selection' => ['category_ids' => [$boys->category_event_id, $girls->category_event_id], 'rubber_code' => 'mixed_doubles'], 'published' => false, 'locked' => false]);
+        $legacy = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => null, 'drawName' => 'u/10 – Mixed Doubles', 'published' => false, 'locked' => false]);
+        $legacyGenderTitle = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => null, 'drawName' => 'u/10 Boys – Mixed Doubles', 'published' => false, 'locked' => false]);
+        $doubles = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => null, 'drawName' => 'u/10 Boys – Doubles', 'published' => false, 'locked' => false]);
+        $others = [$this->draw($event, 'u/11 Girls'), $this->draw(Event::factory()->create(), 'u/10 Boys')];
+        $payload['age_group_default_scope'] = 'age';
+        $this->actingAs($actor)->post(route('backend.draw.venues.store', $boys), $payload, ['X-Requested-With' => 'XMLHttpRequest'])->assertOk()->assertJsonCount(6, 'affected_draw_ids');
+        $this->assertSame(['age' => 10, 'gender' => 'mixed'], app(\App\Services\Scheduling\AgeGroupVenueDefaultService::class)->key($legacyGenderTitle));
+        foreach ([$boys, $girls, $mixed, $legacy, $legacyGenderTitle, $doubles, $this->draw($event, 'Under 10 Girls C division'), $this->draw($event, 'u/10 Mixed')] as $draw) {
+            $this->assertEqualsCanonicalizing($payload['venue_id'], $draw->fresh()->venues->pluck('id')->all());
+        }
+        foreach ($others as $draw) $this->assertCount(0, $draw->fresh()->venues);
+        $this->assertDatabaseHas('event_age_group_venue_defaults', ['event_id' => $event->id, 'age' => 10, 'gender' => 'all']);
+    }
+
+    public function test_selection_excludes_protected_draw_and_future_defaults_replace_stale_gender_defaults(): void
+    {
+        [$event, $actor, $payload] = $this->setupEvent();
+        $boys = $this->draw($event, 'u/10 Boys');
+        $girls = $this->draw($event, 'u/10 Girls');
+        $this->actingAs($actor)->postJson(route('backend.draw.venues.store', $girls), $payload)->assertRedirect();
+        $girls->update(['published' => true]);
+        $payload['num_courts'] = [1, 1, 1];
+        $payload += ['age_group_default_scope' => 'age', 'age_group_draw_selection' => true, 'age_group_draw_ids' => [$boys->id]];
+        $this->actingAs($actor)->postJson(route('backend.draw.venues.store', $boys), $payload)->assertRedirect();
+        $this->assertDatabaseHas('draw_venues', ['draw_id' => $girls->id, 'venue_id' => $payload['venue_id'][1], 'num_courts' => 3]);
+        $future = $this->draw($event, 'u/10 Girls B division');
+        $this->assertDatabaseHas('draw_venues', ['draw_id' => $future->id, 'venue_id' => $payload['venue_id'][1], 'num_courts' => 1]);
+        $this->assertDatabaseCount('event_age_group_venue_defaults', 1);
+        // A later gender-specific default can override the whole-age fallback.
+        $genderPayload = $payload;
+        $genderPayload['age_group_default_scope'] = 'gender';
+        $genderPayload['age_group_draw_ids'] = [$future->id];
+        $genderPayload['num_courts'] = [2, 2, 2];
+        $this->actingAs($actor)->postJson(route('backend.draw.venues.store', $future), $genderPayload)->assertRedirect();
+        $next = $this->draw($event, 'u/10 Girls C division');
+        $this->assertDatabaseHas('draw_venues', ['draw_id' => $next->id, 'venue_id' => $payload['venue_id'][1], 'num_courts' => 2]);
+    }
+
+    public function test_invalid_or_empty_selected_draw_ids_reject_atomically(): void
+    {
+        [$event, $actor, $payload] = $this->setupEvent();
+        $source = $this->draw($event, 'u/10 Boys');
+        $older = $this->draw($event, 'u/11 Boys');
+        $foreign = $this->draw(Event::factory()->create(), 'u/10 Boys');
+        $payload += ['age_group_default_scope' => 'age', 'age_group_draw_selection' => true];
+        foreach ([[], [$older->id], [$foreign->id], [$source->id, $source->id], [999999]] as $ids) {
+            $payload['age_group_draw_ids'] = $ids;
+            $this->actingAs($actor)->postJson(route('backend.draw.venues.store', $source), $payload)->assertUnprocessable();
+            $this->assertDatabaseCount('draw_venues', 0);
+            $this->assertDatabaseCount('event_age_group_venue_defaults', 0);
+        }
+    }
+
+    public function test_gender_scope_rejects_other_genders_and_selected_bookings_block_whole_age_save(): void
+    {
+        [$event, $actor, $payload] = $this->setupEvent();
+        $source = $this->draw($event, 'u/10 Boys');
+        $girls = $this->draw($event, 'u/10 Girls');
+        $mixed = $this->draw($event, 'u/10 Mixed');
+        $payload += ['age_group_default_scope' => 'gender', 'age_group_draw_selection' => true];
+        foreach ([$girls, $mixed] as $other) {
+            $payload['age_group_draw_ids'] = [$source->id, $other->id];
+            $this->actingAs($actor)->postJson(route('backend.draw.venues.store', $source), $payload)->assertUnprocessable();
+        }
+        $this->assertDatabaseCount('draw_venues', 0);
+        $girls->venues()->attach($payload['venue_id'][0], ['num_courts' => 1]);
+        $fixtureId = DB::table('team_fixtures')->insertGetId(['draw_id' => $girls->id, 'venue_id' => $payload['venue_id'][0],
+            'scheduled' => 1, 'scheduled_at' => '2026-10-06 09:00:00', 'court_label' => '1', 'round_nr' => 1, 'match_nr' => 1]);
+        $payload['age_group_default_scope'] = 'age';
+        $payload['age_group_draw_ids'] = [$source->id, $girls->id];
+        $this->actingAs($actor)->postJson(route('backend.draw.venues.store', $source), $payload)->assertUnprocessable();
+        $this->assertDatabaseCount('draw_venues', 1);
+        $this->assertDatabaseCount('event_age_group_venue_defaults', 0);
+        $this->assertDatabaseHas('team_fixtures', ['id' => $fixtureId, 'venue_id' => $payload['venue_id'][0], 'court_label' => '1']);
     }
 }

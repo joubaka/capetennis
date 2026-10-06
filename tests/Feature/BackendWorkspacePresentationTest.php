@@ -104,6 +104,24 @@ class BackendWorkspacePresentationTest extends TestCase
         $this->get(route('draw.index'))->assertNotFound();
     }
 
+    public function test_legacy_event_main_opens_one_workspace_and_preserves_event_authorization(): void
+    {
+        [, $event] = $this->eventAdmin();
+
+        $this->get(route('event.admin.main', $event))
+            ->assertRedirect(route('headOffice.show', $event));
+
+        $html = $this->get(route('headOffice.show', $event))->assertOk()->getContent();
+        $this->assertSame(1, substr_count($html, 'id="layout-menu"'));
+        $this->assertSame(1, substr_count($html, 'id="layout-navbar"'));
+        $this->assertSame(1, substr_count($html, 'class="layout-wrapper '));
+        $this->assertStringNotContainsString('id="drawsTab"', $html);
+        $this->assertStringNotContainsString('assets/js/admin-main.js', $html);
+
+        $otherEvent = Event::factory()->create(['eventType' => 6]);
+        $this->get(route('event.admin.main', $otherEvent))->assertForbidden();
+    }
+
     public function test_event_modal_partials_render_the_existing_form_contracts(): void
     {
         [, $event] = $this->eventAdmin();

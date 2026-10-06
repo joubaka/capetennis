@@ -50,6 +50,20 @@ final class EventVenueScheduleService
 
         $foreignDraws = array_diff($selectedDraws, $draws->pluck('id')->map(fn ($id) => (int) $id)->all());
         if ($foreignDraws) throw new \InvalidArgumentException('One or more selected draws do not belong to this event.');
+        $programme = app(ScheduleProgramme::class)->normalize($options['programme'] ?? [], $draws, $this->availableDrawRounds($draws));
+        if ($programme) {
+            $options['allow_partial'] = false;
+            $programmeService = app(ScheduleProgramme::class);
+            $ages = $draws->map(fn ($draw) => $programmeService->age($draw))->unique();
+            if ($ages->count() !== 1 || $ages->first() === null) throw new \InvalidArgumentException('Select one complete age group for the programme.');
+            $expected = $event->draws()->get()->filter(fn ($draw) => $draw->isTeamDraw() && $programmeService->age($draw) === $ages->first())->pluck('id');
+            if ($expected->diff($draws->pluck('id'))->isNotEmpty()) throw new \InvalidArgumentException('Include every discipline of the selected age group.');
+            if ($draws->contains('locked', true)) throw new \InvalidArgumentException('Unlock all age-group draws before creating a complete programme.');
+            if ($options['draw_rounds'] ?? []) throw new \InvalidArgumentException('A complete programme cannot also filter rounds.');
+            if ($draws->contains(fn ($draw) => ! $draw->isTeamDraw())) throw new \InvalidArgumentException('The three-day programme requires team draws.');
+            $start = Carbon::parse($programme['days'][0]['start']);
+            $end = Carbon::parse($programme['days'][2]['end']);
+        }
         $drawRounds = $this->normalizeDrawRounds($draws, $options['draw_rounds'] ?? []);
         $roundSelection = collect($drawRounds)->mapWithKeys(fn ($row) => [$row['draw_id'] => $row['rounds']]);
         if ($drawStarts->keys()->diff($draws->pluck('id')->map(fn ($id) => (int) $id))->isNotEmpty()) {
@@ -127,6 +141,7 @@ final class EventVenueScheduleService
             }
         }
 
+        app(ScheduleProgramme::class)->configureNodes($nodes, $programme);
         $rankChoices = $preferenceService->choices(collect($nodes)->filter(fn ($node) => ($node['fixture_kind'] ?? '') === 'team')
             ->map(fn ($node) => $node['fixture'])->values(), $rankRules, $crossBandPolicy);
         $displayFixtures = collect($nodes)->filter(fn ($node) => ($node['fixture_kind'] ?? '') === 'team')
@@ -141,13 +156,22 @@ final class EventVenueScheduleService
         $allRegistrations = collect($nodes)->flatMap(fn ($node) => $node['participants'])->unique()->values()->all();
         $excludedIndividual = array_values(array_filter($excluded, 'is_int'));
         $excludedTeam = collect($excluded)->filter(fn ($id) => is_string($id) && str_starts_with($id, 'team:'))->map(fn ($id) => (int) substr($id, 5))->all();
-        $calendar = ScheduleAvailability::load(array_keys($courtLabels), $allRegistrations, $excludedIndividual, null, $playerRest, $excludedTeam, $event, $start);
+        $calendar = ScheduleAvailability::load(array_keys($courtLabels), $allRegistrations, $excludedIndividual, null, $playerRest, $excludedTeam, $event, $start,
+            $programme ? $start : null, $programme ? $end->copy()->addMinutes(max($playerRest, $courtGap)) : null);
         $availabilityRevision = $calendar->fingerprint();
         $pending = [];
         $finished = [];
         foreach ($nodes as $id => &$node) {
             $node['wave'] = $this->wave($id, $nodes);
-            $node['not_before'] = $node['draw_start']->copy()->addMinutes(($node['wave'] - 1) * $waveMinutes);
+            $node['not_before'] = $node['draw_start']->copy()->addMinutes($programme ? 0 : ($node['wave'] - 1) * $waveMinutes);
+            if ($programme) {
+                $node['wave'] = $node['programme_phase'];
+                $slot = $this->nodeSlot($node);
+                if (($node['fixed'] || $node['played']) && $slot?->time && (Carbon::parse($slot->time)->lt($node['draw_start']) || Carbon::parse($slot->time)->addMinutes((int) ($slot->duration_minutes ?: $duration))->gt($node['programme_end']))) {
+                    throw new \InvalidArgumentException('A saved match is outside its programme day. Review or return it to planning before creating this programme.');
+                }
+                if (($node['fixed'] || $node['played']) && $slot?->time && $node['programme_break'] && Carbon::parse($slot->time)->lt($node['programme_break'][1]) && Carbon::parse($slot->time)->addMinutes((int) ($slot->duration_minutes ?: $duration))->gt($node['programme_break'][0])) throw new \InvalidArgumentException('A saved match overlaps a programme break. Review its time before creating this programme.');
+            }
             if ($node['automatic']) {
                 $finished[$id] = $node['not_before']->copy();
             } elseif ($node['played']) {
@@ -164,6 +188,19 @@ final class EventVenueScheduleService
             }
         }
         unset($node);
+
+        if ($programme) {
+            foreach ($nodes as $node) {
+                if (! $node['fixed'] && ! $node['played']) continue;
+                $slot = $this->nodeSlot($node);
+                if (! $slot?->time) continue;
+                foreach ($node['dependencies'] as $dependency) {
+                    if (isset($finished[$dependency]) && $finished[$dependency]->gt(Carbon::parse($slot->time))) {
+                        throw new \InvalidArgumentException('Saved matches conflict with the programme order or required rest. Review their times or return them to planning.');
+                    }
+                }
+            }
+        }
 
         $sharedGenderVenues = [];
         if ($genderWaves !== 'combined') {
@@ -238,7 +275,12 @@ final class EventVenueScheduleService
                         $at = $calendar->nextAvailableForMatch($venueRelease, $duration + $courtGap,
                             $duration + $playerRest, $venueId, (string) $court, $node['participants'],
                             $node['participant_group']);
+                        if (($node['programme_break'] ?? null) && $at->lt($node['programme_break'][1]) && $at->copy()->addMinutes($duration)->gt($node['programme_break'][0])) {
+                            $at = $calendar->nextAvailableForMatch($node['programme_break'][1], $duration + $courtGap,
+                                $duration + $playerRest, $venueId, (string) $court, $node['participants'], $node['participant_group']);
+                        }
                         if ($end && $at->copy()->addMinutes($duration)->gt($end)) continue;
+                        if (isset($node['programme_end']) && $at->copy()->addMinutes($duration)->gt($node['programme_end'])) continue;
                         if (($node['fixture_kind'] ?? 'individual') === 'team') {
                             foreach ($nodes as $later) {
                                 if ((! $later['fixed'] && ! $later['played']) || ! in_array($id, $later['dependencies'], true)) continue;
@@ -289,6 +331,7 @@ final class EventVenueScheduleService
                 'fixture_key' => ($node['fixture_kind'] ?? 'individual').':'.$node['fixture']->id, 'draw_id' => $node['draw_id'], 'draw_name' => $node['draw_name'],
                 'stage' => $node['stage'], 'round' => $node['round'], 'match' => $node['match'],
                 'play_order' => $node['play_order'], 'wave' => $node['wave'],
+                'programme_day' => $node['programme_day'] ?? null, 'programme_sequence' => $node['programme_sequence'] ?? null,
                 'dependencies' => $node['dependencies'],
                 'not_before' => $node['not_before']->format('Y-m-d H:i:s'),
                 'scheduled_at' => $best['time']->format('Y-m-d H:i:s'), 'venue_id' => $best['venue_id'],
@@ -344,6 +387,7 @@ final class EventVenueScheduleService
                 'dependencies' => $node['dependencies'],
                 'not_before' => $node['not_before']->format('Y-m-d H:i:s'),
                 'scheduled_at' => null, 'venue_id' => null, 'venue_name' => null, 'court' => null,
+                'programme_day' => $node['programme_day'] ?? null, 'programme_sequence' => $node['programme_sequence'] ?? null,
                 'duration' => $duration, 'participants' => $node['participant_names'],
                 'lineup' => ($node['fixture_kind'] ?? '') === 'team' ? $node['fixture']->lineup_display : [],
                 'participant_ids' => $node['participants'], 'venue_courts' => $node['venue_courts'],
@@ -383,6 +427,7 @@ final class EventVenueScheduleService
                     'duration' => (int) ($slot->duration_minutes ?: $duration),
                     'participants' => $participants,
                     'wave' => $node['wave'] ?? null, 'dependencies' => $node['dependencies'] ?? [],
+                    'programme_day' => $node['programme_day'] ?? null, 'programme_sequence' => $node['programme_sequence'] ?? null,
                     'not_before' => isset($node['not_before']) ? $node['not_before']->format('Y-m-d H:i:s') : null,
                     'participant_ids' => $node['participants'] ?? [], 'venue_courts' => $node['venue_courts'] ?? [],
                     'editable' => isset($node) && $node['selected_round'] && ! $node['played'],
@@ -412,6 +457,7 @@ final class EventVenueScheduleService
                         'lineup' => $sameEvent ? $fixture->lineup_display : [],
                         'participant_ids' => $node['participants'] ?? [], 'venue_courts' => $node['venue_courts'] ?? [],
                         'wave' => $node['wave'] ?? null, 'dependencies' => $node['dependencies'] ?? [],
+                        'programme_day' => $node['programme_day'] ?? null, 'programme_sequence' => $node['programme_sequence'] ?? null,
                         'not_before' => isset($node['not_before']) ? $node['not_before']->format('Y-m-d H:i:s') : null,
                         'editable' => isset($node) && $node['selected_round'] && ! $node['played']];
                 })->values()->all());
@@ -432,6 +478,7 @@ final class EventVenueScheduleService
             'gender_waves' => $genderWaves,
             'gender_wave_release' => $genderRelease,
             'draw_rounds' => $drawRounds,
+            'programme' => $programme,
             'tie_allocation' => $tieAllocation,
             'draw_starts' => $drawStarts->map(fn ($time, $drawId) => ['draw_id' => (int) $drawId,
                 'start' => $time->format('Y-m-d H:i:s')])->values()->all(),
@@ -455,6 +502,10 @@ final class EventVenueScheduleService
     {
         return DB::transaction(function () use ($event, $options, $expectedRevision) {
             $applyVenueIds = array_values(array_unique(array_map('intval', $options['apply_venue_ids'] ?? [])));
+            if (! empty($options['programme'])) {
+                if ($applyVenueIds) throw new \InvalidArgumentException('Save the complete three-day programme together after every match fits.');
+                $options['allow_partial'] = false;
+            }
             unset($options['apply_venue_ids']);
             Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
             DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
@@ -504,7 +555,9 @@ final class EventVenueScheduleService
             $calendar = ScheduleAvailability::load($matches->pluck('venue_id')->unique()->all(),
                 $matches->flatMap(fn ($row) => $row['participant_ids'] ?? [])->unique()->all(),
                 $matches->where('fixture_kind', 'individual')->pluck('fixture_id')->all(), null,
-                (int) ($preview['input']['playerRest'] ?? 60), $matches->where('fixture_kind', 'team')->pluck('fixture_id')->all());
+                (int) ($preview['input']['playerRest'] ?? 60), $matches->where('fixture_kind', 'team')->pluck('fixture_id')->all(),
+                null, null, ! empty($options['programme']) ? Carbon::parse($preview['input']['start']) : null,
+                ! empty($options['programme']) ? Carbon::parse($preview['input']['end'])->addMinutes(max((int) $preview['input']['playerRest'], (int) $preview['input']['courtGap'])) : null);
             $calendarDraws = Draw::whereIn('id', $matches->pluck('draw_id'))->with('flexibleMonrad')->get()->keyBy('id');
             foreach ($matches->sortBy('scheduled_at') as $row) {
                 $at = Carbon::parse($row['scheduled_at']);

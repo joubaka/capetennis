@@ -240,6 +240,28 @@
   const $venuesModal = $('#venuesModal');
   const $venuesForm = $('#venuesForm');
   const $venuesContainer = $('#venues-container');
+  const $venueFeedback = $('<div class="alert alert-danger d-none" role="alert"></div>');
+  $venuesContainer.before($venueFeedback);
+
+  function venueSaveError(xhr) {
+    const status = xhr.status || 0;
+    const payload = xhr.responseJSON || {};
+    if (status === 422 && payload.errors) {
+      const messages = [...new Set(Object.values(payload.errors).flat().filter(message => typeof message === 'string'))];
+      if (messages.length) return messages.join(' ');
+    }
+    if (status === 419 || status === 401) return 'Your session has expired. Refresh the page and sign in before saving venues again.';
+    if (status === 403) return 'You cannot edit venues for this draw. Check your event permissions and whether the draw is locked or published.';
+    if (status === 404) return 'This draw is no longer available. Refresh the page before assigning venues.';
+    if (status >= 500) return 'The server could not confirm the venue save (HTTP ' + status + '). Refresh and check this draw and its age-group defaults before retrying. If it continues, contact support with the event, draw and time of the attempt.';
+    if (!status) return 'Could not confirm the venue save because the connection was interrupted. Check your connection, then refresh and check the saved venues before retrying.';
+    return payload.message || 'Could not save venues. Check the selected venues and court counts, then try again.';
+  }
+
+  function showVenueError(message) {
+    $venueFeedback.text(message).removeClass('d-none');
+    toastr.error(message, 'Venues could not be saved', { escapeHtml: true, timeOut: 10000 });
+  }
 
   function venueRowTemplate(selectedId = "", numCourts = 1) {
     let options = '<option value="">-- Select Venue --</option>';
@@ -289,6 +311,7 @@
       $venuesForm.attr('action', storeUrl).data('draw-id', drawId);
       $venuesModal.find('.modal-title').text('Assign Venues to ' + drawName);
       $venuesContainer.empty();
+      $venueFeedback.text('').addClass('d-none');
 
       $.get(jsonUrl).done(existing => {
 
@@ -341,12 +364,16 @@
       const url = $(this).attr('action');
       const formData = $(this).serialize();
       const drawId = $(this).data('draw-id');
+      const $save = $venuesForm.find('[type="submit"]');
+      if ($save.prop('disabled')) return;
+      $save.prop('disabled', true);
+      $venueFeedback.text('').addClass('d-none');
 
       $.post(url, formData + '&_token=' + csrfToken)
         .done(response => {
 
           if (!response.success) {
-            toastr.error('Could not save venues.');
+            showVenueError('Could not save venues. Check the selected venues and court counts, then try again.');
             return;
           }
 
@@ -374,8 +401,11 @@
           }
 
         })
-        .fail(() => {
-          toastr.error('Error while saving venues.');
+        .fail(xhr => {
+          showVenueError(venueSaveError(xhr));
+        })
+        .always(() => {
+          $save.prop('disabled', false);
         });
     });
 
@@ -383,12 +413,15 @@
   // TOGGLE PUBLISH
   // =====================================================
 
-  $(document).off('click.publish', '.toggle-publish')
-    .on('click.publish', '.toggle-publish', function () {
+  $(document).off('click.publish', '.toggle-publish, .toggle-publish-schedule')
+    .on('click.publish', '.toggle-publish, .toggle-publish-schedule', function () {
 
       const $btn = $(this);
       const url = $btn.data('url');
       const currentStatus = $btn.data('status');
+      const isSchedule = $btn.hasClass('toggle-publish-schedule');
+      const subject = isSchedule ? 'schedule' : 'draw';
+      const $card = $btn.closest('.event-draw-publication-card');
 
       $btn.prop('disabled', true);
 
@@ -396,24 +429,32 @@
         .done(response => {
 
           if (!response.success) {
-            toastr.error('Could not update publish status.');
+            toastr.error(response.message || 'Could not update publish status.');
             return;
           }
 
-          const newStatus = response.published ? 1 : 0;
+          const newStatus = (isSchedule ? response.oop_published : response.published) ? 1 : 0;
           $btn.data('status', newStatus);
 
-          if (newStatus === 1) {
-            $btn.html('<i class="ti ti-eye-off me-2"></i> Unpublish');
-            toastr.success('Draw published.');
-          } else {
-            $btn.html('<i class="ti ti-eye me-2"></i> Publish');
-            toastr.info('Draw unpublished.');
-          }
+          $btn.html(`<i class="ti ti-${newStatus ? 'eye-off' : 'eye'} me-1"></i>${newStatus ? 'Hide' : 'Publish'} ${subject}`);
+          const drawPublished = isSchedule ? Number($card.find('.toggle-publish').data('status')) === 1 : newStatus === 1;
+          const schedulePublished = isSchedule ? newStatus === 1 : Number($card.find('.toggle-publish-schedule').data('status')) === 1;
+          $card.find('.event-draw-status')
+            .removeClass('bg-label-success bg-label-warning')
+            .addClass(drawPublished ? 'bg-label-success' : 'bg-label-warning')
+            .text(drawPublished ? 'Draw published' : 'Draw hidden');
+          $card.find('.event-schedule-status')
+            .removeClass('bg-label-success bg-label-secondary')
+            .addClass(schedulePublished ? 'bg-label-success' : 'bg-label-secondary')
+            .text(schedulePublished ? (drawPublished ? 'Schedule published' : 'Schedule preview only') : 'Schedule hidden');
+          $card.find('.event-publication-note').text(schedulePublished && !drawPublished ? 'Publish the draw to make these times public.' : 'Draws and match times are published separately.');
+          toastr.success(isSchedule && newStatus && response.preview_only
+            ? 'Schedule ready for preview. Publish the draw to make these times public.'
+            : `${isSchedule ? 'Schedule' : 'Draw'} ${newStatus ? 'published' : 'unpublished'}.`);
 
         })
-        .fail(() => {
-          toastr.error('Error while toggling publish.');
+        .fail(xhr => {
+          toastr.error(xhr.responseJSON?.message || `Could not update ${subject} publication.`);
         })
         .always(() => {
           $btn.prop('disabled', false);

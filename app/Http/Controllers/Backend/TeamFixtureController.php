@@ -345,8 +345,8 @@ class TeamFixtureController extends Controller
     $team_fixture->loadMissing([
       'draw:id,drawName,event_id,team_draw_selection,team_format_snapshot',
       'draw.event:id,name',
-      'homeTeam:id,name',
-      'awayTeam:id,name',
+      'homeTeam:teams.id,teams.name',
+      'awayTeam:teams.id,teams.name',
       'venue:id,name',
     ]);
 

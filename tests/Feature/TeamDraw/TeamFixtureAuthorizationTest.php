@@ -5,7 +5,9 @@ namespace Tests\Feature\TeamDraw;
 use App\Models\Draw;
 use App\Models\Event;
 use App\Models\EventType;
+use App\Models\Team;
 use App\Models\TeamFixture;
+use App\Models\TeamTie;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -227,6 +229,30 @@ class TeamFixtureAuthorizationTest extends TestCase
         $this->actingAs($this->adminOther)
             ->getJson(route('backend.team-fixtures.show', $this->fixture))
             ->assertForbidden();
+    }
+
+    public function test_event_admin_can_show_fixture_with_both_teams(): void
+    {
+        $home = Team::factory()->create(['name' => 'Home team']);
+        $away = Team::factory()->create(['name' => 'Away team']);
+        $tie = TeamTie::create([
+            'draw_id' => $this->draw->id,
+            'round_nr' => 1,
+            'tie_nr' => 1,
+            'home_team_id' => $home->id,
+            'away_team_id' => $away->id,
+        ]);
+        $this->fixture->update(['team_tie_id' => $tie->id]);
+
+        $this->actingAs($this->admin)
+            ->get(route('backend.team-fixtures.show', $this->fixture))
+            ->assertOk()
+            ->assertViewHas('team_fixture', function (TeamFixture $fixture) use ($home, $away) {
+                return $fixture->homeTeam?->id === $home->id
+                    && $fixture->homeTeam?->name === $home->name
+                    && $fixture->awayTeam?->id === $away->id
+                    && $fixture->awayTeam?->name === $away->name;
+            });
     }
 
     // ─────────────────────────────────────────────────────────────────────────

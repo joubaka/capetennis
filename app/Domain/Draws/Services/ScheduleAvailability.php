@@ -18,7 +18,7 @@ final class ScheduleAvailability
 
     public static function load(array $venues, array $registrations, array $excludeFixtures = [], ?Draw $draw = null,
         ?int $participantRest = null, array $excludeTeamFixtures = [], ?Event $venueHistoryEvent = null,
-        ?Carbon $planningDate = null): self
+        ?Carbon $planningDate = null, ?Carbon $windowStart = null, ?Carbon $windowEnd = null): self
     {
         $calendar = new self();
         $calendar->venueHistoryEvent = $venueHistoryEvent;
@@ -63,6 +63,7 @@ final class ScheduleAvailability
         }
         $reservationDraws = $monrads->pluck('draw_id')->merge($legacyDraws);
         $bookings = OrderOfPlay::with('fixture.draw')->whereNotIn('fixture_id', $excludeFixtures)->whereNotNull('time')
+            ->when($windowEnd, fn ($query) => $query->where('time', '<', $windowEnd))
             ->where(function ($q) use ($venues, $allIds, $reservationDraws) {
                 // Older trials bookings omit draw_id; the linked fixture owns the booking.
                 $q->whereIn('venue_id', $venues)->orWhereHas('fixture', fn ($f) => $f->where(fn ($linked) =>
@@ -70,6 +71,10 @@ final class ScheduleAvailability
             })->orderBy('id')->get();
         $monrad = $draw?->usesFlexibleMonrad() ?? false;
         foreach ($bookings as $slot) {
+            $startsAt = Carbon::parse($slot->time);
+            $reservationMinutes = max($slot->occupiedMinutes(), (int) ($slot->duration_minutes ?: 75) + max(0, $participantRest ?? 0));
+            if ($windowStart && $startsAt->copy()->addMinutes($reservationMinutes)->lte($windowStart)
+                && (! $calendar->venueHistoryEvent || ! $calendar->historyEligible($slot->fixture?->draw?->event_id, $startsAt))) continue;
             $resolved = array_filter([$slot->fixture?->registration1_id, $slot->fixture?->registration2_id]);
             $sameDraw = $draw && (int) ($slot->fixture?->draw_id ?? $slot->draw_id) === $draw->id;
             // The local dependency checks separate winner and loser paths. Do not reserve
@@ -84,8 +89,9 @@ final class ScheduleAvailability
                 $occupied, $participantMinutes, $participants, null,
                 $calendar->historyEligible($slot->fixture?->draw?->event_id, Carbon::parse($slot->time)));
         }
-        $teamBookings = TeamFixture::with(['draw', 'fixturePlayers.noProfile1', 'fixturePlayers.noProfile2'])
+        $teamBookings = TeamFixture::withoutEagerLoads()->with(['draw', 'fixturePlayers.noProfile1', 'fixturePlayers.noProfile2'])
             ->whereNotNull('scheduled_at')->whereNotIn('id', $excludeTeamFixtures)
+            ->when($windowEnd, fn ($query) => $query->where('scheduled_at', '<', $windowEnd))
             ->where(function ($query) use ($venues, $players, $registrations, $profileIds) {
                 $query->whereIn('venue_id', $venues)->orWhereHas('fixturePlayers', function ($slots) use ($players, $registrations, $profileIds) {
                     $profiles = array_unique(array_merge($profileIds, $players->pluck('player_id')->all()));
@@ -99,6 +105,10 @@ final class ScheduleAvailability
             })->orderBy('id')->get();
         foreach ($teamBookings as $fixture) {
             $minutes = (int) ($fixture->duration_min ?: 120);
+            $startsAt = Carbon::parse($fixture->scheduled_at);
+            $reservationMinutes = $minutes + max((int) ($fixture->gap_minutes ?? 0), max(0, $participantRest ?? (int) ($fixture->gap_minutes ?? 0)));
+            if ($windowStart && $startsAt->copy()->addMinutes($reservationMinutes)->lte($windowStart)
+                && (! $calendar->venueHistoryEvent || ! $calendar->historyEligible($fixture->draw?->event_id, $startsAt))) continue;
             $calendar->reserveWithRest((int) $fixture->venue_id, (string) $fixture->court_label,
                 Carbon::parse($fixture->scheduled_at), $minutes + (int) ($fixture->gap_minutes ?? 0),
                 $minutes + max(0, $participantRest ?? (int) ($fixture->gap_minutes ?? 0)),

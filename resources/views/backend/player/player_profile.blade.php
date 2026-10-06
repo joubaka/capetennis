@@ -26,6 +26,9 @@
 @endsection
 
 @section('content')
+@if($performance && auth()->user()->hasRole('super-user'))
+    @include('backend.player-performance.card')
+@endif
 
 <div class="row g-4 player-profile-page">
   <!-- User Sidebar -->

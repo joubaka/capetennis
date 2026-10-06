@@ -29,9 +29,11 @@
   .event-draw-card .list-group-item { padding: 0; border: 0; background: transparent; }
   .event-draw-card .user-info { width: 100%; min-width: 0; }
   .event-draw-card h6 { overflow-wrap: anywhere; }
-  .event-draw-card .btn-group { display: flex; flex-wrap: wrap; gap: .5rem; width: 100%; }
-  .event-draw-card .btn-group > .btn-group { width: 100%; margin: 0; }
-  .event-draw-card .btn-group > .btn { flex: 0 1 auto; min-height: 44px; margin: 0; border-radius: .375rem !important; white-space: normal; }
+  .event-draw-card .draw-venues .badge { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .event-draw-card .draw-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; width: 100%; margin-top: .75rem; }
+  .event-draw-card .draw-card-actions .btn { min-height: 44px; margin: 0; white-space: normal; }
+  .event-draw-card .draw-card-publication { padding-block: .75rem; border-block: 1px solid var(--bs-border-color, #dbdade); }
+  .event-draw-card .dropdown-item { min-height: 44px; white-space: normal; }
   .event-draw-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; margin-top: .75rem; }
   .event-draw-links { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
   .event-draw-links .btn { min-height: 44px; white-space: normal; }
@@ -39,8 +41,8 @@
     .event-draw-header { flex-direction: column; align-items: flex-start !important; gap: .25rem; }
     .event-draw-body { padding-inline: 1rem; }
     .event-draw-card { padding: .875rem; }
-    .event-draw-card .btn-group > .btn { flex: 1 1 calc(50% - .5rem); padding-inline: .5rem; }
-    .event-draw-card .user-info > .btn-group > .btn:first-child { flex-basis: 100%; }
+    .event-draw-card .draw-card-actions > .btn { flex: 1 1 calc(50% - .5rem); padding-inline: .5rem; }
+    .event-draw-card .draw-card-primary > .btn:first-child { flex-basis: 100%; }
     .event-draw-links .btn { flex: 1 1 0; }
   }
 </style>
@@ -205,12 +207,8 @@
             <div class="event-draw-card">
                 @include('backend.draw._includes.draw_tab_team')
                 <div class="event-draw-meta text-muted small">
-                  @if($draw->is_published)
-                    <span class="badge bg-label-primary">Published</span>
-                  @elseif($draw->is_done)
+                  @if($draw->is_done)
                     <span class="badge bg-label-success">Completed</span>
-                  @else
-                    <span class="badge bg-label-warning">Draft</span>
                   @endif
                    <span class="me-2"><i class="ti ti-calendar-event ti-xs"></i> {{ $draw->created_at->format('d M, Y') }}</span>
                    @if($draw->is_scheduled) <span class="text-info">Scheduled</span> @endif

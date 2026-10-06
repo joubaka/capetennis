@@ -21,6 +21,12 @@
       "menuLevel": "super",
       "submenu": [
         {
+          "url": "backend/player-performance",
+          "name": "Player performance pilot",
+          "icon": "circle",
+          "slug": "backend.player-performance.index"
+        },
+        {
           "url": "backend/superadmin",
           "name": "Dashboard",
           "icon": "circle",

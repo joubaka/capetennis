@@ -500,11 +500,9 @@ class EventAdminController extends Controller
     $event = Event::findOrFail($id);
     $this->authorize('event-draw.view', $event);
 
-    $draws = Draw::where('event_id', $id)
-      ->withCount('registrations')
-      ->get();
-
-    return view('backend.eventAdmin.main', compact('event', 'draws'));
+    // The legacy AJAX shell would insert the full workspace inside another
+    // backend layout, duplicating navigation IDs and fixed-menu positioning.
+    return redirect()->route('headOffice.show', $event);
   }
 
 

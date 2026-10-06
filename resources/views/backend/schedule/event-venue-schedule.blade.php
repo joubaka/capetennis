@@ -8,10 +8,29 @@
 
 @section('vendor-script')
   <script src="{{ asset('assets/vendor/libs/select2/select2.js') }}"></script>
+  <script src="{{ asset('assets/vendor/libs/sortablejs/sortable.js') }}"></script>
 @endsection
 
 @section('page-style')
 <style>
+  .programme-day-lane { min-height:6rem; padding:.75rem; background:var(--schedule-soft); border:1px dashed var(--schedule-border); border-radius:.5rem; }
+  .programme-stage { background:var(--bs-body-bg); border:1px solid var(--schedule-border); border-radius:.5rem; padding:.65rem; margin-bottom:.6rem; }
+  .programme-stage-handle { cursor:grab; touch-action:none; min-width:2.5rem; min-height:2.5rem; }
+  .programme-stage.sortable-ghost { opacity:.35; }
+  .programme-stage-controls { display:flex; flex-wrap:wrap; gap:.35rem; align-items:center; margin-top:.5rem; }
+  .programme-stage-controls .form-select { width:auto; min-width:6rem; }
+  #programme-rounds .programme-day { min-width:7rem; }
+  #programme-rounds .programme-sequence { min-width:6rem; }
+  @media (max-width:576px) {
+    #programme-rounds thead { display:none; }
+    #programme-rounds tbody { display:block; }
+    #programme-rounds tr { display:grid; grid-template-columns:1fr 1fr; gap:.5rem; border:1px solid var(--schedule-border); border-radius:.5rem; margin-bottom:.75rem; padding:.5rem; }
+    #programme-rounds td { border:0; min-width:0; padding:.25rem; }
+    #programme-rounds td:first-child { grid-column:1 / -1; font-weight:600; }
+    #programme-rounds td:nth-child(2)::before { content:'Day'; display:block; margin-bottom:.25rem; }
+    #programme-rounds td:nth-child(3)::before { content:'Order within day'; display:block; margin-bottom:.25rem; }
+    #programme-rounds select, #programme-rounds input { width:100%; }
+  }
   #rank-preferences .rank-band-row { min-width:0; border:1px solid var(--schedule-border); border-radius:.75rem; padding:1rem; background:#fff; }
   #rank-preferences .rank-band-header { display:flex; align-items:center; justify-content:space-between; gap:.75rem; margin-bottom:.8rem; }
   #rank-preferences .rank-band-fields { display:grid; grid-template-columns:minmax(9rem,.65fr) minmax(0,1.5fr) minmax(0,1fr); gap:1rem; }
@@ -208,6 +227,31 @@
       </ul>
     </div>
   @endif
+  <details class="workspace-section mb-3" id="programme-wizard">
+    <summary><span class="section-title"><h5>Three-day age-group auto schedule</h5><small class="text-muted">Create one complete preview using the Platinum programme.</small></span></summary>
+    <div class="section-body">
+      <label class="form-label" for="programme-age">Age group</label>
+      <select id="programme-age" class="form-select mb-3"><option value="">Choose age group</option>@foreach($draws->where('is_team', true)->pluck('programme_age')->filter()->unique()->sort() as $age)<option value="{{ $age }}">Under {{ $age }}</option>@endforeach</select>
+      <p class="small">Day 1: singles rounds 1–3, reverse singles round 1. Day 2: reverse singles rounds 2–3 and all doubles. Day 3: all mixed doubles. Adjust each round's day and order below. Boys/girls order follows the timing rules.</p>
+      <div class="row g-3 mb-3">@foreach(range(0,2) as $day)<div class="col-md-4"><strong>Day {{ $day + 1 }}</strong><label class="form-label d-block mt-2" for="programme-start-{{ $day }}">Starts</label><input id="programme-start-{{ $day }}" class="form-control programme-time" type="datetime-local" value="{{ $event->start_date ? \Carbon\Carbon::parse($event->start_date)->addDays($day)->format('Y-m-d').'T08:00' : '' }}"><label class="form-label d-block mt-2" for="programme-end-{{ $day }}">Finishes</label><input id="programme-end-{{ $day }}" class="form-control programme-time" type="datetime-local" value="{{ $event->start_date ? \Carbon\Carbon::parse($event->start_date)->addDays($day)->format('Y-m-d').'T18:00' : '' }}"></div>@endforeach</div>
+      <p class="small mb-2">Drag the handle to put rounds in order or move them between days. Boys and girls in the same round move together. Each drop refreshes the preview using AJAX; match times are saved only when you choose Save. Use the Up/Down buttons or day selector with a keyboard.</p>
+      <div id="programme-stages" class="row g-3 mb-3" aria-label="Drag rounds into daily playing order"></div>
+      <details class="mb-3"><summary>Advanced: individual draw round days and numbered order</summary><div id="programme-rounds" class="table-responsive mt-2"></div></details>
+      <div class="row g-3 mb-3">@foreach(range(0,2) as $day)<div class="col-md-4"><strong>Day {{ $day + 1 }} optional break</strong><div class="row g-2 mt-1"><div class="col-6"><label class="form-label small" for="programme-break-start-{{ $day }}">Break starts</label><input id="programme-break-start-{{ $day }}" class="form-control programme-time" type="time"></div><div class="col-6"><label class="form-label small" for="programme-break-end-{{ $day }}">Break ends</label><input id="programme-break-end-{{ $day }}" class="form-control programme-time" type="time"></div></div></div>@endforeach</div>
+      <div class="row g-3 mb-3">
+        <div class="col-6 col-md-3"><label class="form-label" for="programme-duration">Match minutes</label><input id="programme-duration" class="form-control" type="number" min="15" max="480" value="{{ $scheduleDraft['duration'] }}"></div>
+        <div class="col-6 col-md-3"><label class="form-label" for="programme-rest">Player rest minutes</label><input id="programme-rest" class="form-control" type="number" min="0" max="480" value="{{ $scheduleDraft['player_rest'] }}"></div>
+        <div class="col-6 col-md-3"><label class="form-label" for="programme-gap">Court gap minutes</label><input id="programme-gap" class="form-control" type="number" min="0" max="120" value="{{ $scheduleDraft['court_gap'] }}"></div>
+        <div class="col-md-3"><label class="form-label" for="programme-gender">Order within each round</label><select id="programme-gender" class="form-select"><option value="boys_then_girls">Boys then girls</option><option value="girls_then_boys">Girls then boys</option><option value="combined">Together</option></select></div>
+      </div>
+      <label class="form-label" for="programme-reuse-source">Reuse courts for disciplines with no venue</label>
+      <select id="programme-reuse-source" class="form-select mb-2"><option value="">Choose an assigned draw in this age group</option></select>
+      <button id="programme-reuse" type="button" class="btn btn-outline-primary mb-3">Save missing discipline venue assignments</button>
+      <p class="small text-muted">This explicitly saves the selected draw's current courts only to disciplines with no venue. Existing discipline assignments stay as they are. Review allocations below to select different courts.</p>
+      <button id="programme-create" type="button" class="btn btn-primary">Create three-day schedule preview</button>
+      <div id="programme-status" class="small mt-2" role="status" aria-live="polite"></div>
+    </div>
+  </details>
   <div class="workflow-rail mb-3" aria-label="Schedule workflow">
     <button type="button" class="workflow-step is-active" data-workflow-nav="1"><span class="step-number">1</span><span class="workflow-label">Court allocation</span></button>
     <button type="button" class="workflow-step" data-workflow-nav="2" data-audit-ignore="true"><span class="step-number">2</span><span class="workflow-label">Timing rules</span></button>
@@ -645,6 +689,7 @@
   const manualMode = @json(request()->boolean('manual'));
   const drawIds = @json($draws->reject(fn($draw) => $draw['locked'])->pluck('id')->values());
   let payload = null;
+  let programmePayload = null;
   let previewGeneration = 0;
   let revision = null;
   let replanVenueIds = [];
@@ -1005,7 +1050,8 @@
     draw_ids: values('.draw-choice'),
     draw_rounds: readDrawRounds().filter(row => values('.draw-choice').includes(row.draw_id)),
     replan_venue_ids: document.getElementById('reschedule-existing').checked ? selectedAssignedVenueIds() : replanVenueIds,
-    draw_starts: [...document.querySelectorAll('.draw-start')].filter(input => input.value && document.querySelector(`.draw-choice[value="${input.dataset.draw}"]`)?.checked).map(input => ({draw_id:Number(input.dataset.draw), start:input.value}))
+    draw_starts: [...document.querySelectorAll('.draw-start')].filter(input => input.value && document.querySelector(`.draw-choice[value="${input.dataset.draw}"]`)?.checked).map(input => ({draw_id:Number(input.dataset.draw), start:input.value})),
+    ...(programmePayload || {})
   });
   const post = async (url, body) => {
     const generation = url === previewUrl ? ++previewGeneration : null;
@@ -1140,6 +1186,7 @@
     const pad = value => String(value).padStart(2, '0');
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:00`;
   };
+  const scheduleRoundLabel = row => row.programme_day ? `Day ${row.programme_day} · Order ${row.programme_sequence} · R${row.round}` : row.wave ? `Wave ${row.wave} · R${row.round}` : `R${row.round}`;
   const matchEnd = (match, result) => match.ends_at
     ? asDate(match.ends_at)
     : new Date(dateKey(match.scheduled_at) + (Number(match.duration || result.input.duration) + Number(result.input.courtGap || 0)) * 60000);
@@ -1180,7 +1227,7 @@
     else if (planned) state = `<span class="badge bg-label-primary">${planned} suggested · not saved</span>`;
     if (replanning) state = '<span class="badge bg-label-warning">Replanning this venue</span>';
     if (unresolved) state += `<span class="badge bg-label-danger ms-2">${unresolved} unresolved</span>`;
-    const apply = planned ? `<button type="button" class="btn btn-sm btn-success" data-apply-venue="${venue.id}" data-venue-name="${escapeHtml(venue.name)}"><i class="ti ti-check me-1" aria-hidden="true"></i>Save venue matches</button>` : '';
+    const apply = planned && !result.input.programme?.days?.length ? `<button type="button" class="btn btn-sm btn-success" data-apply-venue="${venue.id}" data-venue-name="${escapeHtml(venue.name)}"><i class="ti ti-check me-1" aria-hidden="true"></i>Save venue matches</button>` : '';
     const change = fixed && !replanning ? `<button type="button" class="btn btn-sm btn-outline-primary" data-replan-venue="${venue.id}" data-venue-name="${escapeHtml(venue.name)}">Change this venue</button>` : '';
     const unapply = unapplyUrl && fixed && !replanning ? `<button type="button" class="btn btn-sm btn-outline-danger" data-unapply-venue="${venue.id}" data-venue-name="${escapeHtml(venue.name)}"><i class="ti ti-calendar-off me-1" aria-hidden="true"></i>Unapply venue times</button>` : '';
     const keep = replanning ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-keep-venue="${venue.id}">Keep current applied schedule</button>` : '';
@@ -1206,7 +1253,7 @@
         if (starts) {
           const movable = !starts.fixed || starts.editable;
           const path = (starts.participants || []).join(' / ') || 'Participants determined by draw';
-          const round = starts.wave ? `Wave ${starts.wave} · R${starts.round}` : `R${starts.round}`;
+          const round = starts.programme_day ? `Day ${starts.programme_day} · Order ${starts.programme_sequence} · R${starts.round}` : starts.wave ? `Wave ${starts.wave} · R${starts.round}` : `R${starts.round}`;
           const state = starts.fixed
             ? '<span class="badge bg-label-success mt-1">Saved</span>'
             : '<span class="badge bg-label-primary mt-1">Suggested · not saved</span>';
@@ -1238,13 +1285,13 @@
     document.getElementById('preview-summary').classList.remove('d-none');
     document.getElementById('preview-summary').innerHTML = card(result.matches.length, 'Suggested · not saved', 'primary') + card((result.existing_matches || []).length, 'Saved · kept fixed', 'success') + card(result.automatic_byes, 'Automatic byes') + card(result.venues.length, 'Venues') + card(result.unscheduled.length, 'Unscheduled', result.unscheduled.length ? 'danger' : 'success');
     let warnings = (result.warnings || []).map(message => `<div class="alert alert-warning py-2">${escapeHtml(message)}</div>`).join('');
-    if (result.unscheduled.length) warnings += `<div class="alert alert-danger"><strong>Matches remaining to schedule:</strong><div class="small mb-2">Save the matches that fit this batch; remaining matches stay in planning.</div><ul class="mb-0">${result.unscheduled.map(row => `<li>${escapeHtml(row.draw_name)} Wave ${row.wave} · R${row.round} · Match ${row.match}: ${escapeHtml(row.reason)}${lineupDetails(row)}</li>`).join('')}</ul></div>`;
+    if (result.unscheduled.length) warnings += `<div class="alert alert-danger"><strong>Matches remaining to schedule:</strong><div class="small mb-2">${result.input.programme?.days?.length ? 'The complete programme cannot be saved until every match fits. Adjust courts, duration or daily windows.' : 'Save the matches that fit this batch; remaining matches stay in planning.'}</div><ul class="mb-0">${result.unscheduled.map(row => `<li>${escapeHtml(row.draw_name)} ${scheduleRoundLabel(row)} · Match ${row.match}: ${escapeHtml(row.reason)}${lineupDetails(row)}</li>`).join('')}</ul></div>`;
     document.getElementById('preview-warnings').innerHTML = warnings;
     document.getElementById('preview-view-controls').classList.remove('d-none');
     document.getElementById('preview-view-controls').classList.add('d-flex');
     document.getElementById('venue-timelines').innerHTML = result.venues.map(venue => {
       const rows = venueRows(result, venue.id);
-      return `<details class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap align-items-center gap-2"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span class="venue-age-group-summary">${ageGroupScheduleSummary(rows)}</span><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Time</th><th>Court</th><th>Draw / category</th><th>Round</th><th>Match</th><th>Players / qualification path</th><th>State</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td class="text-nowrap fw-semibold">${escapeHtml(row.scheduled_at.slice(0,16))}</td><td>${escapeHtml(row.court)}</td><td>${escapeHtml(row.draw_name)}</td><td>${row.wave ? `Wave ${row.wave} · R${row.round}` : `R${row.round}`}</td><td class="text-nowrap fw-semibold">Match ${escapeHtml(row.match || '—')}</td><td>${escapeHtml((row.participants || []).join(' / ') || 'Participants determined by draw')}${lineupDetails(row)}</td><td>${row.fixed ? '<span class="badge bg-label-success">Saved</span>' : '<span class="badge bg-label-primary">Suggested · not saved</span>'}</td><td>${row.fixed && row.editable && unapplyUrl ? `<button type="button" class="btn btn-sm btn-outline-danger" data-unapply-fixture="${fixtureKey(row)}" data-match-label="${escapeHtml(row.draw_name)} ${escapeHtml(matchLabel(row))}">Remove</button>` : '<span class="text-muted">—</span>'}</td></tr>`).join('') || '<tr><td colspan="8" class="text-center text-muted py-4">No fixtures allocated.</td></tr>'}</tbody></table></div></details>`;
+      return `<details class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap align-items-center gap-2"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span class="venue-age-group-summary">${ageGroupScheduleSummary(rows)}</span><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Time</th><th>Court</th><th>Draw / category</th><th>Round</th><th>Match</th><th>Players / qualification path</th><th>State</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td class="text-nowrap fw-semibold">${escapeHtml(row.scheduled_at.slice(0,16))}</td><td>${escapeHtml(row.court)}</td><td>${escapeHtml(row.draw_name)}</td><td>${scheduleRoundLabel(row)}</td><td class="text-nowrap fw-semibold">Match ${escapeHtml(row.match || '—')}</td><td>${escapeHtml((row.participants || []).join(' / ') || 'Participants determined by draw')}${lineupDetails(row)}</td><td>${row.fixed ? '<span class="badge bg-label-success">Saved</span>' : '<span class="badge bg-label-primary">Suggested · not saved</span>'}</td><td>${row.fixed && row.editable && unapplyUrl ? `<button type="button" class="btn btn-sm btn-outline-danger" data-unapply-fixture="${fixtureKey(row)}" data-match-label="${escapeHtml(row.draw_name)} ${escapeHtml(matchLabel(row))}">Remove</button>` : '<span class="text-muted">—</span>'}</td></tr>`).join('') || '<tr><td colspan="8" class="text-center text-muted py-4">No fixtures allocated.</td></tr>'}</tbody></table></div></details>`;
     }).join('');
     document.getElementById('venue-slot-grids').innerHTML = result.venues.map(venue => slotGrid(result, venue)).join('');
     const appliedVenueIds = [...new Set([
@@ -1259,8 +1306,9 @@
     const hasSuggestions = result.matches.length > 0;
     const scheduleComplete = !result.unscheduled.length && !hasSuggestions && (result.existing_matches || []).length > 0;
     const applyPreview = document.getElementById('apply-preview');
+    applyPreview.innerHTML = `<i class="ti ti-device-floppy me-1"></i>${result.input.programme?.days?.length ? 'Save complete three-day schedule' : 'Save matches that fit'}`;
     const continueToDraws = document.getElementById('continue-to-draws');
-    applyPreview.disabled = !hasSuggestions;
+    applyPreview.disabled = !hasSuggestions || (!!result.input.programme?.days?.length && result.unscheduled.length > 0);
     applyPreview.classList.toggle('d-none', scheduleComplete);
     continueToDraws.classList.toggle('d-none', !scheduleComplete);
     const previewMessage = result.unscheduled.length
@@ -1601,6 +1649,7 @@
   }));
 
   document.getElementById('generate-preview').addEventListener('click', async event => {
+    programmePayload = null;
     const button = event.currentTarget;
     if ((allocationsDirty || scheduleDirty) && ! await saveAllocationsAndTiming(button)) return;
     payload = buildPayload(); revision = null; button.disabled = true;
@@ -1614,9 +1663,9 @@
     catch (error) { if (error.stalePreview) return; setStatus(document.getElementById('schedule-status'), error.message, 'danger'); }
     finally { if (!completed) stopScheduleActivity(); button.innerHTML = originalButtonHtml; button.disabled = false; }
   });
-  const saveAllocationsAndTiming = async button => {
+  const saveAllocationsAndTiming = async (button, scopedDrawIds = drawIds) => {
     const venues = @json($venues->map(fn($venue) => ['id' => $venue['id'], 'courts' => $venue['courts']])->values());
-    const assignments = drawIds.map(drawId => {
+    const assignments = scopedDrawIds.map(drawId => {
       const venueIds = [...document.querySelectorAll(`.assignment-choice[data-draw="${drawId}"]:checked`)].map(input => Number(input.value));
       const courtAllocations = venueIds.map(venueId => ({venue_id:venueId, court_labels:[...document.querySelectorAll(`.court-allocation[data-draw="${drawId}"][data-venue="${venueId}"]:checked`)].map(input => input.value)}));
       return {draw_id:Number(drawId), venue_ids:venueIds, court_allocations:courtAllocations};
@@ -1625,8 +1674,10 @@
     buttons.forEach(control => { control.disabled = true; });
     setStatus(document.getElementById('allocation-status'), 'Saving court allocations and timing…');
     try {
-      const result = await post(assignmentUrl, {venues, assignments, schedule:buildScheduleDraft()});
-      allocationsDirty = false;
+      const schedule = buildScheduleDraft();
+      schedule.draw_rounds = schedule.draw_rounds.filter(row => scopedDrawIds.includes(row.draw_id));
+      const result = await post(assignmentUrl, {venues, assignments, schedule});
+      if (scopedDrawIds.length === drawIds.length) allocationsDirty = false;
       scheduleDirty = false;
       setStatus(document.getElementById('allocation-status'), result.message, 'success');
       setStatus(document.getElementById('schedule-status'), result.message, 'success');
@@ -1837,6 +1888,135 @@
       scheduleDirty = restored.scheduleDirty;
     }
   } catch (_) { /* Continue with the saved server settings when browser storage is unavailable. */ }
+  const programmeDraws = @json($draws->where('is_team', true)->values());
+  const programmeGroup = () => programmeDraws.filter(draw => Number(draw.programme_age) === Number(document.getElementById('programme-age').value));
+  const programmeStatus = (message, tone = 'secondary') => setStatus(document.getElementById('programme-status'), message, tone);
+  let programmeSortables = [];
+  let programmeRefreshVersion = 0;
+  const programmeCreateLabel = document.getElementById('programme-create').innerHTML;
+  const programmeRows = () => [...document.querySelectorAll('[data-programme-draw]')];
+  const programmeDiscipline = draw => {
+    const code = String(draw.rubber_code || draw.name).toLowerCase();
+    return code.includes('mixed') ? 'Mixed doubles' : code.includes('reverse') ? 'Reverse singles' : code.includes('double') ? 'Doubles' : 'Singles';
+  };
+  const applyProgrammeStageOrder = () => {
+    const rows = new Map(programmeRows().map(row => [`${row.dataset.programmeDraw}:${row.dataset.programmeRound}`, row]));
+    document.querySelectorAll('.programme-day-lane').forEach(lane => {
+      [...lane.querySelectorAll('.programme-stage')].forEach((card, index) => {
+        card.querySelector('.programme-stage-day').value = lane.dataset.day;
+        card.querySelector('.programme-stage-order').textContent = `Order ${index + 1}`;
+        card.dataset.programmeMembers.split(',').forEach(key => {
+          const row = rows.get(key);
+          if (!row) return;
+          row.querySelector('.programme-day').value = lane.dataset.day;
+          row.querySelector('.programme-sequence').value = index + 1;
+        });
+      });
+    });
+    programmePayload = null; invalidatePreview();
+    refreshProgrammePreview(false);
+  };
+  const renderProgrammeStages = () => {
+    programmeSortables.forEach(sortable => sortable.destroy()); programmeSortables = [];
+    const draws = new Map(programmeGroup().map(draw => [Number(draw.id), draw]));
+    const stages = new Map();
+    programmeRows().forEach(row => {
+      const draw = draws.get(Number(row.dataset.programmeDraw));
+      if (!draw) return;
+      const day = Number(row.querySelector('.programme-day').value), sequence = Number(row.querySelector('.programme-sequence').value);
+      const label = `${programmeDiscipline(draw)} · Round ${row.dataset.programmeRound}`;
+      const key = `${label}|${day}|${sequence}`;
+      if (!stages.has(key)) stages.set(key, {label, day, sequence, members:[]});
+      stages.get(key).members.push(`${row.dataset.programmeDraw}:${row.dataset.programmeRound}`);
+    });
+    const ordered = [...stages.values()].sort((a,b) => a.day - b.day || a.sequence - b.sequence || a.label.localeCompare(b.label));
+    document.getElementById('programme-stages').innerHTML = [1,2,3].map(day => `<section class="col-lg-4"><h6>Day ${day}</h6><div class="programme-day-lane" data-day="${day}" aria-label="Day ${day} playing order">${ordered.filter(stage => stage.day === day).map(stage => `<div class="programme-stage" data-programme-members="${stage.members.join(',')}"><div class="d-flex align-items-center gap-2"><button type="button" class="btn btn-sm btn-outline-secondary programme-stage-handle" aria-label="Drag ${escapeHtml(stage.label)}"><i class="ti ti-grip-vertical" aria-hidden="true"></i></button><strong>${escapeHtml(stage.label)}</strong></div><div class="small text-muted mt-1"><span class="programme-stage-order">Order ${stage.sequence}</span> · ${stage.members.length === 2 ? 'Boys and girls move together' : `${stage.members.length} draw${stage.members.length === 1 ? '' : 's'}`}</div><div class="programme-stage-controls"><button type="button" class="btn btn-sm btn-outline-secondary programme-stage-move" data-direction="up" aria-label="Move ${escapeHtml(stage.label)} up">Up</button><button type="button" class="btn btn-sm btn-outline-secondary programme-stage-move" data-direction="down" aria-label="Move ${escapeHtml(stage.label)} down">Down</button><select class="form-select form-select-sm programme-stage-day" aria-label="Move ${escapeHtml(stage.label)} to another day">${[1,2,3].map(value => `<option value="${value}" ${day === value ? 'selected' : ''}>Day ${value}</option>`).join('')}</select></div></div>`).join('')}</div></section>`).join('');
+    if (typeof Sortable !== 'undefined') document.querySelectorAll('.programme-day-lane').forEach(lane => programmeSortables.push(new Sortable(lane, {
+      group:'programme-days', draggable:'.programme-stage', handle:'.programme-stage-handle', animation:150,
+      delay:100, delayOnTouchOnly:true, touchStartThreshold:4, onEnd:applyProgrammeStageOrder,
+    })));
+  };
+  document.getElementById('programme-age').addEventListener('change', () => {
+    programmePayload = null; invalidatePreview();
+    const group = programmeGroup();
+    document.getElementById('programme-rounds').innerHTML = `<table class="table"><thead><tr><th>Discipline / round</th><th>Day</th><th>Order within day</th></tr></thead><tbody>${group.flatMap(draw => draw.rounds.map(round => {
+      const code = String(draw.rubber_code || draw.name).toLowerCase();
+      const mixed = code.includes('mixed'), reverse = code.includes('reverse'), doubles = code.includes('double');
+      const day = mixed ? 3 : reverse ? (round === 1 ? 1 : 2) : doubles ? 2 : 1;
+      const sequence = mixed ? round : reverse ? (round === 1 ? 4 : round - 1) : doubles ? round + 2 : round;
+      return `<tr data-programme-draw="${draw.id}" data-programme-round="${round}"><td>${escapeHtml(draw.name)} · Round ${round}</td><td><select class="form-select programme-day" aria-label="Day for ${escapeHtml(draw.name)} round ${round}">${[1,2,3].map(value => `<option value="${value}" ${day === value ? 'selected' : ''}>Day ${value}</option>`).join('')}</select></td><td><input class="form-control programme-sequence" type="number" min="1" max="100" value="${sequence}" aria-label="Order for ${escapeHtml(draw.name)} round ${round}"></td></tr>`;
+    })).join('')}</tbody></table>`;
+    renderProgrammeStages();
+    document.getElementById('programme-reuse-source').innerHTML = '<option value="">Choose assigned draw</option>' + group.filter(draw => draw.venues.length).map(draw => `<option value="${draw.id}">${escapeHtml(draw.name)}</option>`).join('');
+    programmeStatus(group.length ? `${group.length} disciplines selected. Check all days, match duration, rest and gender order before creating the preview.` : 'Choose an age group.');
+  });
+  document.querySelectorAll('.programme-time').forEach(input => input.addEventListener('change', () => { programmePayload = null; invalidatePreview(); }));
+  document.getElementById('programme-rounds').addEventListener('change', () => { programmePayload = null; invalidatePreview(); renderProgrammeStages(); });
+  document.getElementById('programme-stages').addEventListener('click', event => {
+    const button = event.target.closest('.programme-stage-move');
+    if (!button) return;
+    const card = button.closest('.programme-stage');
+    if (button.dataset.direction === 'up' && card.previousElementSibling) card.parentNode.insertBefore(card, card.previousElementSibling);
+    else if (button.dataset.direction === 'down' && card.nextElementSibling) card.parentNode.insertBefore(card.nextElementSibling, card);
+    else return;
+    applyProgrammeStageOrder();
+    button.focus({preventScroll:true});
+  });
+  document.getElementById('programme-stages').addEventListener('change', event => {
+    if (!event.target.matches('.programme-stage-day')) return;
+    const card = event.target.closest('.programme-stage');
+    document.querySelector(`.programme-day-lane[data-day="${event.target.value}"]`).appendChild(card);
+    applyProgrammeStageOrder();
+    event.target.focus({preventScroll:true});
+  });
+  [['programme-duration','schedule-duration'],['programme-rest','schedule-rest'],['programme-gap','schedule-gap'],['programme-gender','gender-waves']].forEach(([wizardId, sharedId]) => {
+    document.getElementById(wizardId).addEventListener('change', () => { document.getElementById(sharedId).value = document.getElementById(wizardId).value; programmePayload = null; invalidatePreview(); });
+    document.getElementById(sharedId).addEventListener('change', () => { document.getElementById(wizardId).value = document.getElementById(sharedId).value; });
+  });
+  document.getElementById('programme-reuse').addEventListener('click', async event => {
+    const button = event.currentTarget;
+    if (allocationsDirty) return programmeStatus('Save your existing allocation edits first, then reuse courts for missing disciplines.', 'danger');
+    const sourceId = Number(document.getElementById('programme-reuse-source').value);
+    const sourceVenues = [...document.querySelectorAll(`.assignment-choice[data-draw="${sourceId}"]:checked`)];
+    const missing = programmeGroup().filter(draw => !document.querySelector(`.assignment-choice[data-draw="${draw.id}"]:checked`));
+    if (!sourceId || !sourceVenues.length) return programmeStatus('Choose a draw with assigned courts.', 'danger');
+    if (missing.some(draw => draw.locked || draw.published)) return programmeStatus('A missing discipline is locked or published. Review its assignments before changing them.', 'danger');
+    if (!missing.length) return programmeStatus('Every discipline already has a venue.');
+    missing.forEach(draw => sourceVenues.forEach(source => {
+      const target = document.querySelector(`.assignment-choice[data-draw="${draw.id}"][value="${source.value}"]`);
+      if (!target) return;
+      target.checked = true;
+      const labels = [...document.querySelectorAll(`.court-allocation[data-draw="${sourceId}"][data-venue="${source.value}"]:checked`)].map(input => input.value);
+      document.querySelectorAll(`.court-allocation[data-draw="${draw.id}"][data-venue="${source.value}"]`).forEach(input => input.checked = labels.includes(input.value));
+      updateCourtSummary(draw.id, source.value); updateDrawSummary(draw.id);
+    }));
+    invalidatePreview(); button.disabled = true;
+    try { if (await saveAllocationsAndTiming(button, missing.map(draw => draw.id))) programmeStatus('Missing discipline assignments saved. You can now create the preview.', 'success'); else { markAllocationsDirty(); programmeStatus('Assignments were not saved. Review the changed allocations and save them before previewing.', 'danger'); } }
+    finally { button.disabled = false; }
+  });
+  const refreshProgrammePreview = async (showReview = true) => {
+    const button = document.getElementById('programme-create');
+    const group = programmeGroup();
+    if (!group.length) return programmeStatus('Choose an age group.', 'danger');
+    if (allocationsDirty) return programmeStatus('Save the changed court allocations before creating the programme preview.', 'danger');
+    [['programme-duration','schedule-duration'],['programme-rest','schedule-rest'],['programme-gap','schedule-gap'],['programme-gender','gender-waves']].forEach(([wizardId, sharedId]) => document.getElementById(sharedId).value = document.getElementById(wizardId).value);
+    const days = [0,1,2].map(index => {
+      const start = document.getElementById(`programme-start-${index}`).value, end = document.getElementById(`programme-end-${index}`).value;
+      const breakStart = document.getElementById(`programme-break-start-${index}`).value, breakEnd = document.getElementById(`programme-break-end-${index}`).value;
+      return {start, end, break_start:breakStart ? `${start.slice(0,10)}T${breakStart}` : null, break_end:breakEnd ? `${start.slice(0,10)}T${breakEnd}` : null};
+    });
+    const rounds = [...document.querySelectorAll('[data-programme-draw]')].map(row => ({draw_id:Number(row.dataset.programmeDraw), round:Number(row.dataset.programmeRound), day:Number(row.querySelector('.programme-day').value), sequence:Number(row.querySelector('.programme-sequence').value)}));
+    programmePayload = {draw_ids:group.map(draw => draw.id), draw_rounds:[], draw_starts:[], venue_starts:[], start:days[0].start, end:days[2].end, programme:{days,rounds}, allow_partial:false, replan_venue_ids:[]};
+    payload = buildPayload(); revision = null; button.disabled = true;
+    const refreshVersion = ++programmeRefreshVersion;
+    button.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>Creating three-day preview…';
+    programmeStatus('Checking every round, court, player rest and daily window. Your saved schedule stays in place while the preview is created.');
+    try { const result = await post(previewUrl, payload); if (refreshVersion !== programmeRefreshVersion) return; render(result); if (showReview) showWorkflowStep(3); const totals = days.map((day, index) => `Day ${index + 1}: ${result.matches.filter(row => row.scheduled_at.startsWith(day.start.slice(0,10))).length} suggested`).join(' · '); programmeStatus(`${totals}. ${result.unscheduled.length} unallocated. Review before saving.`, result.unscheduled.length ? 'warning' : 'success'); }
+    catch (error) { if (!error.stalePreview && refreshVersion === programmeRefreshVersion) programmeStatus(error.message, 'danger'); }
+    finally { if (refreshVersion === programmeRefreshVersion) { button.disabled = false; button.innerHTML = programmeCreateLabel; } }
+  };
+  document.getElementById('programme-create').addEventListener('click', () => refreshProgrammePreview());
+  document.querySelectorAll('.draw-choice').forEach(input => input.addEventListener('change', () => { programmePayload = null; }));
   showWorkflowStep(1);
 })();
 </script>
