@@ -398,6 +398,8 @@ class PlayerController extends Controller
         $player = Player::findOrFail($id);
         $performance = Auth::user()?->hasRole('super-user')
             ? app(\App\Services\Performance\PlayerPerformancePilotService::class)->forPlayer($player) : null;
+        $ability = Auth::user()?->hasRole('super-user')
+            ? app(\App\Services\Performance\PlayerSharedAbilityService::class)->forPlayer($player) : null;
         $exersize_types = ExerciseType::all();
         $practice_types = PracticeType::all();
         $physical_exersizes  = ExerciseName::where('exersize_type_id', 1)->get();
@@ -453,7 +455,7 @@ class PlayerController extends Controller
         $violations        = $player->violations()->with('violationType')->orderByDesc('violation_date')->get();
         $disciplinaryStatus = $this->disciplinaryService->getPlayerStatus($player);
 
-        return view('backend.player.player_profile', compact('performance', 'u', 'goal_themes', 'goal_types', 'setslost', 'setswon', 'totsets', 'players', 'physical_exersizes', 'practice_types', 'durations', 'player', 'general_goal_types', 'career_goal_types', 'exersize_types', 'violations', 'disciplinaryStatus'));
+        return view('backend.player.player_profile', compact('ability', 'performance', 'u', 'goal_themes', 'goal_types', 'setslost', 'setswon', 'totsets', 'players', 'physical_exersizes', 'practice_types', 'durations', 'player', 'general_goal_types', 'career_goal_types', 'exersize_types', 'violations', 'disciplinaryStatus'));
     }
     public function results($id)
     {

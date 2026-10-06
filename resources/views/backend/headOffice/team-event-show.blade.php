@@ -29,6 +29,13 @@
   .event-draw-card .list-group-item { padding: 0; border: 0; background: transparent; }
   .event-draw-card .user-info { width: 100%; min-width: 0; }
   .event-draw-card h6 { overflow-wrap: anywhere; }
+  .event-draw-card-summary { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 44px; cursor: pointer; list-style: none; }
+  .event-draw-card-summary::-webkit-details-marker { display: none; }
+  .event-draw-card-summary:focus-visible { outline: 2px solid var(--ct-ink, #172e45); outline-offset: 4px; border-radius: .25rem; }
+  .event-draw-card-toggle { display: inline-flex; align-items: center; gap: .25rem; flex-shrink: 0; }
+  .event-draw-card[open] .event-draw-card-expand, .event-draw-card:not([open]) .event-draw-card-collapse { display: none; }
+  .event-draw-card[open] .event-draw-card-toggle i { transform: rotate(180deg); }
+  .event-draw-card-content { padding-top: .75rem; }
   .event-draw-card .draw-venues .badge { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
   .event-draw-card .draw-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; width: 100%; margin-top: .75rem; }
   .event-draw-card .draw-card-actions .btn { min-height: 44px; margin: 0; white-space: normal; }
@@ -204,8 +211,13 @@
             <div class="event-draw-heading"><h6 class="mb-0">{{ $groupLabel }}</h6><span class="text-muted small">{{ $groupDraws->count() }} {{ \Illuminate\Support\Str::plural('draw', $groupDraws->count()) }}</span></div>
             <div class="event-draw-list">
             @foreach($groupDraws as $draw)
-            <div class="event-draw-card">
-                @include('backend.draw._includes.draw_tab_team')
+            <details class="event-draw-card">
+              <summary class="event-draw-card-summary">
+                <h6 class="mb-0">{{ $draw->drawName }} <span class="text-muted">— {{ optional($draw->draw_types)->drawTypeName ?? 'Type' }}</span></h6>
+                <span class="event-draw-card-toggle small text-primary"><span class="event-draw-card-expand">Click to open</span><span class="event-draw-card-collapse">Click to close</span><i class="ti ti-chevron-down" aria-hidden="true"></i></span>
+              </summary>
+              <div class="event-draw-card-content">
+                @include('backend.draw._includes.draw_tab_team', ['hideDrawHeading' => true])
                 <div class="event-draw-meta text-muted small">
                   @if($draw->is_done)
                     <span class="badge bg-label-success">Completed</span>
@@ -223,7 +235,8 @@
               </div>
               @endcan
               @endif
-            </div>
+              </div>
+            </details>
             @endforeach
             </div>
             </div>

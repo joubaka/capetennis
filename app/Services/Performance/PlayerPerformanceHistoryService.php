@@ -112,34 +112,44 @@ class PlayerPerformanceHistoryService
         $components[$discipline][$key]['band'] = $match['tier'] === 'Open' ? 'Open' : 'A/B';
     }
 
-    private function individualMatches(Event $event, Player $player, PlayerPerformancePilotService $pilot): \Generator
+    public function individualMatches(Event $event, ?Player $player, PlayerPerformancePilotService $pilot): \Generator
     {
         if (!$event->published) { return; }
         $cache = [];
+        $definitions = []; $memberships = [];
         $query = Fixture::query()->with(['draw.categoryEvent.category', 'draw.settings', 'registration1.players', 'registration2.players', 'fixtureResults'])
             ->whereHas('draw', fn ($draw) => $draw->where('event_id', $event->id)->where('published', true))
-            ->where(fn ($query) => $query->whereHas('registration1.players', fn ($players) => $players->whereKey($player->id))->orWhereHas('registration2.players', fn ($players) => $players->whereKey($player->id)));
+            ->when(!$player, fn ($query) => $query->whereIn('match_status', [1,2,3])->whereHas('fixtureResults'))
+            ->when($player, fn ($query) => $query->where(fn ($query) => $query->whereHas('registration1.players', fn ($players) => $players->whereKey($player->id))->orWhereHas('registration2.players', fn ($players) => $players->whereKey($player->id))));
         foreach ($query->lazyById(50) as $fixture) {
             $first = $fixture->registration1?->players ?? collect();
             $second = $fixture->registration2?->players ?? collect();
             $discipline = $first->count() === 2 && $second->count() === 2 ? 'doubles' : 'singles';
             $field = $fixture->draw->categoryEvent;
             if (!$field || (int) $field->event_id !== (int) $event->id) {
-                $candidateQuery = \App\Models\CategoryEvent::query()->with(['category', 'event.eventTypeModel'])->where('event_id', $event->id)
-                    ->whereHas('categoryEventRegistrations', fn ($members) => $members->withTrashed()->where('registration_id', $fixture->registration1_id))
-                    ->whereHas('categoryEventRegistrations', fn ($members) => $members->withTrashed()->where('registration_id', $fixture->registration2_id));
-                if ($field) { $candidateQuery->where('category_id', $field->category_id); }
-                $candidates = $candidateQuery->limit(2)->get();
+                if ($field) {
+                    $definitions[$field->category_id] ??= \App\Models\CategoryEvent::query()->with(['category', 'event.eventTypeModel'])
+                        ->where('event_id', $event->id)->where('category_id', $field->category_id)->limit(2)->get();
+                    $candidates = $definitions[$field->category_id];
+                } else {
+                    $candidates = \App\Models\CategoryEvent::query()->with(['category', 'event.eventTypeModel'])->where('event_id', $event->id)
+                        ->whereHas('categoryEventRegistrations', fn ($members) => $members->withTrashed()->where('registration_id', $fixture->registration1_id))
+                        ->whereHas('categoryEventRegistrations', fn ($members) => $members->withTrashed()->where('registration_id', $fixture->registration2_id))->limit(2)->get();
+                }
                 $field = $candidates->count() === 1 ? $candidates->first() : null;
             }
             $division = $field ? $pilot->fieldDivision($field, $cache) : ['tier' => 'Open', 'cohort' => mb_strtolower(trim($fixture->draw->drawName)), 'reason' => 'Match category cannot be verified'];
             $reason = $division['reason'];
             if (!$field || (int) $field->event_id !== (int) $event->id) { $reason = 'Match category/event does not match'; }
-            if ($field && \App\Models\CategoryEvent::query()->where('event_id', $event->id)->where('category_id', $field->category_id)->count() !== 1) {
+            if ($field) {
+                $definitions[$field->category_id] ??= \App\Models\CategoryEvent::query()->where('event_id', $event->id)->where('category_id', $field->category_id)->limit(2)->get();
+                $memberships[$field->id] ??= $field->categoryEventRegistrations()->withTrashed()->limit(257)->pluck('registration_id');
+            }
+            if ($field && $definitions[$field->category_id]->count() !== 1) {
                 $reason = 'Multiple category definitions make this match cohort ambiguous';
             }
             if ($first->count() !== ($discipline === 'singles' ? 1 : 2) || $second->count() !== $first->count() || $first->pluck('id')->merge($second->pluck('id'))->unique()->count() !== $first->count() + $second->count()) { $reason = 'Match participants are missing, duplicated or ambiguous'; }
-            if ($field && $field->categoryEventRegistrations()->withTrashed()->whereIn('registration_id', [$fixture->registration1_id, $fixture->registration2_id])->distinct()->count('registration_id') !== 2) { $reason = 'Match registrations do not belong to this event category'; }
+            if ($field && ($memberships[$field->id]->count() > 256 || !$memberships[$field->id]->contains($fixture->registration1_id) || !$memberships[$field->id]->contains($fixture->registration2_id))) { $reason = 'Match registrations do not belong to this event category or its roster exceeds the validation limit'; }
             $sets = $fixture->fixtureResults;
             $winner = $this->completedWinner($sets, 'registration1_score', 'registration2_score');
             $validation = app(\App\Domain\Draws\Services\ScoreValidationService::class)->validate($fixture,
@@ -157,13 +167,13 @@ class PlayerPerformanceHistoryService
                 || ((int) $fixture->match_status === 3 && ($declared !== $expected || (!$hasPreset && $maxWins < $winsNeeded)))) {
                 $reason = 'Match is unfinished, unplayed or has inconsistent winner/score evidence';
             }
-            $targetFirst = $first->contains('id', $player->id);
+            $targetFirst = !$player || $first->contains('id', $player->id);
             $cohort = $division['cohort'];
             if ($event->frontend_type_view === 'masters') { $cohort = 'masters · '.$cohort; }
             $won = $winner === ($targetFirst ? 1 : 2);
             $tier = $division['tier'];
             $opponents = ($targetFirst ? $second : $first)->map(fn ($opponent) => trim($opponent->name.' '.$opponent->surname))->implode(' / ');
-            yield ['fixture_id' => $fixture->id, 'source' => 'Individual match', 'event_id' => $event->id, 'event' => $event->name, 'date' => CarbonImmutable::parse($event->end_date)->toDateString(), 'category' => $field?->category?->name ?? $fixture->draw->drawName, 'cohort' => $cohort, 'tier' => $tier, 'discipline' => $discipline, 'won' => $won, 'opponents' => $opponents, 'points' => $reason ? null : ($tier === 'A' ? 50 : 0) + ($tier === 'Open' ? 100 : 50) * (int) $won, 'reason' => $reason, 'score' => $sets->map(fn ($set) => $targetFirst ? $set->registration1_score.'-'.$set->registration2_score : $set->registration2_score.'-'.$set->registration1_score)->implode(' ')];
+            yield ['fixture_id' => $fixture->id, 'source' => 'Individual match', 'event_id' => $event->id, 'event' => $event->name, 'date' => CarbonImmutable::parse($event->end_date)->toDateString(), 'category' => $field?->category?->name ?? $fixture->draw->drawName, 'cohort' => $cohort, 'tier' => $tier, 'discipline' => $discipline, 'won' => $won, 'player1_id' => $first->first()?->id, 'player2_id' => $second->first()?->id, 'winner_side' => $winner, 'opponents' => $opponents, 'points' => $reason ? null : ($tier === 'A' ? 50 : 0) + ($tier === 'Open' ? 100 : 50) * (int) $won, 'reason' => $reason, 'score' => $sets->map(fn ($set) => $targetFirst ? $set->registration1_score.'-'.$set->registration2_score : $set->registration2_score.'-'.$set->registration1_score)->implode(' ')];
         }
     }
 

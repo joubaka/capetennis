@@ -11,12 +11,12 @@ use Illuminate\Support\Collection;
 /** Read-only, deliberately uncalibrated tournament-performance preview. */
 class PlayerPerformancePilotService
 {
-    public function preview(array $tiers, string $discipline, CarbonImmutable $asOf, int $months, ?Player $target = null, ?int $eventId = null): array
+    public function preview(array $tiers, string $discipline, CarbonImmutable $asOf, int $months, ?Player $target = null, ?int $eventId = null, bool $network = false): array
     {
         $from = $asOf->subMonthsNoOverflow($months);
         $fieldQuery = CategoryEvent::query()
             ->with(['event.eventTypeModel', 'category'])
-            ->when(!$target, fn ($query) => $query->whereIn('category_id', array_keys($tiers)))
+            ->when(!$target && !$network, fn ($query) => $query->whereIn('category_id', array_keys($tiers)))
             ->when($target, fn ($query) => $query->where(function ($query) use ($target) {
                 $query->whereHas('categoryEventRegistrations', fn ($members) => $members->withTrashed()
                     ->whereHas('registration.players', fn ($players) => $players->where('players.id', $target->id)))
@@ -28,28 +28,28 @@ class PlayerPerformancePilotService
             }))
             ->when($eventId, fn ($query) => $query->where('category_events.event_id', $eventId))
             ->whereHas('event', fn ($query) => $query
-                ->when(!$target, fn ($query) => $query->where('published', true))
+                ->when(!$target && !$network, fn ($query) => $query->where('published', true))
                 ->where('results_published', true)
-                ->when(!$target, fn ($query) => $query->whereDate('end_date', '>=', $from->toDateString()))
-                ->when($target, fn ($query) => $query->whereDate('start_date', '<=', $asOf->toDateString()), fn ($query) => $query->whereDate('end_date', '<=', $asOf->toDateString())))
+                ->when(!$target && !$network, fn ($query) => $query->whereDate('end_date', '>=', $from->toDateString()))
+                ->when($target || $network, fn ($query) => $query->whereDate('start_date', '<=', $asOf->toDateString()), fn ($query) => $query->whereDate('end_date', '<=', $asOf->toDateString())))
             ->join('events', 'events.id', '=', 'category_events.event_id')
             ->select('category_events.*')
             ->orderByDesc('events.end_date')
             ->orderByDesc('category_events.id')
-            ->when(!$target, fn ($query) => $query->limit(51));
-        $fields = $target ? $fieldQuery->lazy(25) : $fieldQuery->get();
+            ->when(!$target && !$network, fn ($query) => $query->limit(51));
+        $fields = $target || $network ? $fieldQuery->lazy(25) : $fieldQuery->get();
 
-        $truncated = !$target && $fields->count() > 50;
+        $truncated = !$target && !$network && $fields->count() > 50;
         $evidence = collect();
-        $selectedFields = ($target ? $fields : $fields->take(50))->unique(fn ($field) => $field->event_id.':'.$field->category_id);
+        $selectedFields = ($target || $network ? $fields : $fields->take(50))->unique(fn ($field) => $field->event_id.':'.$field->category_id);
         $eventDivisions = [];
 
         foreach ($selectedFields as $field) {
-            $division = $target ? $this->fieldDivision($field, $eventDivisions) : null;
-            if ($target && $field->event->frontend_type_view === 'masters') {
+            $division = $target || $network ? $this->fieldDivision($field, $eventDivisions) : null;
+            if (($target || $network) && $field->event->frontend_type_view === 'masters') {
                 $division['cohort'] = 'masters · '.$division['cohort'];
             }
-            $tier = $target ? $division['tier'] : $tiers[$field->category_id];
+            $tier = $target || $network ? $division['tier'] : $tiers[$field->category_id];
             $rows = CategoryResult::query()
                 ->where('event_id', $field->event_id)
                 ->where('category_id', $field->category_id)
@@ -66,9 +66,9 @@ class PlayerPerformancePilotService
                 ->get();
             $memberships = $field->categoryEventRegistrations()->withTrashed()->limit(257)->get();
             $reason = $this->exclusionReason($field, $rows, $memberships, $discipline, $target !== null);
-            $reason = $target ? ($division['reason'] ?? $reason) : $reason;
+            $reason = $target || $network ? ($division['reason'] ?? $reason) : $reason;
             $date = CarbonImmutable::parse($field->event->end_date);
-            if ($target && $date->greaterThan($asOf)) { $date = $asOf; }
+            if (($target || $network) && $date->greaterThan($asOf)) { $date = $asOf; }
             $weight = pow(0.5, max(0, $date->diffInDays($asOf, false)) / 180);
             $base = [
                 'event_id' => $field->event_id,

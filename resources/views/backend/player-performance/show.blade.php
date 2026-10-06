@@ -4,7 +4,36 @@
 @section('content')
 <h1 class="h3">{{ $player->name }} {{ $player->surname }}</h1>
 <p><a href="{{ route('backend.player-performance.directory') }}">Find another player</a> · As of {{ $performance['as_of'] }}</p>
+@include('backend.player-performance.ability-card')
 @include('backend.player-performance.card')
+@if($ability['cohorts']->isNotEmpty())
+<div class="card mb-4"><div class="card-body">
+    <h2 class="h4">Shared ability comparison evidence</h2>
+    @foreach($ability['cohorts'] as $estimate)
+        <h3 class="h5">{{ $estimate['cohort'] }} · comparison group {{ $estimate['component'] }}</h3>
+        <p><strong>{{ $estimate['score'] === null ? 'Estimate withheld' : number_format($estimate['score'], 1).'/100' }}</strong> · {{ $estimate['confidence'] }}</p>
+        <p>This player: {{ $estimate['played'] }} played matches; {{ $estimate['inferred'] }} weaker finish-order comparisons. Comparison group: {{ $estimate['component_players'] }} players, {{ $estimate['component_played'] }} played matches, {{ $estimate['component_inferred'] }} inferred comparisons. {{ $estimate['bridge_count'] }} narrow connections; {{ $estimate['division_links'] }} inferred A/B links. These links are not played matches.</p>
+        <div class="table-responsive"><table class="table"><thead><tr><th>Comparable player in this group</th><th>Shared estimate</th></tr></thead><tbody>
+            @foreach($estimate['comparators'] as $comparator)
+                <tr><td><a href="{{ route('backend.player-performance.show', $comparator['id']) }}">{{ $comparator['name'] }}</a></td><td>{{ $comparator['score'] === null ? 'Withheld' : number_format($comparator['score'], 1).'/100' }}</td></tr>
+            @endforeach
+        </tbody></table></div>
+        <details class="mb-3"><summary>Players connecting multiple event fields</summary>
+            <p>Shared entrants connect event evidence, including regional and open tournaments. Event names and regions confer no strength bonus. These are provenance samples, not claims of head-to-head matches.</p>
+            @forelse($estimate['anchors'] as $anchor)
+                <p><a href="{{ route('backend.player-performance.show', $anchor['id']) }}">{{ $anchor['name'] }}</a>: {{ collect($anchor['events'])->map(fn ($event) => $event['name'].' ('.$event['date'].')')->implode('; ') }}</p>
+            @empty
+                <p>No multi-event connection in the retained provenance sample.</p>
+            @endforelse
+        </details>
+    @endforeach
+    <details><summary>Shared ability method (v3)</summary>
+        <p>Completed public individual singles matches carry weight 1. Published finishing order supplies weaker inferred comparisons, totalling weight 0.2 per event/cohort. Unique paired A/B fields can supply one explicitly inferred division-order link. All evidence receives the same 180-day half-life. Open, A and B have no fixed score bands here.</p>
+        <p>A regularized Bradley–Terry model estimates each player's strength relative to connected opponents and field evidence. The fixed display transform is 100 × logistic(strength). Each comparison group is centered, so 50 is a model midpoint, not a certified standard. Different groups, ages, ball types and contexts are not comparable. Sparse results and inferred-only connections remain limited confidence; a score is withheld if calculation does not converge or processing limits are exceeded.</p>
+        <p>Shared ability currently uses individual singles sources. Team and doubles results remain available in the separate performance pilot below. Cached snapshots last up to five minutes; publication flags are checked on every request. Score changes outside normal timestamped services can take up to five minutes to appear.</p>
+    </details>
+</div></div>
+@endif
 @foreach($performance['disciplines'] as $discipline => $preview)
 <div class="card mb-4"><div class="card-body">
     <h2 class="h4">{{ ucfirst($discipline) }}</h2>

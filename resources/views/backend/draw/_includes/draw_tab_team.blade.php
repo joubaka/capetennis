@@ -8,7 +8,9 @@
 @endphp
 <div class="list-group-item event-draw-publication-card">
   <div class="user-info">
+    @unless($hideDrawHeading ?? false)
     <h6 class="mb-2">{{ $draw->drawName }} <span class="text-muted">— {{ optional($draw->draw_types)->drawTypeName ?? 'Type' }}</span></h6>
+    @endunless
     <div class="event-draw-publication d-flex flex-wrap gap-2 mb-3" aria-live="polite">
       <span class="event-draw-status badge bg-label-{{ $isPublished ? 'success' : 'warning' }}">{{ $isPublished ? 'Draw published' : 'Draw hidden' }}</span>
       <span class="event-schedule-status badge bg-label-{{ $isSchedulePublished ? 'success' : 'secondary' }}">{{ $isSchedulePublished ? ($isPublished ? 'Schedule published' : 'Schedule preview only') : 'Schedule hidden' }}</span>

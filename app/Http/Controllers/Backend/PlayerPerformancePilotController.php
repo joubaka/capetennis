@@ -30,7 +30,8 @@ class PlayerPerformancePilotController extends Controller
     public function show(Player $player, PlayerPerformancePilotService $service)
     {
         $performance = $service->forPlayer($player);
-        return view('backend.player-performance.show', compact('player', 'performance'));
+        $ability = app(\App\Services\Performance\PlayerSharedAbilityService::class)->forPlayer($player);
+        return view('backend.player-performance.show', compact('player', 'performance', 'ability'));
     }
 
     public function index(Request $request, PlayerPerformancePilotService $service)

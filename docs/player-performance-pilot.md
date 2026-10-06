@@ -1,4 +1,22 @@
-# Private player performance pilot - methodology v2
+# Private player pilot - shared ability v3 and performance v2
+
+## Shared ability v3 (primary card)
+
+The primary personal/profile card now estimates relative playing ability using a shared comparison network. The previous performance v2 score remains a secondary summary. They are different measures and must not be compared numerically.
+
+Shared ability initially uses validated published individual singles matches and published individual finishing order. Team and doubles remain in performance v2 only. Sources reuse the canonical v2 publication, identity, score, correction and ranked-membership validation. Comparable category labels normalize age spelling (u/10 and u10), case and spaces. Exact compact legacy age/division/gender grammar such as u/10B Boys can join the same age/gender comparison context. Ball, age, gender, Masters and other category context remain separate; a player moving between contexts does not join their graphs.
+
+Actual played matches contribute winner/loser comparisons with weight 1. Finishing tables supply adjacent ordered-player comparisons, explicitly inferred rather than played matches. All inferred comparisons together have total weight 0.2 per event/cohort, avoiding large fields overpowering actual matches. Exactly one matching A and one B field in the same event can supply one weak inferred A-above-B boundary link only when player sets are disjoint; there are no hard A/B score offsets and no ordering between unpaired regional fields. Open results connect through shared players, not an event-name or region multiplier. Shared-player event provenance samples show where fields connect, including Wilson and regional tournaments; a shared event does not imply those players played one another.
+
+Evidence receives the same 180-day half-life. A deterministic Bradley-Terry model maximizes weighted paired outcomes with a strength-squared penalty (lambda 0.5). These conservative pilot weights and regularization are assumptions requiring calibration; sparse or finishing-only evidence shrinks toward the model midpoint, not a verified average ability. Coordinate Newton updates stop when maximum movement is below 0.000001, with at most 100 passes. Non-converged or non-finite estimates are withheld. Strengths are centered independently within connected comparison groups and displayed with the fixed transform 100 * logistic(strength). This index is not a percentile, win probability or official UTR. A value of 50 is the group's model midpoint; group membership changes can shift values. Ratings across different groups or cohorts are not comparable.
+
+Every rating remains provisional. Finishing-only evidence, inferred links, sparse direct matches and narrow connections show Limited confidence; this is a qualitative evidence label, not an accuracy probability. Only an entirely played-match connected group with sufficient personal matches and no narrow graph links can show Developing. Played-match and inferred-comparison counts remain distinct. Nearby comparator names/indices are restricted to the same group. Multi-event provenance is sampled to five events for five connecting players.
+
+A complete shared snapshot is built once and cached for five minutes in the filesystem (array cache for tests), not as a stored database rating. Each request hashes exact event/result/draw publication flags before using the cache, even if flags changed without updated_at; flags are checked again afterward. Canonical timestamped source changes also alter the fingerprint. Untimestamped direct score/context edits may take up to five minutes to appear, and calculation time is displayed. Fingerprint queries project minimal public-source state, not contact data. The cache and HTTP views remain private to Super Admin.
+
+Inputs stream in bounded batches. Global safety limits are 1,000 events, 256 category definitions per event, 5,000 player identities and 50,000 comparisons/scored match records; exceeding a limit withholds the whole snapshot, rather than displaying a partial estimate. Invalid scores and ambiguous source relationships never become comparison edges. No ranks, results, players, publication flags, registration or financial state is changed.
+
+## Performance v2 (secondary card)
 
 Super Admin's performance pilot links to a searchable directory of every player at backend/player-performance/players. Personal pages and backend profile cards remain GET-only and restricted to super-user. No score, ranking, result, player or publication record is written.
 

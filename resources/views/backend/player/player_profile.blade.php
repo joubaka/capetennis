@@ -27,6 +27,7 @@
 
 @section('content')
 @if($performance && auth()->user()->hasRole('super-user'))
+    @include('backend.player-performance.ability-card')
     @include('backend.player-performance.card')
 @endif
 
