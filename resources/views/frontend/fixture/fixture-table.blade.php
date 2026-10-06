@@ -9,6 +9,23 @@
           padding: 0.4rem;
       }
   }
+  .public-match-cards { display: none; }
+  .public-fixture-back { background: #fff !important; color: #26394d !important; border-color: #66788d !important; }
+  .public-fixture-back:hover, .public-fixture-back:focus { background: #edf0f4 !important; color: #172e45 !important; }
+  .public-fixture-status { background: #e4f1e7 !important; color: #235c31 !important; }
+  @media (max-width: 767.98px) {
+    .public-match-desktop { display: none; }
+    .public-match-cards { display: grid; gap: 1rem; }
+    .public-match-card { border: 1px solid #d9dee3; border-radius: .6rem; padding: 1rem; overflow-wrap: anywhere; min-width: 0; }
+    .public-match-venue { font-weight: 700; color: #26394d; margin-bottom: .5rem; }
+    .public-match-time { font-size: 1.9rem; font-weight: 700; line-height: 1.2; color: #12358f; }
+    .public-match-date { margin-top: .25rem; color: #49576a; }
+    .public-match-players { border-top: 1px solid #d9dee3; margin-top: .75rem; padding-top: .75rem; font-size: 1rem; line-height: 1.6; }
+    .public-match-versus { font-size: .8rem; color: #697a8d; margin: .3rem 0; }
+    .public-match-score { margin-top: .75rem; font-size: .85rem; color: #697a8d; }
+    .public-match-card .fixture-player-label { white-space: normal; color: #172e45; font-weight: 600; }
+    .public-match-card .fixture-region, .public-match-card .fixture-roster-rank { color: #49576a; font-weight: 400; }
+  }
 </style>
 
 @php
@@ -76,12 +93,12 @@ $fxWinnerClasses = function ($fx) {
   <div class="card-header d-flex justify-content-between align-items-center">
     <div>
       <h3 class="mb-1">{{ $draw->drawName }} {{ $draw->age }}</h3>
-      <span class="badge {{ $draw->published ? 'bg-label-success' : 'bg-label-warning' }}">{{ $draw->published ? 'Draw published' : 'Draft preview · Draw not published' }}</span>
-      <span class="badge {{ $draw->oop_published ? 'bg-label-success' : 'bg-label-secondary' }}">
+      <span class="badge {{ $draw->published ? 'public-fixture-status' : 'bg-label-warning' }}">{{ $draw->published ? 'Draw published' : 'Draft preview · Draw not published' }}</span>
+      <span class="badge {{ $draw->oop_published ? 'public-fixture-status' : 'bg-label-secondary' }}">
         {{ $draw->oop_published ? 'Match times published' : 'Match times to follow' }}
       </span>
     </div>
-    <a href="{{ route('events.show', $event) }}" class="btn btn-sm btn-outline-secondary">
+    <a href="{{ route('events.show', $event) }}" class="btn btn-sm btn-outline-secondary public-fixture-back">
       <i class="ti ti-arrow-left me-1" aria-hidden="true"></i>Back to tournament
     </a>
   </div>
@@ -95,7 +112,29 @@ $fxWinnerClasses = function ($fx) {
       </div>
     @endunless
 
-    <div class="table-responsive">
+    <div class="public-match-cards">
+      @forelse($fixtures as $fx)
+        <article class="public-match-card" aria-label="Match {{ $fx->match_nr }}">
+          @php $matchCourt = $fx instanceof \App\Models\TeamFixture ? $fx->court_label : $fx->orderOfPlay?->court; @endphp
+          <div class="public-match-venue">{{ $fx->venue?->name ?? 'Venue to follow' }}@if($matchCourt) · Court {{ $matchCourt }}@endif</div>
+          @if($fx->scheduled_at)
+            <div class="public-match-time">{{ \Carbon\Carbon::parse($fx->scheduled_at)->format('H:i') }}</div>
+            <div class="public-match-date">{{ \Carbon\Carbon::parse($fx->scheduled_at)->format('l, j F Y') }}</div>
+          @else
+            <div class="public-match-date">Match time to follow</div>
+          @endif
+          <div class="public-match-players">
+            <div>@if($fx instanceof \App\Models\TeamFixture)@include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['home']])@else<x-player-name :players="$fx->registration1?->players ?? []" :context="$draw" separator=" + " />@endif</div>
+            <div class="public-match-versus">vs</div>
+            <div>@if($fx instanceof \App\Models\TeamFixture)@include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['away']])@else<x-player-name :players="$fx->registration2?->players ?? []" :context="$draw" separator=" + " />@endif</div>
+          </div>
+          <div class="public-match-score">Match {{ $fx->match_nr }} · @forelse($fx->fixtureResults as $r){{ $fxScoreDisplay($r) }}@if(!$loop->last), @endif @empty No score yet @endforelse</div>
+        </article>
+      @empty
+        <p class="text-muted mb-0">No matches found.</p>
+      @endforelse
+    </div>
+    <div class="table-responsive public-match-desktop">
       <table class="table table-bordered align-middle fixtures-table" id="{{ $fixtureTableId ?? 'fixturesTable' }}">
         <thead class="table-dark">
           <tr>

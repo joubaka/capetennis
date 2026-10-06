@@ -148,6 +148,23 @@ class PublicFixtureEmptyStateTest extends TestCase
         $this->get(route('frontend.fixtures.index', 999999))->assertNotFound();
     }
 
+    public function test_mobile_pairing_labels_use_region_and_category_without_changing_desktop_team_names(): void
+    {
+        $draw = $this->draw(true);
+        $fixture = $this->tie($draw, false);
+        $home = $fixture->teamTie->homeTeam;
+        $away = $fixture->teamTie->awayTeam;
+        $home->category->category->update(['name' => 'u/10 Boys']);
+        foreach ([[$home, 'Overberg', 'Over'], [$away, 'Cape Winelands', 'CW']] as [$team, $regionName, $shortName]) {
+            $region = \App\Models\TeamRegion::create(['region_name' => $regionName, 'short_name' => $shortName]);
+            $team->update(['region_id' => $region->id, 'name' => $regionName.' Primary Schools 2026 u/10 Boys']);
+        }
+
+        $this->get(route('frontend.fixtures.index', $draw))->assertOk()
+            ->assertSee('Overberg Primary Schools 2026 u/10 Boys')
+            ->assertSee('Over u/10 Boys')->assertSee('CW u/10 Boys');
+    }
+
     public function test_public_lineup_does_not_expose_a_player_from_an_unrelated_source_team(): void
     {
         $draw = $this->draw(true);

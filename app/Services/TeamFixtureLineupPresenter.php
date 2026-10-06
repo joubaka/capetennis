@@ -15,7 +15,7 @@ class TeamFixtureLineupPresenter
     public function prepare(Collection $fixtures, bool $publicDraw = false): void
     {
         (new \Illuminate\Database\Eloquent\Collection($fixtures->all()))->loadMissing([
-            'draw', 'teamTie', 'fixtureResults', 'region1Name', 'region2Name', 'fixturePlayers.player1', 'fixturePlayers.player2',
+            'draw.categoryEvent.category', 'teamTie', 'fixtureResults', 'region1Name', 'region2Name', 'fixturePlayers.player1', 'fixturePlayers.player2',
             'fixturePlayers.noProfile1', 'fixturePlayers.noProfile2', 'team1', 'team2',
         ]);
         $ids = $fixtures->flatMap(function ($fixture) {
@@ -24,7 +24,7 @@ class TeamFixtureLineupPresenter
             return collect([$tie?->home_team_id, $tie?->away_team_id])
                 ->filter()->flatMap(fn ($id) => isset($map[$id]) ? [$map[$id]['boys'], $map[$id]['girls']] : [$id]);
         })->unique();
-        $teams = Team::with(['category', 'regions', 'team_players', 'team_players_no_profile'])->whereIn('id', $ids)->get()->keyBy('id');
+        $teams = Team::with(['category.category', 'regions', 'team_players', 'team_players_no_profile'])->whereIn('id', $ids)->get()->keyBy('id');
         $regionIds = $fixtures->flatMap(fn ($fixture) => $fixture->fixturePlayers->flatMap(fn ($row) => collect($row->participant_snapshot ?? [])->pluck('region_id')))->filter()->unique();
         $historicalRegions = \App\Models\TeamRegion::whereIn('id', $regionIds)->get()->keyBy('id');
         foreach ($fixtures as $fixture) {
@@ -37,6 +37,10 @@ class TeamFixtureLineupPresenter
             $fixture->setAttribute('tie_display', [
                 'home' => $this->teamLabel($fixture, 'home', $teams),
                 'away' => $this->teamLabel($fixture, 'away', $teams),
+            ]);
+            $fixture->setAttribute('tie_mobile_display', [
+                'home' => $this->mobileTeamLabel($fixture, 'home', $teams),
+                'away' => $this->mobileTeamLabel($fixture, 'away', $teams),
             ]);
         }
     }
@@ -129,6 +133,26 @@ class TeamFixtureLineupPresenter
         }
         $region = $side === 'home' ? $fixture->region1Name : $fixture->region2Name;
         return $region?->region_name ?: 'TBD';
+    }
+
+    private function mobileTeamLabel(TeamFixture $fixture, string $side, Collection $teams): string
+    {
+        $teamId = $this->tie($fixture)?->{$side.'_team_id'};
+        $mixed = $fixture->draw?->team_draw_selection['mixed_sides'][$teamId] ?? null;
+        $sourceIds = $mixed ? [$mixed['boys'], $mixed['girls']] : [$teamId];
+        $sources = collect($sourceIds)->map(fn ($id) => $teams->get($id))
+            ->filter(fn ($team) => $team && (int) $team->category?->event_id === (int) $fixture->draw?->event_id);
+        $regions = $sources->map(fn ($team) => RegionAbbreviation::label($team->regions))->filter()->unique()->join(' + ');
+        $categories = $sources->map(fn ($team) => $team->category?->category?->name)->filter()->unique()->join(' + ');
+        if (!$regions) {
+            $region = $side === 'home' ? $fixture->region1Name : $fixture->region2Name;
+            $regions = RegionAbbreviation::label($region);
+        }
+        if (!$categories) {
+            $categories = $fixture->draw?->categoryEvent?->category?->name;
+        }
+
+        return $regions ? trim($regions.' '.$categories) : $this->teamLabel($fixture, $side, $teams);
     }
 
 }

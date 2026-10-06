@@ -1,4 +1,17 @@
 {{-- resources/views/frontend/event/partials/_draws_and_order_of_play.blade.php --}}
+@once
+<style>
+  .event-published-draw-link.btn { background: #fff; color: #173f7a; border: 1px solid #173f7a; font-weight: 600; min-height: 44px; white-space: normal; text-align: left; }
+  .event-published-draw-link.btn:hover, .event-published-draw-link.btn:focus-visible { background: #173f7a; color: #fff; }
+  .event-published-draw-link.btn .badge { background: #e8eff8 !important; color: #173f7a !important; white-space: normal; }
+  .event-published-draw-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 10px; }
+  .event-published-draw-row { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+  .event-published-draw-link.btn { display: flex; flex: 1 1 220px; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; font-size: 1rem; line-height: 1.4; min-width: 0; flex-wrap: wrap; }
+  .event-published-draw-name { overflow-wrap: anywhere; }
+  .event-published-draw-link.btn .badge { margin-left: 0 !important; font-size: .8125rem; line-height: 1.4; padding: 5px 8px; }
+  .event-published-draw-row > .btn-light { min-height: 44px; }
+</style>
+@endonce
 <div class="card mb-4">
   <div class="card-header">
     <small class="card-text text-uppercase">Draws and Order of Play</small>
@@ -14,7 +27,18 @@
   @php
     $publishedDraws = $eventDraws
         ->where('published', true)
-        ->sortByDesc('drawType_id'); // 👈 order here
+        ->sort(function ($left, $right) {
+            // Keep draw types grouped, then sort numeric ages rather than creation order.
+            $typeOrder = $right->drawType_id <=> $left->drawType_id;
+            if ($typeOrder !== 0) return $typeOrder;
+            $age = function ($draw) {
+                return preg_match('/\b(?:u\s*\/?\s*|under\s*[- ]?)(\d{1,2})\b/i', $draw->drawName, $matches)
+                    ? (int) $matches[1] : PHP_INT_MAX;
+            };
+            return ($age($left) <=> $age($right))
+                ?: strnatcasecmp($left->drawName, $right->drawName)
+                ?: ($left->id <=> $right->id);
+        });
   @endphp
 
   @forelse(
@@ -23,12 +47,12 @@
   )
     <h6 class="mt-3">{{ $typeName }}</h6>
 
-    <div class="d-flex flex-wrap gap-2">
+    <div class="event-published-draw-list">
       @foreach($draws as $draw)
-        <div class="d-flex align-items-center gap-1">
+        <div class="event-published-draw-row">
           <a href="{{ $draw->usesFlexibleMonrad() ? route('public.flexible-monrad.show', $draw) : route('frontend.fixtures.index', $draw->id) }}"
-             class="btn btn-sm btn-{{ $draw->draw_types?->btn_color ?? 'secondary' }}">
-            {{ $draw->drawName }}
+             class="btn btn-sm event-published-draw-link">
+            <span class="event-published-draw-name">{{ $draw->drawName }}</span>
             <span class="badge {{ $draw->oop_published ? 'bg-label-light' : 'bg-label-secondary' }} ms-1">
               {{ $draw->oop_published ? 'Times available' : 'Times to follow' }}
             </span>
