@@ -129,6 +129,9 @@ class FixtureRosterPresentationTest extends TestCase
         $before = [TeamFixture::count(), TeamFixturePlayer::count()];
         $response = $this->actingAs($admin)->get(route('backend.team-fixtures.index', ['draw_id' => $draw->id]))
             ->assertOk()->assertSee('Team fixtures')->assertSee('Round 1')->assertSee('Awaiting score')
+            ->assertSee('fixture-region-badge', false)
+            ->assertSee('background-color:#1e40af', false)
+            ->assertSee('background-color:#b45309', false)
             ->assertSee('src="'.asset('assets/img/logos/overberg.png').'"', false)
             ->assertSee('src="'.asset('assets/img/logos/capeWinelandsLogo.jpeg').'"', false)
             ->assertSee('src="'.asset('assets/img/logos/weskusLogo.jpg').'"', false)
@@ -140,6 +143,8 @@ class FixtureRosterPresentationTest extends TestCase
 
         $fixture = TeamFixture::first();
         app(TeamFixtureLineupPresenter::class)->prepare(collect([$fixture]));
+        $this->assertSame('#1e40af', $fixture->lineup_display['home']['region_color']);
+        $this->assertSame('#b45309', $fixture->lineup_display['away']['region_color']);
         $html = view('backend.team-fixtures.partials.away-cell', ['team_fixture' => $fixture])->render();
         $this->assertStringContainsString(route('backend.player.profile', $linked->id), $html);
         $this->assertStringContainsString('Cape Winelands Partner', $html);
@@ -173,6 +178,7 @@ class FixtureRosterPresentationTest extends TestCase
         $this->assertSame(['name' => 'Overberg Player', 'rank' => 2], $display->lineup_display['home']['players'][0]);
         $this->assertSame('Over', $display->lineup_display['home']['region']);
         $this->assertSame('assets/img/logos/overberg.png', $display->lineup_display['home']['region_logo']);
+        $this->assertSame('#1e40af', $display->lineup_display['home']['region_color']);
         $this->assertSame(1, $display->fixturePlayers->count());
     }
 

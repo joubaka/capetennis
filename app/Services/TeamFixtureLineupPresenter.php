@@ -6,6 +6,7 @@ use App\Models\Team;
 use App\Models\TeamFixture;
 use App\Support\RegionAbbreviation;
 use App\Support\RegionLogo;
+use App\Support\RegionBadge;
 use Illuminate\Support\Collection;
 
 /** Read-only display of original roster ranks, including composite mixed sides. */
@@ -68,6 +69,7 @@ class TeamFixtureLineupPresenter
                 || ($historical['profile_id'] ?? null) !== ($row->{'team'.$sideNumber.'_id'} ? (int) $row->{'team'.$sideNumber.'_id'} : null)
                 || ($historical['imported_id'] ?? null) !== ($row->{'team'.$sideNumber.'_no_profile_id'} ? (int) $row->{'team'.$sideNumber.'_no_profile_id'} : null))) $historical = null;
             if ($historical && $protected && !$historicalRegionUsed && ($originalRegion = $historicalRegions->get($historical['region_id'] ?? null))) {
+                $region = $originalRegion;
                 $label = RegionAbbreviation::label($originalRegion);
                 $regionName = $originalRegion->region_name;
                 $historicalRegionUsed = true;
@@ -100,7 +102,8 @@ class TeamFixtureLineupPresenter
                 $players[] = ['name' => $profile->full_name, 'rank' => (int) $legacyRank > 0 ? (int) $legacyRank : null];
             }
         }
-        return ['region' => $label, 'region_name' => $regionName, 'region_logo' => RegionLogo::path($regionName), 'players' => $players];
+        return ['region' => $label, 'region_name' => $regionName, 'region_logo' => RegionLogo::path($regionName),
+            'region_color' => RegionBadge::color($region), 'players' => $players];
     }
 
     private function tie(TeamFixture $fixture): ?\App\Models\TeamTie

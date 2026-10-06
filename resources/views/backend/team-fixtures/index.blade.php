@@ -101,8 +101,8 @@ $display = $fx->scheduled_at;
 
 @if($loop->first || $fixtures[$loop->index - 1]->draw_id !== $fx->draw_id || $fixtures[$loop->index - 1]->round_nr !== $fx->round_nr || $fixtures[$loop->index - 1]->tie_nr !== $fx->tie_nr)
 <tr class="fixture-group">
-  <td colspan="10" class="d-none d-md-table-cell">{{ $fx->draw?->drawName ?? 'Draw' }} <span class="mx-2 text-muted">/</span> Round {{ $fx->round_nr }} <span class="mx-2 text-muted">/</span> {{ $home['region'] }} vs {{ $away['region'] }}</td>
-  <td colspan="7" class="d-md-none">{{ $fx->draw?->drawName ?? 'Draw' }} / Round {{ $fx->round_nr }} / {{ $home['region'] }} vs {{ $away['region'] }}</td>
+  <td colspan="10" class="d-none d-md-table-cell">{{ $fx->draw?->drawName ?? 'Draw' }} <span class="mx-2 text-muted">/</span> Round {{ $fx->round_nr }} <span class="mx-2 text-muted">/</span> @include('backend.team-fixtures.partials.region-badge', ['lineup' => $home]) <span class="mx-1">vs</span> @include('backend.team-fixtures.partials.region-badge', ['lineup' => $away])</td>
+  <td colspan="7" class="d-md-none">{{ $fx->draw?->drawName ?? 'Draw' }} / Round {{ $fx->round_nr }} / @include('backend.team-fixtures.partials.region-badge', ['lineup' => $home]) <span class="mx-1">vs</span> @include('backend.team-fixtures.partials.region-badge', ['lineup' => $away])</td>
 </tr>
 @endif
 <tr id="row-{{ $fx->id }}">

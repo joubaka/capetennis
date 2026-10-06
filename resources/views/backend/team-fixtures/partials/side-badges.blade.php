@@ -10,7 +10,7 @@
     @if($lineup['region_logo'] ?? null)
     <img class="fixture-region-logo" src="{{ asset($lineup['region_logo']) }}" alt="" width="28" height="28" style="object-fit: contain">
     @endif
-    <span>{{ $lineup['region'] }}</span>
+    @include('backend.team-fixtures.partials.region-badge', ['lineup' => $lineup])
 </div>
 <div class="fixture-players">
 @forelse($lineup['players'] as $player)
