@@ -63,6 +63,67 @@ class ScheduleProgrammeTest extends TestCase
         $this->assertSame(0, TeamFixture::whereNotNull('scheduled_at')->count());
     }
 
+    public function test_current_capacity_reason_replaces_resolved_programme_dependency_warning(): void
+    {
+        [$event, $options] = $this->scenario();
+        $options['programme']['days'][0]['end'] = '2026-10-09 08:45:00';
+        $preview = app(EventVenueScheduleService::class)->preview($event, $options);
+        $drawId = $options['draw_ids'][0];
+        $rows = collect($preview['unscheduled']);
+        $capacity = $rows->where('draw_id', $drawId)->where('round', 2)->first();
+        $this->assertNotNull($capacity);
+        $this->assertStringContainsString('No valid court slot fits before programme Day 1 ends at 08:45', $capacity['reason']);
+        $this->assertStringNotContainsString('must be scheduled first', $capacity['reason']);
+        $downstream = $rows->where('draw_id', $drawId)->where('round', 3)->first();
+        $this->assertStringContainsString('Earlier programme section '.Draw::findOrFail($drawId)->drawName.' round 2 (Day 1, order 2)', $downstream['reason']);
+        $this->assertStringNotContainsString('qualifying', $downstream['reason']);
+        $this->assertSame(0, TeamFixture::whereNotNull('scheduled_at')->count());
+        $options['programme']['days'][0]['end'] = '2026-10-09 10:00:00';
+        $extended = app(EventVenueScheduleService::class)->preview($event, $options);
+        $this->assertSame([], $extended['unscheduled']);
+        $this->assertCount(12, $extended['matches']);
+        $this->assertSame(0, TeamFixture::whereNotNull('scheduled_at')->count());
+    }
+
+    public function test_draw_progression_blocker_identifies_its_source_without_programme(): void
+    {
+        [$event, $options] = $this->scenario();
+        unset($options['programme']);
+        $options['round_progression'] = 'all_round';
+        $options['end'] = '2026-10-09 08:15:00';
+        $preview = app(EventVenueScheduleService::class)->preview($event, $options);
+        $drawId = $options['draw_ids'][0];
+        $later = collect($preview['unscheduled'])->where('draw_id', $drawId)->where('round', 2)->first();
+        $this->assertStringContainsString(Draw::findOrFail($drawId)->drawName.' round 1', $later['reason']);
+        $this->assertStringContainsString('draw progression', $later['reason']);
+        $this->assertStringNotContainsString('programme section', $later['reason']);
+        $this->assertSame(0, TeamFixture::whereNotNull('scheduled_at')->count());
+    }
+
+    public function test_capacity_at_an_alternative_venue_is_not_reported_as_a_gender_dependency(): void
+    {
+        [$event, $options] = $this->scenario();
+        $source = Draw::findOrFail($options['draw_ids'][0]);
+        $girls = Draw::factory()->create(['event_id' => $event->id, 'drawName' => 'u/10 Girls – Singles', 'gender' => 'Girls']);
+        $girls->forceFill(['team_category_id' => 1])->save();
+        $girls->venues()->attach($source->venues->first()->id, ['num_courts' => 1]);
+        $second = new Venue();
+        $second->forceFill(['name' => 'Girls alternative court'])->save();
+        $girls->venues()->attach($second->id, ['num_courts' => 1]);
+        $options['draw_ids'][] = $girls->id;
+        foreach ([1, 2, 3] as $round) {
+            TeamFixture::create(['draw_id' => $girls->id, 'fixture_type' => 1, 'round_nr' => $round, 'match_nr' => $round]);
+            $options['programme']['rounds'][] = ['draw_id' => $girls->id, 'round' => $round, 'day' => 1, 'sequence' => $round];
+        }
+        $options['gender_waves'] = 'boys_then_girls';
+        $options['programme']['days'][0]['end'] = '2026-10-09 08:15:00';
+        $preview = app(EventVenueScheduleService::class)->preview($event, $options);
+        $first = collect($preview['unscheduled'])->where('draw_id', $girls->id)->where('round', 1)->first();
+        $this->assertStringContainsString('No valid court slot fits', $first['reason']);
+        $this->assertStringNotContainsString('gender wave', $first['reason']);
+        $this->assertSame(0, TeamFixture::whereNotNull('scheduled_at')->count());
+    }
+
     public function test_omitted_round_and_foreign_round_are_rejected(): void
     {
         [$event, $options] = $this->scenario();

@@ -309,12 +309,12 @@ final class EventVenueScheduleController extends Controller
 
             $protected = DB::table('draw_venues')->join('draws', 'draws.id', '=', 'draw_venues.draw_id')
                 ->where('draws.event_id', $event->id)->where('draw_venues.venue_id', $venue->id)
-                ->where(fn ($query) => $query->where('draws.locked', true)->orWhere('draws.published', true))->exists();
+                ->where('draws.locked', true)->exists();
             $protectedAllocation = DB::table('draw_venue_court_allocations')->join('draws', 'draws.id', '=', 'draw_venue_court_allocations.draw_id')
                 ->where('draws.event_id', $event->id)->where('draw_venue_court_allocations.venue_id', $venue->id)
-                ->where(fn ($query) => $query->where('draws.locked', true)->orWhere('draws.published', true))->exists();
+                ->where('draws.locked', true)->exists();
             if ($protected || $protectedAllocation) {
-                return response()->json(['message' => 'This venue is assigned to a locked or published draw and cannot be removed.'], 422);
+                return response()->json(['message' => 'This venue is assigned to a locked draw and cannot be removed.'], 422);
             }
 
             $fixtureIds = Fixture::whereIn('draw_id', $drawIds)->pluck('id');
@@ -322,6 +322,12 @@ final class EventVenueScheduleController extends Controller
                 ->where(fn ($query) => $query->whereIn('draw_id', $drawIds)->orWhereIn('fixture_id', $fixtureIds))->exists();
             $teamScheduled = TeamFixture::whereIn('draw_id', $drawIds)->where('venue_id', $venue->id)
                 ->whereNotNull('scheduled_at')->exists();
+            $publishedScheduled = DB::table('published_schedule_assignments')
+                ->where('event_id', $event->id)->whereIn('draw_id', $drawIds)
+                ->where('venue_id', $venue->id)->exists();
+            if ($publishedScheduled) {
+                return response()->json(['message' => 'This venue has published match times. Update or hide the published schedule before removing it. Moving saved matches alone does not change the published times.'], 422);
+            }
             if ($scheduled || $teamScheduled) {
                 return response()->json(['message' => 'This venue has saved matches. Clear or move those bookings before removing it.'], 422);
             }
@@ -346,14 +352,20 @@ final class EventVenueScheduleController extends Controller
             DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
             $draw->refresh();
             abort_unless($draw->venues()->whereKey($venue->id)->exists(), 404);
-            if ($draw->locked || $draw->published) {
-                return response()->json(['message' => 'A venue cannot be removed from a locked or published age group.'], 422);
+            if ($draw->locked) {
+                return response()->json(['message' => 'A venue cannot be removed from a locked age group.'], 422);
             }
             $fixtureIds = Fixture::where('draw_id', $draw->id)->pluck('id');
             $scheduled = OrderOfPlay::where('venue_id', $venue->id)
                 ->where(fn ($query) => $query->where('draw_id', $draw->id)->orWhereIn('fixture_id', $fixtureIds))->exists();
             $teamScheduled = TeamFixture::where('draw_id', $draw->id)->where('venue_id', $venue->id)
                 ->whereNotNull('scheduled_at')->exists();
+            $publishedScheduled = DB::table('published_schedule_assignments')
+                ->where('event_id', $event->id)->where('draw_id', $draw->id)
+                ->where('venue_id', $venue->id)->exists();
+            if ($publishedScheduled) {
+                return response()->json(['message' => 'This venue has published match times. Update or hide the published schedule before removing it. Moving saved matches alone does not change the published times.'], 422);
+            }
             if ($scheduled || $teamScheduled) {
                 return response()->json(['message' => 'This age group has saved matches at the venue. Clear or move those bookings before removing it.'], 422);
             }

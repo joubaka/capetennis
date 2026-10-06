@@ -227,6 +227,8 @@ final class EventVenueScheduleService
         while ($pending) {
             $best = null;
             foreach ($pending as $id => $node) {
+                // Re-evaluate the current blocker after another prerequisite has been placed.
+                unset($blocked[$id]);
                 if ($node['rank_preference']['manual'] ?? false) {
                     $blocked[$id] = $node['rank_preference']['warning'];
                     continue;
@@ -238,13 +240,24 @@ final class EventVenueScheduleService
                 $release = $nodes[$id]['not_before']->copy();
                 foreach ($node['dependencies'] as $dependency) {
                     if (! isset($finished[$dependency])) {
-                        $blocked[$id] = isset($nodes[$dependency]) && ! $nodes[$dependency]['selected_round']
-                            ? 'A qualifying match in an unselected round must be scheduled first.'
-                            : 'A qualifying match must be scheduled first.';
+                        $prerequisite = $nodes[$dependency] ?? null;
+                        $label = $prerequisite ? $prerequisite['draw_name'].' round '.$prerequisite['round'] : 'An earlier match';
+                        if (isset($node['programme_phase'], $prerequisite['programme_phase'])
+                            && $prerequisite['programme_phase'] < $node['programme_phase']) {
+                            $blocked[$id] = 'Earlier programme section '.$label.' (Day '.$prerequisite['programme_day'].', order '.$prerequisite['programme_sequence'].') must be scheduled first. Review its unallocated matches.';
+                        } else {
+                            $blocked[$id] = $label.($prerequisite && ! $prerequisite['selected_round'] ? ' in an unselected round' : '')
+                                .' must be scheduled first for draw progression.';
+                        }
                         continue 2;
                     }
                     $release = $release->max($finished[$dependency])->copy();
                 }
+                $capacityReason = isset($node['programme_end'])
+                    ? 'No valid court slot fits before programme Day '.$node['programme_day'].' ends at '.$node['programme_end']->format('H:i').'. Allow more court time or extend this day, while preserving breaks and player rest.'
+                    : 'No valid court time remains before the scheduling window ends, allowing for existing bookings and player rest.';
+                $blocked[$id] = $capacityReason;
+                $venuePassedGenderOrder = false;
                 foreach ($node['venue_courts'] as $venueId => $courts) {
                     $venueRelease = isset($venueStarts[$venueId]) ? $release->max($venueStarts[$venueId])->copy() : $release;
                     if (isset($sharedGenderVenues[$venueId]) && $node['gender'] && ($node['programme_gender_waves'] ?? $genderWaves) !== 'combined') {
@@ -271,6 +284,7 @@ final class EventVenueScheduleService
                         }
                         foreach ($phaseStarts as $phaseStart) $venueRelease = $venueRelease->copy()->max($phaseStart->copy()->addMinutes($waveMinutes));
                     }
+                    $venuePassedGenderOrder = true;
                     foreach ($courts as $court) {
                         $at = $calendar->nextAvailableForMatch($venueRelease, $duration + $courtGap,
                             $duration + $playerRest, $venueId, (string) $court, $node['participants'],
@@ -298,6 +312,9 @@ final class EventVenueScheduleService
                             'venue_changes' => $calendar->venueChanges($node['participants'], $at, (int) $venueId)];
                         if ($best === null || $this->isEarlier($choice, $best, $nodes)) $best = $choice;
                     }
+                }
+                if ($venuePassedGenderOrder && ($blocked[$id] ?? '') === 'An earlier gender wave must be scheduled first at this shared venue.') {
+                    $blocked[$id] = $capacityReason;
                 }
             }
             if ($best === null) {

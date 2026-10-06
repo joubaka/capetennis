@@ -12,6 +12,30 @@ class PublicScheduleProjectionTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_public_draw_list_distinguishes_unscheduled_partial_and_complete_working_schedules_without_times(): void
+    {
+        $event = Event::factory()->create(['eventType' => 3]);
+        $venue = new Venue();
+        $venue->forceFill(['name' => 'Unpublished Timing Venue'])->save();
+        $event->venues()->attach($venue->id, ['num_courts' => 1]);
+        $draws = [];
+        foreach (['none' => [null], 'partial' => [null, '2026-10-09 13:45:00'], 'complete' => ['2026-10-09 13:45:00']] as $state => $times) {
+            $draw = Draw::factory()->create(['event_id' => $event->id, 'published' => true, 'drawName' => $state.' draw']);
+            $draws[$state] = $draw;
+            foreach ($times as $index => $time) {
+                TeamFixture::create(['draw_id' => $draw->id, 'round_nr' => 1, 'tie_nr' => 1,
+                    'match_nr' => $index + 1, 'fixture_type' => 1, 'scheduled_at' => $time,
+                    'venue_id' => $time ? $venue->id : null, 'court_label' => $time ? '1' : null]);
+            }
+        }
+        $response = $this->get(route('events.show', $event))->assertOk()
+            ->assertSee('Not scheduled yet')->assertSee('Partly scheduled · times not published')
+            ->assertSee('Scheduled · times not published')->assertDontSee('13:45');
+        $this->assertSame([0, 1, 1], $response->viewData('eventDraws')->pluck('scheduled_team_match_count')->map(fn ($count) => (int) $count)->sort()->values()->all());
+        app(SchedulePublicationService::class)->publish($event, ['draw_id' => $draws['complete']->id]);
+        $this->get(route('events.show', $event))->assertOk()->assertSee('Times available');
+    }
+
     public function test_admin_public_draw_cannot_show_working_times_when_only_the_draw_is_published(): void
     {
         \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);

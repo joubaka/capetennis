@@ -10,6 +10,8 @@
   .event-published-draw-name { overflow-wrap: anywhere; }
   .event-published-draw-link.btn .badge { margin-left: 0 !important; font-size: .8125rem; line-height: 1.4; padding: 5px 8px; }
   .event-published-draw-row > .btn-light { min-height: 44px; }
+  .event-published-draw-link.btn .badge.draw-scheduled { background: #eef6f1 !important; color: #235c31 !important; border: 1px solid #b9d7c1; }
+  .event-published-draw-link.btn .badge.draw-partly-scheduled { background: #fff6e8 !important; color: #805214 !important; border: 1px solid #e7cfa7; }
 </style>
 @endonce
 <div class="card mb-4">
@@ -49,12 +51,20 @@
 
     <div class="event-published-draw-list">
       @foreach($draws as $draw)
+        @php
+          $schedulePublished = $draw->scheduleIsPublished();
+          $matchCount = (int) $draw->team_match_count + (int) $draw->individual_match_count;
+          $scheduledCount = (int) $draw->scheduled_team_match_count + (int) $draw->scheduled_individual_match_count;
+          $fullyScheduled = $matchCount > 0 && $scheduledCount === $matchCount;
+          $scheduleLabel = $schedulePublished ? 'Times available' : ($fullyScheduled ? 'Scheduled · times not published' : ($scheduledCount > 0 ? 'Partly scheduled · times not published' : 'Not scheduled yet'));
+          $scheduleClass = $schedulePublished || $fullyScheduled ? 'draw-scheduled' : ($scheduledCount > 0 ? 'draw-partly-scheduled' : '');
+        @endphp
         <div class="event-published-draw-row">
           <a href="{{ $draw->usesFlexibleMonrad() ? route('public.flexible-monrad.show', $draw) : route('frontend.fixtures.index', $draw->id) }}"
              class="btn btn-sm event-published-draw-link">
             <span class="event-published-draw-name">{{ $draw->drawName }}</span>
-            <span class="badge {{ $draw->scheduleIsPublished() ? 'bg-label-light' : 'bg-label-secondary' }} ms-1">
-              {{ $draw->scheduleIsPublished() ? 'Times available' : 'Times to follow' }}
+            <span class="badge {{ $scheduleClass }} ms-1">
+              {{ $scheduleLabel }}
             </span>
           </a>
           @php

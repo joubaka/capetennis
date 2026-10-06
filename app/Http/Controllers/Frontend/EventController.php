@@ -319,6 +319,12 @@ class EventController extends Controller
     // ---------------------------------------------------------
     // SORT DRAWS
     // ---------------------------------------------------------
+    $event->draws->loadCount([
+      'fixtures as team_match_count',
+      'fixtures as scheduled_team_match_count' => fn ($query) => $query->whereNotNull('scheduled_at'),
+      'drawFixtures as individual_match_count',
+      'drawFixtures as scheduled_individual_match_count' => fn ($query) => $query->whereHas('orderOfPlay', fn ($schedule) => $schedule->whereNotNull('time')),
+    ]);
     $allEventDraws = $event->draws->sort(function ($a, $b) {
       return [
         $b->published <=> $a->published,

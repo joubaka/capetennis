@@ -50,17 +50,15 @@ class EventVenueRemovalTest extends TestCase
         $this->assertDatabaseHas('event_venues', ['event_id' => $event->id, 'venue_id' => $venue->id]);
     }
 
-    public function test_locked_and_published_draws_prevent_removal(): void
+    public function test_locked_draws_prevent_removal(): void
     {
-        foreach (['locked', 'published'] as $flag) {
-            $event = Event::factory()->create();
-            $venue = $this->venue();
-            $draw = $this->attach($event, $venue);
-            $draw->forceFill([$flag => true])->save();
-            $this->actingAs($this->admin($event))->deleteJson($this->url($event, $venue))->assertUnprocessable();
-            $this->assertDatabaseHas('draw_venues', ['draw_id' => $draw->id, 'venue_id' => $venue->id]);
-            $this->assertDatabaseHas('event_venue_courts', ['event_id' => $event->id, 'venue_id' => $venue->id]);
-        }
+        $event = Event::factory()->create();
+        $venue = $this->venue();
+        $draw = $this->attach($event, $venue);
+        $draw->forceFill(['locked' => true])->save();
+        $this->actingAs($this->admin($event))->deleteJson($this->url($event, $venue))->assertUnprocessable();
+        $this->assertDatabaseHas('draw_venues', ['draw_id' => $draw->id, 'venue_id' => $venue->id]);
+        $this->assertDatabaseHas('event_venue_courts', ['event_id' => $event->id, 'venue_id' => $venue->id]);
     }
 
     public function test_saved_individual_match_prevents_removal_even_without_order_draw_id(): void
@@ -127,11 +125,11 @@ class EventVenueRemovalTest extends TestCase
 
     public function test_age_group_removal_blocks_protected_draws_and_saved_matches(): void
     {
-        foreach (['locked', 'published', 'individual', 'team'] as $state) {
+        foreach (['locked', 'individual', 'team'] as $state) {
             $event = Event::factory()->create();
             $venue = $this->venue();
             $draw = $this->attach($event, $venue);
-            if (in_array($state, ['locked', 'published'], true)) {
+            if ($state === 'locked') {
                 $draw->forceFill([$state => true])->save();
             } elseif ($state === 'individual') {
                 $fixture = Fixture::factory()->create(['draw_id' => $draw->id]);
@@ -144,6 +142,56 @@ class EventVenueRemovalTest extends TestCase
             $this->actingAs($this->admin($event))->deleteJson(route('backend.event-venue-schedule.draw-venues.remove', [$event, $draw, $venue]))->assertUnprocessable();
             $this->assertDatabaseHas('draw_venues', ['draw_id' => $draw->id, 'venue_id' => $venue->id]);
             $this->assertDatabaseHas('draw_venue_court_allocations', ['draw_id' => $draw->id, 'venue_id' => $venue->id]);
+        }
+    }
+
+    public function test_unused_venue_can_be_removed_from_a_published_draw(): void
+    {
+        foreach ([false, true] as $drawOnly) {
+            $event = Event::factory()->create();
+            $venue = $this->venue();
+            $draw = $this->attach($event, $venue);
+            $draw->forceFill(['published' => true])->save();
+            $url = $drawOnly ? route('backend.event-venue-schedule.draw-venues.remove', [$event, $draw, $venue]) : $this->url($event, $venue);
+            $this->actingAs($this->admin($event))->deleteJson($url)->assertOk();
+            $this->assertDatabaseMissing('draw_venues', ['draw_id' => $draw->id, 'venue_id' => $venue->id]);
+            $this->assertTrue((bool) $draw->fresh()->published);
+        }
+    }
+
+    public function test_published_booking_blocks_removal_after_working_match_moves(): void
+    {
+        foreach ([false, true] as $drawOnly) {
+            $event = Event::factory()->create();
+            $venue = $this->venue();
+            $draw = $this->attach($event, $venue);
+            $fixture = TeamFixture::create(['draw_id' => $draw->id, 'fixture_type' => 1, 'round_nr' => 1,
+                'match_nr' => 1, 'venue_id' => $this->venue()->id, 'scheduled_at' => '2026-10-05 09:00:00']);
+            DB::table('published_schedule_assignments')->insert(['event_id' => $event->id, 'draw_id' => $draw->id,
+                'fixture_kind' => 'team', 'fixture_id' => $fixture->id, 'venue_id' => $venue->id,
+                'scheduled_at' => '2026-10-05 08:00:00', 'published_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+            $url = $drawOnly ? route('backend.event-venue-schedule.draw-venues.remove', [$event, $draw, $venue]) : $this->url($event, $venue);
+            $this->actingAs($this->admin($event))->deleteJson($url)->assertUnprocessable();
+            $this->assertDatabaseHas('draw_venues', ['draw_id' => $draw->id, 'venue_id' => $venue->id]);
+            $this->assertDatabaseHas('published_schedule_assignments', ['fixture_id' => $fixture->id, 'venue_id' => $venue->id]);
+        }
+    }
+
+    public function test_other_draw_or_event_publication_does_not_block_unused_venue_removal(): void
+    {
+        foreach ([false, true] as $drawOnly) {
+            $event = Event::factory()->create();
+            $venue = $this->venue();
+            $draw = $this->attach($event, $venue);
+            $other = $drawOnly ? $event : Event::factory()->create();
+            $otherDraw = Draw::factory()->create(['event_id' => $other->id]);
+            $fixture = TeamFixture::create(['draw_id' => $otherDraw->id, 'fixture_type' => 1, 'round_nr' => 1, 'match_nr' => 1]);
+            DB::table('published_schedule_assignments')->insert(['event_id' => $other->id, 'draw_id' => $otherDraw->id,
+                'fixture_kind' => 'team', 'fixture_id' => $fixture->id, 'venue_id' => $venue->id,
+                'scheduled_at' => '2026-10-05 08:00:00', 'published_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+            $url = $drawOnly ? route('backend.event-venue-schedule.draw-venues.remove', [$event, $draw, $venue]) : $this->url($event, $venue);
+            $this->actingAs($this->admin($event))->deleteJson($url)->assertOk();
+            $this->assertDatabaseHas('published_schedule_assignments', ['fixture_id' => $fixture->id, 'venue_id' => $venue->id]);
         }
     }
 
