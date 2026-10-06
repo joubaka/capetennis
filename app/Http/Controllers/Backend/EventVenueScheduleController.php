@@ -217,6 +217,16 @@ final class EventVenueScheduleController extends Controller
         return view('backend.schedule.saved-calendar', compact('event', 'scope', 'days', 'date', 'rows', 'retained', 'venues', 'draws', 'revision', 'unscheduledCount', 'dailySavedCounts'));
     }
 
+    public function auditSchedule(Request $request, Event $event, \App\Services\Scheduling\ScheduleAuditService $auditor)
+    {
+        $this->authorize('event.manage', $event);
+        $scope = $this->calendarScope($request, $event);
+        $scope['date'] ??= 'all';
+        $report = $auditor->audit($event, $scope);
+
+        return view('backend.schedule.schedule-audit', compact('event', 'scope', 'report'));
+    }
+
     public function publishScope(Request $request, Event $event, \App\Services\Scheduling\SchedulePublicationService $publication)
     {
         return $this->changePublication($request, $event, $publication, false);
