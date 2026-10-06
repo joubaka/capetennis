@@ -149,6 +149,10 @@ final class EventVenueScheduleService
         foreach ($nodes as &$node) {
             $node['rank_preference'] = $rankChoices[$node['fixture']->id] ?? null;
             if (($node['fixture_kind'] ?? '') !== 'team') $node['rank_preference'] = null;
+            $rankVenue = $node['rank_preference']['venue_id'] ?? null;
+            if ($rankVenue && ! $node['fixed'] && ! $node['played']) {
+                $node['venue_courts'] = array_intersect_key($node['venue_courts'], [$rankVenue => true]);
+            }
         }
         unset($node);
 
@@ -234,7 +238,9 @@ final class EventVenueScheduleService
                     continue;
                 }
                 if (! $node['venue_courts']) {
-                    $blocked[$id] = 'No permitted venue with courts is selected.';
+                    $blocked[$id] = ($node['rank_preference']['venue_id'] ?? null)
+                        ? 'The assigned roster rank venue is not selected or has no allocated courts. Select that venue and allocate courts, or explicitly change the rank band.'
+                        : 'No permitted venue with courts is selected.';
                     continue;
                 }
                 $release = $nodes[$id]['not_before']->copy();
@@ -256,6 +262,10 @@ final class EventVenueScheduleService
                 $capacityReason = isset($node['programme_end'])
                     ? 'No valid court slot fits before programme Day '.$node['programme_day'].' ends at '.$node['programme_end']->format('H:i').'. Allow more court time or extend this day, while preserving breaks and player rest.'
                     : 'No valid court time remains before the scheduling window ends, allowing for existing bookings and player rest.';
+                if ($node['rank_preference']['venue_id'] ?? null) {
+                    $rankVenueName = $venues[$node['rank_preference']['venue_id']]->name ?? 'the assigned venue';
+                    $capacityReason = 'Roster rank band requires '.$rankVenueName.'. '.$capacityReason.' Add court time there or explicitly change the rank band; automatic planning does not move this match to another venue.';
+                }
                 $blocked[$id] = $capacityReason;
                 $venuePassedGenderOrder = false;
                 foreach ($node['venue_courts'] as $venueId => $courts) {
@@ -334,7 +344,6 @@ final class EventVenueScheduleService
                 $activeTieLabel = $node['draw_name'].' ('.implode(' vs ', $node['participant_names']).')';
             }
             if ($node['rank_preference']['warning'] ?? null) $warnings[] = $node['draw_name'].' match '.$node['match'].': '.$node['rank_preference']['warning'];
-            if ($best['rank_penalty']) $warnings[] = $node['draw_name'].' match '.$node['match'].': the preferred roster rank venue is unavailable in this window; another assigned venue is used.';
             foreach ($best['venue_changes'] as $change) {
                 $warnings[] = $this->venueWarning($change, $venues);
                 $venueChangeWarnings[] = $this->venueChangeDetails($change, $node, $best, $venues);
@@ -874,14 +883,12 @@ final class EventVenueScheduleService
     {
         $preferred = $node['rank_preference']['venue_id'] ?? null;
         $reason = $preferred
-            ? ($choice['rank_penalty']
-                ? 'Another permitted venue was selected instead of the configured roster rank venue preference. Preferences are advisory; the planner also considers tie allocation, venue continuity, court and player availability.'
-                : 'This match uses its configured roster rank venue preference. That preference may differ between disciplines or partners.')
+            ? 'This match uses its configured roster rank venue assignment. That assignment may differ between disciplines or partners.'
             : (($node['rank_preference']['warning'] ?? null) ? $node['rank_preference']['warning'].' ' : '').'No roster rank venue preference applies to this match. The planner selected a permitted venue using court and player availability and its scheduling priorities.';
         $from = $change['from_booking'] ?? ['fixture' => null];
         $from['venue_name'] = $venues[$change['from_venue_id']]->name ?? Venue::find($change['from_venue_id'])?->name ?? 'Another venue';
         return ['message' => $this->venueWarning($change, $venues), 'reason' => $reason,
-            'reason_code' => $preferred ? ($choice['rank_penalty'] ? 'rank_fallback' : 'rank_preference') : 'unrestricted',
+            'reason_code' => $preferred ? 'rank_preference' : 'unrestricted',
             'from' => $from, 'to' => ['fixture' => $this->nodeSource($node),
                 'scheduled_at' => $choice['time']->format('Y-m-d H:i:s'), 'court' => $choice['court'],
                 'venue_id' => $choice['venue_id'], 'venue_name' => $venues[$choice['venue_id']]->name]];

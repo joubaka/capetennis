@@ -514,8 +514,8 @@
         <div class="form-text">Allocate all available rubbers in one tie before assigning the next tie. Other ties may still play at the same time on free courts. Rest, gender waves and qualifying dependencies still apply; blocked rubbers remain for review.</div>
       </div>
       <div id="rank-preferences" class="border rounded p-3 mt-4">
-        <h6 class="mb-1">Venue preferences by team roster rank (optional)</h6>
-        <p class="small text-muted mb-2">Use roster positions, not player ratings. A band can apply to both boys' and girls' draws. Only selected team draws are edited here; other draws keep their saved bands. Saved matches stay fixed. If the preferred venue cannot fit a match, another assigned venue may be used with a warning.</p>
+        <h6 class="mb-1">Venue assignments by team roster rank (optional)</h6>
+        <p class="small text-muted mb-2">Use roster positions, not player ratings. A band can apply to both boys' and girls' draws. Only selected team draws are edited here; other draws keep their saved bands. Saved matches stay fixed. Matching rank bands hold their assigned venue in automatic planning. If that venue cannot fit a match, it stays unallocated for review; add court time there or explicitly change the band.</p>
         <div id="rank-band-review" class="alert alert-warning py-2 small d-none" role="status"></div>
         <div id="rank-band-scope" class="small fw-semibold mb-2"></div>
         <div id="rank-band-rows" class="d-grid gap-2"></div>
@@ -674,7 +674,7 @@
   <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
     <div class="modal-header"><h5 class="modal-title" id="programme-setup-title">Assign venues &amp; courts</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
     <div class="modal-body">
-      <p class="small text-muted">This setup applies to these draws across every round. Pair and player-position ranges are venue preferences, not guaranteed bookings. Saved matches stay in place.</p>
+      <p class="small text-muted">This setup applies to these draws across every round. Pair and player-position bands hold their assigned venue during automatic planning. Matches that do not fit remain unallocated. Saved matches stay in place.</p>
       <div id="programme-setup-draws"></div>
       <p id="programme-setup-policy" class="small text-muted mt-3"></p>
       <div id="programme-setup-status" class="small" role="status" aria-live="polite"></div>
@@ -977,7 +977,7 @@
   const updateRankReview = rules => {
     const stale = rules.some(rule => rule.venue_id && !allowedRankVenues(rule).some(venue => Number(venue.id) === Number(rule.venue_id)));
     document.getElementById('rank-band-review').classList.toggle('d-none', !stale);
-    document.getElementById('rank-band-review').textContent = 'A saved preferred venue is no longer assigned to these draws. That mapping is ignored during preview and removed when you save; other draws keep their bands.';
+    document.getElementById('rank-band-review').textContent = 'A saved rank-band venue is no longer assigned to these draws. That mapping is ignored during preview and removed when you save; other draws keep their bands.';
   };
   const updateRankVenueOptions = row => {
     const select = row.querySelector('.rank-band-venue');
@@ -1003,7 +1003,7 @@
     destroyRankSelects(rows);
     rows.innerHTML = rules.map((rule, index) => {
       const id = `rank-band-${++rankBandSequence}`;
-      return `<div class="rank-band-row"><div class="rank-band-header"><strong>Rank band ${index + 1}</strong><button class="btn btn-sm btn-outline-danger remove-rank-band" type="button" aria-label="Remove roster rank band ${index + 1}">Remove</button></div><div class="rank-band-fields"><div><label class="form-label small" for="${id}-min">Roster rank range</label><div class="rank-range"><input id="${id}-min" class="form-control rank-band-min" aria-label="From roster rank for band ${index + 1}" type="number" min="1" max="100" value="${escapeHtml(rule.min_rank)}"><span class="text-muted">to</span><input id="${id}-max" class="form-control rank-band-max" aria-label="To roster rank for band ${index + 1}" type="number" min="1" max="100" value="${escapeHtml(rule.max_rank)}"></div></div><div class="rank-draw-field"><label class="form-label small" for="${id}-draws">Draws / categories <span class="rank-band-selected-count text-muted fw-normal" aria-live="polite">${rule.draw_ids.length} selected</span></label><select id="${id}-draws" class="form-select rank-band-draws" multiple size="3">${draws.map(draw => `<option value="${Number(draw.id)}" ${rule.draw_ids.map(Number).includes(Number(draw.id))?'selected':''}>${escapeHtml(draw.name)}</option>`).join('')}</select></div><div><label class="form-label small" for="${id}-venue">Preferred venue</label><select id="${id}-venue" class="form-select rank-band-venue">${rankVenueOptions(rule)}</select><div class="rank-venue-hint form-text">${rankVenueHint(rule)}</div></div></div></div>`;
+      return `<div class="rank-band-row"><div class="rank-band-header"><strong>Rank band ${index + 1}</strong><button class="btn btn-sm btn-outline-danger remove-rank-band" type="button" aria-label="Remove roster rank band ${index + 1}">Remove</button></div><div class="rank-band-fields"><div><label class="form-label small" for="${id}-min">Roster rank range</label><div class="rank-range"><input id="${id}-min" class="form-control rank-band-min" aria-label="From roster rank for band ${index + 1}" type="number" min="1" max="100" value="${escapeHtml(rule.min_rank)}"><span class="text-muted">to</span><input id="${id}-max" class="form-control rank-band-max" aria-label="To roster rank for band ${index + 1}" type="number" min="1" max="100" value="${escapeHtml(rule.max_rank)}"></div></div><div class="rank-draw-field"><label class="form-label small" for="${id}-draws">Draws / categories <span class="rank-band-selected-count text-muted fw-normal" aria-live="polite">${rule.draw_ids.length} selected</span></label><select id="${id}-draws" class="form-select rank-band-draws" multiple size="3">${draws.map(draw => `<option value="${Number(draw.id)}" ${rule.draw_ids.map(Number).includes(Number(draw.id))?'selected':''}>${escapeHtml(draw.name)}</option>`).join('')}</select></div><div><label class="form-label small" for="${id}-venue">Assigned venue</label><select id="${id}-venue" class="form-select rank-band-venue">${rankVenueOptions(rule)}</select><div class="rank-venue-hint form-text">${rankVenueHint(rule)}</div></div></div></div>`;
     }).join('');
     initializeRankSelects(rows);
   };
@@ -1973,7 +1973,7 @@
       const bands = validRules.filter(rule => Number(rule.venue_id) === Number(venue.value))
         .sort((a,b) => Number(a.min_rank) - Number(b.min_rank))
         .map(rule => programmeBandDescription(draw, rule));
-      return `<li>${escapeHtml(venue.dataset.venueName)} · ${courts.length ? `Courts ${escapeHtml(programmeCourtLabels(courts))}` : '<span class="text-danger">No courts selected</span>'}${bands.length ? ` · ${escapeHtml(bands.join('; '))} preferred` : ` · No ${programmeUsesPairs(draw) || programmeUsesMixedPairs(draw) ? 'pair' : 'position'} preference`}</li>`;
+      return `<li>${escapeHtml(venue.dataset.venueName)} · ${courts.length ? `Courts ${escapeHtml(programmeCourtLabels(courts))}` : '<span class="text-danger">No courts selected</span>'}${bands.length ? ` · ${escapeHtml(bands.join('; '))} assigned` : ` · No ${programmeUsesPairs(draw) || programmeUsesMixedPairs(draw) ? 'pair' : 'position'} assignment`}</li>`;
     });
     return `<ul>${lines.join('')}</ul>`;
   };
@@ -1982,7 +1982,7 @@
     const rules = programmeSetupRules();
     document.querySelectorAll('.programme-stage').forEach(card => {
       const members = card.dataset.programmeMembers.split(',').map(key => draws.get(Number(key.split(':')[0]))).filter(Boolean);
-      card.querySelector('.programme-stage-summary').innerHTML = '<div class="text-muted">Venue setup · preferences</div>'
+      card.querySelector('.programme-stage-summary').innerHTML = '<div class="text-muted">Venue setup · rank bands</div>'
         + members.map(draw => {
           const label = programmeDrawLabel(draw);
           const heading = members.filter(member => programmeDrawLabel(member) === label).length === 1 ? label : draw.name;
@@ -2009,7 +2009,7 @@
     const row = document.createElement('div');
     row.className = 'programme-setup-band row g-2 align-items-end mb-2';
     row.dataset.setupRankUnit = paired ? 'pair' : 'position';
-    row.innerHTML = `<div class="col-4 col-sm-2"><label class="form-label small mb-1">From ${unit}<input class="form-control form-control-sm programme-setup-min" type="number" min="1" max="${limit}" value="${escapeHtml(min)}"></label></div><div class="col-4 col-sm-2"><label class="form-label small mb-1">To ${unit}<input class="form-control form-control-sm programme-setup-max" type="number" min="1" max="${limit}" value="${escapeHtml(max)}"></label></div><div class="col-12 col-sm-6"><label class="form-label small mb-1 d-block">Preferred venue<select class="form-select form-select-sm programme-setup-band-venue">${programmeSetupVenueOptions(section, rule.venue_id)}</select></label></div><div class="col-4 col-sm-2"><button type="button" class="btn btn-sm btn-outline-danger programme-setup-remove-band" aria-label="Remove venue preference">Remove</button></div>${doubles && !paired ? '<div class="col-12 small text-warning">Existing player-position band is not a complete configured pair range. It stays in player positions; remove it and add a pair preference to regroup.</div>' : ''}`;
+    row.innerHTML = `<div class="col-4 col-sm-2"><label class="form-label small mb-1">From ${unit}<input class="form-control form-control-sm programme-setup-min" type="number" min="1" max="${limit}" value="${escapeHtml(min)}"></label></div><div class="col-4 col-sm-2"><label class="form-label small mb-1">To ${unit}<input class="form-control form-control-sm programme-setup-max" type="number" min="1" max="${limit}" value="${escapeHtml(max)}"></label></div><div class="col-12 col-sm-6"><label class="form-label small mb-1 d-block">Assigned venue<select class="form-select form-select-sm programme-setup-band-venue">${programmeSetupVenueOptions(section, rule.venue_id)}</select></label></div><div class="col-4 col-sm-2"><button type="button" class="btn btn-sm btn-outline-danger programme-setup-remove-band" aria-label="Remove venue assignment">Remove</button></div>${doubles && !paired ? '<div class="col-12 small text-warning">Existing player-position band is not a complete configured pair range. It stays in player positions; remove it and add a pair assignment to regroup.</div>' : ''}`;
     section.querySelector('.programme-setup-bands').appendChild(row);
   };
   const readProgrammeSetup = () => {
@@ -2027,7 +2027,7 @@
     return {assignments, rules};
   };
   const validateProgrammeSetup = ({assignments, rules}) => {
-    if (rules.length > 50) return 'Use at most 50 position preference bands.';
+    if (rules.length > 50) return 'Use at most 50 position assignment bands.';
     for (const assignment of assignments) {
       const name = programmeDraws.find(draw => Number(draw.id) === assignment.draw_id)?.name || 'Draw';
       if (!assignment.venue_ids.length) return `${name}: choose at least one venue.`;
@@ -2036,8 +2036,8 @@
       for (let index = 0; index < bands.length; index++) {
         const rule = bands[index];
         if (!Number.isInteger(rule.min_rank) || !Number.isInteger(rule.max_rank) || rule.min_rank < 1 || rule.max_rank < rule.min_rank || rule.max_rank > 100) return `${name}: use whole numbers within the displayed pair or player-position limits, with the end at or after the start.`;
-        if (!assignment.venue_ids.includes(rule.venue_id)) return `${name}: every position preference must use an assigned venue.`;
-        if (bands.slice(0,index).some(other => rule.min_rank <= other.max_rank && rule.max_rank >= other.min_rank)) return `${name}: position preference ranges cannot overlap.`;
+        if (!assignment.venue_ids.includes(rule.venue_id)) return `${name}: every position assignment must use an assigned venue.`;
+        if (bands.slice(0,index).some(other => rule.min_rank <= other.max_rank && rule.max_rank >= other.min_rank)) return `${name}: position assignment ranges cannot overlap.`;
       }
     }
     return null;
@@ -2051,7 +2051,7 @@
     document.getElementById('programme-setup-draws').innerHTML = draws.map(draw => `<section data-setup-draw="${draw.id}" class="border rounded p-3 mb-3"><h6>${escapeHtml(draw.name)}</h6>${[...document.querySelectorAll(`.assignment-choice[data-draw="${draw.id}"]`)].map(venue => {
       const courts = [...document.querySelectorAll(`.court-allocation[data-draw="${draw.id}"][data-venue="${venue.value}"]`)];
       return `<div class="border-top pt-2 mt-2"><label class="d-flex align-items-center gap-2"><input type="checkbox" class="form-check-input programme-setup-venue" value="${venue.value}" data-name="${escapeHtml(venue.dataset.venueName)}" ${venue.checked ? 'checked' : ''}>${escapeHtml(venue.dataset.venueName)}</label><button type="button" class="btn btn-sm btn-outline-secondary programme-setup-all-courts mt-1" data-venue="${venue.value}">All courts</button><div class="d-flex flex-wrap gap-2 mt-2">${courts.map(court => `<label class="small border rounded px-2 py-1"><input type="checkbox" class="form-check-input programme-setup-court me-1" data-venue="${venue.value}" value="${escapeHtml(court.value)}" ${court.checked ? 'checked' : ''} ${venue.checked ? '' : 'disabled'}>Court ${escapeHtml(court.value)}</label>`).join('')}</div></div>`;
-    }).join('')}<div class="mt-3"><strong class="small">Optional ${programmeUsesPairs(draw) ? 'pair' : programmeUsesMixedPairs(draw) ? 'mixed-pair' : 'player-position'} preferences</strong><div class="small text-muted mb-2">${programmeUsesPairs(draw) ? `${draw.doubles_pair_count} pairs: pair 1 = players 1–2; pair 2 = players 3–4, and so on. Uncovered pairs use normal venue scheduling.` : programmeUsesMixedPairs(draw) ? 'Mixed pair 1 = boy 1 + girl 1, pair 2 = boy 2 + girl 2, and so on. Uncovered pairs use normal venue scheduling.' : 'Uncovered player positions use normal venue scheduling.'}</div><div class="programme-setup-bands"></div><button type="button" class="btn btn-sm btn-outline-secondary programme-setup-add-band">Add ${programmeUsesPairs(draw) ? 'pair' : programmeUsesMixedPairs(draw) ? 'mixed-pair' : 'position'} preference</button></div></section>`).join('');
+    }).join('')}<div class="mt-3"><strong class="small">Optional ${programmeUsesPairs(draw) ? 'pair' : programmeUsesMixedPairs(draw) ? 'mixed-pair' : 'player-position'} venue bands</strong><div class="small text-muted mb-2">${programmeUsesPairs(draw) ? `${draw.doubles_pair_count} pairs: pair 1 = players 1–2; pair 2 = players 3–4, and so on. Uncovered pairs use normal venue scheduling.` : programmeUsesMixedPairs(draw) ? 'Mixed pair 1 = boy 1 + girl 1, pair 2 = boy 2 + girl 2, and so on. Uncovered pairs use normal venue scheduling.' : 'Uncovered player positions use normal venue scheduling.'}</div><div class="programme-setup-bands"></div><button type="button" class="btn btn-sm btn-outline-secondary programme-setup-add-band">Add ${programmeUsesPairs(draw) ? 'pair' : programmeUsesMixedPairs(draw) ? 'mixed-pair' : 'position'} venue band</button></div></section>`).join('');
     programmeSetupModal.querySelectorAll('[data-setup-draw]').forEach(section => rules.filter(rule => rule.draw_ids.map(Number).includes(Number(section.dataset.setupDraw))).forEach(rule => addProgrammeSetupBand(section, rule)));
     document.getElementById('programme-setup-policy').textContent = 'Uses the saved event rule when players span different venue bands. Change that event-wide rule in scheduling rules; this setup save preserves it.';
     document.getElementById('programme-setup-status').textContent = '';
@@ -2087,7 +2087,7 @@
     const controls = [...programmeSetupModal.querySelectorAll('button, input, select')];
     const disabled = controls.map(control => control.disabled);
     controls.forEach(control => { control.disabled = true; });
-    setStatus(status, 'Saving these draw assignments and preferences…');
+    setStatus(status, 'Saving these draw assignments and rank bands…');
     try {
       const result = await post(assignmentUrl, {setup_only:true, venues:@json($venues->map(fn($venue) => ['id' => $venue['id'], 'courts' => $venue['courts']])->values()), assignments:setup.assignments,
         schedule:{rank_preference_draw_ids:programmeSetupScope, rank_venue_preferences:setup.rules}});

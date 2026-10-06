@@ -69,7 +69,7 @@ class RankVenuePreferencesTest extends TestCase
             'wave_minutes' => 60, 'court_gap' => 0, 'player_rest' => 0, 'draw_ids' => $draws->take(2)->pluck('id')->all(), 'allow_partial' => true];
     }
 
-    public function test_venue_change_warning_explains_applied_rank_preference_and_advisory_fallback(): void
+    public function test_venue_change_warning_explains_rank_assignment_and_excluding_that_venue_blocks_placement(): void
     {
         [$event, $draws, $venues] = $this->setupEvent();
         $fixture = $this->rubber($draws[0], [1], [2]);
@@ -83,10 +83,10 @@ class RankVenuePreferencesTest extends TestCase
         $preview = $service->preview($event, $options);
         $this->assertCount(2, $preview['venue_change_warnings']);
         $this->assertSame('rank_preference', $preview['venue_change_warnings'][0]['reason_code']);
-        $this->assertStringContainsString('configured roster rank venue preference', $preview['venue_change_warnings'][0]['reason']);
+        $this->assertStringContainsString('configured roster rank venue assignment', $preview['venue_change_warnings'][0]['reason']);
         $fallback = $service->preview($event, $options + ['venue_ids' => [$venues[1]->id]]);
-        $this->assertSame('rank_fallback', $fallback['venue_change_warnings'][0]['reason_code']);
-        $this->assertStringContainsString('Preferences are advisory', $fallback['venue_change_warnings'][0]['reason']);
+        $this->assertSame([], $fallback['matches']);
+        $this->assertStringContainsString('assigned roster rank venue', $fallback['unscheduled'][0]['reason']);
         $this->assertNull($fixture->fresh()->scheduled_at);
     }
 
@@ -131,7 +131,7 @@ class RankVenuePreferencesTest extends TestCase
         $this->assertSame($venues[2]->id, $fixture->fresh()->venue_id);
     }
 
-    public function test_preferred_venue_capacity_can_fall_back_and_unknown_template_positions_do_not_route(): void
+    public function test_assigned_venue_capacity_leaves_match_unallocated_and_unknown_template_positions_do_not_route(): void
     {
         [$event, $draws, $venues] = $this->setupEvent();
         $fixture = $this->rubber($draws[0], [1], [2]);
@@ -139,13 +139,40 @@ class RankVenuePreferencesTest extends TestCase
         foreach (['1', '2'] as $court) TeamFixture::create(['draw_id' => $foreign->id, 'scheduled_at' => '2026-10-10 08:00:00',
             'venue_id' => $venues[0]->id, 'court_label' => $court, 'duration_min' => 120, 'round_nr' => 1, 'tie_nr' => 1, 'match_nr' => 1, 'fixture_type' => 1, 'match_status' => 0]);
         $preview = app(EventVenueScheduleService::class)->preview($event, $this->schedulingOptions($draws, ['end' => '2026-10-10 09:00:00', 'rank_venue_preferences' => $this->rules($draws, $venues)]));
-        $this->assertNotSame($venues[0]->id, $preview['matches'][0]['venue_id']);
-        $this->assertTrue(collect($preview['warnings'])->contains(fn ($w) => str_contains($w, 'unavailable')));
+        $this->assertSame([], $preview['matches']);
+        $this->assertStringContainsString('Roster rank band requires '.$venues[0]->name, $preview['unscheduled'][0]['reason']);
+        $this->assertStringContainsString('automatic planning does not move', $preview['unscheduled'][0]['reason']);
         TeamPlayer::where('player_id', $fixture->fixturePlayers->first()->team1_id)->delete();
         $draws[0]->update(['team_format_snapshot' => ['rubbers' => [['sequence' => 1, 'home_positions' => [1], 'away_positions' => [2]]]]]);
         $unknown = app(RankVenuePreferences::class)->choices(collect([$fixture->fresh()]), $this->rules($draws, $venues), 'highest_ranked')[$fixture->id];
         $this->assertNull($unknown['venue_id']);
         $this->assertStringContainsString('unavailable', $unknown['warning']);
+        $unrestricted = app(EventVenueScheduleService::class)->preview($event, $this->schedulingOptions($draws, ['end' => '2026-10-10 09:00:00', 'rank_venue_preferences' => $this->rules($draws, $venues)]));
+        $this->assertCount(1, $unrestricted['matches']);
+        $this->assertNotSame($venues[0]->id, $unrestricted['matches'][0]['venue_id']);
+    }
+
+    public function test_singles_and_reverse_bands_hold_the_same_venue_when_other_courts_are_free(): void
+    {
+        [$event, $draws, $venues] = $this->setupEvent();
+        $draws[0]->update(['drawName' => 'u/10 Girls Singles']);
+        $draws[1]->update(['drawName' => 'u/10 Girls Singles Reverse']);
+        $fixtures = collect();
+        foreach ([$draws[0], $draws[1]] as $index => $draw) {
+            foreach ([[1, 2], [5, 6], [7, 8]] as $ranks) {
+                if ($index === 1) $ranks = array_reverse($ranks);
+                $fixtures->push($this->rubber($draw, [$ranks[0]], [$ranks[1]]));
+            }
+        }
+        $foreign = Draw::factory()->create();
+        foreach (['1', '2'] as $court) TeamFixture::create(['draw_id' => $foreign->id, 'scheduled_at' => '2026-10-10 08:00:00',
+            'venue_id' => $venues[0]->id, 'court_label' => $court, 'duration_min' => 120, 'round_nr' => 1, 'match_nr' => 1, 'fixture_type' => 1]);
+        $preview = app(EventVenueScheduleService::class)->preview($event, $this->schedulingOptions($draws, ['rank_venue_preferences' => $this->rules($draws, $venues)]));
+        $matches = collect($preview['matches'])->keyBy('fixture_id');
+        $this->assertCount(6, $matches);
+        foreach ($fixtures as $index => $fixture) $this->assertSame($venues[$index % 3]->id, $matches[$fixture->id]['venue_id']);
+        $this->assertSame('2026-10-10 10:00:00', $matches[$fixtures[0]->id]['scheduled_at']);
+        $this->assertSame(0, TeamFixture::whereIn('id', $fixtures->pluck('id'))->whereNotNull('scheduled_at')->count());
     }
 
     public function test_changed_canonical_rank_invalidates_apply_and_unassigned_saved_rule_warns_instead_of_blocking(): void

@@ -5,7 +5,7 @@ namespace App\Services\Scheduling;
 use App\Models\{Event, TeamFixture};
 use Illuminate\Support\Collection;
 
-/** Optional roster-position preferences; never a court or participation constraint. */
+/** Roster-position venue assignments for automatic planning; manual placement can override. */
 final class RankVenuePreferences
 {
     public function normalize(Event $event, array $rules): array
@@ -102,7 +102,7 @@ final class RankVenuePreferences
         if ($cross) {
             $choice['manual'] = $policy === 'manual';
             $choice['warning'] = $choice['manual'] ? 'Players span different rank venues; choose a venue manually.'
-                : "Players span different rank venues; the highest-ranked player's venue is preferred.";
+                : "Players span different rank venues; the highest-ranked player's venue is assigned.";
         }
         return $choice;
     }
@@ -115,7 +115,7 @@ final class RankVenuePreferences
         $rules = $this->active($draft['rank_venue_preferences'] ?? [], [(int) $fixture->draw_id]);
         $choice = $this->choices(collect([$fixture]), $rules, $draft['cross_band_policy'] ?? 'highest_ranked')[$fixture->id] ?? null;
         $warnings = $choice && $choice['warning'] ? [$choice['warning']] : [];
-        if ($choice && $choice['venue_id'] && $choice['venue_id'] !== $venue) $warnings[] = 'This placement differs from the roster rank venue preference.';
+        if ($choice && $choice['venue_id'] && $choice['venue_id'] !== $venue) $warnings[] = 'This placement differs from the roster rank venue assignment.';
         return $warnings;
     }
 }
