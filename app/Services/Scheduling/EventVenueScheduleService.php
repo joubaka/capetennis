@@ -72,7 +72,9 @@ final class EventVenueScheduleService
             throw new \InvalidArgumentException('An age-group start time cannot be earlier than the event schedule start.');
         }
 
-        $venueIds = $draws->flatMap(fn (Draw $draw) => $draw->venues->pluck('id'))->unique()->values();
+        $storedRoundDraft = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true) ?: [];
+        $roundSetups = collect($storedRoundDraft['round_venue_setups'] ?? [])->whereIn('draw_id', $draws->pluck('id'))->keyBy(fn ($row) => $row['draw_id'].'|'.$row['round']);
+        $venueIds = $draws->flatMap(fn (Draw $draw) => $draw->venues->pluck('id'))->merge($roundSetups->flatMap(fn ($row) => $row['venue_ids']))->unique()->values();
         if (array_diff($selectedVenues, $venueIds->map(fn ($id) => (int) $id)->all())) {
             throw new \InvalidArgumentException('One or more selected venues are not assigned to the selected draws.');
         }
@@ -128,6 +130,15 @@ final class EventVenueScheduleService
                         ->filter(fn ($label) => in_array((string) $label, $courtLabels[$venueId], true))->values()->all();
                     $node['venue_courts'][$venueId] = $restricted ?: $courtLabels[$venueId];
                 }
+                $roundSetup = $roundSetups[$draw->id.'|'.$node['round']] ?? null;
+                if ($roundSetup) {
+                    $node['venue_courts'] = [];
+                    foreach ($roundSetup['court_allocations'] as $allocation) {
+                        $venueId = (int) $allocation['venue_id'];
+                        if (isset($courtLabels[$venueId])) $node['venue_courts'][$venueId] = array_values(array_intersect(array_map('strval', $allocation['court_labels']), $courtLabels[$venueId]));
+                    }
+                    $node['venue_courts'] = array_filter($node['venue_courts']);
+                }
                 $slot = $this->nodeSlot($node);
                 if ($node['selected_round'] && $slot?->time && in_array((int) $slot->venue_id, $replanVenues, true)) {
                     $node['venue_courts'] = collect($node['venue_courts'])
@@ -148,7 +159,12 @@ final class EventVenueScheduleService
         if ($displayFixtures->isNotEmpty()) app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($displayFixtures);
         foreach ($nodes as &$node) {
             $node['rank_preference'] = $rankChoices[$node['fixture']->id] ?? null;
+            $roundSetup = $roundSetups[$node['draw_id'].'|'.$node['round']] ?? null;
+            if ($roundSetup && ($node['fixture_kind'] ?? '') === 'team') {
+                $node['rank_preference'] = $preferenceService->choices(collect([$node['fixture']]), $roundSetup['rank_venue_preferences'], $crossBandPolicy)[$node['fixture']->id] ?? null;
+            }
             if (($node['fixture_kind'] ?? '') !== 'team') $node['rank_preference'] = null;
+            else $rankChoices[$node['fixture']->id] = $node['rank_preference'];
             $rankVenue = $node['rank_preference']['venue_id'] ?? null;
             if ($rankVenue && ! $node['fixed'] && ! $node['played']) {
                 $node['venue_courts'] = array_intersect_key($node['venue_courts'], [$rankVenue => true]);
@@ -519,6 +535,7 @@ final class EventVenueScheduleService
             'draw_ids' => $draws->pluck('id')->sort()->values()->all(), 'venue_ids' => $venueIds->sort()->values()->all(),
             'replan_venue_ids' => collect($replanVenues)->sort()->values()->all(),
             'allow_partial' => (bool) ($options['allow_partial'] ?? false),
+            'round_venue_setups' => $roundSetups->values()->all(),
             'rank_venue_preferences' => $rankRules, 'cross_band_policy' => $crossBandPolicy,
             'gender_waves' => $genderWaves,
             'gender_wave_release' => $genderRelease,
@@ -925,14 +942,16 @@ final class EventVenueScheduleService
 
     private function courtLabels(Event $event, Collection $draws, Collection $venues): array
     {
-        $configured = DB::table('event_venue_courts')->where('event_id', $event->id)
-            ->whereIn('venue_id', $venues->keys())->where('active', true)->orderBy('id')->get()->groupBy('venue_id');
+        $definitions = DB::table('event_venue_courts')->where('event_id', $event->id)->whereIn('venue_id', $venues->keys())->orderBy('id')->get()->groupBy('venue_id');
+        $configured = $definitions->map(fn ($rows) => $rows->where('active', true));
+        $eventCounts = DB::table('event_venues')->where('event_id', $event->id)->whereIn('venue_id', $venues->keys())->pluck('num_courts', 'venue_id');
         $labels = [];
         foreach ($venues as $venue) {
             $venueLabels = ($configured[$venue->id] ?? collect())->pluck('label')->map(fn ($label) => (string) $label)->all();
             $pivotMaximum = $draws->flatMap(fn ($draw) => $draw->venues->where('id', $venue->id))
                 ->max(fn ($assigned) => (int) ($assigned->pivot->num_courts ?? 0));
-            $labels[$venue->id] = $venueLabels ?: array_map('strval', range(1, max(1, (int) $pivotMaximum)));
+            $count = max((int) $pivotMaximum, (int) ($eventCounts[$venue->id] ?? 0));
+            $labels[$venue->id] = $definitions->has($venue->id) ? $venueLabels : ($count > 0 ? array_map('strval', range(1, $count)) : []);
         }
         return $labels;
     }

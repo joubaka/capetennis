@@ -193,6 +193,105 @@ class RankVenuePreferencesTest extends TestCase
         $this->assertCount(1, $fallback['matches']);
         $this->assertTrue(collect($fallback['warnings'])->contains(fn ($w) => str_contains($w, 'needs review')));
     }
+    private function roundSetupRow(Draw $draw, int $round, Venue $venue, array $labels = ['1']): array
+    {
+        return ['draw_id' => $draw->id, 'round' => $round, 'venue_ids' => [$venue->id],
+            'court_allocations' => [['venue_id' => $venue->id, 'court_labels' => $labels]],
+            'rank_venue_preferences' => [['min_rank' => 1, 'max_rank' => 4, 'venue_id' => $venue->id]]];
+    }
+
+    public function test_round_setup_changes_only_selected_rounds_and_invalidates_old_preview(): void
+    {
+        [$event, $draws, $venues] = $this->setupEvent();
+        $fixtures = collect();
+        foreach ($draws->take(2) as $draw) foreach ([1, 2, 3] as $round) {
+            $fixture = $this->rubber($draw, [1], [2]);
+            $fixture->update(['round_nr' => $round]);
+            $fixtures->push($fixture);
+        }
+        $options = $this->schedulingOptions($draws, ['rank_venue_preferences' => $this->rules($draws, $venues)]);
+        $service = app(EventVenueScheduleService::class);
+        $before = $service->preview($event, $options);
+        $pivots = DB::table('draw_venues')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all();
+        $rows = $draws->take(2)->map(fn ($draw) => $this->roundSetupRow($draw, 2, $venues[1]))->all();
+        $this->postJson(route('backend.event-venue-schedule.assignments', $event), ['setup_only' => true, 'round_venue_setups' => $rows])->assertOk();
+        $after = $service->preview($event, $options);
+        foreach ($after['matches'] as $match) {
+            $this->assertSame($venues[$match['round'] === 2 ? 1 : 0]->id, $match['venue_id']);
+            if ($match['round'] === 2) $this->assertSame('1', $match['court']);
+        }
+        $this->assertSame($pivots, DB::table('draw_venues')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all());
+        $this->assertSame(0, TeamFixture::whereNotNull('scheduled_at')->count());
+        $this->assertNotSame($before['revision'], $after['revision']);
+        try { $service->apply($event, $options, $before['revision']); $this->fail('Old round setup preview applied.'); }
+        catch (\InvalidArgumentException $exception) { $this->assertStringContainsString('changed', $exception->getMessage()); }
+        $later = $this->roundSetupRow($draws[0], 3, $venues[2]);
+        $this->postJson(route('backend.event-venue-schedule.assignments', $event), ['setup_only' => true, 'round_venue_setups' => [$later]])->assertOk();
+        $stored = json_decode(DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true);
+        $this->assertCount(3, $stored['round_venue_setups']);
+    }
+
+    public function test_round_only_rank_change_invalidates_apply_and_regular_setup_preserves_overrides(): void
+    {
+        [$event, $draws, $venues] = $this->setupEvent();
+        $fixture = $this->rubber($draws[0], [1], [2]);
+        $row = $this->roundSetupRow($draws[0], 1, $venues[1]);
+        $this->postJson(route('backend.event-venue-schedule.assignments', $event), ['setup_only' => true, 'round_venue_setups' => [$row]])->assertOk();
+        $service = app(EventVenueScheduleService::class);
+        $options = $this->schedulingOptions($draws);
+        $before = $service->preview($event, $options);
+        TeamPlayer::where('player_id', $fixture->fixturePlayers->first()->team1_id)->update(['rank' => 3]);
+        $after = $service->preview($event, $options);
+        $this->assertNotSame($before['revision'], $after['revision']);
+        try { $service->apply($event, $options, $before['revision']); $this->fail('Changed round ranks applied.'); }
+        catch (\InvalidArgumentException $exception) { $this->assertStringContainsString('changed', $exception->getMessage()); }
+        $payload = $this->savePayload($draws, $venues, $options);
+        $this->postJson(route('backend.event-venue-schedule.assignments', $event), $payload)->assertOk();
+        $stored = json_decode(DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true);
+        $this->assertCount(1, $stored['round_venue_setups']);
+    }
+
+    public function test_round_setup_rejects_foreign_round_inactive_courts_and_published_booking_removal(): void
+    {
+        [$event, $draws, $venues] = $this->setupEvent();
+        $fixture = $this->rubber($draws[0], [1], [2]);
+        $url = route('backend.event-venue-schedule.assignments', $event);
+        $this->postJson($url, ['setup_only' => true, 'round_venue_setups' => [$this->roundSetupRow($draws[0], 2, $venues[0])]])->assertUnprocessable();
+        $foreign = Draw::factory()->create();
+        $this->postJson($url, ['setup_only' => true, 'round_venue_setups' => [$this->roundSetupRow($foreign, 1, $venues[0])]])->assertUnprocessable();
+        DB::table('event_venue_courts')->where('event_id', $event->id)->where('venue_id', $venues[0]->id)->update(['active' => false]);
+        $this->postJson($url, ['setup_only' => true, 'round_venue_setups' => [$this->roundSetupRow($draws[0], 1, $venues[0])]])->assertUnprocessable();
+        $fixture->update(['scheduled_at' => '2026-10-10 08:00:00', 'venue_id' => $venues[1]->id, 'court_label' => '1']);
+        DB::table('published_schedule_assignments')->insert(['event_id' => $event->id, 'draw_id' => $draws[0]->id, 'fixture_kind' => 'team', 'fixture_id' => $fixture->id,
+            'venue_id' => $venues[2]->id, 'court' => '1', 'scheduled_at' => '2026-10-10 08:00:00', 'published_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+        $this->postJson($url, ['setup_only' => true, 'round_venue_setups' => [$this->roundSetupRow($draws[0], 1, $venues[1])]])->assertUnprocessable();
+        $this->assertDatabaseCount('event_venue_schedule_drafts', 0);
+        $this->assertDatabaseHas('published_schedule_assignments', ['fixture_id' => $fixture->id, 'venue_id' => $venues[2]->id]);
+        $this->assertSame($venues[1]->id, $fixture->fresh()->venue_id);
+    }
+
+    public function test_round_setup_accepts_event_only_legacy_courts_and_blocks_all_inactive_preview(): void
+    {
+        [$event, $draws, $venues] = $this->setupEvent();
+        $fixture = $this->rubber($draws[0], [1], [2]);
+        $extra = Venue::forceCreate(['name' => 'Round-only venue']);
+        $event->venues()->attach($extra->id, ['num_courts' => 3]);
+        $row = $this->roundSetupRow($draws[0], 1, $extra, ['2', '3']);
+        $this->postJson(route('backend.event-venue-schedule.assignments', $event), ['setup_only' => true, 'round_venue_setups' => [$row]])->assertOk();
+        $preview = app(EventVenueScheduleService::class)->preview($event, $this->schedulingOptions($draws));
+        $this->assertCount(1, $preview['matches']);
+        $this->assertSame($extra->id, $preview['matches'][0]['venue_id']);
+        $this->assertContains($preview['matches'][0]['court'], ['2', '3']);
+        $manual = ['scheduled_at' => '2026-10-10 08:00:00', 'venue_id' => $extra->id, 'court' => '2', 'duration' => 60, 'court_gap' => 0, 'player_rest' => 0];
+        $this->assertNull(app(UnifiedTeamScheduleService::class)->manualError($event, $fixture->fresh(), $manual));
+        $this->assertNotNull(app(UnifiedTeamScheduleService::class)->manualError($event, $fixture->fresh(), ['court' => '1'] + $manual));
+        DB::table('event_venue_courts')->insert(['event_id' => $event->id, 'venue_id' => $extra->id, 'label' => '2', 'active' => false, 'created_at' => now(), 'updated_at' => now()]);
+        $blocked = app(EventVenueScheduleService::class)->preview($event, $this->schedulingOptions($draws));
+        $this->assertSame([], $blocked['matches']);
+        $this->assertCount(1, $blocked['unscheduled']);
+        $this->assertNotNull(app(UnifiedTeamScheduleService::class)->manualError($event, $fixture->fresh(), $manual));
+    }
+
     private function savePayload($draws, $venues, array $schedule): array
     {
         return ['venues' => $venues->map(fn ($v) => ['id' => $v->id, 'courts' => 2])->all(),

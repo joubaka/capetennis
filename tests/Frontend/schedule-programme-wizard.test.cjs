@@ -91,6 +91,7 @@ test('real programme payload honors rescheduling and limits venue selection to i
   const checkbox = {checked:true};
   const context = {
     programmePayload:{draw_ids:[2,3], programme:{days:[]}, replan_venue_ids:[]},
+    roundVenueSetups:[{draw_id:2,round:2,venue_ids:[6]}, {draw_id:9,round:1,venue_ids:[98]}, {draw_id:9,round:2,venue_ids:[97]}],
     replanVenueIds:[99], buildScheduleDraft:() => ({reschedule_existing:checkbox.checked}),
     values:() => [9], readDrawRounds:() => [],
     document:{getElementById:() => checkbox, querySelectorAll:selector => {
@@ -101,10 +102,13 @@ test('real programme payload honors rescheduling and limits venue selection to i
     }}
   };
   vm.runInNewContext(source.slice(start,end)+'; globalThis.actualPayload = buildPayload;',context);
-  assert.deepEqual(Array.from(context.actualPayload().replan_venue_ids),[4,5]);
+  assert.deepEqual(Array.from(context.actualPayload().replan_venue_ids),[4,5,6]);
   assert.deepEqual(Array.from(context.actualPayload().draw_ids),[2,3]);
   checkbox.checked=false;
   assert.deepEqual(Array.from(context.actualPayload().replan_venue_ids),[]);
   context.programmePayload=null;
   assert.deepEqual(Array.from(context.actualPayload().replan_venue_ids),[99]);
+  checkbox.checked=true;
+  context.readDrawRounds=() => [{draw_id:9,rounds:[2]}];
+  assert.deepEqual(Array.from(context.actualPayload().replan_venue_ids),[99,97]);
 });

@@ -113,6 +113,8 @@ final class RankVenuePreferences
         if (! $event) return [];
         $draft = json_decode((string) \Illuminate\Support\Facades\DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true) ?: [];
         $rules = $this->active($draft['rank_venue_preferences'] ?? [], [(int) $fixture->draw_id]);
+        $roundSetup = collect($draft['round_venue_setups'] ?? [])->first(fn ($row) => (int) $row['draw_id'] === (int) $fixture->draw_id && (int) $row['round'] === (int) $fixture->round_nr);
+        if ($roundSetup) $rules = $roundSetup['rank_venue_preferences'];
         $choice = $this->choices(collect([$fixture]), $rules, $draft['cross_band_policy'] ?? 'highest_ranked')[$fixture->id] ?? null;
         $warnings = $choice && $choice['warning'] ? [$choice['warning']] : [];
         if ($choice && $choice['venue_id'] && $choice['venue_id'] !== $venue) $warnings[] = 'This placement differs from the roster rank venue assignment.';

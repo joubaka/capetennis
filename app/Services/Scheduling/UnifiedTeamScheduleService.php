@@ -75,14 +75,22 @@ final class UnifiedTeamScheduleService
         if ($fixture->draw->locked) return 'The draw is locked.';
         if ($this->protected($fixture)) return 'A rubber with play or results cannot be rescheduled.';
         $venueId = (int) ($data['venue_id'] ?? 0);
-        $venue = $fixture->draw->venues()->where('venues.id', $venueId)->first();
+        $draft = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true) ?: [];
+        $roundSetup = collect($draft['round_venue_setups'] ?? [])->first(fn ($row) => (int) $row['draw_id'] === (int) $fixture->draw_id && (int) $row['round'] === (int) $fixture->round_nr);
+        $venue = $roundSetup
+            ? (in_array($venueId, array_map('intval', $roundSetup['venue_ids']), true) ? \App\Models\Venue::find($venueId) : null)
+            : $fixture->draw->venues()->where('venues.id', $venueId)->first();
         if (! $venue) return 'Select a venue assigned to this draw.';
         $court = ScheduleAvailability::courtKey((string) ($data['court'] ?? $data['court_label'] ?? ''));
         $labels = DB::table('event_venue_courts')->where('event_id', $event->id)->where('venue_id', $venueId)
             ->where('active', true)->pluck('label')->map(fn ($label) => ScheduleAvailability::courtKey((string) $label))->all();
-        if (! $labels) $labels = array_map('strval', range(1, max(1, (int) $venue->pivot->num_courts)));
+        if (! $labels && ! DB::table('event_venue_courts')->where('event_id', $event->id)->where('venue_id', $venueId)->exists()) {
+            $courtCount = max((int) ($venue->pivot?->num_courts ?? 0), (int) DB::table('event_venues')->where('event_id', $event->id)->where('venue_id', $venueId)->value('num_courts'));
+            $labels = $courtCount > 0 ? array_map('strval', range(1, $courtCount)) : [];
+        }
         $allocated = DB::table('draw_venue_court_allocations')->where('draw_id', $fixture->draw_id)
             ->where('venue_id', $venueId)->pluck('court_label')->map(fn ($label) => ScheduleAvailability::courtKey((string) $label))->all();
+        if ($roundSetup) $allocated = collect($roundSetup['court_allocations'])->where('venue_id', $venueId)->flatMap(fn ($allocation) => $allocation['court_labels'])->map(fn ($label) => ScheduleAvailability::courtKey((string) $label))->all();
         if (! in_array($court, $labels, true) || ($allocated && ! in_array($court, $allocated, true))) return 'Select a permitted court for this draw.';
         $time = $data['scheduled_at'] ?? $data['start'] ?? null;
         if (! $time) return 'Choose a start time.';

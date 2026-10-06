@@ -389,6 +389,13 @@ final class EventVenueScheduleController extends Controller
             }
             return $rule;
         })->filter(fn ($rule) => ! empty($rule['draw_ids']))->values()->all();
+        $options['round_venue_setups'] = collect($options['round_venue_setups'] ?? [])->map(function ($row) use ($venue, $drawId) {
+            if ($drawId !== null && (int) $row['draw_id'] !== $drawId) return $row;
+            $row['venue_ids'] = array_values(array_filter($row['venue_ids'], fn ($id) => (int) $id !== (int) $venue->id));
+            $row['court_allocations'] = array_values(array_filter($row['court_allocations'], fn ($allocation) => (int) $allocation['venue_id'] !== (int) $venue->id));
+            $row['rank_venue_preferences'] = array_values(array_filter($row['rank_venue_preferences'], fn ($rule) => (int) $rule['venue_id'] !== (int) $venue->id));
+            return $row;
+        })->filter(fn ($row) => ! empty($row['venue_ids']))->values()->all();
         DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)
             ->update(['options' => json_encode($options), 'updated_at' => now()]);
     }
@@ -472,6 +479,28 @@ final class EventVenueScheduleController extends Controller
     public function updateAssignments(Request $request, Event $event)
     {
         $this->authorize('event.manage', $event);
+        if ($request->boolean('setup_only') && $request->has('round_venue_setups')) {
+            $data = $request->validate([
+                'round_venue_setups' => ['required', 'array', 'min:1', 'max:2000'],
+                'round_venue_setups.*.draw_id' => ['required', 'integer'], 'round_venue_setups.*.round' => ['required', 'integer', 'min:1'],
+                'round_venue_setups.*.venue_ids' => ['required', 'array', 'min:1'], 'round_venue_setups.*.venue_ids.*' => ['required', 'integer'],
+                'round_venue_setups.*.court_allocations' => ['required', 'array', 'min:1'],
+                'round_venue_setups.*.court_allocations.*.venue_id' => ['required', 'integer'],
+                'round_venue_setups.*.court_allocations.*.court_labels' => ['required', 'array', 'min:1'],
+                'round_venue_setups.*.court_allocations.*.court_labels.*' => ['required', 'string', 'max:50'],
+                'round_venue_setups.*.rank_venue_preferences' => ['present', 'array', 'max:50'],
+                'round_venue_setups.*.rank_venue_preferences.*.min_rank' => ['required', 'integer', 'min:1', 'max:100'],
+                'round_venue_setups.*.rank_venue_preferences.*.max_rank' => ['required', 'integer', 'min:1', 'max:100'],
+                'round_venue_setups.*.rank_venue_preferences.*.venue_id' => ['required', 'integer'],
+            ]);
+            try {
+                $rows = app(\App\Services\Scheduling\RoundVenueSetup::class)->save($event, $data['round_venue_setups'], $request->user()?->id);
+                return response()->json(['message' => 'Selected round venue setup saved. Saved match times are unchanged.', 'round_venue_setups' => $rows]);
+            } catch (\InvalidArgumentException $exception) {
+                return response()->json(['message' => $exception->getMessage()], 422);
+            }
+        }
+
         if ($request->boolean('setup_only')) {
             $storedSetup = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true) ?: [];
             $request->merge(['schedule' => array_replace([
@@ -660,6 +689,7 @@ final class EventVenueScheduleController extends Controller
                     $data['schedule']['rank_venue_preferences'] = $retainedRules;
                 }
                 $data['schedule']['cross_band_policy'] ??= $stored['cross_band_policy'] ?? 'highest_ranked';
+                $data['schedule']['round_venue_setups'] = $stored['round_venue_setups'] ?? [];
                 unset($data['schedule']['rank_preference_draw_ids']);
                 DB::table('event_venue_schedule_drafts')->updateOrInsert(
                     ['event_id' => $event->id],
