@@ -292,6 +292,34 @@ class RankVenuePreferencesTest extends TestCase
         $this->assertNotNull(app(UnifiedTeamScheduleService::class)->manualError($event, $fixture->fresh(), $manual));
     }
 
+    public function test_explicit_replanning_follows_current_round_rank_venue_without_changing_saved_times(): void
+    {
+        [$event, $draws, $venues] = $this->setupEvent();
+        $fixture = $this->rubber($draws[0], [1], [2]);
+        $unbanded = $this->rubber($draws[0], [7], [8]);
+        foreach ([$fixture, $unbanded] as $saved) $saved->update(['scheduled_at' => '2026-10-10 08:00:00', 'venue_id' => $venues[0]->id, 'court_label' => '1', 'duration_min' => 60]);
+        $row = $this->roundSetupRow($draws[0], 1, $venues[1]);
+        $row['venue_ids'][] = $venues[0]->id;
+        $row['court_allocations'][] = ['venue_id' => $venues[0]->id, 'court_labels' => ['1', '2']];
+        $this->postJson(route('backend.event-venue-schedule.assignments', $event), ['setup_only' => true, 'round_venue_setups' => [$row]])->assertOk();
+        $before = [$fixture->fresh()->getAttributes(), $unbanded->fresh()->getAttributes()];
+        $service = app(EventVenueScheduleService::class);
+        $options = $this->schedulingOptions($draws);
+        $fixed = $service->preview($event, ['reschedule_existing' => false] + $options);
+        $this->assertSame([], $fixed['matches']);
+        $replanned = $service->preview($event, ['reschedule_existing' => true, 'replan_venue_ids' => [$venues[0]->id]] + $options);
+        $matches = collect($replanned['matches'])->keyBy('fixture_id');
+        $this->assertCount(2, $matches);
+        $this->assertSame($venues[1]->id, $matches[$fixture->id]['venue_id']);
+        $this->assertSame($venues[0]->id, $matches[$unbanded->id]['venue_id']);
+        $this->assertSame([], $replanned['unscheduled']);
+        $this->assertSame($before, [$fixture->fresh()->getAttributes(), $unbanded->fresh()->getAttributes()]);
+        $fixture->update(['match_status' => 1]);
+        $played = $service->preview($event, ['reschedule_existing' => true, 'replan_venue_ids' => [$venues[0]->id]] + $options);
+        $this->assertFalse(collect($played['matches'])->contains('fixture_id', $fixture->id));
+        $this->assertSame($venues[0]->id, $fixture->fresh()->venue_id);
+    }
+
     private function savePayload($draws, $venues, array $schedule): array
     {
         return ['venues' => $venues->map(fn ($v) => ['id' => $v->id, 'courts' => 2])->all(),

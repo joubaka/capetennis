@@ -141,8 +141,7 @@ final class EventVenueScheduleService
                 }
                 $slot = $this->nodeSlot($node);
                 if ($node['selected_round'] && $slot?->time && in_array((int) $slot->venue_id, $replanVenues, true)) {
-                    $node['venue_courts'] = collect($node['venue_courts'])
-                        ->only([(int) $slot->venue_id])->all();
+                    $node['replan_original_venue'] = (int) $slot->venue_id;
                 }
                 $node['fixed'] = ! $node['played'] && $slot?->time
                     && (! $node['selected_round'] || ! in_array((int) $slot->venue_id, $replanVenues, true));
@@ -168,6 +167,8 @@ final class EventVenueScheduleService
             $rankVenue = $node['rank_preference']['venue_id'] ?? null;
             if ($rankVenue && ! $node['fixed'] && ! $node['played']) {
                 $node['venue_courts'] = array_intersect_key($node['venue_courts'], [$rankVenue => true]);
+            } elseif (isset($node['replan_original_venue']) && ! $node['fixed'] && ! $node['played']) {
+                $node['venue_courts'] = array_intersect_key($node['venue_courts'], [$node['replan_original_venue'] => true]);
             }
         }
         unset($node);
