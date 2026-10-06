@@ -234,7 +234,7 @@
     <div class="section-body">
       <label class="form-label" for="programme-age">Age group</label>
       <select id="programme-age" class="form-select mb-3"><option value="">Choose age group</option>@foreach($draws->where('is_team', true)->pluck('programme_age')->filter()->unique()->sort() as $age)<option value="{{ $age }}">Under {{ $age }}</option>@endforeach</select>
-      <p class="small">Day 1: singles rounds 1–3, reverse singles round 1. Day 2: reverse singles rounds 2–3 and all doubles. Day 3: all mixed doubles. Adjust each round's day and order below. Choose the boys/girls order independently for each day.</p>
+      <p class="small">Day 1: singles rounds 1–3, reverse singles round 1. Day 2: reverse singles rounds 2–3 and all doubles. Day 3: all mixed doubles. Adjust each round's day and order below. Choose the boys/girls order independently for each day. Sections follow their allocated start order; available courts can serve the next section while earlier matches finish, subject to draw progression and player rest.</p>
       <div class="row g-3 mb-3">@foreach(range(0,2) as $day)<div class="col-md-4"><strong>Day {{ $day + 1 }}</strong><label class="form-label d-block mt-2" for="programme-start-{{ $day }}">Starts</label><input id="programme-start-{{ $day }}" class="form-control programme-time" type="datetime-local" value="{{ $event->start_date ? \Carbon\Carbon::parse($event->start_date)->addDays($day)->format('Y-m-d').'T08:00' : '' }}"><label class="form-label d-block mt-2" for="programme-end-{{ $day }}">Finishes</label><input id="programme-end-{{ $day }}" class="form-control programme-time" type="datetime-local" value="{{ $event->start_date ? \Carbon\Carbon::parse($event->start_date)->addDays($day)->format('Y-m-d').'T18:00' : '' }}"><label class="form-label d-block mt-2" for="programme-gender-{{ $day }}">Order within each round</label><select id="programme-gender-{{ $day }}" class="form-select programme-gender-day"><option value="boys_then_girls" @selected($scheduleDraft['gender_waves'] === 'boys_then_girls')>Boys then girls</option><option value="girls_then_boys" @selected($scheduleDraft['gender_waves'] === 'girls_then_boys')>Girls then boys</option><option value="combined" @selected($scheduleDraft['gender_waves'] === 'combined')>Together</option></select><a class="btn btn-sm btn-outline-primary mt-2" data-programme-review-day="{{ $day }}" href="{{ route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $event->start_date ? \Carbon\Carbon::parse($event->start_date)->addDays($day)->toDateString() : 'all']) }}">Review &amp; publish this day</a></div>@endforeach</div>
       <p class="small mb-2">Drag the handle to put rounds in order or move them between days. Boys and girls in the same round move together. Each drop refreshes the preview using AJAX; match times are saved only when you choose Save. Use the Up/Down buttons or day selector with a keyboard.</p>
       <div id="programme-stages" class="row g-3 mb-3" aria-label="Drag rounds into daily playing order"></div>
@@ -254,6 +254,12 @@
         <span class="form-check-label">Include already scheduled matches in this age group's new preview</span>
         <small class="d-block text-muted">Unchecked keeps saved times fixed. Checking replans this age group; saved times change only when you save the preview.</small>
       </label>
+      <label class="form-label" for="programme-gender-wave-release">When the next gender can start</label>
+      <select id="programme-gender-wave-release" class="form-select mb-2">
+        <option value="whole_wave" @selected($scheduleDraft['gender_wave_release'] === 'whole_wave')>Wait for the whole previous gender wave</option>
+        <option value="court_ready" @selected($scheduleDraft['gender_wave_release'] === 'court_ready')>Use free courts while the previous gender finishes</option>
+      </select>
+      <p class="small text-muted">Use free courts to avoid waiting for every earlier match to finish. Your boys/girls order, round wave interval, court availability and player rest still apply.</p>
       <button id="programme-create" type="button" class="btn btn-primary">Create three-day schedule preview</button>
       <div id="programme-status" class="small mt-2" role="status" aria-live="polite"></div>
     </div>
@@ -1169,6 +1175,14 @@
   document.getElementById('programme-reschedule-existing').addEventListener('change', event => {
     const shared = document.getElementById('reschedule-existing');
     shared.checked = event.currentTarget.checked;
+    shared.dispatchEvent(new Event('change', {bubbles:true}));
+  });
+  document.getElementById('gender-wave-release').addEventListener('change', event => {
+    document.getElementById('programme-gender-wave-release').value = event.currentTarget.value;
+  });
+  document.getElementById('programme-gender-wave-release').addEventListener('change', event => {
+    const shared = document.getElementById('gender-wave-release');
+    shared.value = event.currentTarget.value;
     shared.dispatchEvent(new Event('change', {bubbles:true}));
   });
   document.querySelectorAll('.draw-choice').forEach(input => input.addEventListener('change', () => {

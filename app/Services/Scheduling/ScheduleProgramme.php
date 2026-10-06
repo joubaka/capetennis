@@ -90,7 +90,8 @@ final class ScheduleProgramme
             $previous = $phaseNodes->keys()->all();
         }
         foreach ($nodes as &$node) {
-            // Adjacent stages suffice: their own prerequisites carry the earlier stages.
+            // Programme order controls section starts; genuine draw dependencies still require finish/rest.
+            $node['programme_start_dependencies'] = array_values(array_diff($prerequisites[$node['programme_phase']], $node['dependencies']));
             $node['dependencies'] = array_merge($node['dependencies'], $prerequisites[$node['programme_phase']]);
             $node['dependencies'] = array_values(array_unique($node['dependencies']));
         }

@@ -198,7 +198,11 @@ final class EventVenueScheduleService
                 $slot = $this->nodeSlot($node);
                 if (! $slot?->time) continue;
                 foreach ($node['dependencies'] as $dependency) {
-                    if (isset($finished[$dependency]) && $finished[$dependency]->gt(Carbon::parse($slot->time))) {
+                    if (! isset($finished[$dependency])) continue;
+                    $dependencySlot = isset($nodes[$dependency]) ? $this->nodeSlot($nodes[$dependency]) : null;
+                    $dependencyRelease = in_array($dependency, $node['programme_start_dependencies'] ?? [], true) && $dependencySlot?->time
+                        ? Carbon::parse($dependencySlot->time) : ($finished[$dependency] ?? null);
+                    if ($dependencyRelease && $dependencyRelease->gt(Carbon::parse($slot->time))) {
                         throw new \InvalidArgumentException('Saved matches conflict with the programme order or required rest. Review their times or return them to planning.');
                     }
                 }
@@ -227,6 +231,11 @@ final class EventVenueScheduleService
         $activeTie = null;
         $activeTieLabel = null;
         $incompleteTies = [];
+        $started = [];
+        foreach ($nodes as $id => $node) {
+            if (isset($finished[$id])) $started[$id] = $this->nodeSlot($node)?->time
+                ? Carbon::parse($this->nodeSlot($node)->time) : $node['not_before']->copy();
+        }
         $blocked = [];
         while ($pending) {
             $best = null;
@@ -257,7 +266,9 @@ final class EventVenueScheduleService
                         }
                         continue 2;
                     }
-                    $release = $release->max($finished[$dependency])->copy();
+                    $dependencyRelease = in_array($dependency, $node['programme_start_dependencies'] ?? [], true)
+                        ? $started[$dependency] : $finished[$dependency];
+                    $release = $release->max($dependencyRelease)->copy();
                 }
                 $capacityReason = isset($node['programme_end'])
                     ? 'No valid court slot fits before programme Day '.$node['programme_day'].' ends at '.$node['programme_end']->format('H:i').'. Allow more court time or extend this day, while preserving breaks and player rest.'
@@ -275,6 +286,7 @@ final class EventVenueScheduleService
                         $phaseStarts = [];
                         foreach ($nodes as $earlierId => $earlier) {
                             if (! $earlier['gender'] || $earlier['automatic']) continue;
+                            if (isset($node['programme_phase']) && ($earlier['programme_phase'] ?? null) !== $node['programme_phase']) continue;
                             $earlierPhase = $this->genderPhase($earlier, $genderWaves);
                             if ($earlierPhase >= $phase) continue;
                             if (isset($pending[$earlierId]) && isset($earlier['venue_courts'][$venueId])) {
@@ -309,7 +321,9 @@ final class EventVenueScheduleService
                             foreach ($nodes as $later) {
                                 if ((! $later['fixed'] && ! $later['played']) || ! in_array($id, $later['dependencies'], true)) continue;
                                 $laterSlot = $this->nodeSlot($later);
-                                if ($laterSlot?->time && $at->copy()->addMinutes($duration + $playerRest)->gt(Carbon::parse($laterSlot->time))) {
+                                $requiredUntil = in_array($id, $later['programme_start_dependencies'] ?? [], true)
+                                    ? $at->copy() : $at->copy()->addMinutes($duration + $playerRest);
+                                if ($laterSlot?->time && $requiredUntil->gt(Carbon::parse($laterSlot->time))) {
                                     $blocked[$id] = 'A saved later team tie leaves insufficient time for this rubber and required rest.';
                                     continue 2;
                                 }
@@ -350,6 +364,7 @@ final class EventVenueScheduleService
             }
             $calendar->reserveWithRest($best['venue_id'], $best['court'], $best['time'], $duration + $courtGap,
                 $duration + $playerRest, $node['participants'], $node['participant_group'], true, $this->nodeSource($node));
+            $started[$id] = $best['time']->copy();
             $finished[$id] = $best['time']->copy()->addMinutes($duration + $playerRest);
             $genderSlots[$id] = ['venue_id' => (int) $best['venue_id'], 'time' => $best['time']->copy(), 'duration' => $duration];
             $scheduledPerDraw[$node['draw_id']] = ($scheduledPerDraw[$node['draw_id']] ?? 0) + 1;
@@ -381,6 +396,7 @@ final class EventVenueScheduleService
                 foreach ($genderSlots as $earlierId => $earlierSlot) {
                     $earlier = $nodes[$earlierId];
                     if (! $earlier['gender'] || $earlier['automatic'] || $earlierSlot['venue_id'] !== $slot['venue_id']) continue;
+                    if (isset($node['programme_phase']) && ($earlier['programme_phase'] ?? null) !== $node['programme_phase']) continue;
                     $earlierPhase = $this->genderPhase($earlier, $genderWaves);
                     if ($earlierPhase >= $phase) continue;
                     $phaseStarts[$earlierPhase] = isset($phaseStarts[$earlierPhase])
@@ -390,7 +406,8 @@ final class EventVenueScheduleService
             foreach ($genderSlots as $earlierId => $earlierSlot) {
                 $earlier = $nodes[$earlierId];
                 if (! $earlier['gender'] || $earlier['automatic'] || $earlierSlot['venue_id'] !== $slot['venue_id']) continue;
-                $earlierPhase = $this->genderPhase($earlier, $genderWaves);
+                    if (isset($node['programme_phase']) && ($earlier['programme_phase'] ?? null) !== $node['programme_phase']) continue;
+                    $earlierPhase = $this->genderPhase($earlier, $genderWaves);
                 $required = $genderRelease === 'court_ready'
                     ? ($phaseStarts[$earlierPhase] ?? $earlierSlot['time'])->copy()->addMinutes($waveMinutes)
                     : $earlierSlot['time']->copy()->addMinutes(max($waveMinutes, $earlierSlot['duration'] + $courtGap));
