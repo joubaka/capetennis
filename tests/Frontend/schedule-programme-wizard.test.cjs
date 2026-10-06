@@ -62,6 +62,7 @@ for (const fail of [false, true]) test(`programme preview restores its button af
   await app.run();
   assert.equal(app.button.disabled, false);
   assert.equal(app.messages.at(-1)[1], fail ? 'danger' : 'success');
+  assert.equal(app.context.payload.cross_band_policy, 'highest_ranked');
 });
 
 test('failed venue reuse keeps the edited allocation pending and restores its button', async () => {

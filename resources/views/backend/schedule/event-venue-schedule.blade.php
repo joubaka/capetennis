@@ -232,6 +232,7 @@
   <details class="workspace-section mb-3" id="programme-wizard">
     <summary><span class="section-title"><h5>Three-day age-group auto schedule</h5><small class="text-muted">Create one complete preview using the Platinum programme.</small></span></summary>
     <div class="section-body">
+      <p class="small text-muted">Three-day auto scheduling places players from different venue bands at the highest-ranked player's venue. Venue moves are flagged for review.</p>
       <label class="form-label" for="programme-age">Age group</label>
       <select id="programme-age" class="form-select mb-3"><option value="">Choose age group</option>@foreach($draws->where('is_team', true)->pluck('programme_age')->filter()->unique()->sort() as $age)<option value="{{ $age }}">Under {{ $age }}</option>@endforeach</select>
       <p class="small">Day 1: singles rounds 1–3, reverse singles round 1. Day 2: reverse singles rounds 2–3 and all doubles. Day 3: all mixed doubles. Adjust each round's day and order below. Choose the boys/girls order independently for each day. Sections follow their allocated start order; available courts can serve the next section while earlier matches finish, subject to draw progression and player rest.</p>
@@ -2277,7 +2278,7 @@
       return {start, end, gender_waves:document.getElementById(`programme-gender-${index}`).value, break_start:breakStart ? `${start.slice(0,10)}T${breakStart}` : null, break_end:breakEnd ? `${start.slice(0,10)}T${breakEnd}` : null};
     });
     const rounds = [...document.querySelectorAll('[data-programme-draw]')].map(row => ({draw_id:Number(row.dataset.programmeDraw), round:Number(row.dataset.programmeRound), day:Number(row.querySelector('.programme-day').value), sequence:Number(row.querySelector('.programme-sequence').value)}));
-    programmePayload = {draw_ids:group.map(draw => draw.id), draw_rounds:[], draw_starts:[], venue_starts:[], start:days[0].start, end:days[2].end, programme:{days,rounds}, allow_partial:false};
+    programmePayload = {draw_ids:group.map(draw => draw.id), draw_rounds:[], draw_starts:[], venue_starts:[], start:days[0].start, end:days[2].end, programme:{days,rounds}, allow_partial:false, cross_band_policy:'highest_ranked'};
     payload = buildPayload(); revision = null; button.disabled = true;
     const refreshVersion = ++programmeRefreshVersion;
     button.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>Creating three-day preview…';

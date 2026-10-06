@@ -103,7 +103,7 @@ final class EventVenueScheduleService
             }
         }
         $rankRules = $preferenceService->active($rankRules, $draws->pluck('id')->all());
-        $crossBandPolicy = $options['cross_band_policy'] ?? $storedDraft['cross_band_policy'] ?? 'highest_ranked';
+        $crossBandPolicy = $programme ? 'highest_ranked' : ($options['cross_band_policy'] ?? $storedDraft['cross_band_policy'] ?? 'highest_ranked');
         if (! in_array($crossBandPolicy, ['highest_ranked', 'manual'], true)) throw new \InvalidArgumentException('Choose a valid cross-band rule.');
 
         $nodes = [];

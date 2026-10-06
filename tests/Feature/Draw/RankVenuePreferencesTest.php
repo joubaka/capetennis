@@ -320,6 +320,34 @@ class RankVenuePreferencesTest extends TestCase
         $this->assertSame($venues[0]->id, $fixture->fresh()->venue_id);
     }
 
+    public function test_complete_programme_automatically_places_cross_band_matches_without_changing_regular_manual_policy(): void
+    {
+        [$event, $draws, $venues] = $this->setupEvent();
+        foreach ($draws->take(2) as $draw) $this->rubber($draw, [2], [5]);
+        $options = $this->schedulingOptions($draws, ['rank_venue_preferences' => $this->rules($draws, $venues), 'cross_band_policy' => 'manual']);
+        DB::table('event_venue_schedule_drafts')->insert(['event_id' => $event->id, 'options' => json_encode(['cross_band_policy' => 'manual']), 'created_at' => now(), 'updated_at' => now()]);
+        $service = app(EventVenueScheduleService::class);
+        $manual = $service->preview($event, $options);
+        $this->assertSame([], $manual['matches']);
+        $this->assertCount(2, $manual['unscheduled']);
+        $days = array_map(fn ($date) => ['start' => $date.' 08:00:00', 'end' => $date.' 18:00:00'], ['2026-10-09', '2026-10-10', '2026-10-11']);
+        $rounds = $draws->take(2)->map(fn ($draw) => ['draw_id' => $draw->id, 'round' => 1, 'day' => 1, 'sequence' => 1])->all();
+        $programme = $service->preview($event, ['programme' => compact('days', 'rounds')] + $options);
+        $this->assertCount(2, $programme['matches']);
+        $this->assertSame([], $programme['unscheduled']);
+        $this->assertSame('highest_ranked', $programme['input']['cross_band_policy']);
+        foreach ($programme['matches'] as $match) {
+            $this->assertSame($venues[0]->id, $match['venue_id']);
+            $this->assertStringContainsString('highest-ranked', $match['rank_preference']['warning']);
+        }
+        $this->assertSame(0, TeamFixture::whereNotNull('scheduled_at')->count());
+        $stored = json_decode(DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true);
+        $this->assertSame('manual', $stored['cross_band_policy']);
+        $again = $service->preview($event, $options);
+        $this->assertSame([], $again['matches']);
+        $this->assertSame('manual', $again['input']['cross_band_policy']);
+    }
+
     private function savePayload($draws, $venues, array $schedule): array
     {
         return ['venues' => $venues->map(fn ($v) => ['id' => $v->id, 'courts' => 2])->all(),
