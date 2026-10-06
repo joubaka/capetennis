@@ -10,6 +10,14 @@
       }
   }
   .public-match-cards { display: none; }
+  .fixtures-table .fixture-player-label { color: #26394d; font-size: .95rem; font-weight: 600; line-height: 1.6; white-space: normal; }
+  .fixtures-table .fixture-roster-rank { display: inline-block; color: #536479; font-size: .8rem; font-weight: 500; margin-right: .25rem; }
+  .fixtures-table.fixture-table-tie thead { border-color: #d9e2ed; }
+  .fixtures-table.fixture-table-tie thead th { background: #eef3fa; color: #26394d; border-color: #d9e2ed; text-transform: none; font-size: .9rem; letter-spacing: normal; padding: .85rem 1rem; }
+  .fixture-table-tie .fixture-team-heading { display: inline-block; border-bottom: 2px solid var(--region-color, #475569); padding-bottom: .25rem; }
+  .fixture-table-tie td { padding: .7rem 1rem; }
+  .fixture-table-tie .fixture-region-badge, .fixture-table-tie .fixture-region { display: none; }
+  .fixture-table-tie tbody tr:hover > td:not(.winner-home):not(.loser-home):not(.draw-cell) { background: #f8fafc; }
   .public-fixture-back { background: #fff !important; color: #26394d !important; border-color: #66788d !important; }
   .public-fixture-back:hover, .public-fixture-back:focus { background: #edf0f4 !important; color: #172e45 !important; }
   .public-fixture-status { background: #e4f1e7 !important; color: #235c31 !important; }
@@ -135,14 +143,21 @@ $fxWinnerClasses = function ($fx) {
       @endforelse
     </div>
     <div class="table-responsive public-match-desktop">
-      <table class="table table-bordered align-middle fixtures-table" id="{{ $fixtureTableId ?? 'fixturesTable' }}">
+      <table class="table table-bordered align-middle fixtures-table {{ ($hideFixtureHeader ?? false) ? 'fixture-table-tie' : '' }}" id="{{ $fixtureTableId ?? 'fixturesTable' }}">
         <thead class="table-dark">
           <tr>
             <th class="d-table-cell d-md-none text-center" style="width:5%">+</th>
-            <th style="width:25%">Player/Team 1</th>
-            <th style="width:25%">Player/Team 2</th>
-            <th style="width:15%">Score</th>
-            <th style="width:15%">Time</th>
+            @foreach(['home', 'away'] as $side)
+              <th style="width:30%">
+                @if(($hideFixtureHeader ?? false) && $fixtures->first() instanceof \App\Models\TeamFixture)
+                  <span class="fixture-team-heading" style="--region-color: {{ $fixtures->first()->lineup_display[$side]['region_color'] ?? '#475569' }}" title="{{ $fixtures->first()->tie_display[$side] }}">{{ $fixtures->first()->tie_mobile_display[$side] }}</span>
+                @else
+                  Player/Team {{ $loop->iteration }}
+                @endif
+              </th>
+            @endforeach
+            <th style="width:12%">Score</th>
+            <th style="width:13%">Time</th>
             <th style="width:15%">Venue</th>
           </tr>
         </thead>
