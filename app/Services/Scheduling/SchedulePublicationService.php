@@ -155,6 +155,7 @@ final class SchedulePublicationService
                 + ['published_at' => now(), 'published_by' => auth()->id(), 'created_at' => now(), 'updated_at' => now()]);
             $affected = $working->pluck('draw_id')->concat($oldDrawIds)->when($drawId, fn ($ids) => $ids->push($drawId))->unique();
             foreach ($affected as $id) {
+                request()->attributes->remove('draw_schedule_exists_'.$event->id.'_'.$id);
                 DB::table('schedule_publication_baselines')->insertOrIgnore(['draw_id' => $id, 'captured_at' => now()]);
                 Draw::whereKey($id)->update(['oop_published' => DB::table('published_schedule_assignments')->where('draw_id', $id)->exists()]);
                 DrawAuditLog::record((int) $id, $hide ? 'schedule_scope_hidden' : 'schedule_scope_published', null,

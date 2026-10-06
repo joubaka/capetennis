@@ -102,8 +102,8 @@ $fxWinnerClasses = function ($fx) {
     <div>
       <h3 class="mb-1">{{ $draw->drawName }} {{ $draw->age }}</h3>
       <span class="badge {{ $draw->published ? 'public-fixture-status' : 'bg-label-warning' }}">{{ $draw->published ? 'Draw published' : 'Draft preview · Draw not published' }}</span>
-      <span class="badge {{ $draw->oop_published ? 'public-fixture-status' : 'bg-label-secondary' }}">
-        {{ $draw->oop_published ? 'Match times published' : 'Match times to follow' }}
+      <span class="badge {{ $draw->scheduleIsPublished() ? 'public-fixture-status' : 'bg-label-secondary' }}">
+        {{ $draw->scheduleIsPublished() ? 'Match times published' : 'Match times to follow' }}
       </span>
     </div>
     <a href="{{ route('events.show', $event) }}" class="btn btn-sm btn-outline-secondary public-fixture-back">
@@ -114,7 +114,7 @@ $fxWinnerClasses = function ($fx) {
   @endunless
   <div class="card-body">
 
-    @unless($draw->oop_published || ($hideFixtureHeader ?? false))
+    @unless($draw->scheduleIsPublished() || ($hideFixtureHeader ?? false))
       <div class="alert alert-info" role="status">
         The draw is available, but match times and venues have not been published yet.
       </div>

@@ -42,7 +42,7 @@
                 <div class="event-draw-card-heading">
                   <div class="event-draw-name">{{ $draw->drawName ?? 'Draw #'.$draw->id }}</div>
                   @if($draw->published)
-                    <span class="event-draw-state">{{ $draw->oop_published ? 'Draw & times live' : 'Draw live' }}</span>
+                    <span class="event-draw-state">{{ $draw->scheduleIsPublished() ? 'Draw & times live' : 'Draw live' }}</span>
                   @elseif($canViewDraw)
                     <span class="event-draw-state">Draft</span>
                   @endif
@@ -51,7 +51,7 @@
                   @if($drawVenueNames->isNotEmpty())
                     <span><i class="ti ti-map-pin" aria-hidden="true"></i><span>{{ $drawVenueNames->join(', ') }}</span></span>
                   @endif
-                  @if($draw->oop_published && $firstSchedule?->time)
+                  @if($draw->scheduleIsPublished() && $firstSchedule?->time)
                     <span><i class="ti ti-clock" aria-hidden="true"></i><span>First match {{ \Carbon\Carbon::parse($firstSchedule->time)->format('H:i') }}</span></span>
                   @endif
                 </div>
@@ -62,7 +62,7 @@
                   <a href="{{ $publicDrawUrl }}#draw" class="btn btn-sm btn-outline-primary">
                     <i class="ti ti-tournament me-1" aria-hidden="true"></i>View draw
                   </a>
-                  @if($draw->oop_published)
+                  @if($draw->scheduleIsPublished())
                     <a href="{{ $publicDrawUrl }}#schedule" class="btn btn-sm btn-success">
                       <i class="ti ti-clock me-1" aria-hidden="true"></i>View schedule
                     </a>

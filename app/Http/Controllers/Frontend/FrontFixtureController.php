@@ -314,10 +314,6 @@ class FrontFixtureController extends Controller
 
   private function hidePrivateSchedule(Draw $draw, $fixtures): void
   {
-    if (auth()->user()?->can('view', $draw)) {
-      return;
-    }
-
     app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($fixtures);
   }
 

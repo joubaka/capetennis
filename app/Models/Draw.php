@@ -148,6 +148,17 @@ public function getAllPlayersAttribute()
         return $this->hasMany(TeamFixture::class)->orderBy('id');
     }
 
+    public function scheduleIsPublished(): bool
+    {
+        if (! $this->published || ! $this->oop_published) return false;
+        $key = 'draw_schedule_exists_'.$this->event_id.'_'.$this->id;
+        if (! request()->attributes->has($key)) {
+            request()->attributes->set($key, \Illuminate\Support\Facades\DB::table('published_schedule_assignments')
+                ->where('event_id', $this->event_id)->where('draw_id', $this->id)->exists());
+        }
+        return (bool) request()->attributes->get($key);
+    }
+
     /**
      * Whether play has started far enough that match rules must be immutable.
      *

@@ -22,8 +22,8 @@
                 <a href="{{ route('public.roundrobin.show', $draw->id) }}"
                    class="btn btn-sm btn-{{ $draw->draw_types?->btn_color ?? 'primary' }} w-100">
                   {{ $draw->drawName }}
-                  <span class="badge {{ $draw->oop_published ? 'bg-label-light' : 'bg-label-secondary' }} ms-1">
-                    {{ $draw->oop_published ? 'Times available' : 'Times to follow' }}
+                  <span class="badge {{ $draw->scheduleIsPublished() ? 'bg-label-light' : 'bg-label-secondary' }} ms-1">
+                    {{ $draw->scheduleIsPublished() ? 'Times available' : 'Times to follow' }}
                   </span>
                 </a>
               @endforeach

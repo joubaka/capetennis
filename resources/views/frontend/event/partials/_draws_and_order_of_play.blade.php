@@ -53,8 +53,8 @@
           <a href="{{ $draw->usesFlexibleMonrad() ? route('public.flexible-monrad.show', $draw) : route('frontend.fixtures.index', $draw->id) }}"
              class="btn btn-sm event-published-draw-link">
             <span class="event-published-draw-name">{{ $draw->drawName }}</span>
-            <span class="badge {{ $draw->oop_published ? 'bg-label-light' : 'bg-label-secondary' }} ms-1">
-              {{ $draw->oop_published ? 'Times available' : 'Times to follow' }}
+            <span class="badge {{ $draw->scheduleIsPublished() ? 'bg-label-light' : 'bg-label-secondary' }} ms-1">
+              {{ $draw->scheduleIsPublished() ? 'Times available' : 'Times to follow' }}
             </span>
           </a>
           @php
@@ -127,7 +127,7 @@
                    class="btn btn-sm btn-outline-{{ $draw->draw_types?->btn_color ?? 'secondary' }}">
                   {{ $draw->drawName }}
                   <span class="badge bg-danger ms-1">Unpublished</span>
-                  @if($draw->oop_published)<span class="badge bg-info ms-1">Times preview</span>@endif
+                  @if($draw->scheduleIsPublished())<span class="badge bg-info ms-1">Times preview</span>@endif
                 </a>
               @endforeach
             </div>

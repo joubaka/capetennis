@@ -339,16 +339,12 @@ class EventController extends Controller
     $drawPublicationSummary = [
       'total' => $allEventDraws->count(),
       'published' => $allEventDraws->where('published', true)->count(),
-      'schedule_published' => $allEventDraws
-        ->where('published', true)
-        ->where('oop_published', true)
-        ->count(),
+      'schedule_published' => $allEventDraws->filter(fn ($draw) => $draw->scheduleIsPublished())->count(),
       'last_updated_at' => $allEventDraws->max('updated_at'),
     ];
 
     $drawIds = $eventDraws->pluck('id');
 
-    if (! $canPreviewUnpublishedDraws) {
       $publication = app(\App\Services\Scheduling\SchedulePublicationService::class);
       foreach ($eventDraws as $publicDraw) {
         $publicFixtures = $publicDraw->drawFixtures()->with('orderOfPlay.venue')->get();
@@ -356,8 +352,6 @@ class EventController extends Controller
         $publicDraw->setRelation('order_of_play', $publicFixtures
           ->map(fn ($fixture) => $fixture->orderOfPlay)->filter()->sortBy('time')->values());
       }
-    }
-
     // Convenors and assigned score keepers need an operational view of every
     // scheduled venue, independently of public draw/order-of-play publication.
     // Keep this event-scoped and aggregate in SQL so the public event page does
@@ -423,12 +417,10 @@ class EventController extends Controller
       $fixturesPerVenue = collect();
     }
 
-    if (! $canPreviewUnpublishedDraws) {
       app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($fixturesPerVenue);
       if ($event->eventType == 3) {
         app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixturesPerVenue, publicDraw: true);
       }
-    }
     $fixturesPerVenueGrouped = $fixturesPerVenue
       ->groupBy(fn($fx) => $fx->venue?->name ?? $fx->orderOfPlay?->venue?->name ?? 'Unassigned');
 
@@ -437,10 +429,8 @@ class EventController extends Controller
     // ---------------------------------------------------------
     $teamFixtures = TeamFixture::whereIn('draw_id', $drawIds)
       ->when(! $canPreviewUnpublishedDraws, fn ($query) => $query->publicDrawFixtures())->get();
-    if (! $canPreviewUnpublishedDraws) {
       app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($teamFixtures);
       app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($teamFixtures, publicDraw: true);
-    }
     $ties = $teamFixtures->groupBy('tie_nr');
     $rounds = $teamFixtures->groupBy('round_nr');
 
@@ -522,9 +512,7 @@ $fixtures = \App\Models\TeamFixture::with(['draw'])
     })
     ->get();
 
-if (! $canPreviewUnpublishedDraws) {
     app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($fixtures);
-}
 $fixtures = app(\App\Services\Scheduling\TeamFixtureOrder::class)->sort($fixtures->filter(fn ($fixture) => $fixture->scheduled_at));
 
 $fixturesByDay = $fixtures->groupBy(function($fx) {

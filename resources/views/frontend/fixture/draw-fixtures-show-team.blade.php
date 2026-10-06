@@ -29,12 +29,12 @@
       <div>
         <h3 class="mb-2">{{ $draw->drawName }}</h3>
         <span class="badge {{ $draw->published ? 'bg-label-success' : 'bg-label-warning' }}">{{ $draw->published ? 'Draw published' : 'Draft preview · Draw not published' }}</span>
-        <span class="badge {{ $draw->oop_published ? 'bg-label-success' : 'bg-label-secondary' }}">{{ $draw->oop_published ? 'Match times published' : 'Match times to follow' }}</span>
+        <span class="badge {{ $draw->scheduleIsPublished() ? 'bg-label-success' : 'bg-label-secondary' }}">{{ $draw->scheduleIsPublished() ? 'Match times published' : 'Match times to follow' }}</span>
       </div>
       <a href="{{ route('events.show', $event) }}" class="btn btn-sm btn-outline-secondary public-fixture-back">Back to tournament</a>
     </div>
   </div>
-  @unless($draw->oop_published)
+  @unless($draw->scheduleIsPublished())
     <div class="alert alert-info" role="status">The draw is available, but match times and venues have not been published yet.</div>
   @endunless
   @foreach($fixtures->groupBy(fn ($fixture) => (int) $fixture->round_nr) as $round => $roundFixtures)

@@ -12,6 +12,40 @@ class PublicScheduleProjectionTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_admin_public_draw_cannot_show_working_times_when_only_the_draw_is_published(): void
+    {
+        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        $admin = \App\Models\User::factory()->create()->assignRole('super-user');
+        $event = Event::factory()->create(['eventType' => 3]);
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'published' => true, 'oop_published' => true]);
+        $venue = new Venue();
+        $venue->forceFill(['name' => 'Private Planning Courts'])->save();
+        $fixture = TeamFixture::create(['draw_id' => $draw->id, 'round_nr' => 1, 'tie_nr' => 1,
+            'match_nr' => 1, 'fixture_type' => 1, 'scheduled_at' => '2026-10-09 13:45:00',
+            'venue_id' => $venue->id, 'court_label' => 'Private Court']);
+        $this->assertFalse($draw->scheduleIsPublished());
+        $this->actingAs($admin);
+        $this->get(route('events.show', $event))->assertOk()
+            ->assertViewHas('fixturesByDay', fn ($days) => $days->isEmpty())
+            ->assertViewHas('drawPublicationSummary', fn ($summary) => $summary['schedule_published'] === 0);
+        foreach (['frontend.fixtures.index', 'frontend.fixtures.show'] as $route) {
+            $this->get(route($route, $draw))->assertOk()->assertSee('Match times to follow')
+                ->assertDontSee('13:45')->assertDontSee('Private Planning Courts')->assertDontSee('Private Court')
+                ->assertViewHas('fixtures', fn ($fixtures) => $fixtures->first()->scheduled_at === null);
+        }
+        $this->assertSame('2026-10-09 13:45:00', $fixture->fresh()->scheduled_at->format('Y-m-d H:i:s'));
+        $this->assertDatabaseCount('published_schedule_assignments', 0);
+        app(SchedulePublicationService::class)->publish($event, ['draw_id' => $draw->id]);
+        $fixture->update(['scheduled_at' => '2026-10-09 16:15:00']);
+        $this->assertTrue($draw->fresh()->scheduleIsPublished());
+        $this->get(route('frontend.fixtures.index', $draw))->assertOk()->assertSee('13:45')->assertDontSee('16:15');
+        app(SchedulePublicationService::class)->hide($event, ['draw_id' => $draw->id]);
+        $this->get(route('frontend.fixtures.index', $draw))->assertOk()->assertSee('Match times to follow')
+            ->assertDontSee('13:45')->assertDontSee('16:15');
+        $this->get(route('frontend.scoring.workspace', ['event' => $event, 'draw' => $draw->id]))->assertOk()
+            ->assertSee('16:15');
+    }
+
     public function test_public_venue_and_day_lists_use_published_times_after_a_private_cross_day_move(): void
     {
         $event = Event::factory()->create(['eventType' => 3]);

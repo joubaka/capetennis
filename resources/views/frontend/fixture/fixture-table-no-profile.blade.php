@@ -10,15 +10,15 @@ use App\Helpers\Fixtures;
     <div>
         <h3 class="mb-1">{{ $draw->drawName }} {{ $draw->age }}</h3>
         <span class="badge bg-label-success">Draw published</span>
-        <span class="badge {{ $draw->oop_published ? 'bg-label-success' : 'bg-label-secondary' }}">
-            {{ $draw->oop_published ? 'Match times published' : 'Match times to follow' }}
+        <span class="badge {{ $draw->scheduleIsPublished() ? 'bg-label-success' : 'bg-label-secondary' }}">
+            {{ $draw->scheduleIsPublished() ? 'Match times published' : 'Match times to follow' }}
         </span>
     </div>
     <a class="btn btn-sm btn-outline-secondary" href="{{ route('events.show', $event) }}">
         <i class="ti ti-arrow-left me-1" aria-hidden="true"></i>Back to tournament
     </a>
 </div>
-@unless($draw->oop_published)
+@unless($draw->scheduleIsPublished())
     <div class="alert alert-info" role="status">
         The draw is available, but match times and venues have not been published yet.
     </div>
@@ -198,7 +198,7 @@ use App\Helpers\Fixtures;
                   @endif
               </td>
               <td>
-                  @if($fixture->draw->oop_published == 1)
+                  @if($fixture->draw->scheduleIsPublished())
                       @if($fixture->schedule)
                           <span class="badge bg-label-warning">{{ date('D d M @ H:i', strtotime($fixture->schedule->time)) }}</span>
                       @else
@@ -209,7 +209,7 @@ use App\Helpers\Fixtures;
                   @endif
               </td>
               <td>
-                  @if($fixture->draw->oop_published == 1)
+                  @if($fixture->draw->scheduleIsPublished())
                       @if($fixture->schedule)
                           <span class="badge bg-label-warning">{{$fixture->schedule->venue->name}}</span>
                       @endif
