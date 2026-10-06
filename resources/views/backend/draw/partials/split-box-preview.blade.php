@@ -6,7 +6,7 @@
         <strong>Box {{ $boxNum }}</strong>
         <ul class="mb-0">
           @foreach ($registrations as $reg)
-            <li>{{ $reg->players->first()?->full_name ?? 'Unnamed' }}</li>
+            <li><x-player-name :players="$reg->players" :context="$draw ?? null" fallback="Unnamed" /></li>
           @endforeach
         </ul>
       </div>

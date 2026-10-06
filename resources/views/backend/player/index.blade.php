@@ -104,7 +104,7 @@ $(function () {
           if (type !== 'display') return data;
           const safeName = $('<div>').text(data || '-').html();
           @if(auth()->user()->hasRole('super-user'))
-          return '<a href="{{ url('backend/player-performance/players') }}/' + encodeURIComponent(row.id) + '"><strong>' + safeName + '</strong></a>';
+          return '<a href="{{ url('backend/player-performance/players') }}/' + encodeURIComponent(row.id) + '"><strong>' + safeName + '</strong>' + (row.ability_badge_html || '') + '</a>';
           @else
           return '<strong>' + safeName + '</strong>';
           @endif

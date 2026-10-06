@@ -76,4 +76,48 @@ class PlayerManagementDataTableTest extends TestCase
                 'data',
             ]);
     }
+    public function test_player_data_never_exposes_private_badges_or_calculates_ratings_for_other_roles(): void
+    {
+        $this->partialMock(\App\Services\Performance\PlayerSharedAbilityService::class)->shouldNotReceive('badgeSnapshot');
+        Player::factory()->create();
+        $this->getJson(route('player.data'))->assertUnauthorized();
+        foreach ([null, 'admin', 'convenor'] as $role) {
+            $user = User::factory()->create();
+            if ($role) { \Spatie\Permission\Models\Role::findOrCreate($role, 'web'); $user->assignRole($role); }
+            $response = $this->actingAs($user)->getJson(route('player.data'))->assertOk();
+            $this->assertArrayNotHasKey('ability_badge_html', $response->json('data.0'));
+            $this->assertStringNotContainsString('player-rating-badge', $response->getContent());
+            $this->assertStringNotContainsString('confidence_index', $response->getContent());
+        }
+    }
+
+    public function test_super_admin_player_data_renders_escaped_rating_and_confidence_on_only_the_bounded_page(): void
+    {
+        \Spatie\Permission\Models\Role::findOrCreate('super-user', 'web');
+        $this->actingAs(User::factory()->create()->assignRole('super-user'));
+        $players = Player::factory()->count(115)->create();
+        $snapshot = [];
+        foreach ($players as $player) {
+            $snapshot[$player->id] = [['score' => 54.8, 'cohort' => 'u10 boys "<script>bad()</script>', 'component' => 'group',
+                'last_played' => '2026-09-01', 'confidence_index' => 0, 'confidence_band' => 'Very low', 'confidence_as_of' => '2026-10-06', 'last_eligible_activity' => '2026-09-01']];
+        }
+        $this->partialMock(\App\Services\Performance\PlayerSharedAbilityService::class)->shouldReceive('badgeSnapshot')->once()->andReturn($snapshot);
+        $response = $this->getJson(route('player.data', ['start' => 10, 'length' => 10000, 'order' => [['column' => 0, 'dir' => 'asc']]]))
+            ->assertOk()->assertJsonCount(100, 'data')->assertJsonPath('recordsTotal', 115);
+        $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
+        $this->assertStringContainsString('private', $response->headers->get('Cache-Control'));
+        $this->assertSame($players->slice(10, 100)->pluck('id')->values()->all(), array_column($response->json('data'), 'id'));
+        foreach ($response->json('data') as $row) {
+            $html = $row['ability_badge_html'];
+            $this->assertStringContainsString('54.8 | C0', $html);
+            $this->assertStringContainsString('Very low', $html);
+            $this->assertStringContainsString('&quot;&lt;script&gt;', $html);
+            $this->assertStringNotContainsString('<script>', $html);
+            $this->assertStringNotContainsString('data-rating-player', $html);
+        }
+        $view = file_get_contents(resource_path('views/backend/player/index.blade.php'));
+        $this->assertStringContainsString('row.ability_badge_html', $view);
+        $this->assertStringNotContainsString('CTPlayerRatings?.marker', $view);
+    }
+
 }

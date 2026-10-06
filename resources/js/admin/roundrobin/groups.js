@@ -90,7 +90,7 @@
         (selected.has(p.id) ? ' checked' : '') +
         (!editable() || busy ? ' disabled' : '') +
         '><span class="rr-player-name">' +
-        esc(p.name) +
+        esc(p.name) + (root.CTPlayerRatings?.marker({registrationId:p.id}, {categoryEventId:p.category_id}) || '') +
         '<small>' +
         esc(p.category || '') +
         '</small></span><button type="button" class="btn btn-sm btn-outline-primary rr-add-player" aria-label="Add ' +
@@ -132,7 +132,7 @@
           '"><span class="rr-drag-handle" aria-hidden="true">⠿</span><span class="rr-seed">' +
           (index + 1) +
           '</span><span class="rr-player-name">' +
-          esc(p.name) +
+          esc(p.name) + (root.CTPlayerRatings?.marker({registrationId:p.id}) || '') +
           '</span>';
         if (editable())
           html +=

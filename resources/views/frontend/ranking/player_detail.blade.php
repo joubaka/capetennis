@@ -30,7 +30,7 @@
   <div class="card detail-card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
       <div>
-        <h5 class="mb-0">{{ $player->full_name ?? $player->name }}</h5>
+        <h5 class="mb-0">{{ $player->full_name ?? $player->name }}<x-player-rating :player-id="$player->id" /></h5>
         <div class="text-muted small">{{ $series->name }}{{ $series->year ? ' ' . $series->year : '' }}</div>
       </div>
       @if($rankingRecord)

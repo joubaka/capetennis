@@ -164,14 +164,14 @@
           <thead>
             <tr>
               <th scope="col" aria-label="Player"></th>
-              ${players.map(p => `<th scope="col" class="text-center" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</th>`).join('')}
+              ${players.map(p => `<th scope="col" class="text-center" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}${window.CTPlayerRatings?.marker({registrationId:p.id}) || ''}</th>`).join('')}
             </tr>
           </thead>
           <tbody>
       `;
 
       players.forEach(rowP => {
-        html += `<tr><th scope="row" class="small" title="${escapeHtml(rowP.name)}">${escapeHtml(rowP.name)}</th>`;
+        html += `<tr><th scope="row" class="small" title="${escapeHtml(rowP.name)}">${escapeHtml(rowP.name)}${window.CTPlayerRatings?.marker({registrationId:rowP.id}) || ''}</th>`;
 
         players.forEach(colP => {
           if (rowP.id === colP.id) {
@@ -212,7 +212,7 @@
           : (fx.time ? formatDayTimeVenue(fx, true) : 'Awaiting schedule'));
 
         html += `<div class="rr-mobile-match" role="group" aria-label="${escapeHtml(home)} versus ${escapeHtml(away)}">
-          <span class="rr-mobile-players"><span>${escapeHtml(home)}</span><span class="rr-mobile-versus">vs</span><span>${escapeHtml(away)}</span></span>
+          <span class="rr-mobile-players"><span>${escapeHtml(home)}${window.CTPlayerRatings?.marker({registrationId:fx.r1_id}) || ''}</span><span class="rr-mobile-versus">vs</span><span>${escapeHtml(away)}${window.CTPlayerRatings?.marker({registrationId:fx.r2_id}) || ''}</span></span>
           <span class="rr-mobile-status">${escapeHtml(status)}</span>
         </div>`;
       });

@@ -19,6 +19,8 @@
   .programme-stage.sortable-ghost { opacity:.35; }
   .programme-stage-controls { display:flex; flex-wrap:wrap; gap:.35rem; align-items:center; margin-top:.5rem; }
   .programme-stage-controls .form-select { width:auto; min-width:6rem; }
+  .programme-stage-summary { border-top:1px solid var(--schedule-border); padding-top:.4rem; margin-top:.5rem; font-size:.75rem; overflow-wrap:anywhere; }
+  .programme-stage-summary ul { padding-left:1rem; margin:.2rem 0 .35rem; }
   #programme-rounds .programme-day { min-width:7rem; }
   #programme-rounds .programme-sequence { min-width:6rem; }
   @media (max-width:576px) {
@@ -669,6 +671,18 @@
     </div>
   </div>
 </div>
+<div class="modal fade" id="programme-setup-modal" tabindex="-1" aria-labelledby="programme-setup-title" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title" id="programme-setup-title">Assign venues &amp; courts</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+    <div class="modal-body">
+      <p class="small text-muted">This setup applies to these draws across every round. Positions are venue preferences, not guaranteed bookings. Saved matches stay in place.</p>
+      <div id="programme-setup-draws"></div>
+      <p id="programme-setup-policy" class="small text-muted mt-3"></p>
+      <div id="programme-setup-status" class="small" role="status" aria-live="polite"></div>
+    </div>
+    <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-primary" id="programme-setup-save">Save setup</button></div>
+  </div></div>
+</div>
 @endsection
 
 @section('page-script')
@@ -728,13 +742,17 @@
 
   const values = selector => [...document.querySelectorAll(selector + ':checked')].map(el => Number(el.value));
   const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[char]));
+  const participantNamesHtml = row => (row.participants || []).map((name, side) =>
+    escapeHtml(name) + ((row.fixture_kind || 'individual') === 'individual' && side < 2
+      ? (window.CTPlayerRatings?.marker({fixtureId:row.fixture_id, side:side + 1}, {drawId:row.draw_id}) || '') : '')
+  ).join(' / ') || 'Participants determined by draw';
   const lineupDetails = row => ['home', 'away'].map(side => {
     const lineup = row.lineup?.[side];
     if (!lineup) return '';
     const players = lineup.players?.length ? lineup.players : [{name:'TBD', rank:null}];
     return `<div class="small text-muted mt-1">${players.map(player => {
       const rank = Number.isInteger(player.rank) && player.rank > 0 ? `Rank ${player.rank}` : 'Rank unassigned';
-      return `${escapeHtml(rank)} · ${escapeHtml(player.name || 'TBD')}${lineup.region ? ` (${escapeHtml(lineup.region)})` : ''}`;
+      return `${escapeHtml(rank)} · ${escapeHtml(player.name || 'TBD')}${window.CTPlayerRatings?.marker({playerId:player.player_id}, {drawId:row.draw_id}) || ''}${lineup.region ? ` (${escapeHtml(lineup.region)})` : ''}`;
     }).join(' / ')}</div>`;
   }).join('');
   const setStatus = (element, message, tone = 'muted') => {
@@ -1291,7 +1309,7 @@
     document.getElementById('preview-view-controls').classList.add('d-flex');
     document.getElementById('venue-timelines').innerHTML = result.venues.map(venue => {
       const rows = venueRows(result, venue.id);
-      return `<details class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap align-items-center gap-2"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span class="venue-age-group-summary">${ageGroupScheduleSummary(rows)}</span><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Time</th><th>Court</th><th>Draw / category</th><th>Round</th><th>Match</th><th>Players / qualification path</th><th>State</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td class="text-nowrap fw-semibold">${escapeHtml(row.scheduled_at.slice(0,16))}</td><td>${escapeHtml(row.court)}</td><td>${escapeHtml(row.draw_name)}</td><td>${scheduleRoundLabel(row)}</td><td class="text-nowrap fw-semibold">Match ${escapeHtml(row.match || '—')}</td><td>${escapeHtml((row.participants || []).join(' / ') || 'Participants determined by draw')}${lineupDetails(row)}</td><td>${row.fixed ? '<span class="badge bg-label-success">Saved</span>' : '<span class="badge bg-label-primary">Suggested · not saved</span>'}</td><td>${row.fixed && row.editable && unapplyUrl ? `<button type="button" class="btn btn-sm btn-outline-danger" data-unapply-fixture="${fixtureKey(row)}" data-match-label="${escapeHtml(row.draw_name)} ${escapeHtml(matchLabel(row))}">Remove</button>` : '<span class="text-muted">—</span>'}</td></tr>`).join('') || '<tr><td colspan="8" class="text-center text-muted py-4">No fixtures allocated.</td></tr>'}</tbody></table></div></details>`;
+      return `<details class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap align-items-center gap-2"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span class="venue-age-group-summary">${ageGroupScheduleSummary(rows)}</span><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Time</th><th>Court</th><th>Draw / category</th><th>Round</th><th>Match</th><th>Players / qualification path</th><th>State</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td class="text-nowrap fw-semibold">${escapeHtml(row.scheduled_at.slice(0,16))}</td><td>${escapeHtml(row.court)}</td><td>${escapeHtml(row.draw_name)}</td><td>${scheduleRoundLabel(row)}</td><td class="text-nowrap fw-semibold">Match ${escapeHtml(row.match || '—')}</td><td>${participantNamesHtml(row)}${lineupDetails(row)}</td><td>${row.fixed ? '<span class="badge bg-label-success">Saved</span>' : '<span class="badge bg-label-primary">Suggested · not saved</span>'}</td><td>${row.fixed && row.editable && unapplyUrl ? `<button type="button" class="btn btn-sm btn-outline-danger" data-unapply-fixture="${fixtureKey(row)}" data-match-label="${escapeHtml(row.draw_name)} ${escapeHtml(matchLabel(row))}">Remove</button>` : '<span class="text-muted">—</span>'}</td></tr>`).join('') || '<tr><td colspan="8" class="text-center text-muted py-4">No fixtures allocated.</td></tr>'}</tbody></table></div></details>`;
     }).join('');
     document.getElementById('venue-slot-grids').innerHTML = result.venues.map(venue => slotGrid(result, venue)).join('');
     const appliedVenueIds = [...new Set([
@@ -1738,6 +1756,7 @@
       loadRankScope();
       updateCourtSummary(drawId, venueId);
       updateDrawSummary(drawId);
+      refreshProgrammeStageSummaries();
       invalidatePreview();
       button.remove();
       setStatus(document.getElementById('allocation-status'), result.message, 'success');
@@ -1899,6 +1918,165 @@
     const code = String(draw.rubber_code || draw.name).toLowerCase();
     return code.includes('mixed') ? 'Mixed doubles' : code.includes('reverse') ? 'Reverse singles' : code.includes('double') ? 'Doubles' : 'Singles';
   };
+  const programmeSetupRules = () => [
+    ...allRankRules.map(rule => ({...rule, draw_ids:rule.draw_ids.filter(id => !rankScopeIds.includes(Number(id)))})),
+    ...applicableRankRules(),
+  ];
+  const programmeCourtLabels = labels => {
+    if (!labels.every(label => /^\d+$/.test(label) && String(Number(label)) === label)) return labels.join(', ');
+    const numbers = [...new Set(labels.map(Number))].sort((a,b) => a - b);
+    const ranges = [];
+    numbers.forEach(number => {
+      const previous = ranges[ranges.length - 1];
+      if (previous && number === previous[1] + 1) previous[1] = number;
+      else ranges.push([number, number]);
+    });
+    return ranges.map(([first,last]) => first === last ? String(first) : `${first}–${last}`).join(', ');
+  };
+  const programmeDrawLabel = draw => /\bboys\b/i.test(draw.name) ? 'Boys' : /\bgirls\b/i.test(draw.name) ? 'Girls' : /\bmixed\b/i.test(draw.name) ? 'Mixed' : draw.name;
+  const programmeDrawSetup = (draw, rules) => {
+    const venues = [...document.querySelectorAll(`.assignment-choice[data-draw="${draw.id}"]:checked`)];
+    if (!venues.length) return '<span class="text-danger">No venue assigned</span>';
+    const validRules = rules.filter(rule => rule.draw_ids.map(Number).includes(Number(draw.id))
+      && Number(rule.min_rank) >= 1 && Number(rule.max_rank) >= Number(rule.min_rank)
+      && venues.some(venue => Number(venue.value) === Number(rule.venue_id)));
+    const lines = venues.map(venue => {
+      const courts = [...document.querySelectorAll(`.court-allocation[data-draw="${draw.id}"][data-venue="${venue.value}"]:checked`)].map(input => input.value);
+      const bands = validRules.filter(rule => Number(rule.venue_id) === Number(venue.value))
+        .sort((a,b) => Number(a.min_rank) - Number(b.min_rank))
+        .map(rule => Number(rule.min_rank) === Number(rule.max_rank) ? String(rule.min_rank) : `${rule.min_rank}–${rule.max_rank}`);
+      return `<li>${escapeHtml(venue.dataset.venueName)} · ${courts.length ? `Courts ${escapeHtml(programmeCourtLabels(courts))}` : '<span class="text-danger">No courts selected</span>'}${bands.length ? ` · Positions ${escapeHtml(bands.join(', '))} preferred` : ' · No position preference'}</li>`;
+    });
+    return `<ul>${lines.join('')}</ul>`;
+  };
+  const refreshProgrammeStageSummaries = () => {
+    const draws = new Map(programmeGroup().map(draw => [Number(draw.id), draw]));
+    const rules = programmeSetupRules();
+    document.querySelectorAll('.programme-stage').forEach(card => {
+      const members = card.dataset.programmeMembers.split(',').map(key => draws.get(Number(key.split(':')[0]))).filter(Boolean);
+      card.querySelector('.programme-stage-summary').innerHTML = '<div class="text-muted">Venue setup · position preferences</div>'
+        + members.map(draw => {
+          const label = programmeDrawLabel(draw);
+          const heading = members.filter(member => programmeDrawLabel(member) === label).length === 1 ? label : draw.name;
+          return `<div class="mt-1"><strong>${escapeHtml(heading)}</strong><div>${programmeDrawSetup(draw, rules)}</div></div>`;
+        }).join('');
+    });
+  };
+  const programmeSetupModal = document.getElementById('programme-setup-modal');
+  let programmeSetupScope = [];
+  let programmeSetupSaving = false;
+  const programmeSetupVenueOptions = (section, selected = '') => '<option value="">Choose an assigned venue</option>'
+    + [...section.querySelectorAll('.programme-setup-venue:checked')].map(input => `<option value="${input.value}" ${String(input.value) === String(selected) ? 'selected' : ''}>${escapeHtml(input.dataset.name)}</option>`).join('')
+    + (selected && !section.querySelector(`.programme-setup-venue[value="${Number(selected)}"]:checked`) ? `<option value="${Number(selected)}" selected>Venue no longer assigned</option>` : '');
+  const addProgrammeSetupBand = (section, rule = {min_rank:1, max_rank:4, venue_id:''}) => {
+    const row = document.createElement('div');
+    row.className = 'programme-setup-band row g-2 align-items-end mb-2';
+    row.innerHTML = `<div class="col-4 col-sm-2"><label class="form-label small mb-1">From position<input class="form-control form-control-sm programme-setup-min" type="number" min="1" max="100" value="${escapeHtml(rule.min_rank)}"></label></div><div class="col-4 col-sm-2"><label class="form-label small mb-1">To position<input class="form-control form-control-sm programme-setup-max" type="number" min="1" max="100" value="${escapeHtml(rule.max_rank)}"></label></div><div class="col-12 col-sm-6"><label class="form-label small mb-1 d-block">Preferred venue<select class="form-select form-select-sm programme-setup-band-venue">${programmeSetupVenueOptions(section, rule.venue_id)}</select></label></div><div class="col-4 col-sm-2"><button type="button" class="btn btn-sm btn-outline-danger programme-setup-remove-band" aria-label="Remove position preference">Remove</button></div>`;
+    section.querySelector('.programme-setup-bands').appendChild(row);
+  };
+  const readProgrammeSetup = () => {
+    const assignments = [], rules = [];
+    programmeSetupModal.querySelectorAll('[data-setup-draw]').forEach(section => {
+      const drawId = Number(section.dataset.setupDraw);
+      const selected = [...section.querySelectorAll('.programme-setup-venue:checked')];
+      assignments.push({draw_id:drawId, venue_ids:selected.map(input => Number(input.value)), court_allocations:selected.map(input => ({
+        venue_id:Number(input.value), court_labels:[...section.querySelectorAll(`.programme-setup-court[data-venue="${input.value}"]:checked`)].map(court => court.value),
+      }))});
+      section.querySelectorAll('.programme-setup-band').forEach(row => rules.push({draw_ids:[drawId],
+        min_rank:Number(row.querySelector('.programme-setup-min').value), max_rank:Number(row.querySelector('.programme-setup-max').value), venue_id:Number(row.querySelector('.programme-setup-band-venue').value),
+      }));
+    });
+    return {assignments, rules};
+  };
+  const validateProgrammeSetup = ({assignments, rules}) => {
+    if (rules.length > 50) return 'Use at most 50 position preference bands.';
+    for (const assignment of assignments) {
+      const name = programmeDraws.find(draw => Number(draw.id) === assignment.draw_id)?.name || 'Draw';
+      if (!assignment.venue_ids.length) return `${name}: choose at least one venue.`;
+      if (assignment.court_allocations.some(allocation => !allocation.court_labels.length)) return `${name}: choose at least one court for each selected venue.`;
+      const bands = rules.filter(rule => rule.draw_ids.includes(assignment.draw_id));
+      for (let index = 0; index < bands.length; index++) {
+        const rule = bands[index];
+        if (!Number.isInteger(rule.min_rank) || !Number.isInteger(rule.max_rank) || rule.min_rank < 1 || rule.max_rank < rule.min_rank || rule.max_rank > 100) return `${name}: position ranges must run from 1 to 100, with the end at or after the start.`;
+        if (!assignment.venue_ids.includes(rule.venue_id)) return `${name}: every position preference must use an assigned venue.`;
+        if (bands.slice(0,index).some(other => rule.min_rank <= other.max_rank && rule.max_rank >= other.min_rank)) return `${name}: position preference ranges cannot overlap.`;
+      }
+    }
+    return null;
+  };
+  const openProgrammeSetup = card => {
+    programmeSetupScope = [...new Set(card.dataset.programmeMembers.split(',').map(key => Number(key.split(':')[0])))];
+    const draws = programmeSetupScope.map(id => programmeDraws.find(draw => Number(draw.id) === id)).filter(Boolean);
+    if (draws.some(draw => draw.locked)) return programmeStatus('A draw is locked. Review its setup in the allocation workspace.', 'warning');
+    const rules = programmeSetupRules();
+    document.getElementById('programme-setup-title').textContent = `Assign venues & courts · ${card.querySelector('strong').textContent}`;
+    document.getElementById('programme-setup-draws').innerHTML = draws.map(draw => `<section data-setup-draw="${draw.id}" class="border rounded p-3 mb-3"><h6>${escapeHtml(draw.name)}</h6>${[...document.querySelectorAll(`.assignment-choice[data-draw="${draw.id}"]`)].map(venue => {
+      const courts = [...document.querySelectorAll(`.court-allocation[data-draw="${draw.id}"][data-venue="${venue.value}"]`)];
+      return `<div class="border-top pt-2 mt-2"><label class="d-flex align-items-center gap-2"><input type="checkbox" class="form-check-input programme-setup-venue" value="${venue.value}" data-name="${escapeHtml(venue.dataset.venueName)}" ${venue.checked ? 'checked' : ''}>${escapeHtml(venue.dataset.venueName)}</label><button type="button" class="btn btn-sm btn-outline-secondary programme-setup-all-courts mt-1" data-venue="${venue.value}">All courts</button><div class="d-flex flex-wrap gap-2 mt-2">${courts.map(court => `<label class="small border rounded px-2 py-1"><input type="checkbox" class="form-check-input programme-setup-court me-1" data-venue="${venue.value}" value="${escapeHtml(court.value)}" ${court.checked ? 'checked' : ''} ${venue.checked ? '' : 'disabled'}>Court ${escapeHtml(court.value)}</label>`).join('')}</div></div>`;
+    }).join('')}<div class="mt-3"><strong class="small">Optional position preferences</strong><div class="small text-muted mb-2">Uncovered positions use normal venue scheduling.</div><div class="programme-setup-bands"></div><button type="button" class="btn btn-sm btn-outline-secondary programme-setup-add-band">Add position preference</button></div></section>`).join('');
+    programmeSetupModal.querySelectorAll('[data-setup-draw]').forEach(section => rules.filter(rule => rule.draw_ids.map(Number).includes(Number(section.dataset.setupDraw))).forEach(rule => addProgrammeSetupBand(section, rule)));
+    document.getElementById('programme-setup-policy').textContent = 'Uses the saved event rule when players span different venue bands. Change that event-wide rule in scheduling rules; this setup save preserves it.';
+    document.getElementById('programme-setup-status').textContent = '';
+    bootstrap.Modal.getOrCreateInstance(programmeSetupModal).show();
+  };
+  programmeSetupModal.addEventListener('change', event => {
+    if (!event.target.matches('.programme-setup-venue')) return;
+    const section = event.target.closest('[data-setup-draw]');
+    section.querySelectorAll(`.programme-setup-court[data-venue="${event.target.value}"]`).forEach(input => { input.disabled = !event.target.checked; });
+    section.querySelectorAll('.programme-setup-band-venue').forEach(select => { select.innerHTML = programmeSetupVenueOptions(section, select.value); });
+  });
+  programmeSetupModal.addEventListener('click', event => {
+    const allCourts = event.target.closest('.programme-setup-all-courts');
+    if (allCourts) {
+      const section = allCourts.closest('[data-setup-draw]');
+      const venue = section.querySelector(`.programme-setup-venue[value="${allCourts.dataset.venue}"]`);
+      venue.checked = true;
+      venue.dispatchEvent(new Event('change', {bubbles:true}));
+      section.querySelectorAll(`.programme-setup-court[data-venue="${allCourts.dataset.venue}"]`).forEach(input => { input.checked = true; });
+    }
+    const add = event.target.closest('.programme-setup-add-band');
+    if (add) addProgrammeSetupBand(add.closest('[data-setup-draw]'));
+    event.target.closest('.programme-setup-remove-band')?.closest('.programme-setup-band').remove();
+  });
+  programmeSetupModal.addEventListener('hide.bs.modal', event => { if (programmeSetupSaving) event.preventDefault(); });
+  document.getElementById('programme-setup-save').addEventListener('click', async event => {
+    if (programmeSetupSaving) return;
+    const setup = readProgrammeSetup();
+    const error = validateProgrammeSetup(setup);
+    const status = document.getElementById('programme-setup-status');
+    if (error) return setStatus(status, error, 'danger');
+    programmeSetupSaving = true;
+    const controls = [...programmeSetupModal.querySelectorAll('button, input, select')];
+    const disabled = controls.map(control => control.disabled);
+    controls.forEach(control => { control.disabled = true; });
+    setStatus(status, 'Saving these draw assignments and preferences…');
+    try {
+      const result = await post(assignmentUrl, {setup_only:true, venues:@json($venues->map(fn($venue) => ['id' => $venue['id'], 'courts' => $venue['courts']])->values()), assignments:setup.assignments,
+        schedule:{rank_preference_draw_ids:programmeSetupScope, rank_venue_preferences:setup.rules}});
+      rememberRankRules();
+      allRankRules = coalesceRankRules(allRankRules.flatMap(rule => {
+        if (!rule.draw_ids.length) return [rule];
+        const retained = {...rule, draw_ids:rule.draw_ids.filter(id => !programmeSetupScope.includes(Number(id)))};
+        return retained.draw_ids.length ? [retained] : [];
+      }).concat(setup.rules));
+      setup.assignments.forEach(assignment => {
+        document.querySelectorAll(`.assignment-choice[data-draw="${assignment.draw_id}"]`).forEach(input => { input.checked = assignment.venue_ids.includes(Number(input.value)); });
+        document.querySelectorAll(`.court-allocation[data-draw="${assignment.draw_id}"]`).forEach(input => {
+          input.checked = assignment.court_allocations.some(allocation => allocation.venue_id === Number(input.dataset.venue) && allocation.court_labels.includes(input.value));
+          updateCourtSummary(assignment.draw_id, input.dataset.venue);
+        });
+        updateDrawSummary(assignment.draw_id);
+      });
+      loadRankScope();
+      programmePayload = null;
+      invalidatePreview('Draw setup saved. Generate a new preview before applying.');
+      refreshProgrammeStageSummaries();
+      programmeStatus('Draw setup saved for every round.' + (allocationsDirty || scheduleDirty ? ' Other page edits remain unsaved.' : '') + (result.warnings?.length ? ` ${result.warnings.join(' ')}` : ''), 'success');
+      programmeSetupSaving = false;
+      bootstrap.Modal.getOrCreateInstance(programmeSetupModal).hide();
+    } catch (error) { setStatus(status, error.message, 'danger'); }
+    finally { programmeSetupSaving = false; controls.forEach((control,index) => { control.disabled = disabled[index]; }); }
+  });
   const applyProgrammeStageOrder = () => {
     const rows = new Map(programmeRows().map(row => [`${row.dataset.programmeDraw}:${row.dataset.programmeRound}`, row]));
     document.querySelectorAll('.programme-day-lane').forEach(lane => {
@@ -1930,7 +2108,8 @@
       stages.get(key).members.push(`${row.dataset.programmeDraw}:${row.dataset.programmeRound}`);
     });
     const ordered = [...stages.values()].sort((a,b) => a.day - b.day || a.sequence - b.sequence || a.label.localeCompare(b.label));
-    document.getElementById('programme-stages').innerHTML = [1,2,3].map(day => `<section class="col-lg-4"><h6>Day ${day}</h6><div class="programme-day-lane" data-day="${day}" aria-label="Day ${day} playing order">${ordered.filter(stage => stage.day === day).map(stage => `<div class="programme-stage" data-programme-members="${stage.members.join(',')}"><div class="d-flex align-items-center gap-2"><button type="button" class="btn btn-sm btn-outline-secondary programme-stage-handle" aria-label="Drag ${escapeHtml(stage.label)}"><i class="ti ti-grip-vertical" aria-hidden="true"></i></button><strong>${escapeHtml(stage.label)}</strong></div><div class="small text-muted mt-1"><span class="programme-stage-order">Order ${stage.sequence}</span> · ${stage.members.length === 2 ? 'Boys and girls move together' : `${stage.members.length} draw${stage.members.length === 1 ? '' : 's'}`}</div><div class="programme-stage-controls"><button type="button" class="btn btn-sm btn-outline-secondary programme-stage-move" data-direction="up" aria-label="Move ${escapeHtml(stage.label)} up">Up</button><button type="button" class="btn btn-sm btn-outline-secondary programme-stage-move" data-direction="down" aria-label="Move ${escapeHtml(stage.label)} down">Down</button><select class="form-select form-select-sm programme-stage-day" aria-label="Move ${escapeHtml(stage.label)} to another day">${[1,2,3].map(value => `<option value="${value}" ${day === value ? 'selected' : ''}>Day ${value}</option>`).join('')}</select></div></div>`).join('')}</div></section>`).join('');
+    document.getElementById('programme-stages').innerHTML = [1,2,3].map(day => `<section class="col-lg-4"><h6>Day ${day}</h6><div class="programme-day-lane" data-day="${day}" aria-label="Day ${day} playing order">${ordered.filter(stage => stage.day === day).map(stage => `<div class="programme-stage" data-programme-members="${stage.members.join(',')}"><div class="d-flex align-items-center gap-2"><button type="button" class="btn btn-sm btn-outline-secondary programme-stage-handle" aria-label="Drag ${escapeHtml(stage.label)}"><i class="ti ti-grip-vertical" aria-hidden="true"></i></button><strong>${escapeHtml(stage.label)}</strong></div><div class="small text-muted mt-1"><span class="programme-stage-order">Order ${stage.sequence}</span> · ${stage.members.length === 2 ? 'Boys and girls move together' : `${stage.members.length} draw${stage.members.length === 1 ? '' : 's'}`}</div><div class="programme-stage-summary"></div><button type="button" class="btn btn-sm btn-outline-primary mt-2 programme-stage-setup">Assign venues &amp; courts</button><div class="programme-stage-controls"><button type="button" class="btn btn-sm btn-outline-secondary programme-stage-move" data-direction="up" aria-label="Move ${escapeHtml(stage.label)} up">Up</button><button type="button" class="btn btn-sm btn-outline-secondary programme-stage-move" data-direction="down" aria-label="Move ${escapeHtml(stage.label)} down">Down</button><select class="form-select form-select-sm programme-stage-day" aria-label="Move ${escapeHtml(stage.label)} to another day">${[1,2,3].map(value => `<option value="${value}" ${day === value ? 'selected' : ''}>Day ${value}</option>`).join('')}</select></div></div>`).join('')}</div></section>`).join('');
+    refreshProgrammeStageSummaries();
     if (typeof Sortable !== 'undefined') document.querySelectorAll('.programme-day-lane').forEach(lane => programmeSortables.push(new Sortable(lane, {
       group:'programme-days', draggable:'.programme-stage', handle:'.programme-stage-handle', animation:150,
       delay:100, delayOnTouchOnly:true, touchStartThreshold:4, onEnd:applyProgrammeStageOrder,
@@ -1953,6 +2132,8 @@
   document.querySelectorAll('.programme-time').forEach(input => input.addEventListener('change', () => { programmePayload = null; invalidatePreview(); }));
   document.getElementById('programme-rounds').addEventListener('change', () => { programmePayload = null; invalidatePreview(); renderProgrammeStages(); });
   document.getElementById('programme-stages').addEventListener('click', event => {
+    const setupButton = event.target.closest('.programme-stage-setup');
+    if (setupButton) return openProgrammeSetup(setupButton.closest('.programme-stage'));
     const button = event.target.closest('.programme-stage-move');
     if (!button) return;
     const card = button.closest('.programme-stage');
@@ -1991,6 +2172,7 @@
       updateCourtSummary(draw.id, source.value); updateDrawSummary(draw.id);
     }));
     invalidatePreview(); button.disabled = true;
+    refreshProgrammeStageSummaries();
     try { if (await saveAllocationsAndTiming(button, missing.map(draw => draw.id))) programmeStatus('Missing discipline assignments saved. You can now create the preview.', 'success'); else { markAllocationsDirty(); programmeStatus('Assignments were not saved. Review the changed allocations and save them before previewing.', 'danger'); } }
     finally { button.disabled = false; }
   });
@@ -2015,6 +2197,13 @@
     catch (error) { if (!error.stalePreview && refreshVersion === programmeRefreshVersion) programmeStatus(error.message, 'danger'); }
     finally { if (refreshVersion === programmeRefreshVersion) { button.disabled = false; button.innerHTML = programmeCreateLabel; } }
   };
+  // Refresh only card details so allocation edits cannot reset the user's daily order.
+  document.addEventListener('change', event => {
+    if (event.target.matches('.assignment-choice, .court-allocation, .draw-choice, .rank-band-min, .rank-band-max, .rank-band-draws, .rank-band-venue')) refreshProgrammeStageSummaries();
+  });
+  document.addEventListener('click', event => {
+    if (event.target.closest('.remove-rank-band, #add-rank-band, #default-rank-bands')) refreshProgrammeStageSummaries();
+  });
   document.getElementById('programme-create').addEventListener('click', () => refreshProgrammePreview());
   document.querySelectorAll('.draw-choice').forEach(input => input.addEventListener('change', () => { programmePayload = null; }));
   showWorkflowStep(1);

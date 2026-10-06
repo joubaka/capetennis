@@ -381,6 +381,15 @@
           $venuesModal.modal('hide');
 
           const $container = $('.draw-venues[data-draw-id="' + drawId + '"]');
+          const $summary = $container.closest('.event-draw-publication-card').find('.event-draw-venue-summary').empty();
+          if (response.venues && response.venues.length) {
+            response.venues.forEach(v => {
+              $('<span>').addClass('badge bg-label-primary')
+                .text(`${v.name} (${v.pivot.num_courts})`).appendTo($summary);
+            });
+          } else {
+            $('<span>').addClass('badge bg-label-secondary').text('No venues assigned').appendTo($summary);
+          }
 
           if (response.venues && response.venues.length) {
 
@@ -448,6 +457,12 @@
             .addClass(schedulePublished ? 'bg-label-success' : 'bg-label-secondary')
             .text(schedulePublished ? (drawPublished ? 'Schedule published' : 'Schedule preview only') : 'Schedule hidden');
           $card.find('.event-publication-note').text(schedulePublished && !drawPublished ? 'Publish the draw to make these times public.' : 'Draws and match times are published separately.');
+          $card.find('.event-oop-summary').each(function () {
+            const created = Number($(this).data('created')) === 1;
+            $(this).removeClass('bg-label-success bg-label-info bg-label-secondary')
+              .addClass(schedulePublished ? 'bg-label-success' : (created ? 'bg-label-info' : 'bg-label-secondary'))
+              .text(`Order of play: ${schedulePublished ? (drawPublished ? 'Published' : 'Preview only') : (created ? 'Created' : 'Not done')}`);
+          });
           toastr.success(isSchedule && newStatus && response.preview_only
             ? 'Schedule ready for preview. Publish the draw to make these times public.'
             : `${isSchedule ? 'Schedule' : 'Draw'} ${newStatus ? 'published' : 'unpublished'}.`);
@@ -495,7 +510,7 @@
             }
 
             toastr.success(response.message);
-            $btn.closest('.list-group-item')
+            $btn.closest('.event-draw-publication-card')
               .fadeOut(300, function () { $(this).remove(); });
           },
           error: () => {

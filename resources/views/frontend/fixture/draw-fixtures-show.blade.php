@@ -3,5 +3,5 @@
 @section('title', ($draw->drawName ?? 'Tournament') . ' matches')
 
 @section('content')
-  @include('frontend.fixture.fixture-table-no-profile')
+  @include('frontend.fixture.fixture-table')
 @endsection

@@ -107,7 +107,7 @@
 
     var classes = mobile ? 'rr-score-cell rr-mobile-match' : 'rr-score-cell rr-score-action';
     var players = mobile
-      ? '<span class="rr-mobile-players"><span>' + escapeHtml(rowPlayer.name) + '</span><span class="rr-mobile-versus">vs</span><span>' + escapeHtml(columnPlayer.name) + '</span></span>'
+      ? '<span class="rr-mobile-players"><span>' + escapeHtml(rowPlayer.name) + (root.CTPlayerRatings?.marker({registrationId:rowPlayer.id}) || '') + '</span><span class="rr-mobile-versus">vs</span><span>' + escapeHtml(columnPlayer.name) + (root.CTPlayerRatings?.marker({registrationId:columnPlayer.id}) || '') + '</span></span>'
       : '';
 
     return '<button type="button" class="' + classes + '"' +
@@ -157,11 +157,11 @@
         '<div class="rr-matrix-scroll rr-matrix-table-shell"><table class="table table-bordered table-sm rr-matrix-table" aria-describedby="rr-matrix-help">' +
         '<caption class="visually-hidden">Round robin results for Box ' + escapeHtml(group.name) + '</caption>' +
         '<thead><tr><th scope="col" aria-label="Player"></th>' +
-        players.map(function (p) { return '<th scope="col" class="text-center" title="' + escapeHtml(p.name) + '">' + escapeHtml(p.name) + '</th>'; }).join('') +
+        players.map(function (p) { return '<th scope="col" class="text-center" title="' + escapeHtml(p.name) + '">' + escapeHtml(p.name) + (root.CTPlayerRatings?.marker({registrationId:p.id}) || '') + '</th>'; }).join('') +
         '</tr></thead><tbody>';
 
       players.forEach(function (rowP) {
-        html += '<tr><th scope="row" class="small" title="' + escapeHtml(rowP.name) + '">' + escapeHtml(rowP.name) + '</th>';
+        html += '<tr><th scope="row" class="small" title="' + escapeHtml(rowP.name) + '">' + escapeHtml(rowP.name) + (root.CTPlayerRatings?.marker({registrationId:rowP.id}) || '') + '</th>';
 
         players.forEach(function (colP) {
           if (rowP.id === colP.id) { html += '<td class="bg-diagonal" aria-label="Same player; no match"></td>'; return; }

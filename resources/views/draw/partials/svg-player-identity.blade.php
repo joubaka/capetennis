@@ -23,7 +23,15 @@
     $textX = (float) $x;
     $baselineY = (float) $y;
     $display = $isBye ? 'BYE' : ($isPlaceholder ? '---' : $label);
-    $estimatedWidth = min($maxWidth, max(36, (mb_strlen($display) * 6.8) + 14));
+    $badgeCount = 0;
+    if (!$isBye && !$isPlaceholder && $registration && \App\Services\Performance\PlayerRatingBadgeService::visible()) {
+        foreach ($registration->players as $ratedPlayer) {
+            if (app(\App\Services\Performance\PlayerRatingBadgeService::class)->forPlayer($ratedPlayer->id, $draw ?? ($fixture ?? null)?->draw)) { $badgeCount++; }
+        }
+    }
+    $badgeWidth = $badgeCount * 75;
+    $badgeDisplay = $badgeCount ? \Illuminate\Support\Str::limit($display, max(5, (int) floor(($maxWidth - $badgeWidth - 14) / 6.8))) : $display;
+    $estimatedWidth = min($maxWidth, max(36, (mb_strlen($badgeDisplay) * 6.8) + 14 + $badgeWidth));
 @endphp
 
 @if($isBye || $isPlaceholder)
@@ -37,5 +45,5 @@
         rx="5"
         class="player-identity-bg {{ $isWinner ? 'winner' : '' }}"
     />
-    <text x="{{ $textX }}" y="{{ $baselineY }}" class="player-name player-identity-text {{ $isWinner ? 'winner' : '' }}">{{ $display }}</text>
+    <text x="{{ $textX }}" y="{{ $baselineY }}" @if($badgeCount) textLength="{{ max(30, $maxWidth - 14) }}" lengthAdjust="spacingAndGlyphs" @endif class="player-name player-identity-text {{ $isWinner ? 'winner' : '' }}"><title>{{ $display }}</title>{{ $badgeDisplay }}@if($registration)@foreach($registration->players as $ratedPlayer)<x-player-rating :player-id="$ratedPlayer->id" :context="$draw ?? ($fixture ?? null)?->draw ?? null" :svg="true" />@endforeach@endif</text>
 @endif

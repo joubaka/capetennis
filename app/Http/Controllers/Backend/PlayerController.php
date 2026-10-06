@@ -105,25 +105,32 @@ class PlayerController extends Controller
         $orderColumn = $orderableColumns[$request->integer('order.0.column')] ?? 'id';
         $orderDirection = strtolower((string) $request->input('order.0.dir')) === 'asc' ? 'asc' : 'desc';
 
+        $showAbility = \App\Services\Performance\PlayerRatingBadgeService::visible();
         $players = $query
             ->orderBy($orderColumn, $orderDirection)
             ->orderBy('id', 'desc')
             ->offset($start)
             ->limit($length)
             ->get()
-            ->map(function (Player $player): Player {
+            ->map(function (Player $player) use ($showAbility): Player {
             $player->profile_status = $player->getProfileStatus();
             $player->needs_update = $player->needsProfileUpdate();
             $player->is_complete = $player->isProfileComplete();
+            if ($showAbility) {
+                // Render only this bounded page; the scoped badge service shares one snapshot.
+                $player->ability_badge_html = view('components.player-rating', ['playerId' => $player->id])->render();
+            }
             return $player;
         });
 
-        return response()->json([
+        $response = response()->json([
             'draw' => $draw,
             'recordsTotal' => $recordsTotal,
             'recordsFiltered' => $recordsFiltered,
             'data' => $players,
         ]);
+        if ($showAbility) { $response->headers->set('Cache-Control', 'private, no-store'); }
+        return $response;
     }
 
     /**

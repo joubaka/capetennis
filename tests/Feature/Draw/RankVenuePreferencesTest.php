@@ -153,6 +153,70 @@ class RankVenuePreferencesTest extends TestCase
             'schedule' => $schedule + ['draw_starts' => [], 'venue_starts' => [], 'reschedule_existing' => false]];
     }
 
+    public function test_setup_only_save_preserves_timing_other_draws_and_saved_matches(): void
+    {
+        [$event, $draws, $venues] = $this->setupEvent();
+        $fixture = $this->rubber($draws[0], [1], [2]);
+        $fixture->update(['scheduled_at' => '2026-10-10 09:00:00', 'venue_id' => $venues[0]->id, 'court_label' => '1', 'duration_min' => 60]);
+        $beforeFixture = $fixture->fresh()->getAttributes();
+        $stored = $this->schedulingOptions($draws, [
+            'draw_starts' => [['draw_id' => $draws[1]->id, 'start' => '2026-10-10 10:00:00']],
+            'venue_starts' => [], 'reschedule_existing' => true, 'cross_band_policy' => 'manual',
+            'draw_rounds' => [['draw_id' => $draws[1]->id, 'rounds' => [2]]],
+            'rank_venue_preferences' => $this->rules($draws, $venues),
+        ]);
+        DB::table('event_venue_schedule_drafts')->insert(['event_id' => $event->id, 'options' => json_encode($stored), 'created_at' => now(), 'updated_at' => now()]);
+        $newRule = ['draw_ids' => [$draws[0]->id], 'min_rank' => 1, 'max_rank' => 8, 'venue_id' => $venues[0]->id];
+        $payload = $this->savePayload($draws->take(1), $venues, []);
+        $payload['setup_only'] = true;
+        $payload['schedule'] = ['rank_preference_draw_ids' => [$draws[0]->id], 'rank_venue_preferences' => [$newRule],
+            'duration' => -1, 'start' => 'invalid dirty timing', 'cross_band_policy' => 'highest_ranked'];
+        $this->postJson(route('backend.event-venue-schedule.assignments', $event), $payload)->assertOk()
+            ->assertJsonPath('message', 'Venues, courts and position bands saved.')->assertJsonPath('unscheduled', 0);
+        $saved = json_decode(DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true);
+        foreach ($stored as $key => $value) {
+            if ($key !== 'rank_venue_preferences') $this->assertEquals($value, $saved[$key], $key);
+        }
+        $this->assertEquals([$newRule], app(RankVenuePreferences::class)->active($saved['rank_venue_preferences'], [$draws[0]->id]));
+        $this->assertCount(3, app(RankVenuePreferences::class)->active($saved['rank_venue_preferences'], [$draws[1]->id]));
+        $this->assertSame($beforeFixture, $fixture->fresh()->getAttributes());
+        $this->assertSame(6, (int) $draws[1]->venues()->sum('draw_venues.num_courts'));
+    }
+
+    public function test_setup_only_cannot_remove_booked_venues_or_courts(): void
+    {
+        [$event, $draws, $venues] = $this->setupEvent();
+        $fixture = $this->rubber($draws[0], [1], [2]);
+        $fixture->update(['scheduled_at' => '2026-10-10 09:00:00', 'venue_id' => $venues[0]->id, 'court_label' => '1', 'duration_min' => 60]);
+        $before = $fixture->fresh()->getAttributes();
+        $payload = $this->savePayload($draws->take(1), $venues, []);
+        $payload['setup_only'] = true;
+        $payload['schedule'] = ['rank_preference_draw_ids' => [$draws[0]->id], 'rank_venue_preferences' => []];
+        $withoutVenue = $payload;
+        $withoutVenue['assignments'][0]['venue_ids'] = $venues->skip(1)->pluck('id')->all();
+        $withoutVenue['assignments'][0]['court_allocations'] = array_slice($payload['assignments'][0]['court_allocations'], 1);
+        $this->postJson(route('backend.event-venue-schedule.assignments', $event), $withoutVenue)->assertUnprocessable();
+        $payload['assignments'][0]['court_allocations'][0]['court_labels'] = ['2'];
+        $this->postJson(route('backend.event-venue-schedule.assignments', $event), $payload)->assertUnprocessable();
+        $this->assertSame($before, $fixture->fresh()->getAttributes());
+        $this->assertSame(3, $draws[0]->venues()->count());
+        $this->assertDatabaseCount('draw_venue_court_allocations', 0);
+        $this->assertDatabaseCount('event_venue_schedule_drafts', 0);
+    }
+
+    public function test_setup_only_rejects_unrelated_band_scope_and_unauthorized_actor(): void
+    {
+        [$event, $draws, $venues] = $this->setupEvent();
+        $payload = $this->savePayload($draws->take(1), $venues, []);
+        $payload['setup_only'] = true;
+        $payload['schedule'] = ['rank_preference_draw_ids' => [$draws[1]->id], 'rank_venue_preferences' => []];
+        $this->postJson(route('backend.event-venue-schedule.assignments', $event), $payload)->assertUnprocessable();
+        $payload['schedule']['rank_preference_draw_ids'] = [$draws[0]->id];
+        $this->actingAs(User::factory()->create())->postJson(route('backend.event-venue-schedule.assignments', $event), $payload)->assertForbidden();
+        $this->assertDatabaseCount('draw_venue_court_allocations', 0);
+        $this->assertDatabaseCount('event_venue_schedule_drafts', 0);
+    }
+
     public function test_http_save_replaces_only_selected_team_draw_rules_and_preview_accepts_unsaved_rules(): void
     {
         [$event, $draws, $venues] = $this->setupEvent();

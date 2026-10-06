@@ -146,6 +146,7 @@ toastr.options = { positionClass: 'toast-top-right', timeOut: 5000, closeButton:
 </script>
 
 {{-- 7️⃣ Page scripts MUST be last --}}
+@include('draw.partials.player-rating-assets')
 @yield('page-script')
 
 @stack('modals')

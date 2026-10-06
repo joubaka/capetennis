@@ -71,7 +71,7 @@
                                     <li class="mb-4 pb-1 d-flex justify-content-between align-items-center">
                                         <div class="badge bg-label-success rounded p-2">{{($rank+1)}}</div>
                                         <div class="d-flex justify-content-between w-100 flex-wrap">
-                                            <h6 class="mb-0 ms-3">{{$entry->player->name}} {{$entry->player->surname}}</h6>
+                                            <h6 class="mb-0 ms-3">{{$entry->player->name}} {{$entry->player->surname}}<x-player-rating :player-id="$entry->player->id" :context="$eventCategory" /></h6>
 
                                         </div>
                                     </li>
@@ -104,7 +104,7 @@
                                     <li class="mb-4 pb-1 d-flex justify-content-between align-items-center">
                                         <div class="badge bg-label-success rounded p-2">{{($rank+1)}}</div>
                                         <div class="d-flex justify-content-between w-100 flex-wrap">
-                                            <h6 class="mb-0 ms-3">{{$entry->player->name}} {{$entry->player->surname}}</h6>
+                                            <h6 class="mb-0 ms-3">{{$entry->player->name}} {{$entry->player->surname}}<x-player-rating :player-id="$entry->player->id" :context="$eventCategory" /></h6>
 
                                         </div>
                                     </li>
@@ -134,7 +134,7 @@
                                     <li class="mb-4 pb-1 d-flex justify-content-between align-items-center">
                                         <div class="badge bg-label-success rounded p-2">{{($rank+1)}}</div>
                                         <div class="d-flex justify-content-between w-100 flex-wrap">
-                                            <h6 class="mb-0 ms-3">{{$entry->player->name}} {{$entry->player->surname}} - {{$entry->position}}</h6>
+                                            <h6 class="mb-0 ms-3">{{$entry->player->name}} {{$entry->player->surname}}<x-player-rating :player-id="$entry->player->id" :context="$eventCategory" /> - {{$entry->position}}</h6>
 
                                         </div>
                                     </li>
@@ -168,7 +168,7 @@
                                     <li class="mb-4 pb-1 d-flex justify-content-between align-items-center">
                                         <div class="badge bg-label-success rounded p-2">{{($rank+1)}}</div>
                                         <div class="d-flex justify-content-between w-100 flex-wrap">
-                                            <h6 class="mb-0 ms-3">{{$entry->player->name}} {{$entry->player->surname}}</h6>
+                                            <h6 class="mb-0 ms-3">{{$entry->player->name}} {{$entry->player->surname}}<x-player-rating :player-id="$entry->player->id" :context="$eventCategory" /></h6>
 
                                         </div>
                                     </li>
@@ -231,7 +231,7 @@
                                     <li class="mb-4 pb-1 d-flex justify-content-between align-items-center">
                                         <div class="badge bg-label-success rounded p-2">{{($rank+1)}}</div>
                                         <div class="d-flex justify-content-between w-100 flex-wrap">
-                                            <h6 class="mb-0 ms-3">{{$entry->player->name}} {{$entry->player->surname}}</h6>
+                                            <h6 class="mb-0 ms-3">{{$entry->player->name}} {{$entry->player->surname}}<x-player-rating :player-id="$entry->player->id" :context="$eventCategory" /></h6>
 
                                         </div>
                                     </li>
@@ -260,7 +260,7 @@
                                     <li class="mb-4 pb-1 d-flex justify-content-between align-items-center">
                                         <div class="badge bg-label-success rounded p-2">{{($rank+1)}}</div>
                                         <div class="d-flex justify-content-between w-100 flex-wrap">
-                                            <h6 class="mb-0 ms-3">{{$entry->player->name}} {{$entry->player->surname}}</h6>
+                                            <h6 class="mb-0 ms-3">{{$entry->player->name}} {{$entry->player->surname}}<x-player-rating :player-id="$entry->player->id" :context="$eventCategory" /></h6>
 
                                         </div>
                                     </li>
@@ -289,7 +289,7 @@
                                     <li class="mb-4 pb-1 d-flex justify-content-between align-items-center">
                                         <div class="badge bg-label-success rounded p-2">{{($rank+1)}}</div>
                                         <div class="d-flex justify-content-between w-100 flex-wrap">
-                                            <h6 class="mb-0 ms-3">{{$entry->player->name}} {{$entry->player->surname}} - {{$entry->position}}</h6>
+                                            <h6 class="mb-0 ms-3">{{$entry->player->name}} {{$entry->player->surname}}<x-player-rating :player-id="$entry->player->id" :context="$eventCategory" /> - {{$entry->position}}</h6>
 
                                         </div>
                                     </li>
@@ -320,7 +320,7 @@
                                     <li class="mb-4 pb-1 d-flex justify-content-between align-items-center">
                                         <div class="badge bg-label-success rounded p-2">{{($rank+1)}}</div>
                                         <div class="d-flex justify-content-between w-100 flex-wrap">
-                                            <h6 class="mb-0 ms-3">{{$entry->player->name}} {{$entry->player->surname}}</h6>
+                                            <h6 class="mb-0 ms-3">{{$entry->player->name}} {{$entry->player->surname}}<x-player-rating :player-id="$entry->player->id" :context="$eventCategory" /></h6>
 
                                         </div>
                                     </li>

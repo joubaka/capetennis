@@ -57,7 +57,7 @@
                     {{ $slot->rank }}
                   </span>
                   <span class="{{ $isDummy ? 'text-muted fst-italic' : 'fw-medium' }}">
-                    {{ $playerName }}
+                    {{ $playerName }}@if($player)<x-player-rating :player-id="$player->id" :context="$team->category" />@endif
                   </span>
                 </div>
 
@@ -218,4 +218,3 @@
     }
   </style>
 @endonce
-

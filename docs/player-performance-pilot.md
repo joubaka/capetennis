@@ -1,5 +1,15 @@
 # Private player pilot - shared ability v3 and performance v2
 
+## Private name badges
+
+Browser competition/player displays now show a compact blue shared-ability number beside known player names for the `super-user` role only. Explicit Blade components cover profile headings, the player directory, event entries and results, rankings, competition rosters, fixture/order-of-play lineups and HTML/SVG draw identities. Explicit JavaScript markers cover round-robin matrices, group assignments, order/schedule tables, public round-robin pages and Flexible Monrad names. They never change stored/model names, input values, select options or existing name attributes.
+
+Draw, event-category and ranking-category displays select the exact normalized singles cohort. Legacy draws with missing or cross-event category references use their own canonical draw label and actual registration/player IDs; ambiguous labels and missing cohorts display no badge. Generic profile/directory names show the latest eligible cohort. Tooltips identify the cohort, comparison group and provisional singles interpretation; players from different groups cannot be compared. A doubles-specific label is not silently replaced with a singles or different-age headline. Imported names without an established profile ID have no badge.
+
+The lookup shares one compact published-data snapshot per request. Dynamic lookups use a read-only authenticated, `super-user`-protected endpoint (`player-performance/name-ratings`) with at most 100 player IDs, 100 registration IDs and 100 fixture IDs, at most three loaded players per registration (unsupported larger registrations are omitted), and `private, no-store` responses. Fixture-side lookups resolve actual registrations and draw context, rejecting a mismatched draw/category. Guest/ordinary-role HTML has neither badges nor private assets/payloads. All lookup authorization runs before any rating calculation.
+
+Emails, financial documents, downloadable PDFs/draw packs, native selectors and plain-text/export data remain unchanged. Private badges are removed from separate draw print windows and hidden in browser print styling. Public signed name-only profiles still expose only names to ordinary visitors; authenticated Super Admin visitors can see their private badge.
+
 ## Shared ability v3 (primary card)
 
 The primary personal/profile card now estimates relative playing ability using a shared comparison network. The previous performance v2 score remains a secondary summary. They are different measures and must not be compared numerically.
@@ -43,3 +53,14 @@ Placement points = band minimum + band width * (N-position)/(N-1). A is 50-100, 
 Event scores average with a 180-day half-life, 0.5^(days since event/180), rounding once for display. Older history still contributes with lower weight. Eligible finish/match counts, opponents, outcomes and scores (player first) are shown. Qualification earns no bonus. Doubles describe partnership performance.
 
 Validate familiar players and calibrate assumptions before publication or operational use. Local implementation does not grant publication authority.
+
+
+## Private evidence confidence (policy v1)
+
+Every Super Admin ability badge includes `C0–100`, separate from the unchanged v3 ability number. This is an uncalibrated evidence-confidence index, not an accuracy percentage, probability, selection rule or official UTR. Bands are Very low (0–19), Low (20–39), Moderate (40–69), and Stronger (70–100).
+
+Only the player's own eligible individual singles evidence in that exact cohort supplies activity, volume and diversity. Each own match contributes a 90-day half-life weight. For each distinct opponent and event, retain the maximum own-match weight. Base points are 50 × min(effective matches / 12, 1) + 25 × min(weighted opponents / 6, 1) + 25 × min(weighted events / 3, 1), multiplied by the latest own direct-match freshness weight. Fewer than 3 effective matches caps at 25; fewer than 5 caps at 45; fewer than 3 weighted opponents or 2 weighted events caps at 65. Inferred or narrow component links cap direct confidence at 75. Own finish evidence provides a separate floor of 15 × its freshness weight, never more than 15. A recent finish does not refresh old direct counts or dates. All eligible published evidence still contributes to the unchanged ability graph.
+
+Scheduled OOP dates are activity proxies, accepted only inside the original event window and on/before the snapshot date. Missing, invalid, future or out-of-window schedule dates use fixed event start dates conservatively. Finish comparisons also use event start dates. Neither score correction timestamps nor an ongoing event's daily-clamped end date refresh confidence. Profile details disclose proxy counts, last direct-match proxy, last eligible evidence, recent 90-day counts, effective volume and confidence as-of date. Competition names, regions and event formats confer no confidence bonus; there is no reliable canonical Cat1-strength field. Play outside recorded eligible system evidence is unknown.
+
+Snapshots share a policy-versioned key and include the daily as-of date. Schedule changes participate in source fingerprinting; publication gates and existing private role/export boundaries remain enforced. Internal confidence records are bounded by the existing 50,000-edge limit; no per-badge history query is introduced. No player/result/ranking state is saved.

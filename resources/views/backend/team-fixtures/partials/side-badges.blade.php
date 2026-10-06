@@ -26,7 +26,7 @@
     <span class="fixture-player-badge">
     @endif
         @if($player['rank'])<span class="fixture-rank" title="Team roster rank">({{ $player['rank'] }})</span>@endif
-        <span>{{ $player['name'] }}</span>
+        <span>{{ $player['name'] }}@if($profile)<x-player-rating :player-id="$profile->id" :context="$fixture->draw" />@endif</span>
         @unless($player['rank'])<span class="fixture-rank small">— rank unavailable</span>@endunless
     @if($canOpenProfiles && $profile)</a>@else</span>@endif
 @empty

@@ -18,8 +18,19 @@ final class EventVenueScheduleController extends Controller
     public function index(Request $request, Event $event, EventAnnouncementService $announcements)
     {
         $this->authorize('event.manage', $event);
-        $event->load('draws.venues');
-        $eventDraws = $event->draws;
+        $event->load('draws.venues', 'draws.draw_types');
+        $eventDraws = $event->draws->sortBy(function ($draw) {
+            $typeName = mb_strtolower($draw->draw_types?->drawTypeName ?? $draw->drawName);
+            $typeOrder = match (true) {
+                str_contains($typeName, 'single') && ! str_contains($typeName, 'reverse') => 0,
+                str_contains($typeName, 'single') && str_contains($typeName, 'reverse') => 1,
+                str_contains($typeName, 'double') && ! str_contains($typeName, 'mixed') && ! str_contains($typeName, 'reverse') => 2,
+                default => 3,
+            };
+
+            return [app(\App\Services\Scheduling\ScheduleProgramme::class)->age($draw) ?? PHP_INT_MAX,
+                $typeOrder, mb_strtolower($draw->drawName), $draw->id];
+        })->values();
         $availableRounds = app(EventVenueScheduleService::class)->availableDrawRounds($eventDraws);
         $selectionSupplied = $request->has('draw_ids');
         $requestedDrawIds = collect($request->validate([
@@ -429,7 +440,17 @@ final class EventVenueScheduleController extends Controller
     public function updateAssignments(Request $request, Event $event)
     {
         $this->authorize('event.manage', $event);
+        if ($request->boolean('setup_only')) {
+            $storedSetup = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true) ?: [];
+            $request->merge(['schedule' => array_replace([
+                'start' => \Carbon\Carbon::parse($event->start_date)->format('Y-m-d').'T08:00',
+                'end' => \Carbon\Carbon::parse($event->start_date)->format('Y-m-d').'T18:00',
+                'duration' => 75, 'wave_minutes' => 90, 'court_gap' => 5, 'player_rest' => 60,
+                'draw_starts' => [], 'venue_starts' => [], 'reschedule_existing' => false,
+            ], $storedSetup, array_intersect_key((array) $request->input('schedule', []), array_flip(['rank_venue_preferences', 'rank_preference_draw_ids'])))]);
+        }
         $data = $request->validate([
+            'setup_only' => ['sometimes', 'boolean'],
             'venues' => ['required', 'array', 'min:1'], 'venues.*.id' => ['required', 'integer', 'exists:venues,id'],
             'venues.*.courts' => ['required', 'integer', 'min:1', 'max:100'],
             'assignments' => ['required', 'array'], 'assignments.*.draw_id' => ['required', 'integer'],
@@ -460,7 +481,7 @@ final class EventVenueScheduleController extends Controller
             'schedule.draw_rounds.*.draw_id' => ['required', 'integer', 'distinct'],
             'schedule.draw_rounds.*.rounds' => ['required', 'array', 'min:1', 'max:100'],
             'schedule.draw_rounds.*.rounds.*' => ['required', 'integer', 'min:1'],
-            'schedule.rank_preference_draw_ids' => ['sometimes', 'array', 'max:200'],
+            'schedule.rank_preference_draw_ids' => ['required_if:setup_only,true', 'array', 'max:200'],
             'schedule.rank_preference_draw_ids.*' => ['integer', 'distinct'],
             'schedule.rank_venue_preferences' => ['sometimes', 'array', 'max:50'],
             'schedule.rank_venue_preferences.*.draw_ids' => ['required', 'array', 'min:1', 'max:200'],
@@ -492,7 +513,23 @@ final class EventVenueScheduleController extends Controller
                 Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
                 DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
                 $draws = $event->draws()->whereIn('id', $draws->keys())->orderBy('id')->lockForUpdate()->get()->keyBy('id');
-                $data['schedule']['draw_rounds'] = app(EventVenueScheduleService::class)->normalizeDrawRounds($draws->values(), $data['schedule']['draw_rounds'] ?? []);
+                if ($data['setup_only'] ?? false) {
+                    $storedSetup = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true) ?: [];
+                    $rankScope = $data['schedule']['rank_preference_draw_ids'] ?? [];
+                    if (! $rankScope || array_diff($rankScope, $draws->keys()->all())) {
+                        throw new \InvalidArgumentException('Position bands must belong to the draws being assigned.');
+                    }
+                    $data['schedule'] = array_replace([
+                        'start' => \Carbon\Carbon::parse($event->start_date)->format('Y-m-d').'T08:00',
+                        'end' => \Carbon\Carbon::parse($event->start_date)->format('Y-m-d').'T18:00',
+                        'duration' => 75, 'wave_minutes' => 90, 'court_gap' => 5, 'player_rest' => 60,
+                        'draw_starts' => [], 'venue_starts' => [], 'reschedule_existing' => false,
+                    ], $storedSetup, array_intersect_key($data['schedule'], array_flip(['rank_venue_preferences', 'rank_preference_draw_ids'])));
+                    $data['schedule']['draw_rounds'] = collect($storedSetup['draw_rounds'] ?? [])
+                        ->filter(fn ($row) => $draws->has((int) ($row['draw_id'] ?? 0)))->values()->all();
+                } else {
+                    $data['schedule']['draw_rounds'] = app(EventVenueScheduleService::class)->normalizeDrawRounds($draws->values(), $data['schedule']['draw_rounds'] ?? []);
+                }
                 foreach ($data['assignments'] as $assignment) {
                     $draw = $draws[(int) $assignment['draw_id']];
                     if ($draw->locked) {
@@ -526,6 +563,9 @@ final class EventVenueScheduleController extends Controller
                         throw new \InvalidArgumentException("{$draw->drawName} has play at a venue being removed.");
                     }
                     $teamAffectedIds = (clone $teamAffected)->pluck('id');
+                    if (($data['setup_only'] ?? false) && ($affectedFixtureIds->isNotEmpty() || $teamAffectedIds->isNotEmpty())) {
+                        throw new \InvalidArgumentException('This venue has saved matches. Move those matches before removing its assignment.');
+                    }
                     $removalError = app(EventVenueScheduleService::class)->removalError($event, $affectedFixtureIds->all(), $teamAffectedIds->all());
                     if ($removalError) throw new \InvalidArgumentException($removalError);
                     $unscheduled += $affectedFixtureIds->count();
@@ -603,7 +643,7 @@ final class EventVenueScheduleController extends Controller
             return response()->json(['message' => $exception->getMessage()], 422);
         }
 
-        return response()->json(['message' => 'Court allocations and timing saved.'.($rankWarnings ? ' '.implode(' ', $rankWarnings) : ''), 'warnings' => $rankWarnings, 'unscheduled' => $unscheduled]);
+        return response()->json(['message' => (($data['setup_only'] ?? false) ? 'Venues, courts and position bands saved.' : 'Court allocations and timing saved.').($rankWarnings ? ' '.implode(' ', $rankWarnings) : ''), 'warnings' => $rankWarnings, 'unscheduled' => $unscheduled]);
     }
 
     public function preview(Request $request, Event $event, EventVenueScheduleService $scheduler,

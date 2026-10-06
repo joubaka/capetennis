@@ -188,7 +188,7 @@
                     @endif
                     <text x="{{ $x + 5 }}" y="{{ $topLineY - 5 }}" class="player-name{{ $identity1 ? ' player-identity-text' : '' }}{{ $winner1 ? ' winner' : '' }}"
                         @if($isBye1 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
-                        @endif>{{ Str::limit($p1, 22) }}</text>
+                        @endif>{{ Str::limit($p1, \App\Services\Performance\PlayerRatingBadgeService::visible() ? 14 : 22) }}@foreach($fx?->registration1?->players ?? [] as $ratedPlayer)<x-player-rating :player-id="$ratedPlayer->id" :context="$draw" :svg="true" />@endforeach</text>
                     @if($origin1 && $isAdmin)
                         @php $badgeX1 = $x + 5 + min(strlen($p1), 22) * 7 + 4; @endphp
                         <rect x="{{ $badgeX1 }}" y="{{ $topLineY - 14 }}" width="18" height="11" fill="#6366f1" rx="2" />
@@ -207,7 +207,7 @@
                     @endif
                     <text x="{{ $x + 5 }}" y="{{ $bottomLineY - 5 }}" class="player-name{{ $identity2 ? ' player-identity-text' : '' }}{{ $winner2 ? ' winner' : '' }}"
                         @if($isBye2 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
-                        @endif>{{ Str::limit($p2, 22) }}</text>
+                        @endif>{{ Str::limit($p2, \App\Services\Performance\PlayerRatingBadgeService::visible() ? 14 : 22) }}@foreach($fx?->registration2?->players ?? [] as $ratedPlayer)<x-player-rating :player-id="$ratedPlayer->id" :context="$draw" :svg="true" />@endforeach</text>
                     @if($origin2 && $isAdmin)
                         @php $badgeX2 = $x + 5 + min(strlen($p2), 22) * 7 + 4; @endphp
                         <rect x="{{ $badgeX2 }}" y="{{ $bottomLineY - 14 }}" width="18" height="11" fill="#6366f1" rx="2" />
@@ -382,7 +382,7 @@
                     @endif
                     <text x="{{ $x + 5 }}" y="{{ $topLineY - 5 }}" class="player-name{{ $identity1 ? ' player-identity-text' : '' }}{{ $winner1 ? ' winner' : '' }}"
                         @if($isBye1 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
-                        @endif>{{ Str::limit($p1, 22) }}</text>
+                        @endif>{{ Str::limit($p1, \App\Services\Performance\PlayerRatingBadgeService::visible() ? 14 : 22) }}@foreach($fx?->registration1?->players ?? [] as $ratedPlayer)<x-player-rating :player-id="$ratedPlayer->id" :context="$draw" :svg="true" />@endforeach</text>
                     @if($origin1 && $isAdmin)
                         @php $badgeX1 = $x + 5 + min(strlen($p1), 22) * 7 + 4; @endphp
                         <rect x="{{ $badgeX1 }}" y="{{ $topLineY - 14 }}" width="18" height="11" fill="#6366f1" rx="2" />
@@ -401,7 +401,7 @@
                     @endif
                     <text x="{{ $x + 5 }}" y="{{ $bottomLineY - 5 }}" class="player-name{{ $identity2 ? ' player-identity-text' : '' }}{{ $winner2 ? ' winner' : '' }}"
                         @if($isBye2 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
-                        @endif>{{ Str::limit($p2, 22) }}</text>
+                        @endif>{{ Str::limit($p2, \App\Services\Performance\PlayerRatingBadgeService::visible() ? 14 : 22) }}@foreach($fx?->registration2?->players ?? [] as $ratedPlayer)<x-player-rating :player-id="$ratedPlayer->id" :context="$draw" :svg="true" />@endforeach</text>
                     @if($origin2 && $isAdmin)
                         @php $badgeX2 = $x + 5 + min(strlen($p2), 22) * 7 + 4; @endphp
                         <rect x="{{ $badgeX2 }}" y="{{ $bottomLineY - 14 }}" width="18" height="11" fill="#6366f1" rx="2" />

@@ -15,11 +15,32 @@ class PlayerSharedAbilityService
     private const EDGE_CAP = 50000;
     private const EVENT_FIELD_CAP = 256;
 
+    /** Compact data for name badges; caller enforces the private audience. */
+    public function badgeSnapshot(): array
+    {
+        if (!auth()->user()?->hasRole('super-user')) { return []; }
+        $asOf = CarbonImmutable::today();
+        $fingerprint = $this->fingerprint();
+        $key = 'player-shared-ability:v'.self::VERSION.':confidence'.SharedAbilityConfidencePolicy::VERSION.':'.$asOf->toDateString().':'.$fingerprint;
+        $snapshot = Cache::store(app()->environment('testing') ? 'array' : 'file')->remember($key, 300, fn () => $this->build($asOf));
+        if ($fingerprint !== $this->fingerprint() || $snapshot['reason']) { return []; }
+        $players = [];
+        foreach ($snapshot['cohorts'] as $cohort => $data) {
+            foreach ($data['ratings'] as $id => $rating) {
+                if ($rating['score'] === null || !is_finite($rating['score'])) { continue; }
+                $players[$id][] = ['score' => $rating['score'], 'cohort' => $cohort,
+                    'component' => $rating['component'], 'last_played' => $data['players'][$id]['last_played']]
+                    + app(SharedAbilityConfidencePolicy::class)->evaluate($data['players'][$id], $data['components'][$rating['component']], $asOf);
+            }
+        }
+        return $players;
+    }
+
     public function forPlayer(Player $player, ?CarbonImmutable $asOf = null): array
     {
         $asOf ??= CarbonImmutable::today();
         $fingerprint = $this->fingerprint();
-        $key = 'player-shared-ability:v'.self::VERSION.':'.$asOf->toDateString().':'.$fingerprint;
+        $key = 'player-shared-ability:v'.self::VERSION.':confidence'.SharedAbilityConfidencePolicy::VERSION.':'.$asOf->toDateString().':'.$fingerprint;
         $snapshot = Cache::store(app()->environment('testing') ? 'array' : 'file')->remember($key, 300, fn () => $this->build($asOf));
         if ($fingerprint !== $this->fingerprint()) {
             return ['headline' => null, 'cohorts' => collect(), 'reason' => 'Published source data changed during calculation. Reload to calculate a fresh snapshot.', 'built_at' => $snapshot['built_at']];
@@ -44,7 +65,8 @@ class PlayerSharedAbilityService
                 'inferred' => $own['inferred'], 'component_players' => count($component['members']), 'component_played' => $component['played'],
                 'component_inferred' => $component['inferred'], 'bridge_count' => $component['bridge_count'], 'division_links' => $component['division_links'], 'confidence' => $confidence,
                 'comparators' => $comparators, 'anchors' => $anchors,
-                'reason' => $rating['score'] === null ? 'The shared model did not converge; no estimate is displayed.' : null]);
+                'reason' => $rating['score'] === null ? 'The shared model did not converge; no estimate is displayed.' : null]
+                + app(SharedAbilityConfidencePolicy::class)->evaluate($own, $component, $asOf));
         }
         $cohorts = $cohorts->sort(fn ($a, $b) => strcmp($b['last_played'], $a['last_played']) ?: strcmp($a['cohort'], $b['cohort']))->values();
         return ['headline' => $cohorts->first(), 'cohorts' => $cohorts, 'reason' => $snapshot['reason'], 'built_at' => $snapshot['built_at']];
@@ -60,7 +82,7 @@ class PlayerSharedAbilityService
                 hash_update($hash, $table.json_encode($row));
             }
         }
-        foreach (['category_results', 'category_event_registrations', 'category_events', 'categories', 'fixtures', 'fixture_results', 'player_registrations', 'players', 'draw_settings'] as $table) {
+        foreach (['category_results', 'category_event_registrations', 'category_events', 'categories', 'fixtures', 'fixture_results', 'player_registrations', 'players', 'draw_settings', 'order_of_plays'] as $table) {
             $query = DB::table($table);
             $idColumn = $table === 'player_registrations' ? 'registration_id' : 'id';
             $stats = $query->selectRaw('COUNT(*) as row_count, MAX('.$idColumn.') as max_id')->first();
@@ -134,7 +156,7 @@ class PlayerSharedAbilityService
                     if (++$edgeCount > self::EDGE_CAP) { return $this->withheld($builtAt); }
                 }
             }
-            foreach ($history->individualMatches($event, null, $pilot) as $match) {
+            foreach ($history->individualMatches($event, null, $pilot, $asOf) as $match) {
                 if (++$scannedMatches > self::EDGE_CAP) { return $this->withheld($builtAt); }
                 if ($match['reason'] !== null || $match['discipline'] !== 'singles') { continue; }
                 $source = 'match:'.$match['fixture_id'];
@@ -143,7 +165,7 @@ class PlayerSharedAbilityService
                 $cohort = $this->cohort($match['cohort']);
                 $winner = $match['winner_side'] === 1 ? $match['player1_id'] : $match['player2_id'];
                 $loser = $match['winner_side'] === 1 ? $match['player2_id'] : $match['player1_id'];
-                $this->addEdge($graphs, $cohort, ['winner' => $winner, 'loser' => $loser, 'weight' => $weight, 'kind' => 'played', 'source_id' => $source], $event);
+                $this->addEdge($graphs, $cohort, ['winner' => $winner, 'loser' => $loser, 'weight' => $weight, 'kind' => 'played', 'source_id' => $source, 'confidence_date' => $match['confidence_date'] <= $asOf->toDateString() ? $match['confidence_date'] : CarbonImmutable::parse($event->start_date)->toDateString(), 'confidence_date_basis' => $match['confidence_date_basis']], $event);
                 if (++$edgeCount > self::EDGE_CAP) { return $this->withheld($builtAt); }
             }
             $uniqueIds = [];
@@ -169,6 +191,13 @@ class PlayerSharedAbilityService
             $node = &$graphs[$cohort]['players'][$id];
             $date = CarbonImmutable::parse($event->end_date)->toDateString();
             $node ??= ['played' => 0, 'inferred' => 0, 'last_played' => $date, 'events' => []];
+            if ($edge['kind'] === 'played') {
+                $node['confidence_matches'][] = ['date' => $edge['confidence_date'], 'basis' => $edge['confidence_date_basis'],
+                    'event' => $event->id, 'opponent' => $id === $edge['winner'] ? $edge['loser'] : $edge['winner']];
+            } else {
+                // Finish evidence has no played timestamp; fixed start is deliberately conservative.
+                $node['last_finish'] = max($node['last_finish'] ?? '', CarbonImmutable::parse($event->start_date)->toDateString());
+            }
             $node[$edge['kind'] === 'played' ? 'played' : 'inferred']++;
             $node['last_played'] = max($node['last_played'], $date);
             $node['events'][$event->id] = ['id' => $event->id, 'name' => $event->name, 'date' => $date];

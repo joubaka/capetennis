@@ -10,7 +10,7 @@
     @forelse($registrations as $registration)
 
         <li class="list-group-item d-flex justify-content-between align-items-center">
-            <span>{{ $registration->players[0]->name }} {{ $registration->players[0]->surname }}</span>
+            <span><x-player-name :players="$registration->players" :context="$draw" /></span>
             <button class="btn btn-outline-danger btn-sm remove-player"
                     data-reg-id="{{ $registration->id }}"
                     data-draw-id="{{ $draw->id }}">

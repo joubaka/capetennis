@@ -32,8 +32,8 @@
     <line x1="108" y1="118" x2="258" y2="118" stroke="black"/>
     <line x1="258" y1="78" x2="258" y2="118" stroke="black"/>
 
-    <text x="118" y="73" class="svg_name">{{ name1($sf1) }}</text>
-    <text x="118" y="113" class="svg_name">{{ name2($sf1) }}</text>
+    <text x="118" y="73" class="svg_name"><x-player-name :players="$sf1?->registration1?->players ?? []" :context="$draw" :svg="true" fallback="---" /></text>
+    <text x="118" y="113" class="svg_name"><x-player-name :players="$sf1?->registration2?->players ?? []" :context="$draw" :svg="true" fallback="---" /></text>
     <text x="118" y="96"  class="score">{{ score($sf1) }}</text>
 </g>
 
@@ -47,8 +47,8 @@
     <line x1="108" y1="198" x2="258" y2="198" stroke="black"/>
     <line x1="258" y1="158" x2="258" y2="198" stroke="black"/>
 
-    <text x="118" y="153" class="svg_name">{{ name1($sf2) }}</text>
-    <text x="118" y="193" class="svg_name">{{ name2($sf2) }}</text>
+    <text x="118" y="153" class="svg_name"><x-player-name :players="$sf2?->registration1?->players ?? []" :context="$draw" :svg="true" fallback="---" /></text>
+    <text x="118" y="193" class="svg_name"><x-player-name :players="$sf2?->registration2?->players ?? []" :context="$draw" :svg="true" fallback="---" /></text>
     <text x="118" y="176" class="score">{{ score($sf2) }}</text>
 </g>
 
@@ -62,8 +62,8 @@
     <line x1="258" y1="178" x2="458" y2="178" stroke="black"/>
     <line x1="458" y1="98"  x2="458" y2="178" stroke="black"/>
 
-    <text x="268" y="93"  class="svg_name">{{ name1($final) }}</text>
-    <text x="268" y="173" class="svg_name">{{ name2($final) }}</text>
+    <text x="268" y="93"  class="svg_name"><x-player-name :players="$final?->registration1?->players ?? []" :context="$draw" :svg="true" fallback="---" /></text>
+    <text x="268" y="173" class="svg_name"><x-player-name :players="$final?->registration2?->players ?? []" :context="$draw" :svg="true" fallback="---" /></text>
     <text x="268" y="133" class="score">{{ score($final) }}</text>
 </g>
 

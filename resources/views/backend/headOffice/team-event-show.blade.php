@@ -31,6 +31,9 @@
   .event-draw-card h6 { overflow-wrap: anywhere; }
   .event-draw-card-summary { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 44px; cursor: pointer; list-style: none; }
   .event-draw-card-summary::-webkit-details-marker { display: none; }
+  .event-draw-card-summary-info { min-width: 0; }
+  .event-draw-card-summary-status { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
+  .event-draw-card-summary-status .badge { white-space: normal; text-align: left; }
   .event-draw-card-summary:focus-visible { outline: 2px solid var(--ct-ink, #172e45); outline-offset: 4px; border-radius: .25rem; }
   .event-draw-card-toggle { display: inline-flex; align-items: center; gap: .25rem; flex-shrink: 0; }
   .event-draw-card[open] .event-draw-card-expand, .event-draw-card:not([open]) .event-draw-card-collapse { display: none; }
@@ -211,9 +214,26 @@
             <div class="event-draw-heading"><h6 class="mb-0">{{ $groupLabel }}</h6><span class="text-muted small">{{ $groupDraws->count() }} {{ \Illuminate\Support\Str::plural('draw', $groupDraws->count()) }}</span></div>
             <div class="event-draw-list">
             @foreach($groupDraws as $draw)
-            <details class="event-draw-card">
+            <details class="event-draw-card event-draw-publication-card">
               <summary class="event-draw-card-summary">
+                <div class="event-draw-card-summary-info">
                 <h6 class="mb-0">{{ $draw->drawName }} <span class="text-muted">— {{ optional($draw->draw_types)->drawTypeName ?? 'Type' }}</span></h6>
+                  <div class="event-draw-card-summary-status" aria-live="polite">
+                    <span class="event-draw-status badge bg-label-{{ $draw->published ? 'success' : 'warning' }}">{{ $draw->published ? 'Draw published' : 'Draw hidden' }}</span>
+                    @php($hasOrderOfPlay = $draw->scheduled_team_fixture_count > 0 || $draw->order_of_play_count > 0)
+                    <span class="event-oop-summary badge bg-label-{{ $draw->oop_published ? 'success' : ($hasOrderOfPlay ? 'info' : 'secondary') }}" data-created="{{ $hasOrderOfPlay ? 1 : 0 }}">Order of play: {{ $draw->oop_published ? ($draw->published ? 'Published' : 'Preview only') : ($hasOrderOfPlay ? 'Created' : 'Not done') }}</span>
+                    @if($draw->locked)<span class="badge bg-label-secondary">Locked</span>@endif
+                    @if($draw->is_done)<span class="badge bg-label-success">Completed</span>@endif
+                    @if($draw->is_scheduled)<span class="badge bg-label-info">Scheduled</span>@endif
+                  </div>
+                  <div class="event-draw-card-summary-status event-draw-venue-summary">
+                    @forelse($draw->venues as $venue)
+                      <span class="badge bg-label-primary">{{ $venue->name }} ({{ $venue->pivot->num_courts }})</span>
+                    @empty
+                      <span class="badge bg-label-secondary">No venues assigned</span>
+                    @endforelse
+                  </div>
+                </div>
                 <span class="event-draw-card-toggle small text-primary"><span class="event-draw-card-expand">Click to open</span><span class="event-draw-card-collapse">Click to close</span><i class="ti ti-chevron-down" aria-hidden="true"></i></span>
               </summary>
               <div class="event-draw-card-content">

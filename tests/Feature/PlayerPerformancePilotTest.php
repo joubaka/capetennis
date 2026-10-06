@@ -558,6 +558,48 @@ class PlayerPerformancePilotTest extends TestCase
         CategoryEvent::factory()->create(['event_id'=>$a['event']->id,'category_id'=>Category::factory()->create(['name'=>'u10 Boys A afdeling'])->id]);
         $this->assertSame(0,$service->forPlayer($player,$asOf)['headline']['division_links']);
     }
+    public function test_confidence_uses_own_same_cohort_dates_daily_cache_and_conservative_ongoing_date(): void
+    {
+        $field = $this->field(Category::factory()->create(['name' => 'u10 Boys']), [1,2], ['start_date' => '2026-01-01', 'end_date' => '2026-12-31', 'results_published' => false]);
+        $fixture = $this->match($field);
+        $player = $field['rows'][0]['players']->first();
+        $service = app(\App\Services\Performance\PlayerSharedAbilityService::class);
+        $first = $service->forPlayer($player, CarbonImmutable::parse('2026-10-06'))['headline'];
+        $this->assertSame('2026-01-01', $first['last_direct_match']);
+        $this->assertSame(1, $first['proxy_dated_matches']);
+        $this->assertSame(0, $first['recent_played']);
+        $next = $service->forPlayer($player, CarbonImmutable::parse('2026-10-07'))['headline'];
+        $this->assertSame('2026-10-07', $next['confidence_as_of']);
+        $this->assertLessThan($first['effective_played'], $next['effective_played']);
+        \App\Models\OrderOfPlay::create(['fixture_id' => $fixture->id, 'draw_id' => $fixture->draw_id, 'venue_id' => 1, 'time' => '2026-10-05 10:00:00']);
+        $scheduled = $service->forPlayer($player, CarbonImmutable::parse('2026-10-06'))['headline'];
+        $this->assertSame('2026-10-05', $scheduled['last_direct_match']);
+        $this->assertSame(0, $scheduled['proxy_dated_matches']);
+        $historical = $service->forPlayer($player, CarbonImmutable::parse('2026-10-01'))['headline'];
+        $this->assertSame('2026-01-01', $historical['last_direct_match']);
+        $other = $this->field(Category::factory()->create(['name' => 'u12 Boys']), [1,2], ['start_date' => '2026-10-01', 'end_date' => '2026-10-02']);
+        $other['rows'][0]['reg']->players()->sync([$player->id]);
+        $this->match($other);
+        $cohorts = $service->forPlayer($player, CarbonImmutable::parse('2026-10-06'))['cohorts'];
+        $this->assertSame('2026-10-05', $cohorts->firstWhere('cohort', 'u10 boys')['last_direct_match']);
+        $this->assertSame('2026-10-01', $cohorts->firstWhere('cohort', 'u12 boys')['last_direct_match']);
+    }
+
+    public function test_connected_opponent_activity_does_not_refresh_inactive_player_confidence(): void
+    {
+        $old = $this->field(Category::factory()->create(['name' => 'u10 Boys']), [1,2], ['start_date' => '2025-11-30', 'end_date' => '2025-11-30', 'results_published' => false]);
+        $this->match($old); $player = $old['rows'][0]['players']->first(); $opponent = $old['rows'][1]['players']->first();
+        $service = app(\App\Services\Performance\PlayerSharedAbilityService::class); $date = CarbonImmutable::parse('2026-10-06');
+        $before = $service->forPlayer($player, $date)['headline'];
+        $recent = $this->field($old['ce']->category, [1,2], ['start_date' => '2026-10-01', 'end_date' => '2026-10-02', 'results_published' => false]);
+        $recent['rows'][0]['reg']->players()->sync([$opponent->id]); $this->match($recent);
+        $after = $service->forPlayer($player, $date)['headline'];
+        $this->assertSame($before['confidence_index'], $after['confidence_index']);
+        $this->assertSame($before['effective_played'], $after['effective_played']);
+        $this->assertSame('2025-11-30', $after['last_direct_match']);
+        $this->assertSame(0, $after['recent_played']);
+    }
+
 }
 
 

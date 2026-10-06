@@ -93,13 +93,17 @@ class TeamFixtureLineupPresenter
             }
             $rankSources[] = $rankSource;
             $name = $historical['name'] ?? $profile?->full_name ?? ($imported ? trim($imported->name.' '.$imported->surname) : 'TBD');
-            $players[] = ['name' => $name, 'rank' => (int) $rank > 0 ? (int) $rank : null];
+            $display = ['name' => $name, 'rank' => (int) $rank > 0 ? (int) $rank : null];
+            if (auth()->user()?->hasRole('super-user')) { $display['player_id'] = $profile?->id; }
+            $players[] = $display;
         }
         if (!$players) {
             $legacyRank = $fixture->{$side.'_rank_nr'};
             foreach (($home ? $fixture->team1 : $fixture->team2) as $profile) {
                 $rankSources[] = (int) $legacyRank > 0 ? 'legacy' : null;
-                $players[] = ['name' => $profile->full_name, 'rank' => (int) $legacyRank > 0 ? (int) $legacyRank : null];
+                $display = ['name' => $profile->full_name, 'rank' => (int) $legacyRank > 0 ? (int) $legacyRank : null];
+                if (auth()->user()?->hasRole('super-user')) { $display['player_id'] = $profile->id; }
+                $players[] = $display;
             }
         }
         return ['region' => $label, 'region_name' => $regionName, 'region_logo' => RegionLogo::path($regionName),

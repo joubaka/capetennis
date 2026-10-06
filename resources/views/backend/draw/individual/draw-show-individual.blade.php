@@ -323,7 +323,7 @@ $configData = Helper::appClasses();
 
                                                 <td class="bg-label-{{ $bracket->getWinnerRegistration($fixture->id,$fixture->registration1_id)}}">
                                                     @if($fixture->registration1_id > 0)
-                                                    {{$fixture->registrations1['players'][0]['name'].' '.$fixture->registrations1['players'][0]['surname']}}
+                                                    <x-player-name :players="$fixture->registrations1->players" :context="$draw" />
                                                     @elseif(is_null($fixture->registration1_id))
 
                                                     @else
@@ -333,7 +333,7 @@ $configData = Helper::appClasses();
                                                 <td><span class="badge bg-label-primary me-1">vs</span></td>
                                                 <td class="bg-label-{{ $bracket->getWinnerRegistration($fixture->id,$fixture->registration2_id)}}">
                                                     @if($fixture->registration2_id > 0)
-                                                    {{$fixture->registrations2['players'][0]['name'].' '.$fixture->registrations2['players'][0]['surname']}}
+                                                    <x-player-name :players="$fixture->registrations2->players" :context="$draw" />
                                                     @elseif(is_null($fixture->registration2_id))
 
                                                     @else

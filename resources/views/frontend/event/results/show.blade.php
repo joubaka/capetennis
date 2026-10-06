@@ -31,7 +31,7 @@
                 @foreach($results as $result)
                   <li class="list-group-item d-flex align-items-center gap-2 py-2">
                     <span class="badge bg-label-success rounded p-2">{{ $result->position }}</span>
-                    <span>{{ $result->registration->display_name }}</span>
+                    <span><x-player-name :players="$result->registration->players" :context="$category" /></span>
                   </li>
                 @endforeach
               </ul>

@@ -132,14 +132,14 @@ $fxWinnerClasses = function ($fx) {
               @if($fx instanceof \App\Models\TeamFixture)
                 @include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['home']])
               @else
-                {{ $fxPlayer1($fx) }}
+                <x-player-name :players="$fx->registration1?->players ?? []" :context="$draw" separator=" + " />
               @endif
             </td>
             <td class="{{ $awayClass }}">
               @if($fx instanceof \App\Models\TeamFixture)
                 @include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['away']])
               @else
-                {{ $fxPlayer2($fx) }}
+                <x-player-name :players="$fx->registration2?->players ?? []" :context="$draw" separator=" + " />
               @endif
             </td>
 
@@ -172,8 +172,8 @@ $fxWinnerClasses = function ($fx) {
           <tr id="details-{{ $fx->id }}" class="d-none d-md-none bg-light">
             <td colspan="6">
               <div class="p-2">
-                <strong>Player/Team 1:</strong> @if($fx instanceof \App\Models\TeamFixture)@include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['home']])@else{{ $fxPlayer1($fx) }}@endif<br>
-                <strong>Player/Team 2:</strong> @if($fx instanceof \App\Models\TeamFixture)@include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['away']])@else{{ $fxPlayer2($fx) }}@endif<br>
+                <strong>Player/Team 1:</strong> @if($fx instanceof \App\Models\TeamFixture)@include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['home']])@else<x-player-name :players="$fx->registration1?->players ?? []" :context="$draw" separator=" + " />@endif<br>
+                <strong>Player/Team 2:</strong> @if($fx instanceof \App\Models\TeamFixture)@include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['away']])@else<x-player-name :players="$fx->registration2?->players ?? []" :context="$draw" separator=" + " />@endif<br>
                 <strong>Score:</strong>
                 @forelse($fx->fixtureResults as $r)
                     {{ $fxScoreDisplay($r) }}

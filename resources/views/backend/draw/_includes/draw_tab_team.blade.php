@@ -6,7 +6,7 @@
   $individualWorkspaceUrl = $draw->needsWorkflowChoice() ? route('draw.setup.show', $draw) : route('backend.draw.roundrobin.show', $draw);
   $individualSettingsUrl = $draw->needsWorkflowChoice() ? $individualWorkspaceUrl : $individualWorkspaceUrl.'#settings';
 @endphp
-<div class="list-group-item event-draw-publication-card">
+<div class="list-group-item {{ ($hideDrawHeading ?? false) ? '' : 'event-draw-publication-card' }}">
   <div class="user-info">
     @unless($hideDrawHeading ?? false)
     <h6 class="mb-2">{{ $draw->drawName }} <span class="text-muted">— {{ optional($draw->draw_types)->drawTypeName ?? 'Type' }}</span></h6>

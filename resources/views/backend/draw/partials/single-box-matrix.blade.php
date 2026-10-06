@@ -77,7 +77,7 @@
         <text x="{{ $offsetX + $i * $cellWidth + 10 }}" y="25"
               font-size="12" font-family="Helvetica"
               transform="rotate(-45 {{ $offsetX + $i * $cellWidth + 10 }},25)">
-          {{ \Illuminate\Support\Str::limit($name, 10) }}
+          {{ \Illuminate\Support\Str::limit($name, 10) }}@if($registrations[$i]->players->first())<x-player-rating :player-id="$registrations[$i]->players->first()->id" :context="$draw" :svg="true" />@endif
         </text>
       @endforeach
 
@@ -94,7 +94,7 @@
         @endphp
 
         {{-- Row label --}}
-        <text x="10" y="{{ $offsetY + $row * $cellHeight + 20 }}" font-size="12">{{ $rowName }}</text>
+        <text x="10" y="{{ $offsetY + $row * $cellHeight + 20 }}" font-size="12">{{ $rowName }}@if($registrations[$row]->players->first())<x-player-rating :player-id="$registrations[$row]->players->first()->id" :context="$draw" :svg="true" />@endif</text>
 
         @foreach ($players as $col => $colName)
           @php

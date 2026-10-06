@@ -1,5 +1,6 @@
 <div class="col-xl-12">
     @php
+        $player->registrations->loadMissing('categoryEvents.category');
         $eventRegistrations = $player->registrations->filter(fn ($registration) => $registration->categoryEvents->isNotEmpty());
         $activeViolationCount = isset($violations) ? $violations->where('is_expired', false)->count() : 0;
     @endphp
@@ -484,6 +485,7 @@
                                         <tr>
                                             <th>#</th>
                                             <th>Event</th>
+                                            <th>Age group</th>
 
                                         </tr>
                                     </thead>
@@ -502,6 +504,9 @@
                                                 @else
                                                     <span class="text-muted">Event unavailable</span>
                                                 @endif
+                                            </td>
+                                            <td>
+                                                @include('multiend.partials.registration-age-groups', ['registration' => $registration, 'registeredEvent' => $registeredEvent])
                                             </td>
                                         </tr>
                                         @endforeach

@@ -38,6 +38,7 @@
     } else {
       wrapper.textContent = player?.name ?? name(id);
     }
+    if (window.CTPlayerRatings) wrapper.insertAdjacentHTML('beforeend', window.CTPlayerRatings.marker({registrationId:id}, {drawId:config.drawId || config.draw_id}));
     if (player?.withdrawn) {
       const badge = el('span', 'fm-withdrawal-label', player.late_withdrawal ? 'LW' : 'W');
       badge.title = player.late_withdrawal ? 'Late withdrawal (LW)' : 'Withdrawn (W)';
@@ -201,7 +202,7 @@
         `fm-player${path ? ' assigned' : ''}${selectedPlayer === player.id ? ' selected' : ''}`
       );
       button.type = 'button';
-      button.append(el('span', '', name(player.id)), el('small', '', path ? 'Placed' : 'Unplaced'));
+      button.append(playerNameNode(player.id), el('small', '', path ? 'Placed' : 'Unplaced'));
       button.title = path ? `${name(player.id)} · Placed in ${roundName(path.length - 1)}` : name(player.id);
       draggablePlayer(button, player.id, editable() && player.eligible !== false);
       button.addEventListener('dragover', allowReturnToList);

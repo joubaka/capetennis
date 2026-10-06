@@ -127,9 +127,9 @@
       var time   = fx.time  || '';
       html += '<tr>' +
         '<td>' + (fx.match_nr || fx.id) + '</td>' +
-        '<td>' + (fx.home || '---') + '</td>' +
+        '<td>' + (fx.home || '---') + (root.CTPlayerRatings?.marker({registrationId:fx.home_id}) || '') + '</td>' +
         '<td class="text-center">vs</td>' +
-        '<td>' + (fx.away || '---') + '</td>' +
+        '<td>' + (fx.away || '---') + (root.CTPlayerRatings?.marker({registrationId:fx.away_id}) || '') + '</td>' +
         '<td class="text-center">' + (venue ? '<span class="badge bg-label-primary">' + venue + '</span>' : '<span class="text-muted">—</span>') + '</td>' +
         '<td class="text-center">' + (court || '<span class="text-muted">—</span>') + '</td>' +
         '<td class="text-center">' + (time  || '<span class="text-muted">—</span>') + '</td>' +

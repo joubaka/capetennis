@@ -15,12 +15,15 @@
     a { display:inline-flex; margin-top:24px; color:#176448; font-weight:750; text-decoration:none; }
     a:hover { text-decoration:underline; }
     a:focus-visible { outline:3px solid #d69d31; outline-offset:3px; }
+    @if(\App\Services\Performance\PlayerRatingBadgeService::visible())
+    @media print { .player-rating-badge { display:none !important; } }
+    @endif
   </style>
 </head>
 <body>
   <main>
     <p class="eyebrow">Cape Tennis player</p>
-    <h1>{{ $displayName }}</h1>
+    <h1>{{ $displayName }}<x-player-rating :player-id="$ratingPlayerId" /></h1>
     <p class="notice">This public profile currently shows the player’s name only. Personal contact, birth, account and registration information stays private.</p>
     <a href="{{ url('/') }}">&larr; Back to Cape Tennis</a>
   </main>

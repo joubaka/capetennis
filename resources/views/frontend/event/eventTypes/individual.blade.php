@@ -122,7 +122,7 @@
                 <li class="list-group-item d-flex justify-content-between align-items-center">
                   <span>
                     {{ $player->name }}
-                    {{ $player->surname }}
+                    {{ $player->surname }}<x-player-rating :player-id="$player->id" :context="$eventCategory" />
                   </span>
                   @if(auth()->check() && (int)$cereg->user_id === (int)auth()->id() && !empty($canWithdraw) && $canWithdraw)
                     <button type="button"

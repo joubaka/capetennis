@@ -13,7 +13,7 @@
     <p>{{ $players->total() }} players</p>
     <ul class="list-group mb-3">
         @forelse($players as $player)
-            <li class="list-group-item"><a href="{{ route('backend.player-performance.show', $player->id) }}">{{ $player->name }} {{ $player->surname }}</a> <span class="text-muted">#{{ $player->id }}</span></li>
+            <li class="list-group-item"><a href="{{ route('backend.player-performance.show', $player->id) }}">{{ $player->name }} {{ $player->surname }}<x-player-rating :player-id="$player->id" /></a> <span class="text-muted">#{{ $player->id }}</span></li>
         @empty
             <li class="list-group-item">No matching players.</li>
         @endforelse

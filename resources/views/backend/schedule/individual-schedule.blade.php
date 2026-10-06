@@ -344,8 +344,8 @@ $(function () {
       round: fx.round ?? '',
       match: fx.match_nr ?? '',
       stage: stageBadge(fx.stage),
-      p1: fx.p1,
-      p2: fx.p2,
+      p1: fx.p1 + (window.CTPlayerRatings?.marker({fixtureId:fx.id, side:1}) || ''),
+      p2: fx.p2 + (window.CTPlayerRatings?.marker({fixtureId:fx.id, side:2}) || ''),
       datetime_html: `<input type="text" class="form-control form-control-sm dtp" data-id="${fx.id}" value="${fx.scheduled_at || ''}">`,
       venue_html:    `<select class="form-select form-select-sm venue-select" data-id="${fx.id}">${venueOptionsHtml(fx.venue_id)}</select>`,
       court_html:    `<input type="text" class="form-control form-control-sm court-input" data-id="${fx.id}" value="${fx.court_label || ''}" placeholder="e.g. 1">`,
@@ -672,8 +672,8 @@ $(function () {
               <td>${f.stage || '—'}</td>
               <td>${f.round}</td>
               <td>${f.match}</td>
-              <td>${f.p1}</td>
-              <td>${f.p2}</td>
+              <td>${f.p1}${window.CTPlayerRatings?.marker({fixtureId:f.id, side:1}) || ''}</td>
+              <td>${f.p2}${window.CTPlayerRatings?.marker({fixtureId:f.id, side:2}) || ''}</td>
             </tr>`;
           });
           unschedHtml += `</tbody></table></div>`;
@@ -717,7 +717,7 @@ $(function () {
                 <div class="match-row">
                   <span class="match-time">${m.time}</span>
                   <span class="badge ${stageBadge(m.stage).match(/bg-\w+/)?.[0] || 'bg-dark'} match-stage">${m.stage} R${m.round}</span>
-                  <span class="match-players"><strong>${m.p1}</strong> <span class="text-muted">vs</span> <strong>${m.p2}</strong></span>
+                  <span class="match-players"><strong>${m.p1}${window.CTPlayerRatings?.marker({fixtureId:m.id, side:1}) || ''}</strong> <span class="text-muted">vs</span> <strong>${m.p2}${window.CTPlayerRatings?.marker({fixtureId:m.id, side:2}) || ''}</strong></span>
                   <span class="text-muted small">#${m.id}</span>
                 </div>`;
             });

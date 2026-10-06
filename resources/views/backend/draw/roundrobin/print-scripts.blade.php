@@ -80,6 +80,7 @@
     const w = window.open('', '_blank');
     w.document.write('<!DOCTYPE html><html><head><title>' + escapeHtml(title) + '</title>' + styles + '</head><body>' + bodyHtml + '</body></html>');
     w.document.close();
+    w.document.querySelectorAll('.player-rating-badge, [data-rating-player], [data-rating-registration]').forEach(function(badge) { badge.remove(); });
     // Screen overlays are aligned to the source window. Export the original vectors.
     w.document.querySelectorAll('.ct-bracket-edges').forEach(function(layer) { layer.remove(); });
     w.document.querySelectorAll('.ct-bracket-print-edges').forEach(function(layer) { layer.style.display = 'block'; });

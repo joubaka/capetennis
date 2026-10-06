@@ -162,7 +162,7 @@
                     <td class="public-ranking-player">
                       @if($row->player)
                         <a href="{{ route('frontend.ranking.player-detail', [$series, $row->player]) }}" class="text-body text-decoration-none" title="Review {{ $row->player->full_name ?? ($row->player->name ?? 'player') }}'s event scores">
-                          {{ $row->player->full_name ?? ($row->player->name ?? 'Unknown Player') }}
+                          {{ $row->player->full_name ?? ($row->player->name ?? 'Unknown Player') }}<x-player-rating :player-id="$row->player->id" :context="$category" />
                           <span class="public-ranking-player__action">View scores <i class="ti ti-arrow-up-right" aria-hidden="true"></i></span>
                         </a>
                         @if($tieBreakDetail)

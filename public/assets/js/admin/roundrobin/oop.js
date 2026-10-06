@@ -37,9 +37,9 @@
         '><td>' +
         esc(f.match_nr || f.id) +
         '</td><td>' +
-        esc(f.home || feederLabel(f, 'home') || 'TBD') +
+        esc(f.home || feederLabel(f, 'home') || 'TBD') + (root.CTPlayerRatings?.marker({registrationId:f.home_id}) || '') +
         '</td><td class="text-center">vs</td><td>' +
-        esc(f.away || feederLabel(f, 'away') || 'TBD') +
+        esc(f.away || feederLabel(f, 'away') || 'TBD') + (root.CTPlayerRatings?.marker({registrationId:f.away_id}) || '') +
         '</td><td>' +
         esc(f.round) +
         '</td><td>' +

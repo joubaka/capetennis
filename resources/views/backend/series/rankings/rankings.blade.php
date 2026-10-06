@@ -8,11 +8,12 @@
 
   <div class="row">
     @forelse ($finalRankings as $categoryKey => $rankings)
+      @php($ratingCategory = \App\Models\Category::find($categoryKey))
       <div class="col-md-6">
         <div class="card mb-4">
           <div class="card-header bg-light">
             <h5 class="mb-0">
-              {{ \App\Models\Category::find($categoryKey)?->name ?? 'Unknown Category' }}
+              {{ $ratingCategory?->name ?? 'Unknown Category' }}
             </h5>
           </div>
 
@@ -33,7 +34,7 @@
                   @endphp
                   <tr>
                     <td>{{ $i + 1 }}</td>
-                    <td>{{ $row['player']->name }} {{ $row['player']->surname }}</td>
+                    <td>{{ $row['player']->name }} {{ $row['player']->surname }}@if($ratingCategory)<x-player-rating :player-id="$row['player']->id" :context="$ratingCategory" />@endif</td>
                     <td>
                       @foreach ($row['scores'] as $scoreData)
                         @php

@@ -112,12 +112,12 @@ class PlayerPerformanceHistoryService
         $components[$discipline][$key]['band'] = $match['tier'] === 'Open' ? 'Open' : 'A/B';
     }
 
-    public function individualMatches(Event $event, ?Player $player, PlayerPerformancePilotService $pilot): \Generator
+    public function individualMatches(Event $event, ?Player $player, PlayerPerformancePilotService $pilot, ?CarbonImmutable $asOf = null): \Generator
     {
         if (!$event->published) { return; }
         $cache = [];
         $definitions = []; $memberships = [];
-        $query = Fixture::query()->with(['draw.categoryEvent.category', 'draw.settings', 'registration1.players', 'registration2.players', 'fixtureResults'])
+        $query = Fixture::query()->with(['draw.categoryEvent.category', 'draw.settings', 'registration1.players', 'registration2.players', 'fixtureResults', 'oop'])
             ->whereHas('draw', fn ($draw) => $draw->where('event_id', $event->id)->where('published', true))
             ->when(!$player, fn ($query) => $query->whereIn('match_status', [1,2,3])->whereHas('fixtureResults'))
             ->when($player, fn ($query) => $query->where(fn ($query) => $query->whereHas('registration1.players', fn ($players) => $players->whereKey($player->id))->orWhereHas('registration2.players', fn ($players) => $players->whereKey($player->id))));
@@ -173,8 +173,26 @@ class PlayerPerformanceHistoryService
             $won = $winner === ($targetFirst ? 1 : 2);
             $tier = $division['tier'];
             $opponents = ($targetFirst ? $second : $first)->map(fn ($opponent) => trim($opponent->name.' '.$opponent->surname))->implode(' / ');
-            yield ['fixture_id' => $fixture->id, 'source' => 'Individual match', 'event_id' => $event->id, 'event' => $event->name, 'date' => CarbonImmutable::parse($event->end_date)->toDateString(), 'category' => $field?->category?->name ?? $fixture->draw->drawName, 'cohort' => $cohort, 'tier' => $tier, 'discipline' => $discipline, 'won' => $won, 'player1_id' => $first->first()?->id, 'player2_id' => $second->first()?->id, 'winner_side' => $winner, 'opponents' => $opponents, 'points' => $reason ? null : ($tier === 'A' ? 50 : 0) + ($tier === 'Open' ? 100 : 50) * (int) $won, 'reason' => $reason, 'score' => $sets->map(fn ($set) => $targetFirst ? $set->registration1_score.'-'.$set->registration2_score : $set->registration2_score.'-'.$set->registration1_score)->implode(' ')];
+            yield $this->confidenceDate($fixture, $event, $asOf ?? CarbonImmutable::today()) + ['fixture_id' => $fixture->id, 'source' => 'Individual match', 'event_id' => $event->id, 'event' => $event->name, 'date' => CarbonImmutable::parse($event->end_date)->toDateString(), 'category' => $field?->category?->name ?? $fixture->draw->drawName, 'cohort' => $cohort, 'tier' => $tier, 'discipline' => $discipline, 'won' => $won, 'player1_id' => $first->first()?->id, 'player2_id' => $second->first()?->id, 'winner_side' => $winner, 'opponents' => $opponents, 'points' => $reason ? null : ($tier === 'A' ? 50 : 0) + ($tier === 'Open' ? 100 : 50) * (int) $won, 'reason' => $reason, 'score' => $sets->map(fn ($set) => $targetFirst ? $set->registration1_score.'-'.$set->registration2_score : $set->registration2_score.'-'.$set->registration1_score)->implode(' ')];
         }
+    }
+
+    /** Scheduled date is a proxy for play; imports/corrections never refresh confidence. */
+    private function confidenceDate(Fixture $fixture, Event $event, CarbonImmutable $asOf): array
+    {
+        $start = CarbonImmutable::parse($event->start_date)->startOfDay();
+        $end = CarbonImmutable::parse($event->getRawOriginal('end_date') ?? $event->end_date)->endOfDay();
+        $today = $asOf->endOfDay();
+        $time = $fixture->oop?->time;
+        if ($time && preg_match('/^\d{4}-\d{2}-\d{2}/', (string) $time)) {
+            try {
+                $date = CarbonImmutable::parse($time);
+                if ($date->betweenIncluded($start, $end) && $date->lessThanOrEqualTo($today)) {
+                    return ['confidence_date' => $date->toDateString(), 'confidence_date_basis' => 'scheduled match date'];
+                }
+            } catch (\Throwable) { /* Invalid legacy schedule: use the conservative event proxy. */ }
+        }
+        return ['confidence_date' => $start->toDateString(), 'confidence_date_basis' => 'event start proxy'];
     }
 
     /** Reject partial sets, duplicate set numbers, ties and inconsistent set winner totals. */

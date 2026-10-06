@@ -222,7 +222,7 @@
                                 @foreach($ranking_list->ranking_scores as $key => $scores)
                                 <tr>
                                     <td>{{$key+1}}</td>
-                                    <td> <a class="badge bg-label-primary" href="{{route('result.details', ['id' => $scores->player->id, 'series' => $series->id])}}"> {{$scores->player->name}} {{$scores->player->surname}} @if($scores->primarySchool == 1)<span class=" badge bg-label-warning">{{$scores->primarySchool == 1 ? ' (u/13) ':''}}</span> @endif</a> {{$scores->player->id}}</td>
+                                    <td> <a class="badge bg-label-primary" href="{{route('result.details', ['id' => $scores->player->id, 'series' => $series->id])}}"> {{$scores->player->name}} {{$scores->player->surname}}<x-player-rating :player-id="$scores->player->id" :context="$ranking_list->category" /> @if($scores->primarySchool == 1)<span class=" badge bg-label-warning">{{$scores->primarySchool == 1 ? ' (u/13) ':''}}</span> @endif</a> {{$scores->player->id}}</td>
                                     <td> {{$scores->num_events}}</td>
                                     <td> {{$scores->total_points}}</td>
                                 </tr>

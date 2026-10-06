@@ -171,7 +171,7 @@ $(function () {
                 @forelse ($eligibleRegistrations as $reg)
                   <li class="list-group-item list-group-item-action draggable-player mb-1 rounded d-flex align-items-center gap-2" data-player-id="{{ $reg->id }}" style="cursor: grab;">
                     <input type="checkbox" name="registration_ids[]" value="{{ $reg->id }}" aria-label="Select {{ $reg->players->first()->full_name ?? 'player' }}">
-                    <i class="ti ti-grip-vertical me-2 text-muted"></i>{{ $reg->players->first()->full_name ?? '—' }}
+                    <i class="ti ti-grip-vertical me-2 text-muted"></i><x-player-name :players="$reg->players" :context="$draw" fallback="—" />
                   </li>
                 @empty
                   <li class="list-group-item text-muted text-center">No eligible players</li>
@@ -190,7 +190,7 @@ $(function () {
               <ul id="assigned-players" style="min-height: 60px; list-style: none; padding: 0; margin: 0;">
                 @forelse ($draw->registrations as $reg)
                   <li class="list-group-item list-group-item-action draggable-player mb-1 rounded d-flex align-items-center gap-2" data-player-id="{{ $reg->id }}" style="cursor: grab;">
-                    <i class="ti ti-grip-vertical me-2 text-muted"></i>{{ $reg->players->first()->full_name ?? '—' }}
+                    <i class="ti ti-grip-vertical me-2 text-muted"></i><x-player-name :players="$reg->players" :context="$draw" fallback="—" />
                     <button type="button" class="btn btn-sm btn-outline-danger ms-auto remove-player">Remove</button>
                   </li>
                 @empty

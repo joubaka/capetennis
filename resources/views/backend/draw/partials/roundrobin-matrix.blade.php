@@ -143,7 +143,7 @@
                     @php $textX = $offsetX + $i * $cellWidth + 20; @endphp
                     <text x="{{ $textX }}" y="45" transform="rotate(-45 {{ $textX }},45)" font-size="12"
                         font-family="Helvetica">
-                        {{ Str::limit($name, 14) }}
+                        {{ Str::limit($name, 14) }}@if($registrations[$i]->players->first())<x-player-rating :player-id="$registrations[$i]->players->first()->id" :context="$draw" :svg="true" />@endif
                     </text>
                 @endforeach
 
@@ -158,7 +158,7 @@
                 @foreach ($players as $row => $rowName)
                     @php $rowRegId = $registrations[$row]->id; @endphp
                     <text x="10" y="{{ $offsetY + $row * $cellHeight + 20 }}" font-size="12" font-family="Helvetica">
-                        {{ $rowName }}
+                        {{ $rowName }}@if($registrations[$row]->players->first())<x-player-rating :player-id="$registrations[$row]->players->first()->id" :context="$draw" :svg="true" />@endif
                     </text>
 
                     @foreach ($players as $col => $colName)

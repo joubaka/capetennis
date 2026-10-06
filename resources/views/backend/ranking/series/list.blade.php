@@ -519,7 +519,7 @@
                   <td class="ranking-player-name" data-label="Player">
                     {{ $row->player->full_name
                       ?? $row->player->name
-                      ?? 'Unknown Player' }}
+                      ?? 'Unknown Player' }}@if($row->player)<x-player-rating :player-id="$row->player->id" :context="$category" />@endif
                     @if(!$teamEligibility['eligible'])
                       <span class="badge bg-label-warning d-block d-sm-inline-block mt-1 mt-sm-0 ms-sm-1" title="{{ $teamEligibility['reason'] }}">
                         Not team eligible · {{ $teamEligibility['events_played'] }} event{{ $teamEligibility['events_played'] === 1 ? '' : 's' }} played

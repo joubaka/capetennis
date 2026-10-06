@@ -4,11 +4,11 @@
 <div class="alert alert-info">
 <strong>Effective competition roster</strong>
 @php
-$competitionEntries = $competitionRoster->team_players->map(fn ($member) => ['rank' => $member->rank, 'name' => $member->player?->full_name])
+$competitionEntries = $competitionRoster->team_players->map(fn ($member) => ['rank' => $member->rank, 'name' => $member->player?->full_name, 'player_id' => $member->player_id])
     ->concat($competitionRoster->team_players_no_profile->map(fn ($member) => ['rank' => $member->rank, 'name' => trim($member->name.' '.$member->surname).' · imported']))->sortBy('rank');
 @endphp
 @foreach($competitionEntries as $entry)
-<div>({{ $entry['rank'] }}) {{ $entry['name'] }}</div>
+<div>({{ $entry['rank'] }}) {{ $entry['name'] }}@if(!empty($entry['player_id']))<x-player-rating :player-id="$entry['player_id']" :context="$team->category" />@endif</div>
 @endforeach
 <div class="small mt-2">Round cutoffs and selected-match stand-ins follow the recorded replacement scope. The table below is the original registration and payment roster.</div>
 </div>
@@ -44,7 +44,7 @@ $competitionEntries = $competitionRoster->team_players->map(fn ($member) => ['ra
       @endphp
       <tr data-playerteamid="{{ $pivotId }}" data-team-id="{{ $team->id }}">
         <td><span class="badge bg-label-primary">{{ $i + 1 }}</span></td>
-        <td class="name {{ $profile ? 'table-success' : 'table-light' }}">{{ $profile?->name }} {{ $profile?->surname }}</td>
+        <td class="name {{ $profile ? 'table-success' : 'table-light' }}">{{ $profile?->name }} {{ $profile?->surname }}@if($profile)<x-player-rating :player-id="$profile->id" :context="$team->category" />@endif</td>
         @if($team->noProfile)
           <td class="noprofile-name {{ $noProfile ? 'table-warning' : 'table-light' }}">
             {{ $noProfile?->name }} {{ $noProfile?->surname }}

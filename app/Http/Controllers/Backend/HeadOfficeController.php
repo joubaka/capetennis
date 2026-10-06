@@ -141,7 +141,11 @@ class HeadOfficeController extends Controller
 
     $event->load([
       'draws' => function ($q) {
-        $q->withCount(['fixtures']) // only count, not load
+        $q->withCount([
+            'fixtures',
+            'fixtures as scheduled_team_fixture_count' => fn ($fixtures) => $fixtures->whereNotNull('scheduled_at'),
+            'order_of_play as order_of_play_count' => fn ($schedule) => $schedule->whereNotNull('time'),
+          ]) // only count, not load
           ->with(['draw_types'])     // safe relation
           ->orderBy('drawType_id')
           ->orderBy('drawName');

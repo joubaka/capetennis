@@ -37,7 +37,7 @@
           <div class=" d-flex align-items-center flex-column">
             <div class="player-avatar-placeholder mb-3" aria-hidden="true">{{ \Illuminate\Support\Str::upper(\Illuminate\Support\Str::substr($player->full_name, 0, 1)) }}</div>
             <div class="user-info text-center">
-              <h4 class="mb-1">{{$player->full_name}}</h4>
+              <h4 class="mb-1">{{$player->full_name}}<x-player-rating :player-id="$player->id" /></h4>
               <span class="text-muted small">Player profile</span>
 
             </div>

@@ -11,6 +11,7 @@ final class PublicPlayerProfileController extends Controller
     {
         return view('frontend.player.public-profile', [
             'displayName' => trim($player->full_name),
+            'ratingPlayerId' => $player->id,
         ]);
     }
 }

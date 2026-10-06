@@ -171,7 +171,7 @@
                           </td>
 
                           <td>
-                            {{ $name }}
+                            {{ $name }}@if($player)<x-player-rating :player-id="$player->id" :context="$team->category" />@endif
                             @if(!$player)
                               <span class="badge bg-label-warning ms-1">No Profile</span>
                             @endif
