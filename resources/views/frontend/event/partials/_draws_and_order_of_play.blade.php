@@ -28,12 +28,14 @@
 
   @php
     $publishedDayLabels = app(\App\Services\Scheduling\SchedulePublicationService::class)->publicDrawDayLabels($event);
+    $publicStartTimes = $event->exists
+        ? app(\App\Services\Scheduling\SchedulePublicationService::class)->publishedRows($event)->groupBy('draw_id')->map(fn ($rows) => $rows->min('scheduled_at'))
+        : collect();
     $publishedDraws = $eventDraws
         ->where('published', true)
-        ->sort(function ($left, $right) {
-            // Keep draw types grouped, then sort numeric ages rather than creation order.
-            $typeOrder = $right->drawType_id <=> $left->drawType_id;
-            if ($typeOrder !== 0) return $typeOrder;
+        ->sort(function ($left, $right) use ($publicStartTimes) {
+            $timeOrder = strcmp($publicStartTimes->get($left->id, '9999'), $publicStartTimes->get($right->id, '9999'));
+            if ($timeOrder !== 0) return $timeOrder;
             $age = function ($draw) {
                 return preg_match('/\b(?:u\s*\/?\s*|under\s*[- ]?)(\d{1,2})\b/i', $draw->drawName, $matches)
                     ? (int) $matches[1] : PHP_INT_MAX;
@@ -42,10 +44,18 @@
                 ?: strnatcasecmp($left->drawName, $right->drawName)
                 ?: ($left->id <=> $right->id);
         });
+    // Keep type sections intact; each section follows its earliest public match.
+    $publishedDrawGroups = $publishedDraws->groupBy(fn ($draw) => $draw->draw_types?->drawTypeName ?? 'Other')
+        ->sort(function ($left, $right) use ($publicStartTimes) {
+            $firstTime = fn ($draws) => $draws->map(fn ($draw) => $publicStartTimes->get($draw->id))->filter()->min() ?? '9999';
+            return strcmp($firstTime($left), $firstTime($right))
+                ?: ($right->max('drawType_id') <=> $left->max('drawType_id'))
+                ?: strnatcasecmp($left->first()->draw_types?->drawTypeName ?? 'Other', $right->first()->draw_types?->drawTypeName ?? 'Other');
+        });
   @endphp
 
   @forelse(
-      $publishedDraws->groupBy(fn($d) => $d->draw_types?->drawTypeName ?? 'Other')
+      $publishedDrawGroups
       as $typeName => $draws
   )
     <h6 class="mt-3">{{ $typeName }}</h6>
