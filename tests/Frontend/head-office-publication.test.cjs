@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const source = fs.readFileSync('public/js/team-draw-mode.js', 'utf8');
-const handlerSource = source.slice(source.lastIndexOf('(function (window, document) {'));
+const handlerSource = source.slice(source.indexOf('(function (window, document) {'), source.lastIndexOf('(function (window, document) {'));
 
 function harness(ids, replies, confirmed = true) {
   const requests = [], confirmations = [];

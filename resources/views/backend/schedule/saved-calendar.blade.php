@@ -3,7 +3,7 @@
 @section('page-style')<style>[data-saved-calendar] nav a { flex-shrink:0; }</style>@endsection
 @section('content')
 <div class="container-xxl py-3" data-saved-calendar>
-  <div class="d-flex flex-wrap justify-content-between gap-3 mb-3"><div><h3 class="mb-1">Saved schedule</h3><p class="text-muted mb-0">{{ $event->name }} · Add batches across the weekend. Saved changes stay private until you publish them.</p></div><a class="btn btn-primary align-self-start" href="{{ route('backend.event-venue-schedule.index', $event) }}">Schedule more matches</a></div>
+  <div class="d-flex flex-wrap justify-content-between gap-3 mb-3"><div><h3 class="mb-1">Saved schedule</h3><p class="text-muted mb-0">{{ $event->name }} · Add batches across the weekend. Saved changes stay private until you publish them.</p></div><div class="d-flex flex-wrap gap-2 align-self-start"><a class="btn btn-outline-primary" href="{{ route('headOffice.show', $event) }}">Back to event dashboard</a><a class="btn btn-primary" href="{{ route('backend.event-venue-schedule.index', $event) }}">Schedule more matches</a></div></div>
   @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
   @if($errors->any())<div class="alert alert-danger">{{ $errors->first() }}</div>@endif
   <nav class="d-flex gap-2 overflow-auto pb-2 mb-3" aria-label="Schedule days">

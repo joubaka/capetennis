@@ -49,7 +49,8 @@ class HeadOfficePublicationControlsTest extends TestCase
         $html = $response->getContent();
         preg_match('/data-draw-ids="([^"]+)"/', $html, $ids);
         $this->assertSame($draws->pluck('id')->all(), json_decode(html_entity_decode($ids[1]), true));
-        preg_match_all('/<form method="post" action="[^"]+\/venue-schedule\/calendar\/(?:publish|hide)"[^>]*>(.*?)<\/form>/s', $html, $forms);
+        $cardsHtml = strstr($html, '<template data-day-card-template>', true);
+        preg_match_all('/<form[^>]*method="post"[^>]*action="[^"]+\/venue-schedule\/calendar\/(?:publish|hide)"[^>]*>(.*?)<\/form>/s', $cardsHtml, $forms);
         $this->assertCount(4, $forms[1]);
         foreach ($forms[1] as $form) {
             preg_match_all('/name="([^"]+)"/', $form, $fields);
@@ -141,5 +142,103 @@ class HeadOfficePublicationControlsTest extends TestCase
         $first->delete(); $last->delete();
         $response = $this->get(route('headOffice.show', $event))->assertOk()->assertSee('No draws')->assertSee('Not scheduled');
         $this->assertSame(['published' => 0, 'unpublished' => 0, 'status' => 'No draws'], $response->viewData('drawPublicationSummary'));
+    }
+
+    public function test_ajax_day_toggle_returns_all_day_statuses_and_fresh_revision_without_redirect(): void
+    {
+        [$event, $venue] = $this->setupEvent();
+        $otherVenue = Venue::forceCreate(['name' => 'Other venue']);
+        $event->venues()->attach($otherVenue->id, ['num_courts' => 1]);
+        $first = Draw::factory()->create(['event_id' => $event->id]);
+        $second = Draw::factory()->create(['event_id' => $event->id]);
+        $this->saved($first, $venue, '2026-10-09');
+        $this->saved($second, $otherVenue, '2026-10-09');
+        $this->saved($first, $venue, '2026-10-10');
+        $service = app(SchedulePublicationService::class);
+        $revision = $service->revision($event);
+        $published = $this->postJson(route('backend.event-venue-schedule.calendar.publish', $event), ['date' => '2026-10-09', 'revision' => $revision])
+            ->assertOk()->assertJsonPath('success', true)->assertJsonPath('event_id', $event->id)->assertJsonPath('changed', 2)
+            ->assertJsonPath('days.0.status', 'Published')->assertJsonPath('days.1.status', 'Unpublished');
+        $this->assertNotSame($revision, $published->json('revision'));
+        $this->assertFalse((bool) $first->fresh()->published);
+        $this->postJson(route('backend.event-venue-schedule.calendar.hide', $event), ['date' => '2026-10-09', 'revision' => $published->json('revision')])
+            ->assertOk()->assertJsonPath('action', 'hide')->assertJsonPath('days.0.status', 'Unpublished')->assertJsonPath('changed', 2);
+        $this->assertDatabaseCount('published_schedule_assignments', 0);
+        $this->assertDatabaseCount('team_fixtures', 3);
+    }
+
+    public function test_ajax_moved_snapshot_updates_old_day_and_stale_revision_is_an_error(): void
+    {
+        [$event, $venue] = $this->setupEvent();
+        $draw = Draw::factory()->create(['event_id' => $event->id]);
+        $fixture = $this->saved($draw, $venue, '2026-10-09');
+        $service = app(SchedulePublicationService::class);
+        $service->publish($event, ['draw_id' => $draw->id]);
+        $oldRevision = $service->revision($event);
+        $fixture->update(['scheduled_at' => '2026-10-10 09:00:00']);
+        $this->postJson(route('backend.event-venue-schedule.calendar.publish', $event), ['date' => '2026-10-10', 'revision' => $oldRevision])
+            ->assertUnprocessable()->assertJsonPath('success', false);
+        $this->assertDatabaseHas('published_schedule_assignments', ['fixture_id' => $fixture->id, 'scheduled_at' => '2026-10-09 09:00:00']);
+        $before = $fixture->fresh()->toJson();
+        $status = $this->getJson(route('backend.event-venue-schedule.calendar.publication-status', $event))->assertOk()
+            ->assertJsonPath('days.0.status', 'Updates not published')->assertJsonPath('days.1.status', 'Updates not published');
+        $this->assertSame($before, $fixture->fresh()->toJson());
+        $this->postJson(route('backend.event-venue-schedule.calendar.publish', $event), ['date' => '2026-10-10', 'revision' => $status->json('revision')])
+            ->assertOk()->assertJsonCount(1, 'days')->assertJsonPath('days.0.date', '2026-10-10')->assertJsonPath('days.0.status', 'Published');
+        $this->assertDatabaseHas('published_schedule_assignments', ['fixture_id' => $fixture->id, 'scheduled_at' => '2026-10-10 09:00:00']);
+    }
+
+    public function test_ajax_status_and_mutations_require_same_event_authorization(): void
+    {
+        [$event, $venue] = $this->setupEvent();
+        $draw = Draw::factory()->create(['event_id' => $event->id]);
+        $this->saved($draw, $venue, '2026-10-09');
+        $foreign = Event::factory()->create(['eventType' => 3]);
+        $foreignDraw = Draw::factory()->create(['event_id' => $foreign->id]);
+        $this->getJson(route('backend.event-venue-schedule.calendar.publication-status', $foreign))->assertForbidden();
+        $this->postJson(route('backend.event-venue-schedule.calendar.publish', $event), ['date' => '2026-10-09', 'revision' => app(SchedulePublicationService::class)->revision($event), 'draw_id' => $foreignDraw->id])->assertUnprocessable();
+        $this->actingAs(User::factory()->create());
+        $this->getJson(route('backend.event-venue-schedule.calendar.publication-status', $event))->assertForbidden();
+        $this->postJson(route('backend.event-venue-schedule.calendar.publish', $event), ['date' => '2026-10-09', 'revision' => str_repeat('0', 64)])->assertForbidden();
+        $this->assertDatabaseCount('published_schedule_assignments', 0);
+    }
+
+    public function test_status_read_retries_boundedly_instead_of_pairing_stale_days_with_a_new_revision(): void
+    {
+        [$event, $venue] = $this->setupEvent();
+        $draw = Draw::factory()->create(['event_id' => $event->id]);
+        $fixture = $this->saved($draw, $venue, '2026-10-09');
+        $revisionReads = 0;
+        DB::listen(function ($query) use ($fixture, &$revisionReads) {
+            if (str_contains($query->sql, 'published_schedule_assignments') && str_contains($query->sql, 'order by')) {
+                $revisionReads++;
+                // Simulate another scheduler changing timings between status reads.
+                DB::table('team_fixtures')->where('id', $fixture->id)->update(['scheduled_at' => $revisionReads % 2 ? '2026-10-10 09:00:00' : '2026-10-09 09:00:00']);
+            }
+        });
+        $this->getJson(route('backend.event-venue-schedule.calendar.publication-status', $event))->assertStatus(503)->assertJsonPath('success', false);
+        $this->assertSame(4, $revisionReads);
+        $this->assertDatabaseCount('published_schedule_assignments', 0);
+    }
+
+    public function test_initial_page_uses_stable_snapshot_and_pauses_actions_when_status_cannot_be_confirmed(): void
+    {
+        [$event, $venue] = $this->setupEvent();
+        $draw = Draw::factory()->create(['event_id' => $event->id]);
+        $fixture = $this->saved($draw, $venue, '2026-10-09');
+        $revisionReads = 0;
+        DB::listen(function ($query) use ($fixture, &$revisionReads) {
+            if (str_contains($query->sql, 'published_schedule_assignments') && str_contains($query->sql, 'order by')) {
+                $revisionReads++;
+                DB::table('team_fixtures')->where('id', $fixture->id)->update(['scheduled_at' => $revisionReads % 2 ? '2026-10-10 09:00:00' : '2026-10-09 09:00:00']);
+            }
+        });
+        $response = $this->get(route('headOffice.show', $event))->assertOk()->assertSee('Publication status unconfirmed. Actions are paused; retry the status check before changing a day.')
+            ->assertSee('data-initial-unconfirmed="true"', false);
+        $this->assertTrue($response->viewData('schedulePublicationUnconfirmed'));
+        $this->assertNull($response->viewData('schedulePublicationRevision'));
+        $this->assertTrue($response->viewData('wholeDaySchedule')->isEmpty());
+        $this->assertSame(4, $revisionReads);
+        $this->assertDatabaseCount('published_schedule_assignments', 0);
     }
 }

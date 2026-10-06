@@ -142,34 +142,22 @@
 </div>
 
 @can('event.manage', $event)
-<div class="card mb-4 no-print" data-whole-day-publication>
+<div class="card mb-4 no-print" data-whole-day-publication data-initial-unconfirmed="{{ ($schedulePublicationUnconfirmed ?? false) ? 'true' : 'false' }}" data-event-id="{{ $event->id }}" data-status-url="{{ route('backend.event-venue-schedule.calendar.publication-status', $event) }}" data-publish-url="{{ route('backend.event-venue-schedule.calendar.publish', $event) }}" data-hide-url="{{ route('backend.event-venue-schedule.calendar.hide', $event) }}" data-calendar-url="{{ route('backend.event-venue-schedule.calendar', $event) }}">
   <div class="card-body">
     <h5>Whole-day schedule publication</h5>
     <p class="text-muted">Review, publish or hide one whole day's match times across all venues and draws. Publishing times does not publish hidden draws; existing public visibility rules still apply.</p>
-    <div class="row g-3">
+    <div class="alert {{ ($schedulePublicationUnconfirmed ?? false) ? 'alert-warning' : 'd-none' }}" data-day-feedback role="status" aria-live="polite">@if($schedulePublicationUnconfirmed ?? false)Publication status unconfirmed. Actions are paused; retry the status check before changing a day.@endif</div>
+    <button type="button" class="btn btn-outline-primary mb-3" data-day-status-retry @if(!($schedulePublicationUnconfirmed ?? false)) hidden @endif>Retry status check</button>
+    <div class="row g-3" data-day-cards>
       @forelse($wholeDaySchedule ?? collect() as $day => $counts)
-        <div class="col-12 col-md-6 col-xl-4"><div class="border rounded p-3 h-100">
-          <h6>{{ \Carbon\Carbon::parse($day)->format('l j M Y') }}</h6>
-          <p class="mb-2"><strong>{{ $counts['status'] }}</strong></p>
-          <p class="small mb-1">{{ $counts['saved'] }} saved match times · {{ $counts['published'] }} published snapshot times</p>
-          <p class="small mb-1">{{ $counts['matched'] }} saved times match the published snapshots · {{ $counts['pending'] }} matches with pending changes</p>
-          <p class="small text-muted">Whole day · all venues and draws</p>
-          <div class="d-flex flex-wrap gap-2">
-            <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $day]) }}">Review day</a>
-            <form method="post" action="{{ route('backend.event-venue-schedule.calendar.publish', $event) }}">
-              @csrf<input type="hidden" name="date" value="{{ $day }}"><input type="hidden" name="revision" value="{{ $schedulePublicationRevision }}">
-              <button type="submit" class="btn btn-sm btn-success" @disabled($counts['saved'] === 0)>Publish whole day</button>
-            </form>
-            <form method="post" action="{{ route('backend.event-venue-schedule.calendar.hide', $event) }}">
-              @csrf<input type="hidden" name="date" value="{{ $day }}"><input type="hidden" name="revision" value="{{ $schedulePublicationRevision }}">
-              <button type="submit" class="btn btn-sm btn-outline-danger" @disabled($counts['published'] === 0)>Hide whole day</button>
-            </form>
-          </div>
-        </div></div>
+        @include('backend.headOffice.partials.day-publication-card')
       @empty
-        <p class="text-muted mb-0"><strong>Not scheduled</strong> · No saved or published match times yet. Save a schedule before publishing a day.</p>
+        @unless($schedulePublicationUnconfirmed ?? false)<p class="text-muted mb-0"><strong>Not scheduled</strong> · No saved or published match times yet. Save a schedule before publishing a day.</p>@endunless
       @endforelse
     </div>
+    <template data-day-card-template>
+      @include('backend.headOffice.partials.day-publication-card', ['day' => '', 'counts' => ['saved' => 0, 'published' => 0, 'matched' => 0, 'pending' => 0, 'status' => 'Not scheduled']])
+    </template>
   </div>
 </div>
 @endcan

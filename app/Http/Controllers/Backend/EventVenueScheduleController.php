@@ -232,6 +232,16 @@ final class EventVenueScheduleController extends Controller
         return $this->changePublication($request, $event, $publication, false);
     }
 
+    public function publicationStatus(Event $event, \App\Services\Scheduling\SchedulePublicationStatusService $status)
+    {
+        $this->authorize('event.manage', $event);
+        try {
+            return response()->json(['success' => true] + $status->snapshot($event));
+        } catch (\InvalidArgumentException $exception) {
+            return response()->json(['success' => false, 'message' => $exception->getMessage()], 503);
+        }
+    }
+
     public function hideScope(Request $request, Event $event, \App\Services\Scheduling\SchedulePublicationService $publication)
     {
         return $this->changePublication($request, $event, $publication, true);
@@ -256,9 +266,12 @@ final class EventVenueScheduleController extends Controller
             $scope['revision'] = (string) $request->string('revision');
             $count = $hide ? $publication->hide($event, $scope) : $publication->publish($event, $scope);
             unset($scope['revision']);
+            if ($request->expectsJson()) return response()->json(['success' => true, 'action' => $hide ? 'hide' : 'publish', 'changed' => $count]
+                + app(\App\Services\Scheduling\SchedulePublicationStatusService::class)->snapshot($event));
             return redirect()->route('backend.event-venue-schedule.calendar', ['event' => $event->id] + $scope)
                 ->with('success', $hide ? "Hidden {$count} public match times." : "Published {$count} saved match times. Other saved changes remain private.");
         } catch (\InvalidArgumentException $exception) {
+            if ($request->expectsJson()) return response()->json(['success' => false, 'message' => $exception->getMessage()], 422);
             return back()->withErrors(['schedule' => $exception->getMessage()]);
         }
     }
