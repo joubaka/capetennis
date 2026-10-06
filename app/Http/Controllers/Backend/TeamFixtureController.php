@@ -39,8 +39,8 @@ class TeamFixtureController extends Controller
       'teamTie:id,draw_id,round_nr,tie_nr,home_team_id,away_team_id',
       'fixturePlayers.player1',
       'fixturePlayers.player2',
-      'fixturePlayers.noProfile1',
-      'fixturePlayers.noProfile2',
+      'fixturePlayers.noProfile1.profile',
+      'fixturePlayers.noProfile2.profile',
       'fixtureResults',
       'venue',
       'teamTie.homeTeam:id,name',
@@ -128,13 +128,14 @@ class TeamFixtureController extends Controller
     $draws = Draw::when($eventIds !== null, fn($query) => $query->whereIn('event_id', $eventIds))
       ->orderBy('id', 'desc')->get(['id', 'drawName', 'event_id']);
     $venues = Venue::orderBy('name')->get(['id', 'name']);
-    $playerIds = TeamFixturePlayer::query()
-      ->when($eventIds !== null, fn($query) => $query->whereHas(
-        'fixture.draw', fn($draw) => $draw->whereIn('event_id', $eventIds)
-      ))
-      ->get(['team1_id', 'team2_id'])->flatMap(fn($row) => [$row->team1_id, $row->team2_id])
-      ->filter()->unique();
-    $allPlayers = Player::whereIn('id', $playerIds)->get();
+    // Replacement options belong only to the authorized, filtered fixtures on this page.
+    // Keep historical assignment rows in SQL rather than hydrating them into memory.
+    $fixtureIds = $fixtures->getCollection()->modelKeys();
+    $homePlayerIds = DB::table('team_fixture_players')
+      ->whereIn('team_fixture_id', $fixtureIds)->whereNotNull('team1_id')->select('team1_id');
+    $awayPlayerIds = DB::table('team_fixture_players')
+      ->whereIn('team_fixture_id', $fixtureIds)->whereNotNull('team2_id')->select('team2_id');
+    $allPlayers = Player::whereIn('id', $homePlayerIds->union($awayPlayerIds))->get();
 
     return view('backend.team-fixtures.index', compact(
       'fixtures',
@@ -533,7 +534,8 @@ class TeamFixtureController extends Controller
 
     });
 
-    $team_fixture->load(['team1', 'team2', 'region1Name', 'region2Name']);
+    $team_fixture->load(['team1', 'team2', 'region1Name', 'region2Name', 'fixturePlayers.noProfile1.profile', 'fixturePlayers.noProfile2.profile']);
+    app(\App\Services\TeamFixtureLineupPresenter::class)->prepare(collect([$team_fixture]));
 
     if ($request->ajax()) {
       return response()->json([

@@ -29,8 +29,11 @@ class FixtureService
         $grouped = collect($matches)->groupBy('type');
 
         foreach ($grouped as $type => $typeMatches) {
+          $categoryEventId = $type === 'mixed' ? null : \App\Models\CategoryEvent::where('event_id', $event->id)
+            ->whereHas('category', fn ($query) => $query->where('name', $category))->value('id');
           $draw = Draw::create([
             'event_id' => $event->id,
+            'category_event_id' => $categoryEventId,
             'drawName' => "$category " . ucfirst(str_replace('_', ' ', $type)),
             'drawType_id' => match ($type) {
               'singles' => 1,
@@ -894,6 +897,8 @@ class FixtureService
     $draw = Draw::create([
       'event_id' => $event->id,
       'category_id' => $categoryIds[0],
+      'category_event_id' => count($categoryIds) === 1 && $type !== 'mixed'
+        ? \App\Models\CategoryEvent::where('event_id', $event->id)->where('category_id', $categoryIds[0])->value('id') : null,
       'drawName' => $drawName,
       'drawType_id' => $drawTypeId,
       'rounds' => collect($matches)->max('round') ?? 0,

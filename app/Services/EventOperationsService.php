@@ -87,6 +87,8 @@ class EventOperationsService
             'readiness' => $readiness,
             'finance' => $finance,
             'financeTotals' => $totals,
+            'clothingReceipts' => app(\App\Domain\Finance\Services\EventFinanceReceiptReport::class)
+                ->build($event, $paymentRows->where('type', 'clothing_payment'))['clothing'],
             'warnings' => $warnings->values(),
         ];
     }

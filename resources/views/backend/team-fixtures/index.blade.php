@@ -22,46 +22,44 @@
 
 @section('content')
 
-{{-- ========================= --}}
-{{-- SAFE DEBUG HEADER (LOCAL) --}}
-{{-- ========================= --}}
-@if(app()->environment('local'))
-<div class="alert alert-warning small mb-3">
-    <strong>DEBUG MODE ACTIVE</strong><br>
-    Fixtures count: {{ $fixtures->count() ?? 0 }} <br>
-    Event ID: {{ $event->id ?? 'N/A' }}
-</div>
-
-@php
-\Log::debug('[TeamFixtures] Page Loaded', [
-    'event_id' => $event->id ?? null,
-    'fixtures_count' => $fixtures->count() ?? 0
-]);
-@endphp
-@endif
-
-
 <style>
-.fixture-region { font-weight: 600; color: #18324b; margin-bottom: .25rem; }
-.fixture-player { min-width: 11rem; white-space: normal; line-height: 1.5; }
-.fixture-rank { color: #697a8d; font-variant-numeric: tabular-nums; }
-.winner-home { background-color: rgba(40,167,69,.25)!important; }
-.loser-home { background-color: rgba(220,53,69,.25)!important; }
-.draw-cell { background-color: rgba(255,193,7,.25)!important; }
+.team-fixtures-view .fixture-region { display: flex; align-items: center; gap: .45rem; font-weight: 700; color: #18324b; margin-bottom: .4rem; letter-spacing: .03em; }
+.team-fixtures-view .fixture-region-logo { width: 28px; height: 28px; flex: 0 0 28px; object-fit: contain; }
+.team-fixtures-view .fixture-players { display: flex; flex-wrap: wrap; gap: .35rem; max-width: 22rem; }
+.team-fixtures-view .fixture-player-badge { display: inline-flex; align-items: center; gap: .4rem; padding: .35rem .6rem; border: 1px solid #dce5ef; border-radius: .5rem; background: #f4f7fb; color: #334b66; font-size: .85rem; line-height: 1.4; white-space: normal; }
+.team-fixtures-view .fixture-player-link:hover { background: #e7effa; border-color: #8daed7; color: #173e71; }
+.team-fixtures-view .fixture-player-link:focus-visible { outline: 3px solid #497ab8; outline-offset: 2px; }
+.team-fixtures-view .fixture-rank { color: #596c83; font-variant-numeric: tabular-nums; }
+.team-fixtures-view .table > tbody > tr > td { padding: .8rem .9rem; }
+.team-fixtures-view .table > thead > tr > th { padding: .85rem .9rem; white-space: nowrap; }
+.team-fixtures-view .fixture-id { color: #697a8d; font-size: .8rem; }
+.team-fixtures-view .fixture-group td { background: #edf2f8; font-weight: 600; color: #18324b; padding: .65rem .9rem !important; }
+.team-fixtures-view .winner-home { background-color: #e8f5eb !important; }
+.team-fixtures-view .loser-home { background-color: #fff1f0 !important; }
+.team-fixtures-view .draw-cell { background-color: #fff8e4 !important; }
+@media (max-width: 767px) {
+  .team-fixtures-view .fixture-secondary { display: none; }
+  .team-fixtures-view .table { min-width: 650px; }
+  .team-fixtures-view .fixture-players { max-width: 15rem; }
+}
 </style>
 
 
-<div class="container-xxl">
+<div class="container-xxl team-fixtures-view">
 <div class="card">
+<div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+  <div><h4 class="mb-1">Team fixtures</h4><p class="text-muted mb-0">{{ $event?->name ?? 'Manage match lineups and scores' }}</p></div>
+  <span class="badge bg-label-primary">{{ number_format($fixtures->total()) }} {{ \Illuminate\Support\Str::plural('fixture', $fixtures->total()) }}</span>
+</div>
 <div class="table-responsive">
 <table class="table table-sm table-hover align-middle mb-0">
 
 <thead class="table-light">
 <tr>
-<th>#</th>
-<th>Draw</th>
-<th>Round</th>
-<th>Match Nr</th>
+<th class="fixture-secondary">#</th>
+<th class="fixture-secondary">Draw</th>
+<th class="fixture-secondary">Round</th>
+<th>Match</th>
 <th>Home</th>
 <th>Away</th>
 <th>Result</th>
@@ -73,24 +71,6 @@
 
 <tbody>
 @forelse($fixtures as $fx)
-
-{{-- Fixture Debug --}}
-@if(app()->environment('local'))
-@php
-
-\Log::debug('[TeamFixtures] Rendering Fixture', [
-    'fixture_id' => $fx->id,
-    'round' => $fx->round_nr,
-    'tie' => $fx->tie_nr,
-    'players_count' => $fx->fixturePlayers->count()
-]);
-\Log::debug('[TeamFixtures] Regions', [
-    'fixture_id' => $fx->id,
-    'region1' => optional($fx->region1Name)->short_name,
-    'region2' => optional($fx->region2Name)->short_name,
-]);
-@endphp
-@endif
 
 @php
 $homeClass = '';
@@ -119,31 +99,31 @@ $awayLabel = $away['region'].' — '.collect($away['players'])->pluck('name')->i
 $display = $fx->scheduled_at;
 @endphp
 
+@if($loop->first || $fixtures[$loop->index - 1]->draw_id !== $fx->draw_id || $fixtures[$loop->index - 1]->round_nr !== $fx->round_nr || $fixtures[$loop->index - 1]->tie_nr !== $fx->tie_nr)
+<tr class="fixture-group">
+  <td colspan="10" class="d-none d-md-table-cell">{{ $fx->draw?->drawName ?? 'Draw' }} <span class="mx-2 text-muted">/</span> Round {{ $fx->round_nr }} <span class="mx-2 text-muted">/</span> {{ $home['region'] }} vs {{ $away['region'] }}</td>
+  <td colspan="7" class="d-md-none">{{ $fx->draw?->drawName ?? 'Draw' }} / Round {{ $fx->round_nr }} / {{ $home['region'] }} vs {{ $away['region'] }}</td>
+</tr>
+@endif
 <tr id="row-{{ $fx->id }}">
-<td>{{ $fx->id }}</td>
-<td>{{ optional($fx->draw)->drawName ?? '—' }}</td>
-<td>{{ $fx->round_nr }}</td>
+<td class="fixture-secondary fixture-id">{{ $fx->id }}</td>
+<td class="fixture-secondary">{{ optional($fx->draw)->drawName ?? '—' }}</td>
+<td class="fixture-secondary">{{ $fx->round_nr }}</td>
 <td>{{ $fx->home_rank_nr ?? ($isV2 ? ($fx->rubber_name ?? $fx->rubber_code ?? '—') : '—') }}</td>
 
 <td class="home-cell {{ $homeClass }}">
-<div class="fixture-region">{{ $home['region'] }}</div>
-@forelse($home['players'] as $player)
-<div class="fixture-player">@if($player['rank'])<span class="fixture-rank">({{ $player['rank'] }})</span> @endif{{ $player['name'] }}@unless($player['rank']) <span class="text-muted small">— rank unavailable</span>@endunless</div>
-@empty <span class="text-muted">TBD</span> @endforelse
+@include('backend.team-fixtures.partials.side-badges', ['fixture' => $fx, 'side' => 'home'])
 </td>
 
 <td class="away-cell {{ $awayClass }}">
-<div class="fixture-region">{{ $away['region'] }}</div>
-@forelse($away['players'] as $player)
-<div class="fixture-player">@if($player['rank'])<span class="fixture-rank">({{ $player['rank'] }})</span> @endif{{ $player['name'] }}@unless($player['rank']) <span class="text-muted small">— rank unavailable</span>@endunless</div>
-@empty <span class="text-muted">TBD</span> @endforelse
+@include('backend.team-fixtures.partials.side-badges', ['fixture' => $fx, 'side' => 'away'])
 </td>
 
 <td id="result-col-{{ $fx->id }}">
 @forelse($fx->fixtureResults as $r)
 {{ $r->team1_score }}-{{ $r->team2_score }}@if(!$loop->last), @endif
 @empty
-<span class="text-muted">No result</span>
+<span class="badge bg-label-secondary">Awaiting score</span>
 @endforelse
 </td>
 
@@ -168,7 +148,7 @@ $display = $fx->scheduled_at;
        data-set{{ $r->set_nr }}_away="{{ $r->team2_score }}"
      @endforeach
   >
-    Edit
+    Edit score
   </a>
 </td>
 </tr>
@@ -186,18 +166,6 @@ $display = $fx->scheduled_at;
 
   <!-- Edit Score Modal --> <div class="modal fade" id="editScoreModal" tabindex="-1" aria-hidden="true">   <div class="modal-dialog modal-dialog-centered">     <div class="modal-content">       <form id="editScoreForm" method="POST" action="">         @csrf         @method('PUT')         <div class="modal-header">           <h5 class="modal-title">Edit Score</h5>           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>         </div>         <div class="modal-body">           <p><strong id="fixtureTeams"></strong></p>           <div class="table-responsive">             <table class="table table-sm align-middle">               <thead>                 <tr>                   <th>Set</th>                   <th>Home</th>                   <th>Away</th>                 </tr>               </thead>               <tbody>                 @for($i = 1; $i <= 3; $i++)                   <tr>                     <td>Set {{ $i }}</td>                     <td><input type="number" class="form-control" name="set{{ $i }}_home" id="set{{ $i }}Home" min="0"></td>                     <td><input type="number" class="form-control" name="set{{ $i }}_away" id="set{{ $i }}Away" min="0"></td>                   </tr>                 @endfor               </tbody>             </table>           </div>         </div>         <div class="modal-footer">           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>           <button type="submit" class="btn btn-primary">Save</button>         </div>       </form>     </div>   </div> </div>  <!-- Edit Players Modal --> <div class="modal fade" id="editPlayersModal" tabindex="-1" aria-hidden="true">   <div class="modal-dialog modal-lg modal-dialog-centered">     <div class="modal-content">       <form id="editPlayersForm" method="POST" action="">         @csrf         @method('PUT')         <div class="modal-header">           <h5 class="modal-title">Edit Players</h5>           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>         </div>         <div class="modal-body">           <p><strong id="playersFixtureTeams"></strong></p>           <div class="row"> <div class="col-md-6">   <label class="form-label">Home Players</label>   <select class="form-select select2"            name="home_players[]"            id="homePlayers"            data-fixture-type="{{ $team_fixture->fixture_type ?? 'singles' }}"            multiple>     @foreach($allPlayers as $player)       <option value="{{ $player->id }}">{{ $player->full_name }}</option>     @endforeach   </select> </div>  <div class="col-md-6">   <label class="form-label">Away Players</label>   <select class="form-select select2"            name="away_players[]"            id="awayPlayers"            data-fixture-type="{{ $team_fixture->fixture_type ?? 'singles' }}"            multiple>     @foreach($allPlayers as $player)       <option value="{{ $player->id }}">{{ $player->full_name }}</option>     @endforeach   </select> </div>             </div>         </div>         <div class="modal-footer">           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>           <button type="submit" class="btn btn-primary">Save Players</button>         </div>       </form>     </div>   </div> </div>
 
-
-
-{{-- Browser Console Debug --}}
-@if(app()->environment('local'))
-<script>
-console.group('📊 Blade Fixture Debug');
-console.log('Fixtures Count:', {{ $fixtures->count() }});
-console.log('Event:', @json($event ?? null));
-console.log('First Fixture:', @json($fixtures->first()));
-console.groupEnd();
-</script>
-@endif
 
 
 @endsection

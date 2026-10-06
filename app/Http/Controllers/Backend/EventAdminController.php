@@ -896,7 +896,7 @@ class EventAdminController extends Controller
     }
 
     $financeData = $event->isTeam()
-      ? $this->buildFinanceData($event, $operations['financeTotals'])
+      ? $this->buildFinanceData($event, $operations['financeTotals'], $operations['clothingReceipts'])
       : [];
 
     if ($event->isInterprovincialTrials()) {
@@ -980,7 +980,7 @@ class EventAdminController extends Controller
     ] + $financeData);
   }
 
-  protected function buildFinanceData(Event $event, ?array $canonicalTotals = null): array
+  protected function buildFinanceData(Event $event, ?array $canonicalTotals = null, ?array $clothingReceipts = null): array
   {
     $feePerEntry = (float) $event->cape_tennis_fee;
 
@@ -995,16 +995,18 @@ class EventAdminController extends Controller
       ->orderByDesc('created_at')
       ->get();
 
-    $totalGross             = $canonicalTotals['gross_payments'] ?? $transactions->sum('amount_gross');
-    $totalPayfastFees       = $canonicalTotals['pf_fees'] ?? $transactions->sum('amount_fee');
+    $totalGross             = $canonicalTotals['registration_received'] ?? $transactions->sum('amount_gross');
+    $totalPayfastFees       = ($canonicalTotals['pf_fees'] ?? $transactions->sum('amount_fee'))
+      - ($clothingReceipts['totals']['fees'] ?? 0);
     $totalEntries           = $canonicalTotals['total_entries']
       ?? $transactions->sum(fn($t) => $t->order?->items?->count() ?? 1);
     $totalCapeTennisFees    = abs($canonicalTotals['cape_fees'] ?? ($totalEntries * $feePerEntry));
-    $netRegistrationIncome  = $totalGross - abs($totalPayfastFees) - $totalCapeTennisFees;
+    $netRegistrationIncome  = $canonicalTotals['registration_net'] ?? ($totalGross - abs($totalPayfastFees) - $totalCapeTennisFees);
+    $registrationRefundAdjustment = round($netRegistrationIncome - ($totalGross - abs($totalPayfastFees) - $totalCapeTennisFees), 2);
 
     $incomeItems      = $event->incomeItems()->get();
     $totalIncomeItems = $incomeItems->sum(fn($i) => $i->calculatedTotal());
-    $grandTotalIncome = $netRegistrationIncome + $totalIncomeItems;
+    $grandTotalIncome = $netRegistrationIncome + ($clothingReceipts['totals']['net'] ?? 0) + $totalIncomeItems;
 
     $convenors = $event->convenors()
       ->with('user')
@@ -1098,7 +1100,9 @@ class EventAdminController extends Controller
       'totalEntries',
       'feePerEntry',
       'netRegistrationIncome',
+      'registrationRefundAdjustment',
       'incomeByCategory',
+      'clothingReceipts',
       'incomeItems',
       'totalIncomeItems',
       'grandTotalIncome',

@@ -70,10 +70,7 @@ class EventFinanceControllerAuthorizationTest extends TestCase
             ->assertViewHas('eventTransactions', fn ($rows) => $rows->count() === 1
                 && $rows->first()->user_name === 'Finance Payer')
             ->assertSee('Received Transactions')
-            ->assertSee('Registration receipts')
-            ->assertSee('Clothing receipts')
-            ->assertSee('Region not recorded')
-            ->assertSee('Receipts grouped by region, with payment methods, fees and refunds.')
+            ->assertSee('Open to see registration and clothing receipts, payment method, fees and refunds.')
             ->assertSee('registration-transactions-action-label', false)
             ->assertSee('Finance Payer')
             ->assertSee('PF-ADMIN-VIEW-1')

@@ -41,7 +41,7 @@
       <div class="card-body">
         <small class="text-muted d-block mb-1"><i class="ti ti-cash me-1 text-primary"></i>Net Income</small>
         <h5 class="mb-0">R {{ number_format($grandTotalIncome, 2) }}</h5>
-        <small class="text-muted">Gross: R {{ number_format($totalGross, 2) }}</small>
+        <small class="text-muted">Registration gross: R {{ number_format($totalGross, 2) }}</small>
         @if($event->target_income)
           <div class="progress mt-2" style="height:4px" title="R{{ number_format($grandTotalIncome,2) }} of R{{ number_format($event->target_income,2) }}">
             <div class="progress-bar bg-primary" style="width: {{ min(100, round($grandTotalIncome / $event->target_income * 100)) }}%"></div>
@@ -173,8 +173,15 @@
             </tr>
           @endif
 
+          @if(abs($registrationRefundAdjustment ?? 0) > 0)
+            <tr>
+              <td colspan="5">Completed registration refunds (net adjustment)</td>
+              <td class="text-end">R {{ number_format($registrationRefundAdjustment, 2) }}</td>
+              <td class="no-print"></td>
+            </tr>
+          @endif
           {{-- Net registration income subtotal --}}
-          @if(abs($totalPayfastFees) > 0 || $totalCapeTennisFees > 0)
+          @if(abs($totalPayfastFees) > 0 || $totalCapeTennisFees > 0 || abs($registrationRefundAdjustment ?? 0) > 0)
             <tr class="table-light fw-semibold">
               <td colspan="5" class="text-end text-muted" style="font-size:0.85rem">Net Registration Income</td>
               <td class="text-end text-success">R {{ number_format($netRegistrationIncome, 2) }}</td>
@@ -182,8 +189,35 @@
             </tr>
           @endif
 
+          @if(($clothingReceipts['count'] ?? 0) > 0)
+            <tr class="table-light">
+              <td colspan="7" class="fw-semibold">Clothing income by region (paid orders)</td>
+            </tr>
+            @foreach($clothingReceipts['groups'] as $region => $group)
+              <tr>
+                <td>{{ $region }}</td>
+                <td class="text-center">{{ $group['rows']->count() }} orders</td>
+                <td class="text-end">—</td>
+                <td><small class="text-muted">Paid clothing orders</small></td>
+                <td>—</td>
+                <td class="text-end text-success">R {{ number_format($group['totals']['gross'], 2) }}</td>
+                <td class="no-print"></td>
+              </tr>
+            @endforeach
+            <tr class="text-danger">
+              <td colspan="5">Clothing PayFast fees deducted</td>
+              <td class="text-end">−R {{ number_format(abs($clothingReceipts['totals']['fees']), 2) }}</td>
+              <td class="no-print"></td>
+            </tr>
+            <tr class="table-light fw-semibold">
+              <td colspan="5" class="text-end">Net Clothing Income</td>
+              <td class="text-end text-success">R {{ number_format($clothingReceipts['totals']['net'], 2) }}</td>
+              <td class="no-print"></td>
+            </tr>
+          @endif
+
           {{-- Income by category collapsible --}}
-          @if($incomeByCategory->isNotEmpty())
+          @if(!$event->isTeam() && $incomeByCategory->isNotEmpty())
             <tr class="no-print">
               <td colspan="7" class="py-1 px-3">
                 <button class="btn btn-link btn-sm p-0 text-decoration-none text-muted"
@@ -663,6 +697,20 @@
             <td colspan="3" class="text-end fw-semibold text-success">R {{ number_format($totalGross, 2) }}</td>
             <td></td>
           </tr>
+          @if(($clothingReceipts['count'] ?? 0) > 0)
+            <tr class="table-secondary">
+              <td colspan="2"><small class="text-muted">Gross Clothing Income</small></td>
+              <td colspan="3" class="text-end fw-semibold text-success">R {{ number_format($clothingReceipts['totals']['gross'], 2) }}</td>
+              <td></td>
+            </tr>
+          @endif
+          @if(abs($registrationRefundAdjustment ?? 0) > 0)
+            <tr class="table-secondary">
+              <td colspan="2"><small class="text-muted">Completed registration refunds (net adjustment)</small></td>
+              <td colspan="3" class="text-end">R {{ number_format($registrationRefundAdjustment, 2) }}</td>
+              <td></td>
+            </tr>
+          @endif
           @if($totalSystemFees > 0)
             <tr class="table-secondary">
               <td colspan="2"><small class="text-muted">System Fees (PayFast + Cape Tennis – deducted from gross)</small></td>

@@ -19,6 +19,12 @@
 <link rel="stylesheet" href="{{asset('assets/vendor/css/pages/page-user-view.css')}}" />
 <style>
   .event-draw-list { display: grid; gap: 1rem; }
+  .ct-backend .event-draw-tabs { display: flex; flex-direction: row; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.25rem; padding-bottom: 1rem; border-bottom: 1px solid var(--ct-border, #e4eaf0); }
+  .ct-backend .event-draw-tabs .nav-link { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; flex: 0 0 auto; width: auto; min-height: 44px; padding: .625rem .875rem; border: 1px solid var(--ct-border, #e4eaf0); white-space: normal; text-align: left; }
+  .ct-backend .nav-pills.event-draw-tabs .nav-link.active { background: var(--ct-ink, #172e45); color: #fff; border-color: var(--ct-ink, #172e45); }
+  .ct-backend .event-draw-tabs .nav-link.active .badge { color: #fff !important; background: #ffffff26 !important; }
+  .event-draw-layout > div { min-width: 0; }
+  .event-draw-heading { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-bottom: 1rem; }
   .event-draw-card { min-width: 0; padding: 1rem; border: 1px solid var(--bs-border-color, #dbdade); border-radius: .75rem; }
   .event-draw-card .list-group-item { padding: 0; border: 0; background: transparent; }
   .event-draw-card .user-info { width: 100%; min-width: 0; }
@@ -136,9 +142,9 @@
   </div>
 </div>
 
-<div class="row">
+<div class="row event-draw-layout">
 
-  <div class="col-xl-7 col-lg-6">
+  <div class="col-xl-9 col-lg-8">
     <div class="card mb-4">
       <div class="card-header event-draw-header d-flex justify-content-between align-items-center">
         <h5 class="mb-0">Manage Draws</h5>
@@ -146,8 +152,56 @@
       </div>
 
       <div class="card-body event-draw-body pt-0">
-        <div class="event-draw-list">
-          @forelse($event->draws as $draw)
+        @php
+          $drawGrouping = request('draw_grouping') === 'gender' ? 'gender' : 'age';
+          $drawGroups = app(\App\Services\Scheduling\AgeGroupVenueDefaultService::class)->groups($event);
+          if ($drawGrouping === 'age') {
+            $combinedGroups = collect();
+            foreach ($drawGroups as $label => $draws) {
+              $ageLabel = preg_replace('/ (Boys|Girls)$/', '', $label);
+              $combinedGroups->put($ageLabel, $combinedGroups->get($ageLabel, collect())->concat($draws));
+            }
+            $drawGroups = $combinedGroups;
+          }
+          $drawGroups = $drawGroups->map(fn ($draws) => $draws->sortBy(function ($draw) {
+            $typeName = mb_strtolower($draw->draw_types?->drawTypeName ?? '');
+            $typeOrder = match (true) {
+              str_contains($typeName, 'single') && ! str_contains($typeName, 'reverse') => 0,
+              str_contains($typeName, 'single') && str_contains($typeName, 'reverse') => 1,
+              str_contains($typeName, 'double') && ! str_contains($typeName, 'mixed') && ! str_contains($typeName, 'reverse') => 2,
+              default => 3,
+            };
+            return [$typeOrder, mb_strtolower($draw->drawName), $draw->id];
+          })->values());
+        @endphp
+        @if($drawGroups->isNotEmpty())
+        <form method="GET" action="{{ url()->current() }}" class="d-flex flex-wrap align-items-center gap-2 mb-3">
+          <label for="draw-grouping" class="form-label mb-0">Group draws by</label>
+          <select id="draw-grouping" name="draw_grouping" class="form-select w-auto" onchange="this.form.submit()">
+            <option value="age" @selected($drawGrouping === 'age')>Age group (both genders)</option>
+            <option value="gender" @selected($drawGrouping === 'gender')>Age group and gender</option>
+          </select>
+          <noscript><button type="submit" class="btn btn-outline-primary">Apply</button></noscript>
+        </form>
+        <div class="nav nav-pills event-draw-tabs" role="tablist" aria-label="Draw age groups">
+          @foreach($drawGroups as $groupLabel => $groupDraws)
+            <div class="nav-item" role="presentation">
+            <button class="nav-link {{ $loop->first ? 'active' : '' }}" id="event-draw-tab-{{ $loop->index }}"
+                    type="button" role="tab" data-bs-toggle="tab" data-bs-target="#event-draw-panel-{{ $loop->index }}"
+                    aria-controls="event-draw-panel-{{ $loop->index }}" aria-selected="{{ $loop->first ? 'true' : 'false' }}">
+              {{ $groupLabel }} <span class="badge bg-label-secondary ms-1">{{ $groupDraws->count() }}</span>
+            </button>
+            </div>
+          @endforeach
+        </div>
+        @endif
+        <div class="tab-content p-0">
+          @forelse($drawGroups as $groupLabel => $groupDraws)
+            <div class="tab-pane fade {{ $loop->first ? 'show active' : '' }}" id="event-draw-panel-{{ $loop->index }}"
+                 role="tabpanel" aria-labelledby="event-draw-tab-{{ $loop->index }}" tabindex="0">
+            <div class="event-draw-heading"><h6 class="mb-0">{{ $groupLabel }}</h6><span class="text-muted small">{{ $groupDraws->count() }} {{ \Illuminate\Support\Str::plural('draw', $groupDraws->count()) }}</span></div>
+            <div class="event-draw-list">
+            @foreach($groupDraws as $draw)
             <div class="event-draw-card">
                 @include('backend.draw._includes.draw_tab_team')
                 <div class="event-draw-meta text-muted small">
@@ -172,6 +226,9 @@
               @endcan
               @endif
             </div>
+            @endforeach
+            </div>
+            </div>
           @empty
             <div class="text-center py-5">
               <i class="ti ti-folders ti-lg text-muted mb-2"></i>
@@ -183,7 +240,7 @@
     </div>
   </div>
 
-  <div class="col-xl-5 col-lg-6">
+  <div class="col-xl-3 col-lg-4">
     <div class="card mb-4">
       <div class="card-header">
         <h5 class="mb-0">Venue Fixture Lists</h5>
@@ -546,6 +603,7 @@
         <div class="modal-body">
           <div id="venues-container"></div>
           <button type="button" class="btn btn-sm btn-secondary" id="addVenueRow">+ Add Venue</button>
+          @include('backend.draw._modals.age-group-venue-default')
         </div>
 
         <div class="modal-footer">
@@ -572,4 +630,3 @@
 </script>
 
 @endsection
-

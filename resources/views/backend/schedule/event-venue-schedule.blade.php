@@ -266,7 +266,9 @@
                     @endcan
                     <label class="small text-muted">Start later (optional)<input class="form-control form-control-sm draw-start mt-1" data-draw="{{ $draw['id'] }}" type="datetime-local" value="{{ $scheduleDraft['draw_starts']->get($draw['id'], '') }}" {{ $draw['locked'] ? 'disabled' : '' }}></label>
                     @if(count($draw['rounds']))
-                      @php($chosenRounds = $scheduleDraft['draw_rounds']->get($draw['id'], []))
+                      @php
+                        $chosenRounds = $scheduleDraft['draw_rounds']->get($draw['id'], []);
+                      @endphp
                       <details class="small mt-2">
                         <summary class="fw-semibold">Rounds to schedule this day</summary>
                         <div class="d-flex flex-wrap gap-2 mt-2">

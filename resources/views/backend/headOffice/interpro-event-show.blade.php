@@ -96,8 +96,11 @@
 
       <div class="card-body">
         <div class="list-group">
-          @forelse($event->draws as $draw)
+          @forelse(app(\App\Services\Scheduling\AgeGroupVenueDefaultService::class)->groups($event) as $groupLabel => $groupDraws)
+            <h6 class="mt-3 mb-2">{{ $groupLabel }}</h6>
+            @foreach($groupDraws as $draw)
             @include('backend.draw._includes.draw_tab_interpro')
+            @endforeach
           @empty
             <div class="alert alert-warning">No draws available yet.</div>
           @endforelse

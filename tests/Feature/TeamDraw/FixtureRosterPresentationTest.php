@@ -118,6 +118,46 @@ class FixtureRosterPresentationTest extends TestCase
         $this->assertDatabaseCount('published_schedule_assignments', 0);
     }
 
+    public function test_admin_fixture_badges_link_only_resolved_profiles_and_keep_imported_names(): void
+    {
+        extract($this->weekend());
+        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $linked = Player::factory()->create();
+        $teams[1]['imported']->update(['player_profile' => $linked->id]);
+        $before = [TeamFixture::count(), TeamFixturePlayer::count()];
+        $response = $this->actingAs($admin)->get(route('backend.team-fixtures.index', ['draw_id' => $draw->id]))
+            ->assertOk()->assertSee('Team fixtures')->assertSee('Round 1')->assertSee('Awaiting score')
+            ->assertSee('src="'.asset('assets/img/logos/overberg.png').'"', false)
+            ->assertSee('src="'.asset('assets/img/logos/capeWinelandsLogo.jpeg').'"', false)
+            ->assertSee('src="'.asset('assets/img/logos/weskusLogo.jpg').'"', false)
+            ->assertSee('href="'.route('backend.player.profile', $teams[0]['profile']->id).'"', false)
+            ->assertSee('href="'.route('backend.player.profile', $linked->id).'"', false)
+            ->assertSee('Cape Winelands Partner');
+        $this->assertSame($before, [TeamFixture::count(), TeamFixturePlayer::count()]);
+        $this->export('fixture-roster-admin', $response);
+
+        $fixture = TeamFixture::first();
+        app(TeamFixtureLineupPresenter::class)->prepare(collect([$fixture]));
+        $html = view('backend.team-fixtures.partials.away-cell', ['team_fixture' => $fixture])->render();
+        $this->assertStringContainsString(route('backend.player.profile', $linked->id), $html);
+        $this->assertStringContainsString('Cape Winelands Partner', $html);
+
+        $unlinked = TeamFixture::where('rubber_sequence', 2)->first();
+        app(TeamFixtureLineupPresenter::class)->prepare(collect([$unlinked]));
+        $html = view('backend.team-fixtures.partials.side-badges', ['fixture' => $unlinked, 'side' => 'home'])->render();
+        $this->assertSame(1, substr_count($html, 'href='));
+        $this->assertStringContainsString('Overberg Second', $html);
+
+        $this->actingAs(User::factory()->create()->assignRole('admin'));
+        $html = view('backend.team-fixtures.partials.home-cell', ['team_fixture' => $fixture])->render();
+        $this->assertStringNotContainsString('href=', $html);
+        $this->actingAs(User::factory()->create());
+        $html = view('backend.team-fixtures.partials.home-cell', ['team_fixture' => $fixture])->render();
+        $this->assertStringNotContainsString('href=', $html);
+    }
+
     public function test_historical_snapshots_keep_names_ranks_and_original_regions_after_roster_changes(): void
     {
         extract($this->weekend());
@@ -132,6 +172,7 @@ class FixtureRosterPresentationTest extends TestCase
         app(TeamFixtureLineupPresenter::class)->prepare(collect([$display]));
         $this->assertSame(['name' => 'Overberg Player', 'rank' => 2], $display->lineup_display['home']['players'][0]);
         $this->assertSame('Over', $display->lineup_display['home']['region']);
+        $this->assertSame('assets/img/logos/overberg.png', $display->lineup_display['home']['region_logo']);
         $this->assertSame(1, $display->fixturePlayers->count());
     }
 

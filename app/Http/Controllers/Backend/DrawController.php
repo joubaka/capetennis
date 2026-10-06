@@ -1348,6 +1348,7 @@ public function json(Draw $draw)
       'venue_id.*' => 'required|distinct|exists:venues,id',
       'num_courts' => 'present|array|size:'.count($venueIds),
       'num_courts.*' => 'required|integer|min:1',
+      'age_group_default' => 'sometimes|boolean',
     ]);
 
     // Build sync data for pivot
@@ -1359,7 +1360,12 @@ public function json(Draw $draw)
     }
 
     // Save
-    $draw->venues()->sync($syncData);
+    $affectedDrawIds = [];
+    if ($request->boolean('age_group_default')) {
+      $affectedDrawIds = app(\App\Services\Scheduling\AgeGroupVenueDefaultService::class)->save($draw, $syncData, $request->user());
+    } else {
+      $draw->venues()->sync($syncData);
+    }
 
     // Return JSON for AJAX
     if ($request->ajax()) {
@@ -1368,6 +1374,7 @@ public function json(Draw $draw)
         'success' => true,
         'message' => 'Venues updated successfully.',
         'venues' => $venues,
+        'affected_draw_ids' => $affectedDrawIds,
       ]);
     }
 

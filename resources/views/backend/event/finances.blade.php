@@ -40,8 +40,8 @@
   }
   .registration-transactions-toggle .ti-chevron-down { transition: transform 0.2s ease; }
   .registration-transactions-toggle[aria-expanded="true"] .ti-chevron-down { transform: rotate(180deg); }
-  .registration-transactions-toggle[aria-expanded="true"] .registration-transactions-action-label::before { content: 'Hide receipts'; }
-  .registration-transactions-toggle[aria-expanded="false"] .registration-transactions-action-label::before { content: 'View receipts'; }
+  .registration-transactions-toggle[aria-expanded="true"] .registration-transactions-action-label::before { content: 'Hide registrations'; }
+  .registration-transactions-toggle[aria-expanded="false"] .registration-transactions-action-label::before { content: 'View registrations'; }
 
   @media (max-width: 575.98px) {
     .registration-transactions-toggle { align-items: flex-start !important; gap: 0.75rem; }
@@ -55,9 +55,6 @@
     .card { border: 1px solid #dee2e6 !important; box-shadow: none !important; page-break-inside: avoid; }
     .print-header { display: block !important; }
     .print-only-row { display: table-row !important; }
-    [id^="receipts-"] { display: block !important; }
-    .registration-transactions-toggle, .receipt-participant { display: block !important; }
-    .registration-transactions-action { display: none !important; }
     #incomeByCat, #expenseSummaryAccordion { display: block !important; }
     body { font-size: 11px; }
     .table td, .table th { padding: 4px 6px !important; }
@@ -207,35 +204,22 @@
     </div>
   </div>
 
-  <h5 class="mb-3">Received Transactions</h5>
-  @foreach($receiptSections as $sectionKey => $section)
-  {{-- ── RECEIPTS BY TYPE AND REGION ───────────────────────────────────── --}}
+  {{-- ── REGISTRATION TRANSACTIONS ────────────────────────────────────── --}}
   <div class="card mb-4">
     <button class="card-header registration-transactions-toggle d-flex justify-content-between align-items-center border-0 bg-transparent text-start w-100"
-            type="button" data-bs-toggle="collapse" data-bs-target="#receipts-{{ $sectionKey }}"
-            aria-expanded="false" aria-controls="receipts-{{ $sectionKey }}">
+            type="button" data-bs-toggle="collapse" data-bs-target="#registrationTransactionsCollapse"
+            aria-expanded="false" aria-controls="registrationTransactionsCollapse">
       <div class="pe-2">
-        <h5 class="mb-1"><i class="ti ti-receipt me-2 text-primary"></i>{{ $section['label'] }}</h5>
-        <small class="text-muted">Receipts grouped by region, with payment methods, fees and refunds.</small>
+        <h5 class="mb-1"><i class="ti ti-receipt me-2 text-primary"></i>Received Transactions</h5>
+        <small class="text-muted">Open to see registration and clothing receipts, payment method, fees and refunds.</small>
       </div>
       <span class="registration-transactions-action d-inline-flex align-items-center gap-2">
-        <span class="badge bg-primary">{{ $section['count'] }}</span>
+        <span class="badge bg-primary">{{ $eventTransactions->count() }}</span>
         <span class="registration-transactions-action-label fw-semibold"></span>
         <i class="ti ti-chevron-down" aria-hidden="true"></i>
       </span>
     </button>
-    <div class="collapse" id="receipts-{{ $sectionKey }}">
-    @forelse($section['groups'] as $region => $group)
-    <div class="px-3 py-3 border-top bg-light">
-      <h6 class="mb-2">{{ $region }}</h6>
-      <div class="d-flex flex-wrap gap-3 small">
-        <span>Gross: <strong>R {{ number_format($group['totals']['gross'], 2) }}</strong></span>
-        <span>Fees: <strong>{{ $group['totals']['fees'] < 0 ? '−' : '' }}R {{ number_format(abs($group['totals']['fees']), 2) }}</strong></span>
-        <span>Completed refunds: <strong>R {{ number_format($group['totals']['completed_refunds'], 2) }}</strong></span>
-        <span>Pending refunds: <strong>R {{ number_format($group['totals']['pending_refunds'], 2) }}</strong></span>
-        <span>Net to event: <strong>R {{ number_format($group['totals']['net'], 2) }}</strong></span>
-      </div>
-    </div>
+    <div class="collapse" id="registrationTransactionsCollapse">
     <div class="table-responsive border-top">
       <table class="table table-hover mb-0">
         <thead class="table-light">
@@ -251,18 +235,18 @@
           </tr>
         </thead>
         <tbody>
-          @forelse($group['rows'] as $transaction)
+          @forelse($eventTransactions as $transaction)
             @php
               $isWithdrawal = $transaction->type === 'withdrawal';
               $gross = $isWithdrawal ? ($transaction->original_gross ?? 0) : ($transaction->gross ?? 0);
               $fees = ($transaction->fee ?? 0) + ($transaction->capeFee ?? 0);
               $details = collect($transaction->registrationDetails ?? []);
-              $detailId = 'event-transaction-detail-'.$sectionKey.'-'.$loop->parent->index.'-'.$loop->index;
+              $detailId = 'event-transaction-detail-'.$loop->index;
             @endphp
             <tr>
               <td class="text-nowrap">{{ optional($transaction->created_at)->format('d M Y H:i') ?? '—' }}</td>
               <td>
-                <button type="button" class="btn btn-link p-0 text-start fw-semibold receipt-participant"
+                <button type="button" class="btn btn-link p-0 text-start fw-semibold"
                         data-bs-toggle="collapse" data-bs-target="#{{ $detailId }}"
                         aria-expanded="false" aria-controls="{{ $detailId }}">
                   <i class="ti ti-chevron-right me-1"></i>{{ $transaction->user_name ?? $transaction->player ?? '—' }}
@@ -296,12 +280,12 @@
                     </div>
                     <div class="table-responsive">
                       <table class="table table-sm table-bordered bg-white mb-0">
-                        <thead><tr><th>Registered player</th><th>{{ $sectionKey === 'clothing' ? 'Item / size / quantity' : 'Category' }}</th><th class="text-end">{{ $sectionKey === 'clothing' ? 'Item amount' : 'Entry amount' }}</th></tr></thead>
+                        <thead><tr><th>Registered player</th><th>Category</th><th class="text-end">Entry amount</th></tr></thead>
                         <tbody>
                           @forelse($details as $detail)
                             <tr>
                               <td>{{ $detail['player'] ?? '—' }}</td>
-                              <td>{{ $sectionKey === 'clothing' ? ($detail['item'] ?? '—').' / '.($detail['size'] ?? '—').' / '.($detail['quantity'] ?? 0) : ($detail['category'] ?? '—') }}</td>
+                              <td>{{ $detail['category'] ?? '—' }}</td>
                               <td class="text-end">R {{ number_format($detail['price'] ?? 0, 2) }}</td>
                             </tr>
                           @empty
@@ -320,17 +304,8 @@
         </tbody>
       </table>
     </div>
-    @empty
-      <p class="text-muted p-3 mb-0">No {{ $sectionKey === 'clothing' ? 'clothing' : 'registration' }} receipts have been recorded for this event.</p>
-    @endforelse
-    <div class="px-3 py-3 border-top fw-semibold d-flex flex-wrap gap-3">
-      <span>{{ $section['label'] }} total</span>
-      <span>Gross: R {{ number_format($section['totals']['gross'], 2) }}</span>
-      <span>Net to event: R {{ number_format($section['totals']['net'], 2) }}</span>
-    </div>
     </div>
   </div>
-  @endforeach
 
   {{-- ══════════════════════════════════════════════════════════════════════
        SECTION 1 – INCOME
@@ -384,18 +359,18 @@
             @endif
 
             {{-- ── PayFast fee deduction row ── --}}
-            @if($registrationPayfastFees > 0)
-              @php $payfastPerEntry = $totalEntries > 0 ? $registrationPayfastFees / $totalEntries : 0; @endphp
+            @if(abs($totalPayfastFees) > 0)
+              @php $payfastPerEntry = $totalEntries > 0 ? abs($totalPayfastFees) / $totalEntries : 0; @endphp
               <tr class="deduction-row">
                 <td class="ps-4">
-                  <i class="ti ti-minus me-1"></i>Registration PayFast fees deducted
+                  <i class="ti ti-minus me-1"></i>PayFast fees deducted
                   <small class="text-muted ms-1">({{ $totalEntries }} × ~R{{ number_format($payfastPerEntry, 2) }})</small>
                 </td>
                 <td class="text-center">{{ $totalEntries }}</td>
                 <td class="text-end">~R {{ number_format($payfastPerEntry, 2) }}</td>
                 <td><small class="text-muted">PayFast</small></td>
                 <td>—</td>
-                <td class="text-end fw-semibold">−R {{ number_format($registrationPayfastFees, 2) }}</td>
+                <td class="text-end fw-semibold">−R {{ number_format(abs($totalPayfastFees), 2) }}</td>
                 <td class="no-print"></td>
               </tr>
             @endif
@@ -417,25 +392,10 @@
             @endif
 
             {{-- ── Net registration income subtotal ── --}}
-            @if($registrationPayfastFees > 0 || $totalCapeTennisFees > 0)
+            @if(abs($totalPayfastFees) > 0 || $totalCapeTennisFees > 0)
               <tr class="table-light fw-semibold">
                 <td colspan="5" class="text-end text-muted" style="font-size:0.85rem">Net Registration Income</td>
                 <td class="text-end text-success">R {{ number_format($netRegistrationIncome, 2) }}</td>
-                <td class="no-print"></td>
-              </tr>
-            @endif
-
-            @if($clothingReceived > 0)
-              @if($clothingPayfastFees > 0)
-                <tr class="deduction-row">
-                  <td colspan="5" class="ps-4"><i class="ti ti-minus me-1"></i>Clothing PayFast fees deducted</td>
-                  <td class="text-end fw-semibold">−R {{ number_format($clothingPayfastFees, 2) }}</td>
-                  <td class="no-print"></td>
-                </tr>
-              @endif
-              <tr class="table-light fw-semibold">
-                <td colspan="5" class="text-end text-muted">Net Clothing Income</td>
-                <td class="text-end text-success">R {{ number_format($clothingNet, 2) }}</td>
                 <td class="no-print"></td>
               </tr>
             @endif

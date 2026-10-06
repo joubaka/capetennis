@@ -11,6 +11,7 @@
         <div class="modal-body">
           <div id="venues-container"></div>
           <button type="button" class="btn btn-sm btn-secondary" id="addVenueRow">+ Add another venue row</button>
+          @include('backend.draw._modals.age-group-venue-default')
 
           <div class="border-top mt-3 pt-3">
             <button type="button" class="btn btn-sm btn-outline-primary" id="toggle-create-venue" aria-expanded="false" aria-controls="create-venue-panel">

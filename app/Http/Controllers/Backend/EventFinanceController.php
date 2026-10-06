@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Backend;
 
 use App\Domain\Finance\Services\FinancialLedgerService;
-use App\Domain\Finance\Services\EventFinanceReceiptReport;
 use App\Http\Controllers\Controller;
 use App\Models\CategoryEventRegistration;
 use App\Models\Draw;
@@ -49,17 +48,14 @@ class EventFinanceController extends Controller
             ->merge($refundRows)
             ->sortByDesc('created_at')
             ->values();
-        $receiptSections = app(EventFinanceReceiptReport::class)->build($event, $eventTransactions);
 
         $totalGross = $ledgerTotals['gross_payments'];
         $registrationReceived = $ledgerTotals['registration_received'];
         $clothingReceived = $ledgerTotals['clothing_received'];
         $clothingNet = $ledgerTotals['clothing_net'];
         $totalPayfastFees = abs($ledgerTotals['pf_fees']);
-        $registrationPayfastFees = abs($paymentRows->reject(fn ($row) => $row->type === 'clothing_payment')->sum('fee'));
-        $clothingPayfastFees = abs($paymentRows->where('type', 'clothing_payment')->sum('fee'));
         $totalCapeTennisFees = abs($ledgerTotals['cape_fees']);
-        $netRegistrationIncome = $ledgerTotals['registration_net'];
+        $netRegistrationIncome = $ledgerTotals['net_revenue'];
         $entryRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee']);
         $totalEntries = $isTeamEvent
             ? $entryRows->count()
@@ -103,8 +99,8 @@ class EventFinanceController extends Controller
         // ── Manual income items ───────────────────────────────────────────
         $incomeItems      = $event->incomeItems()->get();
         $totalIncomeItems = $incomeItems->sum(fn($i) => $i->calculatedTotal());
-        // Both receipt streams contribute to the event's net income.
-        $grandTotalIncome = $ledgerTotals['net_revenue'] + $totalIncomeItems;
+        // grandTotalIncome = net registration (after PayFast + CT deductions) + manual items
+        $grandTotalIncome = $netRegistrationIncome + $totalIncomeItems;
 
         // ── Convenors (Hoof first, then Hulp, then others) ───────────────
         $convenors = $event->convenors()
@@ -210,14 +206,11 @@ class EventFinanceController extends Controller
         return view('backend.event.finances', compact(
             'event',
             'eventTransactions',
-            'receiptSections',
             'totalGross',
             'registrationReceived',
             'clothingReceived',
             'clothingNet',
             'totalPayfastFees',
-            'registrationPayfastFees',
-            'clothingPayfastFees',
             'totalCapeTennisFees',
             'totalEntries',
             'feePerEntry',

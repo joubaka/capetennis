@@ -33,6 +33,10 @@ class Draw extends Model
         'team_format_snapshot',
     ];
     protected $casts = ['team_scoring_rules' => 'array', 'team_format_snapshot' => 'array', 'team_draw_selection' => 'array'];
+    protected static function booted(): void
+    {
+        static::created(fn (Draw $draw) => app(\App\Services\Scheduling\AgeGroupVenueDefaultService::class)->inherit($draw));
+    }
     public function drawFormat()
     {
         return $this->belongsTo(\App\Models\DrawFormats::class, 'drawType_id');

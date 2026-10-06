@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Team;
 use App\Models\TeamFixture;
 use App\Support\RegionAbbreviation;
+use App\Support\RegionLogo;
 use Illuminate\Support\Collection;
 
 /** Read-only display of original roster ranks, including composite mixed sides. */
@@ -99,7 +100,7 @@ class TeamFixtureLineupPresenter
                 $players[] = ['name' => $profile->full_name, 'rank' => (int) $legacyRank > 0 ? (int) $legacyRank : null];
             }
         }
-        return ['region' => $label, 'region_name' => $regionName, 'players' => $players];
+        return ['region' => $label, 'region_name' => $regionName, 'region_logo' => RegionLogo::path($regionName), 'players' => $players];
     }
 
     private function tie(TeamFixture $fixture): ?\App\Models\TeamTie
