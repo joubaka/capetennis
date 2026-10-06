@@ -331,6 +331,17 @@ class TeamController extends Controller
     $this->authorize('team.players.manage', $team);
     app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
 
+    // callAction holds the event lock through this check and the rank writes.
+    // Reordering would otherwise automatically adapt every generated team draw.
+    $eventId = $team->category->event_id;
+    $hasFixtures = \App\Models\TeamFixture::whereHas('draw', fn ($query) => $query->where('event_id', $eventId))->exists();
+    $hasTies = \App\Models\TeamTie::whereHas('draw', fn ($query) => $query->where('event_id', $eventId))->exists();
+    if ($hasFixtures || $hasTies) {
+      return response()->json([
+        'message' => 'Player order is locked because this event already has generated fixtures. Changing it would rebuild draw lineups and may change match times. Delete and recreate unplayed draws before changing the order. Keep started matches and results; ask the organiser to review those separately.',
+      ], 409);
+    }
+
     $order = $request->input('order', []);
     $updated = collect();
 

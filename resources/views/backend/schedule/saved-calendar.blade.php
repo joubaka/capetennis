@@ -10,6 +10,31 @@
     <a class="btn text-nowrap {{ $date === 'all' ? 'btn-primary' : 'btn-outline-primary' }}" href="{{ route('backend.event-venue-schedule.calendar',['event'=>$event->id]+array_replace($scope,['date'=>'all'])) }}">All days</a>
     @forelse($days as $day => $count)<a class="btn text-nowrap {{ $day === $date ? 'btn-primary' : 'btn-outline-primary' }}" href="{{ route('backend.event-venue-schedule.calendar', ['event'=>$event->id]+array_replace($scope,['date'=>$day])) }}">{{ \Carbon\Carbon::parse($day)->format('D j M') }} <span class="badge bg-white text-primary ms-1">{{ $count }}</span></a>@empty<span class="text-muted">No saved match times yet.</span>@endforelse
   </nav>
+  @if($date === 'all')
+    <div class="mb-3">
+      <h5 class="mb-1">Publish one day at a time</h5>
+      <p class="small text-muted mb-2">Each button publishes that whole day's saved times across all venues and draws, including any updates. Other days keep their current state, except moved matches replace their previous public times. Draws and team ties must also be published for players to see their times.</p>
+      <div class="row g-3">
+        @foreach($days as $day => $count)
+          @php($savedCount = (int) ($dailySavedCounts[$day] ?? 0))
+          <div class="col-12 col-md-6 col-lg-4"><div class="card h-100"><div class="card-body">
+            <h6 class="mb-1">Day {{ $loop->iteration }} · {{ \Carbon\Carbon::parse($day)->format('D j M Y') }}</h6>
+            <div class="small mb-1">{{ $savedCount }} saved {{ Str::plural('match', $savedCount) }}</div>
+            <div class="small text-muted mb-3">Whole day · all venues and draws</div>
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+              <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $day]) }}">Review day</a>
+              <form method="post" action="{{ route('backend.event-venue-schedule.calendar.publish', $event) }}">
+                @csrf
+                <input type="hidden" name="revision" value="{{ $revision }}">
+                <input type="hidden" name="date" value="{{ $day }}">
+                <button type="submit" class="btn btn-sm btn-success" @disabled($savedCount === 0)>Publish Day {{ $loop->iteration }}</button>
+              </form>
+            </div>
+          </div></div></div>
+        @endforeach
+      </div>
+    </div>
+  @endif
   <form method="get" class="card card-body mb-3"><div class="row g-3 align-items-end">
     <div class="col-12 col-md-3"><label class="form-label" for="calendar-date">Day</label><input class="form-control" id="calendar-date" type="date" name="date" value="{{ $date === 'all' ? '' : $date }}"></div>
     <div class="col-12 col-md-4"><label class="form-label" for="calendar-venue">Venue</label><select class="form-select" id="calendar-venue" name="venue_id"><option value="">All venues</option>@foreach($venues as $venue)<option value="{{ $venue->id }}" @selected((int)($scope['venue_id']??0)===$venue->id)>{{ $venue->name }}</option>@endforeach</select></div>

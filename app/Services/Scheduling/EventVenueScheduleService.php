@@ -18,7 +18,6 @@ final class EventVenueScheduleService
         if (! in_array($roundProgression, ['team_ready', 'all_round'], true)) throw new \InvalidArgumentException('Choose a valid round progression rule.');
         $genderWaves = $options['gender_waves'] ?? 'combined';
         if (! in_array($genderWaves, ['combined', 'boys_then_girls', 'girls_then_boys'], true)) throw new \InvalidArgumentException('Choose a valid gender wave order.');
-        $firstGender = $genderWaves === 'girls_then_boys' ? 'girls' : 'boys';
         $genderRelease = $options['gender_wave_release'] ?? 'whole_wave';
         if (! in_array($genderRelease, ['whole_wave', 'court_ready'], true)) throw new \InvalidArgumentException('Choose a valid gender wave release.');
         $tieAllocation = $options['tie_allocation'] ?? 'balanced';
@@ -203,7 +202,7 @@ final class EventVenueScheduleService
         }
 
         $sharedGenderVenues = [];
-        if ($genderWaves !== 'combined') {
+        if ($genderWaves !== 'combined' || collect($nodes)->contains(fn ($node) => ($node['programme_gender_waves'] ?? 'combined') !== 'combined')) {
             foreach (array_keys($courtLabels) as $venueId) {
                 $genders = collect($nodes)->filter(fn ($node) => isset($node['venue_courts'][$venueId]))->pluck('gender');
                 if ($genders->contains('boys') && $genders->contains('girls')) $sharedGenderVenues[$venueId] = true;
@@ -247,12 +246,12 @@ final class EventVenueScheduleService
                 }
                 foreach ($node['venue_courts'] as $venueId => $courts) {
                     $venueRelease = isset($venueStarts[$venueId]) ? $release->max($venueStarts[$venueId])->copy() : $release;
-                    if (isset($sharedGenderVenues[$venueId]) && $node['gender']) {
-                        $phase = 2 * ($node['wave'] - 1) + ($node['gender'] === $firstGender ? 0 : 1);
+                    if (isset($sharedGenderVenues[$venueId]) && $node['gender'] && ($node['programme_gender_waves'] ?? $genderWaves) !== 'combined') {
+                        $phase = $this->genderPhase($node, $genderWaves);
                         $phaseStarts = [];
                         foreach ($nodes as $earlierId => $earlier) {
                             if (! $earlier['gender'] || $earlier['automatic']) continue;
-                            $earlierPhase = 2 * ($earlier['wave'] - 1) + ($earlier['gender'] === $firstGender ? 0 : 1);
+                            $earlierPhase = $this->genderPhase($earlier, $genderWaves);
                             if ($earlierPhase >= $phase) continue;
                             if (isset($pending[$earlierId]) && isset($earlier['venue_courts'][$venueId])) {
                                 $blocked[$id] = 'An earlier gender wave must be scheduled first at this shared venue.';
@@ -347,14 +346,14 @@ final class EventVenueScheduleService
 
         foreach ($genderSlots as $id => $slot) {
             $node = $nodes[$id];
-            if (! $node['fixed'] || ! $node['gender'] || ! isset($sharedGenderVenues[$slot['venue_id']])) continue;
-            $phase = 2 * ($node['wave'] - 1) + ($node['gender'] === $firstGender ? 0 : 1);
+            if (! $node['fixed'] || ! $node['gender'] || ($node['programme_gender_waves'] ?? $genderWaves) === 'combined' || ! isset($sharedGenderVenues[$slot['venue_id']])) continue;
+            $phase = $this->genderPhase($node, $genderWaves);
             $phaseStarts = [];
             if ($genderRelease === 'court_ready') {
                 foreach ($genderSlots as $earlierId => $earlierSlot) {
                     $earlier = $nodes[$earlierId];
                     if (! $earlier['gender'] || $earlier['automatic'] || $earlierSlot['venue_id'] !== $slot['venue_id']) continue;
-                    $earlierPhase = 2 * ($earlier['wave'] - 1) + ($earlier['gender'] === $firstGender ? 0 : 1);
+                    $earlierPhase = $this->genderPhase($earlier, $genderWaves);
                     if ($earlierPhase >= $phase) continue;
                     $phaseStarts[$earlierPhase] = isset($phaseStarts[$earlierPhase])
                         ? $phaseStarts[$earlierPhase]->min($earlierSlot['time'])->copy() : $earlierSlot['time']->copy();
@@ -363,12 +362,12 @@ final class EventVenueScheduleService
             foreach ($genderSlots as $earlierId => $earlierSlot) {
                 $earlier = $nodes[$earlierId];
                 if (! $earlier['gender'] || $earlier['automatic'] || $earlierSlot['venue_id'] !== $slot['venue_id']) continue;
-                $earlierPhase = 2 * ($earlier['wave'] - 1) + ($earlier['gender'] === $firstGender ? 0 : 1);
+                $earlierPhase = $this->genderPhase($earlier, $genderWaves);
                 $required = $genderRelease === 'court_ready'
                     ? ($phaseStarts[$earlierPhase] ?? $earlierSlot['time'])->copy()->addMinutes($waveMinutes)
                     : $earlierSlot['time']->copy()->addMinutes(max($waveMinutes, $earlierSlot['duration'] + $courtGap));
                 if ($earlierPhase < $phase && $required->gt($slot['time'])) {
-                    $order = $firstGender === 'girls' ? 'girls then boys' : 'boys then girls';
+                    $order = ($node['programme_gender_waves'] ?? $genderWaves) === 'girls_then_boys' ? 'girls then boys' : 'boys then girls';
                     $warnings[] = $node['draw_name'].' match '.$node['match'].": the saved time does not follow {$order} waves. Replan this venue to change saved times.";
                     break;
                 }
@@ -972,5 +971,12 @@ final class EventVenueScheduleService
                 ->orderBy('fixture_id')->get()->all(),
         ];
         return hash('sha256', json_encode($state, JSON_THROW_ON_ERROR));
+    }
+
+    private function genderPhase(array $node, string $fallback): int
+    {
+        $order = $node['programme_gender_waves'] ?? $fallback;
+        $first = $order === 'girls_then_boys' ? 'girls' : 'boys';
+        return 2 * ($node['wave'] - 1) + ($order === 'combined' || $node['gender'] === $first ? 0 : 1);
     }
 }

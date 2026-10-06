@@ -14,6 +14,10 @@
 
 <div class="tab-pane fade" id="tab-order">
 
+  <div class="alert alert-warning" role="status">
+    Set player order before generating fixtures. Once fixtures exist, dragging is blocked because changing the order would rebuild draw lineups and may change match times. Delete and recreate unplayed draws first. Preserve started matches and results.
+  </div>
+
   {{-- 🔹 Region Sub Tabs --}}
   <div class="subtabs-sticky">
     <ul class="nav nav-tabs px-2">

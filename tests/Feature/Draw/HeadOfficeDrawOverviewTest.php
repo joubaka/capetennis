@@ -12,6 +12,17 @@ use Tests\TestCase;
 
 class HeadOfficeDrawOverviewTest extends TestCase
 {
+    public function test_team_overview_compiles_to_valid_php(): void
+    {
+        $compiled = app('blade.compiler')->compileString(
+            file_get_contents(resource_path('views/backend/headOffice/team-event-show.blade.php'))
+        );
+
+        // Parse the full template, including code in branches with no draws.
+        token_get_all($compiled, TOKEN_PARSE);
+        $this->assertStringContainsString('$hasOrderOfPlay =', $compiled);
+    }
+
     private function draw(bool $flexible = false): Draw
     {
         $draw = (new Draw)->forceFill([

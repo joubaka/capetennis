@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
 use App\Domain\Draws\Services\ScheduleConflictService;
-use App\Models\{DrawAuditLog, Event, Fixture, OrderOfPlay, TeamFixture, TeamTie, Venue};
+use App\Models\{Draw, DrawAuditLog, Event, Fixture, OrderOfPlay, TeamFixture, TeamTie, Venue};
 use App\Services\EventAnnouncementService;
 use App\Services\ScheduleEngine;
 use App\Services\Scheduling\EventVenueScheduleService;
@@ -70,6 +70,8 @@ final class EventVenueScheduleController extends Controller
             return ['id' => $draw->id, 'name' => $draw->drawName,
                 'programme_age' => app(\App\Services\Scheduling\ScheduleProgramme::class)->age($draw),
                 'rubber_code' => $draw->team_draw_selection['rubber_code'] ?? null,
+                'doubles_pair_count' => $this->standardPairCount($draw, 'doubles'),
+                'mixed_pair_count' => $this->standardPairCount($draw, 'mixed_doubles'),
                 'venues' => $draw->venues->pluck('id')->map(fn ($id) => (int) $id)->all(),
                 'court_allocations' => $allocations,
                 'applied_match_count' => (int) ($scheduledCounts[$draw->id] ?? 0),
@@ -157,11 +159,29 @@ final class EventVenueScheduleController extends Controller
         ));
     }
 
+    private function standardPairCount(Draw $draw, string $code): ?int
+    {
+        $rubbers = $draw->team_format_snapshot['rubbers'] ?? [];
+        if (! $rubbers || count($rubbers) > ($code === 'doubles' ? 50 : 100)) return null;
+        $previousSequence = 0;
+        foreach (array_values($rubbers) as $index => $rubber) {
+            $positions = [2 * $index + 1, 2 * $index + 2];
+            if (($rubber['rubber_code'] ?? null) !== $code
+                || (int) ($rubber['sequence'] ?? 0) <= $previousSequence
+                || ($rubber['home_positions'] ?? []) !== $positions
+                || ($rubber['away_positions'] ?? []) !== $positions) return null;
+            $previousSequence = (int) $rubber['sequence'];
+        }
+
+        return count($rubbers);
+    }
+
     public function calendar(Request $request, Event $event, \App\Services\Scheduling\SchedulePublicationService $publication)
     {
         $this->authorize('event.manage', $event);
         $scope = $this->calendarScope($request, $event);
         $working = $publication->workingRows($event);
+        $dailySavedCounts = $working->groupBy(fn ($row) => substr($row['scheduled_at'], 0, 10))->map->count();
         $published = $publication->publishedRows($event)->keyBy('fixture_key');
         $publishedAssignments = $publication->publishedAssignments($event)->keyBy('fixture_key');
         $days = $working->concat($published->values())->groupBy(fn ($row) => substr($row['scheduled_at'], 0, 10))
@@ -194,7 +214,7 @@ final class EventVenueScheduleController extends Controller
             ->where('match_status', 0)->whereDoesntHave('fixtureResults')->whereDoesntHave('orderOfPlay', fn ($q) => $q->whereNotNull('time'))->count()
             + TeamFixture::whereIn('draw_id', $drawIds)->when(! empty($scope['draw_id']), fn ($q) => $q->where('draw_id', $scope['draw_id']))->where('match_status', 0)->whereDoesntHave('fixtureResults')->whereNull('scheduled_at')->count();
         $revision = $publication->revision($event);
-        return view('backend.schedule.saved-calendar', compact('event', 'scope', 'days', 'date', 'rows', 'retained', 'venues', 'draws', 'revision', 'unscheduledCount'));
+        return view('backend.schedule.saved-calendar', compact('event', 'scope', 'days', 'date', 'rows', 'retained', 'venues', 'draws', 'revision', 'unscheduledCount', 'dailySavedCounts'));
     }
 
     public function publishScope(Request $request, Event $event, \App\Services\Scheduling\SchedulePublicationService $publication)
@@ -872,6 +892,7 @@ final class EventVenueScheduleController extends Controller
             'venue_starts.*.start' => ['nullable', 'date'],
             'round_progression' => ['sometimes', 'in:team_ready,all_round'],
             'gender_waves' => ['sometimes', 'in:combined,boys_then_girls,girls_then_boys'],
+            'programme.days.*.gender_waves' => ['sometimes', 'in:combined,boys_then_girls,girls_then_boys'],
             'gender_wave_release' => ['sometimes', 'in:whole_wave,court_ready'],
             'tie_allocation' => ['sometimes', 'in:balanced,complete_tie'],
             'draw_rounds' => ['sometimes', 'array', 'max:200'],

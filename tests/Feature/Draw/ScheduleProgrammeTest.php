@@ -142,4 +142,39 @@ class ScheduleProgrammeTest extends TestCase
         $this->assertSame([$source->id, $girls->id, $source->id, $girls->id, $source->id, $girls->id], $singles->pluck('draw_id')->all());
         $this->assertSame([1, 1, 2, 2, 3, 3], $singles->pluck('round')->all());
     }
+
+    public function test_each_day_uses_its_own_gender_order(): void
+    {
+        $event = Event::factory()->create();
+        $venue = new Venue();
+        $venue->forceFill(['name' => 'Daily order courts'])->save();
+        $source = Draw::factory()->create(['event_id' => $event->id, 'drawName' => 'u/10 Boys – Singles', 'gender' => 'Boys']);
+        $source->forceFill(['team_category_id' => 1])->save();
+        $source->venues()->attach($venue->id, ['num_courts' => 2]);
+        $days = array_map(fn ($day) => ['start' => '2026-10-'.$day.' 08:00:00', 'end' => '2026-10-'.$day.' 18:00:00'], ['09', '10', '11']);
+        $options = ['start' => $days[0]['start'], 'end' => $days[2]['end'], 'duration' => 30, 'wave_minutes' => 30, 'court_gap' => 0, 'player_rest' => 0, 'draw_ids' => [$source->id], 'programme' => ['days' => $days, 'rounds' => []]];
+        $girls = Draw::factory()->create(['event_id' => $event->id, 'drawName' => 'u/10 Girls – Singles', 'gender' => 'Girls']);
+        $girls->forceFill(['team_category_id' => 1])->save();
+        $girls->venues()->attach($source->venues->first()->id, ['num_courts' => 2]);
+        $options['draw_ids'][] = $girls->id;
+        foreach ([1, 2, 3] as $round) {
+            $boysFixture = TeamFixture::create(['draw_id' => $source->id, 'fixture_type' => 1, 'round_nr' => $round, 'match_nr' => $round, 'rubber_sequence' => 1, 'player_count_per_team' => 1]);
+            $boysFixture->fixturePlayers()->create(['slot_no' => 1, 'team1_id' => Player::factory()->create()->id, 'team2_id' => Player::factory()->create()->id]);
+            $fixture = TeamFixture::create(['draw_id' => $girls->id, 'fixture_type' => 1, 'round_nr' => $round, 'match_nr' => $round, 'rubber_sequence' => 1, 'player_count_per_team' => 1]);
+            $fixture->fixturePlayers()->create(['slot_no' => 1, 'team1_id' => Player::factory()->create()->id, 'team2_id' => Player::factory()->create()->id]);
+            foreach ([$source->id, $girls->id] as $drawId) $options['programme']['rounds'][] = ['draw_id' => $drawId, 'round' => $round, 'day' => $round, 'sequence' => 1];
+        }
+        foreach (['girls_then_boys', 'boys_then_girls', 'combined'] as $index => $order) $options['programme']['days'][$index]['gender_waves'] = $order;
+        $options['gender_waves'] = 'boys_then_girls';
+        $service = app(EventVenueScheduleService::class);
+        $preview = $service->preview($event, $options);
+        $this->assertSame([], $preview['unscheduled']);
+        $rows = collect($preview['matches']);
+        foreach ([[$girls->id, 1, '08:00:00'], [$source->id, 1, '08:30:00'], [$source->id, 2, '08:00:00'], [$girls->id, 2, '08:30:00'], [$source->id, 3, '08:00:00'], [$girls->id, 3, '08:00:00']] as [$drawId, $round, $time]) {
+            $this->assertSame($time, substr($rows->where('draw_id', $drawId)->where('round', $round)->first()['scheduled_at'], 11));
+        }
+        $options['programme']['days'][0]['gender_waves'] = 'boys_then_girls';
+        try { $service->apply($event, $options, $preview['revision']); $this->fail('Changed day order accepted with stale preview.'); }
+        catch (\InvalidArgumentException $exception) { $this->assertSame(0, TeamFixture::whereNotNull('scheduled_at')->count()); }
+    }
 }

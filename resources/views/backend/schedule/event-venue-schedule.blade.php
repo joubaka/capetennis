@@ -234,8 +234,8 @@
     <div class="section-body">
       <label class="form-label" for="programme-age">Age group</label>
       <select id="programme-age" class="form-select mb-3"><option value="">Choose age group</option>@foreach($draws->where('is_team', true)->pluck('programme_age')->filter()->unique()->sort() as $age)<option value="{{ $age }}">Under {{ $age }}</option>@endforeach</select>
-      <p class="small">Day 1: singles rounds 1–3, reverse singles round 1. Day 2: reverse singles rounds 2–3 and all doubles. Day 3: all mixed doubles. Adjust each round's day and order below. Boys/girls order follows the timing rules.</p>
-      <div class="row g-3 mb-3">@foreach(range(0,2) as $day)<div class="col-md-4"><strong>Day {{ $day + 1 }}</strong><label class="form-label d-block mt-2" for="programme-start-{{ $day }}">Starts</label><input id="programme-start-{{ $day }}" class="form-control programme-time" type="datetime-local" value="{{ $event->start_date ? \Carbon\Carbon::parse($event->start_date)->addDays($day)->format('Y-m-d').'T08:00' : '' }}"><label class="form-label d-block mt-2" for="programme-end-{{ $day }}">Finishes</label><input id="programme-end-{{ $day }}" class="form-control programme-time" type="datetime-local" value="{{ $event->start_date ? \Carbon\Carbon::parse($event->start_date)->addDays($day)->format('Y-m-d').'T18:00' : '' }}"></div>@endforeach</div>
+      <p class="small">Day 1: singles rounds 1–3, reverse singles round 1. Day 2: reverse singles rounds 2–3 and all doubles. Day 3: all mixed doubles. Adjust each round's day and order below. Choose the boys/girls order independently for each day.</p>
+      <div class="row g-3 mb-3">@foreach(range(0,2) as $day)<div class="col-md-4"><strong>Day {{ $day + 1 }}</strong><label class="form-label d-block mt-2" for="programme-start-{{ $day }}">Starts</label><input id="programme-start-{{ $day }}" class="form-control programme-time" type="datetime-local" value="{{ $event->start_date ? \Carbon\Carbon::parse($event->start_date)->addDays($day)->format('Y-m-d').'T08:00' : '' }}"><label class="form-label d-block mt-2" for="programme-end-{{ $day }}">Finishes</label><input id="programme-end-{{ $day }}" class="form-control programme-time" type="datetime-local" value="{{ $event->start_date ? \Carbon\Carbon::parse($event->start_date)->addDays($day)->format('Y-m-d').'T18:00' : '' }}"><label class="form-label d-block mt-2" for="programme-gender-{{ $day }}">Order within each round</label><select id="programme-gender-{{ $day }}" class="form-select programme-gender-day"><option value="boys_then_girls" @selected($scheduleDraft['gender_waves'] === 'boys_then_girls')>Boys then girls</option><option value="girls_then_boys" @selected($scheduleDraft['gender_waves'] === 'girls_then_boys')>Girls then boys</option><option value="combined" @selected($scheduleDraft['gender_waves'] === 'combined')>Together</option></select><a class="btn btn-sm btn-outline-primary mt-2" data-programme-review-day="{{ $day }}" href="{{ route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $event->start_date ? \Carbon\Carbon::parse($event->start_date)->addDays($day)->toDateString() : 'all']) }}">Review &amp; publish this day</a></div>@endforeach</div>
       <p class="small mb-2">Drag the handle to put rounds in order or move them between days. Boys and girls in the same round move together. Each drop refreshes the preview using AJAX; match times are saved only when you choose Save. Use the Up/Down buttons or day selector with a keyboard.</p>
       <div id="programme-stages" class="row g-3 mb-3" aria-label="Drag rounds into daily playing order"></div>
       <details class="mb-3"><summary>Advanced: individual draw round days and numbered order</summary><div id="programme-rounds" class="table-responsive mt-2"></div></details>
@@ -244,7 +244,6 @@
         <div class="col-6 col-md-3"><label class="form-label" for="programme-duration">Match minutes</label><input id="programme-duration" class="form-control" type="number" min="15" max="480" value="{{ $scheduleDraft['duration'] }}"></div>
         <div class="col-6 col-md-3"><label class="form-label" for="programme-rest">Player rest minutes</label><input id="programme-rest" class="form-control" type="number" min="0" max="480" value="{{ $scheduleDraft['player_rest'] }}"></div>
         <div class="col-6 col-md-3"><label class="form-label" for="programme-gap">Court gap minutes</label><input id="programme-gap" class="form-control" type="number" min="0" max="120" value="{{ $scheduleDraft['court_gap'] }}"></div>
-        <div class="col-md-3"><label class="form-label" for="programme-gender">Order within each round</label><select id="programme-gender" class="form-select"><option value="boys_then_girls">Boys then girls</option><option value="girls_then_boys">Girls then boys</option><option value="combined">Together</option></select></div>
       </div>
       <label class="form-label" for="programme-reuse-source">Reuse courts for disciplines with no venue</label>
       <select id="programme-reuse-source" class="form-select mb-2"><option value="">Choose an assigned draw in this age group</option></select>
@@ -675,7 +674,7 @@
   <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
     <div class="modal-header"><h5 class="modal-title" id="programme-setup-title">Assign venues &amp; courts</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
     <div class="modal-body">
-      <p class="small text-muted">This setup applies to these draws across every round. Positions are venue preferences, not guaranteed bookings. Saved matches stay in place.</p>
+      <p class="small text-muted">This setup applies to these draws across every round. Pair and player-position ranges are venue preferences, not guaranteed bookings. Saved matches stay in place.</p>
       <div id="programme-setup-draws"></div>
       <p id="programme-setup-policy" class="small text-muted mt-3"></p>
       <div id="programme-setup-status" class="small" role="status" aria-live="polite"></div>
@@ -1934,6 +1933,19 @@
     return ranges.map(([first,last]) => first === last ? String(first) : `${first}–${last}`).join(', ');
   };
   const programmeDrawLabel = draw => /\bboys\b/i.test(draw.name) ? 'Boys' : /\bgirls\b/i.test(draw.name) ? 'Girls' : /\bmixed\b/i.test(draw.name) ? 'Mixed' : draw.name;
+  const programmeUsesPairs = draw => programmeDiscipline(draw) === 'Doubles' && Number.isInteger(Number(draw.doubles_pair_count)) && Number(draw.doubles_pair_count) > 0;
+  const programmeUsesMixedPairs = draw => programmeDiscipline(draw) === 'Mixed doubles' && Number.isInteger(Number(draw.mixed_pair_count)) && Number(draw.mixed_pair_count) > 0;
+  const programmePairBand = rule => Number.isInteger(Number(rule.min_rank)) && Number.isInteger(Number(rule.max_rank))
+    && Number(rule.min_rank) >= 1 && Number(rule.max_rank) >= Number(rule.min_rank)
+    && Number(rule.min_rank) % 2 === 1 && Number(rule.max_rank) % 2 === 0;
+  const programmeBandRange = (first, last) => first === last ? String(first) : `${first}–${last}`;
+  const programmeBandDescription = (draw, rule) => programmeUsesPairs(draw) && programmePairBand(rule) && Number(rule.max_rank) <= Number(draw.doubles_pair_count) * 2
+    ? `Pairs ${programmeBandRange((Number(rule.min_rank) + 1) / 2, Number(rule.max_rank) / 2)}`
+    : `${programmeUsesMixedPairs(draw) ? 'Mixed pairs' : 'Player positions'} ${programmeBandRange(Number(rule.min_rank), Number(rule.max_rank))}`;
+  const programmeRankPayload = (min, max, paired, limit = paired ? 50 : 100) => ({
+    min_rank: min > limit || max > limit ? NaN : paired ? (Number.isInteger(min) ? min * 2 - 1 : NaN) : min,
+    max_rank: min > limit || max > limit ? NaN : paired ? (Number.isInteger(max) ? max * 2 : NaN) : max,
+  });
   const programmeDrawSetup = (draw, rules) => {
     const venues = [...document.querySelectorAll(`.assignment-choice[data-draw="${draw.id}"]:checked`)];
     if (!venues.length) return '<span class="text-danger">No venue assigned</span>';
@@ -1944,8 +1956,8 @@
       const courts = [...document.querySelectorAll(`.court-allocation[data-draw="${draw.id}"][data-venue="${venue.value}"]:checked`)].map(input => input.value);
       const bands = validRules.filter(rule => Number(rule.venue_id) === Number(venue.value))
         .sort((a,b) => Number(a.min_rank) - Number(b.min_rank))
-        .map(rule => Number(rule.min_rank) === Number(rule.max_rank) ? String(rule.min_rank) : `${rule.min_rank}–${rule.max_rank}`);
-      return `<li>${escapeHtml(venue.dataset.venueName)} · ${courts.length ? `Courts ${escapeHtml(programmeCourtLabels(courts))}` : '<span class="text-danger">No courts selected</span>'}${bands.length ? ` · Positions ${escapeHtml(bands.join(', '))} preferred` : ' · No position preference'}</li>`;
+        .map(rule => programmeBandDescription(draw, rule));
+      return `<li>${escapeHtml(venue.dataset.venueName)} · ${courts.length ? `Courts ${escapeHtml(programmeCourtLabels(courts))}` : '<span class="text-danger">No courts selected</span>'}${bands.length ? ` · ${escapeHtml(bands.join('; '))} preferred` : ` · No ${programmeUsesPairs(draw) || programmeUsesMixedPairs(draw) ? 'pair' : 'position'} preference`}</li>`;
     });
     return `<ul>${lines.join('')}</ul>`;
   };
@@ -1954,7 +1966,7 @@
     const rules = programmeSetupRules();
     document.querySelectorAll('.programme-stage').forEach(card => {
       const members = card.dataset.programmeMembers.split(',').map(key => draws.get(Number(key.split(':')[0]))).filter(Boolean);
-      card.querySelector('.programme-stage-summary').innerHTML = '<div class="text-muted">Venue setup · position preferences</div>'
+      card.querySelector('.programme-stage-summary').innerHTML = '<div class="text-muted">Venue setup · preferences</div>'
         + members.map(draw => {
           const label = programmeDrawLabel(draw);
           const heading = members.filter(member => programmeDrawLabel(member) === label).length === 1 ? label : draw.name;
@@ -1968,10 +1980,20 @@
   const programmeSetupVenueOptions = (section, selected = '') => '<option value="">Choose an assigned venue</option>'
     + [...section.querySelectorAll('.programme-setup-venue:checked')].map(input => `<option value="${input.value}" ${String(input.value) === String(selected) ? 'selected' : ''}>${escapeHtml(input.dataset.name)}</option>`).join('')
     + (selected && !section.querySelector(`.programme-setup-venue[value="${Number(selected)}"]:checked`) ? `<option value="${Number(selected)}" selected>Venue no longer assigned</option>` : '');
-  const addProgrammeSetupBand = (section, rule = {min_rank:1, max_rank:4, venue_id:''}) => {
+  const addProgrammeSetupBand = (section, savedRule = null) => {
+    const draw = programmeDraws.find(draw => Number(draw.id) === Number(section.dataset.setupDraw));
+    const doubles = programmeUsesPairs(draw);
+    const mixed = programmeUsesMixedPairs(draw);
+    const paired = doubles && (!savedRule || (programmePairBand(savedRule) && Number(savedRule.max_rank) <= Number(draw.doubles_pair_count) * 2));
+    const rule = savedRule || {min_rank:1, max_rank:doubles ? Math.min(4,Number(draw.doubles_pair_count)) * 2 : mixed ? Math.min(8,Number(draw.mixed_pair_count) || 100) : 4, venue_id:''};
+    const min = paired ? (Number(rule.min_rank) + 1) / 2 : rule.min_rank;
+    const max = paired ? Number(rule.max_rank) / 2 : rule.max_rank;
+    const unit = paired ? 'pair' : mixed ? 'mixed pair' : 'player position';
+    const limit = paired ? Number(draw.doubles_pair_count) : mixed ? Number(draw.mixed_pair_count) || 100 : 100;
     const row = document.createElement('div');
     row.className = 'programme-setup-band row g-2 align-items-end mb-2';
-    row.innerHTML = `<div class="col-4 col-sm-2"><label class="form-label small mb-1">From position<input class="form-control form-control-sm programme-setup-min" type="number" min="1" max="100" value="${escapeHtml(rule.min_rank)}"></label></div><div class="col-4 col-sm-2"><label class="form-label small mb-1">To position<input class="form-control form-control-sm programme-setup-max" type="number" min="1" max="100" value="${escapeHtml(rule.max_rank)}"></label></div><div class="col-12 col-sm-6"><label class="form-label small mb-1 d-block">Preferred venue<select class="form-select form-select-sm programme-setup-band-venue">${programmeSetupVenueOptions(section, rule.venue_id)}</select></label></div><div class="col-4 col-sm-2"><button type="button" class="btn btn-sm btn-outline-danger programme-setup-remove-band" aria-label="Remove position preference">Remove</button></div>`;
+    row.dataset.setupRankUnit = paired ? 'pair' : 'position';
+    row.innerHTML = `<div class="col-4 col-sm-2"><label class="form-label small mb-1">From ${unit}<input class="form-control form-control-sm programme-setup-min" type="number" min="1" max="${limit}" value="${escapeHtml(min)}"></label></div><div class="col-4 col-sm-2"><label class="form-label small mb-1">To ${unit}<input class="form-control form-control-sm programme-setup-max" type="number" min="1" max="${limit}" value="${escapeHtml(max)}"></label></div><div class="col-12 col-sm-6"><label class="form-label small mb-1 d-block">Preferred venue<select class="form-select form-select-sm programme-setup-band-venue">${programmeSetupVenueOptions(section, rule.venue_id)}</select></label></div><div class="col-4 col-sm-2"><button type="button" class="btn btn-sm btn-outline-danger programme-setup-remove-band" aria-label="Remove venue preference">Remove</button></div>${doubles && !paired ? '<div class="col-12 small text-warning">Existing player-position band is not a complete configured pair range. It stays in player positions; remove it and add a pair preference to regroup.</div>' : ''}`;
     section.querySelector('.programme-setup-bands').appendChild(row);
   };
   const readProgrammeSetup = () => {
@@ -1983,7 +2005,7 @@
         venue_id:Number(input.value), court_labels:[...section.querySelectorAll(`.programme-setup-court[data-venue="${input.value}"]:checked`)].map(court => court.value),
       }))});
       section.querySelectorAll('.programme-setup-band').forEach(row => rules.push({draw_ids:[drawId],
-        min_rank:Number(row.querySelector('.programme-setup-min').value), max_rank:Number(row.querySelector('.programme-setup-max').value), venue_id:Number(row.querySelector('.programme-setup-band-venue').value),
+        ...programmeRankPayload(Number(row.querySelector('.programme-setup-min').value), Number(row.querySelector('.programme-setup-max').value), row.dataset.setupRankUnit === 'pair', Number(row.querySelector('.programme-setup-max').max)), venue_id:Number(row.querySelector('.programme-setup-band-venue').value),
       }));
     });
     return {assignments, rules};
@@ -1997,7 +2019,7 @@
       const bands = rules.filter(rule => rule.draw_ids.includes(assignment.draw_id));
       for (let index = 0; index < bands.length; index++) {
         const rule = bands[index];
-        if (!Number.isInteger(rule.min_rank) || !Number.isInteger(rule.max_rank) || rule.min_rank < 1 || rule.max_rank < rule.min_rank || rule.max_rank > 100) return `${name}: position ranges must run from 1 to 100, with the end at or after the start.`;
+        if (!Number.isInteger(rule.min_rank) || !Number.isInteger(rule.max_rank) || rule.min_rank < 1 || rule.max_rank < rule.min_rank || rule.max_rank > 100) return `${name}: use whole numbers within the displayed pair or player-position limits, with the end at or after the start.`;
         if (!assignment.venue_ids.includes(rule.venue_id)) return `${name}: every position preference must use an assigned venue.`;
         if (bands.slice(0,index).some(other => rule.min_rank <= other.max_rank && rule.max_rank >= other.min_rank)) return `${name}: position preference ranges cannot overlap.`;
       }
@@ -2013,7 +2035,7 @@
     document.getElementById('programme-setup-draws').innerHTML = draws.map(draw => `<section data-setup-draw="${draw.id}" class="border rounded p-3 mb-3"><h6>${escapeHtml(draw.name)}</h6>${[...document.querySelectorAll(`.assignment-choice[data-draw="${draw.id}"]`)].map(venue => {
       const courts = [...document.querySelectorAll(`.court-allocation[data-draw="${draw.id}"][data-venue="${venue.value}"]`)];
       return `<div class="border-top pt-2 mt-2"><label class="d-flex align-items-center gap-2"><input type="checkbox" class="form-check-input programme-setup-venue" value="${venue.value}" data-name="${escapeHtml(venue.dataset.venueName)}" ${venue.checked ? 'checked' : ''}>${escapeHtml(venue.dataset.venueName)}</label><button type="button" class="btn btn-sm btn-outline-secondary programme-setup-all-courts mt-1" data-venue="${venue.value}">All courts</button><div class="d-flex flex-wrap gap-2 mt-2">${courts.map(court => `<label class="small border rounded px-2 py-1"><input type="checkbox" class="form-check-input programme-setup-court me-1" data-venue="${venue.value}" value="${escapeHtml(court.value)}" ${court.checked ? 'checked' : ''} ${venue.checked ? '' : 'disabled'}>Court ${escapeHtml(court.value)}</label>`).join('')}</div></div>`;
-    }).join('')}<div class="mt-3"><strong class="small">Optional position preferences</strong><div class="small text-muted mb-2">Uncovered positions use normal venue scheduling.</div><div class="programme-setup-bands"></div><button type="button" class="btn btn-sm btn-outline-secondary programme-setup-add-band">Add position preference</button></div></section>`).join('');
+    }).join('')}<div class="mt-3"><strong class="small">Optional ${programmeUsesPairs(draw) ? 'pair' : programmeUsesMixedPairs(draw) ? 'mixed-pair' : 'player-position'} preferences</strong><div class="small text-muted mb-2">${programmeUsesPairs(draw) ? `${draw.doubles_pair_count} pairs: pair 1 = players 1–2; pair 2 = players 3–4, and so on. Uncovered pairs use normal venue scheduling.` : programmeUsesMixedPairs(draw) ? 'Mixed pair 1 = boy 1 + girl 1, pair 2 = boy 2 + girl 2, and so on. Uncovered pairs use normal venue scheduling.' : 'Uncovered player positions use normal venue scheduling.'}</div><div class="programme-setup-bands"></div><button type="button" class="btn btn-sm btn-outline-secondary programme-setup-add-band">Add ${programmeUsesPairs(draw) ? 'pair' : programmeUsesMixedPairs(draw) ? 'mixed-pair' : 'position'} preference</button></div></section>`).join('');
     programmeSetupModal.querySelectorAll('[data-setup-draw]').forEach(section => rules.filter(rule => rule.draw_ids.map(Number).includes(Number(section.dataset.setupDraw))).forEach(rule => addProgrammeSetupBand(section, rule)));
     document.getElementById('programme-setup-policy').textContent = 'Uses the saved event rule when players span different venue bands. Change that event-wide rule in scheduling rules; this setup save preserves it.';
     document.getElementById('programme-setup-status').textContent = '';
@@ -2150,7 +2172,7 @@
     applyProgrammeStageOrder();
     event.target.focus({preventScroll:true});
   });
-  [['programme-duration','schedule-duration'],['programme-rest','schedule-rest'],['programme-gap','schedule-gap'],['programme-gender','gender-waves']].forEach(([wizardId, sharedId]) => {
+  [['programme-duration','schedule-duration'],['programme-rest','schedule-rest'],['programme-gap','schedule-gap']].forEach(([wizardId, sharedId]) => {
     document.getElementById(wizardId).addEventListener('change', () => { document.getElementById(sharedId).value = document.getElementById(wizardId).value; programmePayload = null; invalidatePreview(); });
     document.getElementById(sharedId).addEventListener('change', () => { document.getElementById(wizardId).value = document.getElementById(sharedId).value; });
   });
@@ -2181,11 +2203,11 @@
     const group = programmeGroup();
     if (!group.length) return programmeStatus('Choose an age group.', 'danger');
     if (allocationsDirty) return programmeStatus('Save the changed court allocations before creating the programme preview.', 'danger');
-    [['programme-duration','schedule-duration'],['programme-rest','schedule-rest'],['programme-gap','schedule-gap'],['programme-gender','gender-waves']].forEach(([wizardId, sharedId]) => document.getElementById(sharedId).value = document.getElementById(wizardId).value);
+    [['programme-duration','schedule-duration'],['programme-rest','schedule-rest'],['programme-gap','schedule-gap']].forEach(([wizardId, sharedId]) => document.getElementById(sharedId).value = document.getElementById(wizardId).value);
     const days = [0,1,2].map(index => {
       const start = document.getElementById(`programme-start-${index}`).value, end = document.getElementById(`programme-end-${index}`).value;
       const breakStart = document.getElementById(`programme-break-start-${index}`).value, breakEnd = document.getElementById(`programme-break-end-${index}`).value;
-      return {start, end, break_start:breakStart ? `${start.slice(0,10)}T${breakStart}` : null, break_end:breakEnd ? `${start.slice(0,10)}T${breakEnd}` : null};
+      return {start, end, gender_waves:document.getElementById(`programme-gender-${index}`).value, break_start:breakStart ? `${start.slice(0,10)}T${breakStart}` : null, break_end:breakEnd ? `${start.slice(0,10)}T${breakEnd}` : null};
     });
     const rounds = [...document.querySelectorAll('[data-programme-draw]')].map(row => ({draw_id:Number(row.dataset.programmeDraw), round:Number(row.dataset.programmeRound), day:Number(row.querySelector('.programme-day').value), sequence:Number(row.querySelector('.programme-sequence').value)}));
     programmePayload = {draw_ids:group.map(draw => draw.id), draw_rounds:[], draw_starts:[], venue_starts:[], start:days[0].start, end:days[2].end, programme:{days,rounds}, allow_partial:false, replan_venue_ids:[]};
@@ -2203,6 +2225,32 @@
   });
   document.addEventListener('click', event => {
     if (event.target.closest('.remove-rank-band, #add-rank-band, #default-rank-bands')) refreshProgrammeStageSummaries();
+  });
+  const updateProgrammeDayPublicationLinks = () => {
+    document.querySelectorAll('[data-programme-review-day]').forEach(link => {
+      const date = document.getElementById(`programme-start-${link.dataset.programmeReviewDay}`).value.slice(0,10);
+      const valid = /^\d{4}-\d{2}-\d{2}$/.test(date);
+      link.classList.toggle('disabled', !valid);
+      link.setAttribute('aria-disabled', String(!valid));
+      if (!valid) { link.removeAttribute('href'); return; }
+      const target = new URL(drawsUrl, window.location.href);
+      target.searchParams.set('date', date);
+      link.href = target.href;
+    });
+  };
+  document.querySelectorAll('[id^="programme-start-"]').forEach(input => {
+    input.addEventListener('input', updateProgrammeDayPublicationLinks);
+    input.addEventListener('change', updateProgrammeDayPublicationLinks);
+  });
+  updateProgrammeDayPublicationLinks();
+  document.querySelectorAll('.programme-gender-day').forEach(select => {
+    // Start with the current saved/restored event default, then keep each day independent.
+    select.value = document.getElementById('gender-waves').value;
+    select.addEventListener('change', () => {
+      programmePayload = null;
+      invalidatePreview();
+      if (programmeGroup().length) refreshProgrammePreview(false);
+    });
   });
   document.getElementById('programme-create').addEventListener('click', () => refreshProgrammePreview());
   document.querySelectorAll('.draw-choice').forEach(input => input.addEventListener('change', () => { programmePayload = null; }));

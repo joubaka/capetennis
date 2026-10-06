@@ -305,11 +305,29 @@
       console.log('↕️ Init order', teamId);
       $tbody.data('init', true);
 
-      new Sortable(this, {
+      let savedRows = [];
+      let savedRanks = [];
+      let saving = false;
+      function restoreRows() {
+        savedRows.forEach((row, index) => {
+          $tbody.append(row);
+          $(row).find('td').eq(1).find('.badge').first().text(savedRanks[index]);
+        });
+      }
+
+      const sortable = new Sortable(this, {
         animation: 150,
         handle: '.drag-handle',
         draggable: 'tr.drag-item',
+        onMove() { return !saving; },
+        onStart() {
+          savedRows = $tbody.find('tr.drag-item').toArray();
+          savedRanks = savedRows.map(row => $(row).find('td').eq(1).find('.badge').first().text());
+        },
         onEnd() {
+          if (saving) { restoreRows(); return; }
+          saving = true;
+          sortable.option('disabled', true);
           const debugRows = [];
           const mismatches = [];
 
@@ -369,7 +387,11 @@
             order
           })
             .done(() => toastr.success('Order saved'))
-            .fail(() => toastr.error('Failed to save order'));
+            .fail(xhr => {
+              restoreRows();
+              toastr.error(xhr.responseJSON?.message || 'Failed to save order. The previous order has been restored.');
+            })
+            .always(() => { saving = false; sortable.option('disabled', false); });
         }
       });
     });
