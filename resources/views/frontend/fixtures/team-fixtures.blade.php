@@ -85,14 +85,12 @@
                             <td class="fw-bold text-secondary d-none d-md-table-cell">{{ $fx->rubber_sequence ?: ($fx->home_rank_nr ?? '—') }}</td>
                             
                             <td class="fw-semibold text-end {{ $homeClass }} text-wrap" style="max-width:150px;">
-                                @if($fx->lineup_unpublished)<div>{{ $fx->tie_display['home'] }}</div>@endif
                                 @include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['home']])
                             </td>
                             <td class="text-center p-0" style="width:24px;">
                                 <small class="text-muted">vs</small>
                             </td>
                             <td class="fw-semibold {{ $awayClass }} text-wrap" style="max-width:150px;">
-                                @if($fx->lineup_unpublished)<div>{{ $fx->tie_display['away'] }}</div>@endif
                                 @include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['away']])
                             </td>
                             <td>

@@ -136,7 +136,7 @@ class PublicFixtureEmptyStateTest extends TestCase
     public function test_unpublished_draw_and_event_are_still_denied(): void
     {
         $draw = $this->draw();
-        $draw->update(['published' => false]);
+        $draw->refresh()->update(['published' => false]);
         $this->get(route('frontend.fixtures.index', $draw))->assertForbidden();
         $draw->update(['published' => true]);
         $draw->event->update(['published' => false]);
@@ -148,15 +148,30 @@ class PublicFixtureEmptyStateTest extends TestCase
         $this->get(route('frontend.fixtures.index', 999999))->assertNotFound();
     }
 
-    public function test_draw_and_schedule_publication_show_draft_pairings_without_working_lineups_or_scores(): void
+    public function test_public_lineup_does_not_expose_a_player_from_an_unrelated_source_team(): void
+    {
+        $draw = $this->draw(true);
+        $fixture = $this->tie($draw, false);
+        $foreignFixture = $this->tie($this->draw(true), false);
+        $player = \App\Models\Player::factory()->create(['name' => 'ForeignSource', 'surname' => 'Player']);
+        \App\Models\TeamPlayer::create(['team_id' => $foreignFixture->teamTie->home_team_id, 'player_id' => $player->id, 'rank' => 2, 'pay_status' => 0]);
+        \App\Models\TeamFixturePlayer::create(['team_fixture_id' => $fixture->id, 'slot_no' => 1, 'team1_id' => $player->id]);
+
+        $this->get(route('frontend.fixtures.index', $draw))->assertOk()
+            ->assertSee('Hidden Home')->assertDontSee('ForeignSource')->assertSee('TBD');
+    }
+
+    public function test_draw_publication_shows_assigned_players_ranks_and_results_before_operational_tie_publication(): void
     {
         $draw = $this->draw(true);
         $draw->update(['published' => false, 'team_category_id' => 1]);
         $fixture = $this->tie($draw, false);
         $tie = $fixture->teamTie;
         $draw->teams_in_draw()->attach([$tie->home_team_id, $tie->away_team_id]);
-        $player = \App\Models\Player::factory()->create(['name' => 'PrivateDraft', 'surname' => 'Player']);
-        \App\Models\TeamFixturePlayer::create(['team_fixture_id' => $fixture->id, 'slot_no' => 1, 'team1_id' => $player->id]);
+        $player = \App\Models\Player::factory()->create(['name' => 'AssignedProfile', 'surname' => 'Player']);
+        \App\Models\TeamPlayer::create(['team_id' => $tie->home_team_id, 'player_id' => $player->id, 'rank' => 2, 'pay_status' => 0]);
+        $imported = \App\Models\NoProfileTeamPlayer::create(['team_id' => $tie->away_team_id, 'name' => 'AssignedImported', 'surname' => 'Player', 'rank' => 3, 'pay_status' => 0]);
+        \App\Models\TeamFixturePlayer::create(['team_fixture_id' => $fixture->id, 'slot_no' => 1, 'team1_id' => $player->id, 'team2_no_profile_id' => $imported->id]);
         \App\Models\TeamFixtureResult::create(['team_fixture_id' => $fixture->id, 'set_nr' => 1, 'team1_score' => 6, 'team2_score' => 3]);
         $venue = new \App\Models\Venue;
         $venue->forceFill(['name' => 'Public schedule courts'])->save();
@@ -168,13 +183,12 @@ class PublicFixtureEmptyStateTest extends TestCase
 
         foreach (['frontend.fixtures.index', 'frontend.fixtures.show', 'frontend.fixtures.draw'] as $route) {
             $this->get(route($route, $draw))->assertOk()
-                ->assertSee('Hidden Home')->assertSee('Hidden Away')
-                ->assertDontSee('PrivateDraft')->assertDontSee('6 - 3')->assertDontSee('6-3')
-                ->assertDontSee('2026-10-10')->assertDontSee('winner-home"');
+                ->assertSee('AssignedProfile Player')->assertSee('AssignedImported Player')
+                ->assertSee('(2)')->assertSee('(3)')->assertDontSee('2026-10-10');
         }
         $this->get(route('frontend.fixtures.index', $draw))->assertOk()
             ->assertSee('Hidden Home')->assertSee('Hidden Away')
-            ->assertSee('2026-10-09 13:45')->assertSee('Public schedule courts')->assertSee('TBD');
+            ->assertSee('2026-10-09 13:45')->assertSee('Public schedule courts')->assertSee('6 - 3')->assertDontSee('TBD');
         $this->assertSame(0, TeamFixture::publishedTeamTies()->where('draw_id', $draw->id)->count());
         $this->assertSame(TeamTie::STATUS_DRAFT, $tie->fresh()->status);
         $this->assertNull($tie->fresh()->published_at);
@@ -185,6 +199,13 @@ class PublicFixtureEmptyStateTest extends TestCase
         $this->app['request']->attributes->remove('published_schedule_rows_'.$draw->event_id);
         $rows = app(\App\Services\Scheduling\SchedulePublicationService::class)->publishedRows($draw->event);
         $this->assertSame(['Hidden Home', 'Hidden Away'], $rows->first()['participants']);
-        $this->assertStringNotContainsString('PrivateDraft', json_encode($rows));
+        $this->assertStringNotContainsString('AssignedProfile', json_encode($rows));
+        $draw->refresh()->update(['published' => false]);
+        foreach (['frontend.fixtures.index', 'frontend.fixtures.show', 'frontend.fixtures.draw'] as $route) {
+            $this->get(route($route, $draw))->assertForbidden()->assertDontSee('AssignedProfile')->assertDontSee('AssignedImported');
+        }
+        $draw->update(['published' => true]);
+        $draw->event->update(['published' => false]);
+        $this->get(route('frontend.fixtures.index', $draw))->assertForbidden()->assertDontSee('AssignedProfile');
     }
 }

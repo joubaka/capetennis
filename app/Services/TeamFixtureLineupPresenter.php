@@ -28,20 +28,10 @@ class TeamFixtureLineupPresenter
         $regionIds = $fixtures->flatMap(fn ($fixture) => $fixture->fixturePlayers->flatMap(fn ($row) => collect($row->participant_snapshot ?? [])->pluck('region_id')))->filter()->unique();
         $historicalRegions = \App\Models\TeamRegion::whereIn('id', $regionIds)->get()->keyBy('id');
         foreach ($fixtures as $fixture) {
-            $tie = $this->tie($fixture);
-            // Publishing pairings does not publish an unvalidated working lineup or score.
-            if ($publicDraw && $tie && (!$tie->published_at
-                || !in_array($tie->status, [\App\Models\TeamTie::STATUS_PUBLISHED, \App\Models\TeamTie::STATUS_COMPLETED], true))) {
-                $fixture->setAttribute('lineup_unpublished', true);
-                foreach (['fixturePlayers', 'team1', 'team2', 'fixtureResults', 'teamResults'] as $relation) {
-                    $fixture->setRelation($relation, new \Illuminate\Database\Eloquent\Collection());
-                }
-                $fixture->setAttribute('match_status', 0);
-            }
             $rankSources = ['home' => [], 'away' => []];
             $fixture->setAttribute('lineup_display', [
-                'home' => $this->side($fixture, 'home', $teams, $historicalRegions, $rankSources['home']),
-                'away' => $this->side($fixture, 'away', $teams, $historicalRegions, $rankSources['away']),
+                'home' => $this->side($fixture, 'home', $teams, $historicalRegions, $rankSources['home'], $publicDraw),
+                'away' => $this->side($fixture, 'away', $teams, $historicalRegions, $rankSources['away'], $publicDraw),
             ]);
             $fixture->setAttribute('lineup_rank_sources', $rankSources);
             $fixture->setAttribute('tie_display', [
@@ -51,7 +41,7 @@ class TeamFixtureLineupPresenter
         }
     }
 
-    private function side(TeamFixture $fixture, string $side, Collection $teams, Collection $historicalRegions, array &$rankSources): array
+    private function side(TeamFixture $fixture, string $side, Collection $teams, Collection $historicalRegions, array &$rankSources, bool $publicDraw): array
     {
         $home = $side === 'home';
         $tie = $this->tie($fixture);
@@ -91,6 +81,10 @@ class TeamFixtureLineupPresenter
                 $member = $profile ? $source->team_players->firstWhere('player_id', $profile->id)
                     : ($imported ? $source->team_players_no_profile->firstWhere('id', $imported->id) : null);
                 if ($member) break;
+            }
+            if ($publicDraw && $tie && !$member && !$historical) {
+                $profile = null;
+                $imported = null;
             }
             $rank = $historical['rank'] ?? $member?->rank;
             $rankSource = ($profile || $imported) && (int) $rank > 0 ? ($historical ? 'snapshot' : 'roster') : null;
