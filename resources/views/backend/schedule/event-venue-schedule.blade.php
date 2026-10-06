@@ -249,6 +249,11 @@
       <select id="programme-reuse-source" class="form-select mb-2"><option value="">Choose an assigned draw in this age group</option></select>
       <button id="programme-reuse" type="button" class="btn btn-outline-primary mb-3">Save missing discipline venue assignments</button>
       <p class="small text-muted">This explicitly saves the selected draw's current courts only to disciplines with no venue. Existing discipline assignments stay as they are. Review allocations below to select different courts.</p>
+      <label class="form-check mb-3" for="programme-reschedule-existing">
+        <input class="form-check-input" type="checkbox" id="programme-reschedule-existing" {{ $scheduleDraft['reschedule_existing'] ? 'checked' : '' }}>
+        <span class="form-check-label">Include already scheduled matches in this age group's new preview</span>
+        <small class="d-block text-muted">Unchecked keeps saved times fixed. Checking replans this age group; saved times change only when you save the preview.</small>
+      </label>
       <button id="programme-create" type="button" class="btn btn-primary">Create three-day schedule preview</button>
       <div id="programme-status" class="small mt-2" role="status" aria-live="polite"></div>
     </div>
@@ -1058,17 +1063,19 @@
     rank_venue_preferences: applicableRankRules(), rank_preference_draw_ids:rankScopeIds,
     cross_band_policy: document.getElementById('cross-band-policy').value,
   });
-  const selectedAssignedVenueIds = () => [...new Set(
-    values('.draw-choice').flatMap(drawId => [...document.querySelectorAll(`.assignment-choice[data-draw="${drawId}"]:checked`)].map(input => Number(input.value)))
+  const selectedAssignedVenueIds = (drawIds = values('.draw-choice')) => [...new Set(
+    drawIds.flatMap(drawId => [...document.querySelectorAll(`.assignment-choice[data-draw="${drawId}"]:checked`)].map(input => Number(input.value)))
   )];
   const buildPayload = () => ({
     ...buildScheduleDraft(),
     allow_partial: true,
     draw_ids: values('.draw-choice'),
     draw_rounds: readDrawRounds().filter(row => values('.draw-choice').includes(row.draw_id)),
-    replan_venue_ids: document.getElementById('reschedule-existing').checked ? selectedAssignedVenueIds() : replanVenueIds,
     draw_starts: [...document.querySelectorAll('.draw-start')].filter(input => input.value && document.querySelector(`.draw-choice[value="${input.dataset.draw}"]`)?.checked).map(input => ({draw_id:Number(input.dataset.draw), start:input.value})),
-    ...(programmePayload || {})
+    ...(programmePayload || {}),
+    replan_venue_ids: document.getElementById('reschedule-existing').checked
+      ? selectedAssignedVenueIds(programmePayload?.draw_ids || values('.draw-choice'))
+      : (programmePayload ? [] : replanVenueIds)
   });
   const post = async (url, body) => {
     const generation = url === previewUrl ? ++previewGeneration : null;
@@ -1157,6 +1164,12 @@
     .forEach(input => input.addEventListener('change', markScheduleDirty));
   document.getElementById('reschedule-existing')?.addEventListener('change', event => {
     if (!event.currentTarget.checked) replanVenueIds = [];
+    document.getElementById('programme-reschedule-existing').checked = event.currentTarget.checked;
+  });
+  document.getElementById('programme-reschedule-existing').addEventListener('change', event => {
+    const shared = document.getElementById('reschedule-existing');
+    shared.checked = event.currentTarget.checked;
+    shared.dispatchEvent(new Event('change', {bubbles:true}));
   });
   document.querySelectorAll('.draw-choice').forEach(input => input.addEventListener('change', () => {
     const start = document.querySelector(`.draw-start[data-draw="${input.value}"]`);
@@ -1597,6 +1610,7 @@
       replanVenueIds = [];
     }
     document.getElementById('reschedule-existing').checked = replanning;
+    document.getElementById('programme-reschedule-existing').checked = replanning;
     payload = {...buildPayload(), replan_venue_ids:replanVenueIds};
     revision = null;
     setStatus(document.getElementById('schedule-status'), replanning ? 'Replanning every applied venue…' : 'Restoring every current applied venue schedule…');
@@ -2226,7 +2240,7 @@
       return {start, end, gender_waves:document.getElementById(`programme-gender-${index}`).value, break_start:breakStart ? `${start.slice(0,10)}T${breakStart}` : null, break_end:breakEnd ? `${start.slice(0,10)}T${breakEnd}` : null};
     });
     const rounds = [...document.querySelectorAll('[data-programme-draw]')].map(row => ({draw_id:Number(row.dataset.programmeDraw), round:Number(row.dataset.programmeRound), day:Number(row.querySelector('.programme-day').value), sequence:Number(row.querySelector('.programme-sequence').value)}));
-    programmePayload = {draw_ids:group.map(draw => draw.id), draw_rounds:[], draw_starts:[], venue_starts:[], start:days[0].start, end:days[2].end, programme:{days,rounds}, allow_partial:false, replan_venue_ids:[]};
+    programmePayload = {draw_ids:group.map(draw => draw.id), draw_rounds:[], draw_starts:[], venue_starts:[], start:days[0].start, end:days[2].end, programme:{days,rounds}, allow_partial:false};
     payload = buildPayload(); revision = null; button.disabled = true;
     const refreshVersion = ++programmeRefreshVersion;
     button.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>Creating three-day preview…';

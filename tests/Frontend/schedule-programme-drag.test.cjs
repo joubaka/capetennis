@@ -38,7 +38,7 @@ function scenario() {
     document:{getElementById:get, querySelectorAll: selector => selector === '.programme-day-lane' ? lanes : rows},
     programmeGroup:() => [{id:1,rubber_code:'singles'},{id:2,rubber_code:'singles'},{id:3,rubber_code:'reverse_singles'}],
     Sortable:class {constructor(lane, options){sortables.push({lane, options});} destroy(){}},
-    escapeHtml:String, allocationsDirty:false, programmePayload:null, payload:null, revision:null,
+    refreshProgrammeStageSummaries:() => {}, escapeHtml:String, allocationsDirty:false, programmePayload:null, payload:null, revision:null,
     previewGeneration:0, previewUrl:'/preview', csrf:'test', programmeStatus:() => {}, showWorkflowStep:() => {}, setStatus:() => {}, lastScheduleResult:null,
     buildPayload:() => ({...context.programmePayload}),
     render:result => {rendered.push(result); get('apply-preview').disabled = false;},
@@ -47,8 +47,10 @@ function scenario() {
   vm.createContext(context);
   vm.runInContext(block('  const invalidatePreview = ', '  const markAllocationsDirty = '), context);
   vm.runInContext(block('  const post = async', '  const announcementTitle'), context);
-  vm.runInContext(block('  let programmeSortables = [];', "  document.getElementById('programme-age').addEventListener"), context);
-  vm.runInContext(block('  const refreshProgrammePreview = async', "  document.getElementById('programme-create').addEventListener"), context);
+  // Extract drag helpers only; venue setup contains server-rendered Blade data.
+  vm.runInContext(block('  let programmeSortables = [];', '  const programmeSetupRules = '), context);
+  vm.runInContext(block('  const applyProgrammeStageOrder = ', "  document.getElementById('programme-age').addEventListener"), context);
+  vm.runInContext(block('  const refreshProgrammePreview = async', '  // Refresh only card details'), context);
   vm.runInContext('globalThis.drawStages = renderProgrammeStages;', context);
   context.drawStages();
   return {context, rows, lanes, singlesOne, singlesTwo, reverse, requests, sortables, rendered, get};

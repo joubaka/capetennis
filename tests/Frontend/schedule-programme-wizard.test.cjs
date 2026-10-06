@@ -35,13 +35,13 @@ function harness(id, fail = false) {
   const context = {
     allocationsDirty:false, scheduleDirty:false, programmePayload:null, payload:null, revision:null, previewUrl:'/preview',
     programmeRefreshVersion:0, programmeCreateLabel:'Create programme preview',
-    document:{getElementById:element, querySelector: selector => selector.includes('[value=') ? target : null,
+    document:{addEventListener:() => {}, getElementById:element, querySelector: selector => selector.includes('[value=') ? target : null,
       querySelectorAll:selector => selector.startsWith('.assignment-choice') ? [{value:'4'}] : []},
     programmeGroup:() => [{id:2, locked:false, published:false}], programmeStatus:(...args) => messages.push(args),
     buildPayload:() => ({start:'single-day start', ...(context.programmePayload || {})}),
     post:() => new Promise((resolve, reject) => { complete = () => fail ? reject(new Error('Preview failed')) : resolve({matches:[],unscheduled:[]}); }),
     saveAllocationsAndTiming:() => new Promise(resolve => { complete = () => resolve(!fail); }),
-    render:() => {}, showWorkflowStep:() => {}, invalidatePreview:() => {}, updateCourtSummary:() => {}, updateDrawSummary:() => {},
+    refreshProgrammeStageSummaries:() => {}, render:() => {}, showWorkflowStep:() => {}, invalidatePreview:() => {}, updateCourtSummary:() => {}, updateDrawSummary:() => {},
     setStatus:() => {}, startScheduleActivity:() => {}, stopScheduleActivity:() => {}, finishScheduleActivity:() => {}, previewActivityStages:[],
     markAllocationsDirty:() => { context.allocationsDirty = true; }
   };
@@ -82,4 +82,29 @@ test('regular combined preview resets a previous age-group programme', async () 
   assert.equal(app.context.payload.programme, undefined);
   assert.equal(app.context.payload.draw_ids, undefined);
   assert.equal(app.button.disabled, false);
+});
+
+
+test('real programme payload honors rescheduling and limits venue selection to its age group', () => {
+  const start = source.indexOf('  const selectedAssignedVenueIds =');
+  const end = source.indexOf('  const post =', start);
+  const checkbox = {checked:true};
+  const context = {
+    programmePayload:{draw_ids:[2,3], programme:{days:[]}, replan_venue_ids:[]},
+    replanVenueIds:[99], buildScheduleDraft:() => ({reschedule_existing:checkbox.checked}),
+    values:() => [9], readDrawRounds:() => [],
+    document:{getElementById:() => checkbox, querySelectorAll:selector => {
+      if (selector === '.draw-start') return [];
+      if (selector.includes('data-draw="2"')) return [{value:'4'}];
+      if (selector.includes('data-draw="3"')) return [{value:'5'}, {value:'4'}];
+      return [{value:'99'}];
+    }}
+  };
+  vm.runInNewContext(source.slice(start,end)+'; globalThis.actualPayload = buildPayload;',context);
+  assert.deepEqual(Array.from(context.actualPayload().replan_venue_ids),[4,5]);
+  assert.deepEqual(Array.from(context.actualPayload().draw_ids),[2,3]);
+  checkbox.checked=false;
+  assert.deepEqual(Array.from(context.actualPayload().replan_venue_ids),[]);
+  context.programmePayload=null;
+  assert.deepEqual(Array.from(context.actualPayload().replan_venue_ids),[99]);
 });

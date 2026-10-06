@@ -53,6 +53,28 @@ class ScheduleProgrammeTest extends TestCase
         $this->assertSame(12, TeamFixture::whereNotNull('scheduled_at')->count());
     }
 
+    public function test_replanning_saved_programme_uses_changed_day_start_only_after_apply(): void
+    {
+        [$event, $options] = $this->scenario();
+        $service = app(EventVenueScheduleService::class);
+        $initial = $service->preview($event, $options);
+        $service->apply($event, $options, $initial['revision']);
+        $before = TeamFixture::orderBy('id')->get()->map->getAttributes()->all();
+        $fixed = $service->preview($event, $options);
+        $this->assertSame([], $fixed['matches']);
+        $this->assertSame($before, TeamFixture::orderBy('id')->get()->map->getAttributes()->all());
+        $options['programme']['days'][0]['start'] = '2026-10-09 09:00:00';
+        $options['start'] = '2026-10-09 09:00:00';
+        $options['reschedule_existing'] = true;
+        $options['replan_venue_ids'] = $event->draws()->with('venues')->get()->flatMap(fn ($draw) => $draw->venues->pluck('id'))->unique()->values()->all();
+        $replanned = $service->preview($event, $options);
+        $this->assertCount(12, $replanned['matches']);
+        $this->assertSame('2026-10-09 09:00:00', $replanned['matches'][0]['scheduled_at']);
+        $this->assertSame($before, TeamFixture::orderBy('id')->get()->map->getAttributes()->all());
+        $this->assertSame(12, $service->apply($event, $options, $replanned['revision'])['count']);
+        $this->assertSame('2026-10-09 09:00:00', TeamFixture::orderBy('scheduled_at')->first()->scheduled_at->format('Y-m-d H:i:s'));
+    }
+
     public function test_short_day_leaves_matches_unallocated_and_does_not_spill_overnight(): void
     {
         [$event, $options] = $this->scenario();
