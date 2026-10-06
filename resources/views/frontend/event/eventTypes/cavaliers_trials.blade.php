@@ -1,3 +1,4 @@
+@php($publishedDayLabels = app(\App\Services\Scheduling\SchedulePublicationService::class)->publicDrawDayLabels($event))
 <?php
 
 use App\Models\EventNomination;
@@ -219,8 +220,8 @@ $nominations = EventNomination::all();
                     @if($draw->published == 1)
                     <a href="{{route('frontend.showDraw',$draw->id)}}" class="btn btn-sm btn-success">
                       {{$draw->drawName}}
-                      <span class="badge {{ $draw->scheduleIsPublished() ? 'bg-label-light' : 'bg-label-secondary' }} ms-1">
-                        {{ $draw->scheduleIsPublished() ? 'Times available' : 'Times to follow' }}
+                      <span style="white-space: normal; line-height: 1.4;" class="badge {{ $publishedDayLabels->has($draw->id) ? 'bg-label-light' : 'bg-label-secondary' }} ms-1">
+                        {{ $publishedDayLabels->has($draw->id) ? 'Times available · '.$publishedDayLabels->get($draw->id) : 'Times to follow' }}
                       </span>
                     </a>
                     @can('view', $draw)

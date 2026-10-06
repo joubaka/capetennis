@@ -12,6 +12,32 @@ class PublicScheduleProjectionTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_draw_badge_days_are_chronological_unique_public_snapshot_days_only(): void
+    {
+        $event = Event::factory()->create(['eventType' => 3]);
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'published' => true]);
+        $venue = Venue::forceCreate(['name' => 'Public courts']);
+        $event->venues()->attach($venue->id, ['num_courts' => 2]);
+        $fixtures = collect(['2026-10-10 09:00:00', '2026-10-09 10:00:00', '2026-10-09 08:00:00'])->map(fn ($time, $index) => TeamFixture::create([
+            'draw_id' => $draw->id, 'round_nr' => 1, 'tie_nr' => 1, 'match_nr' => $index + 1, 'fixture_type' => 1,
+            'scheduled_at' => $time, 'venue_id' => $venue->id, 'court_label' => '1',
+        ]));
+        $service = app(SchedulePublicationService::class);
+        $service->publish($event, ['draw_id' => $draw->id]);
+        $fixtures->first()->update(['scheduled_at' => '2026-10-11 09:00:00']);
+        $foreignEvent = Event::factory()->create(['eventType' => 3]);
+        $foreignDraw = Draw::factory()->create(['event_id' => $foreignEvent->id, 'published' => true]);
+        TeamFixture::create(['draw_id' => $foreignDraw->id, 'round_nr' => 1, 'tie_nr' => 1, 'match_nr' => 1,
+            'fixture_type' => 1, 'scheduled_at' => '2026-10-12 09:00:00', 'venue_id' => $venue->id, 'court_label' => '2']);
+        $service->publish($foreignEvent, ['draw_id' => $foreignDraw->id]);
+        $this->get(route('events.show', $event))->assertOk()->assertSee('Times available · Friday, Saturday')->assertDontSee('Times available · Sunday')->assertDontSee('Monday');
+        $this->assertSame('Friday, Saturday', $service->publicDrawDayLabels($event)->get($draw->id));
+        $service->hide($event, ['date' => '2026-10-09']);
+        $this->get(route('events.show', $event))->assertOk()->assertSee('Times available · Saturday')->assertDontSee('Times available · Friday');
+        $service->hide($event, ['draw_id' => $draw->id]);
+        $this->get(route('events.show', $event))->assertOk()->assertDontSee('Times available');
+    }
+
     public function test_public_draw_list_distinguishes_unscheduled_partial_and_complete_working_schedules_without_times(): void
     {
         $event = Event::factory()->create(['eventType' => 3]);

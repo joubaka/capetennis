@@ -27,6 +27,7 @@
   <h6 class="fw-bold">Published Draws</h6>
 
   @php
+    $publishedDayLabels = app(\App\Services\Scheduling\SchedulePublicationService::class)->publicDrawDayLabels($event);
     $publishedDraws = $eventDraws
         ->where('published', true)
         ->sort(function ($left, $right) {
@@ -52,11 +53,12 @@
     <div class="event-published-draw-list">
       @foreach($draws as $draw)
         @php
-          $schedulePublished = $draw->scheduleIsPublished();
+          $publishedDays = $publishedDayLabels->get($draw->id, '');
+          $schedulePublished = $publishedDays !== '';
           $matchCount = (int) $draw->team_match_count + (int) $draw->individual_match_count;
           $scheduledCount = (int) $draw->scheduled_team_match_count + (int) $draw->scheduled_individual_match_count;
           $fullyScheduled = $matchCount > 0 && $scheduledCount === $matchCount;
-          $scheduleLabel = $schedulePublished ? 'Times available' : ($fullyScheduled ? 'Scheduled · times not published' : ($scheduledCount > 0 ? 'Partly scheduled · times not published' : 'Not scheduled yet'));
+          $scheduleLabel = $schedulePublished ? 'Times available · '.$publishedDays : ($fullyScheduled ? 'Scheduled · times not published' : ($scheduledCount > 0 ? 'Partly scheduled · times not published' : 'Not scheduled yet'));
           $scheduleClass = $schedulePublished || $fullyScheduled ? 'draw-scheduled' : ($scheduledCount > 0 ? 'draw-partly-scheduled' : '');
         @endphp
         <div class="event-published-draw-row">

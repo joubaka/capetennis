@@ -9,6 +9,18 @@ use Illuminate\Support\Facades\DB;
 
 final class SchedulePublicationService
 {
+    /** Labels derive exclusively from the same visible snapshots as public schedules. */
+    public function publicDrawDayLabels(Event $event): Collection
+    {
+        if (! $event->exists) return collect();
+        return $this->publishedRows($event)->groupBy('draw_id')->map(function ($rows) {
+            $dates = $rows->pluck('scheduled_at')->map(fn ($time) => Carbon::parse($time)->toDateString())->unique()->sort()->values();
+            $weekdays = $dates->map(fn ($date) => Carbon::parse($date)->format('l'));
+            // Disambiguate repeated weekdays when a competition spans multiple weeks.
+            return $dates->map(fn ($date) => Carbon::parse($date)->format($weekdays->unique()->count() === $weekdays->count() ? 'l' : 'l j M'))->join(', ');
+        });
+    }
+
     public function workingRows(Event $event): Collection
     {
         $draws = $event->draws()->get()->keyBy('id');
