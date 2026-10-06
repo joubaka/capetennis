@@ -69,6 +69,27 @@ class RankVenuePreferencesTest extends TestCase
             'wave_minutes' => 60, 'court_gap' => 0, 'player_rest' => 0, 'draw_ids' => $draws->take(2)->pluck('id')->all(), 'allow_partial' => true];
     }
 
+    public function test_venue_change_warning_explains_applied_rank_preference_and_advisory_fallback(): void
+    {
+        [$event, $draws, $venues] = $this->setupEvent();
+        $fixture = $this->rubber($draws[0], [1], [2]);
+        $source = TeamFixture::create(['draw_id' => $draws[0]->id, 'round_nr' => 1, 'match_nr' => 9,
+            'fixture_type' => 1, 'match_status' => 0, 'scheduled_at' => '2026-10-10 07:00:00',
+            'venue_id' => $venues[2]->id, 'court_label' => '1', 'duration_min' => 30]);
+        $players = $fixture->fixturePlayers->first();
+        TeamFixturePlayer::create(['team_fixture_id' => $source->id, 'team1_id' => $players->team1_id, 'team2_id' => $players->team2_id]);
+        $options = $this->schedulingOptions($draws, ['rank_venue_preferences' => $this->rules($draws, $venues)]);
+        $service = app(EventVenueScheduleService::class);
+        $preview = $service->preview($event, $options);
+        $this->assertCount(2, $preview['venue_change_warnings']);
+        $this->assertSame('rank_preference', $preview['venue_change_warnings'][0]['reason_code']);
+        $this->assertStringContainsString('configured roster rank venue preference', $preview['venue_change_warnings'][0]['reason']);
+        $fallback = $service->preview($event, $options + ['venue_ids' => [$venues[1]->id]]);
+        $this->assertSame('rank_fallback', $fallback['venue_change_warnings'][0]['reason_code']);
+        $this->assertStringContainsString('Preferences are advisory', $fallback['venue_change_warnings'][0]['reason']);
+        $this->assertNull($fixture->fresh()->scheduled_at);
+    }
+
     public function test_boys_girls_and_imported_doubles_use_actual_roster_bands_and_keep_saved_matches(): void
     {
         [$event, $draws, $venues] = $this->setupEvent();

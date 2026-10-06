@@ -110,6 +110,93 @@ class UnifiedEventSchedulingTest extends TestCase
         $this->assertSame($other->id, $preview['matches'][0]['venue_id']);
         $this->assertCount(1, $preview['matches'][0]['venue_changes']);
         $this->assertTrue(collect($preview['warnings'])->contains(fn ($warning) => str_contains($warning, $player->name)));
+        $warning = $preview['venue_change_warnings'][0];
+        $this->assertSame('team:'.$prior->id, $warning['from']['fixture']['fixture_key']);
+        $this->assertSame('2026-10-10 07:00:00', $warning['from']['scheduled_at']);
+        $this->assertSame('1', $warning['from']['court']);
+        $this->assertSame('team:'.$next->id, $warning['to']['fixture']['fixture_key']);
+        $this->assertSame(2, $warning['to']['fixture']['match']);
+        $this->assertSame($other->id, $warning['to']['venue_id']);
+        $this->assertSame('unrestricted', $warning['reason_code']);
+        $this->assertStringContainsString('No roster rank venue preference', $warning['reason']);
+    }
+
+    public function test_venue_change_details_follow_preview_bookings_without_persisting_them(): void
+    {
+        [$event, $draw, $venue] = $this->setupDraw();
+        $other = Venue::forceCreate(['name' => 'Doubles courts']);
+        $secondDraw = Draw::factory()->create(['event_id' => $event->id, 'drawType_id' => $draw->drawType_id, 'drawName' => 'u/10 Doubles']);
+        $secondDraw->venues()->attach($other->id, ['num_courts' => 1]);
+        $player = Player::factory()->create();
+        $first = $this->rubber($draw);
+        $second = $this->rubber($secondDraw, ['fixture_type' => 2, 'match_nr' => 7, 'rubber_name' => 'Doubles']);
+        foreach ([$first, $second] as $fixture) TeamFixturePlayer::create(['team_fixture_id' => $fixture->id, 'team1_id' => $player->id]);
+        $preview = app(EventVenueScheduleService::class)->preview($event, $this->schedulingOptions());
+        $this->assertCount(2, $preview['matches']);
+        $this->assertCount(1, $preview['venue_change_warnings']);
+        $warning = $preview['venue_change_warnings'][0];
+        $this->assertSame('team:'.$first->id, $warning['from']['fixture']['fixture_key']);
+        $this->assertSame('team:'.$second->id, $warning['to']['fixture']['fixture_key']);
+        $this->assertSame('Doubles', $warning['to']['fixture']['discipline']);
+        $this->assertSame(7, $warning['to']['fixture']['match']);
+        $this->assertSame('2026-10-10 09:30:00', $warning['to']['scheduled_at']);
+        $this->assertNull($first->fresh()->scheduled_at);
+        $this->assertNull($second->fresh()->scheduled_at);
+    }
+
+    public function test_saved_individual_source_keeps_its_typed_identity_when_destination_is_a_team_fixture(): void
+    {
+        [$event, $draw, $venue] = $this->setupDraw();
+        $other = Venue::forceCreate(['name' => 'Next courts']);
+        $draw->venues()->attach($other->id, ['num_courts' => 1]);
+        $individualDraw = Draw::factory()->create(['event_id' => $event->id, 'drawName' => 'Singles source']);
+        $player = Player::factory()->create();
+        $registration = Registration::factory()->create();
+        DB::table('player_registrations')->insert(['registration_id' => $registration->id, 'player_id' => $player->id]);
+        $prior = Fixture::factory()->create(['draw_id' => $individualDraw->id, 'registration1_id' => $registration->id,
+            'registration2_id' => Registration::factory()->create()->id, 'round' => 2, 'match_nr' => 4, 'stage' => 'RR']);
+        OrderOfPlay::create(['fixture_id' => $prior->id, 'draw_id' => $individualDraw->id, 'venue_id' => $venue->id,
+            'court' => '1', 'time' => '2026-10-10 07:00:00', 'duration_minutes' => 30]);
+        $next = $this->rubber($draw);
+        TeamFixturePlayer::create(['team_fixture_id' => $next->id, 'team1_id' => $player->id]);
+        $preview = app(EventVenueScheduleService::class)->preview($event, $this->schedulingOptions(['draw_ids' => [$draw->id], 'venue_ids' => [$other->id]]));
+        $warning = $preview['venue_change_warnings'][0];
+        $this->assertSame('individual:'.$prior->id, $warning['from']['fixture']['fixture_key']);
+        $this->assertSame('team:'.$next->id, $warning['to']['fixture']['fixture_key']);
+        $this->assertSame('Singles source', $warning['from']['fixture']['draw_name']);
+        $this->assertSame(2, $warning['from']['fixture']['round']);
+        $this->assertSame(4, $warning['from']['fixture']['match']);
+    }
+
+    public function test_foreign_individual_and_team_bookings_remain_anonymous_in_preview_and_warnings(): void
+    {
+        [$event, $draw, $venue] = $this->setupDraw();
+        $player = Player::factory()->create(['name' => 'PrivateForeignName']);
+        $foreignDraw = Draw::factory()->create(['event_id' => Event::factory()->create()->id, 'drawName' => 'Private foreign discipline']);
+        $registration = Registration::factory()->create();
+        DB::table('player_registrations')->insert(['registration_id' => $registration->id, 'player_id' => $player->id]);
+        $individual = Fixture::factory()->create(['draw_id' => $foreignDraw->id, 'registration1_id' => $registration->id,
+            'registration2_id' => Registration::factory()->create()->id, 'round' => 3, 'match_nr' => 22]);
+        OrderOfPlay::create(['fixture_id' => $individual->id, 'draw_id' => $foreignDraw->id, 'venue_id' => $venue->id,
+            'court' => '1', 'time' => '2026-10-10 08:00:00', 'duration_minutes' => 60]);
+        $team = $this->rubber($foreignDraw, ['scheduled_at' => '2026-10-10 08:00:00', 'venue_id' => $venue->id,
+            'court_label' => '2', 'duration_min' => 60, 'round_nr' => 3, 'match_nr' => 23]);
+        TeamFixturePlayer::create(['team_fixture_id' => $team->id, 'team1_id' => $player->id]);
+        $next = $this->rubber($draw);
+        TeamFixturePlayer::create(['team_fixture_id' => $next->id, 'team1_id' => Player::factory()->create()->id]);
+        $preview = app(EventVenueScheduleService::class)->preview($event, $this->schedulingOptions());
+        $this->assertCount(2, $preview['existing_matches']);
+        foreach ($preview['existing_matches'] as $booking) {
+            $this->assertSame('Existing booking', $booking['draw_name']);
+            $this->assertNull($booking['round']);
+            $this->assertNull($booking['match']);
+            $this->assertEmpty($booking['participant_ids']);
+            $this->assertEmpty($booking['lineup'] ?? []);
+        }
+        $this->assertSame([], $preview['venue_change_warnings']);
+        $this->assertSame('2026-10-10 09:00:00', $preview['matches'][0]['scheduled_at']);
+        $this->assertStringNotContainsString('PrivateForeignName', json_encode($preview));
+        $this->assertStringNotContainsString('Private foreign discipline', json_encode($preview));
     }
 
     public function test_selected_draw_and_hermanus_venues_ignore_unrelated_history_but_keep_global_player_conflicts(): void

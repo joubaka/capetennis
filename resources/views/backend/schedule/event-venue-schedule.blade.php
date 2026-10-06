@@ -1293,6 +1293,21 @@
     return `<details class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap align-items-center gap-2"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span class="venue-age-group-summary">${ageGroupScheduleSummary(rows)}</span><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="court-grid-hint small"><i class="ti ti-arrows-horizontal" aria-hidden="true"></i><span>Scroll sideways to see every court. Court headings and start times remain visible while you scroll.</span></div><div class="court-grid-scroll" tabindex="0" role="region" aria-label="${escapeHtml(venue.name)} court schedule; scroll horizontally and vertically"><table class="table table-bordered align-middle mb-0"><thead><tr><th>Slot starts</th>${courtHeaders}</tr></thead><tbody>${body || '<tr><td colspan="99" class="text-center text-muted py-4">No slots in this scheduling window.</td></tr>'}</tbody></table></div>${truncated}</details>`;
   }
 
+  function venueChangeWarnings(result) {
+    const warningTime = value => value ? new Date(value.replace(' ', 'T')).toLocaleString([], {weekday:'short', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', hour12:false}) : 'Time unavailable';
+    return (result.venue_change_warnings || []).map(change => {
+      const destination = change.to || {};
+      const fixture = destination.fixture || {};
+      const when = warningTime(destination.scheduled_at);
+      const details = (booking, label) => {
+        const source = booking?.fixture;
+        const identity = source ? `${source.draw_name} · ${source.discipline} · Round ${source.round} · Match ${source.match}` : 'Previous booking details unavailable';
+        return `<div class="mb-2"><strong>${label}</strong><div>${escapeHtml(identity)}</div><div>${escapeHtml(warningTime(booking?.scheduled_at))} · ${escapeHtml(booking?.venue_name || 'Venue unavailable')} · Court ${escapeHtml(booking?.court || '—')}</div></div>`;
+      };
+      return `<details class="alert alert-warning py-2"><summary class="fw-semibold">${escapeHtml(when)} · ${escapeHtml(fixture.draw_name || 'Match')} · Round ${escapeHtml(fixture.round || '—')} · Match ${escapeHtml(fixture.match || '—')}: ${escapeHtml(change.message)} <span class="small">View details</span></summary><div class="mt-2">${details(change.from, 'Previous match')}${details(destination, 'Next match')}<p class="mb-0"><strong>Why this venue:</strong> ${escapeHtml(change.reason || 'Review this placement with the organiser.')}</p></div></details>`;
+    }).join('');
+  }
+
   function render(result) {
     if (result.previewGeneration !== undefined && result.previewGeneration !== previewGeneration) return;
     lastScheduleResult = result;
@@ -1301,7 +1316,8 @@
     showWorkflowStep(3);
     document.getElementById('preview-summary').classList.remove('d-none');
     document.getElementById('preview-summary').innerHTML = card(result.matches.length, 'Suggested · not saved', 'primary') + card((result.existing_matches || []).length, 'Saved · kept fixed', 'success') + card(result.automatic_byes, 'Automatic byes') + card(result.venues.length, 'Venues') + card(result.unscheduled.length, 'Unscheduled', result.unscheduled.length ? 'danger' : 'success');
-    let warnings = (result.warnings || []).map(message => `<div class="alert alert-warning py-2">${escapeHtml(message)}</div>`).join('');
+    const detailedMessages = new Set((result.venue_change_warnings || []).map(change => change.message));
+    let warnings = (result.warnings || []).filter(message => !detailedMessages.has(message)).map(message => `<div class="alert alert-warning py-2">${escapeHtml(message)}</div>`).join('') + venueChangeWarnings(result);
     if (result.unscheduled.length) warnings += `<div class="alert alert-danger"><strong>Matches remaining to schedule:</strong><div class="small mb-2">${result.input.programme?.days?.length ? 'The complete programme cannot be saved until every match fits. Adjust courts, duration or daily windows.' : 'Save the matches that fit this batch; remaining matches stay in planning.'}</div><ul class="mb-0">${result.unscheduled.map(row => `<li>${escapeHtml(row.draw_name)} ${scheduleRoundLabel(row)} · Match ${row.match}: ${escapeHtml(row.reason)}${lineupDetails(row)}</li>`).join('')}</ul></div>`;
     document.getElementById('preview-warnings').innerHTML = warnings;
     document.getElementById('preview-view-controls').classList.remove('d-none');

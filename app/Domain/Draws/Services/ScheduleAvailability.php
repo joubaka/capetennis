@@ -87,7 +87,8 @@ final class ScheduleAvailability
                 : $matchMinutes + max(0, $participantRest);
             $calendar->reserveWithRest((int) $slot->venue_id, (string) $slot->court, Carbon::parse($slot->time),
                 $occupied, $participantMinutes, $participants, null,
-                $calendar->historyEligible($slot->fixture?->draw?->event_id, Carbon::parse($slot->time)));
+                $calendar->historyEligible($slot->fixture?->draw?->event_id, Carbon::parse($slot->time)),
+                $calendar->fixtureSource($slot->fixture, 'individual'));
         }
         $teamBookings = TeamFixture::withoutEagerLoads()->with(['draw', 'fixturePlayers.noProfile1', 'fixturePlayers.noProfile2'])
             ->whereNotNull('scheduled_at')->whereNotIn('id', $excludeTeamFixtures)
@@ -113,7 +114,8 @@ final class ScheduleAvailability
                 Carbon::parse($fixture->scheduled_at), $minutes + (int) ($fixture->gap_minutes ?? 0),
                 $minutes + max(0, $participantRest ?? (int) ($fixture->gap_minutes ?? 0)),
                 app(\App\Services\Scheduling\UnifiedTeamScheduleService::class)->participants($fixture), null,
-                $calendar->historyEligible($fixture->draw?->event_id, Carbon::parse($fixture->scheduled_at)));
+                $calendar->historyEligible($fixture->draw?->event_id, Carbon::parse($fixture->scheduled_at)),
+                $calendar->fixtureSource($fixture, 'team'));
         }
         return $calendar;
     }
@@ -201,7 +203,12 @@ final class ScheduleAvailability
             if (! is_string($id) || (! str_starts_with($id, 'profile:') && ! str_starts_with($id, 'no-profile:'))) continue;
             $prior = array_filter($this->slots, fn ($slot) => $slot['venue_history_eligible'] && $slot['start']->lte($at) && in_array($id, $slot['registrations'], true) && $slot['venue']);
             usort($prior, fn ($a, $b) => $b['start'] <=> $a['start']);
-            if ($prior && $prior[0]['venue'] !== $venue) $changes[] = ['participant_id' => $id, 'from_venue_id' => $prior[0]['venue'], 'to_venue_id' => $venue];
+            if ($prior && $prior[0]['venue'] !== $venue) $changes[] = [
+                'participant_id' => $id, 'from_venue_id' => $prior[0]['venue'], 'to_venue_id' => $venue,
+                'from_booking' => ['scheduled_at' => $prior[0]['start']->format('Y-m-d H:i:s'),
+                    'court' => $prior[0]['court'], 'venue_id' => $prior[0]['venue'],
+                    'fixture' => $prior[0]['source'] ?? null],
+            ];
         }
         return $changes;
     }
@@ -212,12 +219,22 @@ final class ScheduleAvailability
     }
 
     public function reserveWithRest(int $venue, string $court, Carbon $start, int $courtMinutes,
-        int $participantMinutes, array $registrations, ?string $participantGroup = null, bool $venueHistoryEligible = true): void
+        int $participantMinutes, array $registrations, ?string $participantGroup = null, bool $venueHistoryEligible = true, ?array $source = null): void
     {
         $this->slots[] = ['venue' => $venue, 'court' => self::courtKey($court),
             'start' => $start->copy(), 'court_end' => $start->copy()->addMinutes($courtMinutes),
             'participant_end' => $start->copy()->addMinutes($participantMinutes), 'registrations' => $this->identities($registrations),
-            'participant_group' => $participantGroup, 'venue_history_eligible' => $venueHistoryEligible];
+            'participant_group' => $participantGroup, 'venue_history_eligible' => $venueHistoryEligible,
+            'source' => $venueHistoryEligible ? $source : null];
+    }
+
+    private function fixtureSource(Fixture|TeamFixture|null $fixture, string $kind): ?array
+    {
+        if (! $fixture || ! $this->venueHistoryEvent || (int) $fixture->draw?->event_id !== (int) $this->venueHistoryEvent->id) return null;
+        return ['fixture_key' => $kind.':'.$fixture->id, 'draw_name' => $fixture->draw->drawName,
+            'discipline' => $kind === 'team' ? ($fixture->rubber_name ?: $fixture->rubber_code ?: 'Team rubber') : ($fixture->stage ?: 'Match'),
+            'round' => $kind === 'team' ? $fixture->round_nr : $fixture->round,
+            'match' => $fixture->match_nr];
     }
 
     public function nextAvailable(Carbon $start, int $duration, int $venue, string $court, array $registrations): Carbon

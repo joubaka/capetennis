@@ -9,9 +9,10 @@ final class DrawReadinessService
 {
     public function for(Draw $draw): array
     {
-        $draw->loadMissing(['drawFixtures', 'registrations', 'venues', 'teams_in_draw', 'event']);
-        $fixtures = $draw->drawFixtures;
         $isTeamDraw = $draw->isTeamDraw();
+        $fixtureRelation = $isTeamDraw ? 'fixtures' : 'drawFixtures';
+        $draw->loadMissing([$fixtureRelation.'.fixtureResults', 'registrations', 'venues', 'teams_in_draw', 'event']);
+        $fixtures = $draw->getRelation($fixtureRelation);
         $groupParticipants = \App\Models\DrawGroupRegistration::whereIn('draw_group_id', $draw->groups()->select('id'))->distinct()->count('registration_id');
         $participantCount = $groupParticipants ?: ($isTeamDraw ? $draw->teams_in_draw->count() : $draw->registrations->count());
         $scored = $fixtures->filter(fn ($fixture) => $fixture->relationLoaded('fixtureResults')

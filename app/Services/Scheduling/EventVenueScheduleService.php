@@ -210,6 +210,7 @@ final class EventVenueScheduleService
         }
 
         $plan = [];
+        $venueChangeWarnings = [];
         $genderSlots = [];
         foreach ($nodes as $id => $node) {
             $slot = $this->nodeSlot($node);
@@ -319,9 +320,10 @@ final class EventVenueScheduleService
             if ($best['rank_penalty']) $warnings[] = $node['draw_name'].' match '.$node['match'].': the preferred roster rank venue is unavailable in this window; another assigned venue is used.';
             foreach ($best['venue_changes'] as $change) {
                 $warnings[] = $this->venueWarning($change, $venues);
+                $venueChangeWarnings[] = $this->venueChangeDetails($change, $node, $best, $venues);
             }
             $calendar->reserveWithRest($best['venue_id'], $best['court'], $best['time'], $duration + $courtGap,
-                $duration + $playerRest, $node['participants'], $node['participant_group']);
+                $duration + $playerRest, $node['participants'], $node['participant_group'], true, $this->nodeSource($node));
             $finished[$id] = $best['time']->copy()->addMinutes($duration + $playerRest);
             $genderSlots[$id] = ['venue_id' => (int) $best['venue_id'], 'time' => $best['time']->copy(), 'duration' => $duration];
             $scheduledPerDraw[$node['draw_id']] = ($scheduledPerDraw[$node['draw_id']] ?? 0) + 1;
@@ -408,19 +410,20 @@ final class EventVenueScheduleService
             ->where('time', '>=', $start->copy()->subMinutes(600))->where('time', '<', $displayEnd)
             ->orderBy('time')->orderBy('venue_id')->orderBy('court')->limit(2000)->get()
             ->filter(fn (OrderOfPlay $slot) => Carbon::parse($slot->time)->addMinutes($slot->occupiedMinutes($duration))->gt($start))
-            ->map(function (OrderOfPlay $slot) use ($duration, $nodes) {
+            ->map(function (OrderOfPlay $slot) use ($duration, $nodes, $event) {
                 $startsAt = Carbon::parse($slot->time);
                 $fixture = $slot->fixture;
+                $sameEvent = (int) $fixture?->draw?->event_id === (int) $event->id;
                 $node = $nodes[$slot->fixture_id] ?? null;
-                $participants = $node['participant_names'] ?? collect([
+                $participants = $sameEvent ? ($node['participant_names'] ?? collect([
                     $fixture?->registration1, $fixture?->registration2,
                 ])->filter()->map(fn ($registration) => $registration->displayName())
-                    ->filter(fn ($name) => $name && $name !== 'Unassigned')->values()->all();
+                    ->filter(fn ($name) => $name && $name !== 'Unassigned')->values()->all()) : [];
                 return [
                     'fixture_id' => $slot->fixture_id, 'fixture_kind' => 'individual', 'fixture_key' => 'individual:'.$slot->fixture_id, 'draw_id' => $fixture?->draw_id ?? $slot->draw_id,
-                    'draw_name' => $fixture?->draw?->drawName ?? $slot->draw?->drawName ?? 'Existing booking',
-                    'round' => max(1, (int) ($fixture?->round ?? $slot->round_number)),
-                    'match' => $fixture?->match_nr, 'scheduled_at' => $startsAt->format('Y-m-d H:i:s'),
+                    'draw_name' => $sameEvent ? ($fixture?->draw?->drawName ?? 'Existing booking') : 'Existing booking',
+                    'round' => $sameEvent ? max(1, (int) ($fixture?->round ?? $slot->round_number)) : null,
+                    'match' => $sameEvent ? $fixture?->match_nr : null, 'scheduled_at' => $startsAt->format('Y-m-d H:i:s'),
                     'ends_at' => $startsAt->copy()->addMinutes($slot->occupiedMinutes($duration))->format('Y-m-d H:i:s'),
                     'venue_id' => (int) $slot->venue_id, 'court' => (string) $slot->court,
                     'duration' => (int) ($slot->duration_minutes ?: $duration),
@@ -447,7 +450,7 @@ final class EventVenueScheduleService
                     $sameEvent = (int) $fixture->draw?->event_id === (int) $event->id;
                     return ['fixture_id' => $fixture->id, 'fixture_kind' => 'team', 'fixture_key' => 'team:'.$fixture->id,
                         'draw_id' => $fixture->draw_id, 'draw_name' => $sameEvent ? ($fixture->draw?->drawName ?? 'Existing booking') : 'Existing booking',
-                        'round' => max(1, (int) $fixture->round_nr), 'match' => $fixture->match_nr ?: $fixture->rubber_sequence,
+                        'round' => $sameEvent ? max(1, (int) $fixture->round_nr) : null, 'match' => $sameEvent ? ($fixture->match_nr ?: $fixture->rubber_sequence) : null,
                         'scheduled_at' => Carbon::parse($fixture->scheduled_at)->format('Y-m-d H:i:s'),
                         'ends_at' => Carbon::parse($fixture->scheduled_at)->addMinutes((int) ($fixture->duration_min ?: 120) + (int) ($fixture->gap_minutes ?? 0))->format('Y-m-d H:i:s'),
                         'venue_id' => (int) $fixture->venue_id, 'court' => ScheduleAvailability::courtKey((string) $fixture->court_label),
@@ -490,7 +493,7 @@ final class EventVenueScheduleService
             'venues' => $venues->map(fn ($venue) => ['id' => $venue->id, 'name' => $venue->name,
                 'courts' => count($courtLabels[$venue->id]), 'court_labels' => $courtLabels[$venue->id]])->values()->all(),
             'matches' => $plan, 'existing_matches' => $existingMatches,
-            'unscheduled' => $unscheduled, 'warnings' => $warnings,
+            'unscheduled' => $unscheduled, 'warnings' => $warnings, 'venue_change_warnings' => $venueChangeWarnings,
             'automatic_byes' => collect($nodes)->filter(fn ($node) => $node['selected_round'] && $node['automatic'] && ! $node['played'])->count(),
             'automatic_fixture_ids' => collect($nodes)->filter(fn ($node) => $node['selected_round'] && $node['automatic'] && ! $node['played'])->keys()->values()->all(),
             'revision' => $this->revision($event, $input + ['availability_revision' => $availabilityRevision, 'rank_revision' => $rankChoices]), 'input' => $input,
@@ -841,6 +844,30 @@ final class EventVenueScheduleService
         $from = $venues[$change['from_venue_id']]->name ?? Venue::find($change['from_venue_id'])?->name ?? 'another venue';
         $to = $venues[$change['to_venue_id']]->name ?? 'another venue';
         return $name.' changes venue from '.$from.' to '.$to.'.';
+    }
+
+    private function nodeSource(array $node): array
+    {
+        return ['fixture_key' => ($node['fixture_kind'] ?? 'individual').':'.$node['fixture']->id,
+            'draw_name' => $node['draw_name'], 'discipline' => $node['stage'],
+            'round' => $node['round'], 'match' => $node['match']];
+    }
+
+    private function venueChangeDetails(array $change, array $node, array $choice, Collection $venues): array
+    {
+        $preferred = $node['rank_preference']['venue_id'] ?? null;
+        $reason = $preferred
+            ? ($choice['rank_penalty']
+                ? 'Another permitted venue was selected instead of the configured roster rank venue preference. Preferences are advisory; the planner also considers tie allocation, venue continuity, court and player availability.'
+                : 'This match uses its configured roster rank venue preference. That preference may differ between disciplines or partners.')
+            : (($node['rank_preference']['warning'] ?? null) ? $node['rank_preference']['warning'].' ' : '').'No roster rank venue preference applies to this match. The planner selected a permitted venue using court and player availability and its scheduling priorities.';
+        $from = $change['from_booking'] ?? ['fixture' => null];
+        $from['venue_name'] = $venues[$change['from_venue_id']]->name ?? Venue::find($change['from_venue_id'])?->name ?? 'Another venue';
+        return ['message' => $this->venueWarning($change, $venues), 'reason' => $reason,
+            'reason_code' => $preferred ? ($choice['rank_penalty'] ? 'rank_fallback' : 'rank_preference') : 'unrestricted',
+            'from' => $from, 'to' => ['fixture' => $this->nodeSource($node),
+                'scheduled_at' => $choice['time']->format('Y-m-d H:i:s'), 'court' => $choice['court'],
+                'venue_id' => $choice['venue_id'], 'venue_name' => $venues[$choice['venue_id']]->name]];
     }
 
     private function wave(int|string $id, array &$nodes, array $visiting = []): int
