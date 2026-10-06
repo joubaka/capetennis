@@ -59,7 +59,7 @@ test('interrupted later batch preserves confirmed counts and tells user to refre
   await ui.buttons[0].click();
   assert.match(ui.feedback.textContent, /199 draws published, 1 unchanged/);
   assert.match(ui.feedback.textContent, /1 remaining draws have unconfirmed status. Refresh before retrying/);
-  assert.equal(ui.buttons[0].disabled, false);
+  assert.equal(ui.buttons[0].disabled, true);
   assert.match(ui.summary.textContent, /status unconfirmed/);
   assert.equal(ui.reloads, 0);
 });

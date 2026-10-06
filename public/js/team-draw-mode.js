@@ -497,10 +497,11 @@
   var pending = false;
   buttons.forEach(function (button) {
     button.addEventListener('click', async function () {
-      if (pending || !ids.length) return;
+      if (pending || window.HeadOfficeDrawPublicationPending || window.HeadOfficeDrawPublicationUnconfirmed || !ids.length) return;
       var action = button.dataset.bulkDrawAction;
       if (!window.confirm((action === 'publish' ? 'Publish' : 'Unpublish') + ' all ' + ids.length + ' draws across every age-group tab? Match times have separate publication controls.')) return;
       pending = true;
+      window.HeadOfficeDrawPublicationPending = true;
       buttons.forEach(function (control) { control.disabled = true; });
       feedback.classList.remove('d-none');
       feedback.textContent = 'Updating draws across the event…';
@@ -522,20 +523,30 @@
           changed += result.changed.length;
           unchanged += result.unchanged.length;
           failed = failed.concat(result.failed);
+          if (window.HeadOfficeDrawPublicationUI && result.draw_states) window.HeadOfficeDrawPublicationUI.apply(result);
           processed += chunk.length;
           feedback.textContent = processed + ' of ' + ids.length + ' draws checked…';
         }
       } catch (error) {
         uncertain = true;
+        window.HeadOfficeDrawPublicationUnconfirmed = true;
+        if (window.HeadOfficeDrawPublicationUI) window.HeadOfficeDrawPublicationUI.pause();
         failed.push({ name: 'Request interrupted', message: error.message || 'Could not confirm the request.' });
       } finally {
+        if (window.HeadOfficeDrawPublicationUI && (uncertain || failed.length)) {
+          window.HeadOfficeDrawPublicationUI.pause();
+          try { await window.HeadOfficeDrawPublicationUI.reconcile(); }
+          catch (_) { window.HeadOfficeDrawPublicationUI.pause(); }
+        }
         feedback.textContent = changed + ' draws ' + (action === 'publish' ? 'published' : 'unpublished') + ', ' + unchanged + ' unchanged.'
           + (failed.length ? ' Issues: ' + failed.map(function (failure) { return failure.name + ': ' + failure.message; }).join('; ') : '')
           + (uncertain ? ' ' + (ids.length - processed) + ' remaining draws have unconfirmed status. Refresh before retrying.' : ' Refresh to see current draw statuses.');
         refresh.classList.remove('d-none');
-        summary.textContent = uncertain ? 'Publication status unconfirmed. Refresh to see current counts.' : 'Publication status changed. Refresh to see current counts.';
-        buttons.forEach(function (control) { control.disabled = false; });
+        if (!window.HeadOfficeDrawPublicationUI) summary.textContent = uncertain ? 'Publication status unconfirmed. Refresh to see current counts.' : 'Publication status changed. Refresh to see current counts.';
+        buttons.forEach(function (control) { control.disabled = Boolean(window.HeadOfficeDrawPublicationUnconfirmed); });
         pending = false;
+        window.HeadOfficeDrawPublicationPending = false;
+        if (window.HeadOfficeDrawPublicationUI) window.HeadOfficeDrawPublicationUI.unlock();
         if (!uncertain && !failed.length) window.location.reload();
       }
     });

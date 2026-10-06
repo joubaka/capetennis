@@ -36,6 +36,8 @@
   .event-draw-card-summary-status .badge { white-space: normal; text-align: left; }
   .event-draw-card-summary:focus-visible { outline: 2px solid var(--ct-ink, #172e45); outline-offset: 4px; border-radius: .25rem; }
   .event-draw-card-toggle { display: inline-flex; align-items: center; gap: .25rem; flex-shrink: 0; }
+  .event-draw-card-summary-actions { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
+  .event-draw-quick-publication { min-height: 44px; white-space: normal; }
   .event-draw-card[open] .event-draw-card-expand, .event-draw-card:not([open]) .event-draw-card-collapse { display: none; }
   .event-draw-card[open] .event-draw-card-toggle i { transform: rotate(180deg); }
   .event-draw-card-content { padding-top: .75rem; }
@@ -102,6 +104,7 @@
 
 <script src="{{ asset(mix('js/headOffice.js')) }}"></script>
 <script src="{{ asset('js/team-draw-mode.js') }}?v={{ filemtime(public_path('js/team-draw-mode.js')) }}"></script>
+<script src="{{ asset('js/head-office-draw-publication.js') }}?v={{ filemtime(public_path('js/head-office-draw-publication.js')) }}"></script>
 @endsection
 
 
@@ -125,7 +128,7 @@
   </button>
 </div>
 
-<div class="card mb-4 no-print" data-event-draw-publication data-url="{{ route('backend.event-draws.bulk-publication', $event) }}" data-draw-ids="{{ json_encode($event->draws->pluck('id')->values()->all()) }}">
+<div class="card mb-4 no-print" data-event-draw-publication data-event-id="{{ $event->id }}" data-status-url="{{ route('backend.event-draws.publication-status', $event) }}" data-url="{{ route('backend.event-draws.bulk-publication', $event) }}" data-draw-ids="{{ json_encode($event->draws->pluck('id')->values()->all()) }}">
   <div class="card-body">
     <h5>Publish draws across the event</h5>
     <p class="mb-2" data-draw-publication-summary><strong>{{ $drawPublicationSummary['status'] }}</strong> · {{ $drawPublicationSummary['published'] }} published · {{ $drawPublicationSummary['unpublished'] }} unpublished</p>
@@ -251,7 +254,7 @@
             <div class="event-draw-heading"><h6 class="mb-0">{{ $groupLabel }}</h6><span class="text-muted small">{{ $groupDraws->count() }} {{ \Illuminate\Support\Str::plural('draw', $groupDraws->count()) }}</span></div>
             <div class="event-draw-list">
             @foreach($groupDraws as $draw)
-            <details class="event-draw-card event-draw-publication-card">
+            <details class="event-draw-card event-draw-publication-card" data-quick-publication-card data-draw-id="{{ $draw->id }}">
               <summary class="event-draw-card-summary">
                 <div class="event-draw-card-summary-info">
                 <h6 class="mb-0">{{ $draw->drawName }} <span class="text-muted">— {{ optional($draw->draw_types)->drawTypeName ?? 'Type' }}</span></h6>
@@ -273,8 +276,17 @@
                     @endforelse
                   </div>
                 </div>
-                <span class="event-draw-card-toggle small text-primary"><span class="event-draw-card-expand">Click to open</span><span class="event-draw-card-collapse">Click to close</span><i class="ti ti-chevron-down" aria-hidden="true"></i></span>
+                <div class="event-draw-card-summary-actions">
+                  @can('event.manage', $event)
+                  @can('publish', $draw)
+                    <button type="button" class="btn btn-sm {{ $draw->published ? 'btn-outline-danger' : 'btn-success' }} event-draw-quick-publication" data-quick-draw-publication data-published="{{ $draw->published ? 'true' : 'false' }}" aria-pressed="{{ $draw->published ? 'true' : 'false' }}" aria-label="{{ $draw->published ? 'Unpublish' : 'Publish' }} {{ $draw->drawName }}" @disabled($draw->published && $draw->locked) @if($draw->published && $draw->locked) title="Locked draws cannot be unpublished." @endif>{{ $draw->published ? 'Unpublish' : 'Publish' }}</button>
+                  @endcan
+                  @endcan
+                  <span class="event-draw-card-toggle small text-primary"><span class="event-draw-card-expand">Click to open</span><span class="event-draw-card-collapse">Click to close</span><i class="ti ti-chevron-down" aria-hidden="true"></i></span>
+                </div>
               </summary>
+              <div class="small mt-2 d-none" data-quick-draw-feedback role="status" aria-live="polite"></div>
+              <button type="button" class="btn btn-sm btn-outline-primary mt-2" data-quick-draw-status-retry hidden>Retry publication status check</button>
               <div class="event-draw-card-content">
                 @include('backend.draw._includes.draw_tab_team', ['hideDrawHeading' => true])
                 <div class="event-draw-meta text-muted small">

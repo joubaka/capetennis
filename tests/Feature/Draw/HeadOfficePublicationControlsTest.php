@@ -241,4 +241,46 @@ class HeadOfficePublicationControlsTest extends TestCase
         $this->assertSame(4, $revisionReads);
         $this->assertDatabaseCount('published_schedule_assignments', 0);
     }
+
+    public function test_header_publication_actions_use_canonical_readiness_and_return_current_event_flags(): void
+    {
+        [$event] = $this->setupEvent();
+        $ready = Draw::factory()->create(['event_id' => $event->id, 'drawName' => 'u/10 Girls']);
+        $ready->settings()->create(['workflow' => 'round_robin']);
+        $ready->registrations()->attach(\App\Models\Registration::factory()->create()->id);
+        Fixture::factory()->create(['draw_id' => $ready->id]);
+        $notReady = Draw::factory()->create(['event_id' => $event->id, 'drawName' => 'u/13 Boys']);
+        Fixture::factory()->create(['draw_id' => $notReady->id]);
+        $response = $this->get(route('headOffice.show', $event))->assertOk()->assertSee('data-quick-draw-publication', false)->assertSee('aria-label="Publish u/10 Girls"', false);
+        $this->assertStringContainsString('data-quick-draw-publication', $response->getContent());
+        $this->postJson(route('backend.event-draws.bulk-publication', $event), ['operation' => 'draws', 'action' => 'publish', 'draw_ids' => [$ready->id]])
+            ->assertOk()->assertJsonPath('success', true)->assertJsonPath('draw_states.0.published', true)->assertJsonPath('draw_summary.published', 1)->assertJsonPath('draw_summary.status', 'Partly published');
+        $this->postJson(route('backend.event-draws.bulk-publication', $event), ['operation' => 'draws', 'action' => 'publish', 'draw_ids' => [$notReady->id]])
+            ->assertOk()->assertJsonPath('success', false)->assertJsonPath('failed.0.id', $notReady->id)->assertJsonPath('draw_states.1.published', false);
+        $this->postJson(route('backend.event-draws.bulk-publication', $event), ['operation' => 'draws', 'action' => 'unpublish', 'draw_ids' => [$ready->id]])
+            ->assertOk()->assertJsonPath('success', true)->assertJsonPath('draw_states.0.published', false)->assertJsonPath('draw_summary.published', 0);
+        $this->assertFalse((bool) $ready->fresh()->oop_published);
+        $this->assertDatabaseCount('published_schedule_assignments', 0);
+    }
+
+    public function test_locked_header_and_readonly_draw_status_preserve_event_scope_and_authorization(): void
+    {
+        [$event] = $this->setupEvent();
+        $locked = Draw::factory()->create(['event_id' => $event->id, 'drawName' => 'u/10 Locked', 'locked' => true, 'published' => true]);
+        $foreignEvent = Event::factory()->create(['eventType' => 3]);
+        $foreignDraw = Draw::factory()->create(['event_id' => $foreignEvent->id, 'published' => true]);
+        $response = $this->get(route('headOffice.show', $event))->assertOk()->assertSee('Locked draws cannot be unpublished.');
+        $this->assertMatchesRegularExpression('/data-quick-draw-publication[^>]+disabled[^>]+Locked draws cannot be unpublished/', $response->getContent());
+        $this->postJson(route('backend.event-draws.bulk-publication', $event), ['operation' => 'draws', 'action' => 'unpublish', 'draw_ids' => [$locked->id]])
+            ->assertOk()->assertJsonPath('success', false)->assertJsonPath('draw_states.0.published', true)->assertJsonPath('draw_states.0.locked', true);
+        $before = $locked->fresh()->toJson();
+        $this->getJson(route('backend.event-draws.publication-status', $event))->assertOk()->assertJsonCount(1, 'draw_states')->assertJsonPath('draw_states.0.id', $locked->id);
+        $this->assertSame($before, $locked->fresh()->toJson());
+        $this->getJson(route('backend.event-draws.publication-status', $foreignEvent))->assertForbidden();
+        $this->postJson(route('backend.event-draws.bulk-publication', $event), ['operation' => 'draws', 'action' => 'unpublish', 'draw_ids' => [$foreignDraw->id]])->assertUnprocessable();
+        $this->actingAs(User::factory()->create());
+        $this->getJson(route('backend.event-draws.publication-status', $event))->assertForbidden();
+        $this->postJson(route('backend.event-draws.bulk-publication', $event), ['operation' => 'draws', 'action' => 'unpublish', 'draw_ids' => [$locked->id]])->assertForbidden();
+        $this->assertTrue((bool) $locked->fresh()->published);
+    }
 }

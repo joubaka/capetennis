@@ -1174,6 +1174,8 @@ Route::delete(
     ->name('backend.event-venue-schedule.courts');
   Route::post('events/{event}/draws/bulk-publication', BulkDrawPublicationController::class)
     ->name('backend.event-draws.bulk-publication');
+  Route::get('events/{event}/draws/publication-status', [BulkDrawPublicationController::class, 'status'])
+    ->name('backend.event-draws.publication-status');
   Route::post('events/{event}/schedule-visibility', EventScheduleVisibilityController::class)
     ->name('backend.events.schedule-visibility');
   Route::post('events/{event}/venue-schedule/venues/{venue}/courts', [EventVenueScheduleController::class, 'configureCourts'])

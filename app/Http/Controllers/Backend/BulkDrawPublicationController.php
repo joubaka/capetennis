@@ -15,6 +15,22 @@ use Illuminate\Validation\ValidationException;
 
 final class BulkDrawPublicationController extends Controller
 {
+    public function status(Event $event)
+    {
+        $this->authorize('event.manage', $event);
+        return response()->json(['success' => true] + $this->publicationState($event));
+    }
+
+    private function publicationState(Event $event): array
+    {
+        $draws = $event->draws()->withoutEagerLoads()->orderBy('id')->get(['id', 'published', 'locked', 'oop_published']);
+        $published = $draws->where('published', true)->count();
+        return ['event_id' => (int) $event->id, 'draw_states' => $draws->map(fn ($draw) => [
+            'id' => (int) $draw->id, 'published' => (bool) $draw->published, 'locked' => (bool) $draw->locked, 'oop_published' => (bool) $draw->oop_published,
+        ])->all(), 'draw_summary' => ['published' => $published, 'unpublished' => $draws->count() - $published,
+            'status' => $draws->isEmpty() ? 'No draws' : ($published === $draws->count() ? 'All published' : ($published ? 'Partly published' : 'Unpublished'))]];
+    }
+
     public function __invoke(
         Request $request,
         Event $event,
@@ -105,6 +121,6 @@ final class BulkDrawPublicationController extends Controller
             'unpublished' => $action === 'unpublish' ? $changed : [],
             'unchanged' => $unchanged,
             'failed' => $failed,
-        ]);
+        ] + $this->publicationState($event));
     }
 }
