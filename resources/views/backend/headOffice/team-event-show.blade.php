@@ -125,20 +125,21 @@
   </button>
 </div>
 
-@if($canPublishAllDraws ?? false)
 <div class="card mb-4 no-print" data-event-draw-publication data-url="{{ route('backend.event-draws.bulk-publication', $event) }}" data-draw-ids="{{ json_encode($event->draws->pluck('id')->values()->all()) }}">
   <div class="card-body">
     <h5>Publish draws across the event</h5>
+    <p class="mb-2" data-draw-publication-summary><strong>{{ $drawPublicationSummary['status'] }}</strong> · {{ $drawPublicationSummary['published'] }} published · {{ $drawPublicationSummary['unpublished'] }} unpublished</p>
     <p class="text-muted">{{ $event->draws->count() }} draws across every age-group tab. Draw publication and match-time publication are separate actions.</p>
+    @if($canPublishAllDraws ?? false)
     <div class="d-flex flex-wrap gap-2">
       <button type="button" class="btn btn-success" data-bulk-draw-action="publish">Publish all {{ $event->draws->count() }} draws</button>
       <button type="button" class="btn btn-outline-danger" data-bulk-draw-action="unpublish">Unpublish all {{ $event->draws->count() }} draws</button>
     </div>
     <div class="mt-3 d-none" role="status" aria-live="polite" data-bulk-draw-feedback></div>
     <a class="btn btn-sm btn-outline-primary mt-2 d-none" href="{{ route('headOffice.show', $event) }}" data-bulk-draw-refresh>Refresh draw statuses</a>
+    @endif
   </div>
 </div>
-@endif
 
 @can('event.manage', $event)
 <div class="card mb-4 no-print" data-whole-day-publication>
@@ -149,7 +150,9 @@
       @forelse($wholeDaySchedule ?? collect() as $day => $counts)
         <div class="col-12 col-md-6 col-xl-4"><div class="border rounded p-3 h-100">
           <h6>{{ \Carbon\Carbon::parse($day)->format('l j M Y') }}</h6>
+          <p class="mb-2"><strong>{{ $counts['status'] }}</strong></p>
           <p class="small mb-1">{{ $counts['saved'] }} saved match times · {{ $counts['published'] }} published snapshot times</p>
+          <p class="small mb-1">{{ $counts['matched'] }} saved times match the published snapshots · {{ $counts['pending'] }} matches with pending changes</p>
           <p class="small text-muted">Whole day · all venues and draws</p>
           <div class="d-flex flex-wrap gap-2">
             <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $day]) }}">Review day</a>
@@ -164,7 +167,7 @@
           </div>
         </div></div>
       @empty
-        <p class="text-muted mb-0">No saved or published match times yet. Save a schedule before publishing a day.</p>
+        <p class="text-muted mb-0"><strong>Not scheduled</strong> · No saved or published match times yet. Save a schedule before publishing a day.</p>
       @endforelse
     </div>
   </div>

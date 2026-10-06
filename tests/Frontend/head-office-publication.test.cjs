@@ -9,18 +9,20 @@ function harness(ids, replies, confirmed = true) {
   const classes = () => ({ removed: [], remove(value) { this.removed.push(value); } });
   const feedback = { textContent: '', classList: classes() };
   const refresh = { classList: classes() };
+  const summary = { textContent: 'Partly published · 1 published · 200 unpublished' };
+  let reloads = 0;
   const buttons = ['publish', 'unpublish'].map(action => ({ dataset: { bulkDrawAction: action }, disabled: false, addEventListener(event, fn) { this.click = fn; } }));
   const panel = { dataset: { drawIds: JSON.stringify(ids), url: '/events/123/draws/bulk-publication' },
-    querySelectorAll() { return buttons; }, querySelector(selector) { return selector.includes('feedback') ? feedback : refresh; } };
+    querySelectorAll() { return buttons; }, querySelector(selector) { return selector.includes('feedback') ? feedback : selector.includes('summary') ? summary : refresh; } };
   const document = { querySelector(selector) { return selector.includes('csrf-token') ? { content: 'csrf-local' } : panel; } };
-  const window = { confirm(message) { confirmations.push(message); return confirmed; }, async fetch(url, options) {
+  const window = { location: { reload() { reloads++; } }, confirm(message) { confirmations.push(message); return confirmed; }, async fetch(url, options) {
     requests.push({ url, options, payload: JSON.parse(options.body) });
     const reply = replies.shift();
     if (reply instanceof Error) throw reply;
     return { ok: true, async json() { return reply; } };
   } };
   new Function('window', 'document', handlerSource)(window, document);
-  return { buttons, requests, feedback, refresh, confirmations };
+  return { buttons, requests, feedback, refresh, summary, confirmations, get reloads() { return reloads; } };
 }
 
 test('event-wide publication confirms all draws and sends sequential batches across every tab', async () => {
@@ -37,6 +39,7 @@ test('event-wide publication confirms all draws and sends sequential batches acr
   assert.match(ui.feedback.textContent, /201 draws published, 0 unchanged/);
   assert.equal(ui.buttons[0].disabled, false);
   assert.deepEqual(ui.refresh.classList.removed, ['d-none']);
+  assert.equal(ui.reloads, 1);
 });
 
 test('locked failures are displayed safely as text and no all-success claim replaces partial results', async () => {
@@ -46,6 +49,8 @@ test('locked failures are displayed safely as text and no all-success claim repl
   assert.match(ui.feedback.textContent, /1 draws unpublished, 0 unchanged.*Issues: <img src=x>: <script>locked<\/script>/);
   assert.equal(ui.feedback.innerHTML, undefined);
   assert.equal(ui.buttons[1].disabled, false);
+  assert.match(ui.summary.textContent, /Refresh to see current counts/);
+  assert.equal(ui.reloads, 0);
 });
 
 test('interrupted later batch preserves confirmed counts and tells user to refresh uncertain statuses', async () => {
@@ -55,6 +60,8 @@ test('interrupted later batch preserves confirmed counts and tells user to refre
   assert.match(ui.feedback.textContent, /199 draws published, 1 unchanged/);
   assert.match(ui.feedback.textContent, /1 remaining draws have unconfirmed status. Refresh before retrying/);
   assert.equal(ui.buttons[0].disabled, false);
+  assert.match(ui.summary.textContent, /status unconfirmed/);
+  assert.equal(ui.reloads, 0);
 });
 
 test('cancelled confirmation sends no publication request', async () => {

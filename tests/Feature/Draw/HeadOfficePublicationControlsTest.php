@@ -44,7 +44,8 @@ class HeadOfficePublicationControlsTest extends TestCase
         $this->saved($foreign, $venue, '2026-10-11');
         $response = $this->get(route('headOffice.show', ['headOffice' => $event->id, 'draw_id' => $draws->first()->id, 'venue_id' => $venue->id, 'date' => '2026-10-10']))->assertOk();
         $response->assertSee('Publish all 2 draws')->assertSee('Unpublish all 2 draws')->assertSee('Whole-day schedule publication');
-        $this->assertSame(['2026-10-09' => ['saved' => 2, 'published' => 3], '2026-10-10' => ['saved' => 1, 'published' => 0]], $response->viewData('wholeDaySchedule')->all());
+        $this->assertSame(['2026-10-09' => ['saved' => 2, 'published' => 3, 'matched' => 2, 'pending' => 1, 'status' => 'Updates not published'],
+            '2026-10-10' => ['saved' => 1, 'published' => 0, 'matched' => 0, 'pending' => 1, 'status' => 'Updates not published']], $response->viewData('wholeDaySchedule')->all());
         $html = $response->getContent();
         preg_match('/data-draw-ids="([^"]+)"/', $html, $ids);
         $this->assertSame($draws->pluck('id')->all(), json_decode(html_entity_decode($ids[1]), true));
@@ -91,5 +92,54 @@ class HeadOfficePublicationControlsTest extends TestCase
         $this->postJson(route('backend.event-draws.bulk-publication', $event), ['operation' => 'draws', 'action' => 'unpublish', 'draw_ids' => [$locked->id]])->assertForbidden();
         $this->post(route('backend.event-venue-schedule.calendar.publish', $event), ['date' => '2026-10-09', 'revision' => str_repeat('0', 64)])->assertForbidden();
         $this->assertTrue((bool) $locked->fresh()->published);
+    }
+
+    public function test_day_status_compares_assignments_and_reports_partial_changed_removed_and_unpublished_times(): void
+    {
+        [$event, $venue] = $this->setupEvent();
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'published' => true]);
+        $changed = $this->saved($draw, $venue, '2026-10-09');
+        $this->saved($draw, $venue, '2026-10-10');
+        $this->saved($draw, $venue, '2026-10-11');
+        $removed = $this->saved($draw, $venue, '2026-10-13');
+        $service = app(SchedulePublicationService::class);
+        $service->publish($event, ['draw_id' => $draw->id]);
+        $changed->update(['court_label' => '2', 'duration_min' => 45]);
+        $this->saved($draw, $venue, '2026-10-10');
+        $this->saved($draw, $venue, '2026-10-12');
+        $removed->update(['scheduled_at' => null]);
+        $before = DB::table('team_fixtures')->get()->toJson();
+        $snapshots = DB::table('published_schedule_assignments')->get()->toJson();
+        $response = $this->get(route('headOffice.show', $event))->assertOk();
+        $days = $response->viewData('wholeDaySchedule');
+        $this->assertSame('Updates not published', $days['2026-10-09']['status']);
+        $this->assertSame($days['2026-10-09']['saved'], $days['2026-10-09']['published']);
+        $this->assertSame(1, $days['2026-10-09']['pending']);
+        $this->assertSame('Partly published', $days['2026-10-10']['status']);
+        $this->assertSame(1, $days['2026-10-10']['matched']);
+        $this->assertSame('Published', $days['2026-10-11']['status']);
+        $this->assertSame(0, $days['2026-10-11']['pending']);
+        $this->assertSame('Unpublished', $days['2026-10-12']['status']);
+        $this->assertSame('Updates not published', $days['2026-10-13']['status']);
+        $this->assertSame(0, $days['2026-10-13']['saved']);
+        $response->assertSee('published snapshot times')->assertSee('matches with pending changes');
+        $this->assertSame($before, DB::table('team_fixtures')->get()->toJson());
+        $this->assertSame($snapshots, DB::table('published_schedule_assignments')->get()->toJson());
+    }
+
+    public function test_draw_summary_uses_draw_flags_and_empty_event_has_explicit_status(): void
+    {
+        [$event] = $this->setupEvent();
+        $first = Draw::factory()->create(['event_id' => $event->id, 'published' => true]);
+        $last = Draw::factory()->create(['event_id' => $event->id, 'published' => false]);
+        $summary = fn () => $this->get(route('headOffice.show', $event))->assertOk()->viewData('drawPublicationSummary');
+        $this->assertSame(['published' => 1, 'unpublished' => 1, 'status' => 'Partly published'], $summary());
+        $last->update(['published' => true]);
+        $this->assertSame(['published' => 2, 'unpublished' => 0, 'status' => 'All published'], $summary());
+        $first->update(['published' => false]); $last->update(['published' => false]);
+        $this->assertSame(['published' => 0, 'unpublished' => 2, 'status' => 'Unpublished'], $summary());
+        $first->delete(); $last->delete();
+        $response = $this->get(route('headOffice.show', $event))->assertOk()->assertSee('No draws')->assertSee('Not scheduled');
+        $this->assertSame(['published' => 0, 'unpublished' => 0, 'status' => 'No draws'], $response->viewData('drawPublicationSummary'));
     }
 }

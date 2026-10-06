@@ -493,6 +493,7 @@
   var buttons = Array.from(panel.querySelectorAll('[data-bulk-draw-action]'));
   var feedback = panel.querySelector('[data-bulk-draw-feedback]');
   var refresh = panel.querySelector('[data-bulk-draw-refresh]');
+  var summary = panel.querySelector('[data-draw-publication-summary]');
   var pending = false;
   buttons.forEach(function (button) {
     button.addEventListener('click', async function () {
@@ -503,6 +504,7 @@
       buttons.forEach(function (control) { control.disabled = true; });
       feedback.classList.remove('d-none');
       feedback.textContent = 'Updating draws across the event…';
+      summary.textContent = 'Updating publication status…';
       var changed = 0, unchanged = 0, failed = [], processed = 0, uncertain = false;
       try {
         for (var offset = 0; offset < ids.length; offset += 200) {
@@ -531,8 +533,10 @@
           + (failed.length ? ' Issues: ' + failed.map(function (failure) { return failure.name + ': ' + failure.message; }).join('; ') : '')
           + (uncertain ? ' ' + (ids.length - processed) + ' remaining draws have unconfirmed status. Refresh before retrying.' : ' Refresh to see current draw statuses.');
         refresh.classList.remove('d-none');
+        summary.textContent = uncertain ? 'Publication status unconfirmed. Refresh to see current counts.' : 'Publication status changed. Refresh to see current counts.';
         buttons.forEach(function (control) { control.disabled = false; });
         pending = false;
+        if (!uncertain && !failed.length) window.location.reload();
       }
     });
   });
