@@ -404,7 +404,7 @@ class EventController extends Controller
     if ($event->eventType == 3) {
       $fixturesPerVenue = TeamFixture::with(['team1', 'team2', 'venue'])
         ->whereIn('draw_id', $drawIds)
-        ->when(! $canPreviewUnpublishedDraws, fn ($query) => $query->publishedTeamTies())
+        ->when(! $canPreviewUnpublishedDraws, fn ($query) => $query->publicDrawFixtures())
         ->orderBy('scheduled_at')
         ->get();
     } elseif ($event->eventType == 13) {
@@ -425,6 +425,9 @@ class EventController extends Controller
 
     if (! $canPreviewUnpublishedDraws) {
       app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($fixturesPerVenue);
+      if ($event->eventType == 3) {
+        app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixturesPerVenue, publicDraw: true);
+      }
     }
     $fixturesPerVenueGrouped = $fixturesPerVenue
       ->groupBy(fn($fx) => $fx->venue?->name ?? $fx->orderOfPlay?->venue?->name ?? 'Unassigned');
@@ -433,9 +436,10 @@ class EventController extends Controller
     // TEAM FIXTURES
     // ---------------------------------------------------------
     $teamFixtures = TeamFixture::whereIn('draw_id', $drawIds)
-      ->when(! $canPreviewUnpublishedDraws, fn ($query) => $query->publishedTeamTies())->get();
+      ->when(! $canPreviewUnpublishedDraws, fn ($query) => $query->publicDrawFixtures())->get();
     if (! $canPreviewUnpublishedDraws) {
       app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($teamFixtures);
+      app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($teamFixtures, publicDraw: true);
     }
     $ties = $teamFixtures->groupBy('tie_nr');
     $rounds = $teamFixtures->groupBy('round_nr');

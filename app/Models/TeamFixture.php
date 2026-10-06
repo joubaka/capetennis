@@ -63,6 +63,16 @@ class TeamFixture extends Model
     });
   }
 
+  /** Published draw pairings are independent of operational lineup publication. */
+  public function scopePublicDrawFixtures($query)
+  {
+    return $query->whereHas('draw', fn ($draw) => $draw->where('published', true))
+      ->where(fn ($fixtures) => $fixtures
+        ->where(fn ($legacy) => $legacy->whereNull('team_tie_id')
+          ->whereHas('draw', fn ($draw) => $draw->whereDoesntHave('teamTies')))
+        ->orWhereHas('teamTie', fn ($tie) => $tie->whereColumn('team_ties.draw_id', 'team_fixtures.draw_id')));
+  }
+
   /** ------------------------
    * Fixture Type Helpers
    * ---------------------- */

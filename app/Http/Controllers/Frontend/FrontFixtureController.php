@@ -49,7 +49,7 @@ class FrontFixtureController extends Controller
       'draw'
     ])
       ->where('draw_id', $draw->id)
-      ->when(!auth()->user()?->can('view', $draw), fn ($query) => $query->publishedTeamTies())
+      ->when(!auth()->user()?->can('view', $draw), fn ($query) => $query->publicDrawFixtures())
       ->orderBy('scheduled_at', 'asc')
       ->orderByRaw('CAST(round_nr AS UNSIGNED)')
       ->orderByRaw('CAST(tie_nr AS UNSIGNED)')
@@ -58,7 +58,7 @@ class FrontFixtureController extends Controller
       ->get();
 
     $this->hidePrivateSchedule($draw, $fixtures);
-    app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures);
+    app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures, publicDraw: !auth()->user()?->can('view', $draw));
 
     if (! auth()->user()?->can('view', $draw)) {
       $fixtures = $fixtures->sortBy(fn ($fixture) => $fixture->scheduled_at ?? '9999-12-31')->values();
@@ -203,7 +203,7 @@ class FrontFixtureController extends Controller
         'region2Name'
       ])
         ->where('draw_id', $id)
-        ->when(!auth()->user()?->can('view', $draw), fn ($query) => $query->publishedTeamTies())
+        ->when(!auth()->user()?->can('view', $draw), fn ($query) => $query->publicDrawFixtures())
         ->orderByRaw('CAST(round_nr AS UNSIGNED)')
         ->orderByRaw('CAST(tie_nr AS UNSIGNED)')
         ->orderBy('rubber_sequence')
@@ -227,7 +227,7 @@ class FrontFixtureController extends Controller
     }
 
     $this->hidePrivateSchedule($draw, $fixtures);
-    if ($isTeamEvent) app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures);
+    if ($isTeamEvent) app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures, publicDraw: !auth()->user()?->can('view', $draw));
     
     // ---------------------------------------------------------
     // Empty fixtures
@@ -287,7 +287,7 @@ class FrontFixtureController extends Controller
       'fixtureResults', 'venue', 'region1Name', 'region2Name',
     ])
       ->whereIn('draw_id', $eventDraws)
-      ->where(fn ($query) => $query->publishedTeamTies())
+      ->where(fn ($query) => $query->publicDrawFixtures())
       ->when($type === 'tie', fn ($query) => $query->where('tie_nr', $var))
       ->when($type !== 'tie', fn ($query) => $query->where('round_nr', $var))
       ->orderBy('scheduled_at')
@@ -298,7 +298,7 @@ class FrontFixtureController extends Controller
     app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($fixtures);
     $fixtures = $fixtures->sortBy(fn ($fixture) => $fixture->scheduled_at ?? '9999-12-31')->values();
 
-    app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures);
+    app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures, publicDraw: true);
 
     return view('frontend.fixture.draw-fixtures-show-team', [
       'fixtures' => $fixtures,

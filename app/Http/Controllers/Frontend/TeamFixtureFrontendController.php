@@ -46,7 +46,7 @@ class TeamFixtureFrontendController extends Controller
             'region2Name'
         ])
         ->where('draw_id', $draw)
-        ->when(!$isPrivileged, fn ($query) => $query->publishedTeamTies())
+        ->when(!$isPrivileged, fn ($query) => $query->publicDrawFixtures())
         ->orderBy('scheduled_at')
         ->orderBy('home_rank_nr')
         ->get();
@@ -56,7 +56,7 @@ class TeamFixtureFrontendController extends Controller
       $fixtures = $fixtures->sortBy(fn ($fixture) => $fixture->scheduled_at ?? '9999-12-31')->values();
     }
 
-    app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures);
+    app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures, publicDraw: !$isPrivileged);
 
     // Group fixtures by day
     $fixturesByDay = $fixtures->groupBy(function($fx) {

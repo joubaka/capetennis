@@ -45,8 +45,9 @@ final class SchedulePublicationService
         $teamIds = $snapshots->where('fixture_kind', 'team')->pluck('fixture_id');
         $individual = Fixture::with(['fixtureResults', 'registration1.players', 'registration2.players'])
             ->whereIn('draw_id', $draws->keys())->whereIn('id', $individualIds)->get()->keyBy('id');
-        $team = TeamFixture::with(['fixtureResults', 'teamTie', 'team1', 'team2'])->publishedTeamTies()
+        $team = TeamFixture::with(['fixtureResults', 'teamTie', 'team1', 'team2'])->publicDrawFixtures()
             ->whereIn('draw_id', $draws->keys())->whereIn('id', $teamIds)->get()->keyBy('id');
+        app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($team, publicDraw: true);
         $venues = Venue::whereIn('id', $snapshots->pluck('venue_id'))->get()->keyBy('id');
         $rows = $snapshots->map(function ($row) use ($individual, $team, $draws, $venues) {
             $fixture = ($row->fixture_kind === 'team' ? $team : $individual)->get($row->fixture_id);
@@ -54,7 +55,9 @@ final class SchedulePublicationService
             return (array) $row + ['fixture_key' => $row->fixture_kind.':'.$row->fixture_id,
                 'draw_name' => $draws[$row->draw_id]->drawName, 'venue_name' => $venues->get($row->venue_id)?->name,
                 'participants' => $row->fixture_kind === 'team'
-                    ? [$fixture->teamTie?->home_side_name ?: $fixture->team1->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / '), $fixture->teamTie?->away_side_name ?: $fixture->team2->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / ')]
+                    ? ($fixture->teamTie
+                        ? [$fixture->tie_display['home'], $fixture->tie_display['away']]
+                        : [$fixture->team1->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / '), $fixture->team2->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / ')])
                     : [$fixture->registration1?->players?->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / '), $fixture->registration2?->players?->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / ')],
                 '_fixture' => $fixture];
         })->filter()->sortBy('scheduled_at')->values();

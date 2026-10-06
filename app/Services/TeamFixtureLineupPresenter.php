@@ -12,7 +12,7 @@ use Illuminate\Support\Collection;
 /** Read-only display of original roster ranks, including composite mixed sides. */
 class TeamFixtureLineupPresenter
 {
-    public function prepare(Collection $fixtures): void
+    public function prepare(Collection $fixtures, bool $publicDraw = false): void
     {
         (new \Illuminate\Database\Eloquent\Collection($fixtures->all()))->loadMissing([
             'draw', 'teamTie', 'fixtureResults', 'region1Name', 'region2Name', 'fixturePlayers.player1', 'fixturePlayers.player2',
@@ -28,6 +28,16 @@ class TeamFixtureLineupPresenter
         $regionIds = $fixtures->flatMap(fn ($fixture) => $fixture->fixturePlayers->flatMap(fn ($row) => collect($row->participant_snapshot ?? [])->pluck('region_id')))->filter()->unique();
         $historicalRegions = \App\Models\TeamRegion::whereIn('id', $regionIds)->get()->keyBy('id');
         foreach ($fixtures as $fixture) {
+            $tie = $this->tie($fixture);
+            // Publishing pairings does not publish an unvalidated working lineup or score.
+            if ($publicDraw && $tie && (!$tie->published_at
+                || !in_array($tie->status, [\App\Models\TeamTie::STATUS_PUBLISHED, \App\Models\TeamTie::STATUS_COMPLETED], true))) {
+                $fixture->setAttribute('lineup_unpublished', true);
+                foreach (['fixturePlayers', 'team1', 'team2', 'fixtureResults', 'teamResults'] as $relation) {
+                    $fixture->setRelation($relation, new \Illuminate\Database\Eloquent\Collection());
+                }
+                $fixture->setAttribute('match_status', 0);
+            }
             $rankSources = ['home' => [], 'away' => []];
             $fixture->setAttribute('lineup_display', [
                 'home' => $this->side($fixture, 'home', $teams, $historicalRegions, $rankSources['home']),
