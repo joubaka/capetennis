@@ -125,6 +125,52 @@
   </button>
 </div>
 
+@if($canPublishAllDraws ?? false)
+<div class="card mb-4 no-print" data-event-draw-publication data-url="{{ route('backend.event-draws.bulk-publication', $event) }}" data-draw-ids="{{ json_encode($event->draws->pluck('id')->values()->all()) }}">
+  <div class="card-body">
+    <h5>Publish draws across the event</h5>
+    <p class="text-muted">{{ $event->draws->count() }} draws across every age-group tab. Draw publication and match-time publication are separate actions.</p>
+    <div class="d-flex flex-wrap gap-2">
+      <button type="button" class="btn btn-success" data-bulk-draw-action="publish">Publish all {{ $event->draws->count() }} draws</button>
+      <button type="button" class="btn btn-outline-danger" data-bulk-draw-action="unpublish">Unpublish all {{ $event->draws->count() }} draws</button>
+    </div>
+    <div class="mt-3 d-none" role="status" aria-live="polite" data-bulk-draw-feedback></div>
+    <a class="btn btn-sm btn-outline-primary mt-2 d-none" href="{{ route('headOffice.show', $event) }}" data-bulk-draw-refresh>Refresh draw statuses</a>
+  </div>
+</div>
+@endif
+
+@can('event.manage', $event)
+<div class="card mb-4 no-print" data-whole-day-publication>
+  <div class="card-body">
+    <h5>Whole-day schedule publication</h5>
+    <p class="text-muted">Review, publish or hide one whole day's match times across all venues and draws. Publishing times does not publish hidden draws; existing public visibility rules still apply.</p>
+    <div class="row g-3">
+      @forelse($wholeDaySchedule ?? collect() as $day => $counts)
+        <div class="col-12 col-md-6 col-xl-4"><div class="border rounded p-3 h-100">
+          <h6>{{ \Carbon\Carbon::parse($day)->format('l j M Y') }}</h6>
+          <p class="small mb-1">{{ $counts['saved'] }} saved match times · {{ $counts['published'] }} published snapshot times</p>
+          <p class="small text-muted">Whole day · all venues and draws</p>
+          <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $day]) }}">Review day</a>
+            <form method="post" action="{{ route('backend.event-venue-schedule.calendar.publish', $event) }}">
+              @csrf<input type="hidden" name="date" value="{{ $day }}"><input type="hidden" name="revision" value="{{ $schedulePublicationRevision }}">
+              <button type="submit" class="btn btn-sm btn-success" @disabled($counts['saved'] === 0)>Publish whole day</button>
+            </form>
+            <form method="post" action="{{ route('backend.event-venue-schedule.calendar.hide', $event) }}">
+              @csrf<input type="hidden" name="date" value="{{ $day }}"><input type="hidden" name="revision" value="{{ $schedulePublicationRevision }}">
+              <button type="submit" class="btn btn-sm btn-outline-danger" @disabled($counts['published'] === 0)>Hide whole day</button>
+            </form>
+          </div>
+        </div></div>
+      @empty
+        <p class="text-muted mb-0">No saved or published match times yet. Save a schedule before publishing a day.</p>
+      @endforelse
+    </div>
+  </div>
+</div>
+@endcan
+
 <div class="row mb-4">
   <div class="col-sm-6 col-lg-3">
     <div class="card card-border-shadow-primary h-100">

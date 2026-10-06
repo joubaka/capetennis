@@ -484,3 +484,56 @@
 
   setMode(selectedMode());
 })(window, document, window.jQuery);
+
+(function (window, document) {
+  'use strict';
+  var panel = document.querySelector('[data-event-draw-publication]');
+  if (!panel) return;
+  var ids = JSON.parse(panel.dataset.drawIds || '[]');
+  var buttons = Array.from(panel.querySelectorAll('[data-bulk-draw-action]'));
+  var feedback = panel.querySelector('[data-bulk-draw-feedback]');
+  var refresh = panel.querySelector('[data-bulk-draw-refresh]');
+  var pending = false;
+  buttons.forEach(function (button) {
+    button.addEventListener('click', async function () {
+      if (pending || !ids.length) return;
+      var action = button.dataset.bulkDrawAction;
+      if (!window.confirm((action === 'publish' ? 'Publish' : 'Unpublish') + ' all ' + ids.length + ' draws across every age-group tab? Match times have separate publication controls.')) return;
+      pending = true;
+      buttons.forEach(function (control) { control.disabled = true; });
+      feedback.classList.remove('d-none');
+      feedback.textContent = 'Updating draws across the event…';
+      var changed = 0, unchanged = 0, failed = [], processed = 0, uncertain = false;
+      try {
+        for (var offset = 0; offset < ids.length; offset += 200) {
+          var chunk = ids.slice(offset, offset + 200);
+          var response = await window.fetch(panel.dataset.url, {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
+            body: JSON.stringify({ operation: 'draws', action: action, draw_ids: chunk })
+          });
+          var result = await response.json();
+          if (!response.ok || !Array.isArray(result.changed) || !Array.isArray(result.unchanged) || !Array.isArray(result.failed)
+              || result.changed.length + result.unchanged.length + result.failed.length !== chunk.length) {
+            throw new Error(result.message || 'The server could not confirm this batch.');
+          }
+          changed += result.changed.length;
+          unchanged += result.unchanged.length;
+          failed = failed.concat(result.failed);
+          processed += chunk.length;
+          feedback.textContent = processed + ' of ' + ids.length + ' draws checked…';
+        }
+      } catch (error) {
+        uncertain = true;
+        failed.push({ name: 'Request interrupted', message: error.message || 'Could not confirm the request.' });
+      } finally {
+        feedback.textContent = changed + ' draws ' + (action === 'publish' ? 'published' : 'unpublished') + ', ' + unchanged + ' unchanged.'
+          + (failed.length ? ' Issues: ' + failed.map(function (failure) { return failure.name + ': ' + failure.message; }).join('; ') : '')
+          + (uncertain ? ' ' + (ids.length - processed) + ' remaining draws have unconfirmed status. Refresh before retrying.' : ' Refresh to see current draw statuses.');
+        refresh.classList.remove('d-none');
+        buttons.forEach(function (control) { control.disabled = false; });
+        pending = false;
+      }
+    });
+  });
+})(window, document);

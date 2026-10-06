@@ -291,6 +291,29 @@ class HeadOfficeController extends Controller
       return view('backend.headOffice.interpro-event-show', $data);
     }
 
+    $data['canPublishAllDraws'] = auth()->user()->can('event.manage', $event)
+      && $event->draws->isNotEmpty()
+      && $event->draws->every(fn ($draw) => auth()->user()->can('publish', $draw));
+    $data['wholeDaySchedule'] = collect();
+    $data['schedulePublicationRevision'] = null;
+    if (auth()->user()->can('event.manage', $event)) {
+      $teamDays = DB::table('team_fixtures')->join('draws', 'draws.id', '=', 'team_fixtures.draw_id')
+        ->where('draws.event_id', $event->id)->whereNotNull('team_fixtures.scheduled_at')
+        ->selectRaw('DATE(team_fixtures.scheduled_at) as day, COUNT(*) as total')->groupByRaw('DATE(team_fixtures.scheduled_at)')->pluck('total', 'day');
+      $individualDays = DB::table('order_of_plays')->join('fixtures', 'fixtures.id', '=', 'order_of_plays.fixture_id')
+        ->join('draws', 'draws.id', '=', 'fixtures.draw_id')->where('draws.event_id', $event->id)->whereNotNull('order_of_plays.time')
+        ->selectRaw('DATE(order_of_plays.time) as day, COUNT(*) as total')->groupByRaw('DATE(order_of_plays.time)')->pluck('total', 'day');
+      $publishedDays = DB::table('published_schedule_assignments')->join('draws', 'draws.id', '=', 'published_schedule_assignments.draw_id')
+        ->where('published_schedule_assignments.event_id', $event->id)->where('draws.event_id', $event->id)
+        ->selectRaw('DATE(published_schedule_assignments.scheduled_at) as day, COUNT(*) as total')
+        ->groupByRaw('DATE(published_schedule_assignments.scheduled_at)')->pluck('total', 'day');
+      $data['wholeDaySchedule'] = $teamDays->keys()->merge($individualDays->keys())->merge($publishedDays->keys())->unique()->sort()->mapWithKeys(fn ($day) => [$day => [
+        'saved' => (int) ($teamDays[$day] ?? 0) + (int) ($individualDays[$day] ?? 0),
+        'published' => (int) ($publishedDays[$day] ?? 0),
+      ]]);
+      if ($data['wholeDaySchedule']->isNotEmpty()) $data['schedulePublicationRevision'] = app(\App\Services\Scheduling\SchedulePublicationService::class)->revision($event);
+    }
+
     return view('backend.headOffice.team-event-show', $data);
   }
   /**
