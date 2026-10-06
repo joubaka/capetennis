@@ -21,7 +21,7 @@
   .public-fixture-page summary:hover { background: #e8eff8; }
   .public-fixture-page summary:focus-visible { outline: 3px solid #173f7a; outline-offset: 3px; }
   .public-fixture-page .fixture-round > summary { border-left: 5px solid #173f7a; background: #eef3fa; }
-  .fixture-team-chip { display: inline-block; background: var(--region-color, #475569); color: #fff; padding: .3rem .55rem; border-radius: .35rem; line-height: 1.5; overflow-wrap: anywhere; }
+  .fixture-team-chip { display: inline-block; background: #fff; color: #26394d; border: 1px solid var(--region-color, #475569); padding: .3rem .55rem; border-radius: .35rem; line-height: 1.5; overflow-wrap: anywhere; }
 </style>
 <div class="public-fixture-page">
   <div class="card mb-3">
@@ -74,4 +74,14 @@
     </details>
   @endforeach
 </div>
+<script>
+document.querySelectorAll('.public-fixture-page .fixture-round').forEach(function (round) {
+  round.addEventListener('toggle', function () {
+    if (!round.open) return;
+    round.querySelectorAll('.fixture-tie').forEach(function (tie) {
+      tie.open = true;
+    });
+  });
+});
+</script>
 @endsection

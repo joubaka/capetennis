@@ -1,7 +1,6 @@
 @once
 <style>
-  .fixture-region-side { border-left: 4px solid var(--region-color, #475569); padding-left: .6rem; }
-  .fixture-region-badge { display: inline-block; background: var(--region-color, #475569); color: #fff; border-radius: .3rem; padding: .2rem .5rem; margin-bottom: .35rem; font-size: .85rem; font-weight: 600; line-height: 1.5; }
+  .fixture-region-badge { display: inline-block; background: #fff; color: #26394d; border: 1px solid var(--region-color, #475569); border-radius: .3rem; padding: .2rem .5rem; margin-bottom: .35rem; font-size: .85rem; font-weight: 600; line-height: 1.5; }
 </style>
 @endonce
 <div class="fixture-region-side" style="--region-color: {{ $lineup['region_color'] ?? '#475569' }}">
