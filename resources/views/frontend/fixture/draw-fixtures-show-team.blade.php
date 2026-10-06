@@ -8,16 +8,20 @@
   .public-fixture-page .badge.bg-label-success { background: #e4f1e7 !important; color: #235c31 !important; }
   .public-fixture-page .badge.bg-label-secondary { background: #edf0f4 !important; color: #35465b !important; }
   @media (max-width: 767.98px) {
-    .public-fixture-page .fixture-round > .card-body,
-    .public-fixture-page .fixture-tie > .card { display: block !important; }
-    .public-fixture-page .fixture-toggle { display: none; }
     .public-fixture-page .fixture-round > summary,
-    .public-fixture-page .fixture-tie > summary { min-height: 44px; cursor: default !important; pointer-events: none; }
+    .public-fixture-page .fixture-tie > summary { min-height: 44px; }
     .public-fixture-page .fixture-round > .card-body { padding: .75rem; }
     .public-fixture-page .fixture-tie > .card > .card-body { padding: .5rem; }
     .public-fixture-page .fixture-tie h5 { overflow-wrap: anywhere; font-size: 1rem; }
     .public-fixture-page .btn { min-height: 44px; display: inline-flex; align-items: center; }
   }
+</style>
+<style>
+  .public-fixture-page summary { cursor: pointer; }
+  .public-fixture-page summary:hover { background: #e8eff8; }
+  .public-fixture-page summary:focus-visible { outline: 3px solid #173f7a; outline-offset: 3px; }
+  .public-fixture-page .fixture-round > summary { border-left: 5px solid #173f7a; background: #eef3fa; }
+  .fixture-team-chip { display: inline-block; background: var(--region-color, #475569); color: #fff; padding: .3rem .55rem; border-radius: .35rem; line-height: 1.5; overflow-wrap: anywhere; }
 </style>
 <div class="public-fixture-page">
   <div class="card mb-3">
@@ -38,22 +42,27 @@
       $ties = $roundFixtures->groupBy(fn ($fixture) => implode('-', [$fixture->draw_id, $fixture->team_tie_id ?: implode('-', [$fixture->tie_nr, $fixture->region1, $fixture->region2])]))
         ->sortBy(fn ($matches) => (int) $matches->first()->tie_nr);
     @endphp
-    <details class="fixture-round card mb-3" @if($loop->first) open @endif>
+    <details class="fixture-round card mb-3">
       <summary class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap" style="cursor: pointer;">
-        <h4 class="mb-0">Round {{ $round ?: '—' }} <span class="text-muted small">▾</span></h4>
+        <h4 class="mb-0">Round {{ $round ?: '—' }}</h4>
         <span class="fixture-toggle"><span class="when-closed">▸ Click to show ties</span><span class="when-open">▾ Click to hide ties</span></span>
         <span class="text-muted">{{ $ties->count() }} {{ $ties->count() === 1 ? 'tie' : 'ties' }} · {{ $roundFixtures->count() }} matches</span>
       </summary>
       <div class="card-body">
         @foreach($ties as $tieKey => $tieFixtures)
           @php $firstFixture = $tieFixtures->first(); @endphp
-          <details class="fixture-tie mb-3" @if($loop->first) open @endif>
+          <details class="fixture-tie mb-3">
             <summary class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2" style="cursor: pointer;">
             <h5 class="mb-0" id="fixture-tie-{{ $round }}-{{ $tieKey }}">
               @if($fixtures->pluck('draw_id')->unique()->count() > 1)<span class="badge bg-label-secondary">{{ $firstFixture->draw->drawName }}</span> @endif
               <span class="text-muted">Tie {{ $firstFixture->tie_nr ?: $loop->iteration }} ·</span>
-              <span class="d-none d-md-inline">{{ $firstFixture->tie_display['home'] }} <span class="text-muted">vs</span> {{ $firstFixture->tie_display['away'] }}</span>
-              <span class="d-md-none">{{ $firstFixture->tie_mobile_display['home'] }} <span class="text-muted">vs</span> {{ $firstFixture->tie_mobile_display['away'] }}</span>
+              @foreach(['home', 'away'] as $side)
+                @if(!$loop->first)<span class="text-muted">vs</span>@endif
+                <span class="fixture-team-chip" style="--region-color: {{ $firstFixture->lineup_display[$side]['region_color'] ?? '#475569' }}">
+                  <span class="d-none d-md-inline">{{ $firstFixture->tie_display[$side] }}</span>
+                  <span class="d-md-none">{{ $firstFixture->tie_mobile_display[$side] }}</span>
+                </span>
+              @endforeach
             </h5>
               <span class="text-muted small">{{ $tieFixtures->count() }} matches <span class="fixture-toggle"><span class="when-closed">▸ Click to show matches</span><span class="when-open">▾ Click to hide matches</span></span></span>
             </summary>
@@ -65,29 +74,4 @@
     </details>
   @endforeach
 </div>
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-  const phone = window.matchMedia('(max-width: 767.98px)');
-  const sections = document.querySelectorAll('.public-fixture-page details');
-  const desktopState = new Map();
-  const syncSections = function () {
-    sections.forEach(function (section) {
-      if (phone.matches) {
-        if (!desktopState.has(section)) desktopState.set(section, section.open);
-        section.open = true;
-      } else if (desktopState.has(section)) {
-        section.open = desktopState.get(section);
-        desktopState.delete(section);
-      }
-    });
-  };
-  sections.forEach(function (section) {
-    section.querySelector('summary').addEventListener('click', function (event) {
-      if (phone.matches) event.preventDefault();
-    });
-  });
-  phone.addEventListener('change', syncSections);
-  syncSections();
-});
-</script>
 @endsection

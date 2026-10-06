@@ -160,9 +160,15 @@ class PublicFixtureEmptyStateTest extends TestCase
             $team->update(['region_id' => $region->id, 'name' => $regionName.' Primary Schools 2026 u/10 Boys']);
         }
 
-        $this->get(route('frontend.fixtures.index', $draw))->assertOk()
+        $response = $this->get(route('frontend.fixtures.index', $draw))->assertOk()
             ->assertSee('Overberg Primary Schools 2026 u/10 Boys')
-            ->assertSee('Over u/10 Boys')->assertSee('CW u/10 Boys');
+            ->assertSee('Over u/10 Boys')->assertSee('CW u/10 Boys')
+            ->assertSee('--region-color: #1e40af', false)
+            ->assertSee('--region-color: #b45309', false)
+            ->assertSee('Click to show ties')->assertSee('Click to show matches');
+        $html = $response->getContent();
+        $this->assertDoesNotMatchRegularExpression('/<details[^>]*\bopen\b[^>]*>/', $html);
+        $this->assertStringNotContainsString('section.open = true', $html);
     }
 
     public function test_public_lineup_does_not_expose_a_player_from_an_unrelated_source_team(): void
