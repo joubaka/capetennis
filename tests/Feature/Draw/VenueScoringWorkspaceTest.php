@@ -251,7 +251,7 @@ class VenueScoringWorkspaceTest extends TestCase
 
         $this->assertStringContainsString('refreshWorkspace(select.value', $template);
         $this->assertStringContainsString('new FormData(operatorForm)', $template);
-        $this->assertStringContainsString("request(toggleButton.dataset.playingUrl, 'POST', {playing: playing})", $template);
+        $this->assertStringContainsString("request(toggleButton.dataset.playingUrl, 'POST', {playing: playing, participant_revision: toggleButton.dataset.participantRevision || undefined})", $template);
         $this->assertStringContainsString('Mark off court', $template);
         $this->assertStringContainsString("showWorkspaceNotice(result.message, playing ? 'success' : 'warning')", $template);
         $this->assertStringContainsString('saveButton.disabled = false;', $template);

@@ -641,8 +641,9 @@ class FixtureController extends Controller
     if ($draw) {
       $this->authorize('fixture.view', $draw);
     }
-    $data['fixtures'] = $draw ? $draw->fixtures : collect();
-    $data['name'] = $draw ? $draw->events->name . ' ' . $draw->drawName : 'Fixtures';
+    $data['fixtures'] = $draw ? app(\App\Services\Scheduling\TeamFixtureOrder::class)->sort($draw->fixtures) : collect();
+    app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($data['fixtures']);
+    $data['name'] = $draw ? $draw->event?->name . ' ' . $draw->drawName : 'Fixtures';
     //return $name;
 
     $pdf = Pdf::loadView('backend.draw.pdf.pdf-team', $data);
@@ -658,23 +659,18 @@ class FixtureController extends Controller
     // retreive all records from db
     $data['f'] = TeamFixture::whereIn('id', $ids)->get();
 
-    // Authorize: gate on the draw that owns the first fixture
-    $firstFixture = $data['f']->first();
-    if ($firstFixture) {
-      $authDraw = \App\Models\Draw::find($firstFixture->draw_id);
-      if ($authDraw) {
-        $this->authorize('fixture.view', $authDraw);
-      }
+    // Every selected draw must be authorized, regardless of submitted ID order.
+    foreach ($data['f']->pluck('draw_id')->unique() as $drawId) {
+      $this->authorize('fixture.view', Draw::findOrFail($drawId));
     }
 
     // Sort defensively: some fixtures may not have a related schedule
-    $data['fixtures'] = $data['f']->sortBy(function ($item) {
-      return optional($item->schedule)->time ?? $item->scheduled_at ?? '00:00';
-    })->values();
+    $data['fixtures'] = app(\App\Services\Scheduling\TeamFixtureOrder::class)->sort($data['f']);
+    app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($data['fixtures']);
 
     // Determine a sensible filename: try to read the venue name from any fixture that has it
     $venueName = $data['f']->map(function ($f) {
-      return optional(optional($f->schedule)->venue)->name;
+      return $f->venue?->name;
     })->filter()->first();
 
     $data['name'] = $venueName ?? 'Fixtures';

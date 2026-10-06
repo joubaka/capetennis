@@ -18,6 +18,11 @@ class TeamFixture extends Model
 
   protected $with = ['teamResults', 'fixturePlayers', 'draw'];
 
+  public function scopeInPlayOrder(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+  {
+    return app(\App\Services\Scheduling\TeamFixtureOrder::class)->applyQuery($query);
+  }
+
   protected $fillable = [
     'fixture_type',
     'draw_id',
@@ -126,17 +131,17 @@ class TeamFixture extends Model
    * ---------------------- */
   public function fixturePlayers()
   {
-    return $this->hasMany(TeamFixturePlayer::class, 'team_fixture_id', 'id');
+    return $this->hasMany(TeamFixturePlayer::class, 'team_fixture_id', 'id')->orderBy('slot_no')->orderBy('id');
   }
 
   public function team1()
   {
-    return $this->belongsToMany(Player::class, 'team_fixture_players', 'team_fixture_id', 'team1_id');
+    return $this->belongsToMany(Player::class, 'team_fixture_players', 'team_fixture_id', 'team1_id')->orderByPivot('slot_no')->orderByPivot('id');
   }
 
   public function team2()
   {
-    return $this->belongsToMany(Player::class, 'team_fixture_players', 'team_fixture_id', 'team2_id');
+    return $this->belongsToMany(Player::class, 'team_fixture_players', 'team_fixture_id', 'team2_id')->orderByPivot('slot_no')->orderByPivot('id');
   }
   public function getRegionShort($side)
   {

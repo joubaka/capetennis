@@ -37,10 +37,9 @@
   @unless($draw->oop_published)
     <div class="alert alert-info" role="status">The draw is available, but match times and venues have not been published yet.</div>
   @endunless
-  @foreach($fixtures->groupBy(fn ($fixture) => (int) $fixture->round_nr)->sortKeys() as $round => $roundFixtures)
+  @foreach($fixtures->groupBy(fn ($fixture) => (int) $fixture->round_nr) as $round => $roundFixtures)
     @php
-      $ties = $roundFixtures->groupBy(fn ($fixture) => implode('-', [$fixture->draw_id, $fixture->team_tie_id ?: implode('-', [$fixture->tie_nr, $fixture->region1, $fixture->region2])]))
-        ->sortBy(fn ($matches) => (int) $matches->first()->tie_nr);
+      $ties = $roundFixtures->groupBy(fn ($fixture) => implode('-', [$fixture->draw_id, $fixture->team_tie_id ?: implode('-', [$fixture->tie_nr, $fixture->region1, $fixture->region2])]));
     @endphp
     <details class="fixture-round card mb-3">
       <summary class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap" style="cursor: pointer;">
@@ -66,7 +65,7 @@
             </h5>
               <span class="text-muted small">{{ $tieFixtures->count() }} matches <span class="fixture-toggle"><span class="when-closed">▸ Click to show matches</span><span class="when-open">▾ Click to hide matches</span></span></span>
             </summary>
-            @include('frontend.fixture.fixture-table', ['fixtures' => $tieFixtures->sortBy(fn ($fixture) => (int) ($fixture->rubber_sequence ?: $fixture->match_nr)),
+            @include('frontend.fixture.fixture-table', ['fixtures' => $tieFixtures,
               'hideFixtureHeader' => true, 'fixtureTableId' => 'fixturesTable-'.$round.'-'.$tieKey])
           </details>
         @endforeach

@@ -525,7 +525,7 @@ $fixtures = \App\Models\TeamFixture::with(['draw'])
 if (! $canPreviewUnpublishedDraws) {
     app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($fixtures);
 }
-$fixtures = $fixtures->filter(fn ($fixture) => $fixture->scheduled_at)->sortBy('scheduled_at')->values();
+$fixtures = app(\App\Services\Scheduling\TeamFixtureOrder::class)->sort($fixtures->filter(fn ($fixture) => $fixture->scheduled_at));
 
 $fixturesByDay = $fixtures->groupBy(function($fx) {
     return Carbon::parse($fx->scheduled_at)->toDateString();

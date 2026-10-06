@@ -318,9 +318,7 @@ class HeadOfficeController extends Controller
         $q->where('event_id', $event->id);
       })
       ->where('scheduled', 1)
-      ->orderBy('scheduled_at')
-      ->orderBy('round_nr')
-      ->orderBy('home_rank_nr')
+      ->inPlayOrder()
       ->get();
 
 

@@ -102,6 +102,73 @@ class FixtureRosterPresentationTest extends TestCase
         $this->get(route('fixtures.venue', [$event->id, $venue->id]))->assertOk()->assertSee('(4)');
     }
 
+    public function test_draw_backend_schedule_scoring_and_order_of_play_share_match_and_player_order(): void
+    {
+        extract($this->weekend());
+        $matches = TeamFixture::where('draw_id', $draw->id)->orderBy('match_nr')->get();
+        $matches[0]->update(['scheduled_at' => '2026-10-09 09:00:00']);
+        $matches[1]->update(['scheduled_at' => '2026-10-09 08:00:00']);
+        // Recorded doubles slots deliberately disagree with insertion and roster-rank order.
+        $slots = $matches[1]->fixturePlayers;
+        $slots[0]->update(['slot_no' => 2]);
+        $slots[1]->update(['slot_no' => 1]);
+        app(SchedulePublicationService::class)->publish($event, ['date' => '2026-10-09']);
+        $expected = [$matches[1]->id, $matches[0]->id, ...$matches->slice(2)->modelKeys()];
+        $before = [TeamFixture::count(), TeamFixturePlayer::count(), DrawAuditLog::count()];
+
+        foreach (['frontend.fixtures.index', 'frontend.fixtures.show'] as $route) {
+            $response = $this->get(route($route, $draw))->assertOk()
+                ->assertViewHas('fixtures', fn ($fixtures) => $fixtures->modelKeys() === $expected);
+            $this->export('ordering-public', $response);
+        }
+        $response = $this->get(route('fixtures.order', [$event->id, $venue->id, 'all']))->assertOk()
+            ->assertViewHas('fixtures', fn ($fixtures) => $fixtures->modelKeys() === $expected);
+        $this->export('ordering-oop', $response);
+
+        Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        $admin = User::factory()->create()->assignRole('super-user');
+        $this->actingAs($admin);
+        $this->get(route('backend.team-fixtures.index', ['draw_id' => $draw->id]))->assertOk()
+            ->assertViewHas('fixtures', fn ($fixtures) => $fixtures->getCollection()->modelKeys() === $expected);
+        $response = $this->get(route('draw.show', $draw))->assertOk()
+            ->assertViewHas('fixtures', fn ($fixtures) => $fixtures->modelKeys() === $expected);
+        $this->export('ordering-backend', $response);
+        $this->get(route('backend.team-schedule.data', $draw))->assertOk()
+            ->assertJsonPath('fixtures.0.id', $matches[1]->id)
+            ->assertJsonPath('fixtures.0.p1', 'Overberg Second + Overberg Player')
+            ->assertJsonPath('fixtures.0.p2', 'Cape Winelands Second + Cape Winelands Partner');
+        $this->get(route('backend.team-schedule.all.data', $event))->assertOk()
+            ->assertJsonPath('draws.0.fixtures.0.id', $matches[1]->id)
+            ->assertJsonPath('draws.0.fixtures.0.p2', 'Cape Winelands Second + Cape Winelands Partner');
+        $response = $this->get(route('frontend.scoring.workspace', ['event' => $event, 'draw' => $draw->id]))->assertOk()
+            ->assertViewHas('matches', function ($fixtures) use ($expected) {
+                $this->assertSame($expected, $fixtures->modelKeys());
+                $this->assertSame(['Overberg Second', 'Overberg Player'], array_column($fixtures->first()->lineup_display['home']['players'], 'name'));
+                $this->assertSame(['Cape Winelands Second', 'Cape Winelands Partner'], array_column($fixtures->first()->lineup_display['away']['players'], 'name'));
+                return true;
+            });
+        $this->export('ordering-scoring', $response);
+        $double = $matches[1]->fresh();
+        $this->assertSame([1, 2], $double->fixturePlayers->pluck('slot_no')->all());
+        $this->assertSame($teams[0]['profile']->id, $double->team1->first()->id);
+
+        $pdf = \Mockery::mock(\Barryvdh\DomPDF\PDF::class);
+        $pdf->shouldReceive('download')->twice()->andReturn(response('Test PDF'));
+        \Barryvdh\DomPDF\Facade\Pdf::shouldReceive('loadView')->twice()
+            ->withArgs(function ($view, $data) use ($expected) {
+                $this->assertSame('backend.draw.pdf.pdf-team', $view);
+                $this->assertSame($expected, $data['fixtures']->modelKeys());
+                $html = view($view, $data)->render();
+                $this->assertStringContainsString('Overberg Second', $html);
+                $this->assertStringContainsString('Cape Winelands Partner', $html);
+                $this->assertLessThan(strpos($html, 'fixture-'.$expected[1].'"'), strpos($html, 'fixture-'.$expected[0].'"'));
+                return true;
+            })->andReturn($pdf);
+        $this->get(route('fixture.create.pdf', ['fixtures' => $draw->id]))->assertOk();
+        $this->get(route('fixture.create.pdf.venue', ['fixtures' => array_reverse($expected)]))->assertOk();
+        $this->assertSame($before, [TeamFixture::count(), TeamFixturePlayer::count(), DrawAuditLog::count()]);
+    }
+
     public function test_draft_preview_requires_the_event_authority_and_does_not_publish(): void
     {
         extract($this->weekend());
@@ -116,6 +183,22 @@ class FixtureRosterPresentationTest extends TestCase
         $this->assertFalse((bool) $draw->fresh()->published);
         $this->assertFalse((bool) $draw->fresh()->oop_published);
         $this->assertDatabaseCount('published_schedule_assignments', 0);
+    }
+
+    public function test_venue_pdf_rejects_a_foreign_draw_even_when_the_first_fixture_is_authorized(): void
+    {
+        extract($this->weekend());
+        $ownFixture = TeamFixture::where('draw_id', $draw->id)->first();
+        $foreignDraw = Draw::factory()->create(['event_id' => Event::factory()->create()->id]);
+        $foreignFixture = TeamFixture::create(['draw_id' => $foreignDraw->id, 'round_nr' => 1,
+            'tie_nr' => 1, 'match_nr' => 1, 'fixture_type' => 1, 'numSets' => 3]);
+        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        \Barryvdh\DomPDF\Facade\Pdf::shouldReceive('loadView')->never();
+        $this->actingAs($admin)->get(route('fixture.create.pdf.venue', [
+            'fixtures' => [$ownFixture->id, $foreignFixture->id],
+        ]))->assertForbidden();
     }
 
     public function test_admin_fixture_badges_link_only_resolved_profiles_and_keep_imported_names(): void

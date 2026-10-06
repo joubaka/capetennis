@@ -23,14 +23,16 @@ class TeamScheduleController extends Controller
 
     $fixtures = TeamFixture::with(['team1', 'team2'])
       ->where('draw_id', $draw->id)
-      ->get()
-      ->map(function ($fx) {
+      ->inPlayOrder()
+      ->get();
+    app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures);
+    $fixtures = $fixtures->map(function ($fx) {
         return [
           'id' => $fx->id,
           'round_nr' => $fx->round_nr,
           'match' => $fx->match,
-          'p1' => $fx->team1->map(fn($p) => $p->full_name)->implode(' + ') ?: 'TBD',
-          'p2' => $fx->team2->map(fn($p) => $p->full_name)->implode(' + ') ?: 'TBD',
+          'p1' => collect($fx->lineup_display['home']['players'])->pluck('name')->implode(' + ') ?: 'TBD',
+          'p2' => collect($fx->lineup_display['away']['players'])->pluck('name')->implode(' + ') ?: 'TBD',
           'scheduled_at' => $fx->scheduled_at ? $fx->scheduled_at->format('Y-m-d H:i') : null,
           'venue_id' => $fx->venue_id,
           'court_label' => $fx->court_label,
@@ -113,15 +115,16 @@ class TeamScheduleController extends Controller
     foreach ($event->draws as $draw) {
       $fixtures = TeamFixture::with(['team1', 'team2'])
         ->where('draw_id', $draw->id)
-        ->orderByRaw('CAST(round_nr AS UNSIGNED)')
-        ->get()
-        ->map(function ($fx) use ($draw) {
+        ->inPlayOrder()
+        ->get();
+      app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures);
+      $fixtures = $fixtures->map(function ($fx) use ($draw) {
           return [
             'id' => $fx->id,
             'round' => $fx->round_nr,
             'match' => $fx->match_nr,
-            'p1' => $fx->team1->pluck('name')->join(' + ') ?: 'TBD',
-            'p2' => $fx->team2->pluck('name')->join(' + ') ?: 'TBD',
+            'p1' => collect($fx->lineup_display['home']['players'])->pluck('name')->implode(' + ') ?: 'TBD',
+            'p2' => collect($fx->lineup_display['away']['players'])->pluck('name')->implode(' + ') ?: 'TBD',
             'scheduled_at' => $fx->scheduled_at,
             'venue_id' => $fx->venue_id,
             'court_label' => $fx->court_label,

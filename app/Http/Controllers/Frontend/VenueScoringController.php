@@ -109,11 +109,11 @@ class VenueScoringController extends Controller
                 'region1Name',
                 'region2Name',
             ])
-            ->orderBy('scheduled_at')
-            ->orderBy('round_nr')
-            ->orderBy('home_rank_nr')
+            ->inPlayOrder()
             ->limit(500)
             ->get();
+
+        app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($teamFixtures);
 
         $matches = $fixtures->concat($teamFixtures)
             ->sort(fn ($left, $right): int => $this->venueMatchOrder->compare($left, $right))

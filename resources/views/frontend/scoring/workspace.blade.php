@@ -137,8 +137,8 @@
           @php
             $nextIsTeam = $nextMatch instanceof \App\Models\TeamFixture;
             if ($nextIsTeam) {
-              $nextHomePlayers = $nextMatch->fixturePlayers->pluck('player1')->filter()->pluck('full_name')->filter();
-              $nextAwayPlayers = $nextMatch->fixturePlayers->pluck('player2')->filter()->pluck('full_name')->filter();
+              $nextHomePlayers = collect($nextMatch->lineup_display['home']['players'])->pluck('name');
+              $nextAwayPlayers = collect($nextMatch->lineup_display['away']['players'])->pluck('name');
               $nextHome = $nextHomePlayers->isNotEmpty() ? $nextHomePlayers->implode(' + ') : ($nextMatch->homeTeam?->name ?? $nextMatch->region1Name?->name ?? 'To be decided');
               $nextAway = $nextAwayPlayers->isNotEmpty() ? $nextAwayPlayers->implode(' + ') : ($nextMatch->awayTeam?->name ?? $nextMatch->region2Name?->name ?? 'To be decided');
               $nextTime = $nextMatch->scheduled_at;
@@ -311,8 +311,8 @@
           $isFlexible = !$isTeamFixture && $draw->usesFlexibleMonrad();
 
           if ($isTeamFixture) {
-            $homePlayers = $match->fixturePlayers->pluck('player1')->filter()->pluck('full_name')->filter();
-            $awayPlayers = $match->fixturePlayers->pluck('player2')->filter()->pluck('full_name')->filter();
+            $homePlayers = collect($match->lineup_display['home']['players'])->pluck('name');
+            $awayPlayers = collect($match->lineup_display['away']['players'])->pluck('name');
             $home = $homePlayers->isNotEmpty() ? $homePlayers->implode(' + ') : ($match->homeTeam?->name ?? $match->region1Name?->name ?? 'To be decided');
             $away = $awayPlayers->isNotEmpty() ? $awayPlayers->implode(' + ') : ($match->awayTeam?->name ?? $match->region2Name?->name ?? 'To be decided');
             $hasPlayers = $match->fixturePlayers->isNotEmpty() || ($match->homeTeam && $match->awayTeam);

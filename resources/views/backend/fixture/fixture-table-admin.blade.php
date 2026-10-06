@@ -1,7 +1,3 @@
-<?php
-use App\Helpers\Fixtures;
-?>
-
 @php $lastRound = null; $lastTieKey = null; @endphp
 
 <h3>
@@ -41,7 +37,7 @@ use App\Helpers\Fixtures;
 
           {{-- 🧩 TEAM DISPLAY --}}
           @php
-              $winner = Fixtures::getWinner($fixture->id);
+              $winner = match ($fixture->winnerSide()) { 'home' => 1, 'away' => 2, default => null };
           @endphp
 
           {{-- === TEAM 1 === --}}

@@ -13,6 +13,18 @@ class VenueMatchOrder
 {
     public function compare(Fixture|TeamFixture|array $left, Fixture|TeamFixture|array $right): int
     {
+        // Keep team rows on the same contract as draws, schedules and backend pages.
+        // Mixed queues use a fixed kind boundary at simultaneous times to remain transitive.
+        if ($left instanceof TeamFixture || $right instanceof TeamFixture) {
+            $leftTime = $left instanceof TeamFixture ? $left->scheduled_at : (is_array($left) ? ($left['scheduled_at'] ?? null) : $left->orderOfPlay?->time);
+            $rightTime = $right instanceof TeamFixture ? $right->scheduled_at : (is_array($right) ? ($right['scheduled_at'] ?? null) : $right->orderOfPlay?->time);
+            $timeOrder = strcmp($this->timeKey($leftTime), $this->timeKey($rightTime));
+            if ($timeOrder !== 0) return $timeOrder;
+            if ($left instanceof TeamFixture && $right instanceof TeamFixture) {
+                return app(TeamFixtureOrder::class)->compare($left, $right);
+            }
+            return ($left instanceof TeamFixture ? 1 : 0) <=> ($right instanceof TeamFixture ? 1 : 0);
+        }
         $leftValues = $this->values($left);
         $rightValues = $this->values($right);
 

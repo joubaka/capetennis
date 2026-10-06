@@ -23,6 +23,7 @@ use Illuminate\Http\JsonResponse;
 use App\Domain\Draws\Guards\DrawGuard;
 use App\Services\TeamFixtureScoreService;
 use App\Services\PublicTournamentVisibility;
+use App\Services\Scheduling\TeamFixtureOrder;
 
 class TeamFixtureController extends Controller
 {
@@ -90,11 +91,13 @@ class TeamFixtureController extends Controller
       ->values()
       ->all();
 
-    $defaultSort = 'round_tie';
+    $defaultSort = 'play_order';
     $sort = $request->get('sort', $defaultSort);
     $dir = $request->get('dir', 'asc');
 
-    if ($sort === 'round_tie') {
+    if ($sort === 'play_order') {
+      $query->inPlayOrder();
+    } elseif ($sort === 'round_tie') {
       if (Schema::hasColumn('team_fixtures', 'round') && Schema::hasColumn('team_fixtures', 'tie')) {
         $query->orderBy('round', $dir)->orderBy('tie', $dir);
       } else {
@@ -108,13 +111,12 @@ class TeamFixtureController extends Controller
     } elseif (in_array($sort, $allowedSorts, true)) {
       $query->orderBy($sort, $dir);
     } else {
-      if (Schema::hasColumn('team_fixtures', 'scheduled_at')) {
-        $query->orderBy('scheduled_at', 'asc');
-      } elseif (Schema::hasColumn('team_fixtures', 'date')) {
-        $query->orderBy('date', 'asc');
-      } else {
-        $query->orderBy('id', 'asc');
-      }
+      $sort = $defaultSort;
+      $query->inPlayOrder();
+    }
+
+    if ($sort !== 'play_order') {
+      $query->inPlayOrder();
     }
 
     // ============================================================
@@ -172,7 +174,7 @@ class TeamFixtureController extends Controller
     // fixtures belonging to any draw of this event
     $fixtures = TeamFixture::with(['draw', 'team1', 'team2', 'venue', 'teamTie.homeTeam', 'teamTie.awayTeam'])
       ->whereIn('draw_id', $draws->pluck('id'))
-      ->orderBy('scheduled_at', 'asc')
+      ->inPlayOrder()
       ->get();
 
     return view('backend.team-fixtures.admin', compact('event', 'draws', 'teams', 'venues', 'fixtures'));
@@ -574,48 +576,12 @@ class TeamFixtureController extends Controller
 
     $fixtures = TeamFixture::with(['fixturePlayers.player1', 'fixturePlayers.player2', 'draw', 'venue'])
       ->where('draw_id', $draw->id)
-      ->orderByRaw('COALESCE(NULLIF(round_nr, ""), 9999) + 0 ASC')
-      ->orderByRaw('COALESCE(NULLIF(tie_nr, ""), 9999) + 0 ASC')
-      ->orderByRaw('COALESCE(NULLIF(home_rank_nr, ""), 9999) + 0 ASC')
-      ->orderBy('scheduled_at', 'asc')
-      ->get()
-      ->map(function ($fx) {
-        $homeNames = [];
-        $awayNames = [];
-        $homeRegionShort = $fx->region1Name?->short_name ?? null;
-        $awayRegionShort = $fx->region2Name?->short_name ?? null;
-
-        foreach ($fx->fixturePlayers as $fpRow) {
-            // HOME
-            if ($fpRow->team1_id && $fpRow->player1) {
-                $name = $fpRow->player1->full_name;
-                if ($homeRegionShort) $name .= " ({$homeRegionShort})";
-                $homeNames[] = $name;
-            } elseif ($fpRow->team1_no_profile_id) {
-                $np = \App\Models\NoProfileTeamPlayer::find($fpRow->team1_no_profile_id);
-                if ($np) {
-                    $name = trim($np->name . ' ' . $np->surname);
-                    if ($homeRegionShort) $name .= " ({$homeRegionShort})";
-                    $homeNames[] = $name;
-                }
-            }
-            // AWAY
-            if ($fpRow->team2_id && $fpRow->player2) {
-                $name = $fpRow->player2->full_name;
-                if ($awayRegionShort) $name .= " ({$awayRegionShort})";
-                $awayNames[] = $name;
-            } elseif ($fpRow->team2_no_profile_id) {
-                $np2 = \App\Models\NoProfileTeamPlayer::find($fpRow->team2_no_profile_id);
-                if ($np2) {
-                    $name = trim($np2->name . ' ' . $np2->surname);
-                    if ($awayRegionShort) $name .= " ({$awayRegionShort})";
-                    $awayNames[] = $name;
-                }
-            }
-        }
-
-        $p1 = count($homeNames) ? collect($homeNames)->implode(' + ') : 'TBD';
-        $p2 = count($awayNames) ? collect($awayNames)->implode(' + ') : 'TBD';
+      ->inPlayOrder()
+      ->get();
+    app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures);
+    $fixtures = $fixtures->map(function ($fx) {
+        $p1 = collect($fx->lineup_display['home']['players'])->pluck('name')->implode(' + ') ?: 'TBD';
+        $p2 = collect($fx->lineup_display['away']['players'])->pluck('name')->implode(' + ') ?: 'TBD';
 
         return [
             'id' => $fx->id,
@@ -796,18 +762,6 @@ class TeamFixtureController extends Controller
 
     $fixtures = $this->publicVenueFixtures($event, $venue);
 
-    // 🧭 Custom weekday order (Fri → Sat → Sun)
-    $order = ['Fri' => 1, 'Sat' => 2, 'Sun' => 3];
-
-    $fixtures = $fixtures->sortBy(function ($fx) use ($order) {
-      $day = \Carbon\Carbon::parse($fx->scheduled_at)->format('D');
-      return sprintf(
-        '%02d-%s',
-        $order[$day] ?? 99,
-        \Carbon\Carbon::parse($fx->scheduled_at)->format('Y-m-d H:i:s')
-      );
-    });
-
     return view('frontend.fixture.byVenue', compact('event', 'venue', 'fixtures'));
   }
 
@@ -839,7 +793,7 @@ class TeamFixtureController extends Controller
       $fixtures = $fixtures->filter(fn ($fixture) => Carbon::parse($fixture->scheduled_at)->toDateString() === $date)->values();
     }
 
-    $fixtures = $fixtures->sortBy('scheduled_at')->values();
+    $fixtures = app(TeamFixtureOrder::class)->sort($fixtures);
 
     return view('frontend.fixture.orderOfPlay', compact(
       'event', 'venue', 'fixtures', 'date', 'availableDates'
@@ -861,7 +815,7 @@ class TeamFixtureController extends Controller
         'fixtureResults',
       ])
       ->whereIn('id', $fixtureIds)->get();
-    $fixtures = $publication->projectFixtures($fixtures)->sortBy('scheduled_at')->values();
+    $fixtures = app(TeamFixtureOrder::class)->sort($publication->projectFixtures($fixtures));
     app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures);
     return $fixtures;
   }
@@ -965,7 +919,8 @@ class TeamFixtureController extends Controller
         'fixturePlayers.noProfile2',
         'venue:id,name',
         'draw:id,drawName'
-    ])->orderBy('scheduled_at')->get();
+    ])->inPlayOrder()->get();
+    $fixtures = app(TeamFixtureOrder::class)->sort($fixtures);
 
     $out = $fixtures->map(function ($fx) {
         $homeNames = [];

@@ -110,7 +110,7 @@ class DrawController extends Controller
     /// teamm event
    
     if ($data['event']->eventType == 3) {
-      $data['fixtures'] = TeamFixture::where('draw_id', $id)->orderBy('round_nr')->orderBy('tie_nr')->orderBy('rubber_sequence')->get();
+      $data['fixtures'] = TeamFixture::where('draw_id', $id)->inPlayOrder()->get();
       app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($data['fixtures']);
       $data['players'] = Player::all();
       $draw = Draw::find($id);
