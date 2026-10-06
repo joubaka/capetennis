@@ -65,7 +65,7 @@ class FrontFixtureController extends Controller
     }
 
     if ($fixtures->isEmpty()) {
-      abort(404, 'No fixtures found for this draw.');
+      return view('frontend.fixture.empty', ['draw' => $draw, 'event' => $draw->event]);
     }
 
     $data = [
@@ -104,7 +104,7 @@ class FrontFixtureController extends Controller
     $this->hidePrivateSchedule($draw, $fixtures);
 
     if ($fixtures->isEmpty()) {
-      abort(404, 'No fixtures found for this draw.');
+      return view('frontend.fixture.empty', ['draw' => $draw, 'event' => $draw->event]);
     }
 
     // Log fixture details for debugging
@@ -233,7 +233,7 @@ class FrontFixtureController extends Controller
     // Empty fixtures
     // ---------------------------------------------------------
     if ($fixtures->isEmpty()) {
-      abort(404, 'No fixtures found for this draw.');
+      return view('frontend.fixture.empty', ['draw' => $draw, 'event' => $draw->event]);
     }
 
     // ---------------------------------------------------------

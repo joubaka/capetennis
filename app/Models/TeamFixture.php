@@ -55,8 +55,10 @@ class TeamFixture extends Model
   public function scopePublishedTeamTies($query)
   {
     return $query->where(function ($query) {
-      $query->whereHas('draw', fn ($draw) => $draw->whereNull('team_scoring_rules'))
+      $query->where(fn ($legacy) => $legacy->whereNull('team_tie_id')
+          ->whereHas('draw', fn ($draw) => $draw->whereDoesntHave('teamTies')))
         ->orWhereHas('teamTie', fn ($tie) => $tie->whereNotNull('published_at')
+          ->whereColumn('team_ties.draw_id', 'team_fixtures.draw_id')
           ->whereIn('status', [TeamTie::STATUS_PUBLISHED, TeamTie::STATUS_COMPLETED]));
     });
   }

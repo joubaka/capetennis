@@ -3,7 +3,7 @@
 namespace Tests\Feature\Draw;
 
 use App\Domain\Draws\Services\DrawReadinessService;
-use App\Models\{CategoryEvent, Draw, Event, Fixture, FixtureResult, Registration, Team, TeamFixture, TeamFixtureResult, User};
+use App\Models\{CategoryEvent, Draw, Event, Fixture, Registration, Team, TeamFixture, TeamFixtureResult, User};
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
@@ -68,6 +68,14 @@ class TeamDrawPublicationReadinessTest extends TestCase
         $this->assertDatabaseCount('draw_audit_logs', 0);
     }
 
+    public function test_empty_team_draw_cannot_be_published(): void
+    {
+        $draw = $this->draw();
+        $this->postJson(route('draw.toggle.publish', $draw->id))->assertStatus(422)->assertJsonPath('success', false);
+        $this->assertFalse((bool) $draw->fresh()->published);
+        $this->assertDatabaseCount('draw_audit_logs', 0);
+    }
+
     public function test_team_rubbers_without_assigned_teams_do_not_bypass_participant_readiness(): void
     {
         $draw = $this->draw();
@@ -86,8 +94,9 @@ class TeamDrawPublicationReadinessTest extends TestCase
         $registration = Registration::factory()->create();
         $draw->registrations()->attach($registration->id);
         $draw->settings()->create(['workflow' => 'round_robin']);
-        $fixture = Fixture::factory()->create(['draw_id' => $draw->id]);
-        $this->rubber($draw, 1, 1);
+        Fixture::factory()->create(['draw_id' => $draw->id]);
+        $rubber = $this->rubber($draw, 1, 1);
+        TeamFixtureResult::create(['team_fixture_id' => $rubber->id, 'set_nr' => 1, 'team1_score' => 6, 'team2_score' => 3]);
         $readiness = app(DrawReadinessService::class)->for($draw);
         $this->assertTrue($readiness['ready_to_publish']);
         $this->assertSame(1, $readiness['fixture_count']);

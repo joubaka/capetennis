@@ -15,6 +15,10 @@
     .loser-home { background-color: rgba(220,53,69,.25)!important; }
     .draw-cell { background-color: rgba(255,193,7,.25)!important; }
 
+    .venue-tie-heading th { background: #e5edf5; padding: .9rem; }
+    .venue-wave-heading th { background: #f2f5f8; padding: .55rem .9rem; }
+    .venue-player { display: block; margin-top: .25rem; white-space: normal; }
+    .fixture-region-badge { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
     /* PDF/Print Optimization */
     @media print {
         @page {
@@ -47,7 +51,7 @@
         .draw-cell { background-color: #fff3cd !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         
         /* Hide Actions Column in PDF */
-        th:last-child, td:last-child {
+        thead th:last-child, td.d-print-none {
             display: none !important;
         }
 
@@ -172,7 +176,27 @@
                     </tr>
                 </thead>
                 <tbody>
-                @forelse($fixtures as $fx)
+                @forelse($fixtureGroups as $group)
+                    <tr class="venue-tie-heading">
+                        <th colspan="10">
+                            {{ $group['fixture']->draw?->drawName }} · Round {{ $group['fixture']->round_nr }} ·
+                            {{ $group['fixture']->tie_display['home'] }} vs {{ $group['fixture']->tie_display['away'] }}
+                            <div class="small fw-normal mt-1">
+                                Tie starts: {{ $group['start']?->format('d M Y H:i') ?? 'To be confirmed' }}
+                                @if($group['next_start']) · Next tie starts: {{ $group['next_start']->format('d M Y H:i') }}@endif
+                            </div>
+                        </th>
+                    </tr>
+                    @foreach($group['waves'] as $wave)
+                    <tr class="venue-wave-heading">
+                        <th colspan="10" class="small">
+                            Players start: {{ $wave->first()->scheduled_at?->format('d M Y H:i') ?? 'To be confirmed' }}
+                            @if(!$loop->last)
+                                · Next players start: {{ $group['waves']->get($loop->index + 1)->first()->scheduled_at?->format('d M Y H:i') ?? 'To be confirmed' }}
+                            @endif
+                        </th>
+                    </tr>
+                    @foreach($wave as $fx)
                     @php
                         $homeClass = '';
                         $awayClass = '';
@@ -187,49 +211,17 @@
                             }
                         }
 
-                        $homeNames = [];
-                        $awayNames = [];
-                        $homeRegionShort = $fx->region1Name?->short_name ?? null;
-                        $awayRegionShort = $fx->region2Name?->short_name ?? null;
-
-                        foreach($fx->fixturePlayers as $fpRow) {
-                            if ($fpRow->team1_id && $fpRow->player1) {
-                                $name = $fpRow->player1->full_name;
-                                if($homeRegionShort) $name.=" ({$homeRegionShort})";
-                                $homeNames[]=$name;
-                            } elseif ($fpRow->team1_no_profile_id) {
-                                $np = \App\Models\NoProfileTeamPlayer::find($fpRow->team1_no_profile_id);
-                                if($np){
-                                    $name = trim($np->name.' '.$np->surname);
-                                    if($homeRegionShort) $name.=" ({$homeRegionShort})";
-                                    $homeNames[]=$name;
-                                }
-                            }
-                            if ($fpRow->team2_id && $fpRow->player2) {
-                                $name = $fpRow->player2->full_name;
-                                if($awayRegionShort) $name.=" ({$awayRegionShort})";
-                                $awayNames[]=$name;
-                            } elseif ($fpRow->team2_no_profile_id) {
-                                $np2 = \App\Models\NoProfileTeamPlayer::find($fpRow->team2_no_profile_id);
-                                if($np2){
-                                    $name = trim($np2->name.' '.$np2->surname);
-                                    if($awayRegionShort) $name.=" ({$awayRegionShort})";
-                                    $awayNames[]=$name;
-                                }
-                            }
-                        }
-
-                        $homeLabel = count($homeNames) ? collect($homeNames)->implode(' + ') : 'TBD';
-                        $awayLabel = count($awayNames) ? collect($awayNames)->implode(' + ') : 'TBD';
+                        $homeLabel = collect($fx->lineup_display['home']['players'])->map(fn ($player) => ($player['rank'] ? '(' . $player['rank'] . ') ' : '') . $player['name'])->implode(' + ') ?: 'TBD';
+                        $awayLabel = collect($fx->lineup_display['away']['players'])->map(fn ($player) => ($player['rank'] ? '(' . $player['rank'] . ') ' : '') . $player['name'])->implode(' + ') ?: 'TBD';
                         $display = $fx->scheduled_at ?? null;
                     @endphp
                     <tr id="row-{{ $fx->id }}">
                         <td>{{ $fx->id }}</td>
                         <td>{{ optional($fx->draw)->drawName ?? '—' }}</td>
                         <td>{{ $fx->round_nr }}</td>
-                        <td>{{ $fx->home_rank_nr }}</td>
-                        <td class="home-cell {{ $homeClass }}">({{ $fx->home_rank_nr }}) {{ $homeLabel }}</td>
-                        <td class="away-cell {{ $awayClass }}">({{ $fx->away_rank_nr }}) {{ $awayLabel }}</td>
+                        <td>{{ $fx->rubber_sequence ?? $fx->match_nr ?? $fx->home_rank_nr ?? '—' }}</td>
+                        <td class="home-cell {{ $homeClass }}">@include('backend.headOffice.partials.venue-lineup', ['lineup' => $fx->lineup_display['home']])</td>
+                        <td class="away-cell {{ $awayClass }}">@include('backend.headOffice.partials.venue-lineup', ['lineup' => $fx->lineup_display['away']])</td>
                         <td id="result-col-{{ $fx->id }}">
                             @forelse($fx->fixtureResults as $r)
                                 <strong>{{ $r->team1_score }}-{{ $r->team2_score }}</strong>@if(!$loop->last), @endif
@@ -242,7 +234,7 @@
                                 {{ \Carbon\Carbon::parse($display)->format('Y-m-d H:i') }}
                             @else — @endif
                         </td>
-                        <td>{{ optional($fx->venue)->name ?? '—' }}</td>
+                        <td>{{ $venue->name }}</td>
                         <td class="text-end d-print-none">
                             <button id="edit-btn-{{ $fx->id }}" class="btn btn-sm btn-icon btn-label-primary edit-score-btn"
                                 data-id="{{ $fx->id }}" data-participant-revision="{{ $fx instanceof \App\Models\TeamFixture ? app(\App\Services\TeamParticipantHistoryService::class)->revision($fx) : '' }}"
@@ -265,6 +257,8 @@
                             @endif
                         </td>
                     </tr>
+                    @endforeach
+                    @endforeach
                 @empty
                     <tr><td colspan="10" class="text-center">No fixtures found.</td></tr>
                 @endforelse

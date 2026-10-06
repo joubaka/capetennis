@@ -307,7 +307,8 @@ class HeadOfficeController extends Controller
   {
     $fixtures = $venue->fixtures()
       ->with([
-        'draw:id,drawName,event_id,drawType_id',
+        'draw',
+        'teamTie',
         'region1Name',
         'region2Name',
         'team1',
@@ -325,10 +326,14 @@ class HeadOfficeController extends Controller
 
 
 
+    app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures);
+    $fixtureGroups = app(\App\Services\VenueFixtureDisplayService::class)->groups($fixtures);
+
     return view('backend.headOffice.venue-fixtures', [
       'event' => $event,
       'venue' => $venue,
       'fixtures' => $fixtures,
+      'fixtureGroups' => $fixtureGroups,
     ]);
   }
 
