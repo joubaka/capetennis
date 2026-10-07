@@ -130,7 +130,12 @@ class SendBulkEmailJob implements ShouldQueue
             $transportStarted = true;
             $sent = $mailTransport->to($log->recipient_email)->sendNow($mailable);
             $transportAccepted = $sent !== null;
-            if ($sent === null) $transportStarted = false;
+            if ($sent === null) {
+                $transportStarted = false;
+                $log->markAsSkipped('Held before transport. Review the pending message in Communications before sending.');
+                $this->syncRankingReviewRecipient($log, 'skipped', 'Held before transport. Review before sending.');
+                return;
+            }
 
             // Mark as sent
             $log->recordTransportResult($sent, $mailTransport->getSymfonyTransport(), $mailer);
@@ -180,6 +185,9 @@ class SendBulkEmailJob implements ShouldQueue
         switch ($log->mail_type) {
             case 'tournament_announcement':
             case 'event_announcement':
+                if (! empty($payload['event_communication_batch_id']) && isset($payload['subject'], $payload['body'])) {
+                    return new \App\Mail\BulkEventMail($payload['subject'], $payload['body'], 'Cape Tennis', 'info@capetennis.co.za');
+                }
                 return (new \App\Mail\AnnouncementMail([
                     'event' => $payload['event_name'] ?? 'Event',
                     'title' => $payload['title'] ?? '',

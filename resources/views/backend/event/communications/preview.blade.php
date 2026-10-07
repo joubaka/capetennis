@@ -4,6 +4,8 @@
 @include('backend.event.partials.header', ['eventWorkspaceActive' => 'communications', 'eventWorkspaceRegionalOnly' => !app(\App\Services\EventCommunicationService::class)->managesWholeEvent($event, auth()->user())])
 <h4>{{ $event->name }} — Review emails</h4>
 <p>{{ count($batch->recipients) }} emails. Nothing is sent until you approve below.</p>
+@php($coveredPlayers = collect($batch->recipients)->flatMap(fn ($recipient) => $recipient['player_keys'] ?? [])->unique()->count())
+@if($coveredPlayers)<p>{{ $coveredPlayers }} distinct players covered; {{ count($batch->issues ?? []) }} missing contacts. Shared addresses receive one email.</p>@endif
 @if(($batch->options['scope'] ?? null)==='rankings')
 
 <div class="card card-body mb-3"><h5>Review ranked players</h5>

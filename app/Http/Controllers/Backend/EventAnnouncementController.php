@@ -108,7 +108,7 @@ class EventAnnouncementController extends Controller
       'id' => $announcement->id,
       'mail' => $mailStats,
       'mail_level' => $mailStats !== null && $mailStats['queued'] === 0 ? 'error' : (($mailStats['skipped'] ?? 0) || ($mailStats['failed'] ?? 0) ? 'warning' : 'success'),
-      'report_url' => $mailStats !== null ? route('backend.event-mail-log.index', $event) : null,
+      'report_url' => $mailStats !== null ? ($event->isTeam() ? route('backend.event-communications.index', ['event' => $event->id, 'batch' => \App\Models\EventCommunicationBatch::where('event_id', $event->id)->where('options->announcement_id', $announcement->id)->latest('id')->value('id'), 'report_scope' => 'batch']) : route('backend.event-mail-log.index', $event)) : null,
       'message' => $message,
     ]);
   }

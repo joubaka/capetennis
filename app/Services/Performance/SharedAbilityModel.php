@@ -5,7 +5,10 @@ namespace App\Services\Performance;
 /** Regularized Bradley-Terry fit. Edges are wins, not artificial matches. */
 class SharedAbilityModel
 {
-    public function fit(array $edges, string $cohort = ''): array
+    public const ORDINAL_WEIGHT = 0.2;
+    public const ORDINAL_TARGET_SPAN = 1.0;
+
+    public function fit(array $edges, string $cohort = '', array $ordinalFields = []): array
     {
         $edges = array_values(array_filter($edges, fn ($edge) => $edge['winner'] !== $edge['loser']
             && is_finite((float) $edge['weight']) && $edge['weight'] > 0));
@@ -36,8 +39,21 @@ class SharedAbilityModel
             $strength = array_fill_keys($members, 0.0);
             $links = array_fill_keys($members, []);
             foreach ($componentEdges as $edge) {
+                if ($edge['topology_only'] ?? false) { continue; }
                 $links[$edge['winner']][] = [$edge['loser'], 1, $edge['weight']];
                 $links[$edge['loser']][] = [$edge['winner'], 0, $edge['weight']];
+            }
+            $fieldLinks = array_fill_keys($members, []); $fieldSums = []; $fields = [];
+            usort($ordinalFields, fn ($a, $b) => strcmp($a['source_id'], $b['source_id']));
+            foreach ($ordinalFields as $field) {
+                $ids = $field['players']; $count = count($ids);
+                if ($count < 2 || $count > 256 || count(array_unique($ids)) !== $count || !is_finite($field['weight']) || $field['weight'] <= 0
+                    || count(array_intersect($ids, $members)) !== $count) { continue; }
+                $key = count($fields); $fields[$key] = $field; $fieldSums[$key] = 0.0;
+                foreach ($ids as $rank => $id) {
+                    $fieldLinks[$id][] = ['key' => $key, 'count' => $count,
+                        'target' => self::ORDINAL_TARGET_SPAN * ($count - 1 - 2 * $rank) / ($count - 1), 'weight' => $field['weight']];
+                }
             }
             $converged = false;
             for ($iteration = 0; $iteration < 100; $iteration++) {
@@ -49,8 +65,14 @@ class SharedAbilityModel
                         $gradient += $weight * ($outcome - $p);
                         $curvature += $weight * $p * (1 - $p);
                     }
+                    // Explicit ordinal field likelihood; these are not synthetic played matches.
+                    foreach ($fieldLinks[$id] as $field) {
+                        $gradient += $field['weight'] * ($field['target'] - $strength[$id] + $fieldSums[$field['key']] / $field['count']);
+                        $curvature += $field['weight'] * (1 - 1 / $field['count']);
+                    }
                     $step = max(-1, min(1, $gradient / $curvature));
                     $strength[$id] += $step;
+                    foreach ($fieldLinks[$id] as $field) { $fieldSums[$field['key']] += $step; }
                     $movement = max($movement, abs($step));
                 }
                 if ($movement < 0.000001) { $converged = true; break; }

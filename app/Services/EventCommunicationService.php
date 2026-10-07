@@ -40,6 +40,30 @@ class EventCommunicationService
             : $this->access->isEventManager($actor, $event);
     }
 
+    /** Current roster slots only; linking a profile replaces the imported contact. */
+    public function rosterEntries(Event $event, ?array $regionIds = null): Collection
+    {
+        $teams = Team::withoutGlobalScopes()
+            ->whereHas('category', fn ($q) => $q->where('event_id', $event->id))
+            ->when($regionIds !== null, fn ($q) => $q->whereIn('region_id', $regionIds))
+            ->with(['category.category', 'team_players.player.user', 'team_players.player.users', 'team_players_no_profile.profile.user', 'team_players_no_profile.profile.users'])->get();
+        $rows = collect();
+        foreach ($teams as $team) {
+            foreach ($team->team_players as $slot) {
+                if (! $slot->player) continue;
+                $key = 'player:'.$slot->player_id;
+                $rows->put($key.':'.$team->id, array_replace($this->row($team, $key, $slot->player->full_name, $this->contacts->emails($slot->player)->all(), (int) $slot->pay_status === 1 ? 'paid_confirmed' : 'not_registered'), ['gender' => $slot->player->gender]));
+            }
+            foreach ($team->team_players_no_profile as $slot) {
+                $key = $slot->player_profile ? 'player:'.$slot->player_profile : 'imported:'.$slot->id;
+                if ($rows->has($key.':'.$team->id)) continue;
+                $emails = $slot->player_profile ? $this->contacts->emails($slot->profile) : collect([mb_strtolower(trim((string) $slot->email))])->filter(fn ($email) => filter_var($email, FILTER_VALIDATE_EMAIL));
+                $rows->put($key.':'.$team->id, array_replace($this->row($team, $key, $slot->profile?->full_name ?? trim($slot->name.' '.$slot->surname), $emails->values()->all(), (int) $slot->pay_status === 1 ? 'paid_confirmed' : 'not_registered'), ['gender' => $slot->profile?->gender]));
+            }
+        }
+        return $rows->values();
+    }
+
     public function entries(Event $event, User $actor): Collection
     {
         $regions = $this->regions($event, $actor);
@@ -59,7 +83,7 @@ class EventCommunicationService
             }
             foreach ($team->team_players_no_profile as $slot) {
                 $emails = $slot->profile ? $this->contacts->emails($slot->profile) : collect();
-                if (filter_var($slot->email, FILTER_VALIDATE_EMAIL)) $emails->push(mb_strtolower(trim($slot->email)));
+                if (! $slot->player_profile && filter_var(trim((string) $slot->email), FILTER_VALIDATE_EMAIL)) $emails->push(mb_strtolower(trim($slot->email)));
                 $key = $slot->player_profile ? 'player:'.$slot->player_profile : 'imported:'.$slot->id;
                 if ($rows->has($key.':'.$team->id)) continue;
                 $rows->put($key.':'.$team->id, $this->row($team, $key, trim($slot->name.' '.$slot->surname), $emails->unique()->all(), (int) $slot->pay_status === 1 ? 'paid_confirmed' : 'not_registered'));
@@ -81,7 +105,6 @@ class EventCommunicationService
             if ($existing->isNotEmpty()) {
                 foreach ($existing as $id => $row) {
                     $emails = collect($row['emails']);
-                    if (filter_var($nomination->nominee_email, FILTER_VALIDATE_EMAIL)) $emails->push(mb_strtolower(trim($nomination->nominee_email)));
                     $rows->put($id, [...$row, 'nominated' => true, 'emails' => $emails->unique()->values()->all()]);
                 }
                 continue;
@@ -230,11 +253,24 @@ class EventCommunicationService
 
     private function row(Team $team, string $key, string $name, array $emails, string $status): array
     {
-        return ['key' => $key, 'name' => $name, 'emails' => $emails, 'status' => $status, 'team_id' => $team->id, 'region_id' => $team->region_id, 'category' => $team->category?->category?->name ?? '', 'team' => $team->name, 'nominated' => false];
+        return ['key' => $key, 'name' => $name, 'emails' => $emails, 'status' => $status, 'gender' => null, 'category_event_id' => $team->category_event_id, 'team_id' => $team->id, 'region_id' => $team->region_id, 'category' => $team->category?->category?->name ?? '', 'team' => $team->name, 'nominated' => false];
     }
 
     public function plan(Event $event, User $actor, array $options, string $subject, string $body): array
     {
+        if (($options['source'] ?? null) === 'roster_region_selection') {
+            $regions = $this->regions($event, $actor);
+            $region = $regions->firstWhere('id', $options['event_region_id']);
+            abort_unless($region, 403);
+            $recipients = app(\App\Services\TeamSelection\TeamSelectionEmailAudienceService::class)->resolve($event, $region, $options['selection']);
+            return $this->legacyPlan($event, $options, $recipients->map(fn ($recipient) => ['key' => $recipient['player_key'], 'name' => $recipient['name'], 'emails' => filled($recipient['email']) ? [$recipient['email']] : []]), $subject, $body);
+        }
+        if (($options['source'] ?? null) === 'roster_selection') {
+            $this->regions($event, $actor);
+            abort_unless($this->managesWholeEvent($event, $actor), 403);
+            $recipients = app(\App\Services\TeamSelection\TeamSelectionEmailAudienceService::class)->resolveForEvent($event, $options['selection']);
+            return $this->legacyPlan($event, $options, $recipients->map(fn ($recipient) => ['key' => $recipient['player_key'] ?? 'email:'.$recipient['email'], 'player_keys' => $recipient['player_keys'] ?? [$recipient['player_key'] ?? 'email:'.$recipient['email']], 'name' => $recipient['name'], 'emails' => filled($recipient['email']) ? [$recipient['email']] : []]), $subject, $body);
+        }
         if (($options['scope'] ?? null) === 'legacy_registered') {
             $this->regions($event, $actor);
             abort_unless($this->managesWholeEvent($event, $actor), 403);
@@ -273,6 +309,10 @@ class EventCommunicationService
         if (($options['scope'] ?? null) === 'rankings') return $this->rankingPlan($event, $actor, $options, $subject, $body);
         $regions = $this->regions($event, $actor);
         $rows = $this->entries($event, $actor);
+        if ($event->isTeam() && in_array($options['scope'] ?? null, ['all', 'region', 'team'], true)) {
+            $rosterKeys = $this->rosterEntries($event, $regions->pluck('region_id')->all())->map(fn ($row) => $row['team_id'].':'.$row['key']);
+            $rows = $rows->filter(fn ($row) => $rosterKeys->contains(($row['team_id'] ?? '').':'.$row['key']));
+        }
         $scope = $options['scope'];
         if ($scope === 'region') {
             abort_unless($regions->contains('region_id', (int) $options['region_id']), 403);
@@ -302,14 +342,14 @@ class EventCommunicationService
             default => true,
         })->values();
         $messages = collect();
-        $issues = $rows->filter(fn ($row) => empty($row['emails']))->map(fn ($row) => $row['name'].' — no valid email address')->values();
+        $issues = $rows->filter(fn ($row) => empty($row['emails']))->unique('key')->map(fn ($row) => $row['name'].' — no valid email address')->values();
         if (in_array($options['recipients'], ['players', 'both'], true)) {
             // Group siblings' personalised sections without dropping a player's information.
             $byEmail = collect();
             foreach ($rows as $row) foreach ($row['emails'] as $email) $byEmail->put($email, ($byEmail->get($email, collect()))->push($row));
             foreach ($byEmail as $email => $players) {
                 $text = $body."\n\nPlayer details:\n".$players->map(fn ($p) => $p['name'].' — '.($p['team'] ?: $p['category']).' — '.Str::headline($p['status']))->unique()->implode("\n");
-                $messages->push(['email' => $email, 'name' => $players->first()['name'], 'kind' => 'players', 'subject' => $subject, 'html' => nl2br(e($text))]);
+                $messages->push(['email' => $email, 'name' => $players->first()['name'], 'kind' => 'players', 'player_keys' => $players->pluck('key')->unique()->values()->all(), 'subject' => $subject, 'html' => nl2br(e($text))]);
             }
         }
         if (in_array($options['recipients'], ['managers', 'both'], true)) {
@@ -326,7 +366,7 @@ class EventCommunicationService
             }
         }
         if ($messages->isEmpty()) throw ValidationException::withMessages(['audience' => 'No matching recipient has a valid email address. Choose another audience or add contacts.']);
-        $plan = ['recipients' => $messages->sortBy([['email', 'asc'], ['subject', 'asc']])->values()->all(), 'issues' => $issues->unique()->sort()->values()->all()];
+        $plan = ['recipients' => $messages->sortBy([['email', 'asc'], ['subject', 'asc']])->values()->all(), 'issues' => $issues->sort()->values()->all()];
         $plan['fingerprint'] = $this->planFingerprint([$event->id, $options, $subject, $body, $plan]);
 
         return $plan;
@@ -337,13 +377,14 @@ class EventCommunicationService
         $recipients = collect();
         $issues = collect();
         foreach ($rows as $row) {
-            if (empty($row['emails'])) $issues->push($row['name'].' - no valid email address');
+            if (empty($row['emails'])) $issues->put($row['key'] ?? 'missing:'.$issues->count(), $row['name'].' - no valid email address');
             foreach ($row['emails'] as $email) {
-                $recipients->put($email, ['email' => $email, 'name' => $row['name'], 'kind' => 'players', 'subject' => $subject, 'html' => nl2br(e($body))]);
+                $previous = $recipients->get($email, []);
+                $recipients->put($email, ['email' => $email, 'name' => $row['name'], 'kind' => 'players', 'player_keys' => collect($previous['player_keys'] ?? [])->concat($row['player_keys'] ?? [$row['key'] ?? 'email:'.$email])->unique()->values()->all(), 'subject' => $subject, 'html' => nl2br(e($body))]);
             }
         }
         if ($recipients->isEmpty()) throw ValidationException::withMessages(['audience' => 'No matching recipient has a valid email address.']);
-        $plan = ['recipients' => $recipients->sortBy('email')->values()->all(), 'issues' => $issues->unique()->sort()->values()->all()];
+        $plan = ['recipients' => $recipients->sortBy('email')->values()->all(), 'issues' => $issues->sort()->values()->all()];
         $plan['fingerprint'] = $this->planFingerprint([$event->id, $options, $subject, $body, $plan]);
         return $plan;
     }
@@ -435,9 +476,21 @@ class EventCommunicationService
         $original = EventCommunicationBatch::where('event_id', $event->id)->where('created_by', $actor->id)->findOrFail($log->payload['event_communication_batch_id'] ?? 0);
         $this->checkRankingRetry($original, $actor);
         abort_unless($log->status === 'failed' && ! $log->sent_at && ! $log->accepted_at && (int) ($log->payload['event_id'] ?? 0) === (int) $event->id, 422);
-        $recipient = ['email' => $log->recipient_email, 'name' => $log->recipient_name, 'kind' => $log->payload['recipient_kind'] ?? 'players', 'subject' => $log->payload['subject'], 'html' => $log->payload['body']];
+        $recipient = ['email' => $log->recipient_email, 'name' => $log->recipient_name, 'kind' => $log->payload['recipient_kind'] ?? 'players', 'player_keys' => $log->payload['player_keys'] ?? [], 'subject' => $log->payload['subject'], 'html' => $log->payload['body']];
 
         return EventCommunicationBatch::create(['event_id' => $event->id, 'created_by' => $actor->id, 'token' => (string) Str::uuid(), 'subject' => $recipient['subject'], 'body' => '', 'options' => ['source' => 'retry', 'log_id' => $log->id, 'original_batch_id' => $original->id, 'ranking_origin_id' => $this->rankingOriginal($original)?->id], 'recipients' => [$recipient], 'issues' => [], 'fingerprint' => hash('sha256', json_encode($recipient, JSON_THROW_ON_ERROR))]);
+    }
+
+    public function previewAnnouncementRetry(Event $event, \App\Models\TeamSelectionRegionAnnouncement $announcement, User $actor): EventCommunicationBatch
+    {
+        $this->regions($event, $actor);
+        abort_unless((int) $announcement->event_id === (int) $event->id, 404);
+        $region = EventRegion::where('event_id', $event->id)->where('region_id', $announcement->region_id)->firstOrFail();
+        abort_unless($this->access->canManage($actor, $region), 403);
+        $logs = $announcement->emailLogs()->where('status', 'failed')->whereNull('accepted_at')->whereNull('sent_at')->orderBy('id')->get();
+        if ($logs->isEmpty()) throw ValidationException::withMessages(['preview' => 'There are no failed announcement emails to retry.']);
+        $recipients = $logs->map(fn ($log) => ['email' => $log->recipient_email, 'name' => $log->recipient_name, 'kind' => $log->payload['recipient_kind'] ?? 'players', 'player_keys' => $log->payload['player_keys'] ?? [], 'subject' => $log->payload['subject'], 'html' => $log->payload['body'], 'log_id' => $log->id])->all();
+        return EventCommunicationBatch::create(['event_id' => $event->id, 'created_by' => $actor->id, 'token' => (string) Str::uuid(), 'subject' => $announcement->title, 'body' => '', 'options' => ['source' => 'announcement_retry', 'regional_announcement_id' => $announcement->id, 'region_id' => $announcement->region_id], 'recipients' => $recipients, 'issues' => [], 'fingerprint' => $this->planFingerprint($recipients)]);
     }
 
     public function invitationLogs(Event $event, User $actor): \Illuminate\Database\Eloquent\Builder
@@ -488,6 +541,21 @@ class EventCommunicationService
             $batch = EventCommunicationBatch::whereKey($batch->id)->lockForUpdate()->firstOrFail();
             if ($batch->approved_at) return ['queued' => 0, 'duplicate' => true];
             if ($batch->created_at->lt(now()->subHour())) throw ValidationException::withMessages(['preview' => 'This preview expired. Review a fresh recipient and message preview.']);
+            if (($batch->options['source'] ?? null) === 'announcement_retry') {
+                $announcement = \App\Models\TeamSelectionRegionAnnouncement::where('event_id', $batch->event_id)->where('region_id', $batch->options['region_id'])->findOrFail($batch->options['regional_announcement_id']);
+                $region = EventRegion::where('event_id', $batch->event_id)->where('region_id', $announcement->region_id)->firstOrFail();
+                abort_unless($this->access->canManage($actor, $region), 403);
+                abort_unless(hash_equals($batch->fingerprint, $this->planFingerprint($batch->recipients)), 422);
+                foreach ($batch->recipients as $recipient) {
+                    $log = $announcement->emailLogs()->whereKey($recipient['log_id'])->lockForUpdate()->firstOrFail();
+                    $current = ['email' => $log->recipient_email, 'name' => $log->recipient_name, 'kind' => $log->payload['recipient_kind'] ?? 'players', 'player_keys' => $log->payload['player_keys'] ?? [], 'subject' => $log->payload['subject'], 'html' => $log->payload['body'], 'log_id' => $log->id];
+                    abort_unless($log->status === 'failed' && ! $log->sent_at && ! $log->accepted_at && (int) ($log->payload['event_id'] ?? 0) === (int) $batch->event_id && hash_equals($this->planFingerprint($recipient), $this->planFingerprint($current)), 422);
+                    $log->update(['status' => 'queued', 'queued_at' => now(), 'failed_at' => null, 'error_message' => null, 'retry_actor_id' => $actor->id, 'payload' => [...$log->payload, 'origin_batch_id' => $log->payload['origin_batch_id'] ?? $log->payload['event_communication_batch_id'], 'event_communication_batch_id' => $batch->id]]);
+                    \App\Jobs\SendBulkEmailJob::dispatch($log->id, true)->afterCommit();
+                }
+                $batch->update(['status' => 'approved', 'approved_at' => now()]);
+                return ['queued' => count($batch->recipients), 'duplicate' => false];
+            }
             if (($batch->options['source'] ?? null) === 'invitation_retry') {
                 $log = $this->invitationLogs($batch->event, $actor)->whereKey($batch->options['log_id'])->lockForUpdate()->firstOrFail();
                 $recipient = $this->invitationRetryRecipient($batch->event, $log);
@@ -507,7 +575,7 @@ class EventCommunicationService
                 $this->checkRankingRetry($batch, $actor);
                 $log = BulkEmailLog::whereKey($batch->options['log_id'])->lockForUpdate()->firstOrFail();
                 abort_unless($log->status === 'failed' && ! $log->sent_at && ! $log->accepted_at && (int) ($log->payload['event_id'] ?? 0) === (int) $batch->event_id && (int) ($log->payload['event_communication_batch_id'] ?? 0) === (int) $batch->options['original_batch_id'], 422);
-                $recipient = ['email' => $log->recipient_email, 'name' => $log->recipient_name, 'kind' => $log->payload['recipient_kind'] ?? 'players', 'subject' => $log->payload['subject'], 'html' => $log->payload['body']];
+                $recipient = ['email' => $log->recipient_email, 'name' => $log->recipient_name, 'kind' => $log->payload['recipient_kind'] ?? 'players', 'player_keys' => $log->payload['player_keys'] ?? [], 'subject' => $log->payload['subject'], 'html' => $log->payload['body']];
                 abort_unless(hash_equals($batch->fingerprint, hash('sha256', json_encode($recipient, JSON_THROW_ON_ERROR))), 422);
                 $log->update(['status' => 'queued', 'queued_at' => now(), 'failed_at' => null, 'error_message' => null, 'retry_actor_id' => $actor->id, 'payload' => [...$log->payload, 'origin_batch_id' => $log->payload['origin_batch_id'] ?? $batch->options['original_batch_id'], 'event_communication_batch_id' => $batch->id]]);
                 $batch->update(['status' => 'approved', 'approved_at' => now()]);
@@ -529,8 +597,13 @@ class EventCommunicationService
             $batch->update(['status' => 'approved', 'approved_at' => now()]);
             $draft?->update(['status' => 'approved', 'approved_at' => now()]);
             $stats = ['queued' => 0, 'failed' => 0, 'skipped' => 0, 'duplicate' => false];
+            $related = $batch;
+            if (! empty($batch->options['regional_announcement_id'])) {
+                $related = \App\Models\TeamSelectionRegionAnnouncement::where('event_id', $batch->event_id)->where('region_id', $batch->options['region_id'])->findOrFail($batch->options['regional_announcement_id']);
+                $related->update(['emailed_at' => now()]);
+            }
             foreach ($batch->recipients as $recipient) {
-                $result = $this->mailer->dispatch($batch->event->isInterprovincialTrials() ? 'trial_communication' : ($batch->event->isTeam() ? 'team_email' : 'bulk_event_mail'), $batch, [$recipient], ['event_id' => $batch->event_id, 'created_by' => $actor->id, 'region_id' => ($batch->options['scope'] ?? null) === 'region' ? $batch->options['region_id'] : null, 'team_id' => ($batch->options['scope'] ?? null) === 'team' ? $batch->options['team_id'] : null, 'event_communication_batch_id' => $batch->id, 'subject' => $recipient['subject'], 'body' => $recipient['html'], 'recipient_kind' => $recipient['kind'], 'from_name' => $actor->name, 'reply_to' => $actor->email, 'manual_retry_only' => true], true);
+                $result = $this->mailer->dispatch($batch->event->isInterprovincialTrials() ? 'trial_communication' : ($batch->event->isTeam() ? 'team_email' : 'bulk_event_mail'), $related, [$recipient], ['event_id' => $batch->event_id, 'created_by' => $actor->id, 'region_id' => ($batch->options['scope'] ?? null) === 'region' ? $batch->options['region_id'] : null, 'team_id' => ($batch->options['scope'] ?? null) === 'team' ? $batch->options['team_id'] : null, 'event_communication_batch_id' => $batch->id, 'subject' => $recipient['subject'], 'body' => $recipient['html'], 'recipient_kind' => $recipient['kind'], 'player_keys' => $recipient['player_keys'] ?? [], 'from_name' => $actor->name, 'reply_to' => $actor->email, 'manual_retry_only' => true], true);
                 foreach (['queued', 'failed', 'skipped'] as $outcome) {
                     $stats[$outcome] += $result[$outcome] ?? 0;
                 }

@@ -49,52 +49,22 @@ class TeamSelectionEmailAudienceService
             ]);
         }
 
-        $activeImportId = TeamSelectionImport::query()
-            ->where('event_id', $event->id)
-            ->where('region_id', $eventRegion->region_id)
-            ->whereIn('status', self::ACTIVE_IMPORT_STATUSES)
-            ->latest('id')
-            ->value('id');
-
-        if (! $activeImportId) {
-            throw ValidationException::withMessages([
-                'audience_status' => 'This region has no current team-selection roster to email.',
-            ]);
-        }
-
-        $invitations = TeamSelectionInvitation::query()
-            ->with(['player.user', 'player.users', 'team.category.category'])
-            ->where('event_id', $event->id)
-            ->where('region_id', $eventRegion->region_id)
-            ->where('import_id', $activeImportId)
-            ->whereHas('team', fn ($query) => $query->whereIn('category_event_id', $categoryIds))
-            ->get();
-
+        $roster = app(\App\Services\EventCommunicationService::class)->rosterEntries($event, [(int) $eventRegion->region_id])->whereIn('category_event_id', $categoryIds);
+        if (! empty($filters['roster_keys'])) $roster = $roster->filter(fn ($row) => empty($row['emails']) || in_array($row['team_id'].':'.$row['key'], $filters['roster_keys'], true));
         $gender = $filters['gender'] ?? 'any';
-        if ($gender !== 'any') {
-            $genderId = $gender === 'boys' ? 1 : 2;
-            $invitations = $invitations->filter(fn (TeamSelectionInvitation $invitation) => (int) $invitation->player?->gender === $genderId);
-        }
-
         $audience = $filters['audience_status'] ?? 'active';
-        $invitations = $invitations->filter(fn (TeamSelectionInvitation $invitation) => $this->matchesStatus($invitation, $audience));
+        $invitationIds = TeamSelectionInvitation::where('event_id', $event->id)->where('region_id', $eventRegion->region_id)->get()->keyBy(fn ($invitation) => $invitation->team_id.':player:'.$invitation->player_id);
+        return $roster->filter(function ($row) use ($gender, $audience, $invitationIds) {
+            if ($gender !== 'any' && (int) $row['gender'] !== ($gender === 'boys' ? 1 : 2)) return false;
+            if ($audience === 'active') return true;
+            $invitation = $invitationIds->get($row['team_id'].':'.$row['key']);
+            if ($invitation) return $this->matchesStatus($invitation, $audience);
+            if ($audience === 'entered') return $row['status'] === 'paid_confirmed';
+            if ($audience === 'not_entered') return $row['status'] !== 'paid_confirmed';
+            return $invitation ? $this->matchesStatus($invitation, $audience) : $audience === 'not_invited';
+        })->flatMap(fn ($row) => collect($row['emails'] ?: [''])->map(fn ($email) => ['invitation_id' => $invitationIds->get($row['team_id'].':'.$row['key'])?->id ?? null, 'player_key' => $row['key'], 'team_id' => $row['team_id'], 'email' => $email, 'name' => $this->displayLabel($row['name']), 'category' => $this->displayLabel($row['category']), 'status' => $row['status']]))->sortBy([['category', 'asc'], ['name', 'asc']])->values();
 
-        return $invitations
-            ->map(function (TeamSelectionInvitation $invitation): array {
-                return [
-                    'invitation_id' => (int) $invitation->id,
-                    'team_id' => (int) $invitation->team_id,
-                    'email' => (string) $this->contacts->primaryEmail($invitation->player),
-                    'name' => $this->displayLabel((string) ($invitation->player?->full_name ?? 'Player')),
-                    'category' => $this->displayLabel((string) ($invitation->team?->category?->category?->name ?? $invitation->team?->name ?? 'Age group')),
-                    'status' => $invitation->status,
-                ];
-            })
-            ->filter(fn (array $recipient) => filled($recipient['email']))
-            ->map(fn (array $recipient) => [...$recipient, 'email' => mb_strtolower(trim($recipient['email']))])
-            ->unique('email')
-            ->sortBy([['category', 'asc'], ['name', 'asc']])
-            ->values();
+
     }
 
     /**
@@ -120,6 +90,7 @@ class TeamSelectionEmailAudienceService
         }
 
         $teamIds = collect($filters['team_ids'] ?? [])->map(fn ($id) => (int) $id)->filter()->unique()->sort()->values();
+        $rosterKeys = collect($filters['roster_keys'] ?? [])->unique()->values();
         $invitationIds = collect($filters['invitation_ids'] ?? [])->map(fn ($id) => (int) $id)->filter()->unique()->sort()->values();
         if ($teamIds->isNotEmpty()) {
             $validTeamIds = Team::query()->withoutGlobalScopes()
@@ -146,6 +117,11 @@ class TeamSelectionEmailAudienceService
             throw ValidationException::withMessages(['category_event_ids' => 'One or more selected age groups do not belong to the selected event regions.']);
         }
 
+        if ($rosterKeys->isNotEmpty()) {
+            $validKeys = app(\App\Services\EventCommunicationService::class)->rosterEntries($event, $eventRegions->pluck('region_id')->all())->whereIn('team_id', $teamIds)->map(fn ($row) => $row['team_id'].':'.$row['key']);
+            if ($rosterKeys->diff($validKeys)->isNotEmpty()) throw ValidationException::withMessages(['roster_keys' => 'One or more selected players do not belong to the selected teams and regions.']);
+        }
+
         $recipients = $regionIds->flatMap(function (int $eventRegionId) use ($event, $eventRegions, $filters, $categoryIds, $teamIds): Collection {
             $eventRegion = $eventRegions->get($eventRegionId);
             $regionalCategoryIds = Team::query()->withoutGlobalScopes()
@@ -155,13 +131,6 @@ class TeamSelectionEmailAudienceService
             if ($regionalCategoryIds->isEmpty()) {
                 return collect();
             }
-            $hasActiveImport = TeamSelectionImport::query()->where('event_id', $event->id)
-                ->where('region_id', $eventRegion->region_id)
-                ->whereIn('status', self::ACTIVE_IMPORT_STATUSES)->exists();
-            if (! $hasActiveImport) {
-                return collect();
-            }
-
             return $this->resolve($event, $eventRegion, [...$filters, 'category_event_ids' => $regionalCategoryIds->all()])
                 ->when($teamIds->isNotEmpty(), fn (Collection $items) => $items->whereIn('team_id', $teamIds))
                 ->map(fn (array $recipient): array => [
@@ -184,11 +153,12 @@ class TeamSelectionEmailAudienceService
             $recipients = $recipients->whereIn('invitation_id', $invitationIds);
         }
 
-        return $recipients->groupBy('email')->map(function (Collection $matches): array {
+        return $recipients->groupBy(fn ($recipient) => $recipient['email'] ?: $recipient['player_key'] ?? $recipient['name'])->map(function (Collection $matches): array {
             $first = $matches->first();
 
             return [
                 ...$first,
+                'player_keys' => $matches->flatMap(fn ($match) => $match['player_keys'] ?? (isset($match['player_key']) ? [$match['player_key']] : []))->unique()->values()->all(),
                 'category' => $matches->pluck('category')->unique()->sort()->implode(', '),
                 'region' => $matches->pluck('region')->unique()->sort()->implode(', '),
             ];
@@ -204,6 +174,7 @@ class TeamSelectionEmailAudienceService
             'event_region_ids' => collect($filters['event_region_ids'])->map(fn ($id) => (int) $id)->unique()->sort()->values()->all(),
             'category_event_ids' => collect($filters['category_event_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->sort()->values()->all(),
             'team_ids' => collect($filters['team_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->sort()->values()->all(),
+            'roster_keys' => collect($filters['roster_keys'] ?? [])->unique()->sort()->values()->all(),
             'invitation_ids' => collect($filters['invitation_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->sort()->values()->all(),
             'series_ranking_ids' => collect($filters['series_ranking_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->sort()->values()->all(),
             'ranking_sources' => $recipients->pluck('source_identity')->filter()->unique()->sort()->values()->all(),
@@ -261,12 +232,13 @@ class TeamSelectionEmailAudienceService
             ))->values()];
         });
 
+        $rosterByTeam = app(\App\Services\EventCommunicationService::class)->rosterEntries($event, $eventRegions->pluck('region_id')->all())->groupBy('team_id');
         $mode = $filters['audience_mode'] ?? 'roster';
 
         return $teams->filter(fn (Team $team) => $mode === 'ranking'
             ? $rankingRowsByTeam->get($team->id)?->isNotEmpty()
-            : $activeTeamIds->contains($team->id))
-            ->map(function (Team $team) use ($eventRegions, $activeImports, $rankingRowsByTeam): array {
+            : $rosterByTeam->has($team->id))
+            ->map(function (Team $team) use ($eventRegions, $activeImports, $rankingRowsByTeam, $rosterByTeam): array {
                 $region = $eventRegions->firstWhere('region_id', $team->region_id);
                 $players = TeamSelectionInvitation::query()->with(['player.user', 'player.users'])
                     ->where('event_id', $team->category?->event_id)->where('team_id', $team->id)
@@ -277,6 +249,9 @@ class TeamSelectionEmailAudienceService
                         'status' => $invitation->status,
                         'has_email' => filled($this->contacts->primaryEmail($invitation->player)),
                     ])->values();
+                if ($rosterByTeam->has($team->id)) {
+                    $players = $rosterByTeam->get($team->id)->map(fn ($row) => ['roster_key' => $team->id.':'.$row['key'], 'name' => $this->displayLabel($row['name']), 'status' => $row['status'], 'has_email' => ! empty($row['emails'])])->values();
+                }
                 $rankingStates = $this->rankingEventStates($team, $activeImports, $rankingRowsByTeam->get($team->id, collect())->pluck('player_id'));
                 $rankingPlayers = $rankingRowsByTeam->get($team->id, collect())->map(fn (SeriesRanking $row): array => [
                     'series_ranking_id' => (int) $row->id,

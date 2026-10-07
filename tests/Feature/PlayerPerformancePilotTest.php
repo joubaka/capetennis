@@ -576,7 +576,7 @@ class PlayerPerformancePilotTest extends TestCase
         $this->assertSame('2026-10-05', $scheduled['last_direct_match']);
         $this->assertSame(0, $scheduled['proxy_dated_matches']);
         $historical = $service->forPlayer($player, CarbonImmutable::parse('2026-10-01'))['headline'];
-        $this->assertSame('2026-01-01', $historical['last_direct_match']);
+        $this->assertNull($historical);
         $other = $this->field(Category::factory()->create(['name' => 'u12 Boys']), [1,2], ['start_date' => '2026-10-01', 'end_date' => '2026-10-02']);
         $other['rows'][0]['reg']->players()->sync([$player->id]);
         $this->match($other);
@@ -598,6 +598,97 @@ class PlayerPerformancePilotTest extends TestCase
         $this->assertSame($before['effective_played'], $after['effective_played']);
         $this->assertSame('2025-11-30', $after['last_direct_match']);
         $this->assertSame(0, $after['recent_played']);
+    }
+
+    public function test_shared_v4_rank_constraints_preserve_every_rank_and_do_not_duplicate_connected_played_results(): void
+    {
+        $field = $this->field(Category::factory()->create(['name' => 'u10 Boys']), range(1,7));
+        $service = app(\App\Services\Performance\PlayerSharedAbilityService::class); $asOf = CarbonImmutable::parse('2026-10-06');
+        $scores = [];
+        foreach ($field['rows'] as $row) {
+            $estimate = $service->forPlayer($row['players']->first(), $asOf)['headline'];
+            $scores[] = $estimate['score']; $this->assertSame(0, $estimate['played']); $this->assertLessThanOrEqual(15, $estimate['confidence_index']);
+        }
+        for ($i=0; $i<6; $i++) { $this->assertGreaterThan($scores[$i+1], $scores[$i]); }
+        $this->assertSame(50.0, $scores[3]);
+        $pair = $this->field(Category::factory()->create(['name' => 'u12 Boys']), [1,2]);
+        $fixture = $this->match($pair); $player = $pair['rows'][0]['players']->first();
+        $withFinish = $service->forPlayer($player, $asOf)['headline']['score'];
+        \Illuminate\Support\Facades\DB::table('events')->where('id', $pair['event']->id)->update(['results_published' => false]);
+        $this->assertSame($withFinish, $service->forPlayer($player, $asOf)['headline']['score']);
+    }
+
+    public function test_shared_legacy_status_zero_requires_complete_verified_public_scores_without_changing_v2_or_records(): void
+    {
+        $field = $this->field(Category::factory()->create(['name' => 'Boys U/13']), [1,2], ['results_published' => false]);
+        $fixture = $this->match($field, [[6,4],[6,3]], ['match_status' => 0], '');
+        $fixture->draw->settings->update(['num_sets' => 3]);
+        $player = $field['rows'][0]['players']->first(); $asOf = CarbonImmutable::parse('2026-10-06');
+        $shared = app(\App\Services\Performance\PlayerSharedAbilityService::class);
+        $estimate = $shared->forPlayer($player, $asOf)['headline'];
+        $this->assertSame('u13 boys', $estimate['cohort']); $this->assertSame(1, $estimate['played']);
+        $this->assertSame(0, $fixture->fresh()->match_status);
+        $this->assertNull(app(PlayerPerformancePilotService::class)->forPlayer($player, $asOf)['headline']);
+        $fixture->fixtureResults()->where('set_nr',2)->delete();
+        $this->assertNull($shared->forPlayer($player, $asOf)['headline']);
+        \App\Models\FixtureResult::create(['fixture_id' => $fixture->id, 'set_nr' => 2, 'registration1_score' => 6, 'registration2_score' => 3]);
+        $fixture->update(['winner_registration' => $field['rows'][1]['reg']->id]);
+        $this->assertNull($shared->forPlayer($player, $asOf)['headline']);
+        $fixture->update(['winner_registration' => $field['rows'][0]['reg']->id]);
+        \Illuminate\Support\Facades\DB::table('draws')->where('id', $fixture->draw_id)->update(['published' => false]);
+        $this->assertNull($shared->forPlayer($player, $asOf)['headline']);
+    }
+
+    private function legacyTeamField(bool $missingCategory = true): array
+    {
+        $field = $this->field(Category::factory()->create(['name' => 'u10 Boys']), [1,2], ['results_published' => false, 'eventType' => 7]);
+        $first = $field['rows'][0]['players']->first(); $second = $field['rows'][1]['players']->first();
+        $homeRegion = \App\Models\TeamRegion::create(['region_name' => 'Home region']);
+        $awayRegion = \App\Models\TeamRegion::create(['region_name' => 'Away region']);
+        $field['event']->regions()->attach([$homeRegion->id => ['ordering' => 1], $awayRegion->id => ['ordering' => 2]]);
+        $home = \App\Models\Team::factory()->create(['name' => 'u10 Boys', 'year' => 2026, 'region_id' => $homeRegion->id, 'category_event_id' => $missingCategory ? null : $field['ce']->id]);
+        $away = \App\Models\Team::factory()->create(['name' => 'u10 Boys', 'year' => 2026, 'region_id' => $awayRegion->id, 'category_event_id' => $missingCategory ? null : $field['ce']->id]);
+        \App\Models\TeamPlayer::create(['team_id' => $home->id, 'player_id' => $first->id, 'rank' => 1]);
+        \App\Models\TeamPlayer::create(['team_id' => $away->id, 'player_id' => $second->id, 'rank' => 1]);
+        $draw = \App\Models\Draw::factory()->create(['event_id' => $field['event']->id, 'category_event_id' => null, 'drawName' => 'u10 Boys Singles', 'published' => true]);
+        $fixture = \App\Models\TeamFixture::create(['draw_id' => $draw->id, 'fixture_type' => null, 'numSets' => 1, 'match_status' => 0, 'match_nr' => 1, 'round_nr' => 1, 'rank_nr' => 1, 'region1' => $homeRegion->id, 'region2' => $awayRegion->id]);
+        $row = \App\Models\TeamFixturePlayer::create(['team_fixture_id' => $fixture->id, 'slot_no' => 1, 'team1_id' => $first->id, 'team2_id' => $second->id]);
+        \App\Models\TeamFixtureResult::create(['team_fixture_id' => $fixture->id, 'set_nr' => 1, 'team1_score' => 6, 'team2_score' => 4]);
+        return compact('field','first','second','home','away','draw','fixture','row');
+    }
+
+    public function test_shared_team_legacy_identity_links_require_event_region_year_unique_roster_and_exact_cohort(): void
+    {
+        $data = $this->legacyTeamField(); $service = app(\App\Services\Performance\PlayerSharedAbilityService::class); $asOf = CarbonImmutable::parse('2026-10-06');
+        $estimate = $service->forPlayer($data['first'], $asOf)['headline'];
+        $this->assertSame('u10 boys', $estimate['cohort']); $this->assertSame(1, $estimate['played']);
+        $this->assertSame(0, $data['fixture']->fresh()->match_status);
+        $data['away']->update(['name' => 'u12 Girls']);
+        $this->assertNull($service->forPlayer($data['first'], $asOf)['headline']);
+        $data['away']->update(['name' => 'u10 Boys', 'year' => 2025]);
+        $this->assertNull($service->forPlayer($data['first'], $asOf)['headline']);
+        $data['away']->update(['year' => 2026]);
+        $duplicate = \App\Models\Team::factory()->create(['name' => 'u10 Boys', 'year' => 2026, 'region_id' => $data['home']->region_id, 'category_event_id' => null]);
+        \App\Models\TeamPlayer::create(['team_id' => $duplicate->id, 'player_id' => $data['first']->id, 'rank' => 1]);
+        $this->assertNull($service->forPlayer($data['first'], $asOf)['headline']);
+        $duplicate->delete();
+        $data['field']['event']->regions()->detach($data['away']->region_id);
+        $this->assertNull($service->forPlayer($data['first'], $asOf)['headline']);
+    }
+
+    public function test_shared_team_actual_event_category_fallback_and_publication_correction_are_read_only(): void
+    {
+        $data = $this->legacyTeamField(false); $service = app(\App\Services\Performance\PlayerSharedAbilityService::class); $asOf = CarbonImmutable::parse('2026-10-06');
+        $this->assertSame(1, $service->forPlayer($data['first'], $asOf)['headline']['played']);
+        $this->assertNull($data['draw']->fresh()->category_event_id);
+        \Illuminate\Support\Facades\DB::table('draws')->where('id', $data['draw']->id)->update(['published' => false]);
+        $this->assertNull($service->forPlayer($data['first'], $asOf)['headline']);
+        \Illuminate\Support\Facades\DB::table('draws')->where('id', $data['draw']->id)->update(['published' => true]);
+        $tie = \App\Models\TeamTie::factory()->published()->create(['draw_id' => $data['draw']->id, 'home_team_id' => $data['home']->id, 'away_team_id' => $data['away']->id]);
+        $data['fixture']->update(['team_tie_id' => $tie->id, 'fixture_type' => 1]);
+        $this->assertSame(1, $service->forPlayer($data['first'], $asOf)['headline']['played']);
+        \Illuminate\Support\Facades\DB::table('team_ties')->where('id',$tie->id)->update(['published_at' => null]);
+        $this->assertNull($service->forPlayer($data['first'], $asOf)['headline']);
     }
 
 }

@@ -61,6 +61,10 @@ $composeOptions = session('compose_options', []);
 @foreach(['all'=>'All event emails','invitations'=>'Invitations only'] as $scopeKey=>$scopeLabel)<a class="btn btn-outline-primary" href="{{ route('backend.event-communications.index',array_merge(['event'=>$event],request()->except(['history_page','report_scope','batch']),['report_scope'=>$scopeKey])) }}#email-history" @if($reportContext['report_scope']===$scopeKey) aria-current="page" @endif>{{ $scopeLabel }}</a>@endforeach
 @if($batch)<a class="btn btn-outline-primary" href="{{ route('backend.event-communications.index',array_merge(['event'=>$event],request()->except(['history_page','report_scope']),['batch'=>$batch->id,'report_scope'=>'batch'])) }}#email-history" @if($reportContext['report_scope']==='batch') aria-current="page" @endif>This batch only</a>@endif
 </div>
+@if($batch)
+@php($coveredPlayers = collect($batch->recipients)->flatMap(fn ($recipient) => $recipient['player_keys'] ?? [])->unique()->count())
+@if($coveredPlayers)<p>Selected batch: {{ $coveredPlayers }} distinct players covered; {{ $batch->serverAcceptedPlayerCount() }} players with a mail-server-accepted contact; {{ count($batch->recipients) }} emails; {{ count($batch->issues ?? []) }} missing contacts.</p>@endif
+@endif
 @if($batch && $batch->approved_at && $summary && !$summary['all_server_accepted'])<p class="text-muted">Mail-server acceptance is not yet confirmed for every approved email.</p>@endif
 @include('backend.partials.mail-report',['report'=>$historyReport,'reportEvent'=>$event,'reportTitle'=>$reportContext['report_scope']==='all' ? 'All event email history' : ($reportContext['report_scope']==='invitations' ? 'Invitation email history' : 'Selected batch email history')])
 <details class="card card-body mb-4" @if($drafts->isNotEmpty()) open @endif><summary class="h5 mb-0">Messages awaiting review</summary><div class="mt-3">

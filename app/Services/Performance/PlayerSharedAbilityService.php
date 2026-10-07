@@ -6,10 +6,10 @@ use App\Models\{Event, Player};
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\{Cache, DB, Schema};
 
-/** Private v3 shared-opponent estimates. No saved financial/player/ranking state. */
+/** Private v4 shared-opponent estimates. No saved financial/player/ranking state. */
 class PlayerSharedAbilityService
 {
-    public const VERSION = 3;
+    public const VERSION = 4;
     private const EVENT_CAP = 1000;
     private const PLAYER_CAP = 5000;
     private const EDGE_CAP = 50000;
@@ -77,12 +77,18 @@ class PlayerSharedAbilityService
     {
         $hash = hash_init('sha256');
         foreach (['events' => ['id', 'published', 'results_published', 'start_date', 'end_date', 'eventType'],
-            'draws' => ['id', 'published', 'event_id', 'category_event_id']] as $table => $columns) {
+            'draws' => ['id', 'published', 'event_id', 'category_event_id', 'team_scoring_rules'],
+            'team_ties' => ['id', 'draw_id', 'home_team_id', 'away_team_id', 'published_at', 'status'],
+            'teams' => ['id', 'name', 'year', 'region_id', 'category_event_id'],
+            'team_players' => ['id', 'team_id', 'player_id'],
+            'team_fixture_players' => ['id', 'team_fixture_id', 'team1_id', 'team2_id', 'team1_no_profile_id', 'team2_no_profile_id', 'participant_snapshot'],
+            'team_fixtures' => ['id', 'draw_id', 'team_tie_id', 'fixture_type', 'numSets', 'scheduled_at', 'region1', 'region2', 'rubber_code', 'match_status'],
+            'event_regions' => ['id', 'event_id', 'region_id']] as $table => $columns) {
             foreach (DB::table($table)->select($columns)->orderBy('id')->lazyById(500) as $row) {
                 hash_update($hash, $table.json_encode($row));
             }
         }
-        foreach (['category_results', 'category_event_registrations', 'category_events', 'categories', 'fixtures', 'fixture_results', 'player_registrations', 'players', 'draw_settings', 'order_of_plays'] as $table) {
+        foreach (['category_results', 'category_event_registrations', 'category_events', 'categories', 'fixtures', 'fixture_results', 'player_registrations', 'players', 'draw_settings', 'order_of_plays', 'team_fixture_results'] as $table) {
             $query = DB::table($table);
             $idColumn = $table === 'player_registrations' ? 'registration_id' : 'id';
             $stats = $query->selectRaw('COUNT(*) as row_count, MAX('.$idColumn.') as max_id')->first();
@@ -98,13 +104,15 @@ class PlayerSharedAbilityService
         // Compact legacy age/division tokens have an exact age + A/B + gender grammar.
         $label = preg_replace('/\bu\s*\/?\s*(\d{1,2})\s*[ab](?=\s+(?:boys|girls)\b)/u', 'u$1', $label);
         $label = preg_replace('/\bu\s*\/?\s*(\d{1,2})\b/u', 'u$1', $label);
+        $label = preg_replace('/^(masters · )?(boys|girls) (u\d{1,2})(?= |$)/u', '$1$3 $2', $label);
+        $label = preg_replace('/\b(boy|girl)(?= |$)/u', '$1s', $label);
         return trim($label, " -–");
     }
 
     private function build(CarbonImmutable $asOf): array
     {
         $builtAt = CarbonImmutable::now('Africa/Johannesburg')->format('Y-m-d H:i:s').' SAST';
-        $graphs = []; $names = []; $eventsSeen = 0; $edgeCount = 0; $scannedMatches = 0; $seenSources = [];
+        $graphs = []; $ordinalFields = []; $names = []; $eventsSeen = 0; $edgeCount = 0; $scannedMatches = 0; $seenSources = [];
         $pilot = app(PlayerPerformancePilotService::class);
         $history = app(PlayerPerformanceHistoryService::class);
         $events = Event::query()->with('eventTypeModel')->whereDate('start_date', '<=', $asOf->toDateString())
@@ -114,6 +122,7 @@ class PlayerSharedAbilityService
             if (\App\Models\CategoryEvent::query()->where('event_id', $event->id)->count() > self::EVENT_FIELD_CAP) { return $this->withheld($builtAt); }
             if (CarbonImmutable::parse($event->end_date)->greaterThan($asOf)) { $event->end_date = $asOf->toDateString(); }
             $weight = max(PHP_FLOAT_MIN, pow(0.5, max(0, CarbonImmutable::parse($event->end_date)->diffInDays($asOf, false)) / 180));
+            $eventPlayed = []; $eventOrdinal = [];
             $definitionCounts = [];
             foreach (\App\Models\CategoryEvent::query()->with('category')->where('event_id', $event->id)->get() as $definition) {
                 $division = $pilot->division($definition->category->name);
@@ -132,41 +141,51 @@ class PlayerSharedAbilityService
                 $fields[$cohort][$fieldKey]['rows'][] = $row;
             }
             foreach ($fields as $cohort => $cohortFields) {
-                $inferences = [];
+                $orderedFields = [];
                 foreach ($cohortFields as $field) {
-                    $ordered = collect($field['rows'])->sortBy('position')->values();
-                    for ($index = 0; $index < $ordered->count() - 1; $index++) {
-                        $inferences[] = ['winner' => $ordered[$index]['players'][0]['id'], 'loser' => $ordered[$index+1]['players'][0]['id'], 'kind' => 'finish_order'];
-                    }
+                    $orderedFields[] = collect($field['rows'])->sortBy('position')->map(fn ($row) => $row['players'][0]['id'])->values()->all();
                 }
-                $a = collect($cohortFields)->where('tier', 'A');
-                $b = collect($cohortFields)->where('tier', 'B');
+                $a = collect($cohortFields)->where('tier', 'A'); $b = collect($cohortFields)->where('tier', 'B');
+                $divisionBoundary = null;
                 if ($a->count() === 1 && $b->count() === 1 && count($cohortFields) === 2 && ($definitionCounts[$cohort] ?? 0) === 2) {
-                    $lastA = collect($a->first()['rows'])->sortBy('position')->last();
-                    $firstB = collect($b->first()['rows'])->sortBy('position')->first();
-                    $aIds = collect($a->first()['rows'])->map(fn ($row) => $row['players'][0]['id']);
-                    $bIds = collect($b->first()['rows'])->map(fn ($row) => $row['players'][0]['id']);
-                    if ($aIds->intersect($bIds)->isEmpty()) {
-                        $inferences[] = ['winner' => $lastA['players'][0]['id'], 'loser' => $firstB['players'][0]['id'], 'kind' => 'division_order'];
+                    $aIds = collect($a->first()['rows'])->sortBy('position')->map(fn ($row) => $row['players'][0]['id'])->values();
+                    $bIds = collect($b->first()['rows'])->sortBy('position')->map(fn ($row) => $row['players'][0]['id'])->values();
+                    if ($aIds->intersect($bIds)->isEmpty() && $aIds->count() + $bIds->count() <= self::EVENT_FIELD_CAP) {
+                        $divisionBoundary = $aIds->count() - 1;
+                        $orderedFields = [$aIds->merge($bIds)->all()];
                     }
                 }
-                foreach ($inferences as $index => $edge) {
-                    $edge += ['weight' => 0.2 * $weight / count($inferences), 'source_id' => 'finish:'.$event->id.':'.$cohort.':'.$index];
-                    $this->addEdge($graphs, $cohort, $edge, $event);
-                    if (++$edgeCount > self::EDGE_CAP) { return $this->withheld($builtAt); }
+                foreach ($orderedFields as $fieldIndex => $ids) {
+                    $source = 'ordinal:'.$event->id.':'.$cohort.':'.$fieldIndex;
+                    $eventOrdinal[$cohort][] = ['players' => $ids, 'weight' => SharedAbilityModel::ORDINAL_WEIGHT * $this->decay(CarbonImmutable::parse($event->start_date)->toDateString(), $asOf), 'source_id' => $source];
+                    for ($rank = 0; $rank < count($ids) - 1; $rank++) {
+                        $edge = ['winner' => $ids[$rank], 'loser' => $ids[$rank + 1], 'kind' => $divisionBoundary === $rank ? 'division_order' : 'finish_order',
+                            'weight' => $eventOrdinal[$cohort][array_key_last($eventOrdinal[$cohort])]['weight'], 'source_id' => $source.':'.$rank, 'topology_only' => true];
+                        $this->addEdge($graphs, $cohort, $edge, $event);
+                        if (++$edgeCount > self::EDGE_CAP) { return $this->withheld($builtAt); }
+                    }
                 }
             }
-            foreach ($history->individualMatches($event, null, $pilot, $asOf) as $match) {
+            try {
+            foreach ($this->playedSources($history, $event, $pilot, $asOf) as $match) {
                 if (++$scannedMatches > self::EDGE_CAP) { return $this->withheld($builtAt); }
                 if ($match['reason'] !== null || $match['discipline'] !== 'singles') { continue; }
-                $source = 'match:'.$match['fixture_id'];
+                $source = ($match['source'] === 'Team match' ? 'team-match:' : 'match:').$match['fixture_id'];
                 if (isset($seenSources[$source])) { continue; }
                 $seenSources[$source] = true;
-                $cohort = $this->cohort($match['cohort']);
+                $cohort = $match['source'] === 'Team match' ? ($match['shared_cohort'] ?? '') : $this->cohort($match['cohort']);
+                if ($cohort === '') { continue; }
                 $winner = $match['winner_side'] === 1 ? $match['player1_id'] : $match['player2_id'];
                 $loser = $match['winner_side'] === 1 ? $match['player2_id'] : $match['player1_id'];
-                $this->addEdge($graphs, $cohort, ['winner' => $winner, 'loser' => $loser, 'weight' => $weight, 'kind' => 'played', 'source_id' => $source, 'confidence_date' => $match['confidence_date'] <= $asOf->toDateString() ? $match['confidence_date'] : CarbonImmutable::parse($event->start_date)->toDateString(), 'confidence_date_basis' => $match['confidence_date_basis']], $event);
+                $this->addEdge($graphs, $cohort, ['winner' => $winner, 'loser' => $loser, 'weight' => $this->decay($match['confidence_date'], $asOf), 'kind' => 'played', 'source_id' => $source, 'confidence_date' => $match['confidence_date'] <= $asOf->toDateString() ? $match['confidence_date'] : CarbonImmutable::parse($event->start_date)->toDateString(), 'confidence_date_basis' => $match['confidence_date_basis']], $event);
+                $eventPlayed[$cohort][$winner][$loser] = true; $eventPlayed[$cohort][$loser][$winner] = true;
                 if (++$edgeCount > self::EDGE_CAP) { return $this->withheld($builtAt); }
+            }
+            } catch (\OverflowException) { return $this->withheld($builtAt); }
+            foreach ($eventOrdinal as $cohort => $eventFields) {
+                foreach ($eventFields as $field) {
+                    if (!$this->coveredByPlayed($field['players'], $eventPlayed[$cohort] ?? [])) { $ordinalFields[$cohort][] = $field; }
+                }
             }
             $uniqueIds = [];
             foreach ($graphs as $graph) { foreach (array_keys($graph['players']) as $id) { $uniqueIds[$id] = true; } }
@@ -178,9 +197,32 @@ class PlayerSharedAbilityService
         }
         $cohorts = [];
         foreach ($graphs as $cohort => $graph) {
-            $cohorts[$cohort] = app(SharedAbilityModel::class)->fit($graph['edges'], $cohort) + ['players' => $graph['players']];
+            $cohorts[$cohort] = app(SharedAbilityModel::class)->fit($graph['edges'], $cohort, $ordinalFields[$cohort] ?? []) + ['players' => $graph['players']];
         }
         return ['cohorts' => $cohorts, 'names' => $names, 'reason' => null, 'built_at' => $builtAt];
+    }
+
+    private function decay(string $date, CarbonImmutable $asOf): float
+    {
+        return max(PHP_FLOAT_MIN, pow(0.5, max(0, CarbonImmutable::parse($date)->diffInDays($asOf, false)) / 180));
+    }
+
+    private function playedSources(PlayerPerformanceHistoryService $history, Event $event, PlayerPerformancePilotService $pilot, CarbonImmutable $asOf): \Generator
+    {
+        yield from $history->individualMatches($event, null, $pilot, $asOf, true);
+        yield from $history->teamMatches($event, null, $asOf);
+    }
+
+    private function coveredByPlayed(array $ids, array $adjacency): bool
+    {
+        $seen = []; $queue = [$ids[0]];
+        while ($queue) {
+            $id = array_pop($queue);
+            if (isset($seen[$id])) { continue; }
+            $seen[$id] = true;
+            foreach (array_keys($adjacency[$id] ?? []) as $other) { if (!isset($seen[$other])) { $queue[] = $other; } }
+        }
+        return count(array_intersect($ids, array_keys($seen))) === count($ids);
     }
 
     private function addEdge(array &$graphs, string $cohort, array $edge, Event $event): void
@@ -209,6 +251,6 @@ class PlayerSharedAbilityService
 
     private function withheld(string $builtAt): array
     {
-        return ['cohorts' => [], 'names' => [], 'reason' => 'Shared calibration exceeds its safe local processing limit (1,000 events, 256 fields per event, 5,000 players, or 50,000 comparisons/scored match records). No partial rating is shown.', 'built_at' => $builtAt];
+        return ['cohorts' => [], 'names' => [], 'reason' => 'Shared calibration exceeds its safe local processing limit (1,000 events, 256 fields per event, 5,000 players, or 50,000 comparisons/scored match records, or 5,000 team source rosters per event). No partial rating is shown.', 'built_at' => $builtAt];
     }
 }

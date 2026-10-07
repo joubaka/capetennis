@@ -98,15 +98,17 @@ class SendTeamSelectionInvitationEmailJob implements ShouldQueue
             return;
         }
         $log->update(['status' => 'sending']);
-        $mailer = app(MailAccountManager::class)->getMailer();
-        $mailTransport = Mail::mailer($mailer);
+        $transportStarted = false;
         try {
+            $mailer = app(MailAccountManager::class)->getMailer();
+            $mailTransport = Mail::mailer($mailer);
+            $transportStarted = true;
             $sent = $mailTransport->to($log->recipient_email)
                 ->sendNow((new \App\Mail\BulkEventMail(
                     $log->payload['rendered_subject'], $log->payload['rendered_html'], 'Cape Tennis', 'info@capetennis.co.za',
                 ))->with('event_mail_reviewed', true)->with('outbound_mail_log_id', $log->id));
         } catch (Throwable $exception) {
-            app(\App\Services\MailFailureOutcome::class)->record($log, $exception, true);
+            app(\App\Services\MailFailureOutcome::class)->record($log, $exception, $transportStarted);
             return;
         }
         try {

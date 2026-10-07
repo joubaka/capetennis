@@ -685,6 +685,9 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $selectionImport->update(['status' => 'sent']);
         $invitations = $selectionImport->invitations()->orderBy('queue_position')->get();
 
+        foreach ($players->take(4) as $index => $player) {
+            \App\Models\TeamPlayer::firstOrCreate(['team_id' => $team->id, 'player_id' => $player->id], ['rank' => $index + 1, 'pay_status' => 0]);
+        }
         $players->each->update(['gender' => 1]);
         $players[0]->update(['gender' => 2]);
         $invitations[0]->update(['status' => TeamSelectionInvitation::INVITED, 'invited_at' => now()]);
@@ -784,8 +787,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
         $this->actingAs($manager)
             ->post(route('backend.team-selection.roster-email.send', [$source->event, $eventRegion]), $payload)
-            ->assertRedirect()
-            ->assertSessionHas('success');
+            ->assertOk()->assertSee('Nothing is sent until you approve');
 
         $this->assertDatabaseMissing('bulk_email_logs', ['mail_type' => 'region_email']);
         Queue::assertNothingPushed();
@@ -838,14 +840,14 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         ];
         $players[0]->update(['email' => 'changed-after-preview@example.test']);
         $this->actingAs($manager)->post(route('backend.team-selection.event-roster-email.send', $source->event), $payload)
-            ->assertRedirect(route('backend.event-communications.index', $source->event));
+            ->assertOk()->assertSee('Nothing is sent until you approve');
         $this->assertSame(0, BulkEmailLog::query()->where('mail_type', 'region_email')->where('related_type', Event::class)->count());
 
         $preview = $this->actingAs($manager)
             ->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), $filters)->assertOk();
         $payload['recipient_hash'] = $preview->json('recipient_hash');
         $payload['send_token'] = $preview->json('send_token');
-        $this->actingAs($manager)->post(route('backend.team-selection.event-roster-email.send', $source->event), $payload)->assertRedirect(route('backend.event-communications.index', $source->event));
+        $this->actingAs($manager)->post(route('backend.team-selection.event-roster-email.send', $source->event), $payload)->assertOk()->assertSee('Nothing is sent until you approve');
         Queue::assertNothingPushed();
 
         $foreignRegion = new EventRegion();
@@ -859,7 +861,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
         $this->actingAs($manager)->post(route('backend.team-selection.event-roster-email.send', $source->event), [
             ...$payload, 'audience_status' => 'invited',
-        ])->assertRedirect()->assertSessionHas('success');
+        ])->assertOk()->assertSee('Nothing is sent until you approve');
         $this->assertSame(0, BulkEmailLog::query()->where('mail_type', 'region_email')->where('related_type', Event::class)->count());
     }
 
@@ -893,7 +895,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertJsonPath('teams.0.region', 'Overberg Primary Schools 2026')
             ->assertJsonPath('teams.0.category', 'u/10 Boys')
             ->assertJsonPath('teams.0.players.0.name', 'Test Player '.$invitations[0]->player->surname);
-        $this->assertCount(4, $options->json('teams.0.players'));
+        $this->assertCount(2, $options->json('teams.0.players'));
 
         $preview = $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $source->event), [
             'event_region_ids' => [$eventRegion->id],
@@ -913,7 +915,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'confirm_recipients' => 1,
             'recipient_hash' => $preview->json('recipient_hash'),
             'send_token' => $preview->json('send_token'),
-        ])->assertRedirect()->assertSessionHas('success');
+        ])->assertOk()->assertSee('Nothing is sent until you approve');
         $this->assertSame(0, BulkEmailLog::query()->where('mail_type', 'region_email')
             ->where('related_type', Event::class)->where('related_id', $source->event_id)->count());
         $this->assertDatabaseMissing('bulk_email_logs', ['recipient_email' => mb_strtolower($invitations[0]->player->email)]);
@@ -965,9 +967,9 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'confirm_recipients' => 1,
             'recipient_hash' => $preview->json('recipient_hash'),
             'send_token' => $preview->json('send_token'),
-        ])->assertRedirect()->assertSessionHas('success');
+        ])->assertOk()->assertSee('Nothing is sent until you approve');
 
-        $this->assertCount(4, $options->json('teams.0.players'));
+        $this->assertCount(2, $options->json('teams.0.players'));
         $this->assertSame(0, BulkEmailLog::query()->where('mail_type', 'region_email')
             ->where('related_type', Event::class)->where('related_id', $source->event_id)->count());
     }
@@ -3227,12 +3229,19 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'recipient_hash' => hash('sha256', $emails->toJson())];
 
         $this->actingAs($admin)->post(route('backend.team-selection.announcements.store', [$event, $eventRegion]), $payload)
-            ->assertRedirect(route('backend.event-communications.index', $event));
+            ->assertOk()->assertSee('Nothing is sent until you approve');
         $announcement = TeamSelectionRegionAnnouncement::where('title', 'Confirmed recipients')->firstOrFail();
         $this->assertNull($announcement->emailed_at);
         $this->assertSame(0, BulkEmailLog::where('mail_type', 'event_announcement')->count());
+        $batch = \App\Models\EventCommunicationBatch::latest('id')->firstOrFail();
+        $this->assertCount(2, $batch->recipients);
+        $this->actingAs($admin)->post(route('backend.event-communications.send', $event), ['token' => $batch->token, 'confirm_send' => 1])->assertRedirect();
+        $this->assertNotNull($announcement->fresh()->emailed_at);
+        $this->assertSame(2, $announcement->emailLogs()->count());
+        $announcement->emailLogs()->firstOrFail()->markAsFailed('Transport unavailable');
         $this->actingAs($admin)->post(route('backend.team-selection.announcements.retry', [$event, $eventRegion, $announcement]))
-            ->assertRedirect(route('backend.event-communications.index', $event));
+            ->assertOk()->assertSee('Nothing is sent until you approve');
+        $this->assertCount(1, \App\Models\EventCommunicationBatch::latest('id')->firstOrFail()->recipients);
         $this->assertSame(0, BulkEmailLog::where('mail_type', 'event_announcement')->count());
     }
 

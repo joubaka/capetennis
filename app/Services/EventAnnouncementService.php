@@ -117,6 +117,13 @@ class EventAnnouncementService
     /** Resolve contacts and exclusions together before recipient confirmation. */
     public function audienceSnapshot(Event $event): array
     {
+        if ($event->isTeam()) {
+            $rows = app(EventCommunicationService::class)->rosterEntries($event);
+            return [
+                'recipients' => $rows->flatMap(fn ($row) => collect($row['emails'])->map(fn ($email) => ['email' => $email, 'name' => $row['name'], 'player_key' => $row['key']]))->groupBy('email')->map(fn ($matches) => [...$matches->first(), 'player_keys' => $matches->pluck('player_key')->unique()->values()->all()])->sortBy('email')->values(),
+                'excluded' => $rows->filter(fn ($row) => empty($row['emails']))->unique('key')->map(fn ($row) => ['email' => '', 'name' => $row['name'], 'player_key' => $row['key']])->values(),
+            ];
+        }
         $players = $this->audiencePlayers($event)->map(fn (Player $player) => [
             'email' => $this->contacts->primaryEmail($player), 'name' => trim($player->name.' '.$player->surname),
         ]);
@@ -157,17 +164,27 @@ class EventAnnouncementService
             return ['total' => 0, 'queued' => 0, 'skipped' => 0, 'invalid' => 0, 'duplicate' => 0];
         }
 
-        return app(BulkMailDispatcher::class)->dispatch(
-            mailType: 'event_announcement',
-            related: $announcement,
-            recipients: $recipients->concat($excluded ?? collect()),
-            payload: [
+        $subject = $announcement->title.' – '.$event->name;
+        $html = (new \App\Mail\AnnouncementMail(['event' => $event->name, 'title' => $announcement->title, 'message' => $announcement->message]))->render();
+        $batch = \App\Models\EventCommunicationBatch::create([
+            'event_id' => $event->id, 'created_by' => $actor?->id, 'token' => (string) \Illuminate\Support\Str::uuid(),
+            'subject' => $subject, 'body' => $announcement->message, 'options' => ['source' => 'announcement', 'announcement_id' => $announcement->id],
+            'recipients' => $recipients->map(fn ($recipient) => [...$recipient, 'kind' => 'players', 'subject' => $subject, 'html' => $html])->all(),
+            'issues' => ($excluded ?? collect())->pluck('name')->map(fn ($name) => $name.' — no valid email address')->all(),
+            'fingerprint' => hash('sha256', $recipients->toJson()), 'status' => 'approved', 'approved_at' => now(),
+        ]);
+
+        $stats = ['total' => 0, 'queued' => 0, 'skipped' => 0, 'invalid' => 0, 'duplicate' => 0, 'failed' => 0];
+        foreach ($recipients->concat($excluded ?? collect()) as $recipient) {
+            $result = app(BulkMailDispatcher::class)->dispatch('event_announcement', $announcement, [$recipient], [
                 'event_id' => $event->id, 'created_by' => $actor?->id,
-                'recipient_kind' => 'players', 'event_name' => $event->name,
-                'title' => $announcement->title,
-                'message' => $announcement->message,
-            ],
-            allowDuplicates: false,
-        );
+                'manual_retry_only' => true, 'event_communication_batch_id' => $batch->id,
+                'recipient_kind' => 'players', 'player_keys' => $recipient['player_keys'] ?? (isset($recipient['player_key']) ? [$recipient['player_key']] : []),
+                'event_name' => $event->name, 'title' => $announcement->title,
+                'message' => $announcement->message, 'subject' => $subject, 'body' => $html,
+            ], false);
+            foreach ($stats as $key => $count) $stats[$key] += $result[$key] ?? 0;
+        }
+        return $stats;
     }
 }

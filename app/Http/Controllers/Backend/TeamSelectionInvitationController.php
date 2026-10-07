@@ -110,7 +110,11 @@ class TeamSelectionInvitationController extends Controller
     public function sendFinalReminder(Request $request, Event $event, EventRegion $eventRegion, RegionManagerAccessService $access, TeamSelectionReminderService $reminders)
     {
         $this->authorizeRegion($event, $eventRegion, $request->user());
-        if ($event->isTeam()) return $this->reviewInCommunications($request, $event, ['scope' => 'region', 'region_id' => $eventRegion->region_id]);
+        if ($event->isTeam()) {
+            $data = $request->validate(['kind' => 'required|in:registration_clothing,incomplete_clothing', 'audience' => 'required|in:all,registered,unregistered']);
+            $request->merge(['subject' => $event->name.' — '.($data['kind'] === 'incomplete_clothing' ? 'Clothing reminder' : 'Registration and clothing reminder'), 'message' => $data['kind'] === 'incomplete_clothing' ? 'Please review your clothing order and complete any outstanding arrangements for '.$event->name.'.' : 'Please review your registration and clothing arrangements for '.$event->name.'.']);
+            return $this->reviewInCommunications($request, $event, ['scope' => 'region', 'region_id' => $eventRegion->region_id, 'filter' => match ($data['audience']) { 'registered' => 'paid', 'unregistered' => 'not_registered', default => 'all' }]);
+        }
         abort_unless($event->isTeam(), 404);
         abort_unless((int) $eventRegion->event_id === (int) $event->id, 404);
         abort_unless($access->isEventManager($request->user(), $event), 403);
@@ -806,6 +810,12 @@ class TeamSelectionInvitationController extends Controller
                 'invitation_id' => ['nullable', 'required_if:target_type,player', 'integer'],
                 'slot_id' => ['nullable', 'required_if:target_type,imported_player', 'integer'],
             ]);
+            if ($target['target_type'] === 'filtered') {
+                $selection = $request->validate(['category_event_ids' => 'required|array|min:1|max:30', 'category_event_ids.*' => 'integer|distinct', 'gender' => 'required|in:any,boys,girls', 'audience_status' => 'required|in:active,entered,not_entered,invited,not_invited,accepted,not_accepted,declined,withdrawn', 'subject' => 'required|string|max:180', 'message' => 'required|string|max:20000']);
+                $batch = app(\App\Services\EventCommunicationService::class)->preview($event, $request->user(), ['source' => 'roster_region_selection', 'event_region_id' => $eventRegion->id, 'region_id' => $eventRegion->region_id, 'selection' => $selection], $selection['subject'], trim(html_entity_decode(strip_tags($selection['message']), ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+                $rankingReview = null;
+                return view('backend.event.communications.preview', compact('event', 'batch', 'rankingReview'));
+            }
             $options = ['scope' => 'region', 'region_id' => $eventRegion->region_id];
             if (in_array($target['target_type'], ['team', 'player', 'imported_player'], true)) {
                 $team = Team::query()->withoutGlobalScopes()->with('category')->findOrFail($target['team_id']);
@@ -898,9 +908,13 @@ class TeamSelectionInvitationController extends Controller
         $this->authorizeRegion($event, $eventRegion, $request->user());
         if ($event->isTeam() && $request->boolean('send_email')) {
             $request->validate(['title' => 'required|string|max:255', 'message' => 'required|string|max:20000']);
-            TeamSelectionRegionAnnouncement::create(['event_id' => $event->id, 'event_region_id' => $eventRegion->id, 'region_id' => $eventRegion->region_id, 'created_by' => $request->user()->id, 'title' => $request->title, 'message' => $request->message]);
-
-            return $this->reviewInCommunications($request, $event, ['scope' => 'region', 'region_id' => $eventRegion->region_id]);
+            if (trim(html_entity_decode(strip_tags($request->message), ENT_QUOTES | ENT_HTML5, 'UTF-8')) === '') {
+                throw ValidationException::withMessages(['message' => 'Enter an announcement message.']);
+            }
+            $announcement = TeamSelectionRegionAnnouncement::create(['event_id' => $event->id, 'event_region_id' => $eventRegion->id, 'region_id' => $eventRegion->region_id, 'created_by' => $request->user()->id, 'title' => $request->title, 'message' => $request->message]);
+            $batch = app(\App\Services\EventCommunicationService::class)->preview($event, $request->user(), ['scope' => 'region', 'region_id' => $eventRegion->region_id, 'filter' => 'all', 'recipients' => 'players', 'regional_announcement_id' => $announcement->id], $announcement->title, trim(html_entity_decode(strip_tags($announcement->message), ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+            $rankingReview = null;
+            return view('backend.event.communications.preview', compact('event', 'batch', 'rankingReview'));
         }
         $data = $request->validate([
             'title' => ['required', 'string', 'max:255'],
@@ -945,9 +959,13 @@ class TeamSelectionInvitationController extends Controller
     public function retryAnnouncement(Request $request, Event $event, EventRegion $eventRegion, TeamSelectionRegionAnnouncement $announcement, BulkMailDispatcher $mailer)
     {
         $this->authorizeRegion($event, $eventRegion, $request->user());
-        if ($event->isTeam()) return $this->reviewInCommunications($request, $event, ['scope' => 'region', 'region_id' => $eventRegion->region_id]);
         abort_unless((int) $announcement->event_region_id === (int) $eventRegion->id, 404);
         $this->authorizeRegion($event, $eventRegion, $request->user());
+        if ($event->isTeam()) {
+            $batch = app(\App\Services\EventCommunicationService::class)->previewAnnouncementRetry($event, $announcement, $request->user());
+            $rankingReview = null;
+            return view('backend.event.communications.preview', compact('event', 'batch', 'rankingReview'));
+        }
         $currentRecipients = $this->announcementRecipients($event, $eventRegion);
         $failedRecipients = $announcement->emailLogs()->where('status', 'failed')
             ->pluck('recipient_email')->map(fn ($email) => mb_strtolower(trim((string) $email)))->unique();
@@ -1061,6 +1079,12 @@ class TeamSelectionInvitationController extends Controller
     public function sendEventRosterMessage(Request $request, Event $event, BulkMailDispatcher $mailer, TeamSelectionEmailAudienceService $audiences, RegionManagerAccessService $access)
     {
         abort_unless($access->isEventManager($request->user(), $event), 403);
+        if ($event->isTeam() && $request->input('audience_mode', 'roster') === 'roster') {
+            $data = $this->validateEventRosterAudience($request, true);
+            $batch = app(\App\Services\EventCommunicationService::class)->preview($event, $request->user(), ['source' => 'roster_selection', 'selection' => $data], $data['subject'], trim(html_entity_decode(strip_tags($data['message']), ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+            $rankingReview = null;
+            return view('backend.event.communications.preview', compact('event', 'batch', 'rankingReview'));
+        }
         if ($event->isTeam()) return $this->reviewInCommunications($request, $event);
         abort_unless($event->isTeam(), 404);
         abort_unless($access->isEventManager($request->user(), $event), 403);
@@ -1180,7 +1204,9 @@ class TeamSelectionInvitationController extends Controller
             'ranking_status' => ['required_if:audience_mode,ranking', 'nullable', 'in:all,unregistered,declined,unregistered_or_declined'],
             'category_event_ids' => ['nullable', 'array', 'min:1', 'max:30'],
             'category_event_ids.*' => ['integer', 'distinct'],
-            'team_ids' => ['required_with:invitation_ids', 'array', 'min:1', 'max:100'],
+            'roster_keys' => ['nullable', 'array', 'min:1', 'max:1000'],
+            'roster_keys.*' => ['string', 'max:100', 'distinct'],
+            'team_ids' => ['required_with:invitation_ids,roster_keys', 'array', 'min:1', 'max:100'],
             'team_ids.*' => ['integer', 'distinct'],
             'invitation_ids' => ['nullable', 'array', 'min:1', 'max:1000'],
             'invitation_ids.*' => ['integer', 'distinct'],
@@ -1473,14 +1499,7 @@ class TeamSelectionInvitationController extends Controller
     /** @return \Illuminate\Support\Collection<int, string> */
     private function announcementRecipients(Event $event, EventRegion $eventRegion)
     {
-        return TeamSelectionInvitation::query()->with(['player.user', 'player.users'])
-            ->where('event_id', $event->id)->where('region_id', $eventRegion->region_id)
-            ->whereIn('status', [TeamSelectionInvitation::INVITED, TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, TeamSelectionInvitation::PAID_CONFIRMED])
-            ->whereHas('selectionImport', fn ($query) => $query->where('status', 'sent'))
-            ->get()
-            ->map(fn (TeamSelectionInvitation $item) => $this->contacts->primaryEmail($item->player))
-            ->filter()
-            ->unique()->sort()->values();
+        return app(\App\Services\EventCommunicationService::class)->rosterEntries($event, [(int) $eventRegion->region_id])->flatMap(fn ($row) => $row['emails'])->unique()->sort()->values();
     }
 
     private function authorizeImportedRosterSlot(

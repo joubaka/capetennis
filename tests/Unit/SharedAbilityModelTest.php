@@ -49,4 +49,52 @@ class SharedAbilityModelTest extends TestCase
         $component = array_values($fit['components'])[0];
         $this->assertSame(1,$component['played']); $this->assertSame(1,$component['inferred']);
     }
+    private function ordinal(array $ids, float $weight = 0.2, string $source = 'field'): array
+    {
+        $edges = [];
+        for ($rank = 0; $rank < count($ids) - 1; $rank++) {
+            $edges[] = ['winner' => $ids[$rank], 'loser' => $ids[$rank+1], 'weight' => $weight, 'kind' => 'finish_order', 'source_id' => $source.':'.$rank, 'topology_only' => true];
+        }
+        return [$edges, ['players' => $ids, 'weight' => $weight, 'source_id' => $source]];
+    }
+
+    public function test_ordinal_fields_use_every_rank_without_size_dilution_and_are_deterministic(): void
+    {
+        [$edges, $field] = $this->ordinal(range(1, 7));
+        $model = new SharedAbilityModel; $fit = $model->fit($edges, 'u10 boys', [$field]);
+        $scores = array_column($fit['ratings'], 'score');
+        for ($i = 0; $i < 6; $i++) { $this->assertGreaterThan($scores[$i+1], $scores[$i]); }
+        $this->assertSame(50.0, $scores[3]);
+        $this->assertSame($fit, $model->fit(array_reverse($edges), 'u10 boys', [$field]));
+        [$largeEdges, $largeField] = $this->ordinal(range(1, 256));
+        $large = $model->fit($largeEdges, 'u10 boys', [$largeField]);
+        $this->assertSame($scores[0], $large['ratings'][1]['score']);
+        $this->assertSame(255, count($largeEdges));
+        $this->assertSame(0, array_values($large['components'])[0]['played']);
+    }
+
+    public function test_played_contradictions_outweigh_weak_ordinal_evidence_and_recent_evidence_matters_more(): void
+    {
+        [$edges, $field] = $this->ordinal([1,2]); $model = new SharedAbilityModel;
+        $contradicted = $model->fit(array_merge($edges, [$this->edge(2,1)]), '', [$field]);
+        $this->assertGreaterThan($contradicted['ratings'][1]['score'], $contradicted['ratings'][2]['score']);
+        $recent = $model->fit($edges, '', [$field]);
+        $field['weight'] /= 4;
+        $old = $model->fit($edges, '', [$field]);
+        $this->assertGreaterThan($old['ratings'][1]['score'], $recent['ratings'][1]['score']);
+    }
+
+    public function test_shared_ordinal_entrants_transfer_field_strength_without_linking_other_components(): void
+    {
+        [$a, $first] = $this->ordinal([1,2,3], source: 'strong');
+        [$b, $second] = $this->ordinal([4,5,6], source: 'weak');
+        $edges = array_merge($a, $b);
+        for ($i=0; $i<10; $i++) { $edges[] = $this->edge(3,4,1,'anchor-'.$i); }
+        $edges[] = $this->edge(10,11);
+        $fit = (new SharedAbilityModel)->fit($edges, 'u10 boys', [$first,$second]);
+        $this->assertGreaterThan($fit['ratings'][5]['score'], $fit['ratings'][2]['score']);
+        $this->assertSame($fit['ratings'][2]['component'], $fit['ratings'][5]['component']);
+        $this->assertNotSame($fit['ratings'][10]['component'], $fit['ratings'][2]['component']);
+    }
+
 }

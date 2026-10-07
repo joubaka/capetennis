@@ -4,7 +4,6 @@ namespace Tests\Unit;
 
 use App\Services\MailAccountManager;
 use Illuminate\Support\Facades\Cache;
-use RuntimeException;
 use Tests\TestCase;
 
 class MailAccountManagerTest extends TestCase
@@ -27,7 +26,7 @@ class MailAccountManagerTest extends TestCase
         $this->assertSame('smtp', (new MailAccountManager())->getMailer());
         $this->assertSame(500, Cache::get('mail_count_smtp'));
     }
-    public function test_exhausted_managed_transports_do_not_fall_back_to_the_log_transport(): void
+    public function test_large_roster_sends_keep_using_the_managed_transport_after_500_attempts(): void
     {
         config([
             'mail.default' => 'smtp',
@@ -36,9 +35,18 @@ class MailAccountManagerTest extends TestCase
 
         Cache::put('mail_count_ses', 500);
 
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('All configured mail transports have reached their daily limit.');
+        $manager = new MailAccountManager;
+        for ($i = 0; $i < 100; $i++) {
+            $this->assertSame('ses', $manager->getMailer());
+        }
+        $this->assertSame(600, Cache::get('mail_count_ses'));
+    }
 
-        (new MailAccountManager())->getMailer();
+    public function test_mail_count_failure_does_not_block_the_managed_transport(): void
+    {
+        config(['mail.default' => 'ses']);
+        Cache::shouldReceive('add')->once()->andThrow(new \RuntimeException('Unavailable telemetry cache'));
+
+        $this->assertSame('ses', (new MailAccountManager)->getMailer());
     }
 }

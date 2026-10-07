@@ -60,6 +60,37 @@ class InvitationCommunicationRetryTest extends TestCase
         $this->assertDatabaseCount('bulk_email_logs', 1);
     }
 
+    public function test_eligible_signed_team_invitation_reaches_transport_without_a_second_review_blocker(): void
+    {
+        [$event, $actor, $log] = $this->fixture();
+        $log->update(['status' => 'queued', 'failed_at' => null]);
+        Mail::swap(new \Illuminate\Mail\MailManager($this->app));
+        $this->mock(\App\Services\MailAccountManager::class)->shouldReceive('getMailer')->once()->andReturn('array');
+
+        (new SendTeamSelectionInvitationEmailJob($log->id, $event->id))->handle();
+
+        $this->assertSame('sent', $log->fresh()->status);
+        $this->assertCount(1, Mail::mailer('array')->getSymfonyTransport()->messages());
+        $this->assertDatabaseCount('event_communication_batches', 0);
+        $this->assertSame('invited', TeamSelectionInvitation::findOrFail($log->related_id)->status);
+    }
+
+    public function test_team_invitation_mailer_preparation_error_is_reported_as_failed_instead_of_stuck_sending(): void
+    {
+        [$event, $actor, $log] = $this->fixture();
+        $log->update(['status' => 'queued', 'failed_at' => null]);
+        $this->mock(\App\Services\MailAccountManager::class)->shouldReceive('getMailer')->once()->andThrow(new \RuntimeException('Mailer unavailable'));
+
+        $job = new SendTeamSelectionInvitationEmailJob($log->id, $event->id);
+        $job->handle();
+
+        $this->assertSame('failed', $log->fresh()->status);
+        $this->assertNull($log->fresh()->sent_at);
+        $this->assertNull($log->fresh()->accepted_at);
+        $this->assertDatabaseCount('event_communication_batches', 0);
+        Mail::assertNothingSent();
+    }
+
     public function test_interpro_invitation_retry_uses_its_original_dedicated_job(): void
     {
         [$event, $actor, $log] = $this->fixture(true);

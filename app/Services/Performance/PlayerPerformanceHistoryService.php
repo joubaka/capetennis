@@ -112,14 +112,14 @@ class PlayerPerformanceHistoryService
         $components[$discipline][$key]['band'] = $match['tier'] === 'Open' ? 'Open' : 'A/B';
     }
 
-    public function individualMatches(Event $event, ?Player $player, PlayerPerformancePilotService $pilot, ?CarbonImmutable $asOf = null): \Generator
+    public function individualMatches(Event $event, ?Player $player, PlayerPerformancePilotService $pilot, ?CarbonImmutable $asOf = null, bool $sharedNetwork = false): \Generator
     {
         if (!$event->published) { return; }
         $cache = [];
         $definitions = []; $memberships = [];
         $query = Fixture::query()->with(['draw.categoryEvent.category', 'draw.settings', 'registration1.players', 'registration2.players', 'fixtureResults', 'oop'])
             ->whereHas('draw', fn ($draw) => $draw->where('event_id', $event->id)->where('published', true))
-            ->when(!$player, fn ($query) => $query->whereIn('match_status', [1,2,3])->whereHas('fixtureResults'))
+            ->when(!$player, fn ($query) => $query->whereIn('match_status', $sharedNetwork ? [0,1,2,3] : [1,2,3])->whereHas('fixtureResults'))
             ->when($player, fn ($query) => $query->where(fn ($query) => $query->whereHas('registration1.players', fn ($players) => $players->whereKey($player->id))->orWhereHas('registration2.players', fn ($players) => $players->whereKey($player->id))));
         foreach ($query->lazyById(50) as $fixture) {
             $first = $fixture->registration1?->players ?? collect();
@@ -160,39 +160,49 @@ class PlayerPerformanceHistoryService
             $declared = (int) $fixture->winner_registration;
             $expected = $winner === 1 ? (int) $fixture->registration1_id : ($winner === 2 ? (int) $fixture->registration2_id : 0);
             $legacyRr = $fixture->stage === 'RR' && ($fixture->draw->settings?->workflow === null || $fixture->draw->settings?->workflow === 'round_robin');
-            $winsNeeded = (int) ceil(max(1, min(5, (int) ($fixture->draw->settings?->num_sets ?: 3))) / 2);
+            $winsNeeded = $hasPreset ? \App\Domain\Draws\Services\TennisScoreFormat::get($format)['wins_needed'] : (int) ceil(max(1, min(5, (int) ($fixture->draw->settings?->num_sets ?: 3))) / 2);
             $maxWins = max($sets->filter(fn ($set) => $set->registration1_score > $set->registration2_score)->count(), $sets->filter(fn ($set) => $set->registration2_score > $set->registration1_score)->count());
-            if (!in_array((int) $fixture->match_status, [1, 2, 3], true) || !$expected || !$validation['valid'] || (!$hasPreset && !$credibleLegacy) || ($declared && $declared !== $expected)
+            if (!in_array((int) $fixture->match_status, $sharedNetwork ? [0, 1, 2, 3] : [1, 2, 3], true) || !$expected || !$validation['valid'] || (!$hasPreset && !$credibleLegacy) || ($declared && $declared !== $expected)
+                || ((int) $fixture->match_status === 0 && (!$sharedNetwork || !$this->completeSequence($sets, $winsNeeded, 'registration1_score', 'registration2_score')))
                 || ((int) $fixture->match_status === 2 && (!$legacyRr || (!$hasPreset && $maxWins < $winsNeeded)))
                 || ((int) $fixture->match_status === 3 && ($declared !== $expected || (!$hasPreset && $maxWins < $winsNeeded)))) {
                 $reason = 'Match is unfinished, unplayed or has inconsistent winner/score evidence';
             }
+            $dateEvidence = $this->confidenceDate($fixture, $event, $asOf ?? CarbonImmutable::today());
+            if ($sharedNetwork && $dateEvidence['confidence_future']) { $reason = 'Match schedule is later than the snapshot date'; }
             $targetFirst = !$player || $first->contains('id', $player->id);
             $cohort = $division['cohort'];
             if ($event->frontend_type_view === 'masters') { $cohort = 'masters · '.$cohort; }
             $won = $winner === ($targetFirst ? 1 : 2);
             $tier = $division['tier'];
             $opponents = ($targetFirst ? $second : $first)->map(fn ($opponent) => trim($opponent->name.' '.$opponent->surname))->implode(' / ');
-            yield $this->confidenceDate($fixture, $event, $asOf ?? CarbonImmutable::today()) + ['fixture_id' => $fixture->id, 'source' => 'Individual match', 'event_id' => $event->id, 'event' => $event->name, 'date' => CarbonImmutable::parse($event->end_date)->toDateString(), 'category' => $field?->category?->name ?? $fixture->draw->drawName, 'cohort' => $cohort, 'tier' => $tier, 'discipline' => $discipline, 'won' => $won, 'player1_id' => $first->first()?->id, 'player2_id' => $second->first()?->id, 'winner_side' => $winner, 'opponents' => $opponents, 'points' => $reason ? null : ($tier === 'A' ? 50 : 0) + ($tier === 'Open' ? 100 : 50) * (int) $won, 'reason' => $reason, 'score' => $sets->map(fn ($set) => $targetFirst ? $set->registration1_score.'-'.$set->registration2_score : $set->registration2_score.'-'.$set->registration1_score)->implode(' ')];
+            yield $dateEvidence + ['fixture_id' => $fixture->id, 'source' => 'Individual match', 'event_id' => $event->id, 'event' => $event->name, 'date' => CarbonImmutable::parse($event->end_date)->toDateString(), 'category' => $field?->category?->name ?? $fixture->draw->drawName, 'cohort' => $cohort, 'tier' => $tier, 'discipline' => $discipline, 'won' => $won, 'player1_id' => $first->first()?->id, 'player2_id' => $second->first()?->id, 'winner_side' => $winner, 'opponents' => $opponents, 'points' => $reason ? null : ($tier === 'A' ? 50 : 0) + ($tier === 'Open' ? 100 : 50) * (int) $won, 'reason' => $reason, 'score' => $sets->map(fn ($set) => $targetFirst ? $set->registration1_score.'-'.$set->registration2_score : $set->registration2_score.'-'.$set->registration1_score)->implode(' ')];
         }
     }
 
     /** Scheduled date is a proxy for play; imports/corrections never refresh confidence. */
     private function confidenceDate(Fixture $fixture, Event $event, CarbonImmutable $asOf): array
     {
+        return $this->evidenceDate($fixture->oop?->time, $event, $asOf);
+    }
+
+    private function evidenceDate($time, Event $event, CarbonImmutable $asOf): array
+    {
         $start = CarbonImmutable::parse($event->start_date)->startOfDay();
         $end = CarbonImmutable::parse($event->getRawOriginal('end_date') ?? $event->end_date)->endOfDay();
         $today = $asOf->endOfDay();
-        $time = $fixture->oop?->time;
         if ($time && preg_match('/^\d{4}-\d{2}-\d{2}/', (string) $time)) {
             try {
                 $date = CarbonImmutable::parse($time);
+                if ($date->betweenIncluded($start, $end) && $date->greaterThan($today)) {
+                    return ['confidence_date' => $date->toDateString(), 'confidence_date_basis' => 'future scheduled match date', 'confidence_future' => true];
+                }
                 if ($date->betweenIncluded($start, $end) && $date->lessThanOrEqualTo($today)) {
-                    return ['confidence_date' => $date->toDateString(), 'confidence_date_basis' => 'scheduled match date'];
+                    return ['confidence_date' => $date->toDateString(), 'confidence_date_basis' => 'scheduled match date', 'confidence_future' => false];
                 }
             } catch (\Throwable) { /* Invalid legacy schedule: use the conservative event proxy. */ }
         }
-        return ['confidence_date' => $start->toDateString(), 'confidence_date_basis' => 'event start proxy'];
+        return ['confidence_date' => $start->toDateString(), 'confidence_date_basis' => 'event start proxy', 'confidence_future' => false];
     }
 
     /** Reject partial sets, duplicate set numbers, ties and inconsistent set winner totals. */
@@ -212,48 +222,53 @@ class PlayerPerformanceHistoryService
         return $wins[1] > $wins[2] ? 1 : 2;
     }
 
-    private function teamMatches(Event $event, Player $player): \Generator
+    public function teamMatches(Event $event, ?Player $player, ?CarbonImmutable $asOf = null): \Generator
     {
         if (!$event->published) { return; }
-        $query = TeamFixture::query()->publishedTeamTies()->with(['draw.categoryEvent.category', 'teamTie.homeTeam.category', 'teamTie.awayTeam.category', 'fixturePlayers', 'teamResults'])
+        $network = $player === null; $asOf ??= CarbonImmutable::today();
+        $regions = $event->regions()->pluck('team_regions.id')->all();
+        $teams = \App\Models\Team::query()->without('team_players_no_profile')->with(['category.category', 'team_players' => fn ($query) => $query->limit(257)])->where(function ($query) use ($event, $regions, $network) {
+            $query->whereHas('category', fn ($field) => $field->where('event_id', $event->id));
+            if ($network) { $query->orWhere(fn ($legacy) => $legacy->whereNull('category_event_id')->where('year', CarbonImmutable::parse($event->start_date)->year)->whereIn('region_id', $regions)); }
+        })->limit(5001)->get()->keyBy('id');
+        if ($teams->count() > 5000 || $teams->contains(fn ($team) => $team->team_players->count() > 256)) { if ($network) { throw new \OverflowException('Team source roster limit exceeded'); } return; }
+        $query = TeamFixture::query()->publishedTeamTies()->with(['draw.categoryEvent.category', 'teamTie.homeTeam.category', 'teamTie.awayTeam.category', 'fixturePlayers.player1', 'fixturePlayers.player2', 'teamResults'])
             ->whereHas('draw', fn ($draw) => $draw->where('event_id', $event->id)->where('published', true))
-            ->whereHas('fixturePlayers', fn ($players) => $players->where('team1_id', $player->id)->orWhere('team2_id', $player->id));
+            ->when($player, fn ($query) => $query->whereHas('fixturePlayers', fn ($players) => $players->where('team1_id', $player->id)->orWhere('team2_id', $player->id)));
         foreach ($query->lazyById(50) as $fixture) {
             $discipline = $fixture->isDoubles() ? 'doubles' : 'singles';
             $needed = $discipline === 'singles' ? 1 : 2;
             $rows = $fixture->fixturePlayers;
             $ids1 = $rows->pluck('team1_id'); $ids2 = $rows->pluck('team2_id');
-            $reason = null;
+            $reason = null; $sourceBySide = [];
             if ($fixture->teamTie && (int) $fixture->teamTie->draw_id !== (int) $fixture->draw_id) { $reason = 'Team tie does not belong to this draw'; }
             if ($rows->count() !== $needed || $ids1->filter()->count() !== $needed || $ids2->filter()->count() !== $needed || $ids1->merge($ids2)->unique()->count() !== 2 * $needed || $rows->contains(fn ($row) => $row->team1_no_profile_id || $row->team2_no_profile_id)) { $reason = 'Team match has imported, missing or ambiguous player identities'; }
             foreach ($rows as $row) {
                 foreach ([1,2] as $side) {
                     $snapshot = $row->participant_snapshot[$side] ?? null;
                     $source = $fixture->teamTie?->{($side === 1 ? 'homeTeam' : 'awayTeam')};
-                    if (!$fixture->teamTie && $fixture->{'region'.$side} && $fixture->draw->category_event_id) {
-                        $legacySources = \App\Models\Team::query()->with('category')
-                            ->where('region_id', $fixture->{'region'.$side})
-                            ->where('category_event_id', $fixture->draw->category_event_id)
-                            ->whereHas('category', fn ($category) => $category->where('event_id', $event->id));
-                        foreach (($side === 1 ? $ids1 : $ids2) as $profileId) {
-                            $legacySources->whereHas('team_players', fn ($members) => $members->where('player_id', $profileId));
-                        }
-                        $matches = $legacySources->limit(2)->get();
+                    if (!$fixture->teamTie && $fixture->{'region'.$side}) {
+                        $matches = $teams->filter(function ($team) use ($fixture, $side, $ids1, $ids2, $network) {
+                            if ((int) $team->region_id !== (int) $fixture->{'region'.$side}) { return false; }
+                            if (!$network && (int) $team->category_event_id !== (int) $fixture->draw->category_event_id) { return false; }
+                            return ($side === 1 ? $ids1 : $ids2)->diff($team->team_players->pluck('player_id'))->isEmpty();
+                        });
                         $source = $matches->count() === 1 ? $matches->first() : null;
                     }
                     $map = $fixture->draw->team_draw_selection['mixed_sides'][$source?->id] ?? null;
                     $allowed = $map ? [(int) $map['boys'], (int) $map['girls']] : [(int) $source?->id];
                     if ($snapshot) {
-                        $historySource = \App\Models\Team::with('category')->find($snapshot['source_team_id'] ?? 0);
+                        $historySource = $teams->get($snapshot['source_team_id'] ?? 0);
                         if (!$historySource || !in_array((int) $historySource->id, $allowed, true)
-                            || (int) $historySource->category?->event_id !== (int) $event->id
+                            || (!$network && (int) $historySource->category?->event_id !== (int) $event->id)
                             || !app(\App\Services\TeamParticipantHistoryService::class)->matches($row, $side, $historySource, (int) $event->id)) {
                             $reason = 'Team match participant history does not match this event/player/side';
-                        }
+                        } else { $sourceBySide[$side] = $historySource; }
                     } else {
-                        $validMember = \App\Models\Team::query()->whereIn('id', $allowed)
-                            ->whereHas('category', fn ($category) => $category->where('event_id', $event->id))
-                            ->whereHas('team_players', fn ($members) => $members->where('player_id', $row->{'team'.$side.'_id'}))->exists();
+                        $validMembers = $teams->filter(fn ($team) => in_array((int) $team->id, $allowed, true)
+                            && $team->team_players->contains('player_id', $row->{'team'.$side.'_id'}));
+                        $validMember = $validMembers->count() === 1;
+                        if ($validMember) { $sourceBySide[$side] = $validMembers->first(); }
                         if (!$validMember) { $reason = 'Team match player cannot be verified against this event/side'; }
                     }
                 }
@@ -261,16 +276,53 @@ class PlayerPerformanceHistoryService
             $winner = $this->completedWinner($fixture->teamResults, 'team1_score', 'team2_score');
             $outcome = app(TeamRubberResultService::class)->outcome($fixture);
             $terminal = $fixture->teamResults->every(fn ($set) => $this->legacyTerminalSet((int) $set->team1_score, (int) $set->team2_score));
-            if ((int) $fixture->match_status !== 1 || !$winner || !$terminal || !$outcome['complete'] || $outcome['winner'] !== ($winner === 1 ? 'home' : 'away')) { $reason = 'Team match is incomplete or has inconsistent score evidence'; }
+            if (!in_array((int) $fixture->match_status, $network ? [0,1] : [1], true) || !$winner || !$terminal || !$outcome['complete'] || $outcome['winner'] !== ($winner === 1 ? 'home' : 'away')) { $reason = 'Team match is incomplete or has inconsistent score evidence'; }
+            if ($network && (int) $fixture->match_status === 0) {
+                $neededWins = $fixture->draw->team_scoring_rules !== null ? app(TeamRubberResultService::class)->rules($fixture)['sets_to_win'] : max(1, (int) ceil(($fixture->numSets ?: ($fixture->isSingles() ? 3 : 1)) / 2));
+                if (!$this->completeSequence($fixture->teamResults, $neededWins, 'team1_score', 'team2_score')) { $reason = 'Legacy team scores do not establish complete play'; }
+            }
             $field = $fixture->draw->categoryEvent;
             $category = $field?->category?->name ?? $fixture->draw->drawName;
-            if (!$field || (int) $field->event_id !== (int) $event->id) { $reason = 'Team match category/event cannot be verified'; }
+            $dateEvidence = $this->evidenceDate($fixture->scheduled_at, $event, $asOf);
+            if ($network && $dateEvidence['confidence_future']) { $reason = 'Team match schedule is later than the snapshot date'; }
+            if ($network && $rows->contains(fn ($row) => !$row->player1 || !$row->player2)) { $reason = 'Team match player profile cannot be verified'; }
+            $sharedCohort = $this->verifiedTeamCohort($sourceBySide, $event);
+            if ((!$field || (int) $field->event_id !== (int) $event->id) && (!$network || !$sharedCohort)) { $reason = 'Team match category/event cannot be verified'; }
+            if ($network && !$sharedCohort) { $reason = 'Team singles age/gender context cannot be verified'; }
+            if ($network && (!$fixture->isSingles() && !(!$fixture->rubber_code && in_array($fixture->fixture_type, [null, 0], true) && preg_match('/\bsingles\b/i', $fixture->draw->drawName) && !preg_match('/doubles|mixed/i', $fixture->draw->drawName)))) { $reason = 'Legacy team discipline is ambiguous or doubles'; }
             $cohort = 'team · '.mb_strtolower(trim(preg_replace('/\s+/u', ' ', $category)));
-            $won = $winner === ($ids1->contains($player->id) ? 1 : 2);
-            $targetFirst = $ids1->contains($player->id);
-            $opponents = Player::query()->whereIn('id', $targetFirst ? $ids2 : $ids1)->orderBy('id')->get(['name', 'surname'])->map(fn ($opponent) => trim($opponent->name.' '.$opponent->surname))->implode(' / ');
-            yield ['fixture_id' => $fixture->id, 'source' => 'Team match', 'event_id' => $event->id, 'event' => $event->name, 'date' => CarbonImmutable::parse($event->end_date)->toDateString(), 'category' => $category, 'cohort' => $cohort, 'tier' => 'Open', 'discipline' => $discipline, 'won' => $won, 'opponents' => $opponents, 'points' => $reason ? null : ($won ? 100 : 0), 'reason' => $reason, 'score' => $fixture->teamResults->map(fn ($set) => $targetFirst ? $set->team1_score.'-'.$set->team2_score : $set->team2_score.'-'.$set->team1_score)->implode(' ')];
+            $targetFirst = !$player || $ids1->contains($player->id);
+            $won = $winner === ($targetFirst ? 1 : 2);
+            $opponents = $rows->map(fn ($row) => $targetFirst ? $row->player2 : $row->player1)->filter()->sortBy('id')->map(fn ($opponent) => trim($opponent->name.' '.$opponent->surname))->implode(' / ');
+            yield $dateEvidence + ['shared_cohort' => $sharedCohort, 'player1_id' => $ids1->first(), 'player2_id' => $ids2->first(), 'winner_side' => $winner, 'fixture_id' => $fixture->id, 'source' => 'Team match', 'event_id' => $event->id, 'event' => $event->name, 'date' => CarbonImmutable::parse($event->end_date)->toDateString(), 'category' => $category, 'cohort' => $cohort, 'tier' => 'Open', 'discipline' => $discipline, 'won' => $won, 'opponents' => $opponents, 'points' => $reason ? null : ($won ? 100 : 0), 'reason' => $reason, 'score' => $fixture->teamResults->map(fn ($set) => $targetFirst ? $set->team1_score.'-'.$set->team2_score : $set->team2_score.'-'.$set->team1_score)->implode(' ')];
         }
+    }
+
+    private function completeSequence(Collection $sets, int $needed, string $first, string $second): bool
+    {
+        $wins = [0, 0];
+        foreach ($sets->sortBy('set_nr') as $set) {
+            if (max($wins) >= $needed) { return false; }
+            $wins[$set->$first > $set->$second ? 0 : 1]++;
+        }
+        return max($wins) === $needed;
+    }
+
+    private function verifiedTeamCohort(array $sources, Event $event): ?string
+    {
+        if (count($sources) !== 2) { return null; }
+        $labels = [];
+        foreach ($sources as $source) {
+            if ($source->category && (int) $source->category->event_id !== (int) $event->id) { return null; }
+            $label = $source->category?->category?->name ?? $source->name;
+            $division = app(PlayerPerformancePilotService::class)->division($label ?? '');
+            if ($division['reason'] && $division['reason'] !== 'No explicit A/B division in category name') { return null; }
+            $cohort = app(PlayerSharedAbilityService::class)->cohort($division['cohort']);
+            if (!preg_match('/^u\d{1,2} (boys|girls)(?: |$)/u', $cohort)
+                || preg_match_all('/\bu\d{1,2}\b/u', $cohort) !== 1 || preg_match_all('/\b(boys|girls)\b/u', $cohort) !== 1 || str_contains($cohort, 'mixed')) { return null; }
+            $labels[] = $cohort;
+        }
+        return $labels[0] === $labels[1] ? ($event->frontend_type_view === 'masters' ? 'masters · '.$labels[0] : $labels[0]) : null;
     }
 
     private function legacyTerminalSet(int $first, int $second): bool

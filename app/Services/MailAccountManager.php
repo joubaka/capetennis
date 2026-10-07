@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use RuntimeException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
@@ -16,7 +15,6 @@ class MailAccountManager
    * the legacy Mailgun SMTP endpoint.
    */
   protected array $accounts = ['ses'];
-  protected int $limit = 500; // per day limit per account
 
   public function getMailer(): string
   {
@@ -30,23 +28,18 @@ class MailAccountManager
       return 'smtp';
     }
 
-    foreach ($this->accounts as $account) {
+    // Provider quotas and outbound-mail throttling govern sending. The daily
+    // counter is telemetry, not a local quota that can silently exclude a roster.
+    $account = $this->accounts[0];
+    try {
       $key = "mail_count_{$account}";
-      $count = Cache::get($key, 0);
-
-      if ($count < $this->limit) {
-        Cache::put($key, $count + 1, now()->endOfDay());
-        Log::info("[MailAccountManager] Using mailer: {$account} ({$count}/{$this->limit})");
-        return $account;
-      }
+      Cache::add($key, 0, now()->endOfDay());
+      Cache::increment($key);
+    } catch (\Throwable) {
+      Log::warning('[MailAccountManager] Daily mail count could not be recorded.');
     }
 
-    // Never silently use the log transport here. Callers treat a transport
-    // that returns successfully as sent, which would create false delivery
-    // records while no email had left the application.
-    Log::error('[MailAccountManager] All configured mail transports exhausted for today.');
-
-    throw new RuntimeException('All configured mail transports have reached their daily limit.');
+    return $account;
   }
 
   public function resetDailyCounts(): void

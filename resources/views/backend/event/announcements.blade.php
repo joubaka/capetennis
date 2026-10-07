@@ -13,7 +13,7 @@
     'eventWorkspaceSubtitle' => 'Event announcements',
   ])
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 no-print">
-    <div><h2 class="h4 mb-1">Event announcements</h2><p class="text-muted mb-0">Publish updates and optionally email nominated and registered players.</p></div>
+    <div><h2 class="h4 mb-1">Event announcements</h2><p class="text-muted mb-0">{{ $event->isTeam() ? 'Publish updates and optionally email every roster player and their linked parents.' : 'Publish updates and optionally email nominated and registered players.' }}</p></div>
       <button type="button" class="btn btn-primary btn-sm" id="newAnnouncementBtn">
         <i class="ti ti-plus me-1"></i>New Announcement
       </button>
@@ -106,7 +106,7 @@
         <div class="form-check" id="announcementEmailOption">
           <input class="form-check-input" type="checkbox" id="announcement_send_email">
           <label class="form-check-label" for="announcement_send_email">
-            Email all nominated and active paid registered players
+            {{ $event->isTeam() ? 'Email all team roster players and linked parents' : 'Email all nominated and active paid registered players' }}
           </label>
           <div class="form-text">Email is queued when you save. Leaving this clear only publishes the announcement online.</div>
         </div>
@@ -120,7 +120,7 @@
             <span class="badge bg-primary">{{ $announcementRecipients->count() }}</span>
           </div>
           @if($announcementRecipients->isEmpty())
-            <p class="text-muted mb-0">No valid nominated or registered player email addresses are currently available.</p>
+            <p class="text-muted mb-0">{{ $event->isTeam() ? 'No valid roster player or parent email addresses are currently available.' : 'No valid nominated or registered player email addresses are currently available.' }}</p>
           @else
             <div class="small overflow-auto mb-3" style="max-height: 220px;">
               @foreach($announcementRecipients as $recipient)
