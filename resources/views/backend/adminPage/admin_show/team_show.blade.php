@@ -2,7 +2,6 @@
   // Quick counts for badges (TEAM EVENTS)
   $regionCount   = $event->regions->count();
   $teamCount     = $event->regions->sum(fn ($r) => $r->teams->count());
-  $categoryCount = $event->eventCategories->count();
   $playerCount   = $event->regions->sum(
     fn ($r) => $r->teams->sum(fn ($t) => $t->workspaceSlots->filter(fn ($slot) => (int) $slot->player_id > 0 || $slot->noProfile)->count())
   );
@@ -31,15 +30,6 @@
               </button>
             </li>
 
-            <li class="nav-item" role="presentation">
-              <button type="button" class="nav-link" role="tab"
-                data-bs-toggle="tab" data-bs-target="#tab-categories"
-                aria-controls="tab-categories" aria-selected="false" tabindex="-1">
-                <i class="ti ti-category ti-xs me-1"></i>
-                Categories
-                <span class="badge rounded-pill bg-label-warning ms-1">{{ $categoryCount }}</span>
-              </button>
-            </li>
           @endcan
 
           <li class="nav-item" role="presentation">
@@ -73,11 +63,6 @@
                 Result Ranks
               </button>
             </li>
-            <li class="nav-item" role="presentation">
-              <a href="{{ route('headOffice.show', $event->id) }}" class="nav-link">
-                <i class="ti ti-gauge ti-xs me-1"></i> Dashboard
-              </a>
-            </li>
           @endcan
         </ul>
       </div>
@@ -90,71 +75,6 @@
 {{-- ============================= --}}
   @can('event.manage', $event)
   @include('backend.adminPage.admin_show.tabs.regions')
-
-        {{-- Categories tab --}}
-        <div class="tab-pane fade" id="tab-categories" role="tabpanel" aria-labelledby="tab-categories">
-          <div class="card">
-            <div class="card-header">
-              <h5 class="m-0">Event Categories</h5>
-              <button class="btn btn-primary btn-sm" id="add-category-button"
-                data-bs-toggle="modal" data-bs-target="#add-category-modal">
-                <i class="ti ti-plus me-1"></i> Add Category
-              </button>
-            </div>
-            <div class="card-body">
-              @if ($event->eventCategories->isEmpty())
-                <div class="alert alert-primary noRegions" role="alert">No Categories added to event</div>
-              @else
-                <ul class="list-group" id="category-list">
-                  @foreach ($event->eventCategories as $category)
-                    <li class="list-group-item d-flex justify-content-between align-items-center" data-category-id="{{ $category->id }}">
-                      <span>{{ $category->category->name }}</span>
-                      <div>
-                        <span class="text-muted me-2">#{{ $category->id }}</span>
-                        <button class="btn btn-sm btn-danger btn-remove-category"
-                                data-id="{{ $category->id }}"
-                                data-name="{{ $category->category->name }}">
-                          <i class="ti ti-trash"></i>
-                        </button>
-                      </div>
-                    </li>
-                  @endforeach
-                </ul>
-              @endif
-            </div>
-          </div>
-
-          <!-- Add Category Modal -->
-          <div class="modal fade" id="add-category-modal" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog">
-              <form id="add-category-form">
-                @csrf
-                <div class="modal-content">
-                  <div class="modal-header">
-                    <h5 class="modal-title">Add Category</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                  </div>
-                  <div class="modal-body">
-                    <div class="mb-3">
-                      <label for="category-select" class="form-label">Select Category</label>
-                      <select id="category-select" name="category_ids[]" class="form-select" multiple required>
-                        <option value="">-- Select --</option>
-                        @foreach($allCategories as $cat)
-                          <option value="{{ $cat->id }}">{{ $cat->name }}</option>
-                        @endforeach
-                      </select>
-                      <small class="text-muted">Hold Ctrl (Windows) or Cmd (Mac) to select multiple.</small>
-                    </div>
-                  </div>
-                  <div class="modal-footer">
-                    <button type="submit" class="btn btn-primary">Add</button>
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                  </div>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
 
   @endcan
   {{-- 🧍‍♂️ PLAYERS TAB --}}
@@ -421,8 +341,6 @@
 </div>
 
 <script>
-  window.deleteCategoryUrl = "{{ url('backend/event/category') }}";
-  window.eventAttachCategoryUrl = "{{ route('admin.categories.attach', $event->id) }}";
   window.importNoProfileUrl = null;
 
   // Handle import noprofile button click

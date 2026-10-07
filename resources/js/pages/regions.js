@@ -1039,12 +1039,4 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
     });
   });
 
-  // ===============================
-  // Extra confirm dialog for leave
-  // ===============================
-  window.addEventListener('beforeunload', function (e) {
-    const confirmationMessage = 'You have unsaved changes. Are you sure you want to leave?';
-    e.returnValue = confirmationMessage; // Gecko + WebKit browsers
-    return confirmationMessage;         // Gecko + WebKit browsers
-  });
 })(jQuery, window, document);

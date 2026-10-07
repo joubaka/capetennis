@@ -131,7 +131,7 @@
     const resultCategory = url.searchParams.get('roster_result_category');
     if (resultCategory) { const category = document.querySelector('.category-radio[value="' + Number(resultCategory) + '"]'); if (category) category.checked = true; }
     const tab = url.searchParams.get('roster_tab');
-    const button = document.querySelector('.team-admin-workspace [data-bs-target="#tab-' + (['regions', 'categories', 'order', 'result-rank', 'dashboard'].includes(tab) ? tab : 'players') + '"]');
+    const button = document.querySelector('.team-admin-workspace [data-bs-target="#tab-' + (['regions', 'order', 'result-rank'].includes(tab) ? tab : 'players') + '"]');
     if (button) bootstrap.Tab.getOrCreateInstance(button).show();
     selectRegion(url.searchParams.get('selected_region') || $('[data-roster-region]').val());
     initCategorySelect();

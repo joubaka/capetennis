@@ -9,6 +9,7 @@
     const form = document.getElementById('sendMailForm');
     if (!form) return false;
     form.reset();
+    $('#emailAudienceSummary').text('').addClass('d-none');
     $('#emailPlayerId, #emailTeamId, #catEvent, #emailToHidden, #target_type').val('');
     $('#emailRecipientSelect, #emailRegionSelect, #emailTeamSelect, #emailCategorySelect').val(null).trigger('change');
     $('#emailRecipientSelect').closest('.mb-3').addClass('d-none');
@@ -35,12 +36,12 @@
     if ($button.hasClass('emailPlayer')) {
       $('#target_type').val('player');
       $('#emailToHidden, #emailPlayerId').val($button.data('playerid'));
-      label = `Review email: ${$button.data('name')}`;
+      label = `Send email to player: ${$button.data('name')}`;
     } else if ($button.hasClass('emailTeamBtn')) {
       $('#target_type').val('team');
       $('#emailToHidden').val('All players in team');
       $('#emailTeamId').val($button.data('teamid'));
-      label = `Review email to players in team: ${$button.data('teamname')}`;
+      label = `Send email to players in team: ${$button.data('teamname')}`;
     } else {
       const unpaid = $button.hasClass('emailUnpaidRegionBtn');
       $('#target_type').val('region');
@@ -50,9 +51,10 @@
       if ($select.hasClass('select2-hidden-accessible')) $select.select2('destroy');
       $select.empty().append(new Option($button.data('regionname'), $button.data('regionid'), true, true))
         .select2({ width: '100%', dropdownParent: $('#sendMailModal') });
-      label = `Review email to ${unpaid ? 'unpaid ' : ''}players in region: ${$button.data('regionname')}`;
+      label = `Send email to ${unpaid ? 'unpaid ' : ''}players in region: ${$button.data('regionname')}`;
     }
     $('#sendMailLabel').text(label);
+    $('#emailAudienceSummary').text(label.replace('Send email to ', 'Recipients: ')).removeClass('d-none');
     bootstrap.Modal.getOrCreateInstance(document.getElementById('sendMailModal')).show();
   });
 

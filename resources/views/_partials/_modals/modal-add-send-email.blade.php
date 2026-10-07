@@ -20,6 +20,7 @@
         <input type="hidden" name="catEvent" id="catEvent" value="">
 
         <div class="modal-body">
+          <div id="emailAudienceSummary" class="alert alert-info d-none" role="status"></div>
           {{-- ✅ Recipient Type --}}
           <div class="mb-3">
             <label class="form-label fw-bold">Send To</label>
