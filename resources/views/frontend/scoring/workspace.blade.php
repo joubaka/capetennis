@@ -228,7 +228,8 @@
       <div class="card-header scoring-section-heading py-3">
         <div>
           <h2 class="h6 mb-1" id="scoring-context-title">Scoring context</h2>
-          <p class="small text-muted mb-0">Choose the venue and draw this device is working on.</p>
+          <p class="small text-muted mb-0">{{ ($scheduleSource ?? 'working') === 'published' ? 'Published order of play · matches the public venue page and printed packs.' : 'Working schedule · includes saved changes awaiting publication.' }}</p>
+          @if($scheduleDate ?? null)<p class="small mb-0">{{ \Carbon\Carbon::parse($scheduleDate)->format('l, d M Y') }}</p>@endif
         </div>
       </div>
       <div class="card-body p-3">
@@ -237,10 +238,10 @@
           <label class="scoring-filter-label mb-1" for="venue-filter">Venue</label>
           <select class="form-select scoring-select" id="venue-filter" data-nav-select>
             @unless($venueRestricted ?? false)
-              <option value="{{ route('frontend.scoring.workspace', ['event' => $event, 'draw' => $selectedDraw?->id, 'all_venues' => 1]) }}" @selected(!$selectedVenue)>{{ $selectedDraw ? 'All venues / unscheduled' : 'All venues' }}</option>
+              <option value="{{ route('frontend.scoring.workspace', ['event' => $event, 'schedule_source' => $scheduleSource ?? 'working', 'date' => $scheduleDate ?? null, 'draw_ids' => $scheduleDrawIds ?? [], 'draw' => $selectedDraw?->id, 'all_venues' => 1]) }}" @selected(!$selectedVenue)>{{ $selectedDraw ? 'All venues / unscheduled' : 'All venues' }}</option>
             @endunless
             @foreach($venues as $venue)
-              <option value="{{ route('frontend.scoring.workspace', ['event' => $event, 'venue' => $venue->id, 'draw' => $selectedDraw?->id]) }}" @selected($selectedVenue?->id === $venue->id)>{{ $venue->name }}</option>
+              <option value="{{ route('frontend.scoring.workspace', ['event' => $event, 'schedule_source' => $scheduleSource ?? 'working', 'date' => $scheduleDate ?? null, 'draw_ids' => $scheduleDrawIds ?? [], 'venue' => $venue->id, 'draw' => $selectedDraw?->id]) }}" @selected($selectedVenue?->id === $venue->id)>{{ $venue->name }}</option>
             @endforeach
           </select>
         </div>
@@ -248,9 +249,9 @@
         <div>
           <label class="scoring-filter-label mb-1" for="draw-filter">Draw</label>
           <select class="form-select scoring-select" id="draw-filter" data-nav-select>
-            <option value="{{ route('frontend.scoring.workspace', ['event' => $event, 'venue' => $selectedVenue?->id]) }}" @selected(!$selectedDraw)>All draws</option>
+            <option value="{{ route('frontend.scoring.workspace', ['event' => $event, 'schedule_source' => $scheduleSource ?? 'working', 'date' => $scheduleDate ?? null, 'draw_ids' => $scheduleDrawIds ?? [], 'venue' => $selectedVenue?->id]) }}" @selected(!$selectedDraw)>All draws</option>
             @foreach($draws as $draw)
-              <option value="{{ route('frontend.scoring.workspace', ['event' => $event, 'venue' => $selectedVenue?->id, 'draw' => $draw->id]) }}" @selected($selectedDraw?->id === $draw->id)>{{ $draw->drawName }}</option>
+              <option value="{{ route('frontend.scoring.workspace', ['event' => $event, 'schedule_source' => $scheduleSource ?? 'working', 'date' => $scheduleDate ?? null, 'draw_ids' => $scheduleDrawIds ?? [], 'venue' => $selectedVenue?->id, 'draw' => $draw->id]) }}" @selected($selectedDraw?->id === $draw->id)>{{ $draw->drawName }}</option>
             @endforeach
           </select>
         </div>
@@ -346,6 +347,7 @@
             $engine = $isFlexible ? 'flexible' : 'standard';
           }
           $flexibleUrl = $isFlexible ? route('flexible-monrad.score', ['draw' => $match->draw_id, 'fixture' => $match->id]) : null;
+          $canWrite = $canWrite && !$match->scoring_venue_changed;
           $scheduledMoment = $scheduleTime ? \Carbon\Carbon::parse($scheduleTime) : null;
           $timing = $scheduledMoment && !$hasScore && !$isPlaying
             ? ($scheduledMoment->isFuture() ? 'upcoming' : 'past')
@@ -402,6 +404,8 @@
                   {{ $hasScore ? 'Correct score' : 'Enter score' }}
                 </button>
               </div>
+              @elseif($match->scoring_venue_changed)
+                <span class="small text-warning">Venue assignment changed. Ask the tournament organiser to confirm scoring access.</span>
               @elseif($draw->locked)
                 <span class="badge bg-label-secondary">Draw locked</span>
               @endif

@@ -67,6 +67,28 @@ class DrawPackPresentationTest extends TestCase
         $this->assertStringContainsString('<fieldset class="mb-3">', $eventPrint);
         $this->assertStringContainsString('aria-labelledby="draw-pack-modal-title"', $eventPrint);
         $this->assertStringContainsString('assistive-technology-friendly version', $eventPrint);
+        $this->assertSame(2, substr_count($eventPrint, "if (printType === 'fixtures') printType = 'venue';"));
+    }
+
+    public function test_dense_venue_day_repeats_headings_and_fits_four_pdf_sheets(): void
+    {
+        $data = $this->viewData();
+        $data['printType'] = 'venue';
+        $data['scheduleSource'] = 'published';
+        $template = $data['schedule']->first();
+        $data['schedule'] = collect(range(1, 32))->map(fn ($id) => array_replace($template, [
+            'id' => $id, 'match_nr' => $id, 'score' => '',
+            'home' => 'Alexandria Catherine van der Merwe-Smith', 'away' => 'Winner of Match 123 / Winner of Match 124',
+            'home_region' => 'Western Cape Cavaliers', 'away_region' => 'Eastern Cape Buffalo City',
+        ]));
+        $html = view('backend.draw.pdf.draw-pack', $data)->render();
+        $this->assertSame(4, substr_count($html, 'class="page venue-page"'));
+        $this->assertStringContainsString('Sheet 4 / 4', $html);
+        $this->assertStringContainsString('Western Cape Cavaliers', $html);
+        $pdf = Pdf::loadHTML($html)->setPaper('A4', 'landscape');
+        $output = $pdf->output();
+        file_put_contents(storage_path('app/venue-order-of-play-qa.pdf'), $output);
+        $this->assertSame(4, $pdf->getDomPDF()->getCanvas()->get_page_count());
     }
 
     private function viewData(): array

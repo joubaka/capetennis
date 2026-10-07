@@ -23,7 +23,14 @@
   .public-fixture-page .fixture-round > summary { border-left: 5px solid #173f7a; background: #eef3fa; }
   .fixture-team-chip { display: inline-block; background: #fff; color: #26394d; border: 1px solid var(--region-color, #475569); padding: .3rem .55rem; border-radius: .35rem; line-height: 1.5; overflow-wrap: anywhere; }
 </style>
-<div class="public-fixture-page">
+@if($draw->published)
+  <div class="d-flex flex-wrap gap-2 mb-3">
+    <a class="btn btn-outline-primary" style="min-height:44px" href="{{ route('frontend.team-draw.standings', $draw) }}">Draw standings</a>
+    <a class="btn btn-outline-primary" style="min-height:44px" href="{{ route('frontend.events.standings', $event) }}">Full event standings</a>
+  </div>
+  @include('frontend.fixtures.partials.live-results-status')
+@endif
+<div class="public-fixture-page" @if($draw->published) data-live-results="team-fixtures" @endif>
   <div class="card mb-3">
     <div class="card-body d-flex justify-content-between align-items-start gap-3 flex-wrap">
       <div>
@@ -41,7 +48,7 @@
     @php
       $ties = $roundFixtures->groupBy(fn ($fixture) => implode('-', [$fixture->draw_id, $fixture->team_tie_id ?: implode('-', [$fixture->tie_nr, $fixture->region1, $fixture->region2])]));
     @endphp
-    <details class="fixture-round card mb-3">
+    <details class="fixture-round card mb-3" data-live-key="round-{{ $round }}">
       <summary class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap" style="cursor: pointer;">
         <h4 class="mb-0">Round {{ $round ?: '—' }}</h4>
         <span class="fixture-toggle"><span class="when-closed">▸ Click to show ties</span><span class="when-open">▾ Click to hide ties</span></span>
@@ -50,7 +57,7 @@
       <div class="card-body">
         @foreach($ties as $tieKey => $tieFixtures)
           @php $firstFixture = $tieFixtures->first(); @endphp
-          <details class="fixture-tie mb-3">
+          <details class="fixture-tie mb-3" data-live-key="tie-{{ $round }}-{{ $tieKey }}">
             <summary class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2" style="cursor: pointer;">
             <h5 class="mb-0" id="fixture-tie-{{ $round }}-{{ $tieKey }}">
               @if($fixtures->pluck('draw_id')->unique()->count() > 1)<span class="badge bg-label-secondary">{{ $firstFixture->draw->drawName }}</span> @endif
@@ -73,14 +80,5 @@
     </details>
   @endforeach
 </div>
-<script>
-document.querySelectorAll('.public-fixture-page .fixture-round').forEach(function (round) {
-  round.addEventListener('toggle', function () {
-    if (!round.open) return;
-    round.querySelectorAll('.fixture-tie').forEach(function (tie) {
-      tie.open = true;
-    });
-  });
-});
-</script>
+@include('frontend.fixtures.partials.live-results-script')
 @endsection

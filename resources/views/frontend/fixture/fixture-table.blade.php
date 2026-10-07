@@ -76,22 +76,10 @@ $fxWinnerClasses = function ($fx) {
         return ['',''];
     }
 
-    $last = $fx->fixtureResults->last();
-
-    // TEAM
-    if (isset($last->team1_score)) {
-        $h = $last->team1_score;
-        $a = $last->team2_score;
-    }
-    // INDIVIDUAL
-    else {
-        $h = $last->registration1_score;
-        $a = $last->registration2_score;
-    }
-
-    if ($h > $a) return ['winner-home','loser-home'];
-    if ($a > $h) return ['loser-home','winner-home'];
-    return ['draw-cell','draw-cell'];
+    $winner = $fx->winner_id;
+    if (!$winner) return ['',''];
+    return (int) $winner === (int) $fx->registration1_id
+        ? ['winner-home','loser-home'] : ['loser-home','winner-home'];
 };
 @endphp
 

@@ -11,7 +11,7 @@
       @if(($scoringVenues ?? collect())->isNotEmpty())
         <div class="d-flex flex-wrap gap-2">
           @foreach($scoringVenues as $scoringVenue)
-            <a href="{{ route('frontend.scoring.workspace', ['event' => $event, 'venue' => $scoringVenue->id]) }}"
+            <a href="{{ route('frontend.scoring.workspace', ['event' => $event, 'schedule_source' => 'published', 'venue' => $scoringVenue->id]) }}"
                class="btn btn-primary btn-sm">
               <i class="ti ti-map-pin me-1" aria-hidden="true"></i>{{ $scoringVenue->name }}
               <span class="badge bg-white text-primary ms-1">{{ $scoringVenue->fixture_count }}</span>

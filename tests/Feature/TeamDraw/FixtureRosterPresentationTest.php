@@ -99,6 +99,10 @@ class FixtureRosterPresentationTest extends TestCase
             ->assertViewHas('fixtures', fn ($fixtures) => $fixtures->pluck('match_nr')->all() === range(1, 8));
         $this->export('fixture-roster-order', $response);
         $this->get(route('fixtures.order', [$event->id, $venue->id, '2026-10-09']))->assertOk()->assertSee('(CW)');
+        $this->get(route('fixtures.order', [$event->id, $venue->id, '2026-10-09', 'draw_id' => $draw->id]))
+            ->assertOk()->assertSee('Court')->assertSee('Draw / Match')
+            ->assertViewHas('fixtures', fn ($fixtures) => $fixtures->every(fn ($fixture) => $fixture->draw_id === $draw->id));
+        $this->get(route('fixtures.order', [$event->id, $venue->id, 'all', 'draw_id' => 999999]))->assertNotFound();
         $this->get(route('fixtures.venue', [$event->id, $venue->id]))->assertOk()->assertSee('(4)');
     }
 

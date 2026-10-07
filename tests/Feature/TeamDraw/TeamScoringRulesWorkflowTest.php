@@ -25,7 +25,7 @@ class TeamScoringRulesWorkflowTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->draw = Draw::factory()->create();
+        $this->draw = Draw::factory()->create(['event_id' => \App\Models\Event::factory()->create()->id]);
         $this->draw->update(['team_scoring_rules' => app(TeamEventRulesService::class)->forDraw($this->draw)]);
         $this->tie = TeamTie::create(['draw_id' => $this->draw->id, 'round_nr' => 1, 'tie_nr' => 1,
             'home_team_id' => Team::factory()->create()->id, 'away_team_id' => Team::factory()->create()->id, 'status' => TeamTie::STATUS_PUBLISHED, 'published_at' => now()]);
@@ -146,7 +146,7 @@ class TeamScoringRulesWorkflowTest extends TestCase
         $this->assertSame([], app(TeamStandingsService::class)->forDraw($this->draw, true));
         $this->assertCount(2, app(TeamStandingsService::class)->forDraw($this->draw));
         $this->draw->update(['team_scoring_rules' => null]);
-        $this->assertSame(1, TeamFixture::where('draw_id', $this->draw->id)->publishedTeamTies()->count());
+        $this->assertSame(0, TeamFixture::where('draw_id', $this->draw->id)->publishedTeamTies()->count());
     }
 
     public function test_non_ajax_score_forms_redirect_and_completed_tie_can_be_corrected(): void

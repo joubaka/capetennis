@@ -178,6 +178,21 @@
 </div>
 
 {{-- DATES --}}
+<section class="card mb-4" id="result-controls">
+  <div class="card-body">
+    <h5>Results updates</h5>
+    <label class="d-flex align-items-center gap-2" style="min-height:44px" for="result-notifications-enabled">
+      <input class="form-check-input autosave" type="checkbox" id="result-notifications-enabled" name="result_notifications_enabled" {{ $event->result_notifications_enabled ? 'checked' : '' }}>
+      <span>Send result emails for this event</span>
+    </label>
+    <p class="small text-muted">Email players and linked parents when a completed, published result is entered or corrected. Enabling this does not email past results. Disabling cancels pending result emails.</p>
+    <label class="d-flex align-items-center gap-2" style="min-height:44px" for="result-auto-refresh-enabled">
+      <input class="form-check-input autosave" type="checkbox" id="result-auto-refresh-enabled" name="result_auto_refresh_enabled" {{ ($event->result_auto_refresh_enabled ?? true) ? 'checked' : '' }}>
+      <span>Automatically refresh results and standings pages</span>
+    </label>
+    <p class="small text-muted mb-0">Check for new scores every 30 seconds while a page is open. When disabled, visitors can reload the page to see the latest results. Scores and standings are still saved normally.</p>
+  </div>
+</section>
 <div class="col-12">
   <div class="card settings-card" id="settings-schedule">
     <div class="card-header d-flex align-items-start gap-3">

@@ -58,6 +58,7 @@ class DrawService
       'drawFixtures.registration1.players',
       'drawFixtures.registration2.players',
       'drawFixtures.fixtureResults',
+      'drawFixtures.draw.settings',
       'drawFixtures.drawGroup',
       'drawFixtures.orderOfPlay.venue',     // FIX
       'drawFixtures.venue',                 // FIX (venues coming from fixtures)
@@ -119,7 +120,7 @@ class DrawService
         'away_score' => $away_score,
 
         // FIX: Winner must come from results, not score comparison
-        'winner' => $lastSet?->winner_registration,
+        'winner' => app(IndividualMatchOutcomeService::class)->winner($fx),
 
         // FIX: include time + venue
         'time' => optional($fx->orderOfPlay)->time,
@@ -132,7 +133,7 @@ class DrawService
     // ORDER OF PLAY
     // ---------------------------------------------------------------------
     $allFixtures = $draw->drawFixtures()
-      ->with(['registration1.players', 'registration2.players', 'fixtureResults', 'orderOfPlay.venue', 'drawGroup'])
+      ->with(['registration1.players', 'registration2.players', 'fixtureResults', 'draw.settings', 'orderOfPlay.venue', 'drawGroup'])
       ->orderBy('round')
       ->orderBy('match_nr')
       ->get()
@@ -163,7 +164,7 @@ class DrawService
           ->map(fn($r) => "{$r->registration1_score}-{$r->registration2_score}")
           ->implode(', ');
 
-        $winner = optional($fx->fixtureResults->sortBy('set_nr')->last())->winner_registration;
+        $winner = app(IndividualMatchOutcomeService::class)->winner($fx);
 
         // Build feeder labels (e.g. "W1001/W1002" or "L1005/L1006")
         $wFeed = $winnerFeeders[$fx->id] ?? [];
@@ -717,7 +718,7 @@ class DrawService
       if (!isset($standings[$box])) continue;
 
       // Use fixture-level match winner (set during score save)
-      $winner = $fx->winner_registration;
+      $winner = app(IndividualMatchOutcomeService::class)->winner($fx);
       if (!$winner || $fx->fixtureResults->isEmpty()) continue;
 
       $home = $fx->registration1_id;
@@ -770,7 +771,7 @@ class DrawService
           ($fx->registration1_id == $regA && $fx->registration2_id == $regB) ||
           ($fx->registration1_id == $regB && $fx->registration2_id == $regA)
         ) {
-          return $fx->winner_registration;
+          return app(IndividualMatchOutcomeService::class)->winner($fx);
         }
       }
       return null;
@@ -1226,13 +1227,11 @@ class DrawService
         if ($s2 > $s1) $wins2++;
       }
 
-      $winner = $wins1 > $wins2
-        ? $fixture->registration1_id
-        : $fixture->registration2_id;
+      $winner = app(IndividualMatchOutcomeService::class)->winnerFromSets($fixture, $sets);
 
-      $loser = ($winner === $fixture->registration1_id)
+      $loser = $winner ? (($winner === $fixture->registration1_id)
         ? $fixture->registration2_id
-        : $fixture->registration1_id;
+        : $fixture->registration1_id) : null;
 
       $winnerChanged = $fixture->winner_registration !== null
         && (int) $fixture->winner_registration !== (int) $winner;
@@ -1291,7 +1290,7 @@ class DrawService
       ]);
 
       $fixture->winner_registration = $winner;
-      $fixture->match_status = 1;
+      $fixture->match_status = $winner ? 1 : 2;
       $fixture->save();
 
       // AUTO ADVANCE — route through EngineRouter (use per-draw mode)
@@ -1312,12 +1311,14 @@ class DrawService
           fn(Draw $draw) => $this->canonicalByes->advance($draw)
         );
       }
+      app(MatchResultNotificationService::class)->record($fixture);
     });
     // Rebuild updated OOP
     $draw = $fixture->draw()->with([
       'drawFixtures.registration1.players',
       'drawFixtures.registration2.players',
       'drawFixtures.fixtureResults',
+      'drawFixtures.draw.settings',
     ])->first();
 
     $oop = $draw->drawFixtures
@@ -1347,7 +1348,7 @@ class DrawService
 
           'time' => optional($fx->orderOfPlay)->time ?? '',
           'score' => $sets,
-          'winner' => optional($fx->fixtureResults->sortBy('set_nr')->last())->winner_registration,
+          'winner' => app(IndividualMatchOutcomeService::class)->winner($fx),
         ];
       })
       ->values();
@@ -1621,12 +1622,11 @@ class DrawService
       }
 
       // SAVE MATCH WINNER
-      $fixture->winner_registration = $wins1 > $wins2
-        ? $fixture->registration1_id
-        : $fixture->registration2_id;
+      $fixture->winner_registration = app(IndividualMatchOutcomeService::class)->winnerFromSets($fixture, $sets);
 
-      $fixture->match_status = 1;
+      $fixture->match_status = $fixture->winner_registration ? 1 : 2;
       $fixture->save();
+      app(MatchResultNotificationService::class)->record($fixture);
     });
 
     // === REFRESH FIXTURE DATA ONLY (fast) ===

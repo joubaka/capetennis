@@ -55,7 +55,7 @@
     .card { border: 1px solid #dee2e6 !important; box-shadow: none !important; page-break-inside: avoid; }
     .print-header { display: block !important; }
     .print-only-row { display: table-row !important; }
-    #incomeByCat, #expenseSummaryAccordion { display: block !important; }
+    #expenseSummaryAccordion { display: block !important; }
     body { font-size: 11px; }
     .table td, .table th { padding: 4px 6px !important; }
     .container-xl { max-width: 100% !important; padding: 0 !important; }
@@ -360,17 +360,15 @@
 
             {{-- ── PayFast fee deduction row ── --}}
             @if(abs($totalPayfastFees) > 0)
-              @php $payfastPerEntry = $totalEntries > 0 ? abs($totalPayfastFees) / $totalEntries : 0; @endphp
               <tr class="deduction-row">
                 <td class="ps-4">
-                  <i class="ti ti-minus me-1"></i>PayFast fees deducted
-                  <small class="text-muted ms-1">({{ $totalEntries }} × ~R{{ number_format($payfastPerEntry, 2) }})</small>
+                  <i class="ti ti-minus me-1"></i>PayFast fees deducted (registrations and clothing)
                 </td>
-                <td class="text-center">{{ $totalEntries }}</td>
-                <td class="text-end">~R {{ number_format($payfastPerEntry, 2) }}</td>
-                <td><small class="text-muted">PayFast</small></td>
-                <td>—</td>
-                <td class="text-end fw-semibold">−R {{ number_format(abs($totalPayfastFees), 2) }}</td>
+                <td class="text-center">&mdash;</td>
+                <td class="text-end">&mdash;</td>
+                <td><small class="text-muted">Recorded PayFast fees</small></td>
+                <td>&mdash;</td>
+                <td class="text-end fw-semibold">&minus;R {{ number_format(abs($totalPayfastFees), 2) }}</td>
                 <td class="no-print"></td>
               </tr>
             @endif
@@ -394,92 +392,59 @@
             {{-- ── Net registration income subtotal ── --}}
             @if(abs($totalPayfastFees) > 0 || $totalCapeTennisFees > 0)
               <tr class="table-light fw-semibold">
-                <td colspan="5" class="text-end text-muted" style="font-size:0.85rem">Net Registration Income</td>
-                <td class="text-end text-success">R {{ number_format($netRegistrationIncome, 2) }}</td>
+                <td colspan="5" class="text-end text-muted" style="font-size:0.85rem">Net Registration and Clothing Income</td>
+                <td class="text-end text-success">R {{ number_format($netRegistrationIncome + $clothingNet, 2) }}</td>
                 <td class="no-print"></td>
               </tr>
             @endif
 
-            {{-- ── Income by category / team breakdown (collapsible) ── --}}
-            @if($incomeByCategory->isNotEmpty())
-              <tr class="no-print">
-                <td colspan="7" class="py-1 px-3">
-                  <button class="btn btn-link btn-sm p-0 text-decoration-none text-muted"
-                          data-bs-toggle="collapse" data-bs-target="#incomeByCat">
-                    <i class="ti ti-chevron-down me-1"></i>Show income by {{ $event->isTeam() ? 'team category' : 'category' }}
-                  </button>
-                </td>
-              </tr>
-              <tr class="no-print">
+            @if($clothingReceipts['count'] > 0)
+              <tr>
                 <td colspan="7" class="p-0">
-                  <div class="collapse" id="incomeByCat">
-                    <table class="table table-sm mb-0 border-top">
-                      <thead class="table-secondary">
+                  <div class="px-3 py-3 border-top">
+                    <h6 class="mb-1">Clothing payable by region</h6>
+                    <p class="text-muted small mb-0">Paid clothing receipts minus the PayFast fee recorded on each order. Net amounts are shown for each region's convenor.</p>
+                  </div>
+                  <div class="table-responsive">
+                    <table class="table table-sm mb-0" aria-label="Clothing payable by region">
+                      <thead class="table-light">
                         <tr>
-                          <th class="ps-5">{{ $event->isTeam() ? 'Team Category' : 'Category' }}</th>
-                          <th class="text-center">Entries</th>
-                          <th class="text-end">Est. Income</th>
-                          <th class="text-end">% of Gross</th>
+                          <th class="ps-3">Region</th>
+                          <th class="text-center">Paid orders</th>
+                          <th class="text-end">Clothing received</th>
+                          <th class="text-end">Recorded PayFast fee</th>
+                          <th class="text-end pe-3">Net payable to convenor</th>
                         </tr>
                       </thead>
                       <tbody>
-                        @foreach($incomeByCategory as $catName => $catData)
+                        @foreach($clothingReceipts['groups'] as $region => $group)
                           <tr>
-                            <td class="ps-5">{{ $catName }}</td>
-                            <td class="text-center">{{ $catData['entries'] }}</td>
-                            <td class="text-end">R {{ number_format($catData['amount'], 2) }}</td>
-                            <td class="text-end">
-                              @if($totalGross > 0)
-                                <span class="badge bg-label-secondary cat-summary-badge">
-                                  {{ round($catData['amount'] / $totalGross * 100) }}%
-                                </span>
-                              @else
-                                —
-                              @endif
-                            </td>
+                            <td class="ps-3">{{ $region }}</td>
+                            <td class="text-center">{{ $group['rows']->count() }}</td>
+                            <td class="text-end text-nowrap">R {{ number_format($group['totals']['gross'], 2) }}</td>
+                            <td class="text-end text-nowrap">&minus;R {{ number_format(abs($group['totals']['fees']), 2) }}</td>
+                            <td class="text-end text-nowrap fw-semibold pe-3">R {{ number_format($group['totals']['net'], 2) }}</td>
                           </tr>
                         @endforeach
                       </tbody>
-                      <tfoot class="table-secondary">
+                      <tfoot class="table-light fw-semibold">
                         <tr>
-                          <td class="ps-5 fw-semibold">Total</td>
-                          <td class="text-center fw-semibold">{{ $totalEntries }}</td>
-                          <td class="text-end fw-semibold">R {{ number_format($totalGross, 2) }}</td>
-                          <td></td>
+                          <td class="ps-3">Total clothing</td>
+                          <td class="text-center">{{ $clothingReceipts['count'] }}</td>
+                          <td class="text-end text-nowrap">R {{ number_format($clothingReceipts['totals']['gross'], 2) }}</td>
+                          <td class="text-end text-nowrap">&minus;R {{ number_format(abs($clothingReceipts['totals']['fees']), 2) }}</td>
+                          <td class="text-end text-nowrap pe-3">R {{ number_format($clothingReceipts['totals']['net'], 2) }}</td>
                         </tr>
                       </tfoot>
                     </table>
                   </div>
-                </td>
-              </tr>
-              {{-- Print version: always visible --}}
-              <tr class="print-only-row">
-                <td colspan="7" class="p-0">
-                  <table class="table table-sm mb-0">
-                    <thead class="table-secondary">
-                      <tr>
-                        <th class="ps-5">{{ $event->isTeam() ? 'Team Category' : 'Category' }}</th>
-                        <th class="text-center">Entries</th>
-                        <th class="text-end">Est. Income</th>
-                        <th class="text-end">%</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      @foreach($incomeByCategory as $catName => $catData)
-                        <tr>
-                          <td class="ps-5">{{ $catName }}</td>
-                          <td class="text-center">{{ $catData['entries'] }}</td>
-                          <td class="text-end">R {{ number_format($catData['amount'], 2) }}</td>
-                          <td class="text-end">{{ $totalGross > 0 ? round($catData['amount'] / $totalGross * 100) : 0 }}%</td>
-                        </tr>
-                      @endforeach
-                    </tbody>
-                  </table>
+                  @if($clothingReceipts['groups']->has('Region not recorded'))
+                    <p class="small text-warning px-3 py-2 mb-0">Confirm the region for unassigned receipts before paying a convenor.</p>
+                  @endif
                 </td>
               </tr>
             @endif
 
-            {{-- ── Manual income items ── --}}
             @foreach($incomeItems as $item)
               <tr>
                 <td>{{ $item->label }}</td>

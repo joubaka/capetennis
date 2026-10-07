@@ -86,6 +86,8 @@ class EventSettingsController extends Controller
       'eventType' => 'sometimes|required|integer',
       'email' => 'sometimes|nullable|email',
       'published' => 'sometimes|boolean',
+      'result_notifications_enabled' => 'sometimes|boolean',
+      'result_auto_refresh_enabled' => 'sometimes|boolean',
       'signUp' => 'sometimes|boolean',
       'registration_open' => 'sometimes|boolean',
       'applications_open' => 'sometimes|boolean',
@@ -309,6 +311,9 @@ class EventSettingsController extends Controller
       }
 
       $event->update($updateData);
+      if ($request->has('result_notifications_enabled') && ! $request->boolean('result_notifications_enabled')) {
+        app(\App\Services\MatchResultNotificationService::class)->invalidateEvent($event);
+      }
     });
 
     /**

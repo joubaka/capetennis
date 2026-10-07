@@ -3,10 +3,11 @@
 @section('title', 'Team Fixtures')
 
 @section('content')
-@if($draw->published && $draw->team_scoring_rules !== null)
-<div class="container-xxl pt-3"><a class="btn btn-outline-primary" href="{{ route('frontend.team-draw.standings', $draw) }}">Team standings</a></div>
+@if($draw->published)
+<div class="container-xxl pt-3 d-flex flex-wrap gap-2"><a class="btn btn-outline-primary" style="min-height:44px" href="{{ route('frontend.team-draw.standings', $draw) }}">Team standings</a><a class="btn btn-outline-primary" style="min-height:44px" href="{{ route('frontend.events.standings', $draw->event) }}">Full event standings</a></div>
+@include('frontend.fixtures.partials.live-results-status')
 @endif
-<div class="container-xxl py-4">
+<div class="container-xxl py-4" @if($draw->published) data-live-results="team-fixture-list" @endif>
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2 class="mb-0">
             Team Fixtures
@@ -117,6 +118,7 @@
         </div>
     </div>
 </div>
+@include('frontend.fixtures.partials.live-results-script')
 @endsection
 
 <style>

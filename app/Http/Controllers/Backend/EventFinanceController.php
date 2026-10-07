@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Backend;
 
 use App\Domain\Finance\Services\FinancialLedgerService;
+use App\Domain\Finance\Services\EventFinanceReceiptReport;
 use App\Http\Controllers\Controller;
 use App\Models\CategoryEventRegistration;
 use App\Models\Draw;
@@ -13,7 +14,6 @@ use App\Models\EventIncomeItem;
 use App\Models\SiteSetting;
 use App\Models\EventVenueConvenor;
 use App\Models\ExpenseType;
-use App\Models\Transaction;
 use App\Models\User;
 use App\Models\Venue;
 use Illuminate\Http\Request;
@@ -55,52 +55,19 @@ class EventFinanceController extends Controller
         $clothingNet = $ledgerTotals['clothing_net'];
         $totalPayfastFees = abs($ledgerTotals['pf_fees']);
         $totalCapeTennisFees = abs($ledgerTotals['cape_fees']);
-        $netRegistrationIncome = $ledgerTotals['net_revenue'];
+        $netRegistrationIncome = $ledgerTotals['registration_net'];
         $entryRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee']);
         $totalEntries = $isTeamEvent
             ? $entryRows->count()
             : $entryRows->sum(fn ($row) => $row->entryCount ?? 1);
 
-        // Raw PayFast transactions are retained only for the category split.
-        $payfastTransactions = Transaction::with([
-            'user',
-            'order.items.player',
-            'order.items.category_event.category',
-        ])
-            ->where('event_id', $event->id)
-            ->where('transaction_type', 'Registration')
-            ->where('amount_gross', '>=', 0)
-            ->where('is_test', false)
-            ->whereNull('archived_at')
-            ->orderByDesc('created_at')
-            ->get();
+        $clothingReceipts = app(EventFinanceReceiptReport::class)
+            ->build($event, $paymentRows->where('type', 'clothing_payment'))['clothing'];
 
-        // ── Income breakdown by category (individual) or by group (team) ──
-        $incomeByCategory = collect();
-        foreach ($payfastTransactions as $t) {
-            $items     = $t->order?->items ?? collect();
-            $itemCount = $items->count();
-            // Skip transactions with no order items to avoid division by zero below
-            if ($itemCount === 0) {
-                continue;
-            }
-            $amtPerItem = (float) $t->amount_gross / $itemCount;
-            foreach ($items as $item) {
-                $catName = $item->category_event?->category?->name ?? 'Unknown';
-                $current = $incomeByCategory->get($catName, ['entries' => 0, 'amount' => 0.0]);
-                $incomeByCategory->put($catName, [
-                    'entries' => $current['entries'] + 1,
-                    'amount'  => $current['amount'] + $amtPerItem,
-                ]);
-            }
-        }
-        $incomeByCategory = $incomeByCategory->sortKeys();
-
-        // ── Manual income items ───────────────────────────────────────────
         $incomeItems      = $event->incomeItems()->get();
         $totalIncomeItems = $incomeItems->sum(fn($i) => $i->calculatedTotal());
-        // grandTotalIncome = net registration (after PayFast + CT deductions) + manual items
-        $grandTotalIncome = $netRegistrationIncome + $totalIncomeItems;
+        // Each canonical net receipt section is included once, plus manual income.
+        $grandTotalIncome = $netRegistrationIncome + $clothingNet + $totalIncomeItems;
 
         // ── Convenors (Hoof first, then Hulp, then others) ───────────────
         $convenors = $event->convenors()
@@ -215,7 +182,7 @@ class EventFinanceController extends Controller
             'totalEntries',
             'feePerEntry',
             'netRegistrationIncome',
-            'incomeByCategory',
+            'clothingReceipts',
             'incomeItems',
             'totalIncomeItems',
             'grandTotalIncome',

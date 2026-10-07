@@ -64,7 +64,7 @@ class PlayerRatingBadgeTest extends TestCase
         $this->assertSame('54.8', $service->forPlayer(1, $draw)['label']);
         $this->assertSame('Medium', $service->forPlayer(1, $draw)['confidence_band']);
         $this->assertSame('72.3', $service->forPlayer(1)['label']);
-        $this->assertSame('High', $service->forPlayer(1)['confidence_band']);
+        $this->assertSame('Medium', $service->forPlayer(1)['confidence_band']);
         $this->assertNull($service->forPlayer(2, $draw));
         $this->assertNull($service->forPlayer(1, $this->draw('U10 Girls')));
         $this->assertNull($service->forPlayer(1, $this->draw('Green ball')));

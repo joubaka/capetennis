@@ -79,6 +79,53 @@ class EventFinanceControllerAuthorizationTest extends TestCase
             ->assertSee('Entry amount');
     }
 
+    public function test_paid_clothing_breakdown_is_event_scoped_and_reconciles_once(): void
+    {
+        $this->eventA->update(['cape_tennis_fee' => 0]);
+        // Registration ledger fees use the configured calculator, not amount_fee.
+        \App\Models\SiteSetting::set('payfast_fee_percentage', 4);
+        \App\Models\SiteSetting::set('payfast_fee_flat', 0);
+        \App\Models\SiteSetting::set('payfast_vat_rate', 0);
+        $category = \App\Models\CategoryEvent::factory()->create(['event_id' => $this->eventA->id]);
+        $north = \App\Models\TeamRegion::create(['region_name' => 'North clothing region']);
+        $south = \App\Models\TeamRegion::create(['region_name' => 'South clothing region']);
+        $teams = collect([$north, $south])->map(fn ($region) => \App\Models\Team::factory()->create([
+            'category_event_id' => $category->id, 'region_id' => $region->id,
+        ]));
+        foreach ([[$teams[0]->id, 101.01, 3.03], [$teams[0]->id, 50.50, 1.50], [$teams[1]->id, 200, 6], [null, 25, 0]] as [$teamId, $gross, $fee]) {
+            \App\Models\ClothingOrder::create([
+                'event_id' => $this->eventA->id, 'team_id' => $teamId, 'user_id' => $this->user->id,
+                'pay_status' => 1, 'status' => 'completed', 'total' => 999, 'amount_paid' => $gross, 'payfast_fee' => $fee,
+            ]);
+        }
+        foreach ([[$this->eventA->id, 0, 'pending'], [$this->eventB->id, 1, 'completed']] as [$eventId, $paid, $status]) {
+            \App\Models\ClothingOrder::create([
+                'event_id' => $eventId, 'user_id' => $this->user->id, 'pay_status' => $paid, 'status' => $status, 'total' => 999,
+            ]);
+        }
+        DB::table('transactions_pf')->insert([
+            'event_id' => $this->eventA->id, 'transaction_type' => 'Registration', 'amount_gross' => 100,
+            'amount_fee' => -4, 'is_test' => false, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $response = $this->actingAs($this->admin)->get(route('admin.events.finances', $this->eventA));
+        $response->assertOk()->assertDontSee('Show income by')->assertSee('Clothing payable by region')
+            ->assertSee('Recorded PayFast fee')->assertSee('Region not recorded')
+            ->assertViewHas('netRegistrationIncome', 96.00)->assertViewHas('clothingNet', 365.98)
+            ->assertViewHas('grandTotalIncome', 961.98)
+            ->assertViewHas('clothingReceipts', function ($report) {
+                $this->assertSame(4, $report['count']);
+                $this->assertEquals(376.51, $report['totals']['gross']);
+                $this->assertEquals(-10.53, $report['totals']['fees']);
+                $this->assertEquals(146.98, $report['groups']['North clothing region']['totals']['net']);
+                $this->assertEquals(194, $report['groups']['South clothing region']['totals']['net']);
+                return true;
+            });
+        $this->actingAs($this->admin)->get(route('admin.events.finances', $this->eventA))->assertOk()
+            ->assertViewHas('grandTotalIncome', 961.98);
+        $this->assertDatabaseCount('clothing_orders', 6);
+        $this->assertDatabaseCount('transactions_pf', 1);
+    }
+
     public function test_view_cross_event_forbidden() { $this->actingAs($this->admin)->get(route('admin.events.finances', $this->eventB->id))->assertStatus(403); }
 
     public function test_view_user_forbidden() { $this->actingAs($this->user)->get(route('admin.events.finances', $this->eventA->id))->assertStatus(403); }

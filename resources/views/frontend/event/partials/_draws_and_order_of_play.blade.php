@@ -20,6 +20,9 @@
   </div>
 
   <div class="card-body">
+    @if($event->isTeam() && $event->published)
+      <a class="btn btn-outline-primary mb-3" style="min-height:44px" href="{{ route('frontend.events.standings', $event) }}">Team standings and match totals</a>
+    @endif
     @include('frontend.event.partials._venue-scoring')
 
     {{-- ✅ Published Draws --}}

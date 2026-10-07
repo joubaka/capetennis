@@ -353,6 +353,7 @@ class DrawPackTest extends TestCase
             'event' => $this->event,
             'draw_ids' => [$firstDraw->id, $secondDraw->id],
             'print_type' => 'venue',
+            'schedule_source' => 'working',
         ]));
 
         $response->assertOk()
@@ -365,13 +366,35 @@ class DrawPackTest extends TestCase
             ->assertSee('Court 10')
             ->assertSee('Court 2')
             ->assertSee('Court 3')
-            ->assertSee('Not on venue list: Boys U14 - M99')
-            ->assertSee('Missing time and venue')
+            ->assertSee('Working preview')
             ->assertDontSee('Complete Draw Pack');
 
         $this->assertSame(2, substr_count($response->getContent(), 'Venue order of play'));
         $newlandsRows = str($response->getContent())->after('<caption>Newlands Tennis Club order of play');
         $this->assertTrue($newlandsRows->position('Girls U14') < $newlandsRows->position('Boys U14'));
+    }
+
+    public function test_venue_copy_defaults_to_published_snapshot_and_filters_day_and_venue(): void
+    {
+        $draw = Draw::factory()->create(['event_id' => $this->event->id, 'published' => true, 'oop_published' => true]);
+        $venue = Venue::forceCreate(['name' => 'Published courts']);
+        $fixture = Fixture::factory()->create(['draw_id' => $draw->id]);
+        OrderOfPlay::create(['draw_id' => $draw->id, 'fixture_id' => $fixture->id, 'venue_id' => $venue->id,
+            'time' => '2026-09-21 16:00:00', 'court' => 'Working court']);
+        DB::table('published_schedule_assignments')->insert(['event_id' => $this->event->id, 'draw_id' => $draw->id,
+            'fixture_kind' => 'individual', 'fixture_id' => $fixture->id, 'venue_id' => $venue->id,
+            'scheduled_at' => '2026-09-20 09:00:00', 'court' => 'Published court', 'duration' => 75,
+            'published_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+        $params = ['event' => $this->event, 'print_type' => 'venue', 'venue_id' => $venue->id, 'date' => '2026-09-20'];
+        $this->actingAs($this->admin)->get(route('headoffice.drawPack', $params))->assertOk()
+            ->assertSee('Published court')->assertSee('09:00')->assertDontSee('Working court')->assertDontSee('16:00');
+        $params['date'] = '2026-09-21';
+        $this->get(route('headoffice.drawPack', $params))->assertOk()->assertSee('No matches for the selected day');
+        $params['schedule_source'] = 'working';
+        $this->get(route('headoffice.drawPack', $params))->assertOk()->assertSee('Working court')->assertSee('16:00');
+        $draw->update(['published' => false]);
+        unset($params['schedule_source']);
+        $this->get(route('headoffice.drawPack', $params))->assertOk()->assertDontSee('Working court')->assertDontSee('Published court');
     }
 
     public function test_pack_rejects_unknown_print_type(): void

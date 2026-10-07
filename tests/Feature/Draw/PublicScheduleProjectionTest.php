@@ -12,6 +12,27 @@ class PublicScheduleProjectionTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_public_and_working_rows_use_canonical_court_order_from_their_own_schedule(): void
+    {
+        $event = Event::factory()->create();
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'published' => true]);
+        $venue = Venue::forceCreate(['name' => 'Order courts']);
+        $fixtures = collect(['Court 10', 'Court 2'])->map(function ($court) use ($draw, $venue) {
+            $fixture = Fixture::factory()->create(['draw_id' => $draw->id]);
+            OrderOfPlay::create(['fixture_id' => $fixture->id, 'draw_id' => $draw->id, 'venue_id' => $venue->id,
+                'court' => $court, 'time' => '2026-10-09 09:00:00']);
+            return $fixture;
+        });
+        $service = app(SchedulePublicationService::class);
+        $service->publish($event, ['draw_id' => $draw->id]);
+        $expected = [$fixtures[1]->id, $fixtures[0]->id];
+        $this->assertSame($expected, $service->workingRows($event)->pluck('fixture_id')->all());
+        $fixtures[1]->orderOfPlay()->update(['time' => '2026-10-10 15:00:00', 'court' => 'Court 99']);
+        request()->attributes->remove('published_schedule_rows_'.$event->id);
+        $this->assertSame($expected, $service->publishedRows($event)->pluck('fixture_id')->all());
+        $this->assertSame(array_reverse($expected), $service->workingRows($event)->pluck('fixture_id')->all());
+    }
+
     public function test_draw_badge_days_are_chronological_unique_public_snapshot_days_only(): void
     {
         $event = Event::factory()->create(['eventType' => 3]);

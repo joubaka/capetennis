@@ -1301,6 +1301,9 @@ class HeadOfficeController extends Controller
       'include_standings' => ['sometimes', 'boolean'],
       'download' => ['sometimes', 'boolean'],
       'print_type' => ['sometimes', 'string', 'in:pack,venue,bracket'],
+      'schedule_source' => ['sometimes', 'string', 'in:published,working'],
+      'date' => ['nullable', 'date_format:Y-m-d'],
+      'venue_id' => ['nullable', 'integer'],
     ]);
 
     $drawIds = collect($validated['draw_ids'] ?? $event->draws()->pluck('id'))
@@ -1377,6 +1380,20 @@ class HeadOfficeController extends Controller
     }
 
     $drawsData = $draws->map(fn (Draw $draw) => $this->buildDrawPrintData($draw))->values();
+    $scheduleSource = $validated['schedule_source'] ?? 'published';
+    if (($validated['print_type'] ?? 'pack') === 'venue' && $scheduleSource === 'published') {
+      $published = app(\App\Services\Scheduling\SchedulePublicationService::class)->publishedRows($event)
+        ->where('fixture_kind', 'individual')->keyBy('fixture_id');
+      $drawsData = $drawsData->map(function (array $draw) use ($published) {
+        $draw['oops'] = collect($draw['oops'])->filter(fn ($fixture) => $published->has($fixture['id']))
+          ->map(function (array $fixture) use ($published) {
+            $row = $published[$fixture['id']];
+            return array_replace($fixture, ['scheduled_at' => $row['scheduled_at'], 'venue' => $row['venue_name'],
+              'venue_id' => $row['venue_id'], 'court' => $row['court'], 'duration' => $row['duration']]);
+          })->values()->all();
+        return $draw;
+      });
+    }
     $venueMatchOrder = app(\App\Services\Scheduling\VenueMatchOrder::class);
     $schedule = $drawsData->flatMap(fn (array $draw) => collect($draw['oops'])
       ->whereNotNull('scheduled_at')
@@ -1387,6 +1404,10 @@ class HeadOfficeController extends Controller
       ->sort(fn (array $left, array $right): int => $venueMatchOrder->compare($left, $right))
       ->values();
 
+    $schedule = $schedule->filter(fn ($fixture) =>
+      (empty($validated['date']) || substr($fixture['scheduled_at'], 0, 10) === $validated['date'])
+      && (empty($validated['venue_id']) || (int) ($fixture['venue_id'] ?? 0) === (int) $validated['venue_id']))->values();
+
     $data = [
       'event' => $event,
       'draws' => $drawsData,
@@ -1394,6 +1415,7 @@ class HeadOfficeController extends Controller
       'includeStandings' => (bool) ($validated['include_standings'] ?? true),
       'autoPrint' => ! (bool) ($validated['download'] ?? false),
       'printType' => $validated['print_type'] ?? 'pack',
+      'scheduleSource' => $scheduleSource,
     ];
 
     if (! (bool) ($validated['download'] ?? false)) {
@@ -1416,6 +1438,7 @@ class HeadOfficeController extends Controller
    */
   private function buildDrawPrintData(Draw $draw): array
   {
+    $draw->loadMissing(['drawFixtures.region1Name', 'drawFixtures.region2Name']);
     $groups = $draw->groups->map(function ($g) {
       return [
         'id'   => $g->id,
@@ -1532,6 +1555,9 @@ class HeadOfficeController extends Controller
           'venue'        => $fx->orderOfPlay?->venue?->name,
           'court'        => $fx->orderOfPlay?->court,
           'duration'     => $fx->orderOfPlay?->duration_minutes,
+          'venue_id'     => $fx->orderOfPlay?->venue_id,
+          'home_region'  => $fx->region1Name?->region_name,
+          'away_region'  => $fx->region2Name?->region_name,
           'winner_feeders' => $wFeed,
           'loser_feeders'  => $lFeed,
           'winner_to'      => $fx->parent_fixture_id

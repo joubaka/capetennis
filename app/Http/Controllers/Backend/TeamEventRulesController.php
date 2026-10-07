@@ -49,7 +49,10 @@ class TeamEventRulesController extends Controller
         $visibility = app(\App\Services\PublicTournamentVisibility::class);
         $visibility->ensureEventIsVisible($draw->event, auth()->user());
         $visibility->ensureDrawIsVisible($draw, auth()->user());
-        abort_unless($draw->isTeamDraw() && $draw->published && $draw->team_scoring_rules !== null, 404);
-        return view('frontend.fixtures.team-standings', ['draw' => $draw, 'rows' => $service->forDraw($draw, true)]);
+        abort_unless($draw->isTeamDraw() && $draw->published, 404);
+        $data = app(\App\Services\EventStandingsService::class)->forEvent($draw->event, publishedOnly: true, drawId: $draw->id);
+
+        return response()->view('frontend.fixtures.team-standings', ['draw' => $draw, 'rows' => $data['sections'][0]['rows'] ?? []])
+            ->header('Cache-Control', 'private, no-store');
     }
 }

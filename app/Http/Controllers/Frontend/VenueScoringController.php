@@ -28,6 +28,14 @@ class VenueScoringController extends Controller
     public function index(Request $request, Event $event): View
     {
         $this->authorize('event.score', $event);
+        $request->validate([
+            'schedule_source' => ['nullable', 'in:published,working'], 'date' => ['nullable', 'date_format:Y-m-d'],
+            'draw_ids' => ['sometimes', 'array', 'min:1', 'max:200'], 'draw_ids.*' => ['integer', 'distinct'],
+        ]);
+        $publishedSchedule = $request->input('schedule_source') === 'published';
+        $publishedRows = $publishedSchedule
+            ? app(\App\Services\Scheduling\SchedulePublicationService::class)->publishedRows($event)
+            : collect();
         $user = $request->user();
         $restrictedVenueId = $user->is_event_score_keeper($event->id)
             ? $user->scoringVenueIdForEvent($event->id)
@@ -37,6 +45,11 @@ class VenueScoringController extends Controller
             ->with(['settings', 'flexibleMonrad', 'draw_types', 'categoryEvent.category'])
             ->orderBy('drawName')
             ->get();
+        $scheduleDrawIds = $request->input('draw_ids', []);
+        if ($scheduleDrawIds) {
+            abort_unless(count($scheduleDrawIds) === $draws->whereIn('id', $scheduleDrawIds)->count(), 404, 'A selected draw does not belong to this tournament.');
+            $draws = $draws->whereIn('id', $scheduleDrawIds)->values();
+        }
         $drawIds = $draws->pluck('id');
 
         $venueIds = OrderOfPlay::query()
@@ -44,6 +57,7 @@ class VenueScoringController extends Controller
             ->whereNotNull('venue_id')
             ->pluck('venue_id')
             ->merge($event->venues()->pluck('venues.id'))
+            ->merge($publishedRows->pluck('venue_id'))
             ->unique()
             ->values();
         $venues = Venue::query()
@@ -59,6 +73,13 @@ class VenueScoringController extends Controller
             abort_unless($selectedVenue, 404, 'This venue does not belong to the selected tournament.');
         } elseif ($restrictedVenueId !== null) {
             $selectedVenue = $venues->firstWhere('id', $restrictedVenueId);
+            abort_unless($selectedVenue, 403, 'Your assigned scoring venue is unavailable. Contact the tournament organiser.');
+        }
+        if ($publishedSchedule && $selectedVenue) {
+            $publishedRows = $publishedRows->where('venue_id', $selectedVenue->id)->values();
+        }
+        if ($publishedSchedule && $request->filled('date')) {
+            $publishedRows = $publishedRows->filter(fn ($row) => substr($row['scheduled_at'], 0, 10) === $request->input('date'))->values();
         }
 
         $selectedDraw = null;
@@ -70,11 +91,12 @@ class VenueScoringController extends Controller
         $fixtures = Fixture::query()
             ->whereIn('draw_id', $drawIds)
             ->when($selectedDraw, fn ($query) => $query->where('draw_id', $selectedDraw->id))
-            ->when($selectedVenue, fn ($query) => $query->whereHas(
+            ->when($publishedSchedule, fn ($query) => $query->whereIn('id', $publishedRows->where('fixture_kind', 'individual')->pluck('fixture_id')))
+            ->when($selectedVenue && ! $publishedSchedule, fn ($query) => $query->whereHas(
                 'orderOfPlay',
                 fn ($schedule) => $schedule->where('venue_id', $selectedVenue->id)
             ))
-            ->when(! $selectedDraw && ! $selectedVenue, fn ($query) => $query->whereHas('orderOfPlay'))
+            ->when(! $publishedSchedule && ! $selectedDraw && ! $selectedVenue, fn ($query) => $query->whereHas('orderOfPlay'))
             ->with([
                 'draw.settings',
                 'draw.flexibleMonrad',
@@ -88,14 +110,16 @@ class VenueScoringController extends Controller
             ->orderBy('draw_id')
             ->orderBy('round')
             ->orderBy('match_nr')
-            ->limit(500)
+            ->when(! $publishedSchedule, fn ($query) => $query->limit(500))
             ->get();
 
         $teamFixtures = TeamFixture::query()
+            ->whereIn('draw_id', $drawIds)
+            ->when($publishedSchedule, fn ($query) => $query->whereIn('id', $publishedRows->where('fixture_kind', 'team')->pluck('fixture_id')))
             ->whereHas('draw', fn ($query) => $query->where('event_id', $event->id))
             ->when($selectedDraw, fn ($query) => $query->where('draw_id', $selectedDraw->id))
-            ->when($selectedVenue, fn ($query) => $query->where('venue_id', $selectedVenue->id))
-            ->when(! $selectedDraw && ! $selectedVenue, fn ($query) => $query->whereNotNull('venue_id'))
+            ->when($selectedVenue && ! $publishedSchedule, fn ($query) => $query->where('venue_id', $selectedVenue->id))
+            ->when(! $publishedSchedule && ! $selectedDraw && ! $selectedVenue, fn ($query) => $query->whereNotNull('venue_id'))
             ->with([
                 'draw.settings',
                 'draw.flexibleMonrad',
@@ -110,12 +134,21 @@ class VenueScoringController extends Controller
                 'region2Name',
             ])
             ->inPlayOrder()
-            ->limit(500)
+            ->when(! $publishedSchedule, fn ($query) => $query->limit(500))
             ->get();
 
         app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($teamFixtures);
 
-        $matches = $fixtures->concat($teamFixtures)
+        $matches = $fixtures->concat($teamFixtures);
+        if ($publishedSchedule) {
+            foreach ($matches as $match) {
+                $workingVenueId = $match instanceof Fixture ? $match->orderOfPlay?->venue_id : $match->venue_id;
+                $match->setAttribute('scoring_venue_changed', $restrictedVenueId !== null && (int) $workingVenueId !== $restrictedVenueId);
+            }
+            app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($matches);
+            $matches = $matches->filter(fn ($match) => ! $selectedVenue || (int) $match->venue_id === (int) $selectedVenue->id);
+        }
+        $matches = $matches
             ->sort(fn ($left, $right): int => $this->venueMatchOrder->compare($left, $right))
             ->values();
 
@@ -155,6 +188,9 @@ class VenueScoringController extends Controller
             'recentActivity' => $recentActivity,
             'operatorName' => (string) $request->session()->get('venue_scoring.operator', ''),
             'venueRestricted' => $restrictedVenueId !== null,
+            'scheduleSource' => $publishedSchedule ? 'published' : 'working',
+            'scheduleDate' => $publishedSchedule ? $request->input('date') : null,
+            'scheduleDrawIds' => $scheduleDrawIds,
         ]);
     }
 

@@ -37,6 +37,7 @@ class InterproDrawBuilder
       'drawFixtures.registration1.players',
       'drawFixtures.registration2.players',
       'drawFixtures.fixtureResults',
+      'drawFixtures.draw.settings',
       'drawFixtures.drawGroup',
       'drawFixtures.orderOfPlay.venue',     // FIX
       'drawFixtures.venue',                 // FIX (venues coming from fixtures)
@@ -57,6 +58,7 @@ class InterproDrawBuilder
         'drawFixtures.registration1.players',
         'drawFixtures.registration2.players',
         'drawFixtures.fixtureResults',
+      'drawFixtures.draw.settings',
         'drawFixtures.drawGroup',
       ]);
 
@@ -106,7 +108,7 @@ class InterproDrawBuilder
         'away_score' => $away_score,
 
         // FIX: Winner must come from results, not score comparison
-        'winner' => $lastSet?->winner_registration,
+        'winner' => app(IndividualMatchOutcomeService::class)->winner($fx),
 
         // FIX: include time + venue
         'time' => optional($fx->orderOfPlay)->time,
@@ -118,7 +120,7 @@ class InterproDrawBuilder
     // ORDER OF PLAY
     // ---------------------------------------------------------------------
     $oops = $draw->drawFixtures()
-      ->with(['registration1.players', 'registration2.players', 'fixtureResults', 'orderOfPlay.venue'])
+      ->with(['registration1.players', 'registration2.players', 'fixtureResults', 'draw.settings', 'orderOfPlay.venue'])
       ->orderByRaw("
             FIELD(stage, 'RR', 'MAIN', 'PLATE', 'CONS'),
             round ASC,
@@ -132,7 +134,7 @@ class InterproDrawBuilder
           ->map(fn($r) => "{$r->registration1_score}-{$r->registration2_score}")
           ->implode(', ');
 
-        $winner = optional($fx->fixtureResults->sortBy('set_nr')->last())->winner_registration;
+        $winner = app(IndividualMatchOutcomeService::class)->winner($fx);
 
         return [
           'id' => $fx->id,
@@ -193,6 +195,7 @@ class InterproDrawBuilder
     $draw->loadMissing([
       'groups.registrations',
       'drawFixtures.fixtureResults',
+      'drawFixtures.draw.settings',
     ]);
     Log::info("📦 [MainSeeds] Relations loaded");
 
@@ -257,10 +260,8 @@ class InterproDrawBuilder
       $standings[$gid][$away]['games_won'] += $awayGames;
       $standings[$gid][$away]['games_lost'] += $homeGames;
 
-      $last = $fx->fixtureResults->sortBy('set_nr')->last();
-
-      if ($last) {
-        $winner = $last->winner_registration;
+      $winner = app(IndividualMatchOutcomeService::class)->winner($fx);
+      if ($winner) {
         if ($winner == $home) {
           $standings[$gid][$home]['wins']++;
           $standings[$gid][$away]['losses']++;
@@ -360,6 +361,7 @@ class InterproDrawBuilder
     $draw->loadMissing([
       'groups.registrations',
       'drawFixtures.fixtureResults',
+      'drawFixtures.draw.settings',
     ]);
     Log::info("📦 [PlateSeeds] Relations loaded");
 
@@ -423,9 +425,8 @@ class InterproDrawBuilder
       $standings[$gid][$away]['sets_won'] += $awaySets;
       $standings[$gid][$away]['sets_lost'] += $homeSets;
 
-      $last = $fx->fixtureResults->sortBy('set_nr')->last();
-      if ($last) {
-        $winner = $last->winner_registration;
+      $winner = app(IndividualMatchOutcomeService::class)->winner($fx);
+      if ($winner) {
 
         if ($winner == $home) {
           $standings[$gid][$home]['wins']++;
@@ -888,7 +889,7 @@ class InterproDrawBuilder
         continue;
       }
 
-      $winner = $last->winner_registration;
+      $winner = app(IndividualMatchOutcomeService::class)->winner($fx);
       $home = $fx->registration1_id;
       $away = $fx->registration2_id;
 
@@ -938,7 +939,7 @@ class InterproDrawBuilder
       if ($winner == $home) {
         $standings[$box][$home]['wins']++;
         $standings[$box][$away]['losses']++;
-      } else {
+      } elseif ($winner == $away) {
         $standings[$box][$away]['wins']++;
         $standings[$box][$home]['losses']++;
       }
@@ -961,11 +962,7 @@ class InterproDrawBuilder
           ($fx->registration1_id == $regA && $fx->registration2_id == $regB) ||
           ($fx->registration1_id == $regB && $fx->registration2_id == $regA)
         ) {
-          $last = $fx->fixtureResults->sortBy('set_nr')->last();
-          if (!$last)
-            return null;
-
-          return $last->winner_registration;
+          return app(IndividualMatchOutcomeService::class)->winner($fx);
         }
       }
 
@@ -1030,6 +1027,9 @@ class InterproDrawBuilder
         ) {
           $j++;
         }
+        // A completely equal group cannot be reduced further. Recursing the
+        // same group would never terminate, including unplayed/partial draws.
+        if ($i === 0 && $j === count($group)) return $group;
         $resolved = array_merge($resolved, $resolveGroup(array_slice($group, $i, $j - $i)));
         $i = $j;
       }
@@ -1103,11 +1103,11 @@ class InterproDrawBuilder
           $scores[$fx->registration2_id]['games_minus'] += $set->registration1_score;
         }
 
-        // NOTE: this relies on fixture->winner_registration existing
-        if ($fx->winner_registration == $fx->registration1_id) {
+        $winner = app(IndividualMatchOutcomeService::class)->winner($fx);
+        if ($winner && $winner == $fx->registration1_id) {
           $scores[$fx->registration1_id]['wins']++;
           $scores[$fx->registration2_id]['losses']++;
-        } elseif ($fx->winner_registration == $fx->registration2_id) {
+        } elseif ($winner && $winner == $fx->registration2_id) {
           $scores[$fx->registration2_id]['wins']++;
           $scores[$fx->registration1_id]['losses']++;
         }
@@ -1494,13 +1494,11 @@ class InterproDrawBuilder
       }
 
       // DETERMINE MATCH WINNER
-      $winner = $wins1 > $wins2
-        ? $fixture->registration1_id
-        : $fixture->registration2_id;
+      $winner = app(IndividualMatchOutcomeService::class)->winnerFromSets($fixture, $sets);
 
-      $loser = ($winner === $fixture->registration1_id)
+      $loser = $winner ? (($winner === $fixture->registration1_id)
         ? $fixture->registration2_id
-        : $fixture->registration1_id;
+        : $fixture->registration1_id) : null;
 
       Log::info("🏆 [BracketScore] Fixture Winner Calculated", [
         'fixture_id' => $fixture->id,
@@ -1509,17 +1507,19 @@ class InterproDrawBuilder
       ]);
 
       $fixture->winner_registration = $winner;
-      $fixture->match_status = 1;
+      $fixture->match_status = $winner ? 1 : 2;
       $fixture->save();
 
       // AUTO ADVANCE
-      $this->autoAdvanceBracket($fixture, $winner, $loser);
+      if ($winner && $loser) $this->autoAdvanceBracket($fixture, $winner, $loser);
+      app(MatchResultNotificationService::class)->record($fixture);
     });
     // Rebuild updated OOP
     $draw = $fixture->draw()->with([
       'drawFixtures.registration1.players',
       'drawFixtures.registration2.players',
       'drawFixtures.fixtureResults',
+      'drawFixtures.draw.settings',
     ])->first();
 
     $oop = $draw->drawFixtures
@@ -1549,7 +1549,7 @@ class InterproDrawBuilder
 
           'time' => optional($fx->orderOfPlay)->time ?? '',
           'score' => $sets,
-          'winner' => optional($fx->fixtureResults->sortBy('set_nr')->last())->winner_registration,
+          'winner' => app(IndividualMatchOutcomeService::class)->winner($fx),
         ];
       })
       ->values();
@@ -1723,12 +1723,11 @@ class InterproDrawBuilder
       }
 
       // SAVE MATCH WINNER
-      $fixture->winner_registration = $wins1 > $wins2
-        ? $fixture->registration1_id
-        : $fixture->registration2_id;
+      $fixture->winner_registration = app(IndividualMatchOutcomeService::class)->winnerFromSets($fixture, $sets);
 
-      $fixture->match_status = 1;
+      $fixture->match_status = $fixture->winner_registration ? 1 : 2;
       $fixture->save();
+      app(MatchResultNotificationService::class)->record($fixture);
     });
 
     // === REFRESH FIXTURE DATA ONLY (fast) ===

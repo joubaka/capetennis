@@ -281,7 +281,7 @@ class VenueScoringWorkspaceTest extends TestCase
 
         $this->assertStringContainsString('Score fixtures by venue', $html);
         $this->assertStringContainsString(
-            route('frontend.scoring.workspace', ['event' => $event, 'venue' => $venue->id]),
+            e(route('frontend.scoring.workspace', ['event' => $event, 'schedule_source' => 'published', 'venue' => $venue->id])),
             $html
         );
         $this->assertStringContainsString('>2</span>', $html);
@@ -584,6 +584,92 @@ class VenueScoringWorkspaceTest extends TestCase
         $this->assertSame('team', $audit->payload['fixture_type']);
         $this->assertSame('Team phone', $audit->payload['operator']);
         $this->assertSame($venue->id, $audit->payload['venue_id']);
+    }
+
+    public function test_published_venue_queue_retains_snapshot_after_private_move_and_schedule_deletion(): void
+    {
+        [$event, $draw, $venue, $fixture] = $this->scheduledFixture('Published Venue');
+        [, , $otherVenue, $otherFixture] = $this->scheduledFixture('Private Venue', $event, $draw);
+        $publication = app(\App\Services\Scheduling\SchedulePublicationService::class);
+        $publication->publish($event, ['draw_id' => $draw->id]);
+        $fixture->orderOfPlay()->update(['venue_id' => $otherVenue->id, 'time' => '2026-09-11 14:00:00']);
+        $fixture->orderOfPlay()->delete();
+
+        $response = $this->actingAs($this->scorerFor($event))->get(route('frontend.scoring.workspace', [
+            'event' => $event, 'venue' => $venue->id, 'schedule_source' => 'published',
+        ]));
+        $response->assertOk()->assertSee('Published order of play');
+        $matches = $response->viewData('matches');
+        $this->assertSame([$fixture->id], $matches->pluck('id')->all());
+        $this->assertSame('2026-09-10 08:00:00', $matches->first()->orderOfPlay->time);
+        $this->assertSame($venue->id, (int) $matches->first()->orderOfPlay->venue_id);
+        $this->assertStringContainsString('schedule_source=published', $response->getContent());
+    }
+
+    public function test_restricted_keeper_cannot_act_on_a_published_match_moved_to_another_working_venue(): void
+    {
+        [$event, $draw, $venue, $fixture] = $this->scheduledFixture('Published Venue');
+        [, , $otherVenue] = $this->scheduledFixture('Private Venue', $event, $draw);
+        app(\App\Services\Scheduling\SchedulePublicationService::class)->publish($event, ['draw_id' => $draw->id]);
+        $user = $this->scorerFor($event);
+        EventConvenor::where('event_id', $event->id)->where('user_id', $user->id)->update(['venue_id' => $venue->id]);
+        $fixture->orderOfPlay()->update(['venue_id' => $otherVenue->id]);
+        $response = $this->actingAs($user)->get(route('frontend.scoring.workspace', [
+            'event' => $event, 'venue' => $venue->id, 'schedule_source' => 'published',
+        ]));
+        $response->assertOk()->assertSee('Venue assignment changed.');
+        $this->assertTrue($response->viewData('matches')->first()->scoring_venue_changed);
+        $response->assertDontSee('class="btn btn-sm btn-primary score-action js-open-score"', false);
+        $this->postJson(route('frontend.scoring.fixtures.playing', [$event, $fixture]))->assertForbidden();
+        $this->assertSame(0, $fixture->fixtureResults()->count());
+    }
+
+    public function test_published_day_filter_uses_snapshot_date_and_survives_navigation(): void
+    {
+        [$event, $draw, $venue, $fixture] = $this->scheduledFixture('Day Venue');
+        [, , $otherVenue, $otherFixture] = $this->scheduledFixture('Next Day Venue', $event, $draw);
+        $otherFixture->orderOfPlay()->update(['venue_id' => $venue->id, 'time' => '2026-09-11 08:00:00']);
+        app(\App\Services\Scheduling\SchedulePublicationService::class)->publish($event, ['draw_id' => $draw->id]);
+        $fixture->orderOfPlay()->update(['time' => '2026-09-11 09:00:00']);
+        $response = $this->actingAs($this->scorerFor($event))->get(route('frontend.scoring.workspace', [
+            'event' => $event, 'venue' => $venue->id, 'schedule_source' => 'published', 'date' => '2026-09-10',
+        ]));
+        $response->assertOk();
+        $this->assertSame([$fixture->id], $response->viewData('matches')->pluck('id')->all());
+        $this->assertStringContainsString('date=2026-09-10', $response->getContent());
+    }
+
+    public function test_missing_restricted_venue_does_not_fall_back_to_all_published_matches(): void
+    {
+        [$event, $draw, $venue] = $this->scheduledFixture('Remaining Venue');
+        $removedVenue = Venue::forceCreate(['name' => 'Removed assigned venue']);
+        app(\App\Services\Scheduling\SchedulePublicationService::class)->publish($event, ['draw_id' => $draw->id]);
+        $user = $this->scorerFor($event);
+        EventConvenor::where('event_id', $event->id)->where('user_id', $user->id)->update(['venue_id' => $removedVenue->id]);
+        $this->actingAs($user)->get(route('frontend.scoring.workspace', [
+            'event' => $event, 'schedule_source' => 'published',
+        ]))->assertForbidden();
+    }
+
+    public function test_print_draw_selection_is_preserved_and_rejects_foreign_draws(): void
+    {
+        [$event, $draw, $venue, $fixture] = $this->scheduledFixture('Selected Age Venue');
+        $otherDraw = Draw::factory()->create(['event_id' => $event->id, 'published' => true]);
+        [, , , $otherFixture] = $this->scheduledFixture('Other Age Venue', $event, $otherDraw);
+        $otherFixture->orderOfPlay()->update(['venue_id' => $venue->id]);
+        $publication = app(\App\Services\Scheduling\SchedulePublicationService::class);
+        $publication->publish($event, ['draw_id' => $draw->id]);
+        $publication->publish($event, ['draw_id' => $otherDraw->id]);
+        $response = $this->actingAs($this->scorerFor($event))->get(route('frontend.scoring.workspace', [
+            'event' => $event, 'venue' => $venue->id, 'schedule_source' => 'published', 'draw_ids' => [$draw->id],
+        ]));
+        $response->assertOk();
+        $this->assertSame([$fixture->id], $response->viewData('matches')->pluck('id')->all());
+        $this->assertStringContainsString('draw_ids%5B0%5D='.$draw->id, $response->getContent());
+        $foreign = Draw::factory()->create();
+        $this->get(route('frontend.scoring.workspace', [
+            'event' => $event, 'schedule_source' => 'published', 'draw_ids' => [$draw->id, $foreign->id],
+        ]))->assertNotFound();
     }
 
     private function scorerFor(Event $event): User

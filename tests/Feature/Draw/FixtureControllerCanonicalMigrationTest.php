@@ -36,11 +36,13 @@ class FixtureControllerCanonicalMigrationTest extends TestCase
 
     private function makeDraw(array $attrs = []): Draw
     {
-        return Draw::factory()->create(array_merge([
+        $draw = Draw::factory()->create(array_merge([
             "event_id" => Event::factory()->create()->id,
             "locked" => false,
             "published" => false,
         ], $attrs));
+        $draw->settings()->create(['num_sets' => 1]);
+        return $draw;
     }
 
     private function makeParent(Draw $draw, array $attrs = []): Fixture

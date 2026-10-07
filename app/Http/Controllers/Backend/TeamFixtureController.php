@@ -789,6 +789,13 @@ class TeamFixtureController extends Controller
       ->sort()
       ->values();
 
+    $availableDraws = $fixtures->map(fn ($fixture) => $fixture->draw)->unique('id')->sortBy('drawName')->values();
+    $selectedDrawId = request()->validate(['draw_id' => ['nullable', 'integer']])['draw_id'] ?? null;
+    if ($selectedDrawId !== null) {
+      abort_unless($availableDraws->contains(fn ($draw) => (int) $draw->id === (int) $selectedDrawId), 404);
+      $fixtures = $fixtures->where('draw_id', (int) $selectedDrawId)->values();
+    }
+
     if (strtolower($date) !== 'all') {
       $fixtures = $fixtures->filter(fn ($fixture) => Carbon::parse($fixture->scheduled_at)->toDateString() === $date)->values();
     }
@@ -796,7 +803,7 @@ class TeamFixtureController extends Controller
     $fixtures = app(TeamFixtureOrder::class)->sort($fixtures);
 
     return view('frontend.fixture.orderOfPlay', compact(
-      'event', 'venue', 'fixtures', 'date', 'availableDates'
+      'event', 'venue', 'fixtures', 'date', 'availableDates', 'availableDraws', 'selectedDrawId'
     ));
   }
 

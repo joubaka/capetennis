@@ -7,7 +7,8 @@
         @php($estimate = $ability['headline'])
         <p class="h2">{{ $estimate['score'] === null ? 'Estimate withheld' : number_format($estimate['score'], 1).'/100' }}</p>
         <p>{{ $estimate['cohort'] }} · singles · comparison group {{ $estimate['component'] }} · {{ $estimate['component_players'] }} connected players</p>
-        <p>Evidence confidence: {{ \App\Services\Performance\AbilityConfidenceDisplay::label((int) $estimate['confidence_index']) }}. {{ $estimate['played'] }} played matches and {{ $estimate['inferred'] }} weaker inferred finish comparisons for this player.</p>
+        <p>Evidence confidence: {{ \App\Services\Performance\AbilityConfidenceDisplay::label((int) $estimate['confidence_index'], $estimate) }}. {{ $estimate['played'] }} played matches and {{ $estimate['inferred'] }} weaker inferred finish comparisons for this player.</p>
+        <p class="small">{{ $estimate['confidence_explanation'] ?? '' }}</p>
         <p>Own same-cohort evidence: {{ $estimate['recent_played'] }} matches in the last 90 days; {{ number_format($estimate['effective_played'], 2) }} recency-weighted matches; {{ $estimate['direct_opponents'] }} distinct opponents across {{ $estimate['played_events'] }} played events.</p>
         <p>Last direct-match date (schedule/event proxy): {{ $estimate['last_direct_match'] ?? 'None' }}. Last eligible evidence: {{ $estimate['last_eligible_activity'] ?? 'None' }}. Confidence as of {{ $estimate['confidence_as_of'] }}.</p>
         <p>{{ $estimate['baseline_status'] ?? 'No connected main-trial baseline' }}.

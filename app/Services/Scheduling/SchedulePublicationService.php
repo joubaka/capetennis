@@ -28,7 +28,8 @@ final class SchedulePublicationService
             ->whereIn('draw_id', $draws->keys())->whereHas('orderOfPlay', fn ($q) => $q->whereNotNull('time'))->get();
         $team = TeamFixture::with(['venue', 'teamTie', 'team1', 'team2'])->whereIn('draw_id', $draws->keys())
             ->whereNotNull('scheduled_at')->get();
-        return $individual->concat($team)->map(function ($fixture) use ($draws, $event) {
+        foreach ($individual->concat($team) as $fixture) $fixture->setRelation('draw', $draws[$fixture->draw_id]);
+        return $individual->concat($team)->sort(fn ($left, $right) => app(VenueMatchOrder::class)->compare($left, $right))->map(function ($fixture) use ($draws, $event) {
             $team = $fixture instanceof TeamFixture;
             $slot = $team ? $fixture : $fixture->orderOfPlay;
             $time = $team ? $slot->scheduled_at : $slot->time;
@@ -41,7 +42,7 @@ final class SchedulePublicationService
                 'duration' => (int) (($team ? $slot->duration_min : $slot->duration_minutes) ?: ($team ? 120 : 75)),
                 'participants' => $team ? [$fixture->teamTie?->home_side_name ?: $fixture->team1->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / '), $fixture->teamTie?->away_side_name ?: $fixture->team2->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / ')]
                     : [$fixture->registration1?->players?->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / '), $fixture->registration2?->players?->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / ')]];
-        })->sortBy('scheduled_at')->values();
+        })->values();
     }
 
     /** Timing only: names and participation always come from current event records. */
@@ -64,6 +65,16 @@ final class SchedulePublicationService
         $rows = $snapshots->map(function ($row) use ($individual, $team, $draws, $venues) {
             $fixture = ($row->fixture_kind === 'team' ? $team : $individual)->get($row->fixture_id);
             if (! $fixture || (int) $fixture->draw_id !== (int) $row->draw_id) return null;
+            $fixture->setRelation('draw', $draws[$row->draw_id]);
+            if ($fixture instanceof TeamFixture) {
+                $fixture->setAttribute('scheduled_at', $row->scheduled_at);
+                $fixture->setAttribute('court_label', $row->court);
+                $fixture->setRelation('venue', $venues->get($row->venue_id));
+            } else {
+                $slot = new OrderOfPlay(['time' => $row->scheduled_at, 'court' => $row->court, 'venue_id' => $row->venue_id]);
+                $slot->setRelation('venue', $venues->get($row->venue_id));
+                $fixture->setRelation('orderOfPlay', $slot);
+            }
             return (array) $row + ['fixture_key' => $row->fixture_kind.':'.$row->fixture_id,
                 'draw_name' => $draws[$row->draw_id]->drawName, 'venue_name' => $venues->get($row->venue_id)?->name,
                 'participants' => $row->fixture_kind === 'team'
@@ -72,7 +83,7 @@ final class SchedulePublicationService
                         : [$fixture->team1->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / '), $fixture->team2->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / ')])
                     : [$fixture->registration1?->players?->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / '), $fixture->registration2?->players?->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / ')],
                 '_fixture' => $fixture];
-        })->filter()->sortBy('scheduled_at')->values();
+        })->filter()->sort(fn ($left, $right) => app(VenueMatchOrder::class)->compare($left['_fixture'], $right['_fixture']))->values();
         $publicRows = $rows->groupBy('draw_id')->flatMap(function ($rows, $drawId) use ($draws) {
             if (! $draws[$drawId]->settings?->showsFirstMatchOnly()) return $rows;
             $seen = []; $visible = [];
@@ -88,7 +99,8 @@ final class SchedulePublicationService
                 foreach ($ids as $id) $seen[$id] = true;
             }
             return $visible;
-        })->map(fn ($row) => array_diff_key($row, ['_fixture' => true]))->sortBy('scheduled_at')->values();
+        })->sort(fn ($left, $right) => app(VenueMatchOrder::class)->compare($left['_fixture'], $right['_fixture']))
+            ->map(fn ($row) => array_diff_key($row, ['_fixture' => true]))->values();
         request()->attributes->set($cacheKey, $publicRows);
         return $publicRows;
     }

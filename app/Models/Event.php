@@ -39,6 +39,8 @@ class Event extends Model
     'logo',
     'published',
     'results_published',
+    'result_notifications_enabled',
+    'result_auto_refresh_enabled',
     'signUp',
     'series_id',
     'budget_cap',
@@ -55,6 +57,8 @@ class Event extends Model
   protected $casts = [
     'published'           => 'boolean',
     'results_published'   => 'boolean',
+    'result_notifications_enabled' => 'boolean',
+    'result_auto_refresh_enabled' => 'boolean',
     'signUp'              => 'boolean',
     'start_date'          => 'date',
     'end_date'            => 'date',

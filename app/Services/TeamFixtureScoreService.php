@@ -71,6 +71,7 @@ class TeamFixtureScoreService
             $current->update(['match_status' => !$canonical || $outcome['complete'] ? FixtureState::STATUS_COMPLETED
                 : ($current->teamResults->isEmpty() ? FixtureState::STATUS_PENDING : FixtureState::STATUS_PARTIAL)]);
             if ($canonical) { app(TeamStandingsService::class)->refreshTie($tie); }
+            app(MatchResultNotificationService::class)->record($current);
         });
     }
 
@@ -84,6 +85,7 @@ class TeamFixtureScoreService
             $canonical = $draw->team_scoring_rules !== null && $tie !== null;
             abort_if($draw->locked || (!$canonical && $tie?->isCompleted()), 409, 'Scores are locked for this fixture.');
             TeamFixtureResult::where('team_fixture_id', $fixture->id)->delete();
+            app(MatchResultNotificationService::class)->invalidate($current);
             TeamFixture::whereKey($fixture->id)->update([
                 'match_status' => FixtureState::STATUS_PENDING,
             ]);

@@ -269,6 +269,7 @@ final class FlexibleMonradService
             $record->increment('revision');
             DrawAuditLog::record($draw->id, 'monrad_score_changed', $fixtureId, ['before' => $old, 'after' => $sets,
                 'reset_matches' => $changedWinner ? $affected : [], 'reset_results' => $resetResults, 'revision' => $record->revision]);
+            app(\App\Services\MatchResultNotificationService::class)->record($fixture);
             return $record->refresh();
         });
     }

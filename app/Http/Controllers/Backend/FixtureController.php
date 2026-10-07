@@ -222,6 +222,9 @@ class FixtureController extends Controller
       app(\App\Services\InterprovincialTrials\TrialRefreshQueue::class)->remember((int) $drawForAuth->event_id, true, (int) $drawForAuth->category_event_id);
     }
 
+    return DB::transaction(function () use ($request, $fixtureForAuth, $drawForAuth) {
+    $locked = $fixtureForAuth->newQuery()->lockForUpdate()->findOrFail($fixtureForAuth->id);
+    abort_if((int) $locked->draw_id !== (int) $drawForAuth->id, 409, 'Fixture draw changed.');
     $responce = null;
 
     if ($request->type == 'team') {
@@ -280,9 +283,10 @@ class FixtureController extends Controller
       // CapeTennisDraw::update_winner_fixture($fixture->id,$fixture->fixtureResults->last->w_registration);
 
       // CapeTennisDraw::update_winner_fixture($fixture->id,$fixture->fixtureResults->last->w_registration);
-      $last = $fixture->fixtureResults->last();
-      $responce['winner'] = $last->winner_registration;
-      $responce['loser'] = $last->loser_registration;
+      $winner = app(\App\Services\IndividualMatchOutcomeService::class)->winner($fixture);
+      $fixture->update(['winner_registration' => $winner, 'match_status' => $winner ? 1 : 2]);
+      $responce['winner'] = $winner;
+      $responce['loser'] = $winner ? ($winner === $fixture->registration1_id ? $fixture->registration2_id : $fixture->registration1_id) : null;
       $responce['results'] = $fixture->fixtureResults;
       $responce['id'] = $fixture->id;
 
@@ -291,7 +295,7 @@ class FixtureController extends Controller
       $winner = $responce['winner'];
       $loser  = $responce['loser'];
 
-      $responce['update'] = DB::transaction(function () use ($engine, $draw, $fixture, $winner, $loser) {
+      $responce['update'] = $winner && $loser ? DB::transaction(function () use ($engine, $draw, $fixture, $winner, $loser) {
           $engine->forDraw($draw)->advanceFixture(
               $fixture,
               $winner,
@@ -301,7 +305,9 @@ class FixtureController extends Controller
               }
           );
           return true;
-      });
+      }) : false;
+
+      app(\App\Services\MatchResultNotificationService::class)->record($fixture);
 
       return $responce;
     } elseif ($request->type == 'individualNew') {
@@ -341,21 +347,24 @@ class FixtureController extends Controller
 
       $last = $fixture->fixtureResults->last();
 
-      $responce['winner'] = $last->winner_registration;
-      $responce['loser'] = $last->loser_registration;
+      $winner = app(\App\Services\IndividualMatchOutcomeService::class)->winner($fixture);
+      $loser = $winner ? ($winner === $fixture->registration1_id ? $fixture->registration2_id : $fixture->registration1_id) : null;
+      $responce['winner'] = $winner;
+      $responce['loser'] = $loser;
       $responce['results'] = $fixture->fixtureResults;
       $responce['id'] = $fixture->id;
       $responce['fixture'] = $fixture;
 
-      if ($fixture->stage !== 'RR') {
-        $fixture->winner_registration = $last->winner_registration;
+      $fixture->update(['winner_registration' => $winner, 'match_status' => $winner ? 1 : 2]);
+      if ($fixture->stage !== 'RR' && $winner && $loser) {
+        $fixture->winner_registration = $winner;
         $fixture->match_status = 3;
         $fixture->save();
 
         $engine = app(EngineRouter::class);
         $draw   = \App\Models\Draw::find($fixture->draw_id);
-        $winner = $last->winner_registration;
-        $loser  = $last->loser_registration;
+        $winner = $responce['winner'];
+        $loser  = $responce['loser'];
 
         DB::transaction(function () use ($engine, $draw, $fixture, $winner, $loser) {
             $self = $this;
@@ -378,7 +387,9 @@ class FixtureController extends Controller
         $responce['updates'] = true;
       }
     }
+    if ($request->type === 'individualNew') app(\App\Services\MatchResultNotificationService::class)->record($fixture);
     return $responce;
+    });
   }
   protected function assignWinnerToParentSide(Fixture $childFixture): void
   {

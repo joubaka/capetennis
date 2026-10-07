@@ -22,6 +22,25 @@ class PlayerSharedAbilityService
         $snapshot = app(PlayerAbilitySnapshotStore::class)->current();
         if ($snapshot['reason']) { return []; }
         $players = $snapshot['badge_players'] ?? [];
+        foreach ($players as $id => &$ratings) {
+            foreach ($ratings as &$rating) {
+                $data = $snapshot['cohorts'][$rating['cohort']] ?? [];
+                $component = $data['components'][$rating['component']] ?? [];
+                $own = $data['players'][$id] ?? [];
+                if ($component) {
+                    $rating['component_inferred'] = $component['inferred'];
+                    $rating['bridge_count'] = $component['bridge_count'];
+                    $rating['played'] = $own['played'] ?? 0;
+                    $linked = !empty($component['trial_anchored']);
+                    $direct = $linked && isset($data['baseline']['anchors'][$id]);
+                    $rating['baseline_status'] = $direct ? 'Direct main-trial baseline' : ($linked ? 'Linked to main-trial baseline' : 'No connected main-trial baseline');
+                    $rating['baseline_source'] = $linked ? ($data['baseline']['metadata'] ?? null) : null;
+                }
+                $rating = AbilityConfidenceDisplay::normalize($rating);
+            }
+            unset($rating);
+        }
+        unset($ratings);
         if ($snapshot['snapshot_stale'] ?? false) {
             foreach ($players as &$ratings) { foreach ($ratings as &$rating) { $rating['snapshot_stale'] = true; } unset($rating); } unset($ratings);
         }
@@ -66,8 +85,7 @@ class PlayerSharedAbilityService
                 + app(SharedAbilityConfidencePolicy::class)->evaluate($own, $component, $asOf));
         }
         $cohorts = $cohorts->map(function ($estimate) {
-            $estimate['confidence_band'] = AbilityConfidenceDisplay::label((int) $estimate['confidence_index']);
-            return $estimate;
+            return AbilityConfidenceDisplay::normalize($estimate);
         });
         $cohorts = $cohorts->sort(fn ($a, $b) => strcmp($b['last_played'], $a['last_played']) ?: strcmp($a['cohort'], $b['cohort']))->values();
         return ['headline' => $cohorts->first(), 'cohorts' => $cohorts, 'reason' => $snapshot['reason'], 'built_at' => $snapshot['built_at'], 'snapshot_as_of' => $snapshot['snapshot_as_of'] ?? $asOf->toDateString(), 'snapshot_stale' => $snapshot['snapshot_stale'] ?? false];
@@ -79,6 +97,12 @@ class PlayerSharedAbilityService
         $snapshot = $this->build($asOf);
         $snapshot['badge_players'] = $this->formatBadgeSnapshot($snapshot, $asOf);
         return $snapshot;
+    }
+
+    /** Retrospective validation only: excludes all held-out/overlapping event evidence and bypasses caches. */
+    public function validationSnapshot(CarbonImmutable $eventStart, ?int $excludedEventId = null): array
+    {
+        return $this->build($eventStart->startOfDay()->subDay(), $eventStart->startOfDay(), $excludedEventId);
     }
 
     private function formatBadgeSnapshot(array $snapshot, CarbonImmutable $asOf): array
@@ -142,7 +166,7 @@ class PlayerSharedAbilityService
         return trim($label, " -–");
     }
 
-    private function build(CarbonImmutable $asOf): array
+    private function build(CarbonImmutable $asOf, ?CarbonImmutable $completedBefore = null, ?int $excludedEventId = null): array
     {
         $builtAt = CarbonImmutable::now('Africa/Johannesburg')->format('Y-m-d H:i:s').' SAST';
         $graphs = []; $ordinalFields = []; $trialBaselines = []; $names = []; $eventsSeen = 0; $edgeCount = 0; $scannedMatches = 0; $seenSources = [];
@@ -150,6 +174,8 @@ class PlayerSharedAbilityService
         $history = app(PlayerPerformanceHistoryService::class);
         $events = Event::query()->with('eventTypeModel')->whereDate('start_date', '<=', $asOf->toDateString())
             ->where(fn ($query) => $query->where('published', true)->orWhere('results_published', true));
+        if ($completedBefore) { $events->whereNotNull('end_date')->whereColumn('end_date', '>=', 'start_date')->whereDate('end_date', '<', $completedBefore->toDateString()); }
+        if ($excludedEventId !== null) { $events->where('id', '!=', $excludedEventId); }
         foreach ($events->lazyById(25) as $event) {
             if (++$eventsSeen > self::EVENT_CAP) { return $this->withheld($builtAt); }
             if (\App\Models\CategoryEvent::query()->where('event_id', $event->id)->count() > self::EVENT_FIELD_CAP) { return $this->withheld($builtAt); }

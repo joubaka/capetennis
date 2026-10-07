@@ -361,6 +361,7 @@ $(document).ready(function () {
         if (!drawIds.length) { toastr.warning('Please select at least one draw.'); return; }
 
         var printType = $('input[name="print_type"]:checked').val();
+        if (printType === 'fixtures') printType = 'venue';
         var includeStandings = $('#chk-include-standings').is(':checked') ? 1 : 0;
         if (printType === 'bracket') {
             downloadSelectedMonradBrackets();
@@ -371,6 +372,7 @@ $(document).ready(function () {
             drawIds.forEach(function (id) { packParams.append('draw_ids[]', id); });
             packParams.append('include_standings', includeStandings);
             packParams.append('print_type', printType);
+            if (printType === 'venue') appendVenuePrintFilters(packParams);
             window.open(@json(route('headoffice.drawPack', $event)) + '?' + packParams.toString(), '_blank', 'noopener');
             bootstrap.Modal.getOrCreateInstance(document.getElementById('printAllDrawsModal')).hide();
             return;
@@ -453,6 +455,7 @@ $(document).ready(function () {
         if (!drawIds.length) { toastr.warning('Please select at least one draw.'); return; }
 
         var printType = $('input[name="print_type"]:checked').val();
+        if (printType === 'fixtures') printType = 'venue';
         var includeStandings = $('#chk-include-standings').is(':checked') ? 1 : 0;
 
         if (printType === 'bracket') {
@@ -466,6 +469,7 @@ $(document).ready(function () {
         params.append('include_standings', includeStandings);
 
         if (printType === 'pack' || printType === 'venue') {
+            if (printType === 'venue') appendVenuePrintFilters(params);
             params.append('download', 1);
             window.location.href = @json(route('headoffice.drawPack', $event)) + '?' + params.toString();
             return;
@@ -474,6 +478,11 @@ $(document).ready(function () {
         window.location.href = "{{ route('headoffice.printDrawsPdf', $event->id) }}?" + params.toString();
     });
 
+    function appendVenuePrintFilters(params) {
+        params.append('schedule_source', $('#venue-print-source').val());
+        if ($('#venue-print-date').val()) params.append('date', $('#venue-print-date').val());
+        if ($('#venue-print-venue').val()) params.append('venue_id', $('#venue-print-venue').val());
+    }
 });
 </script>
 
@@ -723,6 +732,22 @@ $(document).ready(function () {
         </fieldset>
 
         <p class="small text-muted d-none" id="monrad-bracket-help">Select one or more Flexible Monrad draws above. Non-Monrad draws are disabled. Each selected draw is fitted to one PDF page.</p>
+        <fieldset class="mb-3">
+          <legend class="form-label fw-bold">Venue order of play filters</legend>
+          <label class="form-label" for="venue-print-date">Day (blank for all days)</label>
+          <input type="date" class="form-control mb-2" id="venue-print-date">
+          <label class="form-label" for="venue-print-venue">Venue</label>
+          <select class="form-select mb-2" id="venue-print-venue">
+            <option value="">All venues</option>
+            @foreach($event->venues as $printVenue)<option value="{{ $printVenue->id }}">{{ $printVenue->name }}</option>@endforeach
+          </select>
+          <label class="form-label" for="venue-print-source">Schedule</label>
+          <select class="form-select" id="venue-print-source">
+            <option value="published">Published — same as public order of play</option>
+            <option value="working">Working preview — includes unpublished changes</option>
+          </select>
+          <p class="small text-muted mt-2">Select draws above to print one age group or category. These filters apply to Per-Venue Order of Play.</p>
+        </fieldset>
 
         {{-- Include standings option (shown when matrix or combined selected) --}}
         <div class="form-check mb-3" id="standings-option">

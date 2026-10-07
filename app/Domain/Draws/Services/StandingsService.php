@@ -35,11 +35,13 @@ final class StandingsService
     public function forDraw(Draw $draw): array
     {
         $draw->loadMissing([
+            'settings',
             'groups.groupRegistrations.registration',
             'drawFixtures.fixtureResults',
         ]);
 
         $standings = [];
+        foreach ($draw->drawFixtures as $fixture) $fixture->setRelation('draw', $draw);
         foreach ($draw->groups as $group) {
             $standings[$group->id] = $this->forGroup($group, $draw->drawFixtures);
         }
@@ -78,6 +80,7 @@ final class StandingsService
         $groupFixtures = $allFixtures->filter(
             fn($fx) => $fx->stage === 'RR' && $fx->draw_group_id === $group->id
         );
+        (new \Illuminate\Database\Eloquent\Collection($groupFixtures->all()))->loadMissing('draw.settings');
 
         foreach ($groupFixtures as $fx) {
             if ($fx->fixtureResults->isEmpty()) {
@@ -103,10 +106,9 @@ final class StandingsService
             $rows[$away]['games_won']  += $awayGames;
             $rows[$away]['games_lost'] += $homeGames;
 
-            // Match win/loss from last set's declared winner_registration
-            $lastSet = $fx->fixtureResults->sortBy('set_nr')->last();
-            if ($lastSet && $lastSet->winner_registration) {
-                $matchWinner = $lastSet->winner_registration;
+            // A set winner is not a match winner; count only completed matches.
+            $matchWinner = app(\App\Services\IndividualMatchOutcomeService::class)->winner($fx);
+            if ($matchWinner && isset($rows[$matchWinner])) {
                 $matchLoser  = ($matchWinner === $home) ? $away : $home;
                 $rows[$matchWinner]['wins']++;
                 $rows[$matchLoser]['losses']++;
@@ -205,7 +207,7 @@ final class StandingsService
                     ($fx->registration1_id === $regA && $fx->registration2_id === $regB) ||
                     ($fx->registration1_id === $regB && $fx->registration2_id === $regA)
                 ) {
-                    return $fx->winner_registration ?: null;
+                    return app(\App\Services\IndividualMatchOutcomeService::class)->winner($fx);
                 }
             }
             return null;

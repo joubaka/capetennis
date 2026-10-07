@@ -9,14 +9,16 @@ final class EventStandingsService
 {
     private const METRICS = ['played', 'wins', 'draws', 'losses', 'points', 'rubber_wins', 'rubber_losses', 'sets_for', 'sets_against', 'games_for', 'games_against'];
 
-    public function forEvent(Event $event, array $filters = []): array
+    public function forEvent(Event $event, array $filters = [], bool $publishedOnly = false, ?int $drawId = null): array
     {
         $teams = Team::query()->without(['team_players', 'team_players_no_profile'])
             ->whereHas('category', fn ($query) => $query->where('event_id', $event->id))
             ->with('regions')->get()->keyBy('id');
         $teamIds = $teams->keys()->all();
         $regions = $event->regions()->get()->keyBy('id');
-        $draws = $event->draws()->with(['draw_types', 'categoryEvent.category', 'team_category'])->orderBy('drawName')->get();
+        $draws = $event->draws()->when($publishedOnly, fn ($query) => $query->where('published', true))
+            ->when($drawId !== null, fn ($query) => $query->whereKey($drawId))
+            ->with(['draw_types', 'categoryEvent.category', 'team_category'])->orderBy('drawName')->get();
         $sections = [];
         foreach ($draws as $draw) {
             $draw->setRelation('event', $event);
@@ -27,11 +29,13 @@ final class EventStandingsService
             $label = ($category === 'Unspecified' ? $draw->drawName : $category.' '.$draw->drawName).' '.$draw->gender;
             $gender = preg_match('/\b(mixed)\b/i', $label) ? 'Mixed' : (preg_match('/\b(girls?|female|women)\b/i', $label) ? 'Girls / Women' : (preg_match('/\b(boys?|male|men)\b/i', $label) ? 'Boys / Men' : 'Unspecified'));
             $age = preg_match('/\b(?:u\s*[\/-]?\s*|under\s+)(\d+)\b/i', $label, $matches) ? 'U'.$matches[1] : 'Unspecified';
-            $rows = app(TeamStandingsService::class)->forDraw($draw, false, $teamIds);
+            $rows = app(TeamStandingsService::class)->forDraw($draw, $publishedOnly, $teamIds);
             $legacyRows = [];
             $results = app(TeamRubberResultService::class);
             // Legacy fixtures identify regions directly and have no team tie lifecycle.
-            foreach ($draw->fixtures()->whereNull('team_tie_id')->with('teamResults')->get() as $fixture) {
+            foreach ($draw->fixtures()->whereNull('team_tie_id')
+                ->when($publishedOnly, fn ($query) => $query->publicDrawFixtures())
+                ->with('teamResults')->get() as $fixture) {
                 if (!$regions->has($fixture->region1) || !$regions->has($fixture->region2) || $fixture->region1 === $fixture->region2) { continue; }
                 $fixture->setRelation('draw', $draw);
                 $outcome = $results->outcome($fixture);

@@ -355,37 +355,18 @@ class EventController extends Controller
       foreach ($eventDraws as $publicDraw) {
         $publicFixtures = $publicDraw->drawFixtures()->with('orderOfPlay.venue')->get();
         $publication->projectFixtures($publicFixtures);
+        $publicFixtures = $publicFixtures->sort(fn ($left, $right) => app(\App\Services\Scheduling\VenueMatchOrder::class)->compare($left, $right))->values();
         $publicDraw->setRelation('order_of_play', $publicFixtures
           ->map(fn ($fixture) => $fixture->orderOfPlay)->filter()->sortBy('time')->values());
       }
-    // Convenors and assigned score keepers need an operational view of every
-    // scheduled venue, independently of public draw/order-of-play publication.
-    // Keep this event-scoped and aggregate in SQL so the public event page does
-    // not load every fixture merely to build the venue shortcuts.
+    // Venue shortcuts follow the same published assignments as public packs.
     $scoringVenues = collect();
     if ($user?->can('event.score', $event)) {
       $restrictedScoringVenueId = $user->is_event_score_keeper($event->id)
         ? $user->scoringVenueIdForEvent($event->id)
         : null;
-      $scoringDrawIds = $allEventDraws->pluck('id');
-      $individualVenueCounts = OrderOfPlay::query()
-        ->whereIn('draw_id', $scoringDrawIds)
-        ->whereNotNull('venue_id')
-        ->selectRaw('venue_id, COUNT(DISTINCT fixture_id) as fixture_count')
-        ->groupBy('venue_id')
-        ->pluck('fixture_count', 'venue_id');
-      $teamVenueCounts = TeamFixture::query()
-        ->whereIn('draw_id', $scoringDrawIds)
-        ->whereNotNull('venue_id')
-        ->selectRaw('venue_id, COUNT(*) as fixture_count')
-        ->groupBy('venue_id')
-        ->pluck('fixture_count', 'venue_id');
-
-      $venueCounts = $individualVenueCounts->map(fn ($count) => (int) $count);
-      $teamVenueCounts->each(function ($count, $venueId) use ($venueCounts) {
-        $venueCounts->put($venueId, (int) $venueCounts->get($venueId, 0) + (int) $count);
-      });
-
+      $venueCounts = app(\App\Services\Scheduling\SchedulePublicationService::class)
+        ->publishedRows($event)->groupBy('venue_id')->map(fn ($rows) => $rows->count());
       $scoringVenues = \App\Models\Venue::query()
         ->whereIn('id', $venueCounts->keys())
         ->when($restrictedScoringVenueId !== null, fn ($query) => $query->whereKey($restrictedScoringVenueId))
@@ -424,6 +405,7 @@ class EventController extends Controller
     }
 
       app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($fixturesPerVenue);
+      $fixturesPerVenue = $fixturesPerVenue->sort(fn ($left, $right) => app(\App\Services\Scheduling\VenueMatchOrder::class)->compare($left, $right))->values();
       if ($event->eventType == 3) {
         app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixturesPerVenue, publicDraw: true);
       }

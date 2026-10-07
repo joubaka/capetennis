@@ -16,6 +16,8 @@
       <div class="col-12 col-md-3 d-flex flex-wrap gap-2"><button class="btn btn-primary">Apply filters</button><a class="btn btn-outline-secondary" href="{{ route('admin.events.standings', $event) }}">Reset</a></div>
     </div>
   </form>
+  @include('frontend.fixtures.partials.live-results-status')
+  <div data-live-results="admin-event-standings">
   <div class="row g-3 mb-4">
     @foreach(['draws' => 'Draws', 'teams' => 'Teams in ties', 'ties' => 'Completed ties', 'rubbers' => 'Completed rubbers'] as $key => $label)
       <div class="col-6 col-lg-3"><div class="card card-body h-100"><span class="text-muted">{{ $label }}</span><strong class="h3 mb-0">{{ $stats[$key] }}</strong></div></div>
@@ -44,5 +46,7 @@
     </section>
   @empty<div class="alert alert-info">No team draws match these filters.</div>@endforelse
   <p class="text-muted">Legacy fixtures contribute completed rubbers, sets, games and points by region. They do not count as completed team ties.</p>
+  </div>
 </div>
+@include('frontend.fixtures.partials.live-results-script')
 @endsection

@@ -9,6 +9,17 @@ class Fixture extends Model
 {
   use HasFactory;
 
+  protected static function booted(): void
+  {
+    static::saved(function (self $fixture): void {
+      // Clearing the outcome invalidates outstanding revisions. Notification
+      // creation belongs to explicit score writers, never administrative saves.
+      if ($fixture->wasChanged('winner_registration') && !$fixture->winner_registration) {
+        app(\App\Services\MatchResultNotificationService::class)->invalidate($fixture);
+      }
+    });
+  }
+
   protected $fillable = [
     'scheduled',
     'match_nr',
@@ -147,17 +158,7 @@ class Fixture extends Model
       return null;
     }
 
-    $last = $this->fixtureResults->sortBy('set_nr')->last();
-
-    // Determine winner based on the LAST SET scores
-    if ($last->registration1_score > $last->registration2_score) {
-      return $this->registration1_id;
-    }
-    if ($last->registration2_score > $last->registration1_score) {
-      return $this->registration2_id;
-    }
-
-    return null;
+    return app(\App\Services\IndividualMatchOutcomeService::class)->winner($this);
   }
 
   public function getLoserIdAttribute()

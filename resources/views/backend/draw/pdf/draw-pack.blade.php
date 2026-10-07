@@ -66,6 +66,11 @@
     .footer .page-number:after { content: counter(page); }
     .no-print { position: fixed; top: 12px; right: 12px; z-index: 5; }
     .no-print button { border: 0; border-radius: 5px; padding: 10px 16px; color: #fff; background: #163a64; font: 600 14px Arial, sans-serif; cursor: pointer; }
+    .venue-page:first-of-type { page-break-before: auto; }
+    .venue-page h2 { font-size: 13pt; margin: 0; }
+    .venue-page .cover-kicker { font-size: 7pt; letter-spacing: 0; margin-bottom: 1mm; }
+    .venue-page table.data td { padding: 1mm 1.5mm; line-height: 1.2; overflow-wrap: anywhere; }
+    .venue-page thead { display: table-header-group; }
     @media print { .no-print { display: none !important; } }
   </style>
 </head>
@@ -102,7 +107,7 @@
   $venueOnly = ($printType ?? 'pack') === 'venue';
   $venueSchedules = $schedule
     ->filter(fn ($fixture) => filled($fixture['venue']))
-    ->groupBy('venue')
+    ->groupBy(fn ($fixture) => $fixture['venue_id'] ?? $fixture['venue'])
     ->sortKeys();
   $venueScheduleMatches = $venueSchedules->flatten(1);
   $excludedVenueMatches = $draws->flatMap(fn ($draw) => collect($draw['oops'])
@@ -114,72 +119,42 @@
 @endphp
 
 @if($venueOnly)
-<section class="cover">
-  <p class="cover-kicker">Per-Venue Order of Play</p>
-  <h1>{{ $event->name }}</h1>
-  <div class="cover-rule"></div>
-  <p class="event-dates">{{ $eventDate }}</p>
-
-  <table class="stats" role="presentation">
-    <tr>
-      <td><strong>{{ $venueSchedules->count() }}</strong><span>{{ Str::plural('Venue', $venueSchedules->count()) }}</span></td>
-      <td><strong>{{ $draws->count() }}</strong><span>Selected draws</span></td>
-      <td><strong>{{ $venueScheduleMatches->count() }}</strong><span>Venue schedule rows</span></td>
-      <td><strong>{{ $notInVenueCopies }}</strong><span>Not assigned to a venue</span></td>
-    </tr>
-  </table>
-
-  @if($notInVenueCopies > 0 || $incompleteVenueCopies > 0)
-    <div class="pack-warning"><strong>Scheduling check:</strong>@if($notInVenueCopies > 0) {{ $notInVenueCopies }} {{ Str::plural('match', $notInVenueCopies) }} {{ $notInVenueCopies === 1 ? 'is' : 'are' }} not included because no applied time and venue are available.@endif @if($incompleteVenueCopies > 0){{ $incompleteVenueCopies }} venue {{ Str::plural('row', $incompleteVenueCopies) }} still {{ $incompleteVenueCopies === 1 ? 'needs' : 'need' }} a court assignment.@endif</div>
-  @endif
-
-  <h2>Venue copies</h2>
-  <div class="contents">
-    @forelse($venueSchedules as $venue => $venueFixtures)
-      <div class="contents-row"><strong>{{ $venue }}</strong><br><small>{{ $venueFixtures->count() }} {{ Str::plural('match', $venueFixtures->count()) }} across {{ $venueFixtures->pluck('draw_id')->unique()->count() }} {{ Str::plural('draw', $venueFixtures->pluck('draw_id')->unique()->count()) }}</small></div>
-    @empty
-      <div class="empty-note">No selected matches have an applied venue and time yet.</div>
-    @endforelse
-    @foreach($excludedVenueMatches as $fixture)
-      @php
-        $missingAssignments = collect([
-          !filled($fixture['scheduled_at']) ? 'time' : null,
-          !filled($fixture['venue']) ? 'venue' : null,
-        ])->filter()->implode(' and ');
-      @endphp
-      <div class="contents-row">
-        <strong>Not on venue list: {{ $fixture['draw_name'] }} - M{{ $fixture['match_nr'] ?? $fixture['id'] }}</strong><br>
-        <small>{{ $fixture['home'] }} vs {{ $fixture['away'] }} - Missing {{ $missingAssignments }}</small>
-      </div>
-    @endforeach
-  </div>
-</section>
-
-@foreach($venueSchedules as $venue => $venueFixtures)
+<p class="muted">{{ $event->name }} · {{ ($scheduleSource ?? 'published') === 'working' ? 'Working preview — verify publication before courtside use' : 'Published order of play — same schedule as the public venue list' }}</p>
+@if(($scheduleSource ?? 'published') === 'working' && $notInVenueCopies)<p class="muted">{{ $notInVenueCopies }} matches excluded because time or venue is unassigned.</p>@endif
+@if($venueSchedules->isEmpty())<div class="empty-note">No matches for the selected day, venue and draws.</div>@endif
+@foreach($venueSchedules as $venueKey => $venueFixtures)
+  @php
+    $venue = $venueFixtures->first()['venue'];
+  @endphp
   @foreach($venueFixtures->groupBy(fn ($fixture) => \Carbon\Carbon::parse($fixture['scheduled_at'])->format('Y-m-d')) as $date => $dayFixtures)
-    <section class="page">
+    @foreach($dayFixtures->chunk(8) as $pageIndex => $pageFixtures)
+    <section class="page venue-page" @if($loop->parent->parent->first && $loop->parent->first && $loop->first) style="page-break-before: auto" @endif>
       <header class="section-head">
         <div><p class="cover-kicker">Venue order of play</p><h2>{{ $venue }}</h2></div>
-        <div class="section-meta"><strong>{{ \Carbon\Carbon::parse($date)->format('l, d M Y') }}</strong><br>{{ $dayFixtures->count() }} {{ Str::plural('match', $dayFixtures->count()) }}</div>
+        <div class="section-meta"><strong>{{ \Carbon\Carbon::parse($date)->format('l, d M Y') }}</strong><br>{{ $dayFixtures->count() }} {{ Str::plural('match', $dayFixtures->count()) }} · Sheet {{ $pageIndex + 1 }} / {{ (int) ceil($dayFixtures->count() / 8) }}</div>
       </header>
+      @if($autoPrint && ($scheduleSource ?? 'published') === 'published')
+        <p class="no-print"><a href="{{ route('frontend.scoring.workspace', ['event' => $event, 'venue' => $pageFixtures->first()['venue_id'] ?? null, 'schedule_source' => 'published', 'date' => $date, 'draw_ids' => $draws->pluck('id')->all()]) }}">Online scoring — published schedule</a></p>
+      @endif
       <table class="data">
         <caption>{{ $venue }} order of play for {{ \Carbon\Carbon::parse($date)->format('l, d M Y') }}</caption>
         <thead><tr><th scope="col" style="width:9%">Time</th><th scope="col" style="width:8%">Court</th><th scope="col" style="width:17%">Draw</th><th scope="col" style="width:8%">Match</th><th scope="col" style="width:24%">Player 1</th><th scope="col" style="width:24%">Player 2</th><th scope="col" style="width:10%">Result</th></tr></thead>
         <tbody>
-        @foreach($dayFixtures as $fixture)
+        @foreach($pageFixtures as $fixture)
           <tr>
             <td class="nowrap"><strong>{{ \Carbon\Carbon::parse($fixture['scheduled_at'])->format('H:i') }}</strong>@if($fixture['duration'])<br><small>{{ $fixture['duration'] }} min</small>@endif</td>
             <td>{{ $fixture['court'] ?: 'TBA' }}</td>
             <td>{{ $fixture['draw_name'] }}</td>
             <td><span class="stage-label">{{ $stageLabels[$fixture['stage']] ?? ($fixture['stage'] ?: 'Draw') }}</span><br>M{{ $fixture['match_nr'] ?? $fixture['id'] }}</td>
-            <td>{{ $fixture['home'] }}</td>
-            <td>{{ $fixture['away'] }}</td>
-            <td class="result-cell">{{ $fixture['score'] }}</td>
+            <td>{{ $fixture['home'] }}@if(!empty($fixture['home_region']))<br><small>{{ $fixture['home_region'] }}</small>@endif</td>
+            <td>{{ $fixture['away'] }}@if(!empty($fixture['away_region']))<br><small>{{ $fixture['away_region'] }}</small>@endif</td>
+            <td class="result-cell">{{ $fixture['score'] ?: '____  ____  ____' }}</td>
           </tr>
         @endforeach
         </tbody>
       </table>
     </section>
+    @endforeach
   @endforeach
 @endforeach
 @else

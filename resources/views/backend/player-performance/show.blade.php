@@ -11,7 +11,8 @@
     <h2 class="h4">Shared ability comparison evidence</h2>
     @foreach($ability['cohorts'] as $estimate)
         <h3 class="h5">{{ $estimate['cohort'] }} · comparison group {{ $estimate['component'] }}</h3>
-        <p><strong>{{ $estimate['score'] === null ? 'Estimate withheld' : number_format($estimate['score'], 1).'/100' }}</strong> · Evidence confidence: {{ \App\Services\Performance\AbilityConfidenceDisplay::label((int) $estimate['confidence_index']) }}</p>
+        <p><strong>{{ $estimate['score'] === null ? 'Estimate withheld' : number_format($estimate['score'], 1).'/100' }}</strong> · Evidence confidence: {{ \App\Services\Performance\AbilityConfidenceDisplay::label((int) $estimate['confidence_index'], $estimate) }}</p>
+        <p class="small">{{ $estimate['confidence_explanation'] ?? '' }}</p>
         <p>Own same-cohort evidence: {{ $estimate['recent_played'] }} matches in the last 90 days; {{ number_format($estimate['effective_played'], 2) }} recency-weighted matches; {{ $estimate['direct_opponents'] }} distinct opponents across {{ $estimate['played_events'] }} played events.</p>
         <p>Last direct-match date (schedule/event proxy): {{ $estimate['last_direct_match'] ?? 'None' }}. Last eligible evidence: {{ $estimate['last_eligible_activity'] ?? 'None' }}. Confidence as of {{ $estimate['confidence_as_of'] }}.</p>
         <p>{{ $estimate['baseline_status'] ?? 'No connected main-trial baseline' }}.

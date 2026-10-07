@@ -144,6 +144,9 @@
 
   @include('layouts.sections.pwa-install')
   @include('layouts.sections.audit-interactions')
+  @auth
+    @include('layouts.sections.match-reminder')
+  @endauth
 
 
 </body>
