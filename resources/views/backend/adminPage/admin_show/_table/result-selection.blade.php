@@ -20,7 +20,9 @@
       <div class="small">Band {{ $player['band'] }} · Starting credit {{ $player['starting_credit'] }} · Singles wins {{ $player['singles_wins'] }} · Reverse Singles wins {{ $player['reverse_singles_wins'] }} · Total credited wins {{ $player['credited_wins'] }}</div>
       <div class="small">Sets won {{ $player['sets_won'] }} · Sets lost {{ $player['sets_lost'] }} · Set difference {{ $player['set_difference'] > 0 ? '+' : '' }}{{ $player['set_difference'] }}</div>
       @foreach($player['cross_band_review'] as $review)
-        <p class="small text-warning mb-0"><strong>REVIEW across bands:</strong> {{ $review['team'] }}, consecutive roster ranks {{ implode(', ', $review['ranks']) }} each have at least two completed matches and more wins than losses in this setup. Starting credits are excluded. Review the team strength; the weighted order is retained.</p>
+        <p class="small text-warning mb-0"><strong>REVIEW across bands:</strong> {{ $review['team'] }}, consecutive roster ranks {{ implode(', ', $review['ranks']) }} each have at least two completed matches and more wins than losses in this setup. Starting credits are excluded. Review the team strength; the weighted order is retained.
+          @foreach($review['records'] as $rank => $record)<span class="text-nowrap">Rank {{ $rank }}: {{ $record['wins'] }}W / {{ $record['losses'] }}L.</span> @endforeach
+        </p>
       @endforeach
       @if(count($player['ranks']) > 1)<p class="small text-warning mb-0">Roster ranks differ across teams. Weighting uses rank {{ $player['rank'] }}; review before selection.</p>@endif
       @if($player['higher_rank_wins'])<p class="small mb-0">Selection evidence: {{ $player['higher_rank_wins'] }} win(s) over higher-rostered opponents.</p>@endif
