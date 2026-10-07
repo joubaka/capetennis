@@ -102,31 +102,6 @@
   @endforelse
     
 
-   {{-- Venues Section --}}
-    @if(isset($venues) && $venues->count() && ($drawPublicationSummary['schedule_published'] ?? 0) > 0)
-      <div class="mt-4">
-        <h6 class="fw-bold mb-2">Published match schedules by venue</h6>
-
-        @php
-          // Calculate convenor/admin permission once for this view
-          $user = auth()->user();
-        @endphp
-
-        <div class="d-flex flex-wrap gap-2">
-          @foreach($venues as $venue)
-            <div class="d-flex align-items-center gap-2">
-              <a href="{{ route('fixtures.venue', ['event_id' => $event->id, 'venue_id' => $venue->id]) }}"
-                 class="btn btn-outline-primary btn-sm">
-                {{ $venue->name }}
-              </a>
-            </div>
-          @endforeach
-        </div>
-      </div>
-    @endif
-
-
-
 </div>
 
     {{-- 🚧 Unpublished Draws (Admin / Super-user / Convenor only) --}}
