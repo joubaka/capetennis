@@ -102,11 +102,31 @@ class TeamWorkspaceResultsTest extends TestCase
         ])->assertOk()->assertJsonPath('draft.version', 1)->assertJsonPath('draft.snapshot.0.points', 140)->assertJsonPath('draft.snapshot.0.set_difference', 6)->assertJsonPath('draft.snapshot.0.starting_credit', 1)->assertJsonPath('draft.snapshot.0.singles_wins', 2);
         $this->getJson(route('backend.team-result-selection.show', $event).'?group_key=10-boys')->assertOk()->assertJsonCount(2, 'draft.selected_keys');
         if (getenv('CT_RESULTS_QA') === '1') {
-            $panel = str_replace('class="tab-pane fade"', 'class="tab-pane fade show active"', view('backend.adminPage.admin_show._partials.result-ranks', compact('event'))->render());
-            $json = json_encode($response->json(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+            $panel = str_replace('class="tab-pane fade result-workspace"', 'class="tab-pane fade show active result-workspace"', view('backend.adminPage.admin_show._partials.result-ranks', compact('event'))->render());
+            $preview = $response->json();
+            $previewRows = collect($preview['ranking']);
+            foreach (['Liam van der Merwe', 'Oliver Jacobs', 'Noah Petersen', 'Ethan du Plessis', 'Daniel Williams', 'Joshua Adams'] as $index => $name) {
+                $row = $preview['ranking'][0]; $row['id'] = 'preview-'.$index; $row['name'] = $name;
+                $row['position'] = $index + 3; $row['region'] = 'CT'; $row['teams'] = ['Cape Town A'];
+                $previewRows->push($row);
+            }
+            $reviewRow = $previewRows->get(2);
+            $reviewRow['cross_band_review'] = [['team' => 'Cape Town A', 'ranks' => [1, 2, 3, 4], 'records' => [1 => ['wins' => 2, 'losses' => 0], 2 => ['wins' => 2, 'losses' => 0], 3 => ['wins' => 2, 'losses' => 0], 4 => ['wins' => 2, 'losses' => 0]]]];
+            $previewRows->put(2, $reviewRow);
+            $preview['html'] = view('backend.adminPage.admin_show._table.result-selection', ['ranking' => $previewRows])->render();
+            $extraGroups = '';
+            foreach (['10-girls' => 'u/10 Girls', '11-boys' => 'u/11 Boys', '11-girls' => 'u/11 Girls', '12-boys' => 'u/12 Boys', '12-girls' => 'u/12 Girls', '13-boys' => 'u/13 Boys', '13-girls' => 'u/13 Girls'] as $key => $label) {
+                $extraGroups .= '<label class="result-choice result-group-choice"><input class="form-check-input category-radio" type="radio" name="category-radio" value="'.$key.'" data-name="'.$label.'" data-event_id="'.$event->id.'"><span>'.$label.'</span></label>';
+            }
+            $panel = preg_replace('/(<\/div>\s*<\/aside>)/', $extraGroups.'$1', $panel, 1);
+            $panel = str_replace('Included region', 'Cape Town', $panel);
+            $extraRegions = '';
+            foreach (['Cape Winelands', 'Eden District', 'West Coast', 'Overberg', 'Nelson Mandela Bay'] as $index => $regionName) $extraRegions .= '<label class="result-choice"><input class="form-check-input" type="checkbox" data-result-region value="'.(1000 + $index).'" checked><span>'.$regionName.'</span></label>';
+            $panel = preg_replace('/<\/div><\/fieldset>/', $extraRegions.'</div></fieldset>', $panel, 1);
+            $json = json_encode($preview, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
             $directory = storage_path('app/team-results-qa');
             if (! is_dir($directory)) mkdir($directory, 0777, true);
-            file_put_contents($directory.'/index.html', '<!doctype html><html><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/public/assets/vendor/css/rtl/core.css"><body><main class="team-admin-workspace p-3"><nav class="tabs-wrap"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-result-rank">Result Ranks</button></nav><div id="team-workspace-content" data-result-url="/mock-results">'.$panel.'</div></main><script src="/public/assets/vendor/libs/jquery/jquery.js"></script><script src="/public/assets/vendor/js/bootstrap.js"></script><script>const fixtureResponse='.$json.'; let storedDraft=null; jQuery.post=function(){const d=jQuery.Deferred();setTimeout(()=>d.resolve(fixtureResponse),80);const p=d.promise();p.abort=()=>d.reject({statusText:"abort"});return p;};jQuery.getJSON=function(){const d=jQuery.Deferred();setTimeout(()=>d.resolve({draft:storedDraft}),100);return d.promise();};jQuery.ajax=function(options){const d=jQuery.Deferred();const data=JSON.parse(options.data);setTimeout(()=>{storedDraft={...data,version:(storedDraft?.version||0)+1};d.resolve({draft:storedDraft});},150);return d.promise();};</script><script src="/public/js/team-workspace.js"></script></body></html>');
+            file_put_contents($directory.'/index.html', '<!doctype html><html><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/public/assets/vendor/css/rtl/core.css"><link rel="stylesheet" href="/public/css/backend-workspace.css"><link rel="stylesheet" href="/public/css/team-workspace.css"><body class="ct-backend"><main class="team-admin-workspace p-3"><nav class="tabs-wrap"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-result-rank">Result Ranks</button></nav><div id="team-workspace-content" data-result-url="/mock-results">'.$panel.'</div></main><script src="/public/assets/vendor/libs/jquery/jquery.js"></script><script src="/public/assets/vendor/js/bootstrap.js"></script><script>const fixtureResponse='.$json.'; let storedDraft=null; jQuery.post=function(){const d=jQuery.Deferred();setTimeout(()=>d.resolve(fixtureResponse),80);const p=d.promise();p.abort=()=>d.reject({statusText:"abort"});return p;};jQuery.getJSON=function(){const d=jQuery.Deferred();setTimeout(()=>d.resolve({draft:storedDraft}),100);return d.promise();};jQuery.ajax=function(options){const d=jQuery.Deferred();const data=JSON.parse(options.data);setTimeout(()=>{storedDraft={...data,version:(storedDraft?.version||0)+1};d.resolve({draft:storedDraft});},150);return d.promise();};</script><script src="/public/js/team-workspace.js"></script></body></html>');
         }
         $this->groupedRequest($event, ['formats' => ['singles']])->assertOk()->assertJsonPath('ranking.0.wins', 2);
         $this->groupedRequest($event, ['regions' => []])->assertOk()->assertJsonCount(0, 'ranking');
