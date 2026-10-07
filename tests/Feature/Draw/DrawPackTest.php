@@ -117,6 +117,26 @@ class DrawPackTest extends TestCase
         $this->actingAs($otherAdmin)->get(route('headoffice.printOptions', $this->event))->assertForbidden();
     }
 
+    public function test_print_options_uses_venue_relationships_when_legacy_event_venues_is_a_string(): void
+    {
+        // Fresh test schemas omit this legacy column; reproduce a hydrated legacy event.
+        $this->event->forceFill(['venues' => 'Legacy venue description']);
+        $this->app['router']->bind('event', fn () => $this->event);
+        $draw = Draw::factory()->create(['event_id' => $this->event->id]);
+        $shared = Venue::forceCreate(['name' => 'Shared event and draw venue']);
+        $drawOnly = Venue::forceCreate(['name' => 'Draw association venue']);
+        $foreign = Venue::forceCreate(['name' => 'Foreign event venue']);
+        $this->event->venues()->attach($shared, ['num_courts' => 2]);
+        $draw->venues()->attach([$shared->id => ['num_courts' => 2], $drawOnly->id => ['num_courts' => 1]]);
+        Event::factory()->create()->venues()->attach($foreign, ['num_courts' => 1]);
+
+        $response = $this->actingAs($this->admin)->get(route('headoffice.printOptions', $this->event))
+            ->assertOk()->assertSee('Shared event and draw venue')->assertSee('Draw association venue')
+            ->assertDontSee('Foreign event venue')->assertDontSee('Legacy venue description');
+
+        $this->assertSame([$drawOnly->id, $shared->id], $response->viewData('venues')->pluck('id')->all());
+    }
+
     public function test_print_options_provides_team_pdf_instead_of_individual_pack_for_team_draws(): void
     {
         $type = \App\Models\DrawType::forceCreate(['drawTypeName' => 'Print teams', 'type' => 'team', 'btn_color' => 'primary']);

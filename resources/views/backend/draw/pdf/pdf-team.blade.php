@@ -1,24 +1,16 @@
 <style>
-  table { width: 100%; border-collapse: collapse; font-size: 11px; }
-  th, td { border: 1px solid #d9dee3; padding: 6px; vertical-align: top; }
-  th { background: #eef3fa; text-align: left; }
-  .fixture-player-label { line-height: 1.6; }
+  body { font-family:DejaVu Sans,sans-serif; color:#172e45; font-size:9pt; }
+  h1 { font-size:12pt; margin:0 0 2mm; }
+  .sheet-subtitle { font-size:9pt; margin:0 0 3mm; }
+  .team-fixture-sheet { width:100%; border-collapse:collapse; table-layout:fixed; font-size:9pt; }
+  .team-fixture-sheet th, .team-fixture-sheet td { border:1px solid #d9dee3; padding:1.2mm 1.5mm; vertical-align:top; line-height:1.2; overflow-wrap:anywhere; }
+  .team-fixture-sheet th { background:#eef3fa; text-align:left; }
+  .team-fixture-sheet .sheet-round-heading th { background:#e5edf5; padding:1.5mm; }
+  .sheet-team { font-weight:bold; }
+  .sheet-time { white-space:nowrap; }
+  .team-fixture-sheet thead { display:table-header-group; }
+  .team-fixture-sheet tr { page-break-inside:avoid; break-inside:avoid; }
 </style>
 <h1>{{ $name }}</h1>
-<table>
-  <thead>
-    <tr><th>Match</th><th>Home</th><th>Away</th><th>Not before</th><th>Venue / Court</th><th>Result</th></tr>
-  </thead>
-  <tbody>
-    @foreach($fixtures as $fx)
-      <tr id="fixture-{{ $fx->id }}">
-        <td>{{ $fx->match_nr ?: $fx->id }}<br>Round {{ $fx->round_nr }} · Tie {{ $fx->tie_nr }}</td>
-        <td>@include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['home']])</td>
-        <td>@include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['away']])</td>
-        <td>{{ $fx->scheduled_at?->format('D d M @ H:i') ?? 'Time to follow' }}</td>
-        <td>{{ $fx->venue?->name ?? 'Venue to follow' }}@if($fx->court_label)<br>Court {{ $fx->court_label }}@endif</td>
-        <td>@foreach($fx->fixtureResults as $result){{ $result->team1_score }} - {{ $result->team2_score }}@if(!$loop->last), @endif @endforeach</td>
-      </tr>
-    @endforeach
-  </tbody>
-</table>
+<p class="sheet-subtitle">{{ !empty($selectedDate) ? \Carbon\Carbon::parse($selectedDate)->format('l j M Y') : 'All days' }} · {{ $fixtures->count() }} matches</p>
+@include('backend.draw.pdf.partials.team-fixture-sheet')

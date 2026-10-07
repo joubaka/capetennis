@@ -320,17 +320,68 @@ class HeadOfficeController extends Controller
     $event->load(['draws.draw_types', 'draws.venues', 'draws.settings', 'venues']);
     $event->draws->each(fn (Draw $draw) => $draw->setRelation('event', $event));
     $drawGroups = app(\App\Services\Scheduling\AgeGroupVenueDefaultService::class)->groups($event);
-    $venues = $event->venues->concat($event->draws->flatMap->venues)->unique('id')->sortBy('name')->values();
+    $venues = $event->getRelation('venues')
+      ->concat($event->draws->flatMap(fn (Draw $draw) => $draw->getRelation('venues')))
+      ->unique('id')->sortBy('name')->values();
+    // Group labels already contain the canonical category age resolved once per draw.
+    $drawAges = collect();
+    foreach ($drawGroups as $label => $draws) {
+      $age = preg_match('/^Under (\d+)\b/', $label, $matches) ? (int) $matches[1] : null;
+      foreach ($draws as $draw) $drawAges->put($draw->id, $age);
+    }
+    $scheduledVenues = TeamFixture::whereIn('draw_id', $event->draws->pluck('id'))
+      ->where('scheduled', 1)->whereNotNull('scheduled_at')->whereNotNull('venue_id')->toBase()->get(['draw_id', 'venue_id']);
+    $scheduledTeamVenues = $venues->whereIn('id', $scheduledVenues->pluck('venue_id')->unique())->values();
+    $venueAges = $scheduledTeamVenues->mapWithKeys(function (Venue $venue) use ($drawAges, $scheduledVenues) {
+      $drawIds = $scheduledVenues->where('venue_id', $venue->id)->pluck('draw_id')->unique();
+      return [$venue->id => $drawIds->map(fn ($id) => $drawAges->get($id))->filter(fn ($age) => $age !== null)->unique()->sort()->values()];
+    });
+    $venueGroups = $scheduledTeamVenues->groupBy(fn (Venue $venue) => $venueAges->get($venue->id)->isNotEmpty()
+      ? 'Under '.$venueAges->get($venue->id)->first() : 'Other venues')
+      ->sortBy(fn ($group) => $venueAges->get($group->first()->id)->first() ?? PHP_INT_MAX);
+    foreach ($venueAges->flatten()->unique() as $age) {
+      if (! $venueGroups->has('Under '.$age)) $venueGroups->put('Under '.$age, collect());
+    }
+    $venueGroups = $venueGroups->sortBy(fn ($group, $label) => $label === 'Other venues' ? PHP_INT_MAX : (int) substr($label, 6));
 
-    return view('backend.headOffice.print-options', compact('event', 'drawGroups', 'venues'));
+    return view('backend.headOffice.print-options', compact('event', 'drawGroups', 'venues', 'venueGroups', 'venueAges'));
   }
 
-  public function venueFixtures(Event $event, Venue $venue)
+  public function venuePrintPack(Request $request, Event $event)
+  {
+    $this->authorize('event-draw.view', $event);
+    $validated = $request->validate(['age' => ['required', 'integer', 'between:5,100'], 'date' => ['nullable', 'date_format:Y-m-d']]);
+    $age = (int) $validated['age'];
+    $selectedDate = $validated['date'] ?? null;
+    $event->load(['draws.venues', 'venues']);
+    $ageService = app(\App\Services\Scheduling\AgeGroupVenueDefaultService::class);
+    $drawIds = $event->draws->filter(fn (Draw $draw) => ($ageService->key($draw)['age'] ?? null) === $age)->pluck('id');
+    $venueIds = $event->getRelation('venues')->pluck('id')
+      ->merge($event->draws->flatMap(fn (Draw $draw) => $draw->getRelation('venues')->pluck('id')))->unique();
+    $query = TeamFixture::whereIn('draw_id', $drawIds)->whereIn('venue_id', $venueIds)
+      ->where('scheduled', 1)->whereNotNull('scheduled_at')->whereNotNull('venue_id');
+    $availableDays = (clone $query)->toBase()->reorder()->selectRaw('DATE(scheduled_at) as date')->distinct()->orderBy('date')->pluck('date');
+    $fixtures = $query->with('venue')
+      ->when($selectedDate, fn ($query) => $query->whereDate('scheduled_at', $selectedDate))->inPlayOrder()->get();
+    app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures);
+    $venueSections = $fixtures->groupBy('venue_id')->map(function ($rows) {
+      $rows = app(\App\Services\Scheduling\TeamFixtureOrder::class)->sort($rows)
+        ->sortBy(fn ($fixture) => [mb_strtolower($fixture->draw?->drawName ?? ''), $fixture->draw_id, (int) $fixture->round_nr])->values();
+      return ['venue' => $rows->first()->venue, 'fixtures' => $rows];
+    })->sortBy(fn ($section) => $section['venue']->name)->values();
+    $name = $event->name.' · Under '.$age.' · All venues';
+
+    return view('backend.draw.pdf.team-print-preview', compact('event', 'age', 'selectedDate', 'availableDays', 'fixtures', 'venueSections', 'name'));
+  }
+
+  public function venueFixtures(Request $request, Event $event, Venue $venue)
   {
     $this->authorize('event-draw.view', $event);
     abort_unless($event->venues()->where('venues.id', $venue->id)->exists()
       || $event->draws()->whereHas('venues', fn ($query) => $query->where('venues.id', $venue->id))->exists(), 404);
-    $fixtures = $venue->fixtures()
+    $validated = $request->validate(['date' => ['nullable', 'date_format:Y-m-d']]);
+    $selectedDate = $validated['date'] ?? null;
+    $fixtureQuery = $venue->fixtures()
       ->with([
         'draw',
         'teamTie',
@@ -342,21 +393,33 @@ class HeadOfficeController extends Controller
       ->whereHas('draw', function ($q) use ($event) {
         $q->where('event_id', $event->id);
       })
-      ->where('scheduled', 1)
-      ->inPlayOrder()
-      ->get();
-
-
-
-
+      ->where('scheduled', 1);
+    $availableDays = (clone $fixtureQuery)->toBase()
+      ->whereNotNull('scheduled_at')->selectRaw('DATE(scheduled_at) as date')
+      ->distinct()->orderBy('date')->pluck('date');
+    $fixtures = $fixtureQuery
+      ->when($selectedDate, fn ($query) => $query->whereDate('scheduled_at', $selectedDate))
+      ->inPlayOrder()->get();
     app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures);
     $fixtureGroups = app(\App\Services\VenueFixtureDisplayService::class)->groups($fixtures);
+    $ageService = app(\App\Services\Scheduling\AgeGroupVenueDefaultService::class);
+    $drawAges = $fixtures->pluck('draw')->filter()->unique('id')
+      ->mapWithKeys(fn (Draw $draw) => [$draw->id => $ageService->key($draw)['age'] ?? PHP_INT_MAX]);
+    $fixtureGroups = $fixtureGroups->sortBy(fn ($group) => [
+      $drawAges->get($group['fixture']->draw_id, PHP_INT_MAX),
+      mb_strtolower($group['fixture']->draw?->drawName ?? ''),
+      $group['fixture']->draw_id,
+      (int) $group['fixture']->round_nr,
+      $group['start']?->timestamp ?? PHP_INT_MAX,
+    ])->values();
 
     return view('backend.headOffice.venue-fixtures', [
       'event' => $event,
       'venue' => $venue,
       'fixtures' => $fixtures,
       'fixtureGroups' => $fixtureGroups,
+      'availableDays' => $availableDays,
+      'selectedDate' => $selectedDate,
     ]);
   }
 

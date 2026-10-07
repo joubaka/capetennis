@@ -648,25 +648,39 @@ class FixtureController extends Controller
   public function fixtures_create_pdf(Request $request)
   {
     // retreive all records from db
-    $draw = Draw::find($request->fixtures);
-    if ($draw) {
-      $this->authorize('fixture.view', $draw);
-    }
-    $data['fixtures'] = $draw ? app(\App\Services\Scheduling\TeamFixtureOrder::class)->sort($draw->fixtures) : collect();
+    $validated = $request->validate(['fixtures' => ['required', 'integer'], 'preview' => ['sometimes', 'boolean'], 'date' => ['nullable', 'date_format:Y-m-d']]);
+    $draw = Draw::findOrFail($request->integer('fixtures'));
+    $this->authorize('fixture.view', $draw);
+    $fixtureQuery = $draw->fixtures();
+    $data['availableDays'] = (clone $fixtureQuery)->toBase()->reorder()->whereNotNull('scheduled_at')
+      ->selectRaw('DATE(scheduled_at) as date')->distinct()->orderBy('date')->pluck('date');
+    $data['selectedDate'] = $validated['date'] ?? null;
+    $data['draw'] = $draw;
+    $data['fixtures'] = app(\App\Services\Scheduling\TeamFixtureOrder::class)->sort(
+      $fixtureQuery->when($data['selectedDate'], fn ($query) => $query->whereDate('scheduled_at', $data['selectedDate']))->get()
+    );
     app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($data['fixtures']);
-    $data['name'] = $draw ? $draw->event?->name . ' ' . $draw->drawName : 'Fixtures';
+    $data['name'] = $draw->event?->name . ' ' . $draw->drawName;
+    if ($request->boolean('preview')) {
+      return view('backend.draw.pdf.team-print-preview', $data);
+    }
     //return $name;
 
-    $pdf = Pdf::loadView('backend.draw.pdf.pdf-team', $data);
+    $pdf = Pdf::loadView('backend.draw.pdf.pdf-team', $data)->setPaper('A4', 'landscape');
     // download PDF file with download method
 
-    return $pdf->download($data['name'] . '.pdf');
+    return $pdf->download((\Illuminate\Support\Str::slug($data['name']) ?: 'team-fixtures').'.pdf');
     //return 'hall0';
   }
 
   public function fixtures_create_pdf_venue(Request $request)
   {
-    $ids = $request->input('fixtures');
+    $validated = $request->validate([
+      'fixtures' => ['required', 'array', 'min:1', 'max:1000'],
+      'fixtures.*' => ['required', 'integer', 'distinct', 'exists:team_fixtures,id'],
+      'preview' => ['sometimes', 'boolean'],
+    ]);
+    $ids = $validated['fixtures'];
     // retreive all records from db
     $data['f'] = TeamFixture::whereIn('id', $ids)->get();
 
@@ -685,12 +699,15 @@ class FixtureController extends Controller
     })->filter()->first();
 
     $data['name'] = $venueName ?? 'Fixtures';
+    if ($request->boolean('preview')) {
+      return view('backend.draw.pdf.team-print-preview', $data);
+    }
     //return $name;
 
-    $pdf = Pdf::loadView('backend.draw.pdf.pdf-team', $data);
+    $pdf = Pdf::loadView('backend.draw.pdf.pdf-team', $data)->setPaper('A4', 'landscape');
     // download PDF file with download method
 
-    return $pdf->download($data['name'] . '.pdf');
+    return $pdf->download((\Illuminate\Support\Str::slug($data['name']) ?: 'team-fixtures').'.pdf');
     //return 'hall0';
   }
 

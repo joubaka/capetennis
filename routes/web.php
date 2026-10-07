@@ -1554,6 +1554,9 @@ Route::delete(
   Route::get('/event/{event}/print-options', [HeadOfficeController::class, 'printOptions'])
     ->name('headoffice.printOptions');
 
+  Route::get('/event/{event}/venue-print-pack', [HeadOfficeController::class, 'venuePrintPack'])
+    ->name('headoffice.venuePrintPack');
+
   Route::get('/event/{event}/print-draws-data', [HeadOfficeController::class, 'printDrawsData'])
     ->name('headoffice.printDrawsData');
 

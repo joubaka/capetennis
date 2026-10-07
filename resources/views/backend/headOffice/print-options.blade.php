@@ -6,6 +6,25 @@
   .print-options .print-choice { display:flex; align-items:center; gap:.75rem; padding:.5rem; }
   .print-options .print-choice input { flex-shrink:0; }
   .print-options .btn { white-space:normal; }
+  .print-options { font-size:14px; }
+  .print-group-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr)); gap:1rem; }
+  .print-group { border:1px solid #d9e2eb; border-radius:10px; background:#fff; min-width:0; }
+  .print-group summary { min-height:56px; padding:14px 16px; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:12px; font-weight:600; list-style:none; }
+  .print-group summary::-webkit-details-marker { display:none; }
+  .print-group summary::after { content:'⌄'; font-size:20px; }
+  .print-group[open] summary::after { content:'⌃'; }
+  .print-group summary:focus-visible { outline:2px solid #172e45; outline-offset:2px; }
+  .print-group-body { padding:0 16px 16px; }
+  .print-draw-row { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; padding:14px 0; border-top:1px solid #e4eaf0; }
+  .print-draw-name { flex:1 1 160px; overflow-wrap:anywhere; }
+  .print-draw-actions { display:flex; gap:8px; flex-wrap:wrap; }
+  .print-venue-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); grid-auto-rows:1fr; gap:12px; }
+  .print-venue-tool { display:flex; min-height:96px; min-width:0; align-items:center; justify-content:space-between; gap:12px; padding:12px; border:1px solid #e4eaf0; border-radius:8px; }
+  .print-venue-tool span { flex:1; min-width:0; overflow-wrap:anywhere; }
+  .print-venue-tool .btn { flex:0 0 76px; width:76px; min-height:44px; }
+  @media(max-width:991px) { .print-venue-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  @media(max-width:575px) { .print-venue-grid { grid-template-columns:minmax(0,1fr); } }
+  @media(max-width:575px) { .print-draw-actions { width:100%; } .print-draw-actions .btn { flex:1; } }
 </style>
 @endsection
 @section('content')
@@ -18,7 +37,33 @@
   @if($event->draws->isEmpty())
     <div class="alert alert-info">Create a draw to make draw printing available.</div>
   @endif
+  @php($hasTeamDraws = $event->draws->contains(fn ($draw) => $draw->isTeamDraw()))
   @php($individualDraws = $event->draws->reject(fn ($draw) => $draw->isTeamDraw()))
+  <nav class="d-flex flex-wrap gap-2 mb-4" aria-label="Print sections">
+    @if($hasTeamDraws)<a class="btn btn-outline-primary" href="#venue-print-tools">Venues</a><a class="btn btn-outline-primary" href="#team-print-tools">Team draws by age</a>@endif
+    @if($individualDraws->isNotEmpty())<a class="btn btn-outline-primary" href="#individual-print-options">Individual draw packs</a>@endif
+  </nav>
+  @if($hasTeamDraws)
+  <section class="card mb-4" id="venue-print-tools"><div class="card-body">
+    <h3 class="h5">Venue sheets</h3><p class="text-muted">Scheduled team matches and lineups, grouped by venue. Open a sheet, then choose Print / Save PDF.</p>
+    @forelse($venueGroups as $ageLabel => $ageVenues)
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3 mb-2">
+      <h4 class="h6 mb-0">{{ $ageLabel }}</h4>
+      @if($ageLabel !== 'Other venues')
+      <a class="btn btn-outline-primary" href="{{ route('headoffice.venuePrintPack', ['event' => $event, 'age' => (int) substr($ageLabel, 6)]) }}" target="_blank" rel="noopener" aria-label="Print all venues for {{ $ageLabel }}">Print all venues</a>
+      @endif
+    </div>
+    @if($ageVenues->isEmpty())<p class="small text-muted">These matches use shared venues listed under a younger age above.</p>@endif
+    <div class="print-venue-grid">
+      @foreach($ageVenues as $venue)
+      <div class="print-venue-tool"><span>{{ $venue->name }}@if($venueAges->get($venue->id)->isNotEmpty())<small class="d-block text-muted">{{ $venueAges->get($venue->id)->map(fn ($age) => 'U'.$age)->implode(' · ') }}</small>@endif</span><a class="btn btn-primary" href="{{ route('headoffice.venue.fixtures', ['event' => $event, 'venue' => $venue]) }}" target="_blank" rel="noopener" aria-label="Print venue {{ $venue->name }}">Print</a></div>
+      @endforeach
+    </div>
+    @empty
+      <p class="mb-0">No venue matches have been scheduled yet.</p>
+    @endforelse
+  </div></section>
+  @endif
   @if($individualDraws->isNotEmpty())
   <form id="individual-print-options" action="{{ route('headoffice.drawPack', $event) }}" method="get" target="_blank" class="card mb-4">
     <div class="card-body">
@@ -28,13 +73,15 @@
       @foreach($drawGroups as $label => $draws)
         @php($choices = $draws->reject(fn ($draw) => $draw->isTeamDraw()))
         @if($choices->isNotEmpty())
-        <fieldset class="border rounded p-3 mb-3" data-print-group>
-          <legend class="float-none w-auto h6 px-2">{{ $label }}</legend>
+        <details class="print-group mb-3" data-print-group>
+          <summary>{{ $label }} <span class="badge bg-label-primary">{{ $choices->count() }} draws</span></summary>
+          <div class="print-group-body">
           <label class="print-choice"><input type="checkbox" data-select-group checked> Select this age group</label>
           @foreach($choices as $draw)
           <label class="print-choice"><input type="checkbox" name="draw_ids[]" value="{{ $draw->id }}" checked> {{ $draw->drawName }}</label>
           @endforeach
-        </fieldset>
+          </div>
+        </details>
         @endif
       @endforeach
       <div class="row g-3 mb-3">
@@ -58,25 +105,31 @@
     </div>
   </form>
   @endif
-  @if($event->draws->contains(fn ($draw) => $draw->isTeamDraw()))
-  <div class="card mb-4"><div class="card-body">
-    <h3 class="h5">Team draws by age group</h3><p class="text-muted">Download each draw’s team fixtures, players and scores.</p>
+  @if($hasTeamDraws)
+  <section id="team-print-tools" class="mb-4">
+    <h3 class="h5">Team draws by age group</h3><p class="text-muted">Expand an age group to print a draw’s team fixtures, players and scores, or download its PDF.</p>
+    <div class="print-group-grid">
     @foreach($drawGroups as $label => $draws)
-      @php($teamDraws = $draws->filter(fn ($draw) => $draw->isTeamDraw()))
+      @php($teamDraws = $draws->filter(fn ($draw) => $draw->isTeamDraw() && auth()->user()->can('fixture.view', $draw)))
       @if($teamDraws->isNotEmpty())
-      <h4 class="h6 mt-3">{{ $label }}</h4><div class="d-flex flex-wrap gap-2">
+      <details class="print-group">
+        <summary>{{ $label }} <span class="badge bg-label-primary">{{ $teamDraws->count() }} draws</span></summary>
+        <div class="print-group-body">
         @foreach($teamDraws as $draw)
-          @can('fixture.view', $draw)
-          <a class="btn btn-outline-primary" href="{{ route('fixture.create.pdf', ['fixtures' => $draw->id]) }}">{{ $draw->drawName ?: 'Draw #'.$draw->id }} — PDF</a>
-          @endcan
+          <div class="print-draw-row">
+            <strong class="print-draw-name">{{ $draw->drawName ?: 'Draw #'.$draw->id }}</strong>
+            <div class="print-draw-actions">
+              <a class="btn btn-primary" href="{{ route('fixture.create.pdf', ['fixtures' => $draw->id, 'preview' => 1]) }}" target="_blank" rel="noopener" aria-label="Print {{ $draw->drawName ?: 'Draw #'.$draw->id }}">Print</a>
+              <a class="btn btn-outline-primary" href="{{ route('fixture.create.pdf', ['fixtures' => $draw->id]) }}" aria-label="Download PDF for {{ $draw->drawName ?: 'Draw #'.$draw->id }}">Download PDF</a>
+            </div>
+          </div>
         @endforeach
-      </div>
+        </div>
+      </details>
       @endif
     @endforeach
-  </div></div>
-  <div class="card mb-4"><div class="card-body"><h3 class="h5">Team fixtures by venue</h3><p class="text-muted">Open the venue sheet, then choose Print / Save PDF for scheduled matches and lineups.</p><div class="d-flex flex-wrap gap-2">
-    @forelse($venues as $venue)<a class="btn btn-outline-primary" href="{{ route('headoffice.venue.fixtures', ['event' => $event, 'venue' => $venue]) }}">{{ $venue->name }} — preview / print</a>@empty<p>No venues assigned to this event yet.</p>@endforelse
-  </div></div></div>
+    </div>
+  </section>
   @endif
 </div>
 @endsection
