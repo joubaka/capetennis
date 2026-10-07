@@ -47,7 +47,7 @@
   }
 </style>
 <div class="modal fade" id="match-reminder" tabindex="-1" aria-labelledby="match-reminder-title" aria-describedby="match-reminder-description" aria-hidden="true"
-     data-endpoint="{{ route('my.tennis.match-reminder') }}" data-account="{{ auth()->id() }}" data-login="{{ session('match_reminder_login', 'existing-session') }}" data-day="{{ now('Africa/Johannesburg')->toDateString() }}">
+     data-endpoint="{{ route('my.tennis.match-reminder') }}" data-account="{{ auth()->id() }}" data-login="{{ session('match_reminder_login', 'existing-session') }}" data-auto-open="{{ session()->pull('match_reminder_pending', false) ? '1' : '0' }}" data-day="{{ now('Africa/Johannesburg')->toDateString() }}">
   <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
@@ -73,7 +73,7 @@
         </div>
         <details class="reminder-help">
           <summary>About reminders</summary>
-          <p id="match-reminder-timing-help">The next match day starts at midnight in South Africa. If only today’s matches remain, we remind you at the next match time. Reopen anytime using Match reminder in My Tennis.</p>
+          <p id="match-reminder-timing-help">After a snooze ends, the automatic reminder can appear at your next login. Next match day uses midnight in South Africa, or the next match time if only today’s matches remain. Reopen anytime using Upcoming matches in My Tennis.</p>
         </details>
         <div class="reminder-actions">
           <a href="{{ route('my.tennis') }}" class="reminder-all">View all in My Tennis</a>

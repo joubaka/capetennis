@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 
 const source = fs.readFileSync('public/js/match-reminder.js', 'utf8');
 
-async function run({ login = 'first-login', account = '1', storage = new Map(), persistent = new Map(), blockedStorage = false, players = true, failed = false, now = '2026-10-07T08:00:00+02:00', scheduled = '2026-10-09 09:15:00' } = {}) {
+async function run({ login = 'first-login', account = '1', autoOpen = '1', storage = new Map(), persistent = new Map(), blockedStorage = false, players = true, failed = false, now = '2026-10-07T08:00:00+02:00', scheduled = '2026-10-09 09:15:00' } = {}) {
   let requests = 0;
   let shown = 0;
   const handlers = {};
@@ -15,7 +15,7 @@ async function run({ login = 'first-login', account = '1', storage = new Map(), 
   const apply = { addEventListener(event, handler) { this[event] = handler; } };
   const nextDay = { disabled: true };
   const modal = {
-    dataset: { account, login, day: '2026-10-07', endpoint: '/my-tennis/match-reminder' },
+    dataset: { account, login, autoOpen, day: '2026-10-07', endpoint: '/my-tennis/match-reminder' },
     querySelector(selector) { return ({ '[data-reminder-preference]': preference, '[data-reminder-apply]': apply, '[data-reminder-next-day]': nextDay })[selector] || body; }, querySelectorAll() { return []; },
     addEventListener(event, handler) { handlers[event] = handler; },
   };
@@ -50,6 +50,44 @@ test('shows upcoming Friday fixture and suppresses it after dismissal within the
   const repeat = await run({ storage: first.storage });
   assert.equal(repeat.requests, 0);
   assert.equal(repeat.shown, 0);
+});
+
+test('automatic opening requires the one-shot login flag but manual opening remains available', async () => {
+  for (const autoOpen of ['0', null, 'true']) {
+    const reminder = await run({ autoOpen });
+    assert.equal(reminder.requests, 0);
+    assert.equal(reminder.shown, 0);
+    await reminder.button.click();
+    assert.equal(reminder.requests, 1);
+    assert.equal(reminder.shown, 1);
+  }
+});
+
+test('reload and another tab do not auto open before dismissal, including blocked browser storage', async () => {
+  for (const blockedStorage of [false, true]) {
+    const first = await run({ blockedStorage });
+    assert.equal(first.shown, 1);
+    const reload = await run({ autoOpen: '0', storage: first.storage, blockedStorage });
+    assert.equal(reload.requests, 0);
+    assert.equal(reload.shown, 0);
+    assert.equal((await run({ autoOpen: '0', blockedStorage })).shown, 0);
+  }
+});
+
+test('expired snooze does not automatically reopen without a fresh login flag', async () => {
+  const reminder = await run();
+  reminder.preference.value = 'hour';
+  reminder.apply.click();
+  const options = { persistent: reminder.persistent, now: '2026-10-07T10:00:00+02:00' };
+  assert.equal((await run({ ...options, autoOpen: '0' })).requests, 0);
+  assert.equal((await run({ ...options, login: 'fresh-login', autoOpen: '1' })).shown, 1);
+});
+
+test('an empty or failed automatic reminder is not retried on the next page', async () => {
+  for (const options of [{ players: false }, { failed: true }]) {
+    assert.equal((await run(options)).shown, 0);
+    assert.equal((await run({ ...options, autoOpen: '0' })).requests, 0);
+  }
 });
 
 test('a fresh login or different account gets its own reminder dismissal scope', async () => {

@@ -124,5 +124,5 @@
     });
   }
   buttons.forEach(button => button.addEventListener('click', () => openReminder(true)));
-  if (!dismissed() && !snoozed()) openReminder();
+  if (modal.dataset.autoOpen === '1' && !dismissed() && !snoozed()) openReminder();
 }());

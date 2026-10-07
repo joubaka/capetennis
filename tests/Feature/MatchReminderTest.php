@@ -159,13 +159,23 @@ class MatchReminderTest extends TestCase
         $this->assertTrue(\Illuminate\Support\Str::isUuid($firstLogin));
         $this->get(route('my.tennis'))->assertOk()
             ->assertSee('id="match-reminder"', false)
-            ->assertSee('data-login="'.$firstLogin.'"', false);
+            ->assertSee('data-login="'.$firstLogin.'"', false)
+            ->assertSee('data-auto-open="1"', false);
+        $this->assertFalse(session()->has('match_reminder_pending'));
+        $this->get(route('my.tennis'))->assertOk()->assertSee('data-auto-open="0"', false);
         $this->getJson(route('my.tennis.match-reminder'))->assertOk()
             ->assertJsonCount(1, 'players')->assertJsonCount(1, 'players.0.matches');
 
         $this->post('/logout')->assertRedirect();
         $this->post('/login', $credentials)->assertRedirect();
         $this->assertNotSame($firstLogin, session('match_reminder_login'));
+        $this->get(route('my.tennis'))->assertOk()->assertSee('data-auto-open="1"', false);
+    }
+
+    public function test_existing_authenticated_session_has_no_automatic_reminder_offer(): void
+    {
+        $this->actingAs(User::factory()->create())->get(route('my.tennis'))->assertOk()
+            ->assertSee('data-auto-open="0"', false);
     }
 
     public function test_successful_login_rotates_only_the_reminder_dismissal_scope(): void
@@ -176,6 +186,7 @@ class MatchReminderTest extends TestCase
         app(\App\Listeners\LogSuccessfulLogin::class)->handle(new \Illuminate\Auth\Events\Login('web', $user, false));
         $first = session('match_reminder_login');
         $this->assertTrue(\Illuminate\Support\Str::isUuid($first));
+        $this->assertTrue(session('match_reminder_pending'));
         app(\App\Listeners\LogSuccessfulLogin::class)->handle(new \Illuminate\Auth\Events\Login('web', $user, false));
         $this->assertNotSame($first, session('match_reminder_login'));
     }

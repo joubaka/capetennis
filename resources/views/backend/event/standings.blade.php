@@ -4,6 +4,20 @@
 <div data-backend-wide>
   @include('backend.event.partials.header', ['eventWorkspaceSubtitle' => 'Event standings and competition statistics'])
   <div class="d-flex flex-wrap justify-content-between gap-2 mb-3"><h1 class="h4 mb-0">Standings &amp; statistics</h1><a class="btn btn-outline-primary" href="{{ route('backend.scoreboard.team.show', $event) }}">View match results</a></div>
+  <section class="card card-body mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+      <div><h2 class="h5 mb-1">Public team standings</h2><span class="badge bg-label-{{ $event->standings_published ? 'success' : 'secondary' }}">{{ $event->standings_published ? 'Published' : 'Unpublished' }}</span></div>
+      @can('team-draw.createFormat', $event)
+      <form method="POST" action="{{ route('admin.events.standings.publication', $event) }}">
+        @csrf
+        @method('PATCH')
+        <input type="hidden" name="standings_published" value="{{ $event->standings_published ? '0' : '1' }}">
+        <button class="btn {{ $event->standings_published ? 'btn-outline-secondary' : 'btn-primary' }}" style="min-height:44px" type="submit">{{ $event->standings_published ? 'Unpublish standings' : 'Publish standings' }}</button>
+      </form>
+      @endcan
+    </div>
+    <p class="small text-muted mb-0 mt-3">Publishing shows Team standings and match totals on the public event page and enables public draw standings. Only published draws and ties contribute. These are current running standings, not final tournament placings. Event, draw, schedule and final results publication remain separate.</p>
+  </section>
   <form method="GET" class="card card-body mb-4">
     <div class="row g-3 align-items-end">
       @foreach(['gender' => 'Gender', 'age' => 'Age group', 'category' => 'Category'] as $key => $label)

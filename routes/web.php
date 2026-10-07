@@ -1426,6 +1426,8 @@ Route::delete(
   // Team event scoreboard (admin/backend view)
   Route::get('event/{event}/standings', [\App\Http\Controllers\Backend\EventStandingsController::class, 'show'])
     ->name('admin.events.standings');
+  Route::patch('event/{event}/standings/publication', [\App\Http\Controllers\Backend\EventStandingsController::class, 'publication'])
+    ->name('admin.events.standings.publication');
   Route::get('event/{event}/team-scoreboard', [ScoreboardController::class, 'showScoreboard'])
     ->name('backend.scoreboard.team.show');
 

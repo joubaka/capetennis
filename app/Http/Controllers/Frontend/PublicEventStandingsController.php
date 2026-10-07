@@ -13,11 +13,9 @@ final class PublicEventStandingsController extends Controller
     public function __invoke(Request $request, Event $event, EventStandingsService $standings)
     {
         app(PublicTournamentVisibility::class)->ensureEventIsVisible($event, $request->user());
-        abort_unless($event->isTeam(), 404);
+        abort_unless($event->isTeam() && $event->standings_published, 404);
         $filters = $request->validate([
-            'gender' => 'nullable|string|max:50',
             'age' => 'nullable|string|max:50',
-            'category' => 'nullable|string|max:255',
         ]);
 
         return response()->view('frontend.fixtures.event-standings', ['event' => $event]

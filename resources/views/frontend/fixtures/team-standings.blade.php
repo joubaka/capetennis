@@ -4,7 +4,7 @@
 <div class="container-xxl">
   <h1 class="h4">{{ $draw->drawName }}: team standings</h1>
   <div class="d-flex flex-wrap gap-2 mb-3">
-    <a class="btn btn-outline-primary" style="min-height:44px" href="{{ route('frontend.events.standings', $draw->event) }}">Full event standings</a>
+    @if($draw->event->standings_published)<a class="btn btn-outline-primary" style="min-height:44px" href="{{ route('frontend.events.standings', $draw->event) }}">Full event standings</a>@endif
     <a class="btn btn-outline-secondary" style="min-height:44px" href="{{ route('frontend.fixtures.index', $draw) }}">View match results</a>
   </div>
   <p>Completed matches contribute points, match wins, sets and games. Team ties count as played once every required match is complete. Teams tied on all configured criteria share a rank.</p>

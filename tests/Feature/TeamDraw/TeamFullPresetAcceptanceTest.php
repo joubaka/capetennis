@@ -164,6 +164,7 @@ class TeamFullPresetAcceptanceTest extends TestCase
         $this->assertEquals($baseline->all(), collect(app(TeamStandingsService::class)->forDraw($draw->fresh()))->keyBy('team_id')->all());
         $this->get(route('backend.team-draw.standings', $draw))->assertOk();
         $draw->update(['published' => true]);
+        $draw->event->forceFill(['standings_published' => true])->save();
         auth()->logout();
         $this->app['auth']->forgetGuards();
         $this->get(route('frontend.team-draw.standings', $draw))->assertOk()->assertSee($teams[0]->name);

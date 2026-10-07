@@ -4,7 +4,9 @@
 
 @section('content')
 @if($draw->published)
+@if($draw->event->standings_published)
 <div class="container-xxl pt-3 d-flex flex-wrap gap-2"><a class="btn btn-outline-primary" style="min-height:44px" href="{{ route('frontend.team-draw.standings', $draw) }}">Team standings</a><a class="btn btn-outline-primary" style="min-height:44px" href="{{ route('frontend.events.standings', $draw->event) }}">Full event standings</a></div>
+@endif
 @include('frontend.fixtures.partials.live-results-status')
 @endif
 <div class="container-xxl py-4" @if($draw->published) data-live-results="team-fixture-list" @endif>

@@ -57,6 +57,7 @@ class Event extends Model
   protected $casts = [
     'published'           => 'boolean',
     'results_published'   => 'boolean',
+    'standings_published' => 'boolean',
     'result_notifications_enabled' => 'boolean',
     'result_auto_refresh_enabled' => 'boolean',
     'signUp'              => 'boolean',

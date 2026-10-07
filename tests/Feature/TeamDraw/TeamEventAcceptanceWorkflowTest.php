@@ -151,6 +151,7 @@ class TeamEventAcceptanceWorkflowTest extends TestCase
         $this->postJson(route('frontend.fixtures.score.store', $first), ['set1_home' => 6, 'set1_away' => 2, 'set2_home' => 6, 'set2_away' => 3])->assertOk();
         $this->get(route('backend.team-draw.standings', $draw))->assertOk();
         $draw->update(['published' => true]);
+        $draw->event->forceFill(['standings_published' => true])->save();
         auth()->logout();
         $this->app['auth']->forgetGuards();
         $this->get(route('frontend.team-draw.standings', $draw))->assertOk()->assertSee($teams[0]->name);

@@ -24,10 +24,12 @@
   .fixture-team-chip { display: inline-block; background: #fff; color: #26394d; border: 1px solid var(--region-color, #475569); padding: .3rem .55rem; border-radius: .35rem; line-height: 1.5; overflow-wrap: anywhere; }
 </style>
 @if($draw->published)
+  @if($event->standings_published)
   <div class="d-flex flex-wrap gap-2 mb-3">
     <a class="btn btn-outline-primary" style="min-height:44px" href="{{ route('frontend.team-draw.standings', $draw) }}">Draw standings</a>
     <a class="btn btn-outline-primary" style="min-height:44px" href="{{ route('frontend.events.standings', $event) }}">Full event standings</a>
   </div>
+  @endif
   @include('frontend.fixtures.partials.live-results-status')
 @endif
 <div class="public-fixture-page" @if($draw->published) data-live-results="team-fixtures" @endif>

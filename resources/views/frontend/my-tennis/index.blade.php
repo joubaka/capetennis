@@ -81,7 +81,7 @@
       <h1 class="mb-1">My Tennis</h1>
       <p class="text-muted mb-0">Your players, entries and published match information.</p>
     </div>
-    <button class="btn my-tennis-reminder" type="button" data-open-match-reminder aria-controls="match-reminder"><i class="ti ti-bell me-1" aria-hidden="true"></i>Match reminder</button>
+    <button class="btn my-tennis-reminder" type="button" data-open-match-reminder aria-controls="match-reminder"><i class="ti ti-bell me-1" aria-hidden="true"></i>Upcoming matches</button>
     @if($players->isNotEmpty())
       <form method="get" action="{{ route('my.tennis') }}" class="d-flex align-items-center gap-2">
         <label for="my-tennis-player" class="visually-hidden">Player</label>

@@ -15,6 +15,7 @@ class LogSuccessfulLogin
         // A fresh login gets a fresh reminder dismissal scope, independent of authentication tokens.
         if (request()->hasSession()) {
             request()->session()->put('match_reminder_login', (string) \Illuminate\Support\Str::uuid());
+            request()->session()->put('match_reminder_pending', true);
         }
 
         app(AuditWriter::class)->record([
