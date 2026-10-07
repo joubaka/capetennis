@@ -9,7 +9,7 @@ use Tests\TestCase;
 class VenueMatchOrderTest extends TestCase
 {
     #[Test]
-    public function it_orders_print_rows_by_time_venue_natural_court_then_draw_and_play_order(): void
+    public function it_preserves_natural_court_order_for_unranked_individual_print_rows(): void
     {
         $rows = collect([
             ['id' => 1, 'scheduled_at' => '2026-09-20 09:00:00', 'venue' => 'Manor', 'court' => 'Court 10', 'draw_name' => 'Boys', 'play_order' => 1],

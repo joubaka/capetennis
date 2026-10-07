@@ -388,7 +388,7 @@ final class EventVenueScheduleService
             $plan[] = [
                 'fixture_id' => $node['fixture']->id, 'fixture_kind' => $node['fixture_kind'] ?? 'individual',
                 'fixture_key' => ($node['fixture_kind'] ?? 'individual').':'.$node['fixture']->id, 'draw_id' => $node['draw_id'], 'draw_name' => $node['draw_name'],
-                'stage' => $node['stage'], 'round' => $node['round'], 'match' => $node['match'],
+                'stage' => $node['stage'], 'round' => $node['round'], 'match' => $node['match'], 'rank' => $node['rank'] ?? null,
                 'play_order' => $node['play_order'], 'wave' => $node['wave'],
                 'programme_day' => $node['programme_day'] ?? null, 'programme_sequence' => $node['programme_sequence'] ?? null,
                 'dependencies' => $node['dependencies'],
@@ -443,7 +443,7 @@ final class EventVenueScheduleService
             $unscheduled[] = [
                 'fixture_id' => $node['fixture']->id, 'fixture_kind' => $node['fixture_kind'] ?? 'individual',
                 'fixture_key' => ($node['fixture_kind'] ?? 'individual').':'.$node['fixture']->id, 'draw_id' => $node['draw_id'], 'draw_name' => $node['draw_name'],
-                'stage' => $node['stage'], 'round' => $node['round'], 'match' => $node['match'],
+                'stage' => $node['stage'], 'round' => $node['round'], 'match' => $node['match'], 'rank' => $node['rank'] ?? null,
                 'play_order' => $node['play_order'], 'wave' => $node['wave'],
                 'dependencies' => $node['dependencies'],
                 'not_before' => $node['not_before']->format('Y-m-d H:i:s'),
@@ -510,6 +510,7 @@ final class EventVenueScheduleService
                     $sameEvent = (int) $fixture->draw?->event_id === (int) $event->id;
                     return ['fixture_id' => $fixture->id, 'fixture_kind' => 'team', 'fixture_key' => 'team:'.$fixture->id,
                         'draw_id' => $fixture->draw_id, 'draw_name' => $sameEvent ? ($fixture->draw?->drawName ?? 'Existing booking') : 'Existing booking',
+                        'rank' => $sameEvent ? app(TeamFixtureOrder::class)->rank($fixture) : null,
                         'round' => $sameEvent ? max(1, (int) $fixture->round_nr) : null, 'match' => $sameEvent ? ($fixture->match_nr ?: $fixture->rubber_sequence) : null,
                         'scheduled_at' => Carbon::parse($fixture->scheduled_at)->format('Y-m-d H:i:s'),
                         'ends_at' => Carbon::parse($fixture->scheduled_at)->addMinutes((int) ($fixture->duration_min ?: 120) + (int) ($fixture->gap_minutes ?? 0))->format('Y-m-d H:i:s'),

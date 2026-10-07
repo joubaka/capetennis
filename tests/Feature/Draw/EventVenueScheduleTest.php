@@ -167,6 +167,7 @@ class EventVenueScheduleTest extends TestCase
         $preview = $service->preview($event, $options);
         $this->assertSame([], $preview['unscheduled']);
         $this->assertSame(['Boys', 'Girls', 'Boys', 'Girls'], collect($preview['matches'])->pluck('draw_name')->all());
+        $this->assertSame([1, 1, 1, 1], collect($preview['matches'])->pluck('rank')->all());
         $this->assertSame(['2026-09-10 08:00:00', '2026-09-10 09:30:00', '2026-09-10 11:00:00', '2026-09-10 12:30:00'],
             collect($preview['matches'])->pluck('scheduled_at')->all());
         $this->assertSame(4, $service->apply($event, $options, $preview['revision'])['count']);

@@ -131,7 +131,7 @@ class TeamFixturePrintTest extends TestCase
         $this->getJson($url.'&date=invalid')->assertUnprocessable()->assertJsonValidationErrors('date');
     }
 
-    public function test_venue_sheet_orders_known_ages_low_to_high_before_unknown_draws(): void
+    public function test_venue_sheet_orders_times_across_ages_and_unknown_draws(): void
     {
         $venue = Venue::forceCreate(['name' => 'Age ordered venue']);
         $this->event->venues()->attach($venue, ['num_courts' => 2]);
@@ -143,8 +143,9 @@ class TeamFixturePrintTest extends TestCase
             $expected[$age] = TeamFixture::create(['draw_id' => $draw->id, 'round_nr' => 1, 'match_nr' => $age, 'venue_id' => $venue->id, 'scheduled' => true, 'scheduled_at' => $age === 13 ? '2026-10-09 08:00:00' : '2026-10-09 11:00:00']);
         }
         $unknown = TeamFixture::create(['draw_id' => $this->draw->id, 'round_nr' => 1, 'match_nr' => 99, 'venue_id' => $venue->id, 'scheduled' => true, 'scheduled_at' => '2026-10-09 07:00:00']);
+        $later = TeamFixture::create(['draw_id' => $expected[13]->draw_id, 'round_nr' => 1, 'tie_nr' => 1, 'match_nr' => 14, 'venue_id' => $venue->id, 'scheduled' => true, 'scheduled_at' => '2026-10-09 12:00:00']);
         $response = $this->actingAs($this->admin)->get(route('headoffice.venue.fixtures', ['event' => $this->event, 'venue' => $venue]))->assertOk();
-        $this->assertSame([$expected[10]->id, $expected[13]->id, $unknown->id], $response->viewData('fixtureGroups')->pluck('fixture.id')->all());
+        $this->assertSame([$unknown->id, $expected[13]->id, $expected[10]->id, $later->id], $response->viewData('fixtureGroups')->pluck('fixture.id')->all());
         $response->assertSee('2026-10-09 11:00')->assertSee('2026-10-09 08:00')->assertSee('2026-10-09 07:00');
     }
 

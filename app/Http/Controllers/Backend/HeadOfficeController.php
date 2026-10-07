@@ -365,8 +365,7 @@ class HeadOfficeController extends Controller
       ->when($selectedDate, fn ($query) => $query->whereDate('scheduled_at', $selectedDate))->inPlayOrder()->get();
     app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures);
     $venueSections = $fixtures->groupBy('venue_id')->map(function ($rows) {
-      $rows = app(\App\Services\Scheduling\TeamFixtureOrder::class)->sort($rows)
-        ->sortBy(fn ($fixture) => [mb_strtolower($fixture->draw?->drawName ?? ''), $fixture->draw_id, (int) $fixture->round_nr])->values();
+      $rows = app(\App\Services\Scheduling\TeamFixtureOrder::class)->sort($rows);
       return ['venue' => $rows->first()->venue, 'fixtures' => $rows];
     })->sortBy(fn ($section) => $section['venue']->name)->values();
     $name = $event->name.' · Under '.$age.' · All venues';
@@ -401,17 +400,11 @@ class HeadOfficeController extends Controller
       ->when($selectedDate, fn ($query) => $query->whereDate('scheduled_at', $selectedDate))
       ->inPlayOrder()->get();
     app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures);
-    $fixtureGroups = app(\App\Services\VenueFixtureDisplayService::class)->groups($fixtures);
-    $ageService = app(\App\Services\Scheduling\AgeGroupVenueDefaultService::class);
-    $drawAges = $fixtures->pluck('draw')->filter()->unique('id')
-      ->mapWithKeys(fn (Draw $draw) => [$draw->id => $ageService->key($draw)['age'] ?? PHP_INT_MAX]);
-    $fixtureGroups = $fixtureGroups->sortBy(fn ($group) => [
-      $drawAges->get($group['fixture']->draw_id, PHP_INT_MAX),
-      mb_strtolower($group['fixture']->draw?->drawName ?? ''),
-      $group['fixture']->draw_id,
-      (int) $group['fixture']->round_nr,
-      $group['start']?->timestamp ?? PHP_INT_MAX,
-    ])->values();
+    // One row per display group keeps interleaved ties and draws in global time/rank order.
+    $fixtureGroups = $fixtures->map(fn ($fixture) => [
+      'fixture' => $fixture, 'start' => $fixture->scheduled_at,
+      'waves' => collect([collect([$fixture])]),
+    ]);
 
     return view('backend.headOffice.venue-fixtures', [
       'event' => $event,

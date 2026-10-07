@@ -33,6 +33,30 @@ class PublicScheduleProjectionTest extends TestCase
         $this->assertSame(array_reverse($expected), $service->workingRows($event)->pluck('fixture_id')->all());
     }
 
+    public function test_team_snapshot_time_and_rank_order_survives_private_schedule_changes(): void
+    {
+        $event = Event::factory()->create(['eventType' => 3]);
+        $draws = Draw::factory()->count(2)->create(['event_id' => $event->id, 'published' => true]);
+        $venue = Venue::forceCreate(['name' => 'Rank snapshot venue']);
+        $rows = collect([6, 5])->map(fn ($rank, $index) => TeamFixture::create([
+            'draw_id' => $draws[$index]->id, 'round_nr' => 1, 'tie_nr' => 1, 'match_nr' => 1,
+            'fixture_type' => 1, 'home_rank_nr' => $rank, 'scheduled_at' => '2026-10-09 09:00:00',
+            'venue_id' => $venue->id, 'court_label' => $rank === 6 ? 'Court 1' : 'Court 99',
+        ]));
+        $service = app(SchedulePublicationService::class);
+        $service->publish($event, []);
+        $rows[0]->update(['scheduled_at' => '2026-10-08 07:00:00', 'court_label' => 'Private court']);
+        request()->attributes->remove('published_schedule_rows_'.$event->id);
+        $public = $service->publishedRows($event);
+        $this->assertSame([$rows[1]->id, $rows[0]->id], $public->pluck('fixture_id')->all());
+        $this->assertSame([5, 6], $public->pluck('rank')->all());
+        $this->assertSame(['2026-10-09 09:00:00'], $public->pluck('scheduled_at')->unique()->all());
+        $this->assertSame(['Court 99', 'Court 1'], $public->pluck('court')->all());
+        $order = app(\App\Services\Scheduling\VenueMatchOrder::class);
+        $this->assertSame($public->pluck('fixture_id')->all(), $public->reverse()->sort(fn ($a, $b) => $order->compare($a, $b))->pluck('fixture_id')->all());
+        $this->assertSame([$rows[0]->id, $rows[1]->id], $service->workingRows($event)->pluck('fixture_id')->all());
+    }
+
     public function test_draw_badge_days_are_chronological_unique_public_snapshot_days_only(): void
     {
         $event = Event::factory()->create(['eventType' => 3]);

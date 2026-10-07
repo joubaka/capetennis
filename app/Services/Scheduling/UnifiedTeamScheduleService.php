@@ -60,6 +60,7 @@ final class UnifiedTeamScheduleService
                 'fixture' => $fixture, 'fixture_kind' => 'team', 'draw_id' => $draw->id, 'draw_name' => $draw->drawName,
                 'stage' => $fixture->rubber_name ?: $fixture->rubber_code ?: 'Team rubber',
                 'round' => max(1, (int) $fixture->round_nr), 'match' => $fixture->match_nr ?: $fixture->rubber_sequence,
+                'rank' => app(TeamFixtureOrder::class)->rank($fixture),
                 'play_order' => (int) ($fixture->rubber_sequence ?: $fixture->match_nr ?: $fixture->id),
                 'dependencies' => $dependencies, 'participants' => $this->participants($fixture),
                 'participant_names' => [$home, $away], 'participant_group' => null,

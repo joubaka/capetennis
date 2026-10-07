@@ -1239,10 +1239,17 @@
   const matchEnd = (match, result) => match.ends_at
     ? asDate(match.ends_at)
     : new Date(dateKey(match.scheduled_at) + (Number(match.duration || result.input.duration) + Number(result.input.courtGap || 0)) * 60000);
+  const venueRank = row => {
+    for (const field of ['home_rank_nr', 'rank_nr', 'away_rank_nr', 'rank', 'rubber_sequence']) {
+      const rank = Number(row[field]);
+      if (Number.isFinite(rank) && rank > 0) return rank;
+    }
+    return 2147483647;
+  };
   const venueRows = (result, venueId) => [...result.matches.map(match => ({...match, fixed:false})),
     ...(result.existing_matches || []).map(match => ({...match, fixed:true}))]
     .filter(match => Number(match.venue_id) === Number(venueId))
-    .sort((a, b) => dateKey(a.scheduled_at) - dateKey(b.scheduled_at) || String(a.court).localeCompare(String(b.court), undefined, {numeric:true}));
+    .sort((a, b) => dateKey(a.scheduled_at) - dateKey(b.scheduled_at) || venueRank(a) - venueRank(b) || String(a.court).localeCompare(String(b.court), undefined, {numeric:true}));
   const ageGroupScheduleSummary = rows => {
     const groups = new Map();
     rows.forEach(row => {

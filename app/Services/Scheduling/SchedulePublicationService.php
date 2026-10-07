@@ -36,6 +36,9 @@ final class SchedulePublicationService
             return ['event_id' => (int) $event->id, 'fixture_kind' => $team ? 'team' : 'individual',
                 'fixture_id' => (int) $fixture->id, 'fixture_key' => ($team ? 'team:' : 'individual:').$fixture->id,
                 'draw_id' => (int) $fixture->draw_id, 'draw_name' => $draws[$fixture->draw_id]->drawName,
+                'round_nr' => $team ? $fixture->round_nr : null, 'tie_nr' => $team ? $fixture->tie_nr : null,
+                'rubber_sequence' => $team ? $fixture->rubber_sequence : null, 'match_nr' => $fixture->match_nr,
+                'rank' => $team ? app(TeamFixtureOrder::class)->rank($fixture) : null,
                 'scheduled_at' => Carbon::parse($time)->format('Y-m-d H:i:s'), 'venue_id' => (int) $slot->venue_id,
                 'venue_name' => $slot->venue?->name ?? 'Venue unassigned',
                 'court' => (string) ($team ? $slot->court_label : $slot->court),
@@ -80,6 +83,10 @@ final class SchedulePublicationService
             }
             return (array) $row + ['fixture_key' => $row->fixture_kind.':'.$row->fixture_id,
                 'draw_name' => $draws[$row->draw_id]->drawName, 'venue_name' => $venues->get($row->venue_id)?->name,
+                'round_nr' => $fixture instanceof TeamFixture ? $fixture->round_nr : null,
+                'tie_nr' => $fixture instanceof TeamFixture ? $fixture->tie_nr : null,
+                'rubber_sequence' => $fixture instanceof TeamFixture ? $fixture->rubber_sequence : null, 'match_nr' => $fixture->match_nr,
+                'rank' => $fixture instanceof TeamFixture ? app(TeamFixtureOrder::class)->rank($fixture) : null,
                 '_fixture' => $fixture] + ($includeParticipants ? ['participants' => $row->fixture_kind === 'team'
                     ? ($fixture->teamTie
                         ? [$fixture->tie_display['home'], $fixture->tie_display['away']]

@@ -47,13 +47,12 @@ class TeamFixtureFrontendController extends Controller
         ])
         ->where('draw_id', $draw)
         ->when(!$isPrivileged, fn ($query) => $query->publicDrawFixtures())
-        ->orderBy('scheduled_at')
-        ->orderBy('home_rank_nr')
+        ->inPlayOrder()
         ->get();
 
     if (! $isPrivileged) {
       app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($fixtures);
-      $fixtures = $fixtures->sortBy(fn ($fixture) => $fixture->scheduled_at ?? '9999-12-31')->values();
+      $fixtures = app(\App\Services\Scheduling\TeamFixtureOrder::class)->sort($fixtures);
     }
 
     app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures, publicDraw: !$isPrivileged);
@@ -96,8 +95,7 @@ class TeamFixtureFrontendController extends Controller
             'region2Name',
         ])
         ->where('draw_id', $draw)
-        ->orderBy('scheduled_at')
-        ->orderBy('home_rank_nr')
+        ->inPlayOrder()
         ->get();
 
     $fixtures = $this->authorizedScoringFixtures($fixtures, $drawModel);
@@ -202,7 +200,7 @@ class TeamFixtureFrontendController extends Controller
       $fixtures = \App\Models\TeamFixture::where('venue_id', $venueId)
           ->when(!$superUser, fn ($query) => $query->whereHas('draw', fn ($draw) => $draw->whereIn('event_id', $eventIds)))
           ->with(['fixtureResults', 'homeTeam', 'awayTeam'])
-          ->orderBy('scheduled_at')
+          ->inPlayOrder()
           ->get();
       if (!$superUser) {
           $fixtures = $fixtures->filter(fn ($fixture) => !$user->is_event_score_keeper($fixture->draw->event_id)
@@ -229,9 +227,7 @@ class TeamFixtureFrontendController extends Controller
             ->whereHas('draw', function($q) use ($eventId) {
                 $q->where('event_id', $eventId);
             })
-            ->orderBy('scheduled_at')
-            ->orderBy('round_nr')
-            ->orderBy('home_rank_nr')
+            ->inPlayOrder()
             ->get();
         if (auth()->user()->is_event_score_keeper($event->id) && !auth()->user()->hasRole('super-user')) {
             $fixtures = $fixtures->filter(fn ($fixture) => auth()->user()->can('team-fixture.saveScore', $fixture))->values();

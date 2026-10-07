@@ -23,8 +23,15 @@ class TeamFixtureOrder
     public function applyQuery(Builder $query): Builder
     {
         $table = $query->getModel()->getTable();
-        $query->orderByRaw("CASE WHEN {$table}.scheduled_at IS NULL THEN 1 ELSE 0 END")
+        $rankParts = [];
+        foreach (['home_rank_nr', 'rank_nr', 'away_rank_nr', 'rubber_sequence'] as $column) {
+            $rankParts[] = "CASE WHEN {$table}.{$column} > 0 THEN {$table}.{$column} END";
+        }
+        $query->reorder()->orderByRaw("CASE WHEN {$table}.scheduled_at IS NULL THEN 1 ELSE 0 END")
             ->orderBy("{$table}.scheduled_at")
+            ->orderByRaw('COALESCE('.implode(', ', $rankParts).', 2147483647)')
+            ->orderByRaw("CASE WHEN {$table}.court_label IS NULL OR {$table}.court_label = '' THEN 1 ELSE 0 END")
+            ->orderByRaw("LOWER({$table}.court_label)")
             ->orderBy("{$table}.draw_id");
         foreach (['round_nr', 'tie_nr'] as $column) {
             $query->orderByRaw("COALESCE(CAST(NULLIF({$table}.{$column}, '') AS SIGNED), 2147483647)");
@@ -38,6 +45,9 @@ class TeamFixtureOrder
     {
         return [
             $fixture->scheduled_at ? Carbon::parse($fixture->scheduled_at)->format('Y-m-d H:i:s.u') : '9999-12-31 23:59:59.999999',
+            $this->rank($fixture),
+            $fixture->court_label === null || $fixture->court_label === '' ? 1 : 0,
+            'court:'.mb_strtolower((string) $fixture->court_label),
             (int) $fixture->draw_id,
             $this->number($fixture->round_nr),
             $this->number($fixture->tie_nr),
@@ -45,6 +55,14 @@ class TeamFixtureOrder
             $this->number($fixture->match_nr),
             (int) $fixture->id,
         ];
+    }
+
+    public function rank(TeamFixture $fixture): int
+    {
+        foreach (['home_rank_nr', 'rank_nr', 'away_rank_nr', 'rubber_sequence'] as $column) {
+            if (is_numeric($fixture->{$column}) && (int) $fixture->{$column} > 0) return (int) $fixture->{$column};
+        }
+        return 2147483647;
     }
 
     private function number(mixed $value): int
