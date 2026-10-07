@@ -1,4 +1,5 @@
 <div class="card mb-4"><div class="card-body">
+    @if($ability['snapshot_stale'] ?? false)<p class="alert alert-warning text-dark">Last successful update: {{ $ability['snapshot_as_of'] ?? 'Pending' }}. Awaiting the nightly refresh.</p>@endif
     <h2 class="h4">Cape Tennis Shared Ability · provisional index</h2>
     @if($ability['reason'])
         <p class="alert alert-warning text-dark">{{ $ability['reason'] }}</p>
@@ -9,7 +10,14 @@
         <p>Evidence confidence C{{ $estimate['confidence_index'] }} · {{ $estimate['confidence_band'] }}. {{ $estimate['played'] }} played matches and {{ $estimate['inferred'] }} weaker inferred finish comparisons for this player.</p>
         <p>Own same-cohort evidence: {{ $estimate['recent_played'] }} matches in the last 90 days; {{ number_format($estimate['effective_played'], 2) }} recency-weighted matches; {{ $estimate['direct_opponents'] }} distinct opponents across {{ $estimate['played_events'] }} played events.</p>
         <p>Last direct-match date (schedule/event proxy): {{ $estimate['last_direct_match'] ?? 'None' }}. Last eligible evidence: {{ $estimate['last_eligible_activity'] ?? 'None' }}. Confidence as of {{ $estimate['confidence_as_of'] }}.</p>
-        <p class="small">C0–100 is an evidence confidence heuristic, not an accuracy percentage or win probability. Inactivity reduces it daily. Dates use the match schedule where credible, otherwise conservative event start dates ({{ $estimate['proxy_dated_matches'] }} matches). Play outside recorded eligible Cape Tennis results is unknown.</p>
+        <p>{{ $estimate['baseline_status'] ?? 'No connected main-trial baseline' }}.
+            @if($estimate['baseline_source'] ?? null)
+                {{ $estimate['baseline_source']['event_name'] }} · {{ $estimate['baseline_source']['date'] }} · {{ $estimate['baseline_source']['covered_players'] }}/{{ $estimate['baseline_source']['trial_players'] }} trial players in the largest connected benchmark group. This is a model-derived trial-match reference, not a published finishing rank.
+            @else
+                This local estimate has no connected main-trial reference. Compare only within this cohort and comparison group.
+            @endif
+        </p>
+        <p class="small">C0–100 is an evidence confidence heuristic, not an accuracy percentage or win probability. The nightly update reduces it as evidence ages. Dates use the match schedule where credible, otherwise conservative event start dates ({{ $estimate['proxy_dated_matches'] }} matches). Play outside recorded eligible Cape Tennis results is unknown.</p>
         @if($estimate['played'] === 0)<p>With little direct evidence, the model pulls this estimate toward 50. That does not establish average playing strength.</p>@endif
         @if($estimate['reason'])<p>{{ $estimate['reason'] }}</p>@endif
     @else

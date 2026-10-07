@@ -73,8 +73,13 @@
           @forelse($upcomingMatches as $match)
             <div class="border-bottom py-2">
               <div class="fw-semibold">{{ $match->draw?->event?->name ?? 'Published draw' }}</div>
-              <div class="small">{{ $match->registration1?->display_name ?? 'TBD' }} vs {{ $match->registration2?->display_name ?? 'TBD' }}</div>
-              <div class="small text-muted">{{ $match->orderOfPlay?->time ? \Carbon\Carbon::parse($match->orderOfPlay->time)->format('D, d M Y H:i') : 'Time to be confirmed' }} · {{ $match->orderOfPlay?->venue?->name ?? 'Court to be confirmed' }}@if($match->orderOfPlay?->court) · Court {{ $match->orderOfPlay->court }}@endif</div>
+              @if($match instanceof \App\Models\TeamFixture)
+                <div class="small">Team match · {{ $match->tie_display['home'] ?? 'TBD' }} vs {{ $match->tie_display['away'] ?? 'TBD' }}</div>
+                <div class="small text-muted">{{ $match->scheduled_at->format('D, d M Y H:i') }} · {{ $match->venue?->name ?? 'Venue to be confirmed' }}@if($match->court_label) · Court {{ $match->court_label }}@endif</div>
+              @else
+                <div class="small">{{ $match->registration1?->display_name ?? 'TBD' }} vs {{ $match->registration2?->display_name ?? 'TBD' }}</div>
+                <div class="small text-muted">{{ $match->orderOfPlay?->time ? \Carbon\Carbon::parse($match->orderOfPlay->time)->format('D, d M Y H:i') : 'Time to be confirmed' }} · {{ $match->orderOfPlay?->venue?->name ?? 'Court to be confirmed' }}@if($match->orderOfPlay?->court) · Court {{ $match->orderOfPlay->court }}@endif</div>
+              @endif
             </div>
           @empty
             <p class="text-muted mb-0">No published next match time found.</p>

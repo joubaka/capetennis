@@ -225,4 +225,97 @@ class MyTennisServiceTest extends TestCase
             $visibility->visibleFixtureIds($draw->fresh())->all(),
         );
     }
+
+    public function test_team_roster_member_sees_published_snapshot_before_lineup_publication(): void
+    {
+        [$player, $event, $draw, $fixture] = $this->scheduledTeamMatch();
+        $service = app(MyTennisService::class);
+        $this->assertTrue($service->nextScheduledMatchFor($player)->isEmpty());
+        app(SchedulePublicationService::class)->publish($event, ['draw_id' => $draw->id]);
+        $publishedTime = $fixture->scheduled_at->format('Y-m-d H:i:s');
+        $fixture->update(['scheduled_at' => now()->addDays(4), 'court_label' => 'Private court']);
+
+        $match = $service->nextScheduledMatchFor($player)->sole();
+        $this->assertInstanceOf(\App\Models\TeamFixture::class, $match);
+        $this->assertSame($publishedTime, $match->scheduled_at->format('Y-m-d H:i:s'));
+        $this->assertSame('1', $match->court_label);
+        $this->assertSame('Juventus', $match->tie_display['home']);
+        $this->assertNull($match->teamTie->published_at);
+        $this->assertDatabaseCount('team_fixture_players', 0);
+        $this->assertTrue($service->nextScheduledMatchFor(Player::factory()->create())->isEmpty());
+
+        $fixture->teamTie->homeTeam->category->update(['event_id' => Event::factory()->create()->id]);
+        $this->assertTrue($service->nextScheduledMatchFor($player)->isEmpty(), 'A foreign event roster cannot qualify a player.');
+    }
+
+    public function test_next_match_selects_earliest_team_or_individual_and_respects_hidden_draw(): void
+    {
+        [$player, $event, $draw, $teamFixture] = $this->scheduledTeamMatch();
+        app(SchedulePublicationService::class)->publish($event, ['draw_id' => $draw->id]);
+        $registration = Registration::factory()->create();
+        $registration->players()->attach($player);
+        $individualDraw = Draw::factory()->create(['event_id' => $event->id, 'published' => true]);
+        $individual = Fixture::factory()->create(['draw_id' => $individualDraw->id, 'registration1_id' => $registration->id]);
+        OrderOfPlay::create(['fixture_id' => $individual->id, 'draw_id' => $individualDraw->id,
+            'venue_id' => $teamFixture->venue_id, 'time' => now()->addDays(3), 'court' => '2']);
+        app(SchedulePublicationService::class)->publish($event, ['draw_id' => $individualDraw->id]);
+        $service = app(MyTennisService::class);
+        $this->assertInstanceOf(\App\Models\TeamFixture::class, $service->nextScheduledMatchFor($player)->sole());
+        $teamFixture->update(['match_status' => 1]);
+        $this->assertSame($individual->id, $service->nextScheduledMatchFor($player)->sole()->id);
+        $teamFixture->update(['match_status' => 0]);
+        $draw->update(['published' => false]);
+        request()->attributes->remove('published_schedule_rows_'.$event->id);
+        $this->assertSame($individual->id, $service->nextScheduledMatchFor($player)->sole()->id);
+        $individualDraw->update(['oop_published' => false]);
+        request()->attributes->remove('published_schedule_rows_'.$event->id);
+        $this->assertTrue($service->nextScheduledMatchFor($player)->isEmpty());
+    }
+
+    public function test_legacy_team_fixture_uses_assigned_player_and_published_time(): void
+    {
+        [$player, $event, $draw, $fixture] = $this->scheduledTeamMatch();
+        $tie = $fixture->teamTie;
+        $fixture->update(['team_tie_id' => null]);
+        $tie->delete();
+        \App\Models\TeamFixturePlayer::forceCreate(['team_fixture_id' => $fixture->id, 'team1_id' => $player->id, 'slot_no' => 1]);
+        app(SchedulePublicationService::class)->publish($event, ['draw_id' => $draw->id]);
+        $this->assertSame($fixture->id, app(MyTennisService::class)->nextScheduledMatchFor($player)->sole()->id);
+    }
+
+    public function test_team_match_excludes_private_or_finished_events_and_completed_ties(): void
+    {
+        [$player, $event, $draw, $fixture] = $this->scheduledTeamMatch();
+        app(SchedulePublicationService::class)->publish($event, ['draw_id' => $draw->id]);
+        $service = app(MyTennisService::class);
+        $event->update(['published' => false]);
+        request()->attributes->remove('published_schedule_rows_'.$event->id);
+        $this->assertTrue($service->nextScheduledMatchFor($player)->isEmpty());
+        $event->update(['published' => true, 'end_date' => '2026-10-06']);
+        request()->attributes->remove('published_schedule_rows_'.$event->id);
+        $this->assertTrue($service->nextScheduledMatchFor($player)->isEmpty());
+        $event->update(['end_date' => '2026-10-14']);
+        $fixture->teamTie->update(['status' => \App\Models\TeamTie::STATUS_COMPLETED]);
+        $this->assertTrue($service->nextScheduledMatchFor($player)->isEmpty());
+    }
+
+    private function scheduledTeamMatch(): array
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-10-07 09:00:00'));
+        $player = Player::factory()->create();
+        $event = Event::factory()->create(['eventType' => 3, 'end_date' => '2026-10-14']);
+        $category = \App\Models\CategoryEvent::factory()->create(['event_id' => $event->id]);
+        $home = \App\Models\Team::factory()->create(['category_event_id' => $category->id, 'name' => 'Juventus']);
+        $away = \App\Models\Team::factory()->create(['category_event_id' => $category->id, 'name' => 'Inter']);
+        \App\Models\TeamPlayer::create(['team_id' => $home->id, 'player_id' => $player->id, 'rank' => 1]);
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'published' => true]);
+        $tie = \App\Models\TeamTie::create(['draw_id' => $draw->id, 'round_nr' => 1, 'tie_nr' => 1,
+            'home_team_id' => $home->id, 'away_team_id' => $away->id, 'status' => 'draft']);
+        $venueId = DB::table('venues')->insertGetId(['name' => 'Team courts']);
+        $fixture = \App\Models\TeamFixture::create(['draw_id' => $draw->id, 'team_tie_id' => $tie->id,
+            'round_nr' => 1, 'tie_nr' => 1, 'match_nr' => 1, 'fixture_type' => 1, 'match_status' => 0,
+            'scheduled_at' => now()->addDays(2), 'venue_id' => $venueId, 'court_label' => '1']);
+        return [$player, $event, $draw, $fixture];
+    }
+
 }

@@ -161,11 +161,13 @@ class PlayerRatingBadgeTest extends TestCase
             CategoryResult::create(['event_id' => $event->id, 'category_id' => $draw->categoryEvent->category_id, 'registration_id' => $registration->id, 'position' => $position]);
             $playerId ??= $player->id;
         }
+        $this->artisan('player-ability:refresh')->assertSuccessful();
         $url = route('backend.player-performance.badges').'?players[]='.$playerId.'&draw_id='.$draw->id;
         $response = $this->getJson($url)->assertOk();
         $this->assertGreaterThan(50, $response->json('ratings.p:'.$playerId.'.0.score'));
         \Illuminate\Support\Facades\DB::table('events')->where('id', $event->id)->update(['results_published' => false]);
         app()->forgetInstance(PlayerRatingBadgeService::class);
+        app()->forgetInstance(\App\Services\Performance\PlayerAbilitySnapshotStore::class);
         $this->getJson($url)->assertOk()->assertJsonPath('ratings.p:'.$playerId, []);
     }
 

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\CategoryEventRegistration;
 use App\Models\Fixture;
 use App\Models\Player;
+use App\Models\TeamFixture;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -87,9 +88,6 @@ class MyTennisService
     public function nextScheduledMatchFor(Player $player): Collection
     {
         $registrationIds = $player->registrations()->pluck('registrations.id');
-        if ($registrationIds->isEmpty()) {
-            return collect();
-        }
 
         $matches = Fixture::query()
             ->with(['draw.event', 'orderOfPlay.venue', 'fixtureResults', 'registration1.players', 'registration2.players'])
@@ -118,11 +116,77 @@ class MyTennisService
             $fixture->id
         ))->values();
 
-        return $matches
-            ->filter(fn (Fixture $fixture) => $fixture->fixtureResults->isEmpty()
-                && Carbon::parse($fixture->orderOfPlay->time)->greaterThanOrEqualTo(now()))
-            ->take(1)
-            ->values();
+        $individual = $matches->filter(fn (Fixture $fixture) => $fixture->fixtureResults->isEmpty()
+            && Carbon::parse($fixture->orderOfPlay->time)->greaterThanOrEqualTo(now()));
+
+        return $individual->concat($this->nextTeamMatchesFor($player))
+            ->sortBy(fn ($fixture) => sprintf('%s_%s_%010d',
+                Carbon::parse($fixture->scheduled_at)->format('Y-m-d H:i:s'),
+                $fixture instanceof TeamFixture ? 'team' : 'individual', $fixture->id))
+            ->take(1)->values();
+    }
+
+    private function nextTeamMatchesFor(Player $player): Collection
+    {
+        // Limit candidates to events containing the player's roster or substitution;
+        // actual participation is still resolved for each scheduled competition side.
+        $eventIds = \App\Models\Team::query()
+            ->where(fn ($query) => $query
+                ->whereHas('team_players', fn ($members) => $members->where('player_id', $player->id))
+                ->orWhereHas('competitionSubstitutions', fn ($substitutions) => $substitutions
+                    ->where('details->new_type', 'profile')->where('details->new_identity_id', $player->id)))
+            ->join('category_events as roster_category', 'roster_category.id', '=', 'teams.category_event_id')
+            ->distinct()->pluck('roster_category.event_id');
+
+        $fixtures = TeamFixture::query()->publicDrawFixtures()
+            ->where(fn ($query) => $query
+                ->whereHas('draw', fn ($draw) => $draw->whereIn('event_id', $eventIds))
+                ->orWhere(fn ($legacy) => $legacy->whereNull('team_tie_id')
+                    ->where(fn ($players) => $players
+                        ->whereHas('team1', fn ($side) => $side->whereKey($player->id))
+                        ->orWhereHas('team2', fn ($side) => $side->whereKey($player->id)))))
+            ->with(['draw.event', 'teamTie.homeTeam.category', 'teamTie.awayTeam.category', 'fixtureResults', 'team1', 'team2'])
+            ->whereHas('draw', fn ($query) => $query->where('oop_published', true))
+            ->whereHas('draw.event', fn ($query) => $query->visibleTo(auth()->user())
+                ->where(fn ($dates) => $dates->whereNull('end_date')->orWhereDate('end_date', '>=', today())))
+            ->whereDoesntHave('fixtureResults')
+            ->where('match_status', 0)
+            ->whereDoesntHave('teamTie', fn ($query) => $query->where('status', \App\Models\TeamTie::STATUS_COMPLETED))
+            ->join('published_schedule_assignments as published_slot', function ($join): void {
+                $join->on('published_slot.fixture_id', '=', 'team_fixtures.id')
+                    ->on('published_slot.draw_id', '=', 'team_fixtures.draw_id')
+                    ->where('published_slot.fixture_kind', 'team');
+            })
+            ->where('published_slot.scheduled_at', '>=', now())
+            ->orderBy('published_slot.scheduled_at')->orderBy('team_fixtures.id')
+            ->select('team_fixtures.*')->lazy(100)
+            ->filter(function (TeamFixture $fixture) use ($player): bool {
+                if (! $fixture->teamTie) {
+                    return $fixture->team1->contains('id', $player->id) || $fixture->team2->contains('id', $player->id);
+                }
+                foreach ([$fixture->teamTie->homeTeam, $fixture->teamTie->awayTeam] as $team) {
+                    if (! $team || (int) $team->category?->event_id !== (int) $fixture->draw->event_id) continue;
+                    // Resolve the active competition roster, including mixed sides and substitutions.
+                    try {
+                        $side = app(TeamDrawSideResolver::class)->side($fixture->draw, $team,
+                            $fixture->teamTie->round_nr, $fixture->id);
+                    } catch (\InvalidArgumentException $exception) {
+                        continue;
+                    }
+                    if ($side?->team_players->contains('player_id', $player->id)) return true;
+                }
+                return false;
+            });
+
+        foreach ($fixtures as $fixture) {
+            $candidate = collect([$fixture]);
+            app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($candidate);
+            if (! $fixture->scheduled_at || Carbon::parse($fixture->scheduled_at)->lessThan(now())) continue;
+            app(TeamFixtureLineupPresenter::class)->prepare($candidate, publicDraw: true);
+            return $candidate;
+        }
+
+        return collect();
     }
 
     public function playerPage(User $user, int $page = 1, int $perPage = 25): LengthAwarePaginator

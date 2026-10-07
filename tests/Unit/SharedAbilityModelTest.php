@@ -97,4 +97,15 @@ class SharedAbilityModelTest extends TestCase
         $this->assertNotSame($fit['ratings'][10]['component'], $fit['ratings'][2]['component']);
     }
 
+    public function test_safe_age_gender_word_order_aliases_retain_ball_and_masters_context(): void
+    {
+        $service = new \App\Services\Performance\PlayerSharedAbilityService;
+        $this->assertSame('u13 boys', $service->cohort('Boys U/13'));
+        $this->assertSame('u13 girls', $service->cohort('Girl u13'));
+        $this->assertSame('u13 girls green ball', $service->cohort('Girls u/13 Green Ball'));
+        $this->assertSame('masters · u13 boys', $service->cohort('Masters · Boys U/13'));
+        $this->assertNotSame($service->cohort('u13 boys'), $service->cohort('u13 girls'));
+        $this->assertNotSame($service->cohort('u13 boys'), $service->cohort('u13 boys green ball'));
+    }
+
 }

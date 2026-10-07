@@ -6,10 +6,10 @@ use App\Models\{Event, Player};
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\{Cache, DB, Schema};
 
-/** Private v4 shared-opponent estimates. No saved financial/player/ranking state. */
+/** Private v5 shared-opponent estimates. No saved financial/player/ranking state. */
 class PlayerSharedAbilityService
 {
-    public const VERSION = 4;
+    public const VERSION = 5;
     private const EVENT_CAP = 1000;
     private const PLAYER_CAP = 5000;
     private const EDGE_CAP = 50000;
@@ -19,31 +19,27 @@ class PlayerSharedAbilityService
     public function badgeSnapshot(): array
     {
         if (!auth()->user()?->hasRole('super-user')) { return []; }
-        $asOf = CarbonImmutable::today();
-        $fingerprint = $this->fingerprint();
-        $key = 'player-shared-ability:v'.self::VERSION.':confidence'.SharedAbilityConfidencePolicy::VERSION.':'.$asOf->toDateString().':'.$fingerprint;
-        $snapshot = Cache::store(app()->environment('testing') ? 'array' : 'file')->remember($key, 300, fn () => $this->build($asOf));
-        if ($fingerprint !== $this->fingerprint() || $snapshot['reason']) { return []; }
-        $players = [];
-        foreach ($snapshot['cohorts'] as $cohort => $data) {
-            foreach ($data['ratings'] as $id => $rating) {
-                if ($rating['score'] === null || !is_finite($rating['score'])) { continue; }
-                $players[$id][] = ['score' => $rating['score'], 'cohort' => $cohort,
-                    'component' => $rating['component'], 'last_played' => $data['players'][$id]['last_played']]
-                    + app(SharedAbilityConfidencePolicy::class)->evaluate($data['players'][$id], $data['components'][$rating['component']], $asOf);
-            }
+        $snapshot = app(PlayerAbilitySnapshotStore::class)->current();
+        if ($snapshot['reason']) { return []; }
+        $players = $snapshot['badge_players'] ?? [];
+        if ($snapshot['snapshot_stale'] ?? false) {
+            foreach ($players as &$ratings) { foreach ($ratings as &$rating) { $rating['snapshot_stale'] = true; } unset($rating); } unset($ratings);
         }
         return $players;
     }
 
     public function forPlayer(Player $player, ?CarbonImmutable $asOf = null): array
     {
-        $asOf ??= CarbonImmutable::today();
-        $fingerprint = $this->fingerprint();
-        $key = 'player-shared-ability:v'.self::VERSION.':confidence'.SharedAbilityConfidencePolicy::VERSION.':'.$asOf->toDateString().':'.$fingerprint;
-        $snapshot = Cache::store(app()->environment('testing') ? 'array' : 'file')->remember($key, 300, fn () => $this->build($asOf));
-        if ($fingerprint !== $this->fingerprint()) {
-            return ['headline' => null, 'cohorts' => collect(), 'reason' => 'Published source data changed during calculation. Reload to calculate a fresh snapshot.', 'built_at' => $snapshot['built_at']];
+        if ($asOf === null) {
+            $snapshot = app(PlayerAbilitySnapshotStore::class)->current();
+            $asOf = CarbonImmutable::parse($snapshot['snapshot_as_of'] ?? CarbonImmutable::today('Africa/Johannesburg')->toDateString(), 'Africa/Johannesburg');
+        } else {
+            $fingerprint = $this->fingerprint();
+            $key = 'player-shared-ability:v'.self::VERSION.':confidence'.SharedAbilityConfidencePolicy::VERSION.':'.$asOf->toDateString().':'.$fingerprint;
+            $snapshot = Cache::store(app()->environment('testing') ? 'array' : 'file')->remember($key, 300, fn () => $this->build($asOf));
+            if ($fingerprint !== $this->fingerprint()) {
+                return ['headline' => null, 'cohorts' => collect(), 'reason' => 'Published source data changed during preview calculation.', 'built_at' => $snapshot['built_at'], 'snapshot_as_of' => $snapshot['snapshot_as_of'] ?? $asOf->toDateString(), 'snapshot_stale' => $snapshot['snapshot_stale'] ?? false];
+            }
         }
         $cohorts = collect();
         foreach ($snapshot['cohorts'] as $cohort => $data) {
@@ -66,10 +62,34 @@ class PlayerSharedAbilityService
                 'component_inferred' => $component['inferred'], 'bridge_count' => $component['bridge_count'], 'division_links' => $component['division_links'], 'confidence' => $confidence,
                 'comparators' => $comparators, 'anchors' => $anchors,
                 'reason' => $rating['score'] === null ? 'The shared model did not converge; no estimate is displayed.' : null]
+                + $this->reference($data, $player->id, $rating['component'])
                 + app(SharedAbilityConfidencePolicy::class)->evaluate($own, $component, $asOf));
         }
         $cohorts = $cohorts->sort(fn ($a, $b) => strcmp($b['last_played'], $a['last_played']) ?: strcmp($a['cohort'], $b['cohort']))->values();
-        return ['headline' => $cohorts->first(), 'cohorts' => $cohorts, 'reason' => $snapshot['reason'], 'built_at' => $snapshot['built_at']];
+        return ['headline' => $cohorts->first(), 'cohorts' => $cohorts, 'reason' => $snapshot['reason'], 'built_at' => $snapshot['built_at'], 'snapshot_as_of' => $snapshot['snapshot_as_of'] ?? $asOf->toDateString(), 'snapshot_stale' => $snapshot['snapshot_stale'] ?? false];
+    }
+
+    /** Explicit background/preview calculation; never called by ordinary page reads. */
+    public function calculateSnapshot(CarbonImmutable $asOf): array
+    {
+        $snapshot = $this->build($asOf);
+        $snapshot['badge_players'] = $this->formatBadgeSnapshot($snapshot, $asOf);
+        return $snapshot;
+    }
+
+    private function formatBadgeSnapshot(array $snapshot, CarbonImmutable $asOf): array
+    {
+        $players = [];
+        foreach ($snapshot['cohorts'] as $cohort => $data) {
+            foreach ($data['ratings'] as $id => $rating) {
+                if ($rating['score'] === null || !is_finite($rating['score'])) { continue; }
+                $players[$id][] = ['score' => $rating['score'], 'cohort' => $cohort,
+                    'component' => $rating['component'], 'last_played' => $data['players'][$id]['last_played'], 'snapshot_stale' => $snapshot['snapshot_stale'] ?? false]
+                    + $this->reference($data, (int) $id, $rating['component'])
+                    + app(SharedAbilityConfidencePolicy::class)->evaluate($data['players'][$id], $data['components'][$rating['component']], $asOf);
+            }
+        }
+        return $players;
     }
 
     /** Exact publication flags are hashed even if changed without updated_at. Other source changes expire within five minutes. */
@@ -77,16 +97,25 @@ class PlayerSharedAbilityService
     {
         $hash = hash_init('sha256');
         foreach (['events' => ['id', 'published', 'results_published', 'start_date', 'end_date', 'eventType'],
-            'draws' => ['id', 'published', 'event_id', 'category_event_id', 'team_scoring_rules'],
+            'draws' => ['id', 'published', 'event_id', 'category_event_id', 'team_scoring_rules', 'drawName', 'team_draw_selection'],
             'team_ties' => ['id', 'draw_id', 'home_team_id', 'away_team_id', 'published_at', 'status'],
             'teams' => ['id', 'name', 'year', 'region_id', 'category_event_id'],
             'team_players' => ['id', 'team_id', 'player_id'],
             'team_fixture_players' => ['id', 'team_fixture_id', 'team1_id', 'team2_id', 'team1_no_profile_id', 'team2_no_profile_id', 'participant_snapshot'],
-            'team_fixtures' => ['id', 'draw_id', 'team_tie_id', 'fixture_type', 'numSets', 'scheduled_at', 'region1', 'region2', 'rubber_code', 'match_status'],
-            'event_regions' => ['id', 'event_id', 'region_id']] as $table => $columns) {
+            'team_fixtures' => ['id', 'draw_id', 'team_tie_id', 'fixture_type', 'numSets', 'scheduled_at', 'region1', 'region2', 'rubber_code', 'match_status', 'age'],
+            'event_regions' => ['id', 'event_id', 'region_id'],
+            'team_regions' => ['id', 'region_name'],
+            'eventtypes' => ['id', 'name', 'code', 'type'],
+            'category_events' => ['id', 'event_id', 'category_id'],
+            'categories' => ['id', 'name'],
+            'fixtures' => ['id', 'draw_id', 'registration1_id', 'registration2_id'],
+            'category_event_registrations' => ['id', 'category_event_id', 'registration_id']] as $table => $columns) {
             foreach (DB::table($table)->select($columns)->orderBy('id')->lazyById(500) as $row) {
                 hash_update($hash, $table.json_encode($row));
             }
+        }
+        foreach (DB::table('player_registrations')->select('registration_id', 'player_id')->orderBy('registration_id')->orderBy('player_id')->cursor() as $row) {
+            hash_update($hash, 'player_registrations'.json_encode($row));
         }
         foreach (['category_results', 'category_event_registrations', 'category_events', 'categories', 'fixtures', 'fixture_results', 'player_registrations', 'players', 'draw_settings', 'order_of_plays', 'team_fixture_results'] as $table) {
             $query = DB::table($table);
@@ -104,15 +133,15 @@ class PlayerSharedAbilityService
         // Compact legacy age/division tokens have an exact age + A/B + gender grammar.
         $label = preg_replace('/\bu\s*\/?\s*(\d{1,2})\s*[ab](?=\s+(?:boys|girls)\b)/u', 'u$1', $label);
         $label = preg_replace('/\bu\s*\/?\s*(\d{1,2})\b/u', 'u$1', $label);
-        $label = preg_replace('/^(masters · )?(boys|girls) (u\d{1,2})(?= |$)/u', '$1$3 $2', $label);
         $label = preg_replace('/\b(boy|girl)(?= |$)/u', '$1s', $label);
+        $label = preg_replace('/^(masters · )?(boys|girls) (u\d{1,2})(?= |$)/u', '$1$3 $2', $label);
         return trim($label, " -–");
     }
 
     private function build(CarbonImmutable $asOf): array
     {
         $builtAt = CarbonImmutable::now('Africa/Johannesburg')->format('Y-m-d H:i:s').' SAST';
-        $graphs = []; $ordinalFields = []; $names = []; $eventsSeen = 0; $edgeCount = 0; $scannedMatches = 0; $seenSources = [];
+        $graphs = []; $ordinalFields = []; $trialBaselines = []; $names = []; $eventsSeen = 0; $edgeCount = 0; $scannedMatches = 0; $seenSources = [];
         $pilot = app(PlayerPerformancePilotService::class);
         $history = app(PlayerPerformanceHistoryService::class);
         $events = Event::query()->with('eventTypeModel')->whereDate('start_date', '<=', $asOf->toDateString())
@@ -122,7 +151,7 @@ class PlayerSharedAbilityService
             if (\App\Models\CategoryEvent::query()->where('event_id', $event->id)->count() > self::EVENT_FIELD_CAP) { return $this->withheld($builtAt); }
             if (CarbonImmutable::parse($event->end_date)->greaterThan($asOf)) { $event->end_date = $asOf->toDateString(); }
             $weight = max(PHP_FLOAT_MIN, pow(0.5, max(0, CarbonImmutable::parse($event->end_date)->diffInDays($asOf, false)) / 180));
-            $eventPlayed = []; $eventOrdinal = [];
+            $eventPlayed = []; $eventOrdinal = []; $eventEdges = [];
             $definitionCounts = [];
             foreach (\App\Models\CategoryEvent::query()->with('category')->where('event_id', $event->id)->get() as $definition) {
                 $division = $pilot->division($definition->category->name);
@@ -150,7 +179,8 @@ class PlayerSharedAbilityService
                 if ($a->count() === 1 && $b->count() === 1 && count($cohortFields) === 2 && ($definitionCounts[$cohort] ?? 0) === 2) {
                     $aIds = collect($a->first()['rows'])->sortBy('position')->map(fn ($row) => $row['players'][0]['id'])->values();
                     $bIds = collect($b->first()['rows'])->sortBy('position')->map(fn ($row) => $row['players'][0]['id'])->values();
-                    if ($aIds->intersect($bIds)->isEmpty() && $aIds->count() + $bIds->count() <= self::EVENT_FIELD_CAP) {
+                    if ($aIds->intersect($bIds)->isEmpty() && $aIds->count() + $bIds->count() > self::EVENT_FIELD_CAP) { return $this->withheld($builtAt); }
+                    if ($aIds->intersect($bIds)->isEmpty()) {
                         $divisionBoundary = $aIds->count() - 1;
                         $orderedFields = [$aIds->merge($bIds)->all()];
                     }
@@ -167,21 +197,32 @@ class PlayerSharedAbilityService
                 }
             }
             try {
-            foreach ($this->playedSources($history, $event, $pilot, $asOf) as $match) {
-                if (++$scannedMatches > self::EDGE_CAP) { return $this->withheld($builtAt); }
-                if ($match['reason'] !== null || $match['discipline'] !== 'singles') { continue; }
-                $source = ($match['source'] === 'Team match' ? 'team-match:' : 'match:').$match['fixture_id'];
-                if (isset($seenSources[$source])) { continue; }
-                $seenSources[$source] = true;
-                $cohort = $match['source'] === 'Team match' ? ($match['shared_cohort'] ?? '') : $this->cohort($match['cohort']);
-                if ($cohort === '') { continue; }
-                $winner = $match['winner_side'] === 1 ? $match['player1_id'] : $match['player2_id'];
-                $loser = $match['winner_side'] === 1 ? $match['player2_id'] : $match['player1_id'];
-                $this->addEdge($graphs, $cohort, ['winner' => $winner, 'loser' => $loser, 'weight' => $this->decay($match['confidence_date'], $asOf), 'kind' => 'played', 'source_id' => $source, 'confidence_date' => $match['confidence_date'] <= $asOf->toDateString() ? $match['confidence_date'] : CarbonImmutable::parse($event->start_date)->toDateString(), 'confidence_date_basis' => $match['confidence_date_basis']], $event);
-                $eventPlayed[$cohort][$winner][$loser] = true; $eventPlayed[$cohort][$loser][$winner] = true;
-                if (++$edgeCount > self::EDGE_CAP) { return $this->withheld($builtAt); }
-            }
+                foreach ($this->playedSources($history, $event, $pilot, $asOf) as $match) {
+                    if (++$scannedMatches > self::EDGE_CAP) { return $this->withheld($builtAt); }
+                    if ($match['reason'] !== null || $match['discipline'] !== 'singles') { continue; }
+                    $source = ($match['source'] === 'Team match' ? 'team-match:' : 'match:').$match['fixture_id'];
+                    if (isset($seenSources[$source])) { continue; }
+                    $seenSources[$source] = true;
+                    $cohort = $match['source'] === 'Team match' ? ($match['shared_cohort'] ?? '') : $this->cohort($match['cohort']);
+                    if ($cohort === '') { continue; }
+                    $winner = $match['winner_side'] === 1 ? $match['player1_id'] : $match['player2_id'];
+                    $loser = $match['winner_side'] === 1 ? $match['player2_id'] : $match['player1_id'];
+                    $eventEdges[$cohort][] = ['winner' => $winner, 'loser' => $loser, 'weight' => $this->decay($match['confidence_date'], $asOf), 'kind' => 'played', 'source_id' => $source, 'event_id' => $event->id, 'confidence_date' => $match['confidence_date'], 'confidence_date_basis' => $match['confidence_date_basis']];
+                    $eventPlayed[$cohort][$winner][$loser] = true; $eventPlayed[$cohort][$loser][$winner] = true;
+                    if (++$edgeCount > self::EDGE_CAP) { return $this->withheld($builtAt); }
+                }
             } catch (\OverflowException) { return $this->withheld($builtAt); }
+            foreach ($eventEdges as $cohort => $edges) {
+                $edges = app(TrialBaselinePolicy::class)->budget($edges);
+                foreach ($edges as $edge) { $this->addEdge($graphs, $cohort, $edge, $event); }
+                $eventStart = CarbonImmutable::parse($event->start_date)->toDateString();
+                $originalEnd = $event->getRawOriginal('end_date');
+                if (app(TrialBaselinePolicy::class)->eligible($event) && $originalEnd && CarbonImmutable::parse($originalEnd)->lessThanOrEqualTo($asOf)
+                    && (!isset($trialBaselines[$cohort]) || [$eventStart, $event->id] > [$trialBaselines[$cohort]['metadata']['date'], $trialBaselines[$cohort]['metadata']['event_id']])) {
+                    $baseline = app(TrialBaselinePolicy::class)->baseline($event, $cohort, $edges, $asOf);
+                    if ($baseline['anchors']) { $trialBaselines[$cohort] = $baseline; }
+                }
+            }
             foreach ($eventOrdinal as $cohort => $eventFields) {
                 foreach ($eventFields as $field) {
                     if (!$this->coveredByPlayed($field['players'], $eventPlayed[$cohort] ?? [])) { $ordinalFields[$cohort][] = $field; }
@@ -197,9 +238,26 @@ class PlayerSharedAbilityService
         }
         $cohorts = [];
         foreach ($graphs as $cohort => $graph) {
-            $cohorts[$cohort] = app(SharedAbilityModel::class)->fit($graph['edges'], $cohort, $ordinalFields[$cohort] ?? []) + ['players' => $graph['players']];
+            $baseline = $trialBaselines[$cohort] ?? ['anchors' => [], 'metadata' => null];
+            $edges = array_map(function ($edge) use ($baseline) {
+                if ($edge['kind'] === 'played' && ($edge['event_id'] ?? null) === ($baseline['metadata']['event_id'] ?? null)
+                    && isset($baseline['anchors'][$edge['winner']], $baseline['anchors'][$edge['loser']])) { $edge['topology_only'] = true; }
+                return $edge;
+            }, $graph['edges']);
+            $cohorts[$cohort] = app(SharedAbilityModel::class)->fit($edges, $cohort, $ordinalFields[$cohort] ?? [], $baseline['anchors'])
+                + ['players' => $graph['players'], 'baseline' => $baseline];
         }
-        return ['cohorts' => $cohorts, 'names' => $names, 'reason' => null, 'built_at' => $builtAt];
+        return ['cohorts' => $cohorts, 'names' => $names, 'reason' => null, 'built_at' => $builtAt,
+            'source_events' => collect($graphs)->flatMap(fn ($g) => array_column($g['edges'], 'event_id'))->unique()->values()->all(),
+            'source_matches' => array_keys($seenSources)];
+    }
+
+    private function reference(array $data, int $id, string $component): array
+    {
+        $linked = $data['components'][$component]['trial_anchored'];
+        $direct = isset($data['baseline']['anchors'][$id]);
+        return ['baseline_status' => $direct ? 'Direct main-trial baseline' : ($linked ? 'Linked to main-trial baseline' : 'No connected main-trial baseline'),
+            'baseline_source' => $linked ? $data['baseline']['metadata'] : null];
     }
 
     private function decay(string $date, CarbonImmutable $asOf): float
@@ -228,6 +286,7 @@ class PlayerSharedAbilityService
     private function addEdge(array &$graphs, string $cohort, array $edge, Event $event): void
     {
         if (!$edge['winner'] || !$edge['loser'] || $edge['winner'] === $edge['loser'] || $cohort === '' || !is_finite($edge['weight']) || $edge['weight'] <= 0) { return; }
+        $edge['event_id'] ??= $event->id;
         $graphs[$cohort]['edges'][] = $edge;
         foreach ([$edge['winner'], $edge['loser']] as $id) {
             $node = &$graphs[$cohort]['players'][$id];
@@ -251,6 +310,6 @@ class PlayerSharedAbilityService
 
     private function withheld(string $builtAt): array
     {
-        return ['cohorts' => [], 'names' => [], 'reason' => 'Shared calibration exceeds its safe local processing limit (1,000 events, 256 fields per event, 5,000 players, or 50,000 comparisons/scored match records, or 5,000 team source rosters per event). No partial rating is shown.', 'built_at' => $builtAt];
+        return ['cohorts' => [], 'names' => [], 'reason' => 'Shared calibration exceeds its safe local processing limit (1,000 events, 256 fields per event and 256 entries per ordinal field/team roster, 5,000 players, or 50,000 comparisons/scored match records, or 5,000 team source rosters per event). No partial rating is shown.', 'built_at' => $builtAt];
     }
 }

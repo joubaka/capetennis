@@ -691,6 +691,78 @@ class PlayerPerformancePilotTest extends TestCase
         $this->assertNull($service->forPlayer($data['first'], $asOf)['headline']);
     }
 
+    public function test_shared_null_type_team_singles_uses_nonpersisted_canonical_best_of_three_and_rejects_partial_future_play(): void
+    {
+        $data = $this->legacyTeamField(); $service = app(\App\Services\Performance\PlayerSharedAbilityService::class); $asOf = CarbonImmutable::parse('2026-10-06');
+        $data['fixture']->update(['numSets' => null]);
+        $this->assertNull($service->forPlayer($data['first'], $asOf)['headline']);
+        \App\Models\TeamFixtureResult::create(['team_fixture_id' => $data['fixture']->id, 'set_nr' => 2, 'team1_score' => 6, 'team2_score' => 3]);
+        $this->assertSame(1, $service->forPlayer($data['first'], $asOf)['headline']['played']);
+        $this->assertNull($data['fixture']->fresh()->fixture_type); $this->assertSame(0, $data['fixture']->fresh()->match_status);
+        $data['fixture']->teamResults()->where('set_nr',2)->update(['team1_score' => 4, 'team2_score' => 6]);
+        \App\Models\TeamFixtureResult::create(['team_fixture_id' => $data['fixture']->id, 'set_nr' => 3, 'team1_score' => 10, 'team2_score' => 4]);
+        $this->assertSame(1, $service->forPlayer($data['first'], $asOf)['headline']['played']);
+        $data['draw']->update(['drawName' => 'u10 Boys Doubles']);
+        $this->assertNull($service->forPlayer($data['first'], $asOf)['headline']);
+        $data['draw']->update(['drawName' => 'u10 Boys Singles']);
+        $data['field']['event']->update(['end_date' => '2026-12-31']);
+        $data['fixture']->update(['scheduled_at' => '2026-10-10 10:00:00']);
+        $this->assertNull($service->forPlayer($data['first'], $asOf)['headline']);
+    }
+
+    public function test_shared_team_source_overflow_withholds_all_other_valid_field_evidence(): void
+    {
+        $field = $this->field(Category::factory()->create(['name' => 'u10 Boys']));
+        $this->partialMock(\App\Services\Performance\PlayerPerformanceHistoryService::class)->shouldReceive('teamMatches')->once()->andThrow(new \OverflowException('Team source roster limit exceeded'));
+        $snapshot = app(\App\Services\Performance\PlayerSharedAbilityService::class)->forPlayer($field['rows'][0]['players']->first(), CarbonImmutable::parse('2026-10-06'));
+        $this->assertNull($snapshot['headline']); $this->assertNotNull($snapshot['reason']); $this->assertCount(0,$snapshot['cohorts']);
+    }
+
+    public function test_shared_legacy_team_region_prefix_is_normalized_only_for_exact_proven_region(): void
+    {
+        $data = $this->legacyTeamField(); $asOf = CarbonImmutable::parse('2026-10-06');
+        $data['home']->regions()->update(['region_name' => 'Home region Primary Schools 2026']);
+        $data['home']->update(['name' => 'Home region u/10 Boys']);
+        $service = app(\App\Services\Performance\PlayerSharedAbilityService::class);
+        $this->assertSame('u10 boys', $service->forPlayer($data['first'], $asOf)['headline']['cohort']);
+        $data['home']->update(['name' => 'Unknown region u/10 Boys']);
+        $this->assertNull($service->forPlayer($data['first'], $asOf)['headline']);
+        $data['home']->update(['name' => 'Home region u/10 Boys']);
+        $data['draw']->update(['drawName' => 'u12 Girls Singles']);
+        $this->assertNull($service->forPlayer($data['first'], $asOf)['headline']);
+    }
+
+    public function test_latest_completed_valid_main_trial_is_selected_per_cohort_not_by_id_or_event_name(): void
+    {
+        \Illuminate\Support\Facades\DB::table('eventtypes')->updateOrInsert(['id'=>5],['name'=>'Cavaliers Trials','code'=>'individual']);
+        $category=Category::factory()->create(['name'=>'u13 Boys']);
+        $latest=$this->field($category,[1,2],['eventType'=>5,'start_date'=>'2026-09-01','end_date'=>'2026-09-02','results_published'=>false]);
+        $this->match($latest); $player=$latest['rows'][0]['players']->first();
+        $older=$this->field($category,[1,2],['eventType'=>5,'start_date'=>'2025-09-01','end_date'=>'2025-09-02','results_published'=>false]); $this->match($older);
+        $future=$this->field($category,[1,2],['eventType'=>5,'start_date'=>'2026-12-01','end_date'=>'2026-12-02','results_published'=>false]);$this->match($future);
+        $ongoing=$this->field($category,[1,2],['eventType'=>5,'start_date'=>'2026-10-01','end_date'=>'2026-12-02','results_published'=>false]);$this->match($ongoing);
+        $named=$this->field($category,[1,2],['name'=>'Cavaliers Trials','eventType'=>1,'start_date'=>'2026-10-02','end_date'=>'2026-10-03','results_published'=>false]);$this->match($named);
+        $service=app(\App\Services\Performance\PlayerSharedAbilityService::class);$asOf=CarbonImmutable::parse('2026-10-06');
+        $estimate=$service->forPlayer($player,$asOf)['headline'];
+        $this->assertSame($latest['event']->id,$estimate['baseline_source']['event_id']);
+        $this->assertSame('Direct main-trial baseline',$estimate['baseline_status']);
+        $this->assertNull($service->forPlayer($older['rows'][0]['players']->first(),$asOf)['headline']['baseline_source']);
+        \Illuminate\Support\Facades\DB::table('eventtypes')->where('id',5)->update(['name'=>'Other trials']);
+        $this->assertNull($service->forPlayer($player,$asOf)['headline']['baseline_source']);
+    }
+
+    public function test_same_event_extra_match_logging_does_not_increase_ability_but_actual_confidence_counts_remain(): void
+    {
+        $field=$this->field(Category::factory()->create(['name'=>'u10 Boys']),[1,2],['results_published'=>false]);
+        $this->match($field);$player=$field['rows'][0]['players']->first();$service=app(\App\Services\Performance\PlayerSharedAbilityService::class);$asOf=CarbonImmutable::parse('2026-10-06');
+        $first=$service->forPlayer($player,$asOf)['headline'];
+        for($i=0;$i<5;$i++){ $this->match($field); }
+        $more=$service->forPlayer($player,$asOf)['headline'];
+        $this->assertSame($first['score'],$more['score']);$this->assertSame(6,$more['played']);
+        $this->assertSame('No connected main-trial baseline',$more['baseline_status']);
+        $this->assertNull($more['baseline_source']);
+    }
+
 }
 
 

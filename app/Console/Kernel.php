@@ -12,6 +12,8 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
+        $schedule->command('player-ability:refresh')->dailyAt('00:00')->timezone('Africa/Johannesburg')->withoutOverlapping(120);
+
         $schedule->command('mail:record-event-issues')->everyFiveMinutes()->withoutOverlapping();
         // Process queued jobs safely on a shared server.
         // --stop-when-empty: exits as soon as the queue is empty (not a daemon).

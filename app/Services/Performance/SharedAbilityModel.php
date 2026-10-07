@@ -8,7 +8,7 @@ class SharedAbilityModel
     public const ORDINAL_WEIGHT = 0.2;
     public const ORDINAL_TARGET_SPAN = 1.0;
 
-    public function fit(array $edges, string $cohort = '', array $ordinalFields = []): array
+    public function fit(array $edges, string $cohort = '', array $ordinalFields = [], array $anchors = []): array
     {
         $edges = array_values(array_filter($edges, fn ($edge) => $edge['winner'] !== $edge['loser']
             && is_finite((float) $edge['weight']) && $edge['weight'] > 0));
@@ -33,6 +33,8 @@ class SharedAbilityModel
         }
         $ratings = []; $componentInfo = [];
         foreach ($components as $members) {
+            $ownAnchors = array_intersect_key($anchors, array_fill_keys($members, true));
+            $ownAnchors = array_filter($ownAnchors, fn ($anchor) => is_finite($anchor['target']) && is_finite($anchor['weight']) && $anchor['weight'] > 0);
             $membership = array_fill_keys($members, true);
             $componentEdges = array_values(array_filter($edges, fn ($edge) => isset($membership[$edge['winner']])));
             usort($componentEdges, fn ($a, $b) => $a['winner'] <=> $b['winner'] ?: $a['loser'] <=> $b['loser'] ?: strcmp($a['source_id'], $b['source_id']));
@@ -59,7 +61,9 @@ class SharedAbilityModel
             for ($iteration = 0; $iteration < 100; $iteration++) {
                 $movement = 0.0;
                 foreach ($members as $id) {
-                    $gradient = -0.5 * $strength[$id]; $curvature = 0.5;
+                    $anchor = $ownAnchors[$id] ?? null;
+                    $curvature = $anchor ? $anchor['weight'] : 0.5;
+                    $gradient = $anchor ? -$anchor['weight'] * ($strength[$id] - $anchor['target']) : -0.5 * $strength[$id];
                     foreach ($links[$id] as [$other, $outcome, $weight]) {
                         $p = $this->sigmoid($strength[$id] - $strength[$other]);
                         $gradient += $weight * ($outcome - $p);
@@ -77,14 +81,14 @@ class SharedAbilityModel
                 }
                 if ($movement < 0.000001) { $converged = true; break; }
             }
-            $mean = array_sum($strength) / count($strength);
+            $mean = $ownAnchors ? 0.0 : array_sum($strength) / count($strength);
             $componentId = substr(hash('sha256', $cohort.'|'.implode(',', $members)), 0, 12);
             $played = count(array_filter($componentEdges, fn ($edge) => $edge['kind'] === 'played'));
             $inferred = count($componentEdges) - $played;
             $divisionLinks = count(array_filter($componentEdges, fn ($edge) => $edge['kind'] === 'division_order'));
             $bridges = $this->bridges($adjacent, $members);
             $componentInfo[$componentId] = ['members' => $members, 'played' => $played, 'inferred' => $inferred,
-                'bridge_count' => count($bridges), 'bridges' => $bridges, 'division_links' => $divisionLinks, 'converged' => $converged];
+                'bridge_count' => count($bridges), 'bridges' => $bridges, 'division_links' => $divisionLinks, 'converged' => $converged, 'trial_anchored' => (bool) $ownAnchors];
             foreach ($members as $id) {
                 $beta = $strength[$id] - $mean;
                 $ratings[$id] = ['score' => $converged && is_finite($beta) ? round(100 * $this->sigmoid($beta), 1) : null,
