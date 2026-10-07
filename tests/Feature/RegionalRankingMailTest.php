@@ -45,9 +45,10 @@ class RegionalRankingMailTest extends TestCase
         $batch=app(EventCommunicationService::class)->preview($this->event,$this->admin,$this->audienceOptions(['rank_numbers'=>'9, 14-18']),'Update','Hello');
         $this->assertCount(2,$batch->recipients);
         $parent=collect($batch->recipients)->firstWhere('email','parent@example.test');
-        $this->assertStringContainsString($a->player->full_name,$parent['html']);
-        $this->assertStringContainsString($b->player->full_name,$parent['html']);
+        $this->assertSame('Hello',$parent['html']);
+        $this->assertSame('Update',$parent['subject']);
         $this->assertCount(2,$parent['ranking_review']);
+        $this->assertEqualsCanonicalizing([$a->player_id,$b->player_id],array_column($parent['ranking_review'],'player_id'));
         $this->assertDatabaseCount('bulk_email_logs',0);
         $this->assertSame(2,app(EventCommunicationService::class)->approve($batch,$this->admin,false)['queued']);
         $this->assertTrue(app(EventCommunicationService::class)->approve($batch,$this->admin,false)['duplicate']);

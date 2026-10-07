@@ -53,7 +53,7 @@ class EventCommunicationsTest extends TestCase
         $service = app(EventCommunicationService::class);
         $batch = $this->preview(['filter' => 'not_registered']);
         $this->assertDatabaseCount('bulk_email_logs', 0);
-        $this->assertStringContainsString('Child One', $batch->recipients[0]['html']);
+        $this->assertSame(nl2br(e($batch->body)), $batch->recipients[0]['html']);
         $this->assertSame(1, $service->approve($batch, $this->admin, false)['queued']);
         $this->assertSame(0, $service->approve($batch, $this->admin, false)['queued']);
         $this->assertDatabaseCount('bulk_email_logs', 1);
@@ -174,20 +174,22 @@ class EventCommunicationsTest extends TestCase
         $this->assertSame(['nominee@example.test'], array_column($batch->recipients, 'email'));
     }
 
-    public function test_shared_parent_contact_keeps_each_childs_personalised_details(): void
+    public function test_shared_parent_receives_only_authored_message_and_keeps_each_childs_audit_key(): void
     {
         $parent = User::factory()->create(['email' => 'parent@example.test']);
         $this->player->users()->attach($parent);
         $sibling = Player::factory()->create(['name' => 'Sibling', 'surname' => 'Two', 'email' => 'parent@example.test', 'userId' => null]);
         TeamPlayer::create(['team_id' => $this->team->id, 'player_id' => $sibling->id, 'rank' => 2, 'pay_status' => 1]);
-        $batch = $this->preview();
+        $body = "Hello <parents> & players,\nPlease check the arrangements.";
+        $batch = app(EventCommunicationService::class)->preview($this->event, $this->admin, $this->audienceOptions(), 'Family update', $body);
         $this->assertCount(2, $batch->recipients);
         $family = collect($batch->recipients)->firstWhere('email', 'parent@example.test');
-        $this->assertStringContainsString('Child One', $family['html']);
-        $this->assertStringContainsString('Sibling Two', $family['html']);
+        $this->assertSame(nl2br(e($body)), $family['html']);
+        $this->assertSame('Family update', $family['subject']);
+        $this->assertEqualsCanonicalizing(['player:'.$this->player->id, 'player:'.$sibling->id], $family['player_keys']);
     }
 
-    public function test_manager_summary_contains_only_the_selected_team(): void
+    public function test_regional_manager_receives_only_authored_message_for_selected_team(): void
     {
         $manager = User::factory()->create(['email' => 'manager@example.test']);
         EventRegionManager::create(['event_id' => $this->event->id, 'region_id' => $this->team->region_id, 'event_region_id' => $this->eventRegion->id, 'user_id' => $manager->id]);
@@ -196,9 +198,10 @@ class EventCommunicationsTest extends TestCase
         TeamPlayer::create(['team_id' => $other->id, 'player_id' => $otherPlayer->id, 'rank' => 1, 'pay_status' => 0]);
         $batch = $this->preview(['scope' => 'team', 'team_id' => $this->team->id, 'recipients' => 'both']);
         $summary = collect($batch->recipients)->firstWhere('kind', 'manager');
+        $this->assertCount(2, $batch->recipients);
         $this->assertSame('manager@example.test', $summary['email']);
-        $this->assertStringContainsString('Child One', $summary['html']);
-        $this->assertStringNotContainsString('Other Player', $summary['html']);
+        $this->assertSame(nl2br(e($batch->body)), $summary['html']);
+        $this->assertSame($batch->subject, $summary['subject']);
     }
 
     public function test_regional_manager_cannot_see_unassigned_nominees_in_shared_category(): void
@@ -231,6 +234,69 @@ class EventCommunicationsTest extends TestCase
         $batch = $this->preview();
         $batch->update(['body' => 'Unreviewed replacement text']);
         $this->post(route('backend.event-communications.send', $this->event), ['token' => $batch->token, 'confirm_send' => 1])->assertSessionHasErrors('preview');
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+    }
+
+    public function test_player_status_change_with_same_contact_requires_a_new_preview(): void
+    {
+        $batch = $this->preview();
+        TeamPlayer::where('team_id', $this->team->id)->where('player_id', $this->player->id)->update(['pay_status' => 1]);
+
+        $this->post(route('backend.event-communications.send', $this->event), ['token' => $batch->token, 'confirm_send' => 1])->assertSessionHasErrors('preview');
+        $this->assertNull($batch->fresh()->approved_at);
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+    }
+
+    public function test_manager_audience_membership_change_requires_a_new_preview(): void
+    {
+        $manager = User::factory()->create(['email' => 'manager@example.test']);
+        EventRegionManager::create(['event_id' => $this->event->id, 'region_id' => $this->team->region_id, 'event_region_id' => $this->eventRegion->id, 'user_id' => $manager->id]);
+        $batch = $this->preview(['scope' => 'team', 'team_id' => $this->team->id, 'recipients' => 'managers']);
+        $newPlayer = Player::factory()->create(['email' => 'child@example.test', 'userId' => null]);
+        TeamPlayer::create(['team_id' => $this->team->id, 'player_id' => $newPlayer->id, 'rank' => 2, 'pay_status' => 0]);
+
+        $this->post(route('backend.event-communications.send', $this->event), ['token' => $batch->token, 'confirm_send' => 1])->assertSessionHasErrors('preview');
+        $this->assertNull($batch->fresh()->approved_at);
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+    }
+
+    public function test_team_composer_region_and_team_previews_include_paid_and_unpaid_roster_players(): void
+    {
+        $paid = Player::factory()->create(['email' => 'paid@example.test', 'userId' => null]);
+        TeamPlayer::create(['team_id' => $this->team->id, 'player_id' => $paid->id, 'rank' => 2, 'pay_status' => 1]);
+        $series = \App\Models\Series::factory()->create();
+        $rankingList = \App\Models\RankingList::create(['series_id' => $series->id, 'category_id' => $this->team->category->category_id, 'best_num_of_scores' => 3]);
+        $import = \App\Models\TeamSelectionImport::create(['source_id' => 1, 'event_id' => $this->event->id, 'region_id' => $this->team->region_id, 'series_id' => $series->id, 'ranking_run_id' => 'composer-roster', 'status' => 'sent']);
+        foreach (['reserve', 'withdrawn'] as $status) {
+            $outside = Player::factory()->create(['email' => $status.'@example.test', 'userId' => null]);
+            \App\Models\TeamSelectionInvitation::create(['import_id' => $import->id, 'event_id' => $this->event->id, 'region_id' => $this->team->region_id, 'team_id' => $this->team->id, 'player_id' => $outside->id, 'ranking_list_id' => $rankingList->id, 'ranking_position' => 3, 'queue_position' => 3, 'status' => $status]);
+        }
+
+        foreach ([['scope' => 'all'], ['scope' => 'region', 'region_id' => $this->team->region_id], ['scope' => 'team', 'team_id' => $this->team->id]] as $selection) {
+            foreach (['paid', 'not_registered'] as $oldFilter) {
+                $this->post(route('backend.event-communications.preview', $this->event), $this->audienceOptions($selection + ['filter' => $oldFilter]) + ['subject' => 'Roster update', 'body' => 'Hello roster'])
+                    ->assertOk()->assertViewHas('batch', function ($batch) {
+                        $this->assertSame('all', $batch->options['filter']);
+                        $this->assertEqualsCanonicalizing(['child@example.test', 'paid@example.test'], array_column($batch->recipients, 'email'));
+                        return true;
+                    });
+            }
+        }
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        Mail::assertNothingSent();
+    }
+
+    public function test_stored_preview_with_old_automatic_details_requires_fresh_review(): void
+    {
+        $batch = $this->preview();
+        $recipients = $batch->recipients;
+        $recipients[0]['html'] = nl2br(e($batch->body."\n\nPlayer details:\nChild One — Team one — Not Registered"));
+        $legacyPlan = ['recipients' => $recipients, 'issues' => $batch->issues];
+        $fingerprint = new \ReflectionMethod(EventCommunicationService::class, 'planFingerprint');
+        $batch->update(['recipients' => $recipients, 'fingerprint' => $fingerprint->invoke(app(EventCommunicationService::class), [$this->event->id, $batch->options, $batch->subject, $batch->body, $legacyPlan])]);
+
+        $this->post(route('backend.event-communications.send', $this->event), ['token' => $batch->token, 'confirm_send' => 1])->assertSessionHasErrors('preview');
+        $this->assertNull($batch->fresh()->approved_at);
         $this->assertDatabaseCount('bulk_email_logs', 0);
     }
 

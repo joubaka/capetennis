@@ -344,12 +344,11 @@ class EventCommunicationService
         $messages = collect();
         $issues = $rows->filter(fn ($row) => empty($row['emails']))->unique('key')->map(fn ($row) => $row['name'].' — no valid email address')->values();
         if (in_array($options['recipients'], ['players', 'both'], true)) {
-            // Group siblings' personalised sections without dropping a player's information.
+            // Shared contacts receive one authored message while retaining every player's audit key.
             $byEmail = collect();
             foreach ($rows as $row) foreach ($row['emails'] as $email) $byEmail->put($email, ($byEmail->get($email, collect()))->push($row));
             foreach ($byEmail as $email => $players) {
-                $text = $body."\n\nPlayer details:\n".$players->map(fn ($p) => $p['name'].' — '.($p['team'] ?: $p['category']).' — '.Str::headline($p['status']))->unique()->implode("\n");
-                $messages->push(['email' => $email, 'name' => $players->first()['name'], 'kind' => 'players', 'player_keys' => $players->pluck('key')->unique()->values()->all(), 'subject' => $subject, 'html' => nl2br(e($text))]);
+                $messages->push(['email' => $email, 'name' => $players->first()['name'], 'kind' => 'players', 'player_keys' => $players->pluck('key')->unique()->values()->all(), 'subject' => $subject, 'html' => nl2br(e($body))]);
             }
         }
         if (in_array($options['recipients'], ['managers', 'both'], true)) {
@@ -361,13 +360,13 @@ class EventCommunicationService
                     $issues->push($first['team'].' — no regional manager with a valid email address');
                     continue;
                 }
-                $text = $body."\n\nTeam summary: ".$first['team']."\n".$teamRows->map(fn ($p) => $p['name'].' — '.Str::headline($p['status']))->implode("\n");
-                $messages->push(['email' => mb_strtolower(trim($manager->email)), 'name' => $manager->name, 'kind' => 'manager', 'subject' => Str::limit($subject.' — '.$first['team'], 250, ''), 'html' => nl2br(e($text))]);
+                $messages->push(['email' => mb_strtolower(trim($manager->email)), 'name' => $manager->name, 'kind' => 'manager', 'subject' => $subject, 'html' => nl2br(e($body))]);
             }
         }
         if ($messages->isEmpty()) throw ValidationException::withMessages(['audience' => 'No matching recipient has a valid email address. Choose another audience or add contacts.']);
         $plan = ['recipients' => $messages->sortBy([['email', 'asc'], ['subject', 'asc']])->values()->all(), 'issues' => $issues->sort()->values()->all()];
-        $plan['fingerprint'] = $this->planFingerprint([$event->id, $options, $subject, $body, $plan]);
+        // Keep audience changes reviewable without inserting private player details into the email.
+        $plan['fingerprint'] = $this->planFingerprint([$event->id, $options, $subject, $body, $plan, $rows->all()]);
 
         return $plan;
     }
@@ -396,8 +395,7 @@ class EventCommunicationService
         $byEmail = collect();
         foreach ($rows as $row) foreach ($row['emails'] as $email) $byEmail->put($email, $byEmail->get($email, collect())->push($row));
         $recipients = $byEmail->map(function ($players, $email) use ($subject, $body) {
-            $details = $players->map(fn ($p) => $p['name'].' — '.$p['region'].' — '.$p['category'].' — Rank '.$p['rank'])->unique()->implode("\n");
-            return ['email' => $email, 'name' => $players->first()['name'], 'kind' => 'players', 'subject' => $subject, 'html' => nl2br(e($body."\n\nPlayer details:\n".$details)), 'ranking_review' => $players->values()->all()];
+            return ['email' => $email, 'name' => $players->first()['name'], 'kind' => 'players', 'subject' => $subject, 'html' => nl2br(e($body)), 'ranking_review' => $players->values()->all()];
         })->sortBy('email')->values()->all();
         if (! $recipients) throw ValidationException::withMessages(['audience' => 'No matching recipient has a valid email address.']);
         $issues = $rows->filter(fn ($row) => ! $row['emails'])->map(fn ($row) => $row['name'].' — no valid email address')->unique()->sort()->values()->all();

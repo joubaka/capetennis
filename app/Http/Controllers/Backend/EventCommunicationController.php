@@ -107,6 +107,9 @@ class EventCommunicationController extends Controller
             'body' => 'required|string|max:30000',
         ]);
         $options = array_intersect_key($data, array_flip(['scope', 'region_id', 'team_id', 'individual_key', 'category_event_id', 'registration_id', 'direct_email', 'filter', 'recipients']));
+        if ($event->isTeam() && in_array($data['scope'], ['all', 'region', 'team'], true)) {
+            $options['filter'] = 'all';
+        }
         if ($data['scope'] === 'rankings') {
             $options = array_intersect_key($data, array_flip(['scope', 'ranking_region_ids', 'ranking_list_ids', 'rank_numbers', 'excluded_player_ids', 'exclude_team_listed', 'exclude_declined', 'exclude_reserves', 'exclude_withdrawn']));
             $options += ['filter' => 'all', 'recipients' => 'players'];
