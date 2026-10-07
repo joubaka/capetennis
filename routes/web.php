@@ -811,6 +811,11 @@ Route::prefix('backend')->middleware('auth')->group(function () {
  */
   Route::prefix('event')->group(function () {
 
+    Route::get('{event}/team-result-selection', [\App\Http\Controllers\Backend\TeamResultSelectionDraftController::class, 'show'])
+      ->name('backend.team-result-selection.show');
+    Route::put('{event}/team-result-selection', [\App\Http\Controllers\Backend\TeamResultSelectionDraftController::class, 'store'])
+      ->name('backend.team-result-selection.store');
+
  
 
     // 🔹 NEW: create single TEAM draw via HeadOfficeController

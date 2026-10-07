@@ -252,40 +252,7 @@
 
 
         {{-- Result Ranks (active) --}}
-        <div class="tab-pane fade" id="tab-result-rank" role="tabpanel" aria-labelledby="tab-result-rank">
-          <div class="row g-3">
-            <div class="col-md-3">
-              <div class="text-muted small fw-medium mb-2">Categories</div>
-              <div class="switches-stacked">
-                @foreach($event->eventCategories as $idx => $category)
-                  <label class="switch d-block mb-2">
-                    <input type="radio"
-                           class="switch-input category-radio"
-                           name="category-radio"
-                           value="{{ $category->id }}"
-                           data-name="{{ $category->category->name }}"
-                           data-event_id="{{ $event->id }}"
-                           {{ $idx === 0 ? 'checked' : '' }}>
-                    <span class="switch-toggle-slider">
-                      <span class="switch-on"></span>
-                      <span class="switch-off"></span>
-                    </span>
-                    <span class="switch-label">{{ $category->category->name }}</span>
-                  </label>
-                @endforeach
-              </div>
-            </div>
-
-            <div class="col-md-9">
-              <div class="card" id="rank-table">
-                <div class="card-header">
-                  <h5 id="category-name" class="m-0"></h5>
-                </div>
-                <div class="card-body" id="category-table"><!-- AJAX loads here --></div>
-              </div>
-            </div>
-          </div>
-        </div>
+        @include('backend.adminPage.admin_show._partials.result-ranks')
 
       </div> {{-- /.tab-content --}}
     </div>

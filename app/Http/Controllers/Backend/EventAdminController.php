@@ -349,6 +349,27 @@ class EventAdminController extends Controller
 
   public function getEventCategoryData(Request $request)
   {
+    if ($request->has('result_group')) {
+      foreach (['regions', 'formats'] as $field) {
+        if (is_string($request->input($field))) $request->merge([$field => $request->input($field) === '' ? [] : explode(',', $request->input($field))]);
+      }
+      $data = $request->validate([
+        'event_id' => 'required|integer|exists:events,id', 'result_group' => 'required|string|max:30',
+        'regions' => 'present|array', 'regions.*' => 'integer|distinct',
+        'formats' => 'present|array', 'formats.*' => 'string|distinct|in:singles,reverse_singles',
+      ]);
+      $event = Event::findOrFail($data['event_id']);
+      $this->authorize('event.manage', $event);
+      $service = app(\App\Services\TeamResultRankingService::class);
+      $setup = $service->setup($event);
+      abort_unless($setup['groups']->contains('key', $data['result_group']), 404);
+      $regions = array_map('intval', $data['regions']);
+      if (array_diff($regions, $setup['regions']->pluck('id')->all()) || array_diff($data['formats'], $setup['formats']->all())) {
+        throw \Illuminate\Validation\ValidationException::withMessages(['setup' => 'Choose regions and formats from this event.']);
+      }
+      $ranking = $service->ranking($event, $data['result_group'], $regions, $data['formats']);
+      return response()->json(['html' => view('backend.adminPage.admin_show._table.result-selection', compact('ranking'))->render(), 'ranking' => $ranking]);
+    }
     $data = $request->validate(['event_id' => 'required|integer|exists:events,id', 'categoryEvent' => 'required|integer|exists:category_events,id']);
     $event = Event::findOrFail($data['event_id']);
     $this->authorize('event-draw.view', $event);
@@ -467,45 +488,7 @@ class EventAdminController extends Controller
 
   public function convertWinsToScore($rank, $wins)
   {
-    switch ($rank) {
-      case '1':
-        $score = $this->checkEven($rank, $wins, 100);
-        return $score;
-        break;
-      case '2':
-        $score = $this->checkEven($rank, $wins, 50);
-        return $score;
-        break;
-      case '3':
-        $score = $this->checkEven($rank, $wins, 35);
-        return $score;
-        break;
-      case '4':
-        $score = $this->checkEven($rank, $wins, 35);
-        return $score;
-        break;
-      case '5':
-        $score = $this->checkEven($rank, $wins, 12);
-        return $score;
-        break;
-      case '6':
-        $score = $this->checkEven($rank, $wins, 12);
-        return $score;
-        break;
-      case '7':
-        $score = $this->checkEven($rank, $wins, 2);
-        return $score;
-        break;
-      case '8':
-        $score = $this->checkEven($rank, $wins, 2);
-        return $score;
-        break;
-
-      default:
-        $score = $this->checkEven($rank, $wins, 0);
-        return $score;
-        break;
-    }
+    return app(\App\Services\TeamResultRankingService::class)->points((int) $rank, (int) $wins);
   }
   public function checkEven($rank, $wins, $multiply)
   {

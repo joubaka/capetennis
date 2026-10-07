@@ -9,6 +9,14 @@
   const requests = new Map();
   const savedOpen = new Map();
   let resultRequest;
+  let selectionVersion = 0;
+  let savedDraft;
+  let applyingDraft;
+  let resultGeneration = 0;
+  let draftReady = false;
+  let draftFetchSequence = 0;
+  let editingGroup;
+  let saveRequestBusy = false;
 
   function workspaceUrl(parameters) {
     const url = new URL(window.location.href);
@@ -42,6 +50,8 @@
     filterNames.forEach(name => { values[name] = $('[data-roster-filter="' + name + '"]').val(); });
     values.tab = $('.team-admin-workspace .tabs-wrap .nav-link.active').attr('data-bs-target')?.replace('#tab-', '');
     values.result_category = $('.category-radio:checked').val();
+    values.result_regions = $('[data-result-region]:checked').map(function () { return this.value; }).get().join(',') || 'none';
+    values.result_formats = $('[data-result-format]:checked').map(function () { return this.value; }).get().join(',') || 'none';
     Object.entries(values).forEach(([key, value]) => {
       if (value) url.searchParams.set('roster_' + key, value); else url.searchParams.delete('roster_' + key);
     });
@@ -129,7 +139,11 @@
     $('[data-roster-search]').val(url.searchParams.get('roster_search') || '');
     filterNames.forEach(name => { $('[data-roster-filter="' + name + '"]').val(url.searchParams.get('roster_' + name) || ''); });
     const resultCategory = url.searchParams.get('roster_result_category');
-    if (resultCategory) { const category = document.querySelector('.category-radio[value="' + Number(resultCategory) + '"]'); if (category) category.checked = true; }
+    if (resultCategory) { const category = [...document.querySelectorAll('.category-radio')].find(input => input.value === resultCategory); if (category) category.checked = true; }
+    ['regions', 'formats'].forEach(name => {
+      const saved = url.searchParams.get('roster_result_' + name);
+      document.querySelectorAll('[data-result-' + (name === 'regions' ? 'region' : 'format') + ']').forEach(input => { input.checked = saved === null || saved.split(',').includes(input.value); });
+    });
     const tab = url.searchParams.get('roster_tab');
     const button = document.querySelector('.team-admin-workspace [data-bs-target="#tab-' + (['regions', 'order', 'result-rank'].includes(tab) ? tab : 'players') + '"]');
     if (button) bootstrap.Tab.getOrCreateInstance(button).show();
@@ -147,16 +161,69 @@
   function loadResults() {
     const category = document.querySelector('.category-radio:checked');
     const target = document.getElementById('category-table');
-    if (!category || !target) { if (target) target.textContent = 'No categories added.'; return; }
+    if (!category || !target) { if (target) target.textContent = 'No singles fixture age groups found.'; return; }
     resultRequest?.abort();
+    const generation = ++resultGeneration;
+    const group = category.value;
+    const draftToApply = applyingDraft?.group_key === group ? applyingDraft : null;
+    applyingDraft = null;
+    if (editingGroup !== group) { editingGroup = group; draftReady = false; selectionVersion = 0; savedDraft = null; }
+    $('[data-selection-save]').prop('disabled', !draftReady || saveRequestBusy);
     $('#category-name').text(category.dataset.name);
     target.setAttribute('aria-busy', 'true'); target.setAttribute('aria-live', 'polite');
     target.textContent = 'Loading category results…';
-    resultRequest = $.post(document.getElementById('team-workspace-content').dataset.resultUrl, { event_id: category.dataset.event_id, categoryEvent: category.value })
-      .done(response => { target.innerHTML = response.html; })
+    resultRequest = $.post(document.getElementById('team-workspace-content').dataset.resultUrl, { event_id: category.dataset.event_id, result_group: category.value, regions: $('[data-result-region]:checked').map(function () { return this.value; }).get().join(','), formats: $('[data-result-format]:checked').map(function () { return this.value; }).get().join(',') })
+      .done(response => { if (generation !== resultGeneration) return; target.innerHTML = response.html; if (draftToApply) { savedDraft = draftToApply; applyDraftPlayers(); } else if (!draftReady) fetchDraft(false); })
       .fail(xhr => { if (xhr.statusText !== 'abort') { target.textContent = xhr.responseJSON?.message || 'Results could not be loaded.'; const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'btn btn-outline-secondary ms-2'; retry.textContent = 'Retry'; retry.addEventListener('click', loadResults); target.append(retry); } })
-      .always(() => target.removeAttribute('aria-busy'));
+      .always(() => { if (generation === resultGeneration) target.removeAttribute('aria-busy'); });
   }
+
+  function selectionStatus(message) { $('[data-selection-status]').text(message); }
+  function selectionGroup() { return $('.category-radio:checked').val(); }
+  function applyDraftPlayers() {
+    if (!savedDraft) return;
+    document.querySelectorAll('[data-selection-player]').forEach(input => { input.checked = savedDraft.selected_keys.includes(input.value); });
+    document.querySelectorAll('[data-selection-reason]').forEach(input => { input.value = savedDraft.reasons?.[input.dataset.selectionReason] || ''; });
+    selectionStatus('Saved draft loaded. Review the current results before saving changes.');
+  }
+  function fetchDraft(apply) {
+    const group = selectionGroup();
+    const generation = resultGeneration;
+    const fetchSequence = ++draftFetchSequence;
+    const url = document.getElementById('tab-result-rank')?.dataset.selectionUrl;
+    if (!url || !group) return;
+    $.getJSON(url, { group_key: group }).done(response => {
+      if (group !== selectionGroup() || generation !== resultGeneration || fetchSequence !== draftFetchSequence) return;
+      if (!apply) {
+        draftReady = !response.draft; selectionVersion = 0;
+        $('[data-selection-save]').prop('disabled', !draftReady || saveRequestBusy);
+        selectionStatus(response.draft ? 'A saved draft is available. Load it before editing or saving.' : 'No saved draft for this group.'); return;
+      }
+      savedDraft = response.draft; selectionVersion = savedDraft?.version || 0;
+      if (!savedDraft) { selectionStatus('No saved draft for this group.'); return; }
+      document.querySelectorAll('[data-result-region]').forEach(input => { input.checked = savedDraft.region_ids.map(String).includes(input.value); });
+      document.querySelectorAll('[data-result-format]').forEach(input => { input.checked = savedDraft.formats.includes(input.value); });
+      applyingDraft = savedDraft; draftReady = true; $('[data-selection-save]').prop('disabled', false); saveUrl(); loadResults();
+    }).fail(xhr => { if (group === selectionGroup() && generation === resultGeneration && fetchSequence === draftFetchSequence) selectionStatus(xhr.responseJSON?.message || 'Draft could not be loaded.'); });
+  }
+  $(document).on('click', '[data-selection-load]', () => fetchDraft(true));
+  $(document).on('click', '[data-selection-save]', function () {
+    const button = this;
+    const group = selectionGroup();
+    const generation = resultGeneration;
+    if (saveRequestBusy || !draftReady || !group || document.getElementById('category-table')?.getAttribute('aria-busy') === 'true') return;
+    const selected = $('[data-selection-player]:checked').map(function () { return this.value; }).get();
+    if (selected.length > 10) { selectionStatus('Choose no more than 10 players.'); return; }
+    const reasons = {};
+    document.querySelectorAll('[data-selection-reason]').forEach(input => { if (input.value.trim()) reasons[input.dataset.selectionReason] = input.value.trim(); });
+    saveRequestBusy = true; button.disabled = true;
+    $.ajax({ url: document.getElementById('tab-result-rank').dataset.selectionUrl, type: 'PUT', contentType: 'application/json', data: JSON.stringify({
+      group_key: group, region_ids: $('[data-result-region]:checked').map(function () { return Number(this.value); }).get(),
+      formats: $('[data-result-format]:checked').map(function () { return this.value; }).get(), selected_keys: selected, reasons: reasons, version: selectionVersion
+    }) }).done(response => { if (group !== selectionGroup() || generation !== resultGeneration) return; savedDraft = response.draft; selectionVersion = savedDraft.version; selectionStatus('Draft selection saved. It has not been published.'); })
+      .fail(xhr => { if (group !== selectionGroup() || generation !== resultGeneration) return; const errors = Object.values(xhr.responseJSON?.errors || {}).flat().join(' '); selectionStatus(xhr.status === 409 ? 'This draft changed elsewhere. Load the saved draft before saving again.' : (errors || xhr.responseJSON?.message || 'Draft could not be saved.')); })
+      .always(() => { saveRequestBusy = false; $('[data-selection-save]').prop('disabled', !draftReady); });
+  });
 
   function refreshWorkspace() {
     if (refreshing) { refreshAgain = true; return; }
@@ -211,7 +278,7 @@
   $(document).on('click', '[data-workspace-refresh]', queueRefresh);
   $(document).on('click', '[data-roster-expand]', function () { document.querySelectorAll('[data-roster-panel="players"]:not([hidden]) [data-roster-team]:not([hidden])').forEach(team => { team.open = this.dataset.rosterExpand === 'true'; }); });
   $(document).on('shown.bs.tab', '.team-admin-workspace .tabs-wrap [data-bs-toggle="tab"]', function () { if (!restoring) { selectRegion($('[data-roster-region]').val()); saveUrl(true); if (this.dataset.bsTarget === '#tab-result-rank') loadResults(); } });
-  $(document).on('change', '.team-admin-workspace .category-radio', function () { loadResults(); saveUrl(); });
+  $(document).on('change', '.team-admin-workspace .category-radio, [data-result-region], [data-result-format]', function () { loadResults(); saveUrl(); });
   $(document).on('click', '[data-copy-contact]', async function () {
     try { await navigator.clipboard.writeText(this.dataset.copyContact); toastr.success('Contact copied.'); }
     catch (_) { toastr.info('Select the contact text to copy it.'); }
