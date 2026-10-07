@@ -2,8 +2,8 @@
   'use strict';
   const modal = document.getElementById('match-reminder');
   if (!modal || !window.bootstrap?.Modal) return;
-  const key = `ct.match-reminder.${modal.dataset.account}`;
-  const dismissed = () => { try { return localStorage.getItem(key); } catch (_) { return null; } };
+  const key = `ct.match-reminder.${modal.dataset.account}.${modal.dataset.login}`;
+  const dismissed = () => { try { return sessionStorage.getItem(key); } catch (_) { return null; } };
   if (dismissed() === modal.dataset.day) return;
   function element(tag, text, className) {
     const node = document.createElement(tag);
@@ -33,7 +33,7 @@
         }
         body.append(section);
       }
-      const markDismissed = () => { try { localStorage.setItem(key, data.day); } catch (_) {} };
+      const markDismissed = () => { try { sessionStorage.setItem(key, data.day); } catch (_) {} };
       modal.addEventListener('hidden.bs.modal', markDismissed, {once: true});
       modal.querySelectorAll('a').forEach(link => link.addEventListener('click', markDismissed));
       new bootstrap.Modal(modal).show();

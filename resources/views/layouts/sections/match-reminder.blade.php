@@ -10,11 +10,11 @@
   }
 </style>
 <div class="modal fade" id="match-reminder" tabindex="-1" aria-labelledby="match-reminder-title" aria-describedby="match-reminder-description" aria-hidden="true"
-     data-endpoint="{{ route('my.tennis.match-reminder') }}" data-account="{{ auth()->id() }}" data-day="{{ now('Africa/Johannesburg')->toDateString() }}">
+     data-endpoint="{{ route('my.tennis.match-reminder') }}" data-account="{{ auth()->id() }}" data-login="{{ session('match_reminder_login', 'existing-session') }}" data-day="{{ now('Africa/Johannesburg')->toDateString() }}">
   <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
     <div class="modal-content">
       <div class="modal-header">
-        <h2 class="modal-title fs-4" id="match-reminder-title">Tennis today &amp; tomorrow</h2>
+        <h2 class="modal-title fs-4" id="match-reminder-title">Tennis in the next 7 days</h2>
         <button type="button" class="btn-close p-3" data-bs-dismiss="modal" aria-label="Close reminder"></button>
       </div>
       <div class="modal-body">

@@ -58,7 +58,7 @@ class MatchReminderTest extends TestCase
             ->assertOk()->assertJsonPath('players', [])->assertHeader('Cache-Control', 'max-age=0, no-store, private');
     }
 
-    public function test_all_linked_players_today_and_tomorrow_use_published_snapshot(): void
+    public function test_all_linked_players_in_the_seven_day_window_use_published_snapshot(): void
     {
         $user = User::factory()->create();
         $player = Player::factory()->create(['name' => 'First', 'surname' => 'Player', 'userId' => $user->id]);
@@ -69,7 +69,7 @@ class MatchReminderTest extends TestCase
         $this->matchFor($player, '2026-10-08 23:59:59');
         $this->matchFor($second, '2026-10-08 10:00:00');
         $this->matchFor($player, '2026-10-06 23:59:59');
-        $this->matchFor($player, '2026-10-09 00:00:00');
+        $this->matchFor($player, '2026-10-14 00:00:00');
         $this->matchFor(Player::factory()->create(), '2026-10-08 08:00:00');
         OrderOfPlay::create(['fixture_id' => $today->id, 'draw_id' => $today->draw_id,
             'time' => '2026-10-09 15:00:00', 'venue_id' => DB::table('venues')->insertGetId(['name' => 'Private changed venue']), 'court' => '99']);
@@ -106,6 +106,57 @@ class MatchReminderTest extends TestCase
         $unassignedOpponent = $this->matchFor($player, '2026-10-08 08:00:00');
         $unassignedOpponent->update(['registration2_id' => null]);
         $this->assertSame([], app(MatchReminderService::class)->for($user)['players']);
+        $this->assertTrue(app(\App\Services\MyTennisService::class)->upcomingScheduledMatchesFor($player)->isEmpty());
+    }
+
+    public function test_friday_matches_are_reminded_on_wednesday_and_seven_day_boundary_is_excluded(): void
+    {
+        $user = User::factory()->create();
+        $player = Player::factory()->create(['userId' => $user->id]);
+        $friday = $this->matchFor($player, '2026-10-09 09:15:00');
+        $this->matchFor($player, '2026-10-13 23:59:59');
+        $this->matchFor($player, '2026-10-14 00:00:00');
+        $matches = app(MatchReminderService::class)->for($user)['players'][0]['matches'];
+        $this->assertCount(2, $matches);
+        $this->assertSame('individual:'.$friday->id, $matches[0]['key']);
+        $this->assertSame('Friday', $matches[0]['day']);
+        $this->assertSame('09:15', $matches[0]['time']);
+    }
+
+    public function test_profile_lists_all_upcoming_matches_in_order_with_pagination_and_preserves_player_scope(): void
+    {
+        $user = User::factory()->create();
+        $player = Player::factory()->create(['userId' => $user->id]);
+        $foreignPlayer = Player::factory()->create();
+        $this->matchFor($foreignPlayer, '2026-10-08 06:00:00');
+        $ids = [];
+        for ($index = 0; $index < 27; $index++) {
+            $ids[] = $this->matchFor($player, CarbonImmutable::parse('2026-10-08 08:00:00')->addMinutes($index)->toDateTimeString())->id;
+        }
+        $service = app(\App\Services\MyTennisService::class);
+        $this->assertSame($ids, $service->upcomingScheduledMatchesFor($player)->pluck('id')->all());
+        $this->assertSame($ids[0], $service->nextScheduledMatchFor($player)->sole()->id);
+        $this->actingAs($user)->get(route('my.tennis', ['player' => $player->id]))
+            ->assertOk()->assertSee('Upcoming scheduled matches')
+            ->assertViewHas('upcomingMatches', fn ($matches) => $matches->pluck('id')->all() === array_slice($ids, 0, 25))
+            ->assertViewHas('upcomingMatchPage', fn ($page) => $page->total() === 27 && str_contains($page->nextPageUrl(), 'player='.$player->id));
+        $this->get(route('my.tennis', ['player' => $player->id, 'matches_page' => 2]))
+            ->assertOk()->assertViewHas('upcomingMatches', fn ($matches) => $matches->pluck('id')->all() === array_slice($ids, 25));
+        $this->get(route('my.tennis', ['player' => $foreignPlayer->id]))
+            ->assertOk()->assertViewHas('selectedPlayer', null)
+            ->assertViewHas('upcomingMatches', fn ($matches) => $matches->isEmpty());
+    }
+
+    public function test_successful_login_rotates_only_the_reminder_dismissal_scope(): void
+    {
+        $user = User::factory()->create();
+        $this->withSession(['match_reminder_login' => 'old-login']);
+        request()->setLaravelSession(app('session.store'));
+        app(\App\Listeners\LogSuccessfulLogin::class)->handle(new \Illuminate\Auth\Events\Login('web', $user, false));
+        $first = session('match_reminder_login');
+        $this->assertTrue(\Illuminate\Support\Str::isUuid($first));
+        app(\App\Listeners\LogSuccessfulLogin::class)->handle(new \Illuminate\Auth\Events\Login('web', $user, false));
+        $this->assertNotSame($first, session('match_reminder_login'));
     }
 
     public function test_first_match_only_and_category_isolation_are_preserved(): void
@@ -155,6 +206,9 @@ class MatchReminderTest extends TestCase
         $this->assertSame('Your team plays', $match['label']);
         $this->assertSame('09:00', $match['time']);
         $this->assertSame(route('frontend.fixtures.show', $draw->id), $match['url']);
+        $profileMatches = app(\App\Services\MyTennisService::class)->upcomingScheduledMatchesFor($player);
+        $this->assertCount(1, $profileMatches);
+        $this->assertSame('2026-10-08 09:00:00', $profileMatches->sole()->scheduled_at->format('Y-m-d H:i:s'));
         $tie->update(['status' => \App\Models\TeamTie::STATUS_COMPLETED]);
         request()->attributes->remove('published_schedule_rows_'.$event->id);
         $this->assertSame([], app(MatchReminderService::class)->for($user)['players']);

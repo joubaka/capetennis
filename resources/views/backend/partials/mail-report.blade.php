@@ -22,7 +22,7 @@
 @endforeach
 </div>
 <p class="mail-report-secondary">Counts reflect current filters for search, dates, type and report scope, before outcome filtering. {{ number_format($report['recipientCount']) }} recipient records; {{ number_format($report['copyCount']) }} copies.</p>
-<p class="mail-report-secondary">Sent includes completed historical sends without acceptance evidence. It excludes sandbox and uncertain outcomes. Inbox delivery is not confirmed. <a href="{{ $reportLink('accepted') }}">{{ number_format($report['counts']['accepted']) }} server accepted</a> · <a href="{{ $reportLink('uncertain') }}">{{ number_format($report['counts']['uncertain']) }} acceptance uncertain</a>.</p>
+<p class="mail-report-secondary">Sent includes completed historical sends without acceptance evidence. It excludes sandbox and uncertain outcomes. Inbox delivery is not confirmed. <a href="{{ $reportLink('accepted') }}">{{ number_format($report['counts']['accepted']) }} server accepted</a> &middot; <a href="{{ $reportLink('uncertain') }}">{{ number_format($report['counts']['uncertain']) }} acceptance uncertain</a>.</p>
 <form method="get" action="{{ $reportUrl }}" class="card card-body mb-3">
 @foreach($reportContext as $key=>$value)<input type="hidden" name="{{ $key }}" value="{{ $value }}">@endforeach
 <div class="row g-3"><div class="col-md-6"><label class="form-label" for="{{ $reportPrefix }}search">Search recipient or subject</label><input class="form-control" id="{{ $reportPrefix }}search" name="{{ $reportPrefix }}search" value="{{ $reportFilters['search'] ?? '' }}" maxlength="200"></div><div class="col-md-6"><label class="form-label" for="{{ $reportPrefix }}outcome">Outcome</label><select class="form-select" id="{{ $reportPrefix }}outcome" name="{{ $reportPrefix }}outcome"><option value="">All outcomes</option>@foreach(\App\Services\MailReportFilters::OUTCOMES as $value=>$label)<option value="{{ $value }}" @selected(($reportFilters['outcome'] ?? '')===$value)>{{ $label }}</option>@endforeach</select></div></div>
@@ -30,6 +30,45 @@
 <div class="d-flex flex-wrap gap-2 mt-3"><button class="btn btn-primary">Apply filters</button><a class="btn btn-outline-secondary" href="{{ $reportUrl.'?'.http_build_query($reportContext).'#email-history' }}">Reset filters</a></div>
 @if($errors->any())<div class="alert alert-danger mt-3 mb-0" role="alert">{{ $errors->first() }}</div>@endif
 </form>
+@if(isset($report['groups']))
+<p class="mail-report-secondary">{{ number_format($report['groups']->total()) }} mail sends. Open a send to view its matching recipients and individual outcomes. Historical groups without a batch reference combine the same subject, type, sender and recorded day.</p>
+@forelse($report['groups'] as $send)
+<details class="card mb-2 mail-send-group" data-mail-send>
+<summary class="p-3" style="cursor:pointer;min-height:44px"><strong>{{ $send->send_subject }}</strong><div class="mail-report-secondary mt-1">{{ \App\Services\SuperAdminMailHistory::typeLabel($send->send_type) }} &middot; {{ \Carbon\Carbon::parse($send->first_recorded)->format('d M Y H:i') }} SAST &middot; {{ number_format($send->recipient_count) }} matching records @if(str_starts_with($send->send_key,'legacy:')) &middot; Historical day group @else &middot; {{ str_starts_with($send->send_key,'batch:') ? 'Batch' : 'Reviewed preview' }} #{{ substr($send->send_key,strpos($send->send_key,':')+1) }} @endif</div><div class="d-flex flex-wrap gap-2 mt-2"><span>Completed: {{ $send->sent_count }}</span><span>Failed: {{ $send->failed_count }}</span><span>Pending: {{ $send->pending_count }}</span><span>Excluded: {{ $send->skipped_count }}</span><span>Acceptance uncertain: {{ $send->uncertain_count }}</span></div></summary>
+<div class="p-3 pt-0" data-send-content data-send-url="{{ $reportUrl.'?'.http_build_query(array_merge(request()->except(['history_sends_page','send_recipients_page']),$reportContext,['history_send'=>$send->representative_id])) }}"><a class="btn btn-outline-primary" href="{{ $reportUrl.'?'.http_build_query(array_merge(request()->except(['history_sends_page','send_recipients_page']),$reportContext,['history_send'=>$send->representative_id])) }}">Open recipient list</a></div>
+</details>
+@empty<div class="card p-4 text-center">No logged emails match these filters.</div>@endforelse
+@if($report['groups']->hasPages())<div class="mt-3">{{ $report['groups']->links('pagination::bootstrap-5') }}</div>@endif
+<script>
+(function () {
+    const section = document.getElementById('email-history');
+    if (!section) return;
+    async function load(content, url) {
+        if (content.dataset.loading) return;
+        content.dataset.loading = '1';
+        content.setAttribute('aria-busy', 'true');
+        const status = document.createElement('p');
+        status.setAttribute('role', 'status'); status.textContent = 'Loading recipients...'; content.prepend(status);
+        try {
+            const response = await fetch(url, {credentials: 'same-origin', headers: {'X-Requested-With': 'XMLHttpRequest'}});
+            if (!response.ok || response.redirected) throw new Error('Unable to load recipients.');
+            content.innerHTML = await response.text(); content.dataset.loaded = '1';
+        } catch (error) {
+            status.textContent = 'Could not load recipients. Use the link below to try again.';
+            if (!content.querySelector('a')) { const retry = document.createElement('a'); retry.href = url; retry.textContent = 'Try again'; content.append(retry); }
+        } finally { delete content.dataset.loading; content.removeAttribute('aria-busy'); }
+    }
+    section.querySelectorAll('[data-mail-send]').forEach(group => {
+        group.addEventListener('toggle', () => { const content = group.querySelector('[data-send-content]'); if (group.open && !content.dataset.loaded) load(content, content.dataset.sendUrl); });
+    });
+    section.addEventListener('click', event => {
+        const link = event.target.closest('[data-send-content] a');
+        if (!link || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        if (link.closest('[data-send-pagination]') || !link.closest('[data-send-content]').dataset.loaded) {event.preventDefault(); load(link.closest('[data-send-content]'), link.href);}
+    });
+})();
+</script>
+@else
 <div class="mail-report-list"><div class="mail-report-row mail-report-head"><div>Recipient</div><div>Subject / type</div><div>Outcome</div><div>Recorded</div><div>Action</div></div>
 @forelse($report['logs'] as $mail)
 @php
@@ -44,7 +83,7 @@
         default => ['primary',$mail->delivery_status_label],
     };
 @endphp
-<article class="mail-report-row"><div><strong>{{ $mail->recipient_name ?: $mail->recipient_email }}</strong>@if($mail->recipient_name)<div class="mail-report-secondary">{{ $mail->recipient_email }}</div>@endif</div><div><strong>{{ $reportSubject }}</strong><div class="mail-report-secondary">{{ \App\Services\SuperAdminMailHistory::typeLabel($mail->mail_type) }}@if(in_array(data_get($mail->payload,'recipient_kind'),['admin_copy','sender_copy'])) · Copy @endif</div></div><div><span class="badge bg-label-{{ $tone }} @if($tone==='secondary') mail-report-neutral @endif">{{ $label }}</span>@if($mail->status==='failed')<div class="mail-report-secondary mt-1">{{ \App\Services\EventMailLogService::explanation($mail) ?: 'Review this failed attempt before retrying.' }}</div>@endif</div><div class="mail-report-date">{{ $mail->created_at?->format('d M Y') }}<div class="mail-report-secondary">{{ $mail->created_at?->format('H:i') }} SAST</div></div><div class="mail-report-action">@if($reportEvent)<a class="btn btn-outline-primary" href="{{ route('backend.event-mail-log.show',[$reportEvent,$mail]) }}">Open</a>
+<article class="mail-report-row"><div><strong>{{ $mail->recipient_name ?: $mail->recipient_email }}</strong>@if($mail->recipient_name)<div class="mail-report-secondary">{{ $mail->recipient_email }}</div>@endif</div><div><strong>{{ $reportSubject }}</strong><div class="mail-report-secondary">{{ \App\Services\SuperAdminMailHistory::typeLabel($mail->mail_type) }}@if(in_array(data_get($mail->payload,'recipient_kind'),['admin_copy','sender_copy'])) &middot; Copy @endif</div></div><div><span class="badge bg-label-{{ $tone }} @if($tone==='secondary') mail-report-neutral @endif">{{ $label }}</span>@if($mail->status==='failed')<div class="mail-report-secondary mt-1">{{ \App\Services\EventMailLogService::explanation($mail) ?: 'Review this failed attempt before retrying.' }}</div>@endif</div><div class="mail-report-date">{{ $mail->created_at?->format('d M Y') }}<div class="mail-report-secondary">{{ $mail->created_at?->format('H:i') }} SAST</div></div><div class="mail-report-action">@if($reportEvent)<a class="btn btn-outline-primary" href="{{ route('backend.event-mail-log.show',[$reportEvent,$mail]) }}">Open</a>
 @if($mail->status==='failed' && !$mail->sent_at && !$mail->accepted_at)
 @if(in_array($mail->mail_type,['team_selection_invitation','interprovincial_trial_invitation']) || (data_get($mail->payload,'event_communication_batch_id') && \App\Models\EventCommunicationBatch::whereKey(data_get($mail->payload,'event_communication_batch_id'))->where('event_id',$reportEvent->id)->where('created_by',auth()->id())->exists()))
 <form method="post" action="{{ route('backend.event-communications.retry-preview',[$reportEvent,$mail]) }}">@csrf<button class="btn btn-outline-primary mt-2">Review retry</button></form>
@@ -56,4 +95,5 @@
 @empty<div class="p-4 text-center"><strong>No logged emails match these filters.</strong><p class="mail-report-secondary mb-0 mt-2">Try a different outcome or reset the filters.</p></div>@endforelse
 </div>
 @if($report['logs']->hasPages())<div class="mt-3">{{ $report['logs']->links('pagination::bootstrap-5') }}</div>@endif
+@endif
 </section>

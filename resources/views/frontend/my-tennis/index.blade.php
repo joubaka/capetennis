@@ -21,6 +21,18 @@
     #my-tennis-tabs .nav-link { white-space: nowrap; width: 100%; }
     #my-tennis-player + .select2-container { min-width: 11rem; max-width: 100%; }
     #my-tennis-page .select2-dropdown { max-width: min(18rem, calc(100vw - 2rem)); }
+    #my-tennis-page .my-tennis-match-date { color: #174f65; font-size: 1rem; }
+    #my-tennis-page .my-tennis-fixture { display: grid; grid-template-columns: 5rem minmax(0, 1fr) auto; align-items: center; gap: 1rem; padding: 1rem 0; }
+    #my-tennis-page .my-tennis-fixture + .my-tennis-fixture { border-top: 1px solid rgba(75, 70, 92, .12); }
+    #my-tennis-page .my-tennis-fixture-time { display: flex; flex-direction: column; align-items: flex-start; gap: .4rem; }
+    #my-tennis-page .my-tennis-fixture-time time { font-size: 1.35rem; font-weight: 700; color: #174f65; }
+    #my-tennis-page .my-tennis-fixture-sides { min-width: 0; overflow-wrap: anywhere; }
+    #my-tennis-page .my-tennis-fixture-vs { line-height: 1.2; margin: .15rem 0; }
+    #my-tennis-page .my-tennis-fixture-link { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+    @media (max-width: 575.98px) {
+      #my-tennis-page .my-tennis-fixture { grid-template-columns: 4.5rem minmax(0, 1fr); gap: .75rem; }
+      #my-tennis-page .my-tennis-fixture-link { grid-column: 1 / -1; width: 100%; }
+    }
     .my-tennis-manage-card .player-chip { align-items: center; display: flex; gap: .75rem; justify-content: space-between; }
     .my-tennis-manage-card .player-chip + .player-chip { border-top: 1px solid rgba(75, 70, 92, .12); padding-top: .75rem; }
     .my-tennis-manage-card .player-chip + .player-chip { margin-top: .75rem; }
@@ -60,33 +72,68 @@
       </div>
     </div>
   @else
-    <div class="row g-4 mb-4">
-      <div class="col-12 col-lg-4">
-        <div class="card h-100 border-0 shadow-sm"><div class="card-body">
-          <div class="d-flex justify-content-between align-items-start gap-3"><div><p class="text-muted small mb-1">Selected player</p><h5 class="mb-2">{{ $selectedPlayer->full_name }}</h5></div><span class="badge bg-label-{{ $profile['badge'] }}">{{ $profile['message'] }}</span></div>
-          <p class="text-muted small mb-0">Your tennis activity and published information for this player.</p>
-        </div></div>
-      </div>
-      <div class="col-12 col-lg-8">
-        <div class="card h-100 border-0 shadow-sm"><div class="card-body">
-          <div class="d-flex justify-content-between align-items-center gap-2 mb-2"><h5 class="mb-0">Next match</h5><i class="ti ti-calendar-event text-primary fs-4" aria-hidden="true"></i></div>
-          @forelse($upcomingMatches as $match)
-            <div class="border-bottom py-2">
-              <div class="fw-semibold">{{ $match->draw?->event?->name ?? 'Published draw' }}</div>
-              @if($match instanceof \App\Models\TeamFixture)
-                <div class="small">Team match · {{ $match->tie_display['home'] ?? 'TBD' }} vs {{ $match->tie_display['away'] ?? 'TBD' }}</div>
-                <div class="small text-muted">{{ $match->scheduled_at->format('D, d M Y H:i') }} · {{ $match->venue?->name ?? 'Venue to be confirmed' }}@if($match->court_label) · Court {{ $match->court_label }}@endif</div>
-              @else
-                <div class="small">{{ $match->registration1?->display_name ?? 'TBD' }} vs {{ $match->registration2?->display_name ?? 'TBD' }}</div>
-                <div class="small text-muted">{{ $match->orderOfPlay?->time ? \Carbon\Carbon::parse($match->orderOfPlay->time)->format('D, d M Y H:i') : 'Time to be confirmed' }} · {{ $match->orderOfPlay?->venue?->name ?? 'Court to be confirmed' }}@if($match->orderOfPlay?->court) · Court {{ $match->orderOfPlay->court }}@endif</div>
-              @endif
-            </div>
-          @empty
-            <p class="text-muted mb-0">No published next match time found.</p>
-          @endforelse
-        </div></div>
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-body py-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <div><span class="text-muted small">Player</span><h5 class="mb-0">{{ $selectedPlayer->full_name }}</h5></div>
+        <span class="badge bg-label-{{ $profile['badge'] }}">{{ $profile['message'] }}</span>
       </div>
     </div>
+    <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
+      <h5 class="mb-0">Upcoming scheduled matches</h5>
+      <span class="badge bg-label-primary">{{ $upcomingMatchPage->total() }}</span>
+    </div>
+    @php
+      $matchDays = $upcomingMatches->groupBy(fn ($match) => \Carbon\Carbon::parse($match->scheduled_at)->toDateString());
+    @endphp
+    @forelse($matchDays as $date => $dayMatches)
+      <section class="mb-4" aria-label="Matches on {{ \Carbon\Carbon::parse($date)->format('l, j F Y') }}">
+        <h6 class="my-tennis-match-date mb-3"><i class="ti ti-calendar-event me-2" aria-hidden="true"></i>{{ \Carbon\Carbon::parse($date)->format('l, j M Y') }}</h6>
+        @foreach($dayMatches->groupBy(fn ($match) => $match->draw?->event_id.'|'.$match->venue_id) as $eventMatches)
+          @php
+            $firstMatch = $eventMatches->first();
+          @endphp
+          <div class="card border-0 shadow-sm mb-3">
+            <div class="card-body py-3">
+              <div class="mb-3">
+                <h6 class="mb-1">{{ $firstMatch->draw?->event?->name ?? 'Published draw' }}</h6>
+                <div class="small text-muted"><i class="ti ti-map-pin me-1" aria-hidden="true"></i>{{ $firstMatch->venue?->name ?? 'Venue to be confirmed' }}</div>
+              </div>
+              @foreach($eventMatches as $match)
+                @php
+                  $isTeam = $match instanceof \App\Models\TeamFixture;
+                  $home = $isTeam ? ($match->tie_display['home'] ?? 'TBD') : ($match->registration1?->display_name ?? 'TBD');
+                  $away = $isTeam ? ($match->tie_display['away'] ?? 'TBD') : ($match->registration2?->display_name ?? 'TBD');
+                  $shortHome = $isTeam ? ($match->tie_mobile_display['home'] ?? $home) : $home;
+                  $shortAway = $isTeam ? ($match->tie_mobile_display['away'] ?? $away) : $away;
+                  $court = $isTeam ? $match->court_label : $match->orderOfPlay?->court;
+                @endphp
+                <article class="my-tennis-fixture" aria-label="{{ $home }} versus {{ $away }}">
+                  <div class="my-tennis-fixture-time">
+                    <time datetime="{{ \Carbon\Carbon::parse($match->scheduled_at)->toIso8601String() }}">{{ \Carbon\Carbon::parse($match->scheduled_at)->format('H:i') }}</time>
+                    @if($court)<span class="badge bg-label-secondary">Court {{ $court }}</span>@endif
+                  </div>
+                  <div class="my-tennis-fixture-sides">
+                    @if($isTeam && empty($match->profile_match_players['home']) && empty($match->profile_match_players['away']))<div class="small text-muted mb-1">Team fixture - players to be confirmed</div>@endif
+                    @unless($isTeam)<div class="small text-muted mb-1">{{ $match->draw?->drawName }}</div>@endunless
+                    <div class="fw-semibold" title="{{ $home }}" aria-label="{{ $home }}">{{ $shortHome }}</div>
+                    @if($isTeam)<div class="small text-muted" aria-label="Match players for {{ $home }}">{{ implode(' · ', $match->profile_match_players['home'] ?? []) ?: 'Players to be confirmed' }}</div>@endif
+                    <div class="small text-muted my-tennis-fixture-vs" aria-hidden="true">vs</div>
+                    <div class="fw-semibold" title="{{ $away }}" aria-label="{{ $away }}">{{ $shortAway }}</div>
+                    @if($isTeam)<div class="small text-muted" aria-label="Match players for {{ $away }}">{{ implode(' · ', $match->profile_match_players['away'] ?? []) ?: 'Players to be confirmed' }}</div>@endif
+                  </div>
+                  <a class="btn btn-outline-primary my-tennis-fixture-link" href="{{ route($isTeam ? 'frontend.fixtures.show' : 'frontend.showDraw', $match->draw_id) }}">View fixtures</a>
+                </article>
+              @endforeach
+            </div>
+          </div>
+        @endforeach
+      </section>
+    @empty
+      <div class="card border-0 shadow-sm"><div class="card-body text-muted">No upcoming published match times found.</div></div>
+    @endforelse
+    @if($upcomingMatchPage->hasPages())
+      <div class="mt-3">{{ $upcomingMatchPage->links() }}</div>
+    @endif
   @endif
   </div>
 

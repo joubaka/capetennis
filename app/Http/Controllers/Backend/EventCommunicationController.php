@@ -46,7 +46,17 @@ class EventCommunicationController extends Controller
             abort_unless($batch, 422, 'Select a reviewed batch before filtering its report.');
             $historyQuery->whereIn('id', $batchLogs->select('id'));
         }
-        $historyReport = app(\App\Services\MailReportFilters::class)->data($request, $historyQuery);
+        $reportFilters = app(\App\Services\MailReportFilters::class);
+        $filteredHistory = $reportFilters->apply(clone $historyQuery, $reportFilters->validate($request, 'history_'));
+        $sendGroups = app(\App\Services\MailSendGroups::class);
+        if ($request->has('history_send')) {
+            $data = $request->validate(['history_send' => 'required|integer|min:1']);
+            $sendRecipients = $sendGroups->recipients($filteredHistory, $data['history_send']);
+            return response()->view('backend.partials.mail-send-recipients', ['sendRecipients' => $sendRecipients, 'reportEvent' => $event])
+                ->header('Cache-Control', 'private, no-store');
+        }
+        $historyReport = $reportFilters->data($request, $historyQuery);
+        $historyReport['groups'] = $sendGroups->paginate($filteredHistory);
         $reportContext = ['report_scope' => $scope];
         if ($batch && $request->filled('batch')) $reportContext['batch'] = $batch->id;
 

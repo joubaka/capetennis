@@ -151,7 +151,16 @@ class PublicScheduleProjectionTest extends TestCase
         $player = Player::factory()->create();
         $registration = Registration::factory()->create();
         $registration->players()->attach($player->id);
-        $fixture = Fixture::factory()->create(['draw_id' => $draw->id, 'registration1_id' => $registration->id]);
+        $opponent = Registration::factory()->create();
+        $category = \App\Models\CategoryEvent::factory()->create(['event_id' => $event->id]);
+        $draw->update(['category_event_id' => $category->id]);
+        foreach ([$registration, $opponent] as $entry) {
+            \App\Models\CategoryEventRegistration::factory()->create([
+                'category_event_id' => $category->id, 'registration_id' => $entry->id,
+            ]);
+        }
+        $fixture = Fixture::factory()->create(['draw_id' => $draw->id, 'registration1_id' => $registration->id,
+            'registration2_id' => $opponent->id]);
         $venue = new Venue();
         $venue->forceFill(['name' => 'Published town'])->save();
         $slot = OrderOfPlay::create(['draw_id' => $draw->id, 'fixture_id' => $fixture->id,

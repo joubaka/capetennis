@@ -70,7 +70,12 @@ class MyTennisService
             ->limit(100)
             ->get();
 
-        $upcomingMatches = $this->nextScheduledMatchFor($player);
+        $matches = $this->upcomingScheduledMatchesFor($player);
+        $page = max(1, (int) request()->query('matches_page', 1));
+        $upcomingMatchPage = new \Illuminate\Pagination\LengthAwarePaginator(
+            $matches->forPage($page, 25)->values(), $matches->count(), 25, $page,
+            ['path' => route('my.tennis'), 'pageName' => 'matches_page', 'query' => ['player' => $player->id]],
+        );
 
         return [
             'players' => $players,
@@ -80,17 +85,26 @@ class MyTennisService
             'selectedPlayer' => $player,
             'profile' => $player->getProfileStatus(),
             'entries' => $entries,
-            'upcomingMatches' => $upcomingMatches,
+            'upcomingMatches' => $upcomingMatchPage->getCollection(),
+            'upcomingMatchPage' => $upcomingMatchPage,
             'history' => $this->timeline->for($player, 20),
         ];
     }
 
     public function nextScheduledMatchFor(Player $player): Collection
     {
+        return $this->upcomingScheduledMatchesFor($player)->take(1)->values();
+    }
+
+    public function upcomingScheduledMatchesFor(Player $player): Collection
+    {
         $registrationIds = $player->registrations()->pluck('registrations.id');
 
         $matches = Fixture::query()
-            ->with(['draw.event', 'orderOfPlay.venue', 'fixtureResults', 'registration1.players', 'registration2.players'])
+            ->with(['draw.event', 'orderOfPlay.venue', 'fixtureResults', 'registration1.players', 'registration2.players',
+                'registration1.categoryEventRegistrations' => fn ($query) => $query->active()->whereNull('withdrawn_at')->with('categoryEvent'),
+                'registration2.categoryEventRegistrations' => fn ($query) => $query->active()->whereNull('withdrawn_at')->with('categoryEvent'),
+            ])
             ->where(function ($query) use ($registrationIds): void {
                 $query->whereIn('registration1_id', $registrationIds)
                     ->orWhereIn('registration2_id', $registrationIds);
@@ -106,7 +120,7 @@ class MyTennisService
                 ->visibleTo(auth()->user())
                 ->where(fn ($dates) => $dates->whereNull('end_date')
                     ->orWhereDate('end_date', '>=', today())))
-            ->limit(500)
+            ->where('match_status', 0)
             ->get();
 
         app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($matches);
@@ -116,17 +130,25 @@ class MyTennisService
             $fixture->id
         ))->values();
 
-        $individual = $matches->filter(fn (Fixture $fixture) => $fixture->fixtureResults->isEmpty()
-            && Carbon::parse($fixture->orderOfPlay->time)->greaterThanOrEqualTo(now()));
+        $individual = $matches->filter(function (Fixture $fixture): bool {
+            if ($fixture->fixtureResults->isNotEmpty()
+                || Carbon::parse($fixture->orderOfPlay->time)->lessThan(now())) return false;
+            foreach ([$fixture->registration1, $fixture->registration2] as $registration) {
+                if (! $registration || ! $registration->categoryEventRegistrations->contains(fn ($entry) =>
+                    (int) $entry->category_event_id === (int) $fixture->draw->category_event_id
+                    && (int) $entry->categoryEvent?->event_id === (int) $fixture->draw->event_id)) return false;
+            }
+            return true;
+        });
 
-        return $individual->concat($this->nextTeamMatchesFor($player))
+        return $individual->concat($this->upcomingTeamMatchesFor($player))
             ->sortBy(fn ($fixture) => sprintf('%s_%s_%010d',
                 Carbon::parse($fixture->scheduled_at)->format('Y-m-d H:i:s'),
                 $fixture instanceof TeamFixture ? 'team' : 'individual', $fixture->id))
-            ->take(1)->values();
+            ->values();
     }
 
-    private function nextTeamMatchesFor(Player $player): Collection
+    private function upcomingTeamMatchesFor(Player $player): Collection
     {
         // Limit candidates to events containing the player's roster or substitution;
         // actual participation is still resolved for each scheduled competition side.
@@ -178,15 +200,31 @@ class MyTennisService
                 return false;
             });
 
-        foreach ($fixtures as $fixture) {
-            $candidate = collect([$fixture]);
-            app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($candidate);
-            if (! $fixture->scheduled_at || Carbon::parse($fixture->scheduled_at)->lessThan(now())) continue;
-            app(TeamFixtureLineupPresenter::class)->prepare($candidate, publicDraw: true);
-            return $candidate;
-        }
-
-        return collect();
+        $matches = $fixtures->collect();
+        app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($matches);
+        $matches = $matches->filter(fn (TeamFixture $fixture) => $fixture->scheduled_at
+            && Carbon::parse($fixture->scheduled_at)->greaterThanOrEqualTo(now()))->values();
+        app(TeamFixtureLineupPresenter::class)->prepare($matches, publicDraw: true, selectedPlayerId: $player->id);
+        return $matches->groupBy(fn (TeamFixture $fixture) => $fixture->team_tie_id ? 'tie:'.$fixture->team_tie_id : 'fixture:'.$fixture->id)
+            ->flatMap(function ($tieMatches) {
+                $assigned = $tieMatches->filter(fn ($fixture) => ($fixture->lineup_display['home']['selected_player_assigned'] ?? false)
+                    || ($fixture->lineup_display['away']['selected_player_assigned'] ?? false));
+                if ($assigned->isNotEmpty()) return $assigned;
+                // Only a genuinely unassigned tie gets a team-time fallback.
+                if ($tieMatches->contains(fn ($fixture) => $fixture->fixturePlayers->contains(fn ($slot) =>
+                    $slot->team1_id || $slot->team2_id || $slot->team1_no_profile_id || $slot->team2_no_profile_id)
+                    || $fixture->team1->isNotEmpty() || $fixture->team2->isNotEmpty())) return collect();
+                return $tieMatches->take(1);
+            })->map(function ($fixture) {
+            $names = [];
+            foreach (['home', 'away'] as $side) {
+                $names[$side] = collect($fixture->lineup_display[$side]['players'] ?? [])
+                    ->pluck('name')->filter(fn ($name) => $name && $name !== 'TBD')->values()->all();
+            }
+            $fixture->setAttribute('profile_match_players', $names);
+            return $fixture;
+        })
+            ->values();
     }
 
     public function playerPage(User $user, int $page = 1, int $perPage = 25): LengthAwarePaginator

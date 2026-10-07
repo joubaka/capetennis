@@ -12,6 +12,11 @@ class LogSuccessfulLogin
      */
     public function handle(Login $event): void
     {
+        // A fresh login gets a fresh reminder dismissal scope, independent of authentication tokens.
+        if (request()->hasSession()) {
+            request()->session()->put('match_reminder_login', (string) \Illuminate\Support\Str::uuid());
+        }
+
         app(AuditWriter::class)->record([
             'category' => 'security',
             'action' => 'auth.login.succeeded',

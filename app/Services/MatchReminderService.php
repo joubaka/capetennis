@@ -13,7 +13,7 @@ final class MatchReminderService
     public function for(User $user): array
     {
         $today = CarbonImmutable::now('Africa/Johannesburg')->startOfDay();
-        $end = $today->addDays(2);
+        $end = $today->addDays(7);
         $players = app(MyTennisService::class)->playersFor($user)->keyBy('id');
         $groups = [];
         if ($players->isEmpty()) return ['day' => $today->toDateString(), 'players' => []];
@@ -92,7 +92,7 @@ final class MatchReminderService
                     $match = ['key' => $key, 'kind' => $isTeam ? 'team' : 'individual',
                         'label' => $isTeam ? 'Your team plays' : 'Your match', 'event' => $event->name,
                         'draw' => $row['draw_name'], 'participants' => $row['participants'],
-                        'day' => $time->isSameDay($today) ? 'Today' : 'Tomorrow',
+                        'day' => $time->isSameDay($today) ? 'Today' : ($time->isSameDay($today->addDay()) ? 'Tomorrow' : $time->format('l')),
                         'date' => $time->format('D j M'), 'time' => $time->format('H:i'),
                         'scheduled_at' => $row['scheduled_at'], 'venue' => $row['venue_name'] ?: 'Venue to be confirmed',
                         'court' => $row['court'] ?: null, 'url' => route($fixture instanceof TeamFixture ? 'frontend.fixtures.show' : 'frontend.showDraw', $row['draw_id'])];

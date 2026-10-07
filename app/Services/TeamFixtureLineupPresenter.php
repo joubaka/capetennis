@@ -12,7 +12,7 @@ use Illuminate\Support\Collection;
 /** Read-only display of original roster ranks, including composite mixed sides. */
 class TeamFixtureLineupPresenter
 {
-    public function prepare(Collection $fixtures, bool $publicDraw = false): void
+    public function prepare(Collection $fixtures, bool $publicDraw = false, ?int $selectedPlayerId = null): void
     {
         (new \Illuminate\Database\Eloquent\Collection($fixtures->all()))->loadMissing([
             'draw.categoryEvent.category', 'teamTie', 'fixtureResults', 'region1Name', 'region2Name', 'fixturePlayers.player1', 'fixturePlayers.player2',
@@ -30,8 +30,8 @@ class TeamFixtureLineupPresenter
         foreach ($fixtures as $fixture) {
             $rankSources = ['home' => [], 'away' => []];
             $fixture->setAttribute('lineup_display', [
-                'home' => $this->side($fixture, 'home', $teams, $historicalRegions, $rankSources['home'], $publicDraw),
-                'away' => $this->side($fixture, 'away', $teams, $historicalRegions, $rankSources['away'], $publicDraw),
+                'home' => $this->side($fixture, 'home', $teams, $historicalRegions, $rankSources['home'], $publicDraw, $selectedPlayerId),
+                'away' => $this->side($fixture, 'away', $teams, $historicalRegions, $rankSources['away'], $publicDraw, $selectedPlayerId),
             ]);
             $fixture->setAttribute('lineup_rank_sources', $rankSources);
             $fixture->setAttribute('tie_display', [
@@ -45,7 +45,7 @@ class TeamFixtureLineupPresenter
         }
     }
 
-    private function side(TeamFixture $fixture, string $side, Collection $teams, Collection $historicalRegions, array &$rankSources, bool $publicDraw): array
+    private function side(TeamFixture $fixture, string $side, Collection $teams, Collection $historicalRegions, array &$rankSources, bool $publicDraw, ?int $selectedPlayerId): array
     {
         $home = $side === 'home';
         $tie = $this->tie($fixture);
@@ -63,6 +63,7 @@ class TeamFixtureLineupPresenter
             ->first(fn ($rubber) => (int) $rubber['sequence'] === (int) $fixture->rubber_sequence);
         $positions = $template[$side.'_positions'] ?? [];
         $players = [];
+        $selectedPlayerAssigned = false;
         foreach ($fixture->fixturePlayers->sortBy('slot_no')->values() as $index => $row) {
             $historical = $row->participant_snapshot[$home ? 1 : 2] ?? null;
             $sideNumber = $home ? 1 : 2;
@@ -101,6 +102,7 @@ class TeamFixtureLineupPresenter
             }
             $rankSources[] = $rankSource;
             $name = $historical['name'] ?? $profile?->full_name ?? ($imported ? trim($imported->name.' '.$imported->surname) : 'TBD');
+            if ($selectedPlayerId && (int) $profile?->id === $selectedPlayerId) $selectedPlayerAssigned = true;
             $display = ['name' => $name, 'rank' => (int) $rank > 0 ? (int) $rank : null];
             if (auth()->user()?->hasRole('super-user')) { $display['player_id'] = $profile?->id; }
             $players[] = $display;
@@ -108,6 +110,7 @@ class TeamFixtureLineupPresenter
         if (!$players) {
             $legacyRank = $fixture->{$side.'_rank_nr'};
             foreach (($home ? $fixture->team1 : $fixture->team2) as $profile) {
+                if ($selectedPlayerId && (int) $profile->id === $selectedPlayerId) $selectedPlayerAssigned = true;
                 $rankSources[] = (int) $legacyRank > 0 ? 'legacy' : null;
                 $display = ['name' => $profile->full_name, 'rank' => (int) $legacyRank > 0 ? (int) $legacyRank : null];
                 if (auth()->user()?->hasRole('super-user')) { $display['player_id'] = $profile->id; }
@@ -115,7 +118,8 @@ class TeamFixtureLineupPresenter
             }
         }
         return ['region' => $label, 'region_name' => $regionName, 'region_logo' => RegionLogo::path($regionName),
-            'region_color' => RegionBadge::color($region), 'players' => $players];
+            'region_color' => RegionBadge::color($region), 'players' => $players]
+            + ($selectedPlayerId ? ['selected_player_assigned' => $selectedPlayerAssigned] : []);
     }
 
     private function tie(TeamFixture $fixture): ?\App\Models\TeamTie

@@ -56,6 +56,7 @@ class MyTennisServiceTest extends TestCase
             'published' => true,
             'oop_published' => true,
         ]);
+        $this->activeRegistrations($draw, [$registration, $opponentRegistration, $otherRegistration, $otherOpponentRegistration]);
         $settings = $draw->settings()->create([
             'schedule_visibility' => DrawSetting::SCHEDULE_VISIBILITY_CURRENT_ROUND,
         ]);
@@ -108,6 +109,7 @@ class MyTennisServiceTest extends TestCase
         $publicVisibility = app(PublicDrawScheduleVisibility::class);
 
         $this->assertSame([$first->id], $service->nextScheduledMatchFor($player)->pluck('id')->all());
+        $this->assertSame([$first->id], $service->upcomingScheduledMatchesFor($player)->pluck('id')->all());
         $this->assertEqualsCanonicalizing([$first->id, $sameRound->id], $publicVisibility->visibleFixtureIds($draw)->all());
         $restrictedHub = $publicVisibility->restrictRoundRobinHub($draw, [
             'rrFixtures' => [[
@@ -139,20 +141,25 @@ class MyTennisServiceTest extends TestCase
 
         $settings->update(['schedule_visibility' => DrawSetting::SCHEDULE_VISIBILITY_FULL]);
         request()->attributes->remove('published_schedule_rows_'.$event->id);
+        request()->attributes->remove('published_schedule_rows_'.$event->id.'_timing');
         $this->assertSame([$first->id], $service->nextScheduledMatchFor($player)->pluck('id')->all());
+        $this->assertSame([$first->id, $following->id], $service->upcomingScheduledMatchesFor($player)->pluck('id')->all());
         $this->assertNull($publicVisibility->visibleFixtureIds($draw->fresh()));
 
         $settings->update(['schedule_visibility' => DrawSetting::SCHEDULE_VISIBILITY_CURRENT_ROUND]);
         FixtureResult::factory()->create(['fixture_id' => $first->id]);
         request()->attributes->remove('published_schedule_rows_'.$event->id);
+        request()->attributes->remove('published_schedule_rows_'.$event->id.'_timing');
         $this->assertSame([$following->id], $service->nextScheduledMatchFor($player)->pluck('id')->all());
         $this->assertEqualsCanonicalizing([$sameRound->id, $following->id], $publicVisibility->visibleFixtureIds($draw->fresh())->all());
         FixtureResult::factory()->create(['fixture_id' => $sameRound->id]);
         request()->attributes->remove('published_schedule_rows_'.$event->id);
+        request()->attributes->remove('published_schedule_rows_'.$event->id.'_timing');
         $this->assertSame([$following->id], $publicVisibility->visibleFixtureIds($draw->fresh())->all());
 
         $draw->update(['oop_published' => false]);
         request()->attributes->remove('published_schedule_rows_'.$event->id);
+        request()->attributes->remove('published_schedule_rows_'.$event->id.'_timing');
         $this->assertTrue($service->nextScheduledMatchFor($player)->isEmpty(), 'An unpublished schedule must not appear on the player dashboard.');
         $this->assertTrue($publicVisibility->visibleFixtureIds($draw->fresh())->isEmpty(), 'An unpublished schedule must expose no public fixture times.');
     }
@@ -219,6 +226,7 @@ class MyTennisServiceTest extends TestCase
 
         FixtureResult::factory()->create(['fixture_id' => $opening->id]);
         request()->attributes->remove('published_schedule_rows_'.$event->id);
+        request()->attributes->remove('published_schedule_rows_'.$event->id.'_timing');
 
         $this->assertSame(
             [$byePlayersFirstMatch->id, $laterMatch->id],
@@ -255,20 +263,25 @@ class MyTennisServiceTest extends TestCase
         $registration = Registration::factory()->create();
         $registration->players()->attach($player);
         $individualDraw = Draw::factory()->create(['event_id' => $event->id, 'published' => true]);
-        $individual = Fixture::factory()->create(['draw_id' => $individualDraw->id, 'registration1_id' => $registration->id]);
+        $opponent = Registration::factory()->create();
+        $this->activeRegistrations($individualDraw, [$registration, $opponent]);
+        $individual = Fixture::factory()->create(['draw_id' => $individualDraw->id, 'registration1_id' => $registration->id, 'registration2_id' => $opponent->id]);
         OrderOfPlay::create(['fixture_id' => $individual->id, 'draw_id' => $individualDraw->id,
             'venue_id' => $teamFixture->venue_id, 'time' => now()->addDays(3), 'court' => '2']);
         app(SchedulePublicationService::class)->publish($event, ['draw_id' => $individualDraw->id]);
         $service = app(MyTennisService::class);
         $this->assertInstanceOf(\App\Models\TeamFixture::class, $service->nextScheduledMatchFor($player)->sole());
+        $this->assertSame([$teamFixture->id, $individual->id], $service->upcomingScheduledMatchesFor($player)->pluck('id')->all());
         $teamFixture->update(['match_status' => 1]);
         $this->assertSame($individual->id, $service->nextScheduledMatchFor($player)->sole()->id);
         $teamFixture->update(['match_status' => 0]);
         $draw->update(['published' => false]);
         request()->attributes->remove('published_schedule_rows_'.$event->id);
+        request()->attributes->remove('published_schedule_rows_'.$event->id.'_timing');
         $this->assertSame($individual->id, $service->nextScheduledMatchFor($player)->sole()->id);
         $individualDraw->update(['oop_published' => false]);
         request()->attributes->remove('published_schedule_rows_'.$event->id);
+        request()->attributes->remove('published_schedule_rows_'.$event->id.'_timing');
         $this->assertTrue($service->nextScheduledMatchFor($player)->isEmpty());
     }
 
@@ -283,6 +296,48 @@ class MyTennisServiceTest extends TestCase
         $this->assertSame($fixture->id, app(MyTennisService::class)->nextScheduledMatchFor($player)->sole()->id);
     }
 
+    public function test_profile_uses_the_selected_players_actual_rubber_and_exact_doubles_pairing(): void
+    {
+        [$player, $event, $draw, $fixture] = $this->scheduledTeamMatch();
+        $secondTie = \App\Models\TeamTie::factory()->create(['draw_id' => $draw->id,
+            'home_team_id' => $fixture->teamTie->home_team_id, 'away_team_id' => $fixture->teamTie->away_team_id,
+            'round_nr' => 2, 'tie_nr' => 2]);
+        $secondFixture = \App\Models\TeamFixture::create(['draw_id' => $draw->id, 'team_tie_id' => $secondTie->id,
+            'round_nr' => 2, 'tie_nr' => 2, 'match_nr' => 2, 'fixture_type' => 1, 'match_status' => 0,
+            'scheduled_at' => now()->addDays(3), 'venue_id' => $fixture->venue_id, 'court_label' => '2']);
+        $laterRubber = \App\Models\TeamFixture::create(['draw_id' => $draw->id, 'team_tie_id' => $secondTie->id,
+            'round_nr' => 2, 'tie_nr' => 2, 'match_nr' => 3, 'fixture_type' => 2, 'match_status' => 0,
+            'scheduled_at' => now()->addDays(3)->addHour(), 'venue_id' => $fixture->venue_id, 'court_label' => '3']);
+        $secondPlayer = Player::factory()->create(['name' => 'Second', 'surname' => 'Scheduled']);
+        \App\Models\TeamPlayer::create(['team_id' => $secondTie->home_team_id, 'player_id' => $secondPlayer->id, 'rank' => 2]);
+        \App\Models\TeamFixturePlayer::forceCreate(['team_fixture_id' => $secondFixture->id, 'team1_id' => $secondPlayer->id, 'slot_no' => 1]);
+        $partner = Player::factory()->create(['name' => 'Doubles', 'surname' => 'Partner']);
+        $opponent = Player::factory()->create(['name' => 'First', 'surname' => 'Opponent']);
+        $opponentPartner = Player::factory()->create(['name' => 'Second', 'surname' => 'Opponent']);
+        \App\Models\TeamPlayer::create(['team_id' => $secondTie->home_team_id, 'player_id' => $partner->id, 'rank' => 4]);
+        foreach ([$opponent, $opponentPartner] as $index => $awayPlayer) {
+            \App\Models\TeamPlayer::create(['team_id' => $secondTie->away_team_id, 'player_id' => $awayPlayer->id, 'rank' => $index + 1]);
+        }
+        \App\Models\TeamFixturePlayer::forceCreate(['team_fixture_id' => $laterRubber->id, 'team1_id' => $player->id, 'team2_id' => $opponent->id, 'slot_no' => 1]);
+        \App\Models\TeamFixturePlayer::forceCreate(['team_fixture_id' => $laterRubber->id, 'team1_id' => $partner->id, 'team2_id' => $opponentPartner->id, 'slot_no' => 2]);
+        $unscheduledPlayer = Player::factory()->create(['name' => 'Hidden', 'surname' => 'Unscheduled']);
+        \App\Models\TeamPlayer::create(['team_id' => $secondTie->home_team_id, 'player_id' => $unscheduledPlayer->id, 'rank' => 3]);
+        $unscheduledRubber = \App\Models\TeamFixture::create(['draw_id' => $draw->id, 'team_tie_id' => $secondTie->id,
+            'round_nr' => 2, 'tie_nr' => 2, 'match_nr' => 4, 'fixture_type' => 1, 'match_status' => 0]);
+        \App\Models\TeamFixturePlayer::forceCreate(['team_fixture_id' => $unscheduledRubber->id, 'team1_id' => $unscheduledPlayer->id, 'slot_no' => 1]);
+        app(SchedulePublicationService::class)->publish($event, ['draw_id' => $draw->id]);
+        $matches = app(MyTennisService::class)->upcomingScheduledMatchesFor($player);
+        $this->assertSame([$fixture->id, $laterRubber->id], $matches->pluck('id')->all());
+        $this->assertSame([$player->full_name, $partner->full_name], $matches[1]->profile_match_players['home']);
+        $this->assertSame([$opponent->full_name, $opponentPartner->full_name], $matches[1]->profile_match_players['away']);
+        $this->assertSame($laterRubber->scheduled_at->format('Y-m-d H:i:s'), $matches[1]->scheduled_at->format('Y-m-d H:i:s'));
+        $this->assertNotContains($unscheduledPlayer->full_name, $matches[1]->profile_match_players['home']);
+        $user = User::factory()->create();
+        $user->players()->attach($player);
+        $this->actingAs($user)->get(route('my.tennis'))->assertOk()->assertSee($partner->full_name)->assertSee($opponent->full_name)->assertSee($opponentPartner->full_name)->assertDontSee($secondPlayer->full_name)
+            ->assertDontSee($unscheduledPlayer->full_name)->assertSee('Match players for', false)->assertSee('Team fixture - players to be confirmed');
+    }
+
     public function test_team_match_excludes_private_or_finished_events_and_completed_ties(): void
     {
         [$player, $event, $draw, $fixture] = $this->scheduledTeamMatch();
@@ -290,13 +345,26 @@ class MyTennisServiceTest extends TestCase
         $service = app(MyTennisService::class);
         $event->update(['published' => false]);
         request()->attributes->remove('published_schedule_rows_'.$event->id);
+        request()->attributes->remove('published_schedule_rows_'.$event->id.'_timing');
         $this->assertTrue($service->nextScheduledMatchFor($player)->isEmpty());
         $event->update(['published' => true, 'end_date' => '2026-10-06']);
         request()->attributes->remove('published_schedule_rows_'.$event->id);
+        request()->attributes->remove('published_schedule_rows_'.$event->id.'_timing');
         $this->assertTrue($service->nextScheduledMatchFor($player)->isEmpty());
         $event->update(['end_date' => '2026-10-14']);
         $fixture->teamTie->update(['status' => \App\Models\TeamTie::STATUS_COMPLETED]);
         $this->assertTrue($service->nextScheduledMatchFor($player)->isEmpty());
+    }
+
+    private function activeRegistrations(Draw $draw, array $registrations): void
+    {
+        $category = \App\Models\CategoryEvent::factory()->create(['event_id' => $draw->event_id]);
+        $draw->update(['category_event_id' => $category->id]);
+        foreach ($registrations as $registration) {
+            \App\Models\CategoryEventRegistration::factory()->create([
+                'category_event_id' => $category->id, 'registration_id' => $registration->id,
+            ]);
+        }
     }
 
     private function scheduledTeamMatch(): array
