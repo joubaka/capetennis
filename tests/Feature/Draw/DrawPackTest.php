@@ -97,6 +97,57 @@ class DrawPackTest extends TestCase
             ->assertSee('Master order of play');
     }
 
+    public function test_print_options_lists_only_this_events_draws_and_venues(): void
+    {
+        Draw::factory()->create(['event_id' => $this->event->id, 'drawName' => 'Local print draw']);
+        Draw::factory()->create(['event_id' => Event::factory()->create()->id, 'drawName' => 'Foreign private draw']);
+        $venue = Venue::forceCreate(['name' => 'Local print venue']);
+        $this->event->venues()->attach($venue, ['num_courts' => 2]);
+        Venue::forceCreate(['name' => 'Foreign private venue']);
+
+        $this->actingAs($this->admin)->get(route('headoffice.printOptions', $this->event))
+            ->assertOk()->assertSee('Print options')->assertSee('Local print draw')->assertSee('Local print venue')
+            ->assertDontSee('Foreign private draw')->assertDontSee('Foreign private venue')
+            ->assertSee('Venue order of play')->assertSee('Round-robin matrices');
+    }
+
+    public function test_print_options_denies_an_admin_from_another_event(): void
+    {
+        $otherAdmin = User::factory()->create()->assignRole('admin');
+        $this->actingAs($otherAdmin)->get(route('headoffice.printOptions', $this->event))->assertForbidden();
+    }
+
+    public function test_print_options_provides_team_pdf_instead_of_individual_pack_for_team_draws(): void
+    {
+        $type = \App\Models\DrawType::forceCreate(['drawTypeName' => 'Print teams', 'type' => 'team', 'btn_color' => 'primary']);
+        $draw = Draw::factory()->create(['event_id' => $this->event->id, 'drawName' => 'Team print draw', 'drawType_id' => $type->id]);
+        $this->actingAs($this->admin)->get(route('headoffice.printOptions', $this->event))
+            ->assertOk()->assertSee(route('fixture.create.pdf', ['fixtures' => $draw->id]), false)
+            ->assertSee('Team draws by age group')->assertDontSee('Complete draw pack:');
+    }
+
+    public function test_venue_print_preview_requires_event_access_and_rejects_foreign_venues(): void
+    {
+        $foreignVenue = Venue::forceCreate(['name' => 'Foreign venue']);
+        $this->actingAs($this->admin)->get(route('headoffice.venue.fixtures', ['event' => $this->event, 'venue' => $foreignVenue]))->assertNotFound();
+        $otherAdmin = User::factory()->create()->assignRole('admin');
+        $this->actingAs($otherAdmin)->get(route('headoffice.venue.fixtures', ['event' => $this->event, 'venue' => $foreignVenue]))->assertForbidden();
+    }
+
+    public function test_venue_print_preview_excludes_another_events_fixtures_at_a_shared_venue(): void
+    {
+        $venue = Venue::forceCreate(['name' => 'Shared print venue']);
+        $this->event->venues()->attach($venue, ['num_courts' => 2]);
+        $local = Draw::factory()->create(['event_id' => $this->event->id, 'drawName' => 'Local venue draw']);
+        $foreign = Draw::factory()->create(['event_id' => Event::factory()->create()->id, 'drawName' => 'Foreign venue draw']);
+        foreach ([$local, $foreign] as $draw) {
+            \App\Models\TeamFixture::create(['draw_id' => $draw->id, 'match_nr' => 1, 'venue_id' => $venue->id, 'scheduled' => true]);
+        }
+
+        $this->actingAs($this->admin)->get(route('headoffice.venue.fixtures', ['event' => $this->event, 'venue' => $venue]))
+            ->assertOk()->assertSee('Local venue draw')->assertDontSee('Foreign venue draw');
+    }
+
     public function test_pack_rejects_draws_from_another_event(): void
     {
         $foreignDraw = Draw::factory()->create([

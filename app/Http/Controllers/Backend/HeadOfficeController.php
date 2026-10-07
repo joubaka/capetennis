@@ -313,18 +313,23 @@ class HeadOfficeController extends Controller
 
     return view('backend.headOffice.team-event-show', $data);
   }
-  /**
-   * ✅ NEW:
-   * Venue fixtures page for a specific event + venue (clickable venue list on right)
-   *
-   * IMPORTANT:
-   * This assumes:
-   * - Venue->fixtures() exists
-   * - Fixture has scheduled_at OR scheduled flag + scheduled_at
-   * - Fixture->draw exists and draw->event_id exists
-   */
+  /** Show the event's available print layouts and sheets. */
+  public function printOptions(Event $event)
+  {
+    $this->authorize('event-draw.view', $event);
+    $event->load(['draws.draw_types', 'draws.venues', 'draws.settings', 'venues']);
+    $event->draws->each(fn (Draw $draw) => $draw->setRelation('event', $event));
+    $drawGroups = app(\App\Services\Scheduling\AgeGroupVenueDefaultService::class)->groups($event);
+    $venues = $event->venues->concat($event->draws->flatMap->venues)->unique('id')->sortBy('name')->values();
+
+    return view('backend.headOffice.print-options', compact('event', 'drawGroups', 'venues'));
+  }
+
   public function venueFixtures(Event $event, Venue $venue)
   {
+    $this->authorize('event-draw.view', $event);
+    abort_unless($event->venues()->where('venues.id', $venue->id)->exists()
+      || $event->draws()->whereHas('venues', fn ($query) => $query->where('venues.id', $venue->id))->exists(), 404);
     $fixtures = $venue->fixtures()
       ->with([
         'draw',

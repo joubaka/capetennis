@@ -147,6 +147,27 @@ class MatchReminderTest extends TestCase
             ->assertViewHas('upcomingMatches', fn ($matches) => $matches->isEmpty());
     }
 
+    public function test_real_login_exposes_linked_player_reminder_and_resets_its_scope_on_next_login(): void
+    {
+        $user = User::factory()->create();
+        $player = Player::factory()->create(['userId' => $user->id]);
+        $this->matchFor($player, '2026-10-09 09:15:00');
+        $credentials = ['email' => $user->email, 'password' => 'password'];
+
+        $this->post('/login', $credentials)->assertRedirect();
+        $firstLogin = session('match_reminder_login');
+        $this->assertTrue(\Illuminate\Support\Str::isUuid($firstLogin));
+        $this->get(route('my.tennis'))->assertOk()
+            ->assertSee('id="match-reminder"', false)
+            ->assertSee('data-login="'.$firstLogin.'"', false);
+        $this->getJson(route('my.tennis.match-reminder'))->assertOk()
+            ->assertJsonCount(1, 'players')->assertJsonCount(1, 'players.0.matches');
+
+        $this->post('/logout')->assertRedirect();
+        $this->post('/login', $credentials)->assertRedirect();
+        $this->assertNotSame($firstLogin, session('match_reminder_login'));
+    }
+
     public function test_successful_login_rotates_only_the_reminder_dismissal_scope(): void
     {
         $user = User::factory()->create();

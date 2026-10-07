@@ -14,7 +14,7 @@
         @can('event.manage', $event)
           <a class="btn draws-button draws-button-primary" href="{{ route('backend.event-venue-schedule.index', $event) }}"><i class="ti ti-calendar-event me-1"></i> Schedule all draws & matches</a>
         @endcan
-        <button type="button" class="btn draws-button draws-button-secondary" data-bs-toggle="modal" data-bs-target="#printAllDrawsModal">@include('backend.headOffice.partials.draw-icon', ['icon' => 'print']) Draw pack</button>
+        <a class="btn draws-button draws-button-secondary" href="{{ route('headoffice.printOptions', $event) }}">@include('backend.headOffice.partials.draw-icon', ['icon' => 'print']) Print options</a>
       @endif
       <button type="button" class="btn draws-button draws-button-primary" data-bs-toggle="modal" data-bs-target="#createDrawModal">@include('backend.headOffice.partials.draw-icon', ['icon' => 'plus']) New draw</button>
     </div>

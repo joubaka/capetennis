@@ -1551,6 +1551,9 @@ Route::delete(
   Route::post('/event/{event}/create-individual-draw', [EventAdminController::class, 'createIndividualDraw'])
     ->name('headoffice.createSingleDraw');
 
+  Route::get('/event/{event}/print-options', [HeadOfficeController::class, 'printOptions'])
+    ->name('headoffice.printOptions');
+
   Route::get('/event/{event}/print-draws-data', [HeadOfficeController::class, 'printDrawsData'])
     ->name('headoffice.printDrawsData');
 

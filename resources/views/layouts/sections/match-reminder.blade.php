@@ -22,6 +22,17 @@
         <div data-reminder-players></div>
       </div>
       <div class="modal-footer">
+        <div class="d-flex flex-wrap align-items-center gap-2 me-auto">
+          <label for="match-reminder-preference" class="mb-0">Remind me</label>
+          <select id="match-reminder-preference" class="form-select" style="min-height:44px;width:240px" data-reminder-preference data-select2-script="{{ asset('assets/vendor/libs/select2/select2.js') }}" data-select2-style="{{ asset('assets/vendor/libs/select2/select2.css') }}" aria-describedby="match-reminder-timing-help">
+            <option value="login">Close for this login</option>
+            <option value="hour">Snooze for 1 hour</option>
+            <option value="week">Hide for 7 days</option>
+            <option value="match-day" data-reminder-next-day disabled>On the next match day</option>
+          </select>
+          <button type="button" class="btn btn-outline-secondary" style="min-height:44px" data-reminder-apply>Apply and close</button>
+          <small id="match-reminder-timing-help" class="w-100 text-muted">The next match day starts at midnight in South Africa. If only today’s matches remain, we remind you at the next match time. Reopen anytime from My Tennis.</small>
+        </div>
         <a href="{{ route('my.tennis') }}" class="btn btn-primary" style="min-height:44px">View all in My Tennis</a>
         <button type="button" class="btn btn-outline-secondary" style="min-height:44px" data-bs-dismiss="modal">Close</button>
       </div>
