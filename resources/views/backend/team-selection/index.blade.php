@@ -138,7 +138,7 @@
         <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#event-roster-email"><i class="ti ti-mail-forward me-1"></i>Email selected players across regions</button>
       </div>
       <div class="modal fade" id="event-roster-email" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-scrollable"><form method="POST" action="{{ route('backend.team-selection.event-roster-email.send', $event) }}" class="modal-content" data-event-roster-email-form>@csrf
+        <div class="modal-dialog modal-xl modal-dialog-scrollable"><form method="POST" action="{{ route('backend.team-selection.event-roster-email.send', $event) }}" class="modal-content" data-mail-compose data-event-roster-email-form>@csrf
           <input type="hidden" name="recipient_hash" data-event-roster-email-hash>
           <input type="hidden" name="send_token" data-event-roster-email-token>
           <div class="modal-header"><div><h5 class="modal-title">Email selected players</h5><div class="small text-muted">Choose regions, then teams, then the exact players. Nothing is queued until the final reviewed list is confirmed.</div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
@@ -148,6 +148,7 @@
             #event-roster-email .event-audience-wrap { overflow-wrap: anywhere; word-break: break-word; white-space: normal; }
           </style>
           <div class="modal-body event-audience-modal-body">
+            @include('backend.partials.email-sender-fields')
             <div class="border rounded p-3 mb-3" data-event-roster-filter-panel data-preview-url="{{ route('backend.team-selection.event-roster-email.preview', $event) }}">
               <div class="d-flex gap-2 mb-3" aria-label="Audience selection progress"><span class="badge bg-primary" data-event-roster-step-badge="1">1. Regions</span><span class="badge bg-label-secondary" data-event-roster-step-badge="2">2. Teams</span><span class="badge bg-label-secondary" data-event-roster-step-badge="3">3. Players</span></div>
               <section data-event-roster-step="1" tabindex="-1"><fieldset><legend class="form-label mb-2">Select one or more regions</legend><div class="row g-2">@foreach($eventRegions as $filterRegion)<div class="col-sm-6 col-lg-3"><label class="form-check border rounded p-2 h-100 event-audience-min-width"><input class="form-check-input ms-0 me-2 flex-shrink-0" type="checkbox" name="event_region_ids[]" value="{{ $filterRegion->id }}" data-event-roster-region><span class="form-check-label event-audience-wrap event-audience-min-width">{{ rawurldecode($filterRegion->region?->region_name ?? '') }}</span></label></div>@endforeach</div></fieldset><fieldset class="mt-3"><legend class="form-label mb-2">Choose which players to load</legend><div class="d-flex flex-wrap gap-3"><label class="form-check"><input class="form-check-input" type="radio" name="audience_mode" value="roster" checked data-event-roster-mode> Current roster players</label><label class="form-check"><input class="form-check-input" type="radio" name="audience_mode" value="ranking" data-event-roster-mode> Players on the current published ranking</label></div><div class="form-text">Published-ranking mode includes players beyond the team and reserve places.</div><div class="mt-3 d-none" data-event-ranking-status-wrap><label class="form-label" for="event-ranking-status">Which ranked players?</label><select class="form-select" id="event-ranking-status" name="ranking_status" data-event-ranking-status data-event-roster-filter><option value="all">All ranked players</option><option value="unregistered">Unregistered only</option><option value="declined">Declined only</option><option value="unregistered_or_declined">Unregistered or declined</option></select><div class="form-text">Registered means payment is confirmed. Invited players and players awaiting payment are treated as unregistered.</div></div></fieldset><button class="btn btn-primary mt-3" type="button" data-event-roster-load-teams>Show teams</button></section>
@@ -160,7 +161,7 @@
             <div class="mb-3"><label class="form-label">Message</label><textarea class="form-control" name="message" rows="7" maxlength="20000" required></textarea></div>
             <div class="form-check"><input class="form-check-input" type="checkbox" name="confirm_recipients" value="1" id="confirm-event-roster-email" required><label class="form-check-label" for="confirm-event-roster-email">I confirm the exact recipient details above are correct</label></div>
           </div>
-          <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary"><i class="ti ti-send me-1"></i>Queue email</button></div>
+          <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary"><i class="ti ti-send me-1"></i>Preview email</button></div>
         </form></div>
       </div>
     @endif
@@ -273,7 +274,7 @@
                 </div>
             @if($isEventManager)
               <div class="modal fade" id="final-team-reminders-{{ $eventRegion->id }}" tabindex="-1" aria-hidden="true">
-                <div class="modal-dialog modal-lg modal-dialog-centered"><form method="POST" action="{{ route('backend.team-selection.final-reminders.send', [$event, $eventRegion]) }}" class="modal-content" data-final-reminder-form data-clothing-enabled="{{ $usesRegionalClothing ? '1' : '0' }}" data-reminder-summaries='@json($reminderSummaries[$eventRegion->id] ?? [])' data-reminder-hashes='@json($reminderHashes[$eventRegion->id] ?? [])'>@csrf
+                <div class="modal-dialog modal-lg modal-dialog-centered"><form method="POST" action="{{ route('backend.team-selection.final-reminders.send', [$event, $eventRegion]) }}" class="modal-content" data-mail-launch data-final-reminder-form data-clothing-enabled="{{ $usesRegionalClothing ? '1' : '0' }}" data-reminder-summaries='@json($reminderSummaries[$eventRegion->id] ?? [])' data-reminder-hashes='@json($reminderHashes[$eventRegion->id] ?? [])'>@csrf
                   <input type="hidden" name="send_token" value="{{ (string) \Illuminate\Support\Str::uuid() }}">
                   <input type="hidden" name="recipient_hash" data-reminder-hash>
                   <div class="modal-header"><div><h5 class="modal-title">Send {{ $eventRegion->region?->region_name }} reminders</h5><div class="small text-muted">Only active invitations in this region are included.</div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
@@ -286,7 +287,7 @@
                     <div class="border rounded p-3 bg-light"><strong data-reminder-preview-title>Registration is closing</strong><p class="mb-1 mt-2" data-reminder-preview-copy>{{ $usesRegionalClothing ? 'Unregistered players receive their registration/payment link. Registered players receive their clothing action link.' : 'Unregistered players receive their registration/payment link.' }}</p><small class="text-muted">One email is sent per address. Where a parent receives mail for several players in this region, all affected players and their individual links are included.</small></div>
                     <div class="form-check mt-3"><input class="form-check-input" type="checkbox" name="confirm_recipients" value="1" id="confirm-final-reminders-{{ $eventRegion->id }}" required><label class="form-check-label" for="confirm-final-reminders-{{ $eventRegion->id }}">I reviewed this region’s reminder and recipient group.</label></div>
                   </div>
-                  <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" data-reminder-submit onclick="return confirm('Queue this reminder for the reviewed regional recipients?');">Send reminder</button></div>
+                  <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" data-reminder-submit>Write email</button></div>
                 </form></div>
               </div>
             @endif
@@ -508,7 +509,7 @@
                                       <div class="d-flex flex-wrap gap-1 mt-1">
                                         <a class="btn btn-xs btn-outline-secondary" target="_blank" href="{{ route('backend.team-selection.invitations.email.view', [$event, $activeImport, $invitation]) }}">View email</a>
                                         @if(!$awaitingRestoredInvitation && !$awaitingActivatedInvitation && in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true))
-                                          <form method="POST" action="{{ route('backend.team-selection.invitations.email.resend', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('Resend the saved invitation email to this player?');">@csrf<button class="btn btn-xs btn-outline-primary">Resend</button></form>
+                                          <form method="POST" action="{{ route('backend.team-selection.invitations.email.resend', [$event, $activeImport, $invitation]) }}" data-mail-launch>@csrf<button class="btn btn-xs btn-outline-primary">Resend</button></form>
                                         @endif
                                       </div>
                                     @endif
@@ -533,7 +534,7 @@
                                       @include('backend.team-selection._cash-refund-action')
                                     @endif
                                     @if($awaitingRestoredInvitation)
-                                      <form method="POST" action="{{ route('backend.team-selection.invitations.email.send-restored', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('Send the invitation to this restored player now? Confirm the team positions are correct before continuing.');">@csrf<button class="dropdown-item text-success">Send invitation</button></form>
+                                      <form method="POST" action="{{ route('backend.team-selection.invitations.email.send-restored', [$event, $activeImport, $invitation]) }}" data-mail-launch>@csrf<button class="dropdown-item text-success">Send invitation</button></form>
                                     @endif
                                     @if($canMarkPaidPrivately)
                                       <form method="POST" action="{{ route('backend.team-selection.invitations.mark-paid-privately', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('Confirm that payment was collected privately for this player? This will mark the team place paid, cancel any pending checkout, and will NOT be recorded as a PayFast reconciliation. No email will be sent.');">@csrf<button class="dropdown-item text-primary">Mark paid privately (not reconciled)</button></form>
@@ -712,19 +713,20 @@
                         <details class="mt-2"><summary>Review {{ $pendingActivatedRecipients->count() }} exact recipient(s)</summary><div class="small text-muted mt-2">@forelse($pendingActivatedRecipients as $pendingInvitation)<div>{{ $pendingInvitation->player?->full_name ?: 'Player' }} · {{ $recipientEmailFor($pendingInvitation) }}</div>@empty No pending player currently has a valid email address. @endforelse</div></details>
                         @if($pendingActivatedInvitations->count() > $pendingActivatedRecipients->count())<div class="small text-danger mt-2">{{ $pendingActivatedInvitations->count() - $pendingActivatedRecipients->count() }} pending player(s) have no valid email and will remain pending.</div>@endif
                         <div class="mt-3 form-text">Use <strong>Email checked players</strong> above a team table to compose a custom email.</div>
-                        <form method="POST" action="{{ route('backend.team-selection.invitations.email.send-pending-activated', [$event, $activeImport]) }}" class="mt-3" onsubmit="return confirm('Queue invitations for exactly {{ $pendingActivatedRecipients->count() }} reviewed newly activated recipient(s)?');">@csrf
+                        <form method="POST" action="{{ route('backend.team-selection.invitations.email.send-pending-activated', [$event, $activeImport]) }}" class="mt-3" data-mail-launch>@csrf
                           <input type="hidden" name="recipient_hash" value="{{ $pendingActivatedRecipientHash }}"><input type="hidden" name="recipient_count" value="{{ $pendingActivatedRecipients->count() }}">
                           <div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="confirm_recipients" value="1" id="confirm-pending-activated-{{ $activeImport->id }}" required><label class="form-check-label" for="confirm-pending-activated-{{ $activeImport->id }}">I reviewed and confirm these {{ $pendingActivatedRecipients->count() }} exact recipient(s).</label></div>
-                          <button class="btn btn-sm btn-success" @disabled($pendingActivatedRecipients->isEmpty())>Confirm and send {{ $pendingActivatedRecipients->count() }} pending invitation(s)</button>
+                          <button class="btn btn-sm btn-success" @disabled($pendingActivatedRecipients->isEmpty())>Write email to {{ $pendingActivatedRecipients->count() }} pending players</button>
                         </form>
                       </div>
                     @endif
                     @if($customEmailRecipients->isNotEmpty())
                       <div class="modal fade" id="custom-player-email-modal-{{ $activeImport->id }}" tabindex="-1" aria-hidden="true">
                         <div class="modal-dialog modal-lg modal-dialog-centered">
-                          <form id="custom-player-email-form-{{ $activeImport->id }}" method="POST" target="_blank" action="{{ route('backend.team-selection.invitations.email.custom-preview', [$event, $activeImport]) }}" class="modal-content">@csrf
+                          <form id="custom-player-email-form-{{ $activeImport->id }}" method="POST" action="{{ route('backend.team-selection.invitations.email.custom-preview', [$event, $activeImport]) }}" class="modal-content" data-mail-compose>@csrf
                             <div class="modal-header"><div><h5 class="modal-title">Email checked players</h5><div class="small text-muted">Only checked, eligible active players in this team will be included.</div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                             <div class="modal-body">
+                              @include('backend.partials.email-sender-fields')
                               <div class="mb-3"><label class="form-label" for="custom-invitation-subject-{{ $activeImport->id }}">Subject</label><input id="custom-invitation-subject-{{ $activeImport->id }}" class="form-control" name="email_subject" maxlength="255" value="{{ old('email_subject', data_get($activeImport->communication_snapshot, 'subject', $activeImport->email_subject)) }}" required></div>
                               <div><label class="form-label" for="custom-invitation-message-{{ $activeImport->id }}">Message</label><textarea id="custom-invitation-message-{{ $activeImport->id }}" class="form-control" name="email_message" rows="8" maxlength="10000" required>{{ old('email_message', data_get($activeImport->communication_snapshot, 'message', $activeImport->email_message)) }}</textarea><div class="form-text">Add any date you want players to see directly in this message. This custom email will not show the old response or replacement deadlines, and the saved normal campaign will not be changed.</div></div>
                             </div>
@@ -733,7 +735,7 @@
                         </div>
                       </div>
                     @endif
-                    <div class="d-flex flex-wrap align-items-center gap-2 mt-3"><span class="badge bg-label-secondary">Email queued: {{ $emailLogs->where('status','queued')->count() }}</span><span class="badge bg-label-success">Mail server accepted: {{ $emailLogs->where('evidence_status','server_accepted')->whereNotNull('accepted_at')->count() }}</span><span class="badge bg-label-danger">Failed: {{ $emailLogs->where('status','failed')->count() }}</span><span class="badge bg-label-warning">Skipped: {{ $emailLogs->where('status','skipped')->count() }}</span>@if($emailLogs->where('status','failed')->isNotEmpty())<form method="POST" action="{{ route('backend.team-selection.emails.retry', [$event, $activeImport]) }}">@csrf<button class="btn btn-sm btn-outline-danger">Retry failed emails</button></form>@endif</div>
+                    <div class="d-flex flex-wrap align-items-center gap-2 mt-3"><span class="badge bg-label-secondary">Email queued: {{ $emailLogs->where('status','queued')->count() }}</span><span class="badge bg-label-success">Mail server accepted: {{ $emailLogs->where('evidence_status','server_accepted')->whereNotNull('accepted_at')->count() }}</span><span class="badge bg-label-danger">Failed: {{ $emailLogs->where('status','failed')->count() }}</span><span class="badge bg-label-warning">Skipped: {{ $emailLogs->where('status','skipped')->count() }}</span>@if($emailLogs->where('status','failed')->isNotEmpty())<form method="POST" action="{{ route('backend.team-selection.emails.retry', [$event, $activeImport]) }}" data-mail-launch>@csrf<button class="btn btn-sm btn-outline-danger">Retry failed emails</button></form>@endif</div>
                     <form method="POST" action="{{ route('backend.team-selection.deadlines.extend', [$event, $activeImport]) }}" class="row g-2 align-items-end mt-2">@csrf @method('PATCH')
                       <div class="col-md-3"><label class="form-label">Response deadline</label><input type="datetime-local" name="response_deadline" value="{{ $activeImport->response_deadline?->format('Y-m-d\\TH:i') }}" class="form-control" required></div>
                       <div class="col-md-3"><label class="form-label">Payment deadline</label><input type="datetime-local" name="payment_deadline" value="{{ $activeImport->payment_deadline?->format('Y-m-d\\TH:i') }}" class="form-control" required></div>
@@ -811,10 +813,11 @@
 
       @if($activeImport?->status === 'draft')
         <div class="modal fade" id="prepare-invitations-{{ $activeImport->id }}" tabindex="-1" aria-labelledby="prepare-invitations-title-{{ $activeImport->id }}" aria-hidden="true">
-          <div class="modal-dialog modal-xl modal-dialog-scrollable"><form method="POST" action="{{ route('backend.team-selection.send', [$event, $activeImport]) }}" class="modal-content">@csrf
+          <div class="modal-dialog modal-xl modal-dialog-scrollable"><form method="POST" action="{{ route('backend.team-selection.email.preview', [$event, $activeImport]) }}" class="modal-content" data-mail-compose>@csrf
             <input type="hidden" name="selection_import_id" value="{{ $activeImport->id }}">
             <div class="modal-header"><div><h5 class="modal-title" id="prepare-invitations-title-{{ $activeImport->id }}">Prepare regional invitations</h5><div class="text-muted small">{{ $eventRegion->region?->region_name }} · {{ $activeImport->invitations->where('status','invited')->count() }} selected recipients</div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
             <div class="modal-body">
+              @include('backend.partials.email-sender-fields')
               <div class="alert alert-info"><strong>Preview required.</strong> Open the actual sample email before sending. The exact message, event details and deadlines{{ $usesRegionalClothing ? ', including clothing prices,' : '' }} are snapshotted for audit and failed-email retries. Any change requires another preview.</div>
               <div class="row g-3">
                 <div class="col-12"><label class="form-label">Email subject</label><input type="text" name="email_subject" maxlength="180" class="form-control" value="{{ old('email_subject', 'Platteland team invitation: '.$event->name) }}" required></div>
@@ -822,19 +825,19 @@
                 <div class="col-12"><label class="form-label">Information shown on the player invitation page</label><textarea name="event_information" rows="7" maxlength="20000" class="form-control">{{ old('event_information', $defaultInvitationEventInformation) }}</textarea><div class="form-text">HTML from the event page is converted into readable paragraphs and bullet points. Review venues, arrival times, accommodation and team instructions before previewing the email.</div></div>
                 <div class="col-md-6"><label class="form-label">Registration deadline</label><input type="datetime-local" name="registration_deadline" value="{{ old('registration_deadline', $event->registrationClosesAt()?->endOfDay()->format('Y-m-d\\TH:i')) }}" class="form-control" required><div class="form-text">One cutoff for responding, registering and paying. Reserve invitations use the same cutoff.</div></div>
                 <div class="col-md-6"><div class="alert alert-light border mb-0 h-100"><strong>One send action.</strong><br><span class="small text-muted">@if($isEventManager) Confirming the send opens event registration and publishes the selected teams automatically. @else The event manager must open registration first; this send publishes the selected teams. @endif</span></div></div>
-                <div class="col-md-4"><label class="form-label">Reply-to email</label><input type="email" name="reply_to" value="{{ old('reply_to', $event->email) }}" class="form-control" maxlength="255"><div class="form-text">Optional contact for player replies.</div></div>
+
                 @if($usesRegionalClothing)<div class="col-12"><input type="hidden" name="include_clothing" value="0"><div class="form-check"><input class="form-check-input" type="checkbox" name="include_clothing" value="1" id="include-clothing-{{ $activeImport->id }}" @checked(old('include_clothing', $clothingAvailable)) @disabled(!$clothingAvailable)><label class="form-check-label" for="include-clothing-{{ $activeImport->id }}">Include optional regional clothing items, sizes, prices and ordering steps</label></div>@if(!$clothingAvailable)<div class="form-text text-warning">Complete this region's clothing items, sizes and approved prices, then open clothing ordering to enable this option.</div>@endif</div>@else<input type="hidden" name="include_clothing" value="0">@endif
               </div>
               <hr><div class="row g-2"><div class="col-sm-4"><div class="border rounded p-3"><small class="text-muted d-block">Invitations</small><strong>{{ $activeImport->invitations->where('status','invited')->count() }}</strong></div></div><div class="col-sm-4"><div class="border rounded p-3"><small class="text-muted d-block">Reserves held back</small><strong>{{ $activeImport->invitations->where('status','reserve')->count() }}</strong></div></div><div class="col-sm-4"><div class="border rounded p-3"><small class="text-muted d-block">Missing email</small><strong>{{ $activeImport->invitations->filter(fn($i) => !$recipientEmailFor($i))->count() }}</strong></div></div></div>
               <details class="border rounded p-3 mt-3"><summary class="fw-semibold">Review exact invitation recipients</summary><div class="table-responsive mt-3"><table class="table table-sm mb-0"><thead><tr><th>Player</th><th>Email used</th></tr></thead><tbody>@foreach($activeImport->invitations->where('status','invited')->sortBy('queue_position') as $recipientInvitation)<tr><td>{{ $recipientInvitation->player?->full_name }}</td><td>{{ $recipientEmailFor($recipientInvitation) ?: 'Skipped — no email available' }}</td></tr>@endforeach</tbody></table></div></details>
             </div>
-            <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-outline-primary" formaction="{{ route('backend.team-selection.email.preview', [$event, $activeImport]) }}" formtarget="_blank">Preview actual email</button><button type="submit" class="btn btn-success" onclick="return confirm('Queue these invitations for the selected players in this region?');">Confirm and send {{ $activeImport->invitations->where('status','invited')->count() }} invitations</button></div>
-          </form></div>
+            <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary">Preview email</button></div>
+</form></div>
         </div>
       @endif
 
       <div class="modal fade" id="roster-email-{{ $eventRegion->id }}" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered"><form method="POST" action="{{ route('backend.team-selection.roster-email.send', [$event, $eventRegion]) }}" class="modal-content">@csrf
+        <div class="modal-dialog modal-lg modal-dialog-centered"><form method="POST" action="{{ route('backend.team-selection.roster-email.send', [$event, $eventRegion]) }}" class="modal-content" data-mail-compose>@csrf
           <input type="hidden" name="target_type" value="team" data-roster-email-target>
           <input type="hidden" name="team_id" data-roster-email-team>
           <input type="hidden" name="invitation_id" data-roster-email-invitation>
@@ -842,6 +845,7 @@
           <input type="hidden" name="recipient_hash" data-roster-email-hash>
           <div class="modal-header"><div><h5 class="modal-title">Email selected roster</h5><div class="small text-muted" data-roster-email-recipient></div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
           <div class="modal-body">
+            @include('backend.partials.email-sender-fields')
             <div class="border rounded p-3 mb-3 d-none" data-roster-filter-panel data-preview-url="{{ route('backend.team-selection.roster-email.preview', [$event, $eventRegion]) }}">
               <h6 class="mb-1">Choose players</h6>
               <p class="small text-muted mb-3">Filters are combined. Preview the exact recipient list before the email can be queued.</p>
@@ -862,7 +866,7 @@
             @endforeach
             <div class="form-check"><input class="form-check-input" type="checkbox" name="confirm_recipients" value="1" id="confirm-roster-email-{{ $eventRegion->id }}" required><label class="form-check-label" for="confirm-roster-email-{{ $eventRegion->id }}">I confirm the recipient details above are correct</label></div>
           </div>
-          <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary"><i class="ti ti-send me-1"></i>Queue email</button></div>
+          <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary"><i class="ti ti-send me-1"></i>Preview email</button></div>
         </form></div>
       </div>
 

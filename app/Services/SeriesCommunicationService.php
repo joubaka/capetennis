@@ -83,6 +83,7 @@ class SeriesCommunicationService
 
     public function preview(Series $series, User $actor, string $intent, string $subject, string $body, string $fromName, string $replyTo): Collection
     {
+        \App\Services\CommunicationSender::resolve(['from_name' => $fromName, 'reply_to' => $replyTo], $actor);
         $events = $this->events($series,$actor);
         $body = trim(strip_tags(preg_replace('/<\/(p|div|li)>|<br\s*\/?\s*>/i',"\n",$body)));
         $options = ['source'=>'series_compose','series_id'=>$series->id,'intent'=>$intent,'event_ids'=>$events->pluck('id')->all(),'from_name'=>$fromName,'reply_to'=>$replyTo];

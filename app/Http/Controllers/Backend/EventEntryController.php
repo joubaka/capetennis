@@ -285,16 +285,14 @@ class EventEntryController extends Controller
     } elseif ($data['scope']==='category') {
       CategoryEvent::where('event_id',$authEvent->id)->findOrFail($data['category_event_id']);
     }
-    $request->session()->flash('compose_options', ['scope'=>'legacy_registered', 'registration_id'=>$data['scope']==='player' ? $data['registration_id'] : null, 'category_event_id'=>$data['scope']==='category' ? $data['category_event_id'] : null, 'recipients'=>'players']);
-    $request->session()->flash('compose_subject',$data['subject']);
-    $request->session()->flash('compose_body',trim(strip_tags(preg_replace('/<\/(p|div|li)>|<br\s*\/?\s*>/i',"\n",$data['message']))));
-    $url = route('backend.event-communications.index',['event'=>$authEvent,'compose'=>1]);
-    $notice = 'No emails queued. Communications uses your account name and email for the sender name and reply-to address. Prior BCC choices are not carried over. Review the exact recipients and message before approving.';
-    $request->session()->flash('info', $notice);
+    $options = ['scope'=>'legacy_registered', 'filter'=>'all', 'registration_id'=>$data['scope']==='player' ? $data['registration_id'] : null, 'category_event_id'=>$data['scope']==='category' ? $data['category_event_id'] : null, 'recipients'=>'players']
+      + \App\Services\CommunicationSender::resolve($data, $request->user());
+    $body = trim(strip_tags(preg_replace('/<\/(p|div|li)>|<br\s*\/?\s*>/i',"\n",$data['message'])));
+    $batch = app(\App\Services\EventCommunicationService::class)->preview($authEvent, $request->user(), $options, $data['subject'], $body);
+    $url = route('backend.event-communications.review', [$authEvent, $batch]);
+    if ($request->expectsJson()) return response()->json(['success'=>true,'review_required'=>true,'review_url'=>$url]);
+    return redirect($url);
 
-    if ($request->expectsJson()) return response()->json(['success'=>true,'review_required'=>true,'review_url'=>$url,'report_url'=>$url,'message'=>$notice]);
-
-    return redirect($url)->with('info', $notice);
   }
 
 

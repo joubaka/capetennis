@@ -111,7 +111,7 @@
 <script>window.APP_URL = @json(url('/'));</script>
 <script src="{{ asset(mix('js/regions.js')) }}"></script>
 <script src="{{ asset(mix('js/categories.js')) }}"></script>
-<script src="{{ asset(mix('js/players.js')) }}"></script>
+<script src="{{ asset('js/players.js') }}?v={{ filemtime(public_path('js/players.js')) }}"></script>
 <script src="{{ asset(mix('js/playerOrder.js')) }}"></script>
 @if((int) $event->eventType === 3)
 <script src="{{ asset('js/team-workspace.js') }}?v={{ filemtime(public_path('js/team-workspace.js')) }}"></script>

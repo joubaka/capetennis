@@ -94,11 +94,6 @@
             <textarea name="message" id="emailMessage" class="d-none"></textarea>
           </div>
 
-          {{-- ✅ BCC Checkbox --}}
-          <div class="form-check mb-3">
-            <input class="form-check-input" type="checkbox" id="bcc" name="bcc">
-            <label class="form-check-label" for="bcc">Send BCC copy to Admin</label>
-          </div>
         </div>
 
         <div class="modal-footer">

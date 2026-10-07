@@ -27,6 +27,9 @@ class TeamSelectionInvitationMail extends Mailable
         }
 
         return new Envelope(
+            from: filled($this->campaign['from_name'] ?? null)
+                ? new Address(config('mail.from.address'), $this->campaign['from_name'])
+                : null,
             subject: $subject ?: ($this->kind === 'replacement'
                 ? 'Platteland team replacement invitation'
                 : 'Platteland team invitation'),

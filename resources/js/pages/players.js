@@ -77,7 +77,7 @@
     $.post(APP_URL + '/backend/email/send', $.param(data))
       .done(response => {
         if (response.review_required && response.review_url) {
-          window.location.assign(response.review_url);
+          window.CapeMailReview.open(response.review_url);
           return;
         }
         if (!response.success) { toastr.error(response.message || response.result?.message || 'Unable to prepare email review.'); return; }

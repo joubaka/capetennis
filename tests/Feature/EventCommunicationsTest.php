@@ -354,4 +354,90 @@ class EventCommunicationsTest extends TestCase
         $this->post(route('backend.event-communications.send', $this->event), ['token' => $second->token, 'confirm_send' => 1])->assertSessionHasErrors('preview');
         $this->assertDatabaseCount('bulk_email_logs', 1);
     }
+    public function test_manual_composer_previews_one_sample_and_queues_saved_sender_once(): void
+    {
+        $second = Player::factory()->create(['email' => 'second@example.test', 'userId' => null]);
+        TeamPlayer::create(['team_id' => $this->team->id, 'player_id' => $second->id, 'rank' => 2, 'pay_status' => 0]);
+        $response = $this->post(route('backend.event-communications.preview', $this->event), $this->audienceOptions() + [
+            'subject' => 'Team update', 'body' => 'Arrive at 8am', 'from_name' => 'Overberg Tennis', 'reply_to' => 'organiser@example.test',
+        ])->assertOk()->assertSee('Example email')->assertSee('Overberg Tennis')->assertSee('second@example.test');
+        $this->assertSame(1, substr_count($response->getContent(), '<iframe'));
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        $batch = EventCommunicationBatch::sole();
+        $payload = ['token' => $batch->token, 'confirm_send' => 1];
+        $this->post(route('backend.event-communications.send', $this->event), $payload)->assertRedirect();
+        $this->post(route('backend.event-communications.send', $this->event), $payload)->assertRedirect();
+        $this->assertDatabaseCount('bulk_email_logs', 2);
+        foreach (BulkEmailLog::all() as $log) {
+            $this->assertSame('Overberg Tennis', $log->payload['from_name']);
+            $this->assertSame('organiser@example.test', $log->payload['reply_to']);
+        }
+        Mail::assertNothingSent();
+    }
+
+    public function test_manual_sender_rejects_header_injection_before_creating_preview(): void
+    {
+        foreach ([['from_name' => "Manager\r\nBcc: outsider@example.test"], ['reply_to' => "manager@example.test\r\nBcc: outsider@example.test"]] as $bad) {
+            $this->postJson(route('backend.event-communications.preview', $this->event), $this->audienceOptions() + $bad + [
+                'subject' => 'Update', 'body' => 'Hello', 'from_name' => 'Manager', 'reply_to' => 'manager@example.test',
+            ])->assertUnprocessable();
+        }
+        $this->assertDatabaseCount('event_communication_batches', 0);
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+    }
+
+    public function test_roster_popup_preserves_unlinked_cohort_without_adding_managers(): void
+    {
+        \App\Models\NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'name' => 'Unlinked', 'surname' => 'Child', 'rank' => 2, 'pay_status' => 0, 'email' => 'unlinked@example.test']);
+        $this->post(route('backend.team-selection.roster-email.send', [$this->event, $this->eventRegion]), [
+            'target_type' => 'unlinked_imported', 'subject' => 'Roster update', 'message' => 'Please respond',
+            'from_name' => 'Regional manager', 'reply_to' => 'regional@example.test',
+        ])->assertOk()->assertSee('Example email');
+        $batch = EventCommunicationBatch::sole();
+        $this->assertSame(['unlinked@example.test'], array_column($batch->recipients, 'email'));
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        app(EventCommunicationService::class)->approve($batch, $this->admin, false);
+        $this->assertDatabaseCount('bulk_email_logs', 1);
+        $this->assertSame($this->team->region_id, BulkEmailLog::sole()->payload['region_id']);
+        $this->assertSame('Regional manager', BulkEmailLog::sole()->payload['from_name']);
+    }
+
+    public function test_saved_review_is_private_to_actor_and_event(): void
+    {
+        $batch = $this->preview();
+        $this->get(route('backend.event-communications.review', [$this->event, $batch]))->assertOk()->assertHeader('Cache-Control', 'no-store, private');
+        $foreign = Event::factory()->create();
+        $this->get(route('backend.event-communications.review', [$foreign, $batch]))->assertNotFound();
+        $this->actingAs(User::factory()->create()->assignRole('admin'));
+        $this->get(route('backend.event-communications.review', [$this->event, $batch]))->assertNotFound();
+    }
+
+    public function test_roster_preview_excludes_superseded_imports_and_tracks_shared_address_players(): void
+    {
+        $series = \App\Models\Series::factory()->create();
+        $list = \App\Models\RankingList::create(['series_id' => $series->id, 'category_id' => $this->team->category->category_id, 'best_num_of_scores' => 3]);
+        $imports = collect(['older', 'current'])->map(fn ($run) => \App\Models\TeamSelectionImport::create(['source_id' => 1, 'event_id' => $this->event->id, 'region_id' => $this->team->region_id, 'series_id' => $series->id, 'ranking_run_id' => $run, 'status' => 'sent']));
+        $old = Player::factory()->create(['email' => 'old@example.test', 'userId' => null]);
+        $shared = Player::factory()->create(['email' => $this->player->email, 'userId' => null]);
+        foreach ([[$imports[0], $old, 1], [$imports[1], $this->player, 1], [$imports[1], $shared, 2]] as [$import, $player, $rank]) {
+            \App\Models\TeamSelectionInvitation::create(['import_id' => $import->id, 'event_id' => $this->event->id, 'region_id' => $this->team->region_id, 'team_id' => $this->team->id, 'player_id' => $player->id, 'ranking_list_id' => $list->id, 'ranking_position' => $rank, 'queue_position' => $rank, 'status' => 'invited']);
+        }
+        $this->post(route('backend.team-selection.roster-email.send', [$this->event, $this->eventRegion]), ['target_type' => 'region', 'subject' => 'Update', 'message' => 'Hello'])->assertOk();
+        $batch = EventCommunicationBatch::sole();
+        $this->assertSame([$this->player->email], array_column($batch->recipients, 'email'));
+        $this->assertEqualsCanonicalizing(['player:'.$this->player->id, 'player:'.$shared->id], $batch->recipients[0]['player_keys']);
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+    }
+
+    public function test_reminder_popup_retains_selected_unpaid_audience_at_sample_review(): void
+    {
+        $paid = Player::factory()->create(['email' => 'paid@example.test', 'userId' => null]);
+        TeamPlayer::create(['team_id' => $this->team->id, 'player_id' => $paid->id, 'rank' => 2, 'pay_status' => 1]);
+        $this->post(route('backend.team-selection.final-reminders.send', [$this->event, $this->eventRegion]), ['kind' => 'registration_clothing', 'audience' => 'unregistered'])->assertOk()
+            ->assertViewHas('options', fn ($options) => $options['filter'] === 'not_registered' && $options['recipients'] === 'players' && $options['respect_status'] === 1);
+        $this->post(route('backend.event-communications.preview', $this->event), $this->audienceOptions(['scope' => 'region', 'region_id' => $this->team->region_id, 'filter' => 'not_registered', 'respect_status' => 1]) + ['subject' => 'Reminder', 'body' => 'Complete registration'])->assertOk();
+        $this->assertSame([$this->player->email], array_column(EventCommunicationBatch::sole()->recipients, 'email'));
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+    }
+
 }

@@ -83,6 +83,7 @@ class EventCommunicationController extends Controller
     public function preview(Request $request, Event $event, EventCommunicationService $service)
     {
         $data = $request->validate([
+            'respect_status' => 'nullable|boolean',
             'scope' => 'required|in:all,registrations,invitations,nominations,region,team,individual,rankings,legacy_registered,direct',
             'ranking_region_ids' => 'nullable|array|max:500',
             'ranking_region_ids.*' => 'integer',
@@ -106,18 +107,28 @@ class EventCommunicationController extends Controller
             'subject' => 'required|string|max:200',
             'body' => 'required|string|max:30000',
         ]);
-        $options = array_intersect_key($data, array_flip(['scope', 'region_id', 'team_id', 'individual_key', 'category_event_id', 'registration_id', 'direct_email', 'filter', 'recipients']));
-        if ($event->isTeam() && in_array($data['scope'], ['all', 'region', 'team'], true)) {
+        $options = array_intersect_key($data, array_flip(['scope', 'region_id', 'team_id', 'individual_key', 'category_event_id', 'registration_id', 'direct_email', 'filter', 'recipients', 'respect_status']));
+        if ($event->isTeam() && ! $request->boolean('respect_status') && in_array($data['scope'], ['all', 'region', 'team'], true)) {
             $options['filter'] = 'all';
         }
         if ($data['scope'] === 'rankings') {
             $options = array_intersect_key($data, array_flip(['scope', 'ranking_region_ids', 'ranking_list_ids', 'rank_numbers', 'excluded_player_ids', 'exclude_team_listed', 'exclude_declined', 'exclude_reserves', 'exclude_withdrawn']));
             $options += ['filter' => 'all', 'recipients' => 'players'];
         }
+        $options = array_merge($options, \App\Services\CommunicationSender::resolve($request->all(), $request->user()));
         $batch = $service->preview($event, $request->user(), $options, $data['subject'], $data['body']);
 
         $rankingReview = ($batch->options['scope'] ?? null) === 'rankings' ? app(\App\Services\RegionalRankingMailAudience::class)->resolve($event, $request->user(), $batch->options) : null;
         return view('backend.event.communications.preview', compact('event', 'batch', 'rankingReview'));
+    }
+
+    public function review(Request $request, Event $event, EventCommunicationBatch $batch, EventCommunicationService $service)
+    {
+        abort_unless((int) $batch->event_id === (int) $event->id && (int) $batch->created_by === (int) $request->user()->id, 404);
+        $service->regions($event, $request->user());
+        $service->authorizeRankingBatch($batch, $request->user());
+        $rankingReview = ($batch->options['scope'] ?? null) === 'rankings' ? app(\App\Services\RegionalRankingMailAudience::class)->resolve($event, $request->user(), $batch->options) : null;
+        return response()->view('backend.event.communications.preview', compact('event', 'batch', 'rankingReview'))->header('Cache-Control', 'private, no-store');
     }
 
     public function send(Request $request, Event $event, EventCommunicationService $service)

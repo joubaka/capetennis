@@ -57,8 +57,9 @@ class EmailControllerAuthorizationTest extends TestCase
     $this->ordinaryUser = User::factory()->create();
 
     // Create events
-    $this->eventA = Event::factory()->create(['name' => 'Event A']);
-    $this->eventB = Event::factory()->create(['name' => 'Event B']);
+    $type = \Illuminate\Support\Facades\DB::table('eventtypes')->insertGetId(['name' => 'Team tournament', 'type' => 2]);
+    $this->eventA = Event::factory()->create(['name' => 'Event A', 'eventType' => $type]);
+    $this->eventB = Event::factory()->create(['name' => 'Event B', 'eventType' => $type]);
 
     // Create series and associate event
     $this->seriesA = Series::factory()->create();
@@ -80,6 +81,8 @@ class EmailControllerAuthorizationTest extends TestCase
       'name' => 'Team A',
       'region_id' => $this->regionA->id,
     ]);
+
+    \Illuminate\Support\Facades\DB::table('event_regions')->insert(['event_id' => $this->eventA->id, 'region_id' => $this->regionA->id]);
 
     // Grant admin access to Event A
     EventAdmin::create([
@@ -451,7 +454,10 @@ class EmailControllerAuthorizationTest extends TestCase
     $player = Player::factory()->create(['email'=>'single@example.test']);
     $this->teamA->players()->attach($player->id, ['rank'=>1,'pay_status'=>0]);
     $this->actingAs($this->admin)->postJson(route('email.send'), ['event_id'=>$this->eventA->id,'target_type'=>'player','to'=>$player->id,'emailSubject'=>'Clothing','message'=>'Collect clothing'])
-      ->assertOk()->assertJsonPath('review_required',true)->assertSessionHas('compose_options',fn($options)=>$options['scope']==='individual' && $options['individual_key']==='player:'.$player->id);
+      ->assertOk()->assertJsonPath('review_required',true);
+    $batch = \App\Models\EventCommunicationBatch::sole();
+    $this->assertSame('player:'.$player->id, $batch->options['individual_key']);
+    $this->assertSame(['single@example.test'], array_column($batch->recipients, 'email'));
     Queue::assertNothingPushed();
     $this->assertDatabaseCount('bulk_email_logs',0);
   }
@@ -459,10 +465,9 @@ class EmailControllerAuthorizationTest extends TestCase
   public function test_legacy_direct_email_preserves_address_for_full_manager_review(): void
   {
     $this->actingAs($this->admin)->postJson(route('email.send'), ['event_id'=>$this->eventA->id,'target_type'=>'player','to'=>'chosen@example.test','emailSubject'=>'Clothing','message'=>'Update'])
-      ->assertOk()->assertJsonPath('review_required',true)->assertSessionHas('compose_options',fn($options)=>$options['scope']==='direct' && $options['direct_email']==='chosen@example.test')
-      ->assertSessionHas('info', fn($notice)=>str_contains($notice,'account name and email') && str_contains($notice,'Prior BCC choices are not carried over'));
-    $this->get(route('backend.event-communications.index',['event'=>$this->eventA,'compose'=>1]))
-      ->assertOk()->assertSee('Prior BCC choices are not carried over')->assertSee('Communications uses your account name and email');
+      ->assertOk()->assertJsonPath('review_required',true);
+    $batch = \App\Models\EventCommunicationBatch::sole();
+    $this->get(route('backend.event-communications.review', [$this->eventA, $batch]))->assertOk()->assertSee('chosen@example.test');
     $this->post(route('backend.event-communications.preview',$this->eventA),['scope'=>'direct','direct_email'=>'chosen@example.test','filter'=>'all','recipients'=>'players','subject'=>'Clothing','body'=>'Update'])
       ->assertOk()->assertViewHas('batch',fn($batch)=>count($batch->recipients)===1 && $batch->recipients[0]['email']==='chosen@example.test');
     Queue::assertNothingPushed();
@@ -521,7 +526,10 @@ class EmailControllerAuthorizationTest extends TestCase
     foreach (['team','region','category','nominations'] as $word) {
       $email=$word.'@example.test';
       $this->actingAs($this->admin)->postJson(route('email.send'),['event_id'=>$this->eventA->id,'to'=>$email,'emailSubject'=>'Direct','message'=>'Body'])
-        ->assertOk()->assertSessionHas('compose_options',fn($options)=>$options['scope']==='direct' && $options['direct_email']===$email);
+        ->assertOk()->assertJsonPath('review_required', true);
+      $batch = \App\Models\EventCommunicationBatch::latest('id')->firstOrFail();
+      $this->assertSame($email, $batch->options['direct_email']);
+      $this->assertSame([$email], array_column($batch->recipients, 'email'));
     }
     $this->postJson(route('email.send'),['event_id'=>$this->eventA->id,'to'=>'Unknown audience','emailSubject'=>'Direct','message'=>'Body'])->assertStatus(422);
     Queue::assertNothingPushed();
@@ -529,9 +537,16 @@ class EmailControllerAuthorizationTest extends TestCase
 
   public function test_legacy_group_labels_preserve_team_nomination_and_unpaid_selection(): void
   {
+    $player = Player::factory()->create(['email' => 'selected@example.test', 'userId' => null]);
+    $this->teamA->players()->attach($player->id, ['rank' => 1, 'pay_status' => 0]);
+    \App\Models\EventNomination::create(['event_id' => $this->eventA->id, 'category_event_id' => $this->teamA->category_event_id, 'player_id' => $player->id, 'nominee_name' => $player->name, 'nominee_surname' => $player->surname]);
     foreach ([['All players in team','team','all'],['All players in nominations','nominations','all'],['All Unregistered players in Team','team','not_registered']] as [$label,$scope,$filter]) {
       $this->actingAs($this->admin)->postJson(route('email.send'),['event_id'=>$this->eventA->id,'to'=>$label,'team_id'=>$this->teamA->id,'emailSubject'=>'Clothing','message'=>'Body'])
-        ->assertOk()->assertSessionHas('compose_options',fn($options)=>$options['scope']===$scope && $options['filter']===$filter);
+        ->assertOk()->assertJsonPath('review_required', true);
+      $batch = \App\Models\EventCommunicationBatch::latest('id')->firstOrFail();
+      $this->assertSame($scope, $batch->options['scope']);
+      $this->assertSame($filter, $batch->options['filter']);
+      $this->assertSame(['selected@example.test'], array_column($batch->recipients, 'email'));
     }
     Queue::assertNothingPushed();
   }

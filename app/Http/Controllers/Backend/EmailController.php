@@ -122,16 +122,13 @@ class EmailController extends Controller
     if ($options['scope']==='team') Team::withoutGlobalScopes()->whereHas('category',fn($q)=>$q->where('event_id',$event->id))->findOrFail($options['team_id']);
     if ($options['scope']==='region') abort_unless($event->regions()->where('team_regions.id',$options['region_id'])->exists(),404);
     if ($options['scope']==='legacy_registered' && isset($options['category_event_id'])) $event->categoryEvents()->findOrFail($options['category_event_id']);
-    $request->session()->flash('compose_options',$options);
-    $request->session()->flash('compose_subject',$request->emailSubject);
-    $request->session()->flash('compose_body',trim(strip_tags(preg_replace('/<\/(p|div|li)>|<br\s*\/?\s*>/i',"\n",$request->message))));
-    $url = route('backend.event-communications.index',['event'=>$event,'compose'=>1]);
+    $options = array_merge($options, \App\Services\CommunicationSender::resolve($request->all(), $request->user()));
+    $body = trim(strip_tags(preg_replace('/<\/(p|div|li)>|<br\s*\/?\s*>/i',"\n",$request->message)));
+    $batch = app(\App\Services\EventCommunicationService::class)->preview($event, $request->user(), $options, $request->emailSubject, $body);
+    $url = route('backend.event-communications.review', [$event, $batch]);
+    if ($request->expectsJson()) return response()->json(['success'=>true,'review_required'=>true,'review_url'=>$url]);
+    return redirect($url);
 
-    $notice = 'No emails queued. Communications uses your account name and email for the sender name and reply-to address. Prior BCC choices are not carried over. Review the exact recipients and message before approving.';
-    $request->session()->flash('info', $notice);
-
-    if ($request->expectsJson()) return response()->json(['success'=>true,'review_required'=>true,'review_url'=>$url,'result'=>['title'=>'info','report_url'=>$url,'message'=>$notice]]);
-    return redirect($url)->with('info', $notice);
   }
 
   /**
@@ -485,7 +482,8 @@ class EmailController extends Controller
       'campaign_key'=>'required|uuid','emailSubject'=>'required|string|max:200','message'=>'required|string|max:30000',
       'fromName'=>'nullable|string|max:100','replyTo'=>'nullable|email|max:255',
     ]);
-    app(\App\Services\SeriesCommunicationService::class)->preview($series,$request->user(),$data['campaign_key'],$data['emailSubject'],$data['message'],trim($data['fromName'] ?? $request->user()->name),$data['replyTo'] ?? $request->user()->email);
+    $sender = \App\Services\CommunicationSender::resolve($request->all(), $request->user());
+    app(\App\Services\SeriesCommunicationService::class)->preview($series,$request->user(),$data['campaign_key'],$data['emailSubject'],$data['message'],$sender['from_name'],$sender['reply_to']);
     $reviewUrl = route('series.email.review',['series'=>$series,'intent'=>$data['campaign_key']]);
 
     return response()->json(['success'=>true,'review_required'=>true,'review_url'=>$reviewUrl,'message'=>'No emails queued. Review every event recipient and exact message before approving this intent.']);

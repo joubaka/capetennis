@@ -6,7 +6,7 @@
 @foreach(['success'=>'success','warning'=>'warning','error'=>'danger','info'=>'info'] as $flash=>$style)
 @if(session($flash))<div class="alert alert-{{ $style }}" role="status">{{ session($flash) }}</div>@endif
 @endforeach
-<details class="card card-body mb-4" @if($errors->any() || session('compose_subject') || request('compose') || $search !== '') open @endif><summary class="h5 mb-0">Write an email</summary><div class="mt-3">
+<div class="mb-4">
 @if($teamAudience)
 <form method="get" class="mb-3"><input type="hidden" name="compose" value="1">@foreach(request()->except(['team_search','compose']) as $key=>$value)@if(is_scalar($value))<input type="hidden" name="{{ $key }}" value="{{ $value }}">@endif @endforeach<label>Find a team <input name="team_search" value="{{ request('team_search') }}" class="form-control" maxlength="100"></label><button class="btn btn-outline-primary">Search teams</button></form>
 @endif
@@ -14,7 +14,8 @@
 <p>Choose who you want to email, write your message, then check it before sending.</p>
 
 @if($errors->any())<div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>@endif
-<form method="post" action="{{ route('backend.event-communications.preview', $event) }}" class="card card-body mb-4">@csrf
+<form method="post" action="{{ route('backend.event-communications.preview', $event) }}" data-mail-compose class="card card-body mb-4">@csrf
+@include('backend.partials.email-sender-fields')
 @php
 $composeOptions = session('compose_options', []);
 @endphp
@@ -53,10 +54,10 @@ $composeOptions = session('compose_options', []);
 @endif
 <label class="form-label mt-3" for="communication-subject">Subject</label><input class="form-control" id="communication-subject" name="subject" required maxlength="200" value="{{ old('subject', session('compose_subject', $event->name.' — Update')) }}">
 <label class="form-label mt-3" for="communication-body">Message</label><textarea class="form-control" id="communication-body" name="body" rows="7" required maxlength="30000">{{ old('body',session('compose_body')) }}</textarea>
-<p class="form-text">Write an update, share arrangements or send a payment or clothing reminder. Only your message is included. Check it on the next screen before sending.</p>
+<p class="form-text">Write an update, share arrangements or send a payment or clothing reminder. Only your message is included. Review one example and approve here before sending.</p>
 <button class="btn btn-primary align-self-start">Preview email</button>
 </form>
-</div></details>
+</div>
 <div class="d-flex flex-wrap gap-2 mb-3" aria-label="Email report scope">
 @foreach(['all'=>'All event emails','invitations'=>'Invitations only'] as $scopeKey=>$scopeLabel)<a class="btn btn-outline-primary" href="{{ route('backend.event-communications.index',array_merge(['event'=>$event],request()->except(['history_page','report_scope','batch']),['report_scope'=>$scopeKey])) }}#email-history" @if($reportContext['report_scope']===$scopeKey) aria-current="page" @endif>{{ $scopeLabel }}</a>@endforeach
 @if($batch)<a class="btn btn-outline-primary" href="{{ route('backend.event-communications.index',array_merge(['event'=>$event],request()->except(['history_page','report_scope']),['batch'=>$batch->id,'report_scope'=>'batch'])) }}#email-history" @if($reportContext['report_scope']==='batch') aria-current="page" @endif>This batch only</a>@endif
@@ -68,7 +69,7 @@ $composeOptions = session('compose_options', []);
 @if($batch && $batch->approved_at && $summary && !$summary['all_server_accepted'])<p class="text-muted">Mail-server acceptance is not yet confirmed for every approved email.</p>@endif
 @include('backend.partials.mail-report',['report'=>$historyReport,'reportEvent'=>$event,'reportTitle'=>$reportContext['report_scope']==='all' ? 'All event email history' : ($reportContext['report_scope']==='invitations' ? 'Invitation email history' : 'Selected batch email history')])
 <details class="card card-body mb-4" @if($drafts->isNotEmpty()) open @endif><summary class="h5 mb-0">Messages awaiting review</summary><div class="mt-3">
-@forelse($drafts as $draft)<div class="mb-3"><strong>{{ $draft->subject }}</strong><p>A player action prepared this email. It has not been sent.</p><form method="post" action="{{ route('backend.event-communications.drafts.preview',[$event,$draft]) }}">@csrf<button class="btn btn-outline-primary">Review and approve draft</button></form></div>@empty<p>No system messages awaiting review.</p>@endforelse
+@forelse($drafts as $draft)<div class="mb-3"><strong>{{ $draft->subject }}</strong><p>A player action prepared this email. It has not been sent.</p><form method="post" action="{{ route('backend.event-communications.drafts.preview',[$event,$draft]) }}" data-mail-launch>@csrf<button class="btn btn-outline-primary">Review and approve draft</button></form></div>@empty<p>No system messages awaiting review.</p>@endforelse
 @if($drafts instanceof \Illuminate\Contracts\Pagination\Paginator){{ $drafts->withQueryString()->links('pagination::bootstrap-5') }}@endif
 </div></details>
 <h3 class="h5">Reviewed campaigns</h3>

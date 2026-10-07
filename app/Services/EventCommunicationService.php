@@ -258,6 +258,13 @@ class EventCommunicationService
 
     public function plan(Event $event, User $actor, array $options, string $subject, string $body): array
     {
+        if (($options['source'] ?? null) === 'roster_target') {
+            $region = EventRegion::where('event_id', $event->id)->findOrFail($options['event_region_id']);
+            abort_unless($this->access->canManage($actor, $region), 403);
+            if (($options['selection']['target_type'] ?? null) === 'filtered') abort_unless($this->managesWholeEvent($event, $actor), 403);
+            $recipients = app(\App\Services\TeamSelection\TeamSelectionRosterMailAudience::class)->resolve($event, $region, $options['selection']);
+            return $this->legacyPlan($event, $options, $recipients->map(fn ($row) => ['key' => $row['player_key'] ?? 'email:'.$row['email'], 'name' => $row['name'], 'emails' => filter_var($row['email'], FILTER_VALIDATE_EMAIL) ? [mb_strtolower(trim($row['email']))] : []]), $subject, $body);
+        }
         if (($options['source'] ?? null) === 'roster_region_selection') {
             $regions = $this->regions($event, $actor);
             $region = $regions->firstWhere('id', $options['event_region_id']);
@@ -444,6 +451,7 @@ class EventCommunicationService
 
     public function preview(Event $event, User $actor, array $options, string $subject, string $body): EventCommunicationBatch
     {
+        $options = array_merge($options, CommunicationSender::resolve($options, $actor));
         $plan = $this->plan($event, $actor, $options, $subject, $body);
 
         return EventCommunicationBatch::create(['event_id' => $event->id, 'created_by' => $actor->id, 'token' => (string) Str::uuid(), 'subject' => $subject, 'body' => $body, 'options' => $options, ...$plan]);
@@ -601,7 +609,7 @@ class EventCommunicationService
                 $related->update(['emailed_at' => now()]);
             }
             foreach ($batch->recipients as $recipient) {
-                $result = $this->mailer->dispatch($batch->event->isInterprovincialTrials() ? 'trial_communication' : ($batch->event->isTeam() ? 'team_email' : 'bulk_event_mail'), $related, [$recipient], ['event_id' => $batch->event_id, 'created_by' => $actor->id, 'region_id' => ($batch->options['scope'] ?? null) === 'region' ? $batch->options['region_id'] : null, 'team_id' => ($batch->options['scope'] ?? null) === 'team' ? $batch->options['team_id'] : null, 'event_communication_batch_id' => $batch->id, 'subject' => $recipient['subject'], 'body' => $recipient['html'], 'recipient_kind' => $recipient['kind'], 'player_keys' => $recipient['player_keys'] ?? [], 'from_name' => $actor->name, 'reply_to' => $actor->email, 'manual_retry_only' => true], true);
+                $result = $this->mailer->dispatch($batch->event->isInterprovincialTrials() ? 'trial_communication' : ($batch->event->isTeam() ? 'team_email' : 'bulk_event_mail'), $related, [$recipient], ['event_id' => $batch->event_id, 'created_by' => $actor->id, 'region_id' => in_array($batch->options['source'] ?? null, ['roster_target', 'roster_region_selection'], true) || ($batch->options['scope'] ?? null) === 'region' ? $batch->options['region_id'] : null, 'team_id' => ($batch->options['scope'] ?? null) === 'team' ? $batch->options['team_id'] : null, 'event_communication_batch_id' => $batch->id, 'subject' => $recipient['subject'], 'body' => $recipient['html'], 'recipient_kind' => $recipient['kind'], 'player_keys' => $recipient['player_keys'] ?? [], 'from_name' => $batch->options['from_name'] ?? $actor->name, 'reply_to' => $batch->options['reply_to'] ?? $actor->email, 'manual_retry_only' => true], true);
                 foreach (['queued', 'failed', 'skipped'] as $outcome) {
                     $stats[$outcome] += $result[$outcome] ?? 0;
                 }

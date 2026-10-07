@@ -536,6 +536,7 @@ Route::prefix('backend')->middleware('auth')->group(function () {
   Route::prefix('event/{event}/communications')->name('backend.event-communications.')->group(function () {
     Route::get('/', [\App\Http\Controllers\Backend\EventCommunicationController::class, 'index'])->name('index');
     Route::post('/preview', [\App\Http\Controllers\Backend\EventCommunicationController::class, 'preview'])->name('preview');
+    Route::get('/review/{batch}', [\App\Http\Controllers\Backend\EventCommunicationController::class, 'review'])->name('review');
     Route::post('/send', [\App\Http\Controllers\Backend\EventCommunicationController::class, 'send'])->name('send');
     Route::post('/drafts/{draft}/preview', [\App\Http\Controllers\Backend\EventCommunicationController::class, 'reviewDraft'])->name('drafts.preview');
     Route::post('/logs/{log}/retry-preview', [\App\Http\Controllers\Backend\EventCommunicationController::class, 'retryPreview'])->name('retry-preview');

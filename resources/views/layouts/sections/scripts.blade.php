@@ -146,6 +146,9 @@ toastr.options = { positionClass: 'toast-top-right', timeOut: 5000, closeButton:
 </script>
 
 {{-- 7️⃣ Page scripts MUST be last --}}
+@auth
+<script src="{{ asset('js/manual-email.js') }}?v={{ filemtime(public_path('js/manual-email.js')) }}"></script>
+@endauth
 @include('draw.partials.player-rating-assets')
 @yield('page-script')
 

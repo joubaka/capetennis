@@ -1946,9 +1946,10 @@ final class TeamSelectionInvitationService
         string $message,
         bool $lockForUpdate = false,
         ?string $previewToken = null,
+        array $sender = [],
     ): array {
         $resolved = $this->resolveCustomPendingActivatedInvitations($import, $invitationIds, $lockForUpdate);
-        $campaign = $this->customCampaignSnapshot($import, $subject, $message);
+        $campaign = $this->customCampaignSnapshot($import, $subject, $message, $sender);
         $recipients = $resolved->map(fn (TeamSelectionInvitation $invitation): array => [
             'id' => (int) $invitation->id,
             'name' => (string) ($invitation->player?->full_name ?: 'Player'),
@@ -1979,11 +1980,12 @@ final class TeamSelectionInvitationService
         string $message,
         string $expectedPreviewHash,
         string $previewToken,
+        array $sender = [],
     ): array {
-        return DB::transaction(function () use ($import, $actor, $invitationIds, $subject, $message, $expectedPreviewHash, $previewToken): array {
+        return DB::transaction(function () use ($import, $actor, $invitationIds, $subject, $message, $expectedPreviewHash, $previewToken, $sender): array {
             Event::query()->lockForUpdate()->findOrFail($import->event_id);
             $lockedImport = TeamSelectionImport::query()->lockForUpdate()->findOrFail($import->id);
-            $preview = $this->previewCustomPendingActivatedInvitations($lockedImport, $invitationIds, $subject, $message, true, $previewToken);
+            $preview = $this->previewCustomPendingActivatedInvitations($lockedImport, $invitationIds, $subject, $message, true, $previewToken, $sender);
             if (! hash_equals($preview['hash'], $expectedPreviewHash)) {
                 throw ValidationException::withMessages([
                     'email_preview' => 'Preview this exact player selection and custom email before sending. Any change requires a new preview.',
@@ -2066,9 +2068,9 @@ final class TeamSelectionInvitationService
         return $invitations;
     }
 
-    private function customCampaignSnapshot(TeamSelectionImport $import, string $subject, string $message): array
+    private function customCampaignSnapshot(TeamSelectionImport $import, string $subject, string $message, array $sender = []): array
     {
-        $campaign = $this->savedCampaignSnapshot($import);
+        $campaign = array_merge($this->savedCampaignSnapshot($import), $sender);
         $campaign['subject'] = trim((string) preg_replace('/[\r\n]+/', ' ', $subject));
         $campaign['message'] = trim($message);
         // Custom checked-player emails deliberately carry no structured deadline.
@@ -2432,6 +2434,7 @@ final class TeamSelectionInvitationService
             'message' => $message,
             'event_information' => $eventInformation,
             'reply_to' => $replyTo,
+            'from_name' => $details['from_name'] ?? config('mail.from.name'),
             'response_deadline' => $response->toIso8601String(),
             'payment_deadline' => $payment->toIso8601String(),
             'replacement_payment_deadline' => $replacement->toIso8601String(),

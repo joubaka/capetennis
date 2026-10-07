@@ -20,7 +20,7 @@
         <div class="row mb-2">
           <div class="col-md-6">
             <label class="form-label fw-semibold">From Name</label>
-            <input type="text" name="from_name" class="form-control" required>
+            <input type="text" name="from_name" class="form-control" value="{{ auth()->user()->name }}" required>
           </div>
 
           <div class="col-md-6">
@@ -46,9 +46,9 @@
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
         <button class="btn btn-primary">
-          <i class="ti ti-send me-1"></i>Send Email
+          <i class="ti ti-send me-1"></i>Preview email
         </button>
       </div>
     </form>

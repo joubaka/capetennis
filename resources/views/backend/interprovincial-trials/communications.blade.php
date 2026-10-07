@@ -5,14 +5,15 @@
 <a class="btn btn-outline-primary mb-3" href="{{ route('backend.event-mail-log.index',$event) }}">Event email log</a>
 @foreach(['success'=>'success','warning'=>'warning','error'=>'danger','info'=>'info'] as $flash=>$tone)@if(session($flash))<div class="alert alert-{{ $tone }}" role="status">{{ session($flash) }}</div>@endif @endforeach
 <a class="btn btn-outline-primary mb-3" href="#email-history">Email history</a>
-<details class="card card-body mb-4" @if($errors->any() || $editing || request('person_search') || session('compose_subject')) open @endif><summary class="h5 mb-0">Compose and review Trials email</summary><div class="mt-3">
+<div class="mb-4">
 <form method="get" class="mb-3">@foreach(request()->except('person_search') as $key=>$value)@if(is_scalar($value))<input type="hidden" name="{{ $key }}" value="{{ $value }}">@endif @endforeach<label>Find an individual <input name="person_search" value="{{ request('person_search') }}" class="form-control" maxlength="100"></label><button class="btn btn-outline-primary">Search players</button><p class="text-muted">Selectors show up to 500 matches. Search by name to find another individual.</p></form>
 <h4>{{ $event->name }} — Invitations and reminders</h4>
 <p>Choose recipients, edit the whole message, then review exact combined emails before sending. Invitations are optional.</p>
 
 @if($errors->any())<div class="alert alert-danger">{{ $errors->first() }}</div>@endif
-<form method="post" action="{{ route('backend.interprovincial-trials.communications.preview',$event) }}" class="card card-body mb-4">
+<form method="post" action="{{ route('backend.interprovincial-trials.communications.preview',$event) }}" data-mail-compose class="card card-body mb-4">
 @csrf
+@include('backend.partials.email-sender-fields')
 @if($editing)<input type="hidden" name="schedule_id" value="{{ $editing->id }}"><div class="alert alert-info">Editing reminder schedule {{ $editing->id }}. Review and approve its new schedule before changes apply.</div>@endif
 <label class="form-label">Saved template</label><select id="trial-template" class="form-select mb-3"><option value="">Write a message</option>@foreach($templates as $template)<option value="{{ $template->id }}">{{ $template->name }}</option>@endforeach</select>
 <div class="row g-3"><div class="col-md-6"><label class="form-label">Audience</label><select name="audience" class="form-select"><option value="all" @selected(old('audience',$editing?->options['audience'] ?? 'all')==='all')>Everyone — nominees and current teams</option><option value="nominations" @selected(old('audience',$editing?->options['audience'] ?? 'all')==='nominations')>All nominated players</option><option value="teams" @selected(old('audience',$editing?->options['audience'] ?? 'all')==='teams')>Current teams (including draft)</option></select></div>
@@ -28,7 +29,7 @@
 <label class="form-label">Template name (optional)</label><input name="name" class="form-control mb-3" maxlength="255">
 <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary">Preview recipients and messages</button><button type="submit" formaction="{{ route('backend.interprovincial-trials.communications.templates',$event) }}" class="btn btn-outline-primary">Save reusable template</button></div>
 </form>
-</div></details>
+</div>
 <h5>Send history</h5>
 <p><a href="{{ route('backend.event-communications.index', $event) }}">Invitation send report and reviewed failed-email retries</a></p>
 <form method="get" class="mb-3">@foreach(request()->except(['batch','history_page']) as $key=>$value)@if(is_scalar($value))<input type="hidden" name="{{ $key }}" value="{{ $value }}">@endif @endforeach<label class="form-label">Approved batch</label><select name="batch" class="form-select" onchange="this.form.submit()"><option value="">All event email history</option>@foreach($batches as $candidate)<option value="{{ $candidate->id }}" @selected($batch?->id===$candidate->id)>#{{ $candidate->id }} — {{ $candidate->subject }} — {{ count($candidate->recipients) }} approved recipients</option>@endforeach</select></form>

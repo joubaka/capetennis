@@ -501,7 +501,7 @@ document.addEventListener('DOMContentLoaded', function () {
       return r.json();
     })
     .then(data => {
-      if (data.review_required && data.review_url) { window.location.assign(data.review_url); return; }
+      if (data.review_required && data.review_url) { window.CapeMailReview.open(data.review_url); return; }
       // A completed server response ends this intent even if queue submission failed.
       window.seriesEmailCampaignKey = null;
       if (data.report_url) window.location.assign(data.report_url);

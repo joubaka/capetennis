@@ -23,10 +23,11 @@ class TrialCommunicationService
     {
         $this->programmes->authorize($event, $actor);
         $this->content($subject, $body);
+        $options = array_merge($options, \App\Services\CommunicationSender::resolve($options, $actor));
         [$recipients, $excluded] = $this->resolve($event, $options, $subject, $body);
         return TrialMailPreview::create(['event_id' => $event->id, 'actor_id' => $actor->id, 'token' => (string) Str::uuid(),
             'options' => $options, 'subject' => $subject, 'body' => $body, 'recipients' => $recipients, 'excluded' => $excluded,
-            'snapshot_hash' => hash('sha256', json_encode([$recipients, $excluded])), 'expires_at' => now()->addMinutes(15)]);
+            'snapshot_hash' => hash('sha256', json_encode([$recipients, $excluded, $options['from_name'], $options['reply_to']])), 'expires_at' => now()->addMinutes(15)]);
     }
 
     public function commit(TrialMailPreview $preview, User $actor): array
@@ -39,13 +40,14 @@ class TrialCommunicationService
             if ($locked->committed_at) return ['queued' => 0];
             abort_if($locked->expires_at->isPast(), 422, 'Preview expired. Review a new preview.');
             [$current, $excluded] = $this->resolve($event, $locked->options, $locked->subject, $locked->body);
-            if (! hash_equals($locked->snapshot_hash, hash('sha256', json_encode([$current, $excluded])))) {
+            if (! hash_equals($locked->snapshot_hash, hash('sha256', json_encode(isset($locked->options['from_name']) ? [$current, $excluded, $locked->options['from_name'], $locked->options['reply_to']] : [$current, $excluded])))) {
                 throw ValidationException::withMessages(['preview' => 'Contacts or registration statuses changed. Review a new preview.']);
             }
             $queued = 0;
             foreach ($locked->recipients as $recipient) {
                 $stats = $this->dispatcher->dispatch('trial_communication', $locked, [['email' => $recipient['email'], 'name' => $recipient['name']]],
                     ['subject' => $recipient['subject'], 'body' => nl2br(e($recipient['body'])), 'manual_retry_only' => true,
+                        'from_name' => $locked->options['from_name'] ?? $actor->name, 'reply_to' => $locked->options['reply_to'] ?? $actor->email,
                         'event_id' => $event->id, 'preview_id' => $locked->id, 'actor_id' => $actor->id, 'created_by' => $actor->id], true);
                 $queued += $stats['queued'];
             }
@@ -86,7 +88,7 @@ class TrialCommunicationService
             abort_unless((int) $preview->actor_id === (int) $actor->id && ! $preview->committed_at && $preview->expires_at->isFuture(), 422);
             abort_unless($start->isFuture() && ($repeatHours === null || ($repeatHours >= 1 && $repeatHours <= 8760)) && (! $stop || $stop->gte($start)), 422);
             [$current, $excluded] = $this->resolve($event, $preview->options, $preview->subject, $preview->body);
-            abort_unless(hash_equals($preview->snapshot_hash, hash('sha256', json_encode([$current, $excluded]))), 422);
+            abort_unless(hash_equals($preview->snapshot_hash, hash('sha256', json_encode(isset($preview->options['from_name']) ? [$current, $excluded, $preview->options['from_name'], $preview->options['reply_to']] : [$current, $excluded]))), 422);
             $attributes = ['event_id' => $event->id, 'actor_id' => $actor->id, 'options' => $preview->options,
                 'subject' => $preview->subject, 'body' => $preview->body, 'next_send_at' => $start, 'repeat_hours' => $repeatHours, 'stop_at' => $stop, 'active' => true];
             if (! empty($preview->options['_schedule_id'])) {

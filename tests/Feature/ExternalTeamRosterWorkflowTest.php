@@ -924,7 +924,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'message' => 'Please link your account, register and complete payment.',
             'confirm_recipients' => 1,
             'recipient_hash' => hash('sha256', collect(['imported.player@example.test'])->toJson()),
-        ])->assertRedirect(route('backend.event-communications.index', $this->event))->assertSessionHas('success');
+        ])->assertOk()->assertViewHas('batch');
         Queue::assertNothingPushed();
         $this->assertDatabaseMissing('bulk_email_logs', [
             'mail_type' => 'region_email',
@@ -952,7 +952,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'message' => 'Please complete registration and payment.',
             'confirm_recipients' => 1,
             'recipient_hash' => hash('sha256', collect(['linked.player@example.test'])->toJson()),
-        ])->assertRedirect(route('backend.event-communications.index', $this->event))->assertSessionHas('success');
+        ])->assertOk()->assertViewHas('batch');
         Queue::assertNothingPushed();
         $this->assertDatabaseMissing('bulk_email_logs', [
             'related_id' => $eventRegion->id,
@@ -1867,29 +1867,24 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         $url = route('backend.team-selection.roster-email.send', [$this->event, $region]);
         $base = ['team_id' => $this->team->id, 'subject' => 'Team update', 'message' => 'Please review.'];
         $this->actingAs($this->admin)->post($url, $base + ['target_type' => 'team'])
-            ->assertRedirect(route('backend.event-communications.index', $this->event))
-            ->assertSessionHas('_old_input.scope', 'team')
-            ->assertSessionHas('_old_input.team_id', $this->team->id);
+            ->assertOk()->assertViewHas('batch', fn ($batch) => $batch->options['selection']['target_type'] === 'team' && $batch->options['selection']['team_id'] == $this->team->id);
         $this->post($url, $base + ['target_type' => 'imported_player', 'slot_id' => $slot->id])
-            ->assertRedirect(route('backend.event-communications.index', $this->event))
-            ->assertSessionHas('_old_input.scope', 'individual')
-            ->assertSessionHas('_old_input.individual_key', 'player:'.$profile->id);
-        $slot->update(['player_profile' => null]);
+            ->assertOk()->assertViewHas('batch', fn ($batch) => $batch->recipients[0]['player_keys'] === ['player:'.$profile->id]);
+        $slot->update(['player_profile' => null, 'email' => 'imported@example.test']);
         $this->post($url, $base + ['target_type' => 'imported_player', 'slot_id' => $slot->id])
-            ->assertRedirect(route('backend.event-communications.index', $this->event))
-            ->assertSessionHas('_old_input.individual_key', 'imported:'.$slot->id);
+            ->assertOk()->assertViewHas('batch', fn ($batch) => $batch->recipients[0]['player_keys'] === ['imported:'.$slot->id]);
 
         $foreignTeam = Team::factory()->create();
         $foreignSlot = NoProfileTeamPlayer::create(['team_id' => $foreignTeam->id, 'rank' => 1, 'name' => 'Other', 'surname' => 'Player', 'pay_status' => 0]);
         $this->post($url, $base + ['target_type' => 'imported_player', 'slot_id' => $foreignSlot->id])->assertNotFound();
-        $this->post($url, ['target_type' => 'team', 'team_id' => $foreignTeam->id])->assertNotFound();
+        $this->post($url, ['target_type' => 'team', 'team_id' => $foreignTeam->id] + $base)->assertNotFound();
         $otherRegion = TeamRegion::create(['region_name' => 'Other scoped region']);
         $otherEventRegion = new EventRegion();
         $otherEventRegion->forceFill(['event_id' => $this->event->id, 'region_id' => $otherRegion->id, 'ordering' => 2])->save();
         $foreignTeam->update(['category_event_id' => $this->team->category_event_id, 'region_id' => $otherRegion->id]);
         $manager = User::factory()->create();
         \App\Models\EventRegionManager::create(['event_id' => $this->event->id, 'event_region_id' => $region->id, 'region_id' => $region->region_id, 'user_id' => $manager->id, 'assigned_by' => $this->admin->id]);
-        $this->actingAs($manager)->post($url, ['target_type' => 'team', 'team_id' => $foreignTeam->id])->assertNotFound();
+        $this->actingAs($manager)->post($url, ['target_type' => 'team', 'team_id' => $foreignTeam->id] + $base)->assertNotFound();
         $this->post(route('backend.team-selection.roster-email.send', [$this->event, $otherEventRegion]), ['target_type' => 'team', 'team_id' => $foreignTeam->id])->assertForbidden();
         $this->actingAs(User::factory()->create())->post($url, $base + ['target_type' => 'team'])->assertForbidden();
         Queue::assertNothingPushed();

@@ -72,7 +72,7 @@ class UniversalEventCommunicationsTest extends TestCase
         foreach ([1, 2, 3, 4, 5, 6, 7, 'masters', 'interprovincial-trials'] as $kind) {
             [$event, $actor] = $this->event(is_int($kind) ? $kind : 1, is_string($kind) ? $kind : null);
             $this->actingAs($actor)->get(route('backend.event-communications.index', $event))
-                ->assertOk()->assertSee('Preview recipients and exact emails')->assertSee('Communications');
+                ->assertOk()->assertSee('data-mail-compose', false)->assertSee('From name')->assertSee('Reply-to address')->assertSee('Communications');
             if (! $event->isTeam() && ! $event->isInterprovincialTrials()) {
                 $player = Player::factory()->create(['email' => 'player'.$event->id.'@example.test', 'userId' => null]);
                 $this->entry($event, $player, ['payment_status_id' => 1]);
@@ -92,7 +92,7 @@ class UniversalEventCommunicationsTest extends TestCase
         $foreign = Player::factory()->create(['name' => 'Foreign', 'email' => 'foreign@example.test', 'userId' => null]);
         $this->entry($event, $player, ['payment_status_id' => 1]);
         $this->entry($other, $foreign, ['payment_status_id' => 1]);
-        $this->actingAs($actor)->get(route('backend.event-communications.index', ['event' => $event, 'search' => 'Local']))->assertOk()->assertSee('Compose and review an email')->assertDontSee($foreign->full_name);
+        $this->actingAs($actor)->get(route('backend.event-communications.index', ['event' => $event, 'search' => 'Local']))->assertOk()->assertSee('data-mail-compose', false)->assertDontSee($foreign->full_name);
         $service = app(EventCommunicationService::class);
         $batch = $service->preview($event, $actor, $this->audienceOptions(), 'Clothing', 'Collect clothing');
         $this->assertSame(['local@example.test'], array_column($batch->recipients, 'email'));
