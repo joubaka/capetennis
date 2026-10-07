@@ -217,4 +217,50 @@ class MatchReminderTest extends TestCase
         request()->attributes->remove('published_schedule_rows_'.$event->id);
         $this->assertSame([], app(MatchReminderService::class)->for($user)['players']);
     }
+
+    public function test_team_reminders_use_each_linked_players_assigned_rubbers_and_published_venue(): void
+    {
+        $user = User::factory()->create();
+        $first = Player::factory()->create(['userId' => $user->id]);
+        $second = Player::factory()->create();
+        $reserve = Player::factory()->create();
+        $user->players()->attach([$second->id, $reserve->id]);
+        $event = Event::factory()->create();
+        $category = CategoryEvent::factory()->create(['event_id' => $event->id]);
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => $category->id,
+            'published' => true, 'oop_published' => true]);
+        $home = \App\Models\Team::factory()->create(['category_event_id' => $category->id]);
+        $away = \App\Models\Team::factory()->create(['category_event_id' => $category->id]);
+        foreach ([$first, $second, $reserve] as $index => $player) {
+            \App\Models\TeamPlayer::create(['team_id' => $home->id, 'player_id' => $player->id, 'rank' => $index + 1]);
+        }
+        $tie = \App\Models\TeamTie::factory()->create(['draw_id' => $draw->id,
+            'home_team_id' => $home->id, 'away_team_id' => $away->id]);
+        $fixtures = [];
+        foreach ([[$second, '09:00', 'Other Club', '1'], [$first, '09:15', 'Player School', '3'],
+            [$first, '14:45', 'Player School', '5']] as $index => [$player, $time, $venue, $court]) {
+            $fixture = \App\Models\TeamFixture::create(['draw_id' => $draw->id, 'team_tie_id' => $tie->id,
+                'fixture_type' => 1, 'match_nr' => $index + 1, 'match_status' => 0]);
+            \App\Models\TeamFixturePlayer::forceCreate(['team_fixture_id' => $fixture->id,
+                'team1_id' => $player->id, 'slot_no' => 1]);
+            DB::table('published_schedule_assignments')->insert(['event_id' => $event->id, 'draw_id' => $draw->id,
+                'fixture_kind' => 'team', 'fixture_id' => $fixture->id, 'scheduled_at' => '2026-10-09 '.$time.':00',
+                'venue_id' => DB::table('venues')->insertGetId(['name' => $venue]), 'court' => $court,
+                'duration' => 75, 'published_at' => now()]);
+            $fixture->forceFill(['scheduled_at' => '2026-10-09 18:00:00',
+                'venue_id' => DB::table('venues')->insertGetId(['name' => 'Private working venue']), 'court_label' => '99'])->save();
+            $fixtures[] = $fixture;
+        }
+        $groups = collect(app(MatchReminderService::class)->for($user)['players'])->keyBy('name');
+        $this->assertCount(2, $groups);
+        $this->assertFalse($groups->has($reserve->full_name));
+        $matches = $groups[$first->full_name]['matches'];
+        $this->assertSame(['team:'.$fixtures[1]->id, 'team:'.$fixtures[2]->id], array_column($matches, 'key'));
+        $this->assertSame(['09:15', '14:45'], array_column($matches, 'time'));
+        $this->assertSame(['Player School', 'Player School'], array_column($matches, 'venue'));
+        $this->assertSame(['3', '5'], array_column($matches, 'court'));
+        $this->assertSame(['Your match', 'Your match'], array_column($matches, 'label'));
+        $this->assertSame('Other Club', $groups[$second->full_name]['matches'][0]['venue']);
+        $this->assertCount(1, $groups[$second->full_name]['matches']);
+    }
 }

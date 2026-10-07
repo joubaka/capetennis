@@ -57,6 +57,21 @@ final class MatchReminderService
                 ->whereDoesntHave('fixtureResults')->where('match_status', 0)
                 ->whereDoesntHave('teamTie', fn ($q) => $q->where('status', TeamTie::STATUS_COMPLETED))
                 ->get()->keyBy('id');
+            $playerFixtures = [];
+            foreach ($players->keys() as $playerId) {
+                app(TeamFixtureLineupPresenter::class)->prepare($team, publicDraw: true, selectedPlayerId: (int) $playerId);
+                $playerFixtures[$playerId] = $team->groupBy(fn ($fixture) => $fixture->team_tie_id ? 'tie:'.$fixture->team_tie_id : 'fixture:'.$fixture->id)
+                    ->flatMap(function ($tieFixtures) {
+                        $assigned = $tieFixtures->filter(fn ($fixture) => ($fixture->lineup_display['home']['selected_player_assigned'] ?? false)
+                            || ($fixture->lineup_display['away']['selected_player_assigned'] ?? false));
+                        if ($assigned->isNotEmpty()) return $assigned->map(fn ($fixture) => ['id' => $fixture->id, 'assigned' => true]);
+                        // A roster member only gets a team-time fallback while the whole tie is unassigned.
+                        if ($tieFixtures->contains(fn ($fixture) => $fixture->fixturePlayers->contains(fn ($slot) =>
+                            $slot->team1_id || $slot->team2_id || $slot->team1_no_profile_id || $slot->team2_no_profile_id)
+                            || $fixture->team1->isNotEmpty() || $fixture->team2->isNotEmpty())) return collect();
+                        return $tieFixtures->map(fn ($fixture) => ['id' => $fixture->id, 'assigned' => false]);
+                    })->pluck('assigned', 'id')->all();
+            }
             foreach ($rows as $row) {
                 $fixture = ($row['fixture_kind'] === 'individual' ? $individual : $team)->get($row['fixture_id']);
                 if (! $fixture || (int) $fixture->draw_id !== (int) $row['draw_id']) continue;
@@ -87,17 +102,19 @@ final class MatchReminderService
                     $members = $fixture->team1->pluck('id')->concat($fixture->team2->pluck('id'));
                 }
                 foreach ($members->unique()->intersect($players->keys()) as $playerId) {
-                    $key = $isTeam ? 'tie:'.$fixture->team_tie_id : $row['fixture_key'];
+                    if ($fixture instanceof TeamFixture && ! array_key_exists($fixture->id, $playerFixtures[$playerId] ?? [])) continue;
+                    $assigned = $fixture instanceof TeamFixture && $playerFixtures[$playerId][$fixture->id];
+                    $key = $isTeam && ! $assigned ? 'tie:'.$fixture->team_tie_id : $row['fixture_key'];
                     $time = CarbonImmutable::parse($row['scheduled_at'], 'Africa/Johannesburg');
                     $match = ['key' => $key, 'kind' => $isTeam ? 'team' : 'individual',
-                        'label' => $isTeam ? 'Your team plays' : 'Your match', 'event' => $event->name,
+                        'label' => $isTeam && ! $assigned ? 'Your team plays' : 'Your match', 'event' => $event->name,
                         'draw' => $row['draw_name'], 'participants' => $row['participants'],
                         'day' => $time->isSameDay($today) ? 'Today' : ($time->isSameDay($today->addDay()) ? 'Tomorrow' : $time->format('l')),
                         'date' => $time->format('D j M'), 'time' => $time->format('H:i'),
                         'scheduled_at' => $row['scheduled_at'], 'venue' => $row['venue_name'] ?: 'Venue to be confirmed',
                         'court' => $row['court'] ?: null, 'url' => route($fixture instanceof TeamFixture ? 'frontend.fixtures.show' : 'frontend.showDraw', $row['draw_id'])];
                     $groups[$playerId] ??= ['name' => $players[$playerId]->full_name, 'matches' => []];
-                    // A tie may have several rubber slots; show its earliest scheduled start.
+                    // Unassigned team-time fallbacks use the earliest slot; assigned rubbers keep their own schedule.
                     if (! isset($groups[$playerId]['matches'][$key])
                         || $match['scheduled_at'] < $groups[$playerId]['matches'][$key]['scheduled_at']) {
                         $groups[$playerId]['matches'][$key] = $match;
