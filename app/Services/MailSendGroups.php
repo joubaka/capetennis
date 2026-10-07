@@ -33,8 +33,13 @@ class MailSendGroups
         $json = fn ($key) => 'NULLIF(NULLIF('.$grammar->wrap('payload->'.$key).", 'null'), '')";
         $subject = 'COALESCE('.$json('subject').', '.$json('rendered_subject').', '.$json('title').", 'Subject not recorded')";
 
-        return (clone $authorized)->reorder()->selectRaw("$expression AS send_key, MIN(id) AS representative_id, MAX(id) AS latest_id, MIN($subject) AS send_subject, MIN(mail_type) AS send_type, MIN(created_at) AS first_recorded, MAX(created_at) AS last_recorded, COUNT(*) AS recipient_count, SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) AS sent_count, SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_count, SUM(CASE WHEN status IN ('queued', 'sending') THEN 1 ELSE 0 END) AS pending_count, SUM(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END) AS skipped_count, SUM(CASE WHEN status = 'acceptance_unknown' THEN 1 ELSE 0 END) AS uncertain_count")
-            ->groupByRaw($expression)->orderByDesc('latest_id')->paginate(15, ['*'], 'history_sends_page')->withQueryString();
+        // Project JSON expressions before grouping so strict SQL treats the send key as a column.
+        $rows = (clone $authorized)->reorder()->select('id', 'mail_type', 'created_at', 'status')
+            ->selectRaw("$expression AS send_key, $subject AS recorded_subject");
+
+        return $authorized->getModel()->newQuery()->fromSub($rows->toBase(), 'authorized_mail_sends')
+            ->selectRaw("send_key, MIN(id) AS representative_id, MAX(id) AS latest_id, MIN(recorded_subject) AS send_subject, MIN(mail_type) AS send_type, MIN(created_at) AS first_recorded, MAX(created_at) AS last_recorded, COUNT(*) AS recipient_count, SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) AS sent_count, SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_count, SUM(CASE WHEN status IN ('queued', 'sending') THEN 1 ELSE 0 END) AS pending_count, SUM(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END) AS skipped_count, SUM(CASE WHEN status = 'acceptance_unknown' THEN 1 ELSE 0 END) AS uncertain_count")
+            ->groupBy('send_key')->orderByDesc('latest_id')->paginate(15, ['*'], 'history_sends_page')->withQueryString();
     }
 
     public function recipients(Builder $authorized, int $representative)
