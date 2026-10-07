@@ -190,9 +190,16 @@
 </div>
 
 <form method="get" action="{{ route('headoffice.venue.fixtures', ['event' => $event, 'venue' => $venue]) }}" class="d-flex flex-wrap align-items-end gap-2 mb-3 d-print-none">
-    <div>
+    <div style="min-width:0;max-width:100%">
+        <label for="venue-schedule-source" class="form-label">Schedule source</label>
+        <select name="source" id="venue-schedule-source" class="form-select" style="min-height:44px;max-width:100%">
+            <option value="published" @selected($scheduleSource === 'published')>Published schedule</option>
+            <option value="working" @selected($scheduleSource === 'working')>Working schedule</option>
+        </select>
+    </div>
+    <div style="min-width:0;max-width:100%">
         <label for="venue-print-day" class="form-label">Day to print</label>
-        <select name="date" id="venue-print-day" class="form-select" style="min-height:44px">
+        <select name="date" id="venue-print-day" class="form-select" style="min-height:44px;max-width:100%">
             <option value="" @selected(!$selectedDate)>All days</option>
             @foreach($availableDays as $day)
                 <option value="{{ $day }}" @selected($selectedDate === $day)>{{ \Carbon\Carbon::parse($day)->format('l j M Y') }}</option>
@@ -203,9 +210,10 @@
         </select>
     </div>
     <button type="submit" class="btn btn-primary" style="min-height:44px">Show day</button>
-    @if($selectedDate)<a class="btn btn-outline-secondary" style="min-height:44px" href="{{ route('headoffice.venue.fixtures', ['event' => $event, 'venue' => $venue]) }}">All days</a>@endif
+    @if($selectedDate)<a class="btn btn-outline-secondary" style="min-height:44px" href="{{ route('headoffice.venue.fixtures', ['event' => $event, 'venue' => $venue, 'source' => $scheduleSource]) }}">All days</a>@endif
     <span class="text-muted mb-2">{{ $selectedDate ? \Carbon\Carbon::parse($selectedDate)->format('l j M Y') : 'All days' }} · {{ $fixtures->count() }} matches</span>
 </form>
+<p class="small text-muted">{{ $scheduleSource === 'published' ? 'Published schedule — matches visible to players. Unpublished changes appear in Working schedule.' : 'Working schedule — includes unpublished changes. Times and venues may differ from the published schedule.' }}</p>
 
 <div class="d-none d-print-block mb-4 border-bottom pb-3 venue-print-header">
     <div class="d-flex justify-content-between">
@@ -215,7 +223,7 @@
             <p class="mb-0">{{ $selectedDate ? \Carbon\Carbon::parse($selectedDate)->format('l j M Y') : 'All days' }}</p>
         </div>
         <div class="text-end">
-            <p class="mb-0">Venue fixtures · {{ $fixtures->count() }} matches</p>
+            <p class="mb-0">{{ $scheduleSource === 'published' ? 'Published schedule' : 'Working schedule' }} · {{ $fixtures->count() }} matches</p>
             <p class="mb-0"><strong>Generated:</strong> {{ now()->format('d M Y, H:i') }}</p>
         </div>
     </div>

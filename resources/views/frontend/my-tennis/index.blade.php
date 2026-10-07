@@ -16,33 +16,72 @@
     #my-tennis-page { min-width: 0; overflow-x: clip; }
     #my-tennis-page .row, #my-tennis-page .card, #my-tennis-page .card-body { min-width: 0; }
     #my-tennis-page .table-responsive { max-width: 100%; }
-    #my-tennis-tabs { overflow-x: auto; flex-wrap: nowrap; }
-    #my-tennis-tabs .nav-item { flex: 1 1 0; min-width: 11rem; }
-    #my-tennis-tabs .nav-link { white-space: nowrap; width: 100%; }
+    #my-tennis-page .my-tennis-heading { padding: .5rem 0 1.25rem; gap: 1rem; }
+    #my-tennis-page .my-tennis-heading h1 { color: #20384b; font-size: clamp(1.75rem, 4vw, 2.25rem); font-weight: 700; letter-spacing: -.04em; }
+    #my-tennis-page .my-tennis-heading p { font-size: .9rem; }
+    #my-tennis-page .my-tennis-heading form { width: min(100%, 18rem); }
+    #my-tennis-page .my-tennis-reminder { border-color: #d4dfd9; color: #456356; background: #f2f6f2; }
+    #my-tennis-tabs { flex-wrap: wrap; gap: .35rem; background: #e9eeeb; padding: .35rem; border-radius: 12px; }
+    #my-tennis-tabs .nav-item { flex: 1 1 8rem; min-width: 0; }
+    #my-tennis-tabs .nav-link { white-space: normal; width: 100%; min-height: 44px; padding: .65rem .5rem; font-size: .85rem; color: #576861; border-radius: 8px; }
+    #my-tennis-tabs .nav-link.active { background: #233d50; color: #fff; box-shadow: 0 2px 5px rgba(32, 56, 75, .12); }
+    #my-tennis-page #my-tennis-tab-content { padding: 0; background: transparent; border: 0; box-shadow: none; }
+    #my-tennis-page .my-tennis-player-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; padding: 1.5rem; background: #233d50; color: #fff; border-radius: 16px; margin-bottom: 1.75rem; }
+    #my-tennis-page .my-tennis-player-avatar { display: grid; place-items: center; flex: 0 0 56px; height: 56px; border: 1px solid #72938b; border-radius: 16px; background: #3f605e; font-size: 1.2rem; font-weight: 600; }
+    #my-tennis-page .my-tennis-player-details { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    #my-tennis-page .my-tennis-player-details h2 { color: #fff; font-size: 1.3rem; font-weight: 600; margin: .2rem 0 .4rem; }
+    #my-tennis-page .my-tennis-player-label { color: #c2d2d5; font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; }
+    #my-tennis-page .my-tennis-player-status { color: #d2e3d7; font-size: .8rem; }
+    #my-tennis-page .my-tennis-upcoming-total { display: flex; flex-direction: column; padding-left: 1rem; border-left: 1px solid #536c78; }
+    #my-tennis-page .my-tennis-upcoming-total strong { font-size: 1.75rem; line-height: 1.2; color: #fff; }
+    #my-tennis-page .my-tennis-upcoming-total span { color: #c2d2d5; font-size: .75rem; }
+    #my-tennis-page .my-tennis-section-heading { font-size: 1.1rem; font-weight: 600; color: #20384b; }
     #my-tennis-player + .select2-container { min-width: 11rem; max-width: 100%; }
+    #my-tennis-player { min-height: 44px; }
+    #my-tennis-player + .select2-container .select2-selection { min-height: 44px; display: flex; align-items: center; border: 1px solid #d4dfd9; border-radius: 8px; background: #fff; }
+    #my-tennis-player + .select2-container .select2-selection__rendered { padding-left: .75rem; padding-right: 2rem; }
+    #my-tennis-player + .select2-container .select2-selection__arrow { height: 42px; }
     #my-tennis-page .select2-dropdown { max-width: min(18rem, calc(100vw - 2rem)); }
-    #my-tennis-page .my-tennis-match-date { color: #174f65; font-size: 1rem; }
-    #my-tennis-page .my-tennis-fixture { display: grid; grid-template-columns: 5rem minmax(0, 1fr) auto; align-items: center; gap: 1rem; padding: 1rem 0; }
+    #my-tennis-page .my-tennis-match-date { display: flex; align-items: center; gap: .75rem; color: #3e5750; font-size: .9rem; }
+    #my-tennis-page .my-tennis-date-badge { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 48px; height: 52px; flex: 0 0 48px; background: #e9efe7; border-radius: 10px; }
+    #my-tennis-page .my-tennis-date-badge strong { font-size: 1.25rem; line-height: 1.2; }
+    #my-tennis-page .my-tennis-date-badge small { font-size: .65rem; text-transform: uppercase; }
+    #my-tennis-page .my-tennis-event-card { border: 1px solid #e1e7e3; border-radius: 14px; background: #fff; overflow: hidden; }
+    #my-tennis-page .my-tennis-event-header { padding: 1rem 1.25rem; background: #f3f6f2; border-bottom: 1px solid #e3e9e1; }
+    #my-tennis-page .my-tennis-event-header h3 { color: #627269; font-size: .8rem; line-height: 1.5; margin-bottom: .3rem; font-weight: 500; overflow-wrap: anywhere; }
+    #my-tennis-page .my-tennis-event-venue { color: #2d493e; font-size: .95rem; font-weight: 600; overflow-wrap: anywhere; }
+    #my-tennis-page .my-tennis-event-fixtures { padding: 0 1.25rem; }
+    #my-tennis-page .my-tennis-fixture { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) auto; align-items: center; gap: 1rem; padding: 1rem 0; }
     #my-tennis-page .my-tennis-fixture + .my-tennis-fixture { border-top: 1px solid rgba(75, 70, 92, .12); }
     #my-tennis-page .my-tennis-fixture-time { display: flex; flex-direction: column; align-items: flex-start; gap: .4rem; }
-    #my-tennis-page .my-tennis-fixture-time time { font-size: 1.35rem; font-weight: 700; color: #174f65; }
-    #my-tennis-page .my-tennis-fixture-sides { min-width: 0; overflow-wrap: anywhere; }
+    #my-tennis-page .my-tennis-fixture-time time { padding: .4rem .55rem; border-radius: 8px; background: #edf2f5; font-size: .95rem; font-weight: 700; color: #28485d; }
+    #my-tennis-page .my-tennis-fixture-sides { min-width: 0; overflow-wrap: anywhere; font-size: .9rem; color: #2f4351; }
     #my-tennis-page .my-tennis-fixture-vs { line-height: 1.2; margin: .15rem 0; }
-    #my-tennis-page .my-tennis-fixture-link { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+    #my-tennis-page .my-tennis-fixture-link { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; color: #456356; font-size: .8rem; text-decoration: underline; text-underline-offset: 3px; }
+    #my-tennis-page .btn { min-height: 44px; }
     @media (max-width: 575.98px) {
-      #my-tennis-page .my-tennis-fixture { grid-template-columns: 4.5rem minmax(0, 1fr); gap: .75rem; }
-      #my-tennis-page .my-tennis-fixture-link { grid-column: 1 / -1; width: 100%; }
+      #my-tennis-page .my-tennis-heading form { width: 100%; }
+      #my-tennis-page .my-tennis-player-summary { padding: 1rem; gap: .75rem; }
+      #my-tennis-page .my-tennis-player-avatar { flex-basis: 44px; height: 44px; border-radius: 12px; font-size: 1rem; }
+      #my-tennis-page .my-tennis-player-details h2 { font-size: 1.1rem; }
+      #my-tennis-page .my-tennis-upcoming-total { flex: 0 0 100%; flex-direction: row; align-items: baseline; gap: .5rem; padding: .75rem 0 0; border-left: 0; border-top: 1px solid #536c78; }
+      #my-tennis-page .my-tennis-upcoming-total strong { font-size: 1.25rem; }
+      #my-tennis-page .my-tennis-event-header { padding: .9rem; }
+      #my-tennis-page .my-tennis-event-fixtures { padding: 0 .9rem; }
+      #my-tennis-page .my-tennis-fixture { grid-template-columns: 3.75rem minmax(0, 1fr); gap: .5rem .65rem; }
+      #my-tennis-page .my-tennis-fixture-time { align-self: start; }
+      #my-tennis-page .my-tennis-fixture-link { grid-column: 2; justify-self: start; }
     }
     .my-tennis-manage-card .player-chip { align-items: center; display: flex; gap: .75rem; justify-content: space-between; }
     .my-tennis-manage-card .player-chip + .player-chip { border-top: 1px solid rgba(75, 70, 92, .12); padding-top: .75rem; }
     .my-tennis-manage-card .player-chip + .player-chip { margin-top: .75rem; }
   </style>
-  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+  <div class="my-tennis-heading d-flex flex-wrap justify-content-between align-items-center mb-3">
     <div>
-      <h4 class="mb-1">My Tennis</h4>
+      <h1 class="mb-1">My Tennis</h1>
       <p class="text-muted mb-0">Your players, entries and published match information.</p>
     </div>
-    <button class="btn btn-outline-primary" style="min-height: 44px" type="button" data-open-match-reminder aria-controls="match-reminder">Match reminder</button>
+    <button class="btn my-tennis-reminder" type="button" data-open-match-reminder aria-controls="match-reminder"><i class="ti ti-bell me-1" aria-hidden="true"></i>Match reminder</button>
     @if($players->isNotEmpty())
       <form method="get" action="{{ route('my.tennis') }}" class="d-flex align-items-center gap-2">
         <label for="my-tennis-player" class="visually-hidden">Player</label>
@@ -55,7 +94,7 @@
     @endif
   </div>
 
-  <ul class="nav nav-pills nav-fill bg-white rounded shadow-sm p-2 mb-4" id="my-tennis-tabs" role="tablist">
+  <ul class="nav nav-pills nav-fill mb-4" id="my-tennis-tabs" role="tablist">
     <li class="nav-item" role="presentation"><button class="nav-link active" id="my-tennis-overview-tab" data-bs-toggle="pill" data-bs-target="#my-tennis-overview" type="button" role="tab" aria-controls="my-tennis-overview" aria-selected="true"><i class="ti ti-dashboard me-1" aria-hidden="true"></i>Overview</button></li>
     <li class="nav-item" role="presentation"><button class="nav-link" id="my-tennis-history-tab" data-bs-toggle="pill" data-bs-target="#my-tennis-history" type="button" role="tab" aria-controls="my-tennis-history" aria-selected="false"><i class="ti ti-clipboard-list me-1" aria-hidden="true"></i>Entries & history</button></li>
     <li class="nav-item" role="presentation"><button class="nav-link" id="my-tennis-manage-tab" data-bs-toggle="pill" data-bs-target="#my-tennis-manage" type="button" role="tab" aria-controls="my-tennis-manage" aria-selected="false"><i class="ti ti-users me-1" aria-hidden="true"></i>Manage players</button></li>
@@ -73,32 +112,34 @@
       </div>
     </div>
   @else
-    <div class="card border-0 shadow-sm mb-4">
-      <div class="card-body py-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
-        <div><span class="text-muted small">Player</span><h5 class="mb-0">{{ $selectedPlayer->full_name }}</h5></div>
-        <span class="badge bg-label-{{ $profile['badge'] }}">{{ $profile['message'] }}</span>
+    <div class="my-tennis-player-summary">
+      <span class="my-tennis-player-avatar" aria-hidden="true">{{ collect(preg_split('/\s+/u', trim($selectedPlayer->full_name), -1, PREG_SPLIT_NO_EMPTY))->take(2)->map(fn ($part) => mb_strtoupper(mb_substr($part, 0, 1)))->implode('') }}</span>
+      <div class="my-tennis-player-details">
+        <span class="my-tennis-player-label">Player</span>
+        <h2>{{ $selectedPlayer->full_name }}</h2>
+        <span class="my-tennis-player-status">{{ $profile['message'] }}</span>
       </div>
+      <div class="my-tennis-upcoming-total"><strong>{{ $upcomingMatchPage->total() }}</strong><span>Upcoming matches</span></div>
     </div>
     <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
-      <h5 class="mb-0">Upcoming scheduled matches</h5>
-      <span class="badge bg-label-primary">{{ $upcomingMatchPage->total() }}</span>
+      <h2 class="my-tennis-section-heading mb-0">Upcoming scheduled matches</h2>
     </div>
     @php
       $matchDays = $upcomingMatches->groupBy(fn ($match) => \Carbon\Carbon::parse($match->scheduled_at)->toDateString());
     @endphp
     @forelse($matchDays as $date => $dayMatches)
       <section class="mb-4" aria-label="Matches on {{ \Carbon\Carbon::parse($date)->format('l, j F Y') }}">
-        <h6 class="my-tennis-match-date mb-3"><i class="ti ti-calendar-event me-2" aria-hidden="true"></i>{{ \Carbon\Carbon::parse($date)->format('l, j M Y') }}</h6>
+        <h3 class="my-tennis-match-date mb-3"><span class="my-tennis-date-badge" aria-hidden="true"><strong>{{ \Carbon\Carbon::parse($date)->format('j') }}</strong><small>{{ \Carbon\Carbon::parse($date)->format('M') }}</small></span><span>{{ \Carbon\Carbon::parse($date)->format('l, j M Y') }}</span></h3>
         @foreach($dayMatches->groupBy(fn ($match) => $match->draw?->event_id.'|'.$match->venue_id) as $eventMatches)
           @php
             $firstMatch = $eventMatches->first();
           @endphp
-          <div class="card border-0 shadow-sm mb-3">
-            <div class="card-body py-3">
-              <div class="mb-3">
-                <h6 class="mb-1">{{ $firstMatch->draw?->event?->name ?? 'Published draw' }}</h6>
-                <div class="small text-muted"><i class="ti ti-map-pin me-1" aria-hidden="true"></i>{{ $firstMatch->venue?->name ?? 'Venue to be confirmed' }}</div>
+          <div class="my-tennis-event-card mb-3">
+              <div class="my-tennis-event-header">
+                <h3>{{ $firstMatch->draw?->event?->name ?? 'Published draw' }}</h3>
+                <div class="my-tennis-event-venue"><i class="ti ti-map-pin me-1" aria-hidden="true"></i>{{ $firstMatch->venue?->name ?? 'Venue to be confirmed' }}</div>
               </div>
+            <div class="my-tennis-event-fixtures">
               @foreach($eventMatches as $match)
                 @php
                   $isTeam = $match instanceof \App\Models\TeamFixture;
@@ -120,7 +161,7 @@
                     <div class="fw-semibold" title="{{ $away }}" aria-label="{{ $away }}">{{ $shortAway }}</div>
                     @if($isTeam)<div class="small text-muted" aria-label="Match players for {{ $away }}">{{ implode(' · ', $match->profile_match_players['away'] ?? []) ?: 'Players to be confirmed' }}</div>@endif
                   </div>
-                  <a class="btn btn-outline-primary my-tennis-fixture-link" href="{{ route($isTeam ? 'frontend.fixtures.show' : 'frontend.showDraw', $match->draw_id) }}">View fixtures</a>
+                  <a class="my-tennis-fixture-link" href="{{ route($isTeam ? 'frontend.fixtures.show' : 'frontend.showDraw', $match->draw_id) }}">View fixtures<i class="ti ti-arrow-up-right ms-1" aria-hidden="true"></i></a>
                 </article>
               @endforeach
             </div>

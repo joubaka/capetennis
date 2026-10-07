@@ -1313,6 +1313,34 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
+  const reviewRosterMove = function (review, ordered) {
+    return new Promise(resolve => {
+      const dialog = document.createElement('dialog');
+      dialog.style.cssText = 'border:1px solid #dbe2ea;border-radius:12px;padding:24px;width: min(620px, calc(100vw - 24px));max-height:85vh;overflow:auto;color:#34445a;';
+      const addText = (tag, text) => { const element = document.createElement(tag); element.textContent = text; dialog.appendChild(element); return element; };
+      addText('h4', review.can_confirm ? 'Review playing order' : 'Move cannot be saved');
+      addText('p', review.message);
+      addText('h6', 'Proposed order');
+      const list = document.createElement('ol');
+      ordered.forEach(row => { const item = document.createElement('li'); item.textContent = row.querySelector('strong')?.textContent?.trim() || row.cells[1]?.textContent?.trim() || 'Player'; list.appendChild(item); });
+      dialog.appendChild(list);
+      addText('p', `${review.affected_matches.length} upcoming match(s) will change players. Match times and courts must stay unchanged. Started matches keep their original players.`);
+      if (review.affected_matches.length) {
+        const details = document.createElement('details');
+        const summary = document.createElement('summary'); summary.textContent = 'Affected matches'; details.appendChild(summary);
+        review.affected_matches.forEach(match => { const item = document.createElement('p'); item.textContent = `Match #${match.id} · ${match.scheduled_at || 'Not scheduled'}${match.court ? ' · Court ' + match.court : ''} · ${match.before_players || 'Current players'} → ${match.after_players || 'New players'}`; details.appendChild(item); });
+        dialog.appendChild(details);
+      }
+      [...review.blockers, ...review.warnings].filter((value, index, all) => all.indexOf(value) === index).forEach(warning => addText('p', warning));
+      const actions = document.createElement('div'); actions.className = 'd-flex gap-2 justify-content-end mt-3';
+      const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'btn btn-outline-secondary'; cancel.style.minHeight = '44px'; cancel.textContent = review.can_confirm ? 'Cancel' : 'Close';
+      const finish = approved => { dialog.close(); dialog.remove(); resolve(approved); };
+      cancel.addEventListener('click', () => finish(false)); actions.appendChild(cancel);
+      if (review.can_confirm) { const approve = document.createElement('button'); approve.type = 'button'; approve.className = 'btn btn-primary'; approve.style.minHeight = '44px'; approve.textContent = 'Confirm move'; approve.addEventListener('click', () => finish(true)); actions.appendChild(approve); }
+      dialog.appendChild(actions); dialog.addEventListener('cancel', event => { event.preventDefault(); finish(false); });
+      document.body.appendChild(dialog); dialog.showModal();
+    });
+  };
   document.querySelectorAll('.roster-order-sortable').forEach(function (tbody) {
     let dragged = null;
     let originalRows = [];
@@ -1340,13 +1368,21 @@ document.addEventListener('DOMContentLoaded', function () {
       busyControls = Array.from(teamContent.querySelectorAll('form button, form input, form select, form textarea')).filter(control => !control.disabled);
       busyControls.forEach(control => { control.disabled = true; });
       refreshButtons();
+      let confirmationAttempted = false;
       try {
-        const response = await fetch(tbody.dataset.reorderUrl, {
+        const proposal = { [tbody.dataset.reorderField]: ordered.map(row => Number(row.dataset.orderId)), expected_ids: originalRows.map(row => Number(row.dataset.orderId)) };
+        const send = body => fetch(tbody.dataset.reorderUrl, {
           method: 'PUT',
           headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '' },
-          body: JSON.stringify({ [tbody.dataset.reorderField]: ordered.map(row => Number(row.dataset.orderId)), expected_ids: originalRows.map(row => Number(row.dataset.orderId)) }),
+          body: JSON.stringify(body),
         });
-        if (!response.ok) throw await AppFeedback.responseError(response, 'The player order could not be saved.');
+        const previewResponse = await send({ ...proposal, preview: true });
+        if (!previewResponse.ok) throw await AppFeedback.responseError(previewResponse, 'The move could not be checked.');
+        const review = await previewResponse.json();
+        if (!await reviewRosterMove(review, ordered)) { restore(); return; }
+        confirmationAttempted = true;
+        const response = await send({ ...proposal, fingerprint: review.fingerprint });
+        if (!response.ok) { if (response.status >= 400 && response.status < 500) confirmationAttempted = false; throw await AppFeedback.responseError(response, 'The player order could not be saved.'); }
         const data = await response.json();
         const order = data.order;
         if (!Array.isArray(order) || order.length !== ordered.length || new Set(order.map(item => String(item.id))).size !== ordered.length
@@ -1369,8 +1405,13 @@ document.addEventListener('DOMContentLoaded', function () {
           content.querySelectorAll(`[data-rank-slot-id="${item.id}"]`).forEach(option => { option.textContent = `${option.dataset.rankPlayerName} · Rank ${item.rank}`; });
         });
         if (players) playerRows.reverse().forEach(row => players.prepend(row));
-        AppFeedback.success(data.message);
+        AppFeedback.success(`${data.message} Confirmed: ${review.affected_matches.length} upcoming match(s) updated; match times and courts retained.`);
       } catch (error) {
+        if (confirmationAttempted) {
+          AppFeedback.warning('The move response could not be verified. Reloading to check the saved playing order.');
+          window.location.reload();
+          return;
+        }
         restore();
         AppFeedback.fromError(error, 'The player order could not be saved.');
       } finally {

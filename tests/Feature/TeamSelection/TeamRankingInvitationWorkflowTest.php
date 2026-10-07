@@ -3033,9 +3033,9 @@ class TeamRankingInvitationWorkflowTest extends TestCase
                 $lockingQueries[] = ['sql' => mb_strtolower($query->sql), 'bindings' => $query->bindings];
             }
         });
-        $this->actingAs($manager)->post(route('backend.team-selection.invitations.move', [$event, $selectionImport, $ordered->last()]), [
-            'direction' => 'up',
-        ])->assertRedirect();
+        $moveUrl = route('backend.team-selection.invitations.move', [$event, $selectionImport, $ordered->last()]);
+        $review = $this->actingAs($manager)->postJson($moveUrl, ['direction' => 'up', 'preview' => true])->assertOk()->json();
+        $this->actingAs($manager)->post($moveUrl, ['direction' => 'up', 'fingerprint' => $review['fingerprint']])->assertRedirect()->assertSessionHas('success');
         if (DB::connection()->getDriverName() === 'mysql') {
             $lockPosition = fn (string $table) => collect($lockingQueries)->search(fn (array $query) => str_contains($query['sql'], "from `{$table}`"));
             $this->assertLessThan($lockPosition('team_selection_imports'), $lockPosition('events'));
@@ -6081,7 +6081,13 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $ids = [$first->id, $second->id];
         $url = route('backend.team-selection.teams.order', [$source->event, $import, $team]);
         $this->actingAs($admin)->get(route('backend.team-selection.index', $source->event))->assertOk();
-        $this->actingAs($admin)->putJson($url, ['invitation_ids' => array_reverse($ids), 'expected_ids' => $ids])
+        $payload = ['invitation_ids' => array_reverse($ids), 'expected_ids' => $ids];
+        $auditBefore = DB::table('activity_log')->count();
+        $review = $this->actingAs($admin)->putJson($url, $payload + ['preview' => true])->assertOk()->assertJsonPath('can_confirm', true)->json();
+        $this->assertSame($ids, $import->invitations()->whereIn('id', $ids)->orderBy('roster_rank')->pluck('id')->all());
+        $this->assertSame($auditBefore, DB::table('activity_log')->count());
+        $this->putJson($url, $payload)->assertUnprocessable();
+        $this->actingAs($admin)->putJson($url, $payload + ['fingerprint' => $review['fingerprint']])
             ->assertOk()->assertJsonPath('order.0.id', $second->id)->assertJsonPath('order.0.rank', 1)
             ->assertJsonPath('order.1.rank', 3);
         foreach ($selected as $item) {
@@ -6096,7 +6102,9 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertSame($ledgerCount, \App\Models\WalletTransaction::count());
         $this->assertDatabaseCount('team_payment_orders', 1);
         $this->assertSame(1, DB::table('activity_log')->where('description', 'regional manager reordered selected roster by drag and drop')->count());
-        $this->putJson($url, ['invitation_ids' => array_reverse($ids), 'expected_ids' => array_reverse($ids)])->assertOk();
+        $same = ['invitation_ids' => array_reverse($ids), 'expected_ids' => array_reverse($ids)];
+        $sameReview = $this->putJson($url, $same + ['preview' => true])->assertOk()->json();
+        $this->putJson($url, $same + ['fingerprint' => $sameReview['fingerprint']])->assertOk();
         $this->assertSame(1, DB::table('activity_log')->where('description', 'regional manager reordered selected roster by drag and drop')->count());
         $this->putJson($url, ['invitation_ids' => $ids, 'expected_ids' => $ids])->assertUnprocessable();
         Queue::assertNothingPushed();

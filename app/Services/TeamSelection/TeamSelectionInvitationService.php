@@ -2298,7 +2298,7 @@ final class TeamSelectionInvitationService
             $result = $action();
             $reports = $adaptation->adaptEvent($eventId);
             $warnings = collect($reports)->flatMap(fn ($report) => $report['warnings'] ?? [])->unique()->values();
-            if ($warnings->isNotEmpty() && app()->bound('session.store')) {
+            if ($warnings->isNotEmpty() && !RosterOrderProtectionService::$previewing && app()->bound('session.store')) {
                 session()->flash('schedule_adaptation_warning', $warnings->take(5)->implode(' '));
             }
             return $result;

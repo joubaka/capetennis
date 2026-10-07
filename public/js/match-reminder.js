@@ -33,7 +33,7 @@
     }
     if (!$.fn.select2) return;
     if ($(preference).hasClass('select2-hidden-accessible')) $(preference).select2('destroy');
-    $(preference).select2({dropdownParent: $(modal), minimumResultsForSearch: Infinity, width: '240px'});
+    $(preference).select2({dropdownParent: $(modal), minimumResultsForSearch: Infinity, width: '100%'});
     const selection = $(preference).next('.select2-container').find('.select2-selection');
     selection.css({'min-height': '44px', display: 'flex', 'align-items': 'center'});
     selection.attr('aria-describedby', 'match-reminder-timing-help');
@@ -96,15 +96,15 @@
         return;
       }
       for (const player of data.players) {
-        const section = element('section', '', 'mb-4');
-        section.append(element('h3', player.name, 'fs-5'));
+        const section = element('section', '', 'reminder-player');
+        section.append(element('h3', player.name, 'reminder-player-name'));
         for (const match of player.matches) {
-          const card = element('article', '', 'border rounded p-3 mb-2');
-          card.append(element('div', `${match.day} · ${match.date} · ${match.time}`, 'fw-bold reminder-time mb-2'));
-          card.append(element('div', `${match.label}: ${match.participants.filter(Boolean).join(' vs ')}`, 'fw-semibold'));
-          card.append(element('div', `${match.event} · ${match.draw}`, 'small mt-1'));
-          card.append(element('div', match.venue, 'mt-2'));
-          const link = element('a', 'View fixtures', 'btn btn-outline-primary mt-3');
+          const card = element('article', '', 'reminder-match');
+          card.append(element('div', `${match.date} · ${match.time}`, 'reminder-time'));
+          card.append(element('div', `${match.label}: ${match.participants.filter(Boolean).join(' vs ')}`, 'reminder-participants'));
+          card.append(element('div', `${match.event} · ${match.draw}`, 'reminder-event'));
+          card.append(element('div', match.venue, 'reminder-venue'));
+          const link = element('a', 'View fixtures', 'reminder-fixtures');
           link.href = match.url;
           link.style.minHeight = '44px';
           card.append(link);

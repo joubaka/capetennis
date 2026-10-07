@@ -980,9 +980,9 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'player_profile' => null,
         ]);
 
-        $this->actingAs($this->admin)->post(route('backend.team-selection.imported-players.move', [
-            $this->event, $eventRegion, $this->team, $linkedSlot,
-        ]), ['direction' => 'down'])->assertRedirect()->assertSessionHas('success');
+        $moveUrl = route('backend.team-selection.imported-players.move', [$this->event, $eventRegion, $this->team, $linkedSlot]);
+        $review = $this->actingAs($this->admin)->postJson($moveUrl, ['direction' => 'down', 'preview' => true])->assertOk()->json();
+        $this->post($moveUrl, ['direction' => 'down', 'fingerprint' => $review['fingerprint']])->assertRedirect()->assertSessionHas('success');
 
         $this->assertSame(2, (int) $linkedSlot->fresh()->rank);
         $this->assertSame(1, (int) $unlinkedSlot->fresh()->rank);
@@ -992,9 +992,10 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'rank' => 2,
         ]);
 
-        $this->actingAs($this->admin)->putJson(route('backend.team-selection.imported-players.reorder', [
-            $this->event, $eventRegion, $this->team,
-        ]), ['slot_ids' => [$linkedSlot->id, $unlinkedSlot->id]])
+        $reorderUrl = route('backend.team-selection.imported-players.reorder', [$this->event, $eventRegion, $this->team]);
+        $payload = ['slot_ids' => [$linkedSlot->id, $unlinkedSlot->id], 'expected_ids' => [$unlinkedSlot->id, $linkedSlot->id]];
+        $review = $this->putJson($reorderUrl, $payload + ['preview' => true])->assertOk()->json();
+        $this->actingAs($this->admin)->putJson($reorderUrl, $payload + ['fingerprint' => $review['fingerprint']])
             ->assertOk()->assertJsonPath('message', 'The imported roster order was updated.');
         $this->assertSame(1, (int) $linkedSlot->fresh()->rank);
         $this->assertSame(2, (int) $unlinkedSlot->fresh()->rank);
@@ -1846,7 +1847,8 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         $mirror = TeamPlayer::create(['team_id' => $this->team->id, 'rank' => 3, 'player_id' => 0, 'pay_status' => 0]);
         $url = route('backend.team-selection.imported-players.reorder', [$this->event, $region, $this->team]);
         $payload = ['slot_ids' => [$second->id, $first->id], 'expected_ids' => [$first->id, $second->id]];
-        $this->actingAs($this->admin)->putJson($url, $payload)->assertOk()->assertJsonPath('order.0.rank', 1)->assertJsonPath('order.1.rank', 3);
+        $review = $this->actingAs($this->admin)->putJson($url, $payload + ['preview' => true])->assertOk()->assertJsonPath('can_confirm', true)->json();
+        $this->putJson($url, $payload + ['fingerprint' => $review['fingerprint']])->assertOk()->assertJsonPath('order.0.rank', 1)->assertJsonPath('order.1.rank', 3);
         $this->assertSame(3, (int) $first->fresh()->rank);
         $this->assertSame(1, (int) $mirror->fresh()->rank);
         $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'player_id' => $profile->id, 'rank' => 3, 'pay_status' => 0]);

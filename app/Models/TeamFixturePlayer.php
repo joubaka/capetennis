@@ -28,6 +28,7 @@ class TeamFixturePlayer extends Model
     protected static function booted()
     {
         static::updated(function ($model) {
+            if (\App\Services\TeamSelection\RosterOrderProtectionService::$previewing) return;
             Log::debug('🟢 TeamFixturePlayer UPDATED', [
                 'id' => $model->id,
                 'changes' => $model->getChanges(),

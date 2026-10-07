@@ -341,7 +341,7 @@ class TeamController extends Controller
     $hasTies = \App\Models\TeamTie::whereHas('draw', fn ($query) => $query->where('event_id', $eventId))->exists();
     if ($hasFixtures || $hasTies) {
       return response()->json([
-        'message' => 'Player order is locked because this event already has generated fixtures. Changing it would rebuild draw lineups and may change match times. Delete and recreate unplayed draws before changing the order. Keep started matches and results; ask the organiser to review those separately.',
+        'message' => 'This event already has generated matches. Use the regional team selection playing order to review the affected matches and confirm a safe move. Existing bookings and played results have been retained.',
       ], 409);
     }
 

@@ -5,7 +5,7 @@
 @endphp
 <div class="roster-region-header">
   <div><h2 class="h5 mb-1">{{ $region->region_name }}</h2><p class="text-muted mb-0">{{ $region->teams->count() }} teams · {{ $occupied }} occupied places · {{ $unpaid }} unpaid · {{ $reserves }} reserves</p></div>
-  <div class="dropdown"><button type="button" class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">Email players in region</button><div class="dropdown-menu dropdown-menu-end">
+  <div class="dropdown"><button type="button" class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">Send Emails</button><div class="dropdown-menu dropdown-menu-end">
     <button type="button" class="dropdown-item emailRegionBtn" data-regionid="{{ $region->id }}" data-regionname="{{ $region->region_name }}">Players in this region</button>
     <button type="button" class="dropdown-item emailUnpaidRegionBtn" data-regionid="{{ $region->id }}" data-regionname="{{ $region->region_name }}">Unpaid players in this region</button>
   </div></div>

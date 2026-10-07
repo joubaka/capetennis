@@ -439,7 +439,8 @@ class TeamSelectionInvitationController extends Controller
         abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
         $this->authorizeImport($event, $selectionImport, $request->user());
         $data = $request->validate(['direction' => ['required', 'in:up,down']]);
-        $service->moveRosterRank($invitation, $request->user(), $data['direction']);
+        $review = $this->protectRosterOrder($request, $event, ['invitation_id' => $invitation->id, 'direction' => $data['direction']], fn () => $service->moveRosterRank($invitation, $request->user(), $data['direction']));
+        if ($review) return $review;
 
         return back()->with('success', 'Regional roster order updated.');
     }
@@ -453,7 +454,8 @@ class TeamSelectionInvitationController extends Controller
             'expected_ids' => ['required', 'array', 'min:1', 'max:50'],
             'expected_ids.*' => ['required', 'integer', 'distinct'],
         ]);
-        $service->reorderRoster($selectionImport, $team, $data['invitation_ids'], $request->user(), $data['expected_ids']);
+        $review = $this->protectRosterOrder($request, $event, ['team_id' => $team->id, 'import_id' => $selectionImport->id] + $data, fn () => $service->reorderRoster($selectionImport, $team, $data['invitation_ids'], $request->user(), $data['expected_ids']));
+        if ($review) return $review;
 
         return response()->json(['message' => 'Regional roster order updated.', 'order' => $selectionImport->invitations()
             ->where('team_id', $team->id)->whereIn('id', $data['invitation_ids'])->orderBy('roster_rank')
@@ -1337,7 +1339,8 @@ class TeamSelectionInvitationController extends Controller
     ) {
         $this->authorizeImportedRosterSlot($event, $eventRegion, $team, $noProfileTeamPlayer, $request->user());
         $data = $request->validate(['direction' => ['required', 'in:up,down']]);
-        $rosters->move($event, $noProfileTeamPlayer, $data['direction'], $request->user());
+        $review = $this->protectRosterOrder($request, $event, ['slot_id' => $noProfileTeamPlayer->id, 'direction' => $data['direction']], fn () => $rosters->move($event, $noProfileTeamPlayer, $data['direction'], $request->user()));
+        if ($review) return $review;
 
         return back()->with('success', 'The imported roster order was updated.');
     }
@@ -1378,10 +1381,11 @@ class TeamSelectionInvitationController extends Controller
         $data = $request->validate([
             'slot_ids' => ['required', 'array', 'min:1', 'max:50'],
             'slot_ids.*' => ['required', 'integer'],
-            'expected_ids' => ['nullable', 'array', 'min:1', 'max:50'],
+            'expected_ids' => ['required', 'array', 'min:1', 'max:50'],
             'expected_ids.*' => ['required', 'integer', 'distinct'],
         ]);
-        $rosters->reorder($event, $team->id, $data['slot_ids'], $request->user(), $data['expected_ids'] ?? null);
+        $review = $this->protectRosterOrder($request, $event, ['team_id' => $team->id] + $data, fn () => $rosters->reorder($event, $team->id, $data['slot_ids'], $request->user(), $data['expected_ids']));
+        if ($review) return $review;
 
         return response()->json(['message' => 'The imported roster order was updated.', 'order' => $team->team_players_no_profile()
             ->orderBy('rank')->get(['id', 'rank'])->map(fn ($slot) => ['id' => $slot->id, 'rank' => $slot->rank])]);
@@ -1396,6 +1400,14 @@ class TeamSelectionInvitationController extends Controller
             ->withProperties(['region_id' => $eventRegion->region_id])->log('hid regional team announcement');
 
         return back()->with('success', 'The regional announcement was hidden. Previously sent email is unchanged.');
+    }
+
+    private function protectRosterOrder(Request $request, Event $event, array $proposal, callable $mutation)
+    {
+        $request->validate(['preview' => ['sometimes', 'boolean'], 'fingerprint' => ['nullable', 'string', 'size:64']]);
+        $result = app(\App\Services\TeamSelection\RosterOrderProtectionService::class)->execute(
+            $event->id, $request->user()->id, $proposal, $mutation, $request->boolean('preview'), $request->input('fingerprint'));
+        return $result['preview'] ? response()->json($result) : null;
     }
 
     private function authorizeImport(Event $event, TeamSelectionImport $selectionImport, User $user): void

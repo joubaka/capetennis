@@ -28,6 +28,151 @@ class TeamDrawAdaptationTest extends TestCase
         return [$event, $category, $draw, $teams];
     }
 
+    private function protectedReorderScenario(): array
+    {
+        [$event, , $draw, $teams] = $this->setupDraw();
+        $first = $teams->first()->team_players()->firstOrFail();
+        $second = TeamPlayer::create(['team_id' => $teams->first()->id, 'player_id' => Player::factory()->create()->id, 'rank' => 2, 'pay_status' => 1]);
+        app(TeamDrawAdaptationService::class)->adaptDraw($draw, null, true, true);
+        $fixture = TeamFixture::where('draw_id', $draw->id)->firstOrFail();
+        $venue = DB::table('venues')->insertGetId(['name' => 'Review venue']);
+        $draw->venues()->attach($venue, ['num_courts' => 2]);
+        $fixture->forceFill(['scheduled_at' => '2026-10-10 08:00', 'venue_id' => $venue, 'court_label' => '1', 'duration_min' => 60, 'scheduled' => 1])->save();
+        $mutation = function () use ($event, $first, $second) {
+            TeamPlayer::withoutGlobalScopes()->findOrFail($first->id)->update(['rank' => 0]);
+            TeamPlayer::withoutGlobalScopes()->findOrFail($second->id)->update(['rank' => 1]);
+            TeamPlayer::withoutGlobalScopes()->findOrFail($first->id)->update(['rank' => 2]);
+            app(TeamDrawAdaptationService::class)->adaptEvent($event);
+        };
+        return [$event, $draw, $first, $second, $fixture, $mutation];
+    }
+
+    public function test_order_preview_rolls_back_lineups_bookings_and_audit_then_confirmation_preserves_booking(): void
+    {
+        [$event, , $first, $second, $fixture, $mutation] = $this->protectedReorderScenario();
+        $service = app(\App\Services\TeamSelection\RosterOrderProtectionService::class);
+        $beforeFixture = $fixture->getAttributes();
+        $beforeSlots = $fixture->fixturePlayers()->get()->map->getAttributes()->all();
+        $activityCount = DB::table('activity_log')->count();
+        $auditCount = DB::table('draw_audit_logs')->count();
+        $proposal = ['team_id' => $first->team_id, 'move' => 'swap'];
+        $review = $service->execute($event->id, 1, $proposal, $mutation, true, null);
+        $this->assertTrue($review['can_confirm']);
+        $this->assertCount(1, $review['affected_matches']);
+        $this->assertSame(1, (int) $first->fresh()->rank);
+        $this->assertSame($beforeFixture, $fixture->fresh()->getAttributes());
+        $this->assertSame($beforeSlots, $fixture->fixturePlayers()->get()->map->getAttributes()->all());
+        $this->assertSame($activityCount, DB::table('activity_log')->count());
+        $this->assertSame($auditCount, DB::table('draw_audit_logs')->count());
+        $service->execute($event->id, 1, $proposal, $mutation, false, $review['fingerprint']);
+        $this->assertSame(2, (int) $first->fresh()->rank);
+        $this->assertSame(1, (int) $second->fresh()->rank);
+        $this->assertSame(1, (int) $second->fresh()->pay_status);
+        $this->assertSame($beforeFixture, $fixture->fresh()->getAttributes());
+        $this->assertSame($second->player_id, $fixture->fixturePlayers()->first()->team1_id);
+    }
+
+    public function test_order_preview_blocks_conflict_and_approval_cannot_clear_booking(): void
+    {
+        [$event, $draw, $first, $second, $fixture, $mutation] = $this->protectedReorderScenario();
+        $otherDraw = Draw::factory()->create();
+        $other = TeamFixture::create(['draw_id' => $otherDraw->id, 'match_nr' => 1, 'fixture_type' => 1, 'match_status' => 0,
+            'scheduled_at' => $fixture->scheduled_at, 'venue_id' => $fixture->venue_id, 'court_label' => '2', 'duration_min' => 60]);
+        $other->fixturePlayers()->create(['slot_no' => 1, 'team1_id' => $second->player_id]);
+        $before = $fixture->getAttributes();
+        $service = app(\App\Services\TeamSelection\RosterOrderProtectionService::class);
+        $proposal = ['team_id' => $first->team_id];
+        $review = $service->execute($event->id, 1, $proposal, $mutation, true, null);
+        $this->assertFalse($review['can_confirm']);
+        $this->assertStringContainsString('Schedule conflict', implode(' ', $review['blockers']));
+        try {
+            $service->execute($event->id, 1, $proposal, $mutation, false, $review['fingerprint']);
+            $this->fail('Conflicting approval must be rejected.');
+        } catch (\Illuminate\Validation\ValidationException $expected) {
+            $this->assertSame(1, (int) $first->fresh()->rank);
+            $this->assertSame($before, $fixture->fresh()->getAttributes());
+            $this->assertSame($first->player_id, $fixture->fixturePlayers()->first()->team1_id);
+        }
+    }
+
+    public function test_order_confirmation_rejects_changed_booking_actor_and_proposal(): void
+    {
+        [$event, , $first, , $fixture, $mutation] = $this->protectedReorderScenario();
+        $service = app(\App\Services\TeamSelection\RosterOrderProtectionService::class);
+        $review = $service->execute($event->id, 1, ['move' => 'swap'], $mutation, true, null);
+        foreach ([[2, ['move' => 'swap']], [1, ['move' => 'different']]] as [$actor, $proposal]) {
+            try { $service->execute($event->id, $actor, $proposal, $mutation, false, $review['fingerprint']); $this->fail('Changed actor or proposal accepted.'); }
+            catch (\Illuminate\Validation\ValidationException $expected) { $this->assertSame(1, (int) $first->fresh()->rank); }
+        }
+        $fixture->update(['court_label' => '2']);
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        $service->execute($event->id, 1, ['move' => 'swap'], $mutation, false, $review['fingerprint']);
+    }
+
+    public function test_order_preview_blocks_locked_draw_and_retains_started_match(): void
+    {
+        [$event, $draw, $first, , $fixture, $mutation] = $this->protectedReorderScenario();
+        $service = app(\App\Services\TeamSelection\RosterOrderProtectionService::class);
+        $draw->update(['locked' => true]);
+        $review = $service->execute($event->id, 1, [], $mutation, true, null);
+        $this->assertFalse($review['can_confirm']);
+        $draw->update(['locked' => false]);
+        $fixture->update(['match_status' => 1]);
+        $review = $service->execute($event->id, 1, [], $mutation, true, null);
+        $this->assertTrue($review['can_confirm']);
+        $this->assertSame([], $review['affected_matches']);
+        $service->execute($event->id, 1, [], $mutation, false, $review['fingerprint']);
+        $this->assertSame($first->player_id, $fixture->fixturePlayers()->first()->team1_id);
+    }
+
+    public function test_order_preview_blocks_legacy_sources_without_guessing_but_ignores_unrelated_locked_category(): void
+    {
+        [$event, $draw, $first, , $fixture, $mutation] = $this->protectedReorderScenario();
+        $otherCategory = CategoryEvent::factory()->create(['event_id' => $event->id]);
+        $otherDraw = Draw::factory()->create(['event_id' => $event->id, 'locked' => true]);
+        $otherDraw->forceFill(['team_category_id' => 1, 'team_draw_selection' => ['category_ids' => [$otherCategory->id], 'rubber_code' => 'singles']])->save();
+        TeamFixture::create(['draw_id' => $otherDraw->id, 'match_nr' => 1, 'fixture_type' => 1]);
+        $service = app(\App\Services\TeamSelection\RosterOrderProtectionService::class);
+        $proposal = ['team_id' => $first->team_id];
+        $this->assertTrue($service->execute($event->id, 1, $proposal, $mutation, true, null)['can_confirm']);
+        $fixture->forceFill(['team_tie_id' => null])->save();
+        $draw->teamTies()->delete();
+        $draw->forceFill(['team_draw_selection' => null])->save();
+        $review = $service->execute($event->id, 1, $proposal, $mutation, true, null);
+        $this->assertFalse($review['can_confirm']);
+        $this->assertSame(1, (int) $first->fresh()->rank);
+        $this->assertStringContainsString('Legacy regional fixtures', implode(' ', $review['blockers']));
+    }
+
+    public function test_order_preview_does_not_disclose_or_commit_another_teams_drifted_lineup(): void
+    {
+        [$event, $draw, $first, , , $mutation] = $this->protectedReorderScenario();
+        $category = CategoryEvent::factory()->create(['event_id' => $event->id]);
+        $otherDraw = Draw::factory()->create(['event_id' => $event->id, 'locked' => false]);
+        $otherDraw->forceFill(['team_category_id' => 1, 'team_draw_selection' => ['category_ids' => [$category->id], 'rubber_code' => 'singles'],
+            'team_format_snapshot' => $draw->team_format_snapshot])->save();
+        $otherTeams = collect(range(1, 2))->map(function () use ($category) {
+            $team = Team::factory()->create(['category_event_id' => $category->id]);
+            TeamPlayer::create(['team_id' => $team->id, 'player_id' => Player::factory()->create()->id, 'rank' => 1]);
+            return $team;
+        });
+        app(TeamDrawAdaptationService::class)->adaptDraw($otherDraw, null, true, true);
+        $otherFixture = TeamFixture::where('draw_id', $otherDraw->id)->firstOrFail();
+        $original = $otherFixture->fixturePlayers()->first()->getAttributes();
+        $private = Player::factory()->create(['name' => 'PrivateUnrelated', 'surname' => 'Participant']);
+        $otherTeams->first()->team_players()->first()->update(['player_id' => $private->id]);
+        $service = app(\App\Services\TeamSelection\RosterOrderProtectionService::class);
+        $proposal = ['team_id' => $first->team_id];
+        $review = $service->execute($event->id, 1, $proposal, $mutation, true, null);
+        $this->assertFalse($review['can_confirm']);
+        $this->assertStringNotContainsString('PrivateUnrelated', json_encode($review));
+        try { $service->execute($event->id, 1, $proposal, $mutation, false, $review['fingerprint']); $this->fail('Unrelated drift must block the move.'); }
+        catch (\Illuminate\Validation\ValidationException $expected) {
+            $this->assertSame($original, $otherFixture->fixturePlayers()->first()->getAttributes());
+            $this->assertSame(1, (int) $first->fresh()->rank);
+        }
+    }
+
     public function test_roster_change_refreshes_only_upcoming_slots_and_retains_valid_booking_and_identity(): void
     {
         [$event, $category, $draw, $teams] = $this->setupDraw();

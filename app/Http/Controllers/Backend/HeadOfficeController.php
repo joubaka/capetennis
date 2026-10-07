@@ -378,8 +378,15 @@ class HeadOfficeController extends Controller
     $this->authorize('event-draw.view', $event);
     abort_unless($event->venues()->where('venues.id', $venue->id)->exists()
       || $event->draws()->whereHas('venues', fn ($query) => $query->where('venues.id', $venue->id))->exists(), 404);
-    $validated = $request->validate(['date' => ['nullable', 'date_format:Y-m-d']]);
+    $validated = $request->validate([
+      'date' => ['nullable', 'date_format:Y-m-d'],
+      'source' => ['nullable', Rule::in(['published', 'working'])],
+    ]);
     $selectedDate = $validated['date'] ?? null;
+    $publication = app(\App\Services\Scheduling\SchedulePublicationService::class);
+    $publishedIds = $publication->publishedRows($event)->where('fixture_kind', 'team')
+      ->where('venue_id', $venue->id)->pluck('fixture_id');
+    $scheduleSource = $validated['source'] ?? ($publishedIds->isNotEmpty() ? 'published' : 'working');
     $fixtureQuery = $venue->fixtures()
       ->with([
         'draw',
@@ -393,12 +400,25 @@ class HeadOfficeController extends Controller
         $q->where('event_id', $event->id);
       })
       ->where('scheduled', 1);
-    $availableDays = (clone $fixtureQuery)->toBase()
-      ->whereNotNull('scheduled_at')->selectRaw('DATE(scheduled_at) as date')
-      ->distinct()->orderBy('date')->pluck('date');
-    $fixtures = $fixtureQuery
-      ->when($selectedDate, fn ($query) => $query->whereDate('scheduled_at', $selectedDate))
-      ->inPlayOrder()->get();
+    if ($scheduleSource === 'published') {
+      $fixtures = \App\Models\TeamFixture::query()->with([
+        'draw', 'teamTie', 'region1Name', 'region2Name', 'team1', 'team2', 'fixtureResults',
+      ])->whereHas('draw', fn ($query) => $query->where('event_id', $event->id))
+        ->whereIn('id', $publishedIds)->get();
+      $fixtures = app(\App\Services\Scheduling\TeamFixtureOrder::class)->sort($publication->projectFixtures($fixtures));
+      $availableDays = $fixtures->pluck('scheduled_at')->filter()
+        ->map(fn ($time) => \Carbon\Carbon::parse($time)->toDateString())->unique()->sort()->values();
+      $fixtures = $fixtures->when($selectedDate, fn ($rows) => $rows->filter(
+        fn ($fixture) => \Carbon\Carbon::parse($fixture->scheduled_at)->toDateString() === $selectedDate
+      ))->values();
+    } else {
+      $availableDays = (clone $fixtureQuery)->toBase()
+        ->whereNotNull('scheduled_at')->selectRaw('DATE(scheduled_at) as date')
+        ->distinct()->orderBy('date')->pluck('date');
+      $fixtures = $fixtureQuery
+        ->when($selectedDate, fn ($query) => $query->whereDate('scheduled_at', $selectedDate))
+        ->inPlayOrder()->get();
+    }
     app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures);
     // One row per display group keeps interleaved ties and draws in global time/rank order.
     $fixtureGroups = $fixtures->map(fn ($fixture) => [
@@ -413,6 +433,7 @@ class HeadOfficeController extends Controller
       'fixtureGroups' => $fixtureGroups,
       'availableDays' => $availableDays,
       'selectedDate' => $selectedDate,
+      'scheduleSource' => $scheduleSource,
     ]);
   }
 

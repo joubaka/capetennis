@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 /** Reconcile upcoming competition work while retaining played identities and bookings. */
 class TeamDrawAdaptationService
 {
+    public array $lastEventReports = [];
     public function lockEvent(int $eventId): Event
     {
         Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
@@ -19,7 +20,7 @@ class TeamDrawAdaptationService
     public function adaptEvent(Event|int $event): array
     {
         $eventId = $event instanceof Event ? $event->id : $event;
-        return DB::transaction(function () use ($eventId) {
+        return $this->lastEventReports = DB::transaction(function () use ($eventId) {
             $this->lockEvent($eventId);
             $reports = [];
             foreach (Draw::where('event_id', $eventId)->orderBy('id')->lockForUpdate()->get() as $draw) {

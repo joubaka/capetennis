@@ -37,6 +37,58 @@ class TeamFixturePrintTest extends TestCase
             ->assertSee('window.print()', false);
     }
 
+    public function test_venue_sheet_defaults_to_public_snapshot_and_retains_private_working_preview(): void
+    {
+        $venue = Venue::forceCreate(['name' => 'Published courts']);
+        $other = Venue::forceCreate(['name' => 'Private moved courts']);
+        $this->event->venues()->attach([$venue->id => ['num_courts' => 2], $other->id => ['num_courts' => 2]]);
+        $this->draw->update(['published' => true]);
+        $fixtures = collect([['11:00:00', '2'], ['08:00:00', '1']])->map(fn ($slot, $index) => TeamFixture::create([
+            'draw_id' => $this->draw->id, 'round_nr' => 1, 'match_nr' => $index + 1,
+            'fixture_type' => 1, 'match_status' => 0, 'scheduled' => true,
+            'scheduled_at' => '2026-10-09 '.$slot[0], 'venue_id' => $venue->id,
+            'court_label' => $slot[1], 'duration_min' => 60,
+        ]));
+        $hiddenDraw = Draw::factory()->create(['event_id' => $this->event->id, 'published' => false]);
+        $hidden = TeamFixture::create(['draw_id' => $hiddenDraw->id, 'round_nr' => 1, 'match_nr' => 3,
+            'fixture_type' => 1, 'scheduled' => true, 'scheduled_at' => '2026-10-09 07:00:00',
+            'venue_id' => $venue->id, 'court_label' => '1', 'duration_min' => 60]);
+        app(\App\Services\Scheduling\SchedulePublicationService::class)->publish($this->event, ['date' => '2026-10-09']);
+        $fixtures[1]->update(['scheduled_at' => '2026-10-10 15:00:00', 'venue_id' => $other->id, 'court_label' => '9']);
+        $public = $this->get(route('fixtures.order', [$this->event->id, $venue->id, 'all']))->assertOk();
+        $snapshot = fn ($rows) => $rows->map(fn ($fixture) => [
+            $fixture->id, $fixture->scheduled_at->format('Y-m-d H:i:s'), $fixture->venue_id, $fixture->court_label,
+        ])->all();
+        $url = route('headoffice.venue.fixtures', ['event' => $this->event, 'venue' => $venue]);
+        $default = $this->actingAs($this->admin)->get($url)->assertOk()->assertSee('Published schedule');
+        $this->assertSame('published', $default->viewData('scheduleSource'));
+        $this->assertSame($snapshot($public->viewData('fixtures')), $snapshot($default->viewData('fixtures')));
+        $this->assertSame([$fixtures[1]->id, $fixtures[0]->id], $default->viewData('fixtures')->pluck('id')->all());
+        $this->assertSame(['2026-10-09'], $default->viewData('availableDays')->all());
+        $day = $this->get($url.'?source=published&date=2026-10-09')->assertOk();
+        $day->assertSee('source=published', false);
+        $this->assertCount(0, $this->get($url.'?source=published&date=2026-10-10')->assertOk()->viewData('fixtures'));
+        $working = $this->get($url.'?source=working')->assertOk()->assertSee('Working schedule');
+        $this->assertSame([$hidden->id, $fixtures[0]->id], $working->viewData('fixtures')->pluck('id')->all());
+        $foreignEvent = Event::factory()->create(['eventType' => 3]);
+        $foreignEvent->venues()->attach($venue, ['num_courts' => 2]);
+        $foreignDraw = Draw::factory()->create(['event_id' => $foreignEvent->id, 'published' => true]);
+        TeamFixture::create(['draw_id' => $foreignDraw->id, 'round_nr' => 1, 'match_nr' => 1,
+            'fixture_type' => 1, 'scheduled' => true, 'scheduled_at' => '2026-10-11 07:00:00',
+            'venue_id' => $venue->id, 'court_label' => '1', 'duration_min' => 60]);
+        app(\App\Services\Scheduling\SchedulePublicationService::class)->publish($foreignEvent, ['date' => '2026-10-11']);
+        $this->assertSame([$fixtures[1]->id, $fixtures[0]->id], $this->get($url)->assertOk()->viewData('fixtures')->pluck('id')->all());
+        $this->assertSame(['2026-10-09'], $this->get($url)->assertOk()->viewData('availableDays')->all());
+        $this->assertSame([$hidden->id, $fixtures[0]->id], $this->get($url.'?source=working')->assertOk()->viewData('fixtures')->pluck('id')->all());
+        $otherUrl = route('headoffice.venue.fixtures', ['event' => $this->event, 'venue' => $other]);
+        $this->assertSame('working', $this->get($otherUrl)->assertOk()->viewData('scheduleSource'));
+        $this->assertCount(0, $this->get($otherUrl.'?source=published')->assertOk()->viewData('fixtures'));
+        $this->assertSame('9', $fixtures[1]->fresh()->court_label);
+        $this->getJson($url.'?source=invalid')->assertUnprocessable()->assertJsonValidationErrors('source');
+        $otherAdmin = User::factory()->create()->assignRole('admin');
+        $this->actingAs($otherAdmin)->get($url)->assertForbidden();
+    }
+
     public function test_venue_pdf_download_sanitizes_filename_and_preview_preserves_title(): void
     {
         $venue = Venue::forceCreate(['name' => 'Club / Courts \\ West']);
