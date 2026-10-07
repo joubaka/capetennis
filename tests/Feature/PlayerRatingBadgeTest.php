@@ -62,7 +62,9 @@ class PlayerRatingBadgeTest extends TestCase
         $draw = $this->draw();
         $service = app(PlayerRatingBadgeService::class);
         $this->assertSame('54.8', $service->forPlayer(1, $draw)['label']);
+        $this->assertSame('Medium', $service->forPlayer(1, $draw)['confidence_band']);
         $this->assertSame('72.3', $service->forPlayer(1)['label']);
+        $this->assertSame('High', $service->forPlayer(1)['confidence_band']);
         $this->assertNull($service->forPlayer(2, $draw));
         $this->assertNull($service->forPlayer(1, $this->draw('U10 Girls')));
         $this->assertNull($service->forPlayer(1, $this->draw('Green ball')));
@@ -128,7 +130,7 @@ class PlayerRatingBadgeTest extends TestCase
         $this->assertStringNotContainsString('72.3', $html);
         $svg = view('draw.partials.svg-player-identity', ['draw' => $draw, 'registration' => $registration, 'x' => 10, 'y' => 20, 'maxWidth' => 135])->render();
         $this->assertStringContainsString('<tspan class="player-rating-badge"', $svg);
-        $this->assertStringContainsString('[54.8 | C42]', $svg);
+        $this->assertStringContainsString('[54.8 | Medium]', $svg);
         $this->assertStringContainsString('<title>'.$player->full_name.'</title>', $svg);
         $this->assertStringContainsString('...', $svg);
     }
@@ -165,6 +167,8 @@ class PlayerRatingBadgeTest extends TestCase
         $url = route('backend.player-performance.badges').'?players[]='.$playerId.'&draw_id='.$draw->id;
         $response = $this->getJson($url)->assertOk();
         $this->assertGreaterThan(50, $response->json('ratings.p:'.$playerId.'.0.score'));
+        $this->assertSame('Low', $response->json('ratings.p:'.$playerId.'.0.confidence_band'));
+        $this->get(route('backend.player-performance.show', $playerId))->assertOk()->assertSee('Evidence confidence: Low')->assertDontSee('Evidence confidence C');
         \Illuminate\Support\Facades\DB::table('events')->where('id', $event->id)->update(['results_published' => false]);
         app()->forgetInstance(PlayerRatingBadgeService::class);
         app()->forgetInstance(\App\Services\Performance\PlayerAbilitySnapshotStore::class);
@@ -264,21 +268,23 @@ class PlayerRatingBadgeTest extends TestCase
         $this->assertSame($player->id, $fixture->lineup_display['home']['players'][0]['player_id']);
         $this->assertArrayNotHasKey('score', $fixture->lineup_display['home']['players'][0]);
     }
-    public function test_confidence_index_zero_is_visible_in_private_html_svg_and_dynamic_payload(): void
+    public function test_existing_saved_zero_index_displays_low_in_private_html_svg_and_dynamic_payload(): void
     {
         $this->superAdmin(); $snapshot = $this->snapshot();
         foreach ($snapshot[1] as &$rating) { $rating['confidence_index'] = 0; $rating['confidence_band'] = 'Very low'; }
         unset($rating);
         $this->partialMock(PlayerSharedAbilityService::class)->shouldReceive('badgeSnapshot')->once()->andReturn($snapshot);
         $html = Blade::render('Name<x-player-rating :player-id="1" />');
-        $this->assertStringContainsString('72.3 | C0', $html);
-        $this->assertStringContainsString('Very low', $html);
+        $this->assertStringContainsString('72.3 | Low', $html);
+        $this->assertStringNotContainsString('Very low', $html);
+        $this->assertStringNotContainsString('C0', $html);
         $this->assertStringContainsString('not an accuracy percentage', $html);
         $svg = Blade::render('<svg><text>Name<x-player-rating :player-id="1" :svg="true" /></text></svg>');
-        $this->assertStringContainsString('[72.3 | C0]', $svg);
+        $this->assertStringContainsString('[72.3 | Low]', $svg);
         $this->getJson(route('backend.player-performance.badges').'?players[]=1')->assertOk()
             ->assertJsonPath('ratings.p:1.0.confidence_index', 0)
-            ->assertJsonPath('ratings.p:1.0.display_label', '72.3 | C0');
+            ->assertJsonPath('ratings.p:1.0.confidence_band', 'Low')
+            ->assertJsonPath('ratings.p:1.0.display_label', '72.3 | Low');
     }
 
 }

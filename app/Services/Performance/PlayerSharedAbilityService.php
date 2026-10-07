@@ -65,6 +65,10 @@ class PlayerSharedAbilityService
                 + $this->reference($data, $player->id, $rating['component'])
                 + app(SharedAbilityConfidencePolicy::class)->evaluate($own, $component, $asOf));
         }
+        $cohorts = $cohorts->map(function ($estimate) {
+            $estimate['confidence_band'] = AbilityConfidenceDisplay::label((int) $estimate['confidence_index']);
+            return $estimate;
+        });
         $cohorts = $cohorts->sort(fn ($a, $b) => strcmp($b['last_played'], $a['last_played']) ?: strcmp($a['cohort'], $b['cohort']))->values();
         return ['headline' => $cohorts->first(), 'cohorts' => $cohorts, 'reason' => $snapshot['reason'], 'built_at' => $snapshot['built_at'], 'snapshot_as_of' => $snapshot['snapshot_as_of'] ?? $asOf->toDateString(), 'snapshot_stale' => $snapshot['snapshot_stale'] ?? false];
     }

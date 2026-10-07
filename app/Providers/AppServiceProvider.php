@@ -47,6 +47,7 @@ class AppServiceProvider extends ServiceProvider
    */
   public function register()
   {
+    $this->app->scoped(\App\Services\Performance\PendingBankRefundCount::class);
     $this->app->scoped(\App\Services\Performance\PlayerRatingBadgeService::class);
     $this->app->scoped(\App\Services\Performance\PlayerAbilitySnapshotStore::class);
     $this->app->scoped(\App\Services\OutboundMailHistory::class);
@@ -182,18 +183,7 @@ class AppServiceProvider extends ServiceProvider
 
       if (auth()->check() && auth()->user()->hasAnyRole(['super-user', 'admin'])) {
 
-        $registrationPending = CategoryEventRegistration::where('status', 'withdrawn')
-          ->where('refund_method', 'bank')
-          ->where('refund_status', 'pending')
-          ->count();
-
-        $teamPending = TeamPaymentOrder::where('refund_method', 'bank')
-          ->where('refund_status', 'pending')
-          ->count();
-
-        $pendingBankRefundCount = $registrationPending + $teamPending;
-
-        $view->with('pendingBankRefundCount', $pendingBankRefundCount);
+        $view->with('pendingBankRefundCount', app(\App\Services\Performance\PendingBankRefundCount::class)->count());
       }
 
     });

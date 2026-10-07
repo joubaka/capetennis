@@ -31,9 +31,11 @@ class PlayerRatingBadgeService
         $reference = $rating['baseline_status'] ?? 'No connected main-trial baseline';
         if ($rating['baseline_source'] ?? null) { $reference .= ': '.$rating['baseline_source']['event_name'].' ('.$rating['baseline_source']['date'].'). Model-derived trial-match reference, not a published finish.'; }
         else { $reference .= '. Local comparison only; not trial-calibrated.'; }
-        return $rating + ['label' => number_format($rating['score'], 1),
-            'display_label' => number_format($rating['score'], 1).' | C'.($rating['confidence_index'] ?? 0),
-            'title' => 'Provisional singles ability: '.number_format($rating['score'], 1).'/100 · '.$rating['cohort'].' · comparison group '.$rating['component'].'. Evidence confidence C'.($rating['confidence_index'] ?? 0).' ('.($rating['confidence_band'] ?? 'Very low').'), as of '.($rating['confidence_as_of'] ?? 'unknown').'; not an accuracy percentage. Last own eligible activity: '.($rating['last_eligible_activity'] ?? 'unknown').'. '.$reference.' Only compare players in this cohort and group.'.(!empty($rating['snapshot_stale']) ? ' Saved update is stale; awaiting the nightly refresh.' : '')];
+        $confidenceLabel = AbilityConfidenceDisplay::label((int) ($rating['confidence_index'] ?? 0));
+        $rating['confidence_band'] = $confidenceLabel;
+        return $rating + ['confidence_label' => $confidenceLabel, 'label' => number_format($rating['score'], 1),
+            'display_label' => number_format($rating['score'], 1).' | '.$confidenceLabel,
+            'title' => 'Provisional singles ability: '.number_format($rating['score'], 1).'/100 · '.$rating['cohort'].' · comparison group '.$rating['component'].'. Evidence confidence: '.$confidenceLabel.' (strength and freshness of recorded evidence), as of '.($rating['confidence_as_of'] ?? 'unknown').'; not an accuracy percentage. Last own eligible activity: '.($rating['last_eligible_activity'] ?? 'unknown').'. '.$reference.' Only compare players in this cohort and group.'.(!empty($rating['snapshot_stale']) ? ' Saved update is stale; awaiting the nightly refresh.' : '')];
     }
 
     private function contextCohort(Draw|CategoryEvent|Category $context): ?string

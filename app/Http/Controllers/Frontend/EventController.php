@@ -428,15 +428,23 @@ class EventController extends Controller
         app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixturesPerVenue, publicDraw: true);
       }
     $fixturesPerVenueGrouped = $fixturesPerVenue
-      ->groupBy(fn($fx) => $fx->venue?->name ?? $fx->orderOfPlay?->venue?->name ?? 'Unassigned');
+      ->groupBy(fn($fx) => $fx instanceof TeamFixture
+        ? ($fx->venue?->name ?? 'Unassigned')
+        : ($fx->venue?->name ?? $fx->orderOfPlay?->venue?->name ?? 'Unassigned'));
 
     // ---------------------------------------------------------
     // TEAM FIXTURES
     // ---------------------------------------------------------
-    $teamFixtures = TeamFixture::whereIn('draw_id', $drawIds)
-      ->when(! $canPreviewUnpublishedDraws, fn ($query) => $query->publicDrawFixtures())->get();
+    // The team venue collection already uses this exact draw/visibility scope
+    // and has its public schedule and lineups prepared.
+    if ($event->eventType == 3) {
+      $teamFixtures = $fixturesPerVenue->sortBy('id')->values();
+    } else {
+      $teamFixtures = TeamFixture::whereIn('draw_id', $drawIds)
+        ->when(! $canPreviewUnpublishedDraws, fn ($query) => $query->publicDrawFixtures())->get();
       app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($teamFixtures);
       app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($teamFixtures, publicDraw: true);
+    }
     $ties = $teamFixtures->groupBy('tie_nr');
     $rounds = $teamFixtures->groupBy('round_nr');
 
