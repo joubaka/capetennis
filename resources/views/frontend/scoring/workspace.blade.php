@@ -142,13 +142,11 @@
               $nextHome = $nextHomePlayers->isNotEmpty() ? $nextHomePlayers->implode(' + ') : ($nextMatch->homeTeam?->name ?? $nextMatch->region1Name?->name ?? 'To be decided');
               $nextAway = $nextAwayPlayers->isNotEmpty() ? $nextAwayPlayers->implode(' + ') : ($nextMatch->awayTeam?->name ?? $nextMatch->region2Name?->name ?? 'To be decided');
               $nextTime = $nextMatch->scheduled_at;
-              $nextCourt = $nextMatch->court_label;
               $nextVenue = $nextMatch->venue?->name;
             } else {
               $nextHome = $nextMatch->registration1?->players?->first()?->full_name ?? 'Player 1';
               $nextAway = $nextMatch->registration2?->players?->first()?->full_name ?? 'Player 2';
               $nextTime = $nextMatch->orderOfPlay?->time;
-              $nextCourt = $nextMatch->orderOfPlay?->court;
               $nextVenue = $nextMatch->orderOfPlay?->venue?->name;
             }
             $nextNumber = $nextMatch->match_nr ?: ($nextIsTeam ? $nextMatch->home_rank_nr : null) ?: $nextMatch->id;
@@ -164,7 +162,6 @@
               <div class="fw-semibold">{{ $nextAway }}</div>
               <div class="small text-muted mt-3 d-flex flex-wrap gap-2">
                 @if($nextTime)<span><i class="ti ti-clock"></i> {{ \Carbon\Carbon::parse($nextTime)->format('D H:i') }}</span>@endif
-                @if($nextCourt)<span><i class="ti ti-ball-tennis"></i> Court {{ $nextCourt }}</span>@endif
                 @if($nextVenue && !$selectedVenue)<span><i class="ti ti-map-pin"></i> {{ $nextVenue }}</span>@endif
               </div>
             </div>
@@ -320,7 +317,6 @@
             $sets = $match->fixtureResults->sortBy('set_nr')->map(fn($set) => [(int) $set->team1_score, (int) $set->team2_score])->values();
             $scheduleTime = $match->scheduled_at;
             $venueName = $match->venue?->name;
-            $court = $match->court_label;
             $stageLabel = 'Team fixture';
             $matchNumber = $match->match_nr ?: $match->home_rank_nr ?: $match->id;
             $canWrite = auth()->user()->can('team-fixture.saveScore', $match) && !$draw->locked;
@@ -336,7 +332,6 @@
             $sets = $match->fixtureResults->sortBy('set_nr')->map(fn($set) => [(int) $set->registration1_score, (int) $set->registration2_score])->values();
             $scheduleTime = $schedule?->time;
             $venueName = $schedule?->venue?->name;
-            $court = $schedule?->court;
             $stageLabel = $match->stage ?: 'Draw';
             $matchNumber = $match->match_nr ?: $match->id;
             $canWrite = auth()->user()->can('saveScore', $draw)
@@ -361,7 +356,6 @@
               <div class="match-meta">
                 @if($scheduleTime)<span><i class="ti ti-clock"></i> {{ \Carbon\Carbon::parse($scheduleTime)->format('D H:i') }}</span>@endif
                 @if($venueName)<span><i class="ti ti-map-pin"></i> {{ $venueName }}</span>@endif
-                @if($court)<span class="court-label {{ $isPlaying ? 'is-playing' : ($hasScore ? 'is-completed' : '') }}">Court {{ $court }}</span>@endif
               </div>
               <span class="badge match-status {{ $hasScore ? 'bg-label-success' : ($isPlaying ? 'bg-label-warning' : ($hasPlayers ? 'bg-label-primary' : 'bg-label-secondary')) }}">
                 <span class="match-status-light" aria-hidden="true"></span>{{ $hasScore ? 'Completed' : ($isPlaying ? 'Playing now' : ($hasPlayers ? 'Awaiting court' : 'Waiting for players')) }}

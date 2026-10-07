@@ -18,7 +18,7 @@
         <button type="button" class="btn-close p-3" data-bs-dismiss="modal" aria-label="Close reminder"></button>
       </div>
       <div class="modal-body">
-        <p id="match-reminder-description">Your players’ published matches at a glance. Check fixtures for the latest details.</p>
+        <p id="match-reminder-description">Your players’ published matches at a glance. Check fixtures for the latest details. After closing this reminder, find your match details in <strong>My Tennis → Upcoming scheduled matches</strong>. Use <strong>Match reminder</strong> to reopen this popup.</p>
         <div data-reminder-players></div>
       </div>
       <div class="modal-footer">

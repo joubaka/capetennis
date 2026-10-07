@@ -342,7 +342,7 @@
   function scheduleLabel(schedule, includeVenue = false) {
     const parts = scheduleParts(schedule);
     if (!parts.date) return '';
-    return [parts.time ? `${parts.date} ${parts.time}` : parts.date, includeVenue ? schedule.venue : null, schedule.court ? `Court ${schedule.court}` : null]
+    return [parts.time ? `${parts.date} ${parts.time}` : parts.date, includeVenue ? schedule.venue : null, !config.readOnly && schedule.court ? `Court ${schedule.court}` : null]
       .filter(Boolean).join(' · ');
   }
   function matchParticipantLabel(match, slot) {
@@ -544,7 +544,7 @@
     const table = el('table');
     const head = el('thead');
     const titles = el('tr');
-    ['Match', 'Players / feeder paths', 'Date', 'Time', 'Venue', 'Court'].forEach(title => titles.append(el('th', '', title)));
+    ['Match', 'Players / feeder paths', 'Date', 'Time', 'Venue', ...(!config.readOnly ? ['Court'] : [])].forEach(title => titles.append(el('th', '', title)));
     head.append(titles); table.append(head);
     const body = el('tbody');
     matches.sort((a, b) => String(a.schedule?.time || '9999').localeCompare(String(b.schedule?.time || '9999')) || a.number - b.number).forEach(match => {
@@ -561,7 +561,7 @@
         ['Venue', scheduleHidden ? followedBy : match.schedule?.venue || '—'],
         ['Court', scheduleHidden ? followedBy : match.schedule?.court ? `Court ${match.schedule.court}` : '—'],
       ];
-      cells.forEach(([label, value]) => {
+      cells.filter(([label]) => !config.readOnly || label !== 'Court').forEach(([label, value]) => {
         const cell = el('td', '', String(value));
         cell.dataset.label = label;
         row.append(cell);

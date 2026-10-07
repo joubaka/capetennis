@@ -136,6 +136,7 @@ class PublicTournamentWorkflowTest extends TestCase
             'scheduled' => true,
             'scheduled_at' => '2026-09-06 09:00:00',
             'venue_id' => $venue->id,
+            'court_label' => 'PUBLIC-COURT-SENTINEL',
         ]);
         TeamFixture::create([
             'draw_id' => $private->id,
@@ -150,11 +151,15 @@ class PublicTournamentWorkflowTest extends TestCase
         $this->get(route('fixtures.venue', [$event->id, $venue->id]))
             ->assertOk()
             ->assertSee('Published schedule')
+            ->assertSee('Public centre court')
+            ->assertDontSee('PUBLIC-COURT-SENTINEL')
             ->assertDontSee('Private schedule');
 
         $this->get(route('fixtures.order', [$event->id, $venue->id, '2026-09-06']))
             ->assertOk()
             ->assertSee('Published schedule')
+            ->assertSee('Public centre court')
+            ->assertDontSee('PUBLIC-COURT-SENTINEL')
             ->assertDontSee('Private schedule');
     }
 

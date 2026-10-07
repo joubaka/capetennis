@@ -111,8 +111,7 @@ $fxWinnerClasses = function ($fx) {
     <div class="public-match-cards">
       @forelse($fixtures as $fx)
         <article class="public-match-card" aria-label="Match {{ $fx->match_nr }}">
-          @php $matchCourt = $fx instanceof \App\Models\TeamFixture ? $fx->court_label : $fx->orderOfPlay?->court; @endphp
-          <div class="public-match-venue">{{ $fx->venue?->name ?? 'Venue to follow' }}@if($matchCourt) · Court {{ $matchCourt }}@endif</div>
+          <div class="public-match-venue">{{ $fx->venue?->name ?? 'Venue to follow' }}</div>
           @if($fx->scheduled_at)
             <div class="public-match-time">{{ \Carbon\Carbon::parse($fx->scheduled_at)->format('H:i') }}</div>
             <div class="public-match-date">{{ \Carbon\Carbon::parse($fx->scheduled_at)->format('l, j F Y') }}</div>

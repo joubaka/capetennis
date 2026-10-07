@@ -39,9 +39,24 @@ class MyTennisService
         $players = $this->playersFor($user);
         $linkedPlayerPage = $this->playerPage($user);
         $linkedPlayerIds = $user->players()->pluck('players.id')->map(fn ($id) => (int) $id)->all();
+        $matches = null;
         $player = $playerId
             ? $players->firstWhere('id', $playerId)
             : $players->first();
+
+        if ($playerId === null) {
+            foreach ($players as $candidate) {
+                $candidateMatches = $this->upcomingScheduledMatchesFor($candidate);
+                if ($candidateMatches->isNotEmpty()) {
+                    $player = $candidate;
+                    $matches = $candidateMatches;
+                    break;
+                }
+                if ($candidate->is($player)) {
+                    $matches = $candidateMatches;
+                }
+            }
+        }
 
         if (! $player) {
             return [
@@ -70,7 +85,7 @@ class MyTennisService
             ->limit(100)
             ->get();
 
-        $matches = $this->upcomingScheduledMatchesFor($player);
+        $matches ??= $this->upcomingScheduledMatchesFor($player);
         $page = max(1, (int) request()->query('matches_page', 1));
         $upcomingMatchPage = new \Illuminate\Pagination\LengthAwarePaginator(
             $matches->forPage($page, 25)->values(), $matches->count(), 25, $page,

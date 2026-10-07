@@ -92,7 +92,7 @@
     return { date, time };
   }
 
-  function formatDayTimeVenue(fx, includeCourt = false) {
+  function formatDayTimeVenue(fx) {
     const schedule = formatScheduleParts(fx);
     if (!schedule.time) return '';
 
@@ -104,7 +104,6 @@
 
     const parts = [`${schedule.date} ${schedule.time}`];
     if (venue) parts.push(venue);
-    if (includeCourt && fx.court) parts.push(/^court\b/i.test(String(fx.court)) ? String(fx.court) : `Court ${fx.court}`);
     return parts.join(' · ');
   }
 
@@ -192,7 +191,7 @@
           const score = formatScoreCell(fx, rowP.id);
           const time = fx.schedule_hidden === true
             ? 'Followed by'
-            : (fx.time ? formatDayTimeVenue(fx, true) : '');
+            : (fx.time ? formatDayTimeVenue(fx) : '');
 
           html += `<td class="text-center rr-match-cell">${escapeHtml(score || time || '—')}</td>`;
         });
@@ -209,7 +208,7 @@
         const score = formatScoreCell(fx, fx.r1_id);
         const status = score || (fx.schedule_hidden === true
           ? 'Followed by'
-          : (fx.time ? formatDayTimeVenue(fx, true) : 'Awaiting schedule'));
+          : (fx.time ? formatDayTimeVenue(fx) : 'Awaiting schedule'));
 
         html += `<div class="rr-mobile-match" role="group" aria-label="${escapeHtml(home)} versus ${escapeHtml(away)}">
           <span class="rr-mobile-players"><span>${escapeHtml(home)}${window.CTPlayerRatings?.marker({registrationId:fx.r1_id}) || ''}</span><span class="rr-mobile-versus">vs</span><span>${escapeHtml(away)}${window.CTPlayerRatings?.marker({registrationId:fx.r2_id}) || ''}</span></span>
@@ -233,7 +232,7 @@
     const tbody = $('#rr-order-table tbody');
 
     if (!RR_OOP.length) {
-      tbody.html(`<tr><td colspan="10" class="text-muted text-center py-4">No matches are available for this draw.</td></tr>`);
+      tbody.html(`<tr><td colspan="9" class="text-muted text-center py-4">No matches are available for this draw.</td></tr>`);
       return;
     }
 
@@ -248,9 +247,6 @@
       const scheduleHidden = fx.schedule_hidden === true;
       const followedBy = 'Followed by';
       const stage = fx.group_name ? 'Box ' + fx.group_name : (fx.stage || '');
-      const court = fx.court
-        ? (/^court\b/i.test(String(fx.court)) ? fx.court : 'Court ' + fx.court)
-        : '';
 
       html += `
         <tr>
@@ -262,7 +258,6 @@
           <td data-label="Date" class="text-center">${escapeHtml(schedule.date || '—')}</td>
           <td data-label="Time" class="text-center">${escapeHtml(scheduleHidden ? followedBy : schedule.time || '—')}</td>
           <td data-label="Venue">${escapeHtml(fx.venue_name || fx.venue_title || fx.venue || '—')}</td>
-          <td data-label="Court" class="text-center">${escapeHtml(scheduleHidden ? '' : court || '—')}</td>
           <td data-label="Score" class="text-center fw-bold">${escapeHtml(fx.score || '—')}</td>
         </tr>`;
     });

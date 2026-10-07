@@ -50,7 +50,7 @@
 
     #rr-order-table td[data-label="Date"],
     #rr-order-table td[data-label="Time"],
-    #rr-order-table td[data-label="Court"] {
+    #rr-order-table td[data-label="Venue"] {
       color: #176448;
       font-weight: 700;
     }
@@ -104,11 +104,10 @@
     #rr-order-table td[data-label="Player 1"] { grid-row: 2; padding-top: .7rem !important; }
     #rr-order-table td[data-label="Player 2"] { grid-row: 3; padding-bottom: .7rem !important; border-bottom: 1px solid #e8eef1; }
     #rr-order-table td[data-label="Venue"] { grid-row: 4; padding-top: .65rem !important; }
-    #rr-order-table td[data-label="Court"] { grid-row: 5; padding-bottom: .65rem !important; }
-    #rr-order-table td[data-label="Match"] { grid-column: 1; grid-row: 6; }
-    #rr-order-table td[data-label="Round"] { grid-column: 2; grid-row: 6; }
-    #rr-order-table td[data-label="Stage"] { grid-column: 1; grid-row: 7; }
-    #rr-order-table td[data-label="Score"] { grid-column: 2; grid-row: 7; }
+    #rr-order-table td[data-label="Match"] { grid-column: 1; grid-row: 5; }
+    #rr-order-table td[data-label="Round"] { grid-column: 2; grid-row: 5; }
+    #rr-order-table td[data-label="Stage"] { grid-column: 1; grid-row: 6; }
+    #rr-order-table td[data-label="Score"] { grid-column: 2; grid-row: 6; }
     #rr-order-table td[data-label="Match"],
     #rr-order-table td[data-label="Round"],
     #rr-order-table td[data-label="Stage"],
@@ -268,9 +267,9 @@
             <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
           <div>
-            <h5 class="card-title mb-1">Match times &amp; courts</h5>
+            <h5 class="card-title mb-1">Match times &amp; venues</h5>
             <div class="small text-muted">
-              Find your name, then confirm the date, time, venue and court.
+              Find your name, then confirm the date, time and venue.
               @if($draw->settings?->showsFirstMatchOnly()) Later matches are marked <strong>Followed by</strong> until their times are released. @endif
             </div>
           </div>
@@ -279,7 +278,7 @@
         <div class="card-body p-0">
         @if($draw->oop_published)
          <table class="table table-sm table-hover mb-0" id="rr-order-table">
-    <caption class="visually-hidden">Player match dates, start times, venues, courts and scores</caption>
+    <caption class="visually-hidden">Player match dates, start times, venues and scores</caption>
     <thead class="table-light">
         <tr>
             <th class="text-center">Match</th>
@@ -290,7 +289,6 @@
             <th class="text-center">Date</th>
             <th class="text-center">Time</th>
             <th>Venue</th>
-            <th class="text-center">Court</th>
             <th class="text-center">Score</th>
            
         </tr>

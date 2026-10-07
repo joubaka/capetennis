@@ -22,6 +22,61 @@ class MyTennisServiceTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_dashboard_defaults_to_linked_player_with_published_upcoming_matches(): void
+    {
+        [$player, $event, $draw, $fixture] = $this->scheduledTeamMatch();
+        $player->update(['name' => 'Zoe', 'surname' => 'Scheduled']);
+        $user = User::factory()->create();
+        $first = Player::factory()->create(['userId' => $user->id, 'name' => 'Alice', 'surname' => 'No matches']);
+        $user->players()->attach($player);
+        app(SchedulePublicationService::class)->publish($event, ['draw_id' => $draw->id]);
+        $this->actingAs($user);
+
+        $dashboard = app(MyTennisService::class)->dashboard($user);
+
+        $this->assertSame($player->id, $dashboard['selectedPlayer']->id);
+        $this->assertSame([$fixture->id], $dashboard['upcomingMatches']->pluck('id')->all());
+        $this->assertSame($first->id, $dashboard['players']->first()->id);
+    }
+
+    public function test_dashboard_preserves_explicit_linked_selection_without_matches_and_rejects_foreign_selection(): void
+    {
+        [$player, $event, $draw] = $this->scheduledTeamMatch();
+        $user = User::factory()->create();
+        $first = Player::factory()->create(['userId' => $user->id, 'name' => 'Alice']);
+        $user->players()->attach($player);
+        app(SchedulePublicationService::class)->publish($event, ['draw_id' => $draw->id]);
+        $this->actingAs($user);
+        $service = app(MyTennisService::class);
+
+        $explicit = $service->dashboard($user, $first->id);
+        $this->assertSame($first->id, $explicit['selectedPlayer']->id);
+        $this->assertTrue($explicit['upcomingMatches']->isEmpty());
+        $foreign = $service->dashboard($user, Player::factory()->create()->id);
+        $this->assertNull($foreign['selectedPlayer']);
+        $this->assertTrue($foreign['upcomingMatches']->isEmpty());
+    }
+
+    public function test_dashboard_falls_back_alphabetically_when_matches_are_private_or_belong_to_another_family(): void
+    {
+        [$privatePlayer, $privateEvent, $privateDraw] = $this->scheduledTeamMatch();
+        $privatePlayer->update(['name' => 'Zoe']);
+        app(SchedulePublicationService::class)->publish($privateEvent, ['draw_id' => $privateDraw->id]);
+        $privateEvent->update(['published' => false]);
+        [$foreignPlayer, $foreignEvent, $foreignDraw] = $this->scheduledTeamMatch();
+        app(SchedulePublicationService::class)->publish($foreignEvent, ['draw_id' => $foreignDraw->id]);
+        $user = User::factory()->create();
+        $first = Player::factory()->create(['userId' => $user->id, 'name' => 'Alice']);
+        $user->players()->attach($privatePlayer);
+        $this->actingAs($user);
+
+        $dashboard = app(MyTennisService::class)->dashboard($user);
+
+        $this->assertSame($first->id, $dashboard['selectedPlayer']->id);
+        $this->assertTrue($dashboard['upcomingMatches']->isEmpty());
+        $this->assertNotContains($foreignPlayer->id, $dashboard['players']->pluck('id')->all());
+    }
+
     public function test_player_switcher_combines_legacy_and_pivot_links_without_cross_family_leakage(): void
     {
         $user = User::factory()->create();

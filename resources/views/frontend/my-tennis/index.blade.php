@@ -42,6 +42,7 @@
       <h4 class="mb-1">My Tennis</h4>
       <p class="text-muted mb-0">Your players, entries and published match information.</p>
     </div>
+    <button class="btn btn-outline-primary" style="min-height: 44px" type="button" data-open-match-reminder aria-controls="match-reminder">Match reminder</button>
     @if($players->isNotEmpty())
       <form method="get" action="{{ route('my.tennis') }}" class="d-flex align-items-center gap-2">
         <label for="my-tennis-player" class="visually-hidden">Player</label>
@@ -105,12 +106,10 @@
                   $away = $isTeam ? ($match->tie_display['away'] ?? 'TBD') : ($match->registration2?->display_name ?? 'TBD');
                   $shortHome = $isTeam ? ($match->tie_mobile_display['home'] ?? $home) : $home;
                   $shortAway = $isTeam ? ($match->tie_mobile_display['away'] ?? $away) : $away;
-                  $court = $isTeam ? $match->court_label : $match->orderOfPlay?->court;
                 @endphp
                 <article class="my-tennis-fixture" aria-label="{{ $home }} versus {{ $away }}">
                   <div class="my-tennis-fixture-time">
                     <time datetime="{{ \Carbon\Carbon::parse($match->scheduled_at)->toIso8601String() }}">{{ \Carbon\Carbon::parse($match->scheduled_at)->format('H:i') }}</time>
-                    @if($court)<span class="badge bg-label-secondary">Court {{ $court }}</span>@endif
                   </div>
                   <div class="my-tennis-fixture-sides">
                     @if($isTeam && empty($match->profile_match_players['home']) && empty($match->profile_match_players['away']))<div class="small text-muted mb-1">Team fixture - players to be confirmed</div>@endif

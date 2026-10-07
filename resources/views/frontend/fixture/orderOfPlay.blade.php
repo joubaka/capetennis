@@ -157,10 +157,9 @@
 
   <div class="table-responsive"><table class="table table-bordered align-middle">
     <thead class="table-dark">
-      <tr><th colspan="6">{{ $venue->name }} · {{ strtolower($date) === 'all' ? 'All published days' : \Carbon\Carbon::parse($date)->format('l, d M Y') }}</th></tr>
+      <tr><th colspan="5">{{ $venue->name }} · {{ strtolower($date) === 'all' ? 'All published days' : \Carbon\Carbon::parse($date)->format('l, d M Y') }}</th></tr>
       <tr>
         <th style="width: 6%">Time</th>
-        <th style="width: 8%">Court</th>
         <th style="width: 16%">Draw / Match</th>
         <th style="width: 25%">Home</th>
         <th style="width: 25%">Away</th>
@@ -179,13 +178,12 @@
 
         @foreach($grouped as $day => $dayFixtures)
           <tr class="day-heading text-center">
-            <td colspan="6">{{ $venue->name }} · {{ strtoupper($day) }}</td>
+            <td colspan="5">{{ $venue->name }} · {{ strtoupper($day) }}</td>
           </tr>
 
           @foreach($dayFixtures as $fx)
             <tr>
               <td>{{ \Carbon\Carbon::parse($fx->scheduled_at)->format('H:i') }}</td>
-              <td>{{ $fx->court_label ?: 'TBA' }}</td>
               <td>{{ $fx->draw->drawName }}<br><small>M{{ $fx->match_nr ?? $fx->id }}</small></td>
               <td>
                 @include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['home']])
@@ -202,7 +200,6 @@
         @forelse($fixtures as $fx)
           <tr>
             <td>{{ \Carbon\Carbon::parse($fx->scheduled_at)->format('H:i') }}</td>
-            <td>{{ $fx->court_label ?: 'TBA' }}</td>
             <td>{{ $fx->draw->drawName }}<br><small>M{{ $fx->match_nr ?? $fx->id }}</small></td>
             <td>
               @include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['home']])
@@ -214,7 +211,7 @@
           </tr>
         @empty
           <tr>
-            <td colspan="6" class="text-center text-muted">No matches scheduled for this day.</td>
+            <td colspan="5" class="text-center text-muted">No matches scheduled for this day.</td>
           </tr>
         @endforelse
       @endif
