@@ -57,20 +57,32 @@ final class MatchReminderService
                 ->whereDoesntHave('fixtureResults')->where('match_status', 0)
                 ->whereDoesntHave('teamTie', fn ($q) => $q->where('status', TeamTie::STATUS_COMPLETED))
                 ->get()->keyBy('id');
+            $assignedTieIds = TeamFixture::query()->whereIn('team_tie_id', $team->pluck('team_tie_id')->filter()->unique())
+                ->whereHas('draw', fn ($query) => $query->where('event_id', $event->id))
+                ->where(fn ($query) => $query->whereHas('fixturePlayers', fn ($slots) => $slots
+                    ->whereNotNull('team1_id')->orWhereNotNull('team2_id')
+                    ->orWhereNotNull('team1_no_profile_id')->orWhereNotNull('team2_no_profile_id'))
+                    ->orWhereHas('team1')->orWhereHas('team2'))
+                ->distinct()->pluck('team_tie_id');
             $playerFixtures = [];
             foreach ($players->keys() as $playerId) {
                 app(TeamFixtureLineupPresenter::class)->prepare($team, publicDraw: true, selectedPlayerId: (int) $playerId);
                 $playerFixtures[$playerId] = $team->groupBy(fn ($fixture) => $fixture->team_tie_id ? 'tie:'.$fixture->team_tie_id : 'fixture:'.$fixture->id)
-                    ->flatMap(function ($tieFixtures) {
+                    ->flatMap(function ($tieFixtures) use ($assignedTieIds) {
                         $assigned = $tieFixtures->filter(fn ($fixture) => ($fixture->lineup_display['home']['selected_player_assigned'] ?? false)
                             || ($fixture->lineup_display['away']['selected_player_assigned'] ?? false));
-                        if ($assigned->isNotEmpty()) return $assigned->map(fn ($fixture) => ['id' => $fixture->id, 'assigned' => true]);
+                        if ($assigned->isNotEmpty()) return $assigned->map(fn ($fixture) => ['id' => $fixture->id, 'match' => [
+                            'assigned' => true,
+                            'participants' => collect(['home', 'away'])->map(fn ($side) => collect($fixture->lineup_display[$side]['players'] ?? [])
+                                ->pluck('name')->filter(fn ($name) => $name && $name !== 'TBD')->join(' / '))->all(),
+                        ]]);
                         // A roster member only gets a team-time fallback while the whole tie is unassigned.
+                        if ($assignedTieIds->contains($tieFixtures->first()->team_tie_id)) return collect();
                         if ($tieFixtures->contains(fn ($fixture) => $fixture->fixturePlayers->contains(fn ($slot) =>
                             $slot->team1_id || $slot->team2_id || $slot->team1_no_profile_id || $slot->team2_no_profile_id)
                             || $fixture->team1->isNotEmpty() || $fixture->team2->isNotEmpty())) return collect();
-                        return $tieFixtures->map(fn ($fixture) => ['id' => $fixture->id, 'assigned' => false]);
-                    })->pluck('assigned', 'id')->all();
+                        return $tieFixtures->map(fn ($fixture) => ['id' => $fixture->id, 'match' => ['assigned' => false]]);
+                    })->pluck('match', 'id')->all();
             }
             foreach ($rows as $row) {
                 $fixture = ($row['fixture_kind'] === 'individual' ? $individual : $team)->get($row['fixture_id']);
@@ -103,12 +115,12 @@ final class MatchReminderService
                 }
                 foreach ($members->unique()->intersect($players->keys()) as $playerId) {
                     if ($fixture instanceof TeamFixture && ! array_key_exists($fixture->id, $playerFixtures[$playerId] ?? [])) continue;
-                    $assigned = $fixture instanceof TeamFixture && $playerFixtures[$playerId][$fixture->id];
+                    $assigned = $fixture instanceof TeamFixture && $playerFixtures[$playerId][$fixture->id]['assigned'];
                     $key = $isTeam && ! $assigned ? 'tie:'.$fixture->team_tie_id : $row['fixture_key'];
                     $time = CarbonImmutable::parse($row['scheduled_at'], 'Africa/Johannesburg');
                     $match = ['key' => $key, 'kind' => $isTeam ? 'team' : 'individual',
                         'label' => $isTeam && ! $assigned ? 'Your team plays' : 'Your match', 'event' => $event->name,
-                        'draw' => $row['draw_name'], 'participants' => $row['participants'],
+                        'draw' => $row['draw_name'], 'participants' => $assigned ? $playerFixtures[$playerId][$fixture->id]['participants'] : $row['participants'],
                         'day' => $time->isSameDay($today) ? 'Today' : ($time->isSameDay($today->addDay()) ? 'Tomorrow' : $time->format('l')),
                         'date' => $time->format('D j M'), 'time' => $time->format('H:i'),
                         'scheduled_at' => $row['scheduled_at'], 'venue' => $row['venue_name'] ?: 'Venue to be confirmed',

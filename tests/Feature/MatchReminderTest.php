@@ -209,6 +209,14 @@ class MatchReminderTest extends TestCase
         $profileMatches = app(\App\Services\MyTennisService::class)->upcomingScheduledMatchesFor($player);
         $this->assertCount(1, $profileMatches);
         $this->assertSame('2026-10-08 09:00:00', $profileMatches->sole()->scheduled_at->format('Y-m-d H:i:s'));
+        // Assignments outside the visible reminder window still make this an assigned tie.
+        $assignedSibling = \App\Models\TeamFixture::create(['draw_id' => $draw->id, 'team_tie_id' => $tie->id,
+            'fixture_type' => 1, 'match_nr' => 3, 'match_status' => 1, 'scheduled_at' => '2026-10-15 09:00:00']);
+        $assignment = \App\Models\TeamFixturePlayer::forceCreate(['team_fixture_id' => $assignedSibling->id,
+            'team1_id' => $player->id, 'slot_no' => 1]);
+        $this->assertSame([], app(MatchReminderService::class)->for($user)['players']);
+        $assignment->delete();
+        $assignedSibling->delete();
         $tie->update(['status' => \App\Models\TeamTie::STATUS_COMPLETED]);
         request()->attributes->remove('published_schedule_rows_'.$event->id);
         $this->assertSame([], app(MatchReminderService::class)->for($user)['players']);
@@ -260,7 +268,12 @@ class MatchReminderTest extends TestCase
         $this->assertSame(['Player School', 'Player School'], array_column($matches, 'venue'));
         $this->assertSame(['3', '5'], array_column($matches, 'court'));
         $this->assertSame(['Your match', 'Your match'], array_column($matches, 'label'));
+        $this->assertSame([$first->full_name, ''], $matches[0]['participants']);
         $this->assertSame('Other Club', $groups[$second->full_name]['matches'][0]['venue']);
         $this->assertCount(1, $groups[$second->full_name]['matches']);
+        \App\Models\TeamPlayer::where('player_id', $first->id)->delete();
+        $remaining = app(MatchReminderService::class)->for($user)['players'];
+        $this->assertCount(1, $remaining);
+        $this->assertSame($second->full_name, $remaining[0]['name']);
     }
 }
