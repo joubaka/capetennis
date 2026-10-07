@@ -1,4 +1,6 @@
-@php($publishedDayLabels = app(\App\Services\Scheduling\SchedulePublicationService::class)->publicDrawDayLabels($event))
+@php
+  $publishedDayLabels = app(\App\Services\Scheduling\SchedulePublicationService::class)->publicDrawDayLabels($event);
+@endphp
       {{-- 🔹 Draws and Order of Play (Mobile / Tablet only) --}}
       <div class="card d-block d-md-none mb-4">
         <div class="card-body">

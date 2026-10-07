@@ -278,7 +278,10 @@ class EventEntryController extends Controller
     $this->authorize('event-draw.view', $authEvent);
     abort_unless(app(\App\Services\EventCommunicationService::class)->managesWholeEvent($authEvent,$request->user()),403);
     if ($data['scope']==='player') {
-      Registration::whereKey($data['registration_id'])->whereHas('categoryEventRegistrations.categoryEvent',fn($q)=>$q->where('event_id',$authEvent->id))->firstOrFail();
+      Registration::whereKey($data['registration_id'])->whereHas('categoryEventRegistrations', function ($entries) use ($authEvent) {
+        $entries->where(fn ($status) => $status->whereNull('status')->orWhere(fn ($active) => $active->active()))
+          ->whereNull('withdrawn_at')->whereHas('categoryEvent', fn ($category) => $category->where('event_id', $authEvent->id));
+      })->firstOrFail();
     } elseif ($data['scope']==='category') {
       CategoryEvent::where('event_id',$authEvent->id)->findOrFail($data['category_event_id']);
     }

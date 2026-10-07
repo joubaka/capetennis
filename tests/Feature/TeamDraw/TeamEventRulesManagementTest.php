@@ -76,7 +76,8 @@ class TeamEventRulesManagementTest extends TestCase
         $event = $this->event();
         $draw = Draw::factory()->create(['event_id' => $event->id, 'published' => true,
             'team_scoring_rules' => app(TeamEventRulesService::class)->defaults()]);
-        $teams = Team::factory()->count(2)->create();
+        $category = \App\Models\CategoryEvent::factory()->create(['event_id' => $event->id]);
+        $teams = Team::factory()->count(2)->create(['category_event_id' => $category->id]);
         $tie = \App\Models\TeamTie::create(['draw_id' => $draw->id, 'round_nr' => 1, 'tie_nr' => 1,
             'home_team_id' => $teams[0]->id, 'away_team_id' => $teams[1]->id, 'status' => 'completed']);
         $this->get(route('frontend.team-draw.standings', $draw))->assertOk()->assertDontSee($teams[0]->name);

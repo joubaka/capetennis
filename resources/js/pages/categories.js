@@ -23,25 +23,28 @@ $(function () {
   });
 
   // Add category
-  $('#add-category-form').on('submit', function (e) {
+  $(document).on('submit', '#add-category-form', function (e) {
     e.preventDefault();
     const $form = $(this);
+    const $button = $form.find('[type="submit"]');
+    if ($button.prop('disabled')) return;
     const selected = $('#category-select').val();
     if (!selected || selected.length === 0) {
       toastr.error('Please select at least one category.');
       return;
     }
+    $button.prop('disabled', true);
     $.post({
       url: window.eventAttachCategoryUrl,
       data: $form.serialize(),
       success: function (resp) {
-        $('#add-category-modal').modal('hide');
+        bootstrap.Modal.getInstance(document.getElementById('add-category-modal'))?.hide();
         toastr.success('Category(ies) added.');
-        setTimeout(() => location.reload(), 800);
+        if (window.refreshTeamWorkspace) window.refreshTeamWorkspace();
+        else setTimeout(() => location.reload(), 800);
       },
-      error: function () {
-        toastr.error('Failed to add category.');
-      }
+      error: function (xhr) { toastr.error(xhr.responseJSON?.message || 'Failed to add category.'); },
+      complete: function () { $button.prop('disabled', false); }
     });
   });
 

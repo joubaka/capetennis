@@ -214,7 +214,8 @@ class TeamDrawAdaptationTest extends TestCase
         $service->adaptDraw($draw, null, true, true);
         $tie = $draw->teamTies()->firstOrFail();
         $fixture = $tie->rubbers()->firstOrFail();
-        app(\App\Services\TeamFixtureScoreService::class)->save($fixture, ['set1_home' => 6, 'set1_away' => 2, 'set2_home' => 6, 'set2_away' => 3]);
+        app(\App\Services\TeamFixtureScoreService::class)->save($fixture, ['set1_home' => 6, 'set1_away' => 2, 'set2_home' => 6, 'set2_away' => 3,
+            'participant_revision' => app(\App\Services\TeamParticipantHistoryService::class)->revision($fixture)]);
         $before = app(\App\Services\TeamStandingsService::class)->forDraw($draw->fresh());
         $resultCount = $fixture->teamResults()->count();
         $this->assertTrue(app(\App\Services\TeamStandingsService::class)->tieOutcome($tie->fresh())['complete']);
@@ -271,9 +272,9 @@ class TeamDrawAdaptationTest extends TestCase
         $this->postJson(route('team-draw.ties.validate', $tie))->assertOk();
         $this->postJson(route('team-draw.ties.publish', $tie))->assertOk();
         $this->assertSame(TeamTie::STATUS_PUBLISHED, $tie->fresh()->status);
-        $this->assertTrue($draw->fresh()->published);
+        $this->assertTrue((bool) $draw->fresh()->published);
         $this->postJson(route('team-draw.ties.validate', $tie))->assertStatus(409);
-        $tie->forceFill(['status' => TeamTie::STATUS_DRAFT, 'published_at' => null])->save();
+        $tie->refresh()->forceFill(['status' => TeamTie::STATUS_DRAFT, 'published_at' => null])->save();
         $tie->rubbers()->first()->forceFill(['match_status' => 1])->save();
         $this->postJson(route('team-draw.ties.validate', $tie))->assertStatus(409);
         $this->assertSame(TeamTie::STATUS_DRAFT, $tie->fresh()->status);

@@ -50,7 +50,7 @@ class HeadOfficeDrawOverviewTest extends TestCase
         $html = view('backend.headOffice.partials.individual-draw-row', ['draw' => $this->draw(true)])->render();
 
         $this->assertStringContainsString(route('backend.draw.roundrobin.show', 42), $html);
-        $this->assertStringContainsString(route('backend.draw.roundrobin.show', 42).'#schedule', $html);
+        $this->assertStringContainsString(route('backend.event-venue-schedule.index', ['event' => 233, 'draw_ids' => [42]]), $html);
         $this->assertStringContainsString(route('backend.draw.roundrobin.show', 42).'#print', $html);
         $this->assertStringContainsString(route('flexible-monrad.publish', 42), $html);
         $this->assertStringContainsString('data-revision="7"', $html);
@@ -196,7 +196,7 @@ class HeadOfficeDrawOverviewTest extends TestCase
         $this->assertStringContainsString('id="unpublish-selected-draws"', $html);
         $this->assertStringContainsString('id="publish-selected-times"', $html);
         $this->assertStringContainsString('id="unpublish-selected-times"', $html);
-        $this->assertStringContainsString('Schedule all matches', $html);
+        $this->assertStringContainsString('Schedule all draws & matches', $html);
         $this->assertStringContainsString('Draw pack', $html);
         $this->assertStringContainsString('data-bs-target="#drawSettingsModal"', $html);
         $this->assertStringContainsString('Draw settings', $html);
@@ -215,7 +215,7 @@ class HeadOfficeDrawOverviewTest extends TestCase
 
         $this->assertStringContainsString('Not specified', $html);
         $this->assertStringNotContainsString('Custom Monrad', $html);
-        $this->assertStringContainsString(route('backend.draw.roundrobin.show', 42).'#schedule', $html);
+        $this->assertStringContainsString(route('backend.event-venue-schedule.index', ['event' => 233, 'draw_ids' => [42]]), $html);
         $this->assertStringContainsString('Select a draw format before publishing', $html);
     }
 

@@ -32,7 +32,7 @@
   @php
     $publishedDayLabels = app(\App\Services\Scheduling\SchedulePublicationService::class)->publicDrawDayLabels($event);
     $publicStartTimes = $event->exists
-        ? app(\App\Services\Scheduling\SchedulePublicationService::class)->publishedRows($event)->groupBy('draw_id')->map(fn ($rows) => $rows->min('scheduled_at'))
+        ? app(\App\Services\Scheduling\SchedulePublicationService::class)->publishedRows($event, includeParticipants: false)->groupBy('draw_id')->map(fn ($rows) => $rows->min('scheduled_at'))
         : collect();
     $publishedDraws = $eventDraws
         ->where('published', true)
@@ -84,7 +84,7 @@
           </a>
           @php
 
-            $canScoreEvent = auth()->check() && auth()->user()->can('event.score', $event);
+            $canScoreEvent = $canScoreEvent ?? (auth()->check() && auth()->user()->can('event.score', $event));
           @endphp
           {{-- debug removed: dd() halts execution. Use @dump($var) or @dd($var) during local debugging --}}
           @if($canScoreEvent)

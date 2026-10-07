@@ -115,7 +115,8 @@ class GoldenTournamentTest extends TestCase
             if ($fx->registration1_id === 10 || $fx->registration2_id === 10) {
                 $winner = 10;
                 $loser  = $fx->registration1_id === 10 ? $fx->registration2_id : $fx->registration1_id;
-                $this->scoreFixture($fx, $winner, $loser, [[6, 2]]);
+                $set = $fx->registration1_id === $winner ? [6, 2] : [2, 6];
+                $this->scoreFixture($fx, $winner, $loser, [$set, $set]);
             }
         }
 
@@ -126,8 +127,21 @@ class GoldenTournamentTest extends TestCase
         );
 
         $this->assertEquals(10, $standings[0]['reg_id'], 'Player 10 (most wins) should be ranked 1st');
-        $this->assertGreaterThan(0, $standings[0]['wins']);
+        $this->assertSame(3, $standings[0]['wins']);
+        $this->assertSame([1, 1, 1], array_column(array_slice($standings, 1), 'losses'));
     }
+    public function test_partial_best_of_three_result_does_not_count_as_a_match_win(): void
+    {
+        $draw = $this->makeDraw();
+        $group = $this->makeGroup($draw, 'A', [1, 2]);
+        app(RoundRobinGenerationService::class)->generate($draw);
+        $fixture = $draw->drawFixtures()->where('stage', 'RR')->firstOrFail();
+        $this->scoreFixture($fixture, $fixture->registration1_id, $fixture->registration2_id, [[6, 2]]);
+        $standings = app(StandingsService::class)->forGroup($group, $draw->drawFixtures()->with('fixtureResults')->get());
+        $this->assertSame([0, 0], array_column($standings, 'wins'));
+        $this->assertSame([0, 0], array_column($standings, 'losses'));
+    }
+
     public function test_four_player_rr_standings_tiebreak_by_sets_pct(): void
     {
         $draw  = $this->makeDraw();

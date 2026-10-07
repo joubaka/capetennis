@@ -79,7 +79,14 @@ class TeamDrawSelectionWorkflowTest extends TestCase
         $this->assertSame([1, 1], array_column($mixed[0]->lineup_display['home']['players'], 'rank'));
         $this->assertSame([2, 2], array_column($mixed[1]->lineup_display['home']['players'], 'rank'));
         $response = $this->actingAs($this->admin)->get(route('backend.team-fixtures.index'))->assertOk();
-        $response->assertSee('class="fixture-region">East</div>', false)->assertSee('class="fixture-region">West</div>', false);
+        $document = new \DOMDocument();
+        @$document->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($document);
+        foreach (['East', 'West'] as $region) {
+            $badges = $xpath->query('//div[contains(concat(" ", normalize-space(@class), " "), " fixture-region ") and @title="'.$region.'"]//*[contains(concat(" ", normalize-space(@class), " "), " fixture-region-badge ")]');
+            $this->assertGreaterThan(0, $badges->length);
+            $this->assertSame($region, trim($badges->item(0)->textContent));
+        }
         $response->assertSee('East Boys Player 1')->assertSee('East Girls Player 1');
         $this->assertStringNotContainsString('>()</span>', $response->getContent());
         if (getenv('TEAM_FIXTURE_QA') === '1') {

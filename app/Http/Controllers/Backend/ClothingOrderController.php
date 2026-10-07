@@ -258,12 +258,25 @@ class ClothingOrderController extends Controller
     }
 
     return ClothingOrder::query()
-      ->with(['items.itemType', 'items.size', 'player', 'team'])
+      ->with(['items' => fn ($query) => $query->orderBy('id'), 'items.itemType', 'items.size', 'player', 'team'])
       ->where('pay_status', 1)
       ->where('status', 'completed')
       ->whereHas('team', fn ($query) => $query->where('region_id', $region->id))
       ->when($eventId, fn ($query) => $query->where('event_id', $eventId))
-      ->orderByDesc('created_at');
+      ->orderBy(Team::query()->select('name')->whereColumn('teams.id', 'clothing_orders.team_id')->limit(1))
+      ->orderBy('team_id')
+      // Missing/invalid roster ranks follow the ranked players in the exact ordered team.
+      ->orderByRaw('(SELECT MIN(team_players.rank) FROM team_players WHERE team_players.team_id = clothing_orders.team_id AND team_players.player_id = clothing_orders.player_id AND team_players.rank > 0) IS NULL')
+      ->orderBy(\App\Models\TeamPlayer::query()->withoutGlobalScopes()
+        ->selectRaw('MIN(`rank`)')
+        ->whereColumn('team_players.team_id', 'clothing_orders.team_id')
+        ->whereColumn('team_players.player_id', 'clothing_orders.player_id')
+        ->where('rank', '>', 0))
+      ->orderBy(Player::query()->select('surname')->whereColumn('players.id', 'clothing_orders.player_id')->limit(1))
+      ->orderBy(Player::query()->select('name')->whereColumn('players.id', 'clothing_orders.player_id')->limit(1))
+      ->orderBy('player_id')
+      ->orderBy('created_at')
+      ->orderBy('id');
   }
 
   public function sheet(TeamRegion $region, Request $request)

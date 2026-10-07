@@ -14,7 +14,9 @@
   <link rel="stylesheet" href="{{ asset('assets/vendor/libs/animate-css/animate.css') }}">
   <link rel="stylesheet" href="{{ asset('assets/vendor/libs/sweetalert2/sweetalert2.css') }}">
   <link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}">
-  <link rel="stylesheet" href="{{ asset('assets/vendor/libs/formvalidation/dist/css/formValidation.min.css') }}">
+  @if((int) $event->eventType !== 3)
+    <link rel="stylesheet" href="{{ asset('assets/vendor/libs/formvalidation/dist/css/formValidation.min.css') }}">
+  @endif
   <link rel="stylesheet" href="{{ asset('assets/vendor/libs/quill/typography.css') }}">
   <link rel="stylesheet" href="{{ asset('assets/vendor/libs/quill/katex.css') }}">
   <link rel="stylesheet" href="{{ asset('assets/vendor/libs/quill/editor.css') }}">
@@ -24,6 +26,9 @@
 
 @section('page-style')
   <link rel="stylesheet" href="{{ asset('assets/vendor/css/pages/page-user-view.css') }}" />
+  @if((int) $event->eventType === 3)
+    <link rel="stylesheet" href="{{ asset('css/team-workspace.css') }}?v={{ filemtime(public_path('css/team-workspace.css')) }}">
+  @endif
 @endsection
 
 {{-- Vendor JS --}}
@@ -34,9 +39,11 @@
   <script src="{{ asset('assets/vendor/libs/cleavejs/cleave.js') }}"></script>
   <script src="{{ asset('assets/vendor/libs/cleavejs/cleave-phone.js') }}"></script>
   <script src="{{ asset('assets/vendor/libs/select2/select2.js') }}"></script>
-  <script src="{{ asset('assets/vendor/libs/formvalidation/dist/js/FormValidation.min.js') }}"></script>
-  <script src="{{ asset('assets/vendor/libs/formvalidation/dist/js/plugins/Bootstrap5.min.js') }}"></script>
-  <script src="{{ asset('assets/vendor/libs/formvalidation/dist/js/plugins/AutoFocus.min.js') }}"></script>
+  @if((int) $event->eventType !== 3)
+    <script src="{{ asset('assets/vendor/libs/formvalidation/dist/js/FormValidation.min.js') }}"></script>
+    <script src="{{ asset('assets/vendor/libs/formvalidation/dist/js/plugins/Bootstrap5.min.js') }}"></script>
+    <script src="{{ asset('assets/vendor/libs/formvalidation/dist/js/plugins/AutoFocus.min.js') }}"></script>
+  @endif
   <script src="{{ asset('assets/vendor/libs/quill/katex.js') }}"></script>
   <script src="{{ asset('assets/vendor/libs/quill/quill.js') }}"></script>
   <script src="{{ asset('assets/vendor/libs/toastr/toastr.js') }}"></script>
@@ -47,14 +54,16 @@
 
 
 @section('content')
+@if((int) $event->eventType !== 3)
 <div class="mb-3"><a class="btn btn-outline-primary" href="{{ route('backend.event-mail-log.index',$event) }}">Email log</a></div>
+@endif
   @include('backend.event.partials.header')
 
 
 
   @switch($event->eventType)
     @case(3)  {{-- Team event --}}
-      @include('backend.adminPage.admin_show.team_show')
+      @include('backend.adminPage.admin_show.team-workspace')
       @break
 
     @case(5)  {{-- Cavaliers trials --}}
@@ -86,19 +95,27 @@
   @include('_partials._modals.modal-add-team')
   @include('_partials._modals.modal-add-region')
   @include('_partials._modals.modal-add-send-email')
-  @include('_partials._modals.modal-add-registration')
-  @include('_partials._modals.modal-player-in-team')
-  @include('_partials._modals.modal-edit-team-category')
-  @include('_partials._modals.add-category-modal')
+  @if((int) $event->eventType !== 3)
+    @include('_partials._modals.modal-add-registration')
+    @include('_partials._modals.modal-player-in-team')
+    @include('_partials._modals.modal-edit-team-category')
+  @endif
+  @if((int) $event->eventType !== 3)
+    @include('_partials._modals.add-category-modal')
+  @endif
 
 @endsection
 @section('page-script')
 
 {{-- Cache-bust JS --}}
+<script>window.APP_URL = @json(url('/'));</script>
 <script src="{{ asset(mix('js/regions.js')) }}"></script>
 <script src="{{ asset(mix('js/categories.js')) }}"></script>
 <script src="{{ asset(mix('js/players.js')) }}"></script>
 <script src="{{ asset(mix('js/playerOrder.js')) }}"></script>
+@if((int) $event->eventType === 3)
+<script src="{{ asset('js/team-workspace.js') }}?v={{ filemtime(public_path('js/team-workspace.js')) }}"></script>
+@endif
 <script src="{{ asset('assets/js/draw.js') }}?v={{ filemtime(public_path('assets/js/draw.js')) }}"></script>
 <script src="{{ asset('assets/js/app-email.js') }}?v={{ filemtime(public_path('assets/js/app-email.js')) }}"></script>
 <script src="{{ asset('assets/js/ui-toasts.js') }}?v={{ filemtime(public_path('assets/js/ui-toasts.js')) }}"></script>

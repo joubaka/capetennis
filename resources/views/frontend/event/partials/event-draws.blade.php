@@ -24,7 +24,7 @@
               [fn($d) => $d->draw_types?->ageCategory ?? $d->drawName ?? '', 'asc'],
               ['drawName', 'asc'],
             ]);
-            $canScoreEvent = auth()->check() && auth()->user()->can('event.score', $event);
+            $canScoreEvent = $canScoreEvent ?? (auth()->check() && auth()->user()->can('event.score', $event));
           @endphp
 
           @foreach($sortedDraws as $draw)
@@ -34,7 +34,7 @@
               $publicDrawUrl = $draw->usesFlexibleMonrad()
                 ? route('public.flexible-monrad.show', $draw)
                 : route('public.roundrobin.show', $draw);
-              $canViewDraw = auth()->check() && auth()->user()->can('view', $draw);
+              $canViewDraw = isset($canViewDrawById) ? $canViewDrawById->get($draw->id, false) : (auth()->check() && auth()->user()->can('view', $draw));
             @endphp
 
             <article class="event-draw-card">

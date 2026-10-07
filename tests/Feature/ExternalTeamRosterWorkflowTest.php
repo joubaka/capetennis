@@ -1793,7 +1793,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         app(\App\Domain\Payments\Services\TeamPaymentService::class)->updateTeamPlayerSlot($mirror, ['pay_status' => 0]);
         $this->actingAs($this->admin)->postJson(route('wallet.refund'), ['team_player_id' => $mirror->id])->assertOk();
         $this->assertDatabaseHas('wallet_transactions', ['wallet_id' => $this->admin->wallet->id,
-            'type' => 'credit', 'amount' => 100, 'source_type' => 'team_refund', 'source_id' => $order->id]);
+            'type' => 'credit', 'amount' => 90, 'source_type' => 'team_refund', 'source_id' => $order->id]);
         $this->assertDatabaseMissing('wallet_transactions', ['wallet_id' => $guardianWallet->id, 'type' => 'credit']);
         $this->assertSame((int) $old->id, (int) $order->fresh()->player_id);
         $this->assertSame('completed', $order->fresh()->refund_status);

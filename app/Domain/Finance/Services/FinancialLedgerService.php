@@ -304,7 +304,39 @@ class FinancialLedgerService
                     ])->values(),
                 ];
             })
-            ->toBase()->merge($this->buildParticipationRefundRows($event))->values();
+            ->toBase()->merge($this->buildParticipationRefundRows($event))->merge($this->buildClothingRefundRows($event))->values();
+    }
+
+    private function buildClothingRefundRows(Event $event): Collection
+    {
+        return \App\Models\ClothingRefund::with(['payer', 'order.player', 'items.item'])
+            ->where('event_id', $event->id)->whereIn('refund_status', ['pending', 'completed'])->get()
+            ->map(function ($refund) use ($event) {
+                $gross = (float) $refund->refund_gross;
+                $net = -(float) $refund->refund_net;
+                return (object) [
+                    'type' => 'refund', 'subtype' => 'clothing_refund', 'amount_gross' => $gross,
+                    'amount_fee' => (float) $refund->refund_fee, 'amount_net' => $net,
+                    'payment_method' => $refund->refund_method, 'refund_status' => $refund->refund_status,
+                    'withdrawal_status' => null, 'status_label' => 'Clothing '.ucfirst($refund->refund_method).' ('.ucfirst($refund->refund_status).')',
+                    'status_colour' => RefundType::colour($refund->refund_status),
+                    'source_tx_id' => null, 'source_order_id' => $refund->clothing_order_id,
+                    'source_pf_id' => $refund->order?->payfast_pf_payment_id ?: $refund->order?->pf_id,
+                    'user_name' => $refund->payer?->name ?? '—', 'event_id' => $event->id,
+                    'created_at' => $refund->refunded_at ?? $refund->created_at,
+                    'player' => $refund->payer?->name ?? '—', 'method' => ucfirst($refund->refund_method),
+                    'gross' => -$gross, 'fee' => (float) $refund->refund_fee, 'capeFee' => 0.0, 'net' => $net,
+                    'refund_gross' => $gross, 'refund_fee' => (float) $refund->refund_fee, 'refund_net' => (float) $refund->refund_net,
+                    'pf_payment_id' => $refund->order?->payfast_pf_payment_id ?: $refund->order?->pf_id,
+                    'tx_id' => null, 'paid_at' => $refund->order?->paid_at,
+                    'order' => $refund->order, 'model' => $refund,
+                    'registrationDetails' => $refund->items->map(fn ($line) => [
+                        'player' => $refund->payer?->name ?? '—',
+                        'category' => ($line->item?->item_name ?? 'Clothing').' × '.$line->quantity,
+                        'price' => (float) $line->amount,
+                    ]),
+                ];
+            });
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -394,11 +426,11 @@ class FinancialLedgerService
         $registrationReceived = round($registrationPayments->sum('gross'), 2);
         $registrationNet = round($registrationPayments->sum(
             fn ($row) => (float) ($row->gross ?? 0) + (float) ($row->fee ?? 0) + (float) ($row->capeFee ?? 0)
-        ) + $completedRefundNetImpact, 2);
+        ) + $completedRefunds->where('subtype', '!=', 'clothing_refund')->sum('net'), 2);
         $clothingReceived = round($clothingPayments->sum('gross'), 2);
         $clothingNet = round($clothingPayments->sum(
             fn ($row) => (float) ($row->gross ?? 0) + (float) ($row->fee ?? 0) + (float) ($row->capeFee ?? 0)
-        ), 2);
+        ) + $completedRefunds->where('subtype', 'clothing_refund')->sum('net'), 2);
 
         $totalPaidOut = round($payoutRows->sum(fn($r) => abs($r->net ?? 0)), 2);
         $balance      = round($netRevenue - $totalPaidOut, 2);

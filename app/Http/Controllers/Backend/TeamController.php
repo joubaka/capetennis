@@ -191,6 +191,9 @@ class TeamController extends Controller
 
         $team->update(['name' => $validated['name']]);
 
+        if ($request->expectsJson()) {
+            return response()->json(['success' => true, 'message' => 'Team name updated.']);
+        }
         return redirect()->route('admin.events.teams', $event)
             ->with('team_rename_success', 'Team name updated.')
             ->with('renamed_team_id', $team->id);
@@ -857,17 +860,11 @@ class TeamController extends Controller
     $this->authorize('team.players.manage', $team);
     app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
 
-    $teamplayer = app(TeamPaymentService::class)->updateTeamPlayerSlot($teamplayer, [
-      'pay_status' => $teamplayer->pay_status ? 0 : 1,
-    ]);
-
     return response()->json([
-      'success' => true,
-      'pay_status' => $teamplayer->pay_status,
-      'message' => $teamplayer->pay_status
-        ? 'Marked as Paid'
-        : 'Marked as Not Paid',
-    ]);
+      'success' => false,
+      'message' => 'Payment status is derived from payment records. Use event finances to record or review payments.',
+      'url' => route('admin.events.finances', ['event' => $team->category->event_id]),
+    ], 409);
   }
 
 
@@ -1035,36 +1032,24 @@ class TeamController extends Controller
     app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
 
     $teamId = (int) $data['team_id'];
-    $preservePayments = (bool) ($data['preserve_payments'] ?? false);
-
-    // Only slots belonging to this team
-    $validSlots = TeamPlayer::where('team_id', $teamId)
-      ->pluck('id')
-      ->all();
-
-    DB::transaction(function () use ($data, $validSlots, $preservePayments) {
-
+    $conflict = DB::transaction(function () use ($data, $teamId) {
+      $slots = TeamPlayer::where('team_id', $teamId)->lockForUpdate()->get()->keyBy('id');
       foreach ($data['slots'] as $slotId => $playerId) {
-
-        $slotId = (int) $slotId;
-        $playerId = (int) $playerId;
-
-        if (!in_array($slotId, $validSlots, true)) {
-          continue;
+        $slot = $slots->get((int) $slotId);
+        abort_unless($slot, 422, 'A submitted roster slot does not belong to this team.');
+        if ((int) $slot->player_id !== (int) $playerId) {
+          return true;
         }
-
-        // Allow dummy (0) OR valid player
-        if ($playerId !== 0 && !Player::whereKey($playerId)->exists()) {
-          continue;
-        }
-
-        TeamPlayer::whereKey($slotId)->update([
-          'player_id' => $playerId,
-         // 'no_profile_id' => null,
-          'pay_status' => $preservePayments ? DB::raw('pay_status') : 0,
-        ]);
       }
+      return false;
     });
+    if ($conflict) {
+      return response()->json([
+        'success' => false,
+        'message' => 'Use the replacement wizard to preserve participant and payment history.',
+        'url' => route('backend.team-substitutions.show', $team),
+      ], 409);
+    }
 
     // Return updated roster for frontend refresh
     $updatedSlots = TeamPlayer::where('team_id', $teamId)

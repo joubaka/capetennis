@@ -13,7 +13,7 @@ final class SchedulePublicationService
     public function publicDrawDayLabels(Event $event): Collection
     {
         if (! $event->exists) return collect();
-        return $this->publishedRows($event)->groupBy('draw_id')->map(function ($rows) {
+        return $this->publishedRows($event, includeParticipants: false)->groupBy('draw_id')->map(function ($rows) {
             $dates = $rows->pluck('scheduled_at')->map(fn ($time) => Carbon::parse($time)->toDateString())->unique()->sort()->values();
             $weekdays = $dates->map(fn ($date) => Carbon::parse($date)->format('l'));
             // Disambiguate repeated weekdays when a competition spans multiple weeks.
@@ -45,24 +45,27 @@ final class SchedulePublicationService
         })->values();
     }
 
-    /** Timing only: names and participation always come from current event records. */
-    public function publishedRows(Event $event): Collection
+    /** Snapshot timing; optional names always come from current event records. */
+    public function publishedRows(Event $event, bool $includeParticipants = true): Collection
     {
         if (! app(\App\Services\PublicTournamentVisibility::class)->eventIsVisible($event)) return collect();
-        $cacheKey = 'published_schedule_rows_'.$event->id;
+        // Metadata-only reads must never replace the default participant cache.
+        $cacheKey = 'published_schedule_rows_'.$event->id.($includeParticipants ? '' : '_timing');
         if (request()->attributes->has($cacheKey)) return request()->attributes->get($cacheKey);
-        $draws = $event->draws()->where('published', true)->where('oop_published', true)->get()->keyBy('id');
+        $draws = $event->draws()->with('settings')->where('published', true)->where('oop_published', true)->get()->keyBy('id');
         $snapshots = DB::table('published_schedule_assignments')->where('event_id', $event->id)
             ->whereIn('draw_id', $draws->keys())->get();
         $individualIds = $snapshots->where('fixture_kind', 'individual')->pluck('fixture_id');
         $teamIds = $snapshots->where('fixture_kind', 'team')->pluck('fixture_id');
-        $individual = Fixture::with(['fixtureResults', 'registration1.players', 'registration2.players'])
+        $individual = Fixture::with($includeParticipants ? ['fixtureResults', 'registration1.players', 'registration2.players'] : ['fixtureResults'])
             ->whereIn('draw_id', $draws->keys())->whereIn('id', $individualIds)->get()->keyBy('id');
-        $team = TeamFixture::with(['fixtureResults', 'teamTie', 'team1', 'team2'])->publicDrawFixtures()
+        $team = TeamFixture::without($includeParticipants ? ['draw'] : ['draw', 'teamResults', 'fixturePlayers'])
+            ->with($includeParticipants ? ['fixtureResults', 'teamTie', 'team1', 'team2'] : [])->publicDrawFixtures()
             ->whereIn('draw_id', $draws->keys())->whereIn('id', $teamIds)->get()->keyBy('id');
-        app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($team, publicDraw: true);
+        foreach ($individual->concat($team) as $fixture) $fixture->setRelation('draw', $draws->get($fixture->draw_id));
+        if ($includeParticipants) app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($team, publicDraw: true);
         $venues = Venue::whereIn('id', $snapshots->pluck('venue_id'))->get()->keyBy('id');
-        $rows = $snapshots->map(function ($row) use ($individual, $team, $draws, $venues) {
+        $rows = $snapshots->map(function ($row) use ($individual, $team, $draws, $venues, $includeParticipants) {
             $fixture = ($row->fixture_kind === 'team' ? $team : $individual)->get($row->fixture_id);
             if (! $fixture || (int) $fixture->draw_id !== (int) $row->draw_id) return null;
             $fixture->setRelation('draw', $draws[$row->draw_id]);
@@ -77,12 +80,11 @@ final class SchedulePublicationService
             }
             return (array) $row + ['fixture_key' => $row->fixture_kind.':'.$row->fixture_id,
                 'draw_name' => $draws[$row->draw_id]->drawName, 'venue_name' => $venues->get($row->venue_id)?->name,
-                'participants' => $row->fixture_kind === 'team'
+                '_fixture' => $fixture] + ($includeParticipants ? ['participants' => $row->fixture_kind === 'team'
                     ? ($fixture->teamTie
                         ? [$fixture->tie_display['home'], $fixture->tie_display['away']]
                         : [$fixture->team1->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / '), $fixture->team2->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / ')])
-                    : [$fixture->registration1?->players?->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / '), $fixture->registration2?->players?->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / ')],
-                '_fixture' => $fixture];
+                    : [$fixture->registration1?->players?->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / '), $fixture->registration2?->players?->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / ')]] : []);
         })->filter()->sort(fn ($left, $right) => app(VenueMatchOrder::class)->compare($left['_fixture'], $right['_fixture']))->values();
         $publicRows = $rows->groupBy('draw_id')->flatMap(function ($rows, $drawId) use ($draws) {
             if (! $draws[$drawId]->settings?->showsFirstMatchOnly()) return $rows;
@@ -108,11 +110,12 @@ final class SchedulePublicationService
     public function projectFixtures(Collection $fixtures): Collection
     {
         $events = $fixtures->map(fn ($fixture) => $fixture->draw?->event_id ?? $fixture->draws?->event_id)->filter()->unique();
-        $rows = $events->flatMap(fn ($id) => $this->publishedRows(Event::findOrFail($id)))->keyBy('fixture_key');
+        $rows = $events->flatMap(fn ($id) => $this->publishedRows(Event::findOrFail($id), includeParticipants: false))->keyBy('fixture_key');
+        $venues = Venue::whereIn('id', $rows->pluck('venue_id')->filter()->unique())->get()->keyBy('id');
         foreach ($fixtures as $fixture) {
             $team = $fixture instanceof TeamFixture;
             $row = $rows->get(($team ? 'team:' : 'individual:').$fixture->id);
-            $venue = $row ? Venue::find($row['venue_id']) : null;
+            $venue = $row ? $venues->get($row['venue_id']) : null;
             $fixture->setAttribute('scheduled', $row ? 1 : 0);
             if ($team) $fixture->setAttribute('clash_flag', false);
             if ($team) {
@@ -188,6 +191,7 @@ final class SchedulePublicationService
                         'after' => $this->publishedAssignments($event)->where('draw_id', $id)->map(fn ($row) => array_intersect_key($row, array_flip(['fixture_kind','fixture_id','scheduled_at','venue_id','court','duration'])))->values()->all()]);
             }
             request()->attributes->remove('published_schedule_rows_'.$event->id);
+            request()->attributes->remove('published_schedule_rows_'.$event->id.'_timing');
             return $hide ? $removed : $working->count();
         });
     }

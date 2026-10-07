@@ -160,8 +160,9 @@ class ReviewedSeriesCommunicationTest extends TestCase
         $intent=(string)Str::uuid();
         $this->preview($series,$actor,$intent);
         $failMarker=true;
-        DB::connection()->beforeExecuting(function($query)use(&$failMarker){
-            if ($failMarker && str_contains(strtolower($query),'json_set') && str_contains($query,'queue_state')) {
+        DB::connection()->beforeExecuting(function($query, $bindings)use(&$failMarker){
+            if ($failMarker && str_starts_with(strtolower($query), 'update') && str_contains($query, 'bulk_email_logs')
+                && str_contains($query, 'payload') && (str_contains($query, 'queue_state') || collect($bindings)->contains(fn ($value) => is_string($value) && str_contains($value, '"queue_state":"enqueued"')))) {
                 $failMarker=false;
                 throw new \RuntimeException('Marker storage unavailable');
             }
@@ -172,6 +173,7 @@ class ReviewedSeriesCommunicationTest extends TestCase
         $this->assertSame(1,$stats['pending']);
         $this->assertSame(0,$stats['failed']);
         $this->assertSame(2,BulkEmailLog::where('status','queued')->count());
+        $this->assertFalse($failMarker, 'The submission confirmation storage failure must be exercised.');
         Mail::assertNothingSent();
     }
 
@@ -227,8 +229,9 @@ class ReviewedSeriesCommunicationTest extends TestCase
         $factory->shouldReceive('connection')->andReturn($queue);
         $this->app->instance(\Illuminate\Contracts\Queue\Factory::class,$factory);
         $failMarker=true;
-        DB::connection()->beforeExecuting(function($query)use(&$failMarker){
-            if ($failMarker && str_contains(strtolower($query),'json_set') && str_contains($query,'queue_state')) {
+        DB::connection()->beforeExecuting(function($query, $bindings)use(&$failMarker){
+            if ($failMarker && str_starts_with(strtolower($query), 'update') && str_contains($query, 'bulk_email_logs')
+                && str_contains($query, 'payload') && (str_contains($query, 'queue_state') || collect($bindings)->contains(fn ($value) => is_string($value) && str_contains($value, '"queue_state":"enqueued"')))) {
                 $failMarker=false;
                 throw new \RuntimeException('Marker storage unavailable');
             }
@@ -237,6 +240,7 @@ class ReviewedSeriesCommunicationTest extends TestCase
         $this->assertSame(1,$stats['pending']);
         $this->assertSame(1,$stats['queued']);
         $this->assertSame(0,$stats['failed']);
+        $this->assertFalse($failMarker, 'The submission confirmation storage failure must be exercised.');
         Mail::assertNothingSent();
     }
 

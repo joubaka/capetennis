@@ -99,14 +99,26 @@ class TeamTieLifecycleTest extends TestCase
         }
     }
 
-    public function test_super_user_cannot_validate_or_publish_in_locked_or_published_draw(): void
+    public function test_super_user_cannot_validate_or_publish_in_locked_draw(): void
     {
         $this->rubber();
-        foreach (['locked', 'published'] as $flag) {
-            $this->draw->update(['locked' => false, 'published' => false, $flag => true]);
+        foreach ([false, true] as $published) {
+            $this->draw->update(['locked' => true, 'published' => $published]);
             $this->postJson(route('team-draw.ties.validate', $this->tie))->assertStatus(409);
             $this->tie->update(['status' => TeamTie::STATUS_VALIDATED]);
             $this->postJson(route('team-draw.ties.publish', $this->tie))->assertStatus(409);
         }
+    }
+
+    public function test_published_unlocked_draw_allows_an_upcoming_tie_to_be_validated_and_published(): void
+    {
+        $this->rubber();
+        $this->draw->update(['locked' => false, 'published' => true]);
+        $this->postJson(route('team-draw.ties.validate', $this->tie))->assertOk();
+        $this->assertSame(TeamTie::STATUS_VALIDATED, $this->tie->fresh()->status);
+        $this->postJson(route('team-draw.ties.publish', $this->tie))->assertOk();
+        $this->assertSame(TeamTie::STATUS_PUBLISHED, $this->tie->fresh()->status);
+        $this->assertNotNull($this->tie->fresh()->published_at);
+        $this->assertTrue((bool) $this->draw->fresh()->published);
     }
 }

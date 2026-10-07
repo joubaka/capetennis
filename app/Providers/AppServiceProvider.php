@@ -167,6 +167,7 @@ class AppServiceProvider extends ServiceProvider
     TeamPaymentOrder::observe(FinancialMutationObserver::class);
     CategoryEventRegistration::observe(FinancialMutationObserver::class);
     ClothingOrder::observe(FinancialMutationObserver::class);
+    \App\Models\ClothingRefund::observe(FinancialMutationObserver::class);
     Order::observe(FinancialMutationObserver::class);
     TeamPlayer::observe(FinancialMutationObserver::class);
 

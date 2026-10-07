@@ -137,8 +137,11 @@ class EventController extends Controller
       'draws.draw_types',
       'draws.venues',
       'draws.settings',
+      'draws.settings.drawFormat',
+      'draws.flexibleMonrad',
       'draws.order_of_play.venue',
       'series',
+      'eventTypeModel',
     ])->findOrFail($id);
 
     $interprovincialTrialCategories = collect();
@@ -149,7 +152,7 @@ class EventController extends Controller
         ->where('nominations_published', true)
         ->orderBy('ordering')->orderBy('id')->limit(100)->get();
     } else {
-      $event->load('eventCategories.nominations.player');
+      $event->loadMissing('eventCategories.nominations.player');
     }
 
     $mastersInvitations = collect();
@@ -195,6 +198,8 @@ class EventController extends Controller
     }
 
     $regions = $event->regions;
+    $pageData = app(\App\Services\EventPageDataService::class);
+    $pageData->prepareRegions($event);
 
     // ---------------------------------------------------------
 // DEADLINE LOGIC (INT DEADLINE = DAYS BEFORE START)
@@ -335,8 +340,10 @@ class EventController extends Controller
       ];
     })->values();
 
-    $canPreviewUnpublishedDraws = $user && $allEventDraws
-      ->contains(fn (Draw $draw) => $user->can('view', $draw));
+    $canViewDrawById = $pageData->drawViewPermissions($user, $allEventDraws);
+    $canPreviewUnpublishedDraws = $canViewDrawById->contains(true);
+    $canScoreEvent = (bool) $user?->can('event.score', $event);
+    $pageData->prepareScheduleExistence($event, $allEventDraws);
     $eventDraws = ($canPreviewUnpublishedDraws
       ? $allEventDraws
       : $allEventDraws->where('published', true))
@@ -352,21 +359,24 @@ class EventController extends Controller
     $drawIds = $eventDraws->pluck('id');
 
       $publication = app(\App\Services\Scheduling\SchedulePublicationService::class);
+      $allPublicIndividualFixtures = Fixture::with('orderOfPlay.venue')->whereIn('draw_id', $drawIds)->get();
+      $pageData->attachDraws($allPublicIndividualFixtures, $allEventDraws);
+      $publication->projectFixtures($allPublicIndividualFixtures);
+      $individualFixturesByDraw = $allPublicIndividualFixtures->groupBy('draw_id');
       foreach ($eventDraws as $publicDraw) {
-        $publicFixtures = $publicDraw->drawFixtures()->with('orderOfPlay.venue')->get();
-        $publication->projectFixtures($publicFixtures);
+        $publicFixtures = $individualFixturesByDraw->get($publicDraw->id, collect());
         $publicFixtures = $publicFixtures->sort(fn ($left, $right) => app(\App\Services\Scheduling\VenueMatchOrder::class)->compare($left, $right))->values();
         $publicDraw->setRelation('order_of_play', $publicFixtures
           ->map(fn ($fixture) => $fixture->orderOfPlay)->filter()->sortBy('time')->values());
       }
     // Venue shortcuts follow the same published assignments as public packs.
     $scoringVenues = collect();
-    if ($user?->can('event.score', $event)) {
+    if ($canScoreEvent) {
       $restrictedScoringVenueId = $user->is_event_score_keeper($event->id)
         ? $user->scoringVenueIdForEvent($event->id)
         : null;
       $venueCounts = app(\App\Services\Scheduling\SchedulePublicationService::class)
-        ->publishedRows($event)->groupBy('venue_id')->map(fn ($rows) => $rows->count());
+        ->publishedRows($event, includeParticipants: false)->groupBy('venue_id')->map(fn ($rows) => $rows->count());
       $scoringVenues = \App\Models\Venue::query()
         ->whereIn('id', $venueCounts->keys())
         ->when($restrictedScoringVenueId !== null, fn ($query) => $query->whereKey($restrictedScoringVenueId))
@@ -404,11 +414,11 @@ class EventController extends Controller
       $fixturesPerVenue = collect();
     }
 
+      $pageData->attachDraws($fixturesPerVenue, $allEventDraws);
       app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($fixturesPerVenue);
       $fixturesPerVenue = $fixturesPerVenue->sort(fn ($left, $right) => app(\App\Services\Scheduling\VenueMatchOrder::class)->compare($left, $right))->values();
-      if ($event->eventType == 3) {
-        app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixturesPerVenue, publicDraw: true);
-      }
+      // This page uses these fixtures only for venue/date shortcuts. Detailed
+      // lineups are prepared by the dedicated fixture and scoring pages.
     $fixturesPerVenueGrouped = $fixturesPerVenue
       ->groupBy(fn($fx) => $fx instanceof TeamFixture
         ? ($fx->venue?->name ?? 'Unassigned')
@@ -424,8 +434,8 @@ class EventController extends Controller
     } else {
       $teamFixtures = TeamFixture::whereIn('draw_id', $drawIds)
         ->when(! $canPreviewUnpublishedDraws, fn ($query) => $query->publicDrawFixtures())->get();
+      $pageData->attachDraws($teamFixtures, $allEventDraws);
       app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($teamFixtures);
-      app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($teamFixtures, publicDraw: true);
     }
     $ties = $teamFixtures->groupBy('tie_nr');
     $rounds = $teamFixtures->groupBy('round_nr');
@@ -502,13 +512,7 @@ class EventController extends Controller
         ->groupBy('category_id');
     }
 
-$fixtures = \App\Models\TeamFixture::with(['draw'])
-    ->whereHas('draw', function ($q) use ($event) {
-        $q->where('event_id', $event->id);
-    })
-    ->get();
-
-    app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($fixtures);
+$fixtures = $teamFixtures;
 $fixtures = app(\App\Services\Scheduling\TeamFixtureOrder::class)->sort($fixtures->filter(fn ($fixture) => $fixture->scheduled_at));
 
 $fixturesByDay = $fixtures->groupBy(function($fx) {
@@ -564,7 +568,9 @@ return view('frontend.event.show', compact(
       'drawPublicationSummary',
       'canPreviewUnpublishedDraws',
       'canManageRegionalTeamSelection',
-      'isEventWideAdministrator'
+      'isEventWideAdministrator',
+      'canScoreEvent',
+      'canViewDrawById'
     ));
   }
 

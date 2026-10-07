@@ -40,6 +40,42 @@ class RefundExecutionService
     {
     }
 
+    public function executeWithdrawnTeamWalletRefund(
+        \App\Models\TeamPaymentOrder $order,
+        Wallet $wallet,
+        float $amount,
+        string $sourceType,
+        int $sourceId,
+        array $meta = [],
+        array $statusOverrides = []
+    ): Model {
+        return DB::transaction(function () use ($order, $wallet, $amount, $sourceType, $sourceId, $meta, $statusOverrides) {
+            $locked = \App\Models\TeamPaymentOrder::with('event')->lockForUpdate()->findOrFail($order->id);
+            if ($locked->isRefundWaived()) {
+                throw ValidationException::withMessages(['refund' => 'This refund was waived and cannot be processed.']);
+            }
+            if ($locked->refund_status === 'pending') {
+                throw ValidationException::withMessages(['refund' => 'A refund is already pending. Review its existing method before processing.']);
+            }
+            if (! $locked->withdrawn_at || ! $locked->event
+                || $locked->withdrawn_at->gt($locked->event->withdrawalCloseAt())) {
+                throw ValidationException::withMessages(['refund' => 'A withdrawal within the refund deadline is required.']);
+            }
+            $amounts = app(TeamRefundCalculator::class)->calculate($locked);
+            if (! $locked->pay_status || $locked->effective_player_id !== $order->effective_player_id
+                || ! $locked->user->wallet()->whereKey($wallet->id)->exists()
+                || $amounts['net'] <= 0 || round($amount, 2) !== $amounts['net']) {
+                throw ValidationException::withMessages(['refund' => 'Payment coverage changed. Refresh before refunding the original payer.']);
+            }
+            return $this->executeWalletRefund($locked, $wallet, $amounts['net'], $sourceType, $sourceId, $meta, [
+                'refund_method' => 'wallet',
+                'refund_gross' => $amounts['gross'],
+                'refund_fee' => $amounts['fee'],
+                'refund_net' => $amounts['net'],
+            ]);
+        });
+    }
+
     public function executeWalletRefund(
         Model $refundEntity,
         Wallet $wallet,

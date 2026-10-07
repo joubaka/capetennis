@@ -67,6 +67,12 @@ class PublicTournamentWorkflowTest extends TestCase
             'oop_published' => true,
         ]);
         $draw->settings()->create(['workflow' => 'round_robin']);
+        $fixture = \App\Models\Fixture::factory()->create(['draw_id' => $draw->id]);
+        $venue = new Venue();
+        $venue->name = 'Published round robin court';
+        $venue->save();
+        OrderOfPlay::create(['draw_id' => $draw->id, 'fixture_id' => $fixture->id, 'venue_id' => $venue->id, 'time' => '2026-09-06 09:00:00']);
+        app(\App\Services\Scheduling\SchedulePublicationService::class)->publish($event, ['draw_id' => $draw->id]);
 
         $this->get(route('events.show', $event))
             ->assertOk()
@@ -138,6 +144,8 @@ class PublicTournamentWorkflowTest extends TestCase
             'scheduled_at' => '2026-09-06 10:00:00',
             'venue_id' => $venue->id,
         ]);
+        app(\App\Services\Scheduling\SchedulePublicationService::class)->publish($event, ['draw_id' => $visible->id]);
+        $this->assertDatabaseCount('published_schedule_assignments', 1);
 
         $this->get(route('fixtures.venue', [$event->id, $venue->id]))
             ->assertOk()
@@ -190,10 +198,14 @@ class PublicTournamentWorkflowTest extends TestCase
             ->assertUnprocessable()
             ->assertJsonPath('message', 'Add at least one match time before publishing the schedule.');
 
+        $fixture = \App\Models\Fixture::factory()->create(['draw_id' => $draw->id]);
+        $venue = new Venue();
+        $venue->name = 'Private preview court';
+        $venue->save();
         OrderOfPlay::create([
             'draw_id' => $draw->id,
-            'fixture_id' => 1,
-            'venue_id' => 1,
+            'fixture_id' => $fixture->id,
+            'venue_id' => $venue->id,
             'time' => '2026-09-06 09:00:00',
         ]);
 
@@ -205,6 +217,7 @@ class PublicTournamentWorkflowTest extends TestCase
         $draw->refresh();
         $this->assertFalse((bool) $draw->published);
         $this->assertTrue((bool) $draw->oop_published);
+        $this->assertDatabaseHas('published_schedule_assignments', ['draw_id' => $draw->id, 'fixture_id' => $fixture->id]);
     }
 
     public function test_unpublishing_a_draw_retains_its_schedule_for_authorized_preview(): void

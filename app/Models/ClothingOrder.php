@@ -32,6 +32,11 @@ class ClothingOrder extends Model
         return $this->hasMany(ClothingOrderItem::class,'clothing_order_id','id');
     }
 
+    public function refunds()
+    {
+        return $this->hasMany(ClothingRefund::class);
+    }
+
     public function player(){
 
         return $this->belongsTo(Player::class,'player_id','id');

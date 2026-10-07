@@ -60,6 +60,8 @@ class EventVenueSchedulingOptionsTest extends TestCase
     {
         $event = Event::factory()->create();
         $venue = $this->venue($event);
+        // The event defines the shared physical court pool; draw counts do not restrict it.
+        $event->venues()->updateExistingPivot($venue->id, ['num_courts' => 3]);
         foreach ([$second, $first] as $gender) {
             $draw = $this->draw($event, $venue, $gender, 3);
             foreach ([1, 2] as $round) {
@@ -73,6 +75,7 @@ class EventVenueSchedulingOptionsTest extends TestCase
         $strict = $service->preview($event, $options);
         $ready = $service->preview($event, $options + ['gender_wave_release' => 'court_ready']);
         $this->assertCount(16, $ready['matches']);
+        $this->assertSame(['1', '2', '3'], collect($ready['matches'])->pluck('court')->unique()->sort()->values()->all());
         $this->assertSame([], $ready['unscheduled']);
         $this->assertNotSame($strict['revision'], $ready['revision']);
         $strictSecond = collect($strict['matches'])->where('draw_name', $second)->where('round', 1)->min('scheduled_at');
@@ -113,6 +116,7 @@ class EventVenueSchedulingOptionsTest extends TestCase
     {
         $event = Event::factory()->create();
         $venue = $this->venue($event);
+        $event->venues()->updateExistingPivot($venue->id, ['num_courts' => 2]);
         $draw = $this->draw($event, $venue, 'Boys', 2);
         if ($strategy === 'canonical') {
             $first = ['team_tie_id' => $this->tie($draw, 1, 1)->id];
@@ -135,6 +139,7 @@ class EventVenueSchedulingOptionsTest extends TestCase
         $options = $this->schedulingOptions() + ['tie_allocation' => 'complete_tie'];
         $complete = $service->preview($event, $options);
         $rows = collect($complete['matches'])->keyBy('fixture_id');
+        $this->assertSame(['1', '2'], collect($complete['matches'])->pluck('court')->unique()->sort()->values()->all());
         $this->assertSame('2026-09-10 10:30:00', collect($balanced['matches'])->firstWhere('fixture_id', $delayedRubber->id)['scheduled_at']);
         $this->assertSame('2026-09-10 10:15:00', $rows[$delayedRubber->id]['scheduled_at']);
         $this->assertSame('2026-09-10 08:00:00', $rows[$firstRubber->id]['scheduled_at']);

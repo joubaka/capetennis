@@ -71,7 +71,9 @@ class Draw extends Model
     public function usesFlexibleMonrad(): bool
     {
         return $this->flexibleMonrad !== null || ($this->settings?->draw_format_id
-            && DrawFormats::whereKey($this->settings->draw_format_id)->where('name', 'Flexible Monrad')->exists());
+            && ($this->settings->relationLoaded('drawFormat')
+                ? $this->settings->drawFormat?->name === 'Flexible Monrad'
+                : DrawFormats::whereKey($this->settings->draw_format_id)->where('name', 'Flexible Monrad')->exists()));
     }
 
     public function isRoundRobinOnly(): bool

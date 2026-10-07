@@ -135,6 +135,8 @@ class MastersEntriesAlignmentTest extends TestCase
 
     public function test_bulk_email_rejects_cross_event_and_withdrawn_recipient_resolution(): void
     {
+        Mail::fake();
+        Queue::fake();
         [$event] = $this->eventAndCategory('individual-mail');
         [$otherEvent, $otherCategory] = $this->eventAndCategory('individual-other');
         $this->assignEvent($event);
@@ -158,6 +160,14 @@ class MastersEntriesAlignmentTest extends TestCase
         $this->actingAs($this->admin)
             ->postJson(route('admin.events.email.send'), $payload)
             ->assertNotFound();
+        foreach (['withdrawn_pending_refund', 'withdrawn_refunded', 'pending_checkout'] as $status) {
+            $withdrawn->update(['status' => $status, 'withdrawn_at' => null]);
+            $this->postJson(route('admin.events.email.send'), $payload)->assertNotFound();
+        }
+        $withdrawn->update(['status' => 'active', 'withdrawn_at' => now()]);
+        $this->postJson(route('admin.events.email.send'), $payload)->assertNotFound();
+        Mail::assertNothingSent();
+        Queue::assertNothingPushed();
     }
 
     public function test_removed_reinstate_route_is_not_registered(): void

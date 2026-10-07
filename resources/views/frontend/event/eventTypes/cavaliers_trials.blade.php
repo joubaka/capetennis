@@ -1,4 +1,6 @@
-@php($publishedDayLabels = app(\App\Services\Scheduling\SchedulePublicationService::class)->publicDrawDayLabels($event))
+@php
+  $publishedDayLabels = app(\App\Services\Scheduling\SchedulePublicationService::class)->publicDrawDayLabels($event);
+@endphp
 <?php
 
 use App\Models\EventNomination;

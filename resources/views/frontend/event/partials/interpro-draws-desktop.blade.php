@@ -1,4 +1,6 @@
-@php($publishedDayLabels = app(\App\Services\Scheduling\SchedulePublicationService::class)->publicDrawDayLabels($event))
+@php
+  $publishedDayLabels = app(\App\Services\Scheduling\SchedulePublicationService::class)->publicDrawDayLabels($event);
+@endphp
  {{-- 🔹 Draws and Order of Play (Desktop only) --}}
       <div class="d-none d-md-block">
 
@@ -11,7 +13,7 @@
 
             @php
               $deskUser = auth()->user();
-              $canScoreEvent = $deskUser && $deskUser->can('event.score', $event);
+              $canScoreEvent = $canScoreEvent ?? ($deskUser && $deskUser->can('event.score', $event));
               $canViewUnpublished = $deskUser && (
                 (method_exists($deskUser, 'isConvenorForEvent') && $deskUser->isConvenorForEvent($event->id)) ||
                 (method_exists($deskUser, 'is_convenor') && $deskUser->is_convenor($event->id)) ||

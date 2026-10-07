@@ -181,6 +181,55 @@ class PaidClothingOrdersExportTest extends TestCase
         ]))->assertForbidden();
     }
 
+    public function test_excel_and_pdf_group_teams_and_order_players_by_their_rank_in_that_team(): void
+    {
+        [$admin, $event, $region] = $this->managedRegion();
+        $laterTeam = $this->order($event, $region, true, 'Zulu item');
+        $laterTeam->team->update(['name' => 'Zulu team']);
+        $rankTwo = $this->order($event, $region, true, 'Rank two');
+        $rankTwo->team->update(['name' => 'Alpha team']);
+        $rankOne = $this->order($event, $region, true, 'Rank one');
+        $unrankedZulu = $this->order($event, $region, true, 'Unranked Zulu');
+        $unrankedAlpha = $this->order($event, $region, true, 'Unranked Alpha');
+        foreach ([$rankOne, $unrankedZulu, $unrankedAlpha] as $order) {
+            $order->update(['team_id' => $rankTwo->team_id]);
+        }
+        $unrankedZulu->player->update(['surname' => 'Zulu']);
+        $unrankedAlpha->player->update(['surname' => 'Alpha']);
+        \App\Models\TeamPlayer::create(['team_id' => $rankTwo->team_id, 'player_id' => $rankTwo->player_id, 'rank' => 2]);
+        \App\Models\TeamPlayer::create(['team_id' => $rankTwo->team_id, 'player_id' => $rankOne->player_id, 'rank' => 1]);
+        // A rank in a different team must not affect this order's position.
+        \App\Models\TeamPlayer::create(['team_id' => $laterTeam->team_id, 'player_id' => $unrankedZulu->player_id, 'rank' => 1]);
+        $item = $rankOne->items()->firstOrFail();
+        $rankOne->items()->create([
+            'clothing_order_item_id' => $item->clothing_order_item_id,
+            'clothing_item_size' => $item->clothing_item_size,
+            'qty' => 1, 'price' => 50, 'line_total' => 50,
+            'item_name' => 'Second rank one item', 'size_name' => 'Medium',
+        ]);
+        $expected = [$rankOne->id, $rankTwo->id, $unrankedAlpha->id, $unrankedZulu->id, $laterTeam->id];
+
+        Excel::fake();
+        $this->actingAs($admin)->get(route('export.excel.clothing', ['id' => $region->id, 'event_id' => $event->id]))->assertOk();
+        Excel::assertDownloaded('clothing_orders.xlsx', function (ClothingOrdersExport $export) use ($expected, $rankOne): bool {
+            $rows = $export->collection();
+            $this->assertSame([$rankOne->id, ...$expected], $rows->pluck('order.id')->all());
+            $this->assertSame(['Rank one', 'Second rank one item'], $rows->take(2)->pluck('item.item_name')->all());
+
+            return true;
+        });
+
+        $document = \Mockery::mock(\Barryvdh\DomPDF\PDF::class);
+        $document->shouldReceive('download')->once()->with('clothing_orders.pdf')->andReturn(response('pdf'));
+        Pdf::shouldReceive('loadView')->once()
+            ->with('.backend.clothing.clothing-order-pdf', \Mockery::on(function (array $data) use ($expected): bool {
+                $this->assertSame($expected, $data['clothings']->pluck('id')->all());
+
+                return true;
+            }))->andReturn($document);
+        $this->actingAs($admin)->get(route('export.pdf.clothing.order', ['id' => $region->id, 'event_id' => $event->id]))->assertOk();
+    }
+
     private function managedRegion(): array
     {
         Role::findOrCreate('admin', 'web');

@@ -77,7 +77,7 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
   }
 
   // Ensure import UI is reset when modal is hidden (user closed modal or after import)
-  $('#import-noprofile-modal').on('hidden.bs.modal', function () {
+  $(document).on('hidden.bs.modal', '#import-noprofile-modal', function () {
     // reset file input + team fields
     $('#import-file').val('');
     $('#import-team-id').val('');
@@ -132,7 +132,7 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
     $select.on('change', () => { console.log('📍 Region selected:', $select.val()); });
   }
 
-  $('#modalToggle').on('shown.bs.modal', initRegionSelect2).on('hidden.bs.modal', () => $('#regionShortName').val(''));
+  $(document).on('shown.bs.modal', '#modalToggle', initRegionSelect2).on('hidden.bs.modal', '#modalToggle', () => $('#regionShortName').val(''));
 
   // ===============================
   // Add Region to Event
@@ -751,7 +751,7 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
     stopImportTimer();
   });
 
-  $('#import-file').on('change', function () {
+  $(document).on('change', '#import-file', function () {
     $('#import-confirmed').val('0');
     $('#import-submit-btn').text('Preview roster');
     $('#import-preview').addClass('d-none');
@@ -760,7 +760,7 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
   });
 
   // Handle import form submission - show spinner while importing
-  $('#import-submit-btn').on('click', function () {
+  $(document).on('click', '#import-submit-btn', function () {
     const form = document.getElementById('import-noprofile-form');
     const formData = new FormData(form);
     const $file = $('#import-file');
@@ -813,7 +813,11 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
         }
 
         toastr.success(response.message || 'Import finished');
-        setTimeout(() => location.reload(), 700);
+        if (window.refreshTeamWorkspace) {
+          bootstrap.Modal.getInstance(document.getElementById('import-noprofile-modal'))?.hide();
+          window.refreshTeamWorkspace();
+        }
+        else setTimeout(() => location.reload(), 700);
       },
       error: function (xhr) {
         stopImportTimer();
@@ -955,29 +959,29 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
     resetBulkImportPreview(true);
   });
 
-  $('#import-region-teams-modal').on('hidden.bs.modal', function () {
+  $(document).on('hidden.bs.modal', '#import-region-teams-modal', function () {
     bulkTeamImportUrl = null;
     $('#bulk-team-import-form')[0]?.reset();
     setBulkImportBusy(false);
     resetBulkImportPreview(true);
   });
 
-  $('#bulk-import-file, #bulk-import-prefix, #bulk-import-expected, #bulk-import-fill-missing').on('change input', function () {
+  $(document).on('change input', '#bulk-import-file, #bulk-import-prefix, #bulk-import-expected, #bulk-import-fill-missing', function () {
     resetBulkImportPreview($(this).is('#bulk-import-file'));
   });
 
-  $('#bulk-import-sheet').on('change', function () {
+  $(document).on('change', '#bulk-import-sheet', function () {
     resetBulkImportPreview(false);
   });
 
   $(document).on('change', '.bulk-team-select', updateBulkImportActionButton);
 
-  $('#bulk-import-select-complete').on('click', function () {
+  $(document).on('click', '#bulk-import-select-complete', function () {
     $('.bulk-team-select:not(:disabled)').prop('checked', true);
     updateBulkImportActionButton();
   });
 
-  $('#bulk-import-submit').on('click', function () {
+  $(document).on('click', '#bulk-import-submit', function () {
     const form = document.getElementById('bulk-team-import-form');
 
     if (!bulkTeamImportUrl) {
@@ -1015,7 +1019,11 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
         }
 
         toastr.success(response.message || 'Teams imported.');
-        setTimeout(() => location.reload(), 700);
+        if (window.refreshTeamWorkspace) {
+          bootstrap.Modal.getInstance(document.getElementById('import-region-teams-modal'))?.hide();
+          window.refreshTeamWorkspace();
+        }
+        else setTimeout(() => location.reload(), 700);
       },
       error: function (xhr) {
         const payload = xhr.responseJSON || {};

@@ -1219,9 +1219,11 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         ];
         $allRegions = $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $event), [
             ...$filters, 'event_region_ids' => [$firstEventRegion->id, $secondEventRegion->id],
-        ])->assertOk()->assertJsonPath('count', 3);
+        ])->assertOk()->assertJsonPath('count', 7);
+        $parentEmails = $firstActive->map(fn ($invitation) => $invitation->player->user->email)
+            ->concat($secondPlayers->map(fn ($player) => $player->user->email))->all();
         $this->assertEqualsCanonicalizing(
-            ['shared.contact@example.test', 'first-region@example.test', 'second-region@example.test'],
+            [...$parentEmails, 'shared.contact@example.test', 'first-region@example.test', 'second-region@example.test'],
             collect($allRegions->json('recipients'))->pluck('email')->all(),
         );
         $shared = collect($allRegions->json('recipients'))->firstWhere('email', 'shared.contact@example.test');
@@ -1230,9 +1232,9 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
         $subset = $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $event), [
             ...$filters, 'event_region_ids' => [$secondEventRegion->id],
-        ])->assertOk()->assertJsonPath('count', 2);
+        ])->assertOk()->assertJsonPath('count', 4);
         $this->assertEqualsCanonicalizing(
-            ['shared.contact@example.test', 'second-region@example.test'],
+            [...$secondPlayers->map(fn ($player) => $player->user->email)->all(), 'shared.contact@example.test', 'second-region@example.test'],
             collect($subset->json('recipients'))->pluck('email')->all(),
         );
         $this->assertNotContains('first-region@example.test', collect($subset->json('recipients'))->pluck('email')->all());
@@ -3900,9 +3902,11 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
         $this->actingAs($admin)->get(route('admin.events.teams', $source->event_id))
             ->assertOk()
-            ->assertSee($team->name)
-            ->assertSee('Reserve queue')
-            ->assertSee('Team Selection & Reserves', false)
+            ->assertSee('Selection & reserves', false)
+            ->assertSee('data-roster-panel', false)
+            ->assertDontSee('Historical region team that must stay hidden');
+        $this->get(route('admin.events.teams', $source->event_id).'?roster_region='.$team->region_id)
+            ->assertOk()->assertSee($team->name)->assertSee('Reserve queue')
             ->assertDontSee('Historical region team that must stay hidden');
     }
 
@@ -5075,9 +5079,15 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $ledger = DB::table('wallet_transactions')->get()->toJson();
         $otherTeam = Team::factory()->create(['category_event_id' => $team->category_event_id, 'region_id' => $team->region_id]);
         TeamPlayer::create(['team_id' => $otherTeam->id, 'player_id' => $selected->player_id, 'rank' => 1, 'pay_status' => 0]);
-        $draw = Draw::factory()->create(['event_id' => $event->id]);
-        $tie = \App\Models\TeamTie::create(['draw_id' => $draw->id, 'round_nr' => 1, 'tie_nr' => 1, 'home_team_id' => $team->id, 'away_team_id' => $otherTeam->id, 'status' => 'draft']);
-        $fixture = TeamFixture::create(['draw_id' => $draw->id, 'team_tie_id' => $tie->id, 'match_nr' => 1]);
+        $snapshot = ['name' => 'Cash refund singles', 'rubbers' => [[
+            'sequence' => 1, 'rubber_code' => 'singles', 'name' => 'Singles 1', 'player_count_per_team' => 1,
+            'home_positions' => [(int) $selected->roster_rank], 'away_positions' => [1], 'is_required' => true,
+        ]]];
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'locked' => false, 'team_format_snapshot' => $snapshot,
+            'team_draw_selection' => ['category_ids' => [$team->category_event_id], 'rubber_code' => 'singles']]);
+        $tie = \App\Models\TeamTie::create(['draw_id' => $draw->id, 'round_nr' => 1, 'tie_nr' => 1, 'home_team_id' => $team->id, 'away_team_id' => $otherTeam->id, 'status' => 'draft', 'format_snapshot' => $snapshot]);
+        $fixture = TeamFixture::create(['draw_id' => $draw->id, 'team_tie_id' => $tie->id, 'match_nr' => 1,
+            'round_nr' => 1, 'rubber_sequence' => 1, 'rubber_code' => 'singles', 'match_status' => 0]);
         $assignment = TeamFixturePlayer::create(['team_fixture_id' => $fixture->id, 'slot_no' => 1, 'team1_id' => $selected->player_id, 'team2_id' => $selected->player_id]);
         $page = $this->actingAs($admin)->get(route('backend.team-selection.index', $event))->assertOk()->assertSee('Payment management')->assertSee('PayFast payment')->assertSee('Record cash refund')->assertSee('Keep selected at same rank, unpaid');
         $this->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();

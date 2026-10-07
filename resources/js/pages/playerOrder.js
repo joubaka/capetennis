@@ -44,6 +44,8 @@
         onEnd() {
           if (saving) { restoreRows(); return; }
           saving = true;
+          $tbody.data('order-busy', true);
+          $tbody.closest('.roster-team-body').find('[data-order-status]').text('Saving order…');
           sortable.option('disabled', true);
           const debugRows = [];
           const mismatches = [];
@@ -180,18 +182,35 @@
               });
 
               toastr.success('Order saved');
+              $tbody.closest('.roster-team-body').find('[data-order-status]').text('Order saved');
+              document.dispatchEvent(new CustomEvent('roster:changed', { detail: { teamId } }));
             })
             .fail(xhr => {
               restoreRows();
+              $tbody.closest('.roster-team-body').find('[data-order-status]').text('The previous order has been restored.');
               toastr.error(xhr.responseJSON?.message || 'Failed to save order. The previous order has been restored.');
             })
-            .always(() => { saving = false; sortable.option('disabled', false); });
+            .always(() => { saving = false; $tbody.data('order-busy', false); sortable.option('disabled', false); });
         }
       });
+      $tbody.data('sortable', sortable);
     });
   }
 
   initPlayerOrder();
   document.addEventListener('shown.bs.tab', initPlayerOrder);
+  document.addEventListener('roster:loaded', initPlayerOrder);
+  $(document).on('click', '[data-order-move]', function () {
+    const $row = $(this).closest('tr');
+    const $tbody = $row.closest('tbody');
+    const sortable = $tbody.data('sortable');
+    if (!sortable || $tbody.data('order-busy')) return;
+    const $next = this.dataset.orderMove === 'up' ? $row.prev('tr') : $row.next('tr');
+    if (!$next.length) return;
+    sortable.option('onStart')();
+    if (this.dataset.orderMove === 'up') $row.insertBefore($next); else $row.insertAfter($next);
+    this.focus();
+    sortable.option('onEnd')();
+  });
 
 })(jQuery, window, document);

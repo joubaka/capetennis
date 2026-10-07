@@ -61,11 +61,12 @@ class CanonicalDrawWorkspaceTest extends TestCase
         $this->assertSame(2, $draw->flexibleMonrad->revision);
     }
 
-    public function test_trials_custom_monrad_uses_individual_scheduler_and_its_data_contract(): void
+    public function test_trials_custom_monrad_redirects_to_scoped_event_scheduler_and_preserves_data_contract(): void
     {
         $draw = $this->draw();
-        $this->get(route('backend.individual-schedule.page', $draw))->assertOk()
-            ->assertViewIs('backend.schedule.individual-schedule')->assertSee('Draw &amp; Results', false);
+        $scheduler = route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]);
+        $this->get(route('backend.individual-schedule.page', $draw))->assertRedirect($scheduler);
+        $this->get($scheduler)->assertOk()->assertViewIs('backend.schedule.event-venue-schedule');
         $this->getJson(route('backend.individual-schedule.data', $draw))->assertOk()
             ->assertJsonCount(4, 'fixtures')->assertJsonPath('fixtures.0.stage', 'FM');
     }

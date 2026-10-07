@@ -12,6 +12,7 @@ class FinancialMutationObserver
      * @var array<class-string<Model>, array<int, string>>
      */
     protected array $financialAttributes = [
+        \App\Models\ClothingRefund::class => ['clothing_order_id', 'event_id', 'payer_id', 'refund_method', 'refund_status', 'refund_gross', 'refund_fee', 'refund_net', 'refunded_at'],
         \App\Models\RegistrationOrder::class => [
             'wallet_reserved',
             'wallet_debited',

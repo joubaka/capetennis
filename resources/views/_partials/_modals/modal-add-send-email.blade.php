@@ -3,7 +3,7 @@
     <div class="modal-content border-0 shadow-lg">
       <div class="modal-header bg-primary text-white py-2">
         <h5 class="modal-title" id="sendMailLabel">
-          <i class="ti ti-mail me-50"></i> Send Email
+          <i class="ti ti-mail me-50"></i> Review Email
         </h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
@@ -103,7 +103,7 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
           <button type="submit" class="btn btn-primary">
-            <i class="ti ti-send me-1"></i> Send Email
+            <i class="ti ti-list-check me-1"></i> Review recipients & message
           </button>
         </div>
       </form>

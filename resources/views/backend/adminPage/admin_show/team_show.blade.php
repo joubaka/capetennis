@@ -4,100 +4,14 @@
   $teamCount     = $event->regions->sum(fn ($r) => $r->teams->count());
   $categoryCount = $event->eventCategories->count();
   $playerCount   = $event->regions->sum(
-    fn ($r) => $r->teams->sum(fn ($t) => $t->teamPlayers->filter(fn ($slot) => (int) $slot->player_id > 0 || $slot->noProfile)->count())
+    fn ($r) => $r->teams->sum(fn ($t) => $t->workspaceSlots->filter(fn ($slot) => (int) $slot->player_id > 0 || $slot->noProfile)->count())
   );
   $reserveCount = ($teamSelectionInvitations ?? collect())->flatten(1)
     ->where('status', \App\Models\TeamSelectionInvitation::RESERVE)->count();
 @endphp
 
 
-<style>
-  .team-admin-workspace .tabs-wrap {
-    position: sticky; top: 72px; z-index: 100;
-    background: var(--bs-body-bg);
-    border-bottom: 1px solid var(--bs-border-color);
-  }
-  .team-admin-workspace .tabs-wrap .nav-tabs {
-    flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
-    gap: .25rem; scrollbar-width: thin;
-  }
-  .team-admin-workspace .tabs-wrap .nav-link {
-    white-space: nowrap; display: inline-flex; align-items: center; gap: .4rem;
-    padding: .5rem .75rem;
-  }
-  .team-admin-workspace .tabs-wrap .nav-link .badge {
-    transform: translateY(-1px);
-  }
-  .team-admin-workspace .subtabs-sticky {
-    position: sticky; top: 124px; z-index: 90;
-    background: var(--bs-body-bg); border-bottom: 1px solid var(--bs-border-color);
-  }
-  .team-admin-workspace .subtabs-sticky .nav-tabs {
-    overflow-x: auto; flex-wrap: nowrap;
-  }
-  .team-admin-workspace .subtabs-sticky .nav-item {
-    flex: 1 1 0; min-width: 0;
-  }
-  .team-admin-workspace .subtabs-sticky .nav-link {
-    width: 100%; height: 100%; min-height: 3rem; margin-right: 0;
-    white-space: normal; text-align: center;
-  }
-  .team-admin-workspace .region-tab-content {
-    padding: 0; background: transparent;
-  }
-  .team-admin-workspace .player-global-actions {
-    padding: 1rem 0; border-bottom: 1px solid var(--bs-border-color);
-  }
-  .team-admin-workspace .tab-pane .card-header {
-    display: flex; align-items: center; justify-content: space-between;
-  }
-  .team-admin-workspace .team-player-table {
-    width: 100%; min-width: 1200px; table-layout: fixed;
-  }
-  .team-admin-workspace .team-player-table :is(th, td) {
-    overflow: hidden; text-overflow: ellipsis;
-  }
-  .team-admin-workspace .team-player-table :is(th, td):last-child {
-    overflow: visible; text-overflow: clip;
-  }
-  /* Small device improvements */
-  @media (max-width: 576px) {
-    .team-admin-workspace .tabs-wrap { position: sticky; top: 56px; }
-    .team-admin-workspace .subtabs-sticky { top: 108px; }
-    .team-admin-workspace .tabs-wrap .nav-link { padding: .35rem .5rem; font-size: .9rem; }
-    .team-admin-workspace .tabs-wrap .nav-link .badge { font-size: .65rem; padding: .18rem .36rem; }
-    .team-admin-workspace > .nav-tabs-shadow > .tab-content { padding: .5rem !important; }
-    .team-admin-workspace .region-tab-content { padding: 0 !important; }
-    .team-admin-workspace .subtabs-sticky .nav-item { flex: 0 0 auto; }
-    .team-admin-workspace .subtabs-sticky .nav-link {
-      width: auto; height: auto; min-height: 2.75rem; white-space: nowrap;
-    }
-    .team-admin-workspace .player-global-actions {
-      align-items: stretch !important; flex-direction: column; padding: .75rem 0;
-    }
-    .team-admin-workspace .player-global-actions__buttons {
-      display: grid !important; grid-template-columns: 1fr 1fr; width: 100%;
-    }
-    .team-admin-workspace .player-global-actions__buttons .btn { width: 100%; }
-    .team-admin-workspace .region-email-actions { display: grid !important; width: 100%; }
-    .team-admin-workspace .region-email-actions .btn { width: 100%; }
-    .team-admin-workspace .tab-pane .card-header { flex-wrap: wrap; gap: .5rem; align-items: flex-start; }
-    .team-admin-workspace .card { margin-bottom: .75rem; }
-    /* Make modals use most of the screen on small devices */
-    .modal-dialog { max-width: 100%; margin: .25rem; }
-    .modal-content { height: calc(100vh - 56px); border-radius: .25rem; }
-    .modal-body { overflow-y: auto; }
-    .modal-header .modal-title { font-size: 1rem; }
-  }
 
-  /* Very small screens: reduce clutter by hiding secondary badges */
-  @media (max-width: 420px) {
-    .team-admin-workspace .tabs-wrap .nav-link .badge.bg-label-info,
-    .team-admin-workspace .tabs-wrap .nav-link .badge.bg-label-warning,
-    .team-admin-workspace .tabs-wrap .nav-link .badge.bg-label-primary { display: none; }
-    .team-admin-workspace .player-global-actions__buttons { grid-template-columns: 1fr; }
-  }
-</style>
 
 <div class="team-admin-workspace" data-backend-wide>
   <div class="nav-tabs-shadow mb-4">
@@ -105,15 +19,15 @@
       {{-- ✅ Top nav --}}
       <div class="tabs-wrap">
         <ul class="nav nav-tabs nav-fill px-2" role="tablist">
-          @if (Auth::id() === 584)
+          @can('event.manage', $event)
             <li class="nav-item" role="presentation">
               <button type="button" class="nav-link" role="tab"
                 data-bs-toggle="tab" data-bs-target="#tab-regions"
                 aria-controls="tab-regions" aria-selected="false">
                 <i class="ti ti-home ti-xs me-1"></i>
                 Regions
-                <span class="badge rounded-pill bg-label-primary ms-1">{{ $regionCount }}</span>
-                <span class="badge rounded-pill bg-label-info ms-1">{{ $teamCount }}</span>
+                <span class="badge rounded-pill bg-label-primary ms-1">{{ $regionCount }} regions</span>
+                <span class="badge rounded-pill bg-label-info ms-1">{{ $teamCount }} teams</span>
               </button>
             </li>
 
@@ -126,10 +40,10 @@
                 <span class="badge rounded-pill bg-label-warning ms-1">{{ $categoryCount }}</span>
               </button>
             </li>
-          @endif
+          @endcan
 
           <li class="nav-item" role="presentation">
-            <button type="button" class="nav-link active" role="tab"
+            <button id="players-tab" type="button" class="nav-link active" role="tab"
               data-bs-toggle="tab" data-bs-target="#tab-players"
               aria-controls="tab-players" aria-selected="true">
               <i class="ti ti-users-group ti-xs me-1"></i>
@@ -142,7 +56,7 @@
           </li>
 
           <li class="nav-item" role="presentation">
-            <button type="button" class="nav-link" role="tab"
+            <button id="order-tab" type="button" class="nav-link" role="tab"
               data-bs-toggle="tab" data-bs-target="#tab-order"
               aria-controls="tab-order" aria-selected="false" tabindex="-1">
               <i class="ti ti-list-ordered ti-xs me-1"></i>
@@ -150,7 +64,7 @@
             </button>
           </li>
 
-          @if (Auth::id() === 584)
+          @can('event.manage', $event)
             <li class="nav-item" role="presentation">
               <button id="result-rank-button" type="button" class="nav-link" role="tab"
                 data-bs-toggle="tab" data-bs-target="#tab-result-rank"
@@ -164,7 +78,7 @@
                 <i class="ti ti-gauge ti-xs me-1"></i> Dashboard
               </a>
             </li>
-          @endif
+          @endcan
         </ul>
       </div>
 
@@ -174,7 +88,8 @@
 {{-- ============================= --}}
 {{-- REGIONS TAB --}}
 {{-- ============================= --}}
-  @include('backend.adminPage.admin_show.tabs.regions') {{-- ✅ use your working version --}}
+  @can('event.manage', $event)
+  @include('backend.adminPage.admin_show.tabs.regions')
 
         {{-- Categories tab --}}
         <div class="tab-pane fade" id="tab-categories" role="tabpanel" aria-labelledby="tab-categories">
@@ -241,6 +156,7 @@
           </div>
         </div>
 
+  @endcan
   {{-- 🧍‍♂️ PLAYERS TAB --}}
   @include('backend.adminPage.admin_show.tabs.players') {{-- ✅ use the working version you built above --}}
 
@@ -249,6 +165,7 @@
 
 
 
+        @can('event.manage', $event)
         {{-- Result Ranks (active) --}}
         <div class="tab-pane fade" id="tab-result-rank" role="tabpanel" aria-labelledby="tab-result-rank">
           <div class="row g-3">
@@ -285,6 +202,7 @@
           </div>
         </div>
 
+        @endcan
       </div> {{-- /.tab-content --}}
     </div>
   </div>

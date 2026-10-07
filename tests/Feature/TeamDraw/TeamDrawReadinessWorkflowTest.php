@@ -181,9 +181,11 @@ class TeamDrawReadinessWorkflowTest extends TestCase
         $document = new \DOMDocument;
         @$document->loadHTML($response->getContent());
         $xpath = new \DOMXPath($document);
-        foreach ($linked as $category) {
+        foreach (array_slice($linked, 0, 2) as $category) {
             $this->assertSame(1, $xpath->query('//div[@id="individualCategoryChoices"]//input[@name="category_choice" and @value="'.$category->id.'"]')->length);
         }
+        $this->assertSame(0, $xpath->query('//div[@id="individualCategoryChoices"]//input[@value="'.$linked[2]->id.'"]')->length);
+        $this->assertSame(1, $xpath->query('//div[@id="manualIndividualCategoryChoices"]//input[@name="category_choice" and @value="'.$linked[2]->id.'"]')->length);
         $this->assertSame(1, $xpath->query('//input[@name="category_choice_boys" and @value="'.$linked[0]->id.'"]')->length);
         $this->assertSame(1, $xpath->query('//input[@name="category_choice_girls" and @value="'.$linked[1]->id.'"]')->length);
         $this->assertSame('u/13 Girls', $xpath->query('//div[@id="individualCategoryChoices"]//input[@name="category_choice" and @value="'.$linked[1]->id.'"]')->item(0)->getAttribute('data-age'));

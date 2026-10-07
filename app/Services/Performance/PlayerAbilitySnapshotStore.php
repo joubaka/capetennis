@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\{DB, Schema};
 class PlayerAbilitySnapshotStore
 {
     public const POLICY_VERSION = 1;
+    private const PUBLICATION_CHECK_CHUNK = 2000;
     private ?array $loaded = null;
 
     public function rules(): array
@@ -122,12 +123,13 @@ class PlayerAbilitySnapshotStore
             };
             if ($groupColumn) {
                 $oldGroups = collect($captured)->groupBy($groupColumn);
-                foreach (array_chunk(array_unique(array_column($captured, $groupColumn)), 500) as $groups) {
+                foreach (array_chunk(array_unique(array_column($captured, $groupColumn)), self::PUBLICATION_CHECK_CHUNK) as $groups) {
                     $rows = DB::table($table)->whereIn($groupColumn, $groups)->limit(50001)->get(['id', $groupColumn, ...($table === 'category_events' ? ['category_id'] : [])]);
                     if ($rows->count() > 50000) { return false; }
+                    $currentGroups = $rows->groupBy($groupColumn);
                     foreach ($groups as $group) {
                         $old = $oldGroups[$group];
-                        $new = $rows->where($groupColumn, $group);
+                        $new = $currentGroups->get($group, collect());
                         if ($table === 'category_events') {
                             $new = $new->whereIn('category_id', $old->pluck('category_id')->all());
                         }
@@ -137,7 +139,7 @@ class PlayerAbilitySnapshotStore
             }
             if ($table === 'player_registrations') {
                 $groups = collect($captured)->groupBy('registration_id');
-                foreach (array_chunk($groups->keys()->all(), 500) as $ids) {
+                foreach (array_chunk($groups->keys()->all(), self::PUBLICATION_CHECK_CHUNK) as $ids) {
                     $rows = DB::table($table)->whereIn('registration_id', $ids)->limit(50001)->get(['registration_id', 'player_id'])->groupBy('registration_id');
                     if ($rows->sum(fn ($group) => $group->count()) > 50000) { return false; }
                     foreach ($ids as $id) {
@@ -148,7 +150,7 @@ class PlayerAbilitySnapshotStore
                 }
                 continue;
             }
-            foreach (array_chunk($captured, 500) as $chunk) {
+            foreach (array_chunk($captured, self::PUBLICATION_CHECK_CHUNK) as $chunk) {
                 $rows = DB::table($table)->whereIn('id', array_column($chunk, 'id'))->get(array_keys($chunk[0]))->keyBy('id');
                 foreach ($chunk as $old) {
                     $current = isset($rows[$old['id']]) ? (array) $rows[$old['id']] : null;

@@ -109,8 +109,25 @@ class WalletController extends Controller
             ], 400);
         }
 
+        if ($order->isRefundWaived()) {
+            return response()->json(['success' => false, 'message' => 'This refund was waived and cannot be processed.'], 422);
+        }
+
+        if ($order->refund_status === 'pending') {
+            return response()->json(['success' => false, 'message' => 'A refund is already pending. Review its existing method before processing.'], 422);
+        }
+
+        if (!$order->withdrawn_at || !$order->event
+            || $order->withdrawn_at->gt($order->event->withdrawalCloseAt())) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A withdrawal within the refund deadline is required.',
+            ], 422);
+        }
+
         // Get the refund amount
-        $refundAmount = $order->maxRefundableAmount();
+        $amounts = app(\App\Domain\Refunds\Services\TeamRefundCalculator::class)->calculate($order);
+        $refundAmount = $amounts['net'];
 
         if ($refundAmount <= 0) {
             return response()->json([
@@ -143,7 +160,7 @@ class WalletController extends Controller
             'initiated_by' => 'wallet_controller_refund',
         ];
 
-        $this->refundExecutionService->executeWalletRefund(
+        $this->refundExecutionService->executeWithdrawnTeamWalletRefund(
             $order,
             $wallet,
             $refundAmount,
@@ -152,8 +169,8 @@ class WalletController extends Controller
             $meta,
             [
                 'refund_method' => 'wallet',
-                'refund_gross' => $refundAmount,
-                'refund_fee' => 0,
+                'refund_gross' => $amounts['gross'],
+                'refund_fee' => $amounts['fee'],
                 'refund_net' => $refundAmount,
             ]
         );
@@ -228,7 +245,19 @@ class WalletController extends Controller
                 continue;
             }
 
-            $refundAmount = $order->maxRefundableAmount();
+            if ($order->refund_status === 'pending') {
+                $errors[] = "{$player->name} already has a pending refund.";
+                continue;
+            }
+
+            if (!$order->withdrawn_at || !$order->event
+                || $order->withdrawn_at->gt($order->event->withdrawalCloseAt())) {
+                $errors[] = "{$player->name} requires a withdrawal within the refund deadline.";
+                continue;
+            }
+
+            $amounts = app(\App\Domain\Refunds\Services\TeamRefundCalculator::class)->calculate($order);
+            $refundAmount = $amounts['net'];
             $playerUser = $order->user;
 
             if (!$playerUser) {
@@ -248,7 +277,7 @@ class WalletController extends Controller
                 'initiated_by' => 'wallet_controller_bulk_refund',
             ];
 
-            $this->refundExecutionService->executeWalletRefund(
+            $this->refundExecutionService->executeWithdrawnTeamWalletRefund(
                 $order,
                 $wallet,
                 $refundAmount,
@@ -257,8 +286,8 @@ class WalletController extends Controller
                 $meta,
                 [
                     'refund_method' => 'wallet',
-                    'refund_gross' => $refundAmount,
-                    'refund_fee' => 0,
+                    'refund_gross' => $amounts['gross'],
+                    'refund_fee' => $amounts['fee'],
                     'refund_net' => $refundAmount,
                 ]
             );

@@ -31,6 +31,21 @@ class ClothingOrderItem extends Model
 
     }
 
+    public function refundItems()
+    {
+        return $this->hasMany(ClothingRefundItem::class, 'clothing_order_item_id');
+    }
+
+    public function getRefundedQuantityAttribute(): int
+    {
+        return (int) $this->refundItems->filter(fn ($line) => in_array($line->refund?->refund_status, ['pending', 'completed'], true))->sum('quantity');
+    }
+
+    public function getRemainingQuantityAttribute(): int
+    {
+        return max(0, (int) $this->qty - $this->refunded_quantity);
+    }
+
     public function itemType(){
 
         return $this->belongsTo(ClothingItemType::class,'clothing_order_item_id','id');

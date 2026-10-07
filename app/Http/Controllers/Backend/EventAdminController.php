@@ -73,8 +73,73 @@ class EventAdminController extends Controller
    * @param  int  $id
    * @return \Illuminate\Http\Response
    */
+  private function teamWorkspace(Event $event)
+  {
+    $event->load(['event_admins', 'regions', 'eventCategories.category']);
+    $teamSelectionInvitations = TeamSelectionInvitation::query()
+      ->where('event_id', $event->id)
+      ->whereHas('selectionImport', fn ($query) => $query->whereIn('status', ['draft', 'sent']))
+      ->orderBy('team_id')->orderBy('queue_position')->get()->groupBy('team_id')->toBase();
+    $teams = Team::query()->withoutGlobalScopes()
+      ->where(fn ($query) => $query
+        ->whereHas('category', fn ($category) => $category->where('event_id', $event->id))
+        ->orWhereIn('id', $teamSelectionInvitations->keys()))
+      ->with(['category.category', 'teamPlayers', 'team_players_no_profile'])
+      ->orderBy('name')->get()->groupBy('region_id');
+    $event->regions->each(function ($region) use ($teams) {
+      $region->setRelation('teams', $teams->get($region->id, new Collection));
+      // This relation depends on the slot instance; map it explicitly by team/rank.
+      $region->teams->each(function ($team) {
+        $team->teamPlayers->each(fn ($slot) => $slot->setRelation('noProfile',
+          $team->team_players_no_profile->firstWhere('rank', $slot->rank)));
+        $slots = $team->teamPlayers->keyBy('rank');
+        foreach ($team->team_players_no_profile as $imported) {
+          if (!$slots->has($imported->rank)) {
+            $slots->put($imported->rank, (new \App\Models\TeamPlayer([
+              'team_id' => $team->id, 'rank' => $imported->rank,
+              'player_id' => (int) $imported->player_profile, 'pay_status' => $imported->pay_status,
+            ]))->setRelation('noProfile', $imported));
+          }
+        }
+        $team->setRelation('workspaceSlots', $slots->sortKeys()->values());
+      });
+    });
+
+    if (request()->has('roster_region')) {
+      $data = request()->validate(['roster_region' => 'required|integer', 'panel' => 'sometimes|in:players,order']);
+      $region = $event->regions->firstWhere('id', (int) $data['roster_region']);
+      abort_unless($region, 404);
+      $region->teams->loadMissing('teamPlayers.player');
+      $region->teams->loadMissing('team_players_no_profile.profile');
+      $region->teams->each(function ($team) {
+        $team->workspaceSlots->filter(fn ($slot) => !$slot->exists)->each(fn ($slot) => $slot->setRelation('player', $slot->noProfile?->profile));
+      });
+      $invitations = $teamSelectionInvitations->toBase()->only($region->teams->modelKeys())->flatten(1);
+      (new Collection($invitations->all()))->load('player');
+      $orderLocked = TeamFixture::whereHas('draw', fn ($query) => $query->where('event_id', $event->id))->exists()
+        || \App\Models\TeamTie::whereHas('draw', fn ($query) => $query->where('event_id', $event->id))->exists();
+      return view('backend.adminPage.admin_show.tabs.'.(($data['panel'] ?? 'players') === 'order' ? 'order-region' : 'players-region'),
+        compact('event', 'region', 'teamSelectionInvitations', 'orderLocked'));
+    }
+
+    $allCategories = Category::orderBy('name')->get();
+    $regions = TeamRegion::orderBy('region_name')->get();
+    $players = collect();
+    $administrator = $event->event_admins->contains('user_id', Auth::id());
+    $data = compact('event', 'teamSelectionInvitations', 'allCategories', 'regions', 'players', 'administrator');
+    if (request()->boolean('workspace')) {
+      return view('backend.adminPage.admin_show.team-workspace', $data);
+    }
+    return view('backend.adminPage.show', $data);
+  }
+
   public function show($id)
   {
+    $workspaceEvent = Event::findOrFail($id);
+    $this->authorize('event-draw.view', $workspaceEvent);
+    if ((int) $workspaceEvent->eventType === 3) {
+      return $this->teamWorkspace($workspaceEvent);
+    }
     $event = Event::with([
       'event_admins',
 
@@ -284,76 +349,55 @@ class EventAdminController extends Controller
 
   public function getEventCategoryData(Request $request)
   {
-    $event = Event::find($request->event_id);
-    if ($event) {
-      $this->authorize('event-draw.view', $event);
-    }
+    $data = $request->validate(['event_id' => 'required|integer|exists:events,id', 'categoryEvent' => 'required|integer|exists:category_events,id']);
+    $event = Event::findOrFail($data['event_id']);
+    $this->authorize('event-draw.view', $event);
 
-    $categoryEvent = CategoryEvent::find($request->categoryEvent);
-    $draws = Draw::where('drawName', $request->categoryName)
-      ->where('event_id', $request->event_id)
-
-      ->where(function ($query) {
-        $query->where('drawType_id', '=', 1)   // First condition inside the orWhere
-          ->orWhere('drawType_id', '=', '4'); // Second condition inside the orWhere
-      })
-      ->get();
-
-
-    $allfixtures = TeamFixture::whereIn('draw_id', $draws->pluck('id'))->get();
-
-
-    // Find all teams belonging to regions of the specified event
-
-
-    // Find orders where the related product's category is 'Electronics' OR price is greater than 100
-    $teams = Team::whereHas('regions', function ($query) use ($event) {
-
-      $query->whereHas('events', function ($q) use ($event) {
-        $q->where('events.id', $event->id);
+    $categoryEvent = CategoryEvent::with('category')->where('event_id', $event->id)->findOrFail($data['categoryEvent']);
+    $draws = Draw::where('event_id', $event->id)
+      ->where(function ($query) use ($categoryEvent) {
+        $query->where('category_event_id', $categoryEvent->id)
+          ->orWhere(function ($legacy) use ($categoryEvent) {
+            $legacy->whereNull('category_event_id')->where('drawName', $categoryEvent->category?->name);
+          });
+      })->pluck('id');
+    $resultService = app(\App\Services\TeamRubberResultService::class);
+    $allfixtures = TeamFixture::whereIn('draw_id', $draws)
+      ->with(['fixturePlayers.player1', 'fixturePlayers.player2', 'teamResults', 'draw'])
+      ->get()->filter(function ($fixture) use ($resultService) {
+        if (! $fixture->isSingles() || $fixture->fixturePlayers->count() !== 1) return false;
+        $players = $fixture->fixturePlayers->first();
+        if (! $players->player1 || ! $players->player2) return false;
+        $outcome = $resultService->outcome($fixture);
+        return $outcome['complete'] && $outcome['winner'];
       });
-    })->get();
-
+    $teams = Team::where('category_event_id', $categoryEvent->id)->with(['players', 'regions'])->get();
     $playerFixtures = [];
+    $ranking = [];
     foreach ($teams as $team) {
-      foreach ($team->players as $key => $player) {
-
-
-        // Using filter to find the user based on either column
-        $filtered = $allfixtures->filter(function ($item) use ($player) {
-
-          return $item->fixture_players['team1_id'] == $player->id || $item->fixture_players['team2_id'] == $player->id;
+      foreach ($team->players as $player) {
+        $rank = (int) $player->pivot->rank;
+        $filtered = $allfixtures->filter(function ($fixture) use ($player) {
+          $slot = $fixture->fixturePlayers->first();
+          return (int) $slot->team1_id === (int) $player->id || (int) $slot->team2_id === (int) $player->id;
         });
-
-        if ($filtered->isNotEmpty()) {
-          $collection = new Collection($this->getNumberOfWins($filtered, $player->id));
-          $counted = $collection->countBy();
-
-          // Check how many times 'apple' exists
-          $wins = $counted->get($player->id, 0); // 0 as the default value if 'apple' does not exist
-          $ranking[] = ['name' => $player->name . ' ' . $player->surname, 'points' => $this->convertWinsToScore($key + 1, $wins), 'region' => $team->regions->short_name, 'rank' => ($key + 1)];
-          $playerFixtures[$team->name][$key]['fixtures'] = $filtered;
-          $playerFixtures[$team->name][$key]['results'] = $this->getResultsTable($filtered, $player->id, $key);
-          $playerFixtures[$team->name][$key]['id'] = $player->id;
-          $playerFixtures[$team->name][$key]['name'] = $player->name . ' ' . $player->surname;
-        } else {
-          // $playerFixtures[$playerId][] =   'No products found matching the conditions';
-        }
-
-        //$playerFixtures[$playerId] = $filteredOrders;
+        if ($filtered->isEmpty() || $rank < 1) continue;
+        $wins = $filtered->filter(fn ($fixture) => (int) $this->getWinner($fixture) === (int) $player->id)->count();
+        $ranking[] = [
+          'name' => $player->name . ' ' . $player->surname,
+          'points' => $this->convertWinsToScore($rank, $wins),
+          'region' => $team->regions?->short_name ?? '', 'rank' => $rank,
+        ];
+        $playerFixtures[$team->name][$rank - 1] = [
+          'fixtures' => $filtered, 'results' => $this->getResultsTable($filtered, $player->id),
+          'id' => $player->id, 'name' => $player->name . ' ' . $player->surname,
+        ];
       }
     }
-    $table = [];
-    foreach ($playerFixtures as $player) {
-    }
-    $rankingCollect = new Collection($ranking);
-    $rank = $rankingCollect->sortByDesc('points');
-    $ranking = $rank->values();
-    // Get the first matching user or null
-
+    $ranking = collect($ranking)->sortByDesc('points')->values();
     $html = view('backend.adminPage.admin_show._table.results', compact('playerFixtures', 'ranking'))->render();
 
-    return response()->json(['html' => $html, '$playerFixtures' => $playerFixtures, 'ranking' => $ranking, 'test' => $rank]);
+    return response()->json(['html' => $playerFixtures ? $html : '<div class="alert alert-light border" role="status">No results recorded for this category.</div>', 'ranking' => $ranking]);
   }
 
   public function getResultsTable($fixtures, $player_id)
@@ -397,49 +441,28 @@ class EventAdminController extends Controller
   }
   public function getWinner($fixture)
   {
-
-    $lastset = $fixture->teamResults->sortBy('set_nr')->last();
-    if (isset($lastset)) {
-      if ($lastset->team1_score > $lastset->team2_score) {
-        return $fixture->fixture_players->team1_id;
-      } else {
-        return $fixture->fixture_players->team2_id;
-        ;
-      }
-    }
+    $outcome = app(\App\Services\TeamRubberResultService::class)->outcome($fixture);
+    if (! $fixture->isSingles() || ! $outcome['complete'] || ! $outcome['winner']) return null;
+    $players = $fixture->fixturePlayers->first();
+    return $outcome['winner'] === 'home' ? $players?->team1_id : $players?->team2_id;
   }
+
   public function getLoser($fixture)
   {
-
-    $lastset = $fixture->teamResults->sortBy('set_nr')->last();
-    if (isset($lastset)) {
-      if ($lastset->team1_score > $lastset->team2_score) {
-        $data['player'] = Player::find($fixture->fixture_players->team2_id);
-        $data['region'] = $fixture->region1;
-      } else {
-        $data['player'] = Player::find($fixture->fixture_players->team1_id);
-        $data['region'] = $fixture->region2;
-      }
-    }
-    return $data;
+    $winner = $this->getWinner($fixture);
+    if (! $winner) return null;
+    return $this->getOpponents($fixture, $winner);
   }
 
-  function getOpponents($fixture, $player_id)
+  public function getOpponents($fixture, $player_id)
   {
-    $players = $fixture->fixture_players;
-    $lastset = $fixture->teamResults->sortBy('set_nr')->last();
-    if (isset($lastset)) {
-
-      $data['player'] = Player::find($fixture->fixture_players->team1_id);
-      $data['region'] = $fixture->region2;
-    }
-    if ($players->team1_id == $player_id) {
-      $data['player'] = Player::find($fixture->fixture_players->team2_id);
-    } else {
-      $data['player'] = Player::find($fixture->fixture_players->team1_id);
-    }
-    $data['score'][] = $fixture->teamResults;
-    return $data;
+    $players = $fixture->fixturePlayers->first();
+    $home = (int) $players->team1_id === (int) $player_id;
+    return [
+      'player' => $home ? $players->player2 : $players->player1,
+      'region' => $home ? $fixture->region2 : $fixture->region1,
+      'score' => [$fixture->teamResults->sortBy('set_nr')],
+    ];
   }
 
   public function convertWinsToScore($rank, $wins)

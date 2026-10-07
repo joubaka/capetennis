@@ -35,7 +35,7 @@
 
 
     {{-- 🚧 Unpublished Draws (Admins only) --}}
-    @php $isAdmin = auth()->check() && $eventDraws->contains(fn($draw) => auth()->user()->can('view', $draw)); @endphp
+    @php $isAdmin = $canPreviewUnpublishedDraws ?? (auth()->check() && $eventDraws->contains(fn($draw) => auth()->user()->can('view', $draw))); @endphp
 
     @if($eventDraws->where('published', false)->count())
       <div class="mt-4">
