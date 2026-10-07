@@ -40,7 +40,7 @@
       $('#target_type').val('team');
       $('#emailToHidden').val('All players in team');
       $('#emailTeamId').val($button.data('teamid'));
-      label = `Review team email: ${$button.data('teamname')}`;
+      label = `Review email to players in team: ${$button.data('teamname')}`;
     } else {
       const unpaid = $button.hasClass('emailUnpaidRegionBtn');
       $('#target_type').val('region');
@@ -50,7 +50,7 @@
       if ($select.hasClass('select2-hidden-accessible')) $select.select2('destroy');
       $select.empty().append(new Option($button.data('regionname'), $button.data('regionid'), true, true))
         .select2({ width: '100%', dropdownParent: $('#sendMailModal') });
-      label = `Review ${unpaid ? 'unpaid ' : ''}roster email: ${$button.data('regionname')}`;
+      label = `Review email to ${unpaid ? 'unpaid ' : ''}players in region: ${$button.data('regionname')}`;
     }
     $('#sendMailLabel').text(label);
     bootstrap.Modal.getOrCreateInstance(document.getElementById('sendMailModal')).show();

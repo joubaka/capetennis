@@ -12,6 +12,31 @@ class MailSendGroupsTest extends TestCase
 {
     use RefreshDatabase;
 
+    private ?string $originalSqlMode = null;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        if (DB::connection()->getDriverName() === 'mysql') {
+            $this->originalSqlMode = DB::selectOne('SELECT @@SESSION.sql_mode AS sql_mode')->sql_mode;
+            $modes = array_filter(explode(',', $this->originalSqlMode));
+            $modes[] = 'ONLY_FULL_GROUP_BY';
+            DB::statement('SET SESSION sql_mode = ?', [implode(',', array_unique($modes))]);
+        }
+    }
+
+    protected function tearDown(): void
+    {
+        try {
+            if ($this->originalSqlMode !== null) {
+                DB::statement('SET SESSION sql_mode = ?', [$this->originalSqlMode]);
+            }
+        } finally {
+            parent::tearDown();
+        }
+    }
+
     private function log(Event $event, array $payload, string $status = 'sent'): BulkEmailLog
     {
         return BulkEmailLog::create(['mail_type' => 'event_email', 'recipient_email' => 'recipient@example.test', 'status' => $status, 'payload' => ['event_id' => $event->id, ...$payload]]);
