@@ -28,6 +28,7 @@
   .scoring-hero-copy .scoring-title { color: #fff !important; }
   .scoring-hero-eyebrow { color: rgba(255, 255, 255, .72); font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
   .scoring-hero-context { color: rgba(255, 255, 255, .8); }
+  .scoring-venue { display: block; color: #fff; font-size: 1.05rem; font-weight: 700; overflow-wrap: anywhere; }
   .scoring-hero-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .5rem; }
   .scoring-hero-actions .btn { min-height: 44px; white-space: nowrap; }
   .scoring-hero .btn-light { color: var(--ct-ink, #172e45); }
@@ -36,15 +37,23 @@
   .scoring-progress { height: .45rem; background: rgba(255,255,255,.22); }
   .scoring-progress .progress-bar { background: #78d8b2; }
   .scoring-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
-  .scoring-filter { min-height: 40px; flex: 0 0 auto; white-space: nowrap; padding-inline: .9rem; padding-block: .45rem; }
+  .scoring-filter { min-height: 44px; flex: 0 0 auto; white-space: nowrap; padding-inline: .9rem; padding-block: .45rem; }
   .scoring-select-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
   .scoring-select-grid > div { min-width: 0; }
+  .scoring-context-summary { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 52px; cursor: pointer; list-style: none; }
+  .scoring-context-summary::-webkit-details-marker { display: none; }
+  .scoring-context-summary:focus-visible { outline: 2px solid var(--ct-accent, #14796e); outline-offset: -2px; }
+  .scoring-context-summary .ti-chevron-down { transition: transform .2s ease; }
+  .scoring-filter-card[open] > .scoring-context-summary .ti-chevron-down { transform: rotate(180deg); }
   .scoring-filter-label { color: var(--ct-muted, #66788a); font-size: .72rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
-  .scoring-select { min-height: 42px; font-weight: 600; color: var(--ct-ink, #172e45); }
+  .scoring-select { min-height: 44px; font-weight: 600; color: var(--ct-ink, #172e45); }
   .scoring-status-strip { display: flex; flex-wrap: wrap; gap: .4rem; min-width: 0; }
   .scoring-operator { border-top: 1px solid var(--ct-border, #e1e8ee); }
   .scoring-operator .operator-summary { min-height: 52px; padding: .7rem 1rem; }
   .operator-change { margin-left: auto; color: var(--ct-accent, #14796e); font-size: .82rem; font-weight: 700; }
+  .scoring-operator .operator-summary > span { min-width: 0; overflow-wrap: anywhere; }
+  .scoring-operator .operator-change { flex-shrink: 0; }
+  .scoring-operator .form-control, .scoring-operator .btn { min-height: 44px; }
   .scoring-queue-toolbar { display: flex; align-items: center; gap: .75rem; padding: .55rem; background: var(--ct-soft, #eef3f6); border: 1px solid var(--ct-border, #e1e8ee); border-radius: 12px; }
   .scoring-queue-summary { color: var(--ct-muted, #66788a); font-size: .875rem; white-space: nowrap; }
   .match-card { border-left: 5px solid #8aa0b2; transition: background-color .2s ease, border-color .2s ease; }
@@ -63,7 +72,7 @@
   .match-versus { color: var(--ct-muted, #66788a); font-size: .8rem; font-weight: 700; text-transform: uppercase; }
   .match-score { min-width: 90px; font-size: .96rem; font-weight: 750; color: var(--ct-ink, #172e45); text-align: right; }
   .match-score.is-empty { color: var(--ct-muted, #66788a); font-size: .82rem; font-weight: 600; }
-  .score-action { min-height: 38px; white-space: nowrap; }
+  .score-action { min-height: 44px; white-space: normal; }
   .match-actions { display: flex; align-items: center; justify-content: flex-end; gap: .45rem; }
   .court-label.is-playing { color: #8b5600; font-weight: 750; }
   .court-label.is-completed { color: var(--ct-accent, #14796e); font-weight: 750; }
@@ -73,6 +82,12 @@
   #score-filter-empty { border: 1px dashed var(--ct-border, #e1e8ee); background: var(--ct-surface, #fff); }
   .next-court-panel { width: min(92vw, 390px) !important; }
   .next-court-match { border-left: 4px solid var(--ct-accent, #14796e); }
+  .next-court-match .card-body, .next-court-panel .offcanvas-header > div { min-width: 0; overflow-wrap: anywhere; }
+  .next-court-match .badge { flex-shrink: 0; align-self: flex-start; }
+  #score-entry-modal .modal-header > div { min-width: 0; }
+  #score-match-title, #score-home-label, #score-away-label { overflow-wrap: anywhere; }
+  #score-entry-modal .btn { min-height: 44px; white-space: normal; }
+  #score-entry-modal .btn-close, .next-court-panel .btn-close { min-width: 44px; min-height: 44px; padding: 0; margin: 0; flex-shrink: 0; }
   .scoring-activity summary { min-height: 54px; cursor: pointer; list-style: none; }
   .scoring-activity summary::-webkit-details-marker { display: none; }
   @media (max-width: 991.98px) {
@@ -81,11 +96,16 @@
   }
   @media (max-width: 575.98px) {
     .scoring-shell { margin-inline: 0; }
-    .scoring-title { font-size: 1.3rem; }
+    .scoring-title { font-size: 1rem; line-height: 1.35; overflow-wrap: anywhere; }
+    .scoring-hero-eyebrow { display: none; }
+    .scoring-venue { font-size: 1.2rem; line-height: 1.3; margin-bottom: .2rem; }
+    .scoring-hero { margin-bottom: 1rem !important; }
     .scoring-hero .card-body { padding: 1rem !important; }
-    .scoring-hero-main { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
-    .scoring-hero-actions { justify-content: stretch; }
-    .scoring-hero-actions .btn { flex: 1 1 0; }
+    .scoring-hero-main { grid-template-columns: minmax(0, 1fr); gap: .75rem; }
+    .scoring-hero-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .scoring-hero-actions .btn { min-width: 0; white-space: normal; padding-inline: .5rem; }
+    .scoring-hero-actions .scoring-next-action { grid-column: 1 / -1; grid-row: 1; }
+    .scoring-hero-actions .btn:only-child { grid-column: 1 / -1; }
     .scoring-filter-card { margin-inline: -.75rem; border-radius: 0; border-inline: 0; }
     .scoring-filter-card .card-body { padding-inline: .75rem !important; }
     .scoring-select-grid { grid-template-columns: minmax(0, 1fr); gap: .65rem; }
@@ -102,15 +122,23 @@
     .scoring-section-heading { display: block; }
     .scoring-queue-summary { margin-top: .35rem; white-space: normal; }
     .scoring-queue-toolbar { margin-inline: -.75rem; padding-inline: .75rem; overflow: hidden; border-inline: 0; border-radius: 0; }
-    .match-card-main { grid-template-columns: minmax(0, 1fr) auto; gap: .65rem; }
+    .match-card-header { align-items: flex-start; flex-wrap: wrap; }
+    .match-meta { min-width: 0; overflow-wrap: anywhere; }
+    .match-card-main { grid-template-columns: minmax(0, 1fr); gap: .65rem; }
     .match-identity { grid-column: 1 / -1; }
-    .match-players { align-items: center; }
+    .match-players { display: grid; grid-template-columns: minmax(0, 1fr); gap: .15rem; }
     .match-score { min-width: 0; text-align: left; }
-    .match-actions { justify-self: end; flex-wrap: wrap; }
-    #score-entry-modal .modal-dialog { margin: 0; padding: 0; width: 100%; min-height: 100%; }
-    #score-entry-modal .modal-content { width: 100%; min-height: 100vh; min-height: 100dvh; border: 0; border-radius: 0; }
-    #score-entry-modal .modal-body { overflow-y: auto; }
-    .modal-footer { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+    .match-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+    .match-actions .btn { min-width: 0; padding-inline: .5rem; }
+    .match-actions .btn:only-child { grid-column: 1 / -1; }
+    #score-entry-modal .modal-dialog { margin: 0; padding: 0; width: 100%; height: 100vh; height: 100dvh; min-height: 0; }
+    #score-entry-modal .modal-content { width: 100%; height: 100%; min-height: 0; border: 0; border-radius: 0; }
+    #score-entry-modal .modal-header { padding: .75rem; flex-shrink: 0; align-items: flex-start; }
+    #score-entry-modal .modal-title { font-size: 1rem; line-height: 1.35; }
+    #score-entry-modal .modal-body { min-height: 0; overflow-y: auto; padding: .75rem; }
+    #score-entry-modal .modal-footer { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; padding: .75rem; padding-bottom: max(.75rem, env(safe-area-inset-bottom)); flex-shrink: 0; }
+    #score-entry-modal .modal-footer > * { margin: 0 !important; min-width: 0; }
+    #score-clear { grid-column: 1 / -1; grid-row: 2; }
   }
 </style>
 @endsection
@@ -186,10 +214,10 @@
             <div class="scoring-hero-eyebrow mb-2">Tournament operations</div>
             <h1 class="scoring-title h3 mb-2" id="scoring-workspace-title">{{ $event->name }}</h1>
             <div class="scoring-hero-context small">
+              <strong class="scoring-venue">{{ $selectedVenue?->name ?? ($selectedDraw ? $selectedDraw->drawName : 'All scheduled venues') }}</strong>
               <i class="ti ti-device-mobile me-1" aria-hidden="true"></i> {{ $selectedDraw && !$selectedVenue ? 'Draw scoring' : 'Venue scoring' }}
-              <span aria-hidden="true"> · </span>
-              {{ $selectedVenue?->name ?? ($selectedDraw ? 'No schedule required' : 'All scheduled venues') }}
-              @if($selectedDraw) · {{ $selectedDraw->drawName }} @endif
+              @if($selectedDraw && $selectedVenue) · {{ $selectedDraw->drawName }} @endif
+              @if($selectedDraw && !$selectedVenue) · No schedule required @endif
             </div>
           </div>
           <div class="scoring-hero-progress">
@@ -211,7 +239,7 @@
             <a href="{{ route('events.show', $event) }}" class="btn btn-light">
               <i class="ti ti-arrow-left me-1" aria-hidden="true"></i> Tournament
             </a>
-            <button type="button" class="btn btn-outline-light d-flex align-items-center justify-content-center gap-2"
+            <button type="button" class="btn btn-outline-light scoring-next-action d-flex align-items-center justify-content-center gap-2"
                     data-bs-toggle="offcanvas" data-bs-target="#next-on-court-panel"
                     aria-controls="next-on-court-panel">
               <i class="ti ti-player-play" aria-hidden="true"></i>
@@ -227,13 +255,14 @@
       <div class="alert alert-success">{{ session('success') }}</div>
     @endif
 
-    <section class="card scoring-filter-card mb-4" aria-labelledby="scoring-context-title">
-      <div class="card-header scoring-section-heading py-3">
-        <div>
-          <h2 class="h6 mb-1" id="scoring-context-title">Scoring context</h2>
+    <details class="card scoring-filter-card mb-4" aria-labelledby="scoring-context-title" @if($errors->has('operator')) open @endif>
+      <summary class="card-header scoring-context-summary py-3">
+        <span class="fw-semibold" id="scoring-context-title">Scoring context</span>
+        <i class="ti ti-chevron-down" aria-hidden="true"></i>
+      </summary>
+      <div class="card-body p-3 border-top">
           <p class="small text-muted mb-0">{{ ($scheduleSource ?? 'working') === 'published' ? 'Published order of play · matches the public venue page and printed packs.' : 'Working schedule · includes saved changes awaiting publication.' }}</p>
           @if($scheduleDate ?? null)<p class="small mb-0">{{ \Carbon\Carbon::parse($scheduleDate)->format('l, d M Y') }}</p>@endif
-        </div>
       </div>
       <div class="card-body p-3">
         <div class="scoring-select-grid">
@@ -260,7 +289,7 @@
         </div>
         </div>
       </div>
-      <details class="scoring-operator" @if(!$operatorName) open @endif>
+      <details class="scoring-operator" @if(!$operatorName || $errors->has('operator')) open @endif>
         <summary class="operator-summary d-flex align-items-center gap-2">
           <i class="ti ti-device-mobile text-primary" aria-hidden="true"></i>
           <span><span class="text-muted">Scoring as</span> <strong>{{ $operatorName ?: 'Add operator name' }}</strong></span>
@@ -281,7 +310,7 @@
           </form>
         </div>
       </details>
-    </section>
+    </details>
 
     <section aria-labelledby="match-queue-title">
     <div class="scoring-section-heading mb-3 px-1">
@@ -449,7 +478,7 @@
   </div>
 </div>
 
-<div class="modal fade" id="score-entry-modal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="score-entry-modal" tabindex="-1" aria-labelledby="score-match-title" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-fullscreen-sm-down">
     <form class="modal-content" id="score-entry-form">
       <div class="modal-header">

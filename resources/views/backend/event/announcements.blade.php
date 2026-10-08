@@ -6,7 +6,11 @@
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
 
-<div class="container-xl">
+<style>
+.announcement-workspace button, .announcement-workspace summary { min-height:44px; }
+@media(max-width:575px) { .announcement-workspace table, .announcement-workspace tbody, .announcement-workspace tr, .announcement-workspace td {display:block;} .announcement-workspace thead {display:none;} .announcement-workspace td {white-space:normal;word-break:break-word;} }
+</style>
+<div class="container-xl announcement-workspace">
   @include('backend.event.partials.header', [
     'eventWorkspaceActive' => 'more',
     'eventWorkspaceIcon' => 'ti-megaphone',
@@ -41,9 +45,8 @@
   <td>
     <strong>{{ $announcement->title }}</strong>
 
-    <div class="mt-2 small text-muted">
-      {!! $announcement->message !!}
-    </div>
+    <span data-announcement-visibility class="badge bg-label-{{ $announcement->trashed() ? 'secondary' : 'success' }}">{{ $announcement->trashed() ? 'Hidden' : 'Visible' }}</span>
+    <details class="mt-2"><summary>Read message</summary><div class="mt-2 small text-muted">{!! $announcement->message !!}</div></details>
   </td>
 
   <td class="align-top">
@@ -108,7 +111,7 @@
           <label class="form-check-label" for="announcement_send_email">
             {{ $event->isTeam() ? 'Email all team roster players and linked parents' : 'Email all nominated and active paid registered players' }}
           </label>
-          <div class="form-text">Email is queued when you save. Leaving this clear only publishes the announcement online.</div>
+          <div class="form-text">Publishing starts email delivery after you confirm the recipients. Leaving this clear only publishes the announcement online.</div>
         </div>
 
         <div id="announcementRecipientReview" class="border rounded p-3 mt-3 d-none">
@@ -196,16 +199,21 @@ function setFormFeedback(message = '', type = 'danger') {
   formFeedback.setAttribute('role', type === 'danger' ? 'alert' : 'status');
 }
 
+function syncSaveLabel() {
+  saveLabel.textContent = announcementId.value ? 'Save changes' : (announcementSendEmail.checked ? 'Publish and send emails' : 'Publish announcement');
+}
 function setSaving(saving) {
   saveButton.disabled = saving;
   saveSpinner.classList.toggle('d-none', !saving);
   announcementForm.setAttribute('aria-busy', saving ? 'true' : 'false');
   if (saving) saveLabel.textContent = announcementId.value ? 'Saving changes…' : 'Publishing…';
+  else syncSaveLabel();
 }
 
 function syncRecipientReview() {
   const reviewing = !announcementId.value && announcementSendEmail.checked;
   announcementRecipientReview.classList.toggle('d-none', !reviewing);
+  syncSaveLabel();
 }
 
 announcementSendEmail.addEventListener('change', () => {
@@ -265,7 +273,7 @@ document.addEventListener('click', async e => {
     announcementRecipientReview.classList.add('d-none');
     modalTitle.textContent = 'Edit announcement';
     saveLabel.textContent = 'Save changes';
-    setFormFeedback('Editing changes the public announcement only. Previously queued emails are not resent.', 'info');
+    setFormFeedback('Editing changes the public announcement only. Emails from the original publication are not resent.', 'info');
     modal.show();
   } catch (error) {
     AppFeedback.fromError(error, 'Failed to load the announcement.');
@@ -295,7 +303,7 @@ announcementForm.addEventListener('submit', async e => {
     return;
   }
   if (!id && announcementSendEmail.checked && (!announcementConfirmRecipients || !announcementConfirmRecipients.checked)) {
-    setFormFeedback('Review and confirm the exact recipient list before queueing email.');
+    setFormFeedback('Review and confirm the exact recipient list before sending emails.');
     announcementConfirmRecipients?.focus();
     return;
   }
@@ -319,7 +327,8 @@ announcementForm.addEventListener('submit', async e => {
     });
     if (!response.ok) throw await AppFeedback.responseError(response, 'Could not save the announcement.');
     const result = await response.json();
-    AppFeedback.afterReload(result.message || (id ? 'Announcement updated.' : 'Announcement published.'), result.mail_level || 'success');
+    const deliveryMessage = result.message?.replace(/(\d+) emails queued/gi, 'email delivery requested for $1 recipients').replace(/Previously queued emails/gi, 'Emails from the original publication').replace(/queueing/gi, 'starting email delivery').replace(/queued/gi, 'prepared for delivery');
+    AppFeedback.afterReload(deliveryMessage || (id ? 'Announcement updated.' : 'Announcement published.'), result.mail_level || 'success');
     modal.hide();
     if (result.report_url) window.location.assign(result.report_url);
     else location.reload();
@@ -356,6 +365,10 @@ document.addEventListener('click', async e => {
 
     row.dataset.hidden = hidden ? 1 : 0;
     row.classList.toggle('table-secondary', hidden);
+    const visibility = row.querySelector('[data-announcement-visibility]');
+    visibility.textContent = hidden ? 'Hidden' : 'Visible';
+    visibility.classList.toggle('bg-label-secondary', hidden);
+    visibility.classList.toggle('bg-label-success', !hidden);
 
     btn.textContent = hidden ? 'Show' : 'Hide';
     btn.classList.toggle('btn-outline-danger', !hidden);

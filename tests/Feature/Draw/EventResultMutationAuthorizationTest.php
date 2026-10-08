@@ -120,9 +120,12 @@ class EventResultMutationAuthorizationTest extends TestCase
             'match_status' => 1,
         ]);
 
-        $this->actingAs($this->admin)
+        $response = $this->actingAs($this->admin)
             ->get(route('admin.events.results.individual', $this->event))
             ->assertOk()
+            ->assertSee('results-category-search', false)
+            ->assertSee('Unsaved positions')
+            ->assertSee('Review before publishing')
             ->assertSee('Default order loaded from the recorded draw results')
             ->assertViewHas('categories', function ($categories) use ($first, $second, $third, $fourth) {
                 $category = $categories->firstWhere('id', $this->categoryEvent->id);
@@ -132,6 +135,7 @@ class EventResultMutationAuthorizationTest extends TestCase
                         $second->id, $first->id, $fourth->id, $third->id,
                     ];
             });
+        if (getenv('CT_BATCHES121314_QA')) { file_put_contents(storage_path('app/batches121314-qa/results.html'), $response->getContent()); }
     }
 
     public function test_saved_final_positions_override_the_draw_result_fallback(): void

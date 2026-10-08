@@ -32,17 +32,19 @@
   </form>
   @include('frontend.fixtures.partials.live-results-status')
   <div data-live-results="admin-event-standings">
-  <div class="row g-3 mb-4">
-    @foreach(['draws' => 'Draws', 'teams' => 'Teams in ties', 'ties' => 'Completed ties', 'rubbers' => 'Completed rubbers'] as $key => $label)
-      <div class="col-6 col-lg-3"><div class="card card-body h-100"><span class="text-muted">{{ $label }}</span><strong class="h3 mb-0">{{ $stats[$key] }}</strong></div></div>
-    @endforeach
-  </div>
   <section class="card mb-4"><div class="card-header"><h2 class="h5 mb-2">{{ array_filter($filters) ? 'Filtered' : 'Full event' }} standings by region / school</h2>
     <p class="mb-0">Totals combine team ties across the selected draws. Completed rubbers earn points; ties count as played once all required rubbers are complete. These are running standings, not final tournament placings.</p>
     @if($mixedRules)<p class="text-warning mb-0 mt-2">Draws use different scoring rules. Totals are shown alphabetically without an overall rank; use each draw's standings for its ranking.</p>@endif
   </div>
   @include('backend.event.partials.standings-table', ['rows' => $overall])
   </section>
+  <details class="card card-body mb-4" data-standings-details>
+    <summary style="min-height:44px">Competition statistics and breakdowns</summary>
+  <div class="row g-3 mb-4">
+    @foreach(['draws' => 'Draws', 'teams' => 'Teams in ties', 'ties' => 'Completed ties', 'rubbers' => 'Completed rubbers'] as $key => $label)
+      <div class="col-6 col-lg-3"><div class="card card-body h-100"><span class="text-muted">{{ $label }}</span><strong class="h3 mb-0">{{ $stats[$key] }}</strong></div></div>
+    @endforeach
+  </div>
   <div class="row g-3 mb-4">
     @foreach(['gender' => 'Gender', 'age' => 'Age group', 'category' => 'Category'] as $key => $label)
     <section class="col-12 col-xl-4"><div class="card h-100"><div class="card-header"><h2 class="h5 mb-0">{{ $label }} breakdown</h2></div>
@@ -52,15 +54,28 @@
     </div></section>
     @endforeach
   </div>
+  </details>
   <h2 class="h4">Standings by draw</h2>
   <p>Ranks follow each draw's saved scoring rules. Teams tied on all configured criteria share a rank. Gender and age groups come from recorded categories, draw names and gender labels; unlabelled groups appear as Unspecified.</p>
   @forelse($sections as $section)
-    <section class="card mb-4"><div class="card-header"><h3 class="h5 mb-1">{{ $section['draw']->drawName }}</h3><span class="text-muted">{{ $section['category'] }} · {{ $section['gender'] }} · {{ $section['age'] }}</span></div>
+    <details class="card mb-4" data-standings-details><summary class="card-header" style="min-height:44px"><h3 class="h5 mb-1">{{ $section['draw']->drawName }}</h3><span class="text-muted">{{ $section['category'] }} · {{ $section['gender'] }} · {{ $section['age'] }}</span></summary>
       @include('backend.event.partials.standings-table', ['rows' => $section['rows']])
-    </section>
+    </details>
   @empty<div class="alert alert-info">No team draws match these filters.</div>@endforelse
   <p class="text-muted">Legacy fixtures contribute completed rubbers, sets, games and points by region. They do not count as completed team ties.</p>
   </div>
 </div>
+<script>
+let standingsPrintState = null;
+window.addEventListener('beforeprint', () => {
+  if (standingsPrintState) return;
+  standingsPrintState = Array.from(document.querySelectorAll('[data-standings-details]')).map(detail => ({ detail, open: detail.open }));
+  standingsPrintState.forEach(item => { item.detail.open = true; });
+});
+window.addEventListener('afterprint', () => {
+  (standingsPrintState || []).forEach(item => { if (item.detail.isConnected) item.detail.open = item.open; });
+  standingsPrintState = null;
+});
+</script>
 @include('frontend.fixtures.partials.live-results-script')
 @endsection

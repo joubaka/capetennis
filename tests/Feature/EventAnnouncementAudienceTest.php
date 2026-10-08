@@ -43,6 +43,12 @@ class EventAnnouncementAudienceTest extends TestCase
         $response->assertOk()
             ->assertSee('nominated@example.com')
             ->assertSee('registered@example.com');
+        $response->assertSee('Publish and send emails')->assertSee('email delivery requested for')->assertSee('syncSaveLabel', false);
+        if (getenv('CT_BATCHES121314_QA')) {
+            Announcement::create(['event_id' => $event->id, 'title' => 'Weather update', 'message' => '<p>Play starts at 10:00.</p>']);
+            $page = $this->get(route('admin.events.announcements', $event))->assertOk();
+            file_put_contents(storage_path('app/batches121314-qa/announcements.html'), $page->getContent());
+        }
 
         $this->publishWithCurrentAudience($admin, $event)->assertOk()
             ->assertJsonPath('mail.queued', 2)

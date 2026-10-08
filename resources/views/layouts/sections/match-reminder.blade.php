@@ -1,6 +1,6 @@
 <style>
   #match-reminder { color: #3e4c48; }
-  #match-reminder .modal-dialog { max-width: 720px; }
+  #match-reminder .modal-dialog { width: calc(100% - 2rem); max-width: 960px; margin-left: auto; margin-right: auto; }
   #match-reminder .modal-content { background: #fcfcfa; border: 1px solid #e1e6e0; border-radius: 18px; box-shadow: 0 18px 60px rgba(34, 48, 42, .14); }
   #match-reminder .modal-header { gap: .5rem; padding: 1.35rem 1.5rem .75rem; border: 0; }
   #match-reminder .modal-title { flex: 1; color: #35463f; font-size: 1.25rem; font-weight: 600; white-space: normal; overflow: visible; text-overflow: clip; min-width: 0; overflow-wrap: anywhere; }
@@ -34,8 +34,24 @@
   #match-reminder .reminder-all { display: inline-flex; align-items: center; min-height: 44px; color: #526b58; font-size: .875rem; text-decoration: underline; text-underline-offset: 3px; }
   #match-reminder .reminder-close { color: #647067; background: transparent; border: 1px solid #dce3d9; }
   #match-reminder a:focus-visible, #match-reminder summary:focus-visible, #match-reminder button:focus-visible { outline: 2px solid #697f6d; outline-offset: 3px; }
+  @media (min-width: 576px) {
+    #match-reminder .modal-header { padding: .85rem 1.25rem .35rem; }
+    #match-reminder .modal-body { padding: .25rem 1.25rem .75rem; }
+    #match-reminder-description { margin-bottom: .75rem; }
+    #match-reminder .reminder-player { margin-bottom: .85rem; }
+    #match-reminder article { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 1rem; padding: .75rem 1rem; }
+    #match-reminder .reminder-time, #match-reminder .reminder-participants, #match-reminder .reminder-event, #match-reminder .reminder-venue { grid-column: 1; }
+    #match-reminder .reminder-fixtures { grid-column: 2; grid-row: 1 / span 4; align-self: center; }
+    #match-reminder .modal-footer { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .25rem 1rem; padding: .65rem 1.25rem .75rem; }
+    #match-reminder .reminder-settings { grid-column: 1 / -1; }
+    #match-reminder .reminder-preference { display: flex; align-items: center; gap: .75rem; }
+    #match-reminder .reminder-settings label { flex-shrink: 0; margin: 0; }
+    #match-reminder .reminder-help { margin: 0; }
+    #match-reminder .reminder-help[open] { grid-column: 1 / -1; }
+    #match-reminder .reminder-actions { justify-content: flex-end; }
+  }
   @media (max-width: 575.98px) {
-    #match-reminder .modal-dialog { margin: .5rem; }
+    #match-reminder .modal-dialog { width: auto; margin: .5rem; }
     #match-reminder .modal-body, #match-reminder .modal-header, #match-reminder .modal-footer { padding-left: 1rem; padding-right: 1rem; }
     #match-reminder .reminder-settings { grid-template-columns: minmax(0, 1fr); }
     #match-reminder .reminder-apply { width: 100%; }

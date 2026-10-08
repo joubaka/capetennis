@@ -4,6 +4,8 @@
 
 @section('page-style')
 <style>
+  .results-workspace button, .results-workspace input { min-height:44px; }
+  @media print { .results-workspace .category-card[hidden] { display:block!important; } }
   .category-card {
     border: 1px solid var(--bs-border-color);
     border-radius: .5rem;
@@ -54,7 +56,7 @@
 @endsection
 
 @section('content')
-<div class="container-xl">
+<div class="container-xl results-workspace">
   @include('backend.event.partials.header', [
     'eventWorkspaceActive' => 'results',
     'eventWorkspaceIcon' => 'ti-trophy',
@@ -62,7 +64,7 @@
   ])
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 no-print">
     <div><h2 class="h4 mb-1">Final positions</h2><p class="text-muted mb-0">Confirm the finishing order used for event and ranking results.</p></div>
-      <div class="d-flex align-items-center gap-2">
+      <div class="d-flex flex-wrap align-items-center gap-2">
         <span class="badge bg-label-primary">Individual Event</span>
 
         <button id="save-all" class="btn btn-sm btn-success">
@@ -82,11 +84,24 @@
       </div>
   </div>
 
+  <div class="card card-body mb-3 no-print">
+    <label for="results-category-search" class="form-label">Find category</label>
+    <input id="results-category-search" type="search" class="form-control" placeholder="Category name">
+    <p class="small text-muted mt-2 mb-0">Search changes the display only. Save All and publication include every category.</p>
+  </div>
+  <section class="alert alert-info no-print" aria-label="Review before publication">
+    <strong>Review before publishing</strong>
+    <p class="mb-0">Check the finishing order and players removed from results in every category. Save positions to keep your changes; publishing makes the final results public.</p>
+    <span data-results-unsaved-count role="status" aria-live="polite"></span>
+  </section>
   {{-- CATEGORIES --}}
   @forelse($categories as $category)
-    <div class="category-card" id="category-event-{{ $category->id }}">
+    @php
+      $needsPositionSave = $category->uses_draw_result_default || $category->registrations->contains(fn ($reg) => $reg->position < 0);
+    @endphp
+    <div class="category-card" id="category-event-{{ $category->id }}" data-category-name="{{ $category->category->name }}" data-unsaved="{{ $needsPositionSave ? 'true' : 'false' }}">
 
-      <div class="card-header d-flex justify-content-between align-items-center">
+      <div class="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center">
         <h5 class="mb-0">
           {{ $category->category->name }}
           <span class="text-muted">
@@ -94,6 +109,7 @@
           </span>
         </h5>
 
+        <span class="badge bg-label-{{ $needsPositionSave ? 'warning' : 'success' }}" data-results-save-state>{{ $needsPositionSave ? 'Unsaved positions' : 'Saved positions' }}</span>
         <button class="btn btn-sm btn-outline-primary save-positions"
                 data-category="{{ $category->id }}">
           Save Positions
@@ -164,6 +180,28 @@
 
 <script>
 console.log('[Final Positions] Script loaded');
+function updateUnsavedSummary() {
+  const count = document.querySelectorAll('.category-card[data-unsaved="true"]').length;
+  document.querySelector('[data-results-unsaved-count]').textContent = count ? `${count} categories have unsaved positions.` : 'All category positions are saved.';
+}
+function setCategoryUnsaved(list, unsaved) {
+  const card = list.closest('.category-card');
+  card.dataset.unsaved = unsaved ? 'true' : 'false';
+  const badge = card.querySelector('[data-results-save-state]');
+  badge.textContent = unsaved ? 'Unsaved positions' : 'Saved positions';
+  badge.classList.toggle('bg-label-warning', unsaved);
+  badge.classList.toggle('bg-label-success', !unsaved);
+  updateUnsavedSummary();
+}
+function positionSnapshot(list) {
+  return Array.from(list.querySelectorAll('li:not([data-removed])')).map(li => li.dataset.registration).join(',');
+}
+updateUnsavedSummary();
+document.getElementById('results-category-search').addEventListener('input', event => {
+  const term = event.target.value.trim().toLocaleLowerCase();
+  document.querySelectorAll('.category-card').forEach(card => { card.hidden = !card.dataset.categoryName.toLocaleLowerCase().includes(term); });
+});
+
 
 const SAVE_URL_TEMPLATE = @json(
   route('admin.events.categories.results.store', [
@@ -258,6 +296,7 @@ function restorePlayer(regId, categoryId, badge) {
 }
 
 function renumberList(list) {
+  setCategoryUnsaved(list, true);
   let n = 1;
   list.querySelectorAll('li:not([data-removed])').forEach(li => {
     li.querySelector('.position-badge').textContent = n++ + '.';
@@ -293,6 +332,7 @@ async function saveCategory(categoryId, button = null) {
     throw new Error('List not found');
   }
 
+  const savedSnapshot = positionSnapshot(list);
   const positions = [];
   list.querySelectorAll('li:not([data-removed])').forEach((li, index) => {
     positions.push({
@@ -334,11 +374,12 @@ async function saveCategory(categoryId, button = null) {
       console.error('[saveCategory] Failed to parse JSON response:', e);
     }
 
-    if (!res.ok) {
+    if (!res.ok || data?.status !== 'ok') {
       console.error('[saveCategory] Save failed with status:', res.status);
       throw new Error('Save failed');
     }
 
+    setCategoryUnsaved(list, positionSnapshot(list) !== savedSnapshot);
     console.log('[saveCategory] Save successful for categoryId:', categoryId);
 
     if (button) {
@@ -431,7 +472,8 @@ document.getElementById('results-publication-form').addEventListener('submit', a
   event.preventDefault();
   const publicationForm = event.currentTarget;
 
-  if (!confirm('Save the current positions and publish the results?')) {
+  const unsaved = document.querySelectorAll('.category-card[data-unsaved="true"]').length;
+  if (!confirm(`Review every category, including those hidden by search. ${unsaved} categories have unsaved positions. Save all current positions and publish the final results?`)) {
     return;
   }
 

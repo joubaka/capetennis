@@ -43,6 +43,8 @@ class EventStandingsTest extends TestCase
         DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
         $this->get(route('admin.events.standings', $other))->assertForbidden();
         $response = $this->get(route('admin.events.standings', $event))->assertOk()->assertSee('Full event standings')->assertSee('Oak Primary School')->assertSee('Gender breakdown')->assertSee('View match results');
+        $response->assertSee('data-standings-details', false)->assertSee('beforeprint', false);
+        if (getenv('CT_BATCHES121314_QA')) { file_put_contents(storage_path('app/batches121314-qa/standings.html'), $response->getContent()); }
         $this->assertDatabaseCount('team_ties', 1);
         $this->assertDatabaseCount('team_fixture_results', 2);
         $this->assertSame('completed', $fixture['tie']->fresh()->status);
