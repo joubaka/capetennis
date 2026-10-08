@@ -11,7 +11,8 @@ class ScoringGuideComposer
     public function compose(View $view): void
     {
         $user = auth()->user();
-        $assignments = $user ? EventConvenor::query()
+        $isGuideAccount = $user && strcasecmp(trim((string) $user->email), 'convenor@capetennis.co.za') === 0;
+        $assignments = $isGuideAccount ? EventConvenor::query()
             ->where('user_id', $user->id)->active()->with('event:id,name')
             ->orderBy('event_id')->limit(20)->get()
             ->filter(fn ($assignment) => $assignment->event && Gate::forUser($user)->allows('event.score', $assignment->event))
