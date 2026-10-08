@@ -25,6 +25,9 @@ class DashboardWorkHubTest extends TestCase
             ->get(route('backend.dashboard'))
             ->assertOk()
             ->assertSee('Event administrator')
+            ->assertSee('Admin home')
+            ->assertSeeInOrder(['id="dashboard-work"', 'id="my-account"'], false)
+            ->assertSee('id="my-account" >', false)
             ->assertSee('Assigned Private Event')
             ->assertSee('Not published')
             ->assertDontSee('Someone Else Event')
@@ -76,7 +79,9 @@ class DashboardWorkHubTest extends TestCase
             ->assertOk()
             ->assertDontSee('My events')
             ->assertDontSee('No events to manage yet')
-            ->assertSee('Players Linked');
+            ->assertSee('Players Linked')
+            ->assertDontSee('Admin home')
+            ->assertDontSee('id="my-account"', false);
 
         $this->get('/events/ajax/userEvents/'.$user->id)->assertNotFound();
     }
@@ -96,6 +101,7 @@ class DashboardWorkHubTest extends TestCase
             ->assertViewHas('managedEventCount', 13)
             ->assertSee('Copy event')
             ->assertSee('Platform administrator')
+            ->assertSee('Admin home')
             ->assertDontSee('Event administrator');
     }
 
@@ -109,7 +115,21 @@ class DashboardWorkHubTest extends TestCase
             ->assertOk()
             ->assertDontSee('My Events')
             ->assertSee('data-bs-target="#tab-players"', false)
-            ->assertSee('Players');
+            ->assertSee('Players')
+            ->assertSee('Admin home')
+            ->assertSee('id="my-account"', false);
+    }
+
+    public function test_wallet_pagination_keeps_admin_account_open(): void
+    {
+        $admin = User::factory()->create();
+        $event = Event::factory()->create();
+        EventAdmin::create(['user_id' => $admin->id, 'event_id' => $event->id]);
+
+        $this->actingAs($admin)
+            ->get(route('backend.dashboard', ['wallet_page' => 2]))
+            ->assertOk()
+            ->assertSee('id="my-account"  open ', false);
     }
 
     public function test_upcoming_events_use_published_canonical_date_rules_for_every_role(): void

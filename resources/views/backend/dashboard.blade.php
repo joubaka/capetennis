@@ -40,7 +40,18 @@
   .dashboard-event-card__meta { color: #6f6b7d; font-size: .875rem; }
   .dashboard-event-card__actions { display: flex; flex-wrap: wrap; gap: .4rem; }
   .upcoming-event-card { border: 1px solid #ebeaf0; border-radius: .75rem; padding: 1rem; height: 100%; background: #fff; }
+  .dashboard-event-card__actions .btn, .dashboard-tabs .nav-link { min-height: 44px; }
+  .dashboard-event-card__actions .btn { display: inline-flex; align-items: center; justify-content: center; }
+  .dashboard-account > summary { cursor: pointer; min-height: 44px; }
+  .dashboard-account > summary::marker { color: #7367f0; }
+  .dashboard-account > summary .text-muted { margin-left: .75rem; }
+  .dashboard-account[open] > summary { border-color: #7367f0; }
   @media (max-width: 767.98px) {
+    .dashboard-event-card__actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+    .dashboard-event-card__actions .dropdown > .btn { width: 100%; }
+    .dashboard-event-card__actions .dropdown-item { min-height: 44px; display: flex; align-items: center; }
+    .dashboard-account > summary .text-muted { display: block; margin-left: 0; }
+    .dashboard-section-header { flex-wrap: wrap; }
     .dashboard-section-header { align-items: flex-start !important; gap: 1rem; }
     .dashboard-event-name { max-width: 180px; }
     .dashboard-events-card .datatable-events tbody td { padding: .8rem .6rem; }
@@ -62,17 +73,27 @@
 @endsection
 
 @section('content')
-<x-backend.page-header title="My dashboard" eyebrow="Cape Tennis" subtitle="Your profile, players and events." icon="ti-layout-dashboard" />
+@php
+  $showDashboardTabs = collect($tabs)->contains(true);
+@endphp
+<x-backend.page-header :title="$showDashboardTabs ? 'Admin home' : 'My dashboard'" eyebrow="Cape Tennis" :subtitle="$showDashboardTabs ? 'Choose an event or an administration task.' : 'Your profile, players and events.'" icon="ti-layout-dashboard" />
 
 <input type="hidden" value="{{ $user->id }}" id="user">
 
 <div class="row">
 
-  {{-- ================= USER SIDEBAR ================= --}}
-  @php
-    $showDashboardTabs = collect($tabs)->contains(true);
-  @endphp
-  <div class="{{ $showDashboardTabs ? 'col-xl-4 col-lg-5 col-md-5' : 'col-12' }} order-1 order-md-0">
+  @if($showDashboardTabs)
+  <div class="col-12" id="dashboard-work">
+    @include('templates.adminDashboardTemplate')
+  </div>
+  @endif
+
+  {{-- ================= PERSONAL ACCOUNT ================= --}}
+  <div class="col-12" id="dashboard-account">
+    @if($showDashboardTabs)
+    <details class="dashboard-account mb-4" id="my-account" @if(request()->has('wallet_page')) open @endif>
+      <summary class="card p-3 mb-3"><span class="fw-semibold">My Account</span><span class="text-muted small">Profile, linked players and wallet history</span></summary>
+    @endif
     <div class="card mb-4">
       <div class="card-body text-center">
 
@@ -274,24 +295,19 @@
         @endif
       </div>
     </div>
+    @if($showDashboardTabs)
+    </details>
+    @endif
   </div>
-
-  @if($showDashboardTabs)
-  <div class="col-xl-8 col-lg-7 col-md-7">
-    @include('templates.adminDashboardTemplate')
-    @include('backend.partials.upcoming-events')
-  </div>
-  @endif
 
 </div>
 
-@unless($showDashboardTabs)
+
   <div class="row mt-4">
     <div class="col-12">
       @include('backend.partials.upcoming-events')
     </div>
   </div>
-@endunless
 
 <div class="modal fade" id="addProfileModal">
   <div class="modal-dialog">
@@ -395,6 +411,11 @@ $(function () {
     }
 
     if (hash) {
+      const target = document.getElementById(hash.slice(1));
+      const account = document.getElementById('my-account');
+      if (account && target && (target === account || account.contains(target) || target.classList.contains('modal'))) {
+        account.open = true;
+      }
       var tabId = hash.replace('#', '');
       var tabButton = $('[data-bs-target="#' + tabId + '"]');
       if (tabButton.length) {

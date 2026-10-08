@@ -32,6 +32,14 @@ $configData = Helper::appClasses();
           return false;
         };
       @endphp
+      @if($showAdminHome ?? false)
+      <li class="menu-item {{ $currentRouteName === 'backend.dashboard' ? 'active' : '' }}">
+        <a href="{{ route('backend.dashboard') }}" class="menu-link" @if($currentRouteName === 'backend.dashboard') aria-current="page" @endif>
+          <i class="menu-icon ti ti-layout-dashboard"></i>
+          <div>Admin home</div>
+        </a>
+      </li>
+      @endif
       @foreach ($menuData[1]->menu as $menu)
 
       {{-- active menu method --}}
