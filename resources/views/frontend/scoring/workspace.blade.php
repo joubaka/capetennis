@@ -261,7 +261,7 @@
 
     <details class="card scoring-filter-card mb-4" aria-labelledby="scoring-context-title" @if($errors->has('operator')) open @endif>
       <summary class="card-header scoring-context-summary py-3">
-        <span class="fw-semibold" id="scoring-context-title">Scoring context</span>
+        <span class="fw-semibold" id="scoring-context-title">Choose which matches to show</span>
         <i class="ti ti-chevron-down" aria-hidden="true"></i>
       </summary>
       <div class="card-body p-3 border-top">
