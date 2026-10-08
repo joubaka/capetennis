@@ -12,12 +12,17 @@
           <label class="result-choice"><input class="form-check-input" type="checkbox" data-result-region value="{{ $region->id }}" checked><span>{{ $region->region_name }}</span></label>
         @empty<p class="text-muted">No event regions configured.</p>@endforelse
       </div></fieldset>
+      <fieldset><legend>Exclude results involving regions</legend><div class="result-option-grid">
+        @foreach($resultSetup['regions'] as $region)
+          <label class="result-choice"><input class="form-check-input" type="checkbox" data-result-excluded-region value="{{ $region->id }}"><span>{{ $region->region_name }}</span></label>
+        @endforeach
+      </div><p class="result-setup-note">Exclude the entire match when either side represents a checked region. Candidate regions above still control which players appear.</p></fieldset>
       <fieldset><legend>Match formats</legend><div class="result-format-grid">
         @foreach($resultSetup['formats'] as $format)
           <label class="result-choice"><input class="form-check-input" type="checkbox" data-result-format value="{{ $format }}" checked><span>{{ $format === 'reverse_singles' ? 'Reverse Singles' : 'Singles' }}</span></label>
         @endforeach
       </div></fieldset>
-      <p class="result-setup-note">Regions choose candidates; matches against all event opponents count. Save a draft to retain your choices.</p>
+      <p class="result-setup-note">Candidate regions choose players. Matches count unless a side's region is excluded from results. Save a draft to retain both choices.</p>
     </div>
   </div>
   <div class="result-layout">
@@ -31,7 +36,7 @@
     </aside>
     <section class="result-ranking-panel" aria-label="Player ranking and draft selection">
       <div class="result-ranking-header">
-        <div><h5 id="category-name"></h5><span class="result-heading-hint">Band-weighted match wins · Select up to 10</span></div>
+        <div><h5 id="category-name"></h5><span class="result-heading-hint">Band-first ranking · Compare adjacent bands · Select up to 10</span></div>
         <div class="result-draft-actions"><button type="button" class="btn btn-outline-primary" data-selection-load>Load draft</button><button type="button" class="btn btn-primary" data-selection-save>Save draft</button></div>
       </div>
       <div data-selection-status role="status" class="result-draft-status"></div>

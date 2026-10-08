@@ -347,13 +347,14 @@ class EventAdminController extends Controller
   public function getEventCategoryData(Request $request)
   {
     if ($request->has('result_group')) {
-      foreach (['regions', 'formats'] as $field) {
+      foreach (['regions', 'formats', 'excluded_result_region_ids'] as $field) {
         if (is_string($request->input($field))) $request->merge([$field => $request->input($field) === '' ? [] : explode(',', $request->input($field))]);
       }
       $data = $request->validate([
         'event_id' => 'required|integer|exists:events,id', 'result_group' => 'required|string|max:30',
         'regions' => 'present|array', 'regions.*' => 'integer|distinct',
         'formats' => 'present|array', 'formats.*' => 'string|distinct|in:singles,reverse_singles',
+        'excluded_result_region_ids' => 'sometimes|array|max:100', 'excluded_result_region_ids.*' => 'integer|distinct',
       ]);
       $event = Event::findOrFail($data['event_id']);
       $this->authorize('event.manage', $event);
@@ -361,10 +362,11 @@ class EventAdminController extends Controller
       $setup = $service->setup($event);
       abort_unless($setup['groups']->contains('key', $data['result_group']), 404);
       $regions = array_map('intval', $data['regions']);
-      if (array_diff($regions, $setup['regions']->pluck('id')->all()) || array_diff($data['formats'], $setup['formats']->all())) {
+      $excludedResultRegions = array_map('intval', $data['excluded_result_region_ids'] ?? []);
+      if (array_diff($regions, $setup['regions']->pluck('id')->all()) || array_diff($excludedResultRegions, $setup['regions']->pluck('id')->all()) || array_diff($data['formats'], $setup['formats']->all())) {
         throw \Illuminate\Validation\ValidationException::withMessages(['setup' => 'Choose regions and formats from this event.']);
       }
-      $ranking = $service->ranking($event, $data['result_group'], $regions, $data['formats']);
+      $ranking = $service->ranking($event, $data['result_group'], $regions, $data['formats'], $excludedResultRegions);
       return response()->json(['html' => view('backend.adminPage.admin_show._table.result-selection', compact('ranking'))->render(), 'ranking' => $ranking]);
     }
     $data = $request->validate(['event_id' => 'required|integer|exists:events,id', 'categoryEvent' => 'required|integer|exists:category_events,id']);
@@ -412,7 +414,8 @@ class EventAdminController extends Controller
         ];
       }
     }
-    $ranking = collect($ranking)->sortByDesc('points')->values();
+    $ranking = collect($ranking)->sort(fn ($a, $b) => ((int) ceil($a['rank'] / 2) <=> (int) ceil($b['rank'] / 2))
+      ?: ($b['points'] <=> $a['points']))->values();
     $html = view('backend.adminPage.admin_show._table.results', compact('playerFixtures', 'ranking'))->render();
 
     return response()->json(['html' => $playerFixtures ? $html : '<div class="alert alert-light border" role="status">No results recorded for this category.</div>', 'ranking' => $ranking]);

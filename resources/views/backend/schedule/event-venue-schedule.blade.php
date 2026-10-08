@@ -105,7 +105,7 @@
   .schedule-workspace .court-choice { display:inline-flex; align-items:center; gap:.35rem; padding:.38rem .55rem; margin:0 .35rem .35rem 0; border:1px solid var(--schedule-border); border-radius:.45rem; background:#fff; color:var(--bs-body-color); font-size:.78rem; font-weight:500; }
   .schedule-workspace .venue-management { border:1px solid var(--schedule-border); border-radius:.75rem; background:linear-gradient(135deg, #f8fafc, #f1f5f9); }
   .schedule-workspace #court-allocation-step > .section-body { display:flex; flex-direction:column; }
-  .schedule-workspace #court-allocation-step .venue-management { order:-1; }
+  .schedule-workspace #venue-management .btn { min-height:44px; }
   .schedule-workspace .venue-management-summary { display:flex; align-items:center; gap:.85rem; padding:.9rem 1rem; }
   .schedule-workspace .venue-management-icon { display:grid; place-items:center; flex:0 0 2.25rem; width:2.25rem; height:2.25rem; border-radius:.65rem; color:var(--bs-primary); background:rgba(var(--bs-primary-rgb), .1); }
   .schedule-workspace .assigned-venue-list { display:flex; flex:1; flex-wrap:wrap; justify-content:flex-end; gap:.4rem; }
@@ -229,6 +229,89 @@
       </ul>
     </div>
   @endif
+      <div class="venue-management mb-3" id="venue-management">
+        <div class="venue-management-summary">
+          <span class="venue-management-icon"><i class="ti ti-building-community" aria-hidden="true"></i></span>
+          <span><strong>Venues & courts</strong><span class="d-block small text-muted">Assigned to this event</span></span>
+          <span class="assigned-venue-list" aria-label="Assigned venues">
+            @forelse($venues as $venue)
+              <span class="assigned-venue-chip"><i class="ti ti-map-pin" aria-hidden="true"></i>{{ $venue['name'] }} <span class="text-muted">· {{ $venue['courts'] }} {{ Str::plural('court', $venue['courts']) }} · {{ ucfirst($venue['common_ball_type'] ?? 'standard') }}</span></span>
+            @empty
+              <span class="small text-warning">No venues assigned yet</span>
+            @endforelse
+          </span>
+          <button type="button" class="btn btn-sm btn-outline-primary text-nowrap" data-bs-toggle="modal" data-bs-target="#venue-management-modal"><i class="ti ti-edit me-1" aria-hidden="true"></i>Edit venues & courts</button>
+        </div>
+      </div>
+
+      <div class="modal fade venue-management-modal" id="venue-management-modal" tabindex="-1" aria-labelledby="venue-management-title" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+          <div class="modal-content">
+            <div class="modal-header">
+              <div><h5 class="modal-title" id="venue-management-title">Edit venues & courts</h5><div class="small text-muted" id="venue-management-counts">{{ $venues->count() }} assigned venues · {{ $venues->sum('courts') }} courts available</div></div>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body venue-management-body">
+          <div class="border rounded p-3 mb-2 bg-white">
+            <h6>Add another venue</h6>
+            <p class="small text-muted mb-2">Choose an existing venue, or create one if it is not listed.</p>
+            <div class="venue-add-mode" role="group" aria-label="How to add a venue">
+              <button type="button" class="btn btn-sm active" id="use-existing-venue" data-venue-mode="existing" aria-pressed="true"><i class="ti ti-map-pin" aria-hidden="true"></i>Existing venue</button>
+              <button type="button" class="btn btn-sm" id="create-new-venue" data-venue-mode="new" aria-pressed="false"><i class="ti ti-plus" aria-hidden="true"></i>Create new venue</button>
+            </div>
+            <div id="existing-venue-panel" class="venue-add-panel">
+              <label class="form-label small" for="new-venue-id">Select venue</label>
+              <select id="new-venue-id" class="form-select form-select-sm"><option value="">Choose a venue…</option>@foreach($allVenues as $option)<option value="{{ $option->id }}">{{ $option->name }}</option>@endforeach</select>
+            </div>
+            <div id="new-venue-panel" class="venue-add-panel d-none" hidden>
+              <label class="form-label small" for="new-venue-name">New venue name</label>
+              <input id="new-venue-name" class="form-control form-control-sm" maxlength="191" placeholder="Enter a venue name" disabled>
+            </div>
+            <div class="row g-2">
+              <div class="col-sm-6"><label class="form-label small" for="new-venue-courts">Number of courts</label><input id="new-venue-courts" type="number" class="form-control form-control-sm" value="1" min="1" max="100"></div>
+              <div class="col-sm-6"><label class="form-label small" for="new-venue-ball">Court type</label><select id="new-venue-ball" class="form-select form-select-sm"><option value="standard">Standard</option><option value="yellow">Yellow ball</option><option value="orange">Orange ball</option><option value="green">Green ball</option><option value="red">Red ball</option></select></div>
+            </div>
+            <button type="button" id="add-venue" class="btn btn-sm btn-primary mt-3" data-audit-ignore="true"><i class="ti ti-plus me-1"></i><span id="add-venue-label">Add existing venue</span></button>
+            <div class="form-text">Keep adding or editing venues here. Choose Done when finished.</div>
+            <div id="venue-add-status" class="small text-muted mt-2" role="status" aria-live="polite"></div>
+          </div>
+          <div id="venue-editor-list">
+          @forelse($venues as $venue)
+          <details class="venue-editor" data-venue="{{ $venue['id'] }}">
+            <summary><strong class="flex-grow-1">{{ $venue['name'] }}</strong><span class="badge bg-label-primary">{{ $venue['courts'] }} courts</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>
+            <div class="venue-editor-body">
+            <div class="d-flex justify-content-end mt-2"><button type="button" class="btn btn-sm btn-outline-danger remove-venue" data-url="{{ route('backend.event-venue-schedule.venues.remove', [$event, $venue['id']]) }}">Remove from this event</button></div>
+            <div class="small fw-semibold mt-3 mb-2">Edit this venue's court setup</div>
+            <div class="row g-2 venue-court-setup" data-url="{{ route('backend.event-venue-schedule.courts.configure', [$event, $venue['id']]) }}">
+              <div class="col-sm-4"><label class="visually-hidden">Total courts at {{ $venue['name'] }}</label><input type="number" class="form-control form-control-sm setup-court-count" value="{{ $venue['courts'] }}" min="1" max="100" aria-label="Total courts at {{ $venue['name'] }}"></div>
+              <div class="col-sm-5"><label class="visually-hidden">Court type at {{ $venue['name'] }}</label><select class="form-select form-select-sm setup-court-ball"><option value="mixed" disabled {{ $venue['common_ball_type'] === 'mixed' ? 'selected' : '' }}>Mixed types</option><option value="standard" {{ $venue['common_ball_type'] === 'standard' ? 'selected' : '' }}>Standard</option><option value="yellow" {{ $venue['common_ball_type'] === 'yellow' ? 'selected' : '' }}>Yellow</option><option value="orange" {{ $venue['common_ball_type'] === 'orange' ? 'selected' : '' }}>Orange</option><option value="green" {{ $venue['common_ball_type'] === 'green' ? 'selected' : '' }}>Green</option><option value="red" {{ $venue['common_ball_type'] === 'red' ? 'selected' : '' }}>Red</option></select></div>
+              <div class="col-sm-3"><button type="button" class="btn btn-sm btn-primary w-100 update-court-setup" data-has-custom="{{ $venue['has_custom_courts'] ? '1' : '0' }}">Update all</button></div>
+              <div class="col-12"><small class="setup-status text-muted" role="status" aria-live="polite">Sets numbered Courts 1–{{ $venue['courts'] }} to one type{{ $venue['has_custom_courts'] ? ' and replaces specially named courts' : '' }}.</small></div>
+            </div>
+            <div class="small fw-semibold mt-3 mb-2">Individual courts</div>
+            <div class="d-grid gap-2">
+              @foreach($venue['court_list'] as $court)
+                <div class="row g-2 align-items-center">
+                  <div class="col-sm-5 small">Court {{ $court['label'] }}</div>
+                  <div class="col-7 col-sm-4"><select class="form-select form-select-sm edit-court-ball" aria-label="Type for court {{ $court['label'] }} at {{ $venue['name'] }}" data-venue="{{ $venue['id'] }}" data-label="{{ $court['label'] }}"><option value="standard" {{ !$court['ball_type'] || $court['ball_type'] === 'standard' ? 'selected' : '' }}>Standard</option><option value="yellow" {{ $court['ball_type'] === 'yellow' ? 'selected' : '' }}>Yellow</option><option value="orange" {{ $court['ball_type'] === 'orange' ? 'selected' : '' }}>Orange</option><option value="green" {{ $court['ball_type'] === 'green' ? 'selected' : '' }}>Green</option><option value="red" {{ $court['ball_type'] === 'red' ? 'selected' : '' }}>Red</option></select></div>
+                  <div class="col-5 col-sm-3"><button type="button" class="btn btn-sm btn-outline-secondary w-100 update-court-type" data-venue="{{ $venue['id'] }}" data-label="{{ $court['label'] }}">Save</button></div>
+                </div>
+              @endforeach
+            </div>
+            <div class="small fw-semibold mt-3">Add a specially named court</div>
+            <div class="row g-2 mt-2"><div class="col-sm-5"><input class="form-control form-control-sm add-court-label" data-venue="{{ $venue['id'] }}" aria-label="New court label at {{ $venue['name'] }}" placeholder="Court label"></div><div class="col-7 col-sm-4"><select class="form-select form-select-sm add-court-ball" data-venue="{{ $venue['id'] }}" aria-label="New court type"><option value="standard">Standard</option><option value="yellow">Yellow</option><option value="orange">Orange</option><option value="green">Green</option><option value="red">Red</option></select></div><div class="col-5 col-sm-3"><button type="button" class="btn btn-sm btn-outline-primary w-100 add-court" data-venue="{{ $venue['id'] }}">Add</button></div></div>
+            </div>
+          </details>
+          @empty
+            <div class="alert alert-warning mb-0">Add the first venue and its courts before creating allocations.</div>
+          @endforelse
+          </div>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-primary" data-bs-dismiss="modal">Done</button></div>
+          </div>
+        </div>
+      </div>
+
   <details class="workspace-section mb-3" id="programme-wizard">
     <summary><span class="section-title"><h5>Three-day age-group auto schedule</h5><small class="text-muted">Create one complete preview using the Platinum programme.</small></span></summary>
     <div class="section-body">
@@ -377,89 +460,6 @@
           @empty
             <div class="text-muted p-3">No draws have been created for this event.</div>
           @endforelse
-      </div>
-
-      <div class="venue-management mb-3" id="venue-management">
-        <div class="venue-management-summary">
-          <span class="venue-management-icon"><i class="ti ti-building-community" aria-hidden="true"></i></span>
-          <span><strong>Venues & courts</strong><span class="d-block small text-muted">Assigned to this event</span></span>
-          <span class="assigned-venue-list" aria-label="Assigned venues">
-            @forelse($venues as $venue)
-              <span class="assigned-venue-chip"><i class="ti ti-map-pin" aria-hidden="true"></i>{{ $venue['name'] }} <span class="text-muted">· {{ $venue['courts'] }} {{ Str::plural('court', $venue['courts']) }} · {{ ucfirst($venue['common_ball_type'] ?? 'standard') }}</span></span>
-            @empty
-              <span class="small text-warning">No venues assigned yet</span>
-            @endforelse
-          </span>
-          <button type="button" class="btn btn-sm btn-outline-primary text-nowrap" data-bs-toggle="modal" data-bs-target="#venue-management-modal"><i class="ti ti-edit me-1" aria-hidden="true"></i>Edit venues & courts</button>
-        </div>
-      </div>
-
-      <div class="modal fade venue-management-modal" id="venue-management-modal" tabindex="-1" aria-labelledby="venue-management-title" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-scrollable">
-          <div class="modal-content">
-            <div class="modal-header">
-              <div><h5 class="modal-title" id="venue-management-title">Edit venues & courts</h5><div class="small text-muted" id="venue-management-counts">{{ $venues->count() }} assigned venues · {{ $venues->sum('courts') }} courts available</div></div>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body venue-management-body">
-          <div class="border rounded p-3 mb-2 bg-white">
-            <h6>Add another venue</h6>
-            <p class="small text-muted mb-2">Choose an existing venue, or create one if it is not listed.</p>
-            <div class="venue-add-mode" role="group" aria-label="How to add a venue">
-              <button type="button" class="btn btn-sm active" id="use-existing-venue" data-venue-mode="existing" aria-pressed="true"><i class="ti ti-map-pin" aria-hidden="true"></i>Existing venue</button>
-              <button type="button" class="btn btn-sm" id="create-new-venue" data-venue-mode="new" aria-pressed="false"><i class="ti ti-plus" aria-hidden="true"></i>Create new venue</button>
-            </div>
-            <div id="existing-venue-panel" class="venue-add-panel">
-              <label class="form-label small" for="new-venue-id">Select venue</label>
-              <select id="new-venue-id" class="form-select form-select-sm"><option value="">Choose a venue…</option>@foreach($allVenues as $option)<option value="{{ $option->id }}">{{ $option->name }}</option>@endforeach</select>
-            </div>
-            <div id="new-venue-panel" class="venue-add-panel d-none" hidden>
-              <label class="form-label small" for="new-venue-name">New venue name</label>
-              <input id="new-venue-name" class="form-control form-control-sm" maxlength="191" placeholder="Enter a venue name" disabled>
-            </div>
-            <div class="row g-2">
-              <div class="col-sm-6"><label class="form-label small" for="new-venue-courts">Number of courts</label><input id="new-venue-courts" type="number" class="form-control form-control-sm" value="1" min="1" max="100"></div>
-              <div class="col-sm-6"><label class="form-label small" for="new-venue-ball">Court type</label><select id="new-venue-ball" class="form-select form-select-sm"><option value="standard">Standard</option><option value="yellow">Yellow ball</option><option value="orange">Orange ball</option><option value="green">Green ball</option><option value="red">Red ball</option></select></div>
-            </div>
-            <button type="button" id="add-venue" class="btn btn-sm btn-primary mt-3" data-audit-ignore="true"><i class="ti ti-plus me-1"></i><span id="add-venue-label">Add existing venue</span></button>
-            <div class="form-text">Keep adding or editing venues here. Choose Done when finished.</div>
-            <div id="venue-add-status" class="small text-muted mt-2" role="status" aria-live="polite"></div>
-          </div>
-          <div id="venue-editor-list">
-          @forelse($venues as $venue)
-          <details class="venue-editor" data-venue="{{ $venue['id'] }}">
-            <summary><strong class="flex-grow-1">{{ $venue['name'] }}</strong><span class="badge bg-label-primary">{{ $venue['courts'] }} courts</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>
-            <div class="venue-editor-body">
-            <div class="d-flex justify-content-end mt-2"><button type="button" class="btn btn-sm btn-outline-danger remove-venue" data-url="{{ route('backend.event-venue-schedule.venues.remove', [$event, $venue['id']]) }}">Remove from this event</button></div>
-            <div class="small fw-semibold mt-3 mb-2">Edit this venue's court setup</div>
-            <div class="row g-2 venue-court-setup" data-url="{{ route('backend.event-venue-schedule.courts.configure', [$event, $venue['id']]) }}">
-              <div class="col-sm-4"><label class="visually-hidden">Total courts at {{ $venue['name'] }}</label><input type="number" class="form-control form-control-sm setup-court-count" value="{{ $venue['courts'] }}" min="1" max="100" aria-label="Total courts at {{ $venue['name'] }}"></div>
-              <div class="col-sm-5"><label class="visually-hidden">Court type at {{ $venue['name'] }}</label><select class="form-select form-select-sm setup-court-ball"><option value="mixed" disabled {{ $venue['common_ball_type'] === 'mixed' ? 'selected' : '' }}>Mixed types</option><option value="standard" {{ $venue['common_ball_type'] === 'standard' ? 'selected' : '' }}>Standard</option><option value="yellow" {{ $venue['common_ball_type'] === 'yellow' ? 'selected' : '' }}>Yellow</option><option value="orange" {{ $venue['common_ball_type'] === 'orange' ? 'selected' : '' }}>Orange</option><option value="green" {{ $venue['common_ball_type'] === 'green' ? 'selected' : '' }}>Green</option><option value="red" {{ $venue['common_ball_type'] === 'red' ? 'selected' : '' }}>Red</option></select></div>
-              <div class="col-sm-3"><button type="button" class="btn btn-sm btn-primary w-100 update-court-setup" data-has-custom="{{ $venue['has_custom_courts'] ? '1' : '0' }}">Update all</button></div>
-              <div class="col-12"><small class="setup-status text-muted" role="status" aria-live="polite">Sets numbered Courts 1–{{ $venue['courts'] }} to one type{{ $venue['has_custom_courts'] ? ' and replaces specially named courts' : '' }}.</small></div>
-            </div>
-            <div class="small fw-semibold mt-3 mb-2">Individual courts</div>
-            <div class="d-grid gap-2">
-              @foreach($venue['court_list'] as $court)
-                <div class="row g-2 align-items-center">
-                  <div class="col-sm-5 small">Court {{ $court['label'] }}</div>
-                  <div class="col-7 col-sm-4"><select class="form-select form-select-sm edit-court-ball" aria-label="Type for court {{ $court['label'] }} at {{ $venue['name'] }}" data-venue="{{ $venue['id'] }}" data-label="{{ $court['label'] }}"><option value="standard" {{ !$court['ball_type'] || $court['ball_type'] === 'standard' ? 'selected' : '' }}>Standard</option><option value="yellow" {{ $court['ball_type'] === 'yellow' ? 'selected' : '' }}>Yellow</option><option value="orange" {{ $court['ball_type'] === 'orange' ? 'selected' : '' }}>Orange</option><option value="green" {{ $court['ball_type'] === 'green' ? 'selected' : '' }}>Green</option><option value="red" {{ $court['ball_type'] === 'red' ? 'selected' : '' }}>Red</option></select></div>
-                  <div class="col-5 col-sm-3"><button type="button" class="btn btn-sm btn-outline-secondary w-100 update-court-type" data-venue="{{ $venue['id'] }}" data-label="{{ $court['label'] }}">Save</button></div>
-                </div>
-              @endforeach
-            </div>
-            <div class="small fw-semibold mt-3">Add a specially named court</div>
-            <div class="row g-2 mt-2"><div class="col-sm-5"><input class="form-control form-control-sm add-court-label" data-venue="{{ $venue['id'] }}" aria-label="New court label at {{ $venue['name'] }}" placeholder="Court label"></div><div class="col-7 col-sm-4"><select class="form-select form-select-sm add-court-ball" data-venue="{{ $venue['id'] }}" aria-label="New court type"><option value="standard">Standard</option><option value="yellow">Yellow</option><option value="orange">Orange</option><option value="green">Green</option><option value="red">Red</option></select></div><div class="col-5 col-sm-3"><button type="button" class="btn btn-sm btn-outline-primary w-100 add-court" data-venue="{{ $venue['id'] }}">Add</button></div></div>
-            </div>
-          </details>
-          @empty
-            <div class="alert alert-warning mb-0">Add the first venue and its courts before creating allocations.</div>
-          @endforelse
-          </div>
-            </div>
-            <div class="modal-footer"><button type="button" class="btn btn-primary" data-bs-dismiss="modal">Done</button></div>
-          </div>
-        </div>
       </div>
 
       @if($draws->isNotEmpty() && $venues->isNotEmpty())

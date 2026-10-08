@@ -57,14 +57,16 @@ class TeamResultRankingService
         ];
     }
 
-    public function ranking(Event $event, string $group, array $regions, array $formats): Collection
+    public function ranking(Event $event, string $group, array $regions, array $formats, array $excludedResultRegionIds = []): Collection
     {
+        $excludedResultRegionIds = array_map('intval', $excludedResultRegionIds);
         $fixtures = $this->fixtures($event)->filter(fn ($fixture) => ($this->group($fixture)['key'] ?? null) === $group && in_array($this->format($fixture), $formats, true));
         $fixtures->load(['fixturePlayers.player1', 'fixturePlayers.player2', 'fixturePlayers.noProfile1', 'fixturePlayers.noProfile2', 'teamResults', 'teamTie']);
         $teams = app(EventTeamScope::class)->query($event)->with(['players', 'team_players', 'team_players_no_profile', 'competitionSubstitutions', 'regions', 'category.category'])->get();
         $rows = [];
         $performance = [];
         foreach ($fixtures as $fixture) {
+            if (array_intersect(array_map('intval', [$fixture->region1, $fixture->region2]), $excludedResultRegionIds)) continue;
             if ($fixture->team_tie_id && (! $fixture->teamTie || (int) $fixture->teamTie->draw_id !== (int) $fixture->draw_id || ! $fixture->teamTie->home_team_id || ! $fixture->teamTie->away_team_id)) continue;
             // Project missing legacy format only for this private read. Without
             // a set-count rule, require two sets for a completed singles match.
@@ -115,6 +117,7 @@ class TeamResultRankingService
                 $sides[$side] = compact('player', 'team', 'rank', 'identity');
             }
             if (count($sides) !== 2) continue;
+            if (collect($sides)->contains(fn ($entry) => in_array((int) $entry['team']->region_id, $excludedResultRegionIds, true))) continue;
             foreach ($sides as $side => $entry) {
                 if (! in_array((int) $entry['team']->region_id, $regions, true)) continue;
                 $id = $entry['identity'];
@@ -123,6 +126,7 @@ class TeamResultRankingService
                 $rows[$id] ??= ['id' => $id, 'name' => $entry['player']->name.' '.$entry['player']->surname, 'rank' => $entry['rank'], 'ranks' => [], 'teams' => [], 'region' => $entry['team']->regions?->short_name ?? '', 'wins' => 0, 'losses' => 0, 'singles_wins' => 0, 'reverse_singles_wins' => 0, 'sets_won' => 0, 'sets_lost' => 0, 'cross_band_review' => [], 'higher_rank_wins' => 0, 'matches' => []];
                 $rows[$id]['ranks'][] = $entry['rank'];
                 $rows[$id]['teams'][] = $entry['team']->name;
+                $rows[$id]['source_team_ids'][] = (int) $entry['team']->id;
                 $rows[$id][$won ? 'wins' : 'losses']++;
                 if ($won) $rows[$id][$this->format($fixture) === RubberType::SINGLES ? 'singles_wins' : 'reverse_singles_wins']++;
                 $rows[$id]['sets_won'] += $outcome[$side.'_sets'];
@@ -132,7 +136,7 @@ class TeamResultRankingService
                 $performance[$teamId][$rank][$id] ??= ['id' => $id, 'team' => $entry['team']->name, 'wins' => 0, 'losses' => 0];
                 $performance[$teamId][$rank][$id][$won ? 'wins' : 'losses']++;
                 if ($won && $opponent['rank'] < $entry['rank']) $rows[$id]['higher_rank_wins']++;
-                $rows[$id]['matches'][] = ['opponent' => $opponent['player']->name.' '.$opponent['player']->surname, 'opponent_rank' => $opponent['rank'], 'region' => $opponent['team']->regions?->short_name ?? '', 'won' => $won, 'format' => $this->format($fixture), 'score' => $fixture->teamResults->sortBy('set_nr')->map(fn ($set) => $set->team1_score.'–'.$set->team2_score)->implode(', ')];
+                $rows[$id]['matches'][] = ['opponent_id' => $opponent['identity'], 'opponent' => $opponent['player']->name.' '.$opponent['player']->surname, 'opponent_rank' => $opponent['rank'], 'roster_rank' => $entry['rank'], 'region' => $opponent['team']->regions?->short_name ?? '', 'won' => $won, 'sets_won' => $outcome[$side.'_sets'], 'sets_lost' => $outcome[($side === 'home' ? 'away' : 'home').'_sets'], 'format' => $this->format($fixture), 'score' => $fixture->teamResults->sortBy('set_nr')->map(fn ($set) => $set->team1_score.'–'.$set->team2_score)->implode(', ')];
             }
         }
         // Only each source team's unambiguous consecutive roster positions count.
@@ -162,27 +166,108 @@ class TeamResultRankingService
         $ranking = collect($rows)->map(function ($row) {
             $row['ranks'] = array_values(array_unique($row['ranks']));
             $row['teams'] = array_values(array_unique($row['teams']));
+            $row['source_team_ids'] = array_values(array_unique($row['source_team_ids']));
             // Conservative weighting if historic rosters disagree; expose the discrepancy for review.
             $row['rank'] = max($row['ranks']);
             $row['points'] = $this->points($row['rank'], $row['wins']);
             $row['starting_credit'] = 0;
             $row['credited_wins'] = $row['wins'];
             $row['points_per_win'] = $this->points($row['rank'], 1);
+            $row['band_index'] = (int) ceil($row['rank'] / 2);
             $row['band'] = (2 * (int) ceil($row['rank'] / 2) - 1).'–'.(2 * (int) ceil($row['rank'] / 2));
             $row['set_difference'] = $row['sets_won'] - $row['sets_lost'];
             return $row;
-        })->sort(fn ($a, $b) => ($b['points'] <=> $a['points']) ?: ($b['set_difference'] <=> $a['set_difference']) ?: strcasecmp($a['name'], $b['name']) ?: ($a['id'] <=> $b['id']))->values();
+        });
+        $ranking = $ranking->map(function ($row) use ($ranking) {
+            $ownBandMatches = collect($row['matches'])->filter(fn ($match) => (int) ceil($match['opponent_rank'] / 2) === $row['band_index']
+                && (int) ceil($match['roster_rank'] / 2) === $row['band_index']);
+            $row['own_band_record'] = ['wins' => $ownBandMatches->where('won', true)->count(), 'losses' => $ownBandMatches->where('won', false)->count()];
+            $row['band_attribution_uncertain'] = collect($row['ranks'])->map(fn ($rank) => (int) ceil($rank / 2))->unique()->count() > 1;
+            $row['lost_all_counted_band_matches'] = ! $row['band_attribution_uncertain'] && $row['own_band_record']['wins'] === 0 && $row['own_band_record']['losses'] > 0;
+            $row['adjacent_band_comparisons'] = [];
+            foreach ([$row['band_index'] - 1, $row['band_index'] + 1] as $band) {
+                if ($band < 1 || $band > 4) continue;
+                $direct = collect($row['matches'])->filter(fn ($match) => (int) ceil($match['opponent_rank'] / 2) === $band
+                    && (int) ceil($match['roster_rank'] / 2) === $row['band_index']);
+                $opponents = $direct->groupBy(fn ($match) => (string) $match['opponent_id'])->map(fn ($matches) => [
+                    'id' => $matches->first()['opponent_id'], 'name' => $matches->first()['opponent'],
+                    'ranks' => $matches->pluck('opponent_rank')->unique()->values()->all(),
+                    'wins' => $matches->where('won', true)->count(), 'losses' => $matches->where('won', false)->count(),
+                    'sets_won' => $matches->sum('sets_won'), 'sets_lost' => $matches->sum('sets_lost'),
+                ])->values()->all();
+                $row['adjacent_band_comparisons'][] = ['band' => (2 * $band - 1).'–'.(2 * $band),
+                    'direction' => $band < $row['band_index'] ? 'higher' : 'lower', 'direct_matches' => $direct->count(),
+                    'direct_wins' => $direct->where('won', true)->count(), 'direct_losses' => $direct->where('won', false)->count(),
+                    'sets_won' => $direct->sum('sets_won'), 'sets_lost' => $direct->sum('sets_lost'), 'opponents' => $opponents,
+                    'candidate_records' => $ranking->where('band_index', $band)->map(fn ($other) => [
+                        'id' => $other['id'], 'name' => $other['name'], 'ranks' => $other['ranks'], 'wins' => $other['wins'],
+                        'losses' => $other['losses'], 'sets_won' => $other['sets_won'], 'sets_lost' => $other['sets_lost'],
+                    ])->values()->all(),
+                ];
+            }
+            return $row;
+        });
+        return $this->orderRanking($ranking);
+    }
+
+    public function orderRanking(Collection $ranking): Collection
+    {
+        $band = fn ($row) => (int) ceil($row['rank'] / 2);
+        $ranking = $ranking->sort(fn ($a, $b) => ($band($a) <=> $band($b)) ?: ($b['points'] <=> $a['points']) ?: ($b['set_difference'] <=> $a['set_difference']))
+            ->groupBy(fn ($row) => $band($row).':'.$row['points'].':'.$row['set_difference'])
+            ->flatMap(function ($bucket, $scoreKey) {
+                $source = fn ($row) => count($row['source_team_ids']) === 1 && count($row['ranks']) === 1 ? $row['source_team_ids'][0] : null;
+                $singleTeam = $bucket->every(fn ($row) => $source($row) !== null)
+                    && $bucket->map($source)->unique()->count() === 1;
+                $distinctTeams = $bucket->every(fn ($row) => $source($row) !== null)
+                    && $bucket->map($source)->unique()->count() === $bucket->count();
+                $balanced = $distinctTeams && $bucket->count() > 1;
+                $pairCount = null;
+                foreach ($bucket as $row) {
+                    foreach ($bucket as $opponent) {
+                        if ((string) $row['id'] === (string) $opponent['id']) continue;
+                        $matches = collect($row['matches'] ?? [])->filter(fn ($match) => (string) ($match['opponent_id'] ?? '') === (string) $opponent['id']);
+                        $reverse = collect($opponent['matches'] ?? [])->filter(fn ($match) => (string) ($match['opponent_id'] ?? '') === (string) $row['id']);
+                        $pairCount ??= $matches->count();
+                        if ($matches->isEmpty() || $matches->count() !== $pairCount || $reverse->count() !== $pairCount
+                            || $matches->where('won', true)->count() + $reverse->where('won', true)->count() !== $pairCount) $balanced = false;
+                    }
+                }
+                $identities = $bucket->pluck('id')->map('strval')->all();
+                $bucket = $bucket->map(function ($row) use ($identities, $balanced, $singleTeam) {
+                    $direct = collect($row['matches'] ?? [])->filter(fn ($match) => in_array((string) ($match['opponent_id'] ?? ''), $identities, true));
+                    $row['head_to_head'] = ['applied' => $balanced, 'wins' => $direct->where('won', true)->count(),
+                        'tied_players' => count($identities),
+                        'losses' => $direct->where('won', false)->count(),
+                        'reason' => $singleTeam ? 'Same team: roster position decides.' : ($balanced ? 'Balanced direct results among tied players.' : 'Direct results are incomplete, unbalanced, or roster evidence is uncertain.')];
+                    return $row;
+                });
+                // Sorting whole source-team blocks keeps the order transitive.
+                // Mixed or ambiguous source evidence retains its shared tie.
+                return $bucket->sort(function ($a, $b) use ($source, $balanced) {
+                    $aSource = $source($a); $bSource = $source($b);
+                    $blockOrder = ($aSource ?? PHP_INT_MAX) <=> ($bSource ?? PHP_INT_MAX);
+                    return ($balanced ? ($b['head_to_head']['wins'] <=> $a['head_to_head']['wins']) : 0)
+                        ?: $blockOrder ?: (($aSource !== null && $aSource === $bSource) ? ($a['rank'] <=> $b['rank']) : 0)
+                        ?: strcasecmp($a['name'], $b['name']) ?: ((string) $a['id'] <=> (string) $b['id']);
+                })->map(function ($row) use ($scoreKey, $singleTeam, $balanced) {
+                    $row['_position_key'] = $scoreKey.($singleTeam ? ':rank:'.$row['rank'] : ($balanced ? ':h2h:'.$row['head_to_head']['wins'] : ''));
+                    $row['same_team_tiebreak'] = $singleTeam;
+                    return $row;
+                })->values();
+            })->values();
         $cutoff = $ranking->get(9);
         $next = $ranking->get(10);
-        $tieAtCutoff = $cutoff && $next && $cutoff['points'] === $next['points'] && $cutoff['set_difference'] === $next['set_difference'];
+        $tieAtCutoff = $cutoff && $next && $cutoff['_position_key'] === $next['_position_key'];
         $position = 0; $previous = null;
         return $ranking->map(function ($row, $index) use ($cutoff, $tieAtCutoff, &$position, &$previous) {
-            $key = [$row['points'], $row['set_difference']];
+            $key = $row['_position_key'];
             if ($previous !== $key) $position = $index + 1;
             $previous = $key;
             $row['position'] = $position;
-            $row['cutoff_tie'] = $tieAtCutoff && $row['points'] === $cutoff['points'] && $row['set_difference'] === $cutoff['set_difference'];
+            $row['cutoff_tie'] = $tieAtCutoff && $key === $cutoff['_position_key'];
             $row['suggested'] = $index < 10 && ! $row['cutoff_tie'];
+            unset($row['_position_key']);
             return $row;
         });
     }

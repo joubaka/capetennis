@@ -16,10 +16,11 @@ class TeamResultSelectionDraftService
         $setup = $this->rankings->setup($event);
         abort_unless($setup['groups']->contains('key', $input['group_key']), 404);
         $regions = array_map('intval', $input['region_ids']);
-        if (array_diff($regions, $setup['regions']->pluck('id')->all()) || array_diff($input['formats'], $setup['formats']->all())) {
+        $excludedResultRegions = array_map('intval', $input['excluded_result_region_ids'] ?? []);
+        if (array_diff($regions, $setup['regions']->pluck('id')->all()) || array_diff($excludedResultRegions, $setup['regions']->pluck('id')->all()) || array_diff($input['formats'], $setup['formats']->all())) {
             throw ValidationException::withMessages(['setup' => 'Choose regions and singles formats belonging to this event.']);
         }
-        $ranking = $this->rankings->ranking($event, $input['group_key'], $regions, $input['formats']);
+        $ranking = $this->rankings->ranking($event, $input['group_key'], $regions, $input['formats'], $excludedResultRegions);
         $candidates = $ranking->keyBy(fn ($row) => (string) $row['id']);
         $selected = array_map('strval', $input['selected_keys']);
         if (count($selected) !== count(array_unique($selected)) || array_diff($selected, $candidates->keys()->map(fn ($key) => (string) $key)->all())) {
@@ -44,18 +45,19 @@ class TeamResultSelectionDraftService
         $selected = $ranking->filter(fn ($row) => in_array((string) $row['id'], $selected, true))
             ->map(fn ($row) => (string) $row['id'])->values()->all();
 
-        return DB::transaction(function () use ($event, $input, $actorId, $ranking, $regions, $selected, $reasons) {
+        return DB::transaction(function () use ($event, $input, $actorId, $ranking, $regions, $excludedResultRegions, $selected, $reasons) {
             // The event lock also serializes creation when no draft row exists yet.
             Event::whereKey($event->id)->lockForUpdate()->firstOrFail();
             $draft = TeamResultSelectionDraft::where('event_id', $event->id)->where('group_key', $input['group_key'])->lockForUpdate()->first();
             abort_if((int) ($draft?->version ?? 0) !== $input['version'], 409, 'This draft changed. Reload it before saving.');
             $draft ??= new TeamResultSelectionDraft(['event_id' => $event->id, 'group_key' => $input['group_key']]);
             $draft->fill(['version' => $input['version'] + 1, 'region_ids' => $regions,
+                'excluded_result_region_ids' => $excludedResultRegions,
                 'formats' => $input['formats'], 'selected_keys' => $selected, 'reasons' => $reasons,
                 'snapshot' => $ranking->values()->all(), 'updated_by' => $actorId])->save();
             DB::table('team_result_selection_revisions')->insert([
                 'draft_id' => $draft->id, 'version' => $draft->version,
-                'evidence' => json_encode($draft->only(['region_ids', 'formats', 'selected_keys', 'reasons', 'snapshot']), JSON_THROW_ON_ERROR),
+                'evidence' => json_encode($draft->only(['region_ids', 'excluded_result_region_ids', 'formats', 'selected_keys', 'reasons', 'snapshot']), JSON_THROW_ON_ERROR),
                 'created_by' => $actorId, 'created_at' => now(),
             ]);
             return $draft;

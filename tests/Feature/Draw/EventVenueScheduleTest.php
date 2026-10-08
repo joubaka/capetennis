@@ -1079,6 +1079,7 @@ class EventVenueScheduleTest extends TestCase
             ->assertSee('Venues & courts', false)
             ->assertSee('Assigned to this event')
             ->assertSee('Edit venues & courts', false)
+            ->assertSeeInOrder(['id="venue-management"', 'id="venue-management-modal"', 'id="programme-wizard"', 'id="court-allocation-step"'], false)
             ->assertSee('id="venue-management-modal"', false)
             ->assertSee('id="use-existing-venue"', false)
             ->assertSee('id="create-new-venue"', false)

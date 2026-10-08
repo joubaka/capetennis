@@ -1,11 +1,12 @@
 <h3 class="h5">Player points ranking</h3>
-<p class="small text-muted">Completed singles only. Each match win earns 100 points at ranks 1–2, 35 at ranks 3–4, 12 at ranks 5–6, or 2 at ranks 7–8. Equal points share the same position.</p>
+<p class="small text-muted">Completed singles only. Roster bands come first: 1–2, 3–4, 5–6, then 7–8. Within each band, each match win earns 100, 35, 12, or 2 points respectively. Equal points within the same band share the same position.</p>
 <ol class="list-group mb-4" aria-label="Player points ranking">
   @php $position = 0; $previousPoints = null; @endphp
   @foreach($ranking as $index => $player)
     @php
-      if ($previousPoints !== $player['points']) $position = $index + 1;
-      $previousPoints = $player['points'];
+      $positionKey = [(int) ceil($player['rank'] / 2), $player['points']];
+      if ($previousPoints !== $positionKey) $position = $index + 1;
+      $previousPoints = $positionKey;
     @endphp
     <li class="list-group-item d-flex align-items-center gap-3">
       <span class="badge bg-label-primary">{{ $position }}</span>

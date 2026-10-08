@@ -18,6 +18,198 @@ class TeamWorkspaceResultsTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_band_first_keeps_zero_win_player_above_winning_lower_band(): void
+    {
+        [$event, , $draw, $home, $away] = $this->groupedScenario();
+        TeamPlayer::where('player_id', $home->id)->update(['rank' => 1]);
+        TeamPlayer::where('player_id', $away->id)->update(['rank' => 3]);
+        $this->fixture($draw, $home, $away, [[1, 6], [1, 6]]);
+        $this->groupedRequest($event)->assertOk()->assertJsonPath('ranking.0.id', $home->id)
+            ->assertJsonPath('ranking.0.points', 0)->assertJsonPath('ranking.0.band', '1–2')
+            ->assertJsonPath('ranking.0.lost_all_counted_band_matches', false)
+            ->assertJsonPath('ranking.1.id', $away->id)->assertJsonPath('ranking.1.points', 35);
+    }
+
+    public function test_adjacent_direct_comparisons_and_own_band_loss_flags_use_only_counted_formats_and_regions(): void
+    {
+        [$event, $category, $draw, $home, $away] = $this->groupedScenario();
+        TeamPlayer::where('player_id', $away->id)->update(['rank' => 1]);
+        $opponentRegion = \App\Models\TeamRegion::create(['region_name' => 'Own band opponents']);
+        $event->regions()->attach($opponentRegion);
+        $third = Player::factory()->create(['name' => 'OwnBandOpponent']);
+        $team = Team::factory()->create(['category_event_id' => $category->id, 'region_id' => $opponentRegion->id]);
+        TeamPlayer::create(['team_id' => $team->id, 'player_id' => $third->id, 'rank' => 4]);
+        $this->fixture($draw, $home, $away, [[6, 1], [6, 1]], 4);
+        $this->fixture($draw, $home, $third, [[1, 6], [1, 6]]);
+        $counts = [TeamFixture::count(), \App\Models\TeamFixtureResult::count(), TeamPlayer::count()];
+        $ranking = collect($this->groupedRequest($event)->assertOk()->json('ranking'))->keyBy('id');
+        $row = $ranking[$home->id];
+        $this->assertSame(['wins' => 0, 'losses' => 1], $row['own_band_record']);
+        $this->assertTrue($row['lost_all_counted_band_matches']); // A cross-band win does not erase an own-band losing record.
+        $this->assertSame(1, $row['wins']);
+        $comparison = collect($row['adjacent_band_comparisons'])->firstWhere('direction', 'higher');
+        $this->assertSame(1, $comparison['direct_wins']);
+        $this->assertSame(0, $comparison['direct_losses']);
+        $this->assertSame(2, $comparison['sets_won']);
+        $this->assertSame($away->id, $comparison['opponents'][0]['id']);
+        $this->assertSame([$away->id], array_column($comparison['candidate_records'], 'id'));
+        $singles = $this->groupedRequest($event, ['formats' => ['singles']])->assertOk();
+        $singlesRow = collect($singles->json('ranking'))->firstWhere('id', $home->id);
+        $this->assertSame(0, $singlesRow['adjacent_band_comparisons'][0]['direct_matches']);
+        $this->assertTrue($singlesRow['lost_all_counted_band_matches']);
+        $this->assertStringContainsString('No direct meetings', $singles->json('html'));
+        $excluded = collect($this->groupedRequest($event, ['excluded_result_region_ids' => [$opponentRegion->id]])->assertOk()->json('ranking'))->firstWhere('id', $home->id);
+        $this->assertSame(['wins' => 0, 'losses' => 0], $excluded['own_band_record']);
+        $this->assertFalse($excluded['lost_all_counted_band_matches']);
+        $this->assertSame(1, $excluded['adjacent_band_comparisons'][0]['direct_wins']);
+        $this->assertSame($counts, [TeamFixture::count(), \App\Models\TeamFixtureResult::count(), TeamPlayer::count()]);
+    }
+
+    public function test_roster_evidence_spanning_bands_withholds_definitive_lost_all_flag(): void
+    {
+        [$event, , $draw, $home, $away] = $this->groupedScenario();
+        $this->fixture($draw, $home, $away, [[1, 6], [1, 6]]);
+        $category = CategoryEvent::factory()->create(['event_id' => $event->id]);
+        $category->category->update(['name' => 'u/10 Boys']);
+        $otherDraw = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => $category->id]);
+        foreach ([[$home, 1], [$away, 2]] as [$player, $rank]) {
+            $team = Team::factory()->create(['category_event_id' => $category->id, 'region_id' => $event->regions->first()->id]);
+            TeamPlayer::create(['team_id' => $team->id, 'player_id' => $player->id, 'rank' => $rank]);
+        }
+        $this->fixture($otherDraw, $home, $away, [[1, 6], [1, 6]]);
+        $row = collect($this->groupedRequest($event)->assertOk()->json('ranking'))->firstWhere('id', $home->id);
+        $this->assertTrue($row['band_attribution_uncertain']);
+        $this->assertSame(['wins' => 0, 'losses' => 1], $row['own_band_record']);
+        $this->assertFalse($row['lost_all_counted_band_matches']);
+    }
+
+    public function test_result_region_exclusion_is_separate_from_candidate_regions_and_persists_in_draft_evidence(): void
+    {
+        [$event, $category, $draw, $home, $away] = $this->groupedScenario();
+        $homeRegion = $event->regions->first();
+        $excluded = \App\Models\TeamRegion::create(['region_name' => 'Excluded opponents']);
+        $retained = \App\Models\TeamRegion::create(['region_name' => 'Retained opponents']);
+        $event->regions()->attach([$excluded->id, $retained->id]);
+        $homeTeam = TeamPlayer::where('player_id', $home->id)->first()->team;
+        $awayTeam = TeamPlayer::where('player_id', $away->id)->first()->team;
+        $awayTeam->update(['region_id' => $excluded->id]);
+        $third = Player::factory()->create();
+        $thirdTeam = Team::factory()->create(['category_event_id' => $category->id, 'region_id' => $retained->id]);
+        TeamPlayer::create(['team_id' => $thirdTeam->id, 'player_id' => $third->id, 'rank' => 4]);
+        $this->fixture($draw, $home, $away, [[6, 1], [6, 1]]);
+        $tie = \App\Models\TeamTie::create(['draw_id' => $draw->id, 'round_nr' => 1, 'tie_nr' => 1, 'home_team_id' => $homeTeam->id, 'away_team_id' => $awayTeam->id]);
+        TeamFixture::where('draw_id', $draw->id)->update(['team_tie_id' => $tie->id, 'region1' => null, 'region2' => null]);
+        $this->fixture($draw, $home, $third, [[1, 6], [1, 6]]);
+        $this->fixture($draw, $away, $third, [[6, 1], [6, 1]]);
+        $counts = [TeamFixture::count(), \App\Models\TeamFixtureResult::count(), TeamPlayer::count()];
+        $candidateSetup = ['regions' => [$homeRegion->id]];
+        $this->groupedRequest($event, $candidateSetup)->assertOk()->assertJsonCount(1, 'ranking')
+            ->assertJsonPath('ranking.0.wins', 1)->assertJsonPath('ranking.0.losses', 1)->assertJsonCount(2, 'ranking.0.matches');
+        $this->groupedRequest($event, $candidateSetup + ['excluded_result_region_ids' => [$excluded->id]])->assertOk()
+            ->assertJsonCount(1, 'ranking')->assertJsonPath('ranking.0.id', $home->id)->assertJsonPath('ranking.0.points', 0)
+            ->assertJsonPath('ranking.0.wins', 0)->assertJsonPath('ranking.0.losses', 1)->assertJsonPath('ranking.0.set_difference', -2)->assertJsonCount(1, 'ranking.0.matches');
+        $this->groupedRequest($event, $candidateSetup + ['excluded_result_region_ids' => [$retained->id]])->assertOk()
+            ->assertJsonPath('ranking.0.wins', 1)->assertJsonPath('ranking.0.losses', 0);
+        $this->groupedRequest($event, ['regions' => [$homeRegion->id, $excluded->id]])->assertOk()
+            ->assertJsonPath('ranking.0.id', $home->id)->assertJsonPath('ranking.0.head_to_head.applied', true)
+            ->assertJsonPath('ranking.0.head_to_head.wins', 1)->assertJsonPath('ranking.1.id', $away->id);
+        $withoutDirect = $this->groupedRequest($event, ['regions' => [$homeRegion->id, $excluded->id], 'excluded_result_region_ids' => [$excluded->id]])->assertOk()
+            ->assertJsonCount(1, 'ranking')->assertJsonPath('ranking.0.head_to_head.applied', false);
+        $this->assertNotContains($away->id, array_column($withoutDirect->json('ranking.0.matches'), 'opponent_id'));
+        $this->groupedRequest($event, ['excluded_result_region_ids' => [$homeRegion->id, $excluded->id, $retained->id]])->assertOk()->assertJsonCount(0, 'ranking');
+        $input = ['group_key' => '10-boys', 'region_ids' => [$homeRegion->id], 'excluded_result_region_ids' => [$excluded->id],
+            'formats' => ['singles'], 'selected_keys' => [(string) $home->id], 'reasons' => [], 'version' => 0];
+        $this->putJson(route('backend.team-result-selection.store', $event), $input)->assertOk()
+            ->assertJsonPath('draft.excluded_result_region_ids.0', $excluded->id)->assertJsonPath('draft.snapshot.0.points', 0);
+        $this->getJson(route('backend.team-result-selection.show', $event).'?group_key=10-boys')->assertOk()->assertJsonPath('draft.excluded_result_region_ids.0', $excluded->id);
+        $evidence = json_decode(\Illuminate\Support\Facades\DB::table('team_result_selection_revisions')->first()->evidence, true);
+        $this->assertSame([$excluded->id], $evidence['excluded_result_region_ids']);
+        $foreign = \App\Models\TeamRegion::create(['region_name' => 'Foreign region']);
+        $this->putJson(route('backend.team-result-selection.store', $event), array_replace($input, ['version' => 1,
+            'excluded_result_region_ids' => [$homeRegion->id, $excluded->id, $retained->id]]))->assertUnprocessable();
+        $this->groupedRequest($event, ['excluded_result_region_ids' => [$foreign->id]])->assertUnprocessable();
+        $this->putJson(route('backend.team-result-selection.store', $event), array_replace($input, ['version' => 1, 'excluded_result_region_ids' => [$foreign->id]]))->assertUnprocessable();
+        $this->assertDatabaseCount('team_result_selection_revisions', 1);
+        $this->assertSame($counts, [TeamFixture::count(), \App\Models\TeamFixtureResult::count(), TeamPlayer::count()]);
+    }
+
+    public function test_head_to_head_uses_identity_and_balanced_direct_results_and_preserves_split_or_cyclic_ties(): void
+    {
+        $service = app(\App\Services\TeamResultRankingService::class);
+        $a = ['id' => 1, 'name' => 'Zulu', 'points' => 100, 'set_difference' => 0, 'source_team_ids' => [10], 'ranks' => [1], 'rank' => 1,
+            'matches' => [['opponent_id' => 2, 'opponent' => 'Wrong name', 'won' => true]]];
+        $b = array_replace($a, ['id' => 2, 'name' => 'Aaron', 'source_team_ids' => [20], 'matches' => [['opponent_id' => 1, 'won' => false]]]);
+        $ranking = $service->orderRanking(collect([$b, $a]));
+        $this->assertSame([1, 2], $ranking->pluck('id')->all());
+        $this->assertSame([1, 2], $ranking->pluck('position')->all());
+        $this->assertSame(1, $ranking[0]['head_to_head']['wins']);
+        $this->assertTrue($ranking[0]['head_to_head']['applied']);
+        $a['matches'][] = ['opponent_id' => 2, 'won' => false];
+        $b['matches'][] = ['opponent_id' => 1, 'won' => true];
+        $split = $service->orderRanking(collect([$a, $b]));
+        $this->assertSame([1, 1], $split->pluck('position')->all());
+        $c = array_replace($a, ['id' => 'imported:30:3', 'name' => 'Middle', 'source_team_ids' => [30], 'matches' => [
+            ['opponent_id' => 1, 'won' => true], ['opponent_id' => 2, 'won' => false]]]);
+        $a['matches'] = [['opponent_id' => 2, 'won' => true], ['opponent_id' => $c['id'], 'won' => false]];
+        $b['matches'] = [['opponent_id' => 1, 'won' => false], ['opponent_id' => $c['id'], 'won' => true]];
+        $cycle = $service->orderRanking(collect([$c, $b, $a]));
+        $this->assertSame([1, 1, 1], $cycle->pluck('position')->all());
+        $this->assertTrue($cycle->every(fn ($row) => $row['head_to_head']['applied']));
+        $this->assertSame($cycle->all(), $service->orderRanking(collect([$a, $c, $b]))->all());
+        $a['matches'][1]['won'] = true;
+        $c['matches'][0]['won'] = false;
+        $miniLeague = $service->orderRanking(collect([$c, $b, $a]));
+        $this->assertSame([1, 2, $c['id']], $miniLeague->pluck('id')->all());
+        $this->assertSame([1, 2, 3], $miniLeague->pluck('position')->all());
+        $c['matches'] = [];
+        $incomplete = $service->orderRanking(collect([$a, $b, $c]));
+        $this->assertSame([1, 1, 1], $incomplete->pluck('position')->all());
+        $this->assertFalse($incomplete[0]['head_to_head']['applied']);
+    }
+
+    public function test_same_team_final_tie_uses_higher_roster_position_after_points_and_sets(): void
+    {
+        [$event, , $draw, $home, $away] = $this->groupedScenario();
+        $home->update(['name' => 'Zulu']);
+        $away->update(['name' => 'Aaron']);
+        $member = TeamPlayer::where('player_id', $home->id)->first();
+        $member->update(['rank' => 1]);
+        TeamPlayer::where('player_id', $away->id)->update(['team_id' => $member->team_id, 'rank' => 2]);
+        $this->fixture($draw, $home, $away, [[6, 1], [6, 1]]);
+        $this->fixture($draw, $home, $away, [[1, 6], [1, 6]]);
+        $this->groupedRequest($event)->assertOk()->assertJsonPath('ranking.0.id', $home->id)
+            ->assertJsonPath('ranking.0.position', 1)->assertJsonPath('ranking.1.position', 2)
+            ->assertJsonPath('ranking.0.points', 100)->assertJsonPath('ranking.1.points', 100)
+            ->assertJsonPath('ranking.0.set_difference', 0)->assertJsonPath('ranking.1.set_difference', 0);
+    }
+
+    public function test_same_team_cutoff_resolves_but_mixed_or_ambiguous_team_ties_stay_shared_and_deterministic(): void
+    {
+        $service = app(\App\Services\TeamResultRankingService::class);
+        $leaders = collect(range(1, 9))->map(fn ($id) => ['id' => $id, 'name' => 'Leader'.$id, 'points' => 1000 - $id,
+            'set_difference' => 0, 'source_team_ids' => [30], 'ranks' => [1], 'rank' => 1]);
+        $higher = ['id' => 10, 'name' => 'Zulu', 'points' => 100, 'set_difference' => 0, 'source_team_ids' => [10], 'ranks' => [1], 'rank' => 1];
+        $lower = array_replace($higher, ['id' => 11, 'name' => 'Aaron', 'ranks' => [2], 'rank' => 2]);
+        $resolved = $service->orderRanking($leaders->concat([$lower, $higher]));
+        $this->assertSame([10, 11], $resolved->slice(9)->pluck('id')->all());
+        $this->assertSame([10, 11], $resolved->slice(9)->pluck('position')->all());
+        $this->assertCount(0, $resolved->where('cutoff_tie', true));
+        $this->assertTrue($resolved[9]['suggested']);
+        $this->assertFalse($resolved[10]['suggested']);
+        foreach ([array_replace($higher, ['id' => 12, 'name' => 'Middle', 'source_team_ids' => [20]]),
+            array_replace($higher, ['id' => 12, 'name' => 'Ambiguous', 'source_team_ids' => [10, 20]]),
+            array_replace($higher, ['id' => 12, 'name' => 'Multiple ranks', 'ranks' => [1, 2], 'rank' => 2])] as $foreign) {
+            $rows = $leaders->concat([$lower, $foreign, $higher]);
+            $ranking = $service->orderRanking($rows);
+            $this->assertSame($ranking->all(), $service->orderRanking($rows->reverse())->all());
+            $this->assertSame([10, 10, 10], $ranking->slice(9)->pluck('position')->all());
+            $this->assertCount(3, $ranking->where('cutoff_tie', true));
+            $this->assertCount(9, $ranking->where('suggested', true));
+        }
+        $equalRank = $service->orderRanking($leaders->concat([$higher, array_replace($higher, ['id' => 11])]));
+        $this->assertCount(2, $equalRank->where('cutoff_tie', true));
+    }
+
     public function test_positions_in_each_band_have_equal_weight_and_zero_wins_earn_zero_points(): void
     {
         $service = app(\App\Services\TeamResultRankingService::class);
@@ -54,13 +246,14 @@ class TeamWorkspaceResultsTest extends TestCase
         \Illuminate\Support\Facades\DB::table('team_result_selection_revisions')->insert([
             'draft_id' => $draft->id, 'version' => 1, 'evidence' => $oldEvidence, 'created_by' => auth()->id(), 'created_at' => now(),
         ]);
-        $this->getJson(route('backend.team-result-selection.show', $event).'?group_key=10-boys')->assertOk()->assertJsonPath('draft.snapshot.0.points', 70);
+        $storedOldEvidence = \Illuminate\Support\Facades\DB::table('team_result_selection_revisions')->where('draft_id', $draft->id)->where('version', 1)->value('evidence');
+        $this->getJson(route('backend.team-result-selection.show', $event).'?group_key=10-boys')->assertOk()->assertJsonPath('draft.snapshot.0.points', 70)->assertJsonPath('draft.excluded_result_region_ids', []);
         $current = $this->groupedRequest($event)->assertOk()->assertJsonPath('ranking.0.points', 35);
         $this->assertStringNotContainsString('Starting credit', $current->json('html'));
         $this->assertStringContainsString('Points per win', $current->json('html'));
         $this->putJson(route('backend.team-result-selection.store', $event), array_replace($input, ['version' => 1]))
             ->assertOk()->assertJsonPath('draft.version', 2)->assertJsonPath('draft.snapshot.0.points', 35)->assertJsonPath('draft.snapshot.0.starting_credit', 0);
-        $this->assertSame(json_decode($oldEvidence, true), json_decode(\Illuminate\Support\Facades\DB::table('team_result_selection_revisions')->where('draft_id', $draft->id)->where('version', 1)->value('evidence'), true));
+        $this->assertSame($storedOldEvidence, \Illuminate\Support\Facades\DB::table('team_result_selection_revisions')->where('draft_id', $draft->id)->where('version', 1)->value('evidence'));
         $this->assertDatabaseCount('team_result_selection_revisions', 2);
     }
 

@@ -72,6 +72,8 @@
 .result-rules p { font-size: .8rem; line-height: 1.55; margin: 0 0 .75rem; color: #526580; }
 .result-player-list { list-style: none; padding: 0; margin: 0; display: grid; gap: .75rem; }
 .result-player-card { border: 1px solid var(--roster-border); border-radius: 10px; padding: .8rem; }
+.result-player-card.result-player-card-lost-all { background: #fff1f2; }
+.result-player-card.result-player-card-won-all { background: #edf8f1; }
 .result-player-card:has([data-selection-player]:checked) { border-color: #9abcc2; }
 .result-player-heading { display: flex; align-items: center; gap: .65rem; }
 .team-admin-workspace .result-player-select { width: 44px; justify-content: center; flex: 0 0 44px; border-radius: 8px; background: #f5f8fc; }
