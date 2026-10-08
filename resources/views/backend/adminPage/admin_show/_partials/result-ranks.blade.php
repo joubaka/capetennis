@@ -31,7 +31,7 @@
     </aside>
     <section class="result-ranking-panel" aria-label="Player ranking and draft selection">
       <div class="result-ranking-header">
-        <div><h5 id="category-name"></h5><span class="result-heading-hint">Roster-weighted ranking · Select up to 10</span></div>
+        <div><h5 id="category-name"></h5><span class="result-heading-hint">Band-weighted match wins · Select up to 10</span></div>
         <div class="result-draft-actions"><button type="button" class="btn btn-outline-primary" data-selection-load>Load draft</button><button type="button" class="btn btn-primary" data-selection-save>Save draft</button></div>
       </div>
       <div data-selection-status role="status" class="result-draft-status"></div>

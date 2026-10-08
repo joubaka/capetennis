@@ -1,5 +1,5 @@
 <h3 class="h5">Player points ranking</h3>
-<p class="small text-muted">Completed singles only. Points use the existing roster-rank weighting. Equal points share the same position.</p>
+<p class="small text-muted">Completed singles only. Each match win earns 100 points at ranks 1–2, 35 at ranks 3–4, 12 at ranks 5–6, or 2 at ranks 7–8. Equal points share the same position.</p>
 <ol class="list-group mb-4" aria-label="Player points ranking">
   @php $position = 0; $previousPoints = null; @endphp
   @foreach($ranking as $index => $player)

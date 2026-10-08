@@ -1,6 +1,6 @@
 <details class="result-rules">
   <summary>How the ranking works</summary>
-  <p>Roster-weighted points come first, including one starting win credit for odd roster positions. Equal points are ordered by completed-match sets won minus sets lost. Region filters choose candidates; their results against all event opponents in the selected formats are retained. Explain departures from the suggestions before saving a draft.</p>
+  <p>Points equal completed match wins multiplied by the roster-band weight: ranks 1–2 earn 100 points per win, 3–4 earn 35, 5–6 earn 12, and 7–8 earn 2. Both positions in each band have equal weight. Equal points are ordered by completed-match sets won minus sets lost. Region filters choose candidates; their results against all event opponents in the selected formats are retained. Explain departures from the suggestions before saving a draft.</p>
 </details>
 @if($ranking->isEmpty())
   <div class="result-empty" role="status"><i class="ti ti-scoreboard" aria-hidden="true"></i><strong>No completed singles results</strong><p>Check the regions and match formats in Setup, or choose another age group. Incomplete matches and doubles are excluded.</p></div>
@@ -23,15 +23,15 @@
         @if($player['higher_rank_wins'])<span class="result-tag">{{ $player['higher_rank_wins'] }} win(s) over higher-rostered opponents</span>@endif
       </div>
       <dl class="result-metrics">
-        <div><dt>Starting credit</dt><dd>{{ $player['starting_credit'] }}</dd></div>
+        <div><dt>Points per win</dt><dd>{{ $player['points_per_win'] }}</dd></div>
         <div><dt>Singles wins</dt><dd>{{ $player['singles_wins'] }}</dd></div>
         <div><dt>Reverse wins</dt><dd>{{ $player['reverse_singles_wins'] }}</dd></div>
-        <div><dt>Credited wins</dt><dd>{{ $player['credited_wins'] }}</dd></div>
+        <div><dt>Match wins</dt><dd>{{ $player['wins'] }}</dd></div>
         <div><dt>Sets won / lost</dt><dd>{{ $player['sets_won'] }} / {{ $player['sets_lost'] }}</dd></div>
         <div><dt>Set difference</dt><dd>{{ $player['set_difference'] > 0 ? '+' : '' }}{{ $player['set_difference'] }}</dd></div>
       </dl>
       @foreach($player['cross_band_review'] as $review)
-        <details class="result-review-notice result-review-details"><summary><strong>REVIEW across bands</strong> · {{ $review['team'] }} · Ranks {{ implode(', ', $review['ranks']) }}</summary><p>Each consecutive player has at least two completed matches and more wins than losses in this setup. Starting credits are excluded. Review the team strength; the weighted order is retained.</p><div class="result-review-records">@foreach($review['records'] as $rank => $record)<span>Rank {{ $rank }}: {{ $record['wins'] }}W / {{ $record['losses'] }}L</span>@endforeach</div></details>
+        <details class="result-review-notice result-review-details"><summary><strong>REVIEW across bands</strong> · {{ $review['team'] }} · Ranks {{ implode(', ', $review['ranks']) }}</summary><p>Each consecutive player has at least two completed matches and more wins than losses in this setup. Review the team strength; the band-weighted order is retained.</p><div class="result-review-records">@foreach($review['records'] as $rank => $record)<span>Rank {{ $rank }}: {{ $record['wins'] }}W / {{ $record['losses'] }}L</span>@endforeach</div></details>
       @endforeach
       @if(count($player['ranks']) > 1)<p class="result-review-notice">Roster ranks differ across teams. Weighting uses rank {{ $player['rank'] }}; review before selection.</p>@endif
       <div class="result-player-disclosures">

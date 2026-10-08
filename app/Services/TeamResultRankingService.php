@@ -136,7 +136,7 @@ class TeamResultRankingService
             }
         }
         // Only each source team's unambiguous consecutive roster positions count.
-        // Starting credits are never evidence of a winning record.
+        // Only completed match wins supply evidence of a winning record.
         foreach ($performance as $teamId => $ranks) {
             ksort($ranks);
             $identityRanks = [];
@@ -165,8 +165,9 @@ class TeamResultRankingService
             // Conservative weighting if historic rosters disagree; expose the discrepancy for review.
             $row['rank'] = max($row['ranks']);
             $row['points'] = $this->points($row['rank'], $row['wins']);
-            $row['starting_credit'] = $row['rank'] % 2 === 1 ? 1 : 0;
-            $row['credited_wins'] = $row['wins'] + $row['starting_credit'];
+            $row['starting_credit'] = 0;
+            $row['credited_wins'] = $row['wins'];
+            $row['points_per_win'] = $this->points($row['rank'], 1);
             $row['band'] = (2 * (int) ceil($row['rank'] / 2) - 1).'–'.(2 * (int) ceil($row['rank'] / 2));
             $row['set_difference'] = $row['sets_won'] - $row['sets_lost'];
             return $row;
@@ -188,7 +189,7 @@ class TeamResultRankingService
 
     public function points(int $rank, int $wins): int
     {
-        $weight = match ($rank) { 1 => 100, 2 => 50, 3, 4 => 35, 5, 6 => 12, 7, 8 => 2, default => 0 };
-        return ($wins + ($rank % 2 === 1 ? 1 : 0)) * $weight;
+        $weight = match ($rank) { 1, 2 => 100, 3, 4 => 35, 5, 6 => 12, 7, 8 => 2, default => 0 };
+        return $wins * $weight;
     }
 }
