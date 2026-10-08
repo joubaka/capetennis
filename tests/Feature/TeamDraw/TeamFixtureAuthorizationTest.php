@@ -231,6 +231,12 @@ class TeamFixtureAuthorizationTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_empty_fixture_detail_prepares_lineup_for_http_render(): void
+    {
+        $this->actingAs($this->admin)->get(route('backend.team-fixtures.show', $this->fixture))
+            ->assertOk()->assertSee('Fixture details')->assertSee('No player rows linked to this fixture yet.');
+    }
+
     public function test_event_admin_can_show_fixture_with_both_teams(): void
     {
         $home = Team::factory()->create(['name' => 'Home team']);

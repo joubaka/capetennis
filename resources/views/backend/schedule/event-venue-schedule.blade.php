@@ -382,6 +382,7 @@
                 <span class="draw-heading">
                   <span class="draw-name fw-semibold">{{ $draw['name'] }}</span>
                   <span class="draw-preview" data-draw-summary="{{ $draw['id'] }}" aria-label="Assigned venues and courts">
+                    @php $roundAssignments = collect($scheduleDraft['round_venue_setups'] ?? [])->where('draw_id', $draw['id'])->sortBy('round'); @endphp
                     @forelse($venues->whereIn('id', $draw['venues']) as $assignedVenue)
                       @php
                         $previewLabels = $draw['court_allocations'][$assignedVenue['id']] ?? [];
@@ -389,8 +390,16 @@
                       @endphp
                       <span class="badge bg-label-primary">{{ $assignedVenue['name'] }} · {{ $previewCourtCount }} {{ Str::plural('court', $previewCourtCount) }}</span>
                     @empty
-                      <span class="badge bg-label-secondary">No venue assigned</span>
+                      @if($roundAssignments->isEmpty())
+                        <span class="badge bg-label-secondary">No venue assigned</span>
+                      @endif
                     @endforelse
+                    @foreach($roundAssignments as $roundAssignment)
+                      @foreach($roundAssignment['court_allocations'] as $allocation)
+                        @php $roundVenue = $venues->firstWhere('id', $allocation['venue_id']); @endphp
+                        <span class="badge bg-label-primary">Round {{ $roundAssignment['round'] }}  -  {{ $roundVenue['name'] ?? 'Venue' }}  -  {{ count($allocation['court_labels']) }} {{ Str::plural('court', count($allocation['court_labels'])) }}</span>
+                      @endforeach
+                    @endforeach
                   </span>
                 </span>
                 @if($draw['locked'])
@@ -906,6 +915,7 @@
     const summary = document.querySelector(`[data-court-summary="${drawId}-${venueId}"]`);
     if (summary) summary.textContent = !venue?.checked ? 'Not used' : selected === courts.length ? `All ${courts.length}` : `${selected} of ${courts.length}`;
   };
+  let roundVenueSetups = @json($scheduleDraft['round_venue_setups'] ?? []);
   const updateDrawSummary = drawId => {
     const summary = document.querySelector(`[data-draw-summary="${drawId}"]`);
     const assigned = [...document.querySelectorAll(`.assignment-choice[data-draw="${drawId}"]:checked`)];
@@ -917,6 +927,16 @@
         badge.textContent = `${venue.dataset.venueName} · ${selectedCourts} ${selectedCourts === 1 ? 'court' : 'courts'}`;
         return badge;
       });
+      roundVenueSetups.filter(row => Number(row.draw_id) === Number(drawId))
+        .sort((left, right) => Number(left.round) - Number(right.round))
+        .forEach(row => row.court_allocations.forEach(allocation => {
+          const venue = document.querySelector(`.assignment-choice[data-draw="${drawId}"][value="${allocation.venue_id}"]`);
+          const badge = document.createElement('span');
+          const count = allocation.court_labels.length;
+          badge.className = 'badge bg-label-primary';
+          badge.textContent = `Round ${row.round}  -  ${venue?.dataset.venueName || 'Venue'}  -  ${count} ${count === 1 ? 'court' : 'courts'}`;
+          badges.push(badge);
+        }));
       if (!badges.length) {
         const emptyBadge = document.createElement('span');
         emptyBadge.className = 'badge bg-label-secondary';
@@ -2103,7 +2123,6 @@
     min_rank: min > limit || max > limit ? NaN : paired ? (Number.isInteger(min) ? min * 2 - 1 : NaN) : min,
     max_rank: min > limit || max > limit ? NaN : paired ? (Number.isInteger(max) ? max * 2 : NaN) : max,
   });
-  let roundVenueSetups = @json($scheduleDraft['round_venue_setups'] ?? []);
   const programmeRoundSetup = (drawId, round) => roundVenueSetups.find(row => Number(row.draw_id) === Number(drawId) && Number(row.round) === Number(round));
   const programmeDrawSetup = (draw, rules, round = null) => {
     const override = programmeRoundSetup(draw.id, round);
@@ -2266,6 +2285,7 @@
       const round_venue_setups = setup.assignments.flatMap(assignment => rounds.map(round => ({...assignment, round, rank_venue_preferences:setup.rules.filter(rule => rule.draw_ids.includes(assignment.draw_id))})));
       const result = await post(assignmentUrl, {setup_only:true, round_venue_setups});
       roundVenueSetups = result.round_venue_setups;
+      document.querySelectorAll('[data-draw-summary]').forEach(summary => updateDrawSummary(summary.dataset.drawSummary));
       programmePayload = null;
       invalidatePreview('Draw setup saved. Generate a new preview before applying.');
       refreshProgrammeStageSummaries();

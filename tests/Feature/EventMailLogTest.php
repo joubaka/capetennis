@@ -142,7 +142,10 @@ class EventMailLogTest extends TestCase
         $event=Event::factory()->create(); $actor=$this->manager($event);
         $log=$this->log($event,['created_by'=>$actor->id],'failed');
         $this->actingAs($actor)->post(route('backend.event-mail-log.retry',[$event,$log]),['confirmed'=>1])->assertStatus(422);
-        $this->get(route('backend.event-mail-log.retry-preview',[$event,$log]))->assertOk()->assertSee('Clothing collection');
+        $response = $this->get(route('backend.event-mail-log.retry-preview',[$event,$log]))->assertOk()->assertSee('Clothing collection')
+            ->assertSee('Send reviewed retry')->assertSee('data-mail-record-details', false);
+        $this->assertLessThan(strpos($response->getContent(), 'data-mail-record-details'), strpos($response->getContent(), 'Saved message text'));
+        if (getenv('CT_BATCHES151617_QA')) { file_put_contents(storage_path('app/batches151617-qa/mail.html'), $response->getContent()); }
         $this->post(route('backend.event-mail-log.retry',[$event,$log]),['confirmed'=>1])->assertRedirect();
         \Illuminate\Support\Facades\Bus::assertDispatched(\App\Jobs\SendBulkEmailJob::class,1);
         $this->assertSame('queued',$log->fresh()->status);

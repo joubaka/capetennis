@@ -40,6 +40,23 @@ class EventSchedulingWorkspaceTest extends TestCase
             'round_progression' => 'team_ready'];
     }
 
+    public function test_saved_calendar_day_navigation_preserves_filtered_publication_scope(): void
+    {
+        [$event, $draw, $venue] = $this->setupEvent();
+        $this->rubber($draw, ['scheduled' => true, 'scheduled_at' => '2026-10-10 09:00:00', 'venue_id' => $venue->id, 'court_label' => '1']);
+        $scope = ['event' => $event, 'date' => '2026-10-10', 'venue_id' => $venue->id, 'draw_id' => $draw->id];
+        $response = $this->get(route('backend.event-venue-schedule.calendar', $scope))->assertOk()
+            ->assertSee('Filter the selected day')->assertDontSee('id="calendar-date"', false)
+            ->assertSee('name="date" value="2026-10-10"', false)
+            ->assertSee('Publish selected schedule')->assertSee('Hide selected public times')
+            ->assertSee('Publication scope:')->assertSee('Only this scope changes.')
+            ->assertSee('name="revision"', false);
+        if (getenv('CT_BATCHES151617_QA')) {
+            file_put_contents(storage_path('app/batches151617-qa/calendar.html'), $response->getContent());
+            file_put_contents(storage_path('app/batches151617-qa/calendar-all.html'), $this->get(route('backend.event-venue-schedule.calendar', ['event' => $event, 'date' => 'all']))->assertOk()->getContent());
+        }
+    }
+
     public function test_published_individual_manual_edit_checks_the_whole_court_booking(): void
     {
         [$event, $draw, $venue] = $this->setupEvent();

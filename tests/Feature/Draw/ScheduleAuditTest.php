@@ -56,6 +56,8 @@ class ScheduleAuditTest extends TestCase
         $this->assertSame(3, $report['checked']);
         $this->assertTrue(collect($report['issues'])->contains('external', true));
         $response->assertDontSee('PRIVATE FOREIGN DRAW')->assertSee('Schedule audit');
+        $response->assertSee('audit-severity', false)->assertSee('audit-type', false)->assertSee('Audit totals and coverage remain unchanged.');
+        if (getenv('CT_BATCHES1822_QA')) { file_put_contents(storage_path('app/batches1822-qa/audit.html'), $response->getContent()); }
         $this->assertStringNotContainsString('PRIVATE FOREIGN DRAW', json_encode($report));
         $this->assertSame($before, [TeamFixture::orderBy('id')->get()->map->getAttributes()->all(), DB::table('event_venue_schedule_drafts')->first()->options]);
         $this->assertDatabaseCount('published_schedule_assignments', 0);

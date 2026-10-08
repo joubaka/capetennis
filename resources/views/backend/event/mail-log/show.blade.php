@@ -8,13 +8,18 @@
 
 <a class="btn btn-outline-secondary mb-3" href="{{ route('backend.event-mail-log.index',$event) }}">Back to email log</a>
 
-<div class="card"><div class="card-body" style="overflow-wrap:anywhere"><h1 class="h4">{{ \App\Services\EventMailLogService::subject($log) }}</h1><p>{{ $event->name }}</p><dl class="row"><dt class="col-sm-3">Recipient</dt><dd class="col-sm-9">{{ $log->recipient_name }} {{ $log->recipient_email }}</dd><dt class="col-sm-3">Sender</dt><dd class="col-sm-9">{{ data_get($log->payload,'from_name','Not recorded') }}</dd><dt class="col-sm-3">Audience</dt><dd class="col-sm-9">{{ data_get($log->payload,'recipient_kind',\App\Services\SuperAdminMailHistory::typeLabel($log->mail_type)) }} @if(data_get($log->payload,'region_id')) · Region #{{ data_get($log->payload,'region_id') }} @endif @if(data_get($log->payload,'team_id')) · Team #{{ data_get($log->payload,'team_id') }} @endif</dd><dt class="col-sm-3">Campaign</dt><dd class="col-sm-9">{{ data_get($log->payload,'campaign_key',data_get($log->payload,'event_communication_batch_id','Not recorded')) }}</dd><dt class="col-sm-3">Outcome</dt><dd class="col-sm-9">{{ $log->delivery_status_label }}</dd>@foreach(['queued_at'=>'Queued','sent_at'=>'Transport completed','accepted_at'=>'Server accepted','failed_at'=>'Failed','skipped_at'=>'Skipped'] as $field=>$label)@if($log->$field)<dt class="col-sm-3">{{ $label }}</dt><dd class="col-sm-9">{{ $log->$field->format('d M Y H:i:s') }} SAST</dd>@endif @endforeach</dl>
-
+<div class="card"><div class="card-body" style="overflow-wrap:anywhere">
+<h1 class="h4">{{ \App\Services\EventMailLogService::subject($log) }}</h1>
+<p>{{ $event->name }}</p>
+<dl class="row">
+  <dt class="col-sm-3">Outcome</dt><dd class="col-sm-9"><strong>{{ $log->delivery_status_label }}</strong></dd>
+  <dt class="col-sm-3">Recipient</dt><dd class="col-sm-9">{{ $log->recipient_name }} {{ $log->recipient_email }}</dd>
+</dl>
 @if($reason=\App\Services\EventMailLogService::explanation($log))<div class="alert alert-warning" style="color:#513c06;background:#fff3cd;border-color:#ffe69c">{{ $reason }}</div>@endif
 
 <h2 class="h5">Saved message text</h2>
 
-<p>Initiated by: {{ isset($sender) && $sender ? $sender->name.' (#'.$sender->id.')' : (data_get($log->payload,'system_initiated') ? 'System initiated' : 'Not recorded') }}</p>
+
 
 @php($body=(data_get($log->payload,'rendered_html') ?? data_get($log->payload,'rendered_text') ?? data_get($log->payload,'body') ?? data_get($log->payload,'message')))
 
@@ -24,7 +29,7 @@
 
 @if(\App\Services\EventMailLogService::canRetry($log))
 
-@if($retryPreview ?? false)<form method="post" action="{{ route('backend.event-mail-log.retry',[$event,$log]) }}">@csrf<label class="d-block mb-2"><input type="checkbox" name="confirmed" value="1" required> I reviewed this saved message and recipient and want to retry this failed email.</label><button class="btn btn-primary">Queue reviewed retry</button></form>@else<a class="btn btn-outline-primary" href="{{ route('backend.event-mail-log.retry-preview',[$event,$log]) }}">Review failed email for retry</a>@endif
+@if($retryPreview ?? false)<form method="post" action="{{ route('backend.event-mail-log.retry',[$event,$log]) }}">@csrf<label class="d-block mb-2"><input type="checkbox" name="confirmed" value="1" required> I reviewed this saved message and recipient and want to retry this failed email.</label><button class="btn btn-primary" style="min-height:44px">Send reviewed retry</button></form>@else<a class="btn btn-outline-primary" href="{{ route('backend.event-mail-log.retry-preview',[$event,$log]) }}">Review failed email for retry</a>@endif
 
 @endif
 
@@ -36,6 +41,10 @@
 
 @endif
 
+<details class="border rounded p-3 mt-4" data-mail-record-details>
+<summary style="min-height:44px">Sender, audience and delivery details</summary>
+<div class="mt-2"><p>Initiated by: {{ isset($sender) && $sender ? $sender->name.' (#'.$sender->id.')' : (data_get($log->payload,'system_initiated') ? 'System initiated' : 'Not recorded') }}</p><dl class="row"><dt class="col-sm-3">Sender</dt><dd class="col-sm-9">{{ data_get($log->payload,'from_name','Not recorded') }}</dd><dt class="col-sm-3">Audience</dt><dd class="col-sm-9">{{ data_get($log->payload,'recipient_kind',\App\Services\SuperAdminMailHistory::typeLabel($log->mail_type)) }} @if(data_get($log->payload,'region_id')) · Region #{{ data_get($log->payload,'region_id') }} @endif @if(data_get($log->payload,'team_id')) · Team #{{ data_get($log->payload,'team_id') }} @endif</dd><dt class="col-sm-3">Campaign</dt><dd class="col-sm-9">{{ data_get($log->payload,'campaign_key',data_get($log->payload,'event_communication_batch_id','Not recorded')) }}</dd>@foreach(['queued_at'=>'Queued','sent_at'=>'Transport completed','accepted_at'=>'Server accepted','failed_at'=>'Failed','skipped_at'=>'Skipped'] as $field=>$label)@if($log->$field)<dt class="col-sm-3">{{ $label }}</dt><dd class="col-sm-9">{{ $log->$field->format('d M Y H:i:s') }} SAST</dd>@endif @endforeach</dl></div>
+</details>
 <h2 class="h5 mt-4">Attempt history</h2>
 
 @foreach($history as $entry)

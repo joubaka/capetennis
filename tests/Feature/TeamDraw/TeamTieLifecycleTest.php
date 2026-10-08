@@ -49,6 +49,20 @@ class TeamTieLifecycleTest extends TestCase
         return $fixture;
     }
 
+    public function test_operations_disclosures_preserve_tie_actions_and_filters(): void
+    {
+        $type = \App\Models\DrawType::forceCreate(['drawTypeName' => 'Team singles', 'type' => 'team', 'btn_color' => 'primary']);
+        $this->draw->update(['drawType_id' => $type->id, 'team_format_snapshot' => ['name' => 'Synthetic reviewed format']]);
+        $this->rubber(2);
+        TeamTie::create(['draw_id' => $this->draw->id, 'round_nr' => 2, 'tie_nr' => 1,
+            'home_team_id' => $this->tie->home_team_id, 'away_team_id' => $this->tie->away_team_id,
+            'status' => TeamTie::STATUS_VALIDATED]);
+        $response = $this->get(route('backend.team-draw.operations', $this->draw))->assertOk()
+            ->assertSee('tie-round-filter', false)->assertSee('tie-status-filter', false)
+            ->assertSee('data-tie-card', false)->assertSee('Review players')->assertSee('Validate tie')->assertSee('Publish tie');
+        if (getenv('CT_BATCHES1822_QA')) { file_put_contents(storage_path('app/batches1822-qa/ties.html'), $response->getContent()); }
+    }
+
     public function test_empty_tie_cannot_be_validated_or_published(): void
     {
         $this->postJson(route('team-draw.ties.validate', $this->tie))->assertUnprocessable();

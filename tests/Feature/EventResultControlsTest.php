@@ -19,8 +19,11 @@ class EventResultControlsTest extends TestCase
         $other = Event::factory()->create();
         $this->assertFalse($event->fresh()->result_notifications_enabled);
         $this->assertTrue($event->fresh()->result_auto_refresh_enabled);
-        $this->actingAs($admin)->get(route('admin.events.settings', $event))->assertOk()
-            ->assertSee('Send result emails for this event')->assertSee('Automatically refresh results and standings pages');
+        $response = $this->actingAs($admin)->get(route('admin.events.settings', $event))->assertOk()
+            ->assertSee('Send result emails for this event')->assertSee('Automatically refresh results and standings pages')
+            ->assertSee('Results updates')->assertSee('settings-section-select', false)
+            ->assertSee('data-result-state="result-notifications-enabled">Off', false);
+        if (getenv('CT_BATCHES151617_QA')) { file_put_contents(storage_path('app/batches151617-qa/settings.html'), $response->getContent()); }
         $this->patchJson(route('admin.events.settings.update', $event), ['result_notifications_enabled' => true])->assertOk();
         $this->assertTrue($event->fresh()->result_notifications_enabled);
         $this->assertTrue($event->fresh()->result_auto_refresh_enabled);

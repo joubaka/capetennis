@@ -32,7 +32,9 @@ class TeamEventRulesManagementTest extends TestCase
         $this->assertDatabaseCount('team_event_rules', 0);
         $this->putJson(route('backend.team-rules.update', $event), ['rules' => $rules])->assertOk();
         $this->assertDatabaseCount('team_event_rules', 1);
-        $this->get(route('backend.team-rules.edit', $event))->assertOk();
+        $response = $this->get(route('backend.team-rules.edit', $event))->assertOk()->assertSee('Advanced rubber points')->assertSee('Create a pairing format');
+        $this->assertSame(1, substr_count($response->getContent(), 'name="rules[rubbers][singles][close_loss]"'));
+        if (getenv('CT_BATCHES1822_QA')) { file_put_contents(storage_path('app/batches1822-qa/rules.html'), $response->getContent()); }
     }
 
     public function test_invalid_rules_leave_existing_configuration_intact(): void

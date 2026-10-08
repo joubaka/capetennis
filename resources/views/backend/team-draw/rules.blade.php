@@ -1,7 +1,8 @@
 @extends('layouts.backend')
 @section('title', 'Team scoring rules – '.$event->name)
 @section('content')
-<div class="container-xxl">
+<div class="container-xxl team-rules-workspace">
+  <style>.team-rules-workspace .btn,.team-rules-workspace summary{min-height:44px;}</style>
   <h1 class="h4">{{ $event->name }}: team scoring rules</h1>
   <p>These defaults apply to new draws. Existing draws retain the rules and pairings used when they were generated.</p>
   @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
@@ -12,16 +13,24 @@
       <h2 class="h5">Points per rubber</h2>
       <p class="text-muted">Set wins required determines when a match is complete. Straight wins award the straight-win points; a deciding-set win and loss use their own points. Close losses use the greater of normal loss points and close-loss points.</p>
       <div class="table-responsive"><table class="table align-middle">
-        <thead><tr><th>Rubber</th><th>Sets to win</th><th>Straight win</th><th>Deciding win</th><th>Loss</th><th>Deciding loss</th><th>Close loss</th><th>Close game margin</th></tr></thead>
+        <thead><tr><th>Rubber</th><th>Sets to win</th><th>Straight win</th><th>Deciding win</th><th>Loss</th></tr></thead>
         <tbody>@foreach($rules['rubbers'] as $type => $values)<tr>
           <th>{{ ucwords(str_replace('_', ' ', $type)) }}</th>
-          @foreach(['sets_to_win','straight_win','deciding_win','loss','deciding_loss','close_loss','close_game_margin'] as $field)@php($value = $values[$field])<td>
+          @foreach(['sets_to_win','straight_win','deciding_win','loss'] as $field)@php($value = $values[$field])<td>
             <input class="form-control" style="min-width:80px" type="number" min="{{ $field === 'sets_to_win' ? 1 : 0 }}" max="{{ $field === 'sets_to_win' ? 2 : 100 }}" step="{{ in_array($field, ['sets_to_win','close_game_margin']) ? 1 : '0.5' }}" required
               aria-label="{{ ucwords(str_replace('_',' ',$type.' '.$field)) }}" name="rules[rubbers][{{ $type }}][{{ $field }}]" value="{{ old('rules.rubbers.'.$type.'.'.$field, $value) }}">
           </td>@endforeach
         </tr>@endforeach</tbody>
       </table></div>
     </div></div>
+    <details class="card mb-3" @if($errors->any()) open @endif><summary class="card-header">Advanced rubber points</summary><div class="card-body">
+      <p class="text-muted">Deciding-set losses and close-loss bonuses use the saved values below. Close losses use the greater of normal loss points and close-loss points.</p>
+      <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Rubber</th><th>Deciding loss</th><th>Close loss</th><th>Close game margin</th></tr></thead><tbody>
+        @foreach($rules['rubbers'] as $type => $values)<tr><th>{{ ucwords(str_replace('_', ' ', $type)) }}</th>
+          @foreach(['deciding_loss','close_loss','close_game_margin'] as $field)<td><input class="form-control" style="min-width:80px" type="number" min="0" max="100" step="{{ $field === 'close_game_margin' ? 1 : '0.5' }}" required aria-label="{{ ucwords(str_replace('_',' ',$type.' '.$field)) }}" name="rules[rubbers][{{ $type }}][{{ $field }}]" value="{{ old('rules.rubbers.'.$type.'.'.$field, $values[$field]) }}"></td>@endforeach
+        </tr>@endforeach
+      </tbody></table></div>
+    </div></details>
     <div class="card mb-3"><div class="card-body">
       <h2 class="h5">Team ties and ranking</h2>
       <p class="text-muted">A tie winner is the team winning more rubbers. A level total is a drawn tie. Optional tie points are added to rubber points.</p>
@@ -37,8 +46,7 @@
       <button class="btn btn-primary mt-3">Save event rules</button>
     </div></div>
   </form>
-  <div class="card"><div class="card-body">
-    <h2 class="h5">Create a pairing format</h2>
+  <details class="card"><summary class="card-header">Create a pairing format</summary><div class="card-body">
     <p>Start with a six-player or eight-player draft, or build your own. Select ranked roster positions for each side. Saving creates a new format; existing draws retain their pairings.</p>
     <div class="row g-2 mb-3 align-items-end"><div class="col-sm-8"><label class="form-label" for="format-preset">Starting preset</label><select id="format-preset" class="form-select">
       @foreach($presets as $key => $preset)<option value="{{ $key }}">{{ $preset['name'] }}</option>@endforeach
@@ -57,10 +65,11 @@
       <button class="btn btn-primary" type="submit">Create format</button>
       <p id="format-message" class="mt-3" role="status"></p>
     </form>
-  </div></div>
+  </div></details>
 </div>
 @endsection
 @section('page-script')
+<script>document.addEventListener('invalid', event => { let detail = event.target.closest('details'); while (detail) { detail.open = true; detail = detail.parentElement.closest('details'); } }, true);</script>
 <script type="application/json" id="team-format-presets">{!! json_encode($presets, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) !!}</script>
 <script src="{{ asset('js/team-event-rules.js') }}"></script>
 @endsection

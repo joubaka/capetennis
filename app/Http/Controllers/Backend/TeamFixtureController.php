@@ -352,6 +352,8 @@ class TeamFixtureController extends Controller
       'venue:id,name',
     ]);
 
+    app(\App\Services\TeamFixtureLineupPresenter::class)->prepare(collect([$team_fixture]));
+
     return view('backend.team-fixtures.show', compact('team_fixture'));
   }
 

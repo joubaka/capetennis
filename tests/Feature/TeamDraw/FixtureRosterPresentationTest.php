@@ -157,6 +157,7 @@ class FixtureRosterPresentationTest extends TestCase
         $this->assertSame($teams[0]['profile']->id, $double->team1->first()->id);
 
         $pdf = \Mockery::mock(\Barryvdh\DomPDF\PDF::class);
+        $pdf->shouldReceive('setPaper')->twice()->with('A4', 'landscape')->andReturnSelf();
         $pdf->shouldReceive('download')->twice()->andReturn(response('Test PDF'));
         \Barryvdh\DomPDF\Facade\Pdf::shouldReceive('loadView')->twice()
             ->withArgs(function ($view, $data) use ($expected) {
@@ -267,6 +268,13 @@ class FixtureRosterPresentationTest extends TestCase
         $this->assertSame('assets/img/logos/overberg.png', $display->lineup_display['home']['region_logo']);
         $this->assertSame('#1e40af', $display->lineup_display['home']['region_color']);
         $this->assertSame(1, $display->fixturePlayers->count());
+        Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        $this->actingAs(User::factory()->create()->assignRole('super-user'));
+        $html = $this->get(route('backend.team-fixtures.show', $fixture))->assertOk()->getContent();
+        $this->assertStringContainsString('Overberg Player', $html);
+        $this->assertStringNotContainsString('Renamed', $html);
+        $this->assertStringContainsString('Fixture details', $html);
+        if (getenv('CT_BATCHES1822_QA')) { file_put_contents(storage_path('app/batches1822-qa/match.html'), $html); }
     }
 
     public function test_foreign_tie_and_mismatched_snapshots_do_not_supply_names_or_ranks(): void

@@ -64,8 +64,19 @@
     <a href="#settings-basics">Basics</a>
     <a href="#settings-information">Public information</a>
     <a href="#settings-schedule">Schedule</a>
+    <a href="#result-controls">Results updates</a>
     <a href="#settings-access">Access</a>
   </nav>
+  <div class="d-md-none flex-grow-1">
+    <label for="settings-section-select" class="visually-hidden">Settings section</label>
+    <select id="settings-section-select" class="form-select" style="min-height:44px">
+      <option value="#settings-basics">Basics</option>
+      <option value="#settings-information">Public information</option>
+      <option value="#settings-schedule">Schedule</option>
+      <option value="#result-controls">Results updates</option>
+      <option value="#settings-access">Access</option>
+    </select>
+  </div>
   <div id="save-status" class="save-status d-flex align-items-center justify-content-end gap-2 text-success ms-auto" role="status" aria-live="polite" aria-atomic="true">
       <i class="ti ti-circle-check"></i>
       <span>Up to date</span>
@@ -178,17 +189,20 @@
 </div>
 
 {{-- DATES --}}
-<section class="card mb-4" id="result-controls">
+<section class="card mb-4 settings-card" id="result-controls" tabindex="-1">
   <div class="card-body">
     <h5>Results updates</h5>
+    <p class="small text-muted">On / Off shows your current selection. Changes take effect after saving; unsaved selections are marked below.</p>
     <label class="d-flex align-items-center gap-2" style="min-height:44px" for="result-notifications-enabled">
       <input class="form-check-input autosave" type="checkbox" id="result-notifications-enabled" name="result_notifications_enabled" {{ $event->result_notifications_enabled ? 'checked' : '' }}>
       <span>Send result emails for this event</span>
+      <span class="badge bg-label-secondary" data-result-state="result-notifications-enabled">{{ $event->result_notifications_enabled ? 'On' : 'Off' }}</span>
     </label>
     <p class="small text-muted">Email players and linked parents when a completed, published result is entered or corrected. Enabling this does not email past results. Disabling cancels pending result emails.</p>
     <label class="d-flex align-items-center gap-2" style="min-height:44px" for="result-auto-refresh-enabled">
       <input class="form-check-input autosave" type="checkbox" id="result-auto-refresh-enabled" name="result_auto_refresh_enabled" {{ ($event->result_auto_refresh_enabled ?? true) ? 'checked' : '' }}>
       <span>Automatically refresh results and standings pages</span>
+      <span class="badge bg-label-secondary" data-result-state="result-auto-refresh-enabled">{{ ($event->result_auto_refresh_enabled ?? true) ? 'On' : 'Off' }}</span>
     </label>
     <p class="small text-muted mb-0">Check for new scores every 30 seconds while a page is open. When disabled, visitors can reload the page to see the latest results. Scores and standings are still saved normally.</p>
   </div>
@@ -661,6 +675,10 @@ $(function () {
         if (submittedRegistrationVersion !== null && submittedRegistrationVersion === registrationControlVersion) {
           registrationControlDirty = false;
         }
+        $('[data-result-state]').each(function () {
+          const input = document.getElementById(this.dataset.resultState);
+          if (payload[input.name] !== undefined && Number(payload[input.name]) === (input.checked ? 1 : 0)) this.textContent = input.checked ? 'On' : 'Off';
+        });
         setSaveStatus('saved', 'All changes saved');
         feedback.success(res.message || 'Event settings saved.');
         updatePreviews();
@@ -684,6 +702,17 @@ $(function () {
     }, 700);
   }
 
+  $('#settings-section-select').on('change', function () {
+    const section = document.querySelector(this.value);
+    if (!section) return;
+    section.scrollIntoView({ block: 'start' });
+    section.setAttribute('tabindex', '-1');
+    section.focus({ preventScroll: true });
+  });
+  $('[data-result-state]').each(function () {
+    const badge = this;
+    $('#' + badge.dataset.resultState).on('change', function () { badge.textContent = (this.checked ? 'On' : 'Off') + ' - unsaved'; });
+  });
   /* =========================
      BIND AUTOSAVE
   ========================= */

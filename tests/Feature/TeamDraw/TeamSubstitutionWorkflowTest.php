@@ -87,8 +87,10 @@ class TeamSubstitutionWorkflowTest extends TestCase
         $preview = $this->preview($input)->assertOk()->assertJsonPath('selected_ids.0', $future->id)->json();
         $created = $this->apply($input, $preview)->assertOk()->json();
         $this->apply($input, $preview)->assertOk()->assertJsonPath('id', $created['id']);
-        $this->get(route('backend.team-substitutions.show', $this->team))->assertOk()
-            ->assertSee('Recorded replacements')->assertSee($preview['new_name'])->assertSee('Player unavailable');
+        $response = $this->get(route('backend.team-substitutions.show', $this->team))->assertOk()
+            ->assertSee('Recorded replacements')->assertSee($preview['new_name'])->assertSee('Player unavailable')
+            ->assertSee('1. Choose the players and scope')->assertSee('2. Review affected matches')->assertSee('3. Confirm the reviewed replacement');
+        if (getenv('CT_BATCHES1822_QA')) { file_put_contents(storage_path('app/batches1822-qa/replacement.html'), $response->getContent()); }
         $this->assertDatabaseCount('team_substitutions', 1);
         $this->assertSame($original, $source->fresh()->getAttributes());
         $column = 'team1'.($oldType === 'profile' ? '_id' : '_no_profile_id');

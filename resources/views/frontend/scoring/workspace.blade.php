@@ -131,8 +131,10 @@
     .match-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
     .match-actions .btn { min-width: 0; padding-inline: .5rem; }
     .match-actions .btn:only-child { grid-column: 1 / -1; }
+    #score-entry-modal { padding: 0 !important; }
     #score-entry-modal .modal-dialog { margin: 0; padding: 0; width: 100%; height: 100vh; height: 100dvh; min-height: 0; }
-    #score-entry-modal .modal-content { width: 100%; height: 100%; min-height: 0; border: 0; border-radius: 0; }
+    #score-entry-modal .btn-close { transform: none !important; transition: none; }
+    #score-entry-modal .modal-content { width: 100%; height: 100%; min-height: 0; margin: 0; border: 0; border-radius: 0; }
     #score-entry-modal .modal-header { padding: .75rem; flex-shrink: 0; align-items: flex-start; }
     #score-entry-modal .modal-title { font-size: 1rem; line-height: 1.35; }
     #score-entry-modal .modal-body { min-height: 0; overflow-y: auto; padding: .75rem; }
