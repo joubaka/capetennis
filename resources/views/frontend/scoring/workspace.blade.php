@@ -69,6 +69,8 @@
   .match-identity { min-width: 0; }
   .match-players { display: flex; align-items: baseline; gap: .55rem; min-width: 0; }
   .match-player { font-size: .96rem; font-weight: 650; min-width: 0; overflow-wrap: anywhere; }
+  .match-player.is-winner { color: #166534; }
+  .match-player.is-loser { color: #b91c1c; }
   .match-versus { color: var(--ct-muted, #66788a); font-size: .8rem; font-weight: 700; text-transform: uppercase; }
   .match-score { min-width: 90px; font-size: .96rem; font-weight: 750; color: var(--ct-ink, #172e45); text-align: right; }
   .match-score.is-empty { color: var(--ct-muted, #66788a); font-size: .82rem; font-weight: 600; }
@@ -385,6 +387,18 @@
             ? ($scheduledMoment->isFuture() ? 'upcoming' : 'past')
             : ($hasScore ? 'completed' : 'unscheduled');
           $state = $hasScore ? 'completed' : ($isPlaying ? 'playing' : 'outstanding');
+          $winnerSide = null;
+          if ($hasScore) {
+            if ($isTeamFixture) {
+              $outcome = app(\App\Services\TeamRubberResultService::class)->outcome($match);
+              $winnerSide = $outcome['complete'] ? $outcome['winner'] : null;
+            } else {
+              $winnerRegistration = app(\App\Services\IndividualMatchOutcomeService::class)->winner($match);
+              $winnerSide = $winnerRegistration !== null
+                ? ($winnerRegistration === (int) $match->registration1_id ? 'home' : 'away')
+                : null;
+            }
+          }
         @endphp
         <article class="card match-card {{ $hasScore ? 'is-completed' : ($isPlaying ? 'is-playing' : ($hasPlayers ? '' : 'is-waiting')) }}"
                  data-score-state="{{ $state }}" data-score-timing="{{ $timing }}">
@@ -402,9 +416,9 @@
               <div class="match-identity">
                 <div class="small text-muted mb-1">{{ $draw->drawName }} · {{ $stageLabel }} · Match {{ $matchNumber }}</div>
                 <div class="match-players">
-                  <div class="match-player">{{ $home }}</div>
+                  <div class="match-player{{ $winnerSide ? ($winnerSide === 'home' ? ' is-winner' : ' is-loser') : '' }}">{{ $home }}@if($winnerSide)<span class="visually-hidden"> ({{ $winnerSide === 'home' ? 'Winner' : 'Loser' }})</span>@endif</div>
                   <div class="match-versus">vs</div>
-                  <div class="match-player">{{ $away }}</div>
+                  <div class="match-player{{ $winnerSide ? ($winnerSide === 'away' ? ' is-winner' : ' is-loser') : '' }}">{{ $away }}@if($winnerSide)<span class="visually-hidden"> ({{ $winnerSide === 'away' ? 'Winner' : 'Loser' }})</span>@endif</div>
                 </div>
               </div>
               <div class="match-score {{ $hasScore ? '' : 'is-empty' }}">
