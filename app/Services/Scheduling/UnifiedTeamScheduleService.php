@@ -178,7 +178,17 @@ final class UnifiedTeamScheduleService
 
     public function unapply(Event $event, ?int $drawId = null, ?int $venueId = null, ?int $fixtureId = null): array
     {
-        return DB::transaction(function () use ($event, $drawId, $venueId, $fixtureId) {
+        return $this->unapplyScope($event, $drawId, $venueId, $fixtureId);
+    }
+
+    public function unapplyForCourtCorrection(Event $event, int $venueId): array
+    {
+        return $this->unapplyScope($event, null, $venueId, null, true);
+    }
+
+    private function unapplyScope(Event $event, ?int $drawId, ?int $venueId, ?int $fixtureId, bool $courtCorrection = false): array
+    {
+        return DB::transaction(function () use ($event, $drawId, $venueId, $fixtureId, $courtCorrection) {
             Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
             DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
             if ($drawId && ! $event->draws()->whereKey($drawId)->exists()) throw new \InvalidArgumentException('This draw does not belong to the event.');
@@ -187,7 +197,7 @@ final class UnifiedTeamScheduleService
                 ->when($venueId, fn ($q) => $q->where('venue_id', $venueId))
                 ->when($fixtureId, fn ($q) => $q->whereKey($fixtureId))->orderBy('id')->lockForUpdate()->get();
             if ($fixtures->isEmpty()) throw new \InvalidArgumentException('No applied team rubbers matched this selection.');
-            if ($fixtures->contains(fn ($fixture) => $fixture->draw->locked || $this->protected($fixture))) {
+            if ($fixtures->contains(fn ($fixture) => (! $courtCorrection && $fixture->draw->locked) || $this->protected($fixture))) {
                 throw new \InvalidArgumentException('A locked draw or rubber with play or results cannot be returned to planning.');
             }
             if ($error = $this->removalError($event, $fixtures->pluck('id')->all())) throw new \InvalidArgumentException($error);

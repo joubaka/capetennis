@@ -181,3 +181,59 @@ test('court errors are visible beside the affected venue', async () => {
   assert.equal(api.nodes['local-status'].textContent,'Published court protected.');
   assert.equal(editor.open,true);
 });
+
+
+test('court reduction asks for the server warning then retries with its confirmation revision', async () => {
+  const requests=[],warnings=[];
+  const api=harness({confirm:message=>{warnings.push(message);return true;},post:async(url,body)=>{
+    requests.push(body);
+    if(requests.length===1) throw Object.assign(new Error('Warning'),{response:{requires_confirmation:true,message:'Clear 12 event matches and withdraw 8 public times?',correction_revision:'revision-a'}});
+    return {message:'Courts corrected.'};
+  }});
+  const setup={dataset:{url:'/venues/12/courts'},querySelector:selector=>({value:selector==='.setup-court-count'?'4':'standard'})};
+  const button=element({dataset:{hasCustom:'0'},classList:{contains:name=>name==='update-court-setup'},closest:()=>setup});
+  await api.click(button);
+  assert.deepEqual(warnings,['Clear 12 event matches and withdraw 8 public times?']);
+  assert.deepEqual(requests,[{courts:4,ball_type:'standard'},{courts:4,ball_type:'standard',confirm_reset:true,correction_revision:'revision-a'}]);
+  assert.equal(api.calls.length,1);
+});
+
+test('cancelling a court reset warning sends no confirmed mutation and leaves the editor unchanged', async () => {
+  let requests=0;
+  const api=harness({confirm:()=>false,post:async()=>{
+    requests++;
+    throw Object.assign(new Error('Warning'),{response:{requires_confirmation:true,message:'Clear matches?',correction_revision:'revision-a'}});
+  }});
+  const setup={dataset:{url:'/venues/12/courts'},querySelector:selector=>({value:selector==='.setup-court-count'?'4':'standard'})};
+  const button=element({dataset:{hasCustom:'0'},classList:{contains:name=>name==='update-court-setup'},closest:()=>setup});
+  await api.click(button);
+  assert.equal(requests,1);
+  assert.equal(api.calls.length,0);
+  assert.equal(button.disabled,false);
+  api.close();assert.equal(api.reloads(),0);
+});
+
+test('cross removal confirms the server warning and saves the exact removal revision', async () => {
+  let requests=0;
+  const api=harness({fetch:async(url,options)=>{
+    if(options.method!=='DELETE') return {ok:true,text:async()=>'<html/>'};
+    requests++;
+    return requests===1?{ok:false,json:async()=>({requires_confirmation:true,message:'Clear venue matches?',correction_revision:'revision-x'})}
+      :{ok:true,json:async()=>({message:'Court removed.'})};
+  }});
+  const button=element({dataset:{url:'/venues/12/courts',label:'5'},classList:{contains:name=>name==='remove-court'}});
+  await api.click(button);
+  assert.deepEqual(JSON.parse(api.calls[1].options.body),{label:'5',confirm_reset:true,correction_revision:'revision-x'});
+  assert.equal(requests,2);
+});
+
+test('a stale confirmation error does not refresh or automatically retry again', async () => {
+  let requests=0;
+  const api=harness({post:async()=>{requests++;throw Object.assign(new Error('Schedule changed. Review the new warning.'),{response:{requires_confirmation:true,message:'Schedule changed. Review the new warning.',correction_revision:'revision-'+requests}});}});
+  const setup={dataset:{url:'/venues/12/courts'},querySelector:selector=>({value:selector==='.setup-court-count'?'4':'standard'})};
+  const button=element({dataset:{hasCustom:'0'},classList:{contains:name=>name==='update-court-setup'},closest:()=>setup});
+  await api.click(button);
+  assert.equal(requests,2);
+  assert.equal(api.calls.length,0);
+  assert.equal(api.nodes['venue-add-status'].textContent,'Schedule changed. Review the new warning.');
+});

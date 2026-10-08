@@ -1127,7 +1127,7 @@ class EventVenueScheduleTest extends TestCase
         $this->assertDatabaseMissing('draw_venue_court_allocations', ['draw_id' => $draw->id, 'venue_id' => $venue->id, 'court_label' => '2']);
         $this->assertDatabaseHas('event_venues', ['event_id' => $other->id, 'venue_id' => $venue->id, 'num_courts' => 5]);
         $this->assertDatabaseHas('draw_venues', ['draw_id' => $draw->id, 'venue_id' => $venue->id, 'num_courts' => 1]);
-        $this->deleteJson($url, ['label' => '2'])->assertNotFound();
+        $this->deleteJson($url, ['label' => '2'])->assertOk();
         $this->deleteJson($url, ['label' => '1'])->assertUnprocessable();
         $this->assertSame(1, DB::table('event_venue_courts')->where('event_id', $event->id)->where('active', true)->count());
         $this->deleteJson(route('backend.event-venue-schedule.courts.remove', [$other, $venue]), ['label' => '1'])->assertForbidden();
@@ -1146,16 +1146,15 @@ class EventVenueScheduleTest extends TestCase
         $admin = User::factory()->create()->assignRole('admin');
         DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
         $url = route('backend.event-venue-schedule.courts.remove', [$event, $venue]);
-        $this->actingAs($admin)->deleteJson($url, ['label' => '2'])->assertUnprocessable();
+        $this->actingAs($admin)->deleteJson($url, ['label' => '2'])->assertStatus(409);
         DB::table('draw_venue_court_allocations')->where('draw_id', $draw->id)->delete();
-        $this->deleteJson($url, ['label' => '2'])->assertUnprocessable();
+        $this->deleteJson($url, ['label' => '2'])->assertStatus(409);
         $draw->update(['published' => false, 'locked' => true]);
-        $this->deleteJson($url, ['label' => '2'])->assertUnprocessable();
+        $this->deleteJson($url, ['label' => '2'])->assertStatus(409);
         $draw->update(['locked' => false]);
         $fixture = Fixture::factory()->create(['draw_id' => $draw->id]);
         OrderOfPlay::create(['fixture_id' => $fixture->id, 'draw_id' => $draw->id, 'venue_id' => $venue->id, 'court' => 'Court 2', 'time' => '2026-09-10 08:00:00']);
-        $this->deleteJson($url, ['label' => '2'])->assertUnprocessable()->assertJsonPath('message',
-            'This court has saved matches. Move or clear those bookings before removing it.');
+        $this->deleteJson($url, ['label' => '2'])->assertStatus(409)->assertJsonPath('impact.scheduled_matches', 1);
         $this->assertDatabaseCount('order_of_plays', 1);
         $this->assertSame(0, DB::table('event_venue_courts')->where('event_id', $event->id)->count());
         $this->assertDatabaseHas('event_venues', ['event_id' => $event->id, 'venue_id' => $venue->id, 'num_courts' => 2]);
@@ -1176,11 +1175,10 @@ class EventVenueScheduleTest extends TestCase
         $admin = User::factory()->create()->assignRole('admin');
         DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
         $url = route('backend.event-venue-schedule.courts.remove', [$event, $venue]);
-        $this->actingAs($admin)->deleteJson($url, ['label' => '2'])->assertUnprocessable()->assertJsonPath('message',
-            'This court has published match times. Update or hide the published schedule before removing it.');
+        $this->actingAs($admin)->deleteJson($url, ['label' => '2'])->assertStatus(409)->assertJsonPath('impact.published_matches', 1);
         $this->assertDatabaseCount('published_schedule_assignments', 1);
         $this->assertSame(0, DB::table('event_venue_courts')->where('event_id', $event->id)->count());
-        $this->deleteJson($url, ['label' => '1'])->assertOk();
+        $this->deleteJson($url, ['label' => '1'])->assertStatus(409);
         $this->assertDatabaseHas('published_schedule_assignments', ['fixture_id' => $fixture->id, 'court' => 'Court 2']);
     }
 
@@ -1210,8 +1208,7 @@ class EventVenueScheduleTest extends TestCase
 
         $this->actingAs($admin)->postJson(route('backend.event-venue-schedule.courts.configure', [$event, $venue]), [
             'courts' => 2, 'ball_type' => 'standard',
-        ])->assertUnprocessable()->assertJsonPath('message',
-            'A court being removed already has scheduled matches. Clear those bookings before reducing or replacing the courts.');
+        ])->assertStatus(409)->assertJsonPath('impact.scheduled_matches', 1);
 
         $this->assertDatabaseHas('event_venue_courts', [
             'event_id' => $event->id, 'venue_id' => $venue->id, 'label' => '3',

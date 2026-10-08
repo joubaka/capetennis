@@ -97,7 +97,7 @@ class EventSchedulingWorkspaceTest extends TestCase
         $team = $this->rubber($draw, ['scheduled_at' => '2026-10-10 08:00:00', 'venue_id' => $venue->id,
             'court_label' => 'Court 2', 'duration_min' => 60]);
         $this->postJson(route('backend.event-venue-schedule.courts.configure', [$event, $venue]), ['courts' => 1, 'ball_type' => 'yellow'])
-            ->assertUnprocessable();
+            ->assertStatus(409)->assertJsonPath('impact.scheduled_matches', 1);
         $this->assertNotNull($team->fresh()->scheduled_at);
         $this->assertDatabaseHas('event_venue_courts', ['event_id' => $event->id, 'venue_id' => $venue->id, 'label' => '2']);
     }

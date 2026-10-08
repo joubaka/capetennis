@@ -1096,7 +1096,7 @@
       const response = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json','Accept':'application/json','X-CSRF-TOKEN':csrf}, body:JSON.stringify(body)});
       const data = await response.json().catch(() => ({}));
       if (stale()) throw Object.assign(new Error('Preview selection changed.'), {stalePreview:true});
-      if (!response.ok) throw new Error(data.message || Object.values(data.errors || {}).flat()[0] || 'Request failed.');
+      if (!response.ok) throw Object.assign(new Error(data.message || Object.values(data.errors || {}).flat()[0] || 'Request failed.'), {response:data});
       if (generation !== null) data.previewGeneration = generation;
       return data;
     } catch (error) {
@@ -1895,6 +1895,21 @@
     await refreshVenueEditors();
     (creating ? newVenueName : existingVenue).focus();
   }));
+  const submitCourtChange = async (url, body, method = 'POST') => {
+    const submit = async payload => {
+      if (method === 'POST') return post(url, payload);
+      const response = await fetch(url, {method, headers:{'Content-Type':'application/json', Accept:'application/json', 'X-CSRF-TOKEN':csrf}, body:JSON.stringify(payload)});
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw Object.assign(new Error(data.message || 'Unable to remove this court.'), {response:data});
+      return data;
+    };
+    try { return await submit(body); }
+    catch (error) {
+      if (!error.response?.requires_confirmation) throw error;
+      if (!confirm(error.response.message)) return null;
+      return submit({...body, confirm_reset:true, correction_revision:error.response.correction_revision});
+    }
+  };
   venueModal.addEventListener('click', event => {
     const button = event.target.closest('.add-court, .update-court-setup, .update-court-type, .remove-venue, .remove-court');
     if (!button) return;
@@ -1906,15 +1921,13 @@
         if (!confirm(`Remove ${name} from this event? Its draw allocations will be removed. The venue remains available for other events.`)) return;
         result = await deleteVenueAssociation(button.dataset.url);
       } else if (button.classList.contains('remove-court')) {
-        const response = await fetch(button.dataset.url, {method:'DELETE', headers:{'Content-Type':'application/json', Accept:'application/json', 'X-CSRF-TOKEN':csrf}, body:JSON.stringify({label:button.dataset.label})});
-        result = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(result.message || 'Unable to remove this court.');
+        result = await submitCourtChange(button.dataset.url, {label:button.dataset.label}, 'DELETE');
       } else if (button.classList.contains('update-court-setup')) {
         const setup = button.closest('.venue-court-setup');
         const ballType = setup.querySelector('.setup-court-ball').value;
         if (ballType === 'mixed') throw new Error('Choose one court type before updating all courts.');
         if (button.dataset.hasCustom === '1' && !confirm('Updating all courts will replace specially named courts with numbered courts. Continue?')) return;
-        result = await post(setup.dataset.url, {courts:Number(setup.querySelector('.setup-court-count').value), ball_type:ballType});
+        result = await submitCourtChange(setup.dataset.url, {courts:Number(setup.querySelector('.setup-court-count').value), ball_type:ballType});
       } else {
         const venueId = Number(button.dataset.venue);
         const adding = button.classList.contains('add-court');
@@ -1924,6 +1937,7 @@
           : button.closest('.court-editor-row').querySelector('.edit-court-ball').value;
         result = await post(courtUrl, {venue_id:venueId, label, ball_type:ballType});
       }
+      if (!result) return;
       setStatus(document.getElementById('venue-add-status'), result.message || 'Court updated.', 'success');
       const venueId = button.closest('.venue-editor')?.dataset.venue;
       await refreshVenueEditors();

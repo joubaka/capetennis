@@ -692,11 +692,21 @@ final class EventVenueScheduleService
 
     public function unapply(Event $event, ?int $drawId = null, ?int $venueId = null, ?int $fixtureId = null): array
     {
+        return $this->unapplyScope($event, $drawId, $venueId, $fixtureId);
+    }
+
+    public function unapplyForCourtCorrection(Event $event, int $venueId): array
+    {
+        return $this->unapplyScope($event, null, $venueId, null, true);
+    }
+
+    private function unapplyScope(Event $event, ?int $drawId, ?int $venueId, ?int $fixtureId, bool $courtCorrection = false): array
+    {
         if ($fixtureId !== null) return $this->unapplyIndividual($event, $drawId, $venueId, $fixtureId);
         if (collect([$drawId, $venueId])->filter(fn ($id) => $id !== null)->count() !== 1) {
             throw new \InvalidArgumentException('Choose one draw or one venue to return to planning.');
         }
-        return DB::transaction(function () use ($event, $drawId, $venueId) {
+        return DB::transaction(function () use ($event, $drawId, $venueId, $courtCorrection) {
             Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
             DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
             $hasTeam = TeamFixture::whereHas('draw', fn ($q) => $q->where('event_id', $event->id))
@@ -706,22 +716,24 @@ final class EventVenueScheduleService
                 ->when($drawId !== null, fn ($q) => $q->where('draw_id', $drawId))
                 ->whereHas('orderOfPlay', fn ($q) => $q->whereNotNull('time')
                     ->when($venueId !== null, fn ($q) => $q->where('venue_id', $venueId)))->exists();
-            if (! $hasTeam) return $this->unapplyIndividual($event, $drawId, $venueId);
-            $team = app(UnifiedTeamScheduleService::class)->unapply($event, $drawId, $venueId);
-            $individual = $hasIndividual ? $this->unapplyIndividual($event, $drawId, $venueId) : ['count' => 0];
+            if (! $hasTeam) return $this->unapplyIndividual($event, $drawId, $venueId, null, $courtCorrection);
+            $team = $courtCorrection
+                ? app(UnifiedTeamScheduleService::class)->unapplyForCourtCorrection($event, $venueId)
+                : app(UnifiedTeamScheduleService::class)->unapply($event, $drawId, $venueId);
+            $individual = $hasIndividual ? $this->unapplyIndividual($event, $drawId, $venueId, null, $courtCorrection) : ['count' => 0];
             $count = $team['count'] + $individual['count'];
             return ['count' => $count, 'message' => $count.' matches returned to planning. Fixtures and results were preserved.'];
         });
     }
 
-    private function unapplyIndividual(Event $event, ?int $drawId = null, ?int $venueId = null, ?int $fixtureId = null): array
+    private function unapplyIndividual(Event $event, ?int $drawId = null, ?int $venueId = null, ?int $fixtureId = null, bool $courtCorrection = false): array
     {
         if (collect([$drawId, $venueId, $fixtureId])->filter(fn ($id) => $id !== null)->count() !== 1) {
             throw new \InvalidArgumentException('Choose one match, one draw, or one venue to return to planning.');
         }
         if ($fixtureId !== null) return $this->unapplyFixture($event, $fixtureId);
 
-        return DB::transaction(function () use ($event, $drawId, $venueId) {
+        return DB::transaction(function () use ($event, $drawId, $venueId, $courtCorrection) {
             Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
             DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
             $eventDrawIds = $event->draws()->orderBy('id')->pluck('id');
@@ -742,7 +754,7 @@ final class EventVenueScheduleService
                     ? 'This draw has no applied matches to return to planning.'
                     : 'This venue has no applied matches for this event.');
             }
-            if ($fixtures->contains(fn (Fixture $fixture) => $fixture->draw?->locked)) {
+            if (! $courtCorrection && $fixtures->contains(fn (Fixture $fixture) => $fixture->draw?->locked)) {
                 throw new \InvalidArgumentException('A locked draw is included. Unlock it before removing scheduled times.');
             }
             if ($fixtures->contains(fn (Fixture $fixture) => ($fixture->fixtureResults->isNotEmpty() || (int) $fixture->match_status !== 0))) {
@@ -762,7 +774,7 @@ final class EventVenueScheduleService
             OrderOfPlay::whereIn('id', $bookings->pluck('id'))->delete();
             Fixture::whereIn('id', $bookingFixtureIds)->update(['scheduled' => 0]);
 
-            $fixtures->whereIn('id', $bookingFixtureIds)->groupBy('draw_id')->each(function ($drawFixtures, $affectedDrawId) use ($event, $drawId, $venueId) {
+            $fixtures->whereIn('id', $bookingFixtureIds)->groupBy('draw_id')->each(function ($drawFixtures, $affectedDrawId) use ($event, $drawId, $venueId, $courtCorrection) {
                 DrawAuditLog::record((int) $affectedDrawId, 'event_venue_schedule_unapplied', null, [
                     'event_id' => $event->id,
                     'matches' => $drawFixtures->count(),
