@@ -43,7 +43,7 @@
   .event-kpi {
     position: relative;
     min-width: 0;
-    padding: 16px 15px 14px;
+    padding: 12px 15px;
     overflow: hidden;
     border: 1px solid var(--event-line);
     border-radius: 12px;
@@ -61,7 +61,7 @@
   .event-kpi[data-metric="withdrawals"]::before { background: var(--event-orange); }
   .event-kpi[data-metric="pending_refunds"]::before { background: #c64b55; }
   .event-kpi__label { color: #61758a; font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: .45px; }
-  .event-kpi__value { margin-top: 5px; color: var(--event-navy); font-size: 28px; font-weight: 750; line-height: 1; }
+  .event-kpi__value { margin-top: 5px; color: var(--event-navy); font-size: 24px; font-weight: 750; line-height: 1; }
   .event-warnings { padding: 8px 26px 14px; }
   .event-warnings__label { margin: 12px 0 5px; color: #61758a; font-size: 11px; font-weight: 700; letter-spacing: .7px; text-transform: uppercase; }
   .ct-backend .event-warning {
@@ -78,6 +78,11 @@
   .event-warning__count { min-width: 34px; padding: 6px 9px; color: #fff; background: var(--event-navy) !important; }
   .event-warning:hover .event-warning__count { background: var(--event-teal) !important; }
   .event-overview-page > .card:not(.event-operations) { box-shadow: 0 10px 28px rgba(16, 42, 67, .09); }
+  .event-overview-disclosure { background: #fff; border: 1px solid var(--event-line); border-radius: 12px; }
+  .event-overview-disclosure > summary { padding: 16px 20px; min-height: 52px; color: var(--event-navy); font-weight: 650; cursor: pointer; }
+  .event-overview-disclosure > summary:focus-visible { outline: 3px solid var(--event-teal); outline-offset: 2px; }
+  #event-finance-details > .p-3 > .d-flex { flex-wrap: wrap; gap: 12px; }
+  #event-finance-details > .p-3 > .d-flex > .d-flex { flex-wrap: wrap; }
   .finance-card { transition: all 0.2s ease; }
   .finance-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
   .convenor-header { background: #fff9c4; border-left: 4px solid #f0c040; }
@@ -120,7 +125,7 @@
 @section('content')
 <div class="container-xl event-overview-page">
 
-  @include('backend.event.partials.header', ['event' => $event])
+  @include('backend.event.partials.header', ['event' => $event, 'eventWorkspaceShowHome' => false])
 
   @if(!empty($operations))
     <section class="card event-operations mb-4" aria-labelledby="event-operations-title">
@@ -131,14 +136,6 @@
             <p>Registration, payment and draw readiness at a glance</p>
           </div>
           <span class="badge bg-label-primary text-capitalize">{{ $operations['lifecycle']['label'] }}</span>
-        </div>
-        <div class="event-kpi-grid">
-          @foreach($operations['counts'] as $label => $count)
-            <div class="event-kpi" data-metric="{{ $label }}">
-              <div class="event-kpi__label">{{ str_replace('_', ' ', $label) }}</div>
-              <div class="event-kpi__value">{{ $count }}</div>
-            </div>
-          @endforeach
         </div>
         @if($operations['warnings']->isNotEmpty())
           <div class="event-warnings">
@@ -157,6 +154,14 @@
         @else
           <div class="p-4"><div class="alert alert-success mb-0">No outstanding operational warnings.</div></div>
         @endif
+        <div class="event-kpi-grid">
+          @foreach($operations['counts'] as $label => $count)
+            <div class="event-kpi" data-metric="{{ $label }}">
+              <div class="event-kpi__label">{{ str_replace('_', ' ', $label) }}</div>
+              <div class="event-kpi__value">{{ $count }}</div>
+            </div>
+          @endforeach
+        </div>
       </div>
     </section>
   @endif
@@ -172,7 +177,12 @@
     @include('backend.event.individual.index')
   @elseif($event->isTeam())
     @include('backend.event.team.index')
-    @include('backend.event.partials.finances')
+    <details class="event-overview-disclosure mt-4" id="event-finance-details" @if($errors->any()) open @endif>
+      <summary>Detailed finances</summary>
+      <div class="p-3">
+        @include('backend.event.partials.finances')
+      </div>
+    </details>
   @elseif($event->isCamp())
     @include('backend.event.camp.index')
   @else
@@ -185,6 +195,26 @@
 
 @section('page-script')
 <script>
+  const overviewDisclosures = Array.from(document.querySelectorAll('.event-overview-disclosure'));
+  const revealFinanceTarget = function () {
+    const finance = document.getElementById('event-finance-details');
+    if (!finance || !window.location.hash) return;
+    const target = document.getElementById(window.location.hash.slice(1));
+    if (target && finance.contains(target)) finance.open = true;
+  };
+  revealFinanceTarget();
+  window.addEventListener('hashchange', revealFinanceTarget);
+  let closedForPrint = null;
+  window.addEventListener('beforeprint', function () {
+    if (closedForPrint !== null) return;
+    closedForPrint = overviewDisclosures.filter(function (section) { return !section.open; });
+    closedForPrint.forEach(function (section) { section.open = true; });
+  });
+  window.addEventListener('afterprint', function () {
+    if (closedForPrint === null) return;
+    closedForPrint.forEach(function (section) { section.open = false; });
+    closedForPrint = null;
+  });
   document.querySelectorAll('input[name="quantity"], input[name="unit_price"]').forEach(function(el) {
     el.addEventListener('input', function() {
       const form = el.closest('form');

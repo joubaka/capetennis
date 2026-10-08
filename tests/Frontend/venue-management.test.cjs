@@ -6,24 +6,24 @@ const modalSource = source.slice(source.indexOf('  const deleteVenueAssociation 
 
 function element(values = {}) {
   return Object.assign({value:'', disabled:false, textContent:'', innerHTML:'', dataset:{}, listeners:{},
-    focus(){}, addEventListener(name, callback){this.listeners[name] = callback;},
+    closest(){return null;}, focus(){}, addEventListener(name, callback){this.listeners[name] = callback;},
     classList:{contains(){return false;}}, querySelector(){return null;},
   }, values);
 }
 
-function harness({post, fetch, drawRemoval} = {}) {
+function harness({post, fetch, drawRemoval, confirm=()=>true, editors=[]} = {}) {
   const calls = [], stored = new Map();
   let reloads = 0;
   const modal = element(), add = element();
   const existing = element({value:'12', options:[]}), name = element({disabled:true});
   const nodes = {'venue-management-modal':modal, 'add-venue':add, 'venue-add-status':element(), 'allocation-status':element(),
     'new-venue-courts':element({value:'4'}), 'new-venue-ball':element({value:'yellow'}),
-    'venue-editor-list':element(), 'venue-management-counts':element()};
+    'venue-editor-list':element(), 'venue-management-counts':element(), 'local-status':element()};
   const fresh = {'venue-editor-list':element({innerHTML:'fresh editors'}),
     'new-venue-id':element({innerHTML:'remaining venues'}), 'venue-management-counts':element({textContent:'2 assigned venues · 8 courts available'})};
   const assignment=element({checked:true}), court=element({checked:true}), unrelatedCourt=element({checked:true});
-  const document = {getElementById:id => nodes[id], querySelector:() => assignment,
-    querySelectorAll:selector => selector==='.remove-draw-venue' ? (drawRemoval?[drawRemoval]:[]) : selector.startsWith('.court-allocation[data-draw=')?[court]:[]};
+  const document = {getElementById:id => nodes[id], querySelector:selector => selector.includes('.venue-editor-status')?nodes['local-status']:assignment,
+    querySelectorAll:selector => selector==='.venue-editor[open]'?editors.filter(editor=>editor.open):selector==='.venue-editor'?editors:selector==='.remove-draw-venue' ? (drawRemoval?[drawRemoval]:[]) : selector.startsWith('.court-allocation[data-draw=')?[court]:[]};
   const window = {location:{href:'/schedule', reload(){reloads++;}}};
   const sessionStorage = {setItem:(key,value) => stored.set(key,value)};
   const DOMParser = class {parseFromString(){return {getElementById:id => fresh[id]};}};
@@ -32,14 +32,14 @@ function harness({post, fetch, drawRemoval} = {}) {
     if (fetch) return fetch(url, options);
     return {ok:true, text:async() => '<html/>', json:async() => ({message:'Removed.'})};
   };
-  new Function('document','window','sessionStorage','DOMParser','fetch','post','existingVenue','newVenueName',
+  new Function('document','window','sessionStorage','DOMParser','fetch','post','existingVenue','newVenueName','confirm',
     `const csrf='test', venueUrl='/venues', courtUrl='/courts';
      let allocationsDirty=true, scheduleDirty=true, allRankRules=[];
-     const rememberRankRules=()=>{}, invalidatePreview=()=>{}, confirm=()=>true;
-     const loadRankScope=()=>{}, updateCourtSummary=()=>{}, updateDrawSummary=()=>{};
+     const rememberRankRules=()=>{}, invalidatePreview=()=>{};
+     const refreshProgrammeStageSummaries=()=>{}, loadRankScope=()=>{}, updateCourtSummary=()=>{}, updateDrawSummary=()=>{};
      const setStatus=(node,message)=>{node.textContent=message;};
      ${modalSource}`)(document,window,sessionStorage,DOMParser,fetchClient,
-      post || (async() => ({message:'Added.', venue:{id:12}})),existing,name);
+      post || (async() => ({message:'Added.', venue:{id:12}})),existing,name,confirm);
   return {modal,add,existing,name,nodes,calls,stored,assignment,court,unrelatedCourt,reloads:() => reloads,
     addVenue:() => add.listeners.click({currentTarget:add}),
     click:button => modal.listeners.click({target:{closest:() => button}}),
@@ -81,7 +81,7 @@ test('closing is blocked while a venue mutation is pending', async () => {
 test('DELETE errors remain in the modal and do not refresh or reload', async () => {
   const api=harness({fetch:async() => ({ok:false,json:async() => ({message:'This venue has saved matches.'})})});
   const button=element({dataset:{url:'/venues/12'}, classList:{contains:name => name==='remove-venue'},
-    closest:() => ({querySelector:() => ({textContent:'Club'})})});
+    closest:() => ({dataset:{},querySelector:() => ({textContent:'Club'})})});
   await api.click(button);
   assert.equal(api.calls[0].options.method,'DELETE');
   assert.equal(api.calls[0].options.headers['X-CSRF-TOKEN'],'test');
@@ -114,4 +114,70 @@ test('removing an age-group venue updates its selection and leaves other choices
   assert.equal(api.unrelatedCourt.checked,true);
   assert.equal(removed,true);
   assert.equal(api.reloads(),0);
+});
+
+
+test('saving an individual court uses its row rather than a global escaped-label selector', async () => {
+  let submitted;
+  const api=harness({post:async(url,body) => {submitted={url,body};return {message:'Court saved.'};}});
+  const row={querySelector:() => ({value:'orange'})};
+  const button=element({dataset:{venue:'12',label:'Court "A"'},classList:{contains:name => name==='update-court-type'},
+    closest:selector => selector==='.court-editor-row'?row:null});
+  await api.click(button);
+  assert.deepEqual(submitted,{url:'/courts',body:{venue_id:12,label:'Court "A"',ball_type:'orange'}});
+  assert.equal(api.reloads(),0);
+});
+
+test('removing a court saves the exact label with AJAX before refreshing', async () => {
+  const api=harness();
+  const button=element({dataset:{url:'/venues/12/courts',label:'Court 5'},classList:{contains:name => name==='remove-court'}});
+  await api.click(button);
+  assert.equal(api.calls[0].options.method,'DELETE');
+  assert.deepEqual(JSON.parse(api.calls[0].options.body),{label:'Court 5'});
+  assert.equal(api.calls.length,2);
+  assert.equal(api.reloads(),0);
+  api.close();assert.equal(api.reloads(),1);
+});
+
+test('a rejected court removal does not refresh or reload', async () => {
+  const api=harness({fetch:async() => ({ok:false,json:async() => ({message:'This court has saved matches.'})})});
+  const button=element({dataset:{url:'/venues/12/courts',label:'3'},classList:{contains:name => name==='remove-court'}});
+  await api.click(button);
+  assert.equal(api.nodes['venue-add-status'].textContent,'This court has saved matches.');
+  assert.equal(api.calls.length,1);
+  assert.equal(button.disabled,false);
+  api.close();assert.equal(api.reloads(),0);
+});
+
+
+test('cancelling court setup confirmation leaves no saving message or request', async () => {
+  let requests=0;
+  const api=harness({confirm:()=>false,post:async()=>{requests++;}});
+  const setup={dataset:{url:'/venues/12/courts'},querySelector:selector => ({value:selector==='.setup-court-count'?'6':'green'})};
+  const button=element({dataset:{hasCustom:'1'},classList:{contains:name => name==='update-court-setup'},closest:() => setup});
+  await api.click(button);
+  assert.equal(requests,0);
+  assert.equal(api.nodes['venue-add-status'].textContent,'');
+  assert.equal(button.disabled,false);
+});
+
+
+test('refreshing a court keeps its venue open and reports success beside its editor', async () => {
+  const editor=element({dataset:{venue:'12'},open:true});
+  const other=element({dataset:{venue:'20'},open:false});
+  const api=harness({editors:[editor,other]});
+  const button=element({dataset:{url:'/venues/12/courts',label:'2'},classList:{contains:name=>name==='remove-court'},closest:()=>editor});
+  await api.click(button);
+  assert.equal(editor.open,true);
+  assert.equal(other.open,false);
+  assert.equal(api.nodes['local-status'].textContent,'Removed.');
+});
+
+test('court errors are visible beside the affected venue', async () => {
+  const editor=element({dataset:{venue:'12'},open:true});
+  const api=harness({editors:[editor],fetch:async()=>({ok:false,json:async()=>({message:'Published court protected.'})})});
+  const button=element({dataset:{url:'/venues/12/courts',label:'2'},classList:{contains:name=>name==='remove-court'},closest:()=>editor});
+  await api.click(button);
+  assert.equal(api.nodes['local-status'].textContent,'Published court protected.');
+  assert.equal(editor.open,true);
 });

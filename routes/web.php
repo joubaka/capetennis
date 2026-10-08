@@ -1176,6 +1176,8 @@ Route::delete(
     ->name('backend.event-venue-schedule.venues.remove');
   Route::delete('events/{event}/venue-schedule/draws/{draw}/venues/{venue}', [EventVenueScheduleController::class, 'removeDrawVenue'])
     ->name('backend.event-venue-schedule.draw-venues.remove');
+  Route::delete('events/{event}/venue-schedule/venues/{venue}/courts', [EventVenueScheduleController::class, 'removeCourt'])
+    ->name('backend.event-venue-schedule.courts.remove');
   Route::post('events/{event}/venue-schedule/courts', [EventVenueScheduleController::class, 'addCourt'])
     ->name('backend.event-venue-schedule.courts');
   Route::post('events/{event}/draws/bulk-publication', BulkDrawPublicationController::class)

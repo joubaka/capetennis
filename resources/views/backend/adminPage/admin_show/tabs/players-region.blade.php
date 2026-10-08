@@ -30,8 +30,7 @@
         <div class="d-flex flex-wrap gap-2">
           @can('team.players.manage', $team)
             <button type="button" class="btn btn-outline-secondary emailTeamBtn" data-teamid="{{ $team->id }}" data-teamname="{{ $team->name }}">Send team email</button>
-            @if($rankingManaged)<a class="btn btn-outline-primary" href="{{ route('backend.team-selection.index', $event) }}">Team details</a>
-            @elseif(auth()->user()->hasAnyRole(['super-user', 'admin']))<a class="btn btn-outline-primary" href="{{ route('backend.team-substitutions.show', $team) }}">Replace a player</a>@endif
+            @if($rankingManaged)<a class="btn btn-outline-primary" href="{{ route('backend.team-selection.index', $event) }}">Team details</a>@endif
           @endcan
           <div class="dropdown"><button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-label="Clothing for {{ $team->name }}">Clothing</button><div class="dropdown-menu dropdown-menu-end"><a class="dropdown-item" href="{{ route('backend.region.clothing.edit', $region->id) }}">Clothing setup</a><a class="dropdown-item" href="{{ route('backend.region.clothing.orders', ['region' => $region->id, 'event_id' => $event->id]) }}">Clothing orders</a></div></div>
         </div>

@@ -431,15 +431,98 @@ final class EventVenueScheduleController extends Controller
             'label' => ['required', 'string', 'max:50', 'regex:/\S/'],
             'ball_type' => ['nullable', 'in:orange,green,yellow,red,standard'],
         ]);
-        $allowed = $event->venues()->whereKey($data['venue_id'])->exists()
-            || DB::table('draw_venues')->whereIn('draw_id', $event->draws()->pluck('id'))->where('venue_id', $data['venue_id'])->exists();
-        abort_unless($allowed, 422, 'This venue does not belong to the event.');
-        DB::table('event_venue_courts')->updateOrInsert([
-            'event_id' => $event->id, 'venue_id' => $data['venue_id'], 'label' => trim($data['label']),
-        ], ['ball_type' => $data['ball_type'] ?: null, 'active' => true, 'updated_at' => now(), 'created_at' => now()]);
-        $count = DB::table('event_venue_courts')->where('event_id', $event->id)->where('venue_id', $data['venue_id'])->where('active', true)->count();
-        $event->venues()->syncWithoutDetaching([$data['venue_id'] => ['num_courts' => $count]]);
-        return response()->json(['message' => 'Court saved.']);
+        return DB::transaction(function () use ($event, $data) {
+            Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
+            DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
+            $venue = Venue::findOrFail($data['venue_id']);
+            $courts = $this->editableCourts($event, $venue);
+            $this->materializeCourts($event, $venue, $courts);
+            $identity = ['event_id' => $event->id, 'venue_id' => $venue->id, 'label' => trim($data['label'])];
+            DB::table('event_venue_courts')->insertOrIgnore($identity + [
+                'ball_type' => $data['ball_type'] ?? null, 'active' => true, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            DB::table('event_venue_courts')->where($identity)->update([
+                'ball_type' => $data['ball_type'] ?? null, 'active' => true, 'updated_at' => now(),
+            ]);
+            $this->syncCourtCount($event, $venue);
+            return response()->json(['message' => 'Court saved.']);
+        });
+    }
+
+    public function removeCourt(Request $request, Event $event, Venue $venue)
+    {
+        $this->authorize('event.manage', $event);
+        $data = $request->validate(['label' => ['required', 'string', 'max:50']]);
+        return DB::transaction(function () use ($event, $venue, $data) {
+            Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
+            DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
+            $courts = $this->editableCourts($event, $venue);
+            abort_unless($courts->contains(fn ($court) => (string) $court->label === $data['label']), 404);
+            if ($courts->count() <= 1) return response()->json([
+                'message' => 'Keep at least one court, or remove the venue from this event.',
+            ], 422);
+            $drawIds = $event->draws()->pluck('id');
+            $locked = DB::table('draw_venue_court_allocations')->join('draws', 'draws.id', '=', 'draw_venue_court_allocations.draw_id')
+                ->where('draws.event_id', $event->id)->where('venue_id', $venue->id)->where('court_label', $data['label'])
+                ->where(fn ($query) => $query->where('draws.locked', true)->orWhere('draws.published', true))->exists();
+            $implicitLocked = $event->draws()->where(fn ($query) => $query->where('locked', true)->orWhere('published', true))
+                ->whereHas('venues', fn ($query) => $query->where('venues.id', $venue->id))
+                ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('draw_venue_court_allocations')
+                    ->whereColumn('draw_venue_court_allocations.draw_id', 'draws.id')->where('venue_id', $venue->id))->exists();
+            if ($locked || $implicitLocked) return response()->json(['message' => 'This court is allocated to a locked or published draw and cannot be removed.'], 422);
+            $key = \App\Domain\Draws\Services\ScheduleAvailability::courtKey($data['label']);
+            $published = DB::table('published_schedule_assignments')->where('event_id', $event->id)
+                ->whereIn('draw_id', $drawIds)->where('venue_id', $venue->id)->pluck('court')
+                ->contains(fn ($court) => \App\Domain\Draws\Services\ScheduleAvailability::courtKey((string) $court) === $key);
+            if ($published) return response()->json([
+                'message' => 'This court has published match times. Update or hide the published schedule before removing it.',
+            ], 422);
+            $fixtureIds = Fixture::whereIn('draw_id', $drawIds)->pluck('id');
+            $scheduled = OrderOfPlay::where('venue_id', $venue->id)
+                ->where(fn ($query) => $query->whereIn('draw_id', $drawIds)->orWhereIn('fixture_id', $fixtureIds))
+                ->pluck('court')->contains(fn ($court) => \App\Domain\Draws\Services\ScheduleAvailability::courtKey((string) $court) === $key);
+            $teamScheduled = TeamFixture::whereIn('draw_id', $drawIds)->where('venue_id', $venue->id)
+                ->where(fn ($query) => $query->whereNotNull('scheduled_at')->orWhere('match_status', '!=', 0)->orWhereHas('fixtureResults'))
+                ->pluck('court_label')->contains(fn ($court) => \App\Domain\Draws\Services\ScheduleAvailability::courtKey((string) $court) === $key);
+            if ($scheduled || $teamScheduled) return response()->json([
+                'message' => 'This court has saved matches. Move or clear those bookings before removing it.',
+            ], 422);
+            $this->materializeCourts($event, $venue, $courts);
+            DB::table('event_venue_courts')->where('event_id', $event->id)->where('venue_id', $venue->id)
+                ->where('label', $data['label'])->update(['active' => false, 'updated_at' => now()]);
+            DB::table('draw_venue_court_allocations')->whereIn('draw_id', $drawIds)->where('venue_id', $venue->id)
+                ->where('court_label', $data['label'])->delete();
+            $this->syncCourtCount($event, $venue);
+            return response()->json(['message' => 'Court removed from this event.']);
+        });
+    }
+
+    private function editableCourts(Event $event, Venue $venue): \Illuminate\Support\Collection
+    {
+        $eventCount = $event->venues()->whereKey($venue->id)->value('event_venues.num_courts');
+        $drawCount = DB::table('draw_venues')->whereIn('draw_id', $event->draws()->pluck('id'))
+            ->where('venue_id', $venue->id)->max('num_courts');
+        abort_unless($eventCount !== null || $drawCount !== null, 404);
+        $courts = DB::table('event_venue_courts')->where('event_id', $event->id)->where('venue_id', $venue->id)
+            ->where('active', true)->get();
+        return $courts->isNotEmpty() ? $courts : collect(range(1, max(1, (int) $eventCount, (int) $drawCount)))
+            ->map(fn ($label) => (object) ['label' => (string) $label, 'ball_type' => null]);
+    }
+
+    private function materializeCourts(Event $event, Venue $venue, \Illuminate\Support\Collection $courts): void
+    {
+        foreach ($courts as $court) DB::table('event_venue_courts')->insertOrIgnore([
+            'event_id' => $event->id, 'venue_id' => $venue->id, 'label' => $court->label,
+            'ball_type' => $court->ball_type, 'active' => true, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
+    private function syncCourtCount(Event $event, Venue $venue): void
+    {
+        $count = DB::table('event_venue_courts')->where('event_id', $event->id)->where('venue_id', $venue->id)->where('active', true)->count();
+        $event->venues()->syncWithoutDetaching([$venue->id => ['num_courts' => $count]]);
+        DB::table('draw_venues')->whereIn('draw_id', $event->draws()->pluck('id'))->where('venue_id', $venue->id)
+            ->update(['num_courts' => $count, 'updated_at' => now()]);
     }
 
     public function configureCourts(Request $request, Event $event, Venue $venue)

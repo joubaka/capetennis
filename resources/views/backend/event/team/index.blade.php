@@ -1,41 +1,7 @@
-<div class="row g-3">
-
-  {{-- CONTEXTUAL MUTATION — navigation lives in the shared event header. --}}
-  <div class="col-xl-4 col-md-6">
-    <div class="card h-100 border-start border-info border-3">
-      <div class="card-header d-flex align-items-center gap-2">
-        <i class="ti ti-adjustments ti-md text-info"></i>
-        <h5 class="mb-0">Team Setup</h5>
-      </div>
-
-      <div class="card-body d-grid gap-2">
-        <a class="btn btn-outline-primary" href="{{ route('backend.event-communications.index', $event) }}"><i class="ti ti-mail me-1"></i>Communications &amp; send reports</a>
-
-        <a class="btn btn-primary"
-           href="{{ route('backend.team-selection.index', $event) }}">
-          <i class="ti ti-user-check me-1"></i>
-          Team Selection & Invitations
-        </a>
-
-        <a class="btn btn-outline-primary" href="{{ route('backend.event.clothing.index', $event) }}">
-          <i class="ti ti-shirt me-1"></i>
-          Clothing Setup
-        </a>
-
-        <button type="button"
-                class="btn btn-outline-success"
-                id="sync-team-categories-btn"
-                data-url="{{ url('/backend/event/' . $event->id . '/import-teams') }}">
-          <i class="ti ti-upload me-1"></i>
-          Sync Categories from Teams
-        </button>
-
-      </div>
-    </div>
-  </div>
+<div class="row g-3 mb-4">
 
   {{-- TEAM STATS --}}
-  <div class="col-xl-8 col-md-6">
+  <div class="col-12">
     <div class="card h-100">
       <div class="card-header d-flex align-items-center gap-2">
         <i class="ti ti-chart-pie ti-md text-success"></i>
@@ -114,6 +80,38 @@
       </div>
     </div>
   </div>
+
+  {{-- CONTEXTUAL MUTATION — navigation lives in the shared event header. --}}
+  <div class="col-12">
+    <details class="event-overview-disclosure">
+      <summary>Setup tools</summary>
+
+      <div class="card-body d-grid gap-2">
+        <a class="btn btn-outline-primary" href="{{ route('backend.event-communications.index', $event) }}"><i class="ti ti-mail me-1"></i>Communications &amp; send reports</a>
+
+        <a class="btn btn-primary"
+           href="{{ route('backend.team-selection.index', $event) }}">
+          <i class="ti ti-user-check me-1"></i>
+          Team Selection & Invitations
+        </a>
+
+        <a class="btn btn-outline-primary" href="{{ route('backend.event.clothing.index', $event) }}">
+          <i class="ti ti-shirt me-1"></i>
+          Clothing Setup
+        </a>
+
+        <button type="button"
+                class="btn btn-outline-success"
+                id="sync-team-categories-btn"
+                data-url="{{ url('/backend/event/' . $event->id . '/import-teams') }}">
+          <i class="ti ti-upload me-1"></i>
+          Sync Categories from Teams
+        </button>
+
+      </div>
+    </details>
+  </div>
+
 
 </div>
 

@@ -1091,6 +1091,99 @@ class EventVenueScheduleTest extends TestCase
             ->assertDontSee('<option value="'.$venue->id.'">'.$venue->name.'</option>', false);
     }
 
+    public function test_editing_a_legacy_numbered_court_preserves_the_other_courts(): void
+    {
+        $event = Event::factory()->create();
+        $venue = $this->venue($event, 'Legacy Courts');
+        $event->venues()->updateExistingPivot($venue->id, ['num_courts' => 6]);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $this->actingAs($admin)->postJson(route('backend.event-venue-schedule.courts', $event), [
+            'venue_id' => $venue->id, 'label' => '5', 'ball_type' => 'green',
+        ])->assertOk();
+        $this->assertSame(6, DB::table('event_venue_courts')->where('event_id', $event->id)->where('active', true)->count());
+        $this->assertDatabaseHas('event_venue_courts', ['event_id' => $event->id, 'venue_id' => $venue->id, 'label' => '5', 'ball_type' => 'green']);
+        $this->assertDatabaseHas('event_venues', ['event_id' => $event->id, 'venue_id' => $venue->id, 'num_courts' => 6]);
+    }
+
+    public function test_removing_a_court_preserves_other_events_and_rejects_the_last_court(): void
+    {
+        $event = Event::factory()->create();
+        $other = Event::factory()->create();
+        $venue = $this->venue($event, 'Shared Courts');
+        $event->venues()->updateExistingPivot($venue->id, ['num_courts' => 2]);
+        $other->venues()->attach($venue->id, ['num_courts' => 5]);
+        $draw = Draw::factory()->create(['event_id' => $event->id]);
+        $draw->venues()->attach($venue->id, ['num_courts' => 2]);
+        DB::table('draw_venue_court_allocations')->insert([
+            'draw_id' => $draw->id, 'venue_id' => $venue->id, 'court_label' => '2', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $url = route('backend.event-venue-schedule.courts.remove', [$event, $venue]);
+        $this->actingAs($admin)->deleteJson($url, ['label' => '2'])->assertOk();
+        $this->assertSame(1, DB::table('event_venue_courts')->where('event_id', $event->id)->where('active', true)->count());
+        $this->assertDatabaseHas('event_venue_courts', ['event_id' => $event->id, 'venue_id' => $venue->id, 'label' => '2', 'active' => false]);
+        $this->assertDatabaseMissing('draw_venue_court_allocations', ['draw_id' => $draw->id, 'venue_id' => $venue->id, 'court_label' => '2']);
+        $this->assertDatabaseHas('event_venues', ['event_id' => $other->id, 'venue_id' => $venue->id, 'num_courts' => 5]);
+        $this->assertDatabaseHas('draw_venues', ['draw_id' => $draw->id, 'venue_id' => $venue->id, 'num_courts' => 1]);
+        $this->deleteJson($url, ['label' => '2'])->assertNotFound();
+        $this->deleteJson($url, ['label' => '1'])->assertUnprocessable();
+        $this->assertSame(1, DB::table('event_venue_courts')->where('event_id', $event->id)->where('active', true)->count());
+        $this->deleteJson(route('backend.event-venue-schedule.courts.remove', [$other, $venue]), ['label' => '1'])->assertForbidden();
+    }
+
+    public function test_a_court_in_a_published_draw_or_with_saved_matches_cannot_be_removed(): void
+    {
+        $event = Event::factory()->create();
+        $venue = $this->venue($event, 'Protected Courts');
+        $event->venues()->updateExistingPivot($venue->id, ['num_courts' => 2]);
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'published' => true]);
+        $draw->venues()->attach($venue->id, ['num_courts' => 2]);
+        DB::table('draw_venue_court_allocations')->insert([
+            'draw_id' => $draw->id, 'venue_id' => $venue->id, 'court_label' => '2', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $url = route('backend.event-venue-schedule.courts.remove', [$event, $venue]);
+        $this->actingAs($admin)->deleteJson($url, ['label' => '2'])->assertUnprocessable();
+        DB::table('draw_venue_court_allocations')->where('draw_id', $draw->id)->delete();
+        $this->deleteJson($url, ['label' => '2'])->assertUnprocessable();
+        $draw->update(['published' => false, 'locked' => true]);
+        $this->deleteJson($url, ['label' => '2'])->assertUnprocessable();
+        $draw->update(['locked' => false]);
+        $fixture = Fixture::factory()->create(['draw_id' => $draw->id]);
+        OrderOfPlay::create(['fixture_id' => $fixture->id, 'draw_id' => $draw->id, 'venue_id' => $venue->id, 'court' => 'Court 2', 'time' => '2026-09-10 08:00:00']);
+        $this->deleteJson($url, ['label' => '2'])->assertUnprocessable()->assertJsonPath('message',
+            'This court has saved matches. Move or clear those bookings before removing it.');
+        $this->assertDatabaseCount('order_of_plays', 1);
+        $this->assertSame(0, DB::table('event_venue_courts')->where('event_id', $event->id)->count());
+        $this->assertDatabaseHas('event_venues', ['event_id' => $event->id, 'venue_id' => $venue->id, 'num_courts' => 2]);
+    }
+
+    public function test_published_court_removal_is_blocked_after_working_matches_move(): void
+    {
+        $event = Event::factory()->create();
+        $venue = $this->venue($event, 'Published Courts');
+        $event->venues()->updateExistingPivot($venue->id, ['num_courts' => 2]);
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'published' => false]);
+        $draw->venues()->attach($venue->id, ['num_courts' => 2]);
+        $fixture = TeamFixture::create(['draw_id' => $draw->id, 'fixture_type' => 1, 'round_nr' => 1, 'match_nr' => 1]);
+        DB::table('published_schedule_assignments')->insert([
+            'event_id' => $event->id, 'draw_id' => $draw->id, 'fixture_kind' => 'team', 'fixture_id' => $fixture->id,
+            'venue_id' => $venue->id, 'court' => 'Court 2', 'scheduled_at' => '2026-10-05 08:00:00', 'published_at' => now(),
+        ]);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $url = route('backend.event-venue-schedule.courts.remove', [$event, $venue]);
+        $this->actingAs($admin)->deleteJson($url, ['label' => '2'])->assertUnprocessable()->assertJsonPath('message',
+            'This court has published match times. Update or hide the published schedule before removing it.');
+        $this->assertDatabaseCount('published_schedule_assignments', 1);
+        $this->assertSame(0, DB::table('event_venue_courts')->where('event_id', $event->id)->count());
+        $this->deleteJson($url, ['label' => '1'])->assertOk();
+        $this->assertDatabaseHas('published_schedule_assignments', ['fixture_id' => $fixture->id, 'court' => 'Court 2']);
+    }
+
     public function test_a_numbered_court_with_a_scheduled_match_cannot_be_removed(): void
     {
         $event = Event::factory()->create();

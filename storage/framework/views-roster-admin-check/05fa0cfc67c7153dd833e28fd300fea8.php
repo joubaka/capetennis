@@ -1,0 +1,16 @@
+<div class="container">
+  <div class="row justify-content-center my-5">
+    <div class="col-sm-12 col-md-8 col-lg-5 my-4">
+      <div>
+        <?php echo e($logo); ?>
+
+      </div>
+
+      <div class="card px-1 mx-4">
+        <?php echo e($slot); ?>
+
+      </div>
+    </div>
+  </div>
+</div>
+<?php /**PATH C:\wamp64\www\ct\resources\views\components\authentication-card.blade.php ENDPATH**/ ?>

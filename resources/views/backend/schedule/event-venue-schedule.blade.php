@@ -280,26 +280,27 @@
           <details class="venue-editor" data-venue="{{ $venue['id'] }}">
             <summary><strong class="flex-grow-1">{{ $venue['name'] }}</strong><span class="badge bg-label-primary">{{ $venue['courts'] }} courts</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>
             <div class="venue-editor-body">
-            <div class="d-flex justify-content-end mt-2"><button type="button" class="btn btn-sm btn-outline-danger remove-venue" data-url="{{ route('backend.event-venue-schedule.venues.remove', [$event, $venue['id']]) }}">Remove from this event</button></div>
+            <div class="d-flex justify-content-end mt-2"><button type="button" class="btn btn-sm btn-outline-danger remove-venue" data-audit-ignore="true" data-url="{{ route('backend.event-venue-schedule.venues.remove', [$event, $venue['id']]) }}">Remove from this event</button></div>
             <div class="small fw-semibold mt-3 mb-2">Edit this venue's court setup</div>
             <div class="row g-2 venue-court-setup" data-url="{{ route('backend.event-venue-schedule.courts.configure', [$event, $venue['id']]) }}">
               <div class="col-sm-4"><label class="visually-hidden">Total courts at {{ $venue['name'] }}</label><input type="number" class="form-control form-control-sm setup-court-count" value="{{ $venue['courts'] }}" min="1" max="100" aria-label="Total courts at {{ $venue['name'] }}"></div>
               <div class="col-sm-5"><label class="visually-hidden">Court type at {{ $venue['name'] }}</label><select class="form-select form-select-sm setup-court-ball"><option value="mixed" disabled {{ $venue['common_ball_type'] === 'mixed' ? 'selected' : '' }}>Mixed types</option><option value="standard" {{ $venue['common_ball_type'] === 'standard' ? 'selected' : '' }}>Standard</option><option value="yellow" {{ $venue['common_ball_type'] === 'yellow' ? 'selected' : '' }}>Yellow</option><option value="orange" {{ $venue['common_ball_type'] === 'orange' ? 'selected' : '' }}>Orange</option><option value="green" {{ $venue['common_ball_type'] === 'green' ? 'selected' : '' }}>Green</option><option value="red" {{ $venue['common_ball_type'] === 'red' ? 'selected' : '' }}>Red</option></select></div>
-              <div class="col-sm-3"><button type="button" class="btn btn-sm btn-primary w-100 update-court-setup" data-has-custom="{{ $venue['has_custom_courts'] ? '1' : '0' }}">Update all</button></div>
+              <div class="col-sm-3"><button type="button" class="btn btn-sm btn-primary w-100 update-court-setup" data-audit-ignore="true" data-has-custom="{{ $venue['has_custom_courts'] ? '1' : '0' }}">Update all</button></div>
               <div class="col-12"><small class="setup-status text-muted" role="status" aria-live="polite">Sets numbered Courts 1–{{ $venue['courts'] }} to one type{{ $venue['has_custom_courts'] ? ' and replaces specially named courts' : '' }}.</small></div>
             </div>
             <div class="small fw-semibold mt-3 mb-2">Individual courts</div>
             <div class="d-grid gap-2">
               @foreach($venue['court_list'] as $court)
-                <div class="row g-2 align-items-center">
+                <div class="row g-2 align-items-center court-editor-row">
                   <div class="col-sm-5 small">Court {{ $court['label'] }}</div>
                   <div class="col-7 col-sm-4"><select class="form-select form-select-sm edit-court-ball" aria-label="Type for court {{ $court['label'] }} at {{ $venue['name'] }}" data-venue="{{ $venue['id'] }}" data-label="{{ $court['label'] }}"><option value="standard" {{ !$court['ball_type'] || $court['ball_type'] === 'standard' ? 'selected' : '' }}>Standard</option><option value="yellow" {{ $court['ball_type'] === 'yellow' ? 'selected' : '' }}>Yellow</option><option value="orange" {{ $court['ball_type'] === 'orange' ? 'selected' : '' }}>Orange</option><option value="green" {{ $court['ball_type'] === 'green' ? 'selected' : '' }}>Green</option><option value="red" {{ $court['ball_type'] === 'red' ? 'selected' : '' }}>Red</option></select></div>
-                  <div class="col-5 col-sm-3"><button type="button" class="btn btn-sm btn-outline-secondary w-100 update-court-type" data-venue="{{ $venue['id'] }}" data-label="{{ $court['label'] }}">Save</button></div>
+                  <div class="col-5 col-sm-3 d-flex gap-2"><button type="button" data-audit-ignore="true" class="btn btn-sm btn-outline-secondary flex-grow-1 update-court-type" data-venue="{{ $venue['id'] }}" data-label="{{ $court['label'] }}">Save</button><button type="button" class="btn btn-sm btn-outline-danger remove-court" data-audit-ignore="true" data-url="{{ route('backend.event-venue-schedule.courts.remove', [$event, $venue['id']]) }}" data-label="{{ $court['label'] }}" aria-label="Remove court {{ $court['label'] }} at {{ $venue['name'] }}" title="Remove court" style="min-width:44px;min-height:44px"><i class="ti ti-x" aria-hidden="true"></i></button></div>
                 </div>
               @endforeach
             </div>
             <div class="small fw-semibold mt-3">Add a specially named court</div>
-            <div class="row g-2 mt-2"><div class="col-sm-5"><input class="form-control form-control-sm add-court-label" data-venue="{{ $venue['id'] }}" aria-label="New court label at {{ $venue['name'] }}" placeholder="Court label"></div><div class="col-7 col-sm-4"><select class="form-select form-select-sm add-court-ball" data-venue="{{ $venue['id'] }}" aria-label="New court type"><option value="standard">Standard</option><option value="yellow">Yellow</option><option value="orange">Orange</option><option value="green">Green</option><option value="red">Red</option></select></div><div class="col-5 col-sm-3"><button type="button" class="btn btn-sm btn-outline-primary w-100 add-court" data-venue="{{ $venue['id'] }}">Add</button></div></div>
+            <div class="row g-2 mt-2"><div class="col-sm-5"><input class="form-control form-control-sm add-court-label" data-venue="{{ $venue['id'] }}" aria-label="New court label at {{ $venue['name'] }}" placeholder="Court label"></div><div class="col-7 col-sm-4"><select class="form-select form-select-sm add-court-ball" data-venue="{{ $venue['id'] }}" aria-label="New court type"><option value="standard">Standard</option><option value="yellow">Yellow</option><option value="orange">Orange</option><option value="green">Green</option><option value="red">Red</option></select></div><div class="col-5 col-sm-3"><button type="button" class="btn btn-sm btn-outline-primary w-100 add-court" data-audit-ignore="true" data-venue="{{ $venue['id'] }}">Add</button></div></div>
+            <div class="venue-editor-status small mt-2" role="status" aria-live="polite"></div>
             </div>
           </details>
           @empty
@@ -1847,6 +1848,9 @@
     window.location.reload();
   });
   const refreshVenueEditors = async () => {
+    const openVenues = [...document.querySelectorAll('.venue-editor[open]')].map(editor => editor.dataset.venue);
+    const modalBody = venueModal.querySelector('.modal-body');
+    const scrollTop = modalBody?.scrollTop;
     venueManagementChanged = true;
     invalidatePreview('Venues changed. Generate a new preview after finishing venue edits.');
     const response = await fetch(window.location.href, {headers:{Accept:'text/html'}, cache:'no-store'});
@@ -1856,6 +1860,8 @@
     const choices = page.getElementById('new-venue-id');
     if (!editors || !choices) throw new Error('The venue was updated. Close this window to refresh the venue list.');
     document.getElementById('venue-editor-list').innerHTML = editors.innerHTML;
+    document.querySelectorAll('.venue-editor').forEach(editor => { editor.open = openVenues.includes(editor.dataset.venue); });
+    if (modalBody) modalBody.scrollTop = scrollTop;
     existingVenue.innerHTML = choices.innerHTML;
     document.getElementById('venue-management-counts').textContent = page.getElementById('venue-management-counts').textContent;
   };
@@ -1863,8 +1869,12 @@
     if (venueManagementPending) return;
     venueManagementPending = true;
     button.disabled = true;
+    const editor = button.closest('.venue-editor');
+    const status = () => (editor?.dataset.venue
+      ? document.querySelector(`.venue-editor[data-venue="${editor.dataset.venue}"] .venue-editor-status`) : null)
+      || document.getElementById('venue-add-status');
     try { await action(); }
-    catch (error) { if (!error.stalePreview) setStatus(document.getElementById('venue-add-status'), error.message, 'danger'); }
+    catch (error) { if (!error.stalePreview) setStatus(status(), error.message, 'danger'); }
     finally { venueManagementPending = false; button.disabled = false; }
   };
   document.getElementById('add-venue')?.addEventListener('click', event => venueAction(event.currentTarget, async () => {
@@ -1886,7 +1896,7 @@
     (creating ? newVenueName : existingVenue).focus();
   }));
   venueModal.addEventListener('click', event => {
-    const button = event.target.closest('.add-court, .update-court-setup, .update-court-type, .remove-venue');
+    const button = event.target.closest('.add-court, .update-court-setup, .update-court-type, .remove-venue, .remove-court');
     if (!button) return;
     return venueAction(button, async () => {
       let result;
@@ -1895,6 +1905,10 @@
         const name = editor.querySelector('summary strong').textContent;
         if (!confirm(`Remove ${name} from this event? Its draw allocations will be removed. The venue remains available for other events.`)) return;
         result = await deleteVenueAssociation(button.dataset.url);
+      } else if (button.classList.contains('remove-court')) {
+        const response = await fetch(button.dataset.url, {method:'DELETE', headers:{'Content-Type':'application/json', Accept:'application/json', 'X-CSRF-TOKEN':csrf}, body:JSON.stringify({label:button.dataset.label})});
+        result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.message || 'Unable to remove this court.');
       } else if (button.classList.contains('update-court-setup')) {
         const setup = button.closest('.venue-court-setup');
         const ballType = setup.querySelector('.setup-court-ball').value;
@@ -1907,11 +1921,14 @@
         const label = adding ? document.querySelector(`.add-court-label[data-venue="${venueId}"]`).value.trim() : button.dataset.label;
         if (!label) throw new Error('Enter a court label first.');
         const ballType = adding ? document.querySelector(`.add-court-ball[data-venue="${venueId}"]`).value
-          : document.querySelector(`.edit-court-ball[data-venue="${venueId}"][data-label="${CSS.escape(label)}"]`).value;
+          : button.closest('.court-editor-row').querySelector('.edit-court-ball').value;
         result = await post(courtUrl, {venue_id:venueId, label, ball_type:ballType});
       }
       setStatus(document.getElementById('venue-add-status'), result.message || 'Court updated.', 'success');
+      const venueId = button.closest('.venue-editor')?.dataset.venue;
       await refreshVenueEditors();
+      const localStatus = venueId && document.querySelector(`.venue-editor[data-venue="${venueId}"] .venue-editor-status`);
+      if (localStatus) setStatus(localStatus, result.message || 'Court updated.', 'success');
     });
   });
   document.getElementById('apply-preview').addEventListener('click', async event => {
