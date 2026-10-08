@@ -53,13 +53,13 @@
   @endisset
   <div class="print-toolbar">
     <button type="button" onclick="window.print()">Print</button>
-    @isset($age)
+    @if(isset($age))
       <a href="{{ route('headoffice.venuePrintPack', ['event' => $event, 'age' => $age, 'date' => $selectedDate, 'download' => 1]) }}">Save as PDF</a>
-    @elseisset($draw)
+    @elseif(isset($draw))
       <a href="{{ route('fixture.create.pdf', ['fixtures' => $draw->id, 'date' => $selectedDate]) }}">Save as PDF</a>
     @else
       <a href="{{ route('fixture.create.pdf.venue', ['fixtures' => $fixtures->pluck('id')->all()]) }}">Save as PDF</a>
-    @endisset
+    @endif
   </div>
   <main class="print-sheet">
     @isset($venueSections)

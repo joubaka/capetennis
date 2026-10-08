@@ -42,7 +42,13 @@
   .scoring-select-grid > div { min-width: 0; }
   .scoring-context-summary { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 52px; cursor: pointer; list-style: none; }
   .scoring-context-summary::-webkit-details-marker { display: none; }
+  .scoring-filter-card > .scoring-context-summary { background: #eef7f5; color: #145e55; }
+  .scoring-filter-card > .scoring-context-summary:hover { background: #dff0ec; }
   .scoring-context-summary:focus-visible { outline: 2px solid var(--ct-accent, #14796e); outline-offset: -2px; }
+  .scoring-context-toggle { display: inline-flex; align-items: center; gap: .4rem; flex-shrink: 0; padding: .3rem .65rem; border: 1px solid #9fcac1; border-radius: 6px; background: #fff; font-size: .82rem; font-weight: 700; }
+  .scoring-context-close { display: none; }
+  .scoring-filter-card[open] > .scoring-context-summary .scoring-context-open { display: none; }
+  .scoring-filter-card[open] > .scoring-context-summary .scoring-context-close { display: inline; }
   .scoring-context-summary .ti-chevron-down { transition: transform .2s ease; }
   .scoring-filter-card[open] > .scoring-context-summary .ti-chevron-down { transform: rotate(180deg); }
   .scoring-filter-label { color: var(--ct-muted, #66788a); font-size: .72rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
@@ -262,7 +268,11 @@
     <details class="card scoring-filter-card mb-4" aria-labelledby="scoring-context-title" @if($errors->has('operator')) open @endif>
       <summary class="card-header scoring-context-summary py-3">
         <span class="fw-semibold" id="scoring-context-title">Choose which matches to show</span>
-        <i class="ti ti-chevron-down" aria-hidden="true"></i>
+        <span class="scoring-context-toggle" aria-hidden="true">
+          <span class="scoring-context-open">Open</span>
+          <span class="scoring-context-close">Close</span>
+          <i class="ti ti-chevron-down"></i>
+        </span>
       </summary>
       <div class="card-body p-3 border-top">
           <p class="small text-muted mb-0">{{ ($scheduleSource ?? 'working') === 'published' ? 'Published order of play · matches the public venue page and printed packs.' : 'Working schedule · includes saved changes awaiting publication.' }}</p>
