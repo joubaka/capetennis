@@ -263,7 +263,7 @@ class TeamWorkspaceResultsTest extends TestCase
         TeamPlayer::where('player_id', $home->id)->update(['rank' => 4]);
         TeamPlayer::where('player_id', $away->id)->update(['rank' => 1]);
         $this->fixture($draw, $home, $away, [[6, 1], [6, 1]]);
-        $this->fixture($draw, $home, $away, [[1, 6], [1, 6], [6, 1]]);
+        $this->fixture($draw, $home, $away, [[1, 6], [6, 1], [1, 6]]);
         $response = $this->groupedRequest($event)->assertOk();
         $this->assertSame($away->id, $response->json('ranking.0.id'));
         $this->assertSame(100, $response->json('ranking.0.points'));
