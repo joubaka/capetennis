@@ -1,0 +1,1 @@
+<?php /**PATH C:\wamp64\www\ct\resources\views\backend\adminPage\_includes\transactions_table.blade.php ENDPATH**/ ?>

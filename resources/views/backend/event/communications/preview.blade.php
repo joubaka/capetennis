@@ -4,6 +4,7 @@
 @include('backend.event.partials.header', ['eventWorkspaceActive' => 'communications', 'eventWorkspaceRegionalOnly' => !app(\App\Services\EventCommunicationService::class)->managesWholeEvent($event, auth()->user())])
 <div data-mail-review>
 <h4>{{ $event->name }} — Review emails</h4>
+<h5>1. Recipients</h5>
 <p>{{ count($batch->recipients) }} emails. Nothing is sent until you approve below.</p>
 @php($coveredPlayers = collect($batch->recipients)->flatMap(fn ($recipient) => $recipient['player_keys'] ?? [])->unique()->count())
 @if($coveredPlayers)<p>{{ $coveredPlayers }} distinct players covered; {{ count($batch->issues ?? []) }} missing contacts. Shared addresses receive one email.</p>@endif
@@ -21,7 +22,8 @@
 <p class="form-text">Changing these checkboxes requires a fresh preview using the button above before approving.</p></form></div>
 @endif
 @if($batch->issues)<div class="alert alert-warning"><strong>Missing contacts</strong><ul class="mb-0">@foreach($batch->issues as $issue)<li>{{ $issue }}</li>@endforeach</ul></div>@endif
-@include('backend.partials.email-sample', ['mailRecipients' => $batch->recipients, 'mailSender' => $batch->options])
+@include('backend.partials.email-sample', ['mailRecipients' => $batch->recipients, 'mailSender' => $batch->options, 'mailSampleHeading' => '2. Message preview'])
+<h5>3. Approve</h5>
 <form method="post" action="{{ route('backend.event-communications.send',$event) }}">@csrf<input type="hidden" name="token" value="{{ $batch->token }}">
 @if($batch->issues)<label class="d-block mb-3"><input class="form-check-input me-2" type="checkbox" name="acknowledge_missing" value="1" required>I reviewed the missing contacts. These recipients will not receive an email.</label>@endif
 <label class="d-block mb-3"><input class="form-check-input me-2" type="checkbox" name="confirm_send" value="1" required>I confirm the recipients and example email are correct.</label><button id="approve-ranking-mail" class="btn btn-primary">Approve and queue {{ count($batch->recipients) }} emails</button> <a class="btn btn-outline-secondary" href="{{ route('backend.event-communications.index',$event) }}">Back to composer</a>

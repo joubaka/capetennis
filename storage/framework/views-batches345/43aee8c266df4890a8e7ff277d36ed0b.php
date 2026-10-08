@@ -1,0 +1,3 @@
+<?php ($resultsAutoRefresh = ($event ?? $draw->event ?? null)?->result_auto_refresh_enabled ?? true); ?>
+<p class="small text-muted" data-live-results-status data-auto-refresh="<?php echo e($resultsAutoRefresh ? '1' : '0'); ?>" role="status" aria-live="polite"><?php echo e($resultsAutoRefresh ? 'Results update automatically every 30 seconds while this page is open.' : 'Automatic updates are off for this event. Reload this page to see the latest results.'); ?></p>
+<?php /**PATH C:\wamp64\www\ct\resources\views\frontend\fixtures\partials\live-results-status.blade.php ENDPATH**/ ?>

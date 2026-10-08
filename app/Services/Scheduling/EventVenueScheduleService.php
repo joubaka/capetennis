@@ -695,6 +695,62 @@ final class EventVenueScheduleService
         return $this->unapplyScope($event, $drawId, $venueId, $fixtureId);
     }
 
+    public function courtCorrectionClosure(Event $event, array $individualIds, array $teamIds): array
+    {
+        $individualIds = array_values(array_unique($individualIds)); $teamIds = array_values(array_unique($teamIds));
+        if (Fixture::whereIn('id', $individualIds)->whereHas('draw', fn ($query) => $query->where('event_id', $event->id))->count() !== count($individualIds)
+            || TeamFixture::whereIn('id', $teamIds)->whereHas('draw', fn ($query) => $query->where('event_id', $event->id))->count() !== count($teamIds)) {
+            throw new \InvalidArgumentException('Correction matches must belong to this event.');
+        }
+        $drawIds = Fixture::whereIn('id', $individualIds)->whereHas('draw', fn ($query) => $query->where('event_id', $event->id))->pluck('draw_id')
+            ->merge(TeamFixture::whereIn('id', $teamIds)->whereHas('draw', fn ($query) => $query->where('event_id', $event->id))->pluck('draw_id'))->unique();
+        $saved = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true) ?: [];
+        $progression = ($saved['round_progression'] ?? 'team_ready') === 'all_round' ? 'all_round' : 'team_ready';
+        $graph = [];
+        foreach (Draw::with(['drawFixtures.orderOfPlay', 'drawFixtures.fixtureResults', 'flexibleMonrad', 'groups'])->whereIn('id', $drawIds)->orderBy('id')->get() as $draw) {
+            foreach ($this->nodesForDraw($draw, Carbon::now(), 90) as $id => $node) {
+                $graph['individual:'.$id] = array_map(fn ($dependency) => 'individual:'.$dependency, $node['dependencies']);
+            }
+            foreach (app(UnifiedTeamScheduleService::class)->nodes($draw, $progression) as $key => $node) $graph[$key] = $node['dependencies'];
+        }
+        $selected = array_fill_keys(array_merge(array_map(fn ($id) => 'individual:'.$id, $individualIds), array_map(fn ($id) => 'team:'.$id, $teamIds)), true);
+        // Every pass adds a node; the visited set bounds cycles by the graph size.
+        do {
+            $changed = false;
+            foreach ($graph as $key => $dependencies) {
+                if (isset($selected[$key]) || ! array_intersect_key($selected, array_fill_keys($dependencies, true))) continue;
+                $selected[$key] = true; $changed = true;
+            }
+        } while ($changed);
+        ksort($selected);
+        return ['keys' => array_keys($selected), 'graph' => array_intersect_key($graph, $selected)];
+    }
+
+    public function unapplyCorrectionSelection(Event $event, array $individualIds, array $teamIds): array
+    {
+        return DB::transaction(function () use ($event, $individualIds, $teamIds) {
+            Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
+            DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
+            $fixtures = Fixture::with('fixtureResults')->whereHas('draw', fn ($query) => $query->where('event_id', $event->id))
+                ->whereIn('id', $individualIds)->orderBy('id')->lockForUpdate()->get();
+            if ($fixtures->count() !== count(array_unique($individualIds))) throw new \InvalidArgumentException('A correction match does not belong to this event.');
+            if ($fixtures->contains(fn ($fixture) => $fixture->fixtureResults->isNotEmpty() || (int) $fixture->match_status !== 0)) throw new \InvalidArgumentException('Played dependent matches cannot be returned to planning.');
+            if ($error = $this->removalError($event, $individualIds, $teamIds)) throw new \InvalidArgumentException($error);
+            $team = $teamIds ? app(UnifiedTeamScheduleService::class)->unapplyCorrectionSelection($event, $teamIds) : ['count' => 0];
+            $bookings = OrderOfPlay::whereIn('fixture_id', $individualIds)->whereNotNull('time')->orderBy('id')->lockForUpdate()->get();
+            OrderOfPlay::whereIn('id', $bookings->pluck('id'))->delete();
+            $scheduledIds = $bookings->pluck('fixture_id')->unique();
+            Fixture::whereIn('id', $scheduledIds)->update(['scheduled' => 0]);
+            foreach ($fixtures->whereIn('id', $scheduledIds)->groupBy('draw_id') as $drawId => $rows) {
+                DrawAuditLog::record((int) $drawId, 'event_venue_schedule_unapplied', null, [
+                    'event_id' => $event->id, 'matches' => $rows->count(), 'scope' => 'court_correction',
+                    'before' => $bookings->whereIn('fixture_id', $rows->pluck('id'))->map(fn ($row) => $row->only(['fixture_id', 'venue_id', 'court', 'time']))->values()->all(),
+                ]);
+            }
+            return ['count' => $scheduledIds->count() + $team['count']];
+        });
+    }
+
     public function unapplyForCourtCorrection(Event $event, int $venueId): array
     {
         return $this->unapplyScope($event, null, $venueId, null, true);

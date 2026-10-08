@@ -5,10 +5,12 @@
 @endphp
 <div class="roster-region-header">
   <div><h2 class="h5 mb-1">{{ $region->region_name }}</h2><p class="text-muted mb-0">{{ $region->teams->count() }} teams · {{ $occupied }} occupied places · {{ $unpaid }} unpaid · {{ $reserves }} reserves</p></div>
-  <div class="dropdown"><button type="button" class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">Send Emails</button><div class="dropdown-menu dropdown-menu-end">
+  <div class="d-flex flex-wrap gap-2"><div class="dropdown"><button type="button" class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">Send Emails</button><div class="dropdown-menu dropdown-menu-end">
     <button type="button" class="dropdown-item emailRegionBtn" data-regionid="{{ $region->id }}" data-regionname="{{ $region->region_name }}">Players in this region</button>
     <button type="button" class="dropdown-item emailUnpaidRegionBtn" data-regionid="{{ $region->id }}" data-regionname="{{ $region->region_name }}">Unpaid players in this region</button>
   </div></div>
+    <div class="dropdown"><button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-label="Clothing for {{ $region->region_name }}">Clothing</button><div class="dropdown-menu dropdown-menu-end"><a class="dropdown-item" href="{{ route('backend.region.clothing.edit', ['region' => $region->id, 'event_id' => $event->id]) }}">Clothing setup</a><a class="dropdown-item" href="{{ route('backend.region.clothing.orders', ['region' => $region->id, 'event_id' => $event->id]) }}">Clothing orders</a></div></div>
+  </div>
 </div>
 <p class="small text-muted" data-roster-match-count role="status" aria-live="polite"></p>
 @forelse($region->teams as $team)
@@ -30,9 +32,7 @@
         <div class="d-flex flex-wrap gap-2">
           @can('team.players.manage', $team)
             <button type="button" class="btn btn-outline-secondary emailTeamBtn" data-teamid="{{ $team->id }}" data-teamname="{{ $team->name }}">Send team email</button>
-            @if($rankingManaged)<a class="btn btn-outline-primary" href="{{ route('backend.team-selection.index', $event) }}">Team details</a>@endif
           @endcan
-          <div class="dropdown"><button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-label="Clothing for {{ $team->name }}">Clothing</button><div class="dropdown-menu dropdown-menu-end"><a class="dropdown-item" href="{{ route('backend.region.clothing.edit', $region->id) }}">Clothing setup</a><a class="dropdown-item" href="{{ route('backend.region.clothing.orders', ['region' => $region->id, 'event_id' => $event->id]) }}">Clothing orders</a></div></div>
         </div>
       </div>
       <div class="table-responsive"><table class="table align-middle team-player-table mb-0">
@@ -67,7 +67,6 @@
       @if($rankingManaged)
         <details class="roster-reserves mt-3"><summary>Reserve queue ({{ $teamReserves->count() }})</summary><p class="small text-muted mt-2">Reserves enter the active roster, draws, exports and emails to players in the team or region only after promotion.</p>
           <ol class="mb-0">@forelse($teamReserves as $reserve)<li>{{ $reserve->player?->full_name ?? 'Missing player' }} <span class="text-muted">· Ranking #{{ $reserve->ranking_position ?? '—' }}</span></li>@empty<li class="list-unstyled">No reserves remain.</li>@endforelse</ol>
-          <a class="btn btn-outline-primary mt-2" href="{{ route('backend.team-selection.index', $event) }}">Manage selection & reserves</a>
         </details>
       @endif
     </div>

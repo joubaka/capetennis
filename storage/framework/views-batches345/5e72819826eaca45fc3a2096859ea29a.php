@@ -1,0 +1,10 @@
+<p><strong><?php echo e(count($mailRecipients)); ?> email<?php echo e(count($mailRecipients) === 1 ? '' : 's'); ?></strong> ready to queue.</p>
+<p class="text-break"><strong>From:</strong> <?php echo e($mailSender['from_name'] ?? auth()->user()->name); ?><br><strong>Reply-to:</strong> <?php echo e($mailSender['reply_to'] ?? auth()->user()->email); ?></p>
+<details class="border rounded p-3 mb-3"><summary>Review all <?php echo e(count($mailRecipients)); ?> recipients</summary><div class="mt-2" style="max-height:240px;overflow:auto">
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $mailRecipients; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $recipient): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><div class="text-break"><?php echo e($recipient['name'] ?? ''); ?> · <?php echo e($recipient['email']); ?></div><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+</div></details>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($sample = collect($mailRecipients)->first()): ?>
+<div class="card card-body mb-3"><h5><?php echo e($mailSampleHeading ?? 'Example email'); ?></h5><p class="text-break"><strong>To:</strong> <?php echo e($sample['email']); ?></p><h6><?php echo e($sample['subject']); ?></h6>
+<iframe title="Example email to <?php echo e($sample['email']); ?>" sandbox="" srcdoc="<?php echo e($sample['html'] ?? nl2br(e($sample['body'] ?? ''))); ?>" style="width:100%;height:360px;border:1px solid #ddd"></iframe></div>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php /**PATH C:\wamp64\www\ct\resources\views\backend\partials\email-sample.blade.php ENDPATH**/ ?>

@@ -15,7 +15,6 @@
 
 @if($errors->any())<div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>@endif
 <form method="post" action="{{ route('backend.event-communications.preview', $event) }}" data-mail-compose class="card card-body mb-4">@csrf
-@include('backend.partials.email-sender-fields')
 @php
 $composeOptions = session('compose_options', []);
 @endphp
@@ -54,6 +53,7 @@ $composeOptions = session('compose_options', []);
 @endif
 <label class="form-label mt-3" for="communication-subject">Subject</label><input class="form-control" id="communication-subject" name="subject" required maxlength="200" value="{{ old('subject', session('compose_subject', $event->name.' — Update')) }}">
 <label class="form-label mt-3" for="communication-body">Message</label><textarea class="form-control" id="communication-body" name="body" rows="7" required maxlength="30000">{{ old('body',session('compose_body')) }}</textarea>
+<details class="border rounded p-3 mt-3" @if($errors->has('from_name') || $errors->has('reply_to')) open @endif><summary>Sender details</summary><div class="mt-3">@include('backend.partials.email-sender-fields')</div></details>
 <p class="form-text">Write an update, share arrangements or send a payment or clothing reminder. Only your message is included. Review one example and approve here before sending.</p>
 <button class="btn btn-primary align-self-start">Preview email</button>
 </form>

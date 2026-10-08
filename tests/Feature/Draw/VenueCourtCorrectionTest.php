@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Draw;
 
-use App\Models\{Draw, Event, Fixture, FixtureResult, OrderOfPlay, Team, TeamFixture, TeamTie, User, Venue};
+use App\Models\{Category, CategoryEvent, Draw, Event, Fixture, FixtureResult, OrderOfPlay, Team, TeamFixture, TeamTie, User, Venue};
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
@@ -111,6 +111,55 @@ class VenueCourtCorrectionTest extends TestCase
         $this->assertTrue((bool) $draw->fresh()->published);
     }
 
+    public function test_optional_age_reset_uses_canonical_categories_and_all_event_disciplines(): void
+    {
+        [$event, $venue, $draw] = $this->setupVenue();
+        $boys = CategoryEvent::create(['event_id' => $event->id, 'category_id' => Category::factory()->create(['name' => 'Under 12 Boys'])->id]);
+        $girls = CategoryEvent::create(['event_id' => $event->id, 'category_id' => Category::factory()->create(['name' => 'Under 12 Girls'])->id]);
+        $older = CategoryEvent::create(['event_id' => $event->id, 'category_id' => Category::factory()->create(['name' => 'Under 14 Boys'])->id]);
+        $draw->update(['category_event_id' => $boys->id]);
+        $otherVenue = new Venue(); $otherVenue->forceFill(['name' => 'Age Venue'])->save();
+        $girlsDraw = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => $girls->id]);
+        $doubles = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => null, 'team_draw_selection' => ['category_ids' => [$boys->id, $girls->id]]]);
+        $olderDraw = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => $older->id]);
+        $this->booking($draw, $venue);
+        $girlMatch = $this->booking($girlsDraw, $otherVenue);
+        $doubleMatch = $this->booking($doubles, $otherVenue);
+        $olderMatch = $this->booking($olderDraw, $otherVenue);
+        $url = route('backend.event-venue-schedule.courts.configure', [$event, $venue]);
+        $body = ['courts' => 4, 'ball_type' => 'standard'];
+        $default = $this->postJson($url, $body)->assertStatus(409)->assertJsonPath('impact.scheduled_matches', 1)
+            ->assertJsonPath('age_group_options.0.key', 'under:12');
+        $this->assertEqualsCanonicalizing([$draw->id, $girlsDraw->id, $doubles->id], $default->json('age_group_options.0.draw_ids'));
+        $this->postJson($url, $body + ['reset_age_keys' => ['under:14'], 'review_only' => true])->assertUnprocessable();
+        $ageBody = $body + ['reset_age_keys' => ['under:12']];
+        $review = $this->postJson($url, $ageBody + ['review_only' => true])->assertStatus(409)->assertJsonPath('impact.scheduled_matches', 3);
+        $this->assertDatabaseCount('order_of_plays', 4);
+        $this->postJson($url, $ageBody + ['confirm_reset' => true, 'correction_revision' => $default->json('correction_revision')])->assertStatus(409);
+        $this->postJson($url, $ageBody + ['confirm_reset' => true, 'correction_revision' => $review->json('correction_revision')])->assertOk();
+        $this->assertDatabaseCount('order_of_plays', 1);
+        $this->assertDatabaseHas('order_of_plays', ['fixture_id' => $olderMatch->id]);
+        $this->assertDatabaseMissing('order_of_plays', ['fixture_id' => $girlMatch->id]);
+        $this->assertDatabaseMissing('order_of_plays', ['fixture_id' => $doubleMatch->id]);
+    }
+
+    public function test_review_only_never_mutates_even_when_the_schedule_impact_disappears(): void
+    {
+        [$event, $venue, $draw] = $this->setupVenue();
+        $draw->update(['locked' => false, 'published' => false]);
+        $url = route('backend.event-venue-schedule.courts.configure', [$event, $venue]);
+        $body = ['courts' => 4, 'ball_type' => 'standard', 'review_only' => true, 'confirm_reset' => true];
+        $this->postJson($url, $body)->assertStatus(409)->assertJsonPath('requires_confirmation', true)
+            ->assertJsonPath('impact.scheduled_matches', 0);
+        $this->assertDatabaseHas('event_venues', ['event_id' => $event->id, 'venue_id' => $venue->id, 'num_courts' => 6]);
+        $this->assertSame(0, DB::table('event_venue_courts')->where('event_id', $event->id)->count());
+        $this->deleteJson(route('backend.event-venue-schedule.courts.remove', [$event, $venue]),
+            ['label' => '5', 'review_only' => true])->assertStatus(409);
+        $this->assertSame(6, DB::table('draw_venue_court_allocations')->where('draw_id', $draw->id)->count());
+        $this->postJson($url, ['courts' => 6, 'ball_type' => 'orange', 'review_only' => true])->assertStatus(409);
+        $this->assertSame(0, DB::table('event_venue_courts')->where('event_id', $event->id)->count());
+    }
+
     public function test_changed_schedule_requires_a_fresh_warning_and_never_trusts_the_confirmation_flag_alone(): void
     {
         [$event, $venue, $draw] = $this->setupVenue();
@@ -176,26 +225,94 @@ class VenueCourtCorrectionTest extends TestCase
         $this->assertDatabaseHas('event_venues', ['event_id' => $event->id, 'venue_id' => $venue->id, 'num_courts' => 6]);
     }
 
-    public function test_a_dependency_at_another_venue_rolls_back_all_working_and_public_changes(): void
+    public function test_transitive_individual_dependencies_at_other_venues_are_reset_without_touching_unrelated_matches(): void
+    {
+        [$event, $venue, $draw] = $this->setupVenue();
+        $otherVenue = new Venue(); $otherVenue->forceFill(['name' => 'Other Venue'])->save();
+        $draw->venues()->attach($otherVenue->id, ['num_courts' => 6]);
+        $last = $this->booking($draw, $otherVenue, '3');
+        $middle = Fixture::factory()->create(['draw_id' => $draw->id, 'parent_fixture_id' => $last->id]);
+        $first = $this->booking($draw, $venue);
+        $first->update(['parent_fixture_id' => $middle->id]);
+        $unrelated = $this->booking($draw, $otherVenue, '1');
+        $this->publish($event, $draw, $venue, $first->id);
+        $this->publish($event, $draw, $otherVenue, $last->id);
+        $this->publish($event, $draw, $otherVenue, $unrelated->id);
+        $url = route('backend.event-venue-schedule.courts.configure', [$event, $venue]);
+        $body = ['courts' => 4, 'ball_type' => 'standard'];
+        $warning = $this->postJson($url, $body)->assertStatus(409)->assertJsonPath('impact.scheduled_matches', 2)
+            ->assertJsonPath('impact.dependent_matches', 1)->assertJsonPath('impact.affected_venues', 2)->assertJsonPath('impact.published_matches', 2);
+        $this->postJson($url, $body + ['confirm_reset' => true, 'correction_revision' => $warning->json('correction_revision')])->assertOk();
+        $this->assertDatabaseCount('order_of_plays', 1);
+        $this->assertDatabaseHas('order_of_plays', ['fixture_id' => $unrelated->id]);
+        $this->assertDatabaseCount('published_schedule_assignments', 1);
+        $this->assertDatabaseHas('published_schedule_assignments', ['fixture_id' => $unrelated->id]);
+        $this->assertDatabaseCount('fixtures', 4);
+        $this->assertTrue((bool) $draw->fresh()->oop_published);
+    }
+
+    public function test_team_dependency_closure_resets_later_rounds_at_other_venues(): void
+    {
+        [$event, $venue, $draw] = $this->setupVenue();
+        $otherVenue = new Venue(); $otherVenue->forceFill(['name' => 'Other Team Venue'])->save();
+        $first = TeamFixture::create(['draw_id' => $draw->id, 'fixture_type' => 1, 'round_nr' => 1, 'match_nr' => 1,
+            'region1' => 1, 'venue_id' => $venue->id, 'court_label' => '5', 'scheduled_at' => '2026-10-09 09:00:00']);
+        $bridge = TeamFixture::create(['draw_id' => $draw->id, 'fixture_type' => 1, 'round_nr' => 2, 'match_nr' => 2, 'region1' => 1, 'region2' => 2]);
+        $last = TeamFixture::create(['draw_id' => $draw->id, 'fixture_type' => 1, 'round_nr' => 3, 'match_nr' => 3,
+            'region1' => 2, 'venue_id' => $otherVenue->id, 'court_label' => '1', 'scheduled_at' => '2026-10-10 09:00:00']);
+        $unrelated = TeamFixture::create(['draw_id' => $draw->id, 'fixture_type' => 1, 'round_nr' => 3, 'match_nr' => 4,
+            'region1' => 3, 'venue_id' => $otherVenue->id, 'court_label' => '2', 'scheduled_at' => '2026-10-10 09:00:00']);
+        $this->publish($event, $draw, $venue, $first->id, 'team');
+        $this->publish($event, $draw, $otherVenue, $last->id, 'team');
+        $this->publish($event, $draw, $otherVenue, $unrelated->id, 'team');
+        $url = route('backend.event-venue-schedule.courts.configure', [$event, $venue]);
+        $body = ['courts' => 4, 'ball_type' => 'standard'];
+        $warning = $this->postJson($url, $body)->assertStatus(409)->assertJsonPath('impact.dependent_matches', 1)->assertJsonPath('impact.published_matches', 2);
+        $this->postJson($url, $body + ['confirm_reset' => true, 'correction_revision' => $warning->json('correction_revision')])->assertOk();
+        $this->assertNull($first->fresh()->scheduled_at);
+        $this->assertNull($last->fresh()->scheduled_at);
+        $this->assertNotNull($unrelated->fresh()->scheduled_at);
+        $this->assertDatabaseCount('published_schedule_assignments', 1);
+        $this->assertDatabaseHas('published_schedule_assignments', ['fixture_id' => $unrelated->id]);
+        $this->assertDatabaseCount('team_fixtures', 4);
+    }
+
+    public function test_played_dependency_and_stale_closure_preserve_all_schedules(): void
     {
         [$event, $venue, $draw] = $this->setupVenue();
         $otherVenue = new Venue(); $otherVenue->forceFill(['name' => 'Other Venue'])->save();
         $later = $this->booking($draw, $otherVenue);
         $first = $this->booking($draw, $venue);
         $first->update(['parent_fixture_id' => $later->id]);
-        $team = TeamFixture::create(['draw_id' => $draw->id, 'fixture_type' => 1, 'round_nr' => 1, 'match_nr' => 1,
-            'venue_id' => $venue->id, 'court_label' => '6', 'scheduled_at' => '2026-10-09 09:00:00']);
-        $this->publish($event, $draw, $venue, $first->id);
+        $this->publish($event, $draw, $otherVenue, $later->id);
         $url = route('backend.event-venue-schedule.courts.configure', [$event, $venue]);
         $body = ['courts' => 4, 'ball_type' => 'standard'];
         $warning = $this->postJson($url, $body)->assertStatus(409);
+        $last = $this->booking($draw, $otherVenue);
+        $later->update(['parent_fixture_id' => $last->id]);
         $this->postJson($url, $body + ['confirm_reset' => true, 'correction_revision' => $warning->json('correction_revision')])
-            ->assertUnprocessable()->assertJsonPath('message', 'A saved later match depends on this assignment. Return the dependent match to planning too.');
-        $this->assertDatabaseCount('order_of_plays', 2);
-        $this->assertNotNull($team->fresh()->scheduled_at);
+            ->assertStatus(409)->assertJsonPath('impact.scheduled_matches', 3);
+        $last->update(['match_status' => 1]);
+        $this->postJson($url, $body)->assertUnprocessable();
+        $this->assertDatabaseCount('order_of_plays', 3);
         $this->assertDatabaseCount('published_schedule_assignments', 1);
         $this->assertDatabaseHas('event_venues', ['event_id' => $event->id, 'venue_id' => $venue->id, 'num_courts' => 6]);
         $this->assertDatabaseCount('draw_audit_logs', 0);
+    }
+
+    public function test_dependency_cycles_are_bounded_and_selected_only_within_the_event(): void
+    {
+        [$event, $venue, $draw] = $this->setupVenue();
+        $first = $this->booking($draw, $venue);
+        $second = $this->booking($draw, $venue, '1');
+        $first->update(['parent_fixture_id' => $second->id]);
+        $second->update(['parent_fixture_id' => $first->id]);
+        $closure = app(\App\Services\Scheduling\EventVenueScheduleService::class)->courtCorrectionClosure($event, [$first->id], []);
+        $this->assertSame(['individual:'.$first->id, 'individual:'.$second->id], $closure['keys']);
+        $this->assertCount(2, $closure['graph']);
+        $foreign = Fixture::factory()->create();
+        $this->expectException(\InvalidArgumentException::class);
+        app(\App\Services\Scheduling\EventVenueScheduleService::class)->courtCorrectionClosure($event, [$foreign->id], []);
     }
 
     public function test_confirmed_cross_removal_is_idempotent_and_unauthorized_users_cannot_reset(): void

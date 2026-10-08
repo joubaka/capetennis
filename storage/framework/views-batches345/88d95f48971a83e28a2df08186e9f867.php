@@ -1,0 +1,11 @@
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($openRosterRanks->isNotEmpty()): ?>
+<form method="POST" action="<?php echo e(route($restorePosition ? 'backend.team-selection.invitations.restore' : 'backend.team-selection.invitations.activate', [$event, $activeImport, $invitation])); ?>" class="p-2" onsubmit="return confirm('Place this player in the chosen open position? Other players will stay in place. No email will be sent.');">
+  <?php echo csrf_field(); ?>
+  <label class="form-label small" for="open-position-<?php echo e($invitation->id); ?>"><?php echo e($restorePosition ? 'Restore in open position' : 'Activate in position'); ?></label>
+  <select id="open-position-<?php echo e($invitation->id); ?>" name="roster_rank" class="form-select form-select-sm mb-2" required aria-label="Open position for <?php echo e($invitation->player?->full_name ?: 'player'); ?>">
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $openRosterRanks; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $openRank): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><option value="<?php echo e($openRank); ?>">Rank <?php echo e($openRank); ?></option><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  </select>
+  <button class="btn btn-sm btn-outline-success w-100"><?php echo e($restorePosition ? 'Restore in position' : 'Activate in position'); ?></button>
+</form>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php /**PATH C:\wamp64\www\ct\resources\views\backend\team-selection\_open-position-action.blade.php ENDPATH**/ ?>

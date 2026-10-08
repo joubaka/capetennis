@@ -41,6 +41,29 @@ class TeamWorkspaceTest extends TestCase
         $this->assertDatabaseCount('team_players', 1);
     }
 
+    public function test_players_page_keeps_communication_and_one_regional_clothing_menu(): void
+    {
+        $player = Player::factory()->create(['name' => 'Synthetic', 'surname' => 'Player', 'email' => 'synthetic@example.test', 'cellNr' => '0123456789']);
+        TeamPlayer::create(['team_id' => $this->team->id, 'player_id' => $player->id, 'rank' => 1, 'pay_status' => 1]);
+        Team::factory()->create(['region_id' => $this->region->id, 'category_event_id' => $this->team->category_event_id]);
+        $page = $this->get(route('admin.events.teams', $this->event).'?selected_region='.$this->region->id)->assertOk();
+        $page->assertSee('More filters')->assertSee('Tools')->assertSee('Email history')
+            ->assertSee('Sender details')->assertSee('Roster display filters do not change')
+            ->assertDontSee('Selection &amp; reserves', false);
+        $response = $this->get(route('admin.events.teams', $this->event).'?roster_region='.$this->region->id)->assertOk();
+        $response->assertSee('Send team email')->assertSee('Clothing setup')
+            ->assertDontSee('Team details')->assertDontSee('Manage selection &amp; reserves', false)->assertDontSee('Replace a player');
+        $this->assertSame(1, substr_count($response->getContent(), '>Clothing setup</a>'));
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        if (getenv('CT_BATCHES_QA') === '1') {
+            $directory = storage_path('app/batches345-qa');
+            \Illuminate\Support\Facades\File::ensureDirectoryExists($directory);
+            file_put_contents($directory.'/roster.html', str_replace('http://localhost', 'http://127.0.0.1:8775/ct/public', $page->getContent()));
+            file_put_contents($directory.'/players-'.$this->region->id.'.html', $response->getContent());
+            file_put_contents($directory.'/meta.json', json_encode(['region' => $this->region->id, 'path' => parse_url(route('admin.events.teams', $this->event), PHP_URL_PATH), 'category' => $this->team->category_event_id]));
+        }
+    }
+
     public function test_historical_rosters_load_both_panels_without_exposing_shared_region_rosters(): void
     {
         $this->team->update(['category_event_id' => null, 'name' => 'Historical u/10 Boys']);

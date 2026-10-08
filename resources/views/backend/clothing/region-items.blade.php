@@ -9,9 +9,9 @@
 @endsection
 
 @section('content')
-<div class="container-xxl py-4">
+<div class="container-xxl py-4 clothing-setup-admin">
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-    <h3 class="mb-0">{{ $region->region_name }} — Clothing</h3>
+    <div>@if($backEvent)<p class="text-muted mb-1">{{ $backEvent->name }}</p>@endif<h3 class="mb-0">{{ $region->region_name }} — Clothing</h3><p class="small text-muted mb-0">Regional clothing catalog shared across events using this region.</p></div>
     <div class="d-flex flex-wrap gap-2">
       @if($backUrl)<a class="btn btn-outline-secondary" href="{{ $backUrl }}">Back to event</a>@endif
       <a class="btn btn-outline-secondary" href="{{ route('backend.region.clothing.orders', ['region' => $region, 'event_id' => $backEvent?->id]) }}">Paid orders</a>
@@ -105,7 +105,7 @@
 
   <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
-      <h5 class="mb-0">Items & Prices</h5>
+      <h5 class="mb-0">Items & sizes</h5>
       <button id="btn-save" class="btn btn-success btn-sm">Save Changes</button>
     </div>
     <div class="card-body p-0">
@@ -118,11 +118,8 @@
             <tr>
               <th style="width: 40px">#</th>
               <th>Name</th>
-              <th style="width:145px">Buying amount (R)</th>
-              <th style="width:155px">Clothing amount (R)</th>
-              <th style="width:135px">Vendor profit</th>
-              <th style="width:135px">PayFast fee</th>
-              <th style="width:155px">Final amount</th>
+              <th style="width:155px">Final amount (R)</th>
+              <th>Pricing details</th>
               <th style="width:120px">Ordering</th>
               <th>Sizes</th>
               <th style="width: 80px"></th>
@@ -131,24 +128,25 @@
           <tbody>
             @forelse($items as $i)
               <tr data-id="{{ $i->id }}" class="clothing-pricing-row">
-                <td class="text-muted">{{ $i->id }}</td>
-                <td>
+                <td data-label="Item ID" class="text-muted">{{ $i->id }}</td>
+                <td data-label="Name">
                   <input type="text" class="form-control form-control-sm item-name" value="{{ $i->item_type_name }}">
                 </td>
-                <td>
-                  <input type="number" step="0.01" min="0" class="form-control form-control-sm item-cost-price clothing-cost-price" value="{{ $i->cost_price !== null ? number_format((float) $i->cost_price, 2, '.', '') : '' }}" aria-label="Buying amount for {{ $i->item_type_name }}">
-                </td>
-                <td>
-                  <input type="number" step="0.01" min="0" class="form-control form-control-sm item-price clothing-preview-price" value="{{ number_format((float)($i->price ?? 0), 2, '.', '') }}" aria-label="Clothing amount for {{ $i->item_type_name }}">
+                <td data-label="Final amount"><input type="number" step="0.01" min="0" class="form-control form-control-sm fw-semibold item-final-amount clothing-preview-total" value="{{ $i->final_amount !== null ? number_format((float) $i->final_amount, 2, '.', '') : '' }}" inputmode="decimal" aria-label="Final customer amount for {{ $i->item_type_name }}"></td>
+                <td data-label="Pricing details"><details><summary>Pricing details</summary><div class="mt-2"><div class="mb-2">
+                  <label class="form-label">Buying amount (R)</label><input type="number" step="0.01" min="0" class="form-control form-control-sm item-cost-price clothing-cost-price" value="{{ $i->cost_price !== null ? number_format((float) $i->cost_price, 2, '.', '') : '' }}" aria-label="Buying amount for {{ $i->item_type_name }}">
+                  </div>
+                  <div class="mb-2">
+                  <label class="form-label">Clothing amount (R)</label><input type="number" step="0.01" min="0" class="form-control form-control-sm item-price clothing-preview-price" value="{{ number_format((float)($i->price ?? 0), 2, '.', '') }}" aria-label="Clothing amount for {{ $i->item_type_name }}">
                   <input type="hidden" class="item-pricing-source clothing-pricing-source" value="{{ $i->final_amount !== null ? 'final_amount' : 'price' }}">
-                </td>
-                <td class="fw-semibold clothing-preview-profit">—</td>
-                <td class="text-muted clothing-preview-fee">R0.00</td>
-                <td><input type="number" step="0.01" min="0" class="form-control form-control-sm fw-semibold item-final-amount clothing-preview-total" value="{{ $i->final_amount !== null ? number_format((float) $i->final_amount, 2, '.', '') : '' }}" inputmode="decimal" aria-label="Final customer amount for {{ $i->item_type_name }}"></td>
-                <td>
+                  </div>
+                <div>Vendor profit: <span class="fw-semibold clothing-preview-profit">—</span></div>
+                <div>PayFast fee: <span class="text-muted clothing-preview-fee">R0.00</span></div>
+                  </div></details></td>
+                <td data-label="Ordering">
                   <input type="number" min="0" class="form-control form-control-sm item-ordering" value="{{ $i->ordering }}">
                 </td>
-                <td>
+                <td data-label="Sizes">
                   <div class="d-flex flex-wrap gap-1 sizes-wrap">
                     @foreach($i->sizes as $sz)
                       <span class="badge bg-label-primary d-flex align-items-center gap-2" data-size-id="{{ $sz->id }}">
@@ -163,12 +161,12 @@
                     <button class="btn btn-outline-primary btn-add-size">Add</button>
                   </div>
                 </td>
-                <td class="text-end">
+                <td data-label="Actions" class="text-end">
                   <button class="btn btn-sm btn-outline-danger btn-del-item">Delete</button>
                 </td>
               </tr>
             @empty
-              <tr><td colspan="10" class="text-center p-4 text-muted">No items yet</td></tr>
+              <tr><td colspan="7" class="text-center p-4 text-muted">No items yet</td></tr>
             @endforelse
           </tbody>
         </table>
@@ -177,6 +175,21 @@
   </div>
 </div>
 
+<style>
+.clothing-setup-admin summary { min-height:44px; cursor:pointer; align-content:center; }
+.clothing-setup-admin :is(.btn, input:not([type=hidden]), select) { min-height:44px; }
+.clothing-setup-admin input[type=checkbox] { min-height:0; }
+@media(max-width:767px) {
+ #items-table thead { display:none; }
+ #items-table tbody, #items-table tr { display:block; }
+ #items-table tr { border-bottom:1px solid #d9e1eb; padding:.75rem; }
+ #items-table td { display:grid; grid-template-columns:85px minmax(0,1fr); gap:.5rem; border:0; padding:.4rem 0; white-space:normal; }
+ #items-table td::before { content:attr(data-label); font-weight:600; }
+ #items-table td[colspan] { display:block; }
+ #items-table td[colspan]::before { display:none; }
+ #items-table .input-group { grid-column:2; }
+}
+</style>
 {{-- Add Item Modal --}}
 <div class="modal fade" id="modalAddItem" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">

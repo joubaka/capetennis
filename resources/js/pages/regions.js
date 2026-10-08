@@ -932,7 +932,7 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
           <td class="text-center">
             <details>
               <summary>${team.player_count}</summary>
-              <ol class="small text-start mb-0 mt-1 ps-3">${players}</ol>
+              <ol class="list-unstyled small text-start mb-0 mt-1">${players}</ol>
             </details>
           </td>
           <td>${escapeHtml(team.action)}</td>

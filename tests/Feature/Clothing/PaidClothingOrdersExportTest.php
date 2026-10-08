@@ -23,6 +23,24 @@ class PaidClothingOrdersExportTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_paid_order_list_prioritizes_fulfillment_and_keeps_exact_financial_details(): void
+    {
+        [$admin, $event, $region] = $this->managedRegion();
+        $order = $this->order($event, $region, true, 'Distribution shirt');
+        $response = $this->actingAs($admin)->get(route('backend.region.clothing.orders', ['region' => $region->id, 'event_id' => $event->id]))->assertOk();
+        $response->assertSee($event->name)->assertSee($region->region_name)
+            ->assertSeeInOrder(['<th>Player</th>', '<th>Team</th>', '<th>Item</th>', '<th>Size</th>', '<th>Qty</th>'], false)
+            ->assertSee('Financial summary')->assertSee('Payfast ID')->assertSee('Customer payments received')
+            ->assertSee('Net clothing proceeds before supplier costs')->assertSee('R100.00');
+        $this->assertDatabaseCount('clothing_orders', 1);
+        $setup = $this->get(route('backend.region.clothing.edit', ['region' => $region, 'event_id' => $event->id]))->assertOk();
+        $setup->assertSee('Items & sizes', false)->assertSee('Pricing details')->assertSee('item-pricing-source')->assertSee('Regional clothing catalog shared across events');
+        if (getenv('CT_BATCHES_QA') === '1') {
+            file_put_contents(storage_path('app/batches345-qa/clothing-orders.html'), str_replace('http://localhost', 'http://127.0.0.1:8775/ct/public', $response->getContent()));
+            file_put_contents(storage_path('app/batches345-qa/clothing-setup.html'), str_replace('http://localhost', 'http://127.0.0.1:8775/ct/public', $setup->getContent()));
+        }
+    }
+
     public function test_authorized_excel_download_exports_one_row_per_paid_item(): void
     {
         [$admin, $event, $region] = $this->managedRegion();

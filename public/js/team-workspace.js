@@ -65,7 +65,14 @@
     else window.history.replaceState({}, '', url);
   }
 
+  function updateAdvancedFilters(reveal = false) {
+    const count = ['category', 'profile', 'publication'].filter(name => $('[data-roster-filter="' + name + '"]').val()).length;
+    $('[data-roster-advanced-count]').text(count ? '(' + count + ' active)' : '');
+    if (reveal && count) $('[data-roster-more-filters]').prop('open', true);
+  }
+
   function applyFilters() {
+    updateAdvancedFilters();
     const panel = document.querySelector('[data-roster-panel="players"]:not([hidden])');
     if (!panel || panel.dataset.loaded !== 'true') return;
     const terms = String($('[data-roster-search]').val() || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -139,6 +146,7 @@
     const url = new URL(window.location.href);
     $('[data-roster-search]').val(url.searchParams.get('roster_search') || '');
     filterNames.forEach(name => { $('[data-roster-filter="' + name + '"]').val(url.searchParams.get('roster_' + name) || ''); });
+    updateAdvancedFilters(true);
     const resultCategory = url.searchParams.get('roster_result_category');
     if (resultCategory) { const category = [...document.querySelectorAll('.category-radio')].find(input => input.value === resultCategory); if (category) category.checked = true; }
     ['regions', 'formats'].forEach(name => {

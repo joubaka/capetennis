@@ -1,7 +1,5 @@
 @extends('layouts.backend')
-
 @section('title', 'Clothing Orders — ' . ($region->region_name ?? 'Region'))
-
 @section('content')
 @php
   $clothingFinancials = $clothingFinancials ?? [
@@ -10,10 +8,9 @@
     'net' => round($clothings->sum(fn ($order) => (float) ($order->amount_paid ?? $order->total) - (float) $order->payfast_fee), 2),
   ];
 @endphp
-<div class="card mb-4">
+<div class="card mb-4 clothing-orders-admin">
   <div class="card-header d-flex justify-content-between align-items-center flex-wrap">
-    <h5 class="mb-0 text-uppercase">Clothing Orders — {{ $region->region_name ?? '' }}</h5>
-
+    <div>@if($clothingEvent ?? null)<p class="text-muted mb-1">{{ $clothingEvent->name }}</p>@else<p class="text-muted mb-1">All events in this region</p>@endif<h5 class="mb-0 text-uppercase">Clothing Orders — {{ $region->region_name ?? '' }}</h5></div>
     <div class="btn-group mt-2 mt-md-0">
       <a href="{{ route('backend.region.clothing.edit', array_filter(['region' => $region, 'event_id' => request()->integer('event_id') ?: null])) }}" class="btn btn-sm btn-outline-secondary">Back to clothing</a>
       <a href="{{ route('export.pdf.clothing.order', array_filter(['id' => $region->id, 'event_id' => request()->integer('event_id') ?: null])) }}" target="_blank" class="btn btn-sm btn-outline-danger">
@@ -24,36 +21,24 @@
       </a>
     </div>
   </div>
-
   <div class="card-body">
-    <div class="row g-3 mb-4">
-      <div class="col-md-4"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Customer payments received</small><strong class="fs-5 text-success">R{{ number_format($clothingFinancials['received'], 2) }}</strong></div></div>
-      <div class="col-md-4"><div class="border rounded p-3 h-100"><small class="text-muted d-block">PayFast fees</small><strong class="fs-5 text-warning">− R{{ number_format($clothingFinancials['payfast_fees'], 2) }}</strong></div></div>
-      <div class="col-md-4"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Net clothing proceeds before supplier costs</small><strong class="fs-5">R{{ number_format($clothingFinancials['net'], 2) }}</strong></div></div>
-    </div>
     <div class="table-responsive">
-      <table class="table table-striped align-middle">
+      <table class="table table-striped align-middle clothing-fulfillment-table">
         <thead class="table-light">
           <tr>
-            <th>#</th>
-            <th>Date</th>
             <th>Player</th>
+            <th>Team</th>
             <th>Item</th>
             <th>Size</th>
-            <th>Team</th>
-            <th>Payfast ID</th>
             <th>Qty</th>
-            <th>Unit Price</th>
-            <th>Line Total</th>
             <th>Status</th>
+            <th>Order details</th>
           </tr>
         </thead>
         <tbody>
           @php 
             $grandTotal = 0;
-            $rowNum         = 1;
           @endphp
-
           @forelse($clothings as $order)
             @foreach($order->items as $item)
                 @php
@@ -62,41 +47,55 @@
                   $lineTotal = (float) ($item->line_total ?: $price * $qty);
                 @endphp
                 <tr>
-                  <td>{{ $rowNum++ }}</td>
-                  <td>{{ $order->created_at->format('d-m-Y') }}</td>
-                  <td>{{ optional($order->player)->name }}</td>
-                  <td>{{ $item->item_name ?: optional($item->itemType)->item_type_name }}</td>
-                  <td>{{ $item->size_name ?: optional($item->size)->size }}</td>
-                  <td>{{ optional($order->team)->name }}</td>
-                  <td>{{ $order->pf_id }}</td>
-                  <td>{{ $qty }}</td>
-                  <td>R{{ number_format($price, 2) }}</td>
-                  <td>R{{ number_format($lineTotal, 2) }}</td>
-                  <td><span class="badge bg-label-success">Paid</span></td>
+                  <td data-label="Player">{{ optional($order->player)->name }}</td>
+                  <td data-label="Team">{{ optional($order->team)->name }}</td>
+                  <td data-label="Item">{{ $item->item_name ?: optional($item->itemType)->item_type_name }}</td>
+                  <td data-label="Size">{{ $item->size_name ?: optional($item->size)->size }}</td>
+                  <td data-label="Qty">{{ $qty }}</td>
+                  <td data-label="Status"><span class="badge bg-label-success">Paid</span></td>
+                  <td data-label="Order details"><details><summary>Details</summary><dl class="mt-2 mb-0 text-break">
+                    <dt>Order</dt><dd>#{{ $order->id }}</dd>
+                    <dt>Date</dt><dd>{{ $order->created_at->format('d-m-Y') }}</dd>
+                    <dt>Payfast ID</dt><dd>{{ $order->pf_id }}</dd>
+                    <dt>Unit Price</dt><dd>R{{ number_format($price, 2) }}</dd>
+                    <dt>Line Total</dt><dd>R{{ number_format($lineTotal, 2) }}</dd>
+                  </dl></details></td>
                 </tr>
-
                 @php
                   $grandTotal += $lineTotal;
                 @endphp
             @endforeach
           @empty
             <tr>
-              <td colspan="11" class="text-center text-muted py-3">No clothing orders found for this region</td>
+              <td colspan="7" class="text-center text-muted py-3">No clothing orders found for this region</td>
             </tr>
           @endforelse
         </tbody>
 
-        <tfoot class="table-light">
-          <tr>
-            <td colspan="7" class="text-end fw-bold">Totals:</td>
-            <td></td>
-            <td></td>
-            <td class="fw-bold">R{{ number_format($grandTotal, 2) }}</td>
-            <td></td>
-          </tr>
-        </tfoot>
       </table>
     </div>
+    <details class="border rounded p-3 mt-3"><summary>Financial summary</summary><div class="row g-3 mt-1">
+      <div class="col-md-4"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Customer payments received</small><strong class="fs-5 text-success">R{{ number_format($clothingFinancials['received'], 2) }}</strong></div></div>
+      <div class="col-md-4"><div class="border rounded p-3 h-100"><small class="text-muted d-block">PayFast fees</small><strong class="fs-5 text-warning">− R{{ number_format($clothingFinancials['payfast_fees'], 2) }}</strong></div></div>
+      <div class="col-md-4"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Net clothing proceeds before supplier costs</small><strong class="fs-5">R{{ number_format($clothingFinancials['net'], 2) }}</strong></div></div>
+    </div>
+    <p class="mt-3 mb-0"><strong>Totals: R{{ number_format($grandTotal, 2) }}</strong></p>
+    </details>
   </div>
 </div>
+<style>
+.clothing-orders-admin summary { min-height:44px; cursor:pointer; align-content:center; }
+.clothing-orders-admin .btn { min-height:44px; }
+.clothing-orders-admin .btn-group { display:flex; flex-wrap:wrap; gap:.4rem; }
+.clothing-fulfillment-table td { white-space:normal; overflow-wrap:anywhere; }
+@media(max-width:767px) {
+ .clothing-fulfillment-table thead { display:none; }
+ .clothing-fulfillment-table tbody, .clothing-fulfillment-table tr { display:block; }
+ .clothing-fulfillment-table tr { border-bottom:1px solid #d9e1eb; padding:.75rem; }
+ .clothing-fulfillment-table td { display:grid; grid-template-columns:80px minmax(0,1fr); gap:.5rem; border:0; padding:.35rem 0; }
+ .clothing-fulfillment-table td::before { content:attr(data-label); font-weight:600; }
+ .clothing-fulfillment-table td[colspan] { display:block; }
+ .clothing-fulfillment-table td[colspan]::before { display:none; }
+}
+</style>
 @endsection

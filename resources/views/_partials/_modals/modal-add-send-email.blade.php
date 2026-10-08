@@ -3,7 +3,7 @@
     <div class="modal-content border-0 shadow-lg">
       <div class="modal-header bg-primary text-white py-2">
         <h5 class="modal-title" id="sendMailLabel">
-          <i class="ti ti-mail me-50"></i> Review Email
+          <i class="ti ti-mail me-50"></i> Write email
         </h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
@@ -21,6 +21,7 @@
 
         <div class="modal-body">
           <div id="emailAudienceSummary" class="alert alert-info d-none" role="status"></div>
+          <p class="small text-muted">Roster display filters do not change this email audience. Review exact recipients before approving.</p>
           {{-- ✅ Recipient Type --}}
           <div class="mb-3">
             <label class="form-label fw-bold">Send To</label>
@@ -59,8 +60,25 @@
             <select id="emailCategorySelect" name="catEvent" class="form-select select2"></select>
           </div>
 
-          {{-- ✅ Sender Info --}}
-          <div class="row">
+          <input type="hidden" name="player_id" id="emailPlayerId" value="">
+           <input type="hidden" name="team_id" id="emailTeamId" value="">
+          {{-- ✅ Subject --}}
+          <div class="mb-2">
+            <label class="form-label fw-bold">Subject</label>
+            <input type="text" class="form-control" id="emailSubject" name="emailSubject" required>
+          </div>
+          <input type="hidden" name="to" id="emailToHidden" value="">
+
+          {{-- ✅ Message (Quill) --}}
+          <div class="mb-3">
+            <label class="form-label fw-bold">Message</label>
+            <div id="messageEditor" style="height: 250px;"></div>
+            <textarea name="message" id="emailMessage" class="d-none"></textarea>
+          </div>
+
+          <details class="border rounded p-3">
+            <summary>Sender details</summary>
+            <div class="row mt-3">
             <div class="col-md-6 mb-2">
               <label class="form-label fw-bold">From Name</label>
               <input type="text"
@@ -78,22 +96,7 @@
                      value="{{ auth()->user()->email ?? 'info@capetennis.co.za' }}">
             </div>
           </div>
-          <input type="hidden" name="player_id" id="emailPlayerId" value="">
-           <input type="hidden" name="team_id" id="emailTeamId" value="">
-          {{-- ✅ Subject --}}
-          <div class="mb-2">
-            <label class="form-label fw-bold">Subject</label>
-            <input type="text" class="form-control" id="emailSubject" name="emailSubject" required>
-          </div>
-          <input type="hidden" name="to" id="emailToHidden" value="">
-
-          {{-- ✅ Message (Quill) --}}
-          <div class="mb-3">
-            <label class="form-label fw-bold">Message</label>
-            <div id="messageEditor" style="height: 250px;"></div>
-            <textarea name="message" id="emailMessage" class="d-none"></textarea>
-          </div>
-
+          </details>
         </div>
 
         <div class="modal-footer">

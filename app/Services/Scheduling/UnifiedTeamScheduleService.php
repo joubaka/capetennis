@@ -186,16 +186,30 @@ final class UnifiedTeamScheduleService
         return $this->unapplyScope($event, null, $venueId, null, true);
     }
 
-    private function unapplyScope(Event $event, ?int $drawId, ?int $venueId, ?int $fixtureId, bool $courtCorrection = false): array
+    public function unapplyCorrectionSelection(Event $event, array $fixtureIds): array
     {
-        return DB::transaction(function () use ($event, $drawId, $venueId, $fixtureId, $courtCorrection) {
+        return DB::transaction(function () use ($event, $fixtureIds) {
+            Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
+            DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
+            $selected = TeamFixture::whereHas('draw', fn ($query) => $query->where('event_id', $event->id))
+                ->whereIn('id', $fixtureIds)->orderBy('id')->lockForUpdate()->get();
+            if ($selected->count() !== count(array_unique($fixtureIds))) throw new \InvalidArgumentException('A correction rubber does not belong to this event.');
+            if ($selected->contains(fn ($fixture) => $this->protected($fixture))) throw new \InvalidArgumentException('Played dependent rubbers cannot be returned to planning.');
+            return $this->unapplyScope($event, null, null, null, true, $fixtureIds);
+        });
+    }
+
+    private function unapplyScope(Event $event, ?int $drawId, ?int $venueId, ?int $fixtureId, bool $courtCorrection = false, ?array $selection = null): array
+    {
+        return DB::transaction(function () use ($event, $drawId, $venueId, $fixtureId, $courtCorrection, $selection) {
             Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
             DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
             if ($drawId && ! $event->draws()->whereKey($drawId)->exists()) throw new \InvalidArgumentException('This draw does not belong to the event.');
             $fixtures = TeamFixture::whereHas('draw', fn ($q) => $q->where('event_id', $event->id))
                 ->whereNotNull('scheduled_at')->when($drawId, fn ($q) => $q->where('draw_id', $drawId))
                 ->when($venueId, fn ($q) => $q->where('venue_id', $venueId))
-                ->when($fixtureId, fn ($q) => $q->whereKey($fixtureId))->orderBy('id')->lockForUpdate()->get();
+                ->when($fixtureId, fn ($q) => $q->whereKey($fixtureId))->when($selection !== null, fn ($query) => $query->whereIn('id', $selection))->orderBy('id')->lockForUpdate()->get();
+            if ($fixtures->isEmpty() && $selection !== null) return ['count' => 0];
             if ($fixtures->isEmpty()) throw new \InvalidArgumentException('No applied team rubbers matched this selection.');
             if ($fixtures->contains(fn ($fixture) => (! $courtCorrection && $fixture->draw->locked) || $this->protected($fixture))) {
                 throw new \InvalidArgumentException('A locked draw or rubber with play or results cannot be returned to planning.');

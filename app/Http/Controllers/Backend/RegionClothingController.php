@@ -409,7 +409,9 @@ class RegionClothingController extends Controller
       'net' => round($clothings->sum(fn ($order) => (float) ($order->amount_paid ?? $order->total) - (float) $order->payfast_fee), 2),
     ];
 
-    return view('backend.clothing.clothing-index', compact('region', 'clothings', 'clothingFinancials'));
+    $clothingEvent = $eventId ? $eventRegion->events : null;
+
+    return view('backend.clothing.clothing-index', compact('region', 'clothings', 'clothingFinancials', 'clothingEvent'));
   }
 
 

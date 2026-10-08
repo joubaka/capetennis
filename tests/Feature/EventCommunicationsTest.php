@@ -48,6 +48,19 @@ class EventCommunicationsTest extends TestCase
         return app(EventCommunicationService::class)->preview($this->event, $this->admin, $this->audienceOptions($options), 'Event update', 'Please review the arrangements.');
     }
 
+    public function test_review_groups_recipients_message_and_approval_without_sending(): void
+    {
+        $batch = $this->preview();
+        $response = $this->get(route('backend.event-communications.review', [$this->event, $batch]))->assertOk();
+        $response->assertSeeInOrder(['1. Recipients', '2. Message preview', '3. Approve'])
+            ->assertSee('confirm_send')->assertSee('Approve and queue');
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        Mail::assertNothingSent();
+        if (getenv('CT_BATCHES_QA') === '1') {
+            file_put_contents(storage_path('app/batches345-qa/email-review.html'), str_replace('http://localhost', 'http://127.0.0.1:8775/ct/public', $response->getContent()));
+        }
+    }
+
     public function test_closed_unpublished_unpaid_rosters_can_be_emailed_only_after_exact_approval(): void
     {
         $service = app(EventCommunicationService::class);

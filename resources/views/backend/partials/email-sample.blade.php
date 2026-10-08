@@ -4,6 +4,6 @@
 @foreach($mailRecipients as $recipient)<div class="text-break">{{ $recipient['name'] ?? '' }} · {{ $recipient['email'] }}</div>@endforeach
 </div></details>
 @if($sample = collect($mailRecipients)->first())
-<div class="card card-body mb-3"><h5>Example email</h5><p class="text-break"><strong>To:</strong> {{ $sample['email'] }}</p><h6>{{ $sample['subject'] }}</h6>
+<div class="card card-body mb-3"><h5>{{ $mailSampleHeading ?? 'Example email' }}</h5><p class="text-break"><strong>To:</strong> {{ $sample['email'] }}</p><h6>{{ $sample['subject'] }}</h6>
 <iframe title="Example email to {{ $sample['email'] }}" sandbox="" srcdoc="{{ $sample['html'] ?? nl2br(e($sample['body'] ?? '')) }}" style="width:100%;height:360px;border:1px solid #ddd"></iframe></div>
 @endif

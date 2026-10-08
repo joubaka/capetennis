@@ -53,7 +53,7 @@
         .select2({ width: '100%', dropdownParent: $('#sendMailModal') });
       label = `Send email to ${unpaid ? 'unpaid ' : ''}players in region: ${$button.data('regionname')}`;
     }
-    $('#sendMailLabel').text(label);
+    $('#sendMailLabel').text('Write email');
     $('#emailAudienceSummary').text(label.replace('Send email to ', 'Recipients: ')).removeClass('d-none');
     bootstrap.Modal.getOrCreateInstance(document.getElementById('sendMailModal')).show();
   });

@@ -6,10 +6,11 @@
 @csrf
 <div class="modal-header"><h5 class="modal-title">{{ $event->name }} — Write email</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
 <div class="modal-body">
+<div class="alert alert-info"><strong>Audience:</strong> {{ ['all' => 'Players in this event', 'region' => 'Players in the selected region', 'team' => 'Players in the selected team', 'individual' => 'Selected player', 'player' => 'Selected player', 'rankings' => 'Selected ranked players', 'legacy_registered' => 'Registered players', 'legacy_unregistered' => 'Unpaid players'][$options['scope'] ?? ''] ?? 'Selected players' }}. Review the exact recipients before approving.</div>
 @foreach($options as $field => $value)@if(is_scalar($value))<input type="hidden" name="{{ $field }}" value="{{ $value }}">@endif @endforeach
-@include('backend.partials.email-sender-fields')
 <label class="form-label w-100">Subject<input name="subject" class="form-control" value="{{ $subject }}" required maxlength="200"></label>
 <label class="form-label w-100">Message<textarea name="body" class="form-control" required rows="7" maxlength="30000">{{ $body }}</textarea></label>
+<details class="border rounded p-3 mb-3" @if($errors->has('from_name') || $errors->has('reply_to')) open @endif><summary>Sender details</summary><div class="mt-3">@include('backend.partials.email-sender-fields')</div></details>
 <p class="form-text">Review the exact recipients and one example before approving.</p>
 </div>
 <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary">Preview email</button></div>

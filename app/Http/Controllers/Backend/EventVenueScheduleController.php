@@ -455,6 +455,7 @@ final class EventVenueScheduleController extends Controller
         $data = $request->validate([
             'label' => ['required', 'string', 'max:50'], 'confirm_reset' => ['sometimes', 'boolean'],
             'correction_revision' => ['sometimes', 'string', 'size:64'],
+            'review_only' => ['sometimes', 'boolean'], 'reset_age_keys' => ['sometimes', 'array', 'max:20'], 'reset_age_keys.*' => ['required', 'string', 'max:30'],
         ]);
         return $this->courtTransaction(function () use ($event, $venue, $data) {
             Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
@@ -529,6 +530,7 @@ final class EventVenueScheduleController extends Controller
             'courts' => ['required', 'integer', 'min:1', 'max:100'],
             'ball_type' => ['required', 'in:orange,green,yellow,red,standard'],
             'confirm_reset' => ['sometimes', 'boolean'], 'correction_revision' => ['sometimes', 'string', 'size:64'],
+            'review_only' => ['sometimes', 'boolean'], 'reset_age_keys' => ['sometimes', 'array', 'max:20'], 'reset_age_keys.*' => ['required', 'string', 'max:30'],
         ]);
         return $this->courtTransaction(function () use ($event, $venue, $data) {
             Venue::orderBy('id')->limit(1)->lockForUpdate()->get();

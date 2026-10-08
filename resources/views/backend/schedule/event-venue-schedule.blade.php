@@ -252,6 +252,16 @@
               <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body venue-management-body">
+              <section id="court-reset-review" class="border border-warning rounded p-3 mb-3 bg-white" aria-labelledby="court-reset-title" hidden>
+                <h6 id="court-reset-title">Review schedule reset</h6>
+                <p id="court-reset-message" class="small" role="status" aria-live="polite"></p>
+                <p class="small mb-2">The affected venue matches and dependent later matches will return to planning. Optionally clear an entire age group across all venues in this event:</p>
+                <div id="court-reset-ages" class="mb-3"></div>
+                <div class="d-flex flex-wrap gap-2">
+                  <button type="button" id="court-reset-confirm" class="btn btn-warning">Clear schedules and save courts</button>
+                  <button type="button" id="court-reset-cancel" class="btn btn-outline-secondary">Cancel</button>
+                </div>
+              </section>
           <div class="border rounded p-3 mb-2 bg-white">
             <h6>Add another venue</h6>
             <p class="small text-muted mb-2">Choose an existing venue, or create one if it is not listed.</p>
@@ -1895,7 +1905,7 @@
     await refreshVenueEditors();
     (creating ? newVenueName : existingVenue).focus();
   }));
-  const submitCourtChange = async (url, body, method = 'POST') => {
+  const submitCourtChange = async (url, body, method = 'POST', editor = null) => {
     const submit = async payload => {
       if (method === 'POST') return post(url, payload);
       const response = await fetch(url, {method, headers:{'Content-Type':'application/json', Accept:'application/json', 'X-CSRF-TOKEN':csrf}, body:JSON.stringify(payload)});
@@ -1906,8 +1916,61 @@
     try { return await submit(body); }
     catch (error) {
       if (!error.response?.requires_confirmation) throw error;
-      if (!confirm(error.response.message)) return null;
-      return submit({...body, confirm_reset:true, correction_revision:error.response.correction_revision});
+      const panel = document.getElementById('court-reset-review');
+      const message = document.getElementById('court-reset-message');
+      const ages = document.getElementById('court-reset-ages');
+      const approve = document.getElementById('court-reset-confirm');
+      const cancel = document.getElementById('court-reset-cancel');
+      const reviewHome = panel.parentElement;
+      if (editor) editor.append(panel);
+      panel.hidden = false;
+      panel.scrollIntoView?.({block:'nearest'});
+      let selected = [], current = error.response, generation = 0;
+      return new Promise((resolve, reject) => {
+        const finish = (result, failure = null) => {
+          generation++;
+          panel.hidden = true;
+          reviewHome?.prepend(panel);
+          ages.onchange = approve.onclick = cancel.onclick = null;
+          if (failure) reject(failure); else resolve(result);
+        };
+        const render = () => {
+          message.textContent = current.message;
+          ages.innerHTML = (current.age_group_options || []).map((age, index) => `<label class="d-flex align-items-center gap-2 py-2" for="court-reset-age-${index}"><input type="checkbox" id="court-reset-age-${index}" value="${escapeHtml(age.key)}" ${selected.includes(age.key) ? 'checked' : ''}>Clear all ${escapeHtml(age.label)} schedules across all venues</label>`).join('');
+          approve.disabled = false;
+        };
+        const refresh = async (confirming = false) => {
+          const request = ++generation;
+          const keys = [...selected];
+          approve.disabled = true;
+          cancel.disabled = confirming;
+          ages.querySelectorAll('input').forEach(input => { input.disabled = confirming; });
+          message.textContent = confirming ? 'Clearing schedules and saving courts…' : 'Checking the selected schedule reset…';
+          try {
+            const result = await submit({...body, reset_age_keys:keys, ...(confirming ? {confirm_reset:true, correction_revision:current.correction_revision} : {review_only:true})});
+            if (request !== generation) return;
+            finish(result);
+          } catch (failure) {
+            if (request !== generation) return;
+            if (failure.response?.requires_confirmation) {
+              current = failure.response;
+              render();
+            } else finish(null, failure);
+          } finally {
+            if (request === generation) cancel.disabled = false;
+          }
+        };
+        ages.onchange = () => {
+          if (cancel.disabled) return;
+          selected = [...ages.querySelectorAll('input:checked')].map(input => input.value);
+          refresh();
+        };
+        approve.onclick = () => { if (!approve.disabled) return refresh(true); };
+        cancel.onclick = () => { if (!cancel.disabled) finish(null); };
+        cancel.disabled = false;
+        render();
+        approve.focus();
+      });
     }
   };
   venueModal.addEventListener('click', event => {
@@ -1921,13 +1984,13 @@
         if (!confirm(`Remove ${name} from this event? Its draw allocations will be removed. The venue remains available for other events.`)) return;
         result = await deleteVenueAssociation(button.dataset.url);
       } else if (button.classList.contains('remove-court')) {
-        result = await submitCourtChange(button.dataset.url, {label:button.dataset.label}, 'DELETE');
+        result = await submitCourtChange(button.dataset.url, {label:button.dataset.label}, 'DELETE', button.closest('.venue-editor'));
       } else if (button.classList.contains('update-court-setup')) {
         const setup = button.closest('.venue-court-setup');
         const ballType = setup.querySelector('.setup-court-ball').value;
         if (ballType === 'mixed') throw new Error('Choose one court type before updating all courts.');
         if (button.dataset.hasCustom === '1' && !confirm('Updating all courts will replace specially named courts with numbered courts. Continue?')) return;
-        result = await submitCourtChange(setup.dataset.url, {courts:Number(setup.querySelector('.setup-court-count').value), ball_type:ballType});
+        result = await submitCourtChange(setup.dataset.url, {courts:Number(setup.querySelector('.setup-court-count').value), ball_type:ballType}, 'POST', button.closest('.venue-editor'));
       } else {
         const venueId = Number(button.dataset.venue);
         const adding = button.classList.contains('add-court');

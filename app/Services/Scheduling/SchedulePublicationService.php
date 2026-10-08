@@ -166,6 +166,11 @@ final class SchedulePublicationService
         return $this->mutate($event, $scope, true);
     }
 
+    public function hideFixturesForCourtCorrection(Event $event, array $fixtureKeys): int
+    {
+        return $this->mutate($event, ['fixture_keys' => $fixtureKeys], true);
+    }
+
     private function mutate(Event $event, array $scope, bool $hide): int
     {
         return DB::transaction(function () use ($event, $scope, $hide) {
@@ -176,11 +181,20 @@ final class SchedulePublicationService
             if ($drawId && ! $event->draws()->whereKey($drawId)->exists()) throw new \InvalidArgumentException('The draw does not belong to this event.');
             $working = $this->workingRows($event)->filter(fn ($row) => (! $drawId || $row['draw_id'] === $drawId)
                 && (empty($scope['date']) || substr($row['scheduled_at'], 0, 10) === $scope['date'])
-                && (empty($scope['venue_id']) || $row['venue_id'] === (int) $scope['venue_id']))->values();
+                && (empty($scope['venue_id']) || $row['venue_id'] === (int) $scope['venue_id'])
+                && (! isset($scope['fixture_keys']) || in_array($row['fixture_kind'].':'.$row['fixture_id'], $scope['fixture_keys'], true)))->values();
             $old = DB::table('published_schedule_assignments')->where('event_id', $event->id)
                 ->when($drawId, fn ($q) => $q->where('draw_id', $drawId))
                 ->when(! empty($scope['date']), fn ($q) => $q->whereDate('scheduled_at', $scope['date']))
                 ->when(! empty($scope['venue_id']), fn ($q) => $q->where('venue_id', $scope['venue_id']));
+            if (isset($scope['fixture_keys'])) $old->where(function ($query) use ($scope) {
+                $query->whereRaw('1 = 0');
+                foreach (['individual', 'team'] as $kind) {
+                    $ids = collect($scope['fixture_keys'])->filter(fn ($key) => str_starts_with($key, $kind.':'))
+                        ->map(fn ($key) => (int) substr($key, strlen($kind) + 1))->all();
+                    $query->orWhere(fn ($row) => $row->where('fixture_kind', $kind)->whereIn('fixture_id', $ids));
+                }
+            });
             $before = $this->publishedAssignments($event);
             $oldDrawIds = (clone $old)->pluck('draw_id'); $removed = $old->delete();
             if (! $hide) foreach ($working as $row) DB::table('published_schedule_assignments')->updateOrInsert([
