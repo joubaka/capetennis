@@ -48,6 +48,8 @@
     .registration-transactions-action-label { display: none; }
   }
 
+  .finance-workspace summary { min-height:44px; cursor:pointer; align-content:center; }
+  .finance-workspace .dropdown-item, .finance-workspace .btn { min-height:44px; }
   /* Print styles */
   @media print {
     .no-print, .btn, .modal, .card-header .btn, nav, .navbar,
@@ -67,7 +69,7 @@
 @endsection
 
 @section('content')
-<div class="container-xl">
+<div class="container-xl finance-workspace">
 
   {{-- ── PRINT-ONLY HEADER ────────────────────────────────────────────── --}}
   <div class="print-header mb-4 pb-3 border-bottom">
@@ -91,21 +93,26 @@
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 no-print">
     <div><h2 class="h4 mb-1">Budget and expenses</h2><p class="text-muted mb-0">Income, costs, reimbursements and event payees.</p></div>
     <div class="d-flex gap-2 flex-wrap">
-        <button class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#manageConvenorsModal">
+        <div class="dropdown"><button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Setup tools</button><div class="dropdown-menu dropdown-menu-end">
+        <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#manageConvenorsModal">
           <i class="ti ti-users me-1"></i>Finance Payees
         </button>
-        <button class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#manageVenueConvenorsModal">
+        <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#manageVenueConvenorsModal">
           <i class="ti ti-map-pin me-1"></i>Venue Convenors
         </button>
-        <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#manageTypesModal">
+        <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#manageTypesModal">
           <i class="ti ti-tags me-1"></i>Expense Types
         </button>
+        </div></div>
         <button onclick="window.print()" class="btn btn-outline-secondary btn-sm">
           <i class="ti ti-printer me-1"></i>Print / PDF
         </button>
     </div>
   </div>
 
+  <nav class="d-flex flex-wrap gap-2 mb-4 no-print" aria-label="Finance sections">
+    <a class="btn btn-outline-secondary" href="#finance-receipts">Received transactions</a><a class="btn btn-outline-secondary" href="#finance-income">Income</a><a class="btn btn-outline-secondary" href="#finance-expenses">Expenses</a><a class="btn btn-outline-secondary" href="#finance-reconciliation">Reconciliation</a>
+  </nav>
   {{-- ── ALERTS ──────────────────────────────────────────────────────── --}}
   @if(session('success'))
     <div class="alert alert-success alert-dismissible fade show no-print" role="alert">
@@ -205,7 +212,7 @@
   </div>
 
   {{-- ── REGISTRATION TRANSACTIONS ────────────────────────────────────── --}}
-  <div class="card mb-4">
+  <div class="card mb-4" id="finance-receipts">
     <button class="card-header registration-transactions-toggle d-flex justify-content-between align-items-center border-0 bg-transparent text-start w-100"
             type="button" data-bs-toggle="collapse" data-bs-target="#registrationTransactionsCollapse"
             aria-expanded="false" aria-controls="registrationTransactionsCollapse">
@@ -310,7 +317,7 @@
   {{-- ══════════════════════════════════════════════════════════════════════
        SECTION 1 – INCOME
   ══════════════════════════════════════════════════════════════════════ --}}
-  <div class="card mb-4">
+  <div class="card mb-4" id="finance-income">
     <div class="card-header d-flex justify-content-between align-items-center">
       <h5 class="mb-0"><i class="ti ti-cash me-2 text-success"></i>Income</h5>
       <button class="btn btn-success btn-sm no-print" data-bs-toggle="modal" data-bs-target="#addIncomeModal">
@@ -505,7 +512,7 @@
   {{-- ══════════════════════════════════════════════════════════════════════
        SECTION 2 – EXPENSES (per convenor)
   ══════════════════════════════════════════════════════════════════════ --}}
-  <div class="d-flex justify-content-between align-items-center mb-2">
+  <div class="d-flex justify-content-between align-items-center mb-2" id="finance-expenses">
     <h5 class="mb-0"><i class="ti ti-list me-2"></i>Expenses per Convenor</h5>
     <button class="btn btn-primary btn-sm no-print" data-bs-toggle="modal" data-bs-target="#addExpenseModal">
       <i class="ti ti-plus me-1"></i>Add Expense
@@ -814,10 +821,10 @@
   {{-- ══════════════════════════════════════════════════════════════════════
        SECTION 3 – RECONCILIATION / RECON
   ══════════════════════════════════════════════════════════════════════ --}}
-  <div class="card mb-4">
-    <div class="card-header">
+  <details class="card mb-4" id="finance-reconciliation" data-finance-details>
+    <summary class="card-header">
       <h5 class="mb-0"><i class="ti ti-arrows-exchange me-2"></i>Reconciliation</h5>
-    </div>
+    </summary>
     <div class="card-body p-0">
       <div class="table-responsive">
         <table class="table recon-table mb-0">
@@ -925,7 +932,7 @@
         </table>
       </div>
     </div>
-  </div>
+  </details>
 {{-- Toast notification container (fixed, bottom-right) --}}
 <div class="toast-container position-fixed bottom-0 end-0 p-3" id="financeToastContainer" style="z-index:1200"></div>
 
@@ -933,11 +940,11 @@
        SECTION 4 – CONVENOR PAYOUT BREAKDOWN
   ══════════════════════════════════════════════════════════════════════ --}}
   @if($recon->count())
-  <div class="card mb-4 no-print">
-    <div class="card-header d-flex justify-content-between align-items-center">
+  <details class="card mb-4 no-print" data-finance-details>
+    <summary class="card-header d-flex justify-content-between align-items-center">
       <h5 class="mb-0"><i class="ti ti-cash me-2"></i>Convenor Payout Breakdown</h5>
       <small class="text-muted">Net Profit: <strong class="{{ $netProfit >= 0 ? 'text-success' : 'text-danger' }}">R {{ number_format(abs($netProfit), 2) }}</strong></small>
-    </div>
+    </summary>
     <div class="card-body">
       <div class="row g-3">
         @foreach($recon as $row)
@@ -990,17 +997,17 @@
         @endforeach
       </div>
     </div>
-  </div>
+  </details>
   @endif
 
   {{-- ══════════════════════════════════════════════════════════════════════
        SECTION 5 – VENUE ENTRY SUMMARY
   ══════════════════════════════════════════════════════════════════════ --}}
   @if($venueEntrySummary->count())
-  <div class="card mb-4 no-print">
-    <div class="card-header">
+  <details class="card mb-4 no-print" data-finance-details>
+    <summary class="card-header">
       <h5 class="mb-0"><i class="ti ti-map-pin me-2"></i>Venue Entry Summary</h5>
-    </div>
+    </summary>
     <div class="card-body">
       <div class="row g-3">
         @foreach($venueEntrySummary as $vs)
@@ -1019,7 +1026,7 @@
         <i class="ti ti-info-circle me-1"></i>Entry counts are based on registrations in draw categories assigned to each venue.
       </p>
     </div>
-  </div>
+  </details>
   @endif
 
 </div>{{-- /container --}}
@@ -1454,6 +1461,22 @@
 @endsection
 
 @section('page-script')
+<script>
+(function () {
+  const root = document.querySelector('.finance-workspace');
+  let printState;
+  window.addEventListener('beforeprint', () => {
+    if (printState || !root) return;
+    printState = [...root.querySelectorAll('[data-finance-details], .collapse')].map(element => ({element, open:element.open, shown:element.classList.contains('show')}));
+    printState.forEach(({element}) => { if (element.matches('details')) element.open = true; else element.classList.add('show'); });
+  });
+  window.addEventListener('afterprint', () => {
+    printState?.forEach(({element, open, shown}) => { if (element.matches('details')) element.open = open; else element.classList.toggle('show', shown); });
+    printState = undefined;
+  });
+})();
+</script>
+
 <script>
 'use strict';
 

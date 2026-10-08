@@ -224,6 +224,15 @@ class TeamFixturePrintTest extends TestCase
         $foreign = Venue::forceCreate(['name' => 'Foreign private venue']);
         Event::factory()->create()->venues()->attach($foreign, ['num_courts' => 1]);
         $response = $this->actingAs($this->admin)->get(route('headoffice.printOptions', $this->event))->assertOk()->assertDontSee('Foreign private venue')->assertSee('U10 · U13');
+        $response->assertSee('data-venue-print-controls', false)
+            ->assertSee('data-print-selection-count', false)
+            ->assertSee("window.addEventListener('pageshow', updatePrintOptions)", false)
+            ->assertSee('Select at least one draw', false);
+        if (getenv('CT_BATCHES91011_QA')) {
+            $directory = storage_path('app/batches91011-qa');
+            if (!is_dir($directory)) { mkdir($directory, 0755, true); }
+            file_put_contents($directory.'/print.html', $response->getContent());
+        }
         $this->assertSame(['Under 10', 'Under 13', 'Other venues'], $response->viewData('venueGroups')->keys()->all());
         $this->assertSame([$shared->id, $younger->id], $response->viewData('venueGroups')->get('Under 10')->pluck('id')->all());
         $this->assertSame([10, 13], $response->viewData('venueAges')->get($shared->id)->all());

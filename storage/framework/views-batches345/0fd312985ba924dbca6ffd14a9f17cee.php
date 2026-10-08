@@ -1,2 +1,0 @@
-<?php echo $__env->make('frontend.event.eventTypes.default', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
-<?php /**PATH C:\wamp64\www\ct\resources\views\frontend\event\eventTypes\overbergTrials.blade.php ENDPATH**/ ?>

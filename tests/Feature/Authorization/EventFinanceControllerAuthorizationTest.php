@@ -77,6 +77,17 @@ class EventFinanceControllerAuthorizationTest extends TestCase
             ->assertSee('Registered player')
             ->assertSee('Category')
             ->assertSee('Entry amount');
+        $response
+            ->assertSee('Setup tools', false)
+            ->assertSee('finance-reconciliation', false)
+            ->assertSee('data-finance-details', false)
+            ->assertSee('beforeprint', false)
+            ->assertSee('afterprint', false);
+        if (getenv('CT_BATCHES91011_QA')) {
+            $directory = storage_path('app/batches91011-qa');
+            if (!is_dir($directory)) { mkdir($directory, 0755, true); }
+            file_put_contents($directory.'/finances.html', $response->getContent());
+        }
     }
 
     public function test_paid_clothing_breakdown_is_event_scoped_and_reconciles_once(): void

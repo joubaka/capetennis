@@ -129,16 +129,75 @@
   </button>
 </div>
 
+        @php
+          $drawGrouping = request('draw_grouping') === 'gender' ? 'gender' : 'age';
+          $drawGroups = app(\App\Services\Scheduling\AgeGroupVenueDefaultService::class)->groups($event);
+          if ($drawGrouping === 'age') {
+            $combinedGroups = collect();
+            foreach ($drawGroups as $label => $draws) {
+              $ageLabel = preg_replace('/ (Boys|Girls)$/', '', $label);
+              $combinedGroups->put($ageLabel, $combinedGroups->get($ageLabel, collect())->concat($draws));
+            }
+            $drawGroups = $combinedGroups;
+          }
+          $drawGroups = $drawGroups->map(fn ($draws) => $draws->sortBy(function ($draw) {
+            $typeName = mb_strtolower($draw->draw_types?->drawTypeName ?? '');
+            $typeOrder = match (true) {
+              str_contains($typeName, 'single') && ! str_contains($typeName, 'reverse') => 0,
+              str_contains($typeName, 'single') && str_contains($typeName, 'reverse') => 1,
+              str_contains($typeName, 'double') && ! str_contains($typeName, 'mixed') && ! str_contains($typeName, 'reverse') => 2,
+              default => 3,
+            };
+            return [$typeOrder, mb_strtolower($draw->drawName), $draw->id];
+          })->values());
+        @endphp
 <div class="card mb-4 no-print" data-event-draw-publication data-event-id="{{ $event->id }}" data-status-url="{{ route('backend.event-draws.publication-status', $event) }}" data-url="{{ route('backend.event-draws.bulk-publication', $event) }}" data-draw-ids="{{ json_encode($event->draws->pluck('id')->values()->all()) }}">
   <div class="card-body">
-    <h5>Publish draws across the event</h5>
+    <h5>Publish specific draws or batches</h5>
     <p class="mb-2" data-draw-publication-summary><strong>{{ $drawPublicationSummary['status'] }}</strong> · {{ $drawPublicationSummary['published'] }} published · {{ $drawPublicationSummary['unpublished'] }} unpublished</p>
     <p class="text-muted">{{ $event->draws->count() }} draws across every age-group tab. Draw publication and match-time publication are separate actions.</p>
+    <div class="mb-3" data-publication-groups>
+      @forelse($drawGroups as $groupLabel => $groupDraws)
+        <details class="border rounded p-3 mb-2" data-publication-group>
+          <summary class="d-flex flex-wrap gap-2 align-items-center" style="min-height:44px">
+            <strong>{{ $groupLabel }}</strong>
+            <span data-publication-group-counts>{{ $groupDraws->where('published', true)->count() }} published · {{ $groupDraws->where('published', false)->count() }} unpublished · {{ $groupDraws->count() }} total</span>
+          </summary>
+          @if($canPublishAllDraws ?? false)
+            <button type="button" class="btn btn-sm btn-outline-primary mt-2" data-select-publication-group>Select this age group</button>
+          @endif
+          <ul class="list-unstyled mb-0 mt-3">
+            @foreach($groupDraws as $draw)
+              <li class="d-flex flex-wrap align-items-center gap-2 py-2 border-top" data-publication-draw-row data-draw-id="{{ $draw->id }}">
+                @if($canPublishAllDraws ?? false)
+                  <input type="checkbox" class="form-check-input" data-publication-draw-select value="{{ $draw->id }}" aria-label="Select {{ $draw->drawName }}" style="min-width:24px;min-height:24px">
+                @endif
+                <a href="#publication-draw-{{ $draw->id }}" data-publication-draw-link data-panel-id="event-draw-panel-{{ $loop->parent->index }}">{{ $draw->drawName }}</a>
+                <span class="text-muted small">{{ $draw->draw_types?->drawTypeName }}</span>
+                <span class="badge bg-label-{{ $draw->published ? 'success' : 'warning' }}" data-publication-draw-state>{{ $draw->published ? 'Published' : 'Unpublished' }}</span>
+                <span class="badge bg-label-secondary" data-publication-draw-lock @if(!$draw->locked) hidden @endif>Locked</span>
+              </li>
+            @endforeach
+          </ul>
+        </details>
+      @empty
+        <p class="text-muted mb-0">No draws to review.</p>
+      @endforelse
+    </div>
     @if($canPublishAllDraws ?? false)
-    <div class="d-flex flex-wrap gap-2">
+    <p data-publication-selected-count role="status" aria-live="polite">0 draws selected</p>
+    <div class="d-flex flex-wrap gap-2 mb-3">
+      <button type="button" class="btn btn-outline-primary" data-select-publication-all>Select all draws</button>
+      <button type="button" class="btn btn-outline-secondary" data-clear-publication-selection>Clear selection</button>
+      <button type="button" class="btn btn-success" data-bulk-draw-action="publish" data-bulk-draw-scope="selected">Publish selected draws</button>
+      <button type="button" class="btn btn-outline-danger" data-bulk-draw-action="unpublish" data-bulk-draw-scope="selected">Unpublish selected draws</button>
+    </div>
+    <details class="mb-3"><summary>Whole-event options</summary>
+    <div class="d-flex flex-wrap gap-2 mt-2">
       <button type="button" class="btn btn-success" data-bulk-draw-action="publish">Publish all {{ $event->draws->count() }} draws</button>
       <button type="button" class="btn btn-outline-danger" data-bulk-draw-action="unpublish">Unpublish all {{ $event->draws->count() }} draws</button>
     </div>
+    </details>
     <div class="mt-3 d-none" role="status" aria-live="polite" data-bulk-draw-feedback></div>
     <a class="btn btn-sm btn-outline-primary mt-2 d-none" href="{{ route('headOffice.show', $event) }}" data-bulk-draw-refresh>Refresh draw statuses</a>
     @endif
@@ -205,28 +264,7 @@
       </div>
 
       <div class="card-body event-draw-body pt-0">
-        @php
-          $drawGrouping = request('draw_grouping') === 'gender' ? 'gender' : 'age';
-          $drawGroups = app(\App\Services\Scheduling\AgeGroupVenueDefaultService::class)->groups($event);
-          if ($drawGrouping === 'age') {
-            $combinedGroups = collect();
-            foreach ($drawGroups as $label => $draws) {
-              $ageLabel = preg_replace('/ (Boys|Girls)$/', '', $label);
-              $combinedGroups->put($ageLabel, $combinedGroups->get($ageLabel, collect())->concat($draws));
-            }
-            $drawGroups = $combinedGroups;
-          }
-          $drawGroups = $drawGroups->map(fn ($draws) => $draws->sortBy(function ($draw) {
-            $typeName = mb_strtolower($draw->draw_types?->drawTypeName ?? '');
-            $typeOrder = match (true) {
-              str_contains($typeName, 'single') && ! str_contains($typeName, 'reverse') => 0,
-              str_contains($typeName, 'single') && str_contains($typeName, 'reverse') => 1,
-              str_contains($typeName, 'double') && ! str_contains($typeName, 'mixed') && ! str_contains($typeName, 'reverse') => 2,
-              default => 3,
-            };
-            return [$typeOrder, mb_strtolower($draw->drawName), $draw->id];
-          })->values());
-        @endphp
+
         @if($drawGroups->isNotEmpty())
         <form method="GET" action="{{ url()->current() }}" class="d-flex flex-wrap align-items-center gap-2 mb-3">
           <label for="draw-grouping" class="form-label mb-0">Group draws by</label>
@@ -255,7 +293,7 @@
             <div class="event-draw-heading"><h6 class="mb-0">{{ $groupLabel }}</h6><span class="text-muted small">{{ $groupDraws->count() }} {{ \Illuminate\Support\Str::plural('draw', $groupDraws->count()) }}</span></div>
             <div class="event-draw-list">
             @foreach($groupDraws as $draw)
-            <details class="event-draw-card event-draw-publication-card" data-quick-publication-card data-draw-id="{{ $draw->id }}">
+            <details id="publication-draw-{{ $draw->id }}" class="event-draw-card event-draw-publication-card" data-quick-publication-card data-draw-id="{{ $draw->id }}">
               <summary class="event-draw-card-summary">
                 <div class="event-draw-card-summary-info">
                 <h6 class="mb-0">{{ $draw->drawName }} <span class="text-muted">— {{ optional($draw->draw_types)->drawTypeName ?? 'Type' }}</span></h6>

@@ -64,6 +64,41 @@ class TeamWorkspaceTest extends TestCase
         }
     }
 
+    public function test_region_tools_and_order_statuses_preserve_lazy_loading_and_fixture_locks(): void
+    {
+        $this->team->update(['name' => 'Editable Alpha']);
+        $player = Player::factory()->create(['name' => 'Synthetic', 'surname' => 'Alpha']);
+        TeamPlayer::create(['team_id' => $this->team->id, 'player_id' => $player->id, 'rank' => 1, 'pay_status' => 1]);
+        $ranking = Team::factory()->create(['name' => 'Ranking Beta', 'region_id' => $this->region->id, 'category_event_id' => $this->team->category_event_id]);
+        $import = \App\Models\TeamSelectionImport::create(['event_id' => $this->event->id, 'region_id' => $this->region->id, 'source_id' => 1, 'series_id' => 1, 'ranking_run_id' => 'synthetic-order', 'status' => 'draft']);
+        \App\Models\TeamSelectionInvitation::create(['import_id' => $import->id, 'event_id' => $this->event->id, 'region_id' => $this->region->id, 'team_id' => $ranking->id, 'player_id' => $player->id, 'ranking_list_id' => 1, 'ranking_position' => 1, 'queue_position' => 1]);
+        $url = route('admin.events.teams', $this->event);
+        $page = $this->get($url)->assertOk()->assertSee('Region tools')->assertSee('Team publication')->assertSee('data-order-search', false);
+        $page->assertSeeInOrder(['Add Team', 'Import Teams', 'Region tools'])->assertSee('data-team-count="2"', false);
+        $panel = $this->get($url.'?roster_region='.$this->region->id.'&panel=order')->assertOk()
+            ->assertSee('Editable')->assertSee('Ranking-managed')->assertSee('Moves save immediately')->assertSee('data-order-move', false);
+        $this->assertSame(1, substr_count($panel->getContent(), 'sortablePlayers'));
+        if (getenv('CT_BATCHES678_QA') === '1') {
+            $directory = storage_path('app/batches678-qa');
+            \Illuminate\Support\Facades\File::ensureDirectoryExists($directory);
+            file_put_contents($directory.'/workspace.html', str_replace('http://localhost', 'http://127.0.0.1:8776/ct/public', $page->getContent()));
+            file_put_contents($directory.'/order-'.$this->region->id.'.html', $panel->getContent());
+            file_put_contents($directory.'/meta.json', json_encode(['path' => parse_url($url, PHP_URL_PATH), 'region' => $this->region->id]));
+        }
+        $draw = \App\Models\Draw::factory()->create(['event_id' => $this->event->id]);
+        \App\Models\TeamFixture::create(['draw_id' => $draw->id, 'fixture_type' => 1, 'match_nr' => 1, 'round_nr' => 1, 'numSets' => 3]);
+        $locked = $this->get($url.'?roster_region='.$this->region->id.'&panel=order')->assertOk()->assertSee('Locked here: fixtures generated')->assertSee('Order status')->assertDontSee('sortablePlayers')->assertDontSee('data-order-move', false);
+        $this->assertDatabaseCount('team_players', 1);
+        $this->assertDatabaseCount('team_fixtures', 1);
+        if (getenv('CT_BATCHES678_QA') === '1') file_put_contents(storage_path('app/batches678-qa/order-locked.html'), $locked->getContent());
+        $this->actingAs(User::factory()->create());
+        $this->region->setRelation('teams', collect([$this->team->load(['teamPlayers.player', 'team_players_no_profile'])]));
+        $readOnly = view('backend.adminPage.admin_show.tabs.order-region', ['event' => $this->event, 'region' => $this->region, 'teamSelectionInvitations' => collect(), 'orderLocked' => false])->render();
+        $this->assertStringContainsString('Read-only', $readOnly);
+        $this->assertStringNotContainsString('sortablePlayers', $readOnly);
+        $this->assertStringNotContainsString('data-order-move', $readOnly);
+    }
+
     public function test_historical_rosters_load_both_panels_without_exposing_shared_region_rosters(): void
     {
         $this->team->update(['category_event_id' => null, 'name' => 'Historical u/10 Boys']);

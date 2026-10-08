@@ -1,1 +1,0 @@
-<?php /**PATH C:\wamp64\www\ct\resources\views\frontend\team\profileTeam.blade.php ENDPATH**/ ?>

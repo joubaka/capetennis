@@ -1,6 +1,0 @@
-<nav class="rr-workspace-nav mb-3" aria-label="Draw workspace">
-  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = ['groups' => 'Players & Positions', 'matrix' => 'Draw & Results', 'schedule' => 'Schedule', 'settings' => 'Setup & Rules']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $hash => $label): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
-    <a class="btn <?php echo e(($workspaceTab ?? '') === $hash ? 'btn-primary' : 'btn-label-secondary'); ?>" href="<?php echo e(route('backend.draw.roundrobin.show', $draw)); ?>#<?php echo e($hash); ?>"><?php echo e($label); ?></a>
-  <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-</nav>
-<?php /**PATH C:\wamp64\www\ct\resources\views\backend\draw\partials\workspace-links.blade.php ENDPATH**/ ?>

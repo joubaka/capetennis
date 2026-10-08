@@ -1,4 +1,4 @@
-@extends('layouts.backend')
+@extends(($scoringPrint ?? false) ? 'layouts/layoutMaster' : 'layouts.backend')
 
 @section('title', 'Venue Fixtures')
 
@@ -169,11 +169,13 @@
 @endsection
 
 @section('content')
+@unless($scoringPrint ?? false)
 @include('backend.event.partials.header', [
     'eventWorkspaceActive' => 'draws',
     'eventWorkspaceIcon' => 'ti-map-pin',
     'eventWorkspaceSubtitle' => $venue->name . ' fixtures',
 ])
+@endunless
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3 d-print-none">
     <div>
         <h4 class="mb-1">{{ $venue->name }} fixtures</h4>
@@ -189,7 +191,7 @@
     </div>
 </div>
 
-<form method="get" action="{{ route('headoffice.venue.fixtures', ['event' => $event, 'venue' => $venue]) }}" class="d-flex flex-wrap align-items-end gap-2 mb-3 d-print-none">
+<form method="get" action="{{ route(($scoringPrint ?? false) ? 'frontend.scoring.print' : 'headoffice.venue.fixtures', ['event' => $event, 'venue' => $venue]) }}" class="d-flex flex-wrap align-items-end gap-2 mb-3 d-print-none">
     <div style="min-width:0;max-width:100%">
         <label for="venue-schedule-source" class="form-label">Schedule source</label>
         <select name="source" id="venue-schedule-source" class="form-select" style="min-height:44px;max-width:100%">
@@ -210,7 +212,7 @@
         </select>
     </div>
     <button type="submit" class="btn btn-primary" style="min-height:44px">Show day</button>
-    @if($selectedDate)<a class="btn btn-outline-secondary" style="min-height:44px" href="{{ route('headoffice.venue.fixtures', ['event' => $event, 'venue' => $venue, 'source' => $scheduleSource]) }}">All days</a>@endif
+    @if($selectedDate)<a class="btn btn-outline-secondary" style="min-height:44px" href="{{ route(($scoringPrint ?? false) ? 'frontend.scoring.print' : 'headoffice.venue.fixtures', ['event' => $event, 'venue' => $venue, 'source' => $scheduleSource]) }}">All days</a>@endif
     <span class="text-muted mb-2">{{ $selectedDate ? \Carbon\Carbon::parse($selectedDate)->format('l j M Y') : 'All days' }} · {{ $fixtures->count() }} matches</span>
 </form>
 <p class="small text-muted">{{ $scheduleSource === 'published' ? 'Published schedule — matches visible to players. Unpublished changes appear in Working schedule.' : 'Working schedule — includes unpublished changes. Times and venues may differ from the published schedule.' }}</p>
@@ -304,6 +306,7 @@
                         </td>
                         <td class="venue-print-repeat">{{ $venue->name }}@if($fx->court_label)<br>Court {{ $fx->court_label }}@endif</td>
                         <td class="text-end d-print-none">
+                            @unless($scoringPrint ?? false)
                             <button id="edit-btn-{{ $fx->id }}" class="btn btn-sm btn-icon btn-label-primary edit-score-btn"
                                 data-id="{{ $fx->id }}" data-participant-revision="{{ $fx instanceof \App\Models\TeamFixture ? app(\App\Services\TeamParticipantHistoryService::class)->revision($fx) : '' }}"
                                 data-action="{{ route('backend.team-fixtures.update', $fx->id) }}"
@@ -323,6 +326,7 @@
                                     <i class="ti ti-trash"></i>
                                 </button>
                             @endif
+                            @endunless
                         </td>
                     </tr>
                     @endforeach

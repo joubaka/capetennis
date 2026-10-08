@@ -1,2 +1,0 @@
-<?php echo $__env->make('backend.team-fixtures.partials.side-badges', ['fixture' => $team_fixture, 'side' => 'away'], array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
-<?php /**PATH C:\wamp64\www\ct\resources\views\backend\team-fixtures\partials\away-cell.blade.php ENDPATH**/ ?>

@@ -1,2 +1,0 @@
-<line x1="<?php echo e($x1); ?>" y1="<?php echo e($y1); ?>" x2="<?php echo e($x2); ?>" y2="<?php echo e($y2); ?>" stroke="black" />
-<?php /**PATH C:\wamp64\www\ct\resources\views\svg\connector.blade.php ENDPATH**/ ?>

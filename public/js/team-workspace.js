@@ -46,7 +46,7 @@
 
   function saveUrl(push = false) {
     const url = new URL(window.location.href);
-    const values = { region: $('[data-roster-region]').val(), search: $('[data-roster-search]').val() };
+    const values = { region: $('[data-roster-region]').val(), search: $('[data-roster-search]').val(), order_search: $('[data-order-search]').val() };
     filterNames.forEach(name => { values[name] = $('[data-roster-filter="' + name + '"]').val(); });
     values.tab = $('.team-admin-workspace .tabs-wrap .nav-link.active').attr('data-bs-target')?.replace('#tab-', '');
     values.result_category = $('.category-radio:checked').val();
@@ -71,7 +71,23 @@
     if (reveal && count) $('[data-roster-more-filters]').prop('open', true);
   }
 
+  function applyOrderSearch() {
+    const panel = document.querySelector('[data-roster-panel="order"]:not([hidden])');
+    if (!panel || panel.dataset.loaded !== 'true') return;
+    const terms = String($('[data-order-search]').val() || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+    let matches = 0;
+    panel.querySelectorAll('[data-order-team]').forEach(team => {
+      team.hidden = !terms.every(term => (team.dataset.orderTeamName || '').toLowerCase().includes(term));
+      if (!team.hidden) { matches++; if (terms.length) team.open = true; }
+    });
+    const count = panel.querySelector('[data-order-match-count]');
+    if (count) count.textContent = matches + ' teams shown';
+    const empty = panel.querySelector('[data-order-empty]');
+    if (empty) empty.hidden = matches > 0;
+  }
+
   function applyFilters() {
+    applyOrderSearch();
     updateAdvancedFilters();
     const panel = document.querySelector('[data-roster-panel="players"]:not([hidden])');
     if (!panel || panel.dataset.loaded !== 'true') return;
@@ -145,6 +161,7 @@
     restoring = true;
     const url = new URL(window.location.href);
     $('[data-roster-search]').val(url.searchParams.get('roster_search') || '');
+    $('[data-order-search]').val(url.searchParams.get('roster_order_search') || '');
     filterNames.forEach(name => { $('[data-roster-filter="' + name + '"]').val(url.searchParams.get('roster_' + name) || ''); });
     updateAdvancedFilters(true);
     const resultCategory = url.searchParams.get('roster_result_category');
@@ -288,6 +305,8 @@
   $(document).on('change', '[data-roster-region], [data-order-region]', function () { selectRegion(this.value); saveUrl(true); });
   $(document).on('input change', '[data-roster-search], [data-roster-filter]', function () { applyFilters(); saveUrl(); });
   $(document).on('click', '[data-roster-clear]', function () { $('[data-roster-search], [data-roster-filter]').val(''); applyFilters(); saveUrl(); });
+  $(document).on('input change', '[data-order-search]', function () { applyOrderSearch(); saveUrl(); });
+  $(document).on('click', '[data-order-clear]', function () { $('[data-order-search]').val(''); applyOrderSearch(); saveUrl(); });
   $(document).on('click', '[data-workspace-refresh]', queueRefresh);
   $(document).on('click', '[data-roster-expand]', function () { document.querySelectorAll('[data-roster-panel="players"]:not([hidden]) [data-roster-team]:not([hidden])').forEach(team => { team.open = this.dataset.rosterExpand === 'true'; }); });
   $(document).on('shown.bs.tab', '.team-admin-workspace .tabs-wrap [data-bs-toggle="tab"]', function () { if (!restoring) { selectRegion($('[data-roster-region]').val()); saveUrl(true); if (this.dataset.bsTarget === '#tab-result-rank') loadResults(); } });

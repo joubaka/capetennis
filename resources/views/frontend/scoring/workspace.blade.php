@@ -28,8 +28,8 @@
   .scoring-hero-copy .scoring-title { color: #fff !important; }
   .scoring-hero-eyebrow { color: rgba(255, 255, 255, .72); font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
   .scoring-hero-context { color: rgba(255, 255, 255, .8); }
-  .scoring-hero-actions { display: flex; align-items: center; justify-content: flex-end; gap: .5rem; }
-  .scoring-hero-actions .btn { min-height: 42px; white-space: nowrap; }
+  .scoring-hero-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .5rem; }
+  .scoring-hero-actions .btn { min-height: 44px; white-space: nowrap; }
   .scoring-hero .btn-light { color: var(--ct-ink, #172e45); }
   .scoring-hero .btn-outline-light { color: #fff; border-color: rgba(255, 255, 255, .55); background: rgba(255, 255, 255, .06); }
   .scoring-hero .btn-outline-light:hover { color: var(--ct-ink, #172e45) !important; background: #fff !important; border-color: #fff !important; }
@@ -202,6 +202,12 @@
             </div>
           </div>
           <div class="scoring-hero-actions">
+            @if($selectedVenue)
+              <a href="{{ route('frontend.scoring.print', ['event' => $event, 'venue' => $selectedVenue, 'source' => $scheduleSource, 'date' => $scheduleDate]) }}"
+                 class="btn btn-outline-light" target="_blank" rel="noopener" aria-label="Print options for {{ $selectedVenue->name }}">
+                <i class="ti ti-printer me-1" aria-hidden="true"></i> Print options
+              </a>
+            @endif
             <a href="{{ route('events.show', $event) }}" class="btn btn-light">
               <i class="ti ti-arrow-left me-1" aria-hidden="true"></i> Tournament
             </a>

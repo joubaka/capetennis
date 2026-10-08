@@ -194,6 +194,31 @@ class VenueScoringController extends Controller
         ]);
     }
 
+    public function printVenue(Request $request, Event $event, Venue $venue): View
+    {
+        $this->authorize('event.score', $event);
+        $this->requireAssignedVenue($request, $event, (int) $venue->id);
+        abort_unless($event->venues()->whereKey($venue->id)->exists()
+            || $event->draws()->whereHas('venues', fn ($query) => $query->where('venues.id', $venue->id))->exists(), 404);
+        $validated = $request->validate([
+            'source' => ['nullable', 'in:published,working'],
+            'date' => ['nullable', 'date_format:Y-m-d'],
+        ]);
+        // A venue sheet always prints the full venue, rather than a filtered scoring queue.
+        $request->replace($validated);
+        $renderer = app(\App\Http\Controllers\Backend\HeadOfficeController::class);
+        if ((int) $event->eventType === 3) {
+            return $renderer->renderVenueFixtures($request, $event, $venue);
+        }
+        $request->merge([
+            'print_type' => 'venue', 'venue_id' => $venue->id,
+            'include_standings' => false, 'download' => false,
+            'schedule_source' => $validated['source'] ?? 'published',
+        ]);
+
+        return $renderer->renderDrawPack($request, $event);
+    }
+
     public function operator(Request $request, Event $event): RedirectResponse
     {
         $this->authorize('event.score', $event);

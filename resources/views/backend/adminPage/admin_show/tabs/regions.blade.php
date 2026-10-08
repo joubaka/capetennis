@@ -72,32 +72,14 @@
                 <div class="accordion-body pt-2">
 
                   {{-- 🔹 REGION ACTIONS --}}
-                  <div class="d-flex flex-wrap justify-content-end align-items-center mb-2 gap-2">
-                    <button type="button"
-                            class="btn btn-sm btn-outline-secondary renameRegionEvent"
-                            data-id="{{ $region->pivot->id }}"
-                            data-name="{{ $region->region_name }}"
-                            data-short-name="{{ $region->short_name }}"
-                            data-event-count="{{ $region->events()->count() }}">
-                      <i class="ti ti-edit me-1"></i> Edit Region
-                    </button>
-
+                  <div class="d-flex flex-wrap align-items-center mb-3 gap-2">
                     <a href="javascript:void(0)"
-                       class="text-danger removeRegionEvent"
-                       data-id="{{ $region->pivot->id }}">
-                      <i class="ti ti-trash me-1"></i> Remove Region
+                       class="btn btn-sm btn-primary addTeam"
+                       data-regionid="{{ $region->id }}"
+                       data-bs-toggle="modal"
+                       data-bs-target="#addTeamModal">
+                      <i class="ti ti-plus me-1"></i> Add Team
                     </a>
-
-                    <button type="button"
-                            class="btn btn-sm btn-success publishRegionTeams"
-                            data-url="{{ route('backend.region.teams.publish', [$event, $region]) }}"
-                            data-team-count="{{ $regionTeamCount }}"
-                            data-unpublished-count="{{ $regionUnpublishedCount }}"
-                            @disabled($regionTeamCount === 0 || $regionUnpublishedCount === 0)>
-                      <i class="ti ti-eye me-1"></i>
-                      {{ $regionTeamCount > 0 && $regionUnpublishedCount === 0 ? 'All Teams Published' : 'Publish All Teams' }}
-                    </button>
-
                     <a href="javascript:void(0)"
                        class="btn btn-sm btn-outline-primary import-region-teams-btn"
                        data-region-name="{{ $region->region_name }}"
@@ -107,15 +89,39 @@
                        data-bs-target="#import-region-teams-modal">
                       <i class="ti ti-file-spreadsheet me-1"></i> Import Teams
                     </a>
-
+                    <div class="dropdown">
+                      <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Region tools</button>
+                      <div class="dropdown-menu dropdown-menu-end">
+                    <button type="button"
+                            class="dropdown-item renameRegionEvent"
+                            data-id="{{ $region->pivot->id }}"
+                            data-name="{{ $region->region_name }}"
+                            data-short-name="{{ $region->short_name }}"
+                            data-event-count="{{ $region->events()->count() }}">
+                      <i class="ti ti-edit me-1"></i> Edit Region
+                    </button>
                     <a href="javascript:void(0)"
-                       class="btn btn-sm btn-primary addTeam"
-                       data-regionid="{{ $region->id }}"
-                       data-bs-toggle="modal"
-                       data-bs-target="#addTeamModal">
-                      <i class="ti ti-plus me-1"></i> Add Team
+                       class="dropdown-item text-danger removeRegionEvent"
+                       data-id="{{ $region->pivot->id }}">
+                      <i class="ti ti-trash me-1"></i> Remove Region
                     </a>
+                      </div>
+                    </div>
                   </div>
+                  <section class="border rounded p-3 mb-3" aria-label="Team publication for {{ $region->region_name }}">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                      <div><h3 class="h6 mb-1">Team publication</h3><p class="small text-muted mb-0">Review the teams before publishing. Draws, schedules and results use separate publication controls.</p></div>
+                    <button type="button"
+                            class="btn btn-sm btn-success publishRegionTeams"
+                            data-url="{{ route('backend.region.teams.publish', [$event, $region]) }}"
+                            data-team-count="{{ $regionTeamCount }}"
+                            data-unpublished-count="{{ $regionUnpublishedCount }}"
+                            @disabled($regionTeamCount === 0 || $regionUnpublishedCount === 0)>
+                      <i class="ti ti-eye me-1"></i>
+                      {{ $regionTeamCount > 0 && $regionUnpublishedCount === 0 ? 'All Teams Published' : 'Publish All Teams' }}
+                    </button>
+                    </div>
+                  </section>
 
                   {{-- 🔹 TEAMS CONTAINER --}}
                   <div class="teams-container">

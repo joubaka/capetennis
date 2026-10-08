@@ -13,7 +13,8 @@
       quick.disabled = disabled;
       card.querySelectorAll('.toggle-publish').forEach(function (button) { button.disabled = disabled; });
     });
-    panel.querySelectorAll('[data-bulk-draw-action]').forEach(function (button) { button.disabled = busy || unknown; });
+    panel.querySelectorAll('[data-publication-draw-select], [data-select-publication-group], [data-select-publication-all], [data-clear-publication-selection]').forEach(function (control) { control.disabled = busy || unknown; });
+    panel.querySelectorAll('[data-bulk-draw-action]').forEach(function (button) { button.disabled = busy || unknown || (button.dataset.bulkDrawScope === 'selected' && !panel.querySelector('[data-publication-draw-select]:checked')); });
   }
   function show(card, text) {
     var feedback = card.querySelector('[data-quick-draw-feedback]');
@@ -71,6 +72,21 @@
       }
       card.querySelector('[data-quick-draw-status-retry]').hidden = true;
     });
+    panel.querySelectorAll('[data-publication-group]').forEach(function (group) {
+      var rows = Array.from(group.querySelectorAll('[data-publication-draw-row]'));
+      var publishedCount = 0;
+      rows.forEach(function (row) {
+        var state = states.get(Number(row.dataset.drawId));
+        if (!state) throw new Error('Some grouped draw statuses could not be confirmed.');
+        if (state.published) publishedCount++;
+        var badge = row.querySelector('[data-publication-draw-state]');
+        badge.textContent = state.published ? 'Published' : 'Unpublished';
+        badge.classList.toggle('bg-label-success', state.published);
+        badge.classList.toggle('bg-label-warning', !state.published);
+        row.querySelector('[data-publication-draw-lock]').hidden = !state.locked;
+      });
+      group.querySelector('[data-publication-group-counts]').textContent = publishedCount + ' published · ' + (rows.length - publishedCount) + ' unpublished · ' + rows.length + ' total';
+    });
     var published = result.draw_states.filter(function (state) { return state.published; }).length;
     var hidden = result.draw_states.length - published;
     var label = !result.draw_states.length ? 'No draws' : (!hidden ? 'All published' : (!published ? 'Unpublished' : 'Partly published'));
@@ -78,6 +94,24 @@
     unknown = false;
     window.HeadOfficeDrawPublicationUnconfirmed = false;
   }
+  function markDetailsUnconfirmed() {
+    panel.querySelectorAll('[data-publication-group-counts], [data-publication-draw-state]').forEach(function (element) { element.textContent = 'Status unconfirmed'; });
+  }
+  panel.querySelectorAll('[data-publication-draw-link]').forEach(function (link) {
+    link.addEventListener('click', function (event) {
+      var card = document.getElementById(link.hash.slice(1));
+      var tab = document.querySelector('[data-bs-target="#' + link.dataset.panelId + '"]');
+      if (!card || !tab || !window.bootstrap) return;
+      event.preventDefault();
+      card.open = true;
+      var reveal = function () { card.scrollIntoView({ block: 'start' }); };
+      if (tab.classList.contains('active')) reveal();
+      else {
+        tab.addEventListener('shown.bs.tab', reveal, { once: true });
+        window.bootstrap.Tab.getOrCreateInstance(tab).show();
+      }
+    });
+  });
   async function readStatus() {
     var response = await window.fetch(panel.dataset.statusUrl, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
     var result = await response.json();
@@ -87,7 +121,7 @@
   window.HeadOfficeDrawPublicationUI = {
     apply: function (result) { applyState(result); lock(Boolean(window.HeadOfficeDrawPublicationPending)); },
     pause: function () {
-      unknown = true; window.HeadOfficeDrawPublicationUnconfirmed = true;
+      unknown = true; window.HeadOfficeDrawPublicationUnconfirmed = true; markDetailsUnconfirmed();
       summary.textContent = 'Publication status unconfirmed. Refresh or retry the status check before changing a draw.';
       var card = cards.find(function (item) { return item.querySelector('[data-quick-draw-publication]'); });
       if (card) card.querySelector('[data-quick-draw-status-retry]').hidden = false;
@@ -134,6 +168,7 @@
       else throw new Error('The request outcome could not be confirmed.');
     } catch (error) {
       unknown = true;
+      markDetailsUnconfirmed();
       window.HeadOfficeDrawPublicationUnconfirmed = true;
       summary.textContent = 'Publication status unconfirmed. Checking current counts…';
       try { await readStatus(); show(card, error.message + ' Current statuses have been checked; review before another action.'); }

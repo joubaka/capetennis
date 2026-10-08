@@ -69,6 +69,7 @@
     <div class="card-body">
       <h3 class="h5">Individual draws</h3>
       <p class="text-muted">Select all draws, an age group, or individual draws. Bracket PDFs require only Flexible Monrad draws.</p>
+      <p class="fw-semibold" data-print-selection-count role="status" aria-live="polite"></p>
       <label class="print-choice"><input type="checkbox" data-select-all checked> Select all individual draws</label>
       @foreach($drawGroups as $label => $draws)
         @php($choices = $draws->reject(fn ($draw) => $draw->isTeamDraw()))
@@ -93,11 +94,17 @@
           <option value="fixtures">Individual fixtures only (PDF)</option>
           <option value="combined">Fixtures and matrices (PDF)</option>
         </select></div>
+      </div>
+      <div data-venue-print-controls>
+        <h4 class="h6">Venue schedule options</h4>
+        <div class="row g-3 mb-3">
         <div class="col-md-6"><label for="schedule-source" class="form-label">Venue schedule version</label><select id="schedule-source" name="schedule_source" class="form-select"><option value="published">Published schedule</option><option value="working">Working schedule</option></select></div>
         <div class="col-md-6"><label for="print-date" class="form-label">Venue schedule day</label><input class="form-control" id="print-date" name="date" type="date"><small class="text-muted">Leave blank for every day.</small></div>
         <div class="col-md-6"><label for="print-venue" class="form-label">Venue schedule venue</label><select class="form-select" id="print-venue" name="venue_id"><option value="">All venues</option>@foreach($venues as $venue)<option value="{{ $venue->id }}">{{ $venue->name }}</option>@endforeach</select></div>
-      </div>
+        </div>
       <p class="small text-muted">Day, venue and schedule version apply to venue order of play. Printing does not publish draws or match times.</p>
+      </div>
+      <p class="small text-muted">Printing does not publish draws or match times.</p>
       <input type="hidden" name="include_standings" value="0">
       <label class="print-choice mb-3"><input type="checkbox" name="include_standings" value="1"> Include standings</label>
       <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary" type="submit" name="download" value="0">Preview / print</button><button class="btn btn-outline-primary" type="submit" name="download" value="1">Download PDF</button></div>
@@ -135,7 +142,23 @@
 @endsection
 @section('page-script')
 <script>
-document.getElementById('individual-print-options')?.addEventListener('change', function (event) {
+const individualPrintForm = document.getElementById('individual-print-options');
+function updatePrintOptions() {
+  if (!individualPrintForm) return;
+  const total = individualPrintForm.querySelectorAll('[name="draw_ids[]"]').length;
+  const selected = individualPrintForm.querySelectorAll('[name="draw_ids[]"]:checked').length;
+  individualPrintForm.querySelector('[data-print-selection-count]').textContent = selected + ' of ' + total + ' draws selected';
+  const venue = document.getElementById('print-type').value === 'venue';
+  const controls = individualPrintForm.querySelector('[data-venue-print-controls]');
+  controls.hidden = !venue;
+  controls.querySelectorAll('input, select').forEach(control => { control.disabled = !venue; });
+  const pdfOnly = ['bracket', 'matrix', 'combined', 'fixtures'].includes(document.getElementById('print-type').value);
+  individualPrintForm.querySelector('[name="download"][value="0"]').disabled = pdfOnly;
+  document.getElementById('print-layout-help').textContent = pdfOnly ? 'This layout is available as a PDF download.' : 'Use your browser’s Print or Save as PDF from the preview.';
+}
+updatePrintOptions();
+window.addEventListener('pageshow', updatePrintOptions);
+document.getElementById('individual-print-options')?.addEventListener('change' , function (event) {
   if (event.target.matches('[data-select-all]')) this.querySelectorAll('input[type="checkbox"]:not([name="include_standings"])').forEach(input => input.checked = event.target.checked);
   if (event.target.matches('[data-select-group]')) event.target.closest('[data-print-group]').querySelectorAll('[name="draw_ids[]"]').forEach(input => input.checked = event.target.checked);
   const sync = (toggle, inputs) => {
@@ -145,11 +168,8 @@ document.getElementById('individual-print-options')?.addEventListener('change', 
   };
   this.querySelectorAll('[data-print-group]').forEach(group => sync(group.querySelector('[data-select-group]'), group.querySelectorAll('[name="draw_ids[]"]')));
   sync(this.querySelector('[data-select-all]'), this.querySelectorAll('[name="draw_ids[]"]'));
-  if (event.target.id === 'print-type') {
-    const pdfOnly = ['bracket', 'matrix', 'combined', 'fixtures'].includes(event.target.value);
-    this.querySelector('[name="download"][value="0"]').disabled = pdfOnly;
-    document.getElementById('print-layout-help').textContent = pdfOnly ? 'This layout is available as a PDF download.' : 'Use your browser’s Print or Save as PDF from the preview.';
-  }
+  updatePrintOptions();
+
 });
 document.getElementById('individual-print-options')?.addEventListener('submit', function (event) {
   if (!this.querySelector('[name="draw_ids[]"]:checked')) { event.preventDefault(); alert('Select at least one draw.'); return; }

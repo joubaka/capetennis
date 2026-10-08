@@ -284,7 +284,7 @@ class VenueScoringWorkspaceTest extends TestCase
             e(route('frontend.scoring.workspace', ['event' => $event, 'schedule_source' => 'published', 'venue' => $venue->id])),
             $html
         );
-        $this->assertStringContainsString('>2</span>', $html);
+        $this->assertStringContainsString('>2<span class="visually-hidden"> fixtures</span></span>', $html);
     }
 
     public function test_venue_scoring_control_is_hidden_from_an_unassigned_user(): void
@@ -670,6 +670,61 @@ class VenueScoringWorkspaceTest extends TestCase
         $this->get(route('frontend.scoring.workspace', [
             'event' => $event, 'schedule_source' => 'published', 'draw_ids' => [$draw->id, $foreign->id],
         ]))->assertNotFound();
+    }
+
+    public function test_convener_print_options_reuse_admin_venue_sheet_and_enforce_scope(): void
+    {
+        [$event, $draw, $venue] = $this->scheduledFixture('Convener print venue');
+        $event->update(['eventType' => 3]);
+        [, , $otherVenue] = $this->scheduledFixture('Other private venue', $event, $draw);
+        $fixture = TeamFixture::create([
+            'draw_id' => $draw->id, 'round_nr' => 1, 'match_nr' => 1,
+            'venue_id' => $venue->id, 'scheduled' => true, 'scheduled_at' => '2026-10-09 09:00:00',
+        ]);
+        [$foreignEvent, $foreignDraw] = $this->scheduledFixture('Foreign event venue');
+        TeamFixture::create(['draw_id' => $foreignDraw->id, 'round_nr' => 1, 'match_nr' => 1,
+            'venue_id' => $venue->id, 'scheduled' => true, 'scheduled_at' => '2026-10-10 10:00:00']);
+        $user = $this->scorerFor($event);
+        EventConvenor::where('event_id', $event->id)->where('user_id', $user->id)->update(['venue_id' => $venue->id]);
+        $url = route('frontend.scoring.print', ['event' => $event, 'venue' => $venue, 'source' => 'working']);
+        $this->actingAs($user)->get(route('frontend.scoring.workspace', ['event' => $event, 'venue' => $venue]))
+            ->assertOk()->assertSee('Print options')->assertSee($url, false);
+        $print = $this->get($url)->assertOk()->assertViewIs('backend.headOffice.venue-fixtures')
+            ->assertSee('Save as PDF')->assertSee('Day to print')->assertSee('window.print()', false)
+            ->assertDontSee('id="edit-btn-', false)->assertDontSee('Foreign event venue');
+        $this->assertSame([$fixture->id], $print->viewData('fixtures')->pluck('id')->all());
+        $this->assertSame(['2026-10-09'], $print->viewData('availableDays')->all());
+        app(\App\Services\Scheduling\SchedulePublicationService::class)->publish($event, ['date' => '2026-10-09']);
+        $fixture->update(['venue_id' => $otherVenue->id, 'scheduled_at' => '2026-10-11 11:00:00']);
+        $published = $this->get(route('frontend.scoring.print', [
+            'event' => $event, 'venue' => $venue, 'source' => 'published', 'date' => '2026-10-09',
+        ]))->assertOk()->assertSee('Published schedule');
+        $this->assertSame([$fixture->id], $published->viewData('fixtures')->pluck('id')->all());
+        $this->assertSame('2026-10-09 09:00:00', $published->viewData('fixtures')->first()->scheduled_at->format('Y-m-d H:i:s'));
+        $fixture->update(['venue_id' => $venue->id, 'scheduled_at' => '2026-10-09 09:00:00']);
+
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $adminPrint = $this->actingAs($admin)->get(route('headoffice.venue.fixtures', ['event' => $event, 'venue' => $venue, 'source' => 'working']))->assertOk();
+        $this->assertSame($adminPrint->viewData('fixtures')->pluck('id')->all(), $print->viewData('fixtures')->pluck('id')->all());
+        $this->actingAs($user)->get(route('frontend.scoring.print', ['event' => $event, 'venue' => $otherVenue]))->assertForbidden();
+        $this->get(route('frontend.scoring.print', ['event' => $foreignEvent, 'venue' => $venue]))->assertForbidden();
+        $this->getJson($url.'&date=invalid')->assertUnprocessable();
+        $this->get($url.'&date=2026-10-10')->assertOk()->assertViewHas('fixtures', fn ($rows) => $rows->isEmpty());
+        $this->actingAs(User::factory()->create())->get($url)->assertForbidden();
+    }
+
+    public function test_convener_individual_print_is_constrained_to_venue_and_ignores_pack_overrides(): void
+    {
+        [$event, $draw, $venue, $fixture] = $this->scheduledFixture('Individual print venue');
+        [, , $otherVenue, $other] = $this->scheduledFixture('Excluded print venue', $event, $draw);
+        $response = $this->actingAs($this->scorerFor($event))->get(route('frontend.scoring.print', [
+            'event' => $event, 'venue' => $venue, 'source' => 'working',
+            'print_type' => 'pack', 'venue_id' => $otherVenue->id, 'include_standings' => true,
+        ]))->assertOk()->assertViewIs('backend.draw.pdf.draw-pack');
+        $this->assertSame('venue', $response->viewData('printType'));
+        $this->assertFalse($response->viewData('includeStandings'));
+        $this->assertSame([$fixture->id], $response->viewData('schedule')->pluck('id')->all());
     }
 
     private function scorerFor(Event $event): User

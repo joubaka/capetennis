@@ -1,9 +1,0 @@
-<?php $__env->startSection('title', 'My Interprovincial Trials invitations'); ?>
-<?php $__env->startSection('content'); ?>
-<h4>My Interprovincial Trials invitations</h4>
-<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $invitations; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $invitation): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?><div class="card mb-3"><div class="card-body"><h5><?php echo e($invitation->event->name); ?></h5><p><?php echo e($invitation->player->name); ?> <?php echo e($invitation->player->surname); ?> — <?php echo e($invitation->categoryEvent->category->name); ?></p><a class="btn btn-primary" href="<?php echo e(URL::temporarySignedRoute('interprovincial-trials.invitations.show', now()->addMinutes(30), ['invitation'=>$invitation])); ?>">View invitation</a></div></div><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?><p>No invitations are available for your linked player profiles.</p><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-<?php echo e($invitations->links()); ?>
-
-<?php $__env->stopSection(); ?>
-
-<?php echo $__env->make('layouts/layoutMaster', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH C:\wamp64\www\ct\resources\views\frontend\interprovincial-trials\invitations\index.blade.php ENDPATH**/ ?>

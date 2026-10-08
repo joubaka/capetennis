@@ -2057,6 +2057,13 @@
     }
   } catch (_) { /* Continue with the saved server settings when browser storage is unavailable. */ }
   const programmeDraws = @json($draws->where('is_team', true)->values());
+  const programmeGenderOrders = new Map();
+  const savedProgramme = @json($scheduleDraft['programme'] ?? null);
+  const savedProgrammeAge = programmeDraws.find(draw => savedProgramme?.rounds?.some(row => Number(row.draw_id) === Number(draw.id)))?.programme_age;
+  if (savedProgrammeAge && savedProgramme?.days?.length === 3) {
+    programmeGenderOrders.set(String(savedProgrammeAge), savedProgramme.days.map(day => day.gender_waves || @json($scheduleDraft['gender_waves'])));
+  }
+  let selectedProgrammeAge = '';
   const programmeGroup = () => programmeDraws.filter(draw => Number(draw.programme_age) === Number(document.getElementById('programme-age').value));
   const programmeStatus = (message, tone = 'secondary') => setStatus(document.getElementById('programme-status'), message, tone);
   let programmeSortables = [];
@@ -2307,6 +2314,14 @@
     })));
   };
   document.getElementById('programme-age').addEventListener('change', () => {
+    if (selectedProgrammeAge) {
+      programmeGenderOrders.set(selectedProgrammeAge, [0,1,2].map(day => document.getElementById(`programme-gender-${day}`).value));
+    }
+    selectedProgrammeAge = document.getElementById('programme-age').value;
+    const genderOrders = programmeGenderOrders.get(selectedProgrammeAge);
+    [0,1,2].forEach(day => {
+      document.getElementById(`programme-gender-${day}`).value = genderOrders?.[day] || document.getElementById('gender-waves').value;
+    });
     programmePayload = null; invalidatePreview();
     const group = programmeGroup();
     document.getElementById('programme-rounds').innerHTML = `<table class="table"><thead><tr><th>Discipline / round</th><th>Day</th><th>Order within day</th></tr></thead><tbody>${group.flatMap(draw => draw.rounds.map(round => {

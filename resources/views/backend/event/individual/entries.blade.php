@@ -212,6 +212,21 @@
     overflow-y: auto;
   }
 
+
+  .entries-workspace [hidden] { display:none!important; }
+  .entries-workspace :is(.btn, .dropdown-item, summary, input, select) { min-height:44px; }
+  .entries-workspace summary { cursor:pointer; align-content:center; }
+  .entries-workspace .category-card table { table-layout:auto; min-width:0; }
+  .entries-workspace .category-card td { white-space:normal; overflow-wrap:anywhere; }
+  .entries-workspace .col-contact { width:170px; }
+  @media(max-width:767px) {
+    .entries-workspace .category-card thead { display:none; }
+    .entries-workspace .category-card tbody, .entries-workspace .category-card tr { display:block; }
+    .entries-workspace .category-card tr { padding:.75rem; border-bottom:1px solid #ddd; }
+    .entries-workspace .category-card td { display:grid; grid-template-columns:75px minmax(0,1fr); gap:.5rem; width:100%; text-align:left; border:0; }
+    .entries-workspace .category-card td::before { content:attr(data-label); font-weight:600; }
+    .entries-workspace .table-scroll-wrapper { overflow:visible; }
+  }
 </style>
 @endsection
 
@@ -225,7 +240,7 @@
     || (auth()->user()->hasRole('admin') && auth()->user()->is_event_admin($event->id));
 @endphp
 
-<div class="container-xl">
+<div class="container-xl entries-workspace">
 
   @include('backend.event.partials.header', [
     'eventWorkspaceActive' => 'entries',
@@ -298,6 +313,12 @@
     </section>
   @endif
 
+  <div class="card card-body mb-4">
+    <div class="row g-3"><div class="col-md-5"><label class="form-label" for="entry-category-search">Find a category</label><input type="search" id="entry-category-search" class="form-control" data-entry-category-search placeholder="Category name"></div><div class="col-md-7"><label class="form-label" for="entry-player-search">Find a player</label><input type="search" id="entry-player-search" class="form-control" data-entry-player-search placeholder="Player name"></div></div>
+    <p class="small text-muted mt-2 mb-0">Search changes the displayed entries only. Email audiences and exports stay unchanged.</p>
+    <button type="button" class="btn btn-outline-secondary mt-2 align-self-start" data-entry-search-clear>Clear search</button>
+    <p class="small mt-2 mb-0" data-entry-match-count role="status" aria-live="polite"></p>
+  </div>
   {{-- CATEGORY LIST --}}
   @foreach($categoryEvents as $categoryEvent)
     <div class="card mb-4 category-card"
@@ -321,23 +342,25 @@
     <i class="ti ti-mail me-1"></i>Email Category
   </button>
 
+  @unless($isMasters)<div class="dropdown"><button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Category access</button><div class="dropdown-menu dropdown-menu-end">
   {{-- LOCK / UNLOCK --}}
   @if(!$isMasters && $categoryEvent->isLocked())
     <button type="button"
-            class="btn btn-outline-warning btn-sm category-lock-btn"
+            class="dropdown-item category-lock-btn"
             data-locked="1"
             data-url-unlock="{{ route('admin.category.unlock', $categoryEvent) }}">
       <i class="ti ti-lock-open me-1"></i>Unlock
     </button>
   @elseif(!$isMasters)
     <button type="button"
-            class="btn btn-outline-secondary btn-sm category-lock-btn"
+            class="dropdown-item category-lock-btn"
             data-locked="0"
             data-url-lock="{{ route('admin.category.lock', $categoryEvent) }}">
       <i class="ti ti-lock me-1"></i>Lock
     </button>
   @endif
 
+  </div></div>@endunless
   {{-- ADD PLAYER --}}
   @if(!$isMasters && !$categoryEvent->isLocked())
     <button type="button"
@@ -361,13 +384,10 @@
   <tr>
     <th class="col-idx">#</th>
     <th class="col-player">Player</th>
-    <th class="col-email">Email</th>
-    <th class="col-cell">Cell</th>
-    @if(auth()->user()->hasAnyRole(['super-user', 'admin']))
-      <th class="col-poc">POC</th>
-    @endif
     <th class="col-status">Status</th>
     <th class="col-payment">Payment</th>
+    <th class="col-contact">Contact</th>
+    @if(auth()->user()->hasAnyRole(['super-user', 'admin']))<th class="col-poc">POC</th>@endif
     <th class="col-actions text-end">Actions</th>
   </tr>
 </thead>
@@ -379,36 +399,9 @@
 
               @php $player = optional($reg->registration?->players)->first(); @endphp
               <tr class="{{ $reg->status === 'withdrawn' ? 'table-danger text-muted' : '' }}" data-entry-id="{{ $reg->id }}">
-                <td>{{ $reg->status !== 'withdrawn' ? $loop->iteration : '—' }}</td>
-                <td>{{ $player?->name }} {{ $player?->surname }}</td>
-                <td class="col-email">
-  @if($player?->email)
-    <a href="mailto:{{ $player->email }}" class="text-decoration-none">
-      {{ $player->email }}
-    </a>
-  @else
-    —
-  @endif
-</td>
-
-
-<td class="col-cell">
-  {{ $player?->cellNr ?? $player?->cellNr ?? '—' }}
-</td>
-
-                @if(auth()->user()->hasAnyRole(['super-user', 'admin']))
-                  <td class="col-poc">
-                    @if($player?->is_player_of_colour === true)
-                      <span class="badge bg-info">Yes</span>
-                    @elseif($player?->is_player_of_colour === false)
-                      <span class="badge bg-light text-dark">No</span>
-                    @else
-                      <span class="text-muted">—</span>
-                    @endif
-                  </td>
-                @endif
-
-                <td class="col-status">
+                <td data-label="#">{{ $reg->status !== 'withdrawn' ? $loop->iteration : '—' }}</td>
+                <td data-label="Player">{{ $player?->name }} {{ $player?->surname }}</td>
+                <td class="col-status" data-label="Status">
                   <span class="badge {{ $reg->status === 'withdrawn' ? 'bg-danger' : 'bg-success' }}">
                     {{ ucfirst($reg->status ?? 'active') }}
                   </span>
@@ -427,14 +420,30 @@
                     </span>
                   @endif
                 </td>
-                <td>
+                <td data-label="Payment">
                   @if($isMasters)
                     <span class="badge bg-success">Paid</span>
                   @else
                     @include('backend.event.partials.admin-payment-note', ['reg' => $reg])
                   @endif
                 </td>
-               <td class="col-actions text-end">
+               <td class="col-contact" data-label="Contact"><details><summary>Contact details</summary><div class="mt-2 text-break">
+                  @if($player?->email)<a href="mailto:{{ $player->email }}">{{ $player->email }}</a>@else<span>No email captured</span>@endif
+                  <div>{{ $player?->cellNr ?? 'No cell number captured' }}</div>
+                </div></details></td>
+                @if(auth()->user()->hasAnyRole(['super-user', 'admin']))
+                  <td class="col-poc" data-label="POC">
+                    @if($player?->is_player_of_colour === true)
+                      <span class="badge bg-info">Yes</span>
+                    @elseif($player?->is_player_of_colour === false)
+                      <span class="badge bg-light text-dark">No</span>
+                    @else
+                      <span class="text-muted">—</span>
+                    @endif
+                  </td>
+                @endif
+
+                <td class="col-actions text-end" data-label="Actions">
   <div class="dropdown">
     <button type="button"
             class="btn btn-outline-secondary btn-sm dropdown-toggle"
@@ -503,6 +512,38 @@
 </div>
 
 {{-- EMAIL MODAL --}}
+<script>
+(function () {
+  const root = document.querySelector('.entries-workspace');
+  if (!root) return;
+  function filterEntries() {
+    const categoryTerms = root.querySelector('[data-entry-category-search]').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const playerTerms = root.querySelector('[data-entry-player-search]').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    let count = 0;
+    root.querySelectorAll('.category-card').forEach(card => {
+      const categoryMatch = categoryTerms.every(term => card.querySelector('.category-meta h5').textContent.toLowerCase().includes(term));
+      let matches = 0;
+      card.querySelectorAll('tbody tr[data-entry-id]').forEach(row => {
+        const labels = ['#', 'Player', 'Status', 'Payment', 'Contact', ...(row.querySelector('.col-poc') ? ['POC'] : []), 'Actions'];
+        Array.from(row.cells).forEach((cell, index) => { cell.dataset.label = labels[index] || ''; });
+        const playerName = row.cells[1]?.textContent.toLowerCase() || '';
+        const visible = categoryMatch && playerTerms.every(term => playerName.includes(term));
+        row.hidden = !visible;
+        if (visible) matches++;
+      });
+      card.hidden = !categoryMatch || (playerTerms.length > 0 && matches === 0);
+      count += matches;
+    });
+    const status = root.querySelector('[data-entry-match-count]');
+    const message = count + ' entries shown. Category totals show all confirmed entries.';
+    if (status.textContent !== message) status.textContent = message;
+  }
+  root.querySelectorAll('[data-entry-category-search], [data-entry-player-search]').forEach(input => input.addEventListener('input', filterEntries));
+  root.querySelector('[data-entry-search-clear]').addEventListener('click', () => { root.querySelectorAll('[data-entry-category-search], [data-entry-player-search]').forEach(input => { input.value = ''; }); filterEntries(); });
+  new MutationObserver(filterEntries).observe(root, { childList:true, subtree:true });
+  filterEntries();
+})();
+</script>
 @include('backend.event.partials.email-modal')
 
 {{-- ADD PLAYER MODAL (SINGLE) --}}
@@ -844,7 +885,7 @@ document.addEventListener('click', function(e) {
         // Toggle button appearance
         if (nowLocked) {
             btn.dataset.locked = '1';
-            btn.className = 'btn btn-outline-warning btn-sm category-lock-btn';
+            btn.className = 'dropdown-item category-lock-btn text-warning';
             btn.innerHTML = '<i class="ti ti-lock-open me-1"></i>Unlock';
             btn.dataset.urlUnlock = oppositeUrl;
             delete btn.dataset.urlLock;
@@ -853,7 +894,7 @@ document.addEventListener('click', function(e) {
             toastr.success('Category locked.');
         } else {
             btn.dataset.locked = '0';
-            btn.className = 'btn btn-outline-secondary btn-sm category-lock-btn';
+            btn.className = 'dropdown-item category-lock-btn';
             btn.innerHTML = '<i class="ti ti-lock me-1"></i>Lock';
             btn.dataset.urlLock = oppositeUrl;
             delete btn.dataset.urlUnlock;

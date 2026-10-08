@@ -65,6 +65,8 @@ Thumbs.db
 /storage/framework/cache/*
 /storage/framework/sessions/*
 /storage/framework/views/*
+/storage/framework/views-*/
+/storage/framework/*-views/
 
 # Local production-data cleanup reports
 /storage/cleanup/audit_*.csv

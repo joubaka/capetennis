@@ -32,6 +32,26 @@ class EventCategoryAccessTest extends TestCase
         $this->event = Event::factory()->create(['eventType' => 1]);
     }
 
+    public function test_category_list_precedes_add_tools_and_create_reopens_after_validation(): void
+    {
+        $actor = User::factory()->create()->assignRole('super-user');
+        $category = \App\Models\CategoryEvent::factory()->create(['event_id' => $this->event->id, 'entry_fee' => 125]);
+        $url = route('admin.events.categories', $this->event);
+        $page = $this->actingAs($actor)->get($url)->assertOk()
+            ->assertSeeInOrder(['Categories in this event', 'Add Existing Category', 'Create New Category', 'Maintenance'])
+            ->assertSee('Save fee')->assertSee('value="125"', false);
+        $this->patchJson(route('admin.events.category-fee.update', $category), ['entry_fee' => 150])->assertOk();
+        $this->assertSame(150, (int) $category->fresh()->entry_fee);
+        $this->from($url)->post(route('admin.categories.create', $this->event), ['name' => $category->category->name])->assertSessionHasErrors('name');
+        $error = $this->get($url)->assertOk()->assertSee('value="'.e($category->category->name).'"', false);
+        $this->assertMatchesRegularExpression('/<details class="card mb-4"\s+open\s*>/', $error->getContent());
+        if (getenv('CT_BATCHES678_QA') === '1') {
+            \Illuminate\Support\Facades\File::ensureDirectoryExists(storage_path('app/batches678-qa'));
+            file_put_contents(storage_path('app/batches678-qa/categories.html'), str_replace('http://localhost', 'http://127.0.0.1:8776/ct/public', $page->getContent()));
+            file_put_contents(storage_path('app/batches678-qa/categories-validation.html'), str_replace('http://localhost', 'http://127.0.0.1:8776/ct/public', $error->getContent()));
+        }
+    }
+
     public function test_ordinary_user_cannot_access_category_setup(): void
     {
         $user = User::factory()->create();

@@ -5,25 +5,30 @@
 <tr data-row data-entry-id="{{ $reg->id }}">
 
   {{-- # --}}
-  <td>—</td>
+  <td data-label="#">—</td>
 
   {{-- Player --}}
-  <td>{{ $player?->name }} {{ $player?->surname }}</td>
+  <td data-label="Player">{{ $player?->name }} {{ $player?->surname }}</td>
 
-  {{-- Email --}}
-  <td class="col-email">
-    @if($player?->email)
-      <a href="mailto:{{ $player->email }}" class="text-decoration-none">{{ $player->email }}</a>
-    @else
-      —
-    @endif
+  {{-- Status --}}
+  <td class="col-status" data-label="Status">
+    <span class="badge {{ $reg->status === 'withdrawn' ? 'bg-danger' : 'bg-success' }}">
+      {{ ucfirst($reg->status ?? 'active') }}
+    </span>
   </td>
 
-  {{-- Cell --}}
-  <td class="col-cell">{{ $player?->cellNr ?? '—' }}</td>
+  {{-- Payment --}}
+  <td data-label="Payment">
+    @include('backend.event.partials.admin-payment-note', ['reg' => $reg])
+  </td>
 
+  {{-- Contact --}}
+  <td class="col-contact" data-label="Contact"><details><summary>Contact details</summary><div class="mt-2 text-break">
+    @if($player?->email)<a href="mailto:{{ $player->email }}">{{ $player->email }}</a>@else<span>No email captured</span>@endif
+    <div>{{ $player?->cellNr ?? 'No cell number captured' }}</div>
+  </div></details></td>
   @if(auth()->user()->hasAnyRole(['super-user', 'admin']))
-    <td class="col-poc">
+    <td class="col-poc" data-label="POC">
       @if($player?->is_player_of_colour === true)
         <span class="badge bg-info">Yes</span>
       @elseif($player?->is_player_of_colour === false)
@@ -34,20 +39,8 @@
     </td>
   @endif
 
-  {{-- Status --}}
-  <td class="col-status">
-    <span class="badge {{ $reg->status === 'withdrawn' ? 'bg-danger' : 'bg-success' }}">
-      {{ ucfirst($reg->status ?? 'active') }}
-    </span>
-  </td>
-
-  {{-- Payment --}}
-  <td>
-    @include('backend.event.partials.admin-payment-note', ['reg' => $reg])
-  </td>
-
   {{-- Actions --}}
-  <td class="col-actions text-end">
+  <td class="col-actions text-end" data-label="Actions">
     <div class="dropdown">
       <button type="button"
               class="btn btn-outline-secondary btn-sm dropdown-toggle"

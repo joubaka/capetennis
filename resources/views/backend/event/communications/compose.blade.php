@@ -6,7 +6,7 @@
 @csrf
 <div class="modal-header"><h5 class="modal-title">{{ $event->name }} — Write email</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
 <div class="modal-body">
-<div class="alert alert-info"><strong>Audience:</strong> {{ ['all' => 'Players in this event', 'region' => 'Players in the selected region', 'team' => 'Players in the selected team', 'individual' => 'Selected player', 'player' => 'Selected player', 'rankings' => 'Selected ranked players', 'legacy_registered' => 'Registered players', 'legacy_unregistered' => 'Unpaid players'][$options['scope'] ?? ''] ?? 'Selected players' }}. Review the exact recipients before approving.</div>
+<div class="alert alert-info"><strong>Audience:</strong> {{ ['all' => 'Players in this event', 'registrations' => 'Registered players', 'invitations' => 'Invited players', 'nominations' => 'Nominated players', 'direct' => 'Selected email address', 'region' => 'Players in the selected region', 'team' => 'Players in the selected team', 'individual' => 'Selected player', 'player' => 'Selected player', 'rankings' => 'Selected ranked players', 'legacy_registered' => 'Registered players', 'legacy_unregistered' => 'Unpaid players'][$options['scope'] ?? ''] ?? 'Selected players' }}. Review the exact recipients before approving.</div>
 @foreach($options as $field => $value)@if(is_scalar($value))<input type="hidden" name="{{ $field }}" value="{{ $value }}">@endif @endforeach
 <label class="form-label w-100">Subject<input name="subject" class="form-control" value="{{ $subject }}" required maxlength="200"></label>
 <label class="form-label w-100">Message<textarea name="body" class="form-control" required rows="7" maxlength="30000">{{ $body }}</textarea></label>

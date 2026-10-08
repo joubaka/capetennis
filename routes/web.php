@@ -2359,6 +2359,8 @@ Route::middleware(['auth', 'role:convenor|admin|super-user|score-keeper'])->grou
 Route::middleware('auth')->group(function () {
   Route::get('/events/{event}/scoring', [\App\Http\Controllers\Frontend\VenueScoringController::class, 'index'])
     ->name('frontend.scoring.workspace');
+  Route::get('/events/{event}/scoring/venues/{venue}/print', [\App\Http\Controllers\Frontend\VenueScoringController::class, 'printVenue'])
+    ->name('frontend.scoring.print');
   Route::post('/events/{event}/scoring/operator', [\App\Http\Controllers\Frontend\VenueScoringController::class, 'operator'])
     ->name('frontend.scoring.operator');
   Route::post('/events/{event}/scoring/fixtures/{fixture}/playing', [\App\Http\Controllers\Frontend\VenueScoringController::class, 'setFixturePlaying'])

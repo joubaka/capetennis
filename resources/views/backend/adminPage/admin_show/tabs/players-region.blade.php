@@ -52,8 +52,8 @@
               <td data-label="Rank"><span class="badge bg-label-primary">{{ $slot->rank }}</span></td>
               <td data-label="Player"><strong>{{ $name }}</strong>@if($player)<x-player-rating :player-id="$player->id" :context="$team->category" />@else<span class="badge bg-label-warning ms-1">{{ $np ? 'Unlinked profile' : 'Vacant' }}</span>@endif</td>
               <td data-label="Contact"><div class="roster-contact">
-                @if($email)<div class="d-flex align-items-center gap-2"><a href="mailto:{{ $email }}">{{ $email }}</a><button type="button" class="btn btn-outline-secondary" data-copy-contact="{{ $email }}" aria-label="Copy email for {{ $name }}">Copy</button></div>@endif
-                @if($cell)<div class="d-flex flex-wrap align-items-center gap-2"><a href="tel:{{ preg_replace('/[^0-9+]/', '', $cell) }}">{{ $cell }}</a><button type="button" class="btn btn-outline-secondary" data-copy-contact="{{ $cell }}" aria-label="Copy cell number for {{ $name }}">Copy</button>@if($whatsAppUrl)<a href="{{ $whatsAppUrl }}" class="btn btn-outline-success" target="_blank" rel="noopener noreferrer" aria-label="Open WhatsApp for {{ $name }} (opens in a new tab)"><i class="ti ti-brand-whatsapp me-1" aria-hidden="true"></i>WhatsApp</a>@endif</div>@endif
+                @if($email)<div class="d-flex align-items-center gap-2"><a href="mailto:{{ $email }}">{{ $email }}</a></div>@endif
+                @if($cell)<div class="d-flex flex-wrap align-items-center gap-2"><a href="tel:{{ preg_replace('/[^0-9+]/', '', $cell) }}">{{ $cell }}</a>@if($whatsAppUrl)<a href="{{ $whatsAppUrl }}" class="btn btn-outline-success" target="_blank" rel="noopener noreferrer" aria-label="Open WhatsApp for {{ $name }} (opens in a new tab)"><i class="ti ti-brand-whatsapp me-1" aria-hidden="true"></i>WhatsApp</a>@endif</div>@endif
                 @if(!$email && !$cell)<span class="text-muted">No contact details captured.</span>@endif
               </div></td>
               <td data-label="Payment"><span class="badge {{ $paid ? 'bg-label-success' : 'bg-label-warning' }}">{{ $paid ? 'Paid' : (($player || $np) ? 'Unpaid' : '—') }}</span></td>

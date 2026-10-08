@@ -60,6 +60,12 @@ class EventOperationsPendingCheckoutTest extends TestCase
         $pending = $this->entry($category, 0, 'active', 'unpaid', 'Pending');
         $withdrawn = $this->entry($category, 1, 'withdrawn', playerName: 'Withdrawn');
         $otherPending = $this->entry(CategoryEvent::factory()->create(), 0, 'active', playerName: 'OtherEvent');
+        if (getenv('CT_BATCHES91011_QA')) {
+            $paid->registration->players->first()->update(['email' => 'alex@example.test', 'cellNr' => '0000000000']);
+            $second = $this->entry(CategoryEvent::factory()->for($event)->create(), 1, 'active', playerName: 'Taylor');
+            $second->registration->players->first()->update(['email' => 'taylor@example.test', 'cellNr' => '0000000001']);
+        }
+
 
         $response = $this->actingAs($superUser)->get(route('admin.events.entries.new', $event));
 
@@ -71,6 +77,17 @@ class EventOperationsPendingCheckoutTest extends TestCase
             ->assertDontSee('Withdrawn '.$withdrawn->registration->players->first()->surname)
             ->assertDontSee('OtherEvent '.$otherPending->registration->players->first()->surname)
             ->assertSee('1</span> confirmed entries', false);
+        $response
+            ->assertSee('data-entry-player-search', false)
+            ->assertSee('data-entry-category-search', false)
+            ->assertSee('data-label="Payment"', false)
+            ->assertSee('Contact details', false)
+            ->assertSee('Category access', false);
+        if (getenv('CT_BATCHES91011_QA')) {
+            $directory = storage_path('app/batches91011-qa');
+            if (!is_dir($directory)) { mkdir($directory, 0755, true); }
+            file_put_contents($directory.'/entries.html', $response->getContent());
+        }
     }
 
     public function test_event_admin_cannot_see_pending_checkout_counts_or_rows(): void

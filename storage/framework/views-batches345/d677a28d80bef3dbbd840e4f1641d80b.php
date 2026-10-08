@@ -1,2 +1,0 @@
-<span class="fixture-region-badge" title="<?php echo e($lineup['region_name'] ?? $lineup['region']); ?>" style="display:inline-flex;align-items:center;max-width:100%;padding:.25rem .55rem;border-radius:.4rem;background-color:<?php echo e($lineup['region_color'] ?? '#475569'); ?>;color:#fff;font-size:.8rem;font-weight:700;line-height:1.4;white-space:normal;overflow-wrap:anywhere;vertical-align:middle"><?php echo e($lineup['region']); ?></span>
-<?php /**PATH C:\wamp64\www\ct\resources\views\backend\team-fixtures\partials\region-badge.blade.php ENDPATH**/ ?>

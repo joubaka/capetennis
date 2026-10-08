@@ -378,6 +378,12 @@ class HeadOfficeController extends Controller
     $this->authorize('event-draw.view', $event);
     abort_unless($event->venues()->where('venues.id', $venue->id)->exists()
       || $event->draws()->whereHas('venues', fn ($query) => $query->where('venues.id', $venue->id))->exists(), 404);
+    return $this->renderVenueFixtures($request, $event, $venue);
+  }
+
+  /** Shared venue sheet; callers must authorize the event and venue first. */
+  public function renderVenueFixtures(Request $request, Event $event, Venue $venue)
+  {
     $validated = $request->validate([
       'date' => ['nullable', 'date_format:Y-m-d'],
       'source' => ['nullable', Rule::in(['published', 'working'])],
@@ -434,6 +440,7 @@ class HeadOfficeController extends Controller
       'availableDays' => $availableDays,
       'selectedDate' => $selectedDate,
       'scheduleSource' => $scheduleSource,
+      'scoringPrint' => $request->routeIs('frontend.scoring.print'),
     ]);
   }
 
@@ -1377,6 +1384,12 @@ class HeadOfficeController extends Controller
   {
     $this->authorize('event-draw.view', $event);
 
+    return $this->renderDrawPack($request, $event);
+  }
+
+  /** Shared print renderer; callers must authorize and constrain print parameters first. */
+  public function renderDrawPack(Request $request, Event $event)
+  {
     $validated = $request->validate([
       'draw_ids' => ['sometimes', 'array', 'max:200'],
       'draw_ids.*' => ['required', 'integer', 'distinct'],

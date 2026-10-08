@@ -182,30 +182,14 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
            data-bs-parent="#regionsAccordion">
         <div class="accordion-body pt-2">
 
-          <div class="d-flex flex-wrap justify-content-end mb-2 gap-2">
-            <button type="button"
-                    class="btn btn-sm btn-outline-secondary renameRegionEvent"
-                    data-id="${res.pivot_id}"
-                    data-name="${escapeHtml(res.region_name)}"
-                    data-short-name="${escapeHtml(res.short_name || '')}" data-event-count="${res.event_count || 1}">
-              <i class="ti ti-edit me-1"></i> Edit Region
-            </button>
-
+          <div class="d-flex flex-wrap align-items-center mb-3 gap-2">
             <a href="javascript:void(0)"
-               class="text-danger removeRegionEvent"
-               data-id="${res.pivot_id}">
-              <i class="ti ti-trash me-1"></i> Remove Region
+               class="btn btn-sm btn-primary addTeam"
+               data-regionid="${res.id}"
+               data-bs-toggle="modal"
+               data-bs-target="#addTeamModal">
+              <i class="ti ti-plus me-1"></i> Add Team
             </a>
-
-            <button type="button"
-                    class="btn btn-sm btn-success publishRegionTeams"
-                    data-url="${APP_URL}/backend/event/${eventId}/region/${res.id}/teams/publish"
-                    data-team-count="0"
-                    data-unpublished-count="0"
-                    disabled>
-              <i class="ti ti-eye me-1"></i> Publish All Teams
-            </button>
-
             <a href="javascript:void(0)"
                class="btn btn-sm btn-outline-primary import-region-teams-btn"
                data-region-name="${escapeHtml(res.region_name)}"
@@ -215,15 +199,37 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
                data-bs-target="#import-region-teams-modal">
               <i class="ti ti-file-spreadsheet me-1"></i> Import Teams
             </a>
-
+            <div class="dropdown">
+              <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Region tools</button>
+              <div class="dropdown-menu dropdown-menu-end">
+            <button type="button"
+                    class="dropdown-item renameRegionEvent"
+                    data-id="${res.pivot_id}"
+                    data-name="${escapeHtml(res.region_name)}"
+                    data-short-name="${escapeHtml(res.short_name || '')}" data-event-count="${res.event_count || 1}">
+              <i class="ti ti-edit me-1"></i> Edit Region
+            </button>
             <a href="javascript:void(0)"
-               class="btn btn-sm btn-primary addTeam"
-               data-regionid="${res.id}"
-               data-bs-toggle="modal"
-               data-bs-target="#addTeamModal">
-              <i class="ti ti-plus me-1"></i> Add Team
+               class="dropdown-item text-danger removeRegionEvent"
+               data-id="${res.pivot_id}">
+              <i class="ti ti-trash me-1"></i> Remove Region
             </a>
+              </div>
+            </div>
           </div>
+          <section class="border rounded p-3 mb-3" aria-label="Team publication for ${escapeHtml(res.region_name)}">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+              <div><h3 class="h6 mb-1">Team publication</h3><p class="small text-muted mb-0">Review the teams before publishing. Draws, schedules and results use separate publication controls.</p></div>
+            <button type="button"
+                    class="btn btn-sm btn-success publishRegionTeams"
+                    data-url="${APP_URL}/backend/event/${eventId}/region/${res.id}/teams/publish"
+                    data-team-count="0"
+                    data-unpublished-count="0"
+                    disabled>
+              <i class="ti ti-eye me-1"></i> Publish All Teams
+            </button>
+            </div>
+          </section>
 
           <div class="teams-container">
             <div class="alert alert-light border text-center py-2 no-teams-alert">

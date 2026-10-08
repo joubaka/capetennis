@@ -128,11 +128,43 @@ class HeadOfficePublicationControlsTest extends TestCase
         $this->assertSame($snapshots, DB::table('published_schedule_assignments')->get()->toJson());
     }
 
+    public function test_publication_breakdown_reuses_age_groups_and_shows_locked_draws(): void
+    {
+        [$event] = $this->setupEvent();
+        foreach ([10, 13] as $age) {
+            $category = \App\Models\CategoryEvent::factory()->create(['event_id' => $event->id,
+                'category_id' => \App\Models\Category::factory()->create(['name' => 'u/'.$age.' Boys'])->id]);
+            foreach ([true, false] as $published) {
+                Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => $category->id,
+                    'drawName' => 'u/'.$age.' Boys '.($published ? 'Singles' : 'Doubles'),
+                    'published' => $published, 'locked' => $published && $age === 13]);
+            }
+        }
+        $response = $this->get(route('headOffice.show', $event))->assertOk()
+            ->assertSee('Under 10')->assertSee('Under 13')->assertSee('Locked')
+            ->assertSee('Publish selected draws')->assertSee('Unpublish selected draws')
+            ->assertSee('data-select-publication-group', false)
+            ->assertSee('1 published · 1 unpublished · 2 total');
+        $this->assertSame(4, substr_count($response->getContent(), 'data-publication-draw-row'));
+        $this->assertSame(2, substr_count($response->getContent(), 'data-publication-group-counts'));
+        if (getenv('CT_DRAW_PUBLICATION_QA')) {
+            if (!is_dir(storage_path('app/draw-publication-qa'))) { mkdir(storage_path('app/draw-publication-qa'), 0755, true); }
+            file_put_contents(storage_path('app/draw-publication-qa/publication.html'), $response->getContent());
+        }
+    }
+
     public function test_draw_summary_uses_draw_flags_and_empty_event_has_explicit_status(): void
     {
         [$event] = $this->setupEvent();
         $first = Draw::factory()->create(['event_id' => $event->id, 'published' => true]);
         $last = Draw::factory()->create(['event_id' => $event->id, 'published' => false]);
+        Draw::factory()->create(['drawName' => 'Foreign private draw', 'published' => true]);
+        $response = $this->get(route('headOffice.show', $event))->assertOk()
+            ->assertSee('data-publication-group-counts', false)
+            ->assertSee('data-publication-draw-row', false)
+            ->assertSee('1 published · 1 unpublished · 2 total')
+            ->assertSee('href="#publication-draw-'.$first->id.'"', false)
+            ->assertDontSee('Foreign private draw');
         $summary = fn () => $this->get(route('headOffice.show', $event))->assertOk()->viewData('drawPublicationSummary');
         $this->assertSame(['published' => 1, 'unpublished' => 1, 'status' => 'Partly published'], $summary());
         $last->update(['published' => true]);

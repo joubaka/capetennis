@@ -489,22 +489,41 @@
   'use strict';
   var panel = document.querySelector('[data-event-draw-publication]');
   if (!panel) return;
-  var ids = JSON.parse(panel.dataset.drawIds || '[]');
+  var eventIds = JSON.parse(panel.dataset.drawIds || '[]');
   var buttons = Array.from(panel.querySelectorAll('[data-bulk-draw-action]'));
   var feedback = panel.querySelector('[data-bulk-draw-feedback]');
   var refresh = panel.querySelector('[data-bulk-draw-refresh]');
   var summary = panel.querySelector('[data-draw-publication-summary]');
   var pending = false;
+  var selections = Array.from(panel.querySelectorAll('[data-publication-draw-select]'));
+  function updateSelection() {
+    var count = selections.filter(function (input) { return input.checked; }).length;
+    panel.querySelector('[data-publication-selected-count]').textContent = count + ' draws selected';
+    if (window.HeadOfficeDrawPublicationUI) window.HeadOfficeDrawPublicationUI.unlock();
+  }
+  selections.forEach(function (input) { input.addEventListener('change', updateSelection); });
+  panel.querySelectorAll('[data-select-publication-group], [data-select-publication-all], [data-clear-publication-selection]').forEach(function (control) {
+    control.addEventListener('click', function () {
+      if (pending || window.HeadOfficeDrawPublicationPending) return;
+      var group = control.closest('[data-publication-group]');
+      (group ? Array.from(group.querySelectorAll('[data-publication-draw-select]')) : selections).forEach(function (input) { input.checked = !control.hasAttribute('data-clear-publication-selection'); });
+      updateSelection();
+    });
+  });
   buttons.forEach(function (button) {
     button.addEventListener('click', async function () {
-      if (pending || window.HeadOfficeDrawPublicationPending || window.HeadOfficeDrawPublicationUnconfirmed || !ids.length) return;
+      var selectedScope = button.dataset.bulkDrawScope === 'selected';
+      var ids = selectedScope ? selections.filter(function (input) { return input.checked; }).map(function (input) { return Number(input.value); }) : eventIds;
+      if (pending || window.HeadOfficeDrawPublicationPending || window.HeadOfficeDrawPublicationUnconfirmed) return;
+      if (!ids.length) { feedback.classList.remove('d-none'); feedback.textContent = 'Select at least one draw.'; return; }
       var action = button.dataset.bulkDrawAction;
-      if (!window.confirm((action === 'publish' ? 'Publish' : 'Unpublish') + ' all ' + ids.length + ' draws across every age-group tab? Match times have separate publication controls.')) return;
+      if (!window.confirm((action === 'publish' ? 'Publish' : 'Unpublish') + ' ' + ids.length + (selectedScope ? ' selected draws?' : ' draws across every age-group tab?') + ' Match times have separate publication controls.')) return;
       pending = true;
       window.HeadOfficeDrawPublicationPending = true;
       buttons.forEach(function (control) { control.disabled = true; });
+      selections.forEach(function (input) { input.disabled = true; });
       feedback.classList.remove('d-none');
-      feedback.textContent = 'Updating draws across the event…';
+      feedback.textContent = 'Updating ' + ids.length + (selectedScope ? ' selected draws…' : ' draws across the event…');
       summary.textContent = 'Updating publication status…';
       var changed = 0, unchanged = 0, failed = [], processed = 0, uncertain = false;
       try {

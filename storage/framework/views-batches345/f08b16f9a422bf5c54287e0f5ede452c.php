@@ -1,2 +1,0 @@
-<div class="mb-3"><div class="text-muted small text-uppercase fw-semibold">Subject</div><div class="fw-semibold"><?php echo e($subject); ?></div></div><hr><div class="border rounded p-4 bg-white"><?php echo $body; ?></div>
-<?php /**PATH C:\wamp64\www\ct\resources\views\backend\masters\invitation-preview.blade.php ENDPATH**/ ?>

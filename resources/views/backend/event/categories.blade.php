@@ -14,6 +14,8 @@
     border: 1px solid #d9dee3;
   }
 
+  .container-xl :is(button, summary, input, select) { min-height:44px; }
+  .container-xl summary { cursor:pointer; align-content:center; }
   .fee-input {
     max-width: 120px;
   }
@@ -37,12 +39,7 @@
   ])
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 no-print">
     <div><h2 class="h4 mb-1">Manage categories</h2><p class="text-muted mb-0">Attach categories, set event fees and remove unused setup.</p></div>
-    <div class="d-flex gap-2">
-        <button class="btn btn-outline-danger btn-sm" id="cleanupCategoriesBtn"
-                data-url="{{ route('admin.categories.cleanup', $event) }}">
-          <i class="ti ti-trash me-1"></i>Remove Empty Categories
-        </button>
-    </div>
+
   </div>
 
   @php
@@ -52,66 +49,10 @@
       ->all();
   @endphp
 
-  {{-- ADD EXISTING CATEGORY --}}
-  <div class="card mb-3">
-    <div class="card-header">
-      <h5 class="mb-0">Add Existing Category</h5>
-    </div>
-
-    <div class="card-body">
-      <form method="POST"
-            action="{{ route('admin.categories.attach', $event) }}"
-            class="d-flex gap-2 align-items-start">
-        @csrf
-
-        <div class="flex-grow-1">
-          <select name="category_ids[]"
-                  class="form-select select2"
-                  multiple
-                  data-placeholder="Select categories…">
-            @foreach($allCategories as $cat)
-              <option value="{{ $cat->id }}">
-                {{ $cat->name }}
-              </option>
-            @endforeach
-          </select>
-        </div>
-
-        <button class="btn btn-primary">
-          <i class="ti ti-plus"></i> Add Selected
-        </button>
-      </form>
-    </div>
-  </div>
-
-  {{-- CREATE NEW CATEGORY --}}
-  <div class="card mb-4 border-start border-success border-3">
-    <div class="card-header">
-      <h5 class="mb-0">Create New Category</h5>
-    </div>
-
-    <div class="card-body">
-      <form method="POST"
-            action="{{ route('admin.categories.create', $event) }}"
-            class="d-flex gap-2">
-        @csrf
-
-        <input type="text"
-               name="name"
-               class="form-control"
-               placeholder="e.g. U14 Boys"
-               required>
-
-        <button class="btn btn-success">
-          <i class="ti ti-plus"></i> Create
-        </button>
-      </form>
-    </div>
-  </div>
-
   {{-- CATEGORY LIST --}}
   <div class="card">
-    <div class="card-body p-0">
+    <div class="card-header"><h3 class="h5 mb-0">Categories in this event</h3></div>
+    <div class="card-body p-0 table-responsive">
       <table class="table table-striped mb-0 align-middle">
         <thead class="table-light">
           <tr>
@@ -135,15 +76,16 @@
                 <div class="d-flex justify-content-center align-items-center gap-2">
                   <input type="number"
                          class="form-control form-control-sm text-end fee-input category-fee-input"
+                         aria-label="Entry fee override for {{ $categoryEvent->category->name }}"
                          data-id="{{ $categoryEvent->id }}"
                          step="1"
                          min="0"
                          value="{{ $categoryEvent->entry_fee }}"
                          placeholder="Default">
 
-                  <button class="btn btn-sm btn-outline-primary save-fee-btn"
+                  <button class="btn btn-sm btn-outline-primary save-fee-btn" aria-label="Save fee for {{ $categoryEvent->category->name }}"
                           data-id="{{ $categoryEvent->id }}">
-                    <i class="ti ti-device-floppy"></i>
+                    <i class="ti ti-device-floppy me-1"></i>Save fee
                   </button>
                 </div>
               </td>
@@ -170,6 +112,77 @@
       </table>
     </div>
   </div>
+
+<div class="mt-4">
+  {{-- ADD EXISTING CATEGORY --}}
+  <div class="card mb-3">
+    <div class="card-header">
+      <h5 class="mb-0">Add Existing Category</h5>
+    </div>
+
+    <div class="card-body">
+      <form method="POST"
+            action="{{ route('admin.categories.attach', $event) }}"
+            class="d-flex flex-wrap gap-2 align-items-start">
+        @csrf
+
+        <div class="flex-grow-1">
+          <label for="category-add-existing" class="form-label">Categories to add</label>
+          <select name="category_ids[]" id="category-add-existing"
+                  class="form-select select2"
+                  multiple
+                  data-placeholder="Select categories…">
+            @foreach($allCategories as $cat)
+              <option value="{{ $cat->id }}">
+                {{ $cat->name }}
+              </option>
+            @endforeach
+          </select>
+        </div>
+
+        <button class="btn btn-primary">
+          <i class="ti ti-plus"></i> Add Selected
+        </button>
+      </form>
+    </div>
+  </div>
+
+  {{-- CREATE NEW CATEGORY --}}
+  <details class="card mb-4" @if($errors->has('name') || old('name')) open @endif>
+    <summary class="card-header h5 mb-0">Create New Category</summary>
+
+    <div class="card-body">
+      <form method="POST"
+            action="{{ route('admin.categories.create', $event) }}"
+            class="d-flex flex-wrap gap-2">
+        @csrf
+
+        <label for="category-create-name" class="form-label">New category name</label>
+        <input type="text"
+               name="name" id="category-create-name"
+               class="form-control"
+               value="{{ old('name') }}" aria-describedby="category-name-error"
+               placeholder="e.g. U14 Boys"
+               required>
+
+        @error('name')<div id="category-name-error" class="text-danger w-100" role="alert">{{ $message }}</div>@enderror
+        <button class="btn btn-success">
+          <i class="ti ti-plus"></i> Create
+        </button>
+      </form>
+    </div>
+  </details>
+
+  <details class="card mb-3">
+    <summary class="card-header h5 mb-0">Maintenance</summary>
+    <div class="card-body">
+      <p class="text-muted">Remove unused categories from this event. Review the confirmation before removing empty categories.</p>
+      <button class="btn btn-outline-danger btn-sm" id="cleanupCategoriesBtn" data-url="{{ route('admin.categories.cleanup', $event) }}">
+        <i class="ti ti-trash me-1"></i>Remove Empty Categories
+      </button>
+    </div>
+  </details>
+</div>
 
 </div>
 @endsection
