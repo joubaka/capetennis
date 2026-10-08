@@ -18,6 +18,39 @@ class TeamWorkspaceResultsTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_historical_workspace_and_results_keep_rosters_and_exclude_shared_region_teams(): void
+    {
+        [$event, , $draw, $home, $away] = $this->groupedScenario();
+        $event->update(['eventType' => 3]);
+        $region = $event->regions->first();
+        $teams = Team::where('region_id', $region->id)->get();
+        foreach ($teams as $team) $team->update(['category_event_id' => null, 'name' => 'Included u/10 Boys '.$team->id]);
+        $draw->update(['category_event_id' => null, 'drawName' => 'U/10 Boys Singles reverse']);
+        $this->fixture($draw, $home, $away, [[6, 1], [6, 1]]);
+        TeamFixture::where('draw_id', $draw->id)->update(['fixture_type' => null]);
+        $this->fixture($draw, $home, $away, [[6, 1]]);
+        TeamFixture::where('draw_id', $draw->id)->update(['fixture_type' => null, 'numSets' => null]);
+        $shared = \App\Models\TeamRegion::create(['region_name' => 'Shared historical region']);
+        $event->regions()->attach($shared);
+        Event::factory()->create()->regions()->attach($shared);
+        $foreign = Team::factory()->create(['region_id' => $shared->id, 'name' => 'Foreign u/10 Boys']);
+        TeamPlayer::create(['team_id' => $foreign->id, 'player_id' => $home->id, 'rank' => 1]);
+        $counts = [TeamFixture::count(), \App\Models\TeamFixtureResult::count(), TeamPlayer::count()];
+
+        $response = $this->get('/backend/event/'.$event->id.'/teams')->assertOk();
+        $this->assertEqualsCanonicalizing($teams->modelKeys(), $response->viewData('event')->regions->flatMap->teams->pluck('id')->all());
+        $this->get('/backend/event/'.$event->id.'/teams?roster_region='.$region->id)->assertOk()->assertSee($home->name);
+        $this->groupedRequest($event)->assertOk()->assertJsonCount(2, 'ranking')->assertJsonPath('ranking.0.reverse_singles_wins', 1);
+        $this->assertSame($counts, [TeamFixture::count(), \App\Models\TeamFixtureResult::count(), TeamPlayer::count()]);
+        $homeTeam = $teams->first(fn ($team) => $team->team_players->contains('player_id', $home->id));
+        $imported = \App\Models\NoProfileTeamPlayer::create(['team_id' => $homeTeam->id, 'name' => 'Historical', 'surname' => 'Imported', 'rank' => 3, 'pay_status' => 1]);
+        $fixture = TeamFixture::where('draw_id', $draw->id)->orderBy('id')->first();
+        $fixture->fixturePlayers->first()->update(['team1_id' => null, 'team1_no_profile_id' => $imported->id]);
+        $this->groupedRequest($event)->assertOk()->assertJsonCount(2, 'ranking')->assertJsonPath('ranking.0.name', 'Historical Imported');
+        $draw->update(['drawName' => 'U/10 Boys Singles Doubles']);
+        $this->assertCount(0, app(\App\Services\TeamResultRankingService::class)->setup($event)['groups']);
+    }
+
     public function test_completed_singles_use_match_outcome_and_actual_roster_rank(): void
     {
         [$event, $category, $draw, $home, $away] = $this->scenario();

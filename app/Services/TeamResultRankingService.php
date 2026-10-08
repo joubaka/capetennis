@@ -15,7 +15,7 @@ class TeamResultRankingService
     {
         return TeamFixture::without(['teamResults', 'fixturePlayers', 'draw'])
             ->whereHas('draw', fn ($query) => $query->where('event_id', $event->id))
-            ->with(['draw.categoryEvent.category'])->get()->filter(fn ($fixture) => $fixture->isSingles());
+            ->with(['draw.categoryEvent.category'])->get()->filter(fn ($fixture) => in_array($this->format($fixture), [RubberType::SINGLES, RubberType::REVERSE_SINGLES], true));
     }
 
     public function group(TeamFixture $fixture): ?array
@@ -36,9 +36,15 @@ class TeamResultRankingService
         return $age && $gender ? ['key' => $age.'-'.$gender, 'name' => 'u/'.$age.' '.ucfirst($gender), 'age' => $age] : null;
     }
 
-    public function format(TeamFixture $fixture): string
+    public function format(TeamFixture $fixture): ?string
     {
-        return $fixture->rubber_code ?? RubberType::fromLegacyFixtureType((int) $fixture->fixture_type);
+        if ($fixture->rubber_code === null && $fixture->fixture_type === null && $fixture->draw?->category_event_id === null) {
+            $name = (string) $fixture->draw?->drawName;
+            if (preg_match('/\bsingles\b/i', $name) && ! preg_match('/\b(?:doubles|mixed)\b/i', $name)) {
+                return preg_match('/\breverse\b/i', $name) ? RubberType::REVERSE_SINGLES : RubberType::SINGLES;
+            }
+        }
+        return $fixture->rubber_code ?? RubberType::fromLegacyFixtureType($fixture->fixture_type);
     }
 
     public function setup(Event $event): array
@@ -55,12 +61,20 @@ class TeamResultRankingService
     {
         $fixtures = $this->fixtures($event)->filter(fn ($fixture) => ($this->group($fixture)['key'] ?? null) === $group && in_array($this->format($fixture), $formats, true));
         $fixtures->load(['fixturePlayers.player1', 'fixturePlayers.player2', 'fixturePlayers.noProfile1', 'fixturePlayers.noProfile2', 'teamResults', 'teamTie']);
-        $teams = Team::whereHas('category', fn ($query) => $query->where('event_id', $event->id))->with(['players', 'team_players', 'team_players_no_profile', 'competitionSubstitutions', 'regions', 'category.category'])->get();
+        $teams = app(EventTeamScope::class)->query($event)->with(['players', 'team_players', 'team_players_no_profile', 'competitionSubstitutions', 'regions', 'category.category'])->get();
         $rows = [];
         $performance = [];
         foreach ($fixtures as $fixture) {
             if ($fixture->team_tie_id && (! $fixture->teamTie || (int) $fixture->teamTie->draw_id !== (int) $fixture->draw_id || ! $fixture->teamTie->home_team_id || ! $fixture->teamTie->away_team_id)) continue;
-            $outcome = app(TeamRubberResultService::class)->outcome($fixture);
+            // Project missing legacy format only for this private read. Without
+            // a set-count rule, require two sets for a completed singles match.
+            $resultFixture = $fixture;
+            if ($fixture->rubber_code === null && $fixture->fixture_type === null) {
+                $resultFixture = clone $fixture;
+                $resultFixture->rubber_code = $this->format($fixture);
+                $resultFixture->numSets ??= 3;
+            }
+            $outcome = app(TeamRubberResultService::class)->outcome($resultFixture);
             if (! $outcome['complete'] || ! $outcome['winner'] || $fixture->fixturePlayers->count() !== 1) continue;
             $slot = $fixture->fixturePlayers->first();
             $sides = [];
@@ -81,7 +95,14 @@ class TeamResultRankingService
                     if (! $player || ($teamId && ! in_array((int) $team->id, $allowedTeams, true))) return false;
                     if ($region && (int) $team->region_id !== (int) $region) return false;
                     if (! $teamId && $fixture->draw->category_event_id && (int) $team->category_event_id !== (int) $fixture->draw->category_event_id) return false;
-                    if (! $teamId && ! $fixture->draw->category_event_id && $team->category?->category?->name !== $fixture->draw->drawName) return false;
+                    if (! $teamId && ! $fixture->draw->category_event_id) {
+                        if ($team->category_event_id) {
+                            if ($team->category?->category?->name !== $fixture->draw->drawName) return false;
+                        } else {
+                            $rosterFixture = new TeamFixture(['age' => $team->name]);
+                            if (($this->group($rosterFixture)['key'] ?? null) !== ($this->group($fixture)['key'] ?? null)) return false;
+                        }
+                    }
                     return $snapshot ? app(TeamParticipantHistoryService::class)->matches($slot, $sideNumber, $team, (int) $event->id) : ($imported ? $team->team_players_no_profile->contains('id', $imported->id) : $team->team_players->contains('player_id', $player->id));
                 });
                 // Ambiguous roster membership must not silently supply a rank.

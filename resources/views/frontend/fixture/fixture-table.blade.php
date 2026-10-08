@@ -37,6 +37,7 @@
 </style>
 
 @php
+$notBeforeTimes = (int) $event->id === 241;
 $fxPlayer1 = function ($fx) {
     if ($fx instanceof \App\Models\TeamFixture && $fx->team1) {
         return $fx->team1->pluck('full_name')->implode(' + ');
@@ -113,6 +114,7 @@ $fxWinnerClasses = function ($fx) {
         <article class="public-match-card" aria-label="Match {{ $fx->match_nr }}">
           <div class="public-match-venue">{{ $fx->venue?->name ?? 'Venue to follow' }}</div>
           @if($fx->scheduled_at)
+            @if($notBeforeTimes)<div class="fw-bold" style="color:#664d03;">NB: NOT BEFORE</div>@endif
             <div class="public-match-time">{{ \Carbon\Carbon::parse($fx->scheduled_at)->format('H:i') }}</div>
             <div class="public-match-date">{{ \Carbon\Carbon::parse($fx->scheduled_at)->format('l, j F Y') }}</div>
           @else
@@ -144,7 +146,7 @@ $fxWinnerClasses = function ($fx) {
               </th>
             @endforeach
             <th style="width:12%">Score</th>
-            <th style="width:13%">Time</th>
+            <th style="width:13%">{{ $notBeforeTimes ? 'NB: NOT BEFORE time' : 'Time' }}</th>
             <th style="width:15%">Venue</th>
           </tr>
         </thead>
@@ -223,7 +225,7 @@ $fxWinnerClasses = function ($fx) {
                 @endforelse<br>
 
                 <strong>Venue:</strong> {{ optional($fx->venue)->name ?? '—' }}<br>
-                <strong>Time:</strong>
+                <strong>{{ $notBeforeTimes ? 'NB: NOT BEFORE time:' : 'Time:' }}</strong>
                 {{ $fx->scheduled_at ? \Carbon\Carbon::parse($fx->scheduled_at)->format('D H:i') : '—' }}
               </div>
             </td>

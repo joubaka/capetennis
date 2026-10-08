@@ -14,9 +14,10 @@
     <div class="event-draw-publication d-flex flex-wrap gap-2 mb-3" aria-live="polite">
       <span class="event-draw-status badge bg-label-{{ $isPublished ? 'success' : 'warning' }}">{{ $isPublished ? 'Draw published' : 'Draw hidden' }}</span>
       <span class="event-schedule-status badge bg-label-{{ $isSchedulePublished ? 'success' : 'secondary' }}">{{ $isSchedulePublished ? ($isPublished ? 'Schedule published' : 'Schedule preview only') : 'Schedule hidden' }}</span>
+      @include('backend.draw.partials.scoring-readiness')
       @if($isLocked)<span class="badge bg-label-secondary">Locked</span>@endif
     </div>
-    <p class="event-publication-note small text-muted mb-3">{{ $isSchedulePublished && ! $isPublished ? 'Schedule preview only: publish the draw to make these times public.' : 'Draws and match times are published separately.' }}</p>
+    <p class="event-publication-note small text-muted mb-3">{{ $isSchedulePublished && ! $isPublished ? 'Schedule preview only: publish the draw to make these times public.' : ($isTeamDraw ? 'Publishing a team draw enables scoring after validation. Match times are published separately. Mark matches on court when play starts.' : 'Draws and match times are published separately.') }}</p>
     <div class="draw-venues mb-3" data-draw-id="{{ $draw->id }}">
       <small class="text-muted">Venues:</small>
       @forelse($draw->venues as $venue)

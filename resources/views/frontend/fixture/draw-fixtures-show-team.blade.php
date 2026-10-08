@@ -43,6 +43,12 @@
       <a href="{{ route('events.show', $event) }}" class="btn btn-sm btn-outline-secondary public-fixture-back">Back to tournament</a>
     </div>
   </div>
+  @if((int) $event->id === 241 && $draw->scheduleIsPublished())
+    <div class="alert mb-3" style="background:#fff3cd;color:#664d03;border:1px solid #e6c76a;" role="note">
+      <strong class="d-block mb-1">NB: NOT BEFORE times</strong>
+      All scheduled times are NOT BEFORE times. A match will not start before its listed time, but it may start later if earlier matches are still being played. Please be at your assigned venue and ready to play by the listed time, and check Cape Tennis for schedule updates.
+    </div>
+  @endif
   @unless($draw->scheduleIsPublished())
     <div class="alert alert-info" role="status">The draw is available, but match times and venues have not been published yet.</div>
   @endunless

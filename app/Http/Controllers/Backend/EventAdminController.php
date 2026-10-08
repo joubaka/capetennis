@@ -80,10 +80,7 @@ class EventAdminController extends Controller
       ->where('event_id', $event->id)
       ->whereHas('selectionImport', fn ($query) => $query->whereIn('status', ['draft', 'sent']))
       ->orderBy('team_id')->orderBy('queue_position')->get()->groupBy('team_id')->toBase();
-    $teams = Team::query()->withoutGlobalScopes()
-      ->where(fn ($query) => $query
-        ->whereHas('category', fn ($category) => $category->where('event_id', $event->id))
-        ->orWhereIn('id', $teamSelectionInvitations->keys()))
+    $teams = app(\App\Services\EventTeamScope::class)->query($event, $teamSelectionInvitations->keys()->all())
       ->with(['category.category', 'teamPlayers', 'team_players_no_profile'])
       ->orderBy('name')->get()->groupBy('region_id');
     $event->regions->each(function ($region) use ($teams) {

@@ -422,8 +422,32 @@ class DrawController extends Controller
     return response()->json([
       'success' => true,
       'published' => (bool) $draw->published,
+      'locked' => (bool) $draw->locked,
       'id' => $draw->id,
+      'scoring' => $draw->isTeamDraw() ? app(\App\Services\TeamDrawScoringPublicationService::class)->state($draw) : null,
     ]);
+  }
+
+  public function enableScoring(Draw $draw)
+  {
+    $this->authorize('publish', $draw);
+    try {
+      app(DrawPublicationService::class)->enableScoring($draw);
+    } catch (\RuntimeException $e) {
+      return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+    }
+
+    $draw->refresh();
+    return response()->json(['success' => true, 'id' => $draw->id, 'published' => (bool) $draw->published, 'locked' => (bool) $draw->locked,
+      'message' => 'Scoring ready. Mark each match on court when play starts.',
+      'scoring' => app(\App\Services\TeamDrawScoringPublicationService::class)->state($draw->fresh())]);
+  }
+
+  public function scoringReadiness(Draw $draw)
+  {
+    $this->authorize('publish', $draw);
+    return response()->json(['success' => true, 'id' => $draw->id, 'published' => (bool) $draw->published, 'locked' => (bool) $draw->locked,
+      'scoring' => app(\App\Services\TeamDrawScoringPublicationService::class)->state($draw)]);
   }
 
   public function togglePublishSchedule($id)

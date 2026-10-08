@@ -280,6 +280,10 @@ $navbarDetached = ($navbarDetached ?? '');
 
           <li><div class="dropdown-divider"></div></li>
 
+          @if($scoringGuideAssignments->isNotEmpty())
+          <li><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#scoring-guide">How to score</button></li>
+          @endif
+
           @auth
           @if(\Illuminate\Support\Facades\Schema::hasTable('event_mail_issues'))
           <li><a class="dropdown-item" href="{{ route('backend.email-issues') }}">Email issues <span class="badge bg-danger">{{ \App\Models\EventMailIssue::where('user_id',Auth::id())->whereNull('read_at')->count() }}</span></a></li>
@@ -363,3 +367,6 @@ $navbarDetached = ($navbarDetached ?? '');
 
 </nav>
 <!-- / Navbar -->
+@if($scoringGuideAssignments->isNotEmpty())
+  @include('frontend.scoring.guide')
+@endif

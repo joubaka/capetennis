@@ -30,6 +30,7 @@
     if (cards.some(function (card) { return !states.has(Number(card.dataset.drawId)); })) throw new Error('Some draw statuses could not be confirmed.');
     cards.forEach(function (card) {
       var state = states.get(Number(card.dataset.drawId));
+      if (state.scoring && window.TeamDrawScoringReadiness) window.TeamDrawScoringReadiness.apply(state.id, state.scoring, state.published, state.locked);
       var quick = card.querySelector('[data-quick-draw-publication]');
       if (quick) {
         quick.dataset.published = state.published ? 'true' : 'false';

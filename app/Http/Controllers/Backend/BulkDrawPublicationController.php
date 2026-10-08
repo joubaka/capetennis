@@ -23,10 +23,11 @@ final class BulkDrawPublicationController extends Controller
 
     private function publicationState(Event $event): array
     {
-        $draws = $event->draws()->withoutEagerLoads()->orderBy('id')->get(['id', 'published', 'locked', 'oop_published']);
+        $draws = $event->draws()->withoutEagerLoads()->with(['draw_types', 'event'])->orderBy('id')->get();
         $published = $draws->where('published', true)->count();
         return ['event_id' => (int) $event->id, 'draw_states' => $draws->map(fn ($draw) => [
             'id' => (int) $draw->id, 'published' => (bool) $draw->published, 'locked' => (bool) $draw->locked, 'oop_published' => (bool) $draw->oop_published,
+            'scoring' => $draw->isTeamDraw() ? app(\App\Services\TeamDrawScoringPublicationService::class)->state($draw) : null,
         ])->all(), 'draw_summary' => ['published' => $published, 'unpublished' => $draws->count() - $published,
             'status' => $draws->isEmpty() ? 'No draws' : ($published === $draws->count() ? 'All published' : ($published ? 'Partly published' : 'Unpublished'))]];
     }
@@ -82,7 +83,9 @@ final class BulkDrawPublicationController extends Controller
                 ? (bool) $draw->published
                 : (bool) $draw->oop_published;
             $targetPublished = $action === 'publish';
-            if ($currentlyPublished === $targetPublished) {
+            $needsScoring = $data['operation'] === 'draws' && $targetPublished && $draw->isTeamDraw()
+                && ! app(\App\Services\TeamDrawScoringPublicationService::class)->state($draw)['ready'];
+            if ($currentlyPublished === $targetPublished && ! $needsScoring) {
                 $unchanged[] = $draw->id;
                 continue;
             }

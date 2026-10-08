@@ -261,6 +261,7 @@
                 <h6 class="mb-0">{{ $draw->drawName }} <span class="text-muted">— {{ optional($draw->draw_types)->drawTypeName ?? 'Type' }}</span></h6>
                   <div class="event-draw-card-summary-status" aria-live="polite">
                     <span class="event-draw-status badge bg-label-{{ $draw->published ? 'success' : 'warning' }}">{{ $draw->published ? 'Draw published' : 'Draw hidden' }}</span>
+                    @include('backend.draw.partials.scoring-readiness', ['statusOnly' => true])
                     @php
                       $hasOrderOfPlay = $draw->scheduled_team_fixture_count > 0 || $draw->order_of_play_count > 0;
                     @endphp

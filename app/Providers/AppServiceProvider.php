@@ -88,6 +88,12 @@ class AppServiceProvider extends ServiceProvider
    */
   public function boot()
   {
+    View::composer('layouts.sections.navbar.navbar', \App\View\Composers\ScoringGuideComposer::class);
+    EventFacade::listen(\Illuminate\Auth\Events\Login::class, function (): void {
+      if (request()->hasSession()) {
+        request()->session()->forget('scoring_guide.presented');
+      }
+    });
     \App\Models\Fixture::observe(\App\Observers\TrialFixtureObserver::class);
     \App\Models\FixtureResult::observe(\App\Observers\TrialResultObserver::class);
     $this->app['router']->pushMiddlewareToGroup('web', \App\Http\Middleware\RefreshTrialsAfterMutation::class);

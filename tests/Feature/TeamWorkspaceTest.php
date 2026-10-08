@@ -41,6 +41,27 @@ class TeamWorkspaceTest extends TestCase
         $this->assertDatabaseCount('team_players', 1);
     }
 
+    public function test_historical_rosters_load_both_panels_without_exposing_shared_region_rosters(): void
+    {
+        $this->team->update(['category_event_id' => null, 'name' => 'Historical u/10 Boys']);
+        $player = Player::factory()->create(['name' => 'HistoricalPlayer']);
+        TeamPlayer::create(['team_id' => $this->team->id, 'player_id' => $player->id, 'rank' => 1]);
+        NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'name' => 'HistoricalImport', 'surname' => 'Only', 'rank' => 2, 'pay_status' => 1]);
+        $shared = TeamRegion::create(['region_name' => 'Shared region']);
+        $this->event->regions()->attach($shared);
+        Event::factory()->create()->regions()->attach($shared);
+        $foreign = Team::factory()->create(['region_id' => $shared->id, 'name' => 'Foreign legacy roster']);
+        NoProfileTeamPlayer::create(['team_id' => $foreign->id, 'name' => 'ForeignImport', 'surname' => 'Only', 'rank' => 1, 'pay_status' => 1]);
+        $url = route('admin.events.teams', $this->event);
+        $this->get($url)->assertOk()->assertSee('Historical u/10 Boys')->assertDontSee('Foreign legacy roster');
+        foreach (['players', 'order'] as $panel) {
+            $this->get($url.'?roster_region='.$this->region->id.'&panel='.$panel)->assertOk()->assertSee('HistoricalPlayer')->assertSee('HistoricalImport');
+            $this->get($url.'?roster_region='.$shared->id.'&panel='.$panel)->assertOk()->assertDontSee('ForeignImport')->assertDontSee('Foreign legacy roster');
+        }
+        $this->assertDatabaseCount('team_players', 1);
+        $this->assertDatabaseCount('no_profile_team_players', 2);
+    }
+
     public function test_lazy_roster_is_event_scoped_and_maps_imported_contacts_by_team_and_rank(): void
     {
         foreach ([$this->team, Team::factory()->create(['region_id' => $this->region->id, 'category_event_id' => $this->team->category_event_id])] as $index => $team) {
