@@ -33,7 +33,7 @@ class TeamFixturePrintTest extends TestCase
             ->assertDownload('cape-schools-tournament-u10-boys-singles.pdf');
 
         $this->actingAs($this->admin)->get(route('fixture.create.pdf', ['fixtures' => $this->draw->id, 'preview' => 1]))
-            ->assertOk()->assertSee('Print / Save as PDF')->assertSee($this->event->name.' '.$this->draw->drawName)
+            ->assertOk()->assertSee('Save as PDF')->assertSee($this->event->name.' '.$this->draw->drawName)
             ->assertSee('window.print()', false);
     }
 
@@ -97,7 +97,28 @@ class TeamFixturePrintTest extends TestCase
         $this->actingAs($this->admin)->get(route('fixture.create.pdf.venue', ['fixtures' => [$fixture->id]]))
             ->assertOk()->assertHeader('content-type', 'application/pdf')->assertDownload('club-courts-west.pdf');
         $this->actingAs($this->admin)->get(route('fixture.create.pdf.venue', ['fixtures' => [$fixture->id], 'preview' => 1]))
-            ->assertOk()->assertSee('Print / Save as PDF')->assertSee($venue->name);
+            ->assertOk()->assertSee('Save as PDF')->assertSee($venue->name);
+    }
+
+    public function test_venue_and_age_pack_save_as_pdf_download_actual_pdf(): void
+    {
+        $venue = Venue::forceCreate(['name' => 'PDF courts']);
+        $this->event->venues()->attach($venue, ['num_courts' => 2]);
+        TeamFixture::create(['draw_id' => $this->draw->id, 'round_nr' => 1, 'match_nr' => 1,
+            'venue_id' => $venue->id, 'scheduled' => true, 'scheduled_at' => '2026-10-09 09:00:00']);
+        $url = route('headoffice.venue.fixtures', ['event' => $this->event, 'venue' => $venue,
+            'source' => 'working', 'date' => '2026-10-09', 'download' => 1]);
+        $this->actingAs($this->admin);
+        foreach ([$url, route('headoffice.venuePrintPack', ['event' => $this->event, 'age' => 10,
+            'date' => '2026-10-09', 'download' => 1])] as $download) {
+            $response = $this->get($download)->assertOk()->assertHeader('content-type', 'application/pdf');
+            $this->assertStringContainsString('attachment;', $response->headers->get('content-disposition'));
+            $this->assertStringStartsWith('%PDF-', $response->getContent());
+        }
+        $preview = $this->get(route('headoffice.venue.fixtures', ['event' => $this->event,
+            'venue' => $venue, 'source' => 'working', 'date' => '2026-10-09']))->assertOk();
+        $preview->assertSee(e($url), false)->assertDontSee('function generatePDF()', false);
+        $this->actingAs(User::factory()->create()->assignRole('admin'))->get($url)->assertForbidden();
     }
 
     public function test_team_draw_print_preview_requires_draw_authorization(): void
@@ -283,7 +304,7 @@ class TeamFixturePrintTest extends TestCase
         TeamFixture::create(['draw_id' => $draws[10]->id, 'match_nr' => 7, 'venue_id' => $outside->id, 'scheduled' => true, 'scheduled_at' => '2026-10-13 13:00:00']);
         $url = route('headoffice.venuePrintPack', ['event' => $this->event, 'age' => 10]);
 
-        $all = $this->actingAs($this->admin)->get($url)->assertOk()->assertSee('Print / Save as PDF')->assertSee('Day to print')->assertSee('Another age venue')->assertSee('Shared age venue')->assertDontSee('u/13 Boys Singles')->assertDontSee('Foreign u/10 Boys Singles')->assertDontSee('Venue outside event membership');
+        $all = $this->actingAs($this->admin)->get($url)->assertOk()->assertSee('Save as PDF')->assertSee('Day to print')->assertSee('Another age venue')->assertSee('Shared age venue')->assertDontSee('u/13 Boys Singles')->assertDontSee('Foreign u/10 Boys Singles')->assertDontSee('Venue outside event membership');
         $this->assertSame([$first->id, $second->id], $all->viewData('fixtures')->pluck('id')->all());
         $this->assertSame(['2026-10-09', '2026-10-10'], $all->viewData('availableDays')->all());
         $this->assertSame([$other->id, $shared->id], $all->viewData('venueSections')->pluck('venue.id')->all());

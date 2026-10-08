@@ -350,7 +350,7 @@ class HeadOfficeController extends Controller
   public function venuePrintPack(Request $request, Event $event)
   {
     $this->authorize('event-draw.view', $event);
-    $validated = $request->validate(['age' => ['required', 'integer', 'between:5,100'], 'date' => ['nullable', 'date_format:Y-m-d']]);
+    $validated = $request->validate(['age' => ['required', 'integer', 'between:5,100'], 'date' => ['nullable', 'date_format:Y-m-d'], 'download' => ['sometimes', 'boolean']]);
     $age = (int) $validated['age'];
     $selectedDate = $validated['date'] ?? null;
     $event->load(['draws.venues', 'venues']);
@@ -370,6 +370,12 @@ class HeadOfficeController extends Controller
     })->sortBy(fn ($section) => $section['venue']->name)->values();
     $name = $event->name.' · Under '.$age.' · All venues';
 
+    $data = compact('event', 'age', 'selectedDate', 'availableDays', 'fixtures', 'venueSections', 'name');
+    if ($request->boolean('download')) {
+      return Pdf::loadView('backend.draw.pdf.venue-sheets', $data)->setPaper('a4', 'landscape')
+        ->download((\Illuminate\Support\Str::slug($name) ?: 'venue-fixtures').'.pdf');
+    }
+
     return view('backend.draw.pdf.team-print-preview', compact('event', 'age', 'selectedDate', 'availableDays', 'fixtures', 'venueSections', 'name'));
   }
 
@@ -387,6 +393,7 @@ class HeadOfficeController extends Controller
     $validated = $request->validate([
       'date' => ['nullable', 'date_format:Y-m-d'],
       'source' => ['nullable', Rule::in(['published', 'working'])],
+      'download' => ['sometimes', 'boolean'],
     ]);
     $selectedDate = $validated['date'] ?? null;
     $publication = app(\App\Services\Scheduling\SchedulePublicationService::class);
@@ -431,6 +438,12 @@ class HeadOfficeController extends Controller
       'fixture' => $fixture, 'start' => $fixture->scheduled_at,
       'waves' => collect([collect([$fixture])]),
     ]);
+
+    if ($request->boolean('download')) {
+      $name = $event->name.' - '.$venue->name.' - Fixtures';
+      return Pdf::loadView('backend.draw.pdf.venue-sheets', compact('name', 'fixtures', 'selectedDate', 'scheduleSource'))
+        ->setPaper('a4', 'landscape')->download((\Illuminate\Support\Str::slug($name) ?: 'venue-fixtures').'.pdf');
+    }
 
     return view('backend.headOffice.venue-fixtures', [
       'event' => $event,

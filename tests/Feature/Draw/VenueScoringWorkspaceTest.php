@@ -692,6 +692,9 @@ class VenueScoringWorkspaceTest extends TestCase
         $print = $this->get($url)->assertOk()->assertViewIs('backend.headOffice.venue-fixtures')
             ->assertSee('Save as PDF')->assertSee('Day to print')->assertSee('window.print()', false)
             ->assertDontSee('id="edit-btn-', false)->assertDontSee('Foreign event venue');
+        $pdf = $this->get($url.'&download=1')->assertOk()->assertHeader('content-type', 'application/pdf');
+        $this->assertStringContainsString('attachment;', $pdf->headers->get('content-disposition'));
+        $this->assertStringStartsWith('%PDF-', $pdf->getContent());
         $this->assertSame([$fixture->id], $print->viewData('fixtures')->pluck('id')->all());
         $this->assertSame(['2026-10-09'], $print->viewData('availableDays')->all());
         app(\App\Services\Scheduling\SchedulePublicationService::class)->publish($event, ['date' => '2026-10-09']);

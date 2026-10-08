@@ -194,7 +194,7 @@ class VenueScoringController extends Controller
         ]);
     }
 
-    public function printVenue(Request $request, Event $event, Venue $venue): View
+    public function printVenue(Request $request, Event $event, Venue $venue): View|\Illuminate\Http\Response
     {
         $this->authorize('event.score', $event);
         $this->requireAssignedVenue($request, $event, (int) $venue->id);
@@ -203,6 +203,7 @@ class VenueScoringController extends Controller
         $validated = $request->validate([
             'source' => ['nullable', 'in:published,working'],
             'date' => ['nullable', 'date_format:Y-m-d'],
+            'download' => ['sometimes', 'boolean'],
         ]);
         // A venue sheet always prints the full venue, rather than a filtered scoring queue.
         $request->replace($validated);
@@ -212,7 +213,7 @@ class VenueScoringController extends Controller
         }
         $request->merge([
             'print_type' => 'venue', 'venue_id' => $venue->id,
-            'include_standings' => false, 'download' => false,
+            'include_standings' => false, 'download' => $request->boolean('download'),
             'schedule_source' => $validated['source'] ?? 'published',
         ]);
 

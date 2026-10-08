@@ -116,12 +116,7 @@
     document.getElementById('editScoreModal').addEventListener('shown.bs.modal', function () {
         document.getElementById('set1Home').focus();
     });
-    function generatePDF() {
-        const originalTitle = document.title;
-        document.title = @json(($event->name ?? 'Event').'_'.$venue->name.'_Fixtures');
-        window.print();
-        document.title = originalTitle;
-    }
+
 </script>
 <script>
     // Delete result handler for venue fixtures (AJAX)
@@ -185,9 +180,9 @@
         <button class="btn btn-outline-secondary" onclick="window.print();">
             <i class="ti ti-printer me-1"></i> Print
         </button>
-        <button class="btn btn-primary" onclick="generatePDF();">
+        <a class="btn btn-primary" href="{{ route(($scoringPrint ?? false) ? 'frontend.scoring.print' : 'headoffice.venue.fixtures', ['event' => $event, 'venue' => $venue, 'source' => $scheduleSource, 'date' => $selectedDate, 'download' => 1]) }}">
             <i class="ti ti-file-description me-1"></i> Save as PDF
-        </button>
+        </a>
     </div>
 </div>
 

@@ -7,7 +7,7 @@
   <style>
     body { margin:0; padding:24px; font-family:Arial,sans-serif; color:#172e45; background:#fff; }
     .print-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-bottom:24px; }
-    .print-toolbar button { min-height:44px; padding:10px 18px; background:#172e45; color:white; border:0; border-radius:6px; font:inherit; cursor:pointer; }
+    .print-toolbar button, .print-toolbar a { min-height:44px; padding:10px 18px; background:#172e45; color:white; border:0; border-radius:6px; font:inherit; cursor:pointer; box-sizing:border-box; text-decoration:none; display:inline-block; }
     .print-sheet { overflow-x:auto; }
     .print-day-form { display:flex; flex-wrap:wrap; align-items:end; gap:12px; margin-bottom:16px; }
     .print-day-form label { display:block; margin-bottom:4px; }
@@ -48,11 +48,19 @@
       @endif
     </select></div>
     <button type="submit">Show day</button>
-    <a href="{{ route('fixture.create.pdf', ['fixtures' => $draw->id, 'date' => $selectedDate]) }}">Download PDF</a>
     @if($selectedDate)<a href="{{ route('fixture.create.pdf', ['fixtures' => $draw->id, 'preview' => 1]) }}">All days</a>@endif
   </form>
   @endisset
-  <div class="print-toolbar"><button type="button" onclick="window.print()">Print / Save as PDF</button><span>Use your browser’s print dialog to choose a printer or save this sheet as a PDF.</span></div>
+  <div class="print-toolbar">
+    <button type="button" onclick="window.print()">Print</button>
+    @isset($age)
+      <a href="{{ route('headoffice.venuePrintPack', ['event' => $event, 'age' => $age, 'date' => $selectedDate, 'download' => 1]) }}">Save as PDF</a>
+    @elseisset($draw)
+      <a href="{{ route('fixture.create.pdf', ['fixtures' => $draw->id, 'date' => $selectedDate]) }}">Save as PDF</a>
+    @else
+      <a href="{{ route('fixture.create.pdf.venue', ['fixtures' => $fixtures->pluck('id')->all()]) }}">Save as PDF</a>
+    @endisset
+  </div>
   <main class="print-sheet">
     @isset($venueSections)
       @forelse($venueSections as $section)
