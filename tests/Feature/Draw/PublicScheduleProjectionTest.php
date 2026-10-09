@@ -83,7 +83,7 @@ class PublicScheduleProjectionTest extends TestCase
         $this->get(route('events.show', $event))->assertOk()->assertDontSee('Times available');
     }
 
-    public function test_public_draw_list_distinguishes_unscheduled_partial_and_complete_working_schedules_without_times(): void
+    public function test_public_draw_list_leaves_schedule_badges_blank_until_times_are_published(): void
     {
         $event = Event::factory()->create(['eventType' => 3]);
         $venue = new Venue();
@@ -100,11 +100,12 @@ class PublicScheduleProjectionTest extends TestCase
             }
         }
         $response = $this->get(route('events.show', $event))->assertOk()
-            ->assertSee('Not scheduled yet')->assertSee('Partly scheduled · times not published')
-            ->assertSee('Scheduled · times not published')->assertDontSee('13:45');
+            ->assertSee('none draw')->assertSee('partial draw')->assertSee('complete draw')
+            ->assertDontSee('Not scheduled yet')->assertDontSee('Partly scheduled · times not published')
+            ->assertDontSee('Scheduled · times not published')->assertDontSee('Times available')->assertDontSee('13:45');
         $this->assertSame([0, 1, 1], $response->viewData('eventDraws')->pluck('scheduled_team_match_count')->map(fn ($count) => (int) $count)->sort()->values()->all());
         app(SchedulePublicationService::class)->publish($event, ['draw_id' => $draws['complete']->id]);
-        $this->get(route('events.show', $event))->assertOk()->assertSee('Times available');
+        $this->get(route('events.show', $event))->assertOk()->assertSee('Times available · Friday');
     }
 
     public function test_admin_public_draw_cannot_show_working_times_when_only_the_draw_is_published(): void

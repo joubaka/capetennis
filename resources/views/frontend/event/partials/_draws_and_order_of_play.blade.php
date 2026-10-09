@@ -67,20 +67,16 @@
       @foreach($draws as $draw)
         @php
           $publishedDays = $publishedDayLabels->get($draw->id, '');
-          $schedulePublished = $publishedDays !== '';
-          $matchCount = (int) $draw->team_match_count + (int) $draw->individual_match_count;
-          $scheduledCount = (int) $draw->scheduled_team_match_count + (int) $draw->scheduled_individual_match_count;
-          $fullyScheduled = $matchCount > 0 && $scheduledCount === $matchCount;
-          $scheduleLabel = $schedulePublished ? 'Times available · '.$publishedDays : ($fullyScheduled ? 'Scheduled · times not published' : ($scheduledCount > 0 ? 'Partly scheduled · times not published' : 'Not scheduled yet'));
-          $scheduleClass = $schedulePublished || $fullyScheduled ? 'draw-scheduled' : ($scheduledCount > 0 ? 'draw-partly-scheduled' : '');
         @endphp
         <div class="event-published-draw-row">
           <a href="{{ $draw->usesFlexibleMonrad() ? route('public.flexible-monrad.show', $draw) : route('frontend.fixtures.index', $draw->id) }}"
              class="btn btn-sm event-published-draw-link">
             <span class="event-published-draw-name">{{ $draw->drawName }}</span>
-            <span class="badge {{ $scheduleClass }} ms-1">
-              {{ $scheduleLabel }}
-            </span>
+            @if($publishedDays !== '')
+              <span class="badge draw-scheduled ms-1">
+                Times available · {{ $publishedDays }}
+              </span>
+            @endif
           </a>
           @php
 
