@@ -39,8 +39,8 @@ class PlayerRatingBadgeController extends Controller
             foreach ([1, 2] as $side) {
                 $players = $fixture->{'registration'.$side}?->players ?? collect();
                 $ratings['f:'.$fixture->id.':'.$side] = !$fixture->draw || ($context instanceof Draw && (int) $context->id !== (int) $fixture->draw_id)
-                    || ($context instanceof CategoryEvent && (int) $context->id !== (int) $fixture->draw->category_event_id) || $players->count() > 2 ? []
-                    : ($context instanceof Category && (int) $context->id !== (int) $fixture->draw->categoryEvent?->category_id ? []
+                    || ($context instanceof CategoryEvent && (int) $context->id !== (int) $fixture->draw->category_event_id)
+                    || ($context instanceof Category && (int) $context->id !== (int) $fixture->draw->categoryEvent?->category_id) || $players->count() > 2 ? []
                     : $players->map(fn ($player) => $badges->forPlayer($player->id, $fixture->draw))->filter()->values()->all();
             }
         }

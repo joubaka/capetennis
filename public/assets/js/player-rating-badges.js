@@ -40,8 +40,9 @@
   function status(data) {
     if (!data) return;
     document.querySelectorAll('[data-rating-status]').forEach(node => {
-      node.textContent = 'Last updated: ' + (data.last_updated || 'Not yet updated')
+      const message = 'Last updated: ' + (data.last_updated || 'Not yet updated')
         + (data.failed ? ' · Update failed; retry pending.' : (data.pending ? ' · Update pending.' : ' · Up to date.'));
+      if (node.textContent !== message) node.textContent = message;
     });
     if (version !== null && version !== data.version) {
       cache.clear();
@@ -58,7 +59,7 @@
     polling = true;
     try {
       const response = await fetch(config.endpoint, {credentials: 'same-origin', headers: {'Accept':'application/json'}});
-      if (response.ok) status((await response.json()).status);
+      if (response.ok) { status((await response.json()).status); schedule(); }
     } catch (_) { /* Retain the last successful badges during network failures. */ }
     finally { polling = false; }
   }
@@ -96,7 +97,7 @@
           else if (group.draw) params.set('draw_id', group.draw);
           batch.forEach(entry => params.append(entry.kind === 'p' ? 'players[]' : (entry.kind === 'f' ? 'fixtures[]' : 'registrations[]'), entry.id));
           const response = await fetch(config.endpoint + '?' + params, {credentials: 'same-origin', headers: {'Accept':'application/json'}});
-          if (!response.ok) { batch.forEach(entry => entry.nodes.forEach(node => { node.dataset.ratingDone = '1'; })); continue; }
+          if (!response.ok) continue;
           const data = await response.json();
           status(data.status);
           batch.forEach(entry => {
