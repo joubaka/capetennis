@@ -155,12 +155,64 @@ class PlayerAbilityBackgroundRefreshTest extends TestCase
             DB::table('team_fixture_results')->insert(['team_fixture_id' => 123, 'team1_score' => 6, 'team2_score' => 3]);
             return $this->payload();
         });
-        $this->artisan('player-ability:refresh --pending')->assertFailed();
+        $this->artisan('player-ability:refresh --pending')
+            ->expectsOutputToContain('source_changed_during_build; stage: validation')->assertFailed();
         $this->assertSame($saved, DB::table('player_ability_snapshots')->value('payload'));
         $this->assertTrue(app(PlayerAbilityRefreshState::class)->status()['pending']);
         $this->assertTrue(app(PlayerAbilityRefreshState::class)->status()['failed']);
         // Retry backoff avoids repeatedly fitting an unavailable model each minute.
         $this->artisan('player-ability:refresh --pending')->assertSuccessful();
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('diagnosticFailures')]
+    public function test_failure_diagnostics_are_safe_and_preserve_the_previous_snapshot(string $failure, string $reason, string $stage): void
+    {
+        $store = app(PlayerAbilitySnapshotStore::class);
+        $store->replace($this->payload(), CarbonImmutable::today('Africa/Johannesburg'), 'before', []);
+        $saved = DB::table('player_ability_snapshots')->value('payload');
+        $payload = $this->payload();
+        $secret = 'password=private-secret SELECT player_name FROM private_table';
+        $service = $this->partialMock(PlayerSharedAbilityService::class);
+        $service->shouldReceive('fingerprint')->andReturn('same');
+        if ($failure === 'calculation') {
+            $service->shouldReceive('calculateSnapshot')->once()->andThrow(new \RuntimeException($secret));
+        } else {
+            if ($failure === 'nonconverged') { $payload['cohorts'] = [['components' => [['converged' => false]]]]; }
+            if ($failure === 'cap') { $payload['reason'] = 'Shared calibration exceeds its safe local processing limit '.$secret; }
+            if ($failure === 'withheld') { $payload['reason'] = $secret; }
+            $service->shouldReceive('calculateSnapshot')->once()->andReturn($payload);
+            $mockStore = $this->partialMock(PlayerAbilitySnapshotStore::class);
+            if ($failure === 'manifest') { $mockStore->shouldReceive('manifest')->andThrow(new \RuntimeException($secret)); }
+            else { $mockStore->shouldReceive('manifest')->andReturn([]); }
+            if ($failure === 'revoked') { $mockStore->shouldReceive('published')->andReturn(false); }
+            if ($failure === 'save') {
+                $mockStore->shouldReceive('published')->andReturn(true);
+                $mockStore->shouldReceive('replace')->andThrow(new \RuntimeException($secret));
+            }
+        }
+        \Illuminate\Support\Facades\Log::spy();
+        $this->artisan('player-ability:refresh')
+            ->expectsOutputToContain($reason.'; stage: '.$stage)->doesntExpectOutputToContain($secret)->assertFailed();
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->once()->with(
+            'Player ability refresh failed; last good snapshot retained.',
+            ['exception_type' => \RuntimeException::class, 'reason' => $reason, 'stage' => $stage]
+        );
+        $this->assertSame($saved, DB::table('player_ability_snapshots')->value('payload'));
+        $this->assertDatabaseCount('player_ability_snapshots', 1);
+        $this->assertNotNull(DB::table('player_ability_refresh_state')->value('last_failed_at'));
+    }
+
+    public static function diagnosticFailures(): array
+    {
+        return [
+            ['calculation', 'unexpected_error', 'calculation'],
+            ['manifest', 'unexpected_error', 'manifest'],
+            ['save', 'unexpected_error', 'save'],
+            ['nonconverged', 'model_nonconverged', 'validation'],
+            ['cap', 'safe_processing_limit', 'validation'],
+            ['withheld', 'calculation_withheld', 'validation'],
+            ['revoked', 'publication_or_context_revoked', 'validation'],
+        ];
     }
 
     public function test_consuming_a_generation_does_not_consume_later_committed_changes(): void

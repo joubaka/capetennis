@@ -31,6 +31,8 @@ class RefreshPlayerAbility extends Command
         // Manual and scheduler invocations use the same host-local lock.
         $lock = Cache::store('file')->lock('player-ability:refresh', 7200);
         if (!$lock->get()) { $this->error('An ability refresh is already running.'); return $this->option('pending') ? self::SUCCESS : self::FAILURE; }
+        $stage = 'preparation';
+        $failureReason = 'unexpected_error';
         try {
             if ($this->option('pending') && !$state->checkDue()) { return self::SUCCESS; }
             $asOf = CarbonImmutable::today('Africa/Johannesburg');
@@ -41,27 +43,49 @@ class RefreshPlayerAbility extends Command
                 $this->info('Saved ability snapshot is current; no calculation needed.');
                 return self::SUCCESS;
             }
+            $stage = 'calculation';
             $snapshot = $service->calculateSnapshot($asOf);
+            $stage = 'manifest';
             $manifest = $store->manifest($snapshot);
+            $stage = 'validation';
             foreach ($snapshot['cohorts'] as $cohort) {
                 foreach ($cohort['components'] as $component) {
-                    if (!$component['converged']) { throw new \RuntimeException('Model did not converge.'); }
+                    if (!$component['converged']) {
+                        $failureReason = 'model_nonconverged';
+                        throw new \RuntimeException('Model did not converge.');
+                    }
                 }
             }
-            if ($snapshot['reason'] || $fingerprint !== $service->fingerprint() || !$store->published($manifest)) {
-                throw new \RuntimeException('Calculation withheld or source data changed during refresh.');
+            if ($snapshot['reason']) {
+                $failureReason = str_starts_with($snapshot['reason'], 'Shared calibration exceeds its safe local processing limit')
+                    ? 'safe_processing_limit' : 'calculation_withheld';
+                throw new \RuntimeException('Calculation withheld.');
+            }
+            if ($fingerprint !== $service->fingerprint()) {
+                $failureReason = 'source_changed_during_build';
+                throw new \RuntimeException('Source data changed during refresh.');
+            }
+            if (!$store->published($manifest)) {
+                $failureReason = 'publication_or_context_revoked';
+                throw new \RuntimeException('Source publication or context changed during refresh.');
             }
             if (!$this->option('dry-run')) {
+                $stage = 'save';
                 $store->replace($snapshot, $asOf, $fingerprint, $manifest);
                 // Never consume generations that arrived after the build began.
+                $stage = 'completion';
                 if ($generation !== null) { $state->completed($generation); }
             }
             $this->info(($this->option('dry-run') ? 'Validated without saving' : 'Saved').' ability snapshot as of '.$asOf->toDateString().'.');
             return self::SUCCESS;
         } catch (\Throwable $error) {
             if (!$this->option('dry-run')) { $state->failed(); }
-            Log::warning('Player ability refresh failed; last good snapshot retained.', ['exception_type' => get_class($error)]);
-            $this->error('Ability refresh failed. The last successful snapshot is retained; source publication checks still apply.');
+            // Only allowlisted categories and stages reach diagnostics. Exception
+            // messages may contain SQL, credentials, names or other source data.
+            Log::warning('Player ability refresh failed; last good snapshot retained.', [
+                'exception_type' => get_class($error), 'reason' => $failureReason, 'stage' => $stage,
+            ]);
+            $this->error('Ability refresh failed ['.$failureReason.'; stage: '.$stage.']. The last successful snapshot is retained; source publication checks still apply.');
             return self::FAILURE;
         } finally { $lock->release(); }
     }
