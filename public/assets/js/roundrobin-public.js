@@ -188,12 +188,15 @@
             return;
           }
 
+          const winner = Number(fx.winner || 0);
+          const knownWinner = winner > 0 && (winner === Number(fx.r1_id) || winner === Number(fx.r2_id));
+          const outcome = knownWinner ? (winner === Number(rowP.id) ? 'winner-home' : 'loser-home') : '';
           const score = formatScoreCell(fx, rowP.id);
           const time = fx.schedule_hidden === true
             ? 'Followed by'
             : (fx.time ? formatDayTimeVenue(fx) : '');
 
-          html += `<td class="text-center rr-match-cell">${escapeHtml(score || time || '—')}</td>`;
+          html += `<td class="text-center rr-match-cell ${outcome}">${escapeHtml(score || time || '—')}</td>`;
         });
 
         html += `</tr>`;
@@ -205,13 +208,18 @@
         if (!fx) return;
         const home = players.find(player => player.id === fx.r1_id)?.name || fx.name1 || 'Player';
         const away = players.find(player => player.id === fx.r2_id)?.name || fx.name2 || 'Player';
+        const winner = Number(fx.winner || 0);
+        const knownWinner = winner > 0 && (winner === Number(fx.r1_id) || winner === Number(fx.r2_id));
+        const homeClass = knownWinner ? (winner === Number(fx.r1_id) ? 'winner-home' : 'loser-home') : '';
+        const awayClass = knownWinner ? (winner === Number(fx.r2_id) ? 'winner-home' : 'loser-home') : '';
+        const outcomeLabel = cls => cls ? `<small class="result-label">${cls === 'winner-home' ? 'Won' : 'Lost'}</small>` : '';
         const score = formatScoreCell(fx, fx.r1_id);
         const status = score || (fx.schedule_hidden === true
           ? 'Followed by'
           : (fx.time ? formatDayTimeVenue(fx) : 'Awaiting schedule'));
 
         html += `<div class="rr-mobile-match" role="group" aria-label="${escapeHtml(home)} versus ${escapeHtml(away)}">
-          <span class="rr-mobile-players"><span>${escapeHtml(home)}${window.CTPlayerRatings?.marker({registrationId:fx.r1_id}) || ''}</span><span class="rr-mobile-versus">vs</span><span>${escapeHtml(away)}${window.CTPlayerRatings?.marker({registrationId:fx.r2_id}) || ''}</span></span>
+          <span class="rr-mobile-players"><span class="${homeClass}">${escapeHtml(home)}${window.CTPlayerRatings?.marker({registrationId:fx.r1_id}) || ''}${outcomeLabel(homeClass)}</span><span class="rr-mobile-versus">vs</span><span class="${awayClass}">${escapeHtml(away)}${window.CTPlayerRatings?.marker({registrationId:fx.r2_id}) || ''}${outcomeLabel(awayClass)}</span></span>
           <span class="rr-mobile-status">${escapeHtml(status)}</span>
         </div>`;
       });

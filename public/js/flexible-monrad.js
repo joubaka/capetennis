@@ -381,7 +381,8 @@
           const position = coords.get(key);
           const card = bracketMatch(position, `Match ${match.number}`);
           match.players.forEach((id, slot) => {
-            const line = el('div', `fm-slot${id && Number(id) === Number(match.winner) ? ' winner' : ''}`);
+            const knownWinner = match.winner && match.players.some(player => player && Number(player) === Number(match.winner));
+            const line = el('div', `fm-slot${id && knownWinner ? (Number(id) === Number(match.winner) ? ' winner winner-home' : ' loser loser-home') : ''}`);
             line.style.top = (slot ? position.bottom - position.top : 0) + 'px';
             const withdrawnId = match.withdrawn_players?.[slot];
             const pendingWithdrawalId = match.pending_withdrawal_players?.[slot];

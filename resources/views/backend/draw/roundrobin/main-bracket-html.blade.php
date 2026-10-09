@@ -312,10 +312,10 @@
                         $sf1Winner = $sf1?->winner_registration;
                         $sf1Score = $getScore($sf1);
                     @endphp
-                    <div class="match-player {{ $sf1Winner == $sf1?->registration1_id ? 'winner' : ($sf1Winner ? 'loser' : '') }}">
+                    <div class="match-player {{ \App\Support\ResultPresentation::classes($sf1)[0] }}">
                         <span class="player-name" title="{{ $getName($sf1, 1) }}"><x-player-name :players="$sf1?->registration1?->players ?? []" :context="$draw" fallback="---" /></span>
                     </div>
-                    <div class="match-player {{ $sf1Winner == $sf1?->registration2_id ? 'winner' : ($sf1Winner ? 'loser' : '') }}">
+                    <div class="match-player {{ \App\Support\ResultPresentation::classes($sf1)[1] }}">
                         <span class="player-name" title="{{ $getName($sf1, 2) }}"><x-player-name :players="$sf1?->registration2?->players ?? []" :context="$draw" fallback="---" /></span>
                     </div>
                     @if($sf1Score)
@@ -333,10 +333,10 @@
                         $sf2Winner = $sf2?->winner_registration;
                         $sf2Score = $getScore($sf2);
                     @endphp
-                    <div class="match-player {{ $sf2Winner == $sf2?->registration1_id ? 'winner' : ($sf2Winner ? 'loser' : '') }}">
+                    <div class="match-player {{ \App\Support\ResultPresentation::classes($sf2)[0] }}">
                         <span class="player-name" title="{{ $getName($sf2, 1) }}"><x-player-name :players="$sf2?->registration1?->players ?? []" :context="$draw" fallback="---" /></span>
                     </div>
-                    <div class="match-player {{ $sf2Winner == $sf2?->registration2_id ? 'winner' : ($sf2Winner ? 'loser' : '') }}">
+                    <div class="match-player {{ \App\Support\ResultPresentation::classes($sf2)[1] }}">
                         <span class="player-name" title="{{ $getName($sf2, 2) }}"><x-player-name :players="$sf2?->registration2?->players ?? []" :context="$draw" fallback="---" /></span>
                     </div>
                     @if($sf2Score)
@@ -361,10 +361,10 @@
                         $finalWinner = $final?->winner_registration;
                         $finalScore = $getScore($final);
                     @endphp
-                    <div class="match-player {{ $finalWinner == $final?->registration1_id ? 'winner' : ($finalWinner ? 'loser' : '') }}">
+                    <div class="match-player {{ \App\Support\ResultPresentation::classes($final)[0] }}">
                         <span class="player-name" title="{{ $getName($final, 1) }}"><x-player-name :players="$final?->registration1?->players ?? []" :context="$draw" fallback="---" /></span>
                     </div>
-                    <div class="match-player {{ $finalWinner == $final?->registration2_id ? 'winner' : ($finalWinner ? 'loser' : '') }}">
+                    <div class="match-player {{ \App\Support\ResultPresentation::classes($final)[1] }}">
                         <span class="player-name" title="{{ $getName($final, 2) }}"><x-player-name :players="$final?->registration2?->players ?? []" :context="$draw" fallback="---" /></span>
                     </div>
                     @if($finalScore)
@@ -414,10 +414,10 @@
                                 $qfWinner = $qf?->winner_registration;
                                 $qfScore = $getScore($qf);
                             @endphp
-                            <div class="match-player {{ $qfWinner == $qf?->registration1_id ? 'winner' : ($qfWinner ? 'loser' : '') }}" style="padding: 4px 8px; font-size: 0.8rem;">
+                            <div class="match-player {{ \App\Support\ResultPresentation::classes($qf)[0] }}" style="padding: 4px 8px; font-size: 0.8rem;">
                                 <span class="player-name" title="{{ $getName($qf, 1) }}"><x-player-name :players="$qf?->registration1?->players ?? []" :context="$draw" fallback="---" /></span>
                             </div>
-                            <div class="match-player {{ $qfWinner == $qf?->registration2_id ? 'winner' : ($qfWinner ? 'loser' : '') }}" style="padding: 4px 8px; font-size: 0.8rem;">
+                            <div class="match-player {{ \App\Support\ResultPresentation::classes($qf)[1] }}" style="padding: 4px 8px; font-size: 0.8rem;">
                                 <span class="player-name" title="{{ $getName($qf, 2) }}"><x-player-name :players="$qf?->registration2?->players ?? []" :context="$draw" fallback="---" /></span>
                             </div>
                             @if($qfScore)
@@ -445,10 +445,10 @@
                                 $sfWinner = $sf?->winner_registration;
                                 $sfScore = $getScore($sf);
                             @endphp
-                            <div class="match-player {{ $sfWinner == $sf?->registration1_id ? 'winner' : ($sfWinner ? 'loser' : '') }}">
+                            <div class="match-player {{ \App\Support\ResultPresentation::classes($sf)[0] }}">
                                 <span class="player-name" title="{{ $getName($sf, 1) }}"><x-player-name :players="$sf?->registration1?->players ?? []" :context="$draw" fallback="---" /></span>
                             </div>
-                            <div class="match-player {{ $sfWinner == $sf?->registration2_id ? 'winner' : ($sfWinner ? 'loser' : '') }}">
+                            <div class="match-player {{ \App\Support\ResultPresentation::classes($sf)[1] }}">
                                 <span class="player-name" title="{{ $getName($sf, 2) }}"><x-player-name :players="$sf?->registration2?->players ?? []" :context="$draw" fallback="---" /></span>
                             </div>
                             @if($sfScore)
@@ -475,10 +475,10 @@
                             $pfWinner = $final_plate?->winner_registration;
                             $pfScore = $getScore($final_plate);
                         @endphp
-                        <div class="match-player {{ $pfWinner == $final_plate?->registration1_id ? 'winner' : ($pfWinner ? 'loser' : '') }}">
+                        <div class="match-player {{ \App\Support\ResultPresentation::classes($final_plate)[0] }}">
                             <span class="player-name" title="{{ $getName($final_plate, 1) }}"><x-player-name :players="$final_plate?->registration1?->players ?? []" :context="$draw" fallback="---" /></span>
                         </div>
-                        <div class="match-player {{ $pfWinner == $final_plate?->registration2_id ? 'winner' : ($pfWinner ? 'loser' : '') }}">
+                        <div class="match-player {{ \App\Support\ResultPresentation::classes($final_plate)[1] }}">
                             <span class="player-name" title="{{ $getName($final_plate, 2) }}"><x-player-name :players="$final_plate?->registration2?->players ?? []" :context="$draw" fallback="---" /></span>
                         </div>
                         @if($pfScore)

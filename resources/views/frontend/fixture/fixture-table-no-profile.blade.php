@@ -61,8 +61,8 @@ use App\Helpers\Fixtures;
               <td>{{$fixture->rank_nr}} </td>
 
               @php
-                  $winner1 = Fixtures::getWinner($fixture->id) == 1 ? 'bg-label-success border border-2 border-success' : '';
-                  $winner2 = Fixtures::getWinner($fixture->id) == 2 ? 'bg-label-success border border-2 border-success' : '';
+                  [$winner1, $winner2] = \App\Support\ResultPresentation::classes($fixture);
+
                   $profile1 = $fixture->region1Name->no_profile == 1;
                   $profile2 = $fixture->region2Name->no_profile == 1;
               @endphp

@@ -14,7 +14,8 @@
       @foreach($card['participants'] as $slot => $participant)
         @php($rowY = ($slot ? $card['bottom'] : $card['top']) - 28)
         @php($palette = match($participant['style']) {
-          'winner' => ['fill' => '#f1f3f3', 'stroke' => '#c7cdd0', 'text' => '#111111'],
+          'winner' => ['fill' => '#e4f3e7', 'stroke' => '#166534', 'text' => '#166534'],
+          'loser' => ['fill' => '#fce8e8', 'stroke' => '#b91c1c', 'text' => '#b91c1c'],
           'withdrawn' => ['fill' => '#fff0ee', 'stroke' => '#f1a7a1', 'text' => '#b42318'],
           'source' => ['fill' => '#fff4d6', 'stroke' => '#fff4d6', 'text' => '#765e2a'],
           default => ['fill' => '#eaf5fc', 'stroke' => '#b9d8ee', 'text' => '#155d91'],
@@ -22,7 +23,7 @@
         <rect x="{{ $card['x'] + 6 }}" y="{{ $rowY + 3 }}" width="{{ $participant['width'] }}" height="22" rx="5" fill="{{ $palette['fill'] }}" stroke="{{ $palette['stroke'] }}" stroke-width="1"/>
         <text x="{{ $card['x'] + 12 }}" y="{{ $rowY + 18 }}" fill="{{ $palette['text'] }}" font-family="DejaVu Sans, Arial, sans-serif" font-size="9" font-weight="700">{{ $participant['label'] }}</text>
         @if($card['scores'][$slot] !== '')
-          <text x="{{ $card['x'] + $card['width'] - 7 }}" y="{{ $rowY + 18 }}" text-anchor="end" fill="#176448" font-family="DejaVu Sans, Arial, sans-serif" font-size="9" font-weight="700">{{ $card['scores'][$slot] }}</text>
+          <text x="{{ $card['x'] + $card['width'] - 7 }}" y="{{ $rowY + 18 }}" text-anchor="end" fill="{{ $palette['text'] }}" font-family="DejaVu Sans, Arial, sans-serif" font-size="9" font-weight="700">{{ $card['scores'][$slot] }}</text>
         @endif
       @endforeach
       <rect x="{{ $card['x'] + $card['width'] - 38 }}" y="{{ $card['middle'] - 25 }}" width="38" height="14" fill="#ffffff"/>

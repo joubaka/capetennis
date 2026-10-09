@@ -36,11 +36,7 @@
                 $p1 = $reg1?->players?->first()?->full_name ?? 'TBD';
                 $p2 = $reg2?->players?->first()?->full_name ?? 'TBD';
 
-                $cls1 = $winner && $winner == $fx->registration1_id ? 'bg-success text-white' :
-                        ($winner && $winner == $fx->registration2_id ? 'bg-danger text-white' : '');
-
-                $cls2 = $winner && $winner == $fx->registration2_id ? 'bg-success text-white' :
-                        ($winner && $winner == $fx->registration1_id ? 'bg-danger text-white' : '');
+                [$cls1, $cls2] = \App\Support\ResultPresentation::classes($fx);
 
                 $allSets = $fx->fixtureResults->sortBy('set_nr')
                     ->map(fn($r) => "{$r->registration1_score}-{$r->registration2_score}")
@@ -144,15 +140,15 @@
   }
 
   function applyColours(tr, winner, r1, r2) {
-    tr.find('td').eq(1).removeClass('bg-success bg-danger text-white');
-    tr.find('td').eq(3).removeClass('bg-success bg-danger text-white');
+    tr.find('td').eq(1).removeClass('winner-home loser-home bg-success bg-danger text-white');
+    tr.find('td').eq(3).removeClass('winner-home loser-home bg-success bg-danger text-white');
     if (!winner) return;
     if (String(winner) === String(r1)) {
-      tr.find('td').eq(1).addClass('bg-success text-white');
-      tr.find('td').eq(3).addClass('bg-danger text-white');
+      tr.find('td').eq(1).addClass('winner-home');
+      tr.find('td').eq(3).addClass('loser-home');
     } else if (String(winner) === String(r2)) {
-      tr.find('td').eq(1).addClass('bg-danger text-white');
-      tr.find('td').eq(3).addClass('bg-success text-white');
+      tr.find('td').eq(1).addClass('loser-home');
+      tr.find('td').eq(3).addClass('winner-home');
     }
   }
 

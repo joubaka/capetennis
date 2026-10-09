@@ -54,11 +54,13 @@
   stroke-width: 1px;
 }
 .ct-bracket-svg .player-identity-bg.winner {
-  fill: #f1f3f3;
-  stroke: #c7cdd0;
+  fill: #e4f3e7;
+  stroke: #166534;
 }
 .ct-bracket-svg .player-identity-text { fill: #155d91 !important; }
-.ct-bracket-svg .player-identity-text.winner { fill: #111 !important; }
+.ct-bracket-svg .player-identity-text.winner { fill: #166534 !important; }
+.ct-bracket-svg .player-identity-bg.loser { fill: #fce8e8; stroke: #b91c1c; }
+.ct-bracket-svg .player-identity-text.loser { fill: #b91c1c !important; }
 .ct-bracket-svg .automatic-note {
   fill: var(--ct-bracket-score);
   font-size: 9px;

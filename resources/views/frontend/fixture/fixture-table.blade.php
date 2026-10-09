@@ -69,19 +69,8 @@ $fxScoreDisplay = function ($r) {
 };
 
 /* Determine winner for highlight */
-$fxWinnerClasses = function ($fx) {
-    if ($fx instanceof \App\Models\TeamFixture) {
-        return match ($fx->winnerSide()) { 'home' => ['winner-home','loser-home'], 'away' => ['loser-home','winner-home'], default => ['',''] };
-    }
-    if ($fx->fixtureResults->isEmpty()) {
-        return ['',''];
-    }
+$fxWinnerClasses = fn ($fx) => \App\Support\ResultPresentation::classes($fx);
 
-    $winner = $fx->winner_id;
-    if (!$winner) return ['',''];
-    return (int) $winner === (int) $fx->registration1_id
-        ? ['winner-home','loser-home'] : ['loser-home','winner-home'];
-};
 @endphp
 
 
@@ -111,6 +100,7 @@ $fxWinnerClasses = function ($fx) {
 
     <div class="public-match-cards">
       @forelse($fixtures as $fx)
+        @php [$homeClass, $awayClass] = $fxWinnerClasses($fx); @endphp
         <article class="public-match-card" aria-label="Match {{ $fx->match_nr }}">
           <div class="public-match-venue">{{ $fx->venue?->name ?? 'Venue to follow' }}</div>
           @if($fx->scheduled_at)
@@ -121,9 +111,9 @@ $fxWinnerClasses = function ($fx) {
             <div class="public-match-date">Match time to follow</div>
           @endif
           <div class="public-match-players">
-            <div>@if($fx instanceof \App\Models\TeamFixture)@include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['home']])@else<x-player-name :players="$fx->registration1?->players ?? []" :context="$draw" separator=" + " />@endif</div>
+            <div class="{{ $homeClass }}">@if($fx instanceof \App\Models\TeamFixture)@include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['home']])@else<x-player-name :players="$fx->registration1?->players ?? []" :context="$draw" separator=" + " />@endif<x-result-label :outcome="$homeClass" /></div>
             <div class="public-match-versus">vs</div>
-            <div>@if($fx instanceof \App\Models\TeamFixture)@include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['away']])@else<x-player-name :players="$fx->registration2?->players ?? []" :context="$draw" separator=" + " />@endif</div>
+            <div class="{{ $awayClass }}">@if($fx instanceof \App\Models\TeamFixture)@include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['away']])@else<x-player-name :players="$fx->registration2?->players ?? []" :context="$draw" separator=" + " />@endif<x-result-label :outcome="$awayClass" /></div>
           </div>
           <div class="public-match-score">Match {{ $fx->match_nr }} · @forelse($fx->fixtureResults as $r){{ $fxScoreDisplay($r) }}@if(!$loop->last), @endif @empty No score yet @endforelse</div>
         </article>
@@ -171,14 +161,14 @@ $fxWinnerClasses = function ($fx) {
             </td>
 
             {{-- PLAYER / TEAM LABELS --}}
-            <td class="{{ $homeClass }}">
+            <td class="{{ $homeClass }}"><x-result-label :outcome="$homeClass" />
               @if($fx instanceof \App\Models\TeamFixture)
                 @include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['home']])
               @else
                 <x-player-name :players="$fx->registration1?->players ?? []" :context="$draw" separator=" + " />
               @endif
             </td>
-            <td class="{{ $awayClass }}">
+            <td class="{{ $awayClass }}"><x-result-label :outcome="$awayClass" />
               @if($fx instanceof \App\Models\TeamFixture)
                 @include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['away']])
               @else

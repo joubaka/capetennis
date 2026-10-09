@@ -37,18 +37,18 @@
 
           {{-- 🧩 TEAM DISPLAY --}}
           @php
-              $winner = match ($fixture->winnerSide()) { 'home' => 1, 'away' => 2, default => null };
+              [$homeClass, $awayClass] = \App\Support\ResultPresentation::classes($fixture);
           @endphp
 
           {{-- === TEAM 1 === --}}
-          <td class="{{ $winner == 1 ? 'bg-label-success border border-2 border-success' : '' }}">
+          <td class="{{ $homeClass }}">
             @include('frontend.fixture.lineup-side', ['lineup' => $fixture->lineup_display['home']])
           </td>
 
           <td>vs</td>
 
           {{-- === TEAM 2 === --}}
-          <td class="{{ $winner == 2 ? 'bg-label-success border border-2 border-success' : '' }}">
+          <td class="{{ $awayClass }}">
             @include('frontend.fixture.lineup-side', ['lineup' => $fixture->lineup_display['away']])
           </td>
 

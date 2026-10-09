@@ -64,7 +64,7 @@
       </summary>
       <div class="card-body">
         @foreach($ties as $tieKey => $tieFixtures)
-          @php $firstFixture = $tieFixtures->first(); @endphp
+          @php $firstFixture = $tieFixtures->first(); [$tieHomeClass, $tieAwayClass] = \App\Support\ResultPresentation::tieClasses($tieFixtures); @endphp
           <details class="fixture-tie mb-3" data-live-key="tie-{{ $round }}-{{ $tieKey }}">
             <summary class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2" style="cursor: pointer;">
             <h5 class="mb-0" id="fixture-tie-{{ $round }}-{{ $tieKey }}">
@@ -72,9 +72,9 @@
               <span class="text-muted">Tie {{ $firstFixture->tie_nr ?: $loop->iteration }} ·</span>
               @foreach(['home', 'away'] as $side)
                 @if(!$loop->first)<span class="text-muted">vs</span>@endif
-                <span class="fixture-team-chip" style="--region-color: {{ $firstFixture->lineup_display[$side]['region_color'] ?? '#475569' }}">
+                <span class="fixture-team-chip {{ $side === 'home' ? $tieHomeClass : $tieAwayClass }}" style="--region-color: {{ $firstFixture->lineup_display[$side]['region_color'] ?? '#475569' }}">
                   <span class="d-none d-md-inline">{{ $firstFixture->tie_display[$side] }}</span>
-                  <span class="d-md-none">{{ $firstFixture->tie_mobile_display[$side] }}</span>
+                  <span class="d-md-none">{{ $firstFixture->tie_mobile_display[$side] }}</span><x-result-label :outcome="$side === 'home' ? $tieHomeClass : $tieAwayClass" />
                 </span>
               @endforeach
             </h5>

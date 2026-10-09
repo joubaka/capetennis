@@ -108,7 +108,9 @@
                      ($f->registration1_id === $colRegId && $f->registration2_id === $rowRegId);
             });
 
-            $score = '';
+            $outcomes = \App\Support\ResultPresentation::classes($fixture);
+                            $cellOutcome = $fixture && (int) $fixture->registration1_id === (int) $rowRegId ? $outcomes[0] : $outcomes[1];
+                            $score = '';
             if ($fixture && $fixture->fixtureResults->count()) {
               $score = $fixture->fixtureResults->map(function ($r) use ($fixture, $rowRegId) {
                 return $fixture->registration1_id === $rowRegId
@@ -119,10 +121,10 @@
           @endphp
 
           <rect x="{{ $x }}" y="{{ $y }}" width="{{ $cellWidth }}" height="{{ $cellHeight }}"
-                fill="{{ $isDiagonal ? '#000' : '#fff' }}" stroke="#000" />
+                fill="{{ $isDiagonal ? '#000' : ($cellOutcome === 'winner-home' ? '#e4f3e7' : ($cellOutcome === 'loser-home' ? '#fce8e8' : '#fff')) }}" stroke="#000" />
 
           @if (!$isDiagonal)
-            <text x="{{ $x + 5 }}" y="{{ $y + 20 }}" font-size="12">{{ $score ?: '-' }}</text>
+            <text x="{{ $x + 5 }}" y="{{ $y + 20 }}" font-size="12" fill="{{ $cellOutcome === 'winner-home' ? '#166534' : ($cellOutcome === 'loser-home' ? '#b91c1c' : '#172033') }}">{{ $score ?: '-' }}</text>
           @endif
         @endforeach
 

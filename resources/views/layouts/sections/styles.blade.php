@@ -73,3 +73,5 @@
 
 
 
+
+<link rel="stylesheet" href="{{ asset('assets/css/result-outcomes.css') }}?v=20261009">

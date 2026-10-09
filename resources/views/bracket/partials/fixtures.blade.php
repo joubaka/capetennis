@@ -44,7 +44,7 @@
         </td>
 
 
-        <td  class=" p1 bg-label-{{ $bracket->getWinnerRegistration($fixture->id,$fixture->registration1_id)}} registration1" data-id="{{$fixture->registrations1 ? $fixture->registrations1->id:''}}">
+        <td  class=" p1 {{ \App\Support\ResultPresentation::classes($fixture)[0] }} registration1" data-id="{{$fixture->registrations1 ? $fixture->registrations1->id:''}}">
           @if($fixture->registration1_id > 0)
             {{$fixture->registrations1['players'][0]['name'].' '.$fixture->registrations1['players'][0]['surname']}}
 
@@ -61,7 +61,7 @@
           @else
             <button type="button" data-id="{{$fixture}}" data-reg1="{{$fixture->registrations1 ? $fixture->registrations1->players[0]->full_name:''}} " data-reg2="{{$fixture->registrations2 ? $fixture->registrations2->players[0]->full_name:''}} " class="btn btn-sm btn-success insertResult" data-bs-toggle="modal" data-bs-target="#tennisResultModal" >vs</button></td>
         @endif
-        <td class="p2 bg-label-{{ $bracket->getWinnerRegistration($fixture->id,$fixture->registration2_id)}} registration2" data-id="{{$fixture->registrations2 ? $fixture->registrations2->id:''}}">
+        <td class="p2 {{ \App\Support\ResultPresentation::classes($fixture)[1] }} registration2" data-id="{{$fixture->registrations2 ? $fixture->registrations2->id:''}}">
           @if($fixture->registration2_id > 0)
             {{$fixture->registrations2['players'][0]['name'].' '.$fixture->registrations2['players'][0]['surname']}}
           @elseif(is_null($fixture->registration2_id))

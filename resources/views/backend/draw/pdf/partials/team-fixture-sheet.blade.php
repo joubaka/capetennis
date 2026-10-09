@@ -5,6 +5,7 @@
     $previousSheetDrawRound = null;
   @endphp
   @forelse($fixtures as $fx)
+    @php [$homeClass, $awayClass] = \App\Support\ResultPresentation::classes($fx); @endphp
     @php
       $sheetDrawRound = $fx->draw_id.':'.$fx->round_nr;
     @endphp
@@ -18,7 +19,7 @@
       <td>{{ $fx->id }}</td>
       <td>{{ $fx->rubber_sequence ?? $fx->match_nr ?? $fx->home_rank_nr ?? '—' }}</td>
       @foreach(['home', 'away'] as $side)
-      <td><span class="sheet-team">{{ $fx->lineup_display[$side]['region'] ?: $fx->tie_display[$side] }} · </span>
+      <td style="color:{{ ($side === 'home' ? $homeClass : $awayClass) === 'winner-home' ? '#166534' : (($side === 'home' ? $homeClass : $awayClass) === 'loser-home' ? '#b91c1c' : '#172033') }};"><span class="sheet-team">{{ $fx->lineup_display[$side]['region'] ?: $fx->tie_display[$side] }} · </span>
         @forelse($fx->lineup_display[$side]['players'] as $player)
           @if(!$loop->first) + @endif
           @if($player['rank'])({{ $player['rank'] }}) @endif{{ $player['name'] }}

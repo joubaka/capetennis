@@ -321,7 +321,7 @@ $configData = Helper::appClasses();
 
                                                 <td>{{$fixture->match_nr}}</td>
 
-                                                <td class="bg-label-{{ $bracket->getWinnerRegistration($fixture->id,$fixture->registration1_id)}}">
+                                                <td class="{{ \App\Support\ResultPresentation::classes($fixture)[0] }}">
                                                     @if($fixture->registration1_id > 0)
                                                     <x-player-name :players="$fixture->registrations1->players" :context="$draw" />
                                                     @elseif(is_null($fixture->registration1_id))
@@ -331,7 +331,7 @@ $configData = Helper::appClasses();
                                                     @endif
                                                 </td>
                                                 <td><span class="badge bg-label-primary me-1">vs</span></td>
-                                                <td class="bg-label-{{ $bracket->getWinnerRegistration($fixture->id,$fixture->registration2_id)}}">
+                                                <td class="{{ \App\Support\ResultPresentation::classes($fixture)[1] }}">
                                                     @if($fixture->registration2_id > 0)
                                                     <x-player-name :players="$fixture->registrations2->players" :context="$draw" />
                                                     @elseif(is_null($fixture->registration2_id))

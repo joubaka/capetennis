@@ -1,0 +1,17 @@
+/* Match outcomes use readable colours and a second, textual indication. */
+.winner-home, .match-player.winner, .match-player.is-winner {
+  background: #e4f3e7 !important; color: #166534 !important; border-color: #166534 !important;
+}
+.loser-home, .match-player.loser, .match-player.is-loser {
+  background: #fce8e8 !important; color: #b91c1c !important; border-color: #b91c1c !important;
+}
+.winner-home :is(a, .fixture-player-label, .player-name, .p1, .p2),
+.match-player.winner .player-name { color: #166534 !important; }
+.loser-home :is(a, .fixture-player-label, .player-name, .p1, .p2),
+.match-player.loser .player-name { color: #b91c1c !important; }
+.result-label { display: inline-block; font-size: .75rem; font-weight: 700; margin-left: .4rem; }
+svg .player-identity-bg.loser { fill: #fce8e8 !important; stroke: #b91c1c !important; }
+svg .player-identity-bg.winner { fill: #e4f3e7 !important; stroke: #166534 !important; }
+svg .player-name.loser, svg .player-identity-text.loser { fill: #b91c1c !important; }
+svg .player-name.winner, svg .player-identity-text.winner, svg .bracket-winner { fill: #166534 !important; }
+@media print { .winner-home, .loser-home { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }

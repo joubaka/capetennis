@@ -261,18 +261,7 @@
                     @foreach($group['waves'] as $wave)
                     @foreach($wave as $fx)
                     @php
-                        $homeClass = '';
-                        $awayClass = '';
-                        if ($fx->fixtureResults->count()) {
-                            $lastSet = $fx->fixtureResults->last();
-                            if ($lastSet->team1_score > $lastSet->team2_score) {
-                                $homeClass='winner-home'; $awayClass='loser-home';
-                            } elseif ($lastSet->team2_score > $lastSet->team1_score) {
-                                $homeClass='loser-home'; $awayClass='winner-home';
-                            } else {
-                                $homeClass='draw-cell'; $awayClass='draw-cell';
-                            }
-                        }
+                        [$homeClass, $awayClass] = \App\Support\ResultPresentation::classes($fx);
 
                         $homeLabel = collect($fx->lineup_display['home']['players'])->map(fn ($player) => ($player['rank'] ? '(' . $player['rank'] . ') ' : '') . $player['name'])->implode(' + ') ?: 'TBD';
                         $awayLabel = collect($fx->lineup_display['away']['players'])->map(fn ($player) => ($player['rank'] ? '(' . $player['rank'] . ') ' : '') . $player['name'])->implode(' + ') ?: 'TBD';

@@ -128,16 +128,17 @@
                 </thead>
                 <tbody>
                   @foreach($draw->drawFixtures->take(5) as $fixture)
+                    @php [$homeClass, $awayClass] = \App\Support\ResultPresentation::classes($fixture); @endphp
                     <tr class="fixture-row">
                       <td class="text-muted">{{ $fixture->match_nr ?? $loop->iteration }}</td>
-                      <td>
+                      <td class="{{ $homeClass }}"><x-result-label :outcome="$homeClass" />
                         @if($fixture->registration1?->players->first())
                           {{ $fixture->registration1->players->first()->full_name ?? $fixture->registration1->players->first()->name }}
                         @else
                           <span class="text-muted">TBD</span>
                         @endif
                       </td>
-                      <td>
+                      <td class="{{ $awayClass }}"><x-result-label :outcome="$awayClass" />
                         @if($fixture->registration2?->players->first())
                           {{ $fixture->registration2->players->first()->full_name ?? $fixture->registration2->players->first()->name }}
                         @else

@@ -240,7 +240,9 @@ final class FlexibleMonradPdfLayout
             return 'withdrawn';
         }
         if ($id) {
-            return (int) $id === (int) ($match['winner'] ?? 0) ? 'winner' : 'player';
+            [$homeClass, $awayClass] = \App\Support\ResultPresentation::registrationClasses($match['winner'] ?? null, $match['players'][0] ?? null, $match['players'][1] ?? null);
+            $outcome = (int) $id === (int) ($match['players'][0] ?? 0) ? $homeClass : $awayClass;
+            return $outcome === 'winner-home' ? 'winner' : ($outcome === 'loser-home' ? 'loser' : 'player');
         }
 
         return 'source';

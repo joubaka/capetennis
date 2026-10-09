@@ -44,11 +44,7 @@
     $p2 = $reg2?->players?->first()?->full_name ?? 'TBD';
 
     // Row colours
-    $cls1 = $winner === $fx->registration1_id ? 'bg-success text-white' :
-            ($loser === $fx->registration1_id ? 'bg-danger text-white' : '');
-
-    $cls2 = $winner === $fx->registration2_id ? 'bg-success text-white' :
-            ($loser === $fx->registration2_id ? 'bg-danger text-white' : '');
+    [$cls1, $cls2] = \App\Support\ResultPresentation::classes($fx);
 @endphp
 
 

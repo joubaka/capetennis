@@ -72,7 +72,7 @@
     <h3 class="h5">Head-to-head matches</h3>
     <div class="table-responsive"><table class="table"><thead><tr><th>Event / date</th><th>Category / source</th><th>Score / outcome</th><th>Points</th><th>Evidence</th></tr></thead><tbody>
     @forelse($preview['match_evidence'] as $match)
-        <tr><td>{{ $match['event'] }}<br>{{ $match['date'] }}</td><td>{{ $match['category'] }}<br>{{ $match['source'] }}</td><td>vs {{ $match['opponents'] }}<br>{{ $match['score'] }} (this player first)<br>{{ $match['reason'] ? 'Excluded' : ($match['won'] ? 'Win' : 'Loss') }}</td><td>{{ $match['points'] === null ? '—' : number_format($match['points'], 1) }}</td><td>{{ $match['reason'] ?? 'Included' }}</td></tr>
+        <tr><td>{{ $match['event'] }}<br>{{ $match['date'] }}</td><td>{{ $match['category'] }}<br>{{ $match['source'] }}</td><td class="{{ $match['reason'] ? '' : ($match['won'] ? 'winner-home' : 'loser-home') }}">vs {{ $match['opponents'] }}<br>{{ $match['score'] }} (this player first)<br>{{ $match['reason'] ? 'Excluded' : ($match['won'] ? 'Win' : 'Loss') }}</td><td>{{ $match['points'] === null ? '—' : number_format($match['points'], 1) }}</td><td>{{ $match['reason'] ?? 'Included' }}</td></tr>
     @empty
         <tr><td colspan="5">No publicly visible match evidence.</td></tr>
     @endforelse

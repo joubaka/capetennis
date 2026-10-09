@@ -182,13 +182,14 @@
           </tr>
 
           @foreach($dayFixtures as $fx)
+    @php [$homeClass, $awayClass] = \App\Support\ResultPresentation::classes($fx); @endphp
             <tr>
               <td>{{ \Carbon\Carbon::parse($fx->scheduled_at)->format('H:i') }}</td>
               <td>{{ $fx->draw->drawName }}<br><small>M{{ $fx->match_nr ?? $fx->id }}</small></td>
-              <td>
+              <td class="{{ $homeClass }}">
                 @include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['home']])
               </td>
-              <td>
+              <td class="{{ $awayClass }}">
                 @include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['away']])
               </td>
               <td class="fw-bold text-center">{{ $fx->result ?: '____  ____  ____' }}</td>
@@ -198,13 +199,14 @@
       @else
         {{-- 📅 Single-day view --}}
         @forelse($fixtures as $fx)
+    @php [$homeClass, $awayClass] = \App\Support\ResultPresentation::classes($fx); @endphp
           <tr>
             <td>{{ \Carbon\Carbon::parse($fx->scheduled_at)->format('H:i') }}</td>
             <td>{{ $fx->draw->drawName }}<br><small>M{{ $fx->match_nr ?? $fx->id }}</small></td>
-            <td>
+            <td class="{{ $homeClass }}">
               @include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['home']])
             </td>
-            <td>
+            <td class="{{ $awayClass }}">
               @include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['away']])
             </td>
             <td class="fw-bold text-center">{{ $fx->result ?: '____  ____  ____' }}</td>

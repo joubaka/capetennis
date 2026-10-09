@@ -14,15 +14,15 @@
 
     function applyRowColours(tr, winner, reg1Id, reg2Id) {
       // td indices (hidden id=0, p1=1, p2=3)
-      tr.find('td').eq(1).removeClass('bg-success bg-danger text-white');
-      tr.find('td').eq(3).removeClass('bg-success bg-danger text-white');
+      tr.find('td').eq(1).removeClass('winner-home loser-home bg-success bg-danger text-white');
+      tr.find('td').eq(3).removeClass('winner-home loser-home bg-success bg-danger text-white');
       if (!winner) return;
       if (winner == reg1Id) {
-        tr.find('td').eq(1).addClass('bg-success text-white');
-        tr.find('td').eq(3).addClass('bg-danger text-white');
+        tr.find('td').eq(1).addClass('winner-home');
+        tr.find('td').eq(3).addClass('loser-home');
       } else if (winner == reg2Id) {
-        tr.find('td').eq(1).addClass('bg-danger text-white');
-        tr.find('td').eq(3).addClass('bg-success text-white');
+        tr.find('td').eq(1).addClass('loser-home');
+        tr.find('td').eq(3).addClass('winner-home');
       }
     }
 

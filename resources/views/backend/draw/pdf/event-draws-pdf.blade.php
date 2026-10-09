@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <style>
+.winner-home { color:#166534; background:#e4f3e7; font-weight:bold; } .loser-home { color:#b91c1c; background:#fce8e8; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: Arial, sans-serif; padding: 12px; color: #000; font-size: 11px; }
   h1 { font-size: 16px; margin-bottom: 4px; }
@@ -204,6 +205,7 @@
           <tbody>
             @foreach($grouped[$stage] as $fx)
               @php
+                [$homeClass, $awayClass] = \App\Support\ResultPresentation::registrationClasses($fx['winner'], $fx['r1_id'], $fx['r2_id']);
                 $home = $fx['home'] ?? '---';
                 $away = $fx['away'] ?? '---';
                 $homeFeed = $feeder($fx, 'home');
@@ -213,12 +215,12 @@
               @endphp
               <tr>
                 <td>{{ $fx['match_nr'] ?? $fx['id'] }}</td>
-                <td class="{{ $fx['winner'] == $fx['r1_id'] ? 'fw-bold text-success' : '' }}">
+                <td class="{{ $homeClass }}">
                   {!! $home !!}
                   @if($fx['playoff_type']) <small style="color:#666;">({{ $fx['playoff_type'] }})</small> @endif
                 </td>
                 <td class="text-center">vs</td>
-                <td class="{{ $fx['winner'] == $fx['r2_id'] ? 'fw-bold text-success' : '' }}">
+                <td class="{{ $awayClass }}">
                   {!! $away !!}
                 </td>
                 <td class="text-center">{{ $fx['round'] ?? '' }}</td>

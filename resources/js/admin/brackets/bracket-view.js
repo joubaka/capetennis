@@ -31,10 +31,12 @@ const BracketView = (() => {
     if (!$el.length) return;
 
     const score = fx.score_summary || '';
-    const winner = fx.winner_registration_id;
+    const winner = Number(fx.winner_registration_id || 0);
+    const home = Number(fx.registration1_id || 0), away = Number(fx.registration2_id || 0);
+    const knownWinner = winner > 0 && (winner === home || winner === away);
 
-    const p1Class = winner && winner === fx.registration1_id ? 'fw-bold text-success' : '';
-    const p2Class = winner && winner === fx.registration2_id ? 'fw-bold text-success' : '';
+    const p1Class = knownWinner && home ? (winner === home ? 'winner-home' : 'loser-home') : '';
+    const p2Class = knownWinner && away ? (winner === away ? 'winner-home' : 'loser-home') : '';
 
     $el.find('[data-player="1"]').text(fx.player1 || 'TBD').attr('class', p1Class);
     $el.find('[data-player="2"]').text(fx.player2 || 'TBD').attr('class', p2Class);

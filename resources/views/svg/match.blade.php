@@ -56,6 +56,7 @@
     {{-- PLAYER 1 NAME (top) --}}
     @include('draw.partials.svg-player-identity', [
         'name' => $player1Name,
+        'fixture' => $fx, 'slot' => 1,
         'x' => 10,
         'y' => -3,
         'maxWidth' => 136,
@@ -95,6 +96,7 @@
     {{-- PLAYER 2 BELOW --}}
     @include('draw.partials.svg-player-identity', [
         'name' => $player2Name,
+        'fixture' => $fx, 'slot' => 2,
         'x' => 10,
         'y' => $height + 13,
         'maxWidth' => 136,

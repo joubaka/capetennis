@@ -19,6 +19,11 @@
         isset($fixture) && $registration
             && (int) ($fixture?->winner_registration ?? 0) === (int) $registration->id
     ));
+    $outcomeClasses = isset($fixture) ? \App\Support\ResultPresentation::classes($fixture) : ['', ''];
+    if (isset($fixture) && isset($slot)) {
+        $isWinner = ($outcomeClasses[(int) $slot - 1] ?? '') === 'winner-home';
+    }
+    $isLoser = isset($slot) && ($outcomeClasses[(int) $slot - 1] ?? '') === 'loser-home';
     $maxWidth = (float) ($maxWidth ?? 176);
     $textX = (float) $x;
     $baselineY = (float) $y;
@@ -43,7 +48,7 @@
         width="{{ $estimatedWidth }}"
         height="17"
         rx="5"
-        class="player-identity-bg {{ $isWinner ? 'winner' : '' }}"
+        class="player-identity-bg {{ $isWinner ? 'winner' : ($isLoser ? 'loser' : '') }}"
     />
-    <text x="{{ $textX }}" y="{{ $baselineY }}" @if($badgeCount) textLength="{{ max(30, $maxWidth - 14) }}" lengthAdjust="spacingAndGlyphs" @endif class="player-name player-identity-text {{ $isWinner ? 'winner' : '' }}"><title>{{ $display }}</title>{{ $badgeDisplay }}@if($registration)@foreach($registration->players as $ratedPlayer)<x-player-rating :player-id="$ratedPlayer->id" :context="$draw ?? ($fixture ?? null)?->draw ?? null" :svg="true" />@endforeach@endif</text>
+    <text x="{{ $textX }}" y="{{ $baselineY }}" @if($badgeCount) textLength="{{ max(30, $maxWidth - 14) }}" lengthAdjust="spacingAndGlyphs" @endif class="player-name player-identity-text {{ $isWinner ? 'winner' : ($isLoser ? 'loser' : '') }}"><title>{{ $display }}</title>{{ $badgeDisplay }}@if($registration)@foreach($registration->players as $ratedPlayer)<x-player-rating :player-id="$ratedPlayer->id" :context="$draw ?? ($fixture ?? null)?->draw ?? null" :svg="true" />@endforeach@endif</text>
 @endif

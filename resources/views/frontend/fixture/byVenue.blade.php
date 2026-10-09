@@ -118,7 +118,8 @@ if (!function_exists('team_label')) {
               $homeClass = $awayClass = '';
               $status = 'Pending';
               if ($fx->fixtureResults && $fx->fixtureResults->count()) {
-                  $winner = $fx->winnerSide();
+                  [$homeClass, $awayClass] = \App\Support\ResultPresentation::classes($fx);
+                  $winner = $homeClass === 'winner-home' ? 'home' : ($awayClass === 'winner-home' ? 'away' : null);
                   if ($winner === 'home') {
                       $homeClass = 'winner-home'; $awayClass = 'loser-home'; $status = 'Home Win';
                   } elseif ($winner === 'away') {

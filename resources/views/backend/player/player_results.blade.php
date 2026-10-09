@@ -28,7 +28,8 @@
     <div class="card-body">
       @forelse($results['fixture'] as $key => $result)
 
-<p>{{$result->created_at->format('j F , Y') }} <span class="badge bg-label-success"> {{$result->fixture->draw->events->name}}</span> {{$result->team1->getFullNameAttribute()}} vs {{$result->team2->getFullNameAttribute()}} @foreach($result->fixture->teamResults as $r) {{$r->team1_score. '-'.$r->team2_score.';'}} @endforeach </p>
+@php [$homeClass, $awayClass] = \App\Support\ResultPresentation::classes($result->fixture); @endphp
+<p>{{$result->created_at->format('j F , Y') }} <span class="badge bg-label-success"> {{$result->fixture->draw->events->name}}</span> <span class="{{ $homeClass }}">{{$result->team1->getFullNameAttribute()}}<x-result-label :outcome="$homeClass" /></span> vs <span class="{{ $awayClass }}">{{$result->team2->getFullNameAttribute()}}<x-result-label :outcome="$awayClass" /></span> @foreach($result->fixture->teamResults as $r) {{$r->team1_score. '-'.$r->team2_score.';'}} @endforeach </p>
 
     @empty<p class="text-muted">No recorded team results for this player.</p>
     @endforelse

@@ -55,15 +55,7 @@
                                 ? $fx->fixtureResults->map(fn($r) => "{$r->team1_score}-{$r->team2_score}")->implode(', ')
                                 : null;
 
-                            $homeClass = ''; $awayClass = '';
-                            if ($fx->fixtureResults->count()) {
-                                $winner = $fx->winnerSide();
-                                if ($winner === 'home') {
-                                    $homeClass = 'winner-home'; $awayClass = 'loser-home';
-                                } elseif ($winner === 'away') {
-                                    $homeClass = 'loser-home'; $awayClass = 'winner-home';
-                                }
-                            }
+                            [$homeClass, $awayClass] = \App\Support\ResultPresentation::classes($fx);
                         @endphp
                         <tr>
                             <td class="text-muted d-none d-sm-table-cell">{{ $fx->id }}</td>

@@ -102,7 +102,7 @@ class SvgBracketRenderer
         $p1 = $this->resolveName($fx->registration1_id, $fx);
         $p2 = $this->resolveName($fx->registration2_id, $fx);
 
-        $winner = $fx->winner_registration;
+        [$homeClass, $awayClass] = \App\Support\ResultPresentation::classes($fx);
     $isAdmin = Auth::check() && auth()->user()->hasRole('admin');
 
 
@@ -116,13 +116,11 @@ class SvgBracketRenderer
         $svg .= "<rect x='$x' y='$y' width='{$this->boxWidth}' height='{$this->boxHeight}' fill='white' stroke='black'/>";
 
         // Player 1
-        $style1 = ($winner == $fx->registration1_id) ? "font-weight:bold;" :
-                  (($winner && $winner != $fx->registration1_id) ? "fill:#777;" : "");
+        $style1 = $homeClass === 'winner-home' ? 'fill:#166534;font-weight:bold;' : ($homeClass === 'loser-home' ? 'fill:#b91c1c;' : '');
         $svg .= "<text x='".($x+8)."' y='".($y+18)."' style='$style1' font-size='14'>{$p1}</text>";
 
         // Player 2
-        $style2 = ($winner == $fx->registration2_id) ? "font-weight:bold;" :
-                  (($winner && $winner != $fx->registration2_id) ? "fill:#777;" : "");
+        $style2 = $awayClass === 'winner-home' ? 'fill:#166534;font-weight:bold;' : ($awayClass === 'loser-home' ? 'fill:#b91c1c;' : '');
         $svg .= "<text x='".($x+8)."' y='".($y+38)."' style='$style2' font-size='14'>{$p2}</text>";
 
         // Divider line
@@ -194,11 +192,11 @@ class SvgBracketRenderer
         $sets = $fx->fixtureResults;
         $out = "";
 
-        $winner = $fx->winner_registration;
+        [$homeClass, $awayClass] = \App\Support\ResultPresentation::classes($fx);
         $p1 = $fx->registration1_id;
 
         foreach ($sets as $set) {
-            if ($winner == $p1) {
+            if ($homeClass === 'winner-home') {
                 $out .= "{$set->registration1_score}-{$set->registration2_score} ";
             } else {
                 $out .= "{$set->registration2_score}-{$set->registration1_score} ";

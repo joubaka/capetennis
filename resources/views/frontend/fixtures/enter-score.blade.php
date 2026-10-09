@@ -73,18 +73,7 @@
                             $homeLabel = count($homeNames)?collect($homeNames)->implode(' + '):'TBD';
                             $awayLabel = count($awayNames)?collect($awayNames)->implode(' + '):'TBD';
                             $display = $fx->scheduled_at ?? null;
-                            $homeClass = '';
-                            $awayClass = '';
-                            if ($fx->fixtureResults->count()) {
-                                $winner = $fx->winnerSide();
-                                if ($winner === 'home') {
-                                    $homeClass = 'winner-home';
-                                    $awayClass = 'loser-home';
-                                } elseif ($winner === 'away') {
-                                    $homeClass = 'loser-home';
-                                    $awayClass = 'winner-home';
-                                }
-                            }
+                            [$homeClass, $awayClass] = \App\Support\ResultPresentation::classes($fx);
                         @endphp
                         <tr id="row-{{ $fx->id }}">
                             <td class="fw-bold">

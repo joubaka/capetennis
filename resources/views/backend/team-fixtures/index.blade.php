@@ -80,15 +80,7 @@ $awayClass = '';
 $isV2 = !is_null($fx->team_tie_id);
 @endphp
 
-@if($fx->fixtureResults->count())
-@php $winner = $fx->winnerSide(); @endphp
-@if($winner === 'home')
-@php $homeClass='winner-home'; $awayClass='loser-home'; @endphp
-@elseif($winner === 'away')
-@php $homeClass='loser-home'; $awayClass='winner-home'; @endphp
-
-@endif
-@endif
+@php [$homeClass, $awayClass] = \App\Support\ResultPresentation::classes($fx); @endphp
 
 
 @php

@@ -15,7 +15,7 @@
       th { background: #333; color: #fff; font-weight: 700; font-size: 15px; }
       .text-center { text-align: center; }
       .fw-bold { font-weight: bold; }
-      .text-success { color: #198754; }
+      .text-success { color: #166534; } .text-danger { color:#b91c1c; }
       .text-muted { color: #888; }
       .badge { display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 13px; font-weight: 700; }
       .bg-dark { background: #000; color: #fff; }
@@ -136,8 +136,8 @@
     let html = '<h1>' + escapeHtml(drawName) + '</h1><h2>Order of Play / Fixtures</h2>';
     html += '<table><thead><tr><th>M#</th><th>Stage</th><th>Player 1</th><th class="text-center">vs</th><th>Player 2</th><th class="text-center">Rd</th><th class="text-center">Score</th></tr></thead><tbody>';
     oop.forEach(function(fx) {
-      var w1 = fx.winner == fx.r1_id ? ' class="fw-bold text-success"' : '';
-      var w2 = fx.winner == fx.r2_id ? ' class="fw-bold text-success"' : '';
+      var w1 = fx.winner && fx.r1_id ? (Number(fx.winner) === Number(fx.r1_id) ? ' class="fw-bold text-success"' : (Number(fx.winner) === Number(fx.r2_id) ? ' class="text-danger"' : '')) : '';
+      var w2 = fx.winner && fx.r2_id ? (Number(fx.winner) === Number(fx.r2_id) ? ' class="fw-bold text-success"' : (Number(fx.winner) === Number(fx.r1_id) ? ' class="text-danger"' : '')) : '';
       var stage = fx.stage || 'RR';
       var stageLabel = stageLabels[stage] || stage;
       var score = escapeHtml(fx.score || '');
@@ -344,8 +344,8 @@
       html += '<h2 style="margin-top:20px;">Order of Play / Fixtures</h2>';
       html += '<table><thead><tr><th>M#</th><th>Stage</th><th>Player 1</th><th class="text-center">vs</th><th>Player 2</th><th class="text-center">Rd</th><th class="text-center">Score</th></tr></thead><tbody>';
       oop.forEach(function(fx) {
-        var w1 = fx.winner == fx.r1_id ? ' class="fw-bold text-success"' : '';
-        var w2 = fx.winner == fx.r2_id ? ' class="fw-bold text-success"' : '';
+        var w1 = fx.winner && fx.r1_id ? (Number(fx.winner) === Number(fx.r1_id) ? ' class="fw-bold text-success"' : (Number(fx.winner) === Number(fx.r2_id) ? ' class="text-danger"' : '')) : '';
+        var w2 = fx.winner && fx.r2_id ? (Number(fx.winner) === Number(fx.r2_id) ? ' class="fw-bold text-success"' : (Number(fx.winner) === Number(fx.r1_id) ? ' class="text-danger"' : '')) : '';
         var stage = fx.stage || 'RR';
         var stageLabel = stageLabels[stage] || stage;
         var score = escapeHtml(fx.score || '');
@@ -657,8 +657,8 @@
 
     var html = '<table><thead><tr><th>M#</th><th>Stage</th><th>Player 1</th><th class="text-center">vs</th><th>Player 2</th><th class="text-center">Rd</th><th class="text-center">Score</th></tr></thead><tbody>';
     list.forEach(function(fx) {
-      var w1 = fx.winner == fx.r1_id ? ' class="fw-bold text-success"' : '';
-      var w2 = fx.winner == fx.r2_id ? ' class="fw-bold text-success"' : '';
+      var w1 = fx.winner && fx.r1_id ? (Number(fx.winner) === Number(fx.r1_id) ? ' class="fw-bold text-success"' : (Number(fx.winner) === Number(fx.r2_id) ? ' class="text-danger"' : '')) : '';
+      var w2 = fx.winner && fx.r2_id ? (Number(fx.winner) === Number(fx.r2_id) ? ' class="fw-bold text-success"' : (Number(fx.winner) === Number(fx.r1_id) ? ' class="text-danger"' : '')) : '';
       var stage = fx.stage || 'RR';
       var stageLabel = stageLabels[stage] || stage;
       var score = escapeHtml(fx.score || '');
