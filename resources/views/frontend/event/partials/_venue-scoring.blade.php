@@ -27,8 +27,10 @@
             <a href="{{ route('frontend.scoring.workspace', ['event' => $event, 'schedule_source' => 'working', 'venue' => $scoringVenue->id]) }}"
                class="btn event-venue-scoring-link">
               <i class="ti ti-map-pin" aria-hidden="true"></i>
-              <span class="event-venue-scoring-name">{{ $scoringVenue->name }}</span>
-              <span class="event-venue-scoring-count">{{ $scoringVenue->fixture_count }}<span class="visually-hidden"> fixtures</span></span>
+              <span class="event-venue-scoring-name">{{ $scoringVenue->name }}
+                <span class="d-block small fw-normal mt-1">{{ \Carbon\Carbon::parse($scoringVenue->scoring_date ?? now(config('app.timezone'))->toDateString())->format('l') }}: {{ $scoringVenue->today_scored_count ?? 0 }} of {{ $scoringVenue->today_fixture_count ?? 0 }} scored</span>
+                <span class="d-block small fw-normal">{{ $scoringVenue->fixture_count }} scheduled total</span>
+              </span>
             </a>
           @endforeach
         </div>

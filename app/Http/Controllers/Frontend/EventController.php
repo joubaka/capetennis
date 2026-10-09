@@ -376,24 +376,7 @@ class EventController extends Controller
       $restrictedScoringVenueId = $user->is_event_score_keeper($event->id)
         ? $user->scoringVenueIdForEvent($event->id)
         : null;
-      $venueCounts = \App\Models\OrderOfPlay::query()->whereIn('draw_id', $drawIds)
-        ->whereNotNull('venue_id')->selectRaw('venue_id, COUNT(*) AS fixture_count')->groupBy('venue_id')
-        ->pluck('fixture_count', 'venue_id');
-      $teamVenueCounts = TeamFixture::query()->whereIn('draw_id', $drawIds)->whereNotNull('venue_id')
-        ->selectRaw('venue_id, COUNT(*) AS fixture_count')->groupBy('venue_id')->pluck('fixture_count', 'venue_id');
-      foreach ($teamVenueCounts as $venueId => $count) {
-        $venueCounts->put($venueId, (int) $venueCounts->get($venueId, 0) + (int) $count);
-      }
-      $scoringVenues = \App\Models\Venue::query()
-        ->whereIn('id', $venueCounts->keys())
-        ->when($restrictedScoringVenueId !== null, fn ($query) => $query->whereKey($restrictedScoringVenueId))
-        ->orderBy('name')
-        ->get()
-        ->map(function ($venue) use ($venueCounts) {
-          $venue->fixture_count = (int) $venueCounts->get($venue->id, 0);
-
-          return $venue;
-        });
+      $scoringVenues = app(\App\Services\Scoring\VenueScoringProgress::class)->venues($event, $restrictedScoringVenueId);
     }
 
     // ---------------------------------------------------------

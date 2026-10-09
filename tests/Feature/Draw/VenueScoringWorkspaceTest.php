@@ -284,7 +284,7 @@ class VenueScoringWorkspaceTest extends TestCase
             e(route('frontend.scoring.workspace', ['event' => $event, 'schedule_source' => 'working', 'venue' => $venue->id])),
             $html
         );
-        $this->assertStringContainsString('>2<span class="visually-hidden"> fixtures</span></span>', $html);
+        $this->assertStringContainsString('2 scheduled total', $html);
     }
 
     public function test_venue_scoring_control_is_hidden_from_an_unassigned_user(): void
@@ -787,6 +787,47 @@ class VenueScoringWorkspaceTest extends TestCase
         ]))->assertOk();
         $this->assertSame([$fixture->id], $response->viewData('matches')->pluck('id')->all());
         $this->assertSame(['2026-10-09'], $response->viewData('availableDates')->all());
+    }
+
+    public function test_venue_cards_count_todays_completed_matches_once_and_keep_all_day_totals(): void
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-10-09 00:30:00', config('app.timezone')));
+        [$event, $draw, $venue, $complete] = $this->scheduledFixture('Progress venue');
+        $complete->orderOfPlay()->update(['time' => '2026-10-09 08:00:00']);
+        $complete->update(['match_status' => FixtureState::STATUS_COMPLETED]);
+        FixtureResult::create(['fixture_id' => $complete->id, 'set_nr' => 1, 'registration1_score' => 6, 'registration2_score' => 2]);
+        FixtureResult::create(['fixture_id' => $complete->id, 'set_nr' => 2, 'registration1_score' => 6, 'registration2_score' => 3]);
+        [, , $saturdayVenue, $saturday] = $this->scheduledFixture('Saturday only', $event, $draw);
+        $saturday->orderOfPlay()->update(['time' => '2026-10-10 08:00:00']);
+        $saturday->update(['match_status' => FixtureState::STATUS_COMPLETED]);
+        TeamFixture::create(['draw_id' => $draw->id, 'round_nr' => 1, 'match_nr' => 1, 'venue_id' => $venue->id,
+            'scheduled_at' => '2026-10-09 09:00:00', 'match_status' => FixtureState::STATUS_COMPLETED]);
+        TeamFixture::create(['draw_id' => $draw->id, 'round_nr' => 1, 'match_nr' => 2, 'venue_id' => $venue->id,
+            'scheduled_at' => '2026-10-09 10:00:00', 'match_status' => FixtureState::STATUS_PARTIAL]);
+        TeamFixture::create(['draw_id' => $draw->id, 'round_nr' => 1, 'match_nr' => 3, 'venue_id' => $venue->id,
+            'scheduled_at' => '2026-10-10 10:00:00', 'match_status' => FixtureState::STATUS_COMPLETED]);
+        TeamFixture::create(['draw_id' => $draw->id, 'round_nr' => 1, 'match_nr' => 4, 'venue_id' => $venue->id]);
+        [$foreignEvent, $foreignDraw] = $this->scheduledFixture('Foreign progress');
+        TeamFixture::create(['draw_id' => $foreignDraw->id, 'round_nr' => 1, 'match_nr' => 1, 'venue_id' => $venue->id,
+            'scheduled_at' => '2026-10-09 10:00:00', 'match_status' => FixtureState::STATUS_COMPLETED]);
+        $publication = app(\App\Services\Scheduling\SchedulePublicationService::class);
+        $publication->publish($event, ['date' => '2026-10-09']);
+        $publication->hide($event, ['date' => '2026-10-09']);
+        $progress = app(\App\Services\Scoring\VenueScoringProgress::class);
+        $venues = $progress->venues($event);
+        $counts = $venues->firstWhere('id', $venue->id);
+        $this->assertSame(4, $counts->fixture_count);
+        $this->assertSame(3, $counts->today_fixture_count);
+        $this->assertSame(2, $counts->today_scored_count);
+        $zero = $venues->firstWhere('id', $saturdayVenue->id);
+        $this->assertSame(0, $zero->today_fixture_count);
+        $this->assertSame(0, $zero->today_scored_count);
+        $this->assertSame([$venue->id], $progress->venues($event, $venue->id)->pluck('id')->all());
+        $this->actingAs($this->scorerFor($event));
+        $html = view('frontend.event.partials._venue-scoring', ['event' => $event, 'scoringVenues' => $venues])->render();
+        $this->assertStringContainsString('Friday: 2 of 3 scored', $html);
+        $this->assertStringContainsString('4 scheduled total', $html);
+        $this->travelBack();
     }
 
     private function scorerFor(Event $event): User
