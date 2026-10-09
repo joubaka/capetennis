@@ -1,6 +1,6 @@
 <details class="result-rules">
   <summary>How the ranking works</summary>
-  <p>Roster bands come first: 1–2, then 3–4, 5–6, and 7–8. A player remains in their band even with zero wins. Within each band, points equal completed match wins multiplied by its weight: 100, 35, 12, or 2. Equal points are ordered by completed-match sets won minus sets lost. If tied players all come from the same team, the higher roster position comes first. Players from different teams are compared by direct wins when every tied pair has the same nonzero number of counted matches. Unresolved ties require review at the selection cutoff. Candidate regions choose players; excluded result regions remove entire matches involving either side. Adjacent-band comparisons support manual review and do not promote players automatically. Explain departures from the suggestions before saving a draft.</p>
+  <p>Roster bands come first: 1–2, then 3–4, 5–6, and 7–8. A player remains in their band even with zero wins. Within each band, points equal completed match wins multiplied by its weight: 100, 35, 12, or 2. For equal points, teammates with an unambiguous roster follow their roster positions before set difference. The highest remaining roster player from each team competes for the next place using completed-match sets won minus sets lost. Players from different teams are compared by direct wins when every tied pair has the same nonzero number of counted matches. Unresolved ties require review at the selection cutoff. Candidate regions choose players; excluded result regions remove entire matches involving either side. Adjacent-band comparisons support manual review and do not promote players automatically. Explain departures from the suggestions before saving a draft.</p>
 </details>
 @if($ranking->isEmpty())
   <div class="result-empty" role="status"><i class="ti ti-scoreboard" aria-hidden="true"></i><strong>No completed singles results</strong><p>Check the regions and match formats in Setup, or choose another age group. Incomplete matches and doubles are excluded.</p></div>
@@ -33,6 +33,20 @@
         <div><dt>Sets won / lost</dt><dd>{{ $player['sets_won'] }} / {{ $player['sets_lost'] }}</dd></div>
         <div><dt>Set difference</dt><dd>{{ $player['set_difference'] > 0 ? '+' : '' }}{{ $player['set_difference'] }}</dd></div>
       </dl>
+      @if(isset($player['cape_tennis_rating']))
+        @php $rating = $player['cape_tennis_rating']; @endphp
+        <p class="result-review-notice">
+          <strong>Cape Tennis rating · {{ $rating['cohort'] }}</strong>:
+          @if($rating['score'] !== null)
+            {{ number_format($rating['score'], 1) }}/100 · Rating rank {{ $rating['position'] }} · Comparison group {{ $rating['component'] }} · Overall playing cohort.
+          @else
+            Unavailable. {{ $rating['unavailable_reason'] }}
+          @endif
+          Informational only.
+          @if($rating['as_of']) Saved as of {{ $rating['as_of'] }}.@endif
+          @if($rating['snapshot_stale']) Saved rating is stale; awaiting refresh.@endif
+        </p>
+      @endif
       @if($player['head_to_head']['tied_players'] > 1 && !$player['same_team_tiebreak'])
         <p class="result-review-notice">Head-to-head among tied players: {{ $player['head_to_head']['wins'] }}W / {{ $player['head_to_head']['losses'] }}L. {{ $player['head_to_head']['reason'] }}</p>
       @endif

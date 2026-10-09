@@ -23,6 +23,19 @@ class TrialBaselinePolicyTest extends TestCase
         $this->assertSame($model->fit($one)['ratings'][1]['score'],$model->fit($many)['ratings'][1]['score']);
     }
 
+    public function test_score_margin_survives_event_budget_and_trial_baseline(): void
+    {
+        $policy = new TrialBaselinePolicy;
+        $event = (new Event)->forceFill(['id'=>200,'name'=>'Main trial','start_date'=>'2026-01-01']);
+        $close = $this->edges(); $close[0]['outcome_target'] = 0.77;
+        $wide = $this->edges(); $wide[0]['outcome_target'] = 1.0;
+        $date = CarbonImmutable::parse('2026-01-02');
+        $closeBaseline = $policy->baseline($event, 'u10 boys', $policy->budget($close), $date);
+        $wideBaseline = $policy->baseline($event, 'u10 boys', $policy->budget($wide), $date);
+        $this->assertGreaterThan($closeBaseline['anchors'][1]['target'], $wideBaseline['anchors'][1]['target']);
+        $this->assertSame($closeBaseline['anchors'][1]['weight'], $wideBaseline['anchors'][1]['weight']);
+    }
+
     public function test_anchor_replaces_zero_prior_and_is_not_recentered(): void
     {
         $edges = $this->edges(); $edges[0]['topology_only'] = true;

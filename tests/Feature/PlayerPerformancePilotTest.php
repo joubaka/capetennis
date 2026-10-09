@@ -305,6 +305,25 @@ class PlayerPerformancePilotTest extends TestCase
         return $fixture;
     }
 
+    public function test_shared_rating_uses_score_margin_and_preserves_confidence_counts(): void
+    {
+        $field = $this->field(Category::factory()->create(['name' => 'u10 Boys']));
+        $fixture = $this->match($field, [[7,6]]);
+        $service = app(\App\Services\Performance\PlayerSharedAbilityService::class);
+        $player = $field['rows'][0]['players']->first(); $asOf = CarbonImmutable::parse('2026-10-06');
+        $close = $service->forPlayer($player, $asOf)['headline'];
+        $fingerprint = $service->fingerprint();
+        $fixture->fixtureResults()->update(['registration1_score' => 6, 'registration2_score' => 0]);
+        $wide = $service->forPlayer($player, $asOf)['headline'];
+        $this->assertGreaterThan($close['score'], $wide['score']);
+        $this->assertSame($close['played'], $wide['played']);
+        $this->assertSame($close['confidence_index'], $wide['confidence_index']);
+        $this->assertNotSame($fingerprint, $service->fingerprint());
+        $fingerprint = $service->fingerprint();
+        \Illuminate\Support\Facades\DB::table('draw_settings')->where('draw_id', $fixture->draw_id)->update(['score_format' => 'custom_1']);
+        $this->assertNotSame($fingerprint, $service->fingerprint());
+    }
+
     public function test_all_history_and_every_target_field_count_with_bounded_latest_evidence(): void
     {
         $category = Category::factory()->create(['name' => 'u10 Boys A division']);
@@ -655,6 +674,19 @@ class PlayerPerformancePilotTest extends TestCase
         $row = \App\Models\TeamFixturePlayer::create(['team_fixture_id' => $fixture->id, 'slot_no' => 1, 'team1_id' => $first->id, 'team2_id' => $second->id]);
         \App\Models\TeamFixtureResult::create(['team_fixture_id' => $fixture->id, 'set_nr' => 1, 'team1_score' => 6, 'team2_score' => 4]);
         return compact('field','first','second','home','away','draw','fixture','row');
+    }
+
+    public function test_team_score_margin_changes_rating_without_adding_match_evidence(): void
+    {
+        $data = $this->legacyTeamField();
+        $service = app(\App\Services\Performance\PlayerSharedAbilityService::class); $date = CarbonImmutable::parse('2026-10-06');
+        $close = $service->forPlayer($data['first'], $date)['headline'];
+        $data['fixture']->teamResults()->update(['team1_score' => 6, 'team2_score' => 0]);
+        $wide = $service->forPlayer($data['first'], $date)['headline'];
+        $this->assertGreaterThan($close['score'], $wide['score']);
+        $this->assertSame($close['played'], $wide['played']);
+        $this->assertSame($close['confidence_index'], $wide['confidence_index']);
+        $this->assertSame(0, $data['fixture']->fresh()->match_status);
     }
 
     public function test_shared_team_legacy_identity_links_require_event_region_year_unique_roster_and_exact_cohort(): void

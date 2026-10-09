@@ -87,6 +87,39 @@ class PlayerRatingLeaderboardTest extends TestCase
         }
     }
 
+    public function test_event_region_labels_follow_recorded_rosters_and_do_not_leak_to_other_events_or_site(): void
+    {
+        $this->admin();
+        $event = Event::factory()->create(['eventType' => 6]);
+        $field = $this->field($event);
+        $player = Player::factory()->create(['name' => 'Regional', 'surname' => 'Player']);
+        $individual = Player::factory()->create(['name' => 'Individual', 'surname' => 'Only']);
+        $this->entry($field, $player);
+        $this->entry($field, $individual);
+        foreach (['WP', 'BOL', 'WP', '  '] as $shortName) {
+            $region = TeamRegion::create(['region_name' => 'Region '.$shortName, 'short_name' => $shortName]);
+            $team = Team::factory()->create(['category_event_id' => $field->id, 'region_id' => $region->id]);
+            $team->players()->attach($player, ['rank' => 1]);
+            NoProfileTeamPlayer::create(['team_id' => $team->id, 'name' => 'Linked', 'surname' => 'Import', 'rank' => 2, 'pay_status' => 0, 'player_profile' => $player->id]);
+            if ($shortName === 'BOL') {
+                NoProfileTeamPlayer::create(['team_id' => $team->id, 'name' => 'Unlinked', 'surname' => 'Import', 'rank' => 3, 'pay_status' => 0]);
+            }
+        }
+        $foreignRegion = TeamRegion::create(['region_name' => 'Foreign region', 'short_name' => 'FOREIGN']);
+        $foreignTeam = Team::factory()->create(['category_event_id' => $this->field(Event::factory()->create(['eventType' => 6]))->id, 'region_id' => $foreignRegion->id]);
+        $foreignTeam->players()->attach($player, ['rank' => 1]);
+        $this->saved();
+        $rows = app(PlayerRatingLeaderboardService::class)->build($event, 'u12 boys')['rows'];
+        $this->assertCount(3, $rows);
+        $this->assertSame(['BOL', 'WP'], $rows->firstWhere('player_id', $player->id)['regions']);
+        $this->assertSame(['BOL'], $rows->firstWhere('name', 'Unlinked Import')['regions']);
+        $this->assertSame([], $rows->firstWhere('player_id', $individual->id)['regions']);
+        $this->get(route('backend.player-performance.event-ratings', $event).'?cohort=u12%20boys')->assertOk()
+            ->assertSee('(BOL, WP)')->assertSee('(BOL)')->assertDontSee('FOREIGN')->assertDontSee('<span class="text-muted">()</span>', false);
+        $this->get(route('backend.player-performance.ratings').'?cohort=u12%20boys')->assertOk()
+            ->assertDontSee('(BOL')->assertDontSee('(WP')->assertDontSee('(FOREIGN');
+    }
+
     public function test_site_requires_exact_cohort_and_orders_by_rating_with_unrated_last(): void
     {
         $this->admin();

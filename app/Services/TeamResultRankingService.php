@@ -57,7 +57,7 @@ class TeamResultRankingService
         ];
     }
 
-    public function ranking(Event $event, string $group, array $regions, array $formats, array $excludedResultRegionIds = []): Collection
+    public function ranking(Event $event, string $group, array $regions, array $formats, array $excludedResultRegionIds = [], bool $includeRatings = false): Collection
     {
         $excludedResultRegionIds = array_map('intval', $excludedResultRegionIds);
         $fixtures = $this->fixtures($event)->filter(fn ($fixture) => ($this->group($fixture)['key'] ?? null) === $group && in_array($this->format($fixture), $formats, true));
@@ -124,6 +124,7 @@ class TeamResultRankingService
                 $opponent = $sides[$side === 'home' ? 'away' : 'home'];
                 $won = $outcome['winner'] === $side;
                 $rows[$id] ??= ['id' => $id, 'name' => $entry['player']->name.' '.$entry['player']->surname, 'rank' => $entry['rank'], 'ranks' => [], 'teams' => [], 'region' => $entry['team']->regions?->short_name ?? '', 'wins' => 0, 'losses' => 0, 'singles_wins' => 0, 'reverse_singles_wins' => 0, 'sets_won' => 0, 'sets_lost' => 0, 'cross_band_review' => [], 'higher_rank_wins' => 0, 'matches' => []];
+                if ($includeRatings) $rows[$id]['rating_player_id'] = is_numeric($id) ? (int) $id : ($entry['player']->player_profile ? (int) $entry['player']->player_profile : null);
                 $rows[$id]['ranks'][] = $entry['rank'];
                 $rows[$id]['teams'][] = $entry['team']->name;
                 $rows[$id]['source_team_ids'][] = (int) $entry['team']->id;
@@ -207,7 +208,8 @@ class TeamResultRankingService
             }
             return $row;
         });
-        return $this->orderRanking($ranking);
+        $ranking = $this->orderRanking($ranking);
+        return $includeRatings ? app(TeamResultRatingService::class)->enrich($ranking, $event, $fixtures->isEmpty() ? null : $this->group($fixtures->first())) : $ranking;
     }
 
     public function orderRanking(Collection $ranking): Collection
@@ -256,16 +258,39 @@ class TeamResultRankingService
                     return $row;
                 })->values();
             })->values();
-        $cutoff = $ranking->get(9);
-        $next = $ranking->get(10);
-        $tieAtCutoff = $cutoff && $next && $cutoff['_position_key'] === $next['_position_key'];
+        // A pairwise same-team override can cycle against cross-team set differences.
+        // Compare the highest remaining roster player from each team instead, using
+        // the existing set-difference/direct-result order among eligible players.
+        $ranking = $ranking->groupBy(fn ($row) => $band($row).':'.$row['points'])
+            ->flatMap(function ($bucket) {
+                $source = fn ($row) => count($row['source_team_ids']) === 1 && count($row['ranks']) === 1 ? $row['source_team_ids'][0] : null;
+                $remaining = $bucket->values();
+                $ordered = collect();
+                while ($remaining->isNotEmpty()) {
+                    $index = $remaining->search(function ($row) use ($remaining, $source) {
+                        $team = $source($row);
+                        return $team === null || ! $remaining->contains(fn ($other) => $source($other) === $team && $other['rank'] < $row['rank']);
+                    });
+                    $row = $remaining->get($index);
+                    if ($source($row) !== null && $bucket->contains(fn ($other) => $source($other) === $source($row) && $other['rank'] !== $row['rank'])) {
+                        $row['same_team_tiebreak'] = true;
+                        $row['head_to_head']['reason'] = 'Same team: roster position takes precedence over set difference.';
+                    }
+                    $ordered->push($row);
+                    $remaining->forget($index);
+                }
+                return $ordered;
+            })->values();
+        // Roster precedence can separate otherwise unresolved cross-team ties.
+        // Every shared group spanning the selection boundary still needs review.
+        $cutoffKeys = $ranking->take(10)->pluck('_position_key')->intersect($ranking->slice(10)->pluck('_position_key'))->all();
         $position = 0; $previous = null;
-        return $ranking->map(function ($row, $index) use ($cutoff, $tieAtCutoff, &$position, &$previous) {
+        return $ranking->map(function ($row, $index) use ($cutoffKeys, &$position, &$previous) {
             $key = $row['_position_key'];
             if ($previous !== $key) $position = $index + 1;
             $previous = $key;
             $row['position'] = $position;
-            $row['cutoff_tie'] = $tieAtCutoff && $key === $cutoff['_position_key'];
+            $row['cutoff_tie'] = in_array($key, $cutoffKeys, true);
             $row['suggested'] = $index < 10 && ! $row['cutoff_tie'];
             unset($row['_position_key']);
             return $row;

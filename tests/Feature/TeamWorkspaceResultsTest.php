@@ -18,6 +18,50 @@ class TeamWorkspaceResultsTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_result_cards_show_global_playing_cohort_rating_without_changing_order_or_persisting_it(): void
+    {
+        [$event, , $draw, $home, $away] = $this->groupedScenario();
+        $otherRegion = \App\Models\TeamRegion::create(['region_name' => 'Other rating region', 'short_name' => 'OTHER']);
+        $event->regions()->attach($otherRegion);
+        TeamPlayer::where('player_id', $away->id)->first()->team->update(['region_id' => $otherRegion->id]);
+        $this->fixture($draw, $home, $away, [[6, 1], [6, 1]]);
+        $this->mock(\App\Services\Performance\PlayerRatingLeaderboardService::class)
+            ->shouldReceive('build')->twice()->with(null, 'u10 boys')->andReturn([
+                'rows' => collect([
+                    ['identity' => 'p:'.$home->id, 'cohort' => 'u10 boys', 'position' => 7, 'rating' => ['score' => 62.4, 'component' => 'connected']],
+                    ['identity' => 'p:'.$away->id, 'cohort' => 'u10 boys', 'position' => 1, 'rating' => ['score' => 88.8, 'component' => 'connected']],
+                ]), 'snapshot' => ['snapshot_as_of' => '2026-10-09', 'snapshot_stale' => true], 'limitReason' => null,
+            ]);
+        $response = $this->groupedRequest($event)->assertOk()->assertHeader('Cache-Control', 'no-store, private')
+            ->assertJsonPath('ranking.0.id', $home->id)->assertJsonPath('ranking.0.cape_tennis_rating.score', 62.4)
+            ->assertJsonPath('ranking.0.cape_tennis_rating.position', 7)->assertJsonPath('ranking.0.cape_tennis_rating.cohort', 'u10 boys');
+        $this->assertStringContainsString('Rating rank 7', $response->json('html'));
+        $this->assertStringContainsString('Saved rating is stale', $response->json('html'));
+        $this->assertArrayNotHasKey('rating_player_id', $response->json('ranking.0'));
+        $this->groupedRequest($event, ['regions' => [TeamPlayer::where('player_id', $home->id)->first()->team->region_id]])
+            ->assertOk()->assertJsonPath('ranking.0.cape_tennis_rating.position', 7);
+        $this->putJson(route('backend.team-result-selection.store', $event), [
+            'group_key' => '10-boys', 'region_ids' => $event->regions()->pluck('team_regions.id')->all(), 'formats' => ['singles'],
+            'selected_keys' => array_map('strval', [$home->id, $away->id]), 'reasons' => [], 'version' => 0,
+        ])->assertOk();
+        $draft = \App\Models\TeamResultSelectionDraft::firstOrFail();
+        foreach ($draft->snapshot as $row) {
+            $this->assertArrayNotHasKey('cape_tennis_rating', $row);
+            $this->assertArrayNotHasKey('rating_player_id', $row);
+        }
+        $this->assertStringNotContainsString('cape_tennis_rating', \Illuminate\Support\Facades\DB::table('team_result_selection_revisions')->value('evidence'));
+        Role::findOrCreate('admin', 'web');
+        $manager = User::factory()->create()->assignRole('admin');
+        $manager->adminEvents()->attach($event);
+        $this->actingAs($manager);
+        $privateFree = $this->groupedRequest($event)->assertOk();
+        $this->assertArrayNotHasKey('cape_tennis_rating', $privateFree->json('ranking.0'));
+        $this->assertArrayNotHasKey('rating_player_id', $privateFree->json('ranking.0'));
+        $this->assertStringNotContainsString('Cape Tennis rating', $privateFree->json('html'));
+        $this->getJson(route('backend.team-result-selection.show', $event).'?group_key=10-boys')->assertOk()
+            ->assertJsonPath('draft.snapshot.0.id', $home->id)->assertDontSee('cape_tennis_rating');
+    }
+
     public function test_band_first_keeps_zero_win_player_above_winning_lower_band(): void
     {
         [$event, , $draw, $home, $away] = $this->groupedScenario();

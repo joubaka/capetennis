@@ -40,6 +40,7 @@
                         <div class="d-flex flex-wrap justify-content-between gap-2">
                             <div>@if($member['position'])<span class="text-muted me-2">{{ $member['position'] }}.</span>@endif
                                 @if($member['player_id'])<a class="d-inline-flex align-items-center" style="min-height:44px" href="{{ route('backend.player-performance.show', $member['player_id']) }}">{{ $member['name'] }}</a>@else<span>{{ $member['name'] }}</span>@endif
+                                @if($event && $member['regions'])<span class="text-muted">({{ implode(', ', $member['regions']) }})</span>@endif
                             </div>
                             <div class="align-self-center">@if($member['rating'])<strong>{{ number_format($member['rating']['score'], 1) }}/100</strong> · {{ $member['rating']['confidence_label'] }} confidence @else<strong>Unrated</strong>@endif</div>
                         </div>

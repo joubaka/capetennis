@@ -66,6 +66,9 @@ class PlayerAbilitySnapshotTest extends TestCase
         CarbonImmutable::setTestNow('2026-10-08');
         $this->save();
         $this->assertTrue((new PlayerAbilitySnapshotStore)->current()['snapshot_stale']);
+        DB::table('player_ability_snapshots')->update(['model_version' => 5]);
+        $this->assertNotNull((new PlayerAbilitySnapshotStore)->current()['reason']);
+        $this->save();
         DB::table('player_ability_snapshots')->update(['policy_hash' => 'old']);
         $this->assertNotNull((new PlayerAbilitySnapshotStore)->current()['reason']);
         $this->save();

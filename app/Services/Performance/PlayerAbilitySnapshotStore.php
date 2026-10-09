@@ -17,6 +17,7 @@ class PlayerAbilitySnapshotStore
         return ['model' => PlayerSharedAbilityService::VERSION, 'confidence' => SharedAbilityConfidencePolicy::VERSION,
             'policy' => self::POLICY_VERSION, 'played_event_incident_budget' => 1, 'played_half_life_days' => 180,
             'unanchored_prior' => 0.5, 'ordinal_weight' => SharedAbilityModel::ORDINAL_WEIGHT,
+            'played_margin_policy' => PlayedMatchMarginPolicy::VERSION, 'played_margin_floor' => 0.75,
             'ordinal_target_span' => SharedAbilityModel::ORDINAL_TARGET_SPAN,
             'main_trial_event_type' => TrialBaselinePolicy::MAIN_TRIAL_EVENT_TYPE,
             'main_trial_type_name' => 'Cavaliers Trials', 'anchor_weight' => TrialBaselinePolicy::ANCHOR_WEIGHT,

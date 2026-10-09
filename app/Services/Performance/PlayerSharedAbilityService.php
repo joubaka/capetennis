@@ -6,10 +6,10 @@ use App\Models\{Event, Player};
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\{Cache, DB, Schema};
 
-/** Private v5 shared-opponent estimates. No saved financial/player/ranking state. */
+/** Private v6 shared-opponent estimates. No saved financial/player/ranking state. */
 class PlayerSharedAbilityService
 {
-    public const VERSION = 5;
+    public const VERSION = 6;
     private const EVENT_CAP = 1000;
     private const PLAYER_CAP = 5000;
     private const EDGE_CAP = 50000;
@@ -136,6 +136,7 @@ class PlayerSharedAbilityService
             'eventtypes' => ['id', 'name', 'code', 'type'],
             'category_events' => ['id', 'event_id', 'category_id'],
             'categories' => ['id', 'name'],
+            'draw_settings' => ['id', 'draw_id', 'workflow', 'num_sets', 'score_format', 'require_full_sets'],
             'fixtures' => ['id', 'draw_id', 'registration1_id', 'registration2_id'],
             'category_event_registrations' => ['id', 'category_event_id', 'registration_id']] as $table => $columns) {
             foreach (DB::table($table)->select($columns)->orderBy('id')->lazyById(500) as $row) {
@@ -242,7 +243,7 @@ class PlayerSharedAbilityService
                     if ($cohort === '') { continue; }
                     $winner = $match['winner_side'] === 1 ? $match['player1_id'] : $match['player2_id'];
                     $loser = $match['winner_side'] === 1 ? $match['player2_id'] : $match['player1_id'];
-                    $eventEdges[$cohort][] = ['winner' => $winner, 'loser' => $loser, 'weight' => $this->decay($match['confidence_date'], $asOf), 'kind' => 'played', 'source_id' => $source, 'event_id' => $event->id, 'confidence_date' => $match['confidence_date'], 'confidence_date_basis' => $match['confidence_date_basis']];
+                    $eventEdges[$cohort][] = ['winner' => $winner, 'loser' => $loser, 'weight' => $this->decay($match['confidence_date'], $asOf), 'kind' => 'played', 'outcome_target' => $match['outcome_target'] ?? 1.0, 'source_id' => $source, 'event_id' => $event->id, 'confidence_date' => $match['confidence_date'], 'confidence_date_basis' => $match['confidence_date_basis']];
                     $eventPlayed[$cohort][$winner][$loser] = true; $eventPlayed[$cohort][$loser][$winner] = true;
                     if (++$edgeCount > self::EDGE_CAP) { return $this->withheld($builtAt); }
                 }

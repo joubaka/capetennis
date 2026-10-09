@@ -41,10 +41,16 @@ class PlayerRatingLeaderboardService
         }
         $fieldIds = array_keys(array_filter($contexts, fn ($cohort) => !$selected || $cohort === $selected));
         $members = [];
-        $add = function ($id, string $name, string $cohort, string $identity) use (&$members, $ratings) {
+        $add = function ($id, string $name, string $cohort, string $identity, ?string $region = null) use (&$members, $ratings, $event) {
             $key = $cohort.'|'.$identity;
             $estimate = collect($ratings[$id] ?? [])->first(fn ($r) => $r['cohort'] === $cohort);
-            $members[$key] = ['player_id' => $id, 'name' => $name, 'cohort' => $cohort, 'identity' => $identity,
+            $regions = $members[$key]['regions'] ?? [];
+            if ($event && trim((string) $region) !== '') {
+                $regions[] = trim($region);
+            }
+            $regions = array_values(array_unique($regions));
+            sort($regions, SORT_NATURAL | SORT_FLAG_CASE);
+            $members[$key] = ['player_id' => $id, 'name' => $name, 'cohort' => $cohort, 'identity' => $identity, 'regions' => $regions,
                 'rating' => $estimate, 'component' => $estimate['component'] ?? 'Unrated'];
         };
         $individual = DB::table('category_event_registrations as cer')
@@ -55,8 +61,11 @@ class PlayerRatingLeaderboardService
         $teamQuery = $event ? app(EventTeamScope::class)->query($event)->withoutEagerLoads() : DB::table('teams');
         $teams = $teamQuery->when($selected === 'Unresolved legacy category', fn ($q) => $q->whereNull('category_event_id'))
             ->when(($selected && $selected !== 'Unresolved legacy category') || !$event, fn ($q) => $q->whereIn('category_event_id', $fieldIds))
-            ->limit(self::MEMBER_LIMIT + 1)->get(['id', 'category_event_id']);
+            ->limit(self::MEMBER_LIMIT + 1)->get(['id', 'category_event_id', 'region_id']);
         $teamContexts = $teams->mapWithKeys(fn ($team) => [$team->id => $contexts[$team->category_event_id] ?? 'Unresolved legacy category'])->all();
+        $regionNames = $event ? DB::table('team_regions')->whereIn('id', $teams->pluck('region_id')->filter()->unique())
+            ->pluck('short_name', 'id') : collect();
+        $teamRegions = $teams->mapWithKeys(fn ($team) => [$team->id => $regionNames[$team->region_id] ?? null])->all();
         $roster = DB::table('team_players as tp')->join('players as p', 'p.id', '=', 'tp.player_id')
             ->whereIn('tp.team_id', array_keys($teamContexts))->limit(self::MEMBER_LIMIT + 1)->get(['p.id', 'p.name', 'p.surname', 'tp.team_id']);
         $imported = DB::table('no_profile_team_players as np')->leftJoin('players as p', 'p.id', '=', 'np.player_profile')
@@ -66,11 +75,11 @@ class PlayerRatingLeaderboardService
             return compact('cohorts', 'snapshot') + ['rows' => collect(), 'limitReason' => 'This selection exceeds the safe display limit. Choose a smaller cohort or event.'];
         }
         foreach ($individual as $member) { $add($member->id, trim($member->name.' '.$member->surname), $contexts[$member->category_event_id], 'p:'.$member->id); }
-        foreach ($roster as $member) { $add($member->id, trim($member->name.' '.$member->surname), $teamContexts[$member->team_id], 'p:'.$member->id); }
+        foreach ($roster as $member) { $add($member->id, trim($member->name.' '.$member->surname), $teamContexts[$member->team_id], 'p:'.$member->id, $teamRegions[$member->team_id]); }
         foreach ($imported as $member) {
             $id = $member->player_profile ? (int) $member->player_profile : null;
             $name = $id ? trim($member->profile_name.' '.$member->profile_surname) : trim($member->name.' '.$member->surname);
-            $add($id, $name, $teamContexts[$member->team_id], $id ? 'p:'.$id : 'np:'.$member->id);
+            $add($id, $name, $teamContexts[$member->team_id], $id ? 'p:'.$id : 'np:'.$member->id, $teamRegions[$member->team_id]);
         }
         if (!$event) {
             $snapshotIds = [];

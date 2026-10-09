@@ -42,8 +42,10 @@ class SharedAbilityModel
             $links = array_fill_keys($members, []);
             foreach ($componentEdges as $edge) {
                 if ($edge['topology_only'] ?? false) { continue; }
-                $links[$edge['winner']][] = [$edge['loser'], 1, $edge['weight']];
-                $links[$edge['loser']][] = [$edge['winner'], 0, $edge['weight']];
+                $outcome = $edge['kind'] === 'played' ? ($edge['outcome_target'] ?? 1.0) : 1.0;
+                if (!is_numeric($outcome) || !is_finite((float) $outcome) || $outcome < 0.75 || $outcome > 1) { $outcome = 1.0; }
+                $links[$edge['winner']][] = [$edge['loser'], $outcome, $edge['weight']];
+                $links[$edge['loser']][] = [$edge['winner'], 1 - $outcome, $edge['weight']];
             }
             $fieldLinks = array_fill_keys($members, []); $fieldSums = []; $fields = [];
             usort($ordinalFields, fn ($a, $b) => strcmp($a['source_id'], $b['source_id']));

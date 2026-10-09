@@ -49,6 +49,18 @@ class SharedAbilityModelTest extends TestCase
         $component = array_values($fit['components'])[0];
         $this->assertSame(1,$component['played']); $this->assertSame(1,$component['inferred']);
     }
+    public function test_margin_target_changes_single_match_strength_without_changing_counts(): void
+    {
+        $model = new SharedAbilityModel;
+        $close = $this->edge(1, 2) + ['outcome_target' => 0.77];
+        $wide = $this->edge(1, 2) + ['outcome_target' => 1.0];
+        $closeFit = $model->fit([$close]); $wideFit = $model->fit([$wide]);
+        $this->assertGreaterThan($closeFit['ratings'][1]['score'], $wideFit['ratings'][1]['score']);
+        $this->assertLessThan($closeFit['ratings'][2]['score'], $wideFit['ratings'][2]['score']);
+        $this->assertSame($closeFit['components'], $wideFit['components']);
+        $this->assertSame($wideFit, $model->fit([$this->edge(1, 2) + ['outcome_target' => NAN]]));
+    }
+
     private function ordinal(array $ids, float $weight = 0.2, string $source = 'field'): array
     {
         $edges = [];

@@ -8,6 +8,50 @@ use PHPUnit\Framework\TestCase;
 
 class TeamResultRankingOrderTest extends TestCase
 {
+    public function test_equal_points_teammates_follow_roster_before_sets_and_other_teams_use_sets(): void
+    {
+        $simeon = array_replace($this->row(10, 70, [], 'Simeon'), ['rank' => 3, 'ranks' => [3], 'source_team_ids' => [1], 'set_difference' => 3]);
+        $jean = array_replace($this->row(11, 70, [], 'Jean'), ['rank' => 4, 'ranks' => [4], 'source_team_ids' => [1], 'set_difference' => 4]);
+        $other = array_replace($this->row(12, 70, [], 'Other'), ['rank' => 3, 'ranks' => [3], 'source_team_ids' => [2], 'set_difference' => 5]);
+        $service = new TeamResultRankingService;
+        foreach ([[$jean, $simeon, $other], [$simeon, $other, $jean], [$other, $jean, $simeon], [$jean, $other, $simeon], [$simeon, $jean, $other], [$other, $simeon, $jean]] as $rows) {
+            $ranking = $service->orderRanking(new Collection($rows));
+            $this->assertSame([12, 10, 11], $ranking->pluck('id')->all());
+            $this->assertTrue($ranking[1]['same_team_tiebreak']);
+        }
+        $leaders = new Collection(array_map(fn ($id) => $this->row($id, 1000 - $id, []), range(1, 9)));
+        $cutoff = $service->orderRanking($leaders->concat([$jean, $simeon]));
+        $this->assertSame([10, 11], $cutoff->slice(9)->pluck('id')->all());
+        $this->assertSame([10, 11], $cutoff->slice(9)->pluck('position')->all());
+        $this->assertCount(0, $cutoff->where('cutoff_tie', true));
+        $this->assertTrue($cutoff[9]['suggested']);
+    }
+
+    public function test_mixed_team_cycle_uses_highest_remaining_roster_candidates(): void
+    {
+        $higher = array_replace($this->row(1, 70, []), ['source_team_ids' => [1], 'set_difference' => 1]);
+        $lower = array_replace($this->row(2, 70, []), ['source_team_ids' => [1], 'rank' => 2, 'ranks' => [2], 'set_difference' => 3]);
+        $other = array_replace($this->row(3, 70, []), ['set_difference' => 2]);
+        $service = new TeamResultRankingService;
+        $ranking = $service->orderRanking(new Collection([$lower, $higher, $other]));
+        $this->assertSame([3, 1, 2], $ranking->pluck('id')->all());
+        $this->assertSame($ranking->all(), $service->orderRanking(new Collection([$other, $lower, $higher]))->all());
+    }
+
+    public function test_separated_cross_team_tie_spanning_cutoff_still_requires_review(): void
+    {
+        $leaders = new Collection(array_map(fn ($id) => $this->row($id, 1000 - $id, []), range(1, 8)));
+        $higher = array_replace($this->row(9, 70, []), ['source_team_ids' => [20], 'set_difference' => 1]);
+        $lower = array_replace($this->row(10, 70, []), ['source_team_ids' => [20], 'rank' => 2, 'ranks' => [2], 'set_difference' => 3]);
+        $other = array_replace($this->row(11, 70, []), ['set_difference' => 3]);
+        $ranking = (new TeamResultRankingService)->orderRanking($leaders->concat([$lower, $higher, $other]));
+        $this->assertSame([11, 9, 10], $ranking->slice(8)->pluck('id')->all());
+        $this->assertSame([11, 10], $ranking->where('cutoff_tie', true)->pluck('id')->all());
+        $this->assertFalse($ranking[8]['suggested']);
+        $this->assertTrue($ranking[9]['suggested']);
+        $this->assertFalse($ranking[10]['suggested']);
+    }
+
     public function test_zero_win_higher_band_stays_before_winning_lower_band_and_cross_band_cutoff_is_not_a_tie(): void
     {
         $service = new TeamResultRankingService;
