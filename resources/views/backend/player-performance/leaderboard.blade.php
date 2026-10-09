@@ -32,8 +32,12 @@
         <p>The score out of 100 represents relative ability within a connected comparison group, not a win percentage. Confidence describes the strength and freshness of the evidence, not rating accuracy.</p>
         <p class="mb-2">Includes recorded individual entries (including unpaid and withdrawn entries) and saved team rosters. Unrated members remain visible. A player entered in multiple cohorts appears once in each.</p>
     </details>
-    <p class="text-muted ratings-status mb-2">Saved calculation: {{ $snapshot['built_at'] }} · as of {{ $snapshot['snapshot_as_of'] ?? 'pending' }}.</p>
-    @if($refreshStatus['failed'])<div class="alert alert-warning" role="status">The latest background refresh failed. Saved estimates remain provisional.</div>
+    @if($snapshot['reason'])
+        <p class="text-muted ratings-status mb-2">Ratings are currently unavailable. Recorded players remain visible below.</p>
+    @else
+        <p class="text-muted ratings-status mb-2">Last successful calculation: {{ $snapshot['built_at'] }} · evidence as of {{ $snapshot['snapshot_as_of'] ?? 'unknown' }}.</p>
+    @endif
+    @if($refreshStatus['failed'])<div class="alert alert-warning" role="status">The latest background refresh failed. {{ $snapshot['reason'] ? 'Ratings remain unavailable until a successful refresh.' : 'Showing the last successful calculation; it does not include the failed update.' }}</div>
     @elseif($refreshStatus['pending'] && !$snapshot['reason'] && !($snapshot['snapshot_stale'] ?? false))<div class="alert alert-info py-2 mb-3" role="status">A background update is pending. Showing the last saved calculation. Reload this page later to see an updated calculation.</div>@endif
     @if($snapshot['reason'])<div class="alert alert-warning" role="status">{{ $snapshot['reason'] }}</div>
     @elseif($snapshot['snapshot_stale'] ?? false)<div class="alert alert-warning" role="status">The saved calculation is stale and awaiting background refresh.</div>@endif
@@ -57,23 +61,24 @@
         @forelse($players->getCollection()->groupBy('cohort') as $group => $members)
             <section class="mb-4" aria-label="{{ $group }}"><h2 class="h5">{{ $group }}</h2>
                 @foreach($members->groupBy('component') as $component => $comparisonMembers)
-                <h3 class="h6 mt-3">{{ $comparisonMembers->first()['rating'] ? 'Comparison group: '.$component : 'Unrated players' }}</h3>
+                <h3 class="h6 mt-3">{{ $snapshot['reason'] ? 'Ratings unavailable' : ($comparisonMembers->first()['rating'] ? 'Comparison group: '.$component : 'Unrated players') }}</h3>
                 <ul class="list-group mb-3">
                 @foreach($comparisonMembers as $member)
+                    @php($displayRating = $snapshot['reason'] ? null : $member['rating'])
                     <li class="list-group-item">
                         <div class="rating-row">
-                            <div class="rating-player">@if($member['position'])<span class="text-muted me-2">{{ $member['position'] }}.</span>@endif
+                            <div class="rating-player">@if($displayRating && $member['position'])<span class="text-muted me-2">{{ $member['position'] }}.</span>@endif
                                 @if($member['player_id'])<a class="d-inline-flex align-items-center" style="min-height:44px" href="{{ route('backend.player-performance.show', $member['player_id']) }}">{{ $member['name'] }}</a>@else<span>{{ $member['name'] }}</span>@endif
                                 @if($event && $member['regions'])<span class="text-muted">({{ implode(', ', $member['regions']) }})</span>@endif
                             </div>
-                            <div class="rating-score">@if($member['rating'])<strong>{{ number_format($member['rating']['score'], 1) }}/100</strong><small class="text-muted">{{ $member['rating']['confidence_label'] }} confidence</small>@else<strong>Unrated</strong>@endif</div>
+                            <div class="rating-score">@if($displayRating)<strong>{{ number_format($displayRating['score'], 1) }}/100</strong><small class="text-muted">{{ $displayRating['confidence_label'] }} confidence</small>@elseif($snapshot['reason'] && $member['player_id'])<strong>Rating unavailable</strong>@else<strong>Unrated</strong>@endif</div>
                         </div>
-                        @if($member['rating'])
+                        @if($displayRating)
                             <details class="rating-evidence text-muted"><summary>Rating evidence</summary>
-                            <p class="small text-muted mb-1">Last eligible activity: {{ $member['rating']['last_eligible_activity'] ?? $member['rating']['last_played'] ?? 'unknown' }} · {{ $member['rating']['baseline_status'] ?? 'No connected main-trial baseline' }}</p>
-                            <p class="small text-muted mb-0">{{ $member['rating']['confidence_explanation'] }}</p>
+                            <p class="small text-muted mb-1">Last eligible activity: {{ $displayRating['last_eligible_activity'] ?? $displayRating['last_played'] ?? 'unknown' }} · {{ $displayRating['baseline_status'] ?? 'No connected main-trial baseline' }}</p>
+                            <p class="small text-muted mb-0">{{ $displayRating['confidence_explanation'] }}</p>
                             </details>
-                        @else<p class="small text-muted mb-0">{{ $member['player_id'] ? 'No eligible saved estimate for this exact cohort; check the player evidence or pending update.' : 'Imported roster member has no linked player profile.' }}</p>@endif
+                        @else<p class="small text-muted mb-0">{{ !$member['player_id'] ? 'Imported roster member has no linked player profile.' : ($snapshot['reason'] ? 'A safe current estimate is unavailable; this does not mean the player has no rating evidence.' : 'No eligible saved estimate for this exact cohort; check the player evidence or pending update.') }}</p>@endif
                     </li>
                 @endforeach
                 </ul>

@@ -99,6 +99,34 @@ class PlayerAbilityBackgroundRefreshTest extends TestCase
         $this->assertNotNull(app(PlayerAbilitySnapshotStore::class)->current()['reason']);
     }
 
+    public function test_pending_refresh_recovers_a_snapshot_withheld_after_context_changes(): void
+    {
+        $event = \App\Models\Event::factory()->create(['published' => true]);
+        $draw = \App\Models\Draw::factory()->create(['event_id' => $event->id, 'published' => true]);
+        $payload = $this->payload();
+        $payload['source_events'] = [$event->id];
+        $store = app(PlayerAbilitySnapshotStore::class);
+        $store->replace($payload, CarbonImmutable::today('Africa/Johannesburg'), 'before', $store->manifest($payload));
+        DB::table('draws')->where('id', $draw->id)->update(['drawName' => 'Corrected category context']);
+        $state = app(PlayerAbilityRefreshState::class);
+        $generation = $state->generation();
+        $this->assertNotNull($store->current()['reason']);
+        $this->assertTrue($state->status()['pending']);
+
+        $service = $this->partialMock(PlayerSharedAbilityService::class);
+        $service->shouldReceive('fingerprint')->twice()->andReturn('after');
+        $service->shouldReceive('calculateSnapshot')->once()->andReturn($payload);
+        $this->artisan('player-ability:refresh --pending')->assertSuccessful();
+
+        $this->assertNull($store->current()['reason']);
+        $this->assertFalse($store->current()['snapshot_stale']);
+        $this->assertFalse($state->status()['pending']);
+        $this->assertFalse($state->status()['failed']);
+        $this->assertSame($generation, (int) DB::table('player_ability_refresh_state')->value('completed_generation'));
+        $this->assertSame('after', DB::table('player_ability_snapshots')->value('source_fingerprint'));
+        $this->assertDatabaseCount('player_ability_snapshots', 1);
+    }
+
     public function test_source_tracking_adds_only_one_schema_check_per_request_and_updates_after_commit(): void
     {
         $queries = [];

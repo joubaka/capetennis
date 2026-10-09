@@ -238,14 +238,39 @@ class PlayerRatingLeaderboardTest extends TestCase
         $event = Event::factory()->create(['eventType' => 6]);
         $player = Player::factory()->create(['name' => 'Visible', 'surname' => 'Member']);
         $this->entry($this->field($event), $player);
+        $team = Team::factory()->create(['category_event_id' => $event->categoryEvents()->first()->id]);
+        NoProfileTeamPlayer::create(['team_id' => $team->id, 'name' => 'Imported', 'surname' => 'Member', 'rank' => 1, 'pay_status' => 0]);
         $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn([
             'cohorts' => [], 'names' => [], 'reason' => 'Saved ability estimates are withheld because their source publication or context changed.',
             'built_at' => 'Not yet updated', 'snapshot_as_of' => null, 'snapshot_stale' => true,
             'badge_players' => [$player->id => [$this->estimate(99.9)]],
         ]);
         $this->partialMock(PlayerSharedAbilityService::class)->shouldNotReceive('calculateSnapshot');
+        $this->partialMock(\App\Services\Performance\PlayerAbilityRefreshState::class)->shouldReceive('status')
+            ->andReturn(['failed' => true, 'pending' => true]);
         $this->get(route('backend.player-performance.event-ratings', $event))->assertOk()->assertSee('Visible Member')
-            ->assertSee('Unrated')->assertSee('Saved ability estimates are withheld')->assertDontSee('99.9/100');
+            ->assertSee('Ratings unavailable')->assertSee('Rating unavailable')->assertSee('Imported Member')->assertSee('Unrated')
+            ->assertSee('this does not mean the player has no rating evidence')->assertSee('Saved ability estimates are withheld')
+            ->assertDontSee('99.9/100')->assertDontSee('Medium confidence')->assertDontSee('Rating evidence')
+            ->assertDontSee('Unrated players')->assertDontSee('Last successful calculation:')
+            ->assertSee('Ratings remain unavailable until a successful refresh.');
+    }
+
+    public function test_failed_refresh_keeps_successful_ratings_and_labels_their_evidence_date(): void
+    {
+        $this->admin();
+        $event = Event::factory()->create(['eventType' => 6]);
+        $player = Player::factory()->create(['name' => 'Saved', 'surname' => 'Member']);
+        $this->entry($this->field($event), $player);
+        $this->saved([$player->id => [$this->estimate(62)]]);
+        $this->partialMock(\App\Services\Performance\PlayerAbilityRefreshState::class)->shouldReceive('status')
+            ->andReturn(['failed' => true, 'pending' => true]);
+
+        $this->get(route('backend.player-performance.event-ratings', $event))->assertOk()
+            ->assertSee('62.0/100')->assertSee('Last successful calculation: 2026-10-09 08:00:00')
+            ->assertSee('evidence as of 2026-10-09')->assertSee('The latest background refresh failed.')
+            ->assertSee('it does not include the failed update')->assertDontSee('Rating unavailable')
+            ->assertDontSee('A background update is pending.');
     }
 
     public function test_legacy_teams_require_event_exclusive_regions_and_unresolved_selection_is_available(): void
