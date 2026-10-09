@@ -672,6 +672,29 @@ final class EventVenueScheduleService
                     'partial' => (bool) $applyVenueIds, 'assignments' => $auditAssignments[$drawId] ?? [],
                 ]);
             }
+            if (! empty($options['programme'])) {
+                $draft = DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->lockForUpdate()->first();
+                $stored = json_decode((string) ($draft->options ?? ''), true) ?: [];
+                $legacyRound = $stored['programme']['rounds'][0] ?? null;
+                $legacyDraw = $legacyRound ? Draw::where('event_id', $event->id)->find($legacyRound['draw_id'] ?? $legacyRound['drawId'] ?? 0) : null;
+                $legacyAge = $legacyDraw ? app(ScheduleProgramme::class)->age($legacyDraw) : null;
+                if ($legacyAge !== null && ! isset($stored['programme_settings'][(string) $legacyAge])) {
+                    $stored['programme_settings'][(string) $legacyAge] = array_intersect_key($stored, array_flip([
+                        'duration', 'player_rest', 'court_gap', 'gender_waves', 'gender_wave_release', 'reschedule_existing',
+                    ])) + ['programme' => $stored['programme']];
+                }
+                $programme = $preview['input']['programme'];
+                $firstDraw = Draw::where('event_id', $event->id)->find($programme['rounds'][0]['drawId']);
+                $age = app(ScheduleProgramme::class)->age($firstDraw);
+                $stored['programme'] = $programme;
+                $stored['programme_settings'][(string) $age] = array_intersect_key($options, array_flip([
+                    'duration', 'player_rest', 'court_gap', 'gender_waves', 'gender_wave_release', 'reschedule_existing',
+                ])) + ['programme' => $programme];
+                DB::table('event_venue_schedule_drafts')->updateOrInsert(['event_id' => $event->id], [
+                    'options' => json_encode($stored, JSON_THROW_ON_ERROR), 'updated_by' => auth()->id(),
+                    'created_at' => $draft->created_at ?? now(), 'updated_at' => now(),
+                ]);
+            }
             return ['count' => count($scheduledFixtureIds), 'revision' => $expectedRevision,
                 'venue_ids' => $matches->pluck('venue_id')->unique()->values()->all()];
         });

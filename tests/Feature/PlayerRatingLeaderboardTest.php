@@ -80,7 +80,10 @@ class PlayerRatingLeaderboardTest extends TestCase
         $this->assertCount(3, $rows);
         $this->assertSame([$player->id, null, null], $rows->pluck('player_id')->all());
         $response = $this->get(route('backend.player-performance.event-ratings', $event))->assertOk()->assertSee('Recorded Player')
-            ->assertSee('Imported Unrated')->assertDontSee('Stale Imported name')->assertDontSee('Foreign Player')->assertHeader('Cache-Control', 'no-store, private');
+            ->assertSee('Imported Unrated')->assertDontSee('Stale Imported name')->assertDontSee('Foreign Player')->assertHeader('Cache-Control', 'no-store, private')
+            ->assertSee('Private provisional singles ratings')->assertSee('not a win percentage')
+            ->assertSee('Confidence describes the strength and freshness of the evidence, not rating accuracy.')
+            ->assertSee('Rating evidence')->assertSee('62.0/100')->assertSee('Medium confidence');
         $this->assertNull($rows->firstWhere('name', 'Dangling Profile')['rating']);
         if (getenv('CT_LEADERBOARD_QA_HTML') === '1') {
             file_put_contents(storage_path('framework/testing/leaderboard-qa.html'), $response->getContent());
@@ -156,6 +159,26 @@ class PlayerRatingLeaderboardTest extends TestCase
         $this->assertSame([26, 27], $response->viewData('players')->getCollection()->pluck('position')->all());
         $searched = $this->get(route('backend.player-performance.ratings').'?cohort=u12%20boys&search=26');
         $this->assertSame([26], $searched->viewData('players')->getCollection()->pluck('position')->all());
+    }
+
+    public function test_event_ratings_reuses_workspace_banner_with_active_navigation_only_once(): void
+    {
+        $this->admin();
+        $event = Event::factory()->create(['name' => 'Ratings banner event', 'eventType' => 6]);
+        $this->saved();
+
+        $response = $this->get(route('backend.player-performance.event-ratings', $event))->assertOk()
+            ->assertSee('Tournament workspace')->assertSee('Ratings banner event')
+            ->assertSee('Public page')->assertSee('<h2 class="h3">Player ratings</h2>', false);
+        $html = $response->getContent();
+        $this->assertSame(1, substr_count($html, 'class="event-workspace-chrome no-print"'));
+        $this->assertSame(1, substr_count($html, 'aria-label="Event navigation"'));
+        $this->assertMatchesRegularExpression('/href="'.preg_quote(route('backend.player-performance.event-ratings', $event), '/').'"\s+aria-current="page"/', $html);
+        $response->assertDontSee('Ratings banner event · player ratings');
+
+        $this->get(route('backend.player-performance.ratings'))->assertOk()
+            ->assertSee('Site-wide player ratings')->assertDontSee('Tournament workspace')
+            ->assertDontSee('event-workspace-chrome');
     }
 
     public function test_event_cohorts_follow_natural_age_order_and_comparison_groups_never_interleave(): void

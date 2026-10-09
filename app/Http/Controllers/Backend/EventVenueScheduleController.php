@@ -780,6 +780,9 @@ final class EventVenueScheduleController extends Controller
                 }
                 $data['schedule']['cross_band_policy'] ??= $stored['cross_band_policy'] ?? 'highest_ranked';
                 $data['schedule']['round_venue_setups'] = $stored['round_venue_setups'] ?? [];
+                foreach (['programme', 'programme_settings'] as $key) {
+                    if (isset($stored[$key])) $data['schedule'][$key] = $stored[$key];
+                }
                 unset($data['schedule']['rank_preference_draw_ids']);
                 DB::table('event_venue_schedule_drafts')->updateOrInsert(
                     ['event_id' => $event->id],

@@ -2077,12 +2077,16 @@
     }
   } catch (_) { /* Continue with the saved server settings when browser storage is unavailable. */ }
   const programmeDraws = @json($draws->where('is_team', true)->values());
-  const programmeGenderOrders = new Map();
+  const programmeSettings = new Map(Object.entries(@json($scheduleDraft['programme_settings'] ?? [])));
   const savedProgramme = @json($scheduleDraft['programme'] ?? null);
-  const savedProgrammeAge = programmeDraws.find(draw => savedProgramme?.rounds?.some(row => Number(row.draw_id) === Number(draw.id)))?.programme_age;
+  const savedProgrammeAge = programmeDraws.find(draw => savedProgramme?.rounds?.some(row => Number(row.draw_id ?? row.drawId) === Number(draw.id)))?.programme_age;
   if (savedProgrammeAge && savedProgramme?.days?.length === 3) {
-    programmeGenderOrders.set(String(savedProgrammeAge), savedProgramme.days.map(day => day.gender_waves || @json($scheduleDraft['gender_waves'])));
+    if (!programmeSettings.has(String(savedProgrammeAge))) programmeSettings.set(String(savedProgrammeAge), {programme:savedProgramme});
   }
+  const programmeOptionControls = {duration:'programme-duration', player_rest:'programme-rest', court_gap:'programme-gap', gender_wave_release:'programme-gender-wave-release', reschedule_existing:'programme-reschedule-existing'};
+  const readProgrammeOptions = () => Object.fromEntries(Object.entries(programmeOptionControls).map(([key,id]) => [key, key === 'reschedule_existing' ? document.getElementById(id).checked : document.getElementById(id).value]));
+  const programmeDefaultOptions = readProgrammeOptions();
+  const programmeDefaultDays = [0,1,2].map(day => ({start:document.getElementById(`programme-start-${day}`).value, end:document.getElementById(`programme-end-${day}`).value}));
   let selectedProgrammeAge = '';
   const programmeGroup = () => programmeDraws.filter(draw => Number(draw.programme_age) === Number(document.getElementById('programme-age').value));
   const programmeStatus = (message, tone = 'secondary') => setStatus(document.getElementById('programme-status'), message, tone);
@@ -2335,23 +2339,42 @@
   };
   document.getElementById('programme-age').addEventListener('change', () => {
     if (selectedProgrammeAge) {
-      programmeGenderOrders.set(selectedProgrammeAge, [0,1,2].map(day => document.getElementById(`programme-gender-${day}`).value));
+      programmeSettings.set(selectedProgrammeAge, {...readProgrammeOptions(), programme:{
+        days:[0,1,2].map(day => ({start:document.getElementById(`programme-start-${day}`).value, end:document.getElementById(`programme-end-${day}`).value, gender_waves:document.getElementById(`programme-gender-${day}`).value, break_start:document.getElementById(`programme-break-start-${day}`).value, break_end:document.getElementById(`programme-break-end-${day}`).value})),
+        rounds:programmeRows().map(row => ({draw_id:Number(row.dataset.programmeDraw), round:Number(row.dataset.programmeRound), day:Number(row.querySelector('.programme-day').value), sequence:Number(row.querySelector('.programme-sequence').value)})),
+      }});
     }
     selectedProgrammeAge = document.getElementById('programme-age').value;
-    const genderOrders = programmeGenderOrders.get(selectedProgrammeAge);
+    const settings = programmeSettings.get(selectedProgrammeAge);
+    const localDateTime = value => String(value || '').replace(' ', 'T').slice(0,16);
     [0,1,2].forEach(day => {
-      document.getElementById(`programme-gender-${day}`).value = genderOrders?.[day] || document.getElementById('gender-waves').value;
+      const saved = settings?.programme?.days?.[day] || programmeDefaultDays[day];
+      document.getElementById(`programme-start-${day}`).value = localDateTime(saved.start);
+      document.getElementById(`programme-end-${day}`).value = localDateTime(saved.end);
+      document.getElementById(`programme-gender-${day}`).value = saved.gender_waves || document.getElementById('gender-waves').value;
+      ['start','end'].forEach(edge => {
+        const value = String(saved[`break_${edge}`] || '');
+        document.getElementById(`programme-break-${edge}-${day}`).value = value.length > 5 ? localDateTime(value).slice(11,16) : value;
+      });
+    });
+    Object.entries(programmeOptionControls).forEach(([key,id]) => {
+      const control = document.getElementById(id), value = settings?.[key] ?? programmeDefaultOptions[key];
+      if (key === 'reschedule_existing') control.checked = Boolean(value); else control.value = value;
+      const shared = document.getElementById({duration:'schedule-duration', player_rest:'schedule-rest', court_gap:'schedule-gap', gender_wave_release:'gender-wave-release', reschedule_existing:'reschedule-existing'}[key]);
+      if (key === 'reschedule_existing') shared.checked = control.checked; else shared.value = control.value;
     });
     programmePayload = null; invalidatePreview();
     const group = programmeGroup();
     document.getElementById('programme-rounds').innerHTML = `<table class="table"><thead><tr><th>Discipline / round</th><th>Day</th><th>Order within day</th></tr></thead><tbody>${group.flatMap(draw => draw.rounds.map(round => {
       const code = String(draw.rubber_code || draw.name).toLowerCase();
       const mixed = code.includes('mixed'), reverse = code.includes('reverse'), doubles = code.includes('double');
-      const day = mixed ? 3 : reverse ? (round === 1 ? 1 : 2) : doubles ? 2 : 1;
-      const sequence = mixed ? round : reverse ? (round === 1 ? 4 : round - 1) : doubles ? round + 2 : round;
+      const savedRound = settings?.programme?.rounds?.find(row => Number(row.draw_id ?? row.drawId) === Number(draw.id) && Number(row.round) === Number(round));
+      const day = Number(savedRound?.day ?? (mixed ? 3 : reverse ? (round === 1 ? 1 : 2) : doubles ? 2 : 1));
+      const sequence = Number(savedRound?.sequence ?? (mixed ? round : reverse ? (round === 1 ? 4 : round - 1) : doubles ? round + 2 : round));
       return `<tr data-programme-draw="${draw.id}" data-programme-round="${round}"><td>${escapeHtml(draw.name)} · Round ${round}</td><td><select class="form-select programme-day" aria-label="Day for ${escapeHtml(draw.name)} round ${round}">${[1,2,3].map(value => `<option value="${value}" ${day === value ? 'selected' : ''}>Day ${value}</option>`).join('')}</select></td><td><input class="form-control programme-sequence" type="number" min="1" max="100" value="${sequence}" aria-label="Order for ${escapeHtml(draw.name)} round ${round}"></td></tr>`;
     })).join('')}</tbody></table>`;
     renderProgrammeStages();
+    updateProgrammeDayPublicationLinks();
     document.getElementById('programme-reuse-source').innerHTML = '<option value="">Choose assigned draw</option>' + group.filter(draw => draw.venues.length).map(draw => `<option value="${draw.id}">${escapeHtml(draw.name)}</option>`).join('');
     programmeStatus(group.length ? `${group.length} disciplines selected. Check all days, match duration, rest and gender order before creating the preview.` : 'Choose an age group.');
   });

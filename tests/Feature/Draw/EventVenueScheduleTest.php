@@ -716,6 +716,8 @@ class EventVenueScheduleTest extends TestCase
         $draws = Draw::factory()->count(2)->create(['event_id' => $event->id]);
         $admin = User::factory()->create()->assignRole('admin');
         DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $programmeOptions = ['programme' => ['days' => [], 'rounds' => []], 'programme_settings' => ['13' => ['duration' => 85], '15' => ['duration' => 60]], 'round_venue_setups' => []];
+        DB::table('event_venue_schedule_drafts')->insert(['event_id' => $event->id, 'options' => json_encode($programmeOptions), 'created_at' => now(), 'updated_at' => now()]);
         foreach (range(1, 8) as $label) {
             DB::table('event_venue_courts')->insert([
                 'event_id' => $event->id, 'venue_id' => $venue->id, 'label' => (string) $label,
@@ -744,6 +746,7 @@ class EventVenueScheduleTest extends TestCase
         ]);
         $savedOptions = json_decode(DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true);
         $this->assertSame('boys_then_girls', $savedOptions['gender_waves']);
+        foreach ($programmeOptions as $key => $value) $this->assertSame($value, $savedOptions[$key]);
         foreach ($draws as $draw) {
             $this->assertDatabaseHas('draw_venues', [
                 'draw_id' => $draw->id, 'venue_id' => $venue->id, 'num_courts' => 8,

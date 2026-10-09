@@ -53,6 +53,30 @@ class ScheduleProgrammeTest extends TestCase
         $this->assertSame(12, TeamFixture::whereNotNull('scheduled_at')->count());
     }
 
+    public function test_apply_retains_other_age_settings_and_round_venues_and_persists_programme_options(): void
+    {
+        [$event, $options] = $this->scenario();
+        $retained = ['programme_settings' => ['13' => ['duration' => 85]], 'round_venue_setups' => [['draw_id' => 999, 'round' => 1, 'venue_ids' => [7]]]];
+        $legacyDraw = Draw::factory()->create(['event_id' => $event->id, 'drawName' => 'u/15 Boys Singles']);
+        $retained['programme'] = ['days' => $options['programme']['days'], 'rounds' => [['drawId' => $legacyDraw->id, 'round' => 1, 'day' => 1, 'sequence' => 1]]];
+        \Illuminate\Support\Facades\DB::table('event_venue_schedule_drafts')->insert(['event_id' => $event->id, 'options' => json_encode($retained), 'created_at' => now(), 'updated_at' => now()]);
+        $options['gender_wave_release'] = 'court_ready';
+        $options['programme']['days'][0]['gender_waves'] = 'girls_then_boys';
+        $options['programme']['days'][0]['break_start'] = '2026-10-09 12:00:00';
+        $options['programme']['days'][0]['break_end'] = '2026-10-09 13:00:00';
+        $service = app(EventVenueScheduleService::class);
+        $preview = $service->preview($event, $options);
+        $this->assertSame($retained, json_decode(\Illuminate\Support\Facades\DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true));
+        $service->apply($event, $options, $preview['revision']);
+        $saved = json_decode(\Illuminate\Support\Facades\DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true);
+        $this->assertSame($retained['programme_settings']['13'], $saved['programme_settings']['13']);
+        $this->assertSame($retained['programme'], $saved['programme_settings']['15']['programme']);
+        $this->assertSame($retained['round_venue_setups'], $saved['round_venue_setups']);
+        $this->assertSame($preview['input']['programme'], $saved['programme_settings']['10']['programme']);
+        $this->assertSame('court_ready', $saved['programme_settings']['10']['gender_wave_release']);
+        $this->assertSame(30, $saved['programme_settings']['10']['duration']);
+    }
+
     public function test_replanning_saved_programme_uses_changed_day_start_only_after_apply(): void
     {
         [$event, $options] = $this->scenario();
