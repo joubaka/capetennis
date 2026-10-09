@@ -275,11 +275,23 @@
         </span>
       </summary>
       <div class="card-body p-3 border-top">
-          <p class="small text-muted mb-0">{{ ($scheduleSource ?? 'working') === 'published' ? 'Published order of play · matches the public venue page and printed packs.' : 'Working schedule · includes saved changes awaiting publication.' }}</p>
+          <p class="small text-muted mb-0">{{ ($scheduleSource ?? 'working') === 'published' ? 'Published order of play · matches the public venue page and printed packs.' : 'Private scoring schedule · saved matches remain available when public times are hidden.' }}</p>
+          @if(($scheduleSource ?? 'working') === 'published')
+            <a class="btn btn-outline-primary mt-2" href="{{ route('frontend.scoring.workspace', ['event' => $event, 'schedule_source' => 'working', 'date' => $scheduleDate, 'venue' => $selectedVenue?->id, 'draw' => $selectedDraw?->id, 'draw_ids' => $scheduleDrawIds]) }}">Open private scoring schedule</a>
+          @endif
           @if($scheduleDate ?? null)<p class="small mb-0">{{ \Carbon\Carbon::parse($scheduleDate)->format('l, d M Y') }}</p>@endif
       </div>
       <div class="card-body p-3">
         <div class="scoring-select-grid">
+        <div>
+          <label class="scoring-filter-label mb-1" for="day-filter">Day</label>
+          <select class="form-select scoring-select" id="day-filter" data-nav-select>
+            <option value="{{ route('frontend.scoring.workspace', ['event' => $event, 'schedule_source' => $scheduleSource, 'venue' => $selectedVenue?->id, 'draw' => $selectedDraw?->id, 'draw_ids' => $scheduleDrawIds]) }}" @selected(!$scheduleDate)>All days</option>
+            @foreach($availableDates->concat($scheduleDate ? [$scheduleDate] : [])->unique()->sort() as $date)
+              <option value="{{ route('frontend.scoring.workspace', ['event' => $event, 'schedule_source' => $scheduleSource, 'date' => $date, 'venue' => $selectedVenue?->id, 'draw' => $selectedDraw?->id, 'draw_ids' => $scheduleDrawIds]) }}" @selected($scheduleDate === $date)>{{ \Carbon\Carbon::parse($date)->format('l, d M Y') }}</option>
+            @endforeach
+          </select>
+        </div>
         <div>
           <label class="scoring-filter-label mb-1" for="venue-filter">Venue</label>
           <select class="form-select scoring-select" id="venue-filter" data-nav-select>

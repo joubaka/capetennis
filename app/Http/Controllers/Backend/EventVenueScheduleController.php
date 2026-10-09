@@ -180,6 +180,13 @@ final class EventVenueScheduleController extends Controller
     {
         $this->authorize('event.manage', $event);
         $scope = $this->calendarScope($request, $event);
+        $reviewOptions = $request->validate(['group' => ['nullable', 'in:draw'], 'page' => ['nullable', 'integer', 'min:1']]);
+        if (($reviewOptions['group'] ?? null) === 'draw') {
+            $scope['date'] ??= 'all';
+            $review = app(\App\Services\Scheduling\ScheduleDrawReviewService::class)->build($event, $scope, $request->integer('page', 1));
+            return response()->view('backend.schedule.scheduled-matches-by-draw', compact('event', 'scope') + $review)
+                ->header('Cache-Control', 'no-store, private');
+        }
         $working = $publication->workingRows($event);
         $dailySavedCounts = $working->groupBy(fn ($row) => substr($row['scheduled_at'], 0, 10))->map->count();
         $published = $publication->publishedRows($event)->keyBy('fixture_key');

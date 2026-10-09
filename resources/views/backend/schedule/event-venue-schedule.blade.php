@@ -178,7 +178,7 @@
 @endsection
 
 @section('content')
-<div class="container-xxl pt-3"><a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar',$event) }}">Saved schedule · all days</a></div>
+<div class="container-xxl pt-3"><a class="btn btn-primary me-2" style="min-height:44px" href="{{ route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'group' => 'draw', 'date' => 'all']) }}">View matches by draw</a><a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar',$event) }}">Saved schedule · all days</a></div>
 @php
   $unapplyRouteAvailable = \Illuminate\Support\Facades\Route::has('backend.event-venue-schedule.unapply');
 @endphp
@@ -414,6 +414,7 @@
                     <span class="fw-semibold">Include in this schedule</span>
                   </label>
                   <div class="d-flex flex-wrap align-items-end gap-2">
+                    <a class="btn btn-sm btn-outline-primary" style="min-height:44px" href="{{ route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'group' => 'draw', 'draw_id' => $draw['id'], 'date' => 'all']) }}" aria-label="View scheduled matches for {{ $draw['name'] }}">View scheduled matches</a>
                     @if($unapplyRouteAvailable && $draw['applied_match_count'] > 0 && ! $draw['locked'])
                       <button type="button" class="btn btn-sm btn-outline-danger" data-unapply-draw="{{ $draw['id'] }}" data-draw-name="{{ $draw['name'] }}">
                         <i class="ti ti-calendar-off me-1" aria-hidden="true"></i>Unapply {{ $draw['applied_match_count'] }} scheduled {{ Str::plural('match', $draw['applied_match_count']) }}

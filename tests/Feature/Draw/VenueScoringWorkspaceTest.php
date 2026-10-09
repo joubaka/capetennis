@@ -281,7 +281,7 @@ class VenueScoringWorkspaceTest extends TestCase
 
         $this->assertStringContainsString('Score fixtures by venue', $html);
         $this->assertStringContainsString(
-            e(route('frontend.scoring.workspace', ['event' => $event, 'schedule_source' => 'published', 'venue' => $venue->id])),
+            e(route('frontend.scoring.workspace', ['event' => $event, 'schedule_source' => 'working', 'venue' => $venue->id])),
             $html
         );
         $this->assertStringContainsString('>2<span class="visually-hidden"> fixtures</span></span>', $html);
@@ -728,6 +728,65 @@ class VenueScoringWorkspaceTest extends TestCase
         $this->assertSame('venue', $response->viewData('printType'));
         $this->assertFalse($response->viewData('includeStandings'));
         $this->assertSame([$fixture->id], $response->viewData('schedule')->pluck('id')->all());
+    }
+
+    public function test_private_day_queue_keeps_hidden_friday_matches_and_scoring_available(): void
+    {
+        [$event, $draw, $venue, $friday] = $this->scheduledFixture('Friday venue');
+        $friday->orderOfPlay()->update(['time' => '2026-10-09 08:00:00']);
+        [, , $otherVenue, $saturday] = $this->scheduledFixture('Saturday venue', $event, $draw);
+        $saturday->orderOfPlay()->update(['venue_id' => $venue->id, 'time' => '2026-10-10 08:00:00']);
+        $team = TeamFixture::create(['draw_id' => $draw->id, 'round_nr' => 1, 'match_nr' => 8,
+            'venue_id' => $venue->id, 'scheduled_at' => '2026-10-09 09:00:00']);
+        TeamFixture::create(['draw_id' => $draw->id, 'round_nr' => 1, 'match_nr' => 9,
+            'venue_id' => $otherVenue->id, 'scheduled_at' => '2026-10-11 09:00:00']);
+        [$foreignEvent, $foreignDraw] = $this->scheduledFixture('Foreign venue');
+        TeamFixture::create(['draw_id' => $foreignDraw->id, 'round_nr' => 1, 'match_nr' => 10,
+            'venue_id' => $venue->id, 'scheduled_at' => '2026-10-12 09:00:00']);
+        $publication = app(\App\Services\Scheduling\SchedulePublicationService::class);
+        $publication->publish($event, ['date' => '2026-10-09']);
+        $publication->hide($event, ['date' => '2026-10-09']);
+        $publication->publish($event, ['date' => '2026-10-10']);
+        $user = $this->scorerFor($event);
+        EventConvenor::where('event_id', $event->id)->where('user_id', $user->id)->update(['venue_id' => $venue->id]);
+
+        $response = $this->actingAs($user)->get(route('frontend.scoring.workspace', [
+            'event' => $event, 'schedule_source' => 'working', 'date' => '2026-10-09',
+        ]))->assertOk()->assertSee('id="day-filter"', false)->assertSee('Enter score');
+        $this->assertSame(['2026-10-09', '2026-10-10'], $response->viewData('availableDates')->all());
+        $this->assertEqualsCanonicalizing([$friday->id, $team->id], $response->viewData('matches')->pluck('id')->all());
+        $this->assertSame('2026-10-09', $response->viewData('scheduleDate'));
+        $this->assertStringContainsString('date=2026-10-09', $response->getContent());
+        $public = $this->get(route('frontend.scoring.workspace', ['event' => $event,
+            'schedule_source' => 'published', 'date' => '2026-10-09']))->assertOk()->assertSee('Open private scoring schedule');
+        $this->assertCount(0, $public->viewData('matches'));
+        $this->postJson(route('frontend.scoring.fixtures.playing', [$event, $friday]))->assertOk();
+        $this->assertSame(FixtureState::STATUS_PARTIAL, (int) $friday->fresh()->match_status);
+        $this->postJson(route('api.draws.fixtures.score.store', [$draw, $friday]), ['sets' => ['6-2', '6-3']])->assertOk();
+        $this->assertSame(FixtureState::STATUS_COMPLETED, (int) $friday->fresh()->match_status);
+        $this->assertSame(2, $friday->fixtureResults()->count());
+        $this->get(route('frontend.scoring.workspace', ['event' => $event, 'date' => '2026-10-09', 'venue' => $otherVenue->id]))->assertForbidden();
+        $this->get(route('frontend.scoring.workspace', ['event' => $foreignEvent, 'date' => '2026-10-09']))->assertForbidden();
+        $this->getJson(route('frontend.scoring.workspace', ['event' => $event, 'date' => 'invalid']))->assertUnprocessable();
+        $this->assertSame(['2026-10-10'], $publication->publishedRows($event)->pluck('scheduled_at')->map(fn ($time) => substr($time, 0, 10))->unique()->values()->all());
+        $this->app['auth']->forgetGuards();
+        $this->get(route('frontend.scoring.workspace', ['event' => $event, 'date' => '2026-10-09']))->assertRedirect(route('login'));
+    }
+
+    public function test_private_team_only_venue_is_available_without_direct_event_venue_link(): void
+    {
+        $event = Event::factory()->create();
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'published' => true, 'locked' => false]);
+        $venue = Venue::forceCreate(['name' => 'Team only venue']);
+        $fixture = TeamFixture::create(['draw_id' => $draw->id, 'round_nr' => 1, 'match_nr' => 1,
+            'venue_id' => $venue->id, 'scheduled_at' => '2026-10-09 09:00:00']);
+        $user = $this->scorerFor($event);
+        EventConvenor::where('event_id', $event->id)->where('user_id', $user->id)->update(['venue_id' => $venue->id]);
+        $response = $this->actingAs($user)->get(route('frontend.scoring.workspace', [
+            'event' => $event, 'venue' => $venue->id, 'date' => '2026-10-09',
+        ]))->assertOk();
+        $this->assertSame([$fixture->id], $response->viewData('matches')->pluck('id')->all());
+        $this->assertSame(['2026-10-09'], $response->viewData('availableDates')->all());
     }
 
     private function scorerFor(Event $event): User

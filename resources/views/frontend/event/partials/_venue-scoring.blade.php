@@ -24,7 +24,7 @@
       @if(($scoringVenues ?? collect())->isNotEmpty())
         <div class="event-venue-scoring-list">
           @foreach($scoringVenues as $scoringVenue)
-            <a href="{{ route('frontend.scoring.workspace', ['event' => $event, 'schedule_source' => 'published', 'venue' => $scoringVenue->id]) }}"
+            <a href="{{ route('frontend.scoring.workspace', ['event' => $event, 'schedule_source' => 'working', 'venue' => $scoringVenue->id]) }}"
                class="btn event-venue-scoring-link">
               <i class="ti ti-map-pin" aria-hidden="true"></i>
               <span class="event-venue-scoring-name">{{ $scoringVenue->name }}</span>

@@ -56,6 +56,7 @@ class VenueScoringController extends Controller
             ->whereIn('draw_id', $drawIds)
             ->whereNotNull('venue_id')
             ->pluck('venue_id')
+            ->merge(TeamFixture::query()->whereIn('draw_id', $drawIds)->whereNotNull('venue_id')->pluck('venue_id'))
             ->merge($event->venues()->pluck('venues.id'))
             ->merge($publishedRows->pluck('venue_id'))
             ->unique()
@@ -78,9 +79,6 @@ class VenueScoringController extends Controller
         if ($publishedSchedule && $selectedVenue) {
             $publishedRows = $publishedRows->where('venue_id', $selectedVenue->id)->values();
         }
-        if ($publishedSchedule && $request->filled('date')) {
-            $publishedRows = $publishedRows->filter(fn ($row) => substr($row['scheduled_at'], 0, 10) === $request->input('date'))->values();
-        }
 
         $selectedDraw = null;
         if ($request->filled('draw')) {
@@ -88,8 +86,27 @@ class VenueScoringController extends Controller
             abort_unless($selectedDraw, 404, 'This draw does not belong to the selected tournament.');
         }
 
+        $availableDates = $publishedSchedule
+            ? $publishedRows->when($selectedDraw, fn ($rows) => $rows->where('draw_id', $selectedDraw->id))
+                ->pluck('scheduled_at')->map(fn ($time) => substr($time, 0, 10))
+            : OrderOfPlay::query()->whereIn('draw_id', $drawIds)->whereNotNull('time')
+                ->when($selectedDraw, fn ($query) => $query->where('draw_id', $selectedDraw->id))
+                ->when($selectedVenue, fn ($query) => $query->where('venue_id', $selectedVenue->id))
+                ->selectRaw('DISTINCT DATE(time) AS schedule_date')->pluck('schedule_date')
+                ->merge(TeamFixture::query()->whereIn('draw_id', $drawIds)->whereNotNull('scheduled_at')
+                    ->when($selectedDraw, fn ($query) => $query->where('draw_id', $selectedDraw->id))
+                    ->when($selectedVenue, fn ($query) => $query->where('venue_id', $selectedVenue->id))
+                    ->selectRaw('DISTINCT DATE(scheduled_at) AS schedule_date')->pluck('schedule_date'));
+        $availableDates = $availableDates->filter()->unique()->sort()->values();
+        if ($publishedSchedule && $request->filled('date')) {
+            $publishedRows = $publishedRows->filter(fn ($row) => substr($row['scheduled_at'], 0, 10) === $request->input('date'))->values();
+        }
+
         $fixtures = Fixture::query()
             ->whereIn('draw_id', $drawIds)
+            ->when(! $publishedSchedule && $request->filled('date'), fn ($query) => $query->whereHas(
+                'orderOfPlay', fn ($schedule) => $schedule->whereDate('time', $request->input('date'))
+            ))
             ->when($selectedDraw, fn ($query) => $query->where('draw_id', $selectedDraw->id))
             ->when($publishedSchedule, fn ($query) => $query->whereIn('id', $publishedRows->where('fixture_kind', 'individual')->pluck('fixture_id')))
             ->when($selectedVenue && ! $publishedSchedule, fn ($query) => $query->whereHas(
@@ -115,6 +132,7 @@ class VenueScoringController extends Controller
 
         $teamFixtures = TeamFixture::query()
             ->whereIn('draw_id', $drawIds)
+            ->when(! $publishedSchedule && $request->filled('date'), fn ($query) => $query->whereDate('scheduled_at', $request->input('date')))
             ->when($publishedSchedule, fn ($query) => $query->whereIn('id', $publishedRows->where('fixture_kind', 'team')->pluck('fixture_id')))
             ->whereHas('draw', fn ($query) => $query->where('event_id', $event->id))
             ->when($selectedDraw, fn ($query) => $query->where('draw_id', $selectedDraw->id))
@@ -189,7 +207,8 @@ class VenueScoringController extends Controller
             'operatorName' => (string) $request->session()->get('venue_scoring.operator', ''),
             'venueRestricted' => $restrictedVenueId !== null,
             'scheduleSource' => $publishedSchedule ? 'published' : 'working',
-            'scheduleDate' => $publishedSchedule ? $request->input('date') : null,
+            'scheduleDate' => $request->input('date'),
+            'availableDates' => $availableDates,
             'scheduleDrawIds' => $scheduleDrawIds,
         ]);
     }

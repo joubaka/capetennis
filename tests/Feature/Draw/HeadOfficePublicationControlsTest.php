@@ -31,6 +31,28 @@ class HeadOfficePublicationControlsTest extends TestCase
             'fixture_type' => 1, 'scheduled_at' => $date.' 09:00:00', 'venue_id' => $venue->id, 'court_label' => '1', 'duration_min' => 60]);
     }
 
+    public function test_collapsed_order_of_play_badges_link_to_their_authorized_draw_schedule(): void
+    {
+        [$event, $venue] = $this->setupEvent();
+        $created = Draw::factory()->create(['event_id' => $event->id, 'drawName' => 'Created schedule', 'oop_published' => false]);
+        $empty = Draw::factory()->create(['event_id' => $event->id, 'drawName' => 'Empty schedule', 'oop_published' => false]);
+        $this->saved($created, $venue, '2026-10-09');
+
+        $html = $this->get(route('headOffice.show', $event))->assertOk()->getContent();
+        foreach ([[$created, 'Created', '1'], [$empty, 'Not done', '0']] as [$draw, $status, $createdFlag]) {
+            preg_match('/<details id="publication-draw-'.$draw->id.'"([^>]*)>\s*<summary[^>]*>(.*?)<\/summary>/s', $html, $card);
+            $this->assertNotEmpty($card);
+            $this->assertStringNotContainsString(' open', $card[1]);
+            $url = route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'draw_id' => $draw->id, 'date' => 'all']);
+            $this->assertStringContainsString('href="'.htmlspecialchars($url, ENT_QUOTES).'"', $card[2]);
+            $this->assertStringContainsString('aria-label="View order of play for '.$draw->drawName.'"', $card[2]);
+            $this->assertStringContainsString('data-created="'.$createdFlag.'">Order of play: '.$status.'</a>', $card[2]);
+            $this->get($url)->assertOk()->assertViewHas('scope', fn ($scope) => (int) $scope['draw_id'] === $draw->id);
+        }
+        $this->actingAs(User::factory()->create());
+        $this->get(route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'draw_id' => $created->id, 'date' => 'all']))->assertForbidden();
+    }
+
     public function test_event_controls_include_all_tabs_and_whole_day_forms_have_no_filters(): void
     {
         [$event, $venue] = $this->setupEvent();

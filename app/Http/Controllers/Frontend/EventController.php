@@ -370,14 +370,20 @@ class EventController extends Controller
         $publicDraw->setRelation('order_of_play', $publicFixtures
           ->map(fn ($fixture) => $fixture->orderOfPlay)->filter()->sortBy('time')->values());
       }
-    // Venue shortcuts follow the same published assignments as public packs.
+    // Private scoring shortcuts remain available when public times are hidden.
     $scoringVenues = collect();
     if ($canScoreEvent) {
       $restrictedScoringVenueId = $user->is_event_score_keeper($event->id)
         ? $user->scoringVenueIdForEvent($event->id)
         : null;
-      $venueCounts = app(\App\Services\Scheduling\SchedulePublicationService::class)
-        ->publishedRows($event, includeParticipants: false)->groupBy('venue_id')->map(fn ($rows) => $rows->count());
+      $venueCounts = \App\Models\OrderOfPlay::query()->whereIn('draw_id', $drawIds)
+        ->whereNotNull('venue_id')->selectRaw('venue_id, COUNT(*) AS fixture_count')->groupBy('venue_id')
+        ->pluck('fixture_count', 'venue_id');
+      $teamVenueCounts = TeamFixture::query()->whereIn('draw_id', $drawIds)->whereNotNull('venue_id')
+        ->selectRaw('venue_id, COUNT(*) AS fixture_count')->groupBy('venue_id')->pluck('fixture_count', 'venue_id');
+      foreach ($teamVenueCounts as $venueId => $count) {
+        $venueCounts->put($venueId, (int) $venueCounts->get($venueId, 0) + (int) $count);
+      }
       $scoringVenues = \App\Models\Venue::query()
         ->whereIn('id', $venueCounts->keys())
         ->when($restrictedScoringVenueId !== null, fn ($query) => $query->whereKey($restrictedScoringVenueId))

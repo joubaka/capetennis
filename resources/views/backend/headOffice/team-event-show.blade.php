@@ -34,6 +34,8 @@
   .event-draw-card-summary-info { min-width: 0; }
   .event-draw-card-summary-status { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
   .event-draw-card-summary-status .badge { white-space: normal; text-align: left; }
+  .event-draw-card-summary-status a.event-oop-summary { display: inline-flex; align-items: center; min-height: 44px; text-decoration: underline; text-underline-offset: .2em; }
+  .event-draw-card-summary-status a.event-oop-summary:focus-visible { outline: 2px solid var(--ct-ink, #172e45); outline-offset: 3px; }
   .event-draw-card-summary:focus-visible { outline: 2px solid var(--ct-ink, #172e45); outline-offset: 4px; border-radius: .25rem; }
   .event-draw-card-toggle { display: inline-flex; align-items: center; gap: .25rem; flex-shrink: 0; }
   .event-draw-card-summary-actions { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
@@ -303,7 +305,7 @@
                     @php
                       $hasOrderOfPlay = $draw->scheduled_team_fixture_count > 0 || $draw->order_of_play_count > 0;
                     @endphp
-                    <span class="event-oop-summary badge bg-label-{{ $draw->oop_published ? 'success' : ($hasOrderOfPlay ? 'info' : 'secondary') }}" data-created="{{ $hasOrderOfPlay ? 1 : 0 }}">Order of play: {{ $draw->oop_published ? ($draw->published ? 'Published' : 'Preview only') : ($hasOrderOfPlay ? 'Created' : 'Not done') }}</span>
+                    <a href="{{ route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'draw_id' => $draw->id, 'date' => 'all']) }}" aria-label="View order of play for {{ $draw->drawName }}" class="event-oop-summary badge bg-label-{{ $draw->oop_published ? 'success' : ($hasOrderOfPlay ? 'info' : 'secondary') }}" data-created="{{ $hasOrderOfPlay ? 1 : 0 }}">Order of play: {{ $draw->oop_published ? ($draw->published ? 'Published' : 'Preview only') : ($hasOrderOfPlay ? 'Created' : 'Not done') }}</a>
                     @if($draw->locked)<span class="badge bg-label-secondary">Locked</span>@endif
                     @if($draw->is_done)<span class="badge bg-label-success">Completed</span>@endif
                     @if($draw->is_scheduled)<span class="badge bg-label-info">Scheduled</span>@endif
