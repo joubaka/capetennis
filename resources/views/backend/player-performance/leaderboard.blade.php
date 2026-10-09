@@ -9,7 +9,7 @@
 @endif
 <div class="card"><div class="card-body">
     <h1 class="h3">{{ $event ? $event->name.' · player ratings' : 'Site-wide player ratings' }}</h1>
-    <p>Private provisional singles ratings. Highest to lowest within each exact cohort, with unrated players last. Positions refer to each comparison group. Separate groups cannot be compared directly. Ratings are calculated from published evidence; they cannot be edited here.</p>
+    <p>Private provisional singles ratings. Cohorts follow age order. Players are grouped by comparison group within each exact cohort, highest rating to lowest within each group, with unrated players last. Positions refer to each comparison group. Separate groups cannot be compared directly. Ratings are calculated from published evidence; they cannot be edited here.</p>
     <p class="text-muted">Saved calculation: {{ $snapshot['built_at'] }} · as of {{ $snapshot['snapshot_as_of'] ?? 'pending' }}.</p>
     @if($refreshStatus['failed'])<div class="alert alert-warning" role="status">The latest background refresh failed. Saved estimates remain provisional.</div>
     @elseif($refreshStatus['pending'] && !$snapshot['reason'] && !($snapshot['snapshot_stale'] ?? false))<div class="alert alert-info" role="status">A background update is pending. Showing the last saved calculation.</div>@endif
@@ -34,8 +34,10 @@
         @if(!$event)<p class="small text-muted">Membership follows recorded categories and saved rating evidence. Legacy teams without a category are available in their event view as unresolved; they are not assigned an age group by guesswork.</p>@endif
         @forelse($players->getCollection()->groupBy('cohort') as $group => $members)
             <section class="mb-4" aria-label="{{ $group }}"><h2 class="h5">{{ $group }}</h2>
-                <ul class="list-group">
-                @foreach($members as $member)
+                @foreach($members->groupBy('component') as $component => $comparisonMembers)
+                <h3 class="h6 mt-3">{{ $comparisonMembers->first()['rating'] ? 'Comparison group: '.$component : 'Unrated players' }}</h3>
+                <ul class="list-group mb-3">
+                @foreach($comparisonMembers as $member)
                     <li class="list-group-item">
                         <div class="d-flex flex-wrap justify-content-between gap-2">
                             <div>@if($member['position'])<span class="text-muted me-2">{{ $member['position'] }}.</span>@endif
@@ -45,13 +47,13 @@
                             <div class="align-self-center">@if($member['rating'])<strong>{{ number_format($member['rating']['score'], 1) }}/100</strong> · {{ $member['rating']['confidence_label'] }} confidence @else<strong>Unrated</strong>@endif</div>
                         </div>
                         @if($member['rating'])
-                            <p class="small text-muted mb-1">Comparison group: {{ $member['component'] }}</p>
                             <p class="small text-muted mb-1">Last eligible activity: {{ $member['rating']['last_eligible_activity'] ?? $member['rating']['last_played'] ?? 'unknown' }} · {{ $member['rating']['baseline_status'] ?? 'No connected main-trial baseline' }}</p>
                             <p class="small text-muted mb-0">{{ $member['rating']['confidence_explanation'] }}</p>
                         @else<p class="small text-muted mb-0">{{ $member['player_id'] ? 'No eligible saved estimate for this exact cohort; check the player evidence or pending update.' : 'Imported roster member has no linked player profile.' }}</p>@endif
                     </li>
                 @endforeach
                 </ul>
+                @endforeach
             </section>
         @empty<p>No matching players in this selection.</p>@endforelse
         {{ $players->links('pagination::bootstrap-5') }}

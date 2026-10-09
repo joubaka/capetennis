@@ -95,10 +95,10 @@ class PlayerRatingLeaderboardService
         if (count($members) > self::MEMBER_LIMIT) {
             return compact('cohorts', 'snapshot') + ['rows' => collect(), 'limitReason' => 'This selection exceeds the safe display limit. Choose a smaller cohort or event.'];
         }
-        $rows = collect($members)->sort(fn ($a, $b) => strcmp($a['cohort'], $b['cohort'])
+        $rows = collect($members)->sort(fn ($a, $b) => strnatcasecmp($a['cohort'], $b['cohort'])
             ?: (($a['rating'] === null) <=> ($b['rating'] === null))
+            ?: strnatcasecmp($a['component'], $b['component'])
             ?: (($b['rating']['score'] ?? 0) <=> ($a['rating']['score'] ?? 0))
-            ?: strcmp($a['component'], $b['component'])
             ?: strnatcasecmp($a['name'], $b['name']) ?: strcmp($a['identity'], $b['identity']))->values();
         $positions = [];
         $rows = $rows->map(function ($row) use (&$positions) {

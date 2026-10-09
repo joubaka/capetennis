@@ -132,9 +132,9 @@ class PlayerRatingLeaderboardTest extends TestCase
         ]);
         $url = route('backend.player-performance.ratings');
         $this->get($url)->assertOk()->assertSee('Choose a cohort to see')->assertDontSee('High Test');
-        $this->get($url.'?cohort=u12%20boys')->assertOk()->assertSeeInOrder(['Separate Test', 'High Test', 'Low Test', 'Unrated Test'])->assertSee('Comparison group: second');
+        $this->get($url.'?cohort=u12%20boys')->assertOk()->assertSeeInOrder(['High Test', 'Low Test', 'Comparison group: second', 'Separate Test', 'Unrated players', 'Unrated Test']);
         $rows = app(PlayerRatingLeaderboardService::class)->build(null, 'u12 boys')['rows'];
-        $this->assertSame([1, 1, 2, null], $rows->pluck('position')->all());
+        $this->assertSame([1, 2, 1, null], $rows->pluck('position')->all());
         $this->getJson($url.'?cohort=u12')->assertUnprocessable();
         $this->get($url.'?cohort=u12%20boys&search=high')->assertOk()->assertSee('High Test')->assertDontSee('Low Test');
     }
@@ -156,6 +156,57 @@ class PlayerRatingLeaderboardTest extends TestCase
         $this->assertSame([26, 27], $response->viewData('players')->getCollection()->pluck('position')->all());
         $searched = $this->get(route('backend.player-performance.ratings').'?cohort=u12%20boys&search=26');
         $this->assertSame([26], $searched->viewData('players')->getCollection()->pluck('position')->all());
+    }
+
+    public function test_event_cohorts_follow_natural_age_order_and_comparison_groups_never_interleave(): void
+    {
+        $this->admin();
+        $event = Event::factory()->create(['eventType' => 6]);
+        $estimates = [];
+        foreach ([12, 8, 10] as $age) {
+            $field = $this->field($event, 'U/'.$age.' Boys A');
+            foreach ([['Second High', 95, 'group 2'], ['First Low', 20, 'group 1'], ['Second Low', 10, 'group 2'], ['First High', 70, 'group 1'], ['Unrated Z', null, null], ['Unrated A', null, null]] as [$name, $score, $component]) {
+                $player = Player::factory()->create(['name' => $name, 'surname' => (string) $age]);
+                $this->entry($field, $player);
+                if ($score !== null) {
+                    $estimates[$player->id] = [$this->estimate($score, $component, 'u'.$age.' boys')];
+                }
+            }
+        }
+        $this->saved($estimates);
+        $projection = app(PlayerRatingLeaderboardService::class)->build($event);
+        $this->assertSame(['u8 boys', 'u10 boys', 'u12 boys'], $projection['cohorts']);
+        $this->assertSame(['u8 boys', 'u10 boys', 'u12 boys'], $projection['rows']->pluck('cohort')->unique()->values()->all());
+        foreach ($projection['rows']->groupBy('cohort') as $members) {
+            $this->assertSame(['group 1', 'group 1', 'group 2', 'group 2', 'Unrated', 'Unrated'], $members->pluck('component')->all());
+            $this->assertSame([70.0, 20.0, 95.0, 10.0, null, null], $members->map(fn ($row) => $row['rating']['score'] ?? null)->all());
+            $this->assertSame([1, 2, 1, 2, null, null], $members->pluck('position')->all());
+        }
+        $this->get(route('backend.player-performance.event-ratings', $event))->assertOk()
+            ->assertSeeInOrder(['First High 8', 'First Low 8', 'Second High 8', 'Second Low 8', 'Unrated A 8', 'Unrated Z 8', 'First High 10', 'First High 12']);
+        $site = $this->get(route('backend.player-performance.ratings'))->assertOk();
+        $this->assertSame(['u8 boys', 'u10 boys', 'u12 boys'], $site->viewData('cohorts'));
+    }
+
+    public function test_group_boundaries_and_ranks_survive_event_and_site_pagination_and_search(): void
+    {
+        $this->admin();
+        $event = Event::factory()->create(['eventType' => 6]);
+        $field = $this->field($event);
+        $estimates = [];
+        foreach (range(1, 28) as $i) {
+            $player = Player::factory()->create(['name' => 'Boundary', 'surname' => sprintf('%02d', $i)]);
+            $this->entry($field, $player);
+            $estimates[$player->id] = [$this->estimate($i <= 24 ? 50 - $i : 125 - $i, $i <= 24 ? 'first' : 'second')];
+        }
+        $this->saved($estimates);
+        foreach ([route('backend.player-performance.event-ratings', $event), route('backend.player-performance.ratings')] as $url) {
+            $response = $this->get($url.'?cohort=u12%20boys&page=2')->assertOk();
+            $response->assertSee('Comparison group: second')->assertSeeInOrder(['Boundary 26', 'Boundary 27', 'Boundary 28'])->assertDontSee('Boundary 24');
+            $this->assertSame([2, 3, 4], $response->viewData('players')->getCollection()->pluck('position')->all());
+            $searched = $this->get($url.'?cohort=u12%20boys&search=26')->assertOk();
+            $this->assertSame([2], $searched->viewData('players')->getCollection()->pluck('position')->all());
+        }
     }
 
     public function test_withheld_snapshot_never_exposes_saved_badges_but_keeps_members_visible(): void
