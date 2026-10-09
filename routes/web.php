@@ -684,6 +684,12 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     ->middleware('role:super-user')
     ->name('backend.superadmin.workspace');
 
+  Route::middleware('role:super-user')->prefix('superadmin/payfast-handoffs')->name('backend.payfast-handoffs.')->group(function () {
+    Route::get('/', [\App\Http\Controllers\Backend\PayfastHandoffController::class, 'events'])->name('events');
+    Route::get('/{event}', [\App\Http\Controllers\Backend\PayfastHandoffController::class, 'index'])->name('index');
+    Route::post('/{event}/{order}/release', [\App\Http\Controllers\Backend\PayfastHandoffController::class, 'release'])->middleware('throttle:10,1')->name('release');
+  });
+
   // PayFast signature debug tool (super-user only)
   Route::get('superadmin/payfast-signature-check', [\App\Http\Controllers\Backend\SuperAdminController::class, 'payfastSignatureCheck'])
     ->middleware('role:super-user')

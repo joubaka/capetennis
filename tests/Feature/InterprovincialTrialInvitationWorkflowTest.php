@@ -887,7 +887,9 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
 
         $this->actingAs($payer)->post(route('registration.hybrid.pay'), [
             'type' => 'registration', 'custom_int5' => $order->id,
-        ])->assertSessionHasErrors('payment');
+        ])->assertRedirect(route('registration.checkout', $order))->assertSessionHasNoErrors();
+        $this->get(route('registration.checkout', $order))->assertOk()
+            ->assertViewIs('frontend.payfast.pending')->assertSee('Check payment status');
 
         $firstHandoffAt = $order->fresh()->payfast_handed_off_at;
         $orderCount = RegistrationOrder::count();
@@ -896,7 +898,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
 
         $this->actingAs($payer)->post(route('registration.hybrid.pay'), [
             'type' => 'registration', 'custom_int5' => $order->id,
-        ])->assertSessionHasErrors('payment');
+        ])->assertRedirect(route('registration.checkout', $order))->assertSessionHasNoErrors();
 
         $stillPending = $order->fresh();
         $this->assertTrue($stillPending->payfast_handed_off_at->equalTo($firstHandoffAt));
@@ -909,7 +911,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
             $this->event, $this->category, $nomination,
         ]))->assertSessionHasErrors('invitation');
         $this->actingAs($payer)->get(route('registration.hybrid.cancel', ['orderId' => $order->id]))
-            ->assertRedirect(route('events.show', $this->event))
+            ->assertRedirect(route('registration.checkout', $order))
             ->assertSessionHas('info', 'Returning from PayFast does not confirm cancellation. This checkout remains unchanged while PayFast payment is resolving.');
 
         $this->assertSame($order->id, $invitation->fresh()->order_id);

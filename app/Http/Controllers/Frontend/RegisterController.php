@@ -1462,6 +1462,10 @@ class RegisterController extends Controller
 
     $order = $regorder->load('items.category_event.event', 'items.category_event.category', 'items.player', 'user.wallet');
 
+    if ($order->payfast_handed_off_at) {
+      return redirect()->route('registration.checkout', $order);
+    }
+
     return view('frontend.payfast.check_out', compact('request', 'payfast', 'order'));
   }
 

@@ -120,8 +120,9 @@ class MastersPaymentReconciliationTest extends TestCase
         $this->assertSame('cancelled', $order->fresh()->status);
         $this->actingAs($user)
             ->get(route('registration.checkout', $order))
-            ->assertRedirect()
-            ->assertSessionHasErrors();
+            ->assertRedirect(route('events.show', $invitation->event_id))
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('info', 'This checkout was cancelled. Start registration again from the event. No wallet funds were deducted for this checkout.');
     }
 
     public function test_existing_paid_entry_is_linked_and_unpaid_duplicate_is_retired(): void

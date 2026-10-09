@@ -376,6 +376,36 @@ class InterprovincialTrialPaymentLifecycleTest extends TestCase
         $this->assertSame(0, CategoryEventRegistration::active()->count());
     }
 
+    public function test_verified_failed_payfast_checkout_is_cancelled_and_trials_registration_can_start_again(): void
+    {
+        [$invitation, $order, $entry, $event] = $this->paidFixture(200);
+        $payments = app(\App\Domain\Payments\Services\RegistrationPaymentService::class);
+        $payments->preparePayfastHandoff($order, $order->user, 0, 200);
+        $handoff = $order->fresh()->payfast_handed_off_at->toISOString();
+        $payload = ['evidence_reference' => 'PF-CASE:FAILED-TRIAL', 'provider_attempt_closed' => '1', 'handed_off_at' => $handoff];
+        $this->actingAs($this->admin)->post(route('backend.payfast-handoffs.release', [$event, $order]), $payload)
+            ->assertSessionHasNoErrors()->assertRedirect();
+        $this->assertSame('cancelled', $order->fresh()->status);
+        $this->assertNull($order->fresh()->payfast_handed_off_at);
+        $this->assertSame(0.0, $order->fresh()->wallet_reserved);
+        $this->assertSoftDeleted('category_event_registrations', ['id' => $entry->id]);
+        $this->assertNull($invitation->fresh()->order_id);
+        $this->assertNull($invitation->fresh()->registration_id);
+        $freshOrder = app(InvitationService::class)->accept($invitation->fresh(), $order->user);
+        $this->assertNotSame($order->id, $freshOrder->id);
+        $this->assertSame(200.0, $freshOrder->total_fee);
+        $this->assertSame($order->user_id, $freshOrder->user_id);
+        $this->assertSame($freshOrder->id, $invitation->fresh()->order_id);
+        $this->assertDatabaseCount('registration_orders', 2);
+        $this->assertDatabaseCount('registration_order_items', 2);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->assertSame(0, CategoryEventRegistration::active()->count());
+        $payments->preparePayfastHandoff($freshOrder, $order->user, 0, 200);
+        $this->post(route('backend.payfast-handoffs.release', [$event, $order]), $payload)->assertSessionHasErrors('payment');
+        $this->assertNotNull($freshOrder->fresh()->payfast_handed_off_at);
+        $this->assertSame('cancelled', $order->fresh()->status);
+    }
+
     public function test_paid_confirmation_never_reactivates_withdrawn_entry(): void
     {
         [$invitation, $order, $entry] = $this->paidFixture();

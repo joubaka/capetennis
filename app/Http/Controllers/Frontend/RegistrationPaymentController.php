@@ -29,10 +29,17 @@ class RegistrationPaymentController extends Controller
     }
 
     if (isset($order->status) && $order->status === 'cancelled') {
-      return redirect()->back()->withErrors('This order has been cancelled and cannot be paid.');
+      $order->load('items.category_event');
+      $eventId = $order->items->first()?->category_event?->event_id;
+      return redirect()->route($eventId ? 'events.show' : 'events.index', $eventId ? ['event' => $eventId] : [])
+        ->with('info', 'This checkout was cancelled. Start registration again from the event. No wallet funds were deducted for this checkout.');
     }
 
     $this->assertInvitationOnlyOrderIsLinked($order);
+
+    if ($order->payfast_handed_off_at) {
+      return view('frontend.payfast.pending', compact('order'));
+    }
 
     try {
       app(\App\Services\PlayerEligibilityService::class)->assertOrderEligible($order);
@@ -83,6 +90,10 @@ class RegistrationPaymentController extends Controller
     // Cancelled orders cannot be paid
     if (isset($order->status) && $order->status === 'cancelled') {
       return back()->withErrors('This order has been cancelled and cannot be paid.');
+    }
+
+    if ($type !== 'team' && $order->payfast_handed_off_at) {
+      return redirect()->route('registration.checkout', $order);
     }
 
     if ($type !== 'team') {
@@ -167,6 +178,10 @@ class RegistrationPaymentController extends Controller
     abort_unless((int) $order->user_id === (int) auth()->id(), 403);
     abort_if((int) $order->pay_status === 1 || $order->payfast_paid, 409, 'Order already paid.');
     abort_if(($order->status ?? null) === 'cancelled', 409, 'Order has been cancelled.');
+
+    if ($order->payfast_handed_off_at) {
+      return redirect()->route('registration.checkout', $order);
+    }
 
     $this->assertInvitationOnlyOrderIsLinked($order);
     try {
@@ -553,7 +568,7 @@ class RegistrationPaymentController extends Controller
     } catch (ValidationException $exception) {
       if ($order->payfast_handed_off_at !== null) {
         return redirect()
-          ->route($eventId ? 'events.show' : 'home', $eventId ? ['event' => $eventId] : [])
+          ->route('registration.checkout', $order)
           ->with('info', 'Returning from PayFast does not confirm cancellation. This checkout remains unchanged while PayFast payment is resolving.');
       }
 

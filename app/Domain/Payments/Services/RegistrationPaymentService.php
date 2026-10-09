@@ -153,6 +153,23 @@ class RegistrationPaymentService
         });
     }
 
+    public function cancelUnresolvedPayfastHandoff(RegistrationOrder $order, User $operator, string $evidenceReference): RegistrationOrder
+    {
+        return DB::transaction(function () use ($order, $operator, $evidenceReference): RegistrationOrder {
+            $locked = RegistrationOrder::query()->lockForUpdate()->findOrFail($order->id);
+            $payer = User::query()->findOrFail($locked->user_id);
+            $released = $this->releaseUnresolvedPayfastHandoff($locked, $operator, $evidenceReference);
+            $cancelled = $this->cancelPayment($released);
+            app(\App\Services\Masters\MastersInvitationService::class)->resetCancelledPayment($cancelled, $payer);
+            app(\App\Services\InterprovincialTrials\InvitationService::class)->resetCancelledPayment($cancelled, $payer);
+            activity('registration-payment')->performedOn($cancelled)->causedBy($operator)
+                ->withProperties(['order_id' => $cancelled->id, 'payer_id' => $payer->id, 'evidence_reference' => $evidenceReference])
+                ->log('supervised unresolved PayFast checkout cancelled');
+
+            return $cancelled->fresh('items');
+        });
+    }
+
     private function assertSafeEvidenceReference(string $evidenceReference): void
     {
         if (! preg_match('/^[A-Za-z0-9][A-Za-z0-9._:\/-]{2,119}$/', $evidenceReference)) {

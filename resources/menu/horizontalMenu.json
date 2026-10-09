@@ -24,6 +24,12 @@
       "menuLevel" : "super",
       "submenu": [
         {
+          "url": "backend/superadmin/payfast-handoffs",
+          "name": "PayFast checkout recovery",
+          "icon": "circle",
+          "slug": "backend.payfast-handoffs"
+        },
+        {
           "url": "backend/player-performance",
           "name": "Player performance pilot",
           "icon": "circle",
