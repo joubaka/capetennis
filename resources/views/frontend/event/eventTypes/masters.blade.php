@@ -1,5 +1,5 @@
 <style>
-  .masters-public-event .masters-register-note{color:#7251d3;background:#f0ebff;border-radius:.25rem;padding:.35rem .65rem;display:inline-block;font-size:.78rem;font-weight:600}.masters-public-event .masters-category-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.masters-public-event .masters-category-card{border:1px solid #ebeaf0;border-radius:.45rem;overflow:hidden}.masters-public-event .masters-category-card h5{font-size:1rem}.masters-public-event .masters-player{border-top:1px solid #ebeaf0;padding:.55rem .7rem}.masters-public-event .masters-player:hover{background:#faf9fc}.masters-public-event .file-item:hover{background:#f8f9fa;border-radius:6px}@media(max-width:991.98px){.masters-public-event .masters-flow{display:flex;flex-direction:column}.masters-public-event .masters-flow>.col-xl-8,.masters-public-event .masters-flow>.col-xl-4{display:contents}.masters-public-event .masters-information{order:1}.masters-public-event .masters-about{order:2}.masters-public-event .masters-announcements{order:3}.masters-public-event .masters-documents{order:4}.masters-public-event .masters-registration{order:5}.masters-public-event .masters-invitations{order:6}}@media(max-width:768px){.masters-public-event .masters-category-grid{grid-template-columns:1fr}}
+  .masters-public-event .masters-register-note{color:#7251d3;background:#f0ebff;border-radius:.25rem;padding:.35rem .65rem;display:inline-block;font-size:.78rem;font-weight:600}.masters-public-event .masters-category-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.masters-public-event .masters-category-card{border:1px solid #ebeaf0;border-radius:.45rem;overflow:hidden}.masters-public-event .masters-category-card h5{font-size:1rem}.masters-public-event .masters-player{border-top:1px solid #ebeaf0;padding:.55rem .7rem}.masters-public-event .masters-player:hover{background:#faf9fc}.masters-public-event .file-item:hover{background:#f8f9fa;border-radius:6px}@media(max-width:991.98px){.masters-public-event .masters-flow{display:flex;flex-direction:column}.masters-public-event .masters-flow>.col-xl-8,.masters-public-event .masters-flow>.col-xl-4{display:contents}.masters-public-event .masters-information{order:1}.masters-public-event .masters-about{order:2}.masters-public-event .masters-announcements{order:3}.masters-public-event .masters-results{order:4}.masters-public-event .masters-documents{order:5}.masters-public-event .masters-registration{order:6}.masters-public-event .masters-invitations{order:7}}@media(max-width:768px){.masters-public-event .masters-category-grid{grid-template-columns:1fr}}
 </style>
 <div class="masters-public-event col-xl-12"><div class="row mb-4 masters-flow"><div class="col-xl-8 col-lg-7">
   <div class="masters-information">@include('frontend.event.partials.event-information')</div>
@@ -12,6 +12,16 @@
   </div></div>
 </div><div class="col-xl-4 col-lg-5">
   <div class="masters-about">@include('frontend.event.partials.event-about')</div>
+  @if($event->results_published == 1)
+    <div class="card event-section-card mb-4 masters-results">
+      <div class="card-header"><small class="text-uppercase">Results</small></div>
+      <div class="card-body">
+        <a href="{{ route('events.results', $event->id) }}" class="btn bg-label-success btn-sm" style="min-height:44px;display:inline-flex;align-items:center;">
+          <i class="ti ti-trophy me-1" aria-hidden="true"></i> View Results
+        </a>
+      </div>
+    </div>
+  @endif
   <div class="card event-section-card mb-4 shadow-sm masters-documents"><div class="card-header"><h6 class="text-uppercase mb-0"><i class="ti ti-folder text-primary me-2"></i>Documents</h6></div><div class="card-body pb-2">@forelse($event->files as $file)<div class="file-item border-bottom py-2"><a href="{{ route('events.documents.show', [$event, $file]) }}" target="_blank" class="fw-semibold text-dark text-decoration-none">{{ $file->name }}</a></div>@empty<div class="text-muted">No documents uploaded yet.</div>@endforelse</div></div>
   <div class="card event-section-card mb-4 masters-registration"><div class="card-body"><small class="text-uppercase">Registration</small><p class="small text-muted mt-3 mb-0">Invitations are limited to the players displayed in the Masters categories. Select your name to continue.</p></div></div>
 </div></div></div>
