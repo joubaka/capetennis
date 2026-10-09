@@ -87,7 +87,7 @@ class PlayerRatingLeaderboardTest extends TestCase
         }
     }
 
-    public function test_site_requires_exact_cohort_and_orders_only_within_comparison_groups(): void
+    public function test_site_requires_exact_cohort_and_orders_by_rating_with_unrated_last(): void
     {
         $this->admin();
         $field = $this->field(Event::factory()->create(['eventType' => 6]));
@@ -99,9 +99,9 @@ class PlayerRatingLeaderboardTest extends TestCase
         ]);
         $url = route('backend.player-performance.ratings');
         $this->get($url)->assertOk()->assertSee('Choose a cohort to see')->assertDontSee('High Test');
-        $this->get($url.'?cohort=u12%20boys')->assertOk()->assertSeeInOrder(['High Test', 'Low Test', 'Separate Test', 'Unrated Test']);
+        $this->get($url.'?cohort=u12%20boys')->assertOk()->assertSeeInOrder(['Separate Test', 'High Test', 'Low Test', 'Unrated Test'])->assertSee('Comparison group: second');
         $rows = app(PlayerRatingLeaderboardService::class)->build(null, 'u12 boys')['rows'];
-        $this->assertSame([1, 2, 1, null], $rows->pluck('position')->all());
+        $this->assertSame([1, 1, 2, null], $rows->pluck('position')->all());
         $this->getJson($url.'?cohort=u12')->assertUnprocessable();
         $this->get($url.'?cohort=u12%20boys&search=high')->assertOk()->assertSee('High Test')->assertDontSee('Low Test');
     }
@@ -119,6 +119,7 @@ class PlayerRatingLeaderboardTest extends TestCase
         $this->saved($estimates);
         $response = $this->get(route('backend.player-performance.ratings').'?cohort=u12%20boys&page=2');
         $response->assertOk()->assertSee('Player 26')->assertSee('Player 27')->assertDontSee('Player 01');
+        $response->assertSee('class="pagination"', false)->assertDontSee('class="w-5 h-5"', false);
         $this->assertSame([26, 27], $response->viewData('players')->getCollection()->pluck('position')->all());
         $searched = $this->get(route('backend.player-performance.ratings').'?cohort=u12%20boys&search=26');
         $this->assertSame([26], $searched->viewData('players')->getCollection()->pluck('position')->all());

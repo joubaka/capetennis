@@ -88,8 +88,8 @@ class PlayerRatingLeaderboardService
         }
         $rows = collect($members)->sort(fn ($a, $b) => strcmp($a['cohort'], $b['cohort'])
             ?: (($a['rating'] === null) <=> ($b['rating'] === null))
-            ?: strcmp($a['component'], $b['component'])
             ?: (($b['rating']['score'] ?? 0) <=> ($a['rating']['score'] ?? 0))
+            ?: strcmp($a['component'], $b['component'])
             ?: strnatcasecmp($a['name'], $b['name']) ?: strcmp($a['identity'], $b['identity']))->values();
         $positions = [];
         $rows = $rows->map(function ($row) use (&$positions) {
