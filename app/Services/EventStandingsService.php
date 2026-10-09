@@ -29,7 +29,7 @@ final class EventStandingsService
             $category ??= 'Unspecified';
             $label = ($category === 'Unspecified' ? $draw->drawName : $category.' '.$draw->drawName).' '.$draw->gender;
             $gender = preg_match('/\b(mixed)\b/i', $label) ? 'Mixed' : (preg_match('/\b(girls?|female|women)\b/i', $label) ? 'Girls / Women' : (preg_match('/\b(boys?|male|men)\b/i', $label) ? 'Boys / Men' : 'Unspecified'));
-            $age = preg_match('/\b(?:u\s*[\/-]?\s*|under\s+)(\d+)\b/i', $label, $matches) ? 'U'.$matches[1] : 'Unspecified';
+            $age = preg_match('/\b(?:u\s*[\/-]?\s*|under\s*-?\s*)(\d+)\b/i', $label, $matches) ? 'U'.(int) $matches[1] : 'Unspecified';
             $rows = app(TeamStandingsService::class)->forDraw($draw, $publishedOnly, $teamIds);
             $legacyRows = [];
             $results = app(TeamRubberResultService::class);
@@ -75,11 +75,14 @@ final class EventStandingsService
         $sections = array_values(array_filter($sections, fn ($section) => collect($filters)->every(fn ($value, $key) => !$value || $section[$key] === $value)));
         $overall = [];
         $ageGroups = [];
+        $ageStandings = [];
+        $ageRules = [];
         $ageRuleSets = [];
         $ruleSets = [];
         foreach ($sections as $section) {
             $ruleSets[] = json_encode(app(TeamEventRulesService::class)->forDraw($section['draw']));
             $ageRuleSets[$section['age']][] = end($ruleSets);
+            $ageRules[$section['age']] ??= app(TeamEventRulesService::class)->forDraw($section['draw']);
             foreach ($section['rows'] as $row) {
                 $team = $row['team_id'] ? $teams[$row['team_id']] : null;
                 $regionId = $row['region_id'] ?? ($regions->has($team?->region_id) ? $team?->region_id : null);
@@ -88,6 +91,8 @@ final class EventStandingsService
                 $ageGroups[$section['age']][$key] ??= ['name' => $overall[$key]['name'], 'points' => 0,
                     'color' => \App\Support\RegionBadge::color($regionId ? $regions[$regionId] : null)];
                 $ageGroups[$section['age']][$key]['points'] += $row['points'];
+                $ageStandings[$section['age']][$key] ??= ['name' => $overall[$key]['name'], 'rank' => null] + array_fill_keys(self::METRICS, 0);
+                foreach (self::METRICS as $metric) { $ageStandings[$section['age']][$key][$metric] += $row[$metric]; }
                 if ($team) { $overall[$key]['teams'][$team->id] = true; }
                 foreach (self::METRICS as $metric) { $overall[$key][$metric] += $row[$metric]; }
             }
@@ -99,6 +104,25 @@ final class EventStandingsService
             $ageMixedRules[$age] = count(array_unique($ageRuleSets[$age])) > 1;
             $ageRows = array_values($ageRows);
             usort($ageRows, fn ($a, $b) => ($ageMixedRules[$age] ? 0 : ($b['points'] <=> $a['points'])) ?: strnatcasecmp($a['name'], $b['name']));
+        }
+        unset($ageRows);
+        uksort($ageStandings, 'strnatcasecmp');
+        foreach ($ageStandings as $age => &$ageRows) {
+            $ageRows = array_values($ageRows);
+            if ($ageMixedRules[$age]) {
+                usort($ageRows, fn ($a, $b) => strnatcasecmp($a['name'], $b['name']));
+                continue;
+            }
+            $criteria = fn ($row) => $this->criteria($row, $ageRules[$age]);
+            usort($ageRows, fn ($a, $b) => ($criteria($b) <=> $criteria($a)) ?: strnatcasecmp($a['name'], $b['name']));
+            $previous = null;
+            $rank = 0;
+            foreach ($ageRows as $index => &$row) {
+                if ($criteria($row) !== $previous) { $rank = $index + 1; }
+                $row['rank'] = $rank;
+                $previous = $criteria($row);
+            }
+            unset($row);
         }
         unset($ageRows);
         $overall = array_values($overall);
@@ -129,7 +153,7 @@ final class EventStandingsService
             ])->all();
         }
 
-        return compact('sections', 'overall', 'mixedRules', 'options', 'filters', 'stats', 'breakdowns', 'ageGroups', 'ageMixedRules');
+        return compact('sections', 'overall', 'mixedRules', 'options', 'filters', 'stats', 'breakdowns', 'ageGroups', 'ageMixedRules', 'ageStandings');
     }
 
     private function criteria(array $row, array $rules): array

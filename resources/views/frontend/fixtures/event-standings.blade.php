@@ -39,7 +39,7 @@
     <h1>{{ $event->name }}</h1>
     <a class="btn btn-outline-secondary" href="{{ route('events.show', $event) }}">Back to tournament</a>
   </div>
-  <p class="points-intro">Running points totals by age group. Boys’ and girls’ points from published draws and ties are combined for each region / school.</p>
+  <p class="points-intro">Running points totals by age group. Boys’, girls’ and mixed points across all match types from published draws and ties are combined for each region / school.</p>
   <form method="GET" class="points-filter">
     <div class="points-filter-field">
       <label for="standings-age">Age group</label>

@@ -18,7 +18,18 @@
     </div>
     <p class="small text-muted mb-0 mt-3">Publishing shows Team standings and match totals on the public event page and enables public draw standings. Only published draws and ties contribute. These are current running standings, not final tournament placings. Event, draw, schedule and final results publication remain separate.</p>
   </section>
+  <section class="card card-body mb-4" aria-label="Combined age group results">
+    <h2 class="h5">Combined results by age group</h2>
+    <p>Choose an age group to combine boys, girls, mixed and every match type. This clears the gender and category filters.</p>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-outline-primary" style="min-height:44px" href="{{ route('admin.events.standings', $event) }}">All age groups</a>
+      @foreach(collect($options['age'])->sort(fn ($a, $b) => strnatcasecmp($a, $b)) as $ageOption)
+      <a class="btn {{ ($filters['age'] ?? '') === $ageOption && empty($filters['gender']) && empty($filters['category']) ? 'btn-primary' : 'btn-outline-primary' }}" style="min-height:44px" href="{{ route('admin.events.standings', [$event, 'age' => $ageOption]) }}">{{ $ageOption === 'Unspecified' ? 'Age unspecified' : 'Under '.substr($ageOption, 1) }}</a>
+      @endforeach
+    </div>
+  </section>
   <form method="GET" class="card card-body mb-4">
+    <h2 class="h5">Detailed filters</h2>
     <div class="row g-3 align-items-end">
       @foreach(['gender' => 'Gender', 'age' => 'Age group', 'category' => 'Category'] as $key => $label)
       <div class="col-12 col-md-3"><label for="standings-{{ $key }}" class="form-label">{{ $label }}</label>
@@ -38,6 +49,16 @@
   </div>
   @include('backend.event.partials.standings-table', ['rows' => $overall])
   </section>
+  <h2 class="h4">Region / school standings in each age group</h2>
+  <p>Totals follow the selected filters. With only an age selected, boys, girls, mixed and all match types are combined. These are current running ranks, not final tournament placings; tied regions share a rank.</p>
+  @forelse($ageStandings as $age => $ageRows)
+  <section class="card mb-4" data-age-standings="{{ $age }}">
+    <div class="card-header"><h3 class="h5 mb-0">{{ $age === 'Unspecified' ? 'Age group unspecified' : 'Under '.substr($age, 1).' combined results' }}</h3>
+      @if($ageMixedRules[$age])<p class="text-warning mt-2 mb-0">This age group uses different saved scoring rules. Totals are shown alphabetically without a combined rank; see each draw for its ranking.</p>@endif
+    </div>
+    @include('backend.event.partials.standings-table', ['rows' => $ageRows])
+  </section>
+  @empty<p>No age groups match these filters.</p>@endforelse
   <details class="card card-body mb-4" data-standings-details>
     <summary style="min-height:44px">Competition statistics and breakdowns</summary>
   <div class="row g-3 mb-4">
