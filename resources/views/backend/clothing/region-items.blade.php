@@ -28,10 +28,94 @@
     <div class="alert alert-success">{{ session('success') }}</div>
   @endif
   @if($errors->any())
-    <div class="alert alert-danger"><strong>Clothing setup was not copied.</strong><ul class="mb-0 mt-2">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>
+    <div class="alert alert-danger"><strong>Review the clothing setup.</strong><ul class="mb-0 mt-2">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>
   @endif
 
-  <div class="card mb-4">
+  @php
+    $itemsWithoutSizes = $items->filter(fn ($item) => $item->sizes->isEmpty());
+  @endphp
+  <div class="alert alert-light border mb-3" role="status">
+    <strong>{{ $region->clothing_order ? 'Ordering open' : 'Ordering closed' }}</strong>
+    · {{ $items->count() }} items · {{ $items->sum(fn ($item) => $item->sizes->count()) }} sizes
+    @if($itemsWithoutSizes->isNotEmpty())
+      <p class="mb-0 mt-1 text-warning">Add sizes for: {{ $itemsWithoutSizes->pluck('item_type_name')->join(', ') }}.</p>
+    @elseif($items->isEmpty())
+      <p class="mb-0 mt-1">Add an item or copy a previous setup to begin.</p>
+    @endif
+    <p class="small mb-0 mt-1">Save item names, prices and display order together. Adding or removing a size saves immediately.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">Items & sizes</h5>
+      <button id="btn-save" class="btn btn-success btn-sm" @disabled($items->isEmpty())>Save Changes</button>
+    </div>
+    <div class="card-body p-0">
+      <div class="alert alert-info rounded-0 border-start-0 border-end-0 mb-0">
+        <strong>Pricing:</strong> vendor profit is the clothing amount less the buying amount. The final customer amount adds the PayFast fee using {{ number_format($payfastSettings['percentage'], 2) }}% + R{{ number_format($payfastSettings['flat'], 2) }}, including {{ number_format($payfastSettings['vat'], 2) }}% VAT. Checkout recalculates the fee once on the complete basket.
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" id="items-table">
+          <thead class="table-light">
+            <tr>
+              <th style="width: 40px">#</th>
+              <th>Name</th>
+              <th style="width:155px">Final amount (R)</th>
+              <th>Pricing details</th>
+              <th style="width:120px">Ordering</th>
+              <th>Sizes</th>
+              <th style="width: 80px"></th>
+            </tr>
+          </thead>
+          <tbody>
+            @forelse($items as $i)
+              <tr data-id="{{ $i->id }}" class="clothing-pricing-row">
+                <td data-label="Item ID" class="text-muted">{{ $i->id }}</td>
+                <td data-label="Name">
+                  <input type="text" class="form-control form-control-sm item-name" value="{{ $i->item_type_name }}" aria-label="Item name for {{ $i->item_type_name }}">
+                </td>
+                <td data-label="Final amount"><input type="number" step="0.01" min="0" class="form-control form-control-sm fw-semibold item-final-amount clothing-preview-total" value="{{ $i->final_amount !== null ? number_format((float) $i->final_amount, 2, '.', '') : '' }}" inputmode="decimal" aria-label="Final customer amount for {{ $i->item_type_name }}"></td>
+                <td data-label="Pricing details"><details><summary>Pricing details</summary><div class="mt-2"><div class="mb-2">
+                  <label class="form-label">Buying amount (R)</label><input type="number" step="0.01" min="0" class="form-control form-control-sm item-cost-price clothing-cost-price" value="{{ $i->cost_price !== null ? number_format((float) $i->cost_price, 2, '.', '') : '' }}" aria-label="Buying amount for {{ $i->item_type_name }}">
+                  </div>
+                  <div class="mb-2">
+                  <label class="form-label">Clothing amount (R)</label><input type="number" step="0.01" min="0" class="form-control form-control-sm item-price clothing-preview-price" value="{{ number_format((float)($i->price ?? 0), 2, '.', '') }}" aria-label="Clothing amount for {{ $i->item_type_name }}">
+                  <input type="hidden" class="item-pricing-source clothing-pricing-source" value="{{ $i->final_amount !== null ? 'final_amount' : 'price' }}">
+                  </div>
+                <div>Vendor profit: <span class="fw-semibold clothing-preview-profit">—</span></div>
+                <div>PayFast fee: <span class="text-muted clothing-preview-fee">R0.00</span></div>
+                  </div></details></td>
+                <td data-label="Ordering">
+                  <input type="number" min="0" class="form-control form-control-sm item-ordering" value="{{ $i->ordering }}">
+                </td>
+                <td data-label="Sizes">
+                  <div class="d-flex flex-wrap gap-1 sizes-wrap">
+                    @foreach($i->sizes as $sz)
+                      <span class="badge bg-label-primary d-flex align-items-center gap-2" data-size-id="{{ $sz->id }}">
+                        <span>{{ $sz->size }}</span>
+                        <button type="button" class="btn btn-xs btn-link text-danger p-0 btn-del-size" aria-label="Delete size {{ $sz->size }} from {{ $i->item_type_name }}" title="Delete size">×</button>
+                      </span>
+                    @endforeach
+                  </div>
+                  <div class="input-group input-group-sm mt-1" style="max-width:320px">
+                    <input type="text" class="form-control new-size" placeholder="Add size e.g. S / 10-11" aria-label="New size for {{ $i->item_type_name }}">
+                    <input type="number" class="form-control" placeholder="Order" aria-label="New size display order for {{ $i->item_type_name }}" style="max-width:100px">
+                    <button class="btn btn-outline-primary btn-add-size">Add</button>
+                  </div>
+                </td>
+                <td data-label="Actions" class="text-end">
+                  <button class="btn btn-sm btn-outline-danger btn-del-item">Delete</button>
+                </td>
+              </tr>
+            @empty
+              <tr><td colspan="7" class="text-center p-4 text-muted">No items yet</td></tr>
+            @endforelse
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="card mb-4 clothing-copy-card">
     <div class="card-header d-flex justify-content-between align-items-center gap-2">
       <div>
       <h5 class="mb-1">Copy and review last year’s clothing</h5>
@@ -103,82 +187,16 @@
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-header d-flex justify-content-between align-items-center">
-      <h5 class="mb-0">Items & sizes</h5>
-      <button id="btn-save" class="btn btn-success btn-sm">Save Changes</button>
-    </div>
-    <div class="card-body p-0">
-      <div class="alert alert-info rounded-0 border-start-0 border-end-0 mb-0">
-        <strong>Pricing:</strong> vendor profit is the clothing amount less the buying amount. The final customer amount adds the PayFast fee using {{ number_format($payfastSettings['percentage'], 2) }}% + R{{ number_format($payfastSettings['flat'], 2) }}, including {{ number_format($payfastSettings['vat'], 2) }}% VAT. Checkout recalculates the fee once on the complete basket.
-      </div>
-      <div class="table-responsive">
-        <table class="table table-hover align-middle mb-0" id="items-table">
-          <thead class="table-light">
-            <tr>
-              <th style="width: 40px">#</th>
-              <th>Name</th>
-              <th style="width:155px">Final amount (R)</th>
-              <th>Pricing details</th>
-              <th style="width:120px">Ordering</th>
-              <th>Sizes</th>
-              <th style="width: 80px"></th>
-            </tr>
-          </thead>
-          <tbody>
-            @forelse($items as $i)
-              <tr data-id="{{ $i->id }}" class="clothing-pricing-row">
-                <td data-label="Item ID" class="text-muted">{{ $i->id }}</td>
-                <td data-label="Name">
-                  <input type="text" class="form-control form-control-sm item-name" value="{{ $i->item_type_name }}">
-                </td>
-                <td data-label="Final amount"><input type="number" step="0.01" min="0" class="form-control form-control-sm fw-semibold item-final-amount clothing-preview-total" value="{{ $i->final_amount !== null ? number_format((float) $i->final_amount, 2, '.', '') : '' }}" inputmode="decimal" aria-label="Final customer amount for {{ $i->item_type_name }}"></td>
-                <td data-label="Pricing details"><details><summary>Pricing details</summary><div class="mt-2"><div class="mb-2">
-                  <label class="form-label">Buying amount (R)</label><input type="number" step="0.01" min="0" class="form-control form-control-sm item-cost-price clothing-cost-price" value="{{ $i->cost_price !== null ? number_format((float) $i->cost_price, 2, '.', '') : '' }}" aria-label="Buying amount for {{ $i->item_type_name }}">
-                  </div>
-                  <div class="mb-2">
-                  <label class="form-label">Clothing amount (R)</label><input type="number" step="0.01" min="0" class="form-control form-control-sm item-price clothing-preview-price" value="{{ number_format((float)($i->price ?? 0), 2, '.', '') }}" aria-label="Clothing amount for {{ $i->item_type_name }}">
-                  <input type="hidden" class="item-pricing-source clothing-pricing-source" value="{{ $i->final_amount !== null ? 'final_amount' : 'price' }}">
-                  </div>
-                <div>Vendor profit: <span class="fw-semibold clothing-preview-profit">—</span></div>
-                <div>PayFast fee: <span class="text-muted clothing-preview-fee">R0.00</span></div>
-                  </div></details></td>
-                <td data-label="Ordering">
-                  <input type="number" min="0" class="form-control form-control-sm item-ordering" value="{{ $i->ordering }}">
-                </td>
-                <td data-label="Sizes">
-                  <div class="d-flex flex-wrap gap-1 sizes-wrap">
-                    @foreach($i->sizes as $sz)
-                      <span class="badge bg-label-primary d-flex align-items-center gap-2" data-size-id="{{ $sz->id }}">
-                        <span>{{ $sz->size }}</span>
-                        <button type="button" class="btn btn-xs btn-link text-danger p-0 btn-del-size" title="Delete size">×</button>
-                      </span>
-                    @endforeach
-                  </div>
-                  <div class="input-group input-group-sm mt-1" style="max-width:320px">
-                    <input type="text" class="form-control new-size" placeholder="Add size e.g. S / 10-11">
-                    <input type="number" class="form-control" placeholder="Order" style="max-width:100px">
-                    <button class="btn btn-outline-primary btn-add-size">Add</button>
-                  </div>
-                </td>
-                <td data-label="Actions" class="text-end">
-                  <button class="btn btn-sm btn-outline-danger btn-del-item">Delete</button>
-                </td>
-              </tr>
-            @empty
-              <tr><td colspan="7" class="text-center p-4 text-muted">No items yet</td></tr>
-            @endforelse
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
+
 </div>
 
 <style>
-.clothing-setup-admin summary { min-height:44px; cursor:pointer; align-content:center; }
-.clothing-setup-admin :is(.btn, input:not([type=hidden]), select) { min-height:44px; }
+.clothing-setup-admin summary { min-height:44px !important; cursor:pointer; align-content:center; }
+.clothing-setup-admin :is(.btn, input:not([type=hidden]), select) { min-height:44px !important; }
 .clothing-setup-admin input[type=checkbox] { min-height:0; }
+.clothing-copy-card { margin-top:1.5rem; }
+.clothing-setup-admin .btn-del-size { min-width:44px; }
+.clothing-setup-admin :is(input, .sizes-wrap) { min-width:0; }
 @media(max-width:767px) {
  #items-table thead { display:none; }
  #items-table tbody, #items-table tr { display:block; }
@@ -434,12 +452,10 @@
       .done((res) => {
         logRespOk(routes.storeSize(itemId), res);
         const s = res.size || res; // accept either shape
-        $tr.find('.sizes-wrap').append(`
-          <span class="badge bg-label-primary d-flex align-items-center gap-2" data-size-id="${s.id}">
-            <span>${s.size}</span>
-            <button type="button" class="btn btn-xs btn-link text-danger p-0 btn-del-size" title="Delete size">×</button>
-          </span>
-        `);
+        const $badge = $('<span>', { class: 'badge bg-label-primary d-flex align-items-center gap-2' }).attr('data-size-id', s.id);
+        $badge.append($('<span>').text(s.size));
+        $badge.append($('<button>', { type: 'button', class: 'btn btn-xs btn-link text-danger p-0 btn-del-size', title: 'Delete size', 'aria-label': `Delete size ${s.size} from ${$tr.find('.item-name').val()}` }).text('×'));
+        $tr.find('.sizes-wrap').append($badge);
         $tr.find('.new-size').val('');
         $tr.find('.new-size').next('input[type=number]').val('');
         toastOk('Size added');
@@ -468,7 +484,7 @@
   $('#btn-save').on('click', function(){
     logClick('Save Changes (bulk)');
     const rows = [];
-    $('#items-table tbody tr').each(function(){
+    $('#items-table tbody tr[data-id]').each(function(){
       rows.push({
         id: $(this).data('id'),
         item_type_name: $(this).find('.item-name').val().trim(),

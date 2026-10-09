@@ -2,6 +2,9 @@
 @extends('layouts.backend')
 @section('title', $title)
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
+
 <link rel="stylesheet" href="{{ asset('assets/css/draw-workspace.css') }}">
 <link rel="stylesheet" href="{{ asset('css/flexible-monrad.css') }}?v={{ filemtime(public_path('css/flexible-monrad.css')) }}">
 <link rel="stylesheet" href="{{ asset('css/flexible-workspace.css') }}?v={{ filemtime(public_path('css/flexible-workspace.css')) }}">
@@ -75,5 +78,6 @@
       <p class="text-muted small mt-3 mb-0">The print dialog also lets you save a PDF. Share the published public link for live updates.</p>
     </div>
   </section>
+</div>
 </div>
 @endsection

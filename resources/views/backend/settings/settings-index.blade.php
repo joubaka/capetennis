@@ -14,6 +14,8 @@
 @endsection
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 <div class="container-xl">
 
   <div class="alert alert-info d-flex align-items-center mb-4" role="alert">
@@ -35,7 +37,7 @@
   @if(session('success'))
     <div class="alert alert-success alert-dismissible fade show" role="alert">
       {{ session('success') }}
-      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="alert"></button>
     </div>
   @endif
 
@@ -46,17 +48,18 @@
           <li>{{ $error }}</li>
         @endforeach
       </ul>
-      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="alert"></button>
     </div>
   @endif
 
+<nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Settings sections"><a class="btn btn-outline-secondary" href="#settings-fees">Fees</a><a class="btn btn-outline-secondary" href="#settings-agreements">Agreement requirements</a><a class="btn btn-outline-secondary" href="#settings-content">Published content</a></nav>
   <form action="{{ route('settings.store') }}" method="POST">
     @csrf
 
     {{-- ===== DEFAULT / GLOBAL SETTINGS ===== --}}
     <div class="card mb-4">
       <div class="card-header">
-        <h5 class="mb-0"><i class="ti ti-credit-card me-1"></i> Default PayFast Fee Settings</h5>
+        <h5 id="settings-fees" class="mb-0"><i class="ti ti-credit-card me-1"></i> Default PayFast Fee Settings</h5>
         <small class="text-muted">
           These defaults apply when the payment method is unknown. The negotiated discount from PayFast benefits Cape Tennis – the event director is charged at the rates set below.
         </small>
@@ -109,7 +112,7 @@
           Set the percentage charged to the event director for each payment type. The flat fee and VAT above apply to all methods.
         </small>
       </div>
-      <div class="card-body p-0">
+      <div class="card-body p-0 table-responsive">
         <table class="table table-striped mb-0">
           <thead class="table-light">
             <tr>
@@ -129,7 +132,7 @@
                 <td>
                   <div class="input-group input-group-sm">
                     <input type="number" step="0.01" min="0" max="100"
-                      class="form-control method-pct-input"
+                      class="form-control method-pct-input" aria-label="Fee percentage for {{ $methodLabel }}"
                       name="{{ $settingKey }}"
                       data-method="{{ $methodKey }}"
                       value="{{ $currentPct }}">
@@ -157,7 +160,7 @@
     {{-- ===== CODE OF CONDUCT & TERMS TOGGLES ===== --}}
     <div class="card mb-4">
       <div class="card-header">
-        <h5 class="mb-0"><i class="ti ti-file-check me-1"></i> Code of Conduct & Terms</h5>
+        <h5 id="settings-agreements" class="mb-0"><i class="ti ti-file-check me-1"></i> Code of Conduct & Terms</h5>
         <small class="text-muted">
           Enable or disable the Code of Conduct and Terms requirements site-wide. When enabled, players must accept these before registering.
         </small>
@@ -212,7 +215,7 @@
     <div class="card mb-4">
       <div class="card-header d-flex align-items-center justify-content-between">
         <div>
-          <h5 class="mb-0"><i class="ti ti-file-text me-1"></i> Code of Conduct Content</h5>
+          <h5 id="settings-content" class="mb-0"><i class="ti ti-file-text me-1"></i> Code of Conduct Content</h5>
           <small class="text-muted">Edit the Code of Conduct text shown to players. HTML formatting is supported.</small>
         </div>
         <button type="button" class="btn btn-sm btn-primary save-content-btn" data-key="code_of_conduct_content" data-editor="coc-editor" data-textarea="code_of_conduct_content_input">
@@ -253,6 +256,8 @@
     </div>
 
   </form>
+
+</div>
 
 </div>
 @endsection
@@ -324,7 +329,11 @@
         headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
         body:    JSON.stringify({ key: key, content: textarea.value })
       })
-      .then(function(r) { return r.json(); })
+      .then(async function(r) {
+        const result = await r.json();
+        if (!r.ok || result.success === false) throw new Error(result.message || 'Content could not be saved.');
+        return result;
+      })
       .then(function(res) {
         btn.disabled = false;
         btn.innerHTML = '<i class="ti ti-check me-1"></i> Saved';

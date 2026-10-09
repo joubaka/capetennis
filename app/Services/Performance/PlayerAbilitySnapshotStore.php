@@ -30,15 +30,24 @@ class PlayerAbilitySnapshotStore
 
     public function policyHash(): string { return hash('sha256', json_encode($this->rules(), JSON_THROW_ON_ERROR)); }
 
+    public function matches(CarbonImmutable $asOf, string $fingerprint): bool
+    {
+        return DB::table('player_ability_snapshots')->where('snapshot_key', 'current')
+            ->where('as_of', $asOf->toDateString())->where('source_fingerprint', $fingerprint)
+            ->where('model_version', PlayerSharedAbilityService::VERSION)->where('policy_hash', $this->policyHash())->exists();
+    }
+
     public function current(): array
     {
         if ($this->loaded !== null) { return $this->loaded; }
-        $pending = ['cohorts' => [], 'names' => [], 'reason' => 'Ability update pending. A saved nightly snapshot is not yet available.',
-            'built_at' => 'Not yet updated', 'snapshot_as_of' => null, 'snapshot_stale' => true];
+        $pending = ['cohorts' => [], 'names' => [], 'reason' => 'Ability update pending. A saved snapshot is not yet available.',
+            'built_at' => 'Not yet updated', 'snapshot_as_of' => null, 'snapshot_stale' => true, 'snapshot_version' => null];
         if (!Schema::hasTable('player_ability_snapshots')) { return $this->loaded = $pending; }
         $row = DB::table('player_ability_snapshots')->where('snapshot_key', 'current')->first();
         if (!$row) { return $this->loaded = $pending; }
         $pending['built_at'] = $row->built_at;
+        $pending['snapshot_version'] = hash('sha256', json_encode([$row->built_at, $row->as_of, $row->source_fingerprint,
+            $row->publication_fingerprint, $row->policy_hash, $row->model_version], JSON_THROW_ON_ERROR));
         if ((int) $row->model_version !== PlayerSharedAbilityService::VERSION || $row->policy_hash !== $this->policyHash()) {
             $pending['reason'] = 'Ability update pending: the saved calculation uses an earlier policy.';
             return $this->loaded = $pending;
@@ -73,7 +82,8 @@ class PlayerAbilitySnapshotStore
             $pending['reason'] = 'Saved ability estimates are withheld because their source publication or context changed.';
             return $this->loaded = $pending;
         }
-        return $this->loaded = $payload + ['snapshot_as_of' => $row->as_of, 'snapshot_stale' => $row->as_of < $today];
+        return $this->loaded = $payload + ['snapshot_as_of' => $row->as_of, 'snapshot_stale' => $row->as_of < $today,
+            'snapshot_version' => $pending['snapshot_version']];
     }
 
     /** Capture positive gates only. New sources/publications wait until the next refresh. */

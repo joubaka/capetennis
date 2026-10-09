@@ -31,7 +31,8 @@ class GoalController extends Controller
      */
     public function create()
     {
-        return view('backend.goal.create-goal');
+        return redirect()->route('player.index')
+            ->with('status', 'Open a player profile to choose a goal type.');
     }
     public function create_general_goal(Request $request)
     {

@@ -47,6 +47,24 @@ class MastersInvitationMailReviewTest extends TestCase
         MastersInvitation::create(['batch_id' => $this->batch->id, 'event_id' => $this->event->id, 'category_event_id' => $category->id, 'player_id' => $blocked->id, 'ranking_position' => 2, 'queue_position' => 2, 'status' => MastersInvitation::INVITED]);
     }
 
+    public function test_review_search_preserves_every_invitee_and_mail_proof(): void
+    {
+        $response = $this->actingAs($this->admin)->get(route('backend.masters.review', $this->batch))->assertOk()
+            ->assertSee('masters-category-search')->assertSee('Blocked Invitee')
+            ->assertSee('Exact Invitee')->assertSee('recipient_hash')->assertSee('review_proof');
+        $this->assertDatabaseCount('masters_invitations', 2);
+        $this->writeBatchPreview('masters', $response->getContent());
+    }
+
+    private function writeBatchPreview(string $name, string $html): void
+    {
+        if (getenv('BATCH2326_QA') === '1') {
+            $path = storage_path('app/batches2326-qa');
+            if (!is_dir($path)) { mkdir($path, 0777, true); }
+            file_put_contents($path.'/'.$name.'.html', $html);
+        }
+    }
+
     public function test_authorized_preview_returns_exact_recipients_blockers_and_defaults(): void
     {
         $this->actingAs($this->admin)->postJson(route('backend.masters.send-invitations.preview', $this->batch), [])

@@ -1,3 +1,5 @@
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 <div class="row g-3">
 
   @if($event->isInterprovincialTrials() && auth()->check() && (auth()->user()->hasRole('super-user') || (auth()->user()->hasRole('admin') && auth()->user()->is_event_admin($event->id))))
@@ -63,5 +65,7 @@
       </div>
     </div>
   </div>
+
+</div>
 
 </div>

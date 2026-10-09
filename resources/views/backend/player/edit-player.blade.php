@@ -21,88 +21,29 @@
 @endsection
 
 @section('content')
-<form action="{{route('player.update',$player->id)}}" method="POST">
-    @csrf
-    @method('PATCH')
-    <div class="card">
-
-
-        <h5 class="card-header">Edit Player</h5>
-
-        <div class="col-6">
-            <div class="card-body">
-                <div class="mb-3 row">
-                    <label for="html5-text-input" class="col-md-4 col-form-label">Player Name</label>
-                    <div class="col-md-8">
-                        <input class="form-control" type="text" name="player_name" value="{{$player->name}}" id="html5-text-input">
-                    </div>
-                </div>
-                @if(auth()->user()->hasAnyRole(['super-user', 'admin']))
-                <div class="mb-3">
-                    <label class="form-label fw-semibold" for="is-player-of-colour">Player of colour (POC)</label>
-                    <select class="form-select" name="is_player_of_colour" id="is-player-of-colour">
-                        <option value="" @selected($player->is_player_of_colour === null)>Not declared</option>
-                        <option value="1" @selected($player->is_player_of_colour === true)>Yes</option>
-                        <option value="0" @selected($player->is_player_of_colour === false)>No</option>
-                    </select>
-                    <small class="text-muted">For transformation and player development planning.</small>
-                </div>
-                @endif
-                <div class="mb-3 row">
-                    <label for="html5-text-input" class="col-md-4 col-form-label">Player Surname</label>
-                    <div class="col-md-8">
-                        <input class="form-control" type="text" name="player_surname" value="{{$player->surname}}" id="html5-text-input">
-                    </div>
-                </div>
-                <div class="mb-3 row">
-                    <label for="html5-date-input" class="col-md-2 col-form-label">Date of Birth</label>
-                    <div class="col-md-10">
-                        <input class="form-control" type="date" name="dob" value="{{$player->dateOfBirth}}" id="html5-date-input">
-                    </div>
-                </div>
-
-
-
-                <div class="mb-3 row">
-                    <label for="html5-email-input" class="col-md-2 col-form-label">Email</label>
-                    <div class="col-md-10">
-                        <input class="form-control" name="email" type="email" value="{{$player->email}}" id="html5-email-input">
-                    </div>
-                </div>
-
-
-
-
-                <div class="mb-3 row">
-                    <label for="html5-text-input" class="col-md-4 col-form-label">Cell nr.</label>
-                    <div class="col-md-8">
-                        <input class="form-control" type="text" name="cell_nr" value="{{$player->cellNr}}" id="html5-text-input">
-                    </div>
-                </div>
-                <div class="mb-3">
-
-                    <label for="html5-text-input" class="col-md-4 col-form-label">Gender</label>
-
-                    <select name="gender" class="select2gender select2 form-select form-select-lg select2-hidden-accessible" data-allow-clear="true" tabindex="-1" aria-hidden="true">
-
-                        <option value="1" {{$player->gender == 1 ? 'selected':''}}>Male</option>
-                        <option value="2" {{$player->gender == 2 ? 'selected':''}}>Female</option>
-                    </select>
-                </div>
-                <div class="mb-3 row">
-                    <label for="html5-text-input" class="col-md-4 col-form-label">Player Coach</label>
-                    <div class="col-md-8">
-                        <input class="form-control" type="text" name="coach" value="{{$player->coach ? $player->coach:''}}" id="html5-text-input">
-                    </div>
-                </div>
-            </div>
-
-
-        </div>
-
-    </div>
-    <button type="submit" class="btn btn-primary btn-sm mt-4">Confirm changes</button>
-</form>
-
-
+<div class="player-edit-admin">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><div><h4 class="mb-1">Edit player</h4><p class="text-muted mb-0">{{ $player->name }} {{ $player->surname }} · Profile #{{ $player->id }}</p></div><a href="{{ route('backend.player.profile', $player->id) }}" class="btn btn-outline-secondary">Back to profile</a></div>
+  @if($errors->any())<div class="alert alert-danger" role="alert"><strong>Review the player details.</strong><ul class="mb-0 mt-2">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
+  <form action="{{ route('player.update', $player->id) }}" method="POST">
+    @csrf @method('PATCH')
+    <div class="card mb-3"><div class="card-header"><h5 class="mb-0">Identity</h5></div><div class="card-body"><div class="row g-3">
+      <div class="col-md-6"><label for="player-name" class="form-label">Player name</label><input class="form-control" type="text" name="player_name" value="{{ old('player_name', $player->name) }}" id="player-name" required maxlength="255" autocomplete="given-name"></div>
+      <div class="col-md-6"><label for="player-surname" class="form-label">Player surname</label><input class="form-control" type="text" name="player_surname" value="{{ old('player_surname', $player->surname) }}" id="player-surname" required maxlength="255" autocomplete="family-name"></div>
+      <div class="col-md-6"><label for="player-dob" class="form-label">Date of birth</label><input class="form-control" type="date" name="dob" value="{{ old('dob', $player->dateOfBirth) }}" id="player-dob" autocomplete="bday"></div>
+      <div class="col-md-6"><label for="player-gender" class="form-label">Gender</label>@php($savedGender = (string) old('gender', $player->gender))<select name="gender" id="player-gender" class="form-select">@if($savedGender !== '' && !in_array($savedGender, ['1','2'], true))<option value="{{ $savedGender }}" selected>{{ ucfirst($savedGender) }}</option>@endif<option value="">Not set</option><option value="1" @selected((string) old('gender', $player->gender) === '1')>Male</option><option value="2" @selected((string) old('gender', $player->gender) === '2')>Female</option></select></div>
+    </div></div></div>
+    <div class="card mb-3"><div class="card-header"><h5 class="mb-0">Contact details</h5></div><div class="card-body"><div class="row g-3">
+      <div class="col-md-6"><label for="player-email" class="form-label">Email</label><input class="form-control" name="email" type="email" value="{{ old('email', $player->email) }}" id="player-email" maxlength="255" autocomplete="email"></div>
+      <div class="col-md-6"><label for="player-cell" class="form-label">Cell number</label><input class="form-control" type="tel" name="cell_nr" value="{{ old('cell_nr', $player->cellNr) }}" id="player-cell" maxlength="50" autocomplete="tel"></div>
+    </div></div></div>
+    <div class="card mb-3"><div class="card-header"><h5 class="mb-0">Coach and development</h5></div><div class="card-body">
+      <div class="mb-3"><label for="player-coach" class="form-label">Player coach</label><input class="form-control" type="text" name="coach" value="{{ old('coach', $player->coach) }}" id="player-coach" maxlength="255"></div>
+      @if(auth()->user()->hasAnyRole(['super-user', 'admin']))
+      <div><label class="form-label" for="is-player-of-colour">Player of colour (POC)</label><select class="form-select" name="is_player_of_colour" id="is-player-of-colour"><option value="" @selected(old('is_player_of_colour', $player->is_player_of_colour) === null || old('is_player_of_colour', $player->is_player_of_colour) === '')>Not declared</option><option value="1" @selected((string) old('is_player_of_colour', $player->is_player_of_colour) === '1')>Yes</option><option value="0" @selected(old('is_player_of_colour', $player->is_player_of_colour) === false || (string) old('is_player_of_colour', $player->is_player_of_colour) === '0')>No</option></select><p class="small text-muted mb-0 mt-1">For transformation and player development planning.</p></div>
+      @endif
+    </div></div>
+    <button type="submit" class="btn btn-primary">Save player details</button>
+  </form>
+</div>
+<style>.player-edit-admin { max-width:960px; } .player-edit-admin :is(.btn,input,select) { min-height:44px !important; } .player-edit-admin :focus-visible { outline:3px solid #117a72; outline-offset:2px; }</style>
 @endsection

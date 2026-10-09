@@ -1,9 +1,9 @@
 
 
-<div class="modal fade" id="uploadModal" tabindex="-1"  aria-hidden="true">
+<div class="modal fade photo-admin" id="uploadModal" tabindex="-1"  aria-labelledby="photo-upload-title" aria-hidden="true">
     <div class="modal-dialog" role="document">
         <div class="modal-content">
-            <div class="modal-header">
+            <div class="modal-header"><h5 id="photo-upload-title">Upload photos</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 
             </div>
             <div class="modal-body">
@@ -12,12 +12,12 @@
                     <p>Folder: {{$folder->name}}</p>
                 </div>
                 <div class="card-body">
-                    <form class="w-px-500 p-3 p-md-3" action="{{ route('photo.store') }}" method="post" enctype="multipart/form-data">
+                    <form class="p-3 p-md-3" action="{{ route('photo.store') }}" method="post" enctype="multipart/form-data">
                         @csrf
                         <div class="row mb-3">
-                            <label class="col-sm-3 col-form-label">Image</label>
+                            <label for="selectImage" class="col-sm-3 col-form-label">Images</label>
                             <div class="col-sm-9">
-                                <input type="file" class="form-control" multiple name="images[]" @error('image') is-invalid @enderror id="selectImage">
+                                <input type="file" class="form-control" multiple accept="image/*" required name="images[]" @error('image') is-invalid @enderror id="selectImage">
                             </div>
                             @error('image')
                             <span class="invalid-feedback" role="alert">
@@ -31,7 +31,7 @@
                         <div class="row mb-3">
                             <label class="col-sm-3 col-form-label"></label>
                             <div class="col-sm-9">
-                                <button type="submit" class="btn btn-success btn-block">Submit</button>
+                                <button type="submit" class="btn btn-success btn-block">Upload to this folder</button>
                             </div>
                         </div>
                     </form>
@@ -39,7 +39,6 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-primary">Save changes</button>
             </div>
         </div>
     </div>

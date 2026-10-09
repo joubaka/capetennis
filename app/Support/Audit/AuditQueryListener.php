@@ -32,6 +32,7 @@ class AuditQueryListener
         if (in_array($table, [
             'audit_events', 'audit_daily_seals', 'activity_log', 'authentication_log',
             'sessions', 'jobs', 'failed_jobs', 'cache', 'cache_locks',
+            'player_ability_refresh_state', // Derived background work metadata; avoid INSERT during score INSERT callbacks.
         ], true)) {
             return;
         }

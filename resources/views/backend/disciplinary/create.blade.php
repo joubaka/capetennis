@@ -11,6 +11,8 @@
 @endsection
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 <div class="container-xxl flex-grow-1 container-p-y">
 
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -30,7 +32,7 @@
                     <li>{{ $error }}</li>
                 @endforeach
             </ul>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="alert"></button>
         </div>
     @endif
 
@@ -42,8 +44,8 @@
                 <div class="row g-4">
                     {{-- Player --}}
                     <div class="col-md-6">
-                        <label class="form-label fw-semibold">Player <span class="text-danger">*</span></label>
-                        <select name="player_id" class="form-select select2 @error('player_id') is-invalid @enderror" required>
+                        <label for="admin-field-1" class="form-label fw-semibold">Player <span class="text-danger">*</span></label>
+                        <select id="admin-field-1" name="player_id" class="form-select select2 @error('player_id') is-invalid @enderror" required>
                             <option value="">— Select Player —</option>
                             @foreach($players as $p)
                                 <option value="{{ $p->id }}"
@@ -57,7 +59,7 @@
 
                     {{-- Violation Type --}}
                     <div class="col-md-6">
-                        <label class="form-label fw-semibold">Violation Type <span class="text-danger">*</span></label>
+                        <label for="violation_type_id" class="form-label fw-semibold">Violation Type <span class="text-danger">*</span></label>
                         <select name="violation_type_id" id="violation_type_id"
                                 class="form-select select2 @error('violation_type_id') is-invalid @enderror" required>
                             <option value="">— Select Type —</option>
@@ -74,8 +76,8 @@
 
                     {{-- Violation Date --}}
                     <div class="col-md-4">
-                        <label class="form-label fw-semibold">Violation Date <span class="text-danger">*</span></label>
-                        <input type="date" name="violation_date"
+                        <label for="admin-field-2" class="form-label fw-semibold">Violation Date <span class="text-danger">*</span></label>
+                        <input id="admin-field-2" type="date" name="violation_date"
                                class="form-control @error('violation_date') is-invalid @enderror"
                                value="{{ old('violation_date', date('Y-m-d')) }}"
                                max="{{ date('Y-m-d') }}" required>
@@ -84,7 +86,7 @@
 
                     {{-- Points Assigned --}}
                     <div class="col-md-4">
-                        <label class="form-label fw-semibold">Points Assigned <span class="text-danger">*</span></label>
+                        <label for="points_assigned" class="form-label fw-semibold">Points Assigned <span class="text-danger">*</span></label>
                         <input type="number" name="points_assigned" id="points_assigned"
                                class="form-control @error('points_assigned') is-invalid @enderror"
                                value="{{ old('points_assigned', 0) }}" min="0" max="100" required>
@@ -94,8 +96,8 @@
 
                     {{-- Penalty Type --}}
                     <div class="col-md-4">
-                        <label class="form-label fw-semibold">Penalty Type</label>
-                        <select name="penalty_type" class="form-select select2 @error('penalty_type') is-invalid @enderror">
+                        <label for="admin-field-3" class="form-label fw-semibold">Penalty Type</label>
+                        <select id="admin-field-3" name="penalty_type" class="form-select select2 @error('penalty_type') is-invalid @enderror">
                             <option value="">— None / Not Applicable —</option>
                             <option value="warning" @selected(old('penalty_type') === 'warning')>Warning</option>
                             <option value="point"   @selected(old('penalty_type') === 'point')>Point Penalty</option>
@@ -107,8 +109,8 @@
 
                     {{-- Event (optional) --}}
                     <div class="col-md-6">
-                        <label class="form-label fw-semibold">Related Event <small class="text-muted">(optional)</small></label>
-                        <select name="event_id" class="form-select select2 @error('event_id') is-invalid @enderror">
+                        <label for="admin-field-4" class="form-label fw-semibold">Related Event <small class="text-muted">(optional)</small></label>
+                        <select id="admin-field-4" name="event_id" class="form-select select2 @error('event_id') is-invalid @enderror">
                             <option value="">— None —</option>
                             @foreach($events as $e)
                                 <option value="{{ $e->id }}" @selected(old('event_id') == $e->id)>
@@ -121,8 +123,8 @@
 
                     {{-- Notes --}}
                     <div class="col-12">
-                        <label class="form-label fw-semibold">Notes</label>
-                        <textarea name="notes" class="form-control @error('notes') is-invalid @enderror"
+                        <label for="admin-field-5" class="form-label fw-semibold">Notes</label>
+                        <textarea id="admin-field-5" name="notes" class="form-control @error('notes') is-invalid @enderror"
                                   rows="3" placeholder="Optional: describe the incident...">{{ old('notes') }}</textarea>
                         @error('notes')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
@@ -154,6 +156,8 @@
         });
     });
 </script>
+
+</div>
 @endsection
 
 @endsection

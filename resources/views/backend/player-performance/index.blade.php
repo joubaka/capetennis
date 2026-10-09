@@ -3,6 +3,9 @@
 @section('title', 'Player performance pilot')
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
+
 <div class="card mb-4">
     <div class="card-body">
         <h1 class="h3">Player performance pilot</h1>
@@ -147,4 +150,5 @@
         division labels are selected explicitly and never inferred from names.
     </p>
 @endif
+</div>
 @endsection

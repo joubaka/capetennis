@@ -12,7 +12,7 @@
   .health-row td  { vertical-align: middle; font-size: .875rem; }
   .health-value   { font-weight: 600; }
   .health-detail  { color: #666; font-size: .8rem; }
-  .summary-bar    { border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; display: flex; gap: 2rem; align-items: center; }
+  .summary-bar    { flex-wrap:wrap; border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; display: flex; gap: 2rem; align-items: center; }
   .summary-ok     { background: #d4edda; border-left: 5px solid #28a745; }
   .summary-warn   { background: #fff3cd; border-left: 5px solid #ffc107; }
   .summary-crit   { background: #f8d7da; border-left: 5px solid #dc3545; }
@@ -25,6 +25,8 @@
 @endsection
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 <div class="container-xxl flex-grow-1 container-p-y">
 
   {{-- Page header --}}
@@ -34,7 +36,7 @@
       <small class="text-muted">Operational status snapshot &mdash; auto-refreshes every 60 s</small>
     </div>
     <div class="d-flex gap-2">
-      <a href="{{ route('platform.health.api') }}" class="btn btn-sm btn-outline-secondary" target="_blank">JSON API</a>
+      <a href="{{ route('platform.health.api') }}" class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener">JSON API</a>
       <button onclick="location.reload()" class="btn btn-sm btn-outline-primary">↺ Refresh</button>
     </div>
   </div>
@@ -158,15 +160,17 @@
           ['php artisan platform:health-check',                         'CLI health check'],
         ] as [$cmd, $label])
         <div class="col-md-6">
-          <div class="d-flex align-items-center gap-2 p-2 bg-light rounded">
-            <code class="flex-grow-1" style="font-size:.78rem">{{ $cmd }}</code>
-            <small class="text-muted text-nowrap">{{ $label }}</small>
+          <div class="d-flex flex-wrap align-items-center gap-2 p-2 bg-light rounded">
+            <code class="flex-grow-1 text-break" style="font-size:.78rem;overflow-wrap:anywhere">{{ $cmd }}</code>
+            <small class="text-muted">{{ $label }}</small>
           </div>
         </div>
         @endforeach
       </div>
     </div>
   </div>
+
+</div>
 
 </div>
 @endsection

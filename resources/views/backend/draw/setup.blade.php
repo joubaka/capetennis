@@ -1,6 +1,9 @@
 @extends('layouts.backend')
 @section('title', 'Choose draw format — '.$draw->drawName)
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
+
 @include('backend.draw.partials.workspace-header', ['workspaceContext' => 'settings'])
 @include('backend.draw.partials.workspace-links', ['workspaceTab' => 'settings'])
 <div class="mx-auto" style="max-width:900px">
@@ -97,4 +100,5 @@ document.getElementById('draw-format-form')?.addEventListener('submit', event =>
 document.getElementById('confirm-format-reset')?.addEventListener('change', event => event.currentTarget.setCustomValidity(''));
 </script>
 @endif
+</div>
 @endsection

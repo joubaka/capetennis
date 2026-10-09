@@ -1,6 +1,8 @@
 @extends('layouts.backend')
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 <div class="container-xxl flex-grow-1 container-p-y">
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
     <div>
@@ -203,12 +205,12 @@
               <input type="hidden" name="identity_override" value="1">
             @endif
             <div class="mb-3">
-              <label class="form-label">Reason for merging</label>
-              <textarea name="reason" class="form-control" rows="3" required minlength="10" maxlength="2000" {{ $analysis['can_merge'] ? '' : 'disabled' }}>{{ old('reason') }}</textarea>
+              <label for="admin-field-1" class="form-label">Reason for merging</label>
+              <textarea id="admin-field-1" name="reason" class="form-control" rows="3" required minlength="10" maxlength="2000" {{ $analysis['can_merge'] ? '' : 'disabled' }}>{{ old('reason') }}</textarea>
             </div>
             <div class="mb-3">
-              <label class="form-label">Type exactly: <code>{{ $identityOverride ? 'MERGE PUBLISHED IDENTITY OVERRIDE' : ($publishedWorkflow ? 'MERGE PUBLISHED' : $analysis['confirmation_phrase']) }}</code></label>
-              <input name="confirmation" class="form-control" required autocomplete="off" value="{{ old('confirmation') }}" {{ $analysis['can_merge'] ? '' : 'disabled' }}>
+              <label for="admin-field-2" class="form-label">Type exactly: <code>{{ $identityOverride ? 'MERGE PUBLISHED IDENTITY OVERRIDE' : ($publishedWorkflow ? 'MERGE PUBLISHED' : $analysis['confirmation_phrase']) }}</code></label>
+              <input id="admin-field-2" name="confirmation" class="form-control" required autocomplete="off" value="{{ old('confirmation') }}" {{ $analysis['can_merge'] ? '' : 'disabled' }}>
             </div>
             <button class="btn {{ $publishedWorkflow ? 'btn-warning' : 'btn-danger' }}" {{ $analysis['can_merge'] ? '' : 'disabled' }}><i class="ti ti-git-merge me-1"></i>{{ $publishedWorkflow ? 'Archive, merge and rebuild 2026 ranking' : 'Confirm permanent merge' }}</button>
             <div class="small text-muted mt-2">The merge will be rejected if any linked data changed since this page loaded.</div>
@@ -222,8 +224,8 @@
         <div class="card-body">
           <form method="POST" action="{{ route('superadmin.player-duplicates.decision', [$first, $second]) }}">
             @csrf
-            <label class="form-label">Review note</label>
-            <textarea name="reason" class="form-control mb-3" rows="3" required minlength="5"></textarea>
+            <label for="admin-field-3" class="form-label">Review note</label>
+            <textarea id="admin-field-3" name="reason" class="form-control mb-3" rows="3" required minlength="5"></textarea>
             <div class="d-grid gap-2">
               <button name="decision" value="not_duplicate" class="btn btn-outline-danger">Mark as not duplicates</button>
               <button name="decision" value="review_later" class="btn btn-outline-secondary">Review later</button>
@@ -233,5 +235,7 @@
       </div>
     </div>
   </div>
+</div>
+
 </div>
 @endsection

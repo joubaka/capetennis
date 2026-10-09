@@ -15,6 +15,9 @@
 @endsection
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
+
 <div class="container-xl">
 
   {{-- HEADER --}}
@@ -34,7 +37,7 @@
 
   {{-- POINTS TABLE --}}
   <div class="card">
-    <div class="card-body p-0">
+    <div class="card-body p-0 table-responsive">
       <table class="table table-striped mb-0">
         <thead>
           <tr>
@@ -49,7 +52,7 @@
               <td>
                 <input type="number"
                        class="form-control point-input"
-                       data-position="{{ $row['position'] }}"
+                       aria-label="Points for finishing position {{ $row['position'] }}" data-position="{{ $row['position'] }}"
                        value="{{ $row['score'] }}"
                        min="0">
               </td>
@@ -60,6 +63,7 @@
     </div>
   </div>
 
+</div>
 </div>
 @endsection
 
@@ -85,6 +89,8 @@
     // Save points
     // ------------------------------
     document.getElementById('save-points').addEventListener('click', () => {
+      const saveButton = document.getElementById('save-points');
+      saveButton.disabled = true;
       const points = [];
 
       document.querySelectorAll('.point-input').forEach(input => {
@@ -112,7 +118,7 @@
       .catch(err => {
         console.error(err);
         toastr.error('Failed to save points');
-      });
+      }).finally(() => { saveButton.disabled = false; });
     });
   </script>
 @endsection

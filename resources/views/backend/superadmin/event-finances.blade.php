@@ -37,6 +37,8 @@
 @endsection
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 <div class="container-xl event-finances-page">
 
   {{-- HEADER --}}
@@ -59,9 +61,9 @@
 
   {{-- ALERTS --}}
   @if(session('success'))
-    <div class="alert alert-success alert-dismissible fade show" role="alert">
+    <div role="status" class="alert alert-success alert-dismissible fade show" role="alert">
       <i class="ti ti-circle-check me-1"></i>{{ session('success') }}
-      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="alert"></button>
     </div>
   @endif
 
@@ -460,19 +462,19 @@
       <div class="card border-0 mb-0 rounded-0">
         <div class="card-header d-flex justify-content-between align-items-center">
           <h5 class="mb-0"><i class="ti ti-cash-banknote me-2 text-info"></i>Convenor Payouts</h5>
-          <button class="btn btn-success btn-sm" data-bs-toggle="collapse" data-bs-target="#payoutFormCollapse">
+          <button class="btn btn-success btn-sm" data-bs-toggle="collapse" data-bs-target="#payoutFormCollapse" aria-controls="payoutFormCollapse" aria-expanded="{{ old('payment_method') ? 'true' : 'false' }}">
             <i class="ti ti-plus me-1"></i>Add Payout
           </button>
         </div>
 
     {{-- ADD PAYOUT FORM --}}
-    <div class="collapse" id="payoutFormCollapse">
+    <div class="collapse {{ old('payment_method') ? 'show' : '' }}" id="payoutFormCollapse">
       <div class="card-body border-bottom bg-light">
         <form method="POST" action="{{ route('superadmin.finances.payout.store', $event) }}">
           @csrf
           <div class="row g-3">
             <div class="col-md-6">
-              <label class="form-label">Recipient</label>
+              <label for="payoutRecipient" class="form-label">Recipient</label>
               <select id="payoutRecipient" class="form-select" required>
                 <option value="">— Select recipient —</option>
                 @foreach($convenors as $c)
@@ -496,13 +498,13 @@
               <input type="hidden" id="payoutRecipientName" name="recipient_name" value="{{ old('recipient_name', $defaultAdmin?->name) }}">
             </div>
             <div class="col-md-2">
-              <label class="form-label">Amount (R) <span class="text-danger">*</span></label>
-              <input type="number" name="amount" step="0.01" min="0.01" class="form-control"
+              <label for="admin-field-1" class="form-label">Amount (R) <span class="text-danger">*</span></label>
+              <input id="admin-field-1" type="number" name="amount" step="0.01" min="0.01" class="form-control"
                      value="{{ old('amount', $defaultPayoutAmount > 0 ? number_format($defaultPayoutAmount, 2, '.', '') : '') }}" required>
             </div>
             <div class="col-md-2">
-              <label class="form-label">Payment Method <span class="text-danger">*</span></label>
-              <select name="payment_method" class="form-select" required>
+              <label for="admin-field-2" class="form-label">Payment Method <span class="text-danger">*</span></label>
+              <select id="admin-field-2" name="payment_method" class="form-select" required>
                 <option value="bank_transfer" @selected(old('payment_method', 'bank_transfer') === 'bank_transfer')>Bank Transfer</option>
                 <option value="cash" @selected(old('payment_method') === 'cash')>Cash</option>
                 <option value="eft" @selected(old('payment_method') === 'eft')>EFT</option>
@@ -510,16 +512,16 @@
               </select>
             </div>
             <div class="col-md-2">
-              <label class="form-label">Date</label>
-              <input type="date" name="paid_at" class="form-control" value="{{ old('paid_at', now()->format('Y-m-d')) }}">
+              <label for="admin-field-3" class="form-label">Date</label>
+              <input id="admin-field-3" type="date" name="paid_at" class="form-control" value="{{ old('paid_at', now()->format('Y-m-d')) }}">
             </div>
             <div class="col-md-4">
-              <label class="form-label">Description</label>
-              <input type="text" name="description" class="form-control" value="{{ old('description', 'Entry fees') }}">
+              <label for="admin-field-4" class="form-label">Description</label>
+              <input id="admin-field-4" type="text" name="description" class="form-control" value="{{ old('description', 'Entry fees') }}">
             </div>
             <div class="col-md-3">
-              <label class="form-label">Reference / Proof</label>
-              <input type="text" name="reference" class="form-control" placeholder="e.g. EFT#12345">
+              <label for="admin-field-5" class="form-label">Reference / Proof</label>
+              <input id="admin-field-5" type="text" name="reference" class="form-control" placeholder="e.g. EFT#12345" value="{{ old('reference') }}">
             </div>
             <div class="col-12">
               <button type="submit" class="btn btn-success">
@@ -560,7 +562,7 @@
                 <form method="POST" action="{{ route('superadmin.finances.payout.destroy', $payout) }}"
                       onsubmit="return confirm('Delete this payout?')">
                   @csrf @method('DELETE')
-                  <button type="submit" class="btn btn-icon btn-sm btn-outline-danger" title="Delete">
+                  <button type="submit" class="btn btn-icon btn-sm btn-outline-danger" title="Delete" aria-label="Delete">
                     <i class="ti ti-trash"></i>
                   </button>
                 </form>
@@ -715,7 +717,7 @@
             <h5 class="modal-title" id="fullRefundModalLabel">
               <i class="ti ti-receipt-refund me-2 text-warning"></i>Issue Full Refund
             </h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="modal"></button>
           </div>
 
           <div class="modal-body">
@@ -807,6 +809,8 @@
       </div>
     </div>
   </div>
+
+</div>
 
 </div>
 @endsection

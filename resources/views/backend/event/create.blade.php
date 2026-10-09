@@ -16,6 +16,9 @@
 @endsection
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
+
 <div class="container-xl">
 
   <div class="d-flex justify-content-between align-items-center mb-3">
@@ -33,7 +36,8 @@
   @endif
 
   @unless($isCopy)
-    <div class="card border-primary mb-4" id="event-brief-card" data-preview-url="{{ route('backend.events.preview-brief') }}">
+    <details class="card border-primary mb-4" id="event-brief-card" data-preview-url="{{ route('backend.events.preview-brief') }}">
+      <summary class="card-header">Fill from an event notice (optional)</summary>
       <div class="card-body">
         <div class="d-flex flex-column flex-md-row justify-content-between gap-2 mb-2">
           <div>
@@ -48,7 +52,7 @@
         <textarea id="event-brief" class="form-control mt-3" rows="7" placeholder="Example:&#10;Event: Cape Town Junior Open&#10;Dates: 18–20 October 2026&#10;Type: Individual&#10;Entry fee: R350&#10;Entries close: 7 days before the event&#10;Venue: Bellville Tennis Club&#10;Contact: tournaments@example.org"></textarea>
         <div class="form-text" id="event-brief-status" aria-live="polite">You can edit every extracted field before previewing.</div>
       </div>
-    </div>
+    </details>
   @endunless
 
   <form method="POST" id="event-create-form"
@@ -74,8 +78,8 @@
 
             {{-- Name --}}
             <div class="mb-3">
-              <label class="form-label">Event Name <span class="text-danger">*</span></label>
-              <input name="name"
+              <label for="event-field-1" class="form-label">Event Name <span class="text-danger">*</span></label>
+              <input id="event-field-1" name="name"
                      class="form-control @error('name') is-invalid @enderror"
                      value="{{ old('name', $isCopy ? (($sourceEvent?->name ?? '') . ' (Copy)') : '') }}"
                      required>
@@ -85,16 +89,16 @@
             {{-- Dates --}}
             <div class="row g-2 mb-3">
               <div class="col">
-                <label class="form-label">Start Date</label>
-                <input type="date"
+                <label for="event-field-2" class="form-label">Start Date</label>
+                <input id="event-field-2" type="date"
                        name="start_date"
                        class="form-control @error('start_date') is-invalid @enderror"
                        value="{{ old('start_date', optional($sourceEvent?->start_date)->format('Y-m-d')) }}">
                 @error('start_date')<div class="invalid-feedback">{{ $message }}</div>@enderror
               </div>
               <div class="col">
-                <label class="form-label">End Date</label>
-                <input type="date"
+                <label for="event-field-3" class="form-label">End Date</label>
+                <input id="event-field-3" type="date"
                        name="end_date"
                        class="form-control @error('end_date') is-invalid @enderror"
                        value="{{ old('end_date', optional($sourceEvent?->end_date)->format('Y-m-d')) }}">
@@ -104,8 +108,8 @@
 
             {{-- Event Type --}}
             <div class="mb-3">
-              <label class="form-label">Event Type <span class="text-danger">*</span></label>
-              <select name="eventType"
+              <label for="event-field-4" class="form-label">Event Type <span class="text-danger">*</span></label>
+              <select id="event-field-4" name="eventType"
                       class="form-select @error('eventType') is-invalid @enderror"
                       required>
                 <option value="">— Select type —</option>
@@ -120,8 +124,8 @@
 
             {{-- Rich information --}}
             <div class="mb-3">
-              <label class="form-label">Information</label>
-              <div id="information-editor" class="border rounded">
+              <label id="event-information-label" class="form-label">Information</label>
+              <div id="information-editor" aria-labelledby="event-information-label" class="border rounded">
                 {!! old('information', $sourceEvent?->information ?? '') !!}
               </div>
               <input type="hidden"
@@ -133,8 +137,8 @@
 
             {{-- Venue Notes --}}
             <div class="mb-3">
-              <label class="form-label">Venue Notes</label>
-              <textarea name="venue_notes"
+              <label for="event-field-5" class="form-label">Venue Notes</label>
+              <textarea id="event-field-5" name="venue_notes"
                         class="form-control"
                         rows="3">{{ old('venue_notes', $sourceEvent?->venue_notes ?? '') }}</textarea>
             </div>
@@ -186,8 +190,8 @@
 
             {{-- Entry Fee --}}
             <div class="mb-3">
-              <label class="form-label">Entry Fee</label>
-              <input type="number"
+              <label for="event-field-6" class="form-label">Entry Fee</label>
+              <input id="event-field-6" type="number"
                      name="entryFee"
                      class="form-control"
                      value="{{ old('entryFee', $sourceEvent?->entryFee ?? '') }}">
@@ -195,8 +199,8 @@
 
             {{-- Deadline --}}
             <div class="mb-3">
-              <label class="form-label">Deadline (days before start)</label>
-              <input type="number"
+              <label for="event-field-7" class="form-label">Deadline (days before start)</label>
+              <input id="event-field-7" type="number"
                      name="deadline"
                      class="form-control"
                      value="{{ old('deadline', $sourceEvent?->deadline ?? 7) }}">
@@ -205,8 +209,8 @@
 
             {{-- Withdrawal Deadline --}}
             <div class="mb-3">
-              <label class="form-label">Withdrawal Deadline</label>
-              <input type="datetime-local"
+              <label for="event-field-8" class="form-label">Withdrawal Deadline</label>
+              <input id="event-field-8" type="datetime-local"
                      name="withdrawal_deadline"
                      class="form-control"
                      value="{{ old('withdrawal_deadline', optional($sourceEvent?->withdrawal_deadline)->format('Y-m-d\TH:i')) }}">
@@ -214,8 +218,8 @@
 
             {{-- Organizer --}}
             <div class="mb-3">
-              <label class="form-label">Organizer</label>
-              <input type="text"
+              <label for="event-field-9" class="form-label">Organizer</label>
+              <input id="event-field-9" type="text"
                      name="organizer"
                      class="form-control"
                      value="{{ old('organizer', $sourceEvent?->organizer ?? '') }}">
@@ -223,8 +227,8 @@
 
             {{-- Email --}}
             <div class="mb-3">
-              <label class="form-label">Contact Email</label>
-              <input type="email"
+              <label for="event-field-10" class="form-label">Contact Email</label>
+              <input id="event-field-10" type="email"
                      name="email"
                      class="form-control @error('email') is-invalid @enderror"
                      value="{{ old('email', $sourceEvent?->email ?? '') }}">
@@ -233,8 +237,8 @@
 
             {{-- Admins --}}
             <div class="mb-3">
-              <label class="form-label">Event Admins</label>
-              <select name="admins[]"
+              <label for="event-field-11" class="form-label">Event Admins</label>
+              <select id="event-field-11" name="admins[]"
                       class="form-select select2"
                       multiple
                       data-placeholder="Select admins">
@@ -308,6 +312,7 @@
   </div>
 </div>
 @endunless
+</div>
 @endsection
 
 @section('page-script')

@@ -32,9 +32,15 @@ class PaidClothingOrdersExportTest extends TestCase
             ->assertSeeInOrder(['<th>Player</th>', '<th>Team</th>', '<th>Item</th>', '<th>Size</th>', '<th>Qty</th>'], false)
             ->assertSee('Financial summary')->assertSee('Payfast ID')->assertSee('Customer payments received')
             ->assertSee('Net clothing proceeds before supplier costs')->assertSee('R100.00');
+        $response->assertSee('clothing-order-search')->assertSee('clothing-team-filter')->assertSee('Print / PDF')->assertSee('Downloads include all paid orders');
         $this->assertDatabaseCount('clothing_orders', 1);
         $setup = $this->get(route('backend.region.clothing.edit', ['region' => $region, 'event_id' => $event->id]))->assertOk();
         $setup->assertSee('Items & sizes', false)->assertSee('Pricing details')->assertSee('item-pricing-source')->assertSee('Regional clothing catalog shared across events');
+        $setup->assertSeeInOrder(['Items & sizes', 'Copy and review last year'], false)->assertSee('Ordering closed');
+        if (getenv('CT_BATCHES2731_QA') === '1') {
+            file_put_contents(storage_path('app/batches2731-qa/orders.html'), $response->getContent());
+            file_put_contents(storage_path('app/batches2731-qa/catalogue.html'), $setup->getContent());
+        }
         if (getenv('CT_BATCHES_QA') === '1') {
             file_put_contents(storage_path('app/batches345-qa/clothing-orders.html'), str_replace('http://localhost', 'http://127.0.0.1:8775/ct/public', $response->getContent()));
             file_put_contents(storage_path('app/batches345-qa/clothing-setup.html'), str_replace('http://localhost', 'http://127.0.0.1:8775/ct/public', $setup->getContent()));
@@ -246,6 +252,28 @@ class PaidClothingOrdersExportTest extends TestCase
                 return true;
             }))->andReturn($document);
         $this->actingAs($admin)->get(route('export.pdf.clothing.order', ['id' => $region->id, 'event_id' => $event->id]))->assertOk();
+    }
+
+    public function test_catalogue_identifies_missing_sizes_and_orders_keep_event_scope(): void
+    {
+        [$admin, $event, $region] = $this->managedRegion();
+        $first = $this->order($event, $region, true, 'Example tournament shirt with a long descriptive name');
+        $first->team->update(['name' => 'Example northern district under twelve team']);
+        $second = $this->order($event, $region, true, 'Example cap');
+        $second->team->update(['name' => 'Example southern district team']);
+        $this->order($event, $region, false, 'Unpaid item');
+        $other = Event::factory()->create();
+        $this->order($other, $region, true, 'Other event item');
+        ClothingItemType::create(['region_id' => $region->id, 'item_type_name' => 'Example hoodie without sizes', 'price' => 200]);
+        $response = $this->actingAs($admin)->get(route('backend.region.clothing.orders', ['region' => $region->id, 'event_id' => $event->id]))->assertOk();
+        $response->assertSee('2 paid orders')->assertSee('Example cap')->assertDontSee('Unpaid item')->assertDontSee('Other event item');
+        $setup = $this->get(route('backend.region.clothing.edit', ['region' => $region, 'event_id' => $event->id]))->assertOk();
+        $setup->assertSee('Add sizes for: Example hoodie without sizes')->assertSeeInOrder(['Items & sizes', 'Copy and review last year'], false);
+        $this->assertDatabaseCount('clothing_orders', 4);
+        if (getenv('CT_BATCHES2731_QA') === '1') {
+            file_put_contents(storage_path('app/batches2731-qa/orders.html'), $response->getContent());
+            file_put_contents(storage_path('app/batches2731-qa/catalogue.html'), $setup->getContent());
+        }
     }
 
     private function managedRegion(): array

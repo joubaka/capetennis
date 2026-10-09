@@ -12,7 +12,11 @@
 @endsection
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
+
 <style>
+  @media(max-width:767px) { .operational-page .scoreboard-layout { grid-template-columns:minmax(0,1fr); } .operational-page .ranking-sidebar { position:static; height:auto; max-height:420px; } }
   .scoreboard-layout {
     display: grid;
     grid-template-columns: 2fr 0.7fr;
@@ -281,4 +285,5 @@ $(function () {
   });
 });
 </script>
+</div>
 @endsection

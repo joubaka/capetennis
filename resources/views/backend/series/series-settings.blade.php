@@ -42,6 +42,11 @@
     .ranking-publication-row { flex-direction: column; }
     .ranking-publication-action { width: 100%; }
   }
+  .series-settings-admin :is(.btn,.nav-link,summary,input:not([type=checkbox]),select) { min-height:44px !important; }
+  .series-settings-admin summary { cursor:pointer; align-content:center; }
+  .series-settings-admin .toggle-info { min-width:0; overflow-wrap:anywhere; }
+  .series-settings-admin :focus-visible { outline:3px solid #117a72; outline-offset:2px; }
+  @media(max-width:575px) { .series-settings-admin .row > .col-8,.series-settings-admin .row > .col-4 { flex:0 0 100%; max-width:100%; } }
   /* Tab nav styling */
   .settings-tabs .nav-link {
     color: #6c757d;
@@ -62,10 +67,10 @@
 @endsection
 
 @section('content')
-<div class="container-xl">
+<div class="container-xl series-settings-admin">
 
   {{-- PAGE HEADER --}}
-  <div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
     <div>
       <h4 class="mb-0 fw-bold">Series Settings</h4>
       <div class="text-muted small mt-1">
@@ -77,6 +82,8 @@
     </a>
   </div>
 
+  <div class="alert alert-light border"><strong>Ranking workflow:</strong> save rules → calculate rankings → review → publish. Saving settings does not calculate or publish a new ranking run, or send ranking emails. The public leaderboard switch saves visibility for already published rankings. Rebuild rankings after changing scoring rules.</div>
+  <p id="series-save-status" class="small" role="status" aria-live="polite"></p>
   {{-- TABS CARD --}}
   <div class="card shadow-sm">
 
@@ -115,30 +122,30 @@
             <div class="settings-section-title">Identity</div>
             <div class="row g-3 mb-4">
               <div class="col-8">
-                <label class="form-label fw-semibold small mb-1">Series Name</label>
-                <input type="text" name="name" class="form-control" required value="{{ $series->name }}">
+                <label class="form-label fw-semibold small mb-1" for="series-name">Series Name</label>
+                <input type="text" id="series-name" name="name" class="form-control" required value="{{ $series->name }}">
               </div>
               <div class="col-4">
-                <label class="form-label fw-semibold small mb-1">Year</label>
-                <input type="number" name="year" class="form-control" min="2000" max="2100" value="{{ $series->year }}">
+                <label class="form-label fw-semibold small mb-1" for="series-year">Year</label>
+                <input type="number" id="series-year" name="year" class="form-control" min="2000" max="2100" value="{{ $series->year }}">
               </div>
             </div>
 
             <div class="settings-section-title">Scoring</div>
             <div class="row g-3 mb-4">
               <div class="col-md-4">
-                <label class="form-label fw-semibold small mb-1">Best Results Counted</label>
-                <input type="number" name="best_num_of_scores" class="form-control" min="1" required value="{{ $series->best_num_of_scores }}">
+                <label class="form-label fw-semibold small mb-1" for="series-best_num_of_scores">Best Results Counted</label>
+                <input type="number" id="series-best_num_of_scores" name="best_num_of_scores" class="form-control" min="1" required value="{{ $series->best_num_of_scores }}">
                 <div class="form-text">Series-wide default.</div>
               </div>
               <div class="col-md-4">
-                <label class="form-label fw-semibold small mb-1">Events Required for Public Ranking &amp; Team Selection</label>
-                <input type="number" name="minimum_events_for_team_selection" class="form-control" min="1" max="99" required value="{{ $series->minimum_events_for_team_selection ?? 1 }}">
+                <label class="form-label fw-semibold small mb-1" for="series-minimum_events_for_team_selection">Events Required for Public Ranking &amp; Team Selection</label>
+                <input type="number" id="series-minimum_events_for_team_selection" name="minimum_events_for_team_selection" class="form-control" min="1" max="99" required value="{{ $series->minimum_events_for_team_selection ?? 1 }}">
                 <div class="form-text">Counts actual results from the events selected for each ranking list. Players below this number remain in the admin ranking but are omitted from the public ranking and team selection.</div>
               </div>
               <div class="col-md-4">
-                <label class="form-label fw-semibold small mb-1">Rank Type</label>
-                <select name="rank_type" class="form-select" required
+                <label class="form-label fw-semibold small mb-1" for="series-rank_type">Rank Type</label>
+                <select id="series-rank_type" name="rank_type" class="form-select" required
                   {{ $series->points_template_created ? 'disabled title="Rank type cannot be changed after points have been applied."' : '' }}>
                   @foreach($rankTypes as $type)
                     <option value="{{ $type->id }}" {{ (int)$series->rank_type === (int)$type->id ? 'selected' : '' }}>
@@ -149,42 +156,6 @@
                 @if($series->points_template_created)
                   <div class="form-text text-warning"><i class="ti ti-lock me-1"></i>Locked – points template already created.</div>
                 @endif
-              </div>
-            </div>
-
-            <div class="settings-section-title">Participant Ranking Review</div>
-            <div class="row g-3 mb-4">
-              <div class="col-md-6">
-                <label class="form-label fw-semibold small mb-1">Default Reply Window</label>
-                <div class="input-group">
-                  <input type="number" name="ranking_review_default_hours" class="form-control" min="1" max="720" value="{{ $series->ranking_review_default_hours ?: 24 }}">
-                  <span class="input-group-text">hours</span>
-                </div>
-                <div class="form-text">Prefills the optional Share Rankings modal. The exact cutoff remains editable before sending.</div>
-              </div>
-            </div>
-
-            <div class="settings-section-title">Ranking Rules Preset</div>
-            <div class="row g-3 mb-4">
-              <div class="col-md-7">
-                <label class="form-label fw-semibold small mb-1" for="ranking_rule_preset_id">Apply Preset</label>
-                <select class="form-select" id="ranking_rule_preset_id" name="ranking_rule_preset_id">
-                  <option value="">Custom rules</option>
-                  @foreach($rankingRulePresets as $preset)
-                    <option value="{{ $preset->id }}" {{ (int) $series->ranking_rule_preset_id === (int) $preset->id ? 'selected' : '' }}>
-                      {{ $preset->name }}{{ $preset->is_system ? ' (built-in)' : '' }}
-                    </option>
-                  @endforeach
-                </select>
-                <div class="form-text">Selecting a preset fills the ranking fields below. Save Settings to apply it to this series.</div>
-              </div>
-              <div class="col-md-5">
-                <label class="form-label fw-semibold small mb-1" for="save_preset_name">Save Current Rules as Preset</label>
-                <div class="input-group">
-                  <input type="text" class="form-control" id="save_preset_name" maxlength="120" placeholder="Preset name">
-                  <button type="button" class="btn btn-outline-primary" id="save-preset-btn">Save</button>
-                </div>
-                <div class="form-text">Your saved presets can be reused on other series.</div>
               </div>
             </div>
 
@@ -249,9 +220,45 @@
                 </small>
               </div>
               <div class="form-check form-switch mt-1">
-                <input class="form-check-input" type="checkbox" name="leaderboard_published" id="leaderboard_published"
+                <input class="form-check-input" type="checkbox" name="leaderboard_published" id="leaderboard_published" aria-label="Show published public leaderboard"
                        {{ $hasPublishedRanking && $series->leaderboard_published ? 'checked' : '' }}
                        {{ $hasPublishedRanking ? '' : 'disabled' }}>
+              </div>
+            </div>
+
+            <details class="border rounded p-3 mt-4" id="advanced-ranking-rules"><summary class="fw-semibold">Advanced ranking rules and presets</summary><div class="mt-3">            <div class="settings-section-title">Participant Ranking Review</div>
+            <div class="row g-3 mb-4">
+              <div class="col-md-6">
+                <label class="form-label fw-semibold small mb-1" for="series-ranking_review_default_hours">Default Reply Window</label>
+                <div class="input-group">
+                  <input type="number" id="series-ranking_review_default_hours" name="ranking_review_default_hours" class="form-control" min="1" max="720" value="{{ $series->ranking_review_default_hours ?: 24 }}">
+                  <span class="input-group-text">hours</span>
+                </div>
+                <div class="form-text">Prefills the optional Share Rankings modal. The exact cutoff remains editable before sending.</div>
+              </div>
+            </div>
+
+            <div class="settings-section-title">Ranking Rules Preset</div>
+            <div class="row g-3 mb-4">
+              <div class="col-md-7">
+                <label class="form-label fw-semibold small mb-1" for="ranking_rule_preset_id">Apply Preset</label>
+                <select class="form-select" id="ranking_rule_preset_id" name="ranking_rule_preset_id">
+                  <option value="">Custom rules</option>
+                  @foreach($rankingRulePresets as $preset)
+                    <option value="{{ $preset->id }}" {{ (int) $series->ranking_rule_preset_id === (int) $preset->id ? 'selected' : '' }}>
+                      {{ $preset->name }}{{ $preset->is_system ? ' (built-in)' : '' }}
+                    </option>
+                  @endforeach
+                </select>
+                <div class="form-text">Selecting a preset fills the ranking fields below. Save Settings to apply it to this series.</div>
+              </div>
+              <div class="col-md-5">
+                <label class="form-label fw-semibold small mb-1" for="save_preset_name">Save Current Rules as Preset</label>
+                <div class="input-group">
+                  <input type="text" class="form-control" id="save_preset_name" maxlength="120" placeholder="Preset name">
+                  <button type="button" class="btn btn-outline-primary" id="save-preset-btn">Save</button>
+                </div>
+                <div class="form-text">Your saved presets can be reused on other series.</div>
               </div>
             </div>
 
@@ -261,7 +268,7 @@
                 <small>A player who wins 2 of 3 legs is automatically awarded 1st place for any unplayed leg.</small>
               </div>
               <div class="form-check form-switch mt-1">
-                <input class="form-check-input" type="checkbox" name="auto_award_rule" id="auto_award_rule"
+                <input class="form-check-input" type="checkbox" name="auto_award_rule" id="auto_award_rule" aria-label="Enable auto-award rule"
                        {{ ($series->auto_award_rule ?? true) ? 'checked' : '' }}>
               </div>
             </div>
@@ -277,7 +284,7 @@
                 <small>If best-results totals are equal, rank the player with the higher next excluded score first. A player without another score has 0.</small>
               </div>
               <div class="form-check form-switch mt-1">
-                <input class="form-check-input" type="checkbox" name="use_third_score_tiebreak" id="use_third_score_tiebreak"
+                <input class="form-check-input" type="checkbox" name="use_third_score_tiebreak" id="use_third_score_tiebreak" aria-label="Use third-event score tiebreak"
                        {{ ($series->use_third_score_tiebreak ?? true) ? 'checked' : '' }}>
               </div>
             </div>
@@ -288,7 +295,7 @@
                 <small>If totals and third-event scores are still equal, use the latest linked leg played by either tied player. A recorded finish ranks ahead of no finish; if neither played that leg, move back to the previous leg. Equal finishes remain tied for an administrator to decide. Automatic awards are not actual finishes.</small>
               </div>
               <div class="form-check form-switch mt-1">
-                <input class="form-check-input" type="checkbox" name="use_last_leg_position_tiebreak" id="use_last_leg_position_tiebreak"
+                <input class="form-check-input" type="checkbox" name="use_last_leg_position_tiebreak" id="use_last_leg_position_tiebreak" aria-label="Use latest-played-leg finishing position tiebreak"
                        {{ ($series->use_last_leg_position_tiebreak ?? false) ? 'checked' : '' }}>
               </div>
             </div>
@@ -299,10 +306,12 @@
                 <small>If two players are still tied, use their most recent eligible match in a linked series event. Only playoff matches count when a round robin continues to playoffs; group matches count when round robin is the only phase. The match must include a completed standard full set reaching six games and an administrator must confirm the decision before review.</small>
               </div>
               <div class="form-check form-switch mt-1">
-                <input class="form-check-input" type="checkbox" name="use_head_to_head_tiebreak" id="use_head_to_head_tiebreak"
+                <input class="form-check-input" type="checkbox" name="use_head_to_head_tiebreak" id="use_head_to_head_tiebreak" aria-label="Use latest head-to-head tiebreak"
                        {{ ($series->use_head_to_head_tiebreak ?? true) ? 'checked' : '' }}>
               </div>
             </div>
+
+</div></details>
 
           </form>
         </div>
@@ -335,7 +344,7 @@
                   </td>
                   <td class="align-middle py-1">
                     <input type="number" class="form-control form-control-sm point-input"
-                           data-position="{{ $pos }}" min="0" value="{{ $point }}"
+                           aria-label="Points for finishing position {{ $pos }}" data-position="{{ $pos }}" min="0" value="{{ $point }}"
                            style="max-width:120px;">
                   </td>
                 </tr>
@@ -374,12 +383,12 @@
                 <td class="ps-4 align-middle">{{ $rl->category?->name ?? 'Category #'.$rl->category_id }}</td>
                 <td class="align-middle py-1">
                   <input type="number" class="form-control form-control-sm cat-best-input"
-                         data-id="{{ $rl->id }}" min="1" max="99"
+                         aria-label="Best results counted for {{ $rl->category?->name ?? 'Category #'.$rl->category_id }}" data-id="{{ $rl->id }}" min="1" max="99"
                          placeholder="{{ $series->best_num_of_scores }} (default)"
                          value="{{ $rl->best_num_of_scores ?? '' }}">
                 </td>
                 <td class="align-middle">
-                  <button class="btn btn-sm btn-outline-success btn-save-cat-best" data-id="{{ $rl->id }}" title="Save this row">
+                  <button class="btn btn-sm btn-outline-success btn-save-cat-best" data-id="{{ $rl->id }}" aria-label="Save category best results" title="Save this row">
                     <i class="ti ti-device-floppy"></i>
                   </button>
                 </td>
@@ -410,6 +419,9 @@
     positionClass: 'toast-top-right',
     timeOut: 2500
   };
+
+  const saveStatus = document.getElementById('series-save-status');
+  const reportSave = (message, error = false) => { saveStatus.textContent = message; saveStatus.className = error ? 'small text-danger' : 'small text-success'; };
 
   // ── General Settings ──────────────────────────────────
   const rankingRulePresets = @json($rankingRulePresets->mapWithKeys(fn ($preset) => [
@@ -491,10 +503,11 @@
       return payload;
     })
     .then(r => {
+      reportSave(r.message || 'Series settings saved');
       toastr.success(r.message || 'Series settings saved');
       if (savePresetName) window.location.reload();
     })
-    .catch(error => toastr.error(error.message || 'Failed to save series settings'))
+    .catch(error => { reportSave(error.message || 'Failed to save series settings', true); document.getElementById('advanced-ranking-rules').open = true; toastr.error(error.message || 'Failed to save series settings'); })
     .finally(() => {
       btn.disabled = false;
       presetBtn.disabled = false;
@@ -553,9 +566,9 @@
       headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
       body: JSON.stringify({ points })
     })
-    .then(r => r.json())
+    .then(async response => { const result = await response.json(); if (!response.ok) throw new Error(Object.values(result.errors || {}).flat()[0] || result.message || 'Settings could not be saved'); return result; })
     .then(r => toastr.success(r.message || 'Points saved successfully'))
-    .catch(() => toastr.error('Failed to save points'))
+    .catch(error => { reportSave(error.message || 'Failed to save points', true); toastr.error(error.message || 'Failed to save points'); })
     .finally(() => btn.disabled = false);
   });
 
@@ -570,9 +583,9 @@
       headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
       body: JSON.stringify({ category_best: payload })
     })
-    .then(r => r.json())
+    .then(async response => { const result = await response.json(); if (!response.ok) throw new Error(Object.values(result.errors || {}).flat()[0] || result.message || 'Settings could not be saved'); return result; })
     .then(r => toastr.success(r.message || 'Saved'))
-    .catch(() => toastr.error('Failed to save'))
+    .catch(error => { reportSave(error.message || 'Failed to save', true); toastr.error(error.message || 'Failed to save'); })
     .finally(() => { if (btn) btn.disabled = false; });
   }
 

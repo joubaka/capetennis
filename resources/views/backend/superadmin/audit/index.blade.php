@@ -3,6 +3,8 @@
 @section('title', 'Audit Centre')
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 <div class="container-xxl flex-grow-1 container-p-y">
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
     <div>
@@ -139,7 +141,7 @@
                 @if($event->http_method)<small class="text-muted">{{ $event->http_method }} · HTTP {{ $event->status_code ?? '—' }}</small>@endif
               </td>
               <td><span class="badge bg-{{ $badge }}">{{ ucfirst($event->outcome) }}</span></td>
-              <td><a href="{{ route('superadmin.audit.show', $event) }}" class="btn btn-sm btn-icon btn-outline-primary" title="View detail"><i class="ti ti-eye"></i></a></td>
+              <td><a href="{{ route('superadmin.audit.show', $event) }}" class="btn btn-sm btn-icon btn-outline-primary" title="View detail" aria-label="View detail"><i class="ti ti-eye"></i></a></td>
             </tr>
           @empty
             <tr><td colspan="7" class="text-center text-muted py-5">No audit events match these filters.</td></tr>
@@ -151,5 +153,7 @@
       <div class="card-footer">{{ $events->links('pagination::bootstrap-5') }}</div>
     @endif
   </div>
+</div>
+
 </div>
 @endsection

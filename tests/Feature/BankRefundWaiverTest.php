@@ -29,6 +29,61 @@ class BankRefundWaiverTest extends TestCase
         return $user;
     }
 
+    public function test_processed_team_history_is_separate_from_waived_history(): void
+    {
+        $admin = $this->superUser();
+        $refund = CategoryEventRegistration::factory()->withdrawn()->create([
+            'refund_method' => 'bank', 'refund_status' => 'pending', 'refund_net' => 180,
+        ]);
+        $team = TeamPaymentOrder::create([
+            'user_id' => $admin->id, 'total_amount' => 200, 'wallet_reserved' => 0,
+            'payfast_amount_due' => 200, 'wallet_debited' => false, 'payfast_paid' => true,
+            'pay_status' => true, 'refund_method' => 'bank', 'refund_status' => 'completed',
+            'refund_gross' => 200, 'refund_fee' => 20, 'refund_net' => 180, 'refunded_at' => now(),
+        ]);
+        $response = $this->actingAs($admin)->get(route('admin.refunds.bank.index', ['processed_page' => 1]))
+            ->assertOk()->assertSee('Processed refund history (1)')->assertSee('Team refund #'.$team->id)
+            ->assertDontSee('Waived refund history');
+        $this->assertSame('completed', $team->fresh()->refund_status);
+        $this->writeBatchPreview('refunds', $response->getContent());
+        $detail = $this->get(route('admin.refunds.bank.show', $refund))->assertOk()
+            ->assertSee('Record manual payment')->assertDontSee('Submit to PayFast');
+        $this->writeBatchPreview('manualrefund', $detail->getContent());
+        $this->assertSame('pending', $refund->fresh()->refund_status);
+    }
+
+    public function test_payfast_detail_action_matches_provider_submission_and_waiver_status(): void
+    {
+        $refund = CategoryEventRegistration::factory()->pendingRefund()->create(['refund_net' => 180]);
+        $detail = $this->actingAs($this->superUser())->get(route('admin.refunds.bank.show', $refund))->assertOk()
+            ->assertSee('Submit to PayFast')->assertDontSee('Record manual payment')->assertSee($refund->pf_transaction_id);
+        $this->writeBatchPreview('refund', $detail->getContent());
+        $refund->update(['refund_status' => 'waived']);
+        $this->get(route('admin.refunds.bank.show', $refund))->assertOk()->assertSee('Waived without payment')
+            ->assertDontSee('Record manual payment');
+    }
+
+    public function test_bank_edit_validation_keeps_form_open_without_changing_refund(): void
+    {
+        $refund = CategoryEventRegistration::factory()->withdrawn()->create([
+            'refund_method' => 'bank', 'refund_status' => 'pending', 'refund_account_name' => 'Test Account',
+        ]);
+        $this->actingAs($this->superUser())->withSession(['errors' => (new \Illuminate\Support\ViewErrorBag)->put('default', new \Illuminate\Support\MessageBag(['refund_branch_code' => 'Enter a valid branch code.']))])
+            ->get(route('admin.refunds.bank.show', $refund))->assertOk()
+            ->assertSee('collapse mt-4 show', false)->assertSee('Enter a valid branch code.');
+        $this->assertSame('pending', $refund->fresh()->refund_status);
+        $this->assertSame('Test Account', $refund->fresh()->refund_account_name);
+    }
+
+    private function writeBatchPreview(string $name, string $html): void
+    {
+        if (getenv('BATCH2326_QA') === '1') {
+            $path = storage_path('app/batches2326-qa');
+            if (!is_dir($path)) { mkdir($path, 0777, true); }
+            file_put_contents($path.'/'.$name.'.html', $html);
+        }
+    }
+
     public function test_super_user_can_waive_pending_registration_refund_without_recording_payment(): void
     {
         $admin = $this->superUser();

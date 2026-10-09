@@ -191,6 +191,9 @@
 @endsection
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
+
 <div class="container-xl print-area" id="ranking-list-page" data-ranking-view="detailed">
 
   @php
@@ -897,6 +900,7 @@
     </div>
   </div>
 
+</div>
 </div>
 @endsection
 

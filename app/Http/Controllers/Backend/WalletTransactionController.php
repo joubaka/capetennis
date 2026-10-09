@@ -16,10 +16,10 @@ class WalletTransactionController extends Controller
      */
     public function create($id)
     {
-        $user = User::findOrFail($id);
-        $wallet = $user->wallet ?? $user->wallet()->create(['balance' => 0]);
+        // Use the canonical wallet review and adjustment form.
+        User::findOrFail($id);
 
-        return view('backend.wallet.transaction-create', compact('user', 'wallet'));
+        return redirect()->route('wallet.show', $id);
     }
 
     /**

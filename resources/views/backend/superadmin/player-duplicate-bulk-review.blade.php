@@ -1,6 +1,8 @@
 @extends('layouts.backend')
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 <div class="container-xxl flex-grow-1 container-p-y">
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
     <div>
@@ -152,12 +154,12 @@
     @endforeach
     <div class="card-body">
       <div class="mb-3">
-        <label class="form-label">Audit reason for all selected merges</label>
-        <textarea name="reason" class="form-control" rows="2" minlength="10" maxlength="2000" required>{{ old('reason', 'Confirmed one-sided-history duplicates after matching identity details.') }}</textarea>
+        <label for="admin-field-1" class="form-label">Audit reason for all selected merges</label>
+        <textarea id="admin-field-1" name="reason" class="form-control" rows="2" minlength="10" maxlength="2000" required>{{ old('reason', 'Confirmed one-sided-history duplicates after matching identity details.') }}</textarea>
       </div>
       <div class="mb-3">
-        <label class="form-label">Type exactly: <code>{{ $batch['confirmation_phrase'] }}</code></label>
-        <input name="confirmation" class="form-control" value="{{ old('confirmation') }}" autocomplete="off" required>
+        <label for="admin-field-2" class="form-label">Type exactly: <code>{{ $batch['confirmation_phrase'] }}</code></label>
+        <input id="admin-field-2" name="confirmation" class="form-control" value="{{ old('confirmation') }}" autocomplete="off" required>
       </div>
       <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
         <span class="small text-muted">Restricted to Super Admins. The reviewed batch digest is checked again before any profile is changed.</span>
@@ -168,5 +170,7 @@
   @else
     <div class="alert alert-secondary mb-0"><strong>Nothing will be merged.</strong> Every selected candidate was skipped. Use the full-review links above or return to the candidate list.</div>
   @endif
+</div>
+
 </div>
 @endsection

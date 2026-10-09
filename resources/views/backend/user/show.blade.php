@@ -30,6 +30,8 @@
 @endsection
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 
 <input type="hidden" value="{{ $user->id }}" id="viewUserId">
 
@@ -42,13 +44,13 @@
 <div class="row">
 
   {{-- ================= USER SIDEBAR ================= --}}
-  <div class="col-xl-4 col-lg-5 col-md-5 order-1 order-md-0">
+  <div class="col-xl-4 col-lg-5 col-md-5 order-0">
     <div class="card mb-4">
       <div class="card-body text-center">
 
         <img src="{{ $user->profile_photo_url ?? asset('assets/img/avatars/default.svg') }}"
              class="rounded-circle mb-3"
-             width="100" height="100">
+             width="100" height="100" alt="Profile photo for {{ $user->name }}">
 
         <h4 class="mb-0">{{ $user->userName ?? $user->name }}</h4>
         <small class="text-muted">{{ $user->email }}</small>
@@ -174,6 +176,8 @@
 
 </div>
 
+@if($wallet)<div class="mb-3">{{ $transactions->links() }}</div>@endif
+
 {{-- ================= LINK PLAYER MODAL ================= --}}
 <div class="modal fade" id="linkPlayerModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
@@ -183,6 +187,7 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
+        <label for="link-player-select" class="form-label">Player to link</label>
         <select id="link-player-select" class="form-select">
           <option></option>
           @foreach($players as $p)
@@ -239,6 +244,7 @@
 </div>
 @endcan
 
+</div>
 @endsection
 
 @section('page-script')
@@ -252,17 +258,7 @@ $(function () {
 
   $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': CSRF } });
 
-  // DataTable for transactions (client-side, already loaded)
-  if ($('.datatable-transactions').length && $('.datatable-transactions tbody tr').length > 1) {
-    $('.datatable-transactions').DataTable({
-      ordering: true,
-      order: [[0, 'desc']],
-      pageLength: 25,
-      paging: true,
-      searching: true,
-    });
-  }
-
+  // The ledger history is paginated by the server; do not paginate its current page again.
   // ==========================================================
   // 🟦 WALLET CREDIT / DEBIT
   // ==========================================================
@@ -313,9 +309,16 @@ $(function () {
   $('#linkPlayerModal').on('shown.bs.modal', function () {
     $('#link-player-select').select2({
       dropdownParent: $('#linkPlayerModal'),
-      placeholder: 'Select a player',
+      placeholder: 'Search by player name',
       width: '100%',
-      allowClear: true
+      allowClear: true,
+      minimumInputLength: 2,
+      ajax: {
+        url: @json(route('player.search')),
+        delay: 350,
+        data: params => ({q: params.term, page: params.page || 1, format: 'select2'}),
+        processResults: result => result
+      }
     });
   });
 

@@ -14,6 +14,8 @@
 @endsection
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 <div class="container-xxl flex-grow-1 container-p-y">
 
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -34,7 +36,7 @@
     @if(session('success'))
         <div class="alert alert-success alert-dismissible fade show" role="alert">
             {{ session('success') }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="alert"></button>
         </div>
     @endif
 
@@ -43,8 +45,8 @@
         <div class="card-body">
             <form method="GET" class="row g-3 align-items-end">
                 <div class="col-md-3">
-                    <label class="form-label">Player</label>
-                    <select name="player_id" class="form-select select2">
+                    <label for="admin-field-1" class="form-label">Player</label>
+                    <select id="admin-field-1" name="player_id" class="form-select select2">
                         <option value="">All Players</option>
                         @foreach($players as $p)
                             <option value="{{ $p->id }}" @selected(request('player_id') == $p->id)>
@@ -54,8 +56,8 @@
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label">Violation Type</label>
-                    <select name="violation_type_id" class="form-select select2">
+                    <label for="admin-field-2" class="form-label">Violation Type</label>
+                    <select id="admin-field-2" name="violation_type_id" class="form-select select2">
                         <option value="">All Types</option>
                         @foreach($violationTypes as $vt)
                             <option value="{{ $vt->id }}" @selected(request('violation_type_id') == $vt->id)>
@@ -65,12 +67,12 @@
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label">Date From</label>
-                    <input type="date" name="date_from" class="form-control" value="{{ request('date_from') }}">
+                    <label for="admin-field-3" class="form-label">Date From</label>
+                    <input id="admin-field-3" type="date" name="date_from" class="form-control" value="{{ request('date_from') }}">
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label">Date To</label>
-                    <input type="date" name="date_to" class="form-control" value="{{ request('date_to') }}">
+                    <label for="admin-field-4" class="form-label">Date To</label>
+                    <input id="admin-field-4" type="date" name="date_to" class="form-control" value="{{ request('date_to') }}">
                 </div>
                 <div class="col-md-2">
                     <button type="submit" class="btn btn-primary w-100">
@@ -145,7 +147,7 @@
                                           method="POST"
                                           onsubmit="return confirm('Remove this violation?');">
                                         @csrf @method('DELETE')
-                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Remove">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Remove" aria-label="Remove">
                                             <i class="ti ti-trash"></i>
                                         </button>
                                     </form>
@@ -173,6 +175,8 @@
         $('.select2').select2();
     });
 </script>
+
+</div>
 @endsection
 
 @endsection

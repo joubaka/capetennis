@@ -6,7 +6,9 @@
   <title>Email preview · {{ $subject }}</title>
 </head>
 <body style="margin:0;background:#e9edf2;font-family:Arial,Helvetica,sans-serif;color:#263b50">
-  <div data-mail-review>
+  <p class="small text-muted">Sending submits the reviewed emails for background delivery. Delivery may continue after you leave this page.</p>
+<div data-mail-review class="operational-page">
+@include('backend.partials.operational-controls')
   <div style="max-width:680px;margin:22px auto 0;padding:0 12px">
     <div style="background:#fff;border:2px solid #16876f;border-radius:10px;padding:16px 18px;box-sizing:border-box">
       <strong style="color:#16876f">{{ ($previewOnly ?? true) ? 'Preview only — no email has been sent' : 'Saved invitation email — read-only campaign snapshot' }}</strong>
@@ -34,7 +36,7 @@
         <input type="hidden" name="preview_hash" value="{{ $customSend['preview_hash'] }}">
         <input type="hidden" name="preview_token" value="{{ $customSend['preview_token'] }}">
         <label style="display:block"><input type="checkbox" name="confirm_recipients" value="1" required> I confirm these exact recipients and this custom email.</label>
-        <button type="submit" style="margin-top:12px;border:0;border-radius:6px;background:#16876f;color:#fff;padding:10px 16px;cursor:pointer">Approve and queue {{ count($customSend['invitation_ids']) }} emails</button>
+        <button type="submit" style="margin-top:12px;border:0;border-radius:6px;background:#16876f;color:#fff;padding:10px 16px;cursor:pointer">Approve and send {{ count($customSend['invitation_ids']) }} emails</button>
       </form>
     </div>
   @endisset
@@ -45,7 +47,7 @@
         @if(is_scalar($value))<input type="hidden" name="{{ $field }}" value="{{ $value }}">@endif
       @endforeach
       <label><input type="checkbox" required> I confirm the recipients and example invitation are correct.</label>
-      <button class="btn btn-primary" type="submit">Approve and queue invitations</button>
+      <button class="btn btn-primary" type="submit">Approve and send invitations</button>
     </form>
   @endisset
 </div>

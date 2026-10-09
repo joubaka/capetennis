@@ -14,15 +14,15 @@
 @endsection
 
 @section('content')
-<div class="container-xxl flex-grow-1 container-p-y">
+<div class="container-xxl flex-grow-1 container-p-y player-directory-admin">
 
   {{-- Page Header --}}
-  <div class="d-flex justify-content-between align-items-center mb-4">
+  <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-4">
     <div>
       <h4 class="mb-1"><i class="ti ti-user-check me-2"></i> Manage Players</h4>
-      <p class="text-muted mb-0">View and manage all registered players</p>
+      <p class="text-muted mb-0">Search registered players, open a profile, or edit its details. Results load one page at a time.</p>
     </div>
-    <div class="d-flex gap-2">
+    <div class="d-flex flex-wrap gap-2">
       <a href="{{ route('player.create') }}" class="btn btn-primary">
         <i class="ti ti-plus me-1"></i> Add Player
       </a>
@@ -43,13 +43,14 @@
   <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
       <h5 class="mb-0">All Players</h5>
-      <div class="d-flex gap-2">
+      <div class="d-flex flex-wrap gap-2">
         <button class="btn btn-sm btn-outline-primary" id="refreshTable">
           <i class="ti ti-refresh"></i> Refresh
         </button>
       </div>
     </div>
     <div class="card-body">
+      <p class="small text-muted">Search by name, surname, email or cell number. Use the page controls to load more results.</p>
       <div class="table-responsive">
         <table class="table table-hover datatable-players w-100">
           <thead>
@@ -74,6 +75,14 @@
   </div>
 
 </div>
+<style>
+.player-directory-admin :is(.btn,.page-link,input,select) { min-height:44px !important; }
+.player-directory-admin .btn-icon { min-width:44px !important; }
+.player-directory-admin :focus-visible { outline:3px solid #117a72; outline-offset:2px; }
+.player-directory-admin td { overflow-wrap:anywhere; white-space:normal; }
+.player-directory-admin .dt-search { margin-bottom:1rem; }
+@media(max-width:575px) { .player-directory-admin .dt-layout-row { flex-wrap:wrap; gap:.75rem; } .player-directory-admin .dt-search input { width:100%; margin-left:0; } }
+</style>
 @endsection
 
 @section('page-script')
@@ -87,6 +96,8 @@ $(function () {
     headers: { 'X-CSRF-TOKEN': CSRF }
   });
 
+  const safeText = value => $('<div>').text(value == null ? '-' : String(value)).html().replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+
   // Initialize DataTable
   var dtPlayers = $('.datatable-players').DataTable({
     processing: true,
@@ -98,7 +109,7 @@ $(function () {
     },
     columns: [
       { data: 'id', width: '50px' },
-      { 
+      {
         data: 'name',
         render: function(data, type, row) {
           if (type !== 'display') return data;
@@ -110,20 +121,20 @@ $(function () {
           @endif
         }
       },
-      { data: 'surname' },
-      { 
+      { data: 'surname', render: $.fn.dataTable.render.text() },
+      {
         data: 'email',
         render: function(data) {
-          return data ? '<a href="mailto:' + data + '">' + data + '</a>' : '-';
+          return data ? $('<a>').attr('href', 'mailto:' + String(data)).text(data)[0].outerHTML : '-';
         }
       },
-      { 
+      {
         data: 'cellNr',
         render: function(data) {
-          return data || '-';
+          return safeText(data || '-');
         }
       },
-      { 
+      {
         data: 'gender',
         render: function(data) {
           if (!data) return '-';
@@ -132,7 +143,7 @@ $(function () {
             : (normalized === '2' || normalized === 'female' ? 'Female' : String(data));
           var badgeClass = label === 'Male' ? 'bg-label-info'
             : (label === 'Female' ? 'bg-label-danger' : 'bg-label-secondary');
-          return '<span class="badge ' + badgeClass + '">' + label + '</span>';
+          return '<span class="badge ' + badgeClass + '">' + safeText(label) + '</span>';
         }
       },
       {
@@ -142,7 +153,7 @@ $(function () {
           var date = new Date(data);
           var age = Math.floor((new Date() - date) / (365.25 * 24 * 60 * 60 * 1000));
           var ageLabel = age < 18 ? ' <span class="badge bg-info">Minor</span>' : '';
-          return date.toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' }) + 
+          return date.toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' }) +
                  ' <small class="text-muted">(' + age + 'y)</small>' + ageLabel;
         }
       },
@@ -166,18 +177,20 @@ $(function () {
         orderable: false,
         searchable: false,
         render: function(data) {
+          const playerLabel = safeText(`${data.name || ''} ${data.surname || ''}`);
+          const playerId = encodeURIComponent(data.id);
           return `
             <div class="d-flex gap-1">
-              <a href="${APP_URL}/backend/player/${data.id}" class="btn btn-sm btn-icon btn-outline-primary" title="View Profile">
+              <a href="${APP_URL}/backend/player/${playerId}" class="btn btn-sm btn-icon btn-outline-primary" aria-label="View profile for ${playerLabel}" title="View Profile">
                 <i class="ti ti-eye"></i>
               </a>
-              <a href="${APP_URL}/backend/player/${data.id}/edit" class="btn btn-sm btn-icon btn-outline-warning" title="Edit">
+              <a href="${APP_URL}/backend/player/${playerId}/edit" class="btn btn-sm btn-icon btn-outline-warning" aria-label="Edit ${playerLabel}" title="Edit">
                 <i class="ti ti-pencil"></i>
               </a>
-              <button class="btn btn-sm btn-icon btn-outline-danger delete-player-btn" 
-                      data-id="${data.id}" 
-                      data-name="${data.name || ''} ${data.surname || ''}" 
-                      title="Delete">
+              <button class="btn btn-sm btn-icon btn-outline-danger delete-player-btn"
+                      data-id="${playerId}"
+                      data-name="${playerLabel}"
+                      aria-label="Delete ${playerLabel}" title="Delete">
                 <i class="ti ti-trash"></i>
               </button>
             </div>
@@ -187,8 +200,13 @@ $(function () {
     ],
     order: [[0, 'desc']],
     pageLength: 25,
+    lengthMenu: [10, 25, 50, 100],
     responsive: true,
     language: {
+      search: "Find a player:",
+      searchPlaceholder: "Name, surname, email or cell",
+      lengthMenu: "Show _MENU_ players",
+      info: "Showing _START_–_END_ of _TOTAL_ players",
       emptyTable: "No players found",
       zeroRecords: "No matching players found"
     }
@@ -206,7 +224,7 @@ $(function () {
 
     Swal.fire({
       title: 'Delete Player?',
-      text: 'Are you sure you want to delete "' + playerName + '"? This will remove all associated data.',
+      text: 'Are you sure you want to delete "' + playerName + '"? This uses the existing player deletion process.',
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#d33',

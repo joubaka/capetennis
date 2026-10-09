@@ -14,7 +14,7 @@
     <div class="btn-group mt-2 mt-md-0">
       <a href="{{ route('backend.region.clothing.edit', array_filter(['region' => $region, 'event_id' => request()->integer('event_id') ?: null])) }}" class="btn btn-sm btn-outline-secondary">Back to clothing</a>
       <a href="{{ route('export.pdf.clothing.order', array_filter(['id' => $region->id, 'event_id' => request()->integer('event_id') ?: null])) }}" target="_blank" class="btn btn-sm btn-outline-danger">
-        <i class="ti ti-file-text"></i> PDF
+        <i class="ti ti-file-text"></i> Print / PDF
       </a>
       <a href="{{ route('export.excel.clothing', array_filter(['id' => $region->id, 'event_id' => request()->integer('event_id') ?: null])) }}" target="_blank" class="btn btn-sm btn-outline-success">
         <i class="ti ti-file-spreadsheet"></i> Excel
@@ -22,6 +22,13 @@
     </div>
   </div>
   <div class="card-body">
+    <p class="text-muted">{{ $clothings->count() }} paid orders · {{ $clothings->sum(fn ($order) => $order->items->count()) }} item lines. Downloads include all paid orders in the current region and event scope.</p>
+    <div class="row g-2 mb-3">
+      <div class="col-md-8"><label class="form-label" for="clothing-order-search">Find a player, team, item or size</label><input type="search" class="form-control" id="clothing-order-search" placeholder="Search these orders"></div>
+      <div class="col-md-4"><label class="form-label" for="clothing-team-filter">Team</label><select class="form-select" id="clothing-team-filter"><option value="">All teams in {{ $region->region_name }}</option>@foreach($clothings->pluck('team')->filter()->unique('id')->sortBy('name') as $team)<option value="{{ $team->id }}">{{ $team->name }}</option>@endforeach</select></div>
+    </div>
+    <p class="small text-muted" id="clothing-order-count" role="status" aria-live="polite"></p>
+    <div class="alert alert-light border" id="clothing-order-empty" hidden>No item lines match these filters.</div>
     <div class="table-responsive">
       <table class="table table-striped align-middle clothing-fulfillment-table">
         <thead class="table-light">
@@ -46,7 +53,7 @@
                   $qty = (int) ($item->qty ?: 1);
                   $lineTotal = (float) ($item->line_total ?: $price * $qty);
                 @endphp
-                <tr>
+                <tr data-clothing-order-line data-team-id="{{ $order->team_id }}">
                   <td data-label="Player">{{ optional($order->player)->name }}</td>
                   <td data-label="Team">{{ optional($order->team)->name }}</td>
                   <td data-label="Item">{{ $item->item_name ?: optional($item->itemType)->item_type_name }}</td>
@@ -84,8 +91,10 @@
   </div>
 </div>
 <style>
-.clothing-orders-admin summary { min-height:44px; cursor:pointer; align-content:center; }
-.clothing-orders-admin .btn { min-height:44px; }
+.clothing-orders-admin summary { min-height:44px !important; cursor:pointer; align-content:center; }
+.clothing-orders-admin .btn { min-height:44px !important; }
+.clothing-orders-admin :is(input,select) { min-height:44px !important; }
+.clothing-orders-admin [hidden] { display:none !important; }
 .clothing-orders-admin .btn-group { display:flex; flex-wrap:wrap; gap:.4rem; }
 .clothing-fulfillment-table td { white-space:normal; overflow-wrap:anywhere; }
 @media(max-width:767px) {
@@ -98,4 +107,25 @@
  .clothing-fulfillment-table td[colspan]::before { display:none; }
 }
 </style>
+<script>
+(() => {
+  const search = document.getElementById('clothing-order-search');
+  const team = document.getElementById('clothing-team-filter');
+  const lines = [...document.querySelectorAll('[data-clothing-order-line]')];
+  const filter = () => {
+    const term = search.value.trim().toLocaleLowerCase();
+    let shown = 0;
+    lines.forEach(line => {
+      const matches = (!team.value || line.dataset.teamId === team.value) && line.textContent.toLocaleLowerCase().includes(term);
+      line.hidden = !matches;
+      if (matches) shown++;
+    });
+    document.getElementById('clothing-order-count').textContent = `${shown} of ${lines.length} item lines shown`;
+    document.getElementById('clothing-order-empty').hidden = shown > 0 || lines.length === 0;
+  };
+  search.addEventListener('input', filter);
+  team.addEventListener('change', filter);
+  filter();
+})();
+</script>
 @endsection

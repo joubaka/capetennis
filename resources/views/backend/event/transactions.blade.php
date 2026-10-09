@@ -67,6 +67,8 @@
 @endsection
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 <div class="container-xl">
   @include('backend.event.partials.header', [
     'eventWorkspaceActive' => 'more',
@@ -421,6 +423,8 @@ if ($tx->type === 'clothing_payment') {
       </div>
     </div>
   </div>
+
+</div>
 
 </div>
 @endsection

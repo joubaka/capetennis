@@ -1,6 +1,6 @@
 @extends('layouts.backend')
 
-@section('title', 'Dashboard')
+@section('title', 'Create series')
 
 @section('vendor-style')
 
@@ -27,8 +27,20 @@ document.getElementById('ranking-rule-preset')?.addEventListener('change', event
 @endsection
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
+
 <div class="card">
-    <div class="card-header"></div>
+    <div class="card-header"><h4 class="mb-1">Create series</h4><p class="small text-muted mb-0">Set up the series first. Add events, configure points and build rankings separately.</p></div>
+    @if($errors->any())
+      <div class="alert alert-danger m-3">
+        <ul class="mb-0">
+          @foreach($errors->all() as $error)
+            <li>{{ $error }}</li>
+          @endforeach
+        </ul>
+      </div>
+    @endif
     <div class="card-body">
         <form action="{{route('series.store')}}" method="post">
             @csrf
@@ -36,7 +48,7 @@ document.getElementById('ranking-rule-preset')?.addEventListener('change', event
                 <div class="mb-3 row">
                     <label for="html5-text-input" class="col-md-4 col-form-label">Series Name</label>
                     <div class="col-md-8">
-                        <input class="form-control" name="name" type="text" value="" id="html5-text-input">
+                        <input class="form-control" name="name" required maxlength="255" type="text" value="{{ old('name') }}" id="html5-text-input">
                     </div>
                 </div>
                 <div class="mb-3 row">
@@ -45,7 +57,7 @@ document.getElementById('ranking-rule-preset')?.addEventListener('change', event
                         <select name="ranking_rule_preset_id" id="ranking-rule-preset" class="form-select">
                             <option value="">Custom rules</option>
                             @foreach($rankingRulePresets as $preset)
-                              <option value="{{ $preset->id }}" data-best-count="{{ $preset->rules['best_num_of_scores'] }}">
+                              <option value="{{ $preset->id }}" data-best-count="{{ $preset->rules['best_num_of_scores'] }}" @selected((string) old('ranking_rule_preset_id') === (string) $preset->id)>
                                 {{ $preset->name }}{{ $preset->is_system ? ' (built-in)' : '' }}
                               </option>
                             @endforeach
@@ -54,25 +66,25 @@ document.getElementById('ranking-rule-preset')?.addEventListener('change', event
                     </div>
                 </div>
                 <div class="mb-3 row">
-                    <label for="html5-text-input" class="col-md-4 col-form-label">Best nr of Scores </label>
+                    <label for="best-scores-count" class="col-md-4 col-form-label">Best nr of Scores </label>
                     <div class="col-md-8">
-                        <select name="numScores" id="best-scores-count" class="form-select">
-                            <option>Please select</option>
-                            <option value="1">1</option>
-                            <option value="2">2</option>
-                            <option value="3">3</option>
-                            <option value="4">4</option>
-                            <option value="5">5</option>
+                        <select name="numScores" id="best-scores-count" required class="form-select">
+                            <option value="">Please select</option>
+                            <option value="1" @selected((string) old('numScores') === '1')>1</option>
+                            <option value="2" @selected((string) old('numScores') === '2')>2</option>
+                            <option value="3" @selected((string) old('numScores') === '3')>3</option>
+                            <option value="4" @selected((string) old('numScores') === '4')>4</option>
+                            <option value="5" @selected((string) old('numScores') === '5')>5</option>
                         </select>
                     </div>
                 </div>
                 <div class="mb-3 row">
-                    <label for="html5-text-input" class="col-md-4 col-form-label">Ranking Type </label>
+                    <label for="defaultSelect" class="col-md-4 col-form-label">Ranking Type </label>
                     <div class="col-md-8">
-                        <select name="rankType" id="defaultSelect" class="form-select">
-                            <option>Please select</option>
+                        <select name="rankType" id="defaultSelect" required class="form-select">
+                            <option value="">Please select</option>
                             @foreach($rankingTypes as $rankType)
-                            <option value="{{$rankType->id}}">{{$rankType->type}}</option>
+                            <option value="{{$rankType->id}}" @selected((string) old('rankType') === (string) $rankType->id)>{{$rankType->type}}</option>
                             @endforeach
 
                         </select>
@@ -84,7 +96,7 @@ document.getElementById('ranking-rule-preset')?.addEventListener('change', event
                     <select name="year" id="series-year" class="form-select" required>
                       <option value="">Select Year</option>
                       @for ($y = now()->year; $y <= 2030; $y++)
-                        <option value="{{ $y }}">{{ $y }}</option>
+                        <option value="{{ $y }}" @selected((string) old('year') === (string) $y)>{{ $y }}</option>
                       @endfor
                     </select>
                   </div>
@@ -99,4 +111,5 @@ document.getElementById('ranking-rule-preset')?.addEventListener('change', event
 
 
 
+</div>
 @endsection

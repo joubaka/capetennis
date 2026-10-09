@@ -108,11 +108,15 @@ class PlayerAbilitySnapshotTest extends TestCase
     {
         $schedule = app(\Illuminate\Console\Scheduling\Schedule::class);
         $events = collect($schedule->events())->filter(fn ($event) => str_contains($event->command ?? '', 'player-ability:refresh'));
-        $this->assertCount(1, $events);
-        $event = $events->first();
+        $this->assertCount(2, $events);
+        $event = $events->first(fn ($event) => !str_contains($event->command, '--pending'));
         $this->assertSame('0 0 * * *', $event->expression);
         $this->assertSame('Africa/Johannesburg', $event->timezone);
         $this->assertTrue($event->withoutOverlapping);
+        $background = $events->first(fn ($event) => str_contains($event->command, '--pending'));
+        $this->assertSame('* * * * *', $background->expression);
+        $this->assertTrue($background->withoutOverlapping);
+        $this->assertTrue($background->runInBackground);
     }    public function test_new_member_or_duplicate_category_context_withholds_existing_snapshot(): void
     {
         $event = Event::factory()->create(['published' => true]);

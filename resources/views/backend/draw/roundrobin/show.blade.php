@@ -6,6 +6,9 @@
 @section('title', 'Draw workspace — ' . $draw->drawName)
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
+
 <link rel="stylesheet" href="{{ asset('assets/css/draw-roundrobin.css') }}?v={{ filemtime(public_path('assets/css/draw-roundrobin.css')) }}">
 
 
@@ -1113,6 +1116,7 @@
 <input type="hidden" id="drawId" value="{{ $draw->id }}">
 @include('backend.headOffice.modals.scheduleModal')
 
+</div>
 @endsection
 
 

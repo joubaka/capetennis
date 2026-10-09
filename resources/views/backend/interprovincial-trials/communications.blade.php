@@ -1,6 +1,9 @@
 @extends('layouts.backend')
 @section('title', 'Trials communications')
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
+
 @include('backend.event.partials.header',['eventWorkspaceActive'=>'communications'])
 <a class="btn btn-outline-primary mb-3" href="{{ route('backend.event-mail-log.index',$event) }}">Event email log</a>
 @foreach(['success'=>'success','warning'=>'warning','error'=>'danger','info'=>'info'] as $flash=>$tone)@if(session($flash))<div class="alert alert-{{ $tone }}" role="status">{{ session($flash) }}</div>@endif @endforeach
@@ -44,4 +47,5 @@
 const templates = @json($templates->keyBy('id'));
 document.getElementById('trial-template').addEventListener('change',function(){const selected=templates[this.value];if(selected){document.getElementById('trial-subject').value=selected.subject;document.getElementById('trial-body').value=selected.body;}});
 </script>
+</div>
 @endsection

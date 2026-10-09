@@ -120,7 +120,7 @@ class PlayerSharedAbilityService
         return $players;
     }
 
-    /** Exact publication flags are hashed even if changed without updated_at. Other source changes expire within five minutes. */
+    /** Exact result/publication values also detect external edits without timestamps. */
     public function fingerprint(): string
     {
         $hash = hash_init('sha256');
@@ -144,6 +144,11 @@ class PlayerSharedAbilityService
         }
         foreach (DB::table('player_registrations')->select('registration_id', 'player_id')->orderBy('registration_id')->orderBy('player_id')->cursor() as $row) {
             hash_update($hash, 'player_registrations'.json_encode($row));
+        }
+        foreach (['fixture_results', 'team_fixture_results', 'category_results'] as $table) {
+            foreach (DB::table($table)->orderBy('id')->lazyById(500) as $row) {
+                hash_update($hash, $table.json_encode($row));
+            }
         }
         foreach (['category_results', 'category_event_registrations', 'category_events', 'categories', 'fixtures', 'fixture_results', 'player_registrations', 'players', 'draw_settings', 'order_of_plays', 'team_fixture_results'] as $table) {
             $query = DB::table($table);

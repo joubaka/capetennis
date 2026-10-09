@@ -26,6 +26,9 @@
 @endsection
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
+
 @if($performance && auth()->user()->hasRole('super-user'))
     @include('backend.player-performance.ability-card')
     @include('backend.player-performance.card')
@@ -142,4 +145,5 @@
 </div>
 
 
+</div>
 @endsection

@@ -37,6 +37,9 @@
 @endsection
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls', ['pageSearchLabel' => 'Find an invitee or reserve on this page'])
+
 <div class="container-xxl flex-grow-1 container-p-y">
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-2"><div><h4>Masters invitation batch</h4><p class="text-muted">{{ $batch->event->name ?? 'Event' }} · ranking run {{ $batch->ranking_run_id }}</p></div><div class="d-flex gap-2 flex-wrap"><a href="{{ route('admin.events.entries.new', $batch->event_id) }}" class="btn btn-primary"><i class="ti ti-users me-1"></i>Confirmed Entries</a><a href="{{ route('admin.events.overview', $batch->event_id) }}" class="btn btn-outline-primary">Back to Masters Dashboard</a>@if($batch->series_id)<a href="{{ route('series.events', $batch->series_id) }}" class="btn btn-outline-secondary">Back to Series</a>@endif</div></div>
   <div class="alert {{ $readiness['status'] === 'blocked' ? 'alert-danger' : ($readiness['status'] === 'warning' ? 'alert-warning' : 'alert-success') }}">
@@ -88,7 +91,7 @@
           @forelse($invitees as $playerInvitation)
             @php($willInvite = $playerInvitation->status === \App\Models\MastersInvitation::INVITED)
             @php($playerStatus = match ($playerInvitation->status) { \App\Models\MastersInvitation::PAID_CONFIRMED => 'Registered', \App\Models\MastersInvitation::ACCEPTED_PENDING_PAYMENT => 'Payment pending', default => $batch->status === 'sent' ? 'Queued' : 'Not sent' })
-            <div class="masters-entry-row masters-player-row">
+            <div class="masters-entry-row masters-player-row" data-page-row>
               <span class="text-muted">{{ $loop->iteration }}</span><div><strong>{{ $playerInvitation->player?->full_name ?? ('Player '.$playerInvitation->player_id) }}</strong><small class="d-block text-muted">Rank {{ $playerInvitation->ranking_position }}</small></div>
               @php($contactEmail = $playerInvitation->player?->email ?: $playerInvitation->player?->user?->email ?: $playerInvitation->player?->users?->first()?->email)
               <div class="contact-cell email-cell">@if($contactEmail)<a class="email-link" href="mailto:{{ $contactEmail }}">{{ $contactEmail }}</a>@else<span class="text-muted">—</span>@endif</div><div class="contact-cell cell-cell">@if($playerInvitation->player?->cellNr)<a href="tel:{{ $playerInvitation->player->cellNr }}">{{ $playerInvitation->player->cellNr }}</a>@else<span class="text-muted">—</span>@endif</div><div class="payment-cell"><span class="badge {{ $playerInvitation->status === \App\Models\MastersInvitation::PAID_CONFIRMED ? 'bg-label-success' : ($playerInvitation->status === \App\Models\MastersInvitation::ACCEPTED_PENDING_PAYMENT ? 'bg-label-warning' : 'bg-label-primary') }}">{{ $playerStatus }}</span></div><div class="action-cell"><form class="js-invitation-wave-form" method="POST" action="{{ route('backend.masters.invitation.update', $playerInvitation) }}" data-player-row data-invited="{{ $willInvite ? 1 : 0 }}" data-invitation-status="{{ $playerInvitation->status }}" data-mark-paid-url="{{ route('backend.masters.invitation.mark-paid', $playerInvitation) }}">@csrf @method('PATCH')<input type="hidden" name="status" value="{{ $willInvite ? 'reserve' : 'invited' }}"><button class="btn btn-sm {{ $willInvite ? 'btn-primary' : 'btn-outline-secondary' }}" type="submit" title="{{ $willInvite ? 'Move to reserve' : 'Add to invitation wave' }}">{{ $willInvite ? '✓' : '○' }}</button></form></div>
@@ -121,6 +124,7 @@
     @endforelse
   </div></div>
   <div class="d-flex justify-content-center gap-2 py-3"><a href="{{ route('admin.events.overview', $batch->event_id) }}" class="btn btn-primary">Back to Masters Dashboard</a>@if($batch->series_id)<a href="{{ route('series.events', $batch->series_id) }}" class="btn btn-outline-secondary">Back to Series</a>@endif</div>
+</div>
 </div>
 @endsection
 

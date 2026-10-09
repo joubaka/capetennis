@@ -63,8 +63,7 @@ class UserController extends Controller
   {
     // If AJAX request, return JSON for DataTables
     if ($request->ajax() || $request->wantsJson()) {
-      $users = User::with('roles')->get();
-      return response()->json(['data' => $users]);
+      return $this->directoryData($request);
     }
 
     // Otherwise return the view
@@ -75,10 +74,35 @@ class UserController extends Controller
   /**
    * Get users data for DataTables (AJAX endpoint).
    */
-  public function data()
+  public function data(Request $request)
   {
-    $users = User::with('roles')->get();
-    return response()->json(['data' => $users]);
+    return $this->directoryData($request);
+  }
+
+  private function directoryData(Request $request)
+  {
+    $start = max(0, (int) $request->input('start', 0));
+    $length = min(100, max(1, (int) $request->input('length', 25)));
+    $term = mb_substr(trim((string) $request->input('search.value', '')), 0, 100);
+    $query = User::query();
+    $total = (clone $query)->count();
+    if ($term !== '') {
+      $query->where(function ($search) use ($term) {
+        foreach (['name', 'userName', 'userSurname', 'email', 'cell_nr'] as $column) {
+          $search->orWhere($column, 'like', '%'.addcslashes($term, '\\%_').'%');
+        }
+      });
+    }
+    $filtered = (clone $query)->count();
+    $columns = [0 => 'id', 1 => 'name', 2 => 'email', 4 => 'created_at'];
+    $column = $columns[(int) $request->input('order.0.column', 0)] ?? 'id';
+    $direction = $request->input('order.0.dir') === 'asc' ? 'asc' : 'desc';
+    $users = $query->with('roles:id,name')->orderBy($column, $direction)->orderBy('id')
+      ->offset($start)->limit($length)
+      ->get(['id', 'name', 'userName', 'userSurname', 'email', 'created_at']);
+
+    return response()->json(['draw' => max(0, (int) $request->input('draw', 0)),
+      'recordsTotal' => $total, 'recordsFiltered' => $filtered, 'data' => $users]);
   }
 
   /**
@@ -98,8 +122,8 @@ class UserController extends Controller
     $user->load(['wallet', 'players', 'roles']);
 
     $wallet       = $user->wallet;
-    $transactions = $wallet ? $wallet->transactions()->latest()->get() : collect();
-    $players      = \App\Models\Player::select('id', 'name', 'surname', 'email')->get();
+    $transactions = $wallet ? $wallet->transactions()->latest()->orderByDesc('id')->paginate(25) : collect();
+    $players      = collect(); // Player selection uses the bounded, private-safe search endpoint.
 
     return view('backend.user.show', compact('user', 'wallet', 'transactions', 'players'));
   }

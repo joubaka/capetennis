@@ -3,6 +3,8 @@
 @section('title', 'API Connections')
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
   <div>
     <h4 class="mb-1"><i class="ti ti-plug-connected me-2 text-primary"></i>API Connections</h4>
@@ -115,5 +117,7 @@
 <div class="alert alert-info mt-4 mb-0">
   <i class="ti ti-info-circle me-1"></i>
   A connection is only marked active after Cape Tennis records a successful API request. API keys and secrets are never displayed here.
+</div>
+
 </div>
 @endsection

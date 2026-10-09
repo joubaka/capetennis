@@ -357,6 +357,7 @@ class EventController extends Controller
     ];
 
     $drawIds = $eventDraws->pluck('id');
+    $matchProgress = app(\App\Services\EventMatchProgressService::class)->forEvent($event);
 
       $publication = app(\App\Services\Scheduling\SchedulePublicationService::class);
       $allPublicIndividualFixtures = Fixture::with('orderOfPlay.venue')->whereIn('draw_id', $drawIds)->get();
@@ -533,6 +534,7 @@ $venues = $fixturesPerVenue
     ->values();
 
 return view('frontend.event.show', compact(
+      'matchProgress',
       'fixturesPerVenueGrouped',
       'regions',
       'fixturesByDay',

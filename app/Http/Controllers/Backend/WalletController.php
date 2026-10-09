@@ -22,7 +22,7 @@ class WalletController extends Controller
      */
     public function index()
     {
-        $wallets = Wallet::with('payable')->get();
+        $wallets = Wallet::with('payable')->orderByDesc('id')->paginate(25);
 
         return view('backend.wallet.wallet-index', compact('wallets'));
     }
@@ -43,7 +43,7 @@ class WalletController extends Controller
         $wallet = $user->wallet ?? $user->wallet()->create();
 
         // Get transactions
-        $transactions = $wallet->transactions()->latest()->get();
+        $transactions = $wallet->transactions()->latest()->orderByDesc('id')->paginate(25);
 
         return view('backend.wallet.wallet-show', compact('user', 'wallet', 'transactions'));
     }

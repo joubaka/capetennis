@@ -2,6 +2,9 @@
 @section('title', 'Event Scoreboard')
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
+
 @include('backend.event.partials.header', [
   'eventWorkspaceActive' => 'more',
   'eventWorkspaceIcon' => 'ti-scoreboard',
@@ -27,5 +30,6 @@
       </div>
     </div>
   </div>
+</div>
 </div>
 @endsection

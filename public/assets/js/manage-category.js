@@ -2,6 +2,17 @@ $(function () {
   const csrfToken = $('meta[name="csrf-token"]').attr('content');
   const APP_URL = $('meta[name="app-url"]').attr('content');
 
+  $(function () {
+    $('#draw-settings-form input, #draw-settings-form select').on('input change', function () {
+      $('#preview-name').text($('#drawName').val() || 'Draw Name Preview');
+      $('#preview-type').text($('#drawType option:selected').text());
+    });
+
+
+  });
+
+  if (!$.fn.draggable || !$.fn.droppable) return;
+
   // Enable drag
   $(document).on('mouseenter', '.draggable-player', function () {
     if (!$(this).data('ui-draggable')) {
@@ -87,19 +98,6 @@ $(function () {
       }
     }
 
-  });
-  $(function () {
-    $('#draw-settings-form input, #draw-settings-form select').on('input change', function () {
-      $('#preview-name').text($('#drawName').val() || 'Draw Name Preview');
-      $('#preview-type').text($('#drawType option:selected').text());
-      $('#preview-rounds').text($('#numRounds').val() || '-');
-    });
-
-    // Optional: Prevent actual submit for now
-    $('#draw-settings-form').on('submit', function (e) {
-      e.preventDefault();
-      alert('Settings saved (simulation)');
-    });
   });
 
 });

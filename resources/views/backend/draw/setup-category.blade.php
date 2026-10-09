@@ -1,6 +1,9 @@
 @extends('layouts.backend')
 @section('title', 'Choose players category — '.$draw->drawName)
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
+
 <div class="mx-auto" style="max-width:650px">
   <a href="{{ route('draw.setup.show', $draw) }}" class="btn btn-sm btn-outline-secondary mb-4">Back to draw format</a>
   <p class="text-primary mb-1">{{ $label }}</p>
@@ -23,5 +26,6 @@
     @if($categories->isEmpty())<p class="alert alert-warning">Add a player category to the event first.</p>@endif
     <button class="btn btn-primary" @disabled($categories->isEmpty())>Continue to player placement →</button>
   </form>
+</div>
 </div>
 @endsection

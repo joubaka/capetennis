@@ -2,6 +2,9 @@
 @extends('layouts.backend')
 @section('title', 'Player performance')
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
+
 <h1 class="h3">{{ $player->name }} {{ $player->surname }}</h1>
 <p><a href="{{ route('backend.player-performance.directory') }}">Find another player</a> · As of {{ $performance['as_of'] }}</p>
 @include('backend.player-performance.ability-card')
@@ -80,4 +83,5 @@
 </div></div>
 @endforeach
 <p>Pilot v2 uses all published history. A scores 50–100, B 0–50, and unlabelled Open cohorts 0–100 separately. Finishes use the saved ranked field, which can exclude unranked entrants; this is not a starter count. Each event's average finish points and band-scaled match win rate contribute equally when both exist, then events are weighted with a 180-day half-life. An ongoing event uses the as-of date until its end date. A main category is A only when uniquely paired with matching B. Ages, genders, Masters, Open and team contexts remain separate. Doubles reflect partnerships. Match scores require published draws/events and verifiable completed score evidence; imported team identities are excluded.</p>
+</div>
 @endsection

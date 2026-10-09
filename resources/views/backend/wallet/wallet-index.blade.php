@@ -1,56 +1,20 @@
 @extends('layouts.backend')
-
-@section('title', 'Ranking Details')
-
-@section('vendor-style')
-<link rel="stylesheet" href="{{asset('assets/vendor/libs/datatables-bs5/datatables.bootstrap5.css')}}">
-<link rel="stylesheet" href="{{asset('assets/vendor/libs/datatables-responsive-bs5/responsive.bootstrap5.css')}}">
-<link rel="stylesheet" href="{{asset('assets/vendor/libs/datatables-buttons-bs5/buttons.bootstrap5.css')}}">
-@endsection
-
-@section('vendor-script')
-<script src="{{asset('assets/vendor/libs/datatables-bs5/datatables-bootstrap5.js')}}"></script>
-@endsection
-
-@section('page-script')
-<script src="{{asset('assets/js/app-dataTables.js')}}"></script>
-
-@endsection
-
+@section('title', 'Wallets')
 @section('content')
-
-<div class="card">
-    <h5 class="card-header pb-1">Wallet Transactions</h5>
-
-    <div class="card-body">
-        <table class="table" id="transactionTable">
-            <thead>
-                <th>ID</th>
-                <th>Date</th>
-                <th>User</th>
-                <th>Type</th>
-                <th>Amount</th>
-
-
-            </thead>
-            <tbody>
-                @foreach($transactions as $transaction)
-                <tr>
-                    <td>{{$transaction->id}}</td>
-                    <td>{{$transaction->created_at}}</td>
-                    <td>{{$transaction->user->name}}</td>
-                    <td>{{$transaction->type}}</td>
-                    <td>{{$transaction->amount}}</td>
-                </tr>
-                @endforeach
-            </tbody>
-        </table>
-
-
-    </div>
-
+<div class="operational-page">
+@include('backend.partials.operational-controls')
+<h4>Wallets</h4>
+<p class="text-muted">Open a user wallet to review its balance and transaction history.</p>
+<div class="card"><div class="table-responsive"><table class="table mb-0">
+<thead><tr><th>Wallet</th><th>Account</th><th>Balance</th><th>Review</th></tr></thead>
+<tbody>
+@forelse($wallets as $wallet)
+<tr><td>#{{ $wallet->id }}</td><td>{{ $wallet->payable?->name ?? 'Account unavailable' }}</td><td>R{{ number_format($wallet->balance, 2) }}</td>
+<td>@if($wallet->payable instanceof \App\Models\User)<a class="btn btn-outline-primary" href="{{ route('wallet.show', $wallet->payable_id) }}">Open wallet</a>@else<span class="text-muted">No user wallet link</span>@endif</td></tr>
+@empty
+<tr><td colspan="4" class="text-center py-4">No wallets found.</td></tr>
+@endforelse
+</tbody></table></div></div>
+<div class="mt-3">{{ $wallets->links() }}</div>
 </div>
-
-
-
 @endsection

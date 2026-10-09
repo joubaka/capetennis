@@ -3,6 +3,8 @@
 @section('title', 'Admin Refund – ' . $event->name)
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 <div class="container-xl">
   @include('backend.event.partials.header', [
     'eventWorkspaceActive' => 'entries',
@@ -18,7 +20,10 @@
 
     <div class="card-body">
 
-      {{-- Errors are shown via the global toastr flash handler --}}
+      @if($errors->any())
+      <div class="alert alert-danger" role="alert"><strong>Refund not completed.</strong><ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>
+      @endif
+      @if(session('error'))<div class="alert alert-danger" role="alert">{{ session('error') }}</div>@endif
 
       {{-- Summary --}}
       <dl class="row mb-4">
@@ -149,6 +154,8 @@
 
 </div>
 
+
+</div>
 @endsection
 
 @section('page-script')

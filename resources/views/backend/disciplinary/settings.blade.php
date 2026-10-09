@@ -11,6 +11,8 @@
 @endsection
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 <div class="container-xxl flex-grow-1 container-p-y">
 
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -26,13 +28,13 @@
     @if(session('success'))
         <div class="alert alert-success alert-dismissible fade show">
             {{ session('success') }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="alert"></button>
         </div>
     @endif
     @if(session('error'))
         <div class="alert alert-danger alert-dismissible fade show">
             {{ session('error') }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="alert"></button>
         </div>
     @endif
 
@@ -47,41 +49,41 @@
 
                 <div class="row g-4">
                     <div class="col-md-3">
-                        <label class="form-label fw-semibold">
+                        <label for="admin-field-1" class="form-label fw-semibold">
                             Suspension Threshold (points)
                             <i class="ti ti-info-circle ms-1 text-muted" title="Player is suspended when active points reach or exceed this value"></i>
                         </label>
-                        <input type="number" name="suspension_threshold"
+                        <input id="admin-field-1" type="number" name="suspension_threshold"
                                class="form-control @error('suspension_threshold') is-invalid @enderror"
                                value="{{ old('suspension_threshold', $settings['suspension_threshold']->value ?? 12) }}"
                                min="1" max="1000">
                         @error('suspension_threshold')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label fw-semibold">
+                        <label for="admin-field-2" class="form-label fw-semibold">
                             Points Expiry (days)
                         </label>
-                        <input type="number" name="expiry_days"
+                        <input id="admin-field-2" type="number" name="expiry_days"
                                class="form-control @error('expiry_days') is-invalid @enderror"
                                value="{{ old('expiry_days', $settings['expiry_days']->value ?? 365) }}"
                                min="1" max="3650">
                         @error('expiry_days')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label fw-semibold">
+                        <label for="admin-field-3" class="form-label fw-semibold">
                             1st Suspension Duration (months)
                         </label>
-                        <input type="number" name="first_suspension_months"
+                        <input id="admin-field-3" type="number" name="first_suspension_months"
                                class="form-control @error('first_suspension_months') is-invalid @enderror"
                                value="{{ old('first_suspension_months', $settings['first_suspension_months']->value ?? 3) }}"
                                min="1" max="120">
                         @error('first_suspension_months')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label fw-semibold">
+                        <label for="admin-field-4" class="form-label fw-semibold">
                             2nd+ Suspension Duration (months)
                         </label>
-                        <input type="number" name="second_suspension_months"
+                        <input id="admin-field-4" type="number" name="second_suspension_months"
                                class="form-control @error('second_suspension_months') is-invalid @enderror"
                                value="{{ old('second_suspension_months', $settings['second_suspension_months']->value ?? 6) }}"
                                min="1" max="120">
@@ -114,26 +116,26 @@
                     @csrf
                     <div class="row g-3 align-items-end">
                         <div class="col-md-3">
-                            <label class="form-label fw-semibold">Name</label>
-                            <input type="text" name="name" class="form-control" required maxlength="100"
+                            <label for="admin-field-5" class="form-label fw-semibold">Name</label>
+                            <input id="admin-field-5" type="text" name="name" class="form-control" required maxlength="100"
                                    value="{{ old('name') }}" placeholder="e.g. Racket Abuse">
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label fw-semibold">Category</label>
-                            <select name="category" class="form-select select2" required>
+                            <label for="admin-field-6" class="form-label fw-semibold">Category</label>
+                            <select id="admin-field-6" name="category" class="form-select select2" required>
                                 @foreach(\App\Models\ViolationType::$categories as $key => $label)
                                     <option value="{{ $key }}" @selected(old('category') === $key)>{{ $label }}</option>
                                 @endforeach
                             </select>
                         </div>
                         <div class="col-md-2">
-                            <label class="form-label fw-semibold">Points</label>
-                            <input type="number" name="default_points" class="form-control" min="0" max="100"
+                            <label for="admin-field-7" class="form-label fw-semibold">Points</label>
+                            <input id="admin-field-7" type="number" name="default_points" class="form-control" min="0" max="100"
                                    value="{{ old('default_points', 2) }}" required>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label fw-semibold">Description</label>
-                            <input type="text" name="description" class="form-control" maxlength="500"
+                            <label for="admin-field-8" class="form-label fw-semibold">Description</label>
+                            <input id="admin-field-8" type="text" name="description" class="form-control" maxlength="500"
                                    value="{{ old('description') }}">
                         </div>
                         <div class="col-md-1 text-center">
@@ -207,7 +209,7 @@
                                           method="POST"
                                           onsubmit="return confirm('Delete this violation type?');">
                                         @csrf @method('DELETE')
-                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete" aria-label="Delete">
                                             <i class="ti ti-trash"></i>
                                         </button>
                                     </form>
@@ -274,6 +276,8 @@
         $('.select2').select2();
     });
 </script>
+
+</div>
 @endsection
 
 @endsection

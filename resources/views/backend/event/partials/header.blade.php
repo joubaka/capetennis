@@ -18,10 +18,9 @@
       @if($event->status_label)<span class="badge bg-label-primary">{{ $event->status_label }}</span>@endif
     </x-slot:meta>
     <x-slot:actions>
-      <a class="event-workspace-action" href="{{ route('events.show', $event) }}" target="_blank" rel="noopener">
+      <a class="event-workspace-action" href="{{ route('events.show', $event) }}" target="_self">
         <i class="ti ti-world" aria-hidden="true"></i>
         <span>Public page</span>
-        <i class="ti ti-external-link event-workspace-action__external" aria-hidden="true"></i>
       </a>
       @if($eventWorkspaceShowHome)
         <a class="event-workspace-action" href="{{ $eventWorkspaceHomeUrl }}">

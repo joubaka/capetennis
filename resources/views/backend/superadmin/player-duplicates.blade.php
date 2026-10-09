@@ -1,13 +1,15 @@
 @extends('layouts.backend')
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 <div class="container-xxl flex-grow-1 container-p-y">
   <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
     <div>
       <h4 class="mb-1"><i class="ti ti-user-search me-2 text-primary"></i>Duplicate Player Review</h4>
       <p class="text-muted mb-0">Each pair is a candidate only. A Super Admin must compare identity and linked history before merging.</p>
     </div>
-    <div class="d-flex gap-2">
+    <div class="d-flex flex-wrap gap-2">
       <a href="{{ route('superadmin.player-duplicates.index', ['merge_filter' => 'ranking_2026', 'per_page' => 'all']) }}" class="btn btn-warning btn-sm">
         <i class="ti ti-trophy me-1"></i>Find 2026 ranking duplicates
       </a>
@@ -40,7 +42,7 @@
         <div class="small text-muted">Showing {{ $candidatePairs->count() }} of {{ $candidatePairs->total() }} matching pairs.</div>
       </div>
       <div class="d-flex flex-wrap align-items-end gap-2">
-        <div class="btn-group" role="group" aria-label="Candidate merge filter">
+        <div class="btn-group d-flex flex-wrap" role="group" aria-label="Candidate merge filter">
           <a href="{{ route('superadmin.player-duplicates.index', array_filter(['include_reviewed' => $includeReviewed ? 1 : null, 'per_page' => $perPageOption])) }}"
              class="btn btn-sm {{ $mergeFilter === 'all' ? 'btn-primary' : 'btn-outline-primary' }}">All candidates</a>
           <a href="{{ route('superadmin.player-duplicates.index', array_filter(['include_reviewed' => $includeReviewed ? 1 : null, 'per_page' => $perPageOption, 'merge_filter' => 'auto_resolvable'])) }}"
@@ -52,7 +54,7 @@
             <i class="ti ti-trophy me-1"></i>2026 ranking duplicates
           </a>
         </div>
-        <form method="GET" action="{{ route('superadmin.player-duplicates.index') }}" class="d-flex align-items-end gap-2">
+        <form method="GET" action="{{ route('superadmin.player-duplicates.index') }}" class="d-flex flex-wrap align-items-end gap-2">
           @if($includeReviewed)<input type="hidden" name="include_reviewed" value="1">@endif
           @if($mergeFilter !== 'all')<input type="hidden" name="merge_filter" value="{{ $mergeFilter }}">@endif
           <div>
@@ -191,7 +193,7 @@
       </div>
       <div class="card-body border-top d-flex flex-wrap justify-content-between align-items-center gap-2">
         <span class="small text-muted">{{ implode('. ', $pair->confidence['reasons']) }}</span>
-        <div class="d-flex gap-2">
+        <div class="d-flex flex-wrap gap-2">
           @if($pair->quick_merge)
             <button type="button"
                     class="btn btn-primary btn-sm js-quick-merge"
@@ -250,13 +252,15 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="quick-merge-modal-title"><i class="ti ti-bolt me-2 text-primary"></i>Quick duplicate merge</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body" id="quick-merge-modal-body">
         <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><div class="mt-2 text-muted">Running the full safety check…</div></div>
       </div>
     </div>
   </div>
+</div>
+
 </div>
 @endsection
 

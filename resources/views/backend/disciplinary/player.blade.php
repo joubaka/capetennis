@@ -3,6 +3,8 @@
 @section('title', 'Player Disciplinary Record — ' . $player->full_name)
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 <div class="container-xxl flex-grow-1 container-p-y">
 
     {{-- Header --}}
@@ -29,7 +31,7 @@
     @if(session('success'))
         <div class="alert alert-success alert-dismissible fade show" role="alert">
             {{ session('success') }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="alert"></button>
         </div>
     @endif
 
@@ -113,7 +115,7 @@
                 <div class="modal-content">
                     <div class="modal-header">
                         <h5 class="modal-title"><i class="ti ti-lock-open me-2"></i>Lift Suspension</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="modal"></button>
                     </div>
                     <form action="{{ route('backend.disciplinary.suspension.lift', $activeSuspension->id) }}" method="POST">
                         @csrf
@@ -123,10 +125,10 @@
                                 This action cannot be undone.
                             </p>
                             <div class="mb-3">
-                                <label class="form-label fw-semibold">
+                                <label for="admin-field-1" class="form-label fw-semibold">
                                     Reason for lifting <span class="text-danger">*</span>
                                 </label>
-                                <textarea name="reason" class="form-control" rows="3" required
+                                <textarea id="admin-field-1" name="reason" class="form-control" rows="3" required
                                           placeholder="e.g. Suspension overturned on appeal — committee decision 30 Apr 2026"></textarea>
                             </div>
                         </div>
@@ -198,7 +200,7 @@
                                           method="POST"
                                           onsubmit="return confirm('Remove this violation?');">
                                         @csrf @method('DELETE')
-                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Remove">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Remove" aria-label="Remove">
                                             <i class="ti ti-trash"></i>
                                         </button>
                                     </form>
@@ -270,6 +272,8 @@
         </div>
     </div>
     @endif
+
+</div>
 
 </div>
 @endsection

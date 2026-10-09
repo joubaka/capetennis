@@ -78,6 +78,10 @@
   function openPrintWindow(title, bodyHtml, landscape) {
     var styles = printStyles + (landscape ? landscapeStyles : '') + '<style>' + @json(file_get_contents(public_path('css/tennis-bracket.css'))) + '</style>';
     const w = window.open('', '_blank');
+    if (!w) {
+      toastr.warning('Allow pop-ups for this page, then choose the print option again.');
+      return;
+    }
     w.document.write('<!DOCTYPE html><html><head><title>' + escapeHtml(title) + '</title>' + styles + '</head><body>' + bodyHtml + '</body></html>');
     w.document.close();
     w.document.querySelectorAll('.player-rating-badge, [data-rating-player], [data-rating-registration]').forEach(function(badge) { badge.remove(); });

@@ -16,13 +16,15 @@
 @endsection
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 <div class="container-xxl flex-grow-1 container-p-y">
 
   {{-- Page Header --}}
   <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
       <h4 class="mb-1"><i class="ti ti-users me-2"></i> Manage Users</h4>
-      <p class="text-muted mb-0">View and manage all registered users</p>
+      <p class="text-muted mb-0">Search users by name, email or phone. Results load one page at a time; open a profile to review linked players.</p>
     </div>
     <a href="{{ route('backend.superadmin.index') }}" class="btn btn-outline-secondary">
       <i class="ti ti-arrow-left me-1"></i> Back to Dashboard
@@ -32,7 +34,7 @@
   @if(session('success'))
     <div class="alert alert-success alert-dismissible fade show" role="alert">
       {{ session('success') }}
-      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="alert"></button>
     </div>
   @endif
 
@@ -70,18 +72,18 @@
 </div>
 
 {{-- Add Role Modal --}}
-<div class="modal fade" id="addRoleModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="addRoleModal" aria-labelledby="add-role-title" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="ti ti-user-plus me-2"></i> Add Role to User</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <h5 id="add-role-title" class="modal-title"><i class="ti ti-user-plus me-2"></i> Add Role to User</h5>
+        <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
         <input type="hidden" id="addRoleUserId">
         <p>Adding role to: <strong id="addRoleUserName"></strong></p>
         <div class="mb-3">
-          <label class="form-label">Select Role</label>
+          <label class="form-label" for="roleToAdd">Select Role</label>
           <select id="roleToAdd" class="form-select">
             <option value="">-- Select Role --</option>
             @foreach($roles as $role)
@@ -99,18 +101,18 @@
 </div>
 
 {{-- Remove Role Modal --}}
-<div class="modal fade" id="removeRoleModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="removeRoleModal" aria-labelledby="remove-role-title" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="ti ti-user-minus me-2"></i> Remove Role from User</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <h5 id="remove-role-title" class="modal-title"><i class="ti ti-user-minus me-2"></i> Remove Role from User</h5>
+        <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
         <input type="hidden" id="removeRoleUserId">
         <p>Removing role from: <strong id="removeRoleUserName"></strong></p>
         <div class="mb-3">
-          <label class="form-label">Select Role to Remove</label>
+          <label class="form-label" for="roleToRemove">Select Role to Remove</label>
           <select id="roleToRemove" class="form-select">
             <option value="">-- Select Role --</option>
           </select>
@@ -126,6 +128,7 @@
     </div>
   </div>
 </div>
+</div>
 @endsection
 
 @section('page-script')
@@ -134,30 +137,35 @@
 
 $(function () {
   const CSRF = $('meta[name="csrf-token"]').attr('content');
-  
+
   $.ajaxSetup({
     headers: { 'X-CSRF-TOKEN': CSRF }
   });
 
+  const escapeText = value => $('<div>').text(String(value ?? '')).html();
+  const escapeAttribute = value => escapeText(value).replaceAll('\"', '&quot;').replaceAll("'", '&#39;');
+
   // Initialize DataTable
   var dtUsers = $('.datatable-users').DataTable({
     processing: true,
+    serverSide: true,
+    searchDelay: 350,
     ajax: {
       url: '{{ route("user.index") }}',
       dataSrc: 'data'
     },
     columns: [
       { data: 'id', width: '50px' },
-      { 
+      {
         data: null,
         render: function(data) {
           var name = data.userName || data.name || '';
           var surname = data.userSurname || '';
-          return '<strong>' + name + ' ' + surname + '</strong>';
+          return '<strong>' + escapeText(name + ' ' + surname) + '</strong>';
         }
       },
-      { data: 'email' },
-      { 
+      { data: 'email', render: $.fn.dataTable.render.text() },
+      {
         data: null,
         render: function(data) {
           if (data.roles && data.roles.length) {
@@ -165,7 +173,7 @@ $(function () {
               var badgeClass = 'bg-label-primary';
               if (r.name === 'super-user') badgeClass = 'bg-label-danger';
               if (r.name === 'admin') badgeClass = 'bg-label-warning';
-              return '<span class="badge ' + badgeClass + ' me-1">' + r.name + '</span>';
+              return '<span class="badge ' + badgeClass + ' me-1">' + escapeText(r.name) + '</span>';
             }).join('');
           }
           return '<span class="text-muted">No roles</span>';
@@ -185,26 +193,26 @@ $(function () {
         render: function(data) {
           return `
             <div class="d-flex gap-1">
-              <a href="${APP_URL}/backend/user/${data.id}" class="btn btn-sm btn-icon btn-outline-primary" title="View">
+              <a href="${APP_URL}/backend/user/${data.id}" class="btn btn-sm btn-icon btn-outline-primary" title="View" aria-label="View user ${escapeAttribute(data.name)}">
                 <i class="ti ti-eye"></i>
               </a>
-              <button class="btn btn-sm btn-icon btn-outline-success add-role-btn" 
-                      data-id="${data.id}" 
-                      data-name="${data.name || ''}" 
-                      title="Add Role">
+              <button class="btn btn-sm btn-icon btn-outline-success add-role-btn"
+                      data-id="${data.id}"
+                      data-name="${escapeAttribute(data.name)}"
+                      title="Add Role" aria-label="Add role to ${escapeAttribute(data.name)}">
                 <i class="ti ti-user-plus"></i>
               </button>
-              <button class="btn btn-sm btn-icon btn-outline-warning remove-role-btn" 
-                      data-id="${data.id}" 
-                      data-name="${data.name || ''}" 
-                      data-roles='${JSON.stringify(data.roles || [])}' 
-                      title="Remove Role">
+              <button class="btn btn-sm btn-icon btn-outline-warning remove-role-btn"
+                      data-id="${data.id}"
+                      data-name="${escapeAttribute(data.name)}"
+                      data-roles='${escapeAttribute(JSON.stringify(data.roles || []))}'
+                      title="Remove Role" aria-label="Remove role from ${escapeAttribute(data.name)}">
                 <i class="ti ti-user-minus"></i>
               </button>
-              <button class="btn btn-sm btn-icon btn-outline-danger delete-user-btn" 
-                      data-id="${data.id}" 
-                      data-name="${data.name || ''}" 
-                      title="Delete">
+              <button class="btn btn-sm btn-icon btn-outline-danger delete-user-btn"
+                      data-id="${data.id}"
+                      data-name="${escapeAttribute(data.name)}"
+                      title="Delete" aria-label="Delete user ${escapeAttribute(data.name)}">
                 <i class="ti ti-trash"></i>
               </button>
             </div>
@@ -216,6 +224,8 @@ $(function () {
     pageLength: 25,
     responsive: true,
     language: {
+      search: "Find a user:",
+      lengthMenu: "Show _MENU_ users",
       emptyTable: "No users found",
       zeroRecords: "No matching users found"
     }
@@ -247,7 +257,7 @@ $(function () {
     }
 
     $.ajax({
-      url: APP_URL + '/backend/user/' + userId + '/add-role',
+      url: @json(route('backend.users.addRole', ['user' => '__USER__'])).replace('__USER__', encodeURIComponent(userId)),
       method: 'POST',
       data: { role: role },
       success: function(res) {
@@ -281,7 +291,7 @@ $(function () {
       $('#confirmRemoveRole').prop('disabled', false);
 
       roles.forEach(function(role) {
-        $('#roleToRemove').append('<option value="' + role.name + '">' + role.name + '</option>');
+        $('#roleToRemove').append(new Option(role.name, role.name));
       });
     }
 
@@ -299,7 +309,7 @@ $(function () {
     }
 
     $.ajax({
-      url: APP_URL + '/backend/users/' + userId + '/remove-role',
+      url: @json(route('backend.users.removeRole', ['user' => '__USER__'])).replace('__USER__', encodeURIComponent(userId)),
       method: 'POST',
       data: { role: role },
       success: function(res) {

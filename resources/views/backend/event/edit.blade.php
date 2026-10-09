@@ -25,6 +25,9 @@
 
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
+
 <div class="container-xl event-edit-page">
 
   <style>
@@ -157,8 +160,8 @@
 
             {{-- Name --}}
             <div class="mb-3">
-              <label class="form-label">Event Name</label>
-              <input name="name"
+              <label for="event-field-1" class="form-label">Event Name</label>
+              <input id="event-field-1" name="name"
                      class="form-control"
                      value="{{ old('name', $event->name) }}"
                      required>
@@ -167,28 +170,28 @@
             {{-- Dates --}}
             <div class="row g-2 mb-3">
               <div class="col">
-                <label class="form-label">Start Date</label>
-                <input type="date"
+                <label for="event-field-2" class="form-label">Start Date</label>
+                <input id="event-field-2" type="date"
                        name="start_date"
                        class="form-control"
-                       value="{{ optional($event->start_date)->format('Y-m-d') }}">
+                       value="{{ old('start_date', optional($event->start_date)->format('Y-m-d')) }}">
               </div>
               <div class="col">
-                <label class="form-label">End Date</label>
-                <input type="date"
+                <label for="event-field-3" class="form-label">End Date</label>
+                <input id="event-field-3" type="date"
                        name="end_date"
                        class="form-control"
-                       value="{{ optional($event->end_date)->format('Y-m-d') }}">
+                       value="{{ old('end_date', optional($event->end_date)->format('Y-m-d')) }}">
               </div>
             </div>
 
             {{-- Event Type --}}
             <div class="mb-3">
-              <label class="form-label">Event Type</label>
-              <select name="eventType" class="form-select" required>
+              <label for="event-field-4" class="form-label">Event Type</label>
+              <select id="event-field-4" name="eventType" class="form-select" required>
                 @foreach($eventTypes as $type)
                   <option value="{{ $type->id }}"
-                    @selected($event->eventType == $type->id)>
+                    @selected(old('eventType', $event->eventType) == $type->id)>
                     {{ $type->type }}
                   </option>
                 @endforeach
@@ -197,8 +200,8 @@
 
             {{-- QUILL --}}
             <div class="mb-3">
-              <label class="form-label">Information</label>
-              <div id="information-editor" class="border rounded">
+              <label id="event-information-label" class="form-label">Information</label>
+              <div id="information-editor" aria-labelledby="event-information-label" class="border rounded">
                 {!! old('information', $event->information) !!}
               </div>
 
@@ -210,8 +213,8 @@
 
             {{-- Venue Notes --}}
             <div class="mb-3">
-              <label class="form-label">Venue Notes</label>
-              <textarea name="venue_notes"
+              <label for="event-field-5" class="form-label">Venue Notes</label>
+              <textarea id="event-field-5" name="venue_notes"
                         rows="3"
                         class="form-control">{{ old('venue_notes', $event->venue_notes) }}</textarea>
             </div>
@@ -239,8 +242,8 @@
             </div>
 
             <div class="mb-3">
-              <label class="form-label">Select Existing Logo</label>
-              <select name="logo_existing" class="form-select">
+              <label for="event-field-6" class="form-label">Select Existing Logo</label>
+              <select id="event-field-6" name="logo_existing" class="form-select">
                 <option value="">— Select existing logo —</option>
                 @foreach(File::files(public_path('assets/img/logos')) as $file)
                   <option value="{{ $file->getFilename() }}"
@@ -252,8 +255,8 @@
             </div>
 
             <div class="mb-2">
-              <label class="form-label">Upload New Logo</label>
-              <input type="file"
+              <label for="event-field-7" class="form-label">Upload New Logo</label>
+              <input id="event-field-7" type="file"
                      name="logo_upload"
                      class="form-control"
                      accept="image/*">
@@ -272,8 +275,8 @@
 
             {{-- Entry Fee --}}
             <div class="mb-3">
-              <label class="form-label">Entry Fee</label>
-              <input type="number"
+              <label for="event-field-8" class="form-label">Entry Fee</label>
+              <input id="event-field-8" type="number"
                      name="entryFee"
                      class="form-control"
                      value="{{ old('entryFee', $event->entryFee) }}">
@@ -281,8 +284,8 @@
 
             {{-- Deadline --}}
             <div class="mb-3">
-              <label class="form-label">Deadline (days before start)</label>
-              <input type="number"
+              <label for="event-field-9" class="form-label">Deadline (days before start)</label>
+              <input id="event-field-9" type="number"
                      name="deadline"
                      class="form-control"
                      value="{{ old('deadline', $event->deadline) }}">
@@ -290,17 +293,17 @@
 
             {{-- Withdrawal Deadline --}}
             <div class="mb-3">
-              <label class="form-label">Withdrawal Deadline</label>
-              <input type="datetime-local"
+              <label for="event-field-10" class="form-label">Withdrawal Deadline</label>
+              <input id="event-field-10" type="datetime-local"
                      name="withdrawal_deadline"
                      class="form-control"
-                     value="{{ optional($event->withdrawal_deadline)->format('Y-m-d\TH:i') }}">
+                     value="{{ old('withdrawal_deadline', optional($event->withdrawal_deadline)->format('Y-m-d\TH:i')) }}">
             </div>
 
             {{-- Organizer --}}
             <div class="mb-3">
-              <label class="form-label">Organizer</label>
-              <input type="text"
+              <label for="event-field-11" class="form-label">Organizer</label>
+              <input id="event-field-11" type="text"
                      name="organizer"
                      class="form-control"
                      value="{{ old('organizer', $event->organizer) }}">
@@ -308,8 +311,8 @@
 
             {{-- Email --}}
             <div class="mb-3">
-              <label class="form-label">Contact Email</label>
-              <input type="email"
+              <label for="event-field-12" class="form-label">Contact Email</label>
+              <input id="event-field-12" type="email"
                      name="email"
                      class="form-control"
                      value="{{ old('email', $event->email) }}">
@@ -317,8 +320,8 @@
 
             {{-- Admins --}}
             <div class="mb-3">
-              <label class="form-label">Event Admins</label>
-              <select name="admins[]"
+              <label for="event-field-13" class="form-label">Event Admins</label>
+              <select id="event-field-13" name="admins[]"
                       class="form-select select2"
                       multiple
                       data-placeholder="Select admins">
@@ -368,6 +371,7 @@
     </div>
 
   </form>
+</div>
 </div>
 @endsection
 

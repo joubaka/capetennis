@@ -1,6 +1,6 @@
 @extends('layouts.backend')
 
-@section('title', 'Event Details')
+@section('title', 'Leagues')
 
 @section('vendor-style')
 
@@ -18,10 +18,12 @@
 @endsection
 
 @section('page-script')
-<script src="{{asset('assets/js/league.js')}}"></script>
+
 @endsection
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls', ['pageSearchLabel' => 'Find a region or league category'])
 <div class="card">
   <div class="card-header">
     <h5 class="card-title mb-0">Leagues</h5>
@@ -36,33 +38,34 @@
         </tr>
       </thead>
       <tbody class="table-border-bottom-0">
-        @foreach($allData as $league)
-        <tr>
+        @forelse($allData as $league)
+        <tr data-page-row>
           <td>
             <h5>{{$league->name}}</h5>
           </td>
           <td>
             @foreach($league->categories as $category)
             <div>
-              <a href="#" class=" m-1 btn btn-sm btn-primary">{{$category->category_name}}</a>
+              <span class="badge bg-label-primary m-1">{{$category->category_name}}</span>
 
             </div>
 
 
             @endforeach
-            <div>
-              <button data-bs-toggle="modal" data-bs-target="#addCategoryModal" class="addCategory btn btn-success btn-sm" data-region="{{$league}}">Add Category</button>
 
-            </div>
 
           </td>
 
         </tr>
-        @endforeach
+        @empty
+        <tr><td colspan="2" class="text-center py-4">No league regions found.</td></tr>
+        @endforelse
       </tbody>
     </table>
   </div>
 </div>
 
-@include('backend.league.modals.addCategoryModal')
+<p class="text-muted mt-3">League categories are grouped by region. This directory shows the existing categories.</p>
+
+</div>
 @endsection

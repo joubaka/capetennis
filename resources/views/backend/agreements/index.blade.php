@@ -3,6 +3,8 @@
 @section('title', 'Agreements - Code of Conduct')
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 <div class="container-xl">
 
   <x-backend.page-header title="Code of Conduct agreements" eyebrow="Administration" subtitle="Manage agreement versions and player acceptance." icon="ti-file-text">
@@ -14,14 +16,14 @@
   @if(session('success'))
     <div class="alert alert-success alert-dismissible fade show" role="alert">
       {{ session('success') }}
-      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="alert"></button>
     </div>
   @endif
 
   @if(session('error'))
     <div class="alert alert-danger alert-dismissible fade show" role="alert">
       {{ session('error') }}
-      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="alert"></button>
     </div>
   @endif
 
@@ -54,19 +56,19 @@
               <td>{{ $agreement->created_at->format('d M Y') }}</td>
               <td>
                 <div class="d-flex gap-1">
-                  <a href="{{ route('backend.agreements.show', $agreement) }}" class="btn btn-sm btn-outline-primary" title="View">
+                  <a href="{{ route('backend.agreements.show', $agreement) }}" class="btn btn-sm btn-outline-primary" title="View" aria-label="View">
                     <i class="ti ti-eye"></i>
                   </a>
 
                   @if(!$agreement->is_active)
-                    <a href="{{ route('backend.agreements.edit', $agreement) }}" class="btn btn-sm btn-outline-warning" title="Edit">
+                    <a href="{{ route('backend.agreements.edit', $agreement) }}" class="btn btn-sm btn-outline-warning" title="Edit" aria-label="Edit">
                       <i class="ti ti-pencil"></i>
                     </a>
                   @endif
 
                   <form action="{{ route('backend.agreements.duplicate', $agreement) }}" method="POST" style="display:inline;">
                     @csrf
-                    <button type="submit" class="btn btn-sm btn-outline-info" title="Duplicate">
+                    <button type="submit" class="btn btn-sm btn-outline-info" title="Duplicate" aria-label="Duplicate">
                       <i class="ti ti-copy"></i>
                     </button>
                   </form>
@@ -75,7 +77,7 @@
                     <form action="{{ route('backend.agreements.setActive', $agreement) }}" method="POST" style="display:inline;"
                           onsubmit="return confirm('Set this agreement as active? All players will need to re-accept.');">
                       @csrf
-                      <button type="submit" class="btn btn-sm btn-outline-success" title="Set Active">
+                      <button type="submit" class="btn btn-sm btn-outline-success" title="Set Active" aria-label="Set Active">
                         <i class="ti ti-check"></i> Activate
                       </button>
                     </form>
@@ -92,6 +94,8 @@
       </table>
     </div>
   </div>
+
+</div>
 
 </div>
 @endsection

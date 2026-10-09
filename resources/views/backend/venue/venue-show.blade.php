@@ -55,37 +55,47 @@ $configData = Helper::appClasses();
 @section('content')
 
 <div class="card-header event-header">
-    <h3 class="text-center">Team Event: {{$event->name}} </h3>
+    <h3>{{$event->name}}</h3>
+    <p class="text-muted">Venue allocation · {{ $draw->drawName }}</p>
 </div>
 <div class="row">
 
-    <div class="col-12 col-sm-3 col-md-3">
+    <div class="col-12 col-lg-3">
         @include('backend.adminPage.admin_show.navbar.navbar')
     </div>
 
-    <div class="col-12 col-sm-9 col-md-9">
+    <div class="col-12 col-lg-9 venue-allocation-admin">
+
+        <div class="card mb-3"><div class="card-body">
+            <h5>Current venues for {{ $draw->drawName }}</h5>
+            <div class="d-flex flex-wrap gap-2">@forelse($draw->venues as $assignedVenue)<span class="badge bg-label-primary">{{ $assignedVenue->name }}</span>@empty<p class="text-muted mb-0">No venues assigned to this draw.</p>@endforelse</div>
+            <p class="small text-muted mt-2 mb-0">These are the draw's general venue assignments. Round-specific venues and match times are managed in scheduling.</p>
+        </div></div>
+        @if($errors->any())<div class="alert alert-danger"><ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
 
         <div class="card">
             <div class="row">
 
 
-                <div class="col-9 col-md-9">
+                <div class="col-12">
                 <form id="venueForm" action="{{ route('save.draw.venues') }}" method="POST">
                     @csrf
                     <!-- Multiple Select Dropdown -->
                     <div class="mb-3 m-3">
-                        <label for="venues" class="form-label">Select Venues</label>
-                        <select id="venues" name="venues[]" class="form-control" multiple="multiple" style="width: 100%;">
+                        <label id="venues-label" for="venues" class="form-label">Venues for this draw</label>
+                        <p id="venue-scope" class="small text-muted">Save replaces the general venue list for {{ $draw->drawName }} only. Clear all selections to remove its general assignments.</p>
+                        <select id="venues" name="venues[]" class="form-control" multiple="multiple" aria-describedby="venue-scope" style="width: 100%;">
 
                             @foreach($venues as $venue)
-                            <option value="{{$venue->id}}"  {{in_array($venue->id, $selectedVenues) ? 'selected':''  }} >{{$venue->name}}</option>
+                            <option value="{{$venue->id}}" @selected(in_array($venue->id, old('venues', $selectedVenues)))>{{$venue->name}}</option>
                             @endforeach
                             <!-- Add more options as needed -->
                         </select>
                         <input type="hidden" name="draw" value="{{$draw->id}}">
                     </div>
 
-                    <button type="submit" id="apply-venue-button" class="m-4 btn btn-primary waves-effect waves-light">Apply venues</button>
+                    <button type="submit" id="apply-venue-button" class="m-3 btn btn-primary waves-effect waves-light" @disabled(!auth()->user()->can('fixture.update', $draw))>Save venues for this draw</button>
+                    @if(!auth()->user()->can('fixture.update', $draw))<p class="mx-3 text-warning">Venue changes are unavailable here. The draw may be locked, published, or outside your management permissions.</p>@endif
                 </form>
 
 
@@ -103,132 +113,14 @@ $configData = Helper::appClasses();
     </div>
 
 </div>
+<style>
+.venue-allocation-admin :is(.btn,select) { min-height:44px !important; }
+.venue-allocation-admin .select2-selection--multiple { min-height:44px !important; }
+.venue-allocation-admin .select2-container { max-width:100%; }
+.venue-allocation-admin .badge { white-space:normal; overflow-wrap:anywhere; }
+</style>
 
 
-<!-- Modal -->
-<div class="modal fade" id="drawModal" tabindex="-1" aria-labelledby="drawModalLabel" aria-hidden="true">
-    <div class="modal-dialog" role="document">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="exampleModalLabel">Create Draw</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
-                </button>
-            </div>
-            <form id="create-draw-form">
-
-
-                <div class="modal-body">
-                    <div class="col-md-12 col-12 mb-md-0 mb-4">
-                        <h5>Regions</h5>
-                        <p>example: 1-3;2-4</p>
-                        <ul class="list-group list-group-flush" id="pending-tasks">
-                            @foreach($event->region_in_events as $region)
-                            <li data-id="{{$region->pivot->id}}" class="list-group-item drag-item cursor-move d-flex justify-content-between align-items-center">
-                                <span>{{$region->region_name}}</span>
-
-                            </li>
-                            @endforeach
-                           
-                        </ul>
-                    </div>
-                    <input type="hidden" name="event_id" value="{{$event->id}}">
-                    <div class="mt-4">
-                        <h5>Draw Format type</h5>
-                        <select name="drawType" id="smallSelect" class="form-select form-select-sm">
-                            <option>Select Format</option>
-                            @foreach($drawTypes as $drawType)
-                            <option value="{{$drawType->id}}">{{$drawType->drawTypeName}}</option>
-
-                            @endforeach
-                        </select>
-                    </div>
-                    <div class="row">
-                        <div class="col-md">
-                            <small class="text-light fw-medium d-block">Checkboxes Colors</small>
-                            @foreach($event->eventCategories as $eventCategory)
-                            <div class="form-check form-check-primary mt-3">
-                                <input class="form-check-input" name="category[]" type="checkbox" value="{{$eventCategory->id}}" />
-                                <label class="form-check-label" for="customCheckPrimary">{{$eventCategory->category->name}}</label>
-                            </div>
-                            @endforeach
-                        </div>
-
-
-                    </div>
-                    <div class="pt-4">
-                        <button type="button" id="create-fixtures-button" class="btn btn-primary me-sm-3 me-1 waves-effect waves-light">Create Fixtures</button>
-                        <button type="reset" class="btn btn-label-secondary waves-effect">Cancel</button>
-                    </div>
-                </div>
-            </form>
-
-
-
-
-
-
-
-
-        </div>
-
-    </div>
-</div>
-<!-- Modal -->
-<div class="modal fade" id="basicModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl" role="document">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="exampleModalLabel1">Schedule</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div>
-                    <label for="smallSelect" class="form-label">Schedule</label>
-                    <select id="schedule-type" class="form-select form-select-sm">
-                        <option>Small select</option>
-                        <option value="1">Per Round</option>
-                        <option value="2">Per Tie</option>
-                        <option value="3">Per Team Rank</option>
-                        <option value="4">Per Time Slot</option>
-                    </select>
-                </div>
-                <div id="schedule-times">
-                    <form id="schedule-form">
-                        <div class="table-responsive">
-                            <table class="table table-bordered" id="schedule">
-                                <thead>
-                                    <tr>
-                                        <th>Select</th>
-                                        <th>Match</th>
-                                        <th>Starting Time</th>
-                                        <th>Venue</th>
-
-                                    </tr>
-                                </thead>
-                                <tbody>
-
-
-
-
-
-
-                                </tbody>
-                            </table>
-                        </div>
-                    </form>
-                </div>
-                <div id="timeSlot">
-                    timeslots
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" id="apply-time-button" class="btn btn-primary">Apply times</button>
-            </div>
-        </div>
-
-    </div>
-</div>
 <script>
     var venues = {!! $venues->toJson() !!};
 

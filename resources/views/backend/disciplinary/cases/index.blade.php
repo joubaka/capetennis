@@ -1,6 +1,8 @@
 @extends('layouts.backend')
 @section('title', 'Disciplinary Cases')
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 <div class="container-xxl flex-grow-1 container-p-y">
   @if(isset($event))
     @include('backend.event.partials.header', [
@@ -28,9 +30,9 @@
     <div class="card-body">
       <form method="GET" class="row g-3 align-items-end">
         @unless(isset($event))
-        <div class="col-md-5"><label class="form-label">Event</label><select name="event_id" class="form-select"><option value="">All permitted events</option>@foreach($events as $item)<option value="{{ $item->id }}" @selected(request('event_id') == $item->id)>{{ $item->name }}</option>@endforeach</select></div>
+        <div class="col-md-5"><label for="admin-field-1" class="form-label">Event</label><select id="admin-field-1" name="event_id" class="form-select"><option value="">All permitted events</option>@foreach($events as $item)<option value="{{ $item->id }}" @selected(request('event_id') == $item->id)>{{ $item->name }}</option>@endforeach</select></div>
         @endunless
-        <div class="col-md-4"><label class="form-label">Status</label><select name="status" class="form-select"><option value="">All statuses</option>@foreach(['submitted','triage','awaiting_response','panel_review','decided','appealed','final','dismissed'] as $status)<option value="{{ $status }}" @selected(request('status') === $status)>{{ str($status)->replace('_', ' ')->title() }}</option>@endforeach</select></div>
+        <div class="col-md-4"><label for="admin-field-2" class="form-label">Status</label><select id="admin-field-2" name="status" class="form-select"><option value="">All statuses</option>@foreach(['submitted','triage','awaiting_response','panel_review','decided','appealed','final','dismissed'] as $status)<option value="{{ $status }}" @selected(request('status') === $status)>{{ str($status)->replace('_', ' ')->title() }}</option>@endforeach</select></div>
         <div class="col-md-3"><button class="btn btn-outline-primary w-100">Filter</button></div>
       </form>
     </div>
@@ -59,5 +61,7 @@
     </div>
     <div class="card-footer">{{ $cases->links() }}</div>
   </div>
+</div>
+
 </div>
 @endsection

@@ -12,6 +12,8 @@
 @endsection
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 <div class="container-xl">
 
   {{-- HEADER --}}
@@ -133,7 +135,7 @@
               <td class="text-center" data-order="{{ $row['total_entries'] }}">{{ number_format($row['total_entries']) }}</td>
               <td>
                 <a href="{{ route('superadmin.finances.event', $row['event']) }}"
-                   class="btn btn-icon btn-sm btn-outline-warning" title="View Transactions & Payouts">
+                   class="btn btn-icon btn-sm btn-outline-warning" title="View Transactions & Payouts" aria-label="View Transactions & Payouts">
                   <i class="ti ti-report-money"></i>
                 </a>
               </td>
@@ -158,6 +160,8 @@
       </table>
     </div>
   </div>
+
+</div>
 
 </div>
 @endsection

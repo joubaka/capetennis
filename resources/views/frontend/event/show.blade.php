@@ -318,6 +318,10 @@
                 <i class="ti ti-map-pin"></i> {{ $event->venues }}
               </li>
             </ul>
+            <div class="d-inline-flex align-items-center gap-2 flex-wrap rounded bg-label-primary px-3 py-2" aria-label="Tournament match progress">
+              <i class="ti ti-ball-tennis" aria-hidden="true"></i>
+              <span><strong>{{ number_format($matchProgress['finished']) }} / {{ number_format($matchProgress['total']) }}</strong> matches finished</span>
+            </div>
           </div>
         </div>
       </div>

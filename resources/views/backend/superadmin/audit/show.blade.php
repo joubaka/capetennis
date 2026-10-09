@@ -3,6 +3,8 @@
 @section('title', 'Audit Event')
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 <div class="container-xxl flex-grow-1 container-p-y">
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
     <div>
@@ -32,7 +34,7 @@
             <dt class="col-5">Event ID</dt><dd class="col-7">{{ $auditEvent->event_id ?? '—' }}</dd>
             <dt class="col-5">Route</dt><dd class="col-7"><code>{{ $auditEvent->route_name ?? '—' }}</code></dd>
             <dt class="col-5">Request</dt><dd class="col-7"><code class="text-break">{{ $auditEvent->request_id ?? '—' }}</code></dd>
-            <dt class="col-5">Page</dt><dd class="col-7" class="text-break">{{ $auditEvent->http_method }} {{ $auditEvent->path }}</dd>
+            <dt class="col-5">Page</dt><dd class="col-7 text-break">{{ $auditEvent->http_method }} {{ $auditEvent->path }}</dd>
             <dt class="col-5">Previous page</dt><dd class="col-7 text-break">{{ $auditEvent->referrer ?? '—' }}</dd>
             <dt class="col-5">IP address</dt><dd class="col-7"><code>{{ $auditEvent->ip_address ?? '—' }}</code></dd>
             <dt class="col-5">Device</dt><dd class="col-7"><small>{{ $auditEvent->user_agent ?? '—' }}</small></dd>
@@ -47,7 +49,7 @@
         <div class="card-body row g-3">
           <div class="col-12 col-lg-6"><h6>Before</h6><pre class="bg-light border rounded p-3 small overflow-auto" style="max-height:420px">{{ json_encode($auditEvent->before, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '—' }}</pre></div>
           <div class="col-12 col-lg-6"><h6>After</h6><pre class="bg-light border rounded p-3 small overflow-auto" style="max-height:420px">{{ json_encode($auditEvent->after, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '—' }}</pre></div>
-          <div class="col-12"><h6>Metadata</h6><pre class="bg-light border rounded p-3 small overflow-auto" style="max-height:320px">{{ json_encode($auditEvent->metadata, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '—' }}</pre></div>
+          <div class="col-12"><details><summary class="fw-semibold">Request metadata</summary><pre class="bg-light border rounded p-3 small overflow-auto" style="max-height:320px">{{ json_encode($auditEvent->metadata, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '—' }}</pre></details></div>
         </div>
       </div>
     </div>
@@ -78,5 +80,7 @@
       </table></div>
     </div>
   @endif
+</div>
+
 </div>
 @endsection

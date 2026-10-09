@@ -11,6 +11,8 @@
 @endsection
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 <div class="container-xxl flex-grow-1 container-p-y">
 
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -33,7 +35,7 @@
                     <li>{{ $e }}</li>
                 @endforeach
             </ul>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="alert"></button>
         </div>
     @endif
 
@@ -45,7 +47,7 @@
                 <div class="row g-4">
                     {{-- Violation Type --}}
                     <div class="col-md-6">
-                        <label class="form-label fw-semibold">Violation Type <span class="text-danger">*</span></label>
+                        <label for="violation_type_id" class="form-label fw-semibold">Violation Type <span class="text-danger">*</span></label>
                         <select name="violation_type_id" id="violation_type_id"
                                 class="form-select select2 @error('violation_type_id') is-invalid @enderror" required>
                             <option value="">— Select Type —</option>
@@ -62,8 +64,8 @@
 
                     {{-- Date --}}
                     <div class="col-md-3">
-                        <label class="form-label fw-semibold">Violation Date <span class="text-danger">*</span></label>
-                        <input type="date" name="violation_date"
+                        <label for="admin-field-1" class="form-label fw-semibold">Violation Date <span class="text-danger">*</span></label>
+                        <input id="admin-field-1" type="date" name="violation_date"
                                class="form-control @error('violation_date') is-invalid @enderror"
                                value="{{ old('violation_date', $violation->violation_date->format('Y-m-d')) }}"
                                max="{{ date('Y-m-d') }}" required>
@@ -72,7 +74,7 @@
 
                     {{-- Points --}}
                     <div class="col-md-3">
-                        <label class="form-label fw-semibold">Points Assigned <span class="text-danger">*</span></label>
+                        <label for="points_assigned" class="form-label fw-semibold">Points Assigned <span class="text-danger">*</span></label>
                         <input type="number" name="points_assigned" id="points_assigned"
                                class="form-control @error('points_assigned') is-invalid @enderror"
                                value="{{ old('points_assigned', $violation->points_assigned) }}"
@@ -82,8 +84,8 @@
 
                     {{-- Penalty Type --}}
                     <div class="col-md-4">
-                        <label class="form-label fw-semibold">Penalty Type</label>
-                        <select name="penalty_type" class="form-select select2">
+                        <label for="admin-field-2" class="form-label fw-semibold">Penalty Type</label>
+                        <select id="admin-field-2" name="penalty_type" class="form-select select2">
                             <option value="">— None —</option>
                             @foreach(['warning', 'point', 'game', 'default'] as $pt)
                                 <option value="{{ $pt }}"
@@ -96,8 +98,8 @@
 
                     {{-- Event --}}
                     <div class="col-md-8">
-                        <label class="form-label fw-semibold">Related Event <small class="text-muted">(optional)</small></label>
-                        <select name="event_id" class="form-select select2">
+                        <label for="admin-field-3" class="form-label fw-semibold">Related Event <small class="text-muted">(optional)</small></label>
+                        <select id="admin-field-3" name="event_id" class="form-select select2">
                             <option value="">— None —</option>
                             @foreach($events as $e)
                                 <option value="{{ $e->id }}"
@@ -110,8 +112,8 @@
 
                     {{-- Notes --}}
                     <div class="col-12">
-                        <label class="form-label fw-semibold">Notes</label>
-                        <textarea name="notes" class="form-control" rows="3">{{ old('notes', $violation->notes) }}</textarea>
+                        <label for="admin-field-4" class="form-label fw-semibold">Notes</label>
+                        <textarea id="admin-field-4" name="notes" class="form-control" rows="3">{{ old('notes', $violation->notes) }}</textarea>
                     </div>
                 </div>
 
@@ -142,6 +144,8 @@
         });
     });
 </script>
+
+</div>
 @endsection
 
 @endsection

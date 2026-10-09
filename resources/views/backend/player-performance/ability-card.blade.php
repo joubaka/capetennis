@@ -1,5 +1,9 @@
 <div class="card mb-4"><div class="card-body">
-    @if($ability['snapshot_stale'] ?? false)<p class="alert alert-warning text-dark">Last successful update: {{ $ability['snapshot_as_of'] ?? 'Pending' }}. Awaiting the nightly refresh.</p>@endif
+    @if(\App\Services\Performance\PlayerRatingBadgeService::visible())
+        @php($ratingStatus = app(\App\Services\Performance\PlayerAbilityRefreshState::class)->status())
+        <p class="small" data-rating-status>Last updated: {{ $ratingStatus['last_updated'] ?? 'Not yet updated' }} · {{ $ratingStatus['failed'] ? 'Update failed; retry pending.' : ($ratingStatus['pending'] ? 'Update pending.' : 'Up to date.') }}</p>
+    @endif
+    @if($ability['snapshot_stale'] ?? false)<p class="alert alert-warning text-dark">Last successful update: {{ $ability['snapshot_as_of'] ?? 'Pending' }}. Awaiting the background refresh.</p>@endif
     <h2 class="h4">Cape Tennis Shared Ability · provisional index</h2>
     @if($ability['reason'])
         <p class="alert alert-warning text-dark">{{ $ability['reason'] }}</p>

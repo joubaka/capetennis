@@ -1,10 +1,15 @@
 @extends('layouts.backend')
 @section('title', 'Review Trials messages')
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
+
 <div data-mail-review><h4>Review exact recipients and messages — {{ $event->name }}</h4>
 <p>{{ count($preview->recipients) }} combined emails. Preview expires {{ $preview->expires_at }}. Changed contacts or statuses require a new preview.</p>
 @include('backend.partials.email-sample', ['mailRecipients' => $preview->recipients, 'mailSender' => $preview->options])
 @if(count($preview->excluded))<div class="alert alert-warning"><strong>Contacts requiring follow-up</strong><ul>@foreach($preview->excluded as $excluded)<li>{{ $excluded['player'] }} — {{ $excluded['reason'] }}</li>@endforeach</ul></div>@endif
-<form method="post" action="{{ route('backend.interprovincial-trials.communications.send',$event) }}">@csrf<input type="hidden" name="token" value="{{ $preview->token }}"><label class="d-block mb-3"><input type="checkbox" required> I confirm the recipients and example email are correct.</label><button class="btn btn-primary" @disabled(!count($preview->recipients))>Confirm and queue {{ count($preview->recipients) }} emails now</button><a class="btn btn-outline-secondary" href="{{ route('backend.interprovincial-trials.communications.index',$event) }}">Return to editing</a></form>
+<p class="small text-muted">Sending submits the reviewed emails for background delivery. Delivery may continue after you leave this page.</p>
+<form method="post" action="{{ route('backend.interprovincial-trials.communications.send',$event) }}">@csrf<input type="hidden" name="token" value="{{ $preview->token }}"><label class="d-block mb-3"><input type="checkbox" required> I confirm the recipients and example email are correct.</label><button class="btn btn-primary" @disabled(!count($preview->recipients))>Confirm and send {{ count($preview->recipients) }} emails now</button><a class="btn btn-outline-secondary" href="{{ route('backend.interprovincial-trials.communications.index',$event) }}">Return to editing</a></form>
 </div><hr><h5>Or save a reminder for later review</h5><p>Nothing sends automatically. Each occurrence requires a fresh exact recipient and message preview followed by manual approval.</p><form method="post" action="{{ route('backend.interprovincial-trials.communications.schedules',$event) }}" class="card card-body">@csrf<input type="hidden" name="token" value="{{ $preview->token }}"><label class="form-label">First review due</label><input type="datetime-local" name="start" class="form-control mb-2" required><label class="form-label">Repeat every number of hours (blank for one reminder)</label><input type="number" name="repeat_hours" min="1" max="8760" class="form-control mb-2"><label class="form-label">Stop reminders after (optional)</label><input type="datetime-local" name="stop" class="form-control mb-3"><button class="btn btn-outline-primary">Save reminder — do not send</button></form>
+</div>
 @endsection

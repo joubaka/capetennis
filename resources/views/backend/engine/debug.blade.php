@@ -3,6 +3,8 @@
 @section('title', 'Draw Engine Observability Dashboard')
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 <div class="container-xxl flex-grow-1 container-p-y">
 
   <div class="row mb-4">
@@ -10,14 +12,14 @@
       <h4 class="fw-bold py-3 mb-0">
         <span class="text-muted fw-light">Admin /</span> Draw Engine Observability
       </h4>
-      <p class="text-muted mb-0">Read-only production safety dashboard. Legacy engine remains authoritative.</p>
+      <p class="text-muted mb-0">Engine diagnostics and run history. Review the configured engine mode and fallback results below.</p>
     </div>
   </div>
 
   @if(session('success'))
   <div class="alert alert-success alert-dismissible fade show" role="alert">
     {{ session('success') }}
-    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="alert"></button>
   </div>
   @endif
 
@@ -257,6 +259,8 @@
       </form>
     </div>
   </div>
+
+</div>
 
 </div>
 @endsection

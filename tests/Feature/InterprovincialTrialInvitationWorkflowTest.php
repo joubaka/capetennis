@@ -63,6 +63,19 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         DB::table('event_admins')->insert(['event_id' => $this->event->id, 'user_id' => $this->admin->id]);
     }
 
+    public function test_review_ui_separates_public_names_from_email_delivery(): void
+    {
+        $response = $this->actingAs($this->admin)->get(route('backend.interprovincial-trials.invitations.index', $this->event))
+            ->assertOk()->assertSee('It does not send emails.')->assertSee('Send reviewed emails')
+            ->assertDontSee('Queue reviewed emails')->assertSee('interpro-preview-proof');
+        $this->assertDatabaseCount('interprovincial_trial_invitations', 0);
+        if (getenv('BATCH2326_QA') === '1') {
+            $path = storage_path('app/batches2326-qa');
+            if (!is_dir($path)) { mkdir($path, 0777, true); }
+            file_put_contents($path.'/trials.html', $response->getContent());
+        }
+    }
+
     public function test_registration_lifecycle_accepts_only_scheduled_open_and_active(): void
     {
         foreach (['scheduled', 'open', 'active'] as $status) {
@@ -1665,7 +1678,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
             ->assertDontSee('OtherEventSecret')
             ->assertDontSee('other-event@example.test');
 
-        $response->assertSee('Send to newly nominated')->assertSee('Send to players not registered')
+        $response->assertSee('Review emails for newly nominated')->assertSee('Review emails for players not registered')
             ->assertSee('interpro-send-preview-modal')->assertDontSee('<table', false)
             ->assertDontSee(route('backend.interprovincial-trials.invitations.send-current', $this->event), false)
             ->assertDontSee('data-send-invitations', false);

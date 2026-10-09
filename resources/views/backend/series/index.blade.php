@@ -3,6 +3,9 @@
 @section('title', 'Series')
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls', ['pageSearchLabel' => 'Find a series in this list'])
+
 <div class="container-xl">
 
   {{-- HEADER --}}
@@ -14,7 +17,7 @@
   </div>
 
   <div class="card">
-    <div class="card-body p-0">
+    <div class="card-body p-0 table-responsive">
       <table class="table mb-0">
         <thead>
           <tr>
@@ -26,7 +29,7 @@
         </thead>
         <tbody>
           @forelse($series as $s)
-            <tr>
+            <tr data-page-row>
               <td>
                 <strong>{{ $s->name }}</strong>
               </td>
@@ -103,6 +106,7 @@
     </div>
   </div>
 
+</div>
 </div>
 @endsection
 

@@ -3,6 +3,8 @@
 @section('title', 'View Agreement')
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 <div class="container-xl">
 
   <div class="card mb-4">
@@ -80,6 +82,8 @@
       </table>
     </div>
   </div>
+
+</div>
 
 </div>
 @endsection

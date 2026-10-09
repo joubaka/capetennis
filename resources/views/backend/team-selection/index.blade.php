@@ -102,6 +102,9 @@
 @endsection
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
+
 <a class="btn btn-outline-primary mb-3" href="{{ route('backend.event-mail-log.index',$event) }}">Event email log</a>
 @include('backend.event.partials.header', [
   'event' => $event,
@@ -991,6 +994,7 @@
       @endif
     @endforeach
   </div>
+</div>
 </div>
 @endsection
 

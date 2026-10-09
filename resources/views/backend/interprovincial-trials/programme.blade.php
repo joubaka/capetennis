@@ -1,6 +1,9 @@
 @extends('layouts.backend')
 @section('title', $event->name.' — Regional Trials')
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
+
 <div class="container-xl py-4">
   @include('backend.event.partials.header', ['eventWorkspaceSubtitle' => 'Regional payments, final rankings and team selection.'])
   @if($errors->any())<div class="alert alert-danger"><ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
@@ -15,7 +18,7 @@
     <a class="btn btn-outline-primary" href="{{ route('events.show', $event) }}">Public event page</a>
     <a class="btn btn-outline-primary" href="{{ route('backend.interprovincial-trials.communications.index', $event) }}">Invitations and reminders</a>
   </div>
-  <div class="card mb-4"><div id="trial-settings" class="card-body">
+  <details class="card mb-4" id="trial-settings" {{ !$programme || $errors->any() ? 'open' : '' }}><summary class="card-header">Regional payment settings and deadlines</summary><div class="card-body">
     <h5>Regional payment settings</h5>
     <p>Trials use the event entry fee across categories. The participation fee below is separate and equal across selected teams.</p>
     <form method="POST" action="{{ route('backend.interprovincial-trials.programme.settings', $event) }}">@csrf @method('PUT')
@@ -28,7 +31,7 @@
         <div class="col-md-4"><label class="form-label" for="withdrawal_deadline">Participation withdrawal/refund deadline</label><input id="withdrawal_deadline" name="withdrawal_deadline" type="datetime-local" class="form-control" value="{{ old('withdrawal_deadline', $programme?->withdrawal_deadline?->format('Y-m-d\TH:i')) }}"><small>Uses the event withdrawal deadline when left empty.</small></div>
       </div><button class="btn btn-primary">Save settings</button>
     </form>
-  </div></div>
+  </div></details>
   <div class="card mb-4"><div id="trial-results" class="card-body">
     <h5>Trial finishing positions</h5><div class="row g-2 mb-3">@forelse($categoryReadiness as $readiness)<div class="col-md-6"><div class="border rounded p-3"><h6>{{ data_get($readiness,'name') }}</h6><p>{{ data_get($readiness,'message') }}</p>@if(data_get($readiness,'href'))<a class="btn btn-sm btn-outline-primary" href="{{ data_get($readiness,'href') }}">Review category</a>@endif</div></div>@empty<p class="text-muted">No categories configured yet.</p>@endforelse</div>
     @if($programme?->concluded_at)
@@ -162,5 +165,6 @@
     @empty <p>No payment proofs uploaded.</p> @endforelse
     {{ $proofs->withQueryString()->fragment('trial-eft-review')->links('pagination::bootstrap-5') }}
   </div></div>
+</div>
 </div>
 @endsection

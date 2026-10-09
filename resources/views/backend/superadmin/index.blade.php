@@ -52,6 +52,8 @@
 @endsection
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
 
 {{-- ═══════════════ PAGE HEADER ═══════════════ --}}
 @php $totalPending = $withdrawalPendingRefunds->count() + $withdrawalPendingTeamRefunds->count(); @endphp
@@ -349,7 +351,7 @@
                   </td>
                   <td class="text-center">{{ number_format($row['total_entries']) }}</td>
                   <td>
-                    <a href="{{ route('superadmin.finances.event', $row['event']) }}" class="btn btn-icon btn-sm btn-outline-warning" title="View Finances">
+                    <a href="{{ route('superadmin.finances.event', $row['event']) }}" class="btn btn-icon btn-sm btn-outline-warning" title="View Finances" aria-label="View Finances">
                       <i class="ti ti-report-money"></i>
                     </a>
                   </td>
@@ -383,13 +385,13 @@
       @if(session('success'))
         <div class="alert alert-success alert-dismissible fade show" role="alert">
           {{ session('success') }}
-          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="alert"></button>
         </div>
       @endif
       @if($errors->any())
         <div class="alert alert-danger alert-dismissible fade show" role="alert">
           @foreach($errors->all() as $error) {{ $error }}<br>@endforeach
-          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="alert"></button>
         </div>
       @endif
 
@@ -478,22 +480,10 @@
                     <td><small class="text-muted">{{ $refund->updated_at?->format('d M Y') }}</small></td>
                     <td>
                       <div class="d-flex gap-1">
-                        <a href="{{ route('admin.registration.refunds.bank.show', $refund) }}"
-                           class="btn btn-icon btn-sm btn-outline-primary" title="View">
+                        <a href="{{ route('admin.refunds.bank.show', $refund) }}"
+                           class="btn btn-icon btn-sm btn-outline-primary" title="View" aria-label="View">
                           <i class="ti ti-eye"></i>
                         </a>
-                        @if($refund->pf_transaction_id)
-                          <a href="#" class="btn btn-sm btn-outline-secondary" title="PF Status">
-                            <i class="ti ti-credit-card"></i> PF Status
-                          </a>
-                        @endif
-                        <form method="POST" action="{{ route('admin.refunds.bank.complete', $refund) }}"
-                              onsubmit="return confirm('Mark this bank refund as paid?');">
-                          @csrf
-                          <button class="btn btn-icon btn-sm btn-success" title="Mark Paid">
-                            <i class="ti ti-check"></i>
-                          </button>
-                        </form>
                       </div>
                     </td>
                   </tr>
@@ -508,13 +498,7 @@
                     <td>{{ $t->refund_bank_name ?? '—' }}</td>
                     <td><small class="text-muted">{{ $t->updated_at?->format('d M Y') }}</small></td>
                     <td>
-                      <form method="POST" action="{{ route('admin.refunds.bank.complete.team', $t) }}"
-                            onsubmit="return confirm('Mark this team bank refund as paid?');">
-                        @csrf
-                        <button class="btn btn-icon btn-sm btn-success" title="Mark Paid">
-                          <i class="ti ti-check"></i>
-                        </button>
-                      </form>
+                      <a class="btn btn-outline-primary" href="{{ route('admin.refunds.bank.index') }}">Review bank refund</a>
                     </td>
                   </tr>
                 @endforeach
@@ -686,23 +670,23 @@
                 <td>{{ $agreement->created_at->format('d M Y') }}</td>
                 <td>
                   <div class="d-flex gap-1">
-                    <a href="{{ route('backend.agreements.show', $agreement) }}" class="btn btn-icon btn-sm btn-outline-info" title="View">
+                    <a href="{{ route('backend.agreements.show', $agreement) }}" class="btn btn-icon btn-sm btn-outline-info" title="View" aria-label="View">
                       <i class="ti ti-eye"></i>
                     </a>
                     @unless($agreement->is_active)
-                      <a href="{{ route('backend.agreements.edit', $agreement) }}" class="btn btn-icon btn-sm btn-outline-primary" title="Edit">
+                      <a href="{{ route('backend.agreements.edit', $agreement) }}" class="btn btn-icon btn-sm btn-outline-primary" title="Edit" aria-label="Edit">
                         <i class="ti ti-pencil"></i>
                       </a>
                       <form action="{{ route('backend.agreements.setActive', $agreement) }}" method="POST" class="d-inline">
                         @csrf
-                        <button type="submit" class="btn btn-icon btn-sm btn-outline-success" title="Set Active">
+                        <button type="submit" class="btn btn-icon btn-sm btn-outline-success" title="Set Active" aria-label="Set Active">
                           <i class="ti ti-check"></i>
                         </button>
                       </form>
                     @endunless
                     <form action="{{ route('backend.agreements.duplicate', $agreement) }}" method="POST" class="d-inline">
                       @csrf
-                      <button type="submit" class="btn btn-icon btn-sm btn-outline-secondary" title="Duplicate">
+                      <button type="submit" class="btn btn-icon btn-sm btn-outline-secondary" title="Duplicate" aria-label="Duplicate">
                         <i class="ti ti-copy"></i>
                       </button>
                     </form>
@@ -857,7 +841,7 @@
         </div>
         <div class="tab-pane fade" id="sa-pane-activity" role="tabpanel">
           <div class="d-flex align-items-center gap-2 px-3 py-2 border-bottom">
-            <label class="small mb-0">Filter</label>
+            <label for="sa-activity-filter" class="small mb-0">Filter</label>
             <select id="sa-activity-filter" class="form-select form-select-sm" style="width:auto;">
               <option value="">All</option>
               @foreach($logNames as $ln)
@@ -943,7 +927,7 @@
 
       <div id="sa-settings-toast" class="alert alert-dismissible fade d-none mb-3" role="alert">
         <span id="sa-settings-toast-msg"></span>
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="alert"></button>
       </div>
 
       <form action="{{ route('settings.store') }}" method="POST" id="sa-settings-form">
@@ -1500,7 +1484,7 @@
       @if(session('wallet_success'))
         <div class="alert alert-success alert-dismissible fade show" role="alert">
           {{ session('wallet_success') }}
-          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="alert"></button>
         </div>
       @endif
 
@@ -1571,15 +1555,7 @@
                       title="Add Transaction">
                       <i class="ti ti-plus me-1"></i>Transact
                     </button>
-                    <form method="POST" action="{{ route('superadmin.wallets.destroy', $wallet) }}"
-                          class="form-wallet-delete d-inline"
-                          data-wallet-owner="{{ $walletOwner->name ?? '' }}">
-                      @csrf
-                      @method('DELETE')
-                      <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete Wallet">
-                        <i class="ti ti-trash"></i>
-                      </button>
-                    </form>
+
                   </div>
                 </td>
               </tr>
@@ -1706,7 +1682,7 @@
                           <form action="{{ route('backend.disciplinary.suspension.lift', $s->id) }}"
                                 method="POST" onsubmit="return confirm('Lift this suspension?');">
                             @csrf
-                            <button type="submit" class="btn btn-xs btn-outline-secondary" title="Lift">
+                            <button type="submit" class="btn btn-xs btn-outline-secondary" title="Lift" aria-label="Lift">
                               <i class="ti ti-lock-open"></i>
                             </button>
                           </form>
@@ -1807,7 +1783,7 @@
         <h5 class="modal-title" id="modal-activity-detail-label">
           <i class="ti ti-file-description me-1 text-info"></i> Activity Detail
         </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body" id="modal-activity-detail-body">
         {{-- populated via JS --}}
@@ -1827,7 +1803,7 @@
         <h5 class="modal-title" id="modal-wallet-add-tx-label">
           <i class="ti ti-wallet me-1 text-primary"></i> Add Wallet Transaction
         </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <form id="form-wallet-add-tx" method="POST">
         @csrf
@@ -1870,6 +1846,8 @@
   </div>
 </div>{{-- /#modal-wallet-add-tx --}}
 
+
+</div>
 @endsection
 
 @section('page-script')
@@ -2227,12 +2205,7 @@ $(function () {
   });
 
   // ── Wallet delete confirmation ──────────────────────────────────
-  $(document).on('submit', '.form-wallet-delete', function (e) {
-    var owner = $(this).data('wallet-owner') || 'this user';
-    if (!confirm('Delete entire wallet for "' + owner + '" and ALL its transactions? This cannot be undone.')) {
-      e.preventDefault();
-    }
-  });
+
 
 });
 

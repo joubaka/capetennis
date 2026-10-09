@@ -50,6 +50,7 @@ class AppServiceProvider extends ServiceProvider
     $this->app->scoped(\App\Services\Performance\PendingBankRefundCount::class);
     $this->app->scoped(\App\Services\Performance\PlayerRatingBadgeService::class);
     $this->app->scoped(\App\Services\Performance\PlayerAbilitySnapshotStore::class);
+    $this->app->scoped(\App\Services\Performance\PlayerAbilityRefreshState::class);
     $this->app->scoped(\App\Services\OutboundMailHistory::class);
     $this->app->scoped(\App\Services\InterprovincialTrials\TrialRefreshQueue::class);
     // Cape Tennis owns its wallet schema and ledger migrations. Registering
@@ -101,6 +102,7 @@ class AppServiceProvider extends ServiceProvider
     EventFacade::listen(\Illuminate\Console\Events\CommandFinished::class, fn () => app(\App\Services\InterprovincialTrials\TrialRefreshQueue::class)->flush());
     EventFacade::listen(\Illuminate\Queue\Events\JobProcessed::class, fn () => app(\App\Services\InterprovincialTrials\TrialRefreshQueue::class)->flush());
     DB::listen(fn ($query) => app(AuditQueryListener::class)->handle($query));
+    DB::listen(fn ($query) => app(\App\Services\Performance\PlayerAbilityRefreshState::class)->observe($query));
 
     EventFacade::listen(CommandStarting::class, function (CommandStarting $event): void {
       app(AuditWriter::class)->record([

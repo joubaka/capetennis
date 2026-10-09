@@ -29,6 +29,7 @@ $(function () {
     $('#eligible-players .draggable-player').each(function () {
       $(this).toggle($(this).text().toLowerCase().includes(query));
     });
+    refreshCounts();
   });
 
   $('#add-selected-players').on('click', function () {
@@ -82,6 +83,9 @@ $(function () {
 @endsection
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
+
 <div class="container-xxl flex-grow-1 container-p-y">
   @if(! $draw->isTeamDraw())
   <div class="alert alert-info d-flex flex-wrap align-items-center gap-2">
@@ -161,8 +165,8 @@ $(function () {
           <div class="card h-100">
             <div class="card-header d-flex align-items-center gap-2">
               <h6 class="mb-0"><i class="ti ti-list me-1 text-primary"></i> Eligible Players</h6>
-              <span id="eligible-count" class="badge bg-label-primary">{{ $eligibleRegistrations->count() }}</span>
-              <input id="player-search" type="search" class="form-control form-control-sm ms-auto" style="max-width: 180px" placeholder="Search players">
+              <span id="eligible-count" role="status" aria-live="polite" class="badge bg-label-primary">{{ $eligibleRegistrations->count() }}</span>
+              <input id="player-search" aria-label="Search eligible players" type="search" class="form-control form-control-sm ms-auto" style="max-width: 180px" placeholder="Search players">
               <button id="add-selected-players" type="button" class="btn btn-sm btn-primary">Add selected</button>
               <button id="add-all-players" type="button" class="btn btn-sm btn-outline-primary">Add all</button>
             </div>
@@ -204,5 +208,6 @@ $(function () {
     </div>
 
   </div>
+</div>
 </div>
 @endsection

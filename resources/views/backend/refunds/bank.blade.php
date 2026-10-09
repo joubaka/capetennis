@@ -34,15 +34,7 @@
     </div>
   @endif
 
-  @if(app()->environment('local'))
-    <div class="mb-2">
-      <small class="text-muted">Debug - registration pending: {{ $refunds->count() ?? 0 }} | team pending: {{ $pendingTeamRefunds->count() ?? 0 }}</small>
-      @if(!empty($pendingTeamRefunds) && $pendingTeamRefunds->count())
-        <div class="small mt-1">Team IDs: {{ $pendingTeamRefunds->pluck('id')->join(', ') }}</div>
-      @endif
-    </div>
-  @endif
-
+  <h4 class="mb-2">Pending refunds</h4><p class="small text-muted">Registration counts cover all pages. Team lists show up to 100 records per status.</p>
   @if((empty($refunds) || $refunds->isEmpty()) && (empty($pendingTeamRefunds) || $pendingTeamRefunds->isEmpty()))
     <div class="alert alert-success">
       <i class="ti ti-circle-check me-1"></i>No pending refunds require action.
@@ -90,7 +82,7 @@
               @if($reg->pf_transaction_id && $reg->refund_account_name)
                 <br><small class="text-success"><i class="ti ti-building-bank"></i> Bank details ✓</small>
               @elseif($reg->pf_transaction_id)
-                <br><small class="text-warning"><i class="ti ti-alert-triangle"></i> No bank details</small>
+                <br><small class="text-warning"><i class="ti ti-alert-triangle"></i> Bank details missing � review before payment</small>
               @endif
             </td>
 
@@ -215,7 +207,8 @@
   @endif
 
   {{-- Completed Refunds --}}
-  @if(!empty($completedRefunds) && $completedRefunds->count())
+  @if($completedRefunds->count() + $completedTeamRefunds->count() > 0)
+    <details class="mt-4" @if(request()->has('processed_page')) open @endif><summary class="fw-semibold py-3">Processed refund history ({{ $completedRefunds->total() + $completedTeamRefunds->count() }})</summary>
     <h4 class="mt-4 mb-1">Processed Refunds</h4>
     <p class="text-muted">These were recorded as processed by Cape Tennis. PayFast rows should still be checked for their current provider status.</p>
     <div class="card">
@@ -250,9 +243,9 @@
                 <td>{{ optional($reg->refunded_at)->format('Y-m-d') }}</td>
                 <td>
                   @if($reg->pf_transaction_id)
-                    <span class="badge bg-label-info">Submitted to PayFast</span>
+                    <span class="badge bg-label-info">Processed</span>
                   @else
-                    <span class="badge bg-label-success">Manual payment recorded</span>
+                    <span class="badge bg-label-success">Processed</span>
                   @endif
                 </td>
                 <td class="text-end">
@@ -266,6 +259,31 @@
                 </td>
               </tr>
             @endforeach
+            @foreach($completedTeamRefunds as $order)
+              <tr>
+                <td>
+                  <strong>{{ optional($order->event)->name ?? '—' }}</strong><br>
+                  <small class="text-muted">Team refund</small>
+                </td>
+                <td>{{ optional($order->player)->name ?? 'Team refund #' . $order->id }}</td>
+                <td>
+                  {{ $order->user->name ?? '—' }}<br>
+                  <small class="text-muted">{{ $order->user->email ?? '' }}</small>
+                </td>
+                <td><code>{{ $order->payfast_pf_payment_id ?? '—' }}</code></td>
+                <td class="fw-bold text-success">R{{ number_format($order->refund_net, 2) }}</td>
+                <td>{{ optional($order->refunded_at)->format('Y-m-d') }}</td>
+                <td>
+                  @if($order->payfast_pf_payment_id)
+                    <span class="badge bg-label-info">Processed</span>
+                  @else
+                    <span class="badge bg-label-success">Processed</span>
+                  @endif
+                </td>
+                <td></td>
+              </tr>
+            @endforeach
+
           </tbody>
         </table>
       </div>
@@ -273,9 +291,11 @@
     @if($completedRefunds->hasPages())
       <div class="mt-3">{{ $completedRefunds->links() }}</div>
     @endif
+    </details>
   @endif
 
   @if(($waivedRefunds->count() + $waivedTeamRefunds->count()) > 0)
+    <details class="mt-4" @if(request()->has('waived_page')) open @endif><summary class="fw-semibold py-3">Waived refund history ({{ $waivedRefunds->total() + $waivedTeamRefunds->count() }})</summary>
     <h4 class="mt-4 mb-1">Waived Refunds</h4>
     <p class="text-muted">Closed without payment. These records remain visible for audit purposes.</p>
     <div class="card">
@@ -300,30 +320,6 @@
                 <td class="text-wrap" style="min-width: 16rem">{{ $reg->refund_waiver_reason }}</td>
               </tr>
             @endforeach
-            @foreach($completedTeamRefunds as $order)
-              <tr>
-                <td>
-                  <strong>{{ optional($order->event)->name ?? '—' }}</strong><br>
-                  <small class="text-muted">Team refund</small>
-                </td>
-                <td>{{ optional($order->player)->name ?? 'Team refund #' . $order->id }}</td>
-                <td>
-                  {{ $order->user->name ?? '—' }}<br>
-                  <small class="text-muted">{{ $order->user->email ?? '' }}</small>
-                </td>
-                <td><code>{{ $order->payfast_pf_payment_id ?? '—' }}</code></td>
-                <td class="fw-bold text-success">R{{ number_format($order->refund_net, 2) }}</td>
-                <td>{{ optional($order->refunded_at)->format('Y-m-d') }}</td>
-                <td>
-                  @if($order->payfast_pf_payment_id)
-                    <span class="badge bg-label-info">Submitted to PayFast</span>
-                  @else
-                    <span class="badge bg-label-success">Manual payment recorded</span>
-                  @endif
-                </td>
-                <td></td>
-              </tr>
-            @endforeach
             @foreach($waivedTeamRefunds as $order)
               <tr>
                 <td>{{ optional($order->event)->name ?? '—' }}</td>
@@ -340,6 +336,7 @@
     @if($waivedRefunds->hasPages())
       <div class="mt-3">{{ $waivedRefunds->links() }}</div>
     @endif
+    </details>
   @endif
 
   <div class="modal fade" id="waiveRefundModal" tabindex="-1" aria-hidden="true">

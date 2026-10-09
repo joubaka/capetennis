@@ -8,6 +8,7 @@
 @endsection
 @section('page-style')
 <style>
+  .interpro-filter-bar .btn { min-height:44px; }
   .interpro-filter-bar { display:flex; flex-wrap:wrap; gap:.5rem; }
   .interpro-nomination-row { align-items:flex-start; border-top:1px solid #ebeaf0; display:grid; gap:.8rem; grid-template-columns:minmax(12rem,1.4fr) minmax(10rem,1fr) minmax(12rem,1.2fr) auto; padding:1rem 0; }
   .interpro-nomination-row:first-child { border-top:0; }
@@ -28,7 +29,7 @@
   @include('backend.event.partials.header', ['event' => $event])
 
   <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
-    <div><h2 class="mb-1">Nominations &amp; invitations</h2><p class="text-muted mb-0">Nominate players, edit the message, and send all invitations in one step.</p></div>
+    <div><h2 class="mb-1">Nominations &amp; invitations</h2><p class="text-muted mb-0">Nominate players, choose whether names are public, then review invitation emails separately.</p></div>
     <a class="btn btn-outline-secondary" href="{{ route('admin.events.overview', $event) }}">Back to event overview</a>
   </div>
   @if(session('success')) <div class="alert alert-success">{{ session('success') }}</div> @endif
@@ -72,7 +73,7 @@
     $publicationStatus = $publishedCategoryCount === 0 ? 'Private' : ($publishedCategoryCount === $event->categoryEvents->count() ? 'Published' : 'Mixed');
   @endphp
   <div class="card mb-4"><div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-3">
-    <div><strong>Public nomination list: {{ $publicationStatus }}</strong><div class="text-muted small">Publishing deliberately shows nominated player names on the public event page.</div></div>
+    <div><strong>Public nomination list: {{ $publicationStatus }}</strong><div class="text-muted small">Publishing shows nominated player names on the public event page. It does not send emails.</div></div>
     <div class="d-flex flex-wrap gap-2">
       <a class="btn btn-outline-secondary" href="{{ route('events.show', $event) }}" target="_blank" rel="noopener">View public page</a>
       <form method="POST" action="{{ route('backend.interprovincial-trials.nominations.publication', $event) }}">@csrf @method('PUT')<input type="hidden" name="published" value="{{ $publicationStatus === 'Published' ? 0 : 1 }}"><button class="btn {{ $publicationStatus === 'Published' ? 'btn-outline-warning' : 'btn-outline-primary' }}" onclick="return confirm('{{ $publicationStatus === 'Published' ? 'Make every nomination category private?' : 'Publish nominated player names in every category?' }}')">{{ $publicationStatus === 'Published' ? 'Unpublish all names' : 'Publish all names' }}</button></form>
@@ -117,9 +118,9 @@
 
   <div class="card mb-4"><div class="card-header"><h5 class="mb-0">2. Review nominations by category</h5></div><div class="card-body">
     <div class="d-flex flex-wrap gap-2 mb-3">
-      <button type="button" class="btn btn-primary" data-send-preview-mode="new"><i class="ti ti-send me-1"></i>Send to newly nominated</button>
-      <button type="button" class="btn btn-outline-primary" data-send-preview-mode="profileless">Send to players without profiles</button>
-      <button type="button" class="btn btn-outline-primary" data-send-preview-mode="not_registered"><i class="ti ti-mail-forward me-1"></i>Send to players not registered</button>
+      <button type="button" class="btn btn-primary" data-send-preview-mode="new"><i class="ti ti-send me-1"></i>Review emails for newly nominated</button>
+      <button type="button" class="btn btn-outline-primary" data-send-preview-mode="profileless">Review emails for players without profiles</button>
+      <button type="button" class="btn btn-outline-primary" data-send-preview-mode="not_registered"><i class="ti ti-mail-forward me-1"></i>Review emails for players not registered</button>
     </div>
     <p class="text-muted small mb-2">Showing {{ $nominations->firstItem() ?? 0 }}–{{ $nominations->lastItem() ?? 0 }} of {{ $nominations->total() }} nominations. Filters apply to this page.</p>
     <div class="interpro-filter-bar mb-3" aria-label="Filter nominated players on this page">
@@ -166,7 +167,7 @@
       @if($batch)
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><span><strong>Latest batch #{{ $batch->id }}</strong> <span class="badge bg-label-info">{{ ucfirst($batch->status) }}</span></span><span class="text-muted small">{{ $readiness['invitation_count'] }} invitation{{ $readiness['invitation_count'] === 1 ? '' : 's' }}</span></div>
       @endif
-      <p class="text-muted mb-0">Choose a send action above to preview the exact recipients, blockers, subject, and message before anything is queued through the managed mail service.</p>
+      <p class="text-muted mb-0">Choose a send action above to preview the exact recipients, blockers, subject, and message before sending through the managed mail service. Delivery continues in the background.</p>
     </div>
 
   </div>
@@ -186,7 +187,7 @@
         <div class="border rounded p-3 bg-light d-none" id="interpro-rendered-preview"><div class="small text-uppercase text-muted mb-2">Rendered email preview</div><div id="interpro-rendered-preview-body"></div></div>
         <input type="hidden" id="interpro-preview-mode"><input type="hidden" id="interpro-preview-invitation"><input type="hidden" id="interpro-preview-token"><input type="hidden" id="interpro-preview-hash"><input type="hidden" id="interpro-preview-composition-hash"><input type="hidden" id="interpro-preview-proof"><input type="hidden" id="interpro-preview-expires">
       </div>
-      <div class="modal-footer"><span class="me-auto text-muted small" id="interpro-preview-count"></span><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-outline-primary" id="interpro-preview-review">Review rendered email</button><button type="submit" class="btn btn-primary d-none" id="interpro-preview-confirm">Queue reviewed emails</button></div>
+      <div class="modal-footer"><span class="me-auto text-muted small" id="interpro-preview-count"></span><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-outline-primary" id="interpro-preview-review">Review rendered email</button><button type="submit" class="btn btn-primary d-none" id="interpro-preview-confirm">Send reviewed emails</button></div>
     </form>
   </div></div>
 </div>
@@ -286,9 +287,9 @@ $(function () {
         method: 'POST', headers: {'X-CSRF-TOKEN': csrf, 'Accept': 'application/json', 'Content-Type': 'application/json'}, body: JSON.stringify(payload)
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.message || Object.values(data.errors || {}).flat()[0] || 'Emails could not be queued.');
+      if (!response.ok) throw new Error(data.message || Object.values(data.errors || {}).flat()[0] || 'Emails could not be submitted for sending.');
       previewModal.hide(); AppFeedback.success(data.message); window.location.reload();
-    } catch (error) { AppFeedback.fromError(error, 'Emails could not be queued.'); confirm.disabled = false; }
+    } catch (error) { AppFeedback.fromError(error, 'Emails could not be submitted for sending.'); confirm.disabled = false; }
   });
 
   const showFeedback = (message, isError = false) => {

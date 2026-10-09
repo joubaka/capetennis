@@ -11,6 +11,9 @@
 @endsection
 
 @section('content')
+<div class="operational-page">
+@include('backend.partials.operational-controls')
+
 <div class="container-xl">
 
   {{-- HEADER --}}
@@ -394,6 +397,7 @@
   </div>
 </div>
 
+</div>
 @endsection
 
 @section('page-script')

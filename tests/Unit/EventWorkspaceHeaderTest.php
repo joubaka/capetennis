@@ -22,7 +22,11 @@ class EventWorkspaceHeaderTest extends TestCase
             'href="'.route('events.show', $event).'"',
             $html
         );
-        $this->assertStringContainsString('target="_blank" rel="noopener"', $html);
+        $this->assertStringContainsString(
+            'href="'.route('events.show', $event).'" target="_self"',
+            $html
+        );
+        $this->assertStringNotContainsString('target="_blank"', $html);
         $this->assertStringContainsString('>Public page</span>', $html);
         $this->assertStringContainsString(
             'href="'.route('admin.events.overview', $event).'"',
