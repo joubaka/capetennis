@@ -75,10 +75,10 @@ class PublicScheduleProjectionTest extends TestCase
         TeamFixture::create(['draw_id' => $foreignDraw->id, 'round_nr' => 1, 'tie_nr' => 1, 'match_nr' => 1,
             'fixture_type' => 1, 'scheduled_at' => '2026-10-12 09:00:00', 'venue_id' => $venue->id, 'court_label' => '2']);
         $service->publish($foreignEvent, ['draw_id' => $foreignDraw->id]);
-        $this->get(route('events.show', $event))->assertOk()->assertSee('Times available · Friday, Saturday')->assertDontSee('Times available · Sunday')->assertDontSee('Monday');
+        $this->get(route('events.show', $event))->assertOk()->assertSee('Times available · Friday from 08:00, Saturday from 09:00')->assertDontSee('Sunday from')->assertDontSee('Monday');
         $this->assertSame('Friday, Saturday', $service->publicDrawDayLabels($event)->get($draw->id));
         $service->hide($event, ['date' => '2026-10-09']);
-        $this->get(route('events.show', $event))->assertOk()->assertSee('Times available · Saturday')->assertDontSee('Times available · Friday');
+        $this->get(route('events.show', $event))->assertOk()->assertSee('Times available · Saturday from 09:00')->assertDontSee('Friday from');
         $service->hide($event, ['draw_id' => $draw->id]);
         $this->get(route('events.show', $event))->assertOk()->assertDontSee('Times available');
     }
@@ -105,7 +105,7 @@ class PublicScheduleProjectionTest extends TestCase
             ->assertDontSee('Scheduled · times not published')->assertDontSee('Times available')->assertDontSee('13:45');
         $this->assertSame([0, 1, 1], $response->viewData('eventDraws')->pluck('scheduled_team_match_count')->map(fn ($count) => (int) $count)->sort()->values()->all());
         app(SchedulePublicationService::class)->publish($event, ['draw_id' => $draws['complete']->id]);
-        $this->get(route('events.show', $event))->assertOk()->assertSee('Times available · Friday');
+        $this->get(route('events.show', $event))->assertOk()->assertSee('Times available · Friday from 13:45');
     }
 
     public function test_admin_public_draw_cannot_show_working_times_when_only_the_draw_is_published(): void

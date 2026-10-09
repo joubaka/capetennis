@@ -30,10 +30,17 @@
   <h6 class="fw-bold">Published Draws</h6>
 
   @php
-    $publishedDayLabels = app(\App\Services\Scheduling\SchedulePublicationService::class)->publicDrawDayLabels($event);
-    $publicStartTimes = $event->exists
-        ? app(\App\Services\Scheduling\SchedulePublicationService::class)->publishedRows($event, includeParticipants: false)->groupBy('draw_id')->map(fn ($rows) => $rows->min('scheduled_at'))
+    $publicRowsByDraw = $event->exists
+        ? app(\App\Services\Scheduling\SchedulePublicationService::class)->publishedRows($event, includeParticipants: false)->groupBy('draw_id')
         : collect();
+    $publicStartTimes = $publicRowsByDraw->map(fn ($rows) => $rows->min('scheduled_at'));
+    $publishedDayLabels = $publicRowsByDraw->map(function ($rows) {
+        $starts = $rows->groupBy(fn ($row) => \Carbon\Carbon::parse($row['scheduled_at'])->toDateString())
+            ->map(fn ($dayRows) => $dayRows->min('scheduled_at'))->sortKeys();
+        $weekdays = $starts->map(fn ($time) => \Carbon\Carbon::parse($time)->format('l'));
+        $dayFormat = $weekdays->unique()->count() === $weekdays->count() ? 'l' : 'l j M';
+        return $starts->map(fn ($time) => \Carbon\Carbon::parse($time)->format($dayFormat).' from '.\Carbon\Carbon::parse($time)->format('H:i'))->join(', ');
+    });
     $publishedDraws = $eventDraws
         ->where('published', true)
         ->sort(function ($left, $right) use ($publicStartTimes) {
