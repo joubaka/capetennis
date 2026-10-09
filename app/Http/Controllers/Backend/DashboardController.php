@@ -17,6 +17,9 @@ class DashboardController extends Controller
       'wallet',
       'players',
     ]);
+    // Include removable legacy account links alongside current pivot links.
+    $user->setRelation('players', $user->players
+      ->merge(\App\Models\Player::where('userId', $user->id)->get())->unique('id')->values());
 
     $managedEventsQuery = Event::query()
       ->when(

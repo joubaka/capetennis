@@ -27,10 +27,10 @@
           "slug": "backend.payfast-handoffs"
         },
         {
-          "url": "backend/player-performance",
-          "name": "Player performance pilot",
+          "url": "backend/player-performance/ratings",
+          "name": "Player ratings",
           "icon": "circle",
-          "slug": "backend.player-performance.index"
+          "slug": "backend.player-performance.ratings"
         },
         {
           "url": "backend/superadmin",

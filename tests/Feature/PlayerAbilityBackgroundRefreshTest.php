@@ -79,6 +79,26 @@ class PlayerAbilityBackgroundRefreshTest extends TestCase
         $this->assertNotSame($old, $state->status()['version']);
     }
 
+    public function test_publication_revocation_changes_status_revision_and_withholds_the_saved_snapshot(): void
+    {
+        $event = \App\Models\Event::factory()->create(['published' => true]);
+        $draw = \App\Models\Draw::factory()->create(['event_id' => $event->id, 'published' => true]);
+        $payload = $this->payload();
+        $payload['source_events'] = [$event->id];
+        $store = app(PlayerAbilitySnapshotStore::class);
+        $store->replace($payload, CarbonImmutable::today('Africa/Johannesburg'), 'old', $store->manifest($payload));
+        $state = app(PlayerAbilityRefreshState::class);
+        $state->completed($state->generation());
+        $old = $state->status();
+        $this->assertFalse($old['pending']);
+        DB::table('draws')->where('id', $draw->id)->update(['published' => false]);
+        app()->forgetInstance(PlayerAbilitySnapshotStore::class);
+        $new = $state->status();
+        $this->assertTrue($new['pending']);
+        $this->assertNotSame($old['version'], $new['version']);
+        $this->assertNotNull(app(PlayerAbilitySnapshotStore::class)->current()['reason']);
+    }
+
     public function test_source_tracking_adds_only_one_schema_check_per_request_and_updates_after_commit(): void
     {
         $queries = [];
@@ -156,5 +176,21 @@ class PlayerAbilityBackgroundRefreshTest extends TestCase
         $this->getJson($url)->assertOk()->assertJsonPath('status.pending', true)
             ->assertJsonStructure(['status' => ['version', 'last_updated', 'pending', 'failed']])
             ->assertHeader('Cache-Control', 'no-store, private');
+    }
+
+    public function test_category_contexts_are_exclusive_and_cannot_read_another_category_fixture(): void
+    {
+        Role::findOrCreate('super-user', 'web');
+        $this->actingAs(User::factory()->create()->assignRole('super-user'));
+        $draw = \App\Models\Draw::factory()->create();
+        $wrong = \App\Models\Category::factory()->create();
+        $registration = \App\Models\Registration::factory()->create();
+        $registration->players()->attach(\App\Models\Player::factory()->create());
+        $fixture = \App\Models\Fixture::factory()->create(['draw_id' => $draw->id, 'registration1_id' => $registration->id]);
+        $url = route('backend.player-performance.badges');
+        $this->getJson($url.'?category_id='.$wrong->id.'&draw_id='.$draw->id)->assertUnprocessable();
+        $this->partialMock(\App\Services\Performance\PlayerRatingBadgeService::class)->shouldNotReceive('forPlayer');
+        $this->getJson($url.'?category_id='.$wrong->id.'&fixtures[]='.$fixture->id)->assertOk()
+            ->assertJsonPath('ratings.f:'.$fixture->id.':1', []);
     }
 }

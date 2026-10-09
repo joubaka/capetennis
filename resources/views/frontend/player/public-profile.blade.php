@@ -27,5 +27,6 @@
     <p class="notice">This public profile currently shows the player’s name only. Personal contact, birth, account and registration information stays private.</p>
     <a href="{{ url('/') }}">&larr; Back to Cape Tennis</a>
   </main>
+  @include('draw.partials.player-rating-assets')
 </body>
 </html>

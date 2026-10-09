@@ -7,7 +7,8 @@
 
 <div class="card"><div class="card-body">
     <h1 class="h3">All players · performance pilot</h1>
-    <p>Choose a player to calculate their private provisional score. Players without eligible results remain unrated.</p>
+    <p>Choose a player to see their private provisional score and evidence. Players without eligible results remain unrated.</p>
+    <a class="btn btn-primary mb-3" href="{{ route('backend.player-performance.ratings') }}">Site-wide ratings by cohort</a>
     <form method="get" class="mb-3">
         <label for="search" class="form-label">Player name</label>
         <input type="search" id="search" name="search" class="form-control" maxlength="100" value="{{ $search }}">

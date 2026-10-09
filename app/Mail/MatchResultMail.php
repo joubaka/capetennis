@@ -26,7 +26,11 @@ class MatchResultMail extends Mailable
     }
     public function body(array $replyTo): string
     {
-        return view('emails.match-result', ['notification' => $this->resultNotification, 'replyTo' => $replyTo])->render();
+        return view('emails.match-result', [
+            'notification' => $this->resultNotification,
+            'replyTo' => $replyTo,
+            'linkedParentNames' => app(MatchResultNotificationService::class)->linkedParentNames($this->resultNotification),
+        ])->render();
     }
 
     public function canonicalHtml(string $html): string

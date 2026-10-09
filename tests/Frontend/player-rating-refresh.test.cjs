@@ -7,6 +7,7 @@ const source = fs.readFileSync('public/assets/js/player-rating-badges.js', 'utf8
 function harness({ enabled = true, svg = false, category = false } = {}) {
   const node = { dataset: { ratingPlayer: '7', ratingDraw: '0', ...(svg ? { ratingSvg: '1' } : {}), ...(category ? { ratingCategory: '3' } : {}) }, innerHTML: 'Old server badge' };
   const label = { textContent: '' };
+  const detail = { dataset: { ratingDetailVersion: 'v1' }, hidden: true };
   const timers = [];
   const listeners = {};
   const calls = [];
@@ -18,6 +19,7 @@ function harness({ enabled = true, svg = false, category = false } = {}) {
   const document = { readyState: 'complete', hidden: false, body: {},
     querySelectorAll(selector) {
       if (selector === '[data-rating-status]') return [label];
+      if (selector === '[data-rating-detail-version]') return [detail];
       return selector.includes(':not') && node.dataset.ratingDone ? [] : [node];
     },
     addEventListener(name, callback) { listeners[name] = callback; },
@@ -39,7 +41,7 @@ function harness({ enabled = true, svg = false, category = false } = {}) {
       if (timers.length) timers.shift()();
     }
   }
-  return { node, label, calls, document, flush, poll: () => poll?.(),
+  return { node, label, detail, calls, document, flush, poll: () => poll?.(),
     visibility: () => listeners.visibilitychange?.(),
     update(nextVersion, nextRatings) { version = nextVersion; ratings = nextRatings; },
     failure() { failed = true; }, offline() { networkFailure = true; } };
@@ -56,6 +58,7 @@ test('private rendered badges refresh after version changes and removed ratings 
   await h.poll(); await h.flush();
   assert.equal(h.node.innerHTML, '');
   assert.equal(h.node.dataset.ratingDone, '1');
+  assert.equal(h.detail.hidden, false);
 });
 
 test('unrated server markers receive new ratings and SVG stays SVG', async () => {

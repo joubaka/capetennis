@@ -37,25 +37,28 @@ class UserPlayerController extends Controller
   {
     $this->authorizeLinkManagement($user);
 
-    if ($user->players()->where('player_id', $player->id)->exists()) {
-      $user->players()->detach($player->id);
+    $removed = DB::transaction(function () use ($user, $player): bool {
+      $player = Player::whereKey($player->id)->lockForUpdate()->firstOrFail();
+      $pivotLinked = $user->players()->where('player_id', $player->id)->exists();
+      $legacyLinked = (int) $player->userId === (int) $user->id;
+      if (!$pivotLinked && !$legacyLinked) {
+        return false;
+      }
+      if ($pivotLinked) {
+        $user->players()->detach($player->id);
+      }
+      // Keep historical player records; zero supports legacy NOT NULL schemas.
+      if ($legacyLinked) {
+        $player->forceFill(['userId' => 0])->save();
+      }
+      return true;
+    });
 
-      return response()->json([
-        'message' => 'Player unlinked successfully',
-      ]);
-    }
-
-    if ((int) $player->userId !== (int) $user->id) {
+    if (!$removed) {
       return response()->json([
         'message' => 'Player not linked to this user',
       ], 404);
     }
-
-    // Retire the legacy direct ownership link without deleting the player or
-    // changing any registration, payment, result, or ranking history. Some
-    // production schemas retain this legacy column as NOT NULL, so zero is
-    // the unowned sentinel used by the old data model.
-    $player->forceFill(['userId' => 0])->save();
 
     return response()->json([
       'message' => 'Player unlinked successfully',

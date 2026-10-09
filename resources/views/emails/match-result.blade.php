@@ -8,4 +8,8 @@
 @if($replyTo)
 <p>You can also reply to this email to contact the event administrators. The reply addresses are {{ implode(', ', $replyTo) }}; please check that your email app includes all of them before sending.</p>
 @endif
+@if($linkedParentNames)
+<p>You received this email because you are linked to {{ implode(' / ', $linkedParentNames) }} as a parent.
+To remove yourself, <a href="{{ route('backend.dashboard', ['manage_players' => 1]) }}#dashboard-account">click here</a> and remove the player from your linked players.</p>
+@endif
 </body></html>

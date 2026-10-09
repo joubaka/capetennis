@@ -69,6 +69,84 @@ class MatchResultNotificationTest extends TestCase
         $this->assertDatabaseCount('match_result_notifications', 9);
     }
 
+    public function test_result_emails_wait_thirty_minutes_and_corrections_restart_the_wait(): void
+    {
+        $this->freezeTime();
+        $fixture = $this->fixture();
+        $this->save($fixture);
+        $originalAvailableAt = now()->addMinutes(30)->timestamp;
+        $this->assertSame([$originalAvailableAt], DB::table('jobs')->distinct()->pluck('available_at')->map(fn ($time) => (int) $time)->all());
+        $old = MatchResultNotification::first();
+
+        $this->travel(10)->minutes();
+        $this->save($fixture, true);
+        $correctedAvailableAt = now()->addMinutes(30)->timestamp;
+        $this->assertSame([$correctedAvailableAt], DB::table('jobs')->orderByDesc('id')->limit(3)->pluck('available_at')->map(fn ($time) => (int) $time)->unique()->values()->all());
+        $this->assertDatabaseCount('jobs', 6);
+
+        $this->travel(20)->minutes();
+        Mail::fake();
+        (new SendMatchResultNotification($old->id))->handle(app(MatchResultNotificationService::class));
+        $this->assertSame('superseded', $old->fresh()->status);
+        Mail::assertNothingSent();
+        $this->assertSame(3, DB::table('jobs')->where('available_at', '>', now()->timestamp)->count());
+
+        $this->travel(10)->minutes();
+        $this->mock(MailAccountManager::class)->shouldReceive('getMailer')->once()->andReturn('array');
+        $corrected = MatchResultNotification::where('revision', 2)->where('recipient', 'parent@example.test')->firstOrFail();
+        (new SendMatchResultNotification($corrected->id))->handle(app(MatchResultNotificationService::class));
+        Mail::assertSent(MatchResultMail::class, fn ($mail) => $mail->resultNotification->id === $corrected->id
+            && str_contains($mail->body([]), '2–6, 3–6'));
+        Mail::assertSent(MatchResultMail::class, 1);
+    }
+
+    public function test_all_linked_parent_contacts_receive_a_personal_footer_and_player_contacts_do_not(): void
+    {
+        $fixture = $this->fixture();
+        $player = $fixture->fixturePlayers->first()->player1;
+        $player->update(['email' => 'player@example.test']);
+        $secondParent = User::factory()->create(['email' => 'second-parent@example.test']);
+        $player->users()->attach($secondParent);
+        $player->update(['userId' => $secondParent->id]);
+        $player->users()->attach(User::factory()->create(['email' => 'PLAYER@example.test']));
+        $this->save($fixture);
+
+        foreach (['player@example.test', 'parent@example.test', 'second-parent@example.test'] as $email) {
+            $this->assertSame(1, MatchResultNotification::where('recipient', $email)->count());
+        }
+        $this->assertDatabaseCount('match_result_notifications', 4);
+        $parentMail = new MatchResultMail(MatchResultNotification::where('recipient', 'second-parent@example.test')->firstOrFail());
+        $html = $parentMail->body([]);
+        $this->assertStringContainsString('as a parent', $html);
+        $this->assertStringContainsString(e($player->full_name), $html);
+        $this->assertStringContainsString(route('backend.dashboard', ['manage_players' => 1]).'#dashboard-account', $html);
+        $playerMail = new MatchResultMail(MatchResultNotification::where('recipient', 'player@example.test')->firstOrFail());
+        $this->assertStringNotContainsString('as a parent', $playerMail->body([]));
+        $notification = $parentMail->resultNotification;
+        $this->actingAs($secondParent)->deleteJson(route('backend.user.players.destroy', [$secondParent, $player]))->assertOk();
+        $this->assertSame(0, (int) $player->fresh()->userId);
+        $this->assertFalse($player->fresh()->users->contains('id', $secondParent->id));
+        $this->assertFalse(app(MatchResultNotificationService::class)->current($notification));
+        $this->assertStringNotContainsString('as a parent', $parentMail->body([]));
+    }
+
+    public function test_parent_footer_profile_destination_lists_legacy_links_and_opens_admin_account(): void
+    {
+        $parent = User::factory()->create();
+        $event = Event::factory()->create();
+        $event->admins()->attach($parent);
+        $legacy = Player::factory()->create(['userId' => $parent->id, 'name' => 'LegacyParentPlayer']);
+        $unrelated = Player::factory()->create(['name' => 'UnrelatedParentPlayer']);
+
+        $this->actingAs($parent)->get(route('backend.dashboard', ['manage_players' => 1]))
+            ->assertOk()->assertSee('id="my-account"  open', false)
+            ->assertSee('LegacyParentPlayer')->assertDontSee('UnrelatedParentPlayer')
+            ->assertViewHas('user', fn ($user) => $user->players->pluck('id')->all() === [$legacy->id]);
+        $this->deleteJson(route('backend.user.players.destroy', [$parent, $legacy]))->assertOk();
+        $this->assertSame(0, (int) $legacy->fresh()->userId);
+        $this->assertDatabaseHas('players', ['id' => $unrelated->id]);
+    }
+
     public function test_rollback_creates_neither_notification_nor_job(): void
     {
         $fixture = $this->fixture();
@@ -221,10 +299,15 @@ class MatchResultNotificationTest extends TestCase
         $this->assertTrue(MatchResultNotification::where('recipient', 'imported@example.test')->exists());
         $profile = Player::factory()->create(['email' => 'linked@example.test']);
         $imported->update(['player_profile' => $profile->id]);
+        $parent = User::factory()->create(['email' => 'imported-parent@example.test']);
+        $profile->users()->attach($parent);
         $notification = MatchResultNotification::where('recipient', 'imported@example.test')->first();
         $this->assertFalse(app(MatchResultNotificationService::class)->current($notification));
         $this->assertContains('linked@example.test', app(MatchResultNotificationService::class)->recipients([], [$imported->id]));
         $this->assertNotContains('imported@example.test', app(MatchResultNotificationService::class)->recipients([], [$imported->id]));
+        $this->assertContains('imported-parent@example.test', app(MatchResultNotificationService::class)->recipients([], [$imported->id]));
+        $parentNotification = new MatchResultNotification(['recipient' => $parent->email, 'snapshot' => $notification->snapshot]);
+        $this->assertSame([$profile->full_name], app(MatchResultNotificationService::class)->linkedParentNames($parentNotification));
     }
 
     public function test_canonical_tie_publication_and_foreign_participants_are_checked(): void

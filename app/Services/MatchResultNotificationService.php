@@ -32,7 +32,8 @@ final class MatchResultNotificationService
                     'revision' => $revision, 'snapshot_hash' => $hash, 'snapshot' => $snapshot, 'recipient' => $recipient,
                 ]);
                 // Use the durable queue even when the web application's default is sync.
-                SendMatchResultNotification::dispatch($notification->id)->onConnection('database')->afterCommit();
+                SendMatchResultNotification::dispatch($notification->id)->onConnection('database')
+                    ->delay(now()->addMinutes(30))->afterCommit();
             }
         });
     }
@@ -91,6 +92,26 @@ final class MatchResultNotificationService
         return $snapshot !== null && hash_equals($notification->snapshot_hash, hash('sha256', json_encode($snapshot, JSON_THROW_ON_ERROR)))
             && in_array($notification->recipient, $this->recipients($snapshot['player_ids'], $snapshot['imported_ids']), true)
             && !MatchResultNotification::where('fixture_type', $notification->fixture_type)->where('fixture_id', $notification->fixture_id)->where('revision', '>', $notification->revision)->exists();
+    }
+
+    public function linkedParentNames(MatchResultNotification $notification): array
+    {
+        $snapshot = $notification->snapshot;
+        $profileIds = \App\Models\NoProfileTeamPlayer::whereIn('id', $snapshot['imported_ids'] ?? [])
+            ->whereNotNull('player_profile')->pluck('player_profile');
+        $recipient = mb_strtolower(trim($notification->recipient));
+
+        return Player::whereIn('id', collect($snapshot['player_ids'])->merge($profileIds)->unique())
+            ->with(['users', 'user'])->get()
+            ->filter(function (Player $player) use ($recipient): bool {
+                $playerEmails = collect([$player->email])
+                    ->map(fn ($email) => mb_strtolower(trim((string) $email)));
+
+                return ! $playerEmails->contains($recipient) && (
+                    mb_strtolower(trim((string) $player->user?->email)) === $recipient
+                    || $player->users->contains(fn ($user) => mb_strtolower(trim((string) $user->email)) === $recipient)
+                );
+            })->pluck('full_name')->unique()->values()->all();
     }
 
     public function invalidate(Fixture|TeamFixture $fixture): void

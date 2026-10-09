@@ -91,7 +91,7 @@
   {{-- ================= PERSONAL ACCOUNT ================= --}}
   <div class="col-12" id="dashboard-account">
     @if($showDashboardTabs)
-    <details class="dashboard-account mb-4" id="my-account" @if(request()->has('wallet_page')) open @endif>
+    <details class="dashboard-account mb-4" id="my-account" @if(request()->has('wallet_page') || request()->boolean('manage_players')) open @endif>
       <summary class="card p-3 mb-3"><span class="fw-semibold">My Account</span><span class="text-muted small">Profile, linked players and wallet history</span></summary>
     @endif
     <div class="card mb-4">

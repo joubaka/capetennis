@@ -649,6 +649,8 @@ Route::prefix('backend')->middleware('auth')->group(function () {
   });
 
   Route::get('player-performance/name-ratings', \App\Http\Controllers\Backend\PlayerRatingBadgeController::class)->middleware('role:super-user')->name('backend.player-performance.badges');
+  Route::get('player-performance/ratings', [\App\Http\Controllers\Backend\PlayerRatingLeaderboardController::class, 'site'])->middleware('role:super-user')->name('backend.player-performance.ratings');
+  Route::get('events/{event}/player-ratings', [\App\Http\Controllers\Backend\PlayerRatingLeaderboardController::class, 'event'])->middleware('role:super-user')->name('backend.player-performance.event-ratings');
   Route::get('player-performance', [\App\Http\Controllers\Backend\PlayerPerformancePilotController::class, 'index'])->middleware('role:super-user')->name('backend.player-performance.index');
   Route::get('player-performance/players', [\App\Http\Controllers\Backend\PlayerPerformancePilotController::class, 'directory'])->middleware('role:super-user')->name('backend.player-performance.directory');
   Route::get('player-performance/players/{player}', [\App\Http\Controllers\Backend\PlayerPerformancePilotController::class, 'show'])->middleware('role:super-user')->name('backend.player-performance.show');

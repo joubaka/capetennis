@@ -9,6 +9,7 @@
 <div class="card mb-4">
     <div class="card-body">
         <h1 class="h3">Player performance pilot</h1>
+        <a class="btn btn-primary mb-3" href="{{ route('backend.player-performance.ratings') }}">Site-wide ratings by cohort</a>
         <a class="btn btn-primary mb-3" href="{{ route('backend.player-performance.directory') }}">Find any player's rating</a>
         <p class="alert alert-warning text-dark">
             Private Super Admin preview. Every score is provisional and uncalibrated. This measures tournament finishes,

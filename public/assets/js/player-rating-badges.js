@@ -40,9 +40,12 @@
   function status(data) {
     if (!data) return;
     document.querySelectorAll('[data-rating-status]').forEach(node => {
-      const message = 'Last updated: ' + (data.last_updated || 'Not yet updated')
+      const message = 'Saved ratings last updated: ' + (data.last_updated || 'Not yet updated')
         + (data.failed ? ' · Update failed; retry pending.' : (data.pending ? ' · Update pending.' : ' · Up to date.'));
       if (node.textContent !== message) node.textContent = message;
+    });
+    document.querySelectorAll('[data-rating-detail-version]').forEach(link => {
+      link.hidden = link.dataset.ratingDetailVersion === data.version;
     });
     if (version !== null && version !== data.version) {
       cache.clear();

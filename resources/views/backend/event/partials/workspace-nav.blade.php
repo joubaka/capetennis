@@ -18,6 +18,9 @@
   };
 @endphp
 <x-backend.context-nav label="Event navigation">
+  @role('super-user')
+    <a href="{{ route('backend.player-performance.event-ratings', $event) }}" @if($eventWorkspaceActive === 'ratings') aria-current="page" @endif><i class="ti ti-chart-bar" aria-hidden="true"></i>Player ratings</a>
+  @endrole
   @if($eventWorkspaceRegionalOnly)
     <a href="{{ route('backend.team-selection.index', $event) }}" @if($eventWorkspaceActive !== 'communications') aria-current="page" @endif><i class="ti ti-users" aria-hidden="true"></i>Teams</a>
     <a href="{{ route('backend.event-communications.index', $event) }}" @if($eventWorkspaceActive === 'communications') aria-current="page" @endif><i class="ti ti-mail" aria-hidden="true"></i>Communications</a>
