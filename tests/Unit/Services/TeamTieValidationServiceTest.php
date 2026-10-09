@@ -115,6 +115,87 @@ class TeamTieValidationServiceTest extends TestCase
 
     // ─── 5. No duplicate passes when reuse allowed ────────────────────────
 
+    private function addLinkedImports(Team $team): Team
+    {
+        foreach ($team->team_players as $member) {
+            \App\Models\NoProfileTeamPlayer::create([
+                'team_id' => $team->id, 'rank' => $member->rank,
+                'player_profile' => $member->player_id, 'name' => 'Imported', 'surname' => 'Player',
+                'pay_status' => 1,
+            ]);
+        }
+        return $team->fresh(['team_players', 'team_players_no_profile']);
+    }
+
+    public function test_linked_imports_count_once_without_changing_roster_records(): void
+    {
+        $team = $this->addLinkedImports($this->makeTeamWithPlayers(12));
+        $before = $team->team_players_no_profile->toArray();
+        $this->service->assertHardRosterCap($team);
+        $this->service->assertRosterSize($team, $this->makeFormat(12, 12));
+        $this->assertCount(12, $team->team_players);
+        $this->assertSame($before, $team->fresh()->team_players_no_profile->toArray());
+    }
+
+    public function test_linked_imports_do_not_satisfy_the_minimum_twice(): void
+    {
+        $team = $this->addLinkedImports($this->makeTeamWithPlayers(2));
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('has only 2 player(s)');
+        $this->service->assertRosterSize($team, $this->makeFormat(4, 12));
+    }
+
+    public function test_true_over_capacity_roster_with_linked_imports_is_rejected(): void
+    {
+        $team = $this->addLinkedImports($this->makeTeamWithPlayers(13));
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('has 13 player(s)');
+        $this->service->assertRosterSize($team, $this->makeFormat(1, 12));
+    }
+
+    public function test_unmatched_and_duplicate_imports_still_count_as_roster_positions(): void
+    {
+        $team = $this->addLinkedImports($this->makeTeamWithPlayers(1));
+        $mirror = $team->team_players_no_profile->first();
+        foreach ([['rank' => 1], ['rank' => 2], ['team_id' => $team->id + 1], ['player_profile' => null], ['player_profile' => $mirror->player_profile + 1]] as $attributes) {
+            $copy = clone $mirror;
+            $copy->fill($attributes);
+            $team->team_players_no_profile->push($copy);
+        }
+        $this->service->assertRosterSize($team, $this->makeFormat(6, 6));
+        $this->assertCount(6, $team->team_players_no_profile);
+    }
+
+    public function test_duplicate_profiles_and_invalid_link_identifiers_are_not_collapsed(): void
+    {
+        $team = $this->addLinkedImports($this->makeTeamWithPlayers(1));
+        $team->team_players->push(clone $team->team_players->first());
+        foreach ([0, -1] as $identity) {
+            $profile = clone $team->team_players->first();
+            $profile->player_id = $identity;
+            $team->team_players->push($profile);
+            $imported = clone $team->team_players_no_profile->first();
+            $imported->player_profile = $identity;
+            $team->team_players_no_profile->push($imported);
+        }
+        $this->service->assertRosterSize($team, $this->makeFormat(6, 6));
+        $this->assertCount(4, $team->team_players);
+        $this->assertCount(3, $team->team_players_no_profile);
+    }
+
+    public function test_linked_import_requires_the_same_team_rank_and_profile(): void
+    {
+        $team = $this->addLinkedImports($this->makeTeamWithPlayers(1));
+        $mirror = clone $team->team_players_no_profile->first();
+        foreach ([['rank' => 2], ['team_id' => $team->id + 1], ['player_profile' => $mirror->player_profile + 1]] as $attributes) {
+            $copy = clone $mirror;
+            $copy->fill($attributes);
+            $team->setRelation('team_players_no_profile', collect([$copy]));
+            $this->service->assertRosterSize($team, $this->makeFormat(2, 2));
+        }
+        $this->assertCount(1, $team->team_players);
+    }
+
     public function test_no_duplicate_assignment_passes_when_reuse_allowed(): void
     {
         $format = $this->makeFormat(1, 12, allowReuse: true);

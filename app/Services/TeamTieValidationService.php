@@ -34,7 +34,7 @@ class TeamTieValidationService
      */
     public function assertRosterSize(Team $team, TeamEventFormat $format): void
     {
-        $count = $team->team_players->count() + $team->team_players_no_profile->count();
+        $count = $this->rosterCount($team);
 
         if ($count < $format->min_roster_size) {
             throw new \InvalidArgumentException(
@@ -59,7 +59,7 @@ class TeamTieValidationService
      */
     public function assertHardRosterCap(Team $team): void
     {
-        $count = $team->team_players->count() + $team->team_players_no_profile->count();
+        $count = $this->rosterCount($team);
 
         if ($count > 12) {
             throw new \InvalidArgumentException(
@@ -307,6 +307,26 @@ class TeamTieValidationService
     // ─────────────────────────────────────────────────────────────────────────
     // Private helpers
     // ─────────────────────────────────────────────────────────────────────────
+
+    private function rosterCount(Team $team): int
+    {
+        // A claimed import retains its row for fixture and payment history. Only
+        // pair it with its exact profile roster position, leaving both sources intact.
+        $profiles = $team->team_players->groupBy(fn ($member) =>
+            $member->team_id.':'.$member->rank.':'.$member->player_id
+        )->map->count()->all();
+        $count = $team->team_players->count();
+        foreach ($team->team_players_no_profile as $member) {
+            $key = $member->team_id.':'.$member->rank.':'.$member->player_profile;
+            if ((int) $member->player_profile > 0 && (int) $member->rank > 0 && ($profiles[$key] ?? 0) > 0) {
+                $profiles[$key]--;
+            } else {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
 
     private function assertAllGender(Collection $genders, string $expected, string $rubberCode): void
     {

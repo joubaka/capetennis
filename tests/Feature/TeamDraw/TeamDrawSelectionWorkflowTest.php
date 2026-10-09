@@ -195,6 +195,38 @@ class TeamDrawSelectionWorkflowTest extends TestCase
         $this->assertArrayNotHasKey($missing->id, $mixed->team_draw_selection['mixed_sides']);
     }
 
+    public function test_mixed_publication_counts_linked_roster_positions_once_and_preserves_imported_fixtures(): void
+    {
+        foreach ($this->teams as $sources) {
+            foreach (['Boys' => 1, 'Girls' => 2] as $gender => $genderId) {
+                $team = $sources[$gender];
+                for ($rank = 3; $rank <= 8; $rank++) {
+                    NoProfileTeamPlayer::create(['team_id' => $team->id, 'rank' => $rank, 'name' => $team->name, 'surname' => 'Player '.$rank, 'pay_status' => 1]);
+                }
+            }
+        }
+        // Existing fixtures keep the imported identity when profiles are claimed later.
+        $this->request([$this->item()])->assertOk();
+        $before = DB::table('team_fixture_players')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all();
+        foreach ($this->teams as $sources) {
+            foreach (['Boys' => 1, 'Girls' => 2] as $gender => $genderId) {
+                foreach ($sources[$gender]->team_players_no_profile()->get() as $imported) {
+                    $player = Player::factory()->create(['gender' => $genderId]);
+                    TeamPlayer::create(['team_id' => $imported->team_id, 'player_id' => $player->id, 'rank' => $imported->rank, 'pay_status' => 1]);
+                    $imported->update(['player_profile' => $player->id]);
+                }
+            }
+        }
+        $draw = Draw::firstOrFail();
+        $this->assertSame(24, $draw->team_format_snapshot['max_roster_size']);
+        DB::transaction(fn () => app(\App\Services\TeamDrawScoringPublicationService::class)->enableLocked($draw));
+        $this->assertTrue(app(\App\Services\TeamDrawScoringPublicationService::class)->state($draw)['ready']);
+        $this->assertSame($before, DB::table('team_fixture_players')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all());
+        $this->assertDatabaseCount('team_players', 32);
+        $this->assertDatabaseCount('no_profile_team_players', 32);
+        $this->assertFalse((bool) $draw->fresh()->oop_published);
+    }
+
     public function test_roster_position_default_does_not_raise_a_configuration_warning(): void
     {
         $response = $this->request([$this->item()], true)->assertOk();
