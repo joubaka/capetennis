@@ -44,7 +44,8 @@ class PlayerRatingLeaderboardTest extends TestCase
     private function estimate(float $score, string $group = 'first', string $cohort = 'u12 boys'): array
     {
         return ['cohort' => $cohort, 'component' => $group, 'score' => $score, 'confidence_label' => 'Medium',
-            'confidence_explanation' => 'Strength and freshness of evidence, not rating accuracy.', 'last_played' => '2026-09-01'];
+            'confidence_explanation' => 'Strength and freshness of evidence, not rating accuracy.', 'last_played' => '2026-09-01',
+            'played' => 14, 'direct_opponents' => 8, 'last_direct_match' => '2026-09-01'];
     }
 
     public function test_routes_deny_guests_and_non_super_users_before_loading_snapshot(): void
@@ -83,7 +84,8 @@ class PlayerRatingLeaderboardTest extends TestCase
             ->assertSee('Imported Unrated')->assertDontSee('Stale Imported name')->assertDontSee('Foreign Player')->assertHeader('Cache-Control', 'no-store, private')
             ->assertSee('Private provisional singles ratings')->assertSee('not a win percentage')
             ->assertSee('Confidence describes the strength and freshness of the evidence, not rating accuracy.')
-            ->assertSee('Rating evidence')->assertSee('62.0/100')->assertSee('Medium confidence');
+            ->assertSee('Rating evidence')->assertSee('62.0/100')->assertSee('Medium confidence')
+            ->assertSee('14 recorded played matches')->assertSee('8 opponents')->assertSee('last match 2026-09-01');
         $this->assertNull($rows->firstWhere('name', 'Dangling Profile')['rating']);
         if (getenv('CT_LEADERBOARD_QA_HTML') === '1') {
             file_put_contents(storage_path('framework/testing/leaderboard-qa.html'), $response->getContent());

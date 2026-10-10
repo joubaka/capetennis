@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\{Cache, DB, Schema};
 /** Private v6 shared-opponent estimates. No saved financial/player/ranking state. */
 class PlayerSharedAbilityService
 {
-    public const VERSION = 6;
+    public const VERSION = 7;
     private const EVENT_CAP = 1000;
     private const PLAYER_CAP = 5000;
     private const EDGE_CAP = 50000;
@@ -100,9 +100,9 @@ class PlayerSharedAbilityService
     }
 
     /** Retrospective validation only: excludes all held-out/overlapping event evidence and bypasses caches. */
-    public function validationSnapshot(CarbonImmutable $eventStart, ?int $excludedEventId = null): array
+    public function validationSnapshot(CarbonImmutable $eventStart, ?int $excludedEventId = null, array $experiment = []): array
     {
-        return $this->build($eventStart->startOfDay()->subDay(), $eventStart->startOfDay(), $excludedEventId);
+        return $this->build($eventStart->startOfDay()->subDay(), $eventStart->startOfDay(), $excludedEventId, $experiment);
     }
 
     private function formatBadgeSnapshot(array $snapshot, CarbonImmutable $asOf): array
@@ -128,7 +128,8 @@ class PlayerSharedAbilityService
             'draws' => ['id', 'published', 'event_id', 'category_event_id', 'team_scoring_rules', 'drawName', 'team_draw_selection'],
             'team_ties' => ['id', 'draw_id', 'home_team_id', 'away_team_id', 'published_at', 'status'],
             'teams' => ['id', 'name', 'year', 'region_id', 'category_event_id'],
-            'team_players' => ['id', 'team_id', 'player_id'],
+            'team_players' => ['id', 'team_id', 'player_id', 'rank'],
+            'no_profile_team_players' => ['id', 'team_id', 'player_profile', 'rank'],
             'team_fixture_players' => ['id', 'team_fixture_id', 'team1_id', 'team2_id', 'team1_no_profile_id', 'team2_no_profile_id', 'participant_snapshot'],
             'team_fixtures' => ['id', 'draw_id', 'team_tie_id', 'fixture_type', 'numSets', 'scheduled_at', 'region1', 'region2', 'rubber_code', 'match_status', 'age'],
             'event_regions' => ['id', 'event_id', 'region_id'],
@@ -172,7 +173,7 @@ class PlayerSharedAbilityService
         return trim($label, " -–");
     }
 
-    private function build(CarbonImmutable $asOf, ?CarbonImmutable $completedBefore = null, ?int $excludedEventId = null): array
+    private function build(CarbonImmutable $asOf, ?CarbonImmutable $completedBefore = null, ?int $excludedEventId = null, array $experiment = []): array
     {
         $builtAt = CarbonImmutable::now('Africa/Johannesburg')->format('Y-m-d H:i:s').' SAST';
         $graphs = []; $ordinalFields = []; $trialBaselines = []; $names = []; $eventsSeen = 0; $edgeCount = 0; $scannedMatches = 0; $seenSources = [];
@@ -280,7 +281,7 @@ class PlayerSharedAbilityService
                     && isset($baseline['anchors'][$edge['winner']], $baseline['anchors'][$edge['loser']])) { $edge['topology_only'] = true; }
                 return $edge;
             }, $graph['edges']);
-            $cohorts[$cohort] = app(SharedAbilityModel::class)->fit($edges, $cohort, $ordinalFields[$cohort] ?? [], $baseline['anchors'])
+            $cohorts[$cohort] = app(SharedAbilityModel::class)->fit($edges, $cohort, $ordinalFields[$cohort] ?? [], $baseline['anchors'], $experiment)
                 + ['players' => $graph['players'], 'baseline' => $baseline];
         }
         return ['cohorts' => $cohorts, 'names' => $names, 'reason' => null, 'built_at' => $builtAt,

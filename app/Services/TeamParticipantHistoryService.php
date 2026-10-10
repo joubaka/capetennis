@@ -26,16 +26,16 @@ class TeamParticipantHistoryService
             $row->team1_no_profile_id, $row->team2_no_profile_id, $row->participant_snapshot,
         ])->values()->all()));
     }
-    public function captureFixture(\App\Models\TeamFixture $fixture): void
+    public function captureFixture(\App\Models\TeamFixture $fixture, bool $attestNewIdentity = false): void
     {
         $map = $fixture->draw->team_draw_selection['mixed_sides'] ?? [];
         $ids = collect([$fixture->teamTie?->home_team_id, $fixture->teamTie?->away_team_id])->filter()
             ->flatMap(fn ($id) => isset($map[$id]) ? [$map[$id]['boys'], $map[$id]['girls']] : [$id]);
         $teams = Team::with(['category', 'team_players.player', 'team_players_no_profile'])->whereIn('id', $ids)->get()
             ->map(fn ($team) => app(TeamDrawSideResolver::class)->activeRoster($team, (int) $fixture->round_nr, (int) $fixture->id, (int) $fixture->draw_id));
-        $this->capture($fixture->fixturePlayers()->with(['fixture.draw', 'fixture.teamTie'])->get(), $teams);
+        $this->capture($fixture->fixturePlayers()->with(['fixture.draw', 'fixture.teamTie'])->get(), $teams, $attestNewIdentity);
     }
-    public function capture(Collection $rows, Collection $teams): void
+    public function capture(Collection $rows, Collection $teams, bool $attestNewIdentity = false): void
     {
         foreach ($rows as $row) {
             $snapshot = $row->participant_snapshot ?? [];
@@ -64,6 +64,15 @@ class TeamParticipantHistoryService
                         'anchor_id' => (int) ($member->competition_anchor_id ?? $member->id),
                         'name' => $profile ? $member->player?->full_name : trim($member->name.' '.$member->surname),
                     ];
+                    // Attest only at first capture; existing historical snapshots remain immutable.
+                    if ($attestNewIdentity && $imported && (int) $member->player_profile > 0 && (int) $member->rank > 0
+                        && $team->team_players_no_profile->where('rank', $member->rank)->count() === 1
+                        && $team->team_players_no_profile->where('player_profile', $member->player_profile)->count() === 1
+                        && $team->team_players->where('rank', $member->rank)->count() === 1
+                        && $team->team_players->where('player_id', $member->player_profile)->count() === 1
+                        && $team->team_players->contains(fn ($mirror) => (int) $mirror->rank === (int) $member->rank && (int) $mirror->player_id === (int) $member->player_profile)) {
+                        $snapshot[$side]['linked_profile_id'] = (int) $member->player_profile;
+                    }
                     break;
                 }
             }

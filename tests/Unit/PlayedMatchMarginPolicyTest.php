@@ -22,7 +22,10 @@ class PlayedMatchMarginPolicyTest extends TestCase
         $policy = new PlayedMatchMarginPolicy;
         $this->assertEqualsWithDelta(0.75 + 0.25 / 27, $policy->target([[6,4], [4,6], [10,8]], 1, ['full','full','match_tiebreak']), 0.000001);
         $this->assertEqualsWithDelta(0.75 + 0.25 / 9, $policy->target([[10,8]], 1, ['match_tiebreak']), 0.000001);
-        $this->assertSame(1.0, $policy->target([[10,8]], 1));
-        $this->assertSame(1.0, $policy->target([[6,4]], 1, ['custom']));
+        $this->assertSame(0.75, $policy->target([[10,8]], 1));
+        $this->assertSame(0.75, $policy->target([[6,4]], 1, ['custom']));
+        $this->assertSame(0.75, $policy->target([], 1));
+        $this->assertSame(0.75, $policy->target([[6,0]], null));
+        $this->assertSame(0.75, $policy->target([[6,6]], 1));
     }
 }

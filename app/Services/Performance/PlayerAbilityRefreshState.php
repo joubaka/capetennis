@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\{DB, Log, Schema};
 class PlayerAbilityRefreshState
 {
     private array $available = [];
-    private const SOURCES = ['events', 'draws', 'team_ties', 'teams', 'team_players',
+    private const SOURCES = ['events', 'draws', 'team_ties', 'teams', 'team_players', 'no_profile_team_players',
         'team_fixture_players', 'team_fixtures', 'event_regions', 'team_regions',
         'eventtypes', 'category_events', 'categories', 'fixtures',
         'category_event_registrations', 'player_registrations', 'category_results',

@@ -6,10 +6,10 @@ require dirname(__DIR__).'/vendor/autoload.php';
 $app = require dirname(__DIR__).'/bootstrap/app.php';
 $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
-$options = getopt('', ['event:']);
-$id = $options['event'] ?? '';
-if (!is_string($id) || !ctype_digit($id) || (int) $id < 1) {
-    fwrite(STDERR, "Supply one completed event ID: php scripts/validate-player-ability.php --event=ID\n");
+$options = getopt('', ['event:', 'events:', 'compare']);
+try { $ids = App\Services\Performance\PlayerAbilityValidationService::eventIds($options); }
+catch (InvalidArgumentException) {
+    fwrite(STDERR, "Supply --event=ID or --events=ID,ID (at most ten completed events).\n");
     exit(1);
 }
 $connection = Illuminate\Support\Facades\DB::connection();
@@ -19,9 +19,13 @@ try {
     elseif ($connection->getDriverName() === 'pgsql') { $connection->statement('SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY'); }
     else { throw new RuntimeException('Unsupported read-only transaction driver.'); }
     $connection->beginTransaction();
-    $event = App\Models\Event::find((int) $id);
-    if (!$event) { throw new RuntimeException('Event unavailable.'); }
-    $report = app(App\Services\Performance\PlayerAbilityValidationService::class)->run($event);
+    $reports = [];
+    foreach ($ids as $id) {
+        $event = App\Models\Event::find($id);
+        if (!$event) { throw new RuntimeException('Event unavailable.'); }
+        $reports[] = app(App\Services\Performance\PlayerAbilityValidationService::class)->run($event, isset($options['compare']));
+    }
+    $report = isset($options['event']) ? $reports[0] : ['reports' => $reports, 'interpretation' => 'Separate event holdouts; reports are not pooled across events. Each prediction compares players only within the same cohort and component; event metrics summarize those compatible pairs.'];
     fwrite(STDOUT, json_encode($report, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR)."\n");
     $connection->rollBack();
     exit(0);

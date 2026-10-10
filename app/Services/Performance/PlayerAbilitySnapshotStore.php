@@ -18,6 +18,7 @@ class PlayerAbilitySnapshotStore
             'policy' => self::POLICY_VERSION, 'played_event_incident_budget' => 1, 'played_half_life_days' => 180,
             'unanchored_prior' => 0.5, 'ordinal_weight' => SharedAbilityModel::ORDINAL_WEIGHT,
             'played_margin_policy' => PlayedMatchMarginPolicy::VERSION, 'played_margin_floor' => 0.75,
+            'imported_match_identity_policy' => ImportedMatchIdentityResolver::VERSION,
             'ordinal_target_span' => SharedAbilityModel::ORDINAL_TARGET_SPAN,
             'main_trial_event_type' => TrialBaselinePolicy::MAIN_TRIAL_EVENT_TYPE,
             'main_trial_type_name' => 'Cavaliers Trials', 'anchor_weight' => TrialBaselinePolicy::ANCHOR_WEIGHT,
@@ -113,7 +114,8 @@ class PlayerAbilitySnapshotStore
         $regionIds = array_column($manifest['event_regions'], 'region_id');
         $capture('team_regions', ['id', 'region_name'], DB::table('team_regions')->whereIn('id', $regionIds));
         $teams = $capture('teams', ['id', 'name', 'year', 'region_id', 'category_event_id'], DB::table('teams')->where(fn ($q) => $q->whereIn('category_event_id', $fields)->orWhere(fn ($q) => $q->whereNull('category_event_id')->whereIn('region_id', $regionIds))));
-        $capture('team_players', ['id', 'team_id', 'player_id'], DB::table('team_players')->whereIn('team_id', $teams));
+        $capture('team_players', ['id', 'team_id', 'player_id', 'rank'], DB::table('team_players')->whereIn('team_id', $teams));
+        $capture('no_profile_team_players', ['id', 'team_id', 'player_profile', 'rank'], DB::table('no_profile_team_players')->whereIn('team_id', $teams));
         $capture('team_fixture_players', ['id', 'team_fixture_id', 'team1_id', 'team2_id', 'team1_no_profile_id', 'team2_no_profile_id', 'participant_snapshot'], DB::table('team_fixture_players')->whereIn('team_fixture_id', $team));
         $capture('team_fixtures', ['id', 'draw_id', 'team_tie_id', 'region1', 'region2', 'fixture_type', 'rubber_code', 'age', 'numSets'], DB::table('team_fixtures')->whereIn('id', $team));
         $capture('fixtures', ['id', 'draw_id', 'registration1_id', 'registration2_id'], DB::table('fixtures')->whereIn('id', $individual));
@@ -127,10 +129,10 @@ class PlayerAbilitySnapshotStore
     public function published(array $manifest): bool
     {
         foreach ($manifest as $table => $captured) {
-            if (!in_array($table, ['events', 'draws', 'team_ties', 'eventtypes', 'category_events', 'categories', 'teams', 'team_regions', 'event_regions', 'team_players', 'team_fixture_players', 'fixtures', 'team_fixtures', 'category_event_registrations', 'player_registrations'], true)) { return false; }
+            if (!in_array($table, ['events', 'draws', 'team_ties', 'eventtypes', 'category_events', 'categories', 'teams', 'team_regions', 'event_regions', 'team_players', 'no_profile_team_players', 'team_fixture_players', 'fixtures', 'team_fixtures', 'category_event_registrations', 'player_registrations'], true)) { return false; }
             $groupColumn = match ($table) {
                 'team_fixture_players' => 'team_fixture_id', 'category_event_registrations' => 'category_event_id',
-                'category_events' => 'event_id', default => null,
+                'category_events' => 'event_id', 'team_players', 'no_profile_team_players' => 'team_id', default => null,
             };
             if ($groupColumn) {
                 $oldGroups = collect($captured)->groupBy($groupColumn);

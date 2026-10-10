@@ -8,8 +8,11 @@ class SharedAbilityModel
     public const ORDINAL_WEIGHT = 0.2;
     public const ORDINAL_TARGET_SPAN = 1.0;
 
-    public function fit(array $edges, string $cohort = '', array $ordinalFields = [], array $anchors = []): array
+    public function fit(array $edges, string $cohort = '', array $ordinalFields = [], array $anchors = [], array $experiment = []): array
     {
+        $scale = $experiment['anchor_weight_scale'] ?? 1.0;
+        if (!in_array($scale, [0.5, 1.0, 2.0], true)) { throw new \InvalidArgumentException('Unsupported experimental anchor weight.'); }
+        $anchors = array_map(fn ($anchor) => array_replace($anchor, ['weight' => $anchor['weight'] * $scale]), $anchors);
         $edges = array_values(array_filter($edges, fn ($edge) => $edge['winner'] !== $edge['loser']
             && is_finite((float) $edge['weight']) && $edge['weight'] > 0));
         $adjacent = [];
@@ -95,6 +98,18 @@ class SharedAbilityModel
                 $beta = $strength[$id] - $mean;
                 $ratings[$id] = ['score' => $converged && is_finite($beta) ? round(100 * $this->sigmoid($beta), 1) : null,
                     'strength' => $beta, 'component' => $componentId];
+                if ($experiment['diagnostics'] ?? false) {
+                    // Conditional information holds all opponents/field peers fixed.
+                    // It omits covariance and is not a calibrated confidence interval.
+                    $information = $ownAnchors[$id]['weight'] ?? 0.5;
+                    foreach ($links[$id] as [$other, $outcome, $weight]) {
+                        $p = $this->sigmoid($strength[$id] - $strength[$other]);
+                        $information += $weight * $p * (1 - $p);
+                    }
+                    foreach ($fieldLinks[$id] as $field) { $information += $field['weight'] * (1 - 1 / $field['count']); }
+                    $ratings[$id]['conditional_information'] = $information;
+                    $ratings[$id]['conditional_strength_se'] = $converged && $information > 0 ? 1 / sqrt($information) : null;
+                }
             }
         }
         return ['ratings' => $ratings, 'components' => $componentInfo];

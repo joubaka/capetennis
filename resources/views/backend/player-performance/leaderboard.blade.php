@@ -74,6 +74,7 @@
                             <div class="rating-score">@if($displayRating)<strong>{{ number_format($displayRating['score'], 1) }}/100</strong><small class="text-muted">{{ $displayRating['confidence_label'] }} confidence</small>@elseif($snapshot['reason'] && $member['player_id'])<strong>Rating unavailable</strong>@else<strong>Unrated</strong>@endif</div>
                         </div>
                         @if($displayRating)
+                            <p class="small text-muted mb-1">{{ $displayRating['played'] ?? 'Unknown' }} recorded played matches · {{ $displayRating['direct_opponents'] ?? 'Unknown' }} opponents · last match {{ $displayRating['last_direct_match'] ?? 'unknown' }}</p>
                             <details class="rating-evidence text-muted"><summary>Rating evidence</summary>
                             <p class="small text-muted mb-1">Last eligible activity: {{ $displayRating['last_eligible_activity'] ?? $displayRating['last_played'] ?? 'unknown' }} · {{ $displayRating['baseline_status'] ?? 'No connected main-trial baseline' }}</p>
                             <p class="small text-muted mb-0">{{ $displayRating['confidence_explanation'] }}</p>

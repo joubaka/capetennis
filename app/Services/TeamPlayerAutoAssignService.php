@@ -41,6 +41,8 @@ class TeamPlayerAutoAssignService
         TeamTie               $tie,
         TeamEventFormatRubber $template
     ): void {
+        $attestNewIdentity = $rubber->wasRecentlyCreated && !$rubber->fixturePlayers()->exists()
+            && !$rubber->teamResults()->exists() && (int) $rubber->match_status === 0;
         // Delete any existing assignments (idempotent re-run)
         $rubber->fixturePlayers()->delete();
 
@@ -57,7 +59,7 @@ class TeamPlayerAutoAssignService
             ));
         }
 
-        app(TeamParticipantHistoryService::class)->captureFixture($rubber);
+        app(TeamParticipantHistoryService::class)->captureFixture($rubber, $attestNewIdentity);
         Log::debug('[TeamPlayerAutoAssignService] Players assigned', [
             'rubber_id' => $rubber->id,
             'tie_id'    => $tie->id,
