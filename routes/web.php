@@ -1162,6 +1162,7 @@ Route::delete(
 // Individual schedule
   Route::get('events/{event}/venue-schedule/calendar', [EventVenueScheduleController::class, 'calendar'])->name('backend.event-venue-schedule.calendar');
   Route::get('events/{event}/venue-schedule/calendar/audit', [EventVenueScheduleController::class, 'auditSchedule'])->name('backend.event-venue-schedule.calendar.audit');
+  Route::post('events/{event}/venue-schedule/calendar/clear', [EventVenueScheduleController::class, 'clearDay'])->name('backend.event-venue-schedule.calendar.clear');
   Route::post('events/{event}/venue-schedule/calendar/publish', [EventVenueScheduleController::class, 'publishScope'])->name('backend.event-venue-schedule.calendar.publish');
   Route::get('events/{event}/venue-schedule/calendar/publication-status', [EventVenueScheduleController::class, 'publicationStatus'])->name('backend.event-venue-schedule.calendar.publication-status');
   Route::post('events/{event}/venue-schedule/calendar/hide', [EventVenueScheduleController::class, 'hideScope'])->name('backend.event-venue-schedule.calendar.hide');

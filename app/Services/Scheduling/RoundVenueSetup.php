@@ -47,13 +47,8 @@ final class RoundVenueSetup
                     foreach ($rules as $existing) if ($min <= $existing['max_rank'] && $max >= $existing['min_rank']) throw new \InvalidArgumentException('Position bands cannot overlap.');
                     $rules[] = ['draw_ids' => [(int) $draw->id], 'min_rank' => $min, 'max_rank' => $max, 'venue_id' => $venue];
                 }
-                $fixtures = TeamFixture::where('draw_id', $draw->id)->where('round_nr', $row['round'])->lockForUpdate()->get();
-                $bookings = $fixtures->whereNotNull('scheduled_at')->map(fn ($fixture) => ['venue_id' => $fixture->venue_id, 'court' => $fixture->court_label]);
-                $published = DB::table('published_schedule_assignments')->where('event_id', $event->id)->where('draw_id', $draw->id)->where('fixture_kind', 'team')->whereIn('fixture_id', $fixtures->modelKeys())->get();
-                foreach ($bookings->concat($published) as $booking) {
-                    $venue = (int) data_get($booking, 'venue_id'); $court = (string) data_get($booking, 'court');
-                    if (! isset($courts[$venue]) || ! in_array(\App\Domain\Draws\Services\ScheduleAvailability::courtKey($court), array_map(fn ($label) => \App\Domain\Draws\Services\ScheduleAvailability::courtKey($label), $courts[$venue]), true)) throw new \InvalidArgumentException('Move saved matches and update or hide published times before removing their round venue or court.');
-                }
+                // Round setup describes future scheduling preferences. Existing bookings and
+                // published snapshots stay intact until separately rescheduled or published.
                 $key = $draw->id.'|'.(int) $row['round'];
                 if (isset($normalized[$key])) throw new \InvalidArgumentException('Choose each draw round only once.');
                 $normalized[$key] = ['draw_id' => (int) $draw->id, 'round' => (int) $row['round'], 'venue_ids' => $venues,

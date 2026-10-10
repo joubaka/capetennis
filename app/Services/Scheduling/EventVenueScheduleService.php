@@ -718,6 +718,35 @@ final class EventVenueScheduleService
         return $this->unapplyScope($event, $drawId, $venueId, $fixtureId);
     }
 
+    public function clearDay(Event $event, array $scope, string $revision): array
+    {
+        return DB::transaction(function () use ($event, $scope, $revision) {
+            Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
+            DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
+            $publication = app(SchedulePublicationService::class);
+            if (! hash_equals($publication->revision($event), $revision)) {
+                throw new \InvalidArgumentException('The schedule changed. Refresh the calendar before clearing this day.');
+            }
+            $drawIds = $event->draws()->when(! empty($scope['draw_id']), fn ($q) => $q->whereKey($scope['draw_id']))
+                ->orderBy('id')->lockForUpdate()->get();
+            $rows = $publication->workingRows($event)->filter(fn ($row) => substr($row['scheduled_at'], 0, 10) === $scope['date']
+                && (empty($scope['draw_id']) || (int) $row['draw_id'] === (int) $scope['draw_id'])
+                && (empty($scope['venue_id']) || (int) $row['venue_id'] === (int) $scope['venue_id']));
+            if ($drawIds->whereIn('id', $rows->pluck('draw_id'))->contains(fn ($draw) => $draw->locked)) {
+                throw new \InvalidArgumentException('Unlock the selected draws before clearing scheduled times.');
+            }
+            $result = $this->unapplyCorrectionSelection($event,
+                $rows->where('fixture_kind', 'individual')->pluck('fixture_id')->all(),
+                $rows->where('fixture_kind', 'team')->pluck('fixture_id')->all());
+            foreach ($rows->groupBy('draw_id') as $drawId => $bookings) {
+                DrawAuditLog::record((int) $drawId, 'schedule_day_cleared', null, [
+                    'event_id' => $event->id, 'scope' => $scope, 'before' => $bookings->map(fn ($row) => array_intersect_key($row, array_flip(['fixture_kind', 'fixture_id', 'scheduled_at', 'venue_id', 'court', 'duration'])))->values()->all(), 'after' => [],
+                ]);
+            }
+            return $result;
+        });
+    }
+
     public function courtCorrectionClosure(Event $event, array $individualIds, array $teamIds): array
     {
         $individualIds = array_values(array_unique($individualIds)); $teamIds = array_values(array_unique($teamIds));

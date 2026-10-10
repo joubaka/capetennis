@@ -125,6 +125,15 @@ final class EventVenueScheduleController extends Controller
                 $scheduleDraft[$key] = \Carbon\Carbon::parse($scheduleDraft[$key])->format('Y-m-d\TH:i');
             }
         }
+        $planningScope = $this->calendarScope($request, $event);
+        $planningDate = $request->validate(['date' => ['nullable', 'date_format:Y-m-d']])['date'] ?? null;
+        if ($planningDate) {
+            $scheduleDraft['start'] = $planningDate.'T08:00';
+            $scheduleDraft['end'] = $planningDate.'T18:00';
+            $scheduleDraft['draw_starts'] = [];
+            $scheduleDraft['venue_starts'] = [];
+            $scheduleDraft['reschedule_existing'] = false;
+        }
         $scheduleDraft['draw_starts'] = collect($scheduleDraft['draw_starts'] ?? [])
             ->filter(fn ($row) => isset($row['draw_id'], $row['start']) && $eventDraws->contains('id', (int) $row['draw_id']))
             ->mapWithKeys(fn ($row) => [(int) $row['draw_id'] => \Carbon\Carbon::parse($row['start'])->format('Y-m-d\TH:i')]);
@@ -155,7 +164,7 @@ final class EventVenueScheduleController extends Controller
         })->filter(fn ($notice) => $notice['pending_count'] > 0 || $notice['review_required'])->values();
 
         return view('backend.schedule.event-venue-schedule', compact(
-            'event', 'draws', 'venues', 'allVenues', 'announcementDraft', 'scheduleDraft', 'adaptationNotices'
+            'event', 'draws', 'venues', 'allVenues', 'announcementDraft', 'scheduleDraft', 'adaptationNotices', 'planningDate', 'planningScope'
         ));
     }
 
@@ -222,6 +231,21 @@ final class EventVenueScheduleController extends Controller
             + TeamFixture::whereIn('draw_id', $drawIds)->when(! empty($scope['draw_id']), fn ($q) => $q->where('draw_id', $scope['draw_id']))->where('match_status', 0)->whereDoesntHave('fixtureResults')->whereNull('scheduled_at')->count();
         $revision = $publication->revision($event);
         return view('backend.schedule.saved-calendar', compact('event', 'scope', 'days', 'date', 'rows', 'retained', 'venues', 'draws', 'revision', 'unscheduledCount', 'dailySavedCounts'));
+    }
+
+    public function clearDay(Request $request, Event $event, EventVenueScheduleService $scheduler)
+    {
+        $this->authorize('event.manage', $event);
+        $request->validate(['date' => ['required', 'date_format:Y-m-d'], 'revision' => ['required', 'string', 'size:64']]);
+        $scope = $this->calendarScope($request, $event);
+        try {
+            $result = $scheduler->clearDay($event, $scope, $request->string('revision')->toString());
+        } catch (\InvalidArgumentException $exception) {
+            return redirect()->route('backend.event-venue-schedule.calendar', ['event' => $event->id] + $scope)
+                ->withErrors(['schedule' => $exception->getMessage()]);
+        }
+        return redirect()->route('backend.event-venue-schedule.calendar', ['event' => $event->id] + $scope)
+            ->with('success', $result['count'].' match times cleared from this selection. Fixtures and results were preserved. Published times remain until you publish updates or hide them.');
     }
 
     public function auditSchedule(Request $request, Event $event, \App\Services\Scheduling\ScheduleAuditService $auditor)

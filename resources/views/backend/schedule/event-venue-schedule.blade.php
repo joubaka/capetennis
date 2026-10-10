@@ -178,6 +178,9 @@
 @endsection
 
 @section('content')
+@if($planningDate)
+<div class="container-xxl pt-3"><div class="alert alert-info mb-0">Reschedule {{ \Carbon\Carbon::parse($planningDate)->format('D j M Y') }}{{ !empty($planningScope['draw_id']) ? ' · selected draw' : '' }}{{ !empty($planningScope['venue_id']) ? ' · selected venue' : '' }}. This batch uses only this day and preserves existing saved times. Clear the day first to replace its schedule.</div></div>
+@endif
 <div class="container-xxl pt-3"><a class="btn btn-primary me-2" style="min-height:44px" href="{{ route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'group' => 'draw', 'date' => 'all']) }}">View matches by draw</a><a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar',$event) }}">Saved schedule · all days</a></div>
 @php
   $unapplyRouteAvailable = \Illuminate\Support\Facades\Route::has('backend.event-venue-schedule.unapply');
@@ -323,7 +326,7 @@
         </div>
       </div>
 
-  <details class="workspace-section mb-3" id="programme-wizard">
+  <details class="workspace-section mb-3" id="programme-wizard" @if($planningDate) hidden @endif>
     <summary><span class="section-title"><h5>Three-day age-group auto schedule</h5><small class="text-muted">Create one complete preview using the Platinum programme.</small></span></summary>
     <div class="section-body">
       <p class="small text-muted">Three-day auto scheduling places players from different venue bands at the highest-ranked player's venue. Venue moves are flagged for review.</p>
@@ -736,6 +739,15 @@
   const drawIds = @json($draws->reject(fn($draw) => $draw['locked'])->pluck('id')->values());
   let payload = null;
   let programmePayload = null;
+  @if($planningDate)
+  document.querySelectorAll('.draw-start, .venue-start, #reschedule-existing').forEach(input => { input.disabled = true; input.title = 'This day-only batch preserves existing times and uses one daily start.'; });
+  ['schedule-start', 'schedule-end'].forEach(id => {
+    const input = document.getElementById(id);
+    input.min = @json($planningDate) + 'T00:00';
+    input.max = @json($planningDate) + 'T23:59';
+  });
+  @endif
+
   let previewGeneration = 0;
   let revision = null;
   let replanVenueIds = [];
@@ -1118,7 +1130,17 @@
     ...(programmePayload || {}),
     replan_venue_ids: document.getElementById('reschedule-existing').checked
       ? selectedAssignedVenueIds(programmePayload?.draw_ids || values('.draw-choice'))
-      : (programmePayload ? [] : replanVenueIds)
+      : (programmePayload ? [] : replanVenueIds),
+    @if($planningDate)
+    start: @json($planningDate) + 'T' + document.getElementById('schedule-start').value.slice(11),
+    end: @json($planningDate) + 'T' + document.getElementById('schedule-end').value.slice(11),
+    programme: null,
+    reschedule_existing: false,
+    replan_venue_ids: [],
+    draw_starts: [],
+    venue_starts: [],
+    @if(!empty($planningScope['venue_id'])) venue_ids: [@json((int) $planningScope['venue_id'])], @endif
+    @endif
   });
   const post = async (url, body) => {
     const generation = url === previewUrl ? ++previewGeneration : null;

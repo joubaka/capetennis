@@ -251,7 +251,7 @@ class RankVenuePreferencesTest extends TestCase
         $this->assertCount(1, $stored['round_venue_setups']);
     }
 
-    public function test_round_setup_rejects_foreign_round_inactive_courts_and_published_booking_removal(): void
+    public function test_round_setup_rejects_foreign_round_and_inactive_courts_but_preserves_existing_bookings(): void
     {
         [$event, $draws, $venues] = $this->setupEvent();
         $fixture = $this->rubber($draws[0], [1], [2]);
@@ -264,10 +264,12 @@ class RankVenuePreferencesTest extends TestCase
         $fixture->update(['scheduled_at' => '2026-10-10 08:00:00', 'venue_id' => $venues[1]->id, 'court_label' => '1']);
         DB::table('published_schedule_assignments')->insert(['event_id' => $event->id, 'draw_id' => $draws[0]->id, 'fixture_kind' => 'team', 'fixture_id' => $fixture->id,
             'venue_id' => $venues[2]->id, 'court' => '1', 'scheduled_at' => '2026-10-10 08:00:00', 'published_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
-        $this->postJson($url, ['setup_only' => true, 'round_venue_setups' => [$this->roundSetupRow($draws[0], 1, $venues[1])]])->assertUnprocessable();
-        $this->assertDatabaseCount('event_venue_schedule_drafts', 0);
+        $this->postJson($url, ['setup_only' => true, 'round_venue_setups' => [$this->roundSetupRow($draws[0], 1, $venues[1], ['2'])]])->assertOk();
+        $this->assertDatabaseCount('event_venue_schedule_drafts', 1);
         $this->assertDatabaseHas('published_schedule_assignments', ['fixture_id' => $fixture->id, 'venue_id' => $venues[2]->id]);
         $this->assertSame($venues[1]->id, $fixture->fresh()->venue_id);
+        $this->assertSame('1', $fixture->fresh()->court_label);
+        $this->assertSame('2026-10-10 08:00:00', $fixture->fresh()->scheduled_at->format('Y-m-d H:i:s'));
     }
 
     public function test_round_setup_accepts_event_only_legacy_courts_and_blocks_all_inactive_preview(): void
@@ -299,8 +301,7 @@ class RankVenuePreferencesTest extends TestCase
         $unbanded = $this->rubber($draws[0], [7], [8]);
         foreach ([$fixture, $unbanded] as $saved) $saved->update(['scheduled_at' => '2026-10-10 08:00:00', 'venue_id' => $venues[0]->id, 'court_label' => '1', 'duration_min' => 60]);
         $row = $this->roundSetupRow($draws[0], 1, $venues[1]);
-        $row['venue_ids'][] = $venues[0]->id;
-        $row['court_allocations'][] = ['venue_id' => $venues[0]->id, 'court_labels' => ['1', '2']];
+        $row['rank_venue_preferences'][] = ['min_rank' => 7, 'max_rank' => 8, 'venue_id' => $venues[1]->id];
         $this->postJson(route('backend.event-venue-schedule.assignments', $event), ['setup_only' => true, 'round_venue_setups' => [$row]])->assertOk();
         $before = [$fixture->fresh()->getAttributes(), $unbanded->fresh()->getAttributes()];
         $service = app(EventVenueScheduleService::class);
@@ -311,7 +312,7 @@ class RankVenuePreferencesTest extends TestCase
         $matches = collect($replanned['matches'])->keyBy('fixture_id');
         $this->assertCount(2, $matches);
         $this->assertSame($venues[1]->id, $matches[$fixture->id]['venue_id']);
-        $this->assertSame($venues[0]->id, $matches[$unbanded->id]['venue_id']);
+        $this->assertSame($venues[1]->id, $matches[$unbanded->id]['venue_id']);
         $this->assertSame([], $replanned['unscheduled']);
         $this->assertSame($before, [$fixture->fresh()->getAttributes(), $unbanded->fresh()->getAttributes()]);
         $fixture->update(['match_status' => 1]);

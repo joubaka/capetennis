@@ -29,7 +29,7 @@
     <div class="draw-card-actions draw-card-primary d-flex flex-wrap gap-2 mt-3" role="group" aria-label="Draw workspace">
       <a class="btn btn-sm btn-primary" href="{{ $isTeamDraw ? route('backend.team-fixtures.index', ['draw_id' => $draw->id]) : $individualWorkspaceUrl }}">{{ $isTeamDraw ? 'Open team fixtures' : 'Open singles draw' }}</a>
       <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]) }}"><i class="ti ti-calendar me-1"></i>Schedule matches</a>
-      <a class="btn btn-sm btn-outline-secondary" href="{{ route('backend.event-venue-schedule.calendar', ['event' => $draw->event_id, 'draw_id' => $draw->id, 'date' => 'all']) }}">Review / publish times</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ route('backend.event-venue-schedule.calendar', ['event' => $draw->event_id, 'draw_id' => $draw->id, 'date' => 'all']) }}">Edit schedule / publish times</a>
       <a class="btn btn-sm btn-outline-secondary" href="{{ route('backend.event-venue-schedule.calendar.preview', ['event' => $draw->event_id, 'draw_id' => $draw->id, 'date' => 'all']) }}"><i class="ti ti-eye me-1"></i>Public schedule preview</a>
     </div>
     @can('publish', $draw)

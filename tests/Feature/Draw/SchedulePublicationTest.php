@@ -24,6 +24,130 @@ class SchedulePublicationTest extends TestCase
         return [$event,$draw,$venue,$fixture];
     }
 
+    public function test_day_clear_preserves_other_scopes_and_public_snapshot(): void
+    {
+        [$event, $draw, $venue, $fixture] = $this->context();
+        $publication = app(SchedulePublicationService::class);
+        $publication->publish($event, ['date' => '2026-10-10']);
+        $otherDraw = Draw::factory()->create(['event_id' => $event->id]);
+        foreach ([[$draw, '2026-10-11'], [$otherDraw, '2026-10-10']] as [$targetDraw, $date]) {
+            $other = Fixture::factory()->create(['draw_id' => $targetDraw->id, 'round' => 1, 'match_status' => 0]);
+            OrderOfPlay::create(['fixture_id' => $other->id, 'draw_id' => $targetDraw->id, 'venue_id' => $venue->id, 'court' => '2', 'time' => $date.' 10:00:00']);
+        }
+        $scope = ['date' => '2026-10-10', 'draw_id' => $draw->id];
+        $result = app(EventVenueScheduleService::class)->clearDay($event, $scope, $publication->revision($event));
+        $this->assertSame(1, $result['count']);
+        $this->assertDatabaseCount('order_of_plays', 2);
+        $this->assertDatabaseCount('fixtures', 3);
+        $this->assertDatabaseCount('published_schedule_assignments', 1);
+        $this->assertSame('2026-10-10 08:00:00', $publication->publishedRows($event)->first()['scheduled_at']);
+        $this->assertDatabaseHas('draw_audit_logs', ['draw_id' => $draw->id, 'action' => 'schedule_day_cleared']);
+        $this->assertSame(0, app(EventVenueScheduleService::class)->clearDay($event, $scope, $publication->revision($event))['count']);
+    }
+
+    public function test_day_clear_rejects_played_locked_and_stale_selections_without_changes(): void
+    {
+        [$event, $draw, $venue, $fixture] = $this->context();
+        $scheduler = app(EventVenueScheduleService::class);
+        $publication = app(SchedulePublicationService::class);
+        $scope = ['date' => '2026-10-10'];
+        foreach (['played', 'locked', 'stale'] as $reason) {
+            $fixture->update(['match_status' => $reason === 'played' ? 1 : 0]);
+            $draw->update(['locked' => $reason === 'locked']);
+            try {
+                $scheduler->clearDay($event, $scope, $reason === 'stale' ? str_repeat('0', 64) : $publication->revision($event));
+                $this->fail('Expected '.$reason.' rejection');
+            } catch (\InvalidArgumentException $exception) {
+                $this->assertNotEmpty($exception->getMessage());
+            }
+            $this->assertDatabaseCount('order_of_plays', 1);
+        }
+    }
+
+    public function test_day_editor_and_clear_endpoint_are_authorized_and_event_scoped(): void
+    {
+        [$event, $draw, $venue, $fixture] = $this->context();
+        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $scope = ['date' => '2026-10-10', 'draw_id' => $draw->id];
+        $this->actingAs($admin)->get(route('backend.event-venue-schedule.calendar', ['event' => $event->id] + $scope))
+            ->assertOk()->assertSee('Day 1')->assertSee('Day 2')->assertSee('Day 3')->assertSee('08:00')->assertSee('Clear this day')->assertSee('Reschedule this day');
+        $this->get(route('backend.event-venue-schedule.index', ['event' => $event->id, 'draw_ids' => [$draw->id], 'date' => '2026-10-11']))
+            ->assertOk()->assertSee('2026-10-11T08:00', false)->assertSee('2026-10-11T18:00', false);
+        $url = route('backend.event-venue-schedule.calendar.clear', $event);
+        $payload = $scope + ['revision' => app(SchedulePublicationService::class)->revision($event)];
+        $this->post($url, array_replace($payload, ['draw_id' => Draw::factory()->create()->id]))->assertUnprocessable();
+        $this->post($url, array_replace($payload, ['date' => 'all']))->assertSessionHasErrors('date');
+        $this->post(route('backend.event-venue-schedule.calendar.clear', Event::factory()->create()), $payload)->assertForbidden();
+        $this->post($url, $payload)->assertRedirect(route('backend.event-venue-schedule.calendar', ['event' => $event->id] + $scope));
+        $this->assertDatabaseCount('order_of_plays', 0);
+        $this->get(route('backend.event-venue-schedule.calendar', ['event' => $event->id] + $scope))->assertOk()->assertSee('Day 1')->assertSee('Day 2')->assertSee('Day 3');
+    }
+
+    public function test_day_clear_team_protection_rolls_back_mixed_selection_and_then_clears_both(): void
+    {
+        [$event, $draw, $venue, $individual] = $this->context();
+        $tie = \App\Models\TeamTie::factory()->create(['draw_id' => $draw->id]);
+        $team = \App\Models\TeamFixture::forceCreate(['match_nr' => 1, 'draw_id' => $draw->id,
+            'team_tie_id' => $tie->id, 'scheduled_at' => '2026-10-10 09:00:00', 'venue_id' => $venue->id,
+            'court_label' => '2', 'match_status' => 0]);
+        $service = app(EventVenueScheduleService::class);
+        $publication = app(SchedulePublicationService::class);
+        foreach (['in_progress', 'completed', 'result'] as $state) {
+            $team->update(['match_status' => $state === 'in_progress' ? 1 : 0]);
+            $tie->update(['status' => $state === 'completed' ? \App\Models\TeamTie::STATUS_COMPLETED : \App\Models\TeamTie::STATUS_DRAFT]);
+            if ($state === 'result') \App\Models\TeamFixtureResult::create(['team_fixture_id' => $team->id, 'set_nr' => 1, 'team1_score' => 6, 'team2_score' => 4]);
+            try {
+                $service->clearDay($event, ['date' => '2026-10-10'], $publication->revision($event));
+                $this->fail('Expected protected team match rejection');
+            } catch (\InvalidArgumentException $exception) {
+                $this->assertStringContainsString('Played', $exception->getMessage());
+            }
+            $this->assertDatabaseCount('order_of_plays', 1);
+            $this->assertNotNull($team->fresh()->scheduled_at);
+        }
+        \App\Models\TeamFixtureResult::where('team_fixture_id', $team->id)->delete();
+        $this->assertSame(2, $service->clearDay($event, ['date' => '2026-10-10'], $publication->revision($event))['count']);
+        $this->assertNull($team->fresh()->scheduled_at);
+        $this->assertDatabaseCount('order_of_plays', 0);
+        $this->assertDatabaseCount('team_fixtures', 1);
+        $this->assertDatabaseCount('fixtures', 1);
+    }
+
+    public function test_day_clear_venue_filter_and_foreign_event_isolation(): void
+    {
+        [$event, $draw, $venue, $fixture] = $this->context();
+        $otherVenue = Venue::forceCreate(['name' => 'Other courts']);
+        $otherEvent = Event::factory()->create();
+        $foreignDraw = Draw::factory()->create(['event_id' => $otherEvent->id]);
+        foreach ([[$draw, $otherVenue], [$foreignDraw, $venue]] as [$targetDraw, $targetVenue]) {
+            $other = Fixture::factory()->create(['draw_id' => $targetDraw->id, 'round' => 1, 'match_status' => 0]);
+            OrderOfPlay::create(['fixture_id' => $other->id, 'draw_id' => $targetDraw->id, 'venue_id' => $targetVenue->id, 'court' => '3', 'time' => '2026-10-10 10:00:00']);
+        }
+        $publication = app(SchedulePublicationService::class);
+        $this->assertSame(1, app(EventVenueScheduleService::class)->clearDay($event,
+            ['date' => '2026-10-10', 'venue_id' => $venue->id], $publication->revision($event))['count']);
+        $this->assertDatabaseCount('order_of_plays', 2);
+        $this->assertDatabaseHas('order_of_plays', ['draw_id' => $foreignDraw->id]);
+        $this->assertDatabaseHas('order_of_plays', ['venue_id' => $otherVenue->id]);
+    }
+
+    public function test_day_clear_keeps_prerequisite_when_later_day_depends_on_it(): void
+    {
+        [$event, $draw, $venue, $fixture] = $this->context();
+        $later = Fixture::factory()->create(['draw_id' => $draw->id, 'round' => 2, 'match_status' => 0]);
+        $fixture->update(['parent_fixture_id' => $later->id]);
+        OrderOfPlay::create(['fixture_id' => $later->id, 'draw_id' => $draw->id, 'venue_id' => $venue->id, 'court' => '1', 'time' => '2026-10-11 10:00:00']);
+        try {
+            app(EventVenueScheduleService::class)->clearDay($event, ['date' => '2026-10-10'], app(SchedulePublicationService::class)->revision($event));
+            $this->fail('Expected dependent day protection');
+        } catch (\InvalidArgumentException $exception) {
+            $this->assertStringContainsString('depends', $exception->getMessage());
+        }
+        $this->assertDatabaseCount('order_of_plays', 2);
+    }
+
     public function test_private_edits_hold_previous_public_time_and_weekend_republish_moves_one_pointer(): void
     {
         [$event,$draw,$venue,$fixture]=$this->context();$service=app(SchedulePublicationService::class);
