@@ -18,6 +18,76 @@ class TeamWorkspaceResultsTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_regional_summary_counts_completed_match_sides_with_setup_filters_and_zero_wins(): void
+    {
+        [$event, , $draw, $home, $away] = $this->groupedScenario();
+        $homeRegion = $event->regions()->first();
+        $awayRegion = \App\Models\TeamRegion::create(['region_name' => 'West Coast', 'short_name' => 'WEST']);
+        $emptyRegion = \App\Models\TeamRegion::create(['region_name' => 'No matches', 'short_name' => 'NONE']);
+        $event->regions()->attach([$awayRegion->id, $emptyRegion->id]);
+        TeamPlayer::where('player_id', $away->id)->first()->team->update(['region_id' => $awayRegion->id]);
+        $this->fixture($draw, $home, $away, [[6, 1], [6, 1]]);
+        $this->fixture($draw, $home, $away, [[6, 1], [6, 1]], 4);
+        $this->fixture($draw, $home, $away, [[6, 1]]); // Incomplete.
+        $this->fixture($draw, $home, $away, [[6, 1], [6, 1]], 2); // Doubles.
+        $foreignDraw = Draw::factory()->create(['event_id' => Event::factory()->create()->id, 'category_event_id' => $draw->category_event_id]);
+        $this->fixture($foreignDraw, $home, $away, [[1, 6], [1, 6]]);
+        $this->fixture($draw, $home, $away, [[1, 6], [1, 6]]);
+        TeamFixture::where('draw_id', $draw->id)->latest('id')->first()->update(['age' => 'u/11 Boys']);
+        $response = $this->groupedRequest($event)->assertOk()->assertHeader('Cache-Control', 'no-store, private');
+        $summary = collect($response->json('region_summary'))->keyBy('region_id');
+        $this->assertSame(2, $summary[$homeRegion->id]['wins']);
+        $this->assertSame(2, $summary[$homeRegion->id]['played']);
+        $this->assertSame(0, $summary[$awayRegion->id]['wins']);
+        $this->assertSame(2, $summary[$awayRegion->id]['losses']);
+        $this->assertSame(0, $summary[$awayRegion->id]['win_percentage']);
+        $this->assertSame(0, $summary[$emptyRegion->id]['played']);
+        $this->assertNull($summary[$emptyRegion->id]['win_percentage']);
+        $this->assertStringContainsString('West Coast', $response->json('html'));
+        $this->assertStringContainsString('Won 0/2', $response->json('html'));
+        $filtered = $this->groupedRequest($event, ['formats' => ['singles'], 'regions' => [$awayRegion->id]])->assertOk();
+        $filtered->assertJsonCount(1, 'region_summary')->assertJsonPath('region_summary.0.played', 1);
+        $excluded = collect($this->groupedRequest($event, ['excluded_result_region_ids' => [$awayRegion->id]])->assertOk()->json('region_summary'));
+        $this->assertCount(2, $excluded);
+        $this->assertSame(0, $excluded->sum('played'));
+        $this->actingAs(User::factory()->create());
+        $this->groupedRequest($event)->assertForbidden();
+    }
+
+    public function test_regional_summary_counts_both_sides_once_for_same_region(): void
+    {
+        [$event, , $draw, $home, $away] = $this->groupedScenario();
+        $this->fixture($draw, $home, $away, [[6, 1], [6, 1]]);
+        $this->groupedRequest($event)->assertOk()->assertJsonCount(1, 'region_summary')
+            ->assertJsonPath('region_summary.0.wins', 1)->assertJsonPath('region_summary.0.losses', 1)
+            ->assertJsonPath('region_summary.0.played', 2)->assertJsonPath('region_summary.0.win_percentage', 50);
+    }
+
+    public function test_regional_summary_attributes_each_side_before_shared_player_identity_merges(): void
+    {
+        [$event, $category, $draw, $home, $away] = $this->groupedScenario();
+        $homeTeam = TeamPlayer::where('player_id', $home->id)->first()->team;
+        $awayTeam = TeamPlayer::where('player_id', $away->id)->first()->team;
+        $west = \App\Models\TeamRegion::create(['region_name' => 'West Coast', 'short_name' => 'WEST']);
+        $event->regions()->attach($west);
+        $awayTeam->update(['region_id' => $west->id]);
+        $alternate = Team::factory()->create(['category_event_id' => $category->id, 'region_id' => $west->id]);
+        TeamPlayer::create(['team_id' => $alternate->id, 'player_id' => $home->id, 'rank' => 3]);
+        foreach ([$homeTeam, $alternate] as $index => $source) {
+            $tie = \App\Models\TeamTie::create(['draw_id' => $draw->id, 'round_nr' => 1, 'tie_nr' => $index + 1,
+                'home_team_id' => $source->id, 'away_team_id' => $awayTeam->id]);
+            $this->fixture($draw, $home, $away, [[6, 1], [6, 1]]);
+            TeamFixture::where('draw_id', $draw->id)->latest('id')->first()->update(['team_tie_id' => $tie->id]);
+        }
+        $response = $this->groupedRequest($event)->assertOk()->assertJsonCount(2, 'ranking');
+        $summary = collect($response->json('region_summary'))->keyBy('region_id');
+        $this->assertSame(1, $summary[$homeTeam->region_id]['wins']);
+        $this->assertSame(1, $summary[$homeTeam->region_id]['played']);
+        $this->assertSame(1, $summary[$west->id]['wins']);
+        $this->assertSame(3, $summary[$west->id]['played']);
+        $this->assertSame(33.3, $summary[$west->id]['win_percentage']);
+    }
+
     public function test_initial_result_setup_accepts_empty_optional_exclusions_after_form_middleware(): void
     {
         [$event, , $draw, $home, $away] = $this->groupedScenario();

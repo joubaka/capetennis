@@ -1,3 +1,14 @@
+@if(isset($regionSummary) && $regionSummary->isNotEmpty())
+  <section class="result-region-summary" aria-label="Regional team results summary">
+    <h3>Regional team results</h3>
+    <p>Individual match wins / matches played for the selected age group and Setup filters.</p>
+    <ul>
+      @foreach($regionSummary as $region)
+        <li><strong>{{ $region['name'] }}</strong><span>Won {{ $region['wins'] }}/{{ $region['played'] }} · Lost {{ $region['losses'] }} <span class="result-region-percentage">({{ $region['win_percentage'] !== null ? number_format($region['win_percentage'], 1).'%' : '—' }})</span></span></li>
+      @endforeach
+    </ul>
+  </section>
+@endif
 <details class="result-rules">
   <summary>How the ranking works</summary>
   <p>Roster bands come first: 1–2, then 3–4, 5–6, and 7–8. A player remains in their band even with zero wins. Within each band, points equal completed match wins multiplied by its weight: 100, 35, 12, or 2. For equal points, teammates with an unambiguous roster follow their roster positions before set difference. The highest remaining roster player from each team competes for the next place using completed-match sets won minus sets lost. Players from different teams are compared by direct wins when every tied pair has the same nonzero number of counted matches. Unresolved ties require review at the selection cutoff. Candidate regions choose players; excluded result regions remove entire matches involving either side. Adjacent-band comparisons support manual review and do not promote players automatically. Explain departures from the suggestions before saving a draft.</p>
@@ -31,6 +42,7 @@
         <div><dt>Reverse wins</dt><dd>{{ $player['reverse_singles_wins'] }}</dd></div>
         <div><dt>Match wins</dt><dd>{{ $player['wins'] }}</dd></div>
         <div><dt>Sets won / lost</dt><dd>{{ $player['sets_won'] }} / {{ $player['sets_lost'] }}</dd></div>
+        <div><dt>Set win percentage</dt><dd>{{ $player['sets_won'] + $player['sets_lost'] > 0 ? number_format(100 * $player['sets_won'] / ($player['sets_won'] + $player['sets_lost']), 1).'%' : '—' }}</dd></div>
         <div><dt>Set difference</dt><dd>{{ $player['set_difference'] > 0 ? '+' : '' }}{{ $player['set_difference'] }}</dd></div>
       </dl>
       @if(isset($player['cape_tennis_rating']))

@@ -59,12 +59,22 @@ class TeamResultRankingService
 
     public function ranking(Event $event, string $group, array $regions, array $formats, array $excludedResultRegionIds = [], bool $includeRatings = false): Collection
     {
+        return $this->selectionEvidence($event, $group, $regions, $formats, $excludedResultRegionIds, $includeRatings)['ranking'];
+    }
+
+    public function selectionEvidence(Event $event, string $group, array $regions, array $formats, array $excludedResultRegionIds = [], bool $includeRatings = false): array
+    {
         $excludedResultRegionIds = array_map('intval', $excludedResultRegionIds);
         $fixtures = $this->fixtures($event)->filter(fn ($fixture) => ($this->group($fixture)['key'] ?? null) === $group && in_array($this->format($fixture), $formats, true));
         $fixtures->load(['fixturePlayers.player1', 'fixturePlayers.player2', 'fixturePlayers.noProfile1', 'fixturePlayers.noProfile2', 'teamResults', 'teamTie']);
         $teams = app(EventTeamScope::class)->query($event)->with(['players', 'team_players', 'team_players_no_profile', 'competitionSubstitutions', 'regions', 'category.category'])->get();
         $rows = [];
         $performance = [];
+        $regionSummary = $event->regions()->whereIn('team_regions.id', $regions)
+            ->whereNotIn('team_regions.id', $excludedResultRegionIds)->get()->mapWithKeys(fn ($region) => [
+                (int) $region->id => ['region_id' => (int) $region->id, 'name' => $region->region_name,
+                    'wins' => 0, 'losses' => 0, 'played' => 0, 'win_percentage' => null],
+            ])->all();
         foreach ($fixtures as $fixture) {
             if (array_intersect(array_map('intval', [$fixture->region1, $fixture->region2]), $excludedResultRegionIds)) continue;
             if ($fixture->team_tie_id && (! $fixture->teamTie || (int) $fixture->teamTie->draw_id !== (int) $fixture->draw_id || ! $fixture->teamTie->home_team_id || ! $fixture->teamTie->away_team_id)) continue;
@@ -123,6 +133,12 @@ class TeamResultRankingService
                 $id = $entry['identity'];
                 $opponent = $sides[$side === 'home' ? 'away' : 'home'];
                 $won = $outcome['winner'] === $side;
+                // Count resolved match sides before player identities merge across teams.
+                $regionId = (int) $entry['team']->region_id;
+                if (isset($regionSummary[$regionId])) {
+                    $regionSummary[$regionId][$won ? 'wins' : 'losses']++;
+                    $regionSummary[$regionId]['played']++;
+                }
                 $rows[$id] ??= ['id' => $id, 'name' => $entry['player']->name.' '.$entry['player']->surname, 'rank' => $entry['rank'], 'ranks' => [], 'teams' => [], 'region' => $entry['team']->regions?->short_name ?? '', 'wins' => 0, 'losses' => 0, 'singles_wins' => 0, 'reverse_singles_wins' => 0, 'sets_won' => 0, 'sets_lost' => 0, 'cross_band_review' => [], 'higher_rank_wins' => 0, 'matches' => []];
                 if ($includeRatings) $rows[$id]['rating_player_id'] = is_numeric($id) ? (int) $id : ($entry['player']->player_profile ? (int) $entry['player']->player_profile : null);
                 $rows[$id]['ranks'][] = $entry['rank'];
@@ -209,7 +225,12 @@ class TeamResultRankingService
             return $row;
         });
         $ranking = $this->orderRanking($ranking);
-        return $includeRatings ? app(TeamResultRatingService::class)->enrich($ranking, $event, $fixtures->isEmpty() ? null : $this->group($fixtures->first())) : $ranking;
+        $ranking = $includeRatings ? app(TeamResultRatingService::class)->enrich($ranking, $event, $fixtures->isEmpty() ? null : $this->group($fixtures->first())) : $ranking;
+        $regionSummary = collect($regionSummary)->map(function ($row) {
+            $row['win_percentage'] = $row['played'] ? round(100 * $row['wins'] / $row['played'], 1) : null;
+            return $row;
+        })->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)->values();
+        return compact('ranking', 'regionSummary');
     }
 
     public function orderRanking(Collection $ranking): Collection
