@@ -25,10 +25,11 @@ class ImportedMatchIdentityTest extends TestCase
         $imported = NoProfileTeamPlayer::create(['team_id' => $home->id, 'name' => 'Imported', 'surname' => 'Player', 'rank' => 1, 'player_profile' => $first->id, 'pay_status' => 1]);
         $draw = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => $category->id, 'published' => true, 'drawName' => 'u10 Boys Singles']);
         $tie = TeamTie::factory()->published()->create(['draw_id' => $draw->id, 'home_team_id' => $home->id, 'away_team_id' => $away->id]);
-        $fixture = TeamFixture::create(['draw_id' => $draw->id, 'team_tie_id' => $tie->id, 'fixture_type' => 1, 'numSets' => 3, 'match_status' => 1, 'round_nr' => 1, 'match_nr' => 1]);
+        $fixture = TeamFixture::create(['draw_id' => $draw->id, 'team_tie_id' => $tie->id, 'fixture_type' => 1, 'numSets' => 3, 'match_status' => 0, 'round_nr' => 1, 'match_nr' => 1]);
         $row = $fixture->fixturePlayers()->create(['slot_no' => 1, 'team1_no_profile_id' => $imported->id, 'team2_id' => $second->id]);
         app(TeamParticipantHistoryService::class)->captureFixture($fixture, true);
         foreach ([1, 2] as $set) { $fixture->teamResults()->create(['set_nr' => $set, 'team1_score' => 6, 'team2_score' => 1]); }
+        $fixture->update(['match_status' => 1]);
         $row->refresh();
         return compact('event', 'home', 'away', 'first', 'second', 'imported', 'fixture', 'row');
     }
@@ -57,6 +58,9 @@ class ImportedMatchIdentityTest extends TestCase
         app(TeamParticipantHistoryService::class)->captureFixture($s['fixture']->fresh());
         $this->assertArrayNotHasKey('linked_profile_id', $s['row']->fresh()->participant_snapshot[1]);
         $this->assertNull($resolver->resolve($s['row']->fresh(), 1, $s['home'], $s['event']->id));
+        $s['row']->forceFill(['participant_snapshot' => null])->save();
+        app(TeamParticipantHistoryService::class)->captureFixture($s['fixture']->fresh(), true);
+        $this->assertArrayNotHasKey('linked_profile_id', $s['row']->fresh()->participant_snapshot[1]);
         $s['row']->forceFill(['participant_snapshot' => $original])->save();
         app(TeamParticipantHistoryService::class)->captureFixture($s['fixture']->fresh());
         $this->assertArrayNotHasKey('linked_profile_id', $s['row']->fresh()->participant_snapshot[1]);
@@ -90,5 +94,23 @@ class ImportedMatchIdentityTest extends TestCase
         NoProfileTeamPlayer::create(['team_id' => $s['home']->id, 'name' => 'Duplicate', 'surname' => 'Row', 'rank' => 2, 'player_profile' => $s['first']->id, 'pay_status' => 1]);
         $this->assertNull(app(ImportedMatchIdentityResolver::class)->resolve($s['row'], 1, $s['home'], $s['event']->id));
         $this->assertFalse($store->published($manifest));
+    }
+
+    public function test_auto_assignment_attests_only_first_unplayed_generation_never_historical_rerun(): void
+    {
+        $s = $this->scenario();
+        $home = $s['home']->load('team_players_no_profile');
+        $home->setRelation('team_players', collect());
+        $away = $s['away']->load('team_players', 'team_players_no_profile');
+        $this->partialMock(\App\Services\TeamDrawSideResolver::class)->shouldReceive('side')->andReturn($home, $away, $home, $away);
+        $template = new \App\Models\TeamEventFormatRubber(['rubber_code' => 'singles', 'singles_position' => 1]);
+        $new = TeamFixture::create(['draw_id' => $s['fixture']->draw_id, 'team_tie_id' => $s['fixture']->team_tie_id, 'fixture_type' => 1, 'numSets' => 3, 'match_status' => 0, 'round_nr' => 1, 'match_nr' => 2]);
+        $assign = app(\App\Services\TeamPlayerAutoAssignService::class);
+        $assign->assignForRubber($new, $s['fixture']->teamTie, $template);
+        $this->assertSame($s['first']->id, $new->fixturePlayers()->first()->participant_snapshot[1]['linked_profile_id']);
+        $assign->assignForRubber($new->fresh(), $s['fixture']->teamTie, $template);
+        $row = $new->fixturePlayers()->first();
+        $this->assertArrayNotHasKey('linked_profile_id', $row->participant_snapshot[1]);
+        $this->assertNull(app(ImportedMatchIdentityResolver::class)->resolve($row, 1, $s['home'], $s['event']->id));
     }
 }

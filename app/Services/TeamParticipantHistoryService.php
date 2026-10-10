@@ -28,6 +28,8 @@ class TeamParticipantHistoryService
     }
     public function captureFixture(\App\Models\TeamFixture $fixture, bool $attestNewIdentity = false): void
     {
+        $attestNewIdentity = $attestNewIdentity && $fixture->wasRecentlyCreated
+            && (int) $fixture->match_status === 0 && !$fixture->teamResults()->exists();
         $map = $fixture->draw->team_draw_selection['mixed_sides'] ?? [];
         $ids = collect([$fixture->teamTie?->home_team_id, $fixture->teamTie?->away_team_id])->filter()
             ->flatMap(fn ($id) => isset($map[$id]) ? [$map[$id]['boys'], $map[$id]['girls']] : [$id]);

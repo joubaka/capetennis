@@ -241,7 +241,7 @@ class PlayerRatingBadgeTest extends TestCase
         $result = CategoryResult::create(['event_id' => $draw->event_id, 'category_id' => $draw->categoryEvent->category_id, 'registration_id' => $registration->id, 'position' => 1]);
         $data = ['event' => $draw->event, 'categories' => collect([$draw->categoryEvent]), 'categoryResults' => collect([$draw->categoryEvent->category_id => collect([$result])])];
         $guest = view('frontend.event.results.show', $data)->render();
-        $this->assertStringContainsString($player->full_name, $guest);
+        $this->assertStringContainsString(e($player->full_name), $guest);
         $this->assertStringNotContainsString('player-rating-badge', $guest);
         $this->assertStringNotContainsString('CTPlayerRatingConfig', $guest);
         $this->superAdmin();
