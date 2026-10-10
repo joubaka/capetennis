@@ -144,20 +144,21 @@ class PlayerAbilityBackgroundRefreshTest extends TestCase
         $this->assertDatabaseCount('team_fixture_results', 3);
     }
 
-    public function test_changes_arriving_during_build_remain_pending_and_failure_keeps_snapshot(): void
+    public function test_writes_inside_read_only_calculation_are_rejected_and_failure_keeps_snapshot(): void
     {
         $store = app(PlayerAbilitySnapshotStore::class);
         $store->replace($this->payload(), CarbonImmutable::today('Africa/Johannesburg'), 'before', []);
         $saved = DB::table('player_ability_snapshots')->value('payload');
         $service = $this->partialMock(PlayerSharedAbilityService::class);
-        $service->shouldReceive('fingerprint')->twice()->andReturn('before', 'after');
+        $service->shouldReceive('fingerprint')->once()->andReturn('before');
         $service->shouldReceive('calculateSnapshot')->once()->andReturnUsing(function () {
             DB::table('team_fixture_results')->insert(['team_fixture_id' => 123, 'team1_score' => 6, 'team2_score' => 3]);
             return $this->payload();
         });
         $this->artisan('player-ability:refresh --pending')
-            ->expectsOutputToContain('source_changed_during_build; stage: validation')->assertFailed();
+            ->expectsOutputToContain('unexpected_error; stage: calculation')->assertFailed();
         $this->assertSame($saved, DB::table('player_ability_snapshots')->value('payload'));
+        $this->assertDatabaseCount('team_fixture_results', 0);
         $this->assertTrue(app(PlayerAbilityRefreshState::class)->status()['pending']);
         $this->assertTrue(app(PlayerAbilityRefreshState::class)->status()['failed']);
         // Retry backoff avoids repeatedly fitting an unavailable model each minute.

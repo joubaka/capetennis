@@ -12,6 +12,118 @@ class PlayerAbilitySnapshotTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_mysql_consistent_reader_uses_next_transaction_policy_and_finishes_before_returning(): void
+    {
+        $connection = \Mockery::mock(\Illuminate\Database\Connection::class);
+        $connection->shouldReceive('getDriverName')->once()->andReturn('mysql');
+        $connection->shouldReceive('transactionLevel')->once()->andReturn(0)->ordered();
+        $connection->shouldReceive('getDatabaseName')->once()->andReturn('testing');
+        $connection->shouldReceive('getTablePrefix')->andReturn('');
+        $tables = \Mockery::mock();
+        $connection->shouldReceive('table')->with('information_schema.tables')->once()->andReturn($tables);
+        $tables->shouldReceive('where')->with('table_schema', 'testing')->once()->andReturnSelf();
+        $tables->shouldReceive('whereIn')->once()->andReturnUsing(function ($column, $names) use ($tables) {
+            $this->assertSame('table_name', $column);
+            $tables->shouldReceive('get')->once()->andReturn(collect($names)->map(fn ($name) => (object) ['table_name' => $name, 'engine' => 'InnoDB']));
+            return $tables;
+        });
+        $tables->shouldReceive('selectRaw')->once()->andReturnSelf();
+        $connection->shouldReceive('statement')->with('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')->once()->ordered();
+        $connection->shouldReceive('statement')->with('SET TRANSACTION READ ONLY')->once()->ordered();
+        $connection->shouldReceive('beginTransaction')->once()->ordered();
+        $connection->shouldReceive('transactionLevel')->once()->andReturn(1)->ordered();
+        $connection->shouldReceive('rollBack')->with(0)->once()->ordered();
+        DB::shouldReceive('connection')->once()->andReturn($connection);
+        $this->assertSame('captured', (new \App\Services\Performance\PlayerAbilityConsistentRead)->run(fn () => 'captured'));
+    }
+
+    public function test_mysql_nested_and_unsupported_consistent_reads_fail_closed_before_reading(): void
+    {
+        foreach ([['mysql', 1], ['pgsql', 0]] as [$driver, $level]) {
+            $connection = \Mockery::mock(\Illuminate\Database\Connection::class);
+            $connection->shouldReceive('getDriverName')->once()->andReturn($driver);
+            $connection->shouldReceive('transactionLevel')->once()->andReturn($level);
+            $connection->shouldNotReceive('beginTransaction');
+            DB::shouldReceive('connection')->once()->andReturn($connection);
+            try { (new \App\Services\Performance\PlayerAbilityConsistentRead)->run(fn () => $this->fail('Unsafe read executed')); $this->fail('Unsafe driver/transaction accepted'); }
+            catch (\RuntimeException) { $this->addToAssertionCount(1); }
+        }
+    }
+
+    public function test_consistent_reader_is_read_only_and_restores_transaction_and_sqlite_policy_on_failure(): void
+    {
+        $connection = DB::connection();
+        $level = $connection->transactionLevel();
+        $before = (int) $connection->selectOne('PRAGMA query_only')->query_only;
+        try {
+            app(\App\Services\Performance\PlayerAbilityConsistentRead::class)->run(function () use ($connection, $level) {
+                $this->assertSame($level + 1, $connection->transactionLevel());
+                DB::table('players')->insert(['name' => 'Forbidden']);
+            });
+            $this->fail('Source write allowed in read transaction');
+        } catch (\Illuminate\Database\QueryException) {
+            $this->assertSame($level, $connection->transactionLevel());
+            $this->assertSame($before, (int) $connection->selectOne('PRAGMA query_only')->query_only);
+        }
+        $this->assertDatabaseMissing('players', ['name' => 'Forbidden']);
+    }
+
+    public function test_newer_scoring_generation_remains_pending_after_consistent_build_is_saved(): void
+    {
+        DB::table('player_ability_refresh_state')->where('id', 1)->update(['generation' => 10, 'completed_generation' => 0]);
+        $service = $this->partialMock(PlayerSharedAbilityService::class);
+        $service->shouldReceive('fingerprint')->times(2)->andReturn('captured');
+        $service->shouldReceive('calculateSnapshot')->once()->andReturn($this->payload());
+        $this->partialMock(\App\Services\Performance\PlayerAbilityConsistentRead::class)->shouldReceive('run')->once()->andReturnUsing(function ($read) {
+            $result = (new \App\Services\Performance\PlayerAbilityConsistentRead)->run($read);
+            DB::table('player_ability_refresh_state')->where('id', 1)->update(['generation' => 11]);
+            return $result;
+        });
+        $this->artisan('player-ability:refresh')->assertSuccessful();
+        $this->assertDatabaseCount('player_ability_snapshots', 1);
+        $state = DB::table('player_ability_refresh_state')->where('id', 1)->first();
+        $this->assertSame(10, (int) $state->completed_generation);
+        $this->assertSame(11, (int) $state->generation);
+    }
+
+    public function test_live_publication_revocation_after_consistent_read_preserves_last_success(): void
+    {
+        $event = Event::factory()->create(['published' => true]);
+        Draw::factory()->create(['event_id' => $event->id, 'published' => true]);
+        $this->save();
+        $saved = DB::table('player_ability_snapshots')->value('payload');
+        $this->partialMock(PlayerSharedAbilityService::class)->shouldReceive('fingerprint')->andReturn('captured')
+            ->shouldReceive('calculateSnapshot')->once()->andReturn($this->payload());
+        $this->partialMock(\App\Services\Performance\PlayerAbilityConsistentRead::class)->shouldReceive('run')->once()->andReturnUsing(function ($read) use ($event) {
+            $result = (new \App\Services\Performance\PlayerAbilityConsistentRead)->run($read);
+            DB::table('events')->where('id', $event->id)->update(['published' => false]);
+            return $result;
+        });
+        $this->artisan('player-ability:refresh')->assertFailed();
+        $this->assertSame($saved, DB::table('player_ability_snapshots')->value('payload'));
+    }
+
+    public function test_live_registration_identity_change_after_consistent_read_is_rejected(): void
+    {
+        $event = Event::factory()->create(['published' => true]);
+        $field = \App\Models\CategoryEvent::factory()->create(['event_id' => $event->id]);
+        $registration = \App\Models\Registration::factory()->create();
+        $registration->players()->attach(Player::factory()->create());
+        \App\Models\CategoryEventRegistration::factory()->create(['category_event_id' => $field->id, 'registration_id' => $registration->id]);
+        $replacement = Player::factory()->create();
+        $this->save();
+        $saved = DB::table('player_ability_snapshots')->value('payload');
+        $this->partialMock(PlayerSharedAbilityService::class)->shouldReceive('fingerprint')->andReturn('captured')
+            ->shouldReceive('calculateSnapshot')->once()->andReturn($this->payload());
+        $this->partialMock(\App\Services\Performance\PlayerAbilityConsistentRead::class)->shouldReceive('run')->once()->andReturnUsing(function ($read) use ($registration, $replacement) {
+            $result = (new \App\Services\Performance\PlayerAbilityConsistentRead)->run($read);
+            DB::table('player_registrations')->where('registration_id', $registration->id)->update(['player_id' => $replacement->id]);
+            return $result;
+        });
+        $this->artisan('player-ability:refresh')->assertFailed();
+        $this->assertSame($saved, DB::table('player_ability_snapshots')->value('payload'));
+    }
+
     private function payload(string $date = '2026-10-07'): array
     {
         return ['cohorts' => [], 'names' => [], 'reason' => null, 'built_at' => $date.' 00:01:00 SAST', 'source_events' => Event::pluck('id')->all(), 'source_matches' => []];

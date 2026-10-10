@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Services\Performance\{PlayerAbilityRefreshState, PlayerAbilitySnapshotStore, PlayerSharedAbilityService};
+use App\Services\Performance\{PlayerAbilityConsistentRead, PlayerAbilityRefreshState, PlayerAbilitySnapshotStore, PlayerSharedAbilityService};
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\{Cache, Log, Schema};
@@ -36,17 +36,24 @@ class RefreshPlayerAbility extends Command
         try {
             if ($this->option('pending') && !$state->checkDue()) { return self::SUCCESS; }
             $asOf = CarbonImmutable::today('Africa/Johannesburg');
-            $generation = $state->generation();
-            $fingerprint = $service->fingerprint();
             if (!$this->option('dry-run')) { $state->checked(); }
-            if ($this->option('pending') && !$state->status()['pending'] && $store->matches($asOf, $fingerprint)) {
+            if ($this->option('pending') && !$state->status()['pending'] && $store->matches($asOf, $service->fingerprint())) {
                 $this->info('Saved ability snapshot is current; no calculation needed.');
                 return self::SUCCESS;
             }
-            $stage = 'calculation';
-            $snapshot = $service->calculateSnapshot($asOf);
-            $stage = 'manifest';
-            $manifest = $store->manifest($snapshot);
+            [$generation, $fingerprint, $snapshot, $manifest] = app(PlayerAbilityConsistentRead::class)->run(function () use ($asOf, $state, $service, $store, &$stage, &$failureReason) {
+                $generation = $state->generation();
+                $fingerprint = $service->fingerprint();
+                $stage = 'calculation';
+                $snapshot = $service->calculateSnapshot($asOf);
+                $stage = 'manifest';
+                $manifest = $store->manifest($snapshot);
+                if ($fingerprint !== $service->fingerprint()) {
+                    $failureReason = 'source_changed_during_build';
+                    throw new \RuntimeException('Source data changed inside the consistent read.');
+                }
+                return [$generation, $fingerprint, $snapshot, $manifest];
+            });
             $stage = 'validation';
             foreach ($snapshot['cohorts'] as $cohort) {
                 foreach ($cohort['components'] as $component) {
@@ -60,10 +67,6 @@ class RefreshPlayerAbility extends Command
                 $failureReason = str_starts_with($snapshot['reason'], 'Shared calibration exceeds its safe local processing limit')
                     ? 'safe_processing_limit' : 'calculation_withheld';
                 throw new \RuntimeException('Calculation withheld.');
-            }
-            if ($fingerprint !== $service->fingerprint()) {
-                $failureReason = 'source_changed_during_build';
-                throw new \RuntimeException('Source data changed during refresh.');
             }
             if (!$store->published($manifest)) {
                 $failureReason = 'publication_or_context_revoked';
