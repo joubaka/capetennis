@@ -233,6 +233,56 @@ final class EventVenueScheduleController extends Controller
         return view('backend.schedule.saved-calendar', compact('event', 'scope', 'days', 'date', 'rows', 'retained', 'venues', 'draws', 'revision', 'unscheduledCount', 'dailySavedCounts'));
     }
 
+    public function editDay(Request $request, Event $event, EventVenueScheduleService $scheduler,
+        \App\Services\Scheduling\SchedulePublicationService $publication)
+    {
+        $this->authorize('event.manage', $event);
+        $data = $request->validate([
+            'date' => ['required', 'date_format:Y-m-d'], 'draw_id' => ['required', 'integer'],
+            'venue_ids' => ['sometimes', 'required', 'array', 'min:1', 'max:100'],
+            'venue_ids.*' => ['integer', 'distinct'], 'start_time' => ['sometimes', 'required', 'date_format:H:i'],
+            'end_time' => ['sometimes', 'required', 'date_format:H:i'],
+            'duration' => ['sometimes', 'required', 'integer', 'min:1', 'max:480'],
+            'player_rest' => ['sometimes', 'required', 'integer', 'min:0', 'max:480'],
+            'court_gap' => ['sometimes', 'required', 'integer', 'min:0', 'max:120'],
+            'action' => ['sometimes', 'in:preview,save'], 'revision' => ['nullable', 'string', 'size:64'],
+        ]);
+        $draw = $event->draws()->findOrFail($data['draw_id']);
+        $rows = $publication->workingRows($event)->filter(fn ($row) => (int) $row['draw_id'] === $draw->id
+            && substr($row['scheduled_at'], 0, 10) === $data['date'])->values();
+        $venues = $event->venues()->get()->concat($draw->venues()->get())->unique('id')->sortBy('name');
+        $stored = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true) ?: [];
+        $age = app(\App\Services\Scheduling\ScheduleProgramme::class)->age($draw);
+        $settings = $stored['programme_settings'][(string) $age] ?? $stored;
+        $values = array_replace(['venue_ids' => $rows->pluck('venue_id')->unique()->all(), 'start_time' => $rows->isNotEmpty() ? substr($rows->min('scheduled_at'), 11, 5) : '08:00',
+            'end_time' => '18:00', 'duration' => $settings['duration'] ?? 75,
+            'player_rest' => $settings['player_rest'] ?? 60, 'court_gap' => $settings['court_gap'] ?? 5], $data);
+        $preview = null;
+        if ($request->isMethod('post')) {
+            $request->validate(['venue_ids' => ['required'], 'start_time' => ['required'], 'end_time' => ['required'],
+                'duration' => ['required'], 'player_rest' => ['required'], 'court_gap' => ['required'], 'action' => ['required']]);
+            if (array_diff($values['venue_ids'], $venues->pluck('id')->all())) abort(422, 'Choose venues in this event.');
+            $options = ['day_scope' => $data['date'], 'draw_ids' => [$draw->id], 'venue_ids' => $values['venue_ids'],
+                'start' => $data['date'].' '.$values['start_time'], 'end' => $data['date'].' '.$values['end_time'],
+                'duration' => $values['duration'], 'wave_minutes' => 0, 'player_rest' => $values['player_rest'],
+                'court_gap' => $values['court_gap'], 'allow_partial' => false, 'rank_venue_preferences' => []];
+            try {
+                if ($data['action'] === 'save') {
+                    $request->validate(['revision' => ['required', 'string', 'size:64']]);
+                    $result = $scheduler->apply($event, $options, $data['revision']);
+                    return redirect()->route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $data['date'], 'draw_id' => $draw->id])
+                        ->with('success', $result['count'].' match times updated for this draw and day. Publish updates separately when ready.');
+                }
+                $preview = $scheduler->preview($event, $options);
+            } catch (\InvalidArgumentException $exception) {
+                return redirect()->route('backend.event-venue-schedule.calendar.edit-day', ['event' => $event->id, 'date' => $data['date'], 'draw_id' => $draw->id])
+                    ->withInput()->withErrors(['schedule' => $exception->getMessage()]);
+            }
+        }
+        return response()->view('backend.schedule.edit-draw-day', compact('event', 'draw', 'data', 'rows', 'venues', 'values', 'preview'))
+            ->header('Cache-Control', 'no-store, private');
+    }
+
     public function clearDay(Request $request, Event $event, EventVenueScheduleService $scheduler)
     {
         $this->authorize('event.manage', $event);

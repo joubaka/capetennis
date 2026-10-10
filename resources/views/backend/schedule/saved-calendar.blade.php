@@ -3,7 +3,10 @@
 @section('page-style')<style>[data-saved-calendar] nav a { flex-shrink:0; } [data-saved-calendar] .btn, [data-saved-calendar] select {min-height:44px;}</style>@endsection
 @section('content')
 <div class="container-xxl py-3" data-saved-calendar>
-  <div class="d-flex flex-wrap justify-content-between gap-3 mb-3"><div><h3 class="mb-1">Saved schedule</h3><p class="text-muted mb-0">{{ $event->name }} · Add batches across the weekend. Saved changes stay private until you publish them.</p></div><div class="d-flex flex-wrap gap-2 align-self-start"><a class="btn btn-outline-primary" href="{{ route('headOffice.show', $event) }}">Back to event dashboard</a><a class="btn btn-primary" href="{{ route('backend.event-venue-schedule.index', $event) }}">Schedule more matches</a></div></div>
+  <div class="d-flex flex-wrap justify-content-between gap-3 mb-3"><div><h3 class="mb-1">Saved schedule</h3><p class="text-muted mb-0">{{ $event->name }} · Add batches across the weekend. Saved changes stay private until you publish them.</p></div><div class="d-flex flex-wrap gap-2 align-self-start"><a class="btn btn-outline-primary" href="{{ route('headOffice.show', $event) }}">Back to event dashboard</a>@if($date !== 'all' && !empty($scope['draw_id']))
+        <a class="btn btn-primary" href="{{ route('backend.event-venue-schedule.calendar.edit-day', ['event'=>$event->id, 'date'=>$date, 'draw_id'=>$scope['draw_id']]) }}">Change venues / reschedule this draw</a>
+        @endif
+        <a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.index', $event) }}">Schedule more matches</a></div></div>
   @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
   @if($errors->any())<div class="alert alert-danger">{{ $errors->first() }}</div>@endif
   <nav class="d-flex gap-2 overflow-auto pb-2 mb-3" aria-label="Schedule days">
@@ -38,9 +41,12 @@
   @if($date !== 'all')
     <div class="card card-body mb-3">
       <h5>Edit schedule · {{ \Carbon\Carbon::parse($date)->format('D j M Y') }}</h5>
-      <p class="small text-muted">The current saved schedule appears below. Clear only this day{{ !empty($scope['draw_id']) ? ' in the selected draw' : ' across all draws' }}{{ !empty($scope['venue_id']) ? ' at the selected venue' : '' }}, then reschedule it. Played matches and locked draws cannot be cleared. Published times remain visible until you publish updates or hide them.</p>
+      <p class="small text-muted">The current saved schedule appears below. Choose a draw to change its venues and times for this day without clearing it first. You can also clear only this day{{ !empty($scope['draw_id']) ? ' in the selected draw' : ' across all draws' }}{{ !empty($scope['venue_id']) ? ' at the selected venue' : '' }}, then reschedule it. Played matches and locked draws cannot be cleared. Published times remain visible until you publish updates or hide them.</p>
       <div class="d-flex flex-wrap gap-2">
-        <a class="btn btn-primary" href="{{ route('backend.event-venue-schedule.index', ['event'=>$event->id, 'date'=>$date] + (!empty($scope['venue_id']) ? ['venue_id'=>$scope['venue_id']] : []) + (!empty($scope['draw_id']) ? ['draw_ids'=>[$scope['draw_id']]] : [])) }}">Reschedule this day</a>
+        @if(!empty($scope['draw_id']))
+        <a class="btn btn-primary" href="{{ route('backend.event-venue-schedule.calendar.edit-day', ['event'=>$event->id, 'date'=>$date, 'draw_id'=>$scope['draw_id']]) }}">Change venues / reschedule this draw</a>
+        @endif
+        <a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.index', ['event'=>$event->id, 'date'=>$date] + (!empty($scope['venue_id']) ? ['venue_id'=>$scope['venue_id']] : []) + (!empty($scope['draw_id']) ? ['draw_ids'=>[$scope['draw_id']]] : [])) }}">Add matches to this day</a>
         <form method="post" action="{{ route('backend.event-venue-schedule.calendar.clear', $event) }}" onsubmit="return confirm('Clear all saved match times in this day and selected filters? Fixtures and results remain. Published times remain until you publish updates or hide them.');">
           @csrf
           <input type="hidden" name="revision" value="{{ $revision }}">

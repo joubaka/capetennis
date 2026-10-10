@@ -72,7 +72,7 @@ class SchedulePublicationTest extends TestCase
         DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
         $scope = ['date' => '2026-10-10', 'draw_id' => $draw->id];
         $this->actingAs($admin)->get(route('backend.event-venue-schedule.calendar', ['event' => $event->id] + $scope))
-            ->assertOk()->assertSee('Day 1')->assertSee('Day 2')->assertSee('Day 3')->assertSee('08:00')->assertSee('Clear this day')->assertSee('Reschedule this day');
+            ->assertOk()->assertSee('Day 1')->assertSee('Day 2')->assertSee('Day 3')->assertSee('08:00')->assertSee('Clear this day')->assertSee('Add matches to this day');
         $this->get(route('backend.event-venue-schedule.index', ['event' => $event->id, 'draw_ids' => [$draw->id], 'date' => '2026-10-11']))
             ->assertOk()->assertSee('2026-10-11T08:00', false)->assertSee('2026-10-11T18:00', false);
         $url = route('backend.event-venue-schedule.calendar.clear', $event);
