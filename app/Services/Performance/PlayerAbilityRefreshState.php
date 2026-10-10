@@ -93,6 +93,7 @@ class PlayerAbilityRefreshState
         $pending = !$state || $state->generation > $state->completed_generation
             || $snapshot['reason'] || $snapshot['snapshot_stale'];
         return ['version' => hash('sha256', json_encode([$snapshot['snapshot_version'] ?? null, $snapshot['reason'], $state?->generation], JSON_THROW_ON_ERROR)),
+            'snapshot_version' => $snapshot['snapshot_version'] ?? null,
             'last_updated' => $snapshot['built_at'] === 'Not yet updated' ? null : $snapshot['built_at'],
             'pending' => (bool) $pending, 'failed' => (bool) $state?->last_failed_at];
     }

@@ -10,6 +10,22 @@ use Illuminate\Pagination\LengthAwarePaginator;
 
 class PlayerRatingLeaderboardController extends Controller
 {
+    public function refresh(Request $request, \App\Services\Performance\PlayerRatingRefreshRequest $refresh)
+    {
+        abort_unless($request->user()?->hasRole('super-user'), 403);
+        $status = app(\App\Services\Performance\PlayerAbilityRefreshState::class)->status();
+        if ($status['pending'] || $status['failed']) { $refresh->request(); }
+        return response()->json(['status' => $status, 'refreshing' => $refresh->running()])
+            ->header('Cache-Control', 'no-store, private');
+    }
+
+    public function status(Request $request, \App\Services\Performance\PlayerRatingRefreshRequest $refresh)
+    {
+        abort_unless($request->user()?->hasRole('super-user'), 403);
+        return response()->json(['status' => app(\App\Services\Performance\PlayerAbilityRefreshState::class)->status(),
+            'refreshing' => $refresh->running()])->header('Cache-Control', 'no-store, private');
+    }
+
     public function site(Request $request, PlayerRatingLeaderboardService $service)
     {
         return $this->show($request, $service);
