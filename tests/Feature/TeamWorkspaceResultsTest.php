@@ -18,6 +18,31 @@ class TeamWorkspaceResultsTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_initial_result_setup_accepts_empty_optional_exclusions_after_form_middleware(): void
+    {
+        [$event, , $draw, $home, $away] = $this->groupedScenario();
+        $this->fixture($draw, $home, $away, [[6, 1], [6, 1]]);
+        $setup = [
+            'event_id' => $event->id, 'result_group' => '10-boys',
+            'regions' => $event->regions()->pluck('team_regions.id')->implode(','),
+            'formats' => 'singles', 'excluded_result_region_ids' => '',
+        ];
+        $this->post(route('get.event.category.data'), $setup, ['Accept' => 'application/json'])
+            ->assertOk()->assertJsonCount(2, 'ranking');
+        $this->groupedRequest($event, ['excluded_result_region_ids' => null])->assertOk()->assertJsonCount(2, 'ranking');
+        $this->groupedRequest($event, ['regions' => [], 'formats' => [], 'excluded_result_region_ids' => []])
+            ->assertOk()->assertJsonCount(0, 'ranking');
+    }
+
+    public function test_result_setup_rejects_malformed_optional_exclusion_lists(): void
+    {
+        [$event] = $this->groupedScenario();
+        foreach ([123, ['invalid'], [$event->regions()->first()->id, $event->regions()->first()->id]] as $invalid) {
+            $this->groupedRequest($event, ['excluded_result_region_ids' => $invalid])
+                ->assertUnprocessable();
+        }
+    }
+
     public function test_result_cards_show_global_playing_cohort_rating_without_changing_order_or_persisting_it(): void
     {
         [$event, , $draw, $home, $away] = $this->groupedScenario();
@@ -442,7 +467,7 @@ class TeamWorkspaceResultsTest extends TestCase
             $json = json_encode($preview, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
             $directory = storage_path('app/team-results-qa');
             if (! is_dir($directory)) mkdir($directory, 0777, true);
-            file_put_contents($directory.'/index.html', '<!doctype html><html><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/public/assets/vendor/css/rtl/core.css"><link rel="stylesheet" href="/public/css/backend-workspace.css"><link rel="stylesheet" href="/public/css/team-workspace.css"><body class="ct-backend"><main class="team-admin-workspace p-3"><nav class="tabs-wrap"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-result-rank">Result Ranks</button></nav><div id="team-workspace-content" data-result-url="/mock-results">'.$panel.'</div></main><script src="/public/assets/vendor/libs/jquery/jquery.js"></script><script src="/public/assets/vendor/js/bootstrap.js"></script><script>const fixtureResponse='.$json.'; let storedDraft=null; jQuery.post=function(){const d=jQuery.Deferred();setTimeout(()=>d.resolve(fixtureResponse),80);const p=d.promise();p.abort=()=>d.reject({statusText:"abort"});return p;};jQuery.getJSON=function(){const d=jQuery.Deferred();setTimeout(()=>d.resolve({draft:storedDraft}),100);return d.promise();};jQuery.ajax=function(options){const d=jQuery.Deferred();const data=JSON.parse(options.data);setTimeout(()=>{storedDraft={...data,version:(storedDraft?.version||0)+1};d.resolve({draft:storedDraft});},150);return d.promise();};</script><script src="/public/js/team-workspace.js"></script></body></html>');
+            file_put_contents($directory.'/index.html', '<!doctype html><html><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/public/assets/vendor/css/rtl/core.css"><link rel="stylesheet" href="/public/css/backend-workspace.css"><link rel="stylesheet" href="/public/css/team-workspace.css"><body class="ct-backend"><main class="team-admin-workspace p-3"><nav class="tabs-wrap"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-result-rank">Result Ranks</button></nav><div id="team-workspace-content" data-result-url="/mock-results">'.$panel.'</div></main><script src="/public/assets/vendor/libs/jquery/jquery.js"></script><script src="/public/assets/vendor/js/bootstrap.js"></script><script>const fixtureResponse='.$json.'; let storedDraft=null; jQuery.post=function(){const d=jQuery.Deferred();setTimeout(()=>d.resolve(fixtureResponse),80);const p=d.promise();p.abort=()=>d.reject({statusText:"abort"});return p;};jQuery.getJSON=function(){const d=jQuery.Deferred();setTimeout(()=>d.resolve({draft:storedDraft}),100);return d.promise();};jQuery.ajax=function(options){const d=jQuery.Deferred();if(options.type==="POST"){setTimeout(()=>d.resolve(fixtureResponse),80);const p=d.promise();p.abort=()=>d.reject({statusText:"abort"});return p;}const data=JSON.parse(options.data);setTimeout(()=>{storedDraft={...data,version:(storedDraft?.version||0)+1};d.resolve({draft:storedDraft});},150);return d.promise();};</script><script src="/public/js/team-workspace.js"></script></body></html>');
         }
         $this->groupedRequest($event, ['formats' => ['singles']])->assertOk()->assertJsonPath('ranking.0.wins', 2);
         $this->groupedRequest($event, ['regions' => []])->assertOk()->assertJsonCount(0, 'ranking');

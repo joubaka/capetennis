@@ -347,6 +347,10 @@ class EventAdminController extends Controller
   public function getEventCategoryData(Request $request)
   {
     if ($request->has('result_group')) {
+      // Form submissions convert an empty optional exclusion list to null.
+      if ($request->exists('excluded_result_region_ids') && $request->input('excluded_result_region_ids') === null) {
+        $request->merge(['excluded_result_region_ids' => []]);
+      }
       foreach (['regions', 'formats', 'excluded_result_region_ids'] as $field) {
         if (is_string($request->input($field))) $request->merge([$field => $request->input($field) === '' ? [] : explode(',', $request->input($field))]);
       }
