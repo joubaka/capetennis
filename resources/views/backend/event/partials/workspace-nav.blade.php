@@ -22,7 +22,12 @@
     <a href="{{ route('backend.player-performance.event-ratings', $event) }}" @if($eventWorkspaceActive === 'ratings') aria-current="page" @endif><i class="ti ti-chart-bar" aria-hidden="true"></i>Player ratings</a>
   @endrole
   @if($eventWorkspaceRegionalOnly)
-    <a href="{{ route('backend.team-selection.index', $event) }}" @if($eventWorkspaceActive !== 'communications') aria-current="page" @endif><i class="ti ti-users" aria-hidden="true"></i>Teams</a>
+    <a href="{{ route('backend.team-selection.index', $event) }}" @if(!in_array($eventWorkspaceActive, ['communications', 'standings'])) aria-current="page" @endif><i class="ti ti-users" aria-hidden="true"></i>Teams</a>
+    @if($event->isTeam())
+      @can('event-standings.view', $event)
+        <a href="{{ route('admin.events.standings', $event) }}" @if($eventWorkspaceActive === 'standings') aria-current="page" @endif><i class="ti ti-trophy" aria-hidden="true"></i>Standings</a>
+      @endcan
+    @endif
     <a href="{{ route('backend.event-communications.index', $event) }}" @if($eventWorkspaceActive === 'communications') aria-current="page" @endif><i class="ti ti-mail" aria-hidden="true"></i>Communications</a>
   @else
   @can('event-draw.view', $event)

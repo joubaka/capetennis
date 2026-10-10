@@ -54,6 +54,45 @@ class EventStandingsTest extends TestCase
         }
     }
 
+    public function test_regional_convener_sees_event_published_standings_without_admin_or_publication_access(): void
+    {
+        $event = $this->event();
+        $event->forceFill(['standings_published' => false])->save();
+        $published = $this->draw($event, 'u/10 Boys');
+        $published['draw']->update(['published' => true]);
+        $private = $this->draw($event, 'Private category');
+        $private['draw']->update(['published' => false]);
+        $draft = $this->draw($event, 'Draft ties');
+        $draft['draw']->update(['published' => true]);
+        $draft['tie']->update(['status' => 'draft', 'published_at' => null]);
+        $other = $this->event();
+        $this->draw($other, 'Foreign category');
+        $actor = User::factory()->create();
+        $region = \App\Models\EventRegion::where('event_id', $event->id)->where('region_id', $published['regions'][0]->id)->firstOrFail();
+        \App\Models\EventRegionManager::create(['event_id' => $event->id, 'event_region_id' => $region->id,
+            'region_id' => $region->region_id, 'user_id' => $actor->id]);
+
+        $response = $this->actingAs($actor)->get(route('admin.events.standings', $event))->assertOk()
+            ->assertSee('Oak Primary School')->assertSee('Pine Primary School')
+            ->assertSee('href="'.route('admin.events.standings', $event).'"', false)
+            ->assertDontSee('Private category')->assertDontSee('Foreign category')
+            ->assertDontSee('View match results')->assertDontSee('Publish standings')
+            ->assertDontSee('Finances')->assertDontSee('Settings');
+        $this->assertSame(1, $response->viewData('stats')['rubbers']);
+        $this->assertMatchesRegularExpression('/href="'.preg_quote(route('admin.events.standings', $event), '/').'"\s+aria-current="page"/', $response->getContent());
+        $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
+        $this->get(route('backend.team-selection.index', $event))->assertOk()
+            ->assertSee('href="'.route('admin.events.standings', $event).'"', false);
+        $this->get(route('admin.events.standings', $other))->assertForbidden();
+        $this->get(route('admin.events.teams', $event))->assertForbidden();
+        $this->patchJson(route('admin.events.standings.publication', $event), ['standings_published' => true])->assertForbidden();
+        $this->get(route('frontend.events.standings', $event))->assertNotFound();
+        $this->assertFalse($event->fresh()->standings_published);
+        $this->actingAs(User::factory()->create())->get(route('admin.events.standings', $event))->assertForbidden();
+        \App\Models\EventRegionManager::where('user_id', $actor->id)->delete();
+        $this->actingAs($actor)->get(route('admin.events.standings', $event))->assertForbidden();
+    }
+
     public function test_filters_and_foreign_team_ties_are_excluded(): void
     {
         $event = $this->event();

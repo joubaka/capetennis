@@ -13,17 +13,33 @@ class PlayerRatingLeaderboardController extends Controller
     public function refresh(Request $request, \App\Services\Performance\PlayerRatingRefreshRequest $refresh)
     {
         abort_unless($request->user()?->hasRole('super-user'), 403);
-        $status = app(\App\Services\Performance\PlayerAbilityRefreshState::class)->status();
-        if ($status['pending'] || $status['failed']) { $refresh->request(); }
-        return response()->json(['status' => $status, 'refreshing' => $refresh->running()])
-            ->header('Cache-Control', 'no-store, private');
+        return $this->refreshResponse($refresh, true);
     }
 
     public function status(Request $request, \App\Services\Performance\PlayerRatingRefreshRequest $refresh)
     {
         abort_unless($request->user()?->hasRole('super-user'), 403);
-        return response()->json(['status' => app(\App\Services\Performance\PlayerAbilityRefreshState::class)->status(),
-            'refreshing' => $refresh->running()])->header('Cache-Control', 'no-store, private');
+        return $this->refreshResponse($refresh, false);
+    }
+
+    private function refreshResponse(\App\Services\Performance\PlayerRatingRefreshRequest $refresh, bool $start)
+    {
+        $diagnostics = \App\Services\Performance\PlayerRatingRefreshDiagnostics::class;
+        $reference = $diagnostics::reference();
+        try {
+            $status = app(\App\Services\Performance\PlayerAbilityRefreshState::class)->status();
+            if ($start) {
+                if ($status['pending'] || $status['failed']) $refresh->request($reference);
+                else $diagnostics::write($reference, 'request', 'current');
+            }
+            return response()->json(['status' => $status, 'refreshing' => $refresh->running(),
+                'reference_id' => $reference, 'launch_failure' => $refresh->launchFailure()])
+                ->header('Cache-Control', 'no-store, private');
+        } catch (\Throwable $error) {
+            $diagnostics::write($reference, $start ? 'request' : 'status', 'unavailable', $error);
+            return response()->json(['error' => ['reason' => 'refresh_unavailable', 'reference_id' => $reference]], 503)
+                ->header('Cache-Control', 'no-store, private');
+        }
     }
 
     public function site(Request $request, PlayerRatingLeaderboardService $service)

@@ -196,7 +196,8 @@ class PlayerAbilityBackgroundRefreshTest extends TestCase
             ->expectsOutputToContain($reason.'; stage: '.$stage)->doesntExpectOutputToContain($secret)->assertFailed();
         \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')->once()->with(
             'Player ability refresh failed; last good snapshot retained.',
-            ['exception_type' => \RuntimeException::class, 'reason' => $reason, 'stage' => $stage]
+            \Mockery::on(fn ($context) => count($context) === 4 && \Illuminate\Support\Str::isUuid($context['reference_id'])
+                && $context['exception_type'] === \RuntimeException::class && $context['reason'] === $reason && $context['stage'] === $stage)
         );
         $this->assertSame($saved, DB::table('player_ability_snapshots')->value('payload'));
         $this->assertDatabaseCount('player_ability_snapshots', 1);

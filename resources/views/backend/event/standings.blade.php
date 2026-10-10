@@ -2,8 +2,11 @@
 @section('title', 'Standings – '.$event->name)
 @section('content')
 <div data-backend-wide>
-  @include('backend.event.partials.header', ['eventWorkspaceSubtitle' => 'Event standings and competition statistics'])
-  <div class="d-flex flex-wrap justify-content-between gap-2 mb-3"><h1 class="h4 mb-0">Standings &amp; statistics</h1><a class="btn btn-outline-primary" href="{{ route('backend.scoreboard.team.show', $event) }}">View match results</a></div>
+  @include('backend.event.partials.header', ['eventWorkspaceSubtitle' => 'Event standings and competition statistics', 'eventWorkspaceRegionalOnly' => $regionalOnly ?? false, 'eventWorkspaceHomeUrl' => ($regionalOnly ?? false) ? route('backend.team-selection.index', $event) : route('admin.events.overview', $event)])
+  <div class="d-flex flex-wrap justify-content-between gap-2 mb-3"><h1 class="h4 mb-0">Standings &amp; statistics</h1>@unless($regionalOnly ?? false)<a class="btn btn-outline-primary" href="{{ route('backend.scoreboard.team.show', $event) }}">View match results</a>@endunless</div>
+  @if($regionalOnly ?? false)
+    <p class="alert alert-info">These running standings show published draws and matches across the event. Draft results are excluded.</p>
+  @else
   <section class="card card-body mb-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
       <div><h2 class="h5 mb-1">Public team standings</h2><span class="badge bg-label-{{ $event->standings_published ? 'success' : 'secondary' }}">{{ $event->standings_published ? 'Published' : 'Unpublished' }}</span></div>
@@ -18,6 +21,7 @@
     </div>
     <p class="small text-muted mb-0 mt-3">Publishing shows Team standings and match totals on the public event page and enables public draw standings. Only published draws and ties contribute. These are current running standings, not final tournament placings. Event, draw, schedule and final results publication remain separate.</p>
   </section>
+  @endif
   <section class="card card-body mb-4" aria-label="Combined age group results">
     <h2 class="h5">Combined results by age group</h2>
     <p>Choose an age group to combine boys, girls, mixed and every match type. This clears the gender and category filters.</p>

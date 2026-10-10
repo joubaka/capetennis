@@ -38,10 +38,16 @@ class EventStandingsController extends Controller
 
     public function show(Request $request, Event $event, EventStandingsService $service)
     {
-        $this->authorize('event-draw.view', $event);
+        $this->authorize('event-standings.view', $event);
         abort_unless($event->isTeam(), 404);
         $filters = $request->validate(['gender' => 'nullable|string|max:50', 'age' => 'nullable|string|max:50', 'category' => 'nullable|string|max:255']);
 
-        return view('backend.event.standings', ['event' => $event] + $service->forEvent($event, $filters));
+        $regionalOnly = !$request->user()->can('event-draw.view', $event);
+        $data = $regionalOnly
+            ? $service->forRegionalConvener($event, $request->user(), $filters)
+            : $service->forEvent($event, $filters);
+
+        return response()->view('backend.event.standings', ['event' => $event, 'regionalOnly' => $regionalOnly] + $data)
+            ->header('Cache-Control', 'no-store, private');
     }
 }

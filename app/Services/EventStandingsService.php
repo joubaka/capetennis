@@ -12,6 +12,19 @@ final class EventStandingsService
     public function forEvent(Event $event, array $filters = [], bool $publishedOnly = false, ?int $drawId = null): array
     {
         abort_if($publishedOnly && !$event->standings_published, 404);
+        return $this->calculate($event, $filters, $publishedOnly, $drawId);
+    }
+
+    /** Private operational access uses published results without publishing standings. */
+    public function forRegionalConvener(Event $event, \App\Models\User $actor, array $filters = []): array
+    {
+        \Illuminate\Support\Facades\Gate::forUser($actor)->authorize('event-standings.view', $event);
+        abort_unless($event->isTeam(), 404);
+        return $this->calculate($event, $filters, true);
+    }
+
+    private function calculate(Event $event, array $filters, bool $publishedOnly, ?int $drawId = null): array
+    {
         $teams = Team::query()->without(['team_players', 'team_players_no_profile'])
             ->whereHas('category', fn ($query) => $query->where('event_id', $event->id))
             ->with('regions')->get()->keyBy('id');

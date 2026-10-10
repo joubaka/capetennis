@@ -92,6 +92,15 @@ class AuthServiceProvider extends ServiceProvider
             return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
         });
 
+        Gate::define('event-standings.view', function ($user, \App\Models\Event $event) {
+            if ($user->can('event-draw.view', $event)) return true;
+            if (!$event->isTeam()) return false;
+
+            $access = app(\App\Services\TeamSelection\RegionManagerAccessService::class);
+            return \App\Models\EventRegion::query()->where('event_id', $event->id)->with('events')->get()
+                ->contains(fn ($region) => $access->canManage($user, $region));
+        });
+
         Gate::define('region-clothing.manage', function ($user, \App\Models\TeamRegion $region) {
             return \App\Models\EventRegion::query()
                 ->with('events')
