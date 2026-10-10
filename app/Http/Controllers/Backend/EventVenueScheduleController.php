@@ -237,6 +237,10 @@ final class EventVenueScheduleController extends Controller
         \App\Services\Scheduling\SchedulePublicationService $publication)
     {
         $this->authorize('event.manage', $event);
+        if ($request->isMethod('post')) {
+            $request->merge(['bands' => $request->input('bands', [])]);
+            if ($request->boolean('court_labels_present')) $request->merge(['court_labels' => $request->input('court_labels', [])]);
+        }
         $data = $request->validate([
             'date' => ['required', 'date_format:Y-m-d'], 'draw_id' => ['required', 'integer'],
             'venue_ids' => ['sometimes', 'required', 'array', 'min:1', 'max:100'],
@@ -246,6 +250,13 @@ final class EventVenueScheduleController extends Controller
             'player_rest' => ['sometimes', 'required', 'integer', 'min:0', 'max:480'],
             'court_gap' => ['sometimes', 'required', 'integer', 'min:0', 'max:120'],
             'action' => ['sometimes', 'in:preview,save'], 'revision' => ['nullable', 'string', 'size:64'],
+            'court_labels' => ['sometimes', 'array', 'max:100'], 'court_labels.*' => ['array', 'max:100'],
+            'court_labels.*.*' => ['required', 'string', 'max:50'],
+            'court_labels_present' => ['sometimes', 'boolean'],
+            'bands' => ['sometimes', 'array', 'max:50'], 'bands.*.min_rank' => ['required', 'integer', 'min:1', 'max:100'],
+            'bands.*.max_rank' => ['required', 'integer', 'min:1', 'max:100'], 'bands.*.venue_id' => ['required', 'integer'],
+            'cross_band_policy' => ['sometimes', 'in:highest_ranked,manual'],
+
         ]);
         $draw = $event->draws()->findOrFail($data['draw_id']);
         $rows = $publication->workingRows($event)->filter(fn ($row) => (int) $row['draw_id'] === $draw->id
@@ -254,18 +265,71 @@ final class EventVenueScheduleController extends Controller
         $stored = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true) ?: [];
         $age = app(\App\Services\Scheduling\ScheduleProgramme::class)->age($draw);
         $settings = $stored['programme_settings'][(string) $age] ?? $stored;
-        $values = array_replace(['venue_ids' => $rows->pluck('venue_id')->unique()->all(), 'start_time' => $rows->isNotEmpty() ? substr($rows->min('scheduled_at'), 11, 5) : '08:00',
+        $courtOptions = $scheduler->dayCourtLabels($event, $draw);
+        $defaultCourts = [];
+        $dayRounds = $rows->pluck('round_nr')->filter()->unique();
+        $roundSetups = collect($stored['round_venue_setups'] ?? [])->filter(fn ($row) => (int) $row['draw_id'] === $draw->id && $dayRounds->contains((int) $row['round']));
+        $selectedVenues = $rows->pluck('venue_id')->unique()->all();
+        foreach ($courtOptions as $venueId => $labels) {
+            $allocated = $roundSetups->flatMap(fn ($setup) => collect($setup['court_allocations'] ?? [])->where('venue_id', $venueId)->flatMap(fn ($allocation) => $allocation['court_labels']))
+                ->merge($rows->where('venue_id', $venueId)->pluck('court'))->map(fn ($label) => (string) $label)->unique()->all();
+            if (! $roundSetups->count()) {
+                $allocated = DB::table('draw_venue_court_allocations')->where('draw_id', $draw->id)->where('venue_id', $venueId)->pluck('court_label')->map(fn ($label) => (string) $label)->merge($allocated)->unique()->all();
+            }
+            $defaultCourts[$venueId] = array_values(array_intersect($labels, $allocated)) ?: $labels;
+        }
+        $bandDefaults = [];
+        $bandNotice = null;
+        if ($draw->isTeamDraw()) {
+            $candidateRules = $dayRounds->map(function ($round) use ($roundSetups, $stored, $draw) {
+                $setup = $roundSetups->firstWhere('round', $round);
+                return $setup['rank_venue_preferences'] ?? app(\App\Services\Scheduling\RankVenuePreferences::class)->active($stored['rank_venue_preferences'] ?? [], [$draw->id]);
+            });
+            if ($candidateRules->map(fn ($rules) => json_encode($rules))->unique()->count() > 1) {
+                $bandNotice = 'Saved rounds on this day use different position bands. Choose the bands you want for this day.';
+            } else {
+                $bandDefaults = $candidateRules->first() ?? [];
+                if (collect($bandDefaults)->contains(fn ($rule) => ! in_array((int) $rule['venue_id'], $selectedVenues, true))) {
+                    $bandDefaults = [];
+                    $bandNotice = 'Saved band venues differ from the current venues for this day. Choose bands for the destinations below.';
+                }
+            }
+        }
+
+        $dayAudit = DrawAuditLog::where('draw_id', $draw->id)->where('action', 'event_venue_schedule_applied')
+            ->where('payload->event_id', $event->id)->where('payload->day_scope', $data['date'])->latest('id')->first();
+        $savedDay = $dayAudit?->payload['day_options'] ?? null;
+        if ($savedDay) {
+            $savedVenues = array_map('intval', $savedDay['venue_ids'] ?? []);
+            $valid = $savedVenues && ! array_diff($savedVenues, $venues->pluck('id')->all());
+            foreach ($savedDay['day_court_labels'] ?? [] as $venueId => $labels) {
+                if (! $labels || array_diff($labels, $courtOptions[$venueId] ?? [])) $valid = false;
+            }
+            if ($valid) {
+                $selectedVenues = $savedVenues;
+                $defaultCourts = array_replace($defaultCourts, $savedDay['day_court_labels'] ?? []);
+                $bandDefaults = $savedDay['rank_venue_preferences'] ?? [];
+                $bandNotice = 'Position bands and courts are loaded from the last saved edit for this draw and day.';
+            } else {
+                $bandNotice = 'The last saved day options include venues or courts that are no longer available. Review the current choices.';
+            }
+        }
+        $values = array_replace(['venue_ids' => $selectedVenues, 'start_time' => $rows->isNotEmpty() ? substr($rows->min('scheduled_at'), 11, 5) : '08:00',
             'end_time' => '18:00', 'duration' => $settings['duration'] ?? 75,
-            'player_rest' => $settings['player_rest'] ?? 60, 'court_gap' => $settings['court_gap'] ?? 5], $data);
+            'player_rest' => $settings['player_rest'] ?? 60, 'court_gap' => $settings['court_gap'] ?? 5, 'court_labels' => $defaultCourts,
+            'bands' => $bandDefaults, 'cross_band_policy' => $savedDay['cross_band_policy'] ?? $stored['cross_band_policy'] ?? 'highest_ranked'], $data);
         $preview = null;
         if ($request->isMethod('post')) {
+            $values['bands'] = $data['bands'] ?? [];
             $request->validate(['venue_ids' => ['required'], 'start_time' => ['required'], 'end_time' => ['required'],
                 'duration' => ['required'], 'player_rest' => ['required'], 'court_gap' => ['required'], 'action' => ['required']]);
             if (array_diff($values['venue_ids'], $venues->pluck('id')->all())) abort(422, 'Choose venues in this event.');
             $options = ['day_scope' => $data['date'], 'draw_ids' => [$draw->id], 'venue_ids' => $values['venue_ids'],
                 'start' => $data['date'].' '.$values['start_time'], 'end' => $data['date'].' '.$values['end_time'],
                 'duration' => $values['duration'], 'wave_minutes' => 0, 'player_rest' => $values['player_rest'],
-                'court_gap' => $values['court_gap'], 'allow_partial' => false, 'rank_venue_preferences' => []];
+                'court_gap' => $values['court_gap'], 'allow_partial' => false,
+                'rank_venue_preferences' => $values['bands'], 'cross_band_policy' => $values['cross_band_policy']];
+            if ($request->has('court_labels') || $request->boolean('court_labels_present')) $options['day_court_labels'] = $data['court_labels'] ?? [];
             try {
                 if ($data['action'] === 'save') {
                     $request->validate(['revision' => ['required', 'string', 'size:64']]);
@@ -279,7 +343,7 @@ final class EventVenueScheduleController extends Controller
                     ->withInput()->withErrors(['schedule' => $exception->getMessage()]);
             }
         }
-        return response()->view('backend.schedule.edit-draw-day', compact('event', 'draw', 'data', 'rows', 'venues', 'values', 'preview'))
+        return response()->view('backend.schedule.edit-draw-day', compact('event', 'draw', 'data', 'rows', 'venues', 'values', 'preview', 'courtOptions', 'bandNotice'))
             ->header('Cache-Control', 'no-store, private');
     }
 

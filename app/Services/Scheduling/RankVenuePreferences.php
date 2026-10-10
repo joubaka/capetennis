@@ -10,6 +10,20 @@ final class RankVenuePreferences
 {
     public function normalize(Event $event, array $rules): array
     {
+        return $this->normalizeRules($event, $rules);
+    }
+
+    public function normalizeDay(Event $event, \App\Models\Draw $draw, array $rules, array $venueIds): array
+    {
+        if ((int) $draw->event_id !== (int) $event->id) throw new \InvalidArgumentException('The selected draw must belong to this event.');
+        $allowed = $event->venues()->pluck('venues.id')->merge($draw->venues()->pluck('venues.id'))->unique()->all();
+        if (array_diff($venueIds, $allowed)) throw new \InvalidArgumentException('Choose venues in this event.');
+        $rules = array_map(fn ($rule) => array_replace($rule, ['draw_ids' => [(int) $draw->id]]), $rules);
+        return $this->normalizeRules($event, $rules, [(int) $draw->id => array_map('intval', $venueIds)]);
+    }
+
+    private function normalizeRules(Event $event, array $rules, array $dayVenues = []): array
+    {
         if (count($rules) > 50) throw new \InvalidArgumentException('Use at most 50 roster rank bands.');
         $ids = collect($rules)->flatMap(fn ($rule) => $rule['draw_ids'] ?? [])->map(fn ($id) => (int) $id)->unique();
         $draws = $event->draws()->with('venues')->whereIn('id', $ids)->get()->keyBy('id');
@@ -26,7 +40,11 @@ final class RankVenuePreferences
             foreach ($drawIds as $id) {
                 $draw = $draws[$id];
                 if (! $draw->isTeamDraw()) throw new \InvalidArgumentException('Roster rank preferences apply to team draws only.');
-                if (! $draw->venues->contains('id', $venue)) throw new \InvalidArgumentException('A rank preference venue must be assigned to every selected draw.');
+                if (isset($dayVenues[$id])) {
+                    if (! in_array($venue, $dayVenues[$id], true)) throw new \InvalidArgumentException('Choose a selected destination venue for each position band on this day.');
+                } elseif (! $draw->venues->contains('id', $venue)) {
+                    throw new \InvalidArgumentException('A rank preference venue must be assigned to every selected draw.');
+                }
                 foreach ($used[$id] ?? [] as [$lower, $upper]) {
                     if ($min <= $upper && $max >= $lower) throw new \InvalidArgumentException('Roster rank bands cannot overlap within a draw.');
                 }

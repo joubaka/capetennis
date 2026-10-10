@@ -97,6 +97,19 @@ final class EventVenueScheduleService
         }
         $venues = Venue::whereIn('id', $venueIds)->orderBy('name')->get()->keyBy('id');
         $courtLabels = $this->courtLabels($event, $draws, $venues);
+        if ($dayScope && isset($options['day_court_labels'])) {
+            $selectedCourts = $options['day_court_labels'];
+            if (array_diff(array_keys($selectedCourts), $venueIds->all()) || array_diff($venueIds->all(), array_keys($selectedCourts))) {
+                throw new \InvalidArgumentException('Choose courts for every selected day venue only.');
+            }
+            foreach ($courtLabels as $venueId => $active) {
+                $labels = array_values(array_unique(array_map('strval', $selectedCourts[$venueId] ?? [])));
+                if (count($labels) !== count($selectedCourts[$venueId] ?? [])) throw new \InvalidArgumentException('Choose each physical court once within its venue.');
+                if (! $labels || array_diff($labels, $active)) throw new \InvalidArgumentException('Choose active physical courts for this day.');
+                $courtLabels[$venueId] = array_values(array_intersect($active, $labels));
+            }
+        }
+
         $allocations = DB::table('draw_venue_court_allocations')->whereIn('draw_id', $draws->pluck('id'))
             ->get()->groupBy(fn ($row) => $row->draw_id.'|'.$row->venue_id);
 
@@ -105,7 +118,9 @@ final class EventVenueScheduleService
         $rankRuleWarnings = [];
         $rankRules = [];
         if (array_key_exists('rank_venue_preferences', $options)) {
-            $rankRules = $preferenceService->normalize($event, $options['rank_venue_preferences']);
+            $rankRules = $dayScope
+                ? $preferenceService->normalizeDay($event, $draws->first(), $options['rank_venue_preferences'], $venueIds->all())
+                : $preferenceService->normalize($event, $options['rank_venue_preferences']);
         } else {
             foreach ($preferenceService->active($storedDraft['rank_venue_preferences'] ?? [], $draws->pluck('id')->all()) as $rule) {
                 try { $rankRules = array_merge($rankRules, $preferenceService->normalize($event, [$rule])); }
@@ -175,12 +190,11 @@ final class EventVenueScheduleService
         foreach ($nodes as &$node) {
             $node['rank_preference'] = $rankChoices[$node['fixture']->id] ?? null;
             $roundSetup = $roundSetups[$node['draw_id'].'|'.$node['round']] ?? null;
-            if ($roundSetup && ($node['fixture_kind'] ?? '') === 'team') {
+            if ($roundSetup && ! ($dayScope && $node['selected_round']) && ($node['fixture_kind'] ?? '') === 'team') {
                 $node['rank_preference'] = $preferenceService->choices(collect([$node['fixture']]), $roundSetup['rank_venue_preferences'], $crossBandPolicy)[$node['fixture']->id] ?? null;
             }
             if (($node['fixture_kind'] ?? '') !== 'team') $node['rank_preference'] = null;
             else $rankChoices[$node['fixture']->id] = $node['rank_preference'];
-            if ($dayScope && $node['selected_round']) $node['rank_preference'] = null;
             $rankVenue = $node['rank_preference']['venue_id'] ?? null;
             if ($rankVenue && ! $node['fixed'] && ! $node['played']) {
                 $node['venue_courts'] = array_intersect_key($node['venue_courts'], [$rankVenue => true]);
@@ -561,7 +575,7 @@ final class EventVenueScheduleService
             'gender_waves' => $genderWaves,
             'gender_wave_release' => $genderRelease,
             'draw_rounds' => $drawRounds,
-            'programme' => $programme, 'day_scope' => $dayScope,
+            'programme' => $programme, 'day_scope' => $dayScope, 'day_court_labels' => $dayScope ? $courtLabels : null,
             'tie_allocation' => $tieAllocation,
             'draw_starts' => $drawStarts->map(fn ($time, $drawId) => ['draw_id' => (int) $drawId,
                 'start' => $time->format('Y-m-d H:i:s')])->values()->all(),
@@ -689,6 +703,10 @@ final class EventVenueScheduleService
                     'event_id' => $event->id, 'matches' => $rows->count(), 'revision' => $expectedRevision,
                     'venue_ids' => $rows->pluck('venue_id')->unique()->values()->all(),
                     'partial' => (bool) $applyVenueIds, 'day_scope' => $options['day_scope'] ?? null, 'assignments' => $auditAssignments[$drawId] ?? [],
+                    'day_options' => ! empty($options['day_scope']) ? array_intersect_key($preview['input'], array_flip([
+                        'venue_ids', 'day_court_labels', 'rank_venue_preferences', 'cross_band_policy',
+                    ])) : null,
+
                 ]);
             }
             if (! empty($options['programme'])) {
@@ -1079,6 +1097,13 @@ final class EventVenueScheduleService
             if (isset($nodes[$dependency])) $wave = max($wave, $this->wave($dependency, $nodes, $visiting) + 1);
         }
         return $nodes[$id]['calculated_wave'] = $wave;
+    }
+
+    public function dayCourtLabels(Event $event, Draw $draw): array
+    {
+        if ((int) $draw->event_id !== (int) $event->id) throw new \InvalidArgumentException('Choose a draw in this event.');
+        $venues = $event->venues()->get()->concat($draw->venues()->get())->unique('id')->keyBy('id');
+        return $this->courtLabels($event, collect([$draw->loadMissing('venues')]), $venues);
     }
 
     private function courtLabels(Event $event, Collection $draws, Collection $venues): array
