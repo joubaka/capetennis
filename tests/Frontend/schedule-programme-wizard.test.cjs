@@ -41,7 +41,7 @@ function harness(id, fail = false) {
     buildPayload:() => ({start:'single-day start', ...(context.programmePayload || {})}),
     post:() => new Promise((resolve, reject) => { complete = () => fail ? reject(new Error('Preview failed')) : resolve({matches:[],unscheduled:[]}); }),
     saveAllocationsAndTiming:() => new Promise(resolve => { complete = () => resolve(!fail); }),
-    refreshProgrammeStageSummaries:() => {}, render:() => {}, showWorkflowStep:() => {}, invalidatePreview:() => {}, updateCourtSummary:() => {}, updateDrawSummary:() => {},
+    updateProgrammeDayLabels:() => {}, programmeDayLabel:day => `Day ${day}`, refreshProgrammeStageSummaries:() => {}, render:() => {}, showWorkflowStep:() => {}, invalidatePreview:() => {}, updateCourtSummary:() => {}, updateDrawSummary:() => {},
     setStatus:() => {}, startScheduleActivity:() => {}, stopScheduleActivity:() => {}, finishScheduleActivity:() => {}, previewActivityStages:[],
     markAllocationsDirty:() => { context.allocationsDirty = true; }
   };
@@ -102,7 +102,7 @@ test('real programme payload honors rescheduling and limits venue selection to i
       return [{value:'99'}];
     }}
   };
-  vm.runInNewContext(source.slice(start,end)+'; globalThis.actualPayload = buildPayload;',context);
+  vm.runInNewContext(source.slice(start,end).replace(/    @if\(\$planningDate\)[\s\S]*?  \}\);/, '  });')+'; globalThis.actualPayload = buildPayload;',context);
   assert.deepEqual(Array.from(context.actualPayload().replan_venue_ids),[4,5,6]);
   assert.deepEqual(Array.from(context.actualPayload().draw_ids),[2,3]);
   checkbox.checked=false;

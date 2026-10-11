@@ -46,6 +46,85 @@ class UniversalEventCommunicationsTest extends TestCase
         return $overrides + ['scope' => 'all', 'filter' => 'all', 'recipients' => 'players'];
     }
 
+    public function test_wrap_up_is_editable_published_event_scoped_and_requires_fresh_approval(): void
+    {
+        [$event, $actor] = $this->event();
+        [$other] = $this->event();
+        $event->update(['results_published' => true]);
+        $parent = User::factory()->create(['email' => 'parent@example.test']);
+        $player = Player::factory()->create(['email' => 'player@example.test', 'userId' => $parent->id]);
+        $entry = $this->entry($event, $player, ['payment_status_id' => 1]);
+        $foreign = Player::factory()->create(['email' => 'foreign@example.test', 'userId' => null]);
+        $foreignEntry = $this->entry($other, $foreign, ['payment_status_id' => 1]);
+        foreach ([$entry, $foreignEntry] as $row) {
+            \App\Models\CategoryResult::create(['event_id' => $row->categoryEvent->event_id, 'category_id' => $row->categoryEvent->category_id, 'registration_id' => $row->registration_id, 'position' => 1]);
+        }
+        $url = route('backend.event-communications.index', ['event' => $event, 'wrap_up' => 1]);
+        $this->actingAs($actor)->get($url)->assertOk()->assertSee('Thank you for a wonderful weekend')->assertSee('Published final results')->assertSee($player->full_name)->assertDontSee($foreign->full_name);
+        $draft = app(\App\Services\EventWrapUpMessage::class)->draft($event);
+        $options = $this->audienceOptions(['scope' => 'registrations', 'filter' => 'paid', 'wrap_up' => true, 'results_fingerprint' => $draft['results_fingerprint']]);
+        $this->post(route('backend.event-communications.preview', $event), $options + ['subject' => 'Our thanks', 'body' => 'Custom thank you'])->assertOk()->assertSee('Custom thank you');
+        $batch = EventCommunicationBatch::sole();
+        $this->assertSame(['parent@example.test', 'player@example.test'], array_column($batch->recipients, 'email'));
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        $this->get(route('backend.event-communications.index', ['event' => $event, 'wrap_up' => 1, 'edit_batch' => $batch->id]))->assertOk()->assertSee('Custom thank you')->assertSee($draft['results_fingerprint']);
+        $event->update(['results_published' => false]);
+        $this->post(route('backend.event-communications.send', $event), ['token' => $batch->token, 'confirm_send' => 1])->assertSessionHasErrors('preview');
+        $this->from($url)->post(route('backend.event-communications.preview', $event), $options + ['subject' => 'Old result', 'body' => 'Old private result'])->assertSessionHasErrors('preview');
+        $this->get($url)->assertOk()->assertSee($draft['results_fingerprint'])->assertSee('Old private result');
+        $this->get(route('backend.event-communications.index', ['event' => $event, 'wrap_up' => 1, 'rebuild_wrap_up' => 1]))->assertOk()->assertDontSee('Old private result');
+        $this->get($url)->assertOk()->assertSee('No published results summary')->assertDontSee('Published final results');
+        $this->actingAs(User::factory()->create())->get($url)->assertForbidden();
+        Mail::assertNothingSent();
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+    }
+
+    public function test_wrap_up_queued_delivery_and_retry_reject_unpublished_results(): void
+    {
+        [$event, $actor] = $this->event();
+        $event->update(['results_published' => true]);
+        $this->entry($event, Player::factory()->create(['email' => 'player@example.test', 'userId' => null]), ['payment_status_id' => 1]);
+        $service = app(EventCommunicationService::class);
+        $options = $this->audienceOptions(['scope' => 'registrations', 'filter' => 'paid', 'wrap_up' => true, 'results_fingerprint' => app(\App\Services\EventWrapUpMessage::class)->fingerprint($event)]);
+        $batch = $service->preview($event, $actor, $options, 'Thank you', 'Thank you');
+        $this->assertSame(1, $service->approve($batch, $actor, false)['queued']);
+        $this->assertTrue($service->approve($batch, $actor, false)['duplicate']);
+        $log = BulkEmailLog::sole();
+        $log->update(['status' => 'failed']);
+        $retry = $service->previewRetry($event, $log->fresh(), $actor);
+        $service->approve($retry, $actor, false);
+        $log->refresh()->update(['status' => 'failed']);
+        $secondRetry = $service->previewRetry($event, $log->fresh(), $actor);
+        $service->approve($secondRetry, $actor, false);
+        $log->refresh()->update(['status' => 'failed']);
+        $secondRetry->update(['options' => ['source' => 'email_log_retry', 'log_id' => $log->id]]);
+        $this->actingAs($actor)->get(route('backend.event-mail-log.retry-preview', [$event, $log]))->assertOk();
+        $event->update(['results_published' => false]);
+        $this->post(route('backend.event-mail-log.retry', [$event, $log]), ['confirmed' => 1])->assertSessionHasErrors('preview');
+        $log->refresh()->update(['status' => 'queued']);
+        (new \App\Jobs\SendBulkEmailJob($log->id, true))->handle();
+        $this->assertSame('failed', $log->fresh()->status);
+        $this->actingAs($actor)->post(route('backend.event-communications.retry-preview', [$event, $log]))->assertSessionHasErrors('preview');
+        $this->get(route('backend.event-mail-log.retry-preview', [$event, $log]))->assertSessionHasErrors('preview');
+        Mail::assertNothingSent();
+        $this->assertDatabaseCount('bulk_email_logs', 1);
+    }
+
+    public function test_trials_wrap_up_excludes_unregistered_nominees_and_pending_checkout(): void
+    {
+        [$event, $actor] = $this->event(1, 'interprovincial-trials');
+        $paid = Player::factory()->create(['email' => 'paid@example.test', 'userId' => null]);
+        $entry = $this->entry($event, $paid, ['payment_status_id' => 1]);
+        $pending = Player::factory()->create(['email' => 'pending@example.test', 'userId' => null]);
+        $this->entry($event, $pending, ['payment_status_id' => 1, 'status' => 'pending_checkout']);
+        foreach ([$paid, $pending, Player::factory()->create(['email' => 'nominee@example.test', 'userId' => null])] as $player) {
+            EventNomination::create(['event_id' => $event->id, 'category_event_id' => $entry->category_event_id, 'player_id' => $player->id]);
+        }
+        $options = $this->audienceOptions(['wrap_up' => true, 'results_fingerprint' => app(\App\Services\EventWrapUpMessage::class)->fingerprint($event)]);
+        $plan = app(EventCommunicationService::class)->plan($event, $actor, $options, 'Thanks', 'Thanks');
+        $this->assertSame(['paid@example.test'], array_column($plan['recipients'], 'email'));
+    }
+
     public function test_inline_individual_search_is_authorized_and_event_scoped(): void
     {
         [$event, $actor] = $this->event();

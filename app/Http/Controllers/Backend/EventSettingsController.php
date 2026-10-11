@@ -37,6 +37,7 @@ class EventSettingsController extends Controller
     );
     $selectedUserIds = $event->admins()->pluck('users.id')
       ->merge($assignments->pluck('user_id'))
+      ->merge(DB::table('event_age_group_conveners')->where('event_id', $event->id)->pluck('user_id'))
       ->unique();
     $users = User::with('roles')
       ->whereIn('id', $selectedUserIds)
@@ -56,6 +57,8 @@ class EventSettingsController extends Controller
       'scoringAccounts' => $scoringAccounts,
       'scoringUsers' => $scoringUsers,
       'scoringVenues' => $scoringVenues,
+      'convenerAges' => app(\App\Services\AgeGroupConvenerStandingsService::class)->ages($event),
+      'ageGroupConveners' => DB::table('event_age_group_conveners')->where('event_id', $event->id)->pluck('user_id', 'age_group'),
     ]);
   }
 
@@ -110,6 +113,8 @@ class EventSettingsController extends Controller
       'admins.*' => 'integer|exists:users,id',
       'convenors' => 'sometimes|array',
       'convenors.*' => 'integer|exists:users,id',
+      'age_group_conveners' => 'sometimes|array',
+      'age_group_conveners.*' => 'nullable|integer|exists:users,id',
       'convenor_starts_at' => 'sometimes|nullable|date',
       'convenor_expires_at' => 'sometimes|nullable|date|after:convenor_starts_at',
       'scoring_accounts' => 'sometimes|array',
@@ -129,6 +134,13 @@ class EventSettingsController extends Controller
       'scoring_starts_at' => 'sometimes|nullable|date',
       'scoring_expires_at' => 'sometimes|nullable|date|after:scoring_starts_at',
     ]);
+
+    if (array_key_exists('age_group_conveners', $data)) {
+      $allowedAges = app(\App\Services\AgeGroupConvenerStandingsService::class)->ages($event);
+      if (!$event->isTeam() || array_diff(array_keys($data['age_group_conveners']), $allowedAges)) {
+        throw ValidationException::withMessages(['age_group_conveners' => 'Choose an age group belonging to this team event.']);
+      }
+    }
 
     $scoringIds = collect($data['scoring_accounts'] ?? [])->map(fn ($id) => (int) $id);
     $scoringVenueAssignments = collect($data['scoring_venues'] ?? [])
@@ -273,6 +285,7 @@ class EventSettingsController extends Controller
         'scoring_accounts', 'scoring_venues', 'scoring_starts_at', 'scoring_expires_at',
         'logo_upload', 'logo_existing',
         'registration_open', 'applications_open',
+        'age_group_conveners',
       ])
       ->toArray();
 
@@ -311,6 +324,17 @@ class EventSettingsController extends Controller
       }
 
       $event->update($updateData);
+      foreach ($request->input('age_group_conveners', []) as $age => $userId) {
+        $assignment = DB::table('event_age_group_conveners')->where('event_id', $event->id)->where('age_group', $age);
+        if ($userId === null) {
+          $assignment->delete();
+        } else {
+          DB::table('event_age_group_conveners')->updateOrInsert(
+            ['event_id' => $event->id, 'age_group' => $age],
+            ['user_id' => (int) $userId, 'created_at' => now(), 'updated_at' => now()]
+          );
+        }
+      }
       if ($request->has('result_notifications_enabled') && ! $request->boolean('result_notifications_enabled')) {
         app(\App\Services\MatchResultNotificationService::class)->invalidateEvent($event);
       }

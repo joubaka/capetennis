@@ -85,6 +85,27 @@
 
 <div class="row g-4">
 
+@if($event->isTeam())
+<div class="col-12"><section class="card settings-card"><div class="card-body">
+  <h5>Main conveners by age group</h5>
+  <p class="text-muted">Assign one account per age group. They can view that age group's standings after every match in the group has been processed.</p>
+  <div class="row g-3">
+  @forelse($convenerAges as $age)
+    <div class="col-md-6">
+      <label class="form-label" for="age-convener-{{ $age }}">{{ $age }} main convener</label>
+      <select id="age-convener-{{ $age }}" class="form-select age-convener-select" data-age="{{ $age }}">
+        <option value="">No convener assigned</option>
+        @if($account = $users->firstWhere('id', $ageGroupConveners[$age] ?? null))
+          <option value="{{ $account->id }}" selected>{{ $account->name }} ({{ $account->email }})</option>
+        @endif
+      </select>
+    </div>
+  @empty
+    <p class="mb-0">Create age-group draws to assign main conveners.</p>
+  @endforelse
+  </div>
+</div></section></div>
+@endif
 {{-- BASICS --}}
 <div class="col-12">
   <div class="card settings-card" id="settings-basics">
@@ -624,6 +645,12 @@ $(function () {
       });
 
       payload.admins = $('.select2-admins').val() || [];
+      if ($('.age-convener-select').length) {
+        payload.age_group_conveners = {};
+        $('.age-convener-select').each(function () {
+          payload.age_group_conveners[$(this).data('age')] = $(this).val() || null;
+        });
+      }
       payload.convenors = $('.select2-convenors').val() || [];
       payload.scoring_accounts = $('.select2-scoring-accounts').val() || [];
       payload.scoring_venues = {};
@@ -727,6 +754,15 @@ $(function () {
     event.preventDefault();
     autosave();
   });
+
+  $('.age-convener-select').select2({
+    width: '100%', allowClear: true, placeholder: 'No convener assigned',
+    ajax: {
+      url: userSearchUrl, dataType: 'json', delay: 250,
+      data: params => ({ q: params.term || '', scope: 'management' }),
+      processResults: data => ({ results: data.results || [] })
+    }
+  }).on('change', autosave);
 
   $('.select2-admins').select2({
     width: '100%',

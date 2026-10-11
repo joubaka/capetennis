@@ -195,8 +195,13 @@
     <div class="workspace-header">
       <div class="text-uppercase text-primary fw-semibold small">Event schedule workspace</div>
       <h3 class="mb-1">{{ $event->name }}</h3>
-      <p class="text-muted mb-0">Schedule every assigned draw / category in three clear steps: assign courts, set the timing, then review.</p>
-      <p class="text-muted small mt-2 mb-0">Choose any combination of draws across all age groups in this event. Team and individual matches share the same court calendar.</p>
+      @if(!$planningDate && $draws->where('is_team', true)->whereNotNull('programme_age')->isNotEmpty())
+        <p class="text-muted mb-0">Choose an age group, arrange its rounds by day, then preview and save the complete schedule.</p>
+        <p class="text-muted small mt-2 mb-0">Your saved days, venue bands and courts load for the selected age group. Review and publish the saved schedule when ready.</p>
+      @else
+        <p class="text-muted mb-0">Assign courts, set the timing, then review and save the schedule.</p>
+        <p class="text-muted small mt-2 mb-0">Choose any combination of draws across all age groups in this event. Team and individual matches share the same court calendar.</p>
+      @endif
     </div>
     <div class="d-flex flex-wrap gap-2 workspace-actions">
       @if($draws->isNotEmpty())
@@ -326,42 +331,51 @@
         </div>
       </div>
 
-  <details class="workspace-section mb-3" id="programme-wizard" @if($planningDate) hidden @endif>
-    <summary><span class="section-title"><h5>Three-day age-group auto schedule</h5><small class="text-muted">Create one complete preview using the Platinum programme.</small></span></summary>
+  <details class="workspace-section mb-3" id="programme-wizard" open @if($planningDate || $draws->where('is_team', true)->whereNotNull('programme_age')->isEmpty()) hidden @endif>
+    <summary><span class="section-title"><h5>Schedule an age group</h5><small class="text-muted">1. Choose age group · 2. Arrange days and venues · 3. Preview and save</small></span></summary>
     <div class="section-body">
       <p class="small text-muted">Three-day auto scheduling places players from different venue bands at the highest-ranked player's venue. Venue moves are flagged for review.</p>
       <label class="form-label" for="programme-age">Age group</label>
       <select id="programme-age" class="form-select mb-3"><option value="">Choose age group</option>@foreach($draws->where('is_team', true)->pluck('programme_age')->filter()->unique()->sort() as $age)<option value="{{ $age }}">Under {{ $age }}</option>@endforeach</select>
-      <p class="small">Day 1: singles rounds 1–3, reverse singles round 1. Day 2: reverse singles rounds 2–3 and all doubles. Day 3: all mixed doubles. Adjust each round's day and order below. Choose the boys/girls order independently for each day. Sections follow their allocated start order; available courts can serve the next section while earlier matches finish, subject to draw progression and player rest.</p>
-      <div class="row g-3 mb-3">@foreach(range(0,2) as $day)<div class="col-md-4"><strong>Day {{ $day + 1 }}</strong><label class="form-label d-block mt-2" for="programme-start-{{ $day }}">Starts</label><input id="programme-start-{{ $day }}" class="form-control programme-time" type="datetime-local" value="{{ $event->start_date ? \Carbon\Carbon::parse($event->start_date)->addDays($day)->format('Y-m-d').'T08:00' : '' }}"><label class="form-label d-block mt-2" for="programme-end-{{ $day }}">Finishes</label><input id="programme-end-{{ $day }}" class="form-control programme-time" type="datetime-local" value="{{ $event->start_date ? \Carbon\Carbon::parse($event->start_date)->addDays($day)->format('Y-m-d').'T18:00' : '' }}"><label class="form-label d-block mt-2" for="programme-gender-{{ $day }}">Order within each round</label><select id="programme-gender-{{ $day }}" class="form-select programme-gender-day"><option value="boys_then_girls" @selected($scheduleDraft['gender_waves'] === 'boys_then_girls')>Boys then girls</option><option value="girls_then_boys" @selected($scheduleDraft['gender_waves'] === 'girls_then_boys')>Girls then boys</option><option value="combined" @selected($scheduleDraft['gender_waves'] === 'combined')>Together</option></select><a class="btn btn-sm btn-outline-primary mt-2" data-programme-review-day="{{ $day }}" href="{{ route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $event->start_date ? \Carbon\Carbon::parse($event->start_date)->addDays($day)->toDateString() : 'all']) }}">Review &amp; publish this day</a></div>@endforeach</div>
+      <p class="small">Choose an age group to load its saved days and venue bands. Move each round to its playing day, assign venues and courts, then preview and save the complete schedule. Review and publication remain separate.</p>
+      <div id="programme-save-state" class="alert alert-info py-2" role="status" aria-live="polite">Choose an age group.</div>
+      <div class="row g-3 mb-3">@foreach(range(0,2) as $day)<div class="col-md-4"><strong data-programme-day-label="{{ $day + 1 }}">Day {{ $day + 1 }}</strong><label class="form-label d-block mt-2" for="programme-start-{{ $day }}">Starts</label><input id="programme-start-{{ $day }}" class="form-control programme-time" type="datetime-local" value="{{ $event->start_date ? \Carbon\Carbon::parse($event->start_date)->addDays($day)->format('Y-m-d').'T08:00' : '' }}"><label class="form-label d-block mt-2" for="programme-end-{{ $day }}">Finishes</label><input id="programme-end-{{ $day }}" class="form-control programme-time" type="datetime-local" value="{{ $event->start_date ? \Carbon\Carbon::parse($event->start_date)->addDays($day)->format('Y-m-d').'T18:00' : '' }}"><label class="form-label d-block mt-2" for="programme-gender-{{ $day }}">Order within each round</label><select id="programme-gender-{{ $day }}" class="form-select programme-gender-day"><option value="boys_then_girls" @selected($scheduleDraft['gender_waves'] === 'boys_then_girls')>Boys then girls</option><option value="girls_then_boys" @selected($scheduleDraft['gender_waves'] === 'girls_then_boys')>Girls then boys</option><option value="combined" @selected($scheduleDraft['gender_waves'] === 'combined')>Together</option></select><a class="btn btn-sm btn-outline-primary mt-2" data-programme-review-day="{{ $day }}" href="{{ route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $event->start_date ? \Carbon\Carbon::parse($event->start_date)->addDays($day)->toDateString() : 'all']) }}">Review &amp; publish this day</a></div>@endforeach</div>
       <p class="small mb-2">Drag the handle to put rounds in order or move them between days. Boys and girls in the same round move together. Each drop refreshes the preview using AJAX; match times are saved only when you choose Save. Use the Up/Down buttons or day selector with a keyboard.</p>
       <div id="programme-stages" class="row g-3 mb-3" aria-label="Drag rounds into daily playing order"></div>
       <details class="mb-3"><summary>Advanced: individual draw round days and numbered order</summary><div id="programme-rounds" class="table-responsive mt-2"></div></details>
-      <div class="row g-3 mb-3">@foreach(range(0,2) as $day)<div class="col-md-4"><strong>Day {{ $day + 1 }} optional break</strong><div class="row g-2 mt-1"><div class="col-6"><label class="form-label small" for="programme-break-start-{{ $day }}">Break starts</label><input id="programme-break-start-{{ $day }}" class="form-control programme-time" type="time"></div><div class="col-6"><label class="form-label small" for="programme-break-end-{{ $day }}">Break ends</label><input id="programme-break-end-{{ $day }}" class="form-control programme-time" type="time"></div></div></div>@endforeach</div>
       <div class="row g-3 mb-3">
         <div class="col-6 col-md-3"><label class="form-label" for="programme-duration">Match minutes</label><input id="programme-duration" class="form-control" type="number" min="15" max="480" value="{{ $scheduleDraft['duration'] }}"></div>
         <div class="col-6 col-md-3"><label class="form-label" for="programme-rest">Player rest minutes</label><input id="programme-rest" class="form-control" type="number" min="0" max="480" value="{{ $scheduleDraft['player_rest'] }}"></div>
         <div class="col-6 col-md-3"><label class="form-label" for="programme-gap">Court gap minutes</label><input id="programme-gap" class="form-control" type="number" min="0" max="120" value="{{ $scheduleDraft['court_gap'] }}"></div>
       </div>
-      <label class="form-label" for="programme-reuse-source">Reuse courts for disciplines with no venue</label>
-      <select id="programme-reuse-source" class="form-select mb-2"><option value="">Choose an assigned draw in this age group</option></select>
-      <button id="programme-reuse" type="button" class="btn btn-outline-primary mb-3">Save missing discipline venue assignments</button>
-      <p class="small text-muted">This explicitly saves the selected draw's current courts only to disciplines with no venue. Existing discipline assignments stay as they are. Review allocations below to select different courts.</p>
       <label class="form-check mb-3" for="programme-reschedule-existing">
         <input class="form-check-input" type="checkbox" id="programme-reschedule-existing" {{ $scheduleDraft['reschedule_existing'] ? 'checked' : '' }}>
         <span class="form-check-label">Include already scheduled matches in this age group's new preview</span>
         <small class="d-block text-muted">Unchecked keeps saved times fixed. Checking replans this age group; saved times change only when you save the preview.</small>
       </label>
+      <details class="mb-3" id="programme-optional-settings">
+        <summary>Optional settings: breaks, reuse courts and gender start rules</summary>
+        <div class="mt-3">
+      <div class="row g-3 mb-3">@foreach(range(0,2) as $day)<div class="col-md-4"><strong><span data-programme-day-label="{{ $day + 1 }}">Day {{ $day + 1 }}</span> optional break</strong><div class="row g-2 mt-1"><div class="col-6"><label class="form-label small" for="programme-break-start-{{ $day }}">Break starts</label><input id="programme-break-start-{{ $day }}" class="form-control programme-time" type="time"></div><div class="col-6"><label class="form-label small" for="programme-break-end-{{ $day }}">Break ends</label><input id="programme-break-end-{{ $day }}" class="form-control programme-time" type="time"></div></div></div>@endforeach</div>
+      <label class="form-label" for="programme-reuse-source">Reuse courts for disciplines with no venue</label>
+      <select id="programme-reuse-source" class="form-select mb-2"><option value="">Choose an assigned draw in this age group</option></select>
+      <button id="programme-reuse" type="button" class="btn btn-outline-primary mb-3">Save missing discipline venue assignments</button>
+      <p class="small text-muted">This explicitly saves the selected draw's current courts only to disciplines with no venue. Existing discipline assignments stay as they are. Review allocations below to select different courts.</p>
       <label class="form-label" for="programme-gender-wave-release">When the next gender can start</label>
       <select id="programme-gender-wave-release" class="form-select mb-2">
         <option value="whole_wave" @selected($scheduleDraft['gender_wave_release'] === 'whole_wave')>Wait for the whole previous gender wave</option>
         <option value="court_ready" @selected($scheduleDraft['gender_wave_release'] === 'court_ready')>Use free courts while the previous gender finishes</option>
       </select>
       <p class="small text-muted">Use free courts to avoid waiting for every earlier match to finish. Your boys/girls order, round wave interval, court availability and player rest still apply.</p>
+        </div>
+      </details>
       <button id="programme-create" type="button" class="btn btn-primary">Create three-day schedule preview</button>
       <div id="programme-status" class="small mt-2" role="status" aria-live="polite"></div>
     </div>
   </details>
+  <details id="advanced-scheduling" class="workspace-section mb-3" @if($planningDate || $draws->where('is_team', true)->whereNotNull('programme_age')->isEmpty()) open @endif>
+    <summary><span class="section-title"><h5>Advanced scheduling</h5><small class="text-muted">Individual events, draw allocations and detailed timing rules</small></span></summary>
+    <div class="section-body">
   <div class="workflow-rail mb-3" aria-label="Schedule workflow">
     <button type="button" class="workflow-step is-active" data-workflow-nav="1"><span class="step-number">1</span><span class="workflow-label">Court allocation</span></button>
     <button type="button" class="workflow-step" data-workflow-nav="2" data-audit-ignore="true"><span class="step-number">2</span><span class="workflow-label">Timing rules</span></button>
@@ -600,6 +614,8 @@
     </div>
   </details>
 
+    </div>
+  </details>
   <details class="workspace-section mb-3 d-none" id="schedule-review-step">
     <summary>
       <span class="step-number">3</span>
@@ -914,6 +930,7 @@
     });
   };
   const showWorkflowStep = step => {
+    if (step < 3 && document.getElementById('advanced-scheduling')) document.getElementById('advanced-scheduling').open = true;
     ['court-allocation-step', 'schedule-rules-step', 'schedule-review-step'].forEach((id, index) => {
       const section = document.getElementById(id);
       section.classList.toggle('d-none', index !== step - 1);
@@ -1289,7 +1306,7 @@
     const pad = value => String(value).padStart(2, '0');
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:00`;
   };
-  const scheduleRoundLabel = row => row.programme_day ? `Day ${row.programme_day} · Order ${row.programme_sequence} · R${row.round}` : row.wave ? `Wave ${row.wave} · R${row.round}` : `R${row.round}`;
+  const scheduleRoundLabel = row => row.programme_day ? `${escapeHtml(programmeDayLabel(row.programme_day))} · Order ${row.programme_sequence} · R${row.round}` : row.wave ? `Wave ${row.wave} · R${row.round}` : `R${row.round}`;
   const matchEnd = (match, result) => match.ends_at
     ? asDate(match.ends_at)
     : new Date(dateKey(match.scheduled_at) + (Number(match.duration || result.input.duration) + Number(result.input.courtGap || 0)) * 60000);
@@ -1363,7 +1380,7 @@
         if (starts) {
           const movable = !starts.fixed || starts.editable;
           const path = (starts.participants || []).join(' / ') || 'Participants determined by draw';
-          const round = starts.programme_day ? `Day ${starts.programme_day} · Order ${starts.programme_sequence} · R${starts.round}` : starts.wave ? `Wave ${starts.wave} · R${starts.round}` : `R${starts.round}`;
+          const round = starts.programme_day ? `${escapeHtml(programmeDayLabel(starts.programme_day))} · Order ${starts.programme_sequence} · R${starts.round}` : starts.wave ? `Wave ${starts.wave} · R${starts.round}` : `R${starts.round}`;
           const state = starts.fixed
             ? '<span class="badge bg-label-success mt-1">Saved</span>'
             : '<span class="badge bg-label-primary mt-1">Suggested · not saved</span>';
@@ -1988,7 +2005,7 @@
           approve.disabled = true;
           cancel.disabled = confirming;
           ages.querySelectorAll('input').forEach(input => { input.disabled = confirming; });
-          message.textContent = confirming ? 'Clearing schedules and saving courts�' : 'Checking the selected schedule reset�';
+          message.textContent = confirming ? 'Clearing schedules and saving courts�' : 'Checking the selected schedule reset�';
           try {
             const result = await submit({...body, reset_age_keys:keys, ...(confirming ? {confirm_reset:true, correction_revision:current.correction_revision} : {review_only:true})});
             if (request !== generation) return;
@@ -2055,6 +2072,11 @@
     if (!payload || !revision) return;
     const button = event.currentTarget;
     const originalButtonHtml = button.innerHTML;
+    const submittedAge = selectedProgrammeAge;
+    const submittedPayload = JSON.parse(JSON.stringify(payload));
+    const submittedProgramme = submittedPayload.programme;
+    const submittedOptions = readProgrammeOptions();
+    const submittedEditVersion = programmeEditVersions.get(submittedAge) || 0;
     button.disabled = true;
     button.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span> Saving schedule…';
     setStatus(document.getElementById('schedule-status'), 'Applying and revalidating…');
@@ -2062,17 +2084,43 @@
     startScheduleActivity(applyActivityStages, 'Progress is estimated while the server applies the fixtures and rebuilds the final schedule.');
     let completed = false;
     try {
-      const applied = await post(applyUrl, {...payload, revision});
+      const applied = await post(applyUrl, {...submittedPayload, revision});
+      if (submittedProgramme?.days?.length && submittedAge) {
+        programmeSavedAges.add(submittedAge);
+        if ((programmeEditVersions.get(submittedAge) || 0) === submittedEditVersion) {
+          programmeDirtyAges.delete(submittedAge);
+          programmeSettings.set(submittedAge, {...submittedOptions, programme:submittedProgramme});
+        }
+        updateProgrammeSaveState();
+      }
       replanVenueIds = [];
-      payload = {...buildPayload(), replan_venue_ids:[]};
-      setScheduleActivityPhase(revalidationActivityStages);
-      render(await post(previewUrl, payload));
-      setStatus(document.getElementById('schedule-status'), `Saved ${applied.count} matches privately. Opening saved schedule…`, 'success');
-      setStatus(document.getElementById('review-status'), `Saved ${applied.count} matches privately. Opening saved schedule…`, 'success');
-      notify(`Saved ${applied.count} matches privately.`, 'success');
+      const programmePending = () => Boolean(submittedProgramme?.days?.length) &&
+        (programmeDirtyAges.size > 0 || selectedProgrammeAge !== submittedAge || (programmeEditVersions.get(submittedAge) || 0) !== submittedEditVersion);
+      const reportSaved = pending => {
+        const message = 'Saved '+applied.count+' matches privately. '+(pending ? 'Your other programme edits remain unsaved. Create a new preview when ready.' : 'Opening saved schedule…');
+        setStatus(document.getElementById('schedule-status'), message, 'success');
+        setStatus(document.getElementById('review-status'), message, 'success');
+      };
+      if (programmePending()) {
+        invalidatePreview();
+      } else {
+        payload = submittedProgramme?.days?.length ? {...submittedPayload, replan_venue_ids:[]} : {...buildPayload(), replan_venue_ids:[]};
+        setScheduleActivityPhase(revalidationActivityStages);
+        try {
+          const savedPreview = await post(previewUrl, payload);
+          if (programmePending()) invalidatePreview(); else render(savedPreview);
+        } catch (error) {
+          if (programmePending()) invalidatePreview(); else throw error;
+        }
+      }
+      reportSaved(programmePending());
+      notify('Saved '+applied.count+' matches privately.', 'success');
       completed = true;
-      finishScheduleActivity('Schedule applied. Opening saved schedule…');
-      window.setTimeout(() => window.location.assign(drawsUrl), 1000);
+      finishScheduleActivity(programmePending() ? 'Schedule saved. Your other programme edits remain unsaved.' : 'Schedule applied. Opening saved schedule…');
+      window.setTimeout(() => {
+        if (programmePending()) { invalidatePreview(); reportSaved(true); return; }
+        window.location.assign(drawsUrl);
+      }, 1000);
     }
     catch (error) { if (error.stalePreview) return; setStatus(document.getElementById('schedule-status'), error.message, 'danger'); setStatus(document.getElementById('review-status'), error.message, 'danger'); notify(error.message, 'danger'); button.disabled = false; }
     finally { if (!completed) stopScheduleActivity(); button.innerHTML = originalButtonHtml; }
@@ -2110,6 +2158,34 @@
   const readProgrammeOptions = () => Object.fromEntries(Object.entries(programmeOptionControls).map(([key,id]) => [key, key === 'reschedule_existing' ? document.getElementById(id).checked : document.getElementById(id).value]));
   const programmeDefaultOptions = readProgrammeOptions();
   const programmeDefaultDays = [0,1,2].map(day => ({start:document.getElementById(`programme-start-${day}`).value, end:document.getElementById(`programme-end-${day}`).value}));
+  const programmeSavedAges = new Set([...programmeSettings.entries()].filter(([,settings]) => settings.programme?.days?.length === 3 && settings.programme?.rounds?.length).map(([age]) => age));
+  const programmeDirtyAges = new Set();
+  const programmeEditVersions = new Map();
+  const updateProgrammeSaveState = () => {
+    const target = document.getElementById('programme-save-state');
+    if (!target) return;
+    const age = document.getElementById('programme-age').value;
+    const dirty = programmeDirtyAges.has(age) || !programmeSavedAges.has(age);
+    target.textContent = !age ? 'Choose an age group.' : 'Under '+age+': '+(dirty ? 'Unsaved programme changes' : 'Saved programme loaded')+'. Venue bands and courts save separately. Days, order and match times save only with Save complete three-day schedule.';
+    target.className = 'alert py-2 '+(age && dirty ? 'alert-warning' : 'alert-info');
+  };
+  const markProgrammeDirty = () => {
+    const age = document.getElementById('programme-age').value;
+    if (age) { programmeDirtyAges.add(age); programmeEditVersions.set(age, (programmeEditVersions.get(age) || 0) + 1); }
+    updateProgrammeSaveState();
+  };
+  const programmeDayLabel = day => {
+    const value = document.getElementById('programme-start-'+(Number(day)-1)).value.slice(0,10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return 'Day '+day;
+    const date = new Date(value+'T12:00:00');
+    return Number.isNaN(date.getTime()) ? 'Day '+day : date.toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long'});
+  };
+  const updateProgrammeDayLabels = () => {
+    document.querySelectorAll('[data-programme-day-label]').forEach(label => label.textContent = programmeDayLabel(label.dataset.programmeDayLabel));
+    document.querySelectorAll('.programme-day, .programme-stage-day').forEach(select => [...select.options].forEach(option => option.textContent = programmeDayLabel(option.value)));
+    document.querySelectorAll('.programme-day-heading').forEach(label => label.textContent = programmeDayLabel(label.dataset.day));
+    document.querySelectorAll('.programme-day-lane').forEach(lane => lane.setAttribute('aria-label', programmeDayLabel(lane.dataset.day)+' playing order'));
+  };
   let selectedProgrammeAge = '';
   const programmeGroup = () => programmeDraws.filter(draw => Number(draw.programme_age) === Number(document.getElementById('programme-age').value));
   const programmeStatus = (message, tone = 'secondary') => setStatus(document.getElementById('programme-status'), message, tone);
@@ -2316,7 +2392,7 @@
       programmePayload = null;
       invalidatePreview('Draw setup saved. Generate a new preview before applying.');
       refreshProgrammeStageSummaries();
-      programmeStatus('Setup saved for rounds '+rounds.join(', ')+'.' + (allocationsDirty || scheduleDirty ? ' Other page edits remain unsaved.' : '') + (result.warnings?.length ? ` ${result.warnings.join(' ')}` : ''), 'success');
+      programmeStatus('Venue bands and courts saved for rounds '+rounds.join(', ')+'. Days and match times still require saving the complete schedule.' + (allocationsDirty || scheduleDirty ? ' Other page edits remain unsaved.' : '') + (result.warnings?.length ? ` ${result.warnings.join(' ')}` : ''), 'success');
       programmeSetupSaving = false;
       bootstrap.Modal.getOrCreateInstance(programmeSetupModal).hide();
     } catch (error) { setStatus(status, error.message, 'danger'); }
@@ -2337,6 +2413,7 @@
       });
     });
     programmePayload = null; invalidatePreview();
+    markProgrammeDirty();
     refreshProgrammePreview(false);
   };
   const renderProgrammeStages = () => {
@@ -2353,7 +2430,7 @@
       stages.get(key).members.push(`${row.dataset.programmeDraw}:${row.dataset.programmeRound}`);
     });
     const ordered = [...stages.values()].sort((a,b) => a.day - b.day || a.sequence - b.sequence || a.label.localeCompare(b.label));
-    document.getElementById('programme-stages').innerHTML = [1,2,3].map(day => `<section class="col-lg-4"><h6>Day ${day}</h6><div class="programme-day-lane" data-day="${day}" aria-label="Day ${day} playing order">${ordered.filter(stage => stage.day === day).map(stage => `<div class="programme-stage" data-programme-members="${stage.members.join(',')}"><div class="d-flex align-items-center gap-2"><button type="button" class="btn btn-sm btn-outline-secondary programme-stage-handle" aria-label="Drag ${escapeHtml(stage.label)}"><i class="ti ti-grip-vertical" aria-hidden="true"></i></button><strong>${escapeHtml(stage.label)}</strong></div><div class="small text-muted mt-1"><span class="programme-stage-order">Order ${stage.sequence}</span> · ${stage.members.length === 2 ? 'Boys and girls move together' : `${stage.members.length} draw${stage.members.length === 1 ? '' : 's'}`}</div><div class="programme-stage-summary"></div><button type="button" class="btn btn-sm btn-outline-primary mt-2 programme-stage-setup">Assign venues &amp; courts</button><div class="programme-stage-controls"><button type="button" class="btn btn-sm btn-outline-secondary programme-stage-move" data-direction="up" aria-label="Move ${escapeHtml(stage.label)} up">Up</button><button type="button" class="btn btn-sm btn-outline-secondary programme-stage-move" data-direction="down" aria-label="Move ${escapeHtml(stage.label)} down">Down</button><select class="form-select form-select-sm programme-stage-day" aria-label="Move ${escapeHtml(stage.label)} to another day">${[1,2,3].map(value => `<option value="${value}" ${day === value ? 'selected' : ''}>Day ${value}</option>`).join('')}</select></div></div>`).join('')}</div></section>`).join('');
+    document.getElementById('programme-stages').innerHTML = [1,2,3].map(day => `<section class="col-lg-4"><h6 class="programme-day-heading" data-day="${day}">${escapeHtml(programmeDayLabel(day))}</h6><div class="programme-day-lane" data-day="${day}" aria-label="${escapeHtml(programmeDayLabel(day))} playing order">${ordered.filter(stage => stage.day === day).map(stage => `<div class="programme-stage" data-programme-members="${stage.members.join(',')}"><div class="d-flex align-items-center gap-2"><button type="button" class="btn btn-sm btn-outline-secondary programme-stage-handle" aria-label="Drag ${escapeHtml(stage.label)}"><i class="ti ti-grip-vertical" aria-hidden="true"></i></button><strong>${escapeHtml(stage.label)}</strong></div><div class="small text-muted mt-1"><span class="programme-stage-order">Order ${stage.sequence}</span> · ${stage.members.length === 2 ? 'Boys and girls move together' : `${stage.members.length} draw${stage.members.length === 1 ? '' : 's'}`}</div><div class="programme-stage-summary"></div><button type="button" class="btn btn-sm btn-outline-primary mt-2 programme-stage-setup">Assign venues &amp; courts</button><div class="programme-stage-controls"><button type="button" class="btn btn-sm btn-outline-secondary programme-stage-move" data-direction="up" aria-label="Move ${escapeHtml(stage.label)} up">Up</button><button type="button" class="btn btn-sm btn-outline-secondary programme-stage-move" data-direction="down" aria-label="Move ${escapeHtml(stage.label)} down">Down</button><select class="form-select form-select-sm programme-stage-day" aria-label="Move ${escapeHtml(stage.label)} to another day">${[1,2,3].map(value => `<option value="${value}" ${day === value ? 'selected' : ''}>${escapeHtml(programmeDayLabel(value))}</option>`).join('')}</select></div></div>`).join('')}</div></section>`).join('');
     refreshProgrammeStageSummaries();
     if (typeof Sortable !== 'undefined') document.querySelectorAll('.programme-day-lane').forEach(lane => programmeSortables.push(new Sortable(lane, {
       group:'programme-days', draggable:'.programme-stage', handle:'.programme-stage-handle', animation:150,
@@ -2368,6 +2445,7 @@
       }});
     }
     selectedProgrammeAge = document.getElementById('programme-age').value;
+    updateProgrammeSaveState();
     const settings = programmeSettings.get(selectedProgrammeAge);
     const localDateTime = value => String(value || '').replace(' ', 'T').slice(0,16);
     [0,1,2].forEach(day => {
@@ -2394,12 +2472,17 @@
       const savedRound = settings?.programme?.rounds?.find(row => Number(row.draw_id ?? row.drawId) === Number(draw.id) && Number(row.round) === Number(round));
       const day = Number(savedRound?.day ?? (mixed ? 3 : reverse ? (round === 1 ? 1 : 2) : doubles ? 2 : 1));
       const sequence = Number(savedRound?.sequence ?? (mixed ? round : reverse ? (round === 1 ? 4 : round - 1) : doubles ? round + 2 : round));
-      return `<tr data-programme-draw="${draw.id}" data-programme-round="${round}"><td>${escapeHtml(draw.name)} · Round ${round}</td><td><select class="form-select programme-day" aria-label="Day for ${escapeHtml(draw.name)} round ${round}">${[1,2,3].map(value => `<option value="${value}" ${day === value ? 'selected' : ''}>Day ${value}</option>`).join('')}</select></td><td><input class="form-control programme-sequence" type="number" min="1" max="100" value="${sequence}" aria-label="Order for ${escapeHtml(draw.name)} round ${round}"></td></tr>`;
+      return `<tr data-programme-draw="${draw.id}" data-programme-round="${round}"><td>${escapeHtml(draw.name)} · Round ${round}</td><td><select class="form-select programme-day" aria-label="Day for ${escapeHtml(draw.name)} round ${round}">${[1,2,3].map(value => `<option value="${value}" ${day === value ? 'selected' : ''}>${escapeHtml(programmeDayLabel(value))}</option>`).join('')}</select></td><td><input class="form-control programme-sequence" type="number" min="1" max="100" value="${sequence}" aria-label="Order for ${escapeHtml(draw.name)} round ${round}"></td></tr>`;
     })).join('')}</tbody></table>`;
     renderProgrammeStages();
+    updateProgrammeDayLabels();
     updateProgrammeDayPublicationLinks();
     document.getElementById('programme-reuse-source').innerHTML = '<option value="">Choose assigned draw</option>' + group.filter(draw => draw.venues.length).map(draw => `<option value="${draw.id}">${escapeHtml(draw.name)}</option>`).join('');
     programmeStatus(group.length ? `${group.length} disciplines selected. Check all days, match duration, rest and gender order before creating the preview.` : 'Choose an age group.');
+  });
+  document.getElementById('programme-wizard').addEventListener('change', event => {
+    if (event.target.id === 'programme-age' || event.target.id === 'programme-reuse-source') return;
+    markProgrammeDirty(); updateProgrammeDayLabels();
   });
   document.querySelectorAll('.programme-time').forEach(input => input.addEventListener('change', () => { programmePayload = null; invalidatePreview(); }));
   document.getElementById('programme-rounds').addEventListener('change', () => { programmePayload = null; invalidatePreview(); renderProgrammeStages(); });
@@ -2424,7 +2507,7 @@
   });
   [['programme-duration','schedule-duration'],['programme-rest','schedule-rest'],['programme-gap','schedule-gap']].forEach(([wizardId, sharedId]) => {
     document.getElementById(wizardId).addEventListener('change', () => { document.getElementById(sharedId).value = document.getElementById(wizardId).value; programmePayload = null; invalidatePreview(); });
-    document.getElementById(sharedId).addEventListener('change', () => { document.getElementById(wizardId).value = document.getElementById(sharedId).value; });
+    document.getElementById(sharedId).addEventListener('change', () => { document.getElementById(wizardId).value = document.getElementById(sharedId).value; markProgrammeDirty(); });
   });
   document.getElementById('programme-reuse').addEventListener('click', async event => {
     const button = event.currentTarget;
@@ -2465,7 +2548,7 @@
     const refreshVersion = ++programmeRefreshVersion;
     button.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>Creating three-day preview…';
     programmeStatus('Checking every round, court, player rest and daily window. Your saved schedule stays in place while the preview is created.');
-    try { const result = await post(previewUrl, payload); if (refreshVersion !== programmeRefreshVersion) return; render(result); if (showReview) showWorkflowStep(3); const totals = days.map((day, index) => `Day ${index + 1}: ${result.matches.filter(row => row.scheduled_at.startsWith(day.start.slice(0,10))).length} suggested`).join(' · '); programmeStatus(`${totals}. ${result.unscheduled.length} unallocated. Review before saving.`, result.unscheduled.length ? 'warning' : 'success'); }
+    try { const result = await post(previewUrl, payload); if (refreshVersion !== programmeRefreshVersion) return; render(result); if (showReview) showWorkflowStep(3); const totals = days.map((day, index) => `${programmeDayLabel(index + 1)}: ${result.matches.filter(row => row.scheduled_at.startsWith(day.start.slice(0,10))).length} suggested`).join(' · '); programmeStatus(`${totals}. ${result.unscheduled.length} unallocated. Review before saving.`, result.unscheduled.length ? 'warning' : 'success'); }
     catch (error) { if (!error.stalePreview && refreshVersion === programmeRefreshVersion) programmeStatus(error.message, 'danger'); }
     finally { if (refreshVersion === programmeRefreshVersion) { button.disabled = false; button.innerHTML = programmeCreateLabel; } }
   };
@@ -2493,6 +2576,7 @@
     input.addEventListener('change', updateProgrammeDayPublicationLinks);
   });
   updateProgrammeDayPublicationLinks();
+  updateProgrammeDayLabels();
   document.querySelectorAll('.programme-gender-day').forEach(select => {
     // Start with the current saved/restored event default, then keep each day independent.
     select.value = document.getElementById('gender-waves').value;
@@ -2505,6 +2589,7 @@
   document.getElementById('programme-create').addEventListener('click', () => refreshProgrammePreview());
   document.querySelectorAll('.draw-choice').forEach(input => input.addEventListener('change', () => { programmePayload = null; }));
   showWorkflowStep(1);
+  if (!document.getElementById('programme-wizard').hidden) document.getElementById('advanced-scheduling').open = false;
 })();
 </script>
 @endsection

@@ -38,7 +38,7 @@ function scenario() {
     document:{getElementById:get, querySelectorAll: selector => selector === '.programme-day-lane' ? lanes : rows},
     programmeGroup:() => [{id:1,rubber_code:'singles'},{id:2,rubber_code:'singles'},{id:3,rubber_code:'reverse_singles'}],
     Sortable:class {constructor(lane, options){sortables.push({lane, options});} destroy(){}},
-    refreshProgrammeStageSummaries:() => {}, escapeHtml:String, allocationsDirty:false, programmePayload:null, payload:null, revision:null,
+    programmeDayLabel:day => `Day ${day}`, dirtyCalls:0, markProgrammeDirty:() => { context.dirtyCalls++; }, refreshProgrammeStageSummaries:() => {}, escapeHtml:String, allocationsDirty:false, programmePayload:null, payload:null, revision:null,
     previewGeneration:0, previewUrl:'/preview', csrf:'test', programmeStatus:() => {}, showWorkflowStep:() => {}, setStatus:() => {}, lastScheduleResult:null,
     buildPayload:() => ({...context.programmePayload}),
     render:result => {rendered.push(result); get('apply-preview').disabled = false;},
@@ -64,6 +64,7 @@ test('drag cards group boys and girls and renumber every member after moving wit
   app.sortables[0].options.onEnd();
   assert.equal(app.get('apply-preview').disabled, true);
   assert.deepEqual(app.rows.slice(0,4).map(row=>row.querySelector('.programme-sequence').value), [2,2,1,1]);
+  assert.equal(app.context.dirtyCalls, 1, 'drag requires saving the programme');
   assert.equal(app.requests.length, 1);
   assert.equal(app.requests[0].url, '/preview');
   assert.equal(app.requests[0].body.programme.rounds.length, 5);
@@ -76,6 +77,7 @@ test('cross-day drop updates both gender draws and never saves the schedule', as
   app.sortables[1].options.onEnd();
   assert.deepEqual(app.rows.slice(0,2).map(row=>row.querySelector('.programme-day').value), ['2','2']);
   assert.deepEqual(app.rows.slice(0,2).map(row=>row.querySelector('.programme-sequence').value), [2,2]);
+  assert.equal(app.context.dirtyCalls, 1, 'drag requires saving the programme');
   assert.equal(app.requests.length, 1);
   assert.equal(app.requests[0].url, '/preview');
   assert.equal(app.requests[0].body.allow_partial, false);

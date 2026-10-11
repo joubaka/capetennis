@@ -26,7 +26,7 @@
 <h5>3. Approve</h5>
 <form method="post" action="{{ route('backend.event-communications.send',$event) }}">@csrf<input type="hidden" name="token" value="{{ $batch->token }}">
 @if($batch->issues)<label class="d-block mb-3"><input class="form-check-input me-2" type="checkbox" name="acknowledge_missing" value="1" required>I reviewed the missing contacts. These recipients will not receive an email.</label>@endif
-<label class="d-block mb-3"><input class="form-check-input me-2" type="checkbox" name="confirm_send" value="1" required>I confirm the recipients and example email are correct.</label><button id="approve-ranking-mail" class="btn btn-primary">Approve and queue {{ count($batch->recipients) }} emails</button> <a class="btn btn-outline-secondary" href="{{ route('backend.event-communications.index',$event) }}">Back to composer</a>
+<label class="d-block mb-3"><input class="form-check-input me-2" type="checkbox" name="confirm_send" value="1" required>I confirm the recipients and example email are correct.</label><button id="approve-ranking-mail" class="btn btn-primary">Approve and queue {{ count($batch->recipients) }} emails</button> <a class="btn btn-outline-secondary" href="{{ route('backend.event-communications.index', !empty($batch->options['wrap_up']) ? ['event' => $event, 'wrap_up' => 1, 'edit_batch' => $batch->id] : ['event' => $event]) }}">Back to composer</a>
 </form>
 @if(($batch->options['scope'] ?? null)==='rankings')
 <script>document.querySelectorAll('input[name="excluded_player_ids[]"]').forEach(input=>input.addEventListener('change',()=>{const button=document.getElementById('approve-ranking-mail'); button.disabled=true; button.textContent='Update selection above before approving';}));</script>

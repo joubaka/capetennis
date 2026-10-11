@@ -18,6 +18,9 @@
       @if($event->status_label)<span class="badge bg-label-primary">{{ $event->status_label }}</span>@endif
     </x-slot:meta>
     <x-slot:actions>
+      @if(auth()->check() && app(\App\Services\EventCommunicationService::class)->managesWholeEvent($event, auth()->user()))
+      <a class="event-workspace-action" href="{{ route('backend.event-communications.index', ['event' => $event, 'wrap_up' => 1]) }}"><i class="ti ti-mail" aria-hidden="true"></i><span>Wrap-up email</span></a>
+      @endif
       <a class="event-workspace-action" href="{{ route('events.show', $event) }}" target="_self">
         <i class="ti ti-world" aria-hidden="true"></i>
         <span>Public page</span>

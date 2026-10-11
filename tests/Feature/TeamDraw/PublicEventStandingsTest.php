@@ -136,6 +136,8 @@ class PublicEventStandingsTest extends TestCase
         $this->assertSame(['U9', 'U10'], array_keys($groups));
         $this->assertSame(['Audit Oak', 'Audit Pine'], array_column($groups['U9'], 'name'));
         $this->assertSame([6, 0], array_column($groups['U9'], 'points'));
+        $this->assertSame(['boys' => 3, 'girls' => 3, 'mixed' => 0, 'other' => 0], $groups['U9'][0]['gender_points']);
+        $response->assertSeeInOrder(['>Boys<', '>Girls<', '>Mixed<', '>Total<'], false)->assertDontSee('>Other<', false);
         $this->assertSame(['Audit Pine', 'Audit Oak'], array_column($groups['U10'], 'name'));
         $this->assertSame([3, 0], array_column($groups['U10'], 'points'));
         $this->assertSame(['U9'], array_keys($this->get($url.'?age=U9')->assertOk()->viewData('ageGroups')));
@@ -148,6 +150,46 @@ class PublicEventStandingsTest extends TestCase
         $this->assertTrue($mixed->viewData('ageMixedRules')['U9']);
         $this->assertSame(['Audit Oak', 'Audit Pine'], array_column($mixed->viewData('ageGroups')['U9'], 'name'));
         $this->assertSame([3, 5], array_column($mixed->viewData('ageGroups')['U9'], 'points'));
+        $this->assertSame(['boys' => 3, 'girls' => 0, 'mixed' => 0, 'other' => 0], $mixed->viewData('ageGroups')['U9'][0]['gender_points']);
+        $this->assertSame(['boys' => 0, 'girls' => 5, 'mixed' => 0, 'other' => 0], $mixed->viewData('ageGroups')['U9'][1]['gender_points']);
+    }
+
+    public function test_gender_points_use_rubber_gender_and_include_draw_bonuses_without_losing_points(): void
+    {
+        $event = $this->event();
+        $data = $this->draw($event, 'U12 Boys');
+        $data['draw']->categoryEvent->category->update(['name' => 'U12']);
+        $rules = app(TeamEventRulesService::class)->defaults();
+        $rules['tie_win'] = 4;
+        $data['draw']->update(['team_scoring_rules' => $rules]);
+        $this->score($data['rubber']);
+        foreach (['doubles' => 'male', 'reverse_doubles' => 'female', 'mixed_doubles' => null, 'reverse_mixed_doubles' => null] as $code => $gender) {
+            $rubber = $data['rubber']->replicate();
+            $sequence = $data['tie']->rubbers()->count() + 1;
+            $rubber->fill(['rubber_code' => $code, 'gender_rule' => $gender, 'fixture_type' => str_contains($code, 'mixed') ? 3 : 2,
+                'rubber_sequence' => $sequence, 'match_nr' => $sequence])->save();
+            app(TeamFixtureScoreService::class)->save($rubber, ['set1_home' => 6, 'set1_away' => 2]);
+        }
+        $url = route('frontend.events.standings', $event);
+        $response = $this->get($url)->assertOk();
+        $row = $response->viewData('ageGroups')['U12'][0];
+        $this->assertSame(['boys' => 9, 'girls' => 2, 'mixed' => 4, 'other' => 0], $row['gender_points']);
+        $this->assertSame(15, $row['points']);
+        $this->assertSame($row['points'], array_sum($row['gender_points']));
+
+        $data['draw']->update(['drawName' => 'U12 Open', 'gender' => null]);
+        $response = $this->get($url)->assertOk()->assertSee('>Other<', false);
+        $row = $response->viewData('ageGroups')['U12'][0];
+        $this->assertSame(['boys' => 2, 'girls' => 2, 'mixed' => 4, 'other' => 7], $row['gender_points']);
+        $this->assertSame($row['points'], array_sum($row['gender_points']));
+        $data['draw']->categoryEvent->category->update(['name' => 'U12 Girls']);
+        $row = $this->get($url)->assertOk()->viewData('ageGroups')['U12'][0];
+        $this->assertSame(['boys' => 2, 'girls' => 9, 'mixed' => 4, 'other' => 0], $row['gender_points']);
+        $data['draw']->update(['gender' => 'male']);
+        $row = $this->get($url)->assertOk()->viewData('ageGroups')['U12'][0];
+        $this->assertSame(['boys' => 9, 'girls' => 2, 'mixed' => 4, 'other' => 0], $row['gender_points']);
+        $data['tie']->update(['published_at' => null, 'status' => TeamTie::STATUS_DRAFT]);
+        $this->assertSame([], $this->get($url)->assertOk()->viewData('ageGroups')['U12'] ?? []);
     }
 
     public function test_public_age_points_distinguishes_zero_points_from_no_participants(): void
@@ -228,6 +270,12 @@ class PublicEventStandingsTest extends TestCase
         $rows = $this->get(route('frontend.team-draw.standings', $data['draw']))->assertOk()->assertSee('12–5')->viewData('rows');
         $this->assertSame([1, 0], array_column($rows, 'rubber_wins'));
         $this->assertSame([0, 0], array_column($rows, 'played'));
+        $rubber->update(['fixture_type' => 3]);
+        // Legacy mixed doubles takes its gender from its fixture type even in a boys draw.
+        $groups = $this->get(route('frontend.events.standings', $event))->assertOk()->viewData('ageGroups');
+        $row = array_values($groups)[0][0];
+        $this->assertSame($row['points'], $row['gender_points']['mixed']);
+        $this->assertSame(0, $row['gender_points']['boys']);
     }
 
     public function test_publication_and_filters_apply_to_initial_page_and_refresh_requests(): void

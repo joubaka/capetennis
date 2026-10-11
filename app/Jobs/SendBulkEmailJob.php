@@ -96,6 +96,19 @@ class SendBulkEmailJob implements ShouldQueue
         ]);
 
         try {
+            if (! empty($log->payload['wrap_up'])) {
+                $event = \App\Models\Event::findOrFail($log->payload['event_id']);
+                app(\App\Services\EventCommunicationService::class)->validateWrapUpResults($event, $log->payload);
+            }
+            if (! empty($log->payload['event_communication_batch_id'])) {
+                $batch = \App\Models\EventCommunicationBatch::where('event_id', $log->payload['event_id'] ?? 0)->find($log->payload['event_communication_batch_id']);
+                if (($batch?->options['source'] ?? null) === 'retry') {
+                    $batch = \App\Models\EventCommunicationBatch::where('event_id', $log->payload['event_id'] ?? 0)->find($batch->options['original_batch_id']);
+                }
+                if ($batch && ! empty($batch->options['wrap_up'])) {
+                    app(\App\Services\EventCommunicationService::class)->validateWrapUpResults($batch->event, $batch->options);
+                }
+            }
             // Determine which mailer to use
             $mailer = app(MailAccountManager::class)->getMailer();
 

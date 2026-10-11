@@ -55,9 +55,11 @@ final class EventStandingsService
                 $outcome = $results->outcome($fixture);
                 foreach (['home' => $fixture->region1, 'away' => $fixture->region2] as $side => $regionId) {
                     $legacyRows[$regionId] ??= ['region_id' => $regionId, 'team_id' => null, 'name' => $regions[$regionId]->region_name, 'rank' => null] + array_fill_keys(self::METRICS, 0);
+                    $legacyRows[$regionId]['gender_points'] ??= array_fill_keys(['boys', 'girls', 'mixed', 'other'], 0);
                     if (!$outcome['complete']) { continue; }
                     $other = $side === 'home' ? 'away' : 'home';
                     $legacyRows[$regionId]['points'] += $results->points($fixture, $outcome)[$side];
+                    $legacyRows[$regionId]['gender_points'][app(TeamStandingsService::class)->fixtureGender($fixture)] += $results->points($fixture, $outcome)[$side];
                     $legacyRows[$regionId]['rubber_wins'] += $outcome['winner'] === $side ? 1 : 0;
                     $legacyRows[$regionId]['rubber_losses'] += $outcome['winner'] === $other ? 1 : 0;
                     foreach (['sets', 'games'] as $metric) {
@@ -102,8 +104,10 @@ final class EventStandingsService
                 $key = $regionId ? 'region:'.$regionId : 'team:'.$team->id;
                 $overall[$key] ??= ['name' => $regionId ? $regions[$regionId]->region_name : $row['name'], 'teams' => [], 'rank' => null] + array_fill_keys(self::METRICS, 0);
                 $ageGroups[$section['age']][$key] ??= ['name' => $overall[$key]['name'], 'points' => 0,
+                    'gender_points' => array_fill_keys(['boys', 'girls', 'mixed', 'other'], 0),
                     'color' => \App\Support\RegionBadge::color($regionId ? $regions[$regionId] : null)];
                 $ageGroups[$section['age']][$key]['points'] += $row['points'];
+                foreach ($row['gender_points'] as $bucket => $points) { $ageGroups[$section['age']][$key]['gender_points'][$bucket] += $points; }
                 $ageStandings[$section['age']][$key] ??= ['name' => $overall[$key]['name'], 'rank' => null] + array_fill_keys(self::METRICS, 0);
                 foreach (self::METRICS as $metric) { $ageStandings[$section['age']][$key][$metric] += $row[$metric]; }
                 if ($team) { $overall[$key]['teams'][$team->id] = true; }

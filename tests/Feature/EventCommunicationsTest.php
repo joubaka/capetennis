@@ -48,6 +48,66 @@ class EventCommunicationsTest extends TestCase
         return app(EventCommunicationService::class)->preview($this->event, $this->admin, $this->audienceOptions($options), 'Event update', 'Please review the arrangements.');
     }
 
+    public function test_selected_teams_share_one_reviewed_message_and_deduplicate_contacts(): void
+    {
+        $manager = User::factory()->create(['email' => 'manager@example.test']);
+        EventRegionManager::create(['event_id' => $this->event->id, 'region_id' => $this->team->region_id, 'event_region_id' => $this->eventRegion->id, 'user_id' => $manager->id]);
+        $second = Team::factory()->create(['category_event_id' => $this->team->category_event_id, 'region_id' => $this->team->region_id]);
+        $sibling = Player::factory()->create(['email' => $this->player->email, 'userId' => null]);
+        TeamPlayer::create(['team_id' => $second->id, 'player_id' => $sibling->id, 'rank' => 1, 'pay_status' => 0]);
+        $this->post(route('backend.event-communications.preview', $this->event), $this->audienceOptions(['scope' => 'team', 'team_ids' => [$this->team->id, $second->id], 'recipients' => 'both']) + ['subject' => 'Together', 'body' => 'One message'])->assertOk();
+        $batch = EventCommunicationBatch::sole();
+        $this->assertCount(2, $batch->recipients);
+        $this->assertEqualsCanonicalizing(['player:'.$this->player->id, 'player:'.$sibling->id], collect($batch->recipients)->firstWhere('kind', 'players')['player_keys']);
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        $this->post(route('backend.event-communications.send', $this->event), ['token' => $batch->token, 'confirm_send' => 1])->assertRedirect();
+        $this->assertDatabaseCount('bulk_email_logs', 2);
+        $this->assertSame([$this->team->id, $second->id], BulkEmailLog::first()->payload['team_ids']);
+        $this->assertSame($this->team->region_id, BulkEmailLog::first()->payload['region_id']);
+        $this->assertNull(BulkEmailLog::first()->payload['team_id']);
+        $this->post(route('backend.event-communications.send', $this->event), ['token' => $batch->token, 'confirm_send' => 1])->assertRedirect();
+        $this->assertDatabaseCount('bulk_email_logs', 2);
+        Mail::assertNothingSent();
+    }
+
+    public function test_manager_also_receiving_as_player_gets_one_copy_with_player_audit(): void
+    {
+        $manager = User::factory()->create(['email' => $this->player->email]);
+        EventRegionManager::create(['event_id' => $this->event->id, 'region_id' => $this->team->region_id, 'event_region_id' => $this->eventRegion->id, 'user_id' => $manager->id]);
+        $batch = $this->preview(['scope' => 'team', 'team_ids' => [$this->team->id], 'team_id' => 999999, 'recipients' => 'both']);
+        $this->assertCount(1, $batch->recipients);
+        $this->assertSame(['player:'.$this->player->id], $batch->recipients[0]['player_keys']);
+        $this->post(route('backend.event-communications.send', $this->event), ['token' => $batch->token, 'confirm_send' => 1])->assertRedirect();
+        $this->assertDatabaseCount('bulk_email_logs', 1);
+        $this->assertSame($this->team->id, BulkEmailLog::sole()->payload['team_id']);
+    }
+
+    public function test_every_selected_team_must_be_in_the_event_and_managed_region(): void
+    {
+        $foreign = Team::factory()->create(['category_event_id' => CategoryEvent::factory()->create()->id, 'region_id' => $this->team->region_id]);
+        $payload = $this->audienceOptions(['scope' => 'team', 'team_ids' => [$this->team->id, $foreign->id]]) + ['subject' => 'Subject', 'body' => 'Body'];
+        $this->post(route('backend.event-communications.preview', $this->event), $payload)->assertNotFound();
+        $manager = User::factory()->create();
+        EventRegionManager::create(['event_id' => $this->event->id, 'region_id' => $this->team->region_id, 'event_region_id' => $this->eventRegion->id, 'user_id' => $manager->id]);
+        $region = TeamRegion::create(['region_name' => 'Other region']);
+        DB::table('event_regions')->insert(['event_id' => $this->event->id, 'region_id' => $region->id]);
+        $other = Team::factory()->create(['category_event_id' => $this->team->category_event_id, 'region_id' => $region->id]);
+        $payload['team_ids'] = [$this->team->id, $other->id];
+        $this->actingAs($manager)->post(route('backend.event-communications.preview', $this->event), $payload)->assertNotFound();
+        $this->assertDatabaseCount('event_communication_batches', 0);
+    }
+
+    public function test_second_team_contact_changes_invalidate_the_review(): void
+    {
+        $second = Team::factory()->create(['category_event_id' => $this->team->category_event_id, 'region_id' => $this->team->region_id]);
+        $player = Player::factory()->create(['email' => 'second@example.test', 'userId' => null]);
+        TeamPlayer::create(['team_id' => $second->id, 'player_id' => $player->id, 'rank' => 1, 'pay_status' => 0]);
+        $batch = $this->preview(['scope' => 'team', 'team_ids' => [$this->team->id, $second->id]]);
+        $player->update(['email' => 'changed@example.test']);
+        $this->post(route('backend.event-communications.send', $this->event), ['token' => $batch->token, 'confirm_send' => 1])->assertSessionHasErrors('preview');
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+    }
+
     public function test_review_groups_recipients_message_and_approval_without_sending(): void
     {
         $batch = $this->preview();

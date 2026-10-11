@@ -13,16 +13,17 @@
     #public-age-points .form-select, #public-age-points .btn { min-height:44px; }
     #public-age-points a.btn { color:#365940; border-color:#b9cdbf; background:#fff; }
     #public-age-points a.btn:hover, #public-age-points a.btn:focus-visible { color:#284631; background:#e7f0e5; border-color:#88a993; }
-    #public-age-points .points-groups { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr)); gap:1.25rem; }
+    #public-age-points .points-groups { display:grid; grid-template-columns:1fr; gap:1.25rem; }
     #public-age-points .points-card { min-width:0; background:#fff; border:1px solid #dfe7e2; border-radius:14px; overflow:hidden; }
     #public-age-points .points-card-header { display:flex; align-items:center; justify-content:space-between; gap:.75rem; padding:1.1rem 1.25rem; background:#233f53; border-bottom:4px solid #88a993; }
     #public-age-points .points-card:nth-child(even) .points-card-header { background:#3f6656; border-bottom-color:#a9c0a5; }
     #public-age-points .points-card-header h2 { color:#fff; font-size:1.15rem; font-weight:600; margin:0; }
     #public-age-points .points-card-header span { color:#deebe4; font-size:.75rem; }
-    #public-age-points .points-table { width:100%; table-layout:fixed; border-collapse:collapse; }
+    #public-age-points .points-table-scroll { overflow-x:auto; }
+    #public-age-points .points-table { width:100%; min-width:520px; border-collapse:collapse; }
     #public-age-points .points-table th, #public-age-points .points-table td { padding:.9rem 1.25rem; }
     #public-age-points .points-table thead { color:#617168; background:#f6f8f5; font-size:.7rem; letter-spacing:.04em; text-transform:uppercase; }
-    #public-age-points .points-table th:last-child, #public-age-points .points-table td:last-child { width:100px; text-align:right; }
+    #public-age-points .points-table thead th:not(:first-child), #public-age-points .points-table td { width:90px; text-align:right; }
     #public-age-points .points-table tbody tr + tr { border-top:1px solid #edf1ec; }
     #public-age-points .points-table tbody th { color:#2d4350; font-weight:600; font-size:.9rem; overflow-wrap:anywhere; }
     #public-age-points .points-pill { display:inline-block; min-width:40px; padding:.35rem .6rem; border-radius:8px; background:#e7f0e5; color:#365940; font-size:1rem; font-weight:700; }
@@ -39,7 +40,7 @@
     <h1>{{ $event->name }}</h1>
     <a class="btn btn-outline-secondary" href="{{ route('events.show', $event) }}">Back to tournament</a>
   </div>
-  <p class="points-intro">Running points totals by age group. Boys’, girls’ and mixed points across all match types from published draws and ties are combined for each region / school.</p>
+  <p class="points-intro">Running points totals by age group. Boys’, girls’ and mixed points are shown separately, with a combined total for each region / school. Only published draws and ties contribute.</p>
   <form method="GET" class="points-filter">
     <div class="points-filter-field">
       <label for="standings-age">Age group</label>
@@ -55,16 +56,20 @@
   <div data-live-results="event-standings">
     <div class="points-groups">
       @forelse($ageGroups as $age => $rows)
+      @php($showOther = collect($rows)->contains(fn ($row) => $row['gender_points']['other'] != 0))
       <section class="points-card" data-age-points="{{ $age }}">
         <div class="points-card-header"><h2>{{ $age === 'Unspecified' ? 'Age group unspecified' : $age }}</h2><span>Running totals</span></div>
+        <div class="points-table-scroll" tabindex="0" role="region" aria-label="{{ $age }} points table; scroll horizontally if needed">
         <table class="points-table" aria-label="{{ $age }} points by region or school">
-          <thead><tr><th scope="col">Region / school</th><th scope="col">Points</th></tr></thead>
+          <thead><tr><th scope="col">Region / school</th><th scope="col">Boys</th><th scope="col">Girls</th><th scope="col">Mixed</th>@if($showOther)<th scope="col">Other</th>@endif<th scope="col">Total</th></tr></thead>
           <tbody>
             @foreach($rows as $row)
-            <tr><th scope="row"><span class="points-region" style="--region-color:{{ $row['color'] }}" aria-hidden="true"></span>{{ $row['name'] }}</th><td><span class="points-pill" data-points="{{ $row['points'] }}">{{ $row['points'] }}</span></td></tr>
+            <tr><th scope="row"><span class="points-region" style="--region-color:{{ $row['color'] }}" aria-hidden="true"></span>{{ $row['name'] }}</th>@foreach(['boys', 'girls', 'mixed'] as $bucket)<td data-gender-points="{{ $bucket }}">{{ $row['gender_points'][$bucket] }}</td>@endforeach@if($showOther)<td data-gender-points="other">{{ $row['gender_points']['other'] }}</td>@endif<td><span class="points-pill" data-points="{{ $row['points'] }}">{{ $row['points'] }}</span></td></tr>
             @endforeach
           </tbody>
         </table>
+        </div>
+        @if($showOther)<p class="points-empty">Other includes points without a specified gender, including bonuses from those draws.</p>@endif
         @if($ageMixedRules[$age])<p class="points-empty">Points use each draw’s scoring rules. Regions / schools are listed alphabetically.</p>@endif
         @if(!collect($rows)->contains(fn ($row) => $row['points'] != 0))<p class="points-empty">No completed match points yet.</p>@endif
       </section>

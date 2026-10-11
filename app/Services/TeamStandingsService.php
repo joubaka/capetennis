@@ -4,9 +4,36 @@ namespace App\Services;
 
 use App\Models\Draw;
 use App\Models\TeamTie;
+use App\Models\TeamFixture;
+use App\Domain\TeamDraw\RubberType;
 
 final class TeamStandingsService
 {
+    public function drawGender(Draw $draw): string
+    {
+        $explicit = $this->genderBucket((string) $draw->gender);
+        if ($explicit !== 'other') { return $explicit; }
+        $category = (int) $draw->categoryEvent?->event_id === (int) $draw->event_id ? $draw->categoryEvent->category?->name : null;
+        $category ??= (int) $draw->team_category?->eventId === (int) $draw->event_id ? $draw->team_category->ageGroup : null;
+        $label = $category.' '.$draw->drawName;
+        return $this->genderBucket($label);
+    }
+
+    public function fixtureGender(TeamFixture $fixture): string
+    {
+        $code = $fixture->rubber_code ?? RubberType::fromLegacyFixtureType($fixture->fixture_type);
+        if (in_array($code, [RubberType::MIXED_DOUBLES, RubberType::REVERSE_MIXED_DOUBLES], true)) { return 'mixed'; }
+        return $fixture->gender_rule ? $this->genderBucket($fixture->gender_rule) : $this->drawGender($fixture->draw);
+    }
+
+    private function genderBucket(string $label): string
+    {
+        if (preg_match('/\b(mixed)\b/i', $label)) { return 'mixed'; }
+        if (preg_match('/\b(girls?|female|women|f)\b/i', $label)) { return 'girls'; }
+        if (preg_match('/\b(boys?|male|men|m)\b/i', $label)) { return 'boys'; }
+        return 'other';
+    }
+
     public function tieOutcome(TeamTie $tie): array
     {
         $result = ['complete' => $tie->rubbers->isNotEmpty() && app(TeamTieValidationService::class)->requiredRubbersPresent($tie), 'home' => 0, 'away' => 0, 'winner_team_id' => null];
@@ -44,9 +71,11 @@ final class TeamStandingsService
                 $team = $tie->{$side.'Team'};
                 if (!$team) { continue; }
                 $rows[$team->id] ??= ['team_id' => $team->id, 'name' => app(TeamDrawSideResolver::class)->label($draw, $team), 'played' => 0, 'wins' => 0, 'draws' => 0, 'losses' => 0, 'points' => 0, 'rubber_wins' => 0, 'rubber_losses' => 0, 'sets_for' => 0, 'sets_against' => 0, 'games_for' => 0, 'games_against' => 0];
+                $rows[$team->id]['gender_points'] ??= array_fill_keys(['boys', 'girls', 'mixed', 'other'], 0);
             }
             if (!isset($rows[$tie->home_team_id], $rows[$tie->away_team_id])) { continue; }
             foreach ($tie->rubbers as $rubber) {
+                $rubber->setRelation('draw', $draw);
                 $outcome = $results->outcome($rubber);
                 // Only completed rubbers contribute standings, never provisional sets.
                 if (!$outcome['complete']) { continue; }
@@ -54,6 +83,7 @@ final class TeamStandingsService
                 foreach (['home' => $tie->home_team_id, 'away' => $tie->away_team_id] as $side => $id) {
                     $other = $side === 'home' ? 'away' : 'home';
                     $rows[$id]['points'] += $points[$side];
+                    $rows[$id]['gender_points'][$this->fixtureGender($rubber)] += $points[$side];
                     $rows[$id]['rubber_wins'] += $outcome['winner'] === $side ? 1 : 0;
                     $rows[$id]['rubber_losses'] += $outcome['winner'] === $other ? 1 : 0;
                     $rows[$id]['sets_for'] += $outcome[$side.'_sets'];
@@ -69,6 +99,8 @@ final class TeamStandingsService
                 $state = !$outcome['winner_team_id'] ? 'draw' : ($id === $outcome['winner_team_id'] ? 'win' : 'loss');
                 $rows[$id][['win' => 'wins', 'draw' => 'draws', 'loss' => 'losses'][$state]]++;
                 $rows[$id]['points'] += $rules['tie_'.$state];
+                // Tie bonuses belong to the draw; ambiguous draws keep them in Other.
+                $rows[$id]['gender_points'][$this->drawGender($draw)] += $rules['tie_'.$state];
             }
         }
         $criteria = fn ($row) => array_map(fn ($key) => match ($key) {

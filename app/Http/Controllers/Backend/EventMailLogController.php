@@ -114,6 +114,7 @@ class EventMailLogController extends Controller
     public function retryPreview(Request $request, Event $event, BulkEmailLog $log, EventMailLogService $service)
     {
         $log = $service->query($event, $request->user())->whereKey($log->id)->firstOrFail();
+        app(\App\Services\EventCommunicationService::class)->validateWrapUpResults($event, $log->payload);
         abort_unless(EventMailLogService::canRetry($log), 422);
         $request->session()->put('event_mail_retry.' . $log->id, ['event_id' => $event->id, 'actor_id' => $request->user()->id, 'expires' => now()->addMinutes(15)->timestamp, 'fingerprint' => hash('sha256', json_encode([$log->payload, $log->recipient_email, $log->updated_at?->toISOString()]))]);
         $retryPreview = true;
@@ -128,6 +129,7 @@ class EventMailLogController extends Controller
         abort_unless($review && $review['actor_id'] === $request->user()->id && $review['event_id'] === $event->id && $review['expires'] >= now()->timestamp, 422);
         \Illuminate\Support\Facades\DB::transaction(function () use ($request, $event, $log, $service, $review) {
             $log = $service->query($event, $request->user())->whereKey($log->id)->lockForUpdate()->firstOrFail();
+            app(\App\Services\EventCommunicationService::class)->validateWrapUpResults($event, $log->payload);
             abort_unless(EventMailLogService::canRetry($log) && hash_equals($review['fingerprint'], hash('sha256', json_encode([$log->payload, $log->recipient_email, $log->updated_at?->toISOString()]))), 422);
             $batch = \App\Models\EventCommunicationBatch::create(['event_id' => $event->id, 'created_by' => $request->user()->id, 'token' => (string) \Illuminate\Support\Str::uuid(), 'subject' => data_get($log->payload, 'subject', 'Reviewed retry'), 'body' => data_get($log->payload, 'body', data_get($log->payload, 'message')), 'options' => ['source' => 'email_log_retry', 'log_id' => $log->id], 'recipients' => [['email' => $log->recipient_email]], 'issues' => [], 'fingerprint' => $review['fingerprint'], 'status' => 'approved', 'approved_at' => now()]);
             $log->update(['status' => 'queued', 'retry_actor_id' => $request->user()->id, 'queued_at' => now(), 'failed_at' => null, 'error_message' => null, 'payload' => [...$log->payload, 'event_id' => $event->id, 'retry_actor_id' => $request->user()->id, 'event_communication_batch_id' => $batch->id, 'manual_retry_only' => true]]);

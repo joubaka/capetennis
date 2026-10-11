@@ -2096,6 +2096,8 @@ Route::prefix('frontend')->middleware('auth')->group(function () {
 //Frotend fixtures (public)
 Route::get('/team-draw/{draw}/standings', [\App\Http\Controllers\Backend\TeamEventRulesController::class, 'publicStandings'])->name('frontend.team-draw.standings');
 Route::get('/events/{event}/standings', \App\Http\Controllers\Frontend\PublicEventStandingsController::class)->name('frontend.events.standings');
+Route::get('/events/{event}/convener-standings/{age}', \App\Http\Controllers\Frontend\AgeGroupConvenerStandingsController::class)
+  ->middleware('auth')->name('frontend.events.convener-standings');
 Route::get('frontend/fixtures/draw/index/{id}', [FrontFixtureController::class, 'drawFixtures'])->name('frontend.fixtures.index');
 Route::get('frontend/fixtures/draw/show/{id}', [FrontFixtureController::class, 'show'])->name('frontend.fixtures.show');
 Route::get('frontend/fixtures/draw/indexRound/{event}/{round}/{type}', [FrontFixtureController::class, 'drawFixturesRound'])->name('frontend.fixtures.indexRound');

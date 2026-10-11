@@ -43,3 +43,14 @@ test('shared boys and girls rank bands load once per draw and scoped payload tar
   assert.deepEqual(JSON.parse(JSON.stringify(context.rows.map(row => [row.draw_id,row.round]))),[[1,1],[1,3],[2,1],[2,3]]);
   assert.ok(context.rows.every(row => row.rank_venue_preferences.length === 1));
 });
+
+
+test('age cards restore only the clicked draw and round bands and courts', () => {
+  const setups=[{draw_id:1,round:1,court_allocations:[{venue_id:8,court_labels:['1','2']}],rank_venue_preferences:[{venue_id:8,min_rank:1,max_rank:4}]},{draw_id:1,round:2,court_allocations:[{venue_id:9,court_labels:['3']}],rank_venue_preferences:[{venue_id:9,min_rank:5,max_rank:8}]},{draw_id:2,round:1,court_allocations:[{venue_id:10,court_labels:['4']}],rank_venue_preferences:[{venue_id:10,min_rank:9,max_rank:12}]}];
+  const context={roundVenueSetups:setups,document:{querySelector:selector => ({dataset:{venueName:selector.includes('value="8"') ? 'Saturday venue' : selector.includes('value="9"') ? 'Round two venue' : 'Sunday venue'}})},escapeHtml:String,programmeCourtLabels:labels => labels.join(','),programmeBandDescription:(_,rule) => 'Positions '+rule.min_rank+'–'+rule.max_rank};
+  const start=source.indexOf('  const programmeRoundSetup =');const end=source.indexOf('  const refreshProgrammeStageSummaries =',start);
+  vm.runInNewContext(source.slice(start,end)+'; globalThis.setup=programmeDrawSetup;',context);
+  const saturday=context.setup({id:1},[],1), sunday=context.setup({id:2},[],1), second=context.setup({id:1},[],2);
+  assert.match(saturday,/Saturday venue · Courts 1,2 · Positions 1–4/);assert.doesNotMatch(saturday,/Sunday|5–8|9–12/);
+  assert.match(sunday,/Sunday venue · Courts 4 · Positions 9–12/); assert.match(second,/Round two venue · Courts 3 · Positions 5–8/);
+});

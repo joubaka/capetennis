@@ -19,6 +19,20 @@ class EventCommunicationController extends Controller
         }
 
         $regions = $service->regions($event, $request->user());
+        $wrapUp = null;
+        if ($request->boolean('rebuild_wrap_up')) $request->session()->forget('_old_input');
+        if ($request->boolean('wrap_up')) {
+            abort_unless($service->managesWholeEvent($event, $request->user()), 403);
+            $wrapUp = app(\App\Services\EventWrapUpMessage::class)->draft($event);
+            if ($request->filled('edit_batch')) {
+                $editBatch = EventCommunicationBatch::where('event_id', $event->id)->where('created_by', $request->user()->id)->findOrFail($request->query('edit_batch'));
+                abort_unless(! empty($editBatch->options['wrap_up']), 404);
+                $wrapUp['subject'] = $editBatch->subject;
+                $wrapUp['body'] = $editBatch->body;
+                $wrapUp['results_fingerprint'] = $editBatch->options['results_fingerprint'];
+                $wrapUp['options'] = $editBatch->options;
+            }
+        }
         $rankingAudience = app(\App\Services\RegionalRankingMailAudience::class);
         $canRankingMail = $rankingAudience->canManage($event, $request->user());
         $rankingLists = $canRankingMail ? $rankingAudience->lists($event) : collect();
@@ -60,7 +74,7 @@ class EventCommunicationController extends Controller
         $reportContext = ['report_scope' => $scope];
         if ($batch && $request->filled('batch')) $reportContext['batch'] = $batch->id;
 
-        return view('backend.event.communications.index', compact('event', 'regions', 'teams', 'individuals', 'batches', 'batch', 'summary', 'logs', 'search', 'drafts', 'invitationLogs', 'invitationSummary', 'canRankingMail', 'rankingLists', 'teamAudience', 'historyReport', 'reportContext'));
+        return view('backend.event.communications.index', compact('event', 'regions', 'teams', 'individuals', 'batches', 'batch', 'summary', 'logs', 'search', 'drafts', 'invitationLogs', 'invitationSummary', 'canRankingMail', 'rankingLists', 'teamAudience', 'historyReport', 'reportContext', 'wrapUp'));
     }
 
     public function reviewDraft(Request $request, Event $event, EventCommunicationBatch $draft, EventCommunicationService $service)
@@ -97,7 +111,9 @@ class EventCommunicationController extends Controller
             'exclude_reserves' => 'nullable|boolean',
             'exclude_withdrawn' => 'nullable|boolean',
             'region_id' => 'nullable|required_if:scope,region|integer',
-            'team_id' => 'nullable|required_if:scope,team|integer',
+            'team_id' => 'nullable|integer',
+            'team_ids' => ['nullable', 'array', 'min:1', 'max:500', \Illuminate\Validation\Rule::requiredIf($request->input('scope') === 'team' && ! $request->filled('team_id'))],
+            'team_ids.*' => 'required|integer|distinct',
             'category_event_id' => 'nullable|integer',
             'registration_id' => 'nullable|integer',
             'direct_email' => 'nullable|required_if:scope,direct|email|max:255',
@@ -106,8 +122,10 @@ class EventCommunicationController extends Controller
             'recipients' => 'required|in:players,managers,both',
             'subject' => 'required|string|max:200',
             'body' => 'required|string|max:30000',
+            'wrap_up' => 'nullable|boolean',
+            'results_fingerprint' => 'nullable|required_if:wrap_up,1|string|size:64',
         ]);
-        $options = array_intersect_key($data, array_flip(['scope', 'region_id', 'team_id', 'individual_key', 'category_event_id', 'registration_id', 'direct_email', 'filter', 'recipients', 'respect_status']));
+        $options = array_intersect_key($data, array_flip(['scope', 'region_id', 'team_id', 'team_ids', 'individual_key', 'category_event_id', 'registration_id', 'direct_email', 'filter', 'recipients', 'respect_status']));
         if ($event->isTeam() && ! $request->boolean('respect_status') && in_array($data['scope'], ['all', 'region', 'team'], true)) {
             $options['filter'] = 'all';
         }
@@ -116,6 +134,10 @@ class EventCommunicationController extends Controller
             $options += ['filter' => 'all', 'recipients' => 'players'];
         }
         $options = array_merge($options, \App\Services\CommunicationSender::resolve($request->all(), $request->user()));
+        if ($request->boolean('wrap_up')) {
+            $options['wrap_up'] = true;
+            $options['results_fingerprint'] = $data['results_fingerprint'];
+        }
         $batch = $service->preview($event, $request->user(), $options, $data['subject'], $data['body']);
 
         $rankingReview = ($batch->options['scope'] ?? null) === 'rankings' ? app(\App\Services\RegionalRankingMailAudience::class)->resolve($event, $request->user(), $batch->options) : null;

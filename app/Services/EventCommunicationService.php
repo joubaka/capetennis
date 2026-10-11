@@ -258,6 +258,10 @@ class EventCommunicationService
 
     public function plan(Event $event, User $actor, array $options, string $subject, string $body): array
     {
+        if (! empty($options['wrap_up'])) {
+            abort_unless($this->managesWholeEvent($event, $actor), 403);
+            $this->validateWrapUpResults($event, $options);
+        }
         if (($options['source'] ?? null) === 'roster_target') {
             $region = EventRegion::where('event_id', $event->id)->findOrFail($options['event_region_id']);
             abort_unless($this->access->canManage($actor, $region), 403);
@@ -316,6 +320,11 @@ class EventCommunicationService
         if (($options['scope'] ?? null) === 'rankings') return $this->rankingPlan($event, $actor, $options, $subject, $body);
         $regions = $this->regions($event, $actor);
         $rows = $this->entries($event, $actor);
+        if (! empty($options['wrap_up']) && ! $event->isTeam()) {
+            $activeRegistrations = $event->registrations()->activeAndPaid()->pluck('registration_id');
+            $playerIds = DB::table('player_registrations')->whereIn('registration_id', $activeRegistrations)->pluck('player_id');
+            $rows = $rows->filter(fn ($row) => ($event->isInterprovincialTrials() || ! empty($row['registered'])) && $playerIds->contains((int) Str::after($row['key'], 'player:')));
+        }
         if ($event->isTeam() && in_array($options['scope'] ?? null, ['all', 'region', 'team'], true)) {
             $rosterKeys = $this->rosterEntries($event, $regions->pluck('region_id')->all())->map(fn ($row) => $row['team_id'].':'.$row['key']);
             $rows = $rows->filter(fn ($row) => $rosterKeys->contains(($row['team_id'] ?? '').':'.$row['key']));
@@ -325,9 +334,14 @@ class EventCommunicationService
             abort_unless($regions->contains('region_id', (int) $options['region_id']), 403);
             $rows = $rows->where('region_id', (int) $options['region_id']);
         } elseif ($scope === 'team') {
-            $team = Team::withoutGlobalScopes()->with('category')->findOrFail($options['team_id']);
-            abort_unless((int) $team->category?->event_id === (int) $event->id && $regions->contains('region_id', $team->region_id), 404);
-            $rows = $rows->where('team_id', $team->id);
+            $teamIds = collect($options['team_ids'] ?? [$options['team_id'] ?? null])->filter()->map(fn ($id) => (int) $id)->unique()->values();
+            abort_if($teamIds->isEmpty() || $teamIds->count() > 500, 422);
+            $selectedTeams = Team::withoutGlobalScopes()->with('category')->whereIn('id', $teamIds)->get();
+            abort_unless($selectedTeams->count() === $teamIds->count(), 404);
+            foreach ($selectedTeams as $team) {
+                abort_unless((int) $team->category?->event_id === (int) $event->id && $regions->contains('region_id', $team->region_id), 404);
+            }
+            $rows = $rows->whereIn('team_id', $teamIds->all());
         } elseif ($scope === 'individual') {
             $rows = $rows->where('key', $options['individual_key']);
             abort_if($rows->isEmpty(), 404);
@@ -367,7 +381,10 @@ class EventCommunicationService
                     $issues->push($first['team'].' — no regional manager with a valid email address');
                     continue;
                 }
-                $messages->push(['email' => mb_strtolower(trim($manager->email)), 'name' => $manager->name, 'kind' => 'manager', 'subject' => $subject, 'html' => nl2br(e($body))]);
+                $email = mb_strtolower(trim($manager->email));
+                if (! $messages->contains('email', $email)) {
+                    $messages->push(['email' => $email, 'name' => $manager->name, 'kind' => 'manager', 'subject' => $subject, 'html' => nl2br(e($body))]);
+                }
             }
         }
         if ($messages->isEmpty()) throw ValidationException::withMessages(['audience' => 'No matching recipient has a valid email address. Choose another audience or add contacts.']);
@@ -480,7 +497,9 @@ class EventCommunicationService
             return EventCommunicationBatch::create(['event_id' => $event->id, 'created_by' => $actor->id, 'token' => (string) Str::uuid(), 'subject' => $recipient['subject'], 'body' => '', 'options' => ['source' => 'invitation_retry', 'log_id' => $log->id, 'payload_fingerprint' => hash('sha256', json_encode($log->payload, JSON_THROW_ON_ERROR))], 'recipients' => [$recipient], 'issues' => [], 'fingerprint' => hash('sha256', json_encode($recipient, JSON_THROW_ON_ERROR))]);
         }
         $original = EventCommunicationBatch::where('event_id', $event->id)->where('created_by', $actor->id)->findOrFail($log->payload['event_communication_batch_id'] ?? 0);
+        $this->validateWrapUpResults($event, $log->payload);
         $this->checkRankingRetry($original, $actor);
+        $this->validateWrapUpResults($event, $original->options);
         abort_unless($log->status === 'failed' && ! $log->sent_at && ! $log->accepted_at && (int) ($log->payload['event_id'] ?? 0) === (int) $event->id, 422);
         $recipient = ['email' => $log->recipient_email, 'name' => $log->recipient_name, 'kind' => $log->payload['recipient_kind'] ?? 'players', 'player_keys' => $log->payload['player_keys'] ?? [], 'subject' => $log->payload['subject'], 'html' => $log->payload['body']];
 
@@ -546,6 +565,13 @@ class EventCommunicationService
         return DB::transaction(function () use ($batch, $actor, $acknowledgeMissing) {
             $batch = EventCommunicationBatch::whereKey($batch->id)->lockForUpdate()->firstOrFail();
             if ($batch->approved_at) return ['queued' => 0, 'duplicate' => true];
+            $this->validateWrapUpResults($batch->event, $batch->options);
+            if (($batch->options['source'] ?? null) === 'retry') {
+                $original = EventCommunicationBatch::where('event_id', $batch->event_id)->findOrFail($batch->options['original_batch_id']);
+                $this->validateWrapUpResults($batch->event, $original->options);
+                $log = BulkEmailLog::whereKey($batch->options['log_id'])->firstOrFail();
+                $this->validateWrapUpResults($batch->event, $log->payload);
+            }
             if ($batch->created_at->lt(now()->subHour())) throw ValidationException::withMessages(['preview' => 'This preview expired. Review a fresh recipient and message preview.']);
             if (($batch->options['source'] ?? null) === 'announcement_retry') {
                 $announcement = \App\Models\TeamSelectionRegionAnnouncement::where('event_id', $batch->event_id)->where('region_id', $batch->options['region_id'])->findOrFail($batch->options['regional_announcement_id']);
@@ -608,8 +634,12 @@ class EventCommunicationService
                 $related = \App\Models\TeamSelectionRegionAnnouncement::where('event_id', $batch->event_id)->where('region_id', $batch->options['region_id'])->findOrFail($batch->options['regional_announcement_id']);
                 $related->update(['emailed_at' => now()]);
             }
+            $selectedTeamIds = ($batch->options['scope'] ?? null) === 'team'
+                ? ($batch->options['team_ids'] ?? [$batch->options['team_id']]) : [];
+            $selectedRegionIds = $selectedTeamIds
+                ? Team::withoutGlobalScopes()->whereIn('id', $selectedTeamIds)->pluck('region_id')->unique()->values() : collect();
             foreach ($batch->recipients as $recipient) {
-                $result = $this->mailer->dispatch($batch->event->isInterprovincialTrials() ? 'trial_communication' : ($batch->event->isTeam() ? 'team_email' : 'bulk_event_mail'), $related, [$recipient], ['event_id' => $batch->event_id, 'created_by' => $actor->id, 'region_id' => in_array($batch->options['source'] ?? null, ['roster_target', 'roster_region_selection'], true) || ($batch->options['scope'] ?? null) === 'region' ? $batch->options['region_id'] : null, 'team_id' => ($batch->options['scope'] ?? null) === 'team' ? $batch->options['team_id'] : null, 'event_communication_batch_id' => $batch->id, 'subject' => $recipient['subject'], 'body' => $recipient['html'], 'recipient_kind' => $recipient['kind'], 'player_keys' => $recipient['player_keys'] ?? [], 'from_name' => $batch->options['from_name'] ?? $actor->name, 'reply_to' => $batch->options['reply_to'] ?? $actor->email, 'manual_retry_only' => true], true);
+                $result = $this->mailer->dispatch($batch->event->isInterprovincialTrials() ? 'trial_communication' : ($batch->event->isTeam() ? 'team_email' : 'bulk_event_mail'), $related, [$recipient], ['event_id' => $batch->event_id, 'created_by' => $actor->id, 'region_id' => in_array($batch->options['source'] ?? null, ['roster_target', 'roster_region_selection'], true) || ($batch->options['scope'] ?? null) === 'region' ? $batch->options['region_id'] : ($selectedRegionIds->count() === 1 ? $selectedRegionIds->first() : null), 'team_id' => count($selectedTeamIds) === 1 ? $selectedTeamIds[0] : null, 'team_ids' => $selectedTeamIds, 'event_communication_batch_id' => $batch->id, 'subject' => $recipient['subject'], 'body' => $recipient['html'], 'recipient_kind' => $recipient['kind'], 'player_keys' => $recipient['player_keys'] ?? [], 'from_name' => $batch->options['from_name'] ?? $actor->name, 'reply_to' => $batch->options['reply_to'] ?? $actor->email, 'manual_retry_only' => true, 'wrap_up' => (bool) ($batch->options['wrap_up'] ?? false), 'results_fingerprint' => $batch->options['results_fingerprint'] ?? null], true);
                 foreach (['queued', 'failed', 'skipped'] as $outcome) {
                     $stats[$outcome] += $result[$outcome] ?? 0;
                 }
@@ -617,5 +647,12 @@ class EventCommunicationService
 
             return $stats;
         });
+    }
+
+    public function validateWrapUpResults(Event $event, array $options): void
+    {
+        if (! empty($options['wrap_up']) && ! hash_equals(app(EventWrapUpMessage::class)->fingerprint($event->fresh()), $options['results_fingerprint'] ?? '')) {
+            throw ValidationException::withMessages(['preview' => 'Published results changed. Reopen the wrap-up message and review a fresh preview before sending.']);
+        }
     }
 }

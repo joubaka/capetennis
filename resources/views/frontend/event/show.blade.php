@@ -426,6 +426,7 @@
 
 {{-- ================= EVENT CONTENT ================= --}}
 <div class="public-event-view">
+  @include('frontend.event.partials._convener-standings')
   @include('frontend.event.partials._type-content')
 </div>
 
