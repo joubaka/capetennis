@@ -201,6 +201,9 @@ class EventStandingsTest extends TestCase
         $rows = $data['ageStandings']['U10'];
         $this->assertSame(['Oak Primary School', 'Pine Primary School'], array_column($rows, 'name'));
         $this->assertSame([12, 2], array_column($rows, 'points'));
+        $this->assertSame(['boys' => 7, 'girls' => 3, 'mixed' => 2, 'other' => 0], $rows[0]['gender_points']);
+        $this->assertSame(['boys' => 0, 'girls' => 0, 'mixed' => 2, 'other' => 0], $rows[1]['gender_points']);
+        foreach ($rows as $row) { $this->assertSame($row['points'], array_sum($row['gender_points'])); }
         $this->assertSame([5, 1], array_column($rows, 'rubber_wins'));
         $this->assertSame([3, 3], array_column($rows, 'played'));
         $this->assertSame([1, 2], array_column($rows, 'rank'));
@@ -215,9 +218,31 @@ class EventStandingsTest extends TestCase
         $this->actingAs($admin)->get(route('admin.events.standings', [$event, 'gender' => 'Girls / Women', 'category' => 'Under10 Girls']))
             ->assertOk()->assertSee('Combined results by age group')->assertSee('Under 10')
             ->assertSee('href="'.route('admin.events.standings', [$event, 'age' => 'U10']).'"', false);
-        $this->get(route('admin.events.standings', [$event, 'age' => 'U10']))->assertOk()
+        $response = $this->get(route('admin.events.standings', [$event, 'age' => 'U10']))->assertOk()
             ->assertSee('Under 10 combined results')->assertSee('data-age-standings="U10"', false)
             ->assertDontSee('data-age-standings="U12"', false)->assertViewHas('ageStandings', $data['ageStandings']);
+        preg_match('/<section[^>]*data-age-standings="U10".*?<\/section>/s', $response->getContent(), $ageSection);
+        $this->assertNotEmpty($ageSection);
+        foreach (['>Boys<', '>Girls<', '>Mixed<', '>Total points<', '>Rubbers W–L<', '>Sets F–A<', '>Games F–A<'] as $header) {
+            $this->assertStringContainsString($header, $ageSection[0]);
+        }
+        foreach (['Ties played', 'Ties won', 'Ties drawn', 'Ties lost', '>Other<'] as $header) {
+            $this->assertStringNotContainsString($header, $ageSection[0]);
+        }
+        $response->assertSee('Ties played'); // Overall and detailed draw tables retain their columns.
+    }
+
+    public function test_age_table_shows_unspecified_points_without_hiding_them(): void
+    {
+        $event = $this->event();
+        $this->draw($event, 'U10 Open');
+        $admin = User::factory()->create();
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $response = $this->actingAs($admin)->get(route('admin.events.standings', [$event, 'age' => 'U10']))->assertOk();
+        $row = $response->viewData('ageStandings')['U10'][0];
+        $this->assertSame(3, $row['gender_points']['other']);
+        $this->assertSame($row['points'], array_sum($row['gender_points']));
+        $response->assertSee('>Other<', false)->assertSee('data-gender-points="other">3', false);
     }
 
     public function test_age_ranks_use_saved_tiebreakers_share_exact_ties_and_suppress_incompatible_rules(): void

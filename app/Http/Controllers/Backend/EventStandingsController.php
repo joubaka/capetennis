@@ -11,6 +11,18 @@ use App\Support\Audit\AuditWriter;
 
 class EventStandingsController extends Controller
 {
+    public function preview(Request $request, Event $event, EventStandingsService $service)
+    {
+        $this->authorize('team-draw.createFormat', $event);
+        abort_unless($event->isTeam(), 404);
+        $filters = $request->validate(['age' => 'nullable|string|max:50']);
+
+        return response()->view('frontend.fixtures.event-standings', ['event' => $event, 'publicPreview' => true]
+            + $service->forPublicPreview($event, $request->user(), $filters))
+            ->header('Cache-Control', 'no-store, private')
+            ->header('X-Robots-Tag', 'noindex, nofollow');
+    }
+
     public function publication(Request $request, Event $event)
     {
         $this->authorize('team-draw.createFormat', $event);

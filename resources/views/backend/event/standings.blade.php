@@ -11,12 +11,15 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
       <div><h2 class="h5 mb-1">Public team standings</h2><span class="badge bg-label-{{ $event->standings_published ? 'success' : 'secondary' }}">{{ $event->standings_published ? 'Published' : 'Unpublished' }}</span></div>
       @can('team-draw.createFormat', $event)
+      <div class="d-flex flex-wrap align-items-center gap-2">
+      <a class="btn btn-outline-primary" style="min-height:44px" href="{{ route('admin.events.standings.preview', $event) }}" target="_blank" rel="noopener">Preview public standings</a>
       <form method="POST" action="{{ route('admin.events.standings.publication', $event) }}">
         @csrf
         @method('PATCH')
         <input type="hidden" name="standings_published" value="{{ $event->standings_published ? '0' : '1' }}">
         <button class="btn {{ $event->standings_published ? 'btn-outline-secondary' : 'btn-primary' }}" style="min-height:44px" type="submit">{{ $event->standings_published ? 'Unpublish standings' : 'Publish standings' }}</button>
       </form>
+      </div>
       @endcan
     </div>
     <p class="small text-muted mb-0 mt-3">Publishing shows Team standings and match totals on the public event page and enables public draw standings. Only published draws and ties contribute. These are current running standings, not final tournament placings. Event, draw, schedule and final results publication remain separate.</p>
@@ -60,7 +63,7 @@
     <div class="card-header"><h3 class="h5 mb-0">{{ $age === 'Unspecified' ? 'Age group unspecified' : 'Under '.substr($age, 1).' combined results' }}</h3>
       @if($ageMixedRules[$age])<p class="text-warning mt-2 mb-0">This age group uses different saved scoring rules. Totals are shown alphabetically without a combined rank; see each draw for its ranking.</p>@endif
     </div>
-    @include('backend.event.partials.standings-table', ['rows' => $ageRows])
+    @include('backend.event.partials.standings-table', ['rows' => $ageRows, 'agePoints' => true])
   </section>
   @empty<p>No age groups match these filters.</p>@endforelse
   <details class="card card-body mb-4" data-standings-details>

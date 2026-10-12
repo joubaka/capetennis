@@ -2,6 +2,10 @@
 @section('title', 'Standings – '.$event->name)
 @section('content')
 <div id="public-age-points" class="container-xxl py-4">
+  @php($standingsRoute = ($publicPreview ?? false) ? 'admin.events.standings.preview' : 'frontend.events.standings')
+  @if($publicPreview ?? false)
+    <div class="alert alert-info" role="status"><strong>Private preview</strong> — this shows the public standings layout using only published draws and ties. Previewing does not publish anything.</div>
+  @endif
   <style>
     #public-age-points { max-width: 1120px; min-width: 0; }
     #public-age-points .points-heading { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:1rem; margin-bottom:1rem; }
@@ -38,10 +42,14 @@
   </style>
   <div class="points-heading">
     <h1>{{ $event->name }}</h1>
+    @if($publicPreview ?? false)
+    <a class="btn btn-outline-secondary" href="{{ route('admin.events.standings', $event) }}">Back to admin standings</a>
+    @else
     <a class="btn btn-outline-secondary" href="{{ route('events.show', $event) }}">Back to tournament</a>
+    @endif
   </div>
   <p class="points-intro">Running points totals by age group. Boys’, girls’ and mixed points are shown separately, with a combined total for each region / school. Only published draws and ties contribute.</p>
-  <form method="GET" class="points-filter">
+  <form method="GET" action="{{ route($standingsRoute, $event) }}" class="points-filter">
     <div class="points-filter-field">
       <label for="standings-age">Age group</label>
       <select class="form-select" id="standings-age" name="age">
@@ -50,7 +58,7 @@
       </select>
     </div>
     <button class="btn btn-primary" type="submit">Apply filter</button>
-    <a class="btn btn-outline-secondary" href="{{ route('frontend.events.standings', $event) }}">Reset</a>
+    <a class="btn btn-outline-secondary" href="{{ route($standingsRoute, $event) }}">Reset</a>
   </form>
   @include('frontend.fixtures.partials.live-results-status')
   <div data-live-results="event-standings">

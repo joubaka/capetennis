@@ -15,6 +15,15 @@ final class EventStandingsService
         return $this->calculate($event, $filters, $publishedOnly, $drawId);
     }
 
+    /** Preview exactly the public result set without publishing standings. */
+    public function forPublicPreview(Event $event, \App\Models\User $actor, array $filters = []): array
+    {
+        \Illuminate\Support\Facades\Gate::forUser($actor)->authorize('team-draw.createFormat', $event);
+        abort_unless($event->isTeam(), 404);
+
+        return $this->calculate($event, $filters, true);
+    }
+
     /** Private operational access uses published results without publishing standings. */
     public function forRegionalConvener(Event $event, \App\Models\User $actor, array $filters = []): array
     {
@@ -108,7 +117,9 @@ final class EventStandingsService
                     'color' => \App\Support\RegionBadge::color($regionId ? $regions[$regionId] : null)];
                 $ageGroups[$section['age']][$key]['points'] += $row['points'];
                 foreach ($row['gender_points'] as $bucket => $points) { $ageGroups[$section['age']][$key]['gender_points'][$bucket] += $points; }
-                $ageStandings[$section['age']][$key] ??= ['name' => $overall[$key]['name'], 'rank' => null] + array_fill_keys(self::METRICS, 0);
+                $ageStandings[$section['age']][$key] ??= ['name' => $overall[$key]['name'], 'rank' => null,
+                    'gender_points' => array_fill_keys(['boys', 'girls', 'mixed', 'other'], 0)] + array_fill_keys(self::METRICS, 0);
+                foreach ($row['gender_points'] as $bucket => $points) { $ageStandings[$section['age']][$key]['gender_points'][$bucket] += $points; }
                 foreach (self::METRICS as $metric) { $ageStandings[$section['age']][$key][$metric] += $row[$metric]; }
                 if ($team) { $overall[$key]['teams'][$team->id] = true; }
                 foreach (self::METRICS as $metric) { $overall[$key][$metric] += $row[$metric]; }

@@ -87,6 +87,58 @@ class PublicEventStandingsTest extends TestCase
         $this->assertFalse($event->fresh()->standings_published);
     }
 
+    public function test_public_preview_requires_the_event_publisher_and_preserves_publication(): void
+    {
+        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        $event = $this->event();
+        $event->forceFill(['standings_published' => false])->save();
+        $local = $this->draw($event, 'U10 Boys');
+        $local['draw']->categoryEvent->category->update(['name' => 'U10']);
+        $this->score($local['rubber']);
+        $private = $this->draw($event, 'U11 Secret');
+        $private['draw']->categoryEvent->category->update(['name' => 'U11']);
+        $this->score($private['rubber']);
+        $private['draw']->update(['published' => false]);
+        $draft = $this->draw($event, 'U12 Private tie');
+        $draft['draw']->categoryEvent->category->update(['name' => 'U12']);
+        $this->score($draft['rubber']);
+        $draft['tie']->update(['published_at' => null, 'status' => TeamTie::STATUS_DRAFT]);
+        $url = route('admin.events.standings.preview', $event);
+        $this->get($url)->assertRedirect();
+        $ordinary = \App\Models\User::factory()->create();
+        $this->actingAs($ordinary)->get($url)->assertForbidden();
+        $foreignAdmin = \App\Models\User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $this->event()->id, 'user_id' => $foreignAdmin->id]);
+        $this->actingAs($foreignAdmin)->get($url)->assertForbidden();
+        $admin = \App\Models\User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $before = $event->fresh()->getAttributes();
+        $auditCount = DB::table('audit_events')->where('category', 'publication')->count();
+        $drawBefore = $private['draw']->fresh()->getAttributes();
+        $tieBefore = $draft['tie']->fresh()->getAttributes();
+        $response = $this->actingAs($admin)->get($url)->assertOk()->assertSee('Private preview')
+            ->assertSee('Back to admin standings')->assertSee('data-points="3"', false)
+            ->assertSee('action="'.$url.'"', false)->assertSee('href="'.$url.'"', false)
+            ->assertDontSee('U11 Secret')->assertDontSee('U12 Private tie')
+            ->assertHeader('X-Robots-Tag', 'noindex, nofollow');
+        $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
+        $groups = $response->viewData('ageGroups');
+        $this->assertSame(['U10'], array_keys($groups));
+        $this->assertSame([3, 0], array_column($groups['U10'], 'points'));
+        $this->get($url.'?age=U99')->assertOk()->assertViewHas('ageGroups', []);
+        $this->assertSame($groups, $this->get($url.'?age=U10')->assertOk()->viewData('ageGroups'));
+        $this->get(route('frontend.events.standings', $event))->assertNotFound();
+        $backend = $this->get(route('admin.events.standings', $event))->assertOk()
+            ->assertSee('Preview public standings')->assertSee('target="_blank" rel="noopener"', false);
+        $this->assertSame($before, $event->fresh()->getAttributes());
+        $this->assertSame($drawBefore, $private['draw']->fresh()->getAttributes());
+        $this->assertSame($tieBefore, $draft['tie']->fresh()->getAttributes());
+        $this->assertSame($auditCount, DB::table('audit_events')->where('category', 'publication')->count());
+        $event->forceFill(['standings_published' => true])->save();
+        $public = $this->get(route('frontend.events.standings', $event))->assertOk()->assertDontSee('Private preview');
+        $this->assertSame($groups, $public->viewData('ageGroups'));
+    }
+
     public function test_standings_default_private_and_generic_fill_cannot_publish(): void
     {
         $event = Event::factory()->create(['eventType' => 3]);
