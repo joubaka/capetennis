@@ -202,7 +202,9 @@ class SelectionPreviewShareTest extends TestCase
         $this->getJson($url.'?section=grants&grants_page=2')->assertOk()->assertJsonCount(2, 'grants');
         $foreign = Event::factory()->create();
         $this->getJson(route('backend.selection-preview-share.index', $foreign).'?section=grants')->assertForbidden();
-        $this->actingAs($linked)->getJson($url.'?section=grants')->assertForbidden();
+        $this->actingAs($users->first())->getJson($url.'?section=grants')->assertForbidden();
+        $this->getJson($url.'?q=UniqueChild')->assertForbidden();
+        $this->get($url)->assertForbidden();
         Bus::assertNotDispatched(SendBulkEmailJob::class);
     }
 
