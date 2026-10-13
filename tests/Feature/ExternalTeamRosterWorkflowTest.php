@@ -328,7 +328,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         app(ExternalTeamRosterService::class)->assertCanRegister($user, $this->event->fresh(), $this->team, $player);
     }
 
-    public function test_open_team_event_accepts_registration_after_legacy_deadline(): void
+    public function test_open_team_event_blocks_registration_after_closing_date(): void
     {
         $this->team->update(['noProfile' => false]);
         $this->event->update([
@@ -345,13 +345,44 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'pay_status' => 0,
         ]);
 
-        $this->assertTrue(app(ExternalTeamRosterService::class)->registrationIsOpen($this->event->fresh()));
-        $this->assertSame(
-            $player->id,
-            app(ExternalTeamRosterService::class)
-                ->assertCanRegister($user, $this->event->fresh(), $this->team, $player)
-                ->player_id
-        );
+        $this->assertFalse(app(ExternalTeamRosterService::class)->registrationIsOpen($this->event->fresh()));
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        app(ExternalTeamRosterService::class)->assertCanRegister($user, $this->event->fresh(), $this->team, $player);
+    }
+
+    public function test_open_team_registration_ignores_stored_draft_and_closed_status(): void
+    {
+        $this->team->update(['noProfile' => false]);
+        $payer = User::factory()->create();
+        $player = Player::factory()->create(['userId' => User::factory()->create()->id]);
+        TeamPlayer::create(['team_id' => $this->team->id, 'rank' => 1, 'player_id' => $player->id, 'pay_status' => 0]);
+
+        foreach (['draft', 'closed'] as $status) {
+            $this->event->update(['status' => $status]);
+            $this->assertTrue(app(ExternalTeamRosterService::class)->registrationIsOpen($this->event->fresh()));
+            $this->assertSame($player->id, app(ExternalTeamRosterService::class)
+                ->assertCanRegister($payer, $this->event->fresh(), $this->team, $player)->player_id);
+        }
+
+        $this->assertDatabaseCount('team_payment_orders', 0);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->assertSame($payer->players()->count(), 0);
+    }
+
+    public function test_imported_roster_registration_links_follow_toggle_and_date_not_status(): void
+    {
+        NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 1, 'name' => 'Test', 'surname' => 'Player', 'pay_status' => 0]);
+        TeamPlayer::create(['team_id' => $this->team->id, 'rank' => 1, 'player_id' => 0, 'pay_status' => 0]);
+
+        foreach (['draft', 'closed'] as $status) {
+            $this->event->update(['status' => $status]);
+            $this->view('frontend.event.partials.no-profile-team', ['team' => $this->team->fresh(), 'event' => $this->event->fresh()])
+                ->assertSee('Link Profile')->assertDontSee('>Closed<', false);
+        }
+
+        $this->event->update(['start_date' => now()->addDay(), 'deadline' => 7]);
+        $this->view('frontend.event.partials.no-profile-team', ['team' => $this->team->fresh(), 'event' => $this->event->fresh()])
+            ->assertSee('Closed')->assertDontSee('Link Profile');
     }
 
     public function test_any_user_can_open_team_payment_for_an_eligible_unlinked_player(): void

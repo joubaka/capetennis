@@ -163,10 +163,7 @@ class EventController extends Controller
       $mastersInvitations = $mastersBatch
         ? $mastersBatch->invitations()->with(['player', 'categoryEvent.category'])->whereIn('status', [\App\Models\MastersInvitation::INVITED, \App\Models\MastersInvitation::ACCEPTED_PENDING_PAYMENT, \App\Models\MastersInvitation::PAID_CONFIRMED])->orderBy('category_event_id')->orderBy('ranking_position')->get()
         : collect();
-      // The event Signup switch is the primary public gate. Keep the batch
-      // flag supported for Masters-specific control, but do not show a
-      // published Masters list as closed when the event is explicitly open.
-      $mastersRegistrationOpen = (bool) ($mastersBatch?->registration_open || (int) $event->signUp === 1);
+      $mastersRegistrationOpen = $event->published && $event->registrationIsOpen();
     }
 
     Log::debug('EVENT LOADED', [
@@ -212,20 +209,7 @@ class EventController extends Controller
      * deadline = number of days BEFORE start_date
      * closes at end of day (23:59:59)
      */
-    if (!empty($event->deadline) && is_numeric($event->deadline)) {
-
-      $entryCloseAt = $startDate
-        ->copy()
-        ->subDays((int) $event->deadline)
-        ->endOfDay();
-
-    } else {
-
-      // fallback: entries close on start date
-      $entryCloseAt = $startDate
-        ->copy()
-        ->endOfDay();
-    }
+    $entryCloseAt = $event->registrationClosesAt();
 
     /**
      * WITHDRAWAL DEADLINE
@@ -233,35 +217,25 @@ class EventController extends Controller
     if (!empty($event->withdrawal_deadline)) {
       $withdrawalCloseAt = Carbon::parse($event->withdrawal_deadline);
     } else {
-      $withdrawalCloseAt = $entryCloseAt->copy();
+      $withdrawalCloseAt = $entryCloseAt?->copy() ?? $startDate->copy()->endOfDay();
     }
 
 
     // FLAGS
-    $eventClosed = ! $event->hasOpenRegistrationLifecycle();
-
-    // Team and Masters registration is controlled explicitly by the organiser.
-    // Their legacy calendar deadline must not contradict an open registration switch.
-    $deadlineAppliesToRegistration = ! $event->isTeam() && ! $event->isMasters();
-    $registrationWindowOpen = ! $deadlineAppliesToRegistration || now()->lte($entryCloseAt);
-
-    $signUp = (!$eventClosed && $registrationWindowOpen && $event->signUp == 1)
-      ? 'open'
-      : 'closed';
-
-    $canEnter = !$eventClosed && $registrationWindowOpen;
+    $signUp = $event->registrationIsOpen() ? 'open' : 'closed';
+    $canEnter = $event->registrationIsOpen();
     $canWithdraw = now()->lte($withdrawalCloseAt);
 
     // FORMATTED OUTPUT
     $sDate = $this->convertDate($startDate);
     $eDate = $this->convertDate(Carbon::parse($event->end_date));
 
-    $formatEntryLine = $this->convertDate($entryCloseAt);
+    $formatEntryLine = $entryCloseAt ? $this->convertDate($entryCloseAt) : 'No closing date set';
     $formatWithdrawalLine = $this->convertDate($withdrawalCloseAt);
 
     Log::debug('DEADLINES (FINAL)', [
       'start_date' => $startDate->toDateTimeString(),
-      'entry_close_at' => $entryCloseAt->toDateTimeString(),
+      'entry_close_at' => $entryCloseAt?->toDateTimeString(),
       'withdrawal_close_at' => $withdrawalCloseAt->toDateTimeString(),
       'now' => now()->toDateTimeString(),
       'can_enter' => $canEnter,

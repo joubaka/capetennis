@@ -22,7 +22,8 @@ function requestFor(values) {
     return chain;
   };
   new Function('$', 'document', `let resultRequest, applyingDraft, editingGroup, savedDraft;
-    let resultGeneration = 0, draftReady = false, selectionVersion = 0, saveRequestBusy = false;
+    let resultGeneration = 0, draftReady = false, selectionVersion = 0, saveRequestBusy = false, draftDirty, renderedSetup;
+    function setupState() { return []; }
     ${loadSource}; loadResults();`)($, document);
   return request;
 }
@@ -53,11 +54,56 @@ test('manual order renumbers candidates, bounds move controls and opens changed-
     return { dataset: { draftKey: key }, elements, querySelector: selector => elements[selector], classList: { toggle(name, value) { this[name] = value; } } };
   });
   let status;
-  new Function('draftCards', 'draftRows', 'selectionStatus', `${changedSource}; draftOrderChanged();`)(() => cards, () => rows, value => { status = value; });
+  new Function('draftCards', 'draftRows', 'selectionStatus', `function markDraftChanged() {} function updateDraftProgress() {} ${changedSource}; draftOrderChanged();`)(() => cards, () => rows, value => { status = value; });
   assert.deepEqual(rows.map(row => row.elements['[data-draft-position]'].textContent), [1, 2, 3]);
   assert.equal(rows[0].elements['[data-draft-up]'].disabled, true);
   assert.equal(rows[2].elements['[data-draft-down]'].disabled, true);
   assert.deepEqual([...disclosures], ['2', '1']);
   assert.equal(rows[2].elements['[data-draft-changed]'].hidden, true);
   assert.match(status, /Save|save/);
+});
+
+function draftEditor() {
+  const inputs = { '1': { checked: true, value: '' }, '2': { checked: true, value: '' } };
+  const rows = ['1', '2'].map(key => ({ dataset: { draftKey: key } }));
+  const cards = rows.map(row => ({ dataset: { resultPlayer: row.dataset.draftKey }, querySelector: selector => selector === '[data-selection-player]' ? inputs[row.dataset.draftKey] : inputs[row.dataset.draftKey] }));
+  let regions = ['1'];
+  const fingerprintFunctions = source.slice(source.indexOf('  function draftFingerprint()'), source.indexOf('  function confirmDraftDiscard()'));
+  const saveLine = source.split('\n').find(line => line.includes('draftBaseline = submittedFingerprint;'));
+  const callback = saveLine.slice(saveLine.indexOf('.done(') + 6, saveLine.lastIndexOf(')'));
+  const editor = new Function('draftRows', 'draftCards', 'setupState', `
+    let draftDirty = false, editRevision = 0, draftBaseline, submittedFingerprint;
+    let group = '10-boys', generation = 1, resultGeneration = 1, savedDraft, selectionVersion = 1;
+    function updateDraftProgress() {} function selectionStatus() {} function selectionGroup() { return group; }
+    ${fingerprintFunctions}
+    draftBaseline = draftFingerprint();
+    return { change: markDraftChanged, beginSave() { submittedFingerprint = draftFingerprint(); }, completeSave: ${callback}, state() { return { draftDirty, selectionVersion, editRevision }; } };
+  `)(() => rows, () => cards, () => regions);
+  return { editor, inputs, rows, changeSetup(value) { regions = value; editor.change(); } };
+}
+
+test('dirty state compares complete setup and draft contents, so reverted edits are clean', () => {
+  const { editor, inputs, changeSetup } = draftEditor();
+  inputs['1'].value = 'Review'; editor.change(); assert.equal(editor.state().draftDirty, true);
+  inputs['1'].value = ''; editor.change(); assert.equal(editor.state().draftDirty, false);
+  changeSetup(['2']); assert.equal(editor.state().draftDirty, true);
+  changeSetup(['1']); assert.equal(editor.state().draftDirty, false);
+});
+
+test('an asynchronous save updates version while retaining edits made after submission', () => {
+  const { editor, inputs } = draftEditor();
+  inputs['1'].value = 'Submitted reason'; editor.change(); editor.beginSave();
+  inputs['2'].checked = false; editor.change();
+  editor.completeSave({ draft: { version: 2 } });
+  assert.equal(editor.state().selectionVersion, 2);
+  assert.equal(editor.state().draftDirty, true);
+  inputs['2'].checked = true; editor.change(); assert.equal(editor.state().draftDirty, false);
+});
+
+test('cancelling a setup discard restores the rendered filters without requesting results', () => {
+  const handlerLine = source.split('\n').find(line => line.includes("'.team-admin-workspace .category-radio, [data-result-region]"));
+  const callback = handlerLine.slice(handlerLine.indexOf('function ()'), handlerLine.lastIndexOf(')'));
+  let restored, loaded = 0;
+  new Function('confirmDraftDiscard', 'restoreSetup', 'renderedSetup', 'loadResults', 'saveUrl', `(${callback})();`)(() => false, state => { restored = state; }, ['saved-filters'], () => { loaded++; }, () => {});
+  assert.deepEqual(restored, ['saved-filters']); assert.equal(loaded, 0);
 });

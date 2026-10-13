@@ -647,7 +647,7 @@ final class MastersInvitationService
             if ($locked->status === MastersInvitation::ACCEPTED_PENDING_PAYMENT && $locked->order_id) {
                 return RegistrationOrder::findOrFail($locked->order_id);
             }
-            if (!$locked->batch->registration_open && (int) $locked->batch->event?->signUp !== 1) {
+            if (! $locked->batch->event?->published || ! $locked->batch->event?->registrationIsOpen()) {
                 throw ValidationException::withMessages(['invitation' => 'Masters registration is currently closed.']);
             }
             if ($locked->status !== MastersInvitation::INVITED) {

@@ -220,6 +220,34 @@ class MastersRegistrationBoundaryTest extends TestCase
         $this->assertSame($order->id, $invitation->fresh()->order_id);
     }
 
+    public function test_event_toggle_controls_masters_registration_even_when_batch_disagrees(): void
+    {
+        [$event, $categoryEvent, $user, $player] = $this->mastersEvent();
+        $batch = MastersInvitationBatch::create([
+            'event_id' => $event->id, 'series_id' => 1, 'ranking_run_id' => 'toggle-window',
+            'top_x' => 8, 'status' => 'sent', 'registration_open' => true,
+        ]);
+        $invitation = MastersInvitation::create([
+            'batch_id' => $batch->id, 'event_id' => $event->id, 'category_event_id' => $categoryEvent->id,
+            'player_id' => $player->id, 'ranking_position' => 1, 'queue_position' => 1,
+            'status' => MastersInvitation::INVITED,
+        ]);
+        $event->update(['signUp' => false]);
+        try {
+            app(MastersInvitationService::class)->accept($invitation, $user);
+            $this->fail('The batch flag must not override a closed event toggle.');
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            $this->assertArrayHasKey('invitation', $exception->errors());
+        }
+        $this->assertDatabaseCount('registration_orders', 0);
+        $event->update(['signUp' => true, 'status' => 'draft']);
+        $batch->update(['registration_open' => false]);
+        $order = app(MastersInvitationService::class)->accept($invitation->fresh(), $user);
+        $this->assertSame($user->id, $order->user_id);
+        $this->assertSame(285.0, (float) $order->total_fee);
+        $this->assertDatabaseCount('registration_orders', 1);
+    }
+
     private function mastersEvent(): array
     {
         $typeId = $this->eventType('masters', EventType::INDIVIDUAL);
@@ -229,6 +257,8 @@ class MastersRegistrationBoundaryTest extends TestCase
             'status' => 'open',
             'published' => 1,
             'signUp' => 1,
+            'start_date' => now()->addDays(30)->toDateString(),
+            'deadline' => 7,
         ]);
         $categoryEvent = CategoryEvent::factory()->create([
             'event_id' => $event->id,

@@ -17,6 +17,59 @@
   let draftFetchSequence = 0;
   let editingGroup;
   let saveRequestBusy = false;
+  let draftDirty = false;
+  let editRevision = 0;
+  let renderedSetup;
+  let draftBaseline;
+  let pendingEvidenceCard;
+
+  function draftFingerprint() { return JSON.stringify([setupState(), draftRows().map(row => {
+    const card = draftCards().find(card => card.dataset.resultPlayer === row.dataset.draftKey);
+    return [row.dataset.draftKey, !!card?.querySelector('[data-selection-player]').checked, card?.querySelector('[data-selection-reason]').value.trim() || ''];
+  })]); }
+  function markDraftChanged() { draftDirty = draftFingerprint() !== draftBaseline; editRevision++; updateDraftProgress(); }
+  function confirmDraftDiscard() { if (saveRequestBusy) { selectionStatus('Wait for the draft save to finish before changing the setup or loading a draft.'); return false; } return !draftDirty || window.confirm('Discard your unsaved draft order, selections and reasons?'); }
+  function setupState() {
+    return ['.category-radio', '[data-result-region]', '[data-result-excluded-region]', '[data-result-format]'].map(selector =>
+      [selector, [...document.querySelectorAll(selector)].filter(input => input.checked).map(input => input.value)]);
+  }
+  function restoreSetup(state) {
+    (state || []).forEach(([selector, values]) => document.querySelectorAll(selector).forEach(input => { input.checked = values.includes(input.value); }));
+    const select = document.querySelector('[data-result-group-select]'); if (select) select.value = selectionGroup();
+  }
+  function updateDraftProgress() {
+    const rows = draftRows();
+    let selected = 0, missing = 0;
+    const calculated = draftCards().map(card => card.dataset.resultPlayer);
+    rows.forEach((row, index) => {
+      const card = draftCards().find(card => card.dataset.resultPlayer === row.dataset.draftKey);
+      if (!card) return;
+      const included = card.querySelector('[data-selection-player]').checked;
+      if (included) selected++;
+      const required = calculated[index] !== row.dataset.draftKey || (included && (card.dataset.playerSuggested !== '1' || card.dataset.playerCutoff === '1')) || (!included && card.dataset.playerSuggested === '1');
+      const field = row.querySelector('[data-draft-inline-reason]');
+      if (field) { field.closest('label').hidden = !required && !field.value.trim(); field.required = required; }
+      const marker = row.querySelector('[data-draft-changed]'); if (marker) marker.textContent = field?.value.trim() ? 'Reason recorded' : 'Reason required';
+      if (required && !card.querySelector('[data-selection-reason]').value.trim()) missing++;
+    });
+    $('[data-draft-count]').text(selected + ' / 10 selected');
+    $('[data-draft-state]').text(saveRequestBusy ? 'Saving private draft…' : (draftDirty ? 'Unsaved changes' : (selectionVersion ? 'Saved private draft · version ' + selectionVersion : 'Private draft · not saved')));
+    $('[data-draft-reasons]').text(missing ? missing + ' player reason' + (missing === 1 ? '' : 's') + ' needed' : '');
+    updateDraftChrome();
+  }
+  function updateDraftChrome() {
+    let bottom = 12;
+    document.querySelectorAll('#layout-navbar, #layout-menu').forEach(element => {
+      const style = window.getComputedStyle(element), rect = element.getBoundingClientRect();
+      if (['fixed', 'sticky'].includes(style.position) && rect.top <= 130 && rect.bottom > 0 && rect.height < window.innerHeight / 2) bottom = Math.max(bottom, rect.bottom + 12);
+    });
+    document.querySelector('#tab-result-rank')?.style.setProperty('--result-sticky-top', bottom + 'px');
+    const actions = document.querySelector('.result-persistent-actions');
+    document.querySelector('#tab-result-rank')?.style.setProperty('--result-toolbar-space', (actions?.getBoundingClientRect().height || 100) + 35 + 'px');
+  }
+  window.addEventListener('beforeunload', event => { if (draftDirty || saveRequestBusy) { event.preventDefault(); event.returnValue = ''; } });
+  window.addEventListener('resize', updateDraftChrome);
+  window.addEventListener('scroll', updateDraftChrome, { passive: true });
 
   function workspaceUrl(parameters) {
     const url = new URL(window.location.href);
@@ -193,11 +246,14 @@
     resultRequest?.abort();
     const generation = ++resultGeneration;
     const group = category.value;
+    renderedSetup = setupState();
+    draftDirty = false;
+    const groupSelect = document.querySelector('[data-result-group-select]'); if (groupSelect) groupSelect.value = group;
     const draftToApply = applyingDraft?.group_key === group ? applyingDraft : null;
     applyingDraft = null;
     if (editingGroup !== group) { editingGroup = group; draftReady = false; selectionVersion = 0; savedDraft = null; }
     $('[data-selection-save]').prop('disabled', true);
-    $('#category-name').text(category.dataset.name);
+    $('#category-name, [data-draft-category]').text(category.dataset.name);
     target.setAttribute('aria-busy', 'true'); target.setAttribute('aria-live', 'polite');
     const orderList = document.querySelector('[data-draft-order]');
     if (orderList) { window.Sortable?.get(orderList)?.destroy(); orderList.replaceChildren(); }
@@ -208,7 +264,7 @@
       .always(() => { if (generation === resultGeneration) target.removeAttribute('aria-busy'); });
   }
 
-  function selectionStatus(message) { $('[data-selection-status]').text(message); }
+  function selectionStatus(message) { $('[data-selection-status]').text(message); updateDraftChrome(); }
   function selectionGroup() { return $('.category-radio:checked').val(); }
   function draftRows() { return [...document.querySelectorAll('[data-draft-key]')]; }
   function draftCards() { return [...document.querySelectorAll('[data-result-player]')]; }
@@ -223,7 +279,8 @@
       row.querySelector('[data-draft-changed]').hidden = !changed;
       if (changed) draftCards().find(card => card.dataset.resultPlayer === row.dataset.draftKey)?.querySelector('.result-reason')?.setAttribute('open', '');
     });
-    if (announce) selectionStatus('Draft order changed. Record reasons for highlighted players and save the draft.');
+    if (announce) { markDraftChanged(); selectionStatus('Draft order changed. Explain highlighted players here, then Save draft.'); }
+    updateDraftProgress();
   }
   function buildDraftOrder() {
     const list = document.querySelector('[data-draft-order]');
@@ -235,19 +292,31 @@
       const handle = document.createElement('button'); handle.type = 'button'; handle.className = 'result-drag-handle'; handle.textContent = '⠿'; handle.setAttribute('aria-label', 'Drag ' + card.dataset.playerName);
       const position = document.createElement('span'); position.dataset.draftPosition = '';
       const identity = document.createElement('button'); identity.type = 'button'; identity.className = 'result-draft-identity'; identity.textContent = card.dataset.playerName + ' · ' + card.dataset.playerRegion;
-      identity.addEventListener('click', () => { card.querySelector('.result-reason')?.setAttribute('open', ''); card.scrollIntoView({ behavior: 'smooth', block: 'center' }); card.querySelector('[data-selection-reason]')?.focus({ preventScroll: true }); });
+      identity.addEventListener('click', () => {
+        const drawer = document.getElementById('result-draft-drawer');
+        if (drawer?.classList.contains('show')) { pendingEvidenceCard = card; bootstrap.Offcanvas.getInstance(drawer)?.hide(); return; }
+        showDraftEvidence(card);
+      });
       const selected = document.createElement('input'); selected.type = 'checkbox'; selected.className = 'form-check-input'; selected.checked = card.querySelector('[data-selection-player]').checked; selected.dataset.draftSelect = ''; selected.setAttribute('aria-label', 'Select ' + card.dataset.playerName);
-      selected.addEventListener('change', () => { card.querySelector('[data-selection-player]').checked = selected.checked; selectionStatus('Draft selection changed. Save to retain it.'); });
+      selected.addEventListener('change', () => { card.querySelector('[data-selection-player]').checked = selected.checked; markDraftChanged(); selectionStatus('Draft selection changed. Save to retain it.'); });
       const controls = document.createElement('div'); controls.className = 'result-draft-moves';
       ['up', 'down'].forEach(direction => {
         const button = document.createElement('button'); button.type = 'button'; button.textContent = direction === 'up' ? '↑' : '↓'; button.dataset[direction === 'up' ? 'draftUp' : 'draftDown'] = ''; button.setAttribute('aria-label', 'Move ' + card.dataset.playerName + ' ' + direction);
         button.addEventListener('click', () => { const neighbour = direction === 'up' ? row.previousElementSibling : row.nextElementSibling; if (!neighbour) return; list.insertBefore(direction === 'up' ? row : neighbour, direction === 'up' ? neighbour : row); draftOrderChanged(); button.focus(); }); controls.append(button);
       });
       const changed = document.createElement('span'); changed.dataset.draftChanged = ''; changed.className = 'result-draft-changed'; changed.textContent = 'Reason required';
-      row.append(handle, position, selected, identity, controls, changed); list.append(row);
+      const reasonLabel = document.createElement('label'); reasonLabel.className = 'result-inline-reason'; reasonLabel.textContent = 'Decision reason';
+      const reason = document.createElement('input'); reason.type = 'text'; reason.maxLength = 2000; reason.className = 'form-control'; reason.dataset.draftInlineReason = ''; reason.value = card.querySelector('[data-selection-reason]').value; reason.setAttribute('aria-label', 'Decision reason for ' + card.dataset.playerName);
+      reason.addEventListener('input', () => { card.querySelector('[data-selection-reason]').value = reason.value; markDraftChanged(); });
+      reasonLabel.append(reason);
+      row.append(handle, position, selected, identity, controls, changed, reasonLabel); list.append(row);
     });
     if (window.Sortable) new window.Sortable(list, { animation: 150, handle: '.result-drag-handle', draggable: '[data-draft-key]', ghostClass: 'result-draft-ghost', onEnd: () => draftOrderChanged() });
     draftOrderChanged(false);
+    if (!selectionVersion) draftBaseline = draftFingerprint();
+    draftDirty = draftFingerprint() !== draftBaseline;
+    updateDraftProgress();
+    updateDraftChrome();
   }
   function applyDraftPlayers() {
     if (!savedDraft) return;
@@ -256,11 +325,16 @@
     const list = document.querySelector('[data-draft-order]');
     const order = savedDraft.draft_order || [...(savedDraft.snapshot || [])].sort((a, b) => (a.draft_position || a.position || 0) - (b.draft_position || b.position || 0)).map(row => String(row.id));
     order.forEach(key => { const row = draftRows().find(row => row.dataset.draftKey === key); if (row) list.append(row); });
-    draftRows().forEach(row => { row.querySelector('[data-draft-select]').checked = savedDraft.selected_keys.includes(row.dataset.draftKey); });
+    draftRows().forEach(row => { row.querySelector('[data-draft-select]').checked = savedDraft.selected_keys.includes(row.dataset.draftKey); row.querySelector('[data-draft-inline-reason]').value = savedDraft.reasons?.[row.dataset.draftKey] || ''; });
+    draftDirty = false;
+    draftBaseline = draftFingerprint();
     draftOrderChanged(false);
     selectionStatus('Saved draft loaded. Review the current results before saving changes.');
   }
   function fetchDraft(apply) {
+    if (apply && !confirmDraftDiscard()) return;
+    const requestedRevision = editRevision;
+    const requestedVersion = selectionVersion;
     const group = selectionGroup();
     const generation = resultGeneration;
     const fetchSequence = ++draftFetchSequence;
@@ -273,12 +347,14 @@
         $('[data-selection-save]').prop('disabled', !draftReady || saveRequestBusy);
         selectionStatus(response.draft ? 'A saved draft is available. Load it before editing or saving.' : 'No saved draft for this group.'); return;
       }
+      if (saveRequestBusy || selectionVersion !== requestedVersion) { selectionStatus('The draft was saved while loading. Load again to get the latest saved version.'); return; }
+      if (editRevision !== requestedRevision && !confirmDraftDiscard()) return;
       savedDraft = response.draft; selectionVersion = savedDraft?.version || 0;
       if (!savedDraft) { selectionStatus('No saved draft for this group.'); return; }
       document.querySelectorAll('[data-result-region]').forEach(input => { input.checked = savedDraft.region_ids.map(String).includes(input.value); });
       document.querySelectorAll('[data-result-excluded-region]').forEach(input => { input.checked = (savedDraft.excluded_result_region_ids || []).map(String).includes(input.value); });
       document.querySelectorAll('[data-result-format]').forEach(input => { input.checked = savedDraft.formats.includes(input.value); });
-      applyingDraft = savedDraft; draftReady = true; $('[data-selection-save]').prop('disabled', false); saveUrl(); loadResults();
+      applyingDraft = savedDraft; draftReady = true; saveUrl(); loadResults();
     }).fail(xhr => { if (group === selectionGroup() && generation === resultGeneration && fetchSequence === draftFetchSequence) selectionStatus(xhr.responseJSON?.message || 'Draft could not be loaded.'); });
   }
   $(document).on('click', '[data-selection-load]', () => fetchDraft(true));
@@ -286,28 +362,54 @@
     const button = this;
     const group = selectionGroup();
     const generation = resultGeneration;
+    const submittedFingerprint = draftFingerprint();
     if (saveRequestBusy || !draftReady || !group || document.getElementById('category-table')?.getAttribute('aria-busy') === 'true' || !document.querySelector('.result-player-list, .result-empty')) return;
     const order = draftRows().map(row => row.dataset.draftKey);
     const selected = order.filter(key => draftCards().find(card => card.dataset.resultPlayer === key)?.querySelector('[data-selection-player]').checked);
     if (selected.length > 10) { selectionStatus('Choose no more than 10 players.'); return; }
     const reasons = {};
     document.querySelectorAll('[data-selection-reason]').forEach(input => { if (input.value.trim()) reasons[input.dataset.selectionReason] = input.value.trim(); });
-    saveRequestBusy = true; button.disabled = true;
+    saveRequestBusy = true; button.disabled = true; updateDraftProgress();
     $.ajax({ url: document.getElementById('tab-result-rank').dataset.selectionUrl, type: 'PUT', contentType: 'application/json', data: JSON.stringify({
       group_key: group, region_ids: $('[data-result-region]:checked').map(function () { return Number(this.value); }).get(),
       excluded_result_region_ids: $('[data-result-excluded-region]:checked').map(function () { return Number(this.value); }).get(),
       formats: $('[data-result-format]:checked').map(function () { return this.value; }).get(), selected_keys: selected, draft_order: order, reasons: reasons, version: selectionVersion
-    }) }).done(response => { if (group !== selectionGroup() || generation !== resultGeneration) return; savedDraft = response.draft; selectionVersion = savedDraft.version; selectionStatus('Draft selection saved. It has not been published.'); })
+    }) }).done(response => { if (group !== selectionGroup() || generation !== resultGeneration) return; savedDraft = response.draft; selectionVersion = savedDraft.version; draftBaseline = submittedFingerprint; draftDirty = draftFingerprint() !== draftBaseline; selectionStatus(draftDirty ? 'Earlier changes saved. You have newer unsaved changes.' : 'Draft selection saved. It has not been published.'); })
       .fail(xhr => { if (group !== selectionGroup() || generation !== resultGeneration) return; const errors = Object.values(xhr.responseJSON?.errors || {}).flat().join(' '); selectionStatus(xhr.status === 409 ? 'This draft changed elsewhere. Load the saved draft before saving again.' : (errors || xhr.responseJSON?.message || 'Draft could not be saved.')); })
-      .always(() => { saveRequestBusy = false; $('[data-selection-save]').prop('disabled', !draftReady); });
+      .always(() => { saveRequestBusy = false; $('[data-selection-save]').prop('disabled', !draftReady || document.getElementById('category-table')?.getAttribute('aria-busy') === 'true' || !document.querySelector('.result-player-list, .result-empty')); updateDraftProgress(); });
   });
   $(document).on('change', '[data-selection-player]', function () {
     const row = draftRows().find(row => row.dataset.draftKey === this.value);
     if (row) row.querySelector('[data-draft-select]').checked = this.checked;
+    markDraftChanged();
     selectionStatus('Draft selection changed. Save to retain it.');
+  });
+  $(document).on('input', '[data-selection-reason]', function () {
+    const row = draftRows().find(row => row.dataset.draftKey === this.dataset.selectionReason);
+    if (row) row.querySelector('[data-draft-inline-reason]').value = this.value;
+    markDraftChanged();
+  });
+  $(document).on('click', '[data-draft-open]', function () {
+    const rail = document.querySelector('.result-order-rail'); if (!rail) return;
+    if (window.innerWidth >= 768) { rail.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); rail.querySelector('button')?.focus({ preventScroll: true }); return; }
+    const drawer = document.getElementById('result-draft-drawer');
+    drawer.querySelector('[data-draft-drawer-body]').append(rail);
+    bootstrap.Offcanvas.getOrCreateInstance(drawer).show(this);
+  });
+  $(document).on('hidden.bs.offcanvas', '#result-draft-drawer', function () {
+    const rail = this.querySelector('.result-order-rail'); if (rail) document.querySelector('.result-group-rail')?.append(rail);
+    if (pendingEvidenceCard) { showDraftEvidence(pendingEvidenceCard); pendingEvidenceCard = null; }
+    else document.querySelector('[data-draft-open]')?.focus({ preventScroll: true });
+  });
+  function showDraftEvidence(card) { card.querySelector('.result-reason')?.setAttribute('open', ''); card.scrollIntoView({ behavior: 'smooth', block: 'center' }); card.querySelector('[data-selection-reason]')?.focus({ preventScroll: true }); }
+  $(document).on('change', '[data-result-group-select]', function () {
+    const radio = [...document.querySelectorAll('.category-radio')].find(input => input.value === this.value);
+    if (radio) { radio.checked = true; $(radio).trigger('change'); }
   });
 
   function refreshWorkspace() {
+    if (draftDirty || saveRequestBusy) { feedback('Save or load your Result Ranks draft before refreshing the team workspace.', true); return; }
+    const refreshRevision = editRevision;
     if (refreshing) { refreshAgain = true; return; }
     refreshing = true;
     saveUrl();
@@ -318,12 +420,14 @@
     feedback('Updating team workspace…');
     $.ajax({ url: workspaceUrl({ workspace: 1 }), dataType: 'html' })
       .done(html => {
+        if (draftDirty || saveRequestBusy || editRevision !== refreshRevision) { feedback('Team changes were saved. Your Result Ranks edits were kept; refresh after saving the draft.', true); return; }
         requests.forEach(request => request.abort()); requests.clear();
         const current = document.getElementById('team-workspace-content');
         current.querySelectorAll('.modal').forEach(modal => bootstrap.Modal.getInstance(modal)?.dispose());
         const parsed = $($.parseHTML(html, document, true)).filter('#team-workspace-content');
         if (!parsed.length) { feedback('Changes were saved, but the view could not be refreshed.', true); return; }
         $(current).replaceWith(parsed);
+        editingGroup = null; draftReady = false; selectionVersion = 0; savedDraft = null;
         restoreState();
         openRegions.forEach(id => { const region = document.getElementById(id); if (region) bootstrap.Collapse.getOrCreateInstance(region, { toggle: false }).show(); });
         if (focusId) document.getElementById(focusId)?.focus({ preventScroll: true });
@@ -361,8 +465,9 @@
   $(document).on('click', '[data-order-clear]', function () { $('[data-order-search]').val(''); applyOrderSearch(); saveUrl(); });
   $(document).on('click', '[data-workspace-refresh]', queueRefresh);
   $(document).on('click', '[data-roster-expand]', function () { document.querySelectorAll('[data-roster-panel="players"]:not([hidden]) [data-roster-team]:not([hidden])').forEach(team => { team.open = this.dataset.rosterExpand === 'true'; }); });
-  $(document).on('shown.bs.tab', '.team-admin-workspace .tabs-wrap [data-bs-toggle="tab"]', function () { if (!restoring) { selectRegion($('[data-roster-region]').val()); saveUrl(true); if (this.dataset.bsTarget === '#tab-result-rank') loadResults(); } });
-  $(document).on('change', '.team-admin-workspace .category-radio, [data-result-region], [data-result-excluded-region], [data-result-format]', function () { loadResults(); saveUrl(); });
+  $(document).on('show.bs.tab', '.team-admin-workspace .tabs-wrap [data-bs-toggle="tab"]', function (event) { if (saveRequestBusy) { event.preventDefault(); selectionStatus('Wait for the draft save to finish before switching tabs.'); } });
+  $(document).on('shown.bs.tab', '.team-admin-workspace .tabs-wrap [data-bs-toggle="tab"]', function () { if (!restoring) { selectRegion($('[data-roster-region]').val()); saveUrl(true); if (this.dataset.bsTarget === '#tab-result-rank' && !document.querySelector('.result-player-list, .result-empty')) loadResults(); } });
+  $(document).on('change', '.team-admin-workspace .category-radio, [data-result-region], [data-result-excluded-region], [data-result-format]', function () { if (!confirmDraftDiscard()) { restoreSetup(renderedSetup); return; } loadResults(); saveUrl(); });
   $(document).on('click', '[data-copy-contact]', async function () {
     try { await navigator.clipboard.writeText(this.dataset.copyContact); toastr.success('Contact copied.'); }
     catch (_) { toastr.info('Select the contact text to copy it.'); }
@@ -378,6 +483,6 @@
       .fail(xhr => toastr.error(xhr.responseJSON?.errors?.name?.[0] || xhr.responseJSON?.message || 'Unable to save the team name.'))
       .always(() => { button.disabled = false; });
   });
-  window.addEventListener('popstate', restoreState);
+  window.addEventListener('popstate', () => { if (!confirmDraftDiscard()) { saveUrl(); return; } restoreState(); });
   $(restoreState);
 })(jQuery, window, document);

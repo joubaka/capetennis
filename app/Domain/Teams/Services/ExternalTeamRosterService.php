@@ -280,9 +280,7 @@ class ExternalTeamRosterService
 
     public function registrationIsOpen(Event $event): bool
     {
-        return $event->published
-            && (bool) $event->signUp
-            && ! in_array($event->status, ['closed', 'draft'], true);
+        return $event->published && $event->registrationIsOpen();
     }
 
     private function identityName(string $name, string $surname): string

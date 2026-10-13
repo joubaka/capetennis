@@ -76,16 +76,14 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         }
     }
 
-    public function test_registration_lifecycle_accepts_only_scheduled_open_and_active(): void
+    public function test_registration_window_ignores_stored_lifecycle_status(): void
     {
-        foreach (['scheduled', 'open', 'active'] as $status) {
+        foreach (['scheduled', 'open', 'active', 'draft', 'closed', 'cancelled'] as $status) {
             $this->event->status = $status;
             $this->assertTrue($this->event->hasOpenRegistrationLifecycle(), $status);
         }
-        foreach (['draft', 'closed', 'cancelled'] as $status) {
-            $this->event->status = $status;
-            $this->assertFalse($this->event->hasOpenRegistrationLifecycle(), $status);
-        }
+        $this->event->signUp = false;
+        $this->assertFalse($this->event->hasOpenRegistrationLifecycle());
     }
 
     public function test_profileless_nomination_is_authorized_event_scoped_and_idempotent(): void

@@ -31,6 +31,10 @@
   .region-task-tabs { display: flex; flex-direction: row !important; flex-wrap: nowrap; gap: .35rem; padding: .4rem; border: 1px solid #dbe6f4; border-radius: .75rem; background: #f7faff; }
   .region-task-tabs .nav-link { display: flex; flex: 1 1 0; align-items: center; justify-content: center; gap: .4rem; min-width: 0; min-height: 2.75rem; border: 0; border-radius: .55rem; color: #506176; font-weight: 600; white-space: nowrap; }
   .region-task-tabs .nav-link.active { color: #173f78; background: #fff; box-shadow: 0 .15rem .5rem rgba(31, 57, 104, .12); }
+  .regional-more-options { position: relative; flex: 0 0 auto; }
+  .regional-more-options > summary { cursor: pointer; padding: .7rem 1rem; font-weight: 600; color: #506176; }
+  .regional-more-options-menu { position: absolute; right: 0; top: 100%; z-index: 10; min-width: 12rem; padding: .4rem; background: #fff; border: 1px solid #dbe6f4; border-radius: .65rem; box-shadow: 0 .35rem 1rem rgba(31, 57, 104, .12); }
+  .regional-more-options-menu .nav-link { width: 100%; justify-content: flex-start; }
   .region-task-panel { padding-top: 1rem; }
   .selection-progress { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .6rem; margin: 0; padding: 0; list-style: none; }
   .selection-progress-step { position: relative; min-width: 0; padding: .85rem; border: 1px solid #dbe6f4; border-radius: .65rem; background: #fff; }
@@ -73,6 +77,7 @@
     .regional-team-card .team-player-table td[data-mobile-full] { display: block; text-align: center; }
     .regional-team-card .team-player-table td[data-mobile-full]::before { content: none; }
     .regional-team-card .replacement-player-form { min-width: 0; width: min(18rem, calc(100vw - 2rem)); max-width: 100%; }
+    .regional-more-options-menu { position: static; box-shadow: none; }
     .region-task-tabs { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scroll-snap-type: x proximity; }
     .region-task-tabs .nav-link { flex: 0 0 auto; width: auto !important; min-width: max-content; padding: .6rem .8rem; scroll-snap-align: start; }
     .regional-team-card .team-player-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .25rem .65rem; box-shadow: none; padding: 1rem; }
@@ -134,7 +139,7 @@
   @if($errors->any())<div class="alert alert-danger"><strong>Action blocked.</strong><ul class="mb-0 mt-2">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
 
   @if($isEventManager)
-    <div class="alert alert-primary">Link each ranking-fed region to its own published series. Imported outside-region rosters can remain unlinked and will not be changed.</div>
+    <details class="regional-help mb-3"><summary>Event setup guidance</summary><div class="p-3 border-top">Link each ranking-fed region to its own published series. Imported outside-region rosters can remain unlinked and will not be changed.</div></details>
     @php($eventFilterTeams = $teams->flatten(1)->filter(fn($team) => $team->category_event_id)->unique('category_event_id')->sortBy(fn($team) => $team->category?->category?->name))
     @if($eventRegions->isNotEmpty() && $eventFilterTeams->isNotEmpty())
       <div class="d-flex justify-content-end mb-3" data-event-roster-email-action>
@@ -257,12 +262,14 @@
           </div>
           <div class="card-body">
             <div class="nav nav-pills region-task-tabs" role="tablist" aria-label="{{ $eventRegion->region?->region_name }} workspace" data-region-task-tabs="{{ $eventRegion->id }}">
-              @foreach(['overview' => ['ti-layout-dashboard', 'Overview'], 'teams' => ['ti-users-group', 'Teams & players'], 'invitations' => ['ti-mail-forward', 'Invitations'], 'messages' => ['ti-message-circle', $usesRegionalClothing ? 'Messages & clothing' : 'Messages'], 'setup' => ['ti-settings', 'Setup']] as $taskKey => [$taskIcon, $taskLabel])
+              @foreach(['teams' => ['ti-users-group', 'Teams & players'], 'invitations' => ['ti-file-import', 'Import & invitations'], 'messages' => ['ti-message-circle', $usesRegionalClothing ? 'Messages & clothing' : 'Messages'], 'overview' => ['ti-layout-dashboard', 'Help & progress'], 'setup' => ['ti-settings', 'Setup']] as $taskKey => [$taskIcon, $taskLabel])
+                @if($taskKey === 'overview')<details class="regional-more-options"><summary>More options</summary><div class="regional-more-options-menu">@endif
                 <button class="nav-link {{ $loop->first ? 'active' : '' }}" id="region-{{ $eventRegion->id }}-{{ $taskKey }}-tab" data-bs-toggle="tab" data-bs-target="#region-{{ $eventRegion->id }}-{{ $taskKey }}" type="button" role="tab" aria-controls="region-{{ $eventRegion->id }}-{{ $taskKey }}" aria-selected="{{ $loop->first ? 'true' : 'false' }}" data-region-task="{{ $taskKey }}"><i class="ti {{ $taskIcon }}"></i>{{ $taskLabel }}@if($taskKey === 'teams' && $unpublishedTeamCount)<span class="badge bg-label-warning">{{ $unpublishedTeamCount }}</span>@endif</button>
+                @if($loop->last)</div></details>@endif
               @endforeach
             </div>
             <div class="tab-content">
-              <div class="tab-pane fade show active region-task-panel" id="region-{{ $eventRegion->id }}-overview" role="tabpanel" aria-labelledby="region-{{ $eventRegion->id }}-overview-tab" tabindex="0">
+              <div class="tab-pane fade region-task-panel" id="region-{{ $eventRegion->id }}-overview" role="tabpanel" aria-labelledby="region-{{ $eventRegion->id }}-overview-tab" tabindex="0">
                 <div class="mb-3">
                   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><div><h6 class="mb-1">Selection progress</h6><p class="text-muted small mb-0">Click the highlighted next step to open the next available options, or open any available area directly.</p></div>@if($currentSelectionStep === false)<span class="badge bg-label-success"><i class="ti ti-circle-check me-1"></i>Workflow complete</span>@else<span class="badge bg-label-primary">Step {{ $currentSelectionStep + 1 }} of {{ count($selectionSteps) }}</span>@endif</div>
                   <ol class="selection-progress" aria-label="Regional selection progress">
@@ -344,10 +351,10 @@
             </details>
 
               </div>
-              <div class="tab-pane fade region-task-panel" id="region-{{ $eventRegion->id }}-teams" role="tabpanel" aria-labelledby="region-{{ $eventRegion->id }}-teams-tab" tabindex="0">
+              <div class="tab-pane fade show active region-task-panel" id="region-{{ $eventRegion->id }}-teams" role="tabpanel" aria-labelledby="region-{{ $eventRegion->id }}-teams-tab" tabindex="0">
 
             <div class="regional-readonly rounded p-3 mb-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
-              <div><strong>Regional teams &amp; players</strong><div class="small text-muted">Region-scoped workspace · ranking positions, selection history and payment state are read-only records.</div></div>
+              <div><strong>Manage your teams</strong><div class="small text-muted">Choose <strong>Show team</strong> below to see players. @if($activeImport)Use <strong>Change player</strong> to replace an unpaid player.@else Use the player row to correct a name or email.@endif Open <strong>Player order</strong> to move players up or down.</div></div>
               <div class="d-flex flex-wrap gap-2 align-items-center">
                 @if($activeImport?->status === 'draft')
                   <button class="btn btn-sm btn-success" type="button" data-bs-toggle="modal" data-bs-target="#prepare-invitations-{{ $activeImport->id }}"><i class="ti ti-send me-1"></i>Send all invitations</button>
@@ -688,13 +695,19 @@
                 @endforeach
               </div>
             @else
-              <div class="alert alert-warning">No regional teams exist yet. Link a ranking series and set up the region’s categories and teams below.</div>
+              <div class="alert alert-warning">No teams have been added for this region yet. <button type="button" class="btn btn-sm btn-outline-primary ms-2" data-open-region-task="setup">Set up teams</button></div>
             @endif
               </div>
 
               <div class="tab-pane fade region-task-panel" id="region-{{ $eventRegion->id }}-invitations" role="tabpanel" aria-labelledby="region-{{ $eventRegion->id }}-invitations-tab" tabindex="0">
                 @if(!$activeImport)
-                  <div class="alert alert-info mb-0">Complete the ranking and team setup first, then import the ranked players to prepare invitations.</div>
+                  <div class="alert alert-info">Import players from your region's published ranking. Review the players before importing; invitations are prepared separately.</div>
+                  @if($sourceReady && $regionTeams->isNotEmpty())
+                    <a class="btn btn-primary" href="{{ route('backend.team-selection.preview', [$event, $source]) }}"><i class="ti ti-file-import me-1"></i>Import players</a>
+                  @else
+                    <p class="text-muted small">First choose a published ranking series and create the teams.</p>
+                    <button type="button" class="btn btn-outline-primary" data-open-region-task="setup">Set up teams for import</button>
+                  @endif
                 @else
                   @php($unansweredInvitations = $activeImport->invitations->filter(fn ($invitation) => $invitation->status === \App\Models\TeamSelectionInvitation::INVITED && $invitation->invited_at && !$invitation->accepted_at))
                   <h6 class="mb-1">Player invitations</h6>
@@ -1034,6 +1047,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const taskTab = document.querySelector(`#region-${regionId}-${taskKey}-tab`);
     if (!taskTab || !window.bootstrap?.Tab) return;
     if (regionTab) bootstrap.Tab.getOrCreateInstance(regionTab).show();
+    const moreOptions = taskTab.closest('details');
+    if (moreOptions) moreOptions.open = true;
     bootstrap.Tab.getOrCreateInstance(taskTab).show();
     const state = `${regionId}/${taskKey}`;
     sessionStorage.setItem(workspaceStateKey, state);
@@ -1045,6 +1060,14 @@ document.addEventListener('DOMContentLoaded', function () {
     const [requestedRegion, requestedTask] = requestedWorkspace.replace(/^region-/, '').split('/');
     openWorkspace(requestedRegion, requestedTask, false);
   }
+  document.querySelectorAll('[data-region-task-tabs]').forEach(function (tabs) {
+    tabs.addEventListener('keydown', function (event) {
+      if (event.target.matches('[data-region-task]') && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
+        const moreOptions = tabs.querySelector('details');
+        if (moreOptions) moreOptions.open = true;
+      }
+    }, true);
+  });
   document.querySelectorAll('[data-region-task]').forEach(function (taskTab) {
     taskTab.addEventListener('shown.bs.tab', function () {
       const regionId = taskTab.closest('[data-region-task-tabs]')?.dataset.regionTaskTabs;
@@ -1054,7 +1077,7 @@ document.addEventListener('DOMContentLoaded', function () {
   document.querySelectorAll('[data-region-tabs] [data-region-id]').forEach(function (regionTab) {
     regionTab.addEventListener('shown.bs.tab', function () {
       const regionId = regionTab.dataset.regionId;
-      const activeTask = document.querySelector(`#region-panel-${regionId} [data-region-task].active`)?.dataset.regionTask || 'overview';
+      const activeTask = document.querySelector(`#region-panel-${regionId} [data-region-task].active`)?.dataset.regionTask || 'teams';
       const state = `${regionId}/${activeTask}`;
       sessionStorage.setItem(workspaceStateKey, state);
       history.replaceState(null, '', `${window.location.pathname}${window.location.search}#region-${state}`);

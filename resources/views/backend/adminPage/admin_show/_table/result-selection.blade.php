@@ -20,11 +20,11 @@
     <div class="result-review-notice" role="status"><strong>Review the tenth-place tie.</strong> Both points and set difference are equal. Record a selection decision and reasons.</div>
   @endif
   <h6>Calculated ranking</h6>
-  <p class="result-heading-hint">Results stay in calculated order here. Use Draft ranking order on the left to arrange your selection.</p>
+  <p class="result-heading-hint">Results stay in calculated order here. Use Reorder players to arrange your private draft and explain changes.</p>
   <ol class="result-player-list" aria-label="Calculated player ranking and suggested top 10">
   @foreach($ranking as $player)
     @php $wonAllCountedBandMatches = !$player['band_attribution_uncertain'] && $player['own_band_record']['wins'] > 0 && $player['own_band_record']['losses'] === 0; @endphp
-    <li data-result-player="{{ $player['id'] }}" data-player-name="{{ $player['name'] }}" data-player-region="{{ $player['region'] }}" @class(['result-player-card', 'result-player-card-lost-all' => $player['lost_all_counted_band_matches'], 'result-player-card-won-all' => $wonAllCountedBandMatches])>
+    <li data-result-player="{{ $player['id'] }}" data-player-name="{{ $player['name'] }}" data-player-region="{{ $player['region'] }}" data-player-suggested="{{ $player['suggested'] ? '1' : '0' }}" data-player-cutoff="{{ $player['cutoff_tie'] ? '1' : '0' }}" @class(['result-player-card', 'result-player-card-lost-all' => $player['lost_all_counted_band_matches'], 'result-player-card-won-all' => $wonAllCountedBandMatches])>
       <div class="result-player-heading">
         <label class="result-player-select"><input type="checkbox" class="form-check-input" data-selection-player value="{{ $player['id'] }}" {{ $player['suggested'] ? 'checked' : '' }}><span class="visually-hidden">Select {{ $player['name'] }}</span></label>
         <span class="result-position" title="Calculated position">{{ $player['position'] }}</span>

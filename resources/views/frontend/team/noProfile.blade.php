@@ -18,7 +18,7 @@
 
                   @else
                 
-                      @if($event->signUp == 1)
+                      @if($event->published && $event->registrationIsOpen())
                     
                       <a href="{{route('player.create',['name'=> ucfirst(strtolower($play->name)),'surname' => ucfirst(strtolower($play->surname)),'team'=>$team->id,'event'=>$event->id,'noProfileId'=> $play->id])}}" class="badge bg-label-warning">Register now</a>
                       @else

@@ -1471,17 +1471,8 @@ class RegisterController extends Controller
 
   private function genericRegistrationGateMessage(Event $event): ?string
   {
-    if (! $event->published || ! $event->hasOpenRegistrationLifecycle() || (int) $event->signUp !== 1) {
+    if (! $event->published || ! $event->registrationIsOpen()) {
       return 'Registration for this event is closed.';
-    }
-
-    if (! $event->isTeam()) {
-      $closeAt = $event->start_date
-        ? $event->start_date->copy()->startOfDay()->subDays((int) ($event->deadline ?? 0))->endOfDay()
-        : null;
-      if ($closeAt && now()->gt($closeAt)) {
-        return 'The registration deadline for this event has passed.';
-      }
     }
 
     return null;

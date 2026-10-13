@@ -2801,6 +2801,9 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertSee('data-region-tabs', false)
             ->assertSee('data-region-id="', false)
             ->assertSee('data-region-task-tabs', false)
+            ->assertSee('More options')
+            ->assertSee('Manage your teams')
+            ->assertSee('Import &amp; invitations', false)
             ->assertSee('Selection progress')
             ->assertSee('Click the highlighted next step to open the next available options')
             ->assertSee('Teams &amp; players', false)
@@ -2810,7 +2813,8 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertDontSee('>Clothing setup</a>', false)
             ->assertDontSee('<strong>Manage clothing</strong>', false)
             ->assertSee('data-open-region-task="setup"', false)
-            ->assertSee('data-bs-toggle="tab"', false);
+            ->assertSee('data-bs-toggle="tab"', false)
+            ->assertSee('tab-pane fade show active region-task-panel" id="region-'.EventRegion::where('event_id', $event->id)->orderBy('ordering')->first()->id.'-teams"', false);
         $this->actingAs($admin)->get(route('events.show', $event))
             ->assertOk()
             ->assertSee('Administrator')
@@ -2864,7 +2868,13 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertDontSee('Private Other Region')
             ->assertDontSee('aria-label="Event regions" data-region-tabs', false)
             ->assertSee('data-region-task-tabs', false)
-            ->assertSee('Selection progress');
+            ->assertSee('More options')
+            ->assertSee('Manage your teams')
+            ->assertSee('Import &amp; invitations', false)
+            ->assertSee('Selection progress')
+            ->assertSee('tab-pane fade show active region-task-panel" id="region-'.$first->id.'-teams"', false)
+            ->assertSee('Set up teams for import')
+            ->assertDontSee('Assign to this region');
         $this->actingAs($manager)->get(route('events.show', $event))
             ->assertOk()
             ->assertSee('Regional administration')

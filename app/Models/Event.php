@@ -99,7 +99,7 @@ class Event extends Model
       return null;
     }
 
-    return $this->start_date->copy()->subDays((int) $this->deadline);
+    return $this->start_date->copy()->subDays((int) $this->deadline)->endOfDay();
   }
 
   public function withdrawalDeadlineDaysBeforeStart(): ?int
@@ -414,7 +414,15 @@ class Event extends Model
 
   public function hasOpenRegistrationLifecycle(): bool
   {
-    return in_array($this->status, ['scheduled', 'open', 'active'], true);
+    return $this->registrationIsOpen();
+  }
+
+  /** Registration is controlled only by the organiser switch and closing date. */
+  public function registrationIsOpen(?Carbon $at = null): bool
+  {
+    $closeAt = $this->registrationClosesAt();
+
+    return (bool) $this->signUp && (! $closeAt || ($at ?? now())->lte($closeAt));
   }
 
   public function isInterprovincialTrials(): bool

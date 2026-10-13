@@ -21,7 +21,7 @@ class EventLifecycleService
             'state' => $state,
             'label' => $this->label($state),
             'published' => (bool) $event->published,
-            'entries_open' => $state === 'published_open',
+            'entries_open' => $event->published && $event->registrationIsOpen($now),
             'withdrawals_open' => $event->canWithdraw(),
             'results_published' => (bool) $event->results_published,
             'start_date' => $event->start_date?->toDateString(),
@@ -57,9 +57,7 @@ class EventLifecycleService
             return 'live';
         }
 
-        $registrationClosesAt = $event->registrationClosesAt();
-        if ($event->published && $event->signUp
-            && (! $registrationClosesAt || $now->lt($registrationClosesAt))) {
+        if ($event->published && $event->registrationIsOpen($now)) {
             return 'published_open';
         }
         if ($event->published) {

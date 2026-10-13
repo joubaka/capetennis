@@ -27,26 +27,37 @@
   </div>
   <div class="result-layout">
     <aside class="result-group-rail" aria-label="Age group and gender">
-      <h6>Age group &amp; gender</h6>
-      <div class="result-group-grid">
+      <label class="result-age-label">Age group &amp; gender<select class="form-select" data-result-group-select aria-label="Choose age group and gender">
+        @foreach($resultSetup['groups'] as $group)<option value="{{ $group['key'] }}">{{ $group['name'] }}</option>@endforeach
+      </select></label>
+      <div class="result-group-grid" hidden>
         @forelse($resultSetup['groups'] as $group)
           <label class="result-choice result-group-choice"><input class="form-check-input category-radio" type="radio" name="category-radio" value="{{ $group['key'] }}" data-name="{{ $group['name'] }}" data-event_id="{{ $event->id }}" {{ $loop->first ? 'checked' : '' }}><span>{{ $group['name'] }}</span></label>
         @empty<p class="result-rail-empty">Age groups appear here when singles fixtures are available.</p>@endforelse
       </div>
       <div class="result-order-rail">
         <h6>Draft ranking order</h6>
-        <p>Drag the handle or use the arrows. Tick up to 10 players. Explain changed positions, then save your private draft.</p>
+        <p>Drag or use ↑ ↓. Tick up to 10. Explain changes here, then Save draft.</p>
         <ol data-draft-order aria-label="Draft player ranking"></ol>
       </div>
     </aside>
     <section class="result-ranking-panel" aria-label="Player ranking and draft selection">
       <div class="result-ranking-header">
         <div><h5 id="category-name"></h5><span class="result-heading-hint">Band-first ranking · Compare adjacent bands · Select up to 10</span></div>
-        <div class="result-draft-actions"><button type="button" class="btn btn-outline-primary" data-selection-load>Load draft</button><button type="button" class="btn btn-primary" data-selection-save>Save draft</button></div>
+        <span class="result-heading-hint">Calculated result evidence</span>
       </div>
-      <div data-selection-status role="status" class="result-draft-status"></div>
       <div id="category-table" class="result-ranking-body"></div>
     </section>
+  </div>
+  <div class="result-persistent-actions" aria-label="Private draft controls">
+    <div class="result-draft-progress" aria-live="polite" aria-atomic="true"><strong data-draft-category></strong><strong data-draft-count>0 / 10 selected</strong><span data-draft-state>Private draft</span><small data-draft-reasons></small></div>
+    <div class="result-draft-actions"><button type="button" class="btn btn-outline-primary" data-draft-open>Reorder players</button><button type="button" class="btn btn-outline-primary" data-selection-load>Load draft</button><button type="button" class="btn btn-primary" data-selection-save>Save draft</button></div>
+    <div data-selection-status role="status" class="result-action-status"></div>
+  </div>
+  <div class="offcanvas offcanvas-start result-draft-drawer" tabindex="-1" id="result-draft-drawer" aria-labelledby="result-draft-drawer-label">
+    <div class="offcanvas-header"><h5 id="result-draft-drawer-label">Arrange private draft</h5><button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close draft order"></button></div>
+    <div class="offcanvas-body" data-draft-drawer-body></div>
+    <div class="result-drawer-footer"><span data-draft-count></span><span data-draft-reasons></span><div data-selection-status role="status"></div><button type="button" class="btn btn-primary w-100" data-selection-save>Save draft</button></div>
   </div>
 </div>
 @endcan
