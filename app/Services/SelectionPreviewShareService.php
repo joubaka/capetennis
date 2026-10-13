@@ -21,8 +21,10 @@ class SelectionPreviewShareService
             throw ValidationException::withMessages(['recipient_ids' => 'Choose between 1 and 30 distinct system accounts.']);
         }
         $age = isset($input['age']) ? (int) $input['age'] : null;
-        $fingerprint = hash('sha256', json_encode([$ids, $age], JSON_THROW_ON_ERROR));
-        $batch = DB::transaction(function () use ($event, $actor, $input, $ids, $age, $fingerprint) {
+        $channel = $input['channel'] ?? 'email';
+        if (! in_array($channel, ['email', 'whatsapp'], true)) throw ValidationException::withMessages(['channel' => 'Choose email or WhatsApp.']);
+        $fingerprint = hash('sha256', json_encode($channel === 'email' ? [$ids, $age] : [$ids, $age, 'whatsapp'], JSON_THROW_ON_ERROR));
+        $batch = DB::transaction(function () use ($event, $actor, $input, $ids, $age, $fingerprint, $channel) {
             Event::whereKey($event->id)->lockForUpdate()->firstOrFail();
             $existing = SelectionPreviewShareBatch::where('event_id', $event->id)->where('actor_id', $actor->id)->where('request_key', $input['request_key'])->first();
             if ($existing) { abort_unless(hash_equals($existing->fingerprint, $fingerprint), 409, 'This share request was already used for different recipients.'); return $existing; }
@@ -38,7 +40,8 @@ class SelectionPreviewShareService
             foreach ($users as $user) {
                 $grant = SelectionPreviewGrant::firstOrNew(['event_id' => $event->id, 'user_id' => $user->id]);
                 $grant->granted_by = $actor->id; $grant->revoked_at = null; $grant->save();
-                DB::table('selection_preview_access_events')->insert(['grant_id' => $grant->id, 'actor_id' => $actor->id, 'action' => 'shared', 'created_at' => now()]);
+                DB::table('selection_preview_access_events')->insert(['grant_id' => $grant->id, 'actor_id' => $actor->id, 'action' => $channel === 'email' ? 'shared' : 'shared_link', 'created_at' => now()]);
+                if ($channel === 'whatsapp') continue;
                 app(BulkMailDispatcher::class)->dispatch('selection_preview_share', $event, [$user], [
                     'event_id' => $event->id, 'created_by' => $actor->id, 'recipient_kind' => 'system-user', 'recipient_user_id' => $user->id,
                     'preview_share_batch_id' => $batch->id, 'campaign_key' => 'selection-preview:'.$batch->id,
@@ -48,7 +51,9 @@ class SelectionPreviewShareService
             return $batch;
         });
         $logs = BulkEmailLog::where('mail_type', 'selection_preview_share')->where('payload->preview_share_batch_id', $batch->id)->get(['status', 'payload']);
-        return ['batch_id' => $batch->id, 'recipients' => count($batch->recipient_ids),
+        $previewUrl = $this->content($batch)['preview_url'];
+        return ['batch_id' => $batch->id, 'recipients' => count($batch->recipient_ids), 'channel' => $channel, 'preview_url' => $previewUrl,
+            'whatsapp_url' => $channel === 'whatsapp' ? 'https://wa.me/?text='.rawurlencode('Private selection preview: '.$batch->event_name.' '.$previewUrl.' Sign in with your shared Cape Tennis account to view and discuss selections.') : null,
             'queued' => $logs->filter(fn ($log) => $log->status === 'queued' && ($log->payload['queue_state'] ?? null) === 'enqueued')->count(),
             'prepared' => $logs->filter(fn ($log) => $log->status === 'queued' && ($log->payload['queue_state'] ?? null) !== 'enqueued')->count(),
             'accepted' => $logs->where('status', 'sent')->count(), 'failed' => $logs->where('status', 'failed')->count(),
@@ -67,8 +72,10 @@ class SelectionPreviewShareService
     {
         $payload = $log->payload;
         $batch = SelectionPreviewShareBatch::find($payload['preview_share_batch_id'] ?? 0);
+        $batchIds = $batch ? array_map('intval', $batch->recipient_ids) : []; sort($batchIds);
         $user = User::find($payload['recipient_user_id'] ?? 0);
-        if ($log->mail_type !== 'selection_preview_share' || ! $batch || ! $user || (int) $batch->event_id !== (int) ($payload['event_id'] ?? 0)
+        if ($log->mail_type !== 'selection_preview_share' || ! $batch || ! $user || ! hash_equals($batch->fingerprint, hash('sha256', json_encode([$batchIds, $batch->age === null ? null : (int) $batch->age], JSON_THROW_ON_ERROR)))
+            || (int) $batch->event_id !== (int) ($payload['event_id'] ?? 0)
             || $log->related_type !== Event::class || (int) $log->related_id !== (int) $batch->event_id
             || ! in_array((int) $user->id, array_map('intval', $batch->recipient_ids), true)
             || strtolower(trim($user->email)) !== strtolower(trim($log->recipient_email))

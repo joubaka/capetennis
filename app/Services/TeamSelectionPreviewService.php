@@ -51,7 +51,7 @@ class TeamSelectionPreviewService
                 ->select('player_key')->selectRaw('COUNT(*) AS total')->groupBy('player_key')->pluck('total', 'player_key');
             $reviews = $this->bandReviews($snapshot);
             $selection = collect($selected)->map(fn ($key) => $snapshot->get($key))->filter()->sortBy(fn ($row) => $row['draft_position'] ?? $row['position'] ?? PHP_INT_MAX)->values()
-                ->map(fn ($row, $position) => array_merge($row, ['note' => trim((string) ($draft->reasons[(string) $row['id']] ?? '')) !== '' || (int) $threads->get((string) $row['id'], 0) > 0,
+                ->map(fn ($row, $position) => array_merge($row, ['origin_label' => $this->originLabel($row), 'note' => trim((string) ($draft->reasons[(string) $row['id']] ?? '')) !== '' || (int) $threads->get((string) $row['id'], 0) > 0,
                     'review' => $reviews[(string) $row['id']] ?? null, 'reserve' => $position >= $teamSize && $position < $teamSize + $reserveCount,
                     'over_capacity' => $position >= $teamSize + $reserveCount]));
             $reserveKeys = $selection->where('reserve', true)->pluck('id')->map('strval')->all();
@@ -120,5 +120,13 @@ class TeamSelectionPreviewService
             }
         }
         return $flags;
+    }
+
+    private function originLabel(array $row): string
+    {
+        $region = trim((string) ($row['region'] ?? '')) ?: 'Region unclear';
+        $ranks = array_values(array_unique(array_map('intval', $row['ranks'] ?? [$row['rank'] ?? 0])));
+        $teams = array_unique($row['source_team_ids'] ?? $row['teams'] ?? []);
+        return $region.' - '.(count($ranks) === 1 && $ranks[0] > 0 && count($teams) === 1 ? $ranks[0] : 'position unclear');
     }
 }

@@ -119,6 +119,91 @@ class SelectionPreviewShareTest extends TestCase
         Mail::assertNothingSent();
     }
 
+    public function test_account_search_matches_partial_name_surname_email_and_login_case_insensitively_with_literal_wildcards(): void
+    {
+        [$event] = $this->scenario();
+        $person = User::factory()->create(['name' => 'Aldred', 'userSurname' => 'Burden', 'userName' => 'AceLogin', 'email' => 'aldred.tennis@example.test']);
+        $wild = User::factory()->create(['name' => 'Wild%Card', 'email' => 'wild@example.test']);
+        $invalid = User::factory()->create(['name' => 'Invalid email person', 'email' => 'not-an-email']);
+        $url = route('backend.selection-preview-share.index', $event);
+        foreach (['aLD', 'BuR', 'Ald  burden', 'tennis@exam', 'ACELOG', 'A'] as $query) {
+            $response = $this->getJson($url.'?q='.urlencode($query))->assertOk()->assertHeader('Cache-Control', 'no-store, private');
+            $this->assertContains($person->id, array_column($response->json('users'), 'id'));
+            $response->assertDontSee($person->email);
+        }
+        $this->getJson($url.'?q=%25')->assertOk()->assertJsonCount(1, 'users')->assertJsonPath('users.0.id', $wild->id);
+        $this->getJson($url.'?q=Invalid')->assertOk()->assertJsonPath('users.0.selectable', false);
+        User::factory()->count(17)->create(['name' => 'Pagination Example']);
+        $this->getJson($url.'?q=Pagination')->assertOk()->assertJsonCount(15, 'users')->assertJsonPath('pagination.total', 17);
+        $this->getJson($url.'?q=Pagination&users_page=2')->assertOk()->assertJsonCount(2, 'users');
+        $html = $this->get($url.'?q=Pagination')->assertOk()->assertSee('data-share-search', false)->assertSee('Next')->getContent();
+        $start = strpos($html, '<div class="preview-share-page');
+        $end = strpos($html, '</script>', strpos($html, '<script src=', $start)) + strlen('</script>');
+        $body = substr($html, $start, $end - $start);
+        $this->assertStringNotContainsString('<svg', $body);
+        if ($output = getenv('CT_SHARE_QA_OUTPUT')) {
+            $body = str_replace($url, '/index.html', $body);
+            $users = User::where('name', 'Pagination Example')->orderBy('id')->get()->map(fn ($user, $index) => ['id' => $user->id, 'name' => ['Aldred Burden', 'Leonie Adams', 'Casey Jacobs'][$index % 3].' '.($index + 1), 'masked_email' => 'p***@example.test', 'selectable' => true, 'shared' => false])->all();
+            $script = file_get_contents(public_path('js/selection-preview-share.js'));
+            $mock = 'const qaUsers = '.json_encode($users).'; window.fetch = async url => { const p = new URL(url, location.href).searchParams; const q=(p.get("q")||"").toLowerCase(); const found=qaUsers.filter(u=>!q||u.name.toLowerCase().includes(q)||u.masked_email.toLowerCase().includes(q)); const page=Number(p.get("users_page")||1); const link=n=>"?q="+encodeURIComponent(q)+"&users_page="+n; return {ok:true,json:async()=>({users:found.slice((page-1)*15,page*15),pagination:{current_page:page,last_page:Math.max(1,Math.ceil(found.length/15)),total:found.length,previous_page_url:page>1?link(page-1):null,next_page_url:page*15<found.length?link(page+1):null}})}; }; document.querySelector("[data-share-search] input").value=""; document.querySelector("[data-share-send]").addEventListener("submit",e=>{e.preventDefault(); alert("QA fixture: no email is sent.");});';
+            $body = preg_replace('/<script src="[^"]*selection-preview-share\.js[^>]*><\/script>/', '<script>'.$mock.$script.'document.querySelector("[data-share-search]").dispatchEvent(new Event("submit", {bubbles:true,cancelable:true}));</script>', $body);
+            $css = file_get_contents(public_path('assets/vendor/css/core.css')).file_get_contents(public_path('css/selection-preview-share.css'));
+            if (! is_dir(dirname($output))) mkdir(dirname($output), 0777, true);
+            file_put_contents($output, '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>'.$css.'body{background:#f3f6fa;font-family:Arial,sans-serif}</style></head><body>'.$body.'</body></html>');
+        }
+        $this->actingAs(User::factory()->create())->getJson($url.'?q=aldred')->assertForbidden();
+    }
+
+    public function test_whatsapp_prepares_selected_account_access_without_email_and_cannot_authorize_mail(): void
+    {
+        [$event] = $this->scenario();
+        $viewer = User::factory()->create();
+        $input = ['request_key' => (string) Str::uuid(), 'recipient_ids' => [$viewer->id], 'channel' => 'whatsapp', 'preview_url' => 'https://attacker.invalid'];
+        $url = route('backend.selection-preview-share.store', $event);
+        $response = $this->postJson($url, $input)->assertOk()->assertJsonPath('channel', 'whatsapp')->assertJsonPath('queued', 0)->assertJsonPath('accepted', 0);
+        $canonical = rtrim(config('app.url'), '/').route('backend.selection-preview.show', $event, false);
+        $this->assertSame($canonical, $response->json('preview_url'));
+        $this->assertStringStartsWith('https://wa.me/?text=', $response->json('whatsapp_url'));
+        $this->assertStringContainsString($canonical, rawurldecode($response->json('whatsapp_url')));
+        $this->postJson($url, $input)->assertOk();
+        $this->postJson($url, array_replace($input, ['channel' => 'email']))->assertConflict();
+        $this->assertDatabaseCount('selection_preview_grants', 1);
+        $this->assertDatabaseCount('selection_preview_access_events', 1);
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        Bus::assertNotDispatched(SendBulkEmailJob::class);
+        $this->assertSame('shared_link', DB::table('selection_preview_access_events')->value('action'));
+        $forged = BulkEmailLog::create(['mail_type' => 'selection_preview_share', 'related_type' => Event::class, 'related_id' => $event->id,
+            'recipient_email' => $viewer->email, 'status' => 'queued', 'payload' => ['preview_share_batch_id' => $response->json('batch_id'), 'recipient_user_id' => $viewer->id, 'event_id' => $event->id]]);
+        $this->assertNull(app(\App\Services\SelectionPreviewShareService::class)->authorizedMailable($forged));
+        $this->actingAs($viewer)->get(route('backend.selection-preview.show', $event))->assertOk();
+        $this->postJson($url, $input)->assertForbidden();
+        Mail::assertNothingSent();
+    }
+
+    public function test_player_search_resolves_only_linked_accounts_and_grant_pages_stay_event_scoped(): void
+    {
+        [$event, $actor] = $this->scenario();
+        $linked = User::factory()->create();
+        $direct = User::factory()->create();
+        $player = \App\Models\Player::factory()->create(['name' => 'UniqueChild', 'surname' => 'Lookup']);
+        $linked->players()->attach($player);
+        \App\Models\Player::factory()->create(['name' => 'UniqueChild', 'surname' => 'Lookup', 'userId' => $direct->id]);
+        \App\Models\Player::factory()->create(['name' => 'UniqueChild', 'surname' => 'Lookup']);
+        $url = route('backend.selection-preview-share.index', $event);
+        $response = $this->getJson($url.'?q=uniquechild%20lookup')->assertOk()->assertJsonCount(2, 'users');
+        $this->assertEqualsCanonicalizing([$linked->id, $direct->id], array_column($response->json('users'), 'id'));
+        $this->assertDatabaseCount('selection_preview_grants', 0);
+        $this->assertDatabaseCount('user_players', 1);
+        $users = User::factory()->count(17)->create();
+        $this->postJson(route('backend.selection-preview-share.store', $event), ['request_key' => (string) Str::uuid(), 'recipient_ids' => $users->pluck('id')->all(), 'channel' => 'whatsapp'])->assertOk();
+        $this->getJson($url.'?section=grants')->assertOk()->assertJsonCount(15, 'grants')->assertJsonPath('pagination.total', 17)->assertDontSee($users->first()->email);
+        $this->getJson($url.'?section=grants&grants_page=2')->assertOk()->assertJsonCount(2, 'grants');
+        $foreign = Event::factory()->create();
+        $this->getJson(route('backend.selection-preview-share.index', $foreign).'?section=grants')->assertForbidden();
+        $this->actingAs($linked)->getJson($url.'?section=grants')->assertForbidden();
+        Bus::assertNotDispatched(SendBulkEmailJob::class);
+    }
+
     private function scenario(): array
     {
         Bus::fake(); Mail::fake(); $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);

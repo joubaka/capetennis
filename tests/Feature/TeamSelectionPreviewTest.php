@@ -187,6 +187,22 @@ class TeamSelectionPreviewTest extends TestCase
             ->assertRedirect($url.'?age=10&gender=girls');
     }
 
+    public function test_selected_names_use_saved_region_and_original_roster_position_with_ambiguity_visible(): void
+    {
+        [$event, $team, $region] = $this->scenario();
+        $players = Player::factory()->count(2)->create();
+        $snapshot = $players->map(fn ($player, $index) => ['id' => $player->id, 'name' => $player->name, 'region' => 'OVER', 'rank' => $index ? 5 : 1,
+            'ranks' => [$index ? 5 : 1], 'source_team_ids' => [$team->id], 'teams' => [$team->name], 'draft_position' => $index ? 1 : 2])->all();
+        $draft = $this->draft($event, $region, $players->pluck('id')->map('strval')->all(), $snapshot);
+        $selected = app(TeamSelectionPreviewService::class)->preview($event, 10)['groups']->first()['selected'];
+        $this->assertSame('OVER - 5', $selected[0]['origin_label']);
+        $this->assertSame('OVER - 1', $selected[1]['origin_label']);
+        $this->get(route('backend.selection-preview.show', $event))->assertOk()->assertSee('(OVER - 5)')->assertSee('(OVER - 1)')->assertSee($team->name);
+        $snapshot[0]['ranks'] = [1, 3]; $snapshot[0]['source_team_ids'] = [$team->id, $team->id + 1];
+        $draft->update(['snapshot' => $snapshot]);
+        $this->assertSame('OVER - position unclear', app(TeamSelectionPreviewService::class)->preview($event, 10)['groups']->first()['selected'][1]['origin_label']);
+    }
+
     private function setupFixture(Event $event, Team $team): void
     {
         $draw = \App\Models\Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => $team->category_event_id]);
