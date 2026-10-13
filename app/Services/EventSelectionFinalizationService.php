@@ -8,13 +8,44 @@ use Illuminate\Validation\ValidationException;
 
 class EventSelectionFinalizationService
 {
+    public function reopen(Event $event, User $actor, int $finalizationId, string $reason): void
+    {
+        abort_unless($actor->can('event.manage', $event), 403);
+        $reason = trim($reason);
+        if ($reason === '') throw ValidationException::withMessages(['reason' => 'Enter a reason for unlocking the saved teams.']);
+        DB::transaction(function () use ($event, $actor, $finalizationId, $reason) {
+            $locked = Event::whereKey($event->id)->lockForUpdate()->firstOrFail();
+            $final = EventSelectionFinalization::where('event_id', $event->id)->whereKey($finalizationId)->firstOrFail();
+            $active = EventSelectionFinalization::active()->where('event_id', $event->id)->first();
+            abort_if($active && (int) $active->id !== $finalizationId, 409, 'The teams were finalized again. Reload before unlocking.');
+            if ($final->reopening()->exists()) return;
+            abort_unless($active, 409, 'Reload the current finalized teams before unlocking.');
+            foreach ($final->groups as $key => $group) {
+                $draft = TeamResultSelectionDraft::where('event_id', $event->id)->where('group_key', $key)->lockForUpdate()->first();
+                $version = max((int) ($draft?->version ?? 0), (int) $group['draft_version']) + 1;
+                $draft ??= new TeamResultSelectionDraft(['event_id' => $event->id, 'group_key' => $key]);
+                $draft->fill(array_intersect_key($group, array_flip(['region_ids', 'formats', 'excluded_result_region_ids', 'reasons', 'snapshot', 'selected_keys'])));
+                $draft->version = $version;
+                $draft->updated_by = $actor->id;
+                $draft->save();
+                DB::table('team_result_selection_revisions')->insert(['draft_id' => $draft->id, 'version' => $version,
+                    'evidence' => json_encode($draft->only(['region_ids', 'excluded_result_region_ids', 'formats', 'selected_keys', 'reasons', 'snapshot']), JSON_THROW_ON_ERROR),
+                    'created_by' => $actor->id, 'created_at' => now()]);
+            }
+            $settings = $locked->team_result_settings ?? [];
+            $locked->team_result_settings = array_merge($settings, ['team_size' => (int) $final->team_size, 'reserve_count' => (int) $final->reserve_count]);
+            $locked->save();
+            \App\Models\EventSelectionReopening::create(['finalization_id' => $final->id, 'reopened_by' => $actor->id, 'reason' => $reason, 'reopened_at' => now()]);
+        });
+    }
+
     public function finalize(Event $event, User $actor, array $expected, int $expectedSize, int $expectedReserves): EventSelectionFinalization
     {
         abort_unless($actor->can('event.manage', $event), 403);
         $expected = array_map('intval', $expected); ksort($expected);
         return DB::transaction(function () use ($event, $actor, $expected, $expectedSize, $expectedReserves) {
             $locked = Event::whereKey($event->id)->lockForUpdate()->firstOrFail();
-            $existing = EventSelectionFinalization::where('event_id', $event->id)->first();
+            $existing = EventSelectionFinalization::active()->where('event_id', $event->id)->first();
             if ($existing) {
                 $versions = $existing->draft_versions; ksort($versions);
                 abort_unless($versions === $expected && (int) $existing->team_size === $expectedSize && (int) $existing->reserve_count === $expectedReserves, 409, 'This event has already been finalized from different reviewed settings or draft versions.');

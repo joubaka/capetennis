@@ -56,7 +56,7 @@ class TeamResultSettingsController extends Controller
         }
         $settings = DB::transaction(function () use ($event, $teamSize, $reserveCount) {
             $locked = Event::whereKey($event->id)->lockForUpdate()->firstOrFail();
-            abort_if(\App\Models\EventSelectionFinalization::where('event_id', $event->id)->exists(), 409, 'Finalized team and reserve places are locked.');
+            abort_if(\App\Models\EventSelectionFinalization::active()->where('event_id', $event->id)->exists(), 409, 'Finalized team and reserve places are locked.');
             $settings = array_replace($locked->team_result_settings ?? [], ['team_size' => $teamSize, 'reserve_count' => $reserveCount]);
             $locked->team_result_settings = $settings;
             $locked->save();

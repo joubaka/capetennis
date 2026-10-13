@@ -823,10 +823,14 @@ Route::prefix('backend')->middleware('auth')->group(function () {
 
     Route::get('{event}/team-result-selection', [\App\Http\Controllers\Backend\TeamResultSelectionDraftController::class, 'show'])
       ->name('backend.team-result-selection.show');
+    Route::get('{event}/selection-region-mail', [\App\Http\Controllers\Backend\SelectionRegionMailController::class, 'compose'])->name('backend.selection-region-mail.compose');
+    Route::post('{event}/selection-region-mail', [\App\Http\Controllers\Backend\SelectionRegionMailController::class, 'preview'])->name('backend.selection-region-mail.preview');
     Route::get('{event}/selection-preview', [\App\Http\Controllers\Backend\TeamSelectionPreviewController::class, 'show'])
       ->name('backend.selection-preview.show');
     Route::post('{event}/selection-finalization', [\App\Http\Controllers\Backend\EventSelectionFinalizationController::class, 'store'])
       ->name('backend.selection-finalization.store');
+    Route::post('{event}/selection-finalization/reopen', [\App\Http\Controllers\Backend\EventSelectionFinalizationController::class, 'reopen'])
+      ->name('backend.selection-finalization.reopen');
     Route::get('{event}/selection-preview-comments', [\App\Http\Controllers\Backend\SelectionPreviewCommentController::class, 'show'])
       ->name('backend.selection-preview-comments.show');
     Route::post('{event}/selection-preview-comments', [\App\Http\Controllers\Backend\SelectionPreviewCommentController::class, 'store'])

@@ -3,7 +3,7 @@
 @section('content')
 <style>.preview-review-above{background:#fff5ce!important}.preview-review-below{background:#eee7fa!important}.preview-note-button{background:#ff9f43;color:#211700;border:0}.preview-selected-team{border:3px solid #15966c!important}.preview-selected-team>.card-header{background:#e0f6ed;color:#0b6247}</style>
 <div class="container-xxl py-3">
-  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3"><div><h3>Preview selections</h3><p class="mb-0">{{ $event->name }} · Private selection audit</p></div><div class="d-flex flex-wrap gap-2">@can('event.manage', $event)<a class="btn btn-primary" href="{{ route('backend.selection-preview-share.index', ['event' => $event, 'age' => $age]) }}">Share preview</a>@if(!$finalization)<button type="button" class="btn btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#preview-team-setup" aria-expanded="{{ $errors->any() ? 'true' : 'false' }}" aria-controls="preview-team-setup">Setup</button>@endif<a class="btn btn-outline-primary" href="{{ route('admin.events.teams', ['event' => $event, 'roster_tab' => 'result-rank', 'roster_result_category' => $activeGroupKey]) }}">Back to Result Ranks</a>@endcan</div></div>
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3"><div><h3>Preview selections</h3><p class="mb-0">{{ $event->name }} · Private selection audit</p></div><div class="d-flex flex-wrap gap-2">@can('event.manage', $event)<a class="btn btn-primary" href="{{ route('backend.selection-preview-share.index', ['event' => $event, 'age' => $age]) }}">Share preview</a><a class="btn btn-outline-primary" href="{{ route('backend.selection-region-mail.compose', $event) }}">Email regions</a>@if(!$finalization)<button type="button" class="btn btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#preview-team-setup" aria-expanded="{{ $errors->any() ? 'true' : 'false' }}" aria-controls="preview-team-setup">Setup</button>@endif<a class="btn btn-outline-primary" href="{{ route('admin.events.teams', ['event' => $event, 'roster_tab' => 'result-rank', 'roster_result_category' => $activeGroupKey]) }}">Back to Result Ranks</a>@endcan</div></div>
   @if(session('success'))<div class="alert alert-success" role="status">{{ session('success') }}</div>@endif
   @can('event.manage', $event)
   @if(!$finalization)
@@ -18,6 +18,19 @@
   @endif
   @endcan
   @if($finalization)
+  @can('event.manage', $event)
+  <button type="button" class="btn btn-outline-warning mb-3" data-bs-toggle="collapse" data-bs-target="#unlock-saved-teams" aria-expanded="{{ $errors->any() ? 'true' : 'false' }}" aria-controls="unlock-saved-teams">Unlock all saved teams</button>
+  <div @class(['collapse', 'show' => $errors->any()]) id="unlock-saved-teams"><form method="POST" action="{{ route('backend.selection-finalization.reopen', $event) }}" class="card card-body mb-3">
+    @csrf
+    <input type="hidden" name="finalization_id" value="{{ $finalization->id }}">
+    @if($age)<input type="hidden" name="age" value="{{ $age }}"><input type="hidden" name="gender" value="{{ $gender }}">@endif
+    <p>Reopen all {{ count($finalization->groups) }} saved teams for editing. Current selections and reserve places are kept, and the finalized snapshot remains in history.</p>
+    <label class="form-label">Reason for unlocking<textarea name="reason" class="form-control" rows="2" maxlength="1000" required>{{ old('reason') }}</textarea></label>
+    <label class="mb-3"><input type="checkbox" name="confirm_unlock" value="1" required> I want to unlock all saved teams.</label>
+    @if($errors->any())<div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>@endif
+    <div><button type="submit" class="btn btn-warning">Confirm unlock all teams</button></div>
+  </form></div>
+  @endcan
   <div class="alert alert-success" role="status"><strong>Finalized ranking · Private</strong><p class="mb-0">All {{ count($finalization->groups) }} saved teams were finalized by {{ $finalization->actor->name }} on {{ $finalization->finalized_at->format('d M Y H:i') }}. Draft order and selections are locked. Main places: {{ $teamSize }}; reserves: {{ $reserveCount }}. Discussion remains available. Publication and use in a next event require their own reviewed workflow.</p></div>
 @else
   @can('event.manage', $event)
@@ -26,8 +39,8 @@
         @csrf
         <input type="hidden" name="team_size" value="{{ $teamSize }}"><input type="hidden" name="reserve_count" value="{{ $reserveCount }}">
         @if($age)<input type="hidden" name="age" value="{{ $age }}"><input type="hidden" name="gender" value="{{ $gender }}">@endif
-        <details class="mb-2"><summary>Review {{ count($draftVersions) }} saved teams before finalizing</summary><ul>@foreach($draftVersions as $key => $version)<li>u/{{ str_replace('-', ' ', $key) }} · Draft version {{ $version }}<input type="hidden" name="versions[{{ $key }}]" value="{{ $version }}"></li>@endforeach</ul></details>
-        <p>Finalize all saved age/gender groups together. This freezes the full ranking, selected players, notes and main/reserve places. Empty teams or selections exceeding the configured places must be reviewed first.</p><div><button class="btn btn-success" type="submit">Finalize all saved teams</button></div>
+        <details class="mb-2"><summary>{{ count($draftVersions) }} saved teams</summary><ul>@foreach($draftVersions as $key => $version)<li>u/{{ str_replace('-', ' ', $key) }} · Draft version {{ $version }}<input type="hidden" name="versions[{{ $key }}]" value="{{ $version }}"></li>@endforeach</ul></details>
+        <p>Finalize all saved age/gender groups together. This freezes the full ranking, selected players, notes and main/reserve places. After unlocking and making changes, press this button again to finalize. Empty teams or selections exceeding the configured places must be corrected first.</p><div><button class="btn btn-success" type="submit">Finalize all saved teams</button></div>
       </form>
     @endif
   @endcan

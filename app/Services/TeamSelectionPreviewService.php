@@ -22,7 +22,7 @@ class TeamSelectionPreviewService
             $fixture = new TeamFixture(['age' => ($team->category?->category?->name ?? '').' '.$team->name]);
             return ['team' => $team, 'group' => $rankings->group($fixture)];
         })->filter(fn ($row) => $row['group'] !== null);
-        $finalization = \App\Models\EventSelectionFinalization::where('event_id', $event->id)->with('actor:id,name')->first();
+        $finalization = \App\Models\EventSelectionFinalization::active()->where('event_id', $event->id)->with('actor:id,name')->first();
         $drafts = app(SelectionPreviewSnapshotService::class)->drafts($event, $finalization);
         $draftVersions = $drafts->mapWithKeys(fn ($draft, $key) => [$key => (int) $draft->version])->all();
         $navigationGroups = $grouped->pluck('group')->merge($drafts->keys()->map(function ($key) {

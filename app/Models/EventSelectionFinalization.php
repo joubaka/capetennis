@@ -10,6 +10,8 @@ class EventSelectionFinalization extends Model
     protected $guarded = [];
     protected function casts(): array { return ['draft_versions' => 'array', 'groups' => 'array', 'finalized_at' => 'datetime']; }
     public function actor() { return $this->belongsTo(User::class, 'finalized_by'); }
+    public function reopening() { return $this->hasOne(EventSelectionReopening::class, 'finalization_id'); }
+    public function scopeActive($query) { return $query->whereDoesntHave('reopening'); }
     protected static function booted(): void
     {
         static::updating(fn () => throw new \LogicException('Finalized rankings are immutable.'));

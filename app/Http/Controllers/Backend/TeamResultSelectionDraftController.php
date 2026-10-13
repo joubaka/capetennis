@@ -18,7 +18,7 @@ class TeamResultSelectionDraftController extends Controller
         $input = $request->validate(['group_key' => ['required', 'string', 'max:40']]);
         abort_unless($rankings->setup($event)['groups']->contains('key', $input['group_key']), 404);
         $draft = TeamResultSelectionDraft::where('event_id', $event->id)->where('group_key', $input['group_key'])->first();
-        return response()->json(['finalized' => \App\Models\EventSelectionFinalization::where('event_id', $event->id)->exists(), 'draft' => $draft ? array_merge($draft->only(['group_key', 'region_ids', 'formats', 'selected_keys', 'reasons', 'version', 'snapshot', 'updated_at']), ['excluded_result_region_ids' => $draft->excluded_result_region_ids ?? []]) : null]);
+        return response()->json(['finalized' => \App\Models\EventSelectionFinalization::active()->where('event_id', $event->id)->exists(), 'draft' => $draft ? array_merge($draft->only(['group_key', 'region_ids', 'formats', 'selected_keys', 'reasons', 'version', 'snapshot', 'updated_at']), ['excluded_result_region_ids' => $draft->excluded_result_region_ids ?? []]) : null]);
     }
 
     public function store(Request $request, Event $event, TeamResultSelectionDraftService $drafts): JsonResponse

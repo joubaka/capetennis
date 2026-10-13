@@ -79,6 +79,51 @@ class EventSelectionFinalizationTest extends TestCase
         $this->assertDatabaseCount('team_result_selection_revisions', 0);
     }
 
+    public function test_unlock_preserves_history_restores_frozen_selections_and_allows_new_finalization(): void
+    {
+        [$event, $actor, $drafts, $input] = $this->scenario(13, 12);
+        $this->postJson(route('backend.selection-finalization.store', $event), $input)->assertOk();
+        $final = EventSelectionFinalization::first();
+        $groups = $final->groups;
+        $drafts[0]->update(['selected_keys' => [], 'version' => 4]);
+        $unlock = ['finalization_id' => $final->id, 'reason' => 'Correct a selection', 'confirm_unlock' => 1];
+        $url = route('backend.selection-finalization.reopen', $event);
+        $this->postJson($url, $unlock)->assertOk()->assertJsonPath('unlocked', true);
+        $this->postJson($url, $unlock)->assertOk();
+        $this->assertDatabaseCount('event_selection_reopenings', 1);
+        $this->assertDatabaseCount('team_result_selection_revisions', 2);
+        $this->assertSame($groups, $final->fresh()->groups);
+        $this->assertFalse(EventSelectionFinalization::active()->where('event_id', $event->id)->exists());
+        $this->assertSame($groups['10-boys']['selected_keys'], $drafts[0]->fresh()->selected_keys);
+        $this->assertSame(5, $drafts[0]->fresh()->version);
+        $this->get(route('backend.selection-preview.show', ['event' => $event, 'age' => 10, 'gender' => 'boys']))->assertOk()->assertSee('Finalize all saved teams');
+        $input['versions'] = ['10-boys' => 5, '10-girls' => 2];
+        $this->postJson(route('backend.selection-finalization.store', $event), $input)->assertOk();
+        $this->assertDatabaseCount('event_selection_finalizations', 2);
+        $this->postJson($url, $unlock)->assertConflict();
+        $this->assertFalse($event->fresh()->results_published);
+        $this->assertDatabaseHas('event_selection_reopenings', ['finalization_id' => $final->id, 'reopened_by' => $actor->id, 'reason' => 'Correct a selection']);
+    }
+
+    public function test_unlock_requires_manager_review_and_event_scoped_finalization(): void
+    {
+        [$event, $actor, , $input] = $this->scenario();
+        $this->postJson(route('backend.selection-finalization.store', $event), $input)->assertOk();
+        $final = EventSelectionFinalization::first();
+        $url = route('backend.selection-finalization.reopen', $event);
+        $unlock = ['finalization_id' => $final->id, 'reason' => 'Correction', 'confirm_unlock' => 1];
+        $this->postJson($url, array_replace($unlock, ['confirm_unlock' => 0]))->assertUnprocessable();
+        $this->postJson($url, array_replace($unlock, ['reason' => ' ']))->assertUnprocessable();
+        $viewer = User::factory()->create();
+        SelectionPreviewGrant::create(['event_id' => $event->id, 'user_id' => $viewer->id, 'granted_by' => $actor->id]);
+        $this->actingAs($viewer)->postJson($url, $unlock)->assertForbidden();
+        $this->get(route('backend.selection-preview.show', $event))->assertOk()->assertDontSee('Unlock all saved teams');
+        $other = Event::factory()->create(); $actor->adminEvents()->attach($other);
+        $this->actingAs($actor)->postJson(route('backend.selection-finalization.reopen', $other), $unlock)->assertNotFound();
+        $this->assertDatabaseCount('event_selection_reopenings', 0);
+        $this->assertTrue(EventSelectionFinalization::active()->where('event_id', $event->id)->exists());
+    }
+
     private function scenario(int $playerCount = 3, int $selectedCount = 2): array
     {
         Role::findOrCreate('admin', 'web');
