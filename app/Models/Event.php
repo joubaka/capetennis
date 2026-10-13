@@ -55,6 +55,7 @@ class Event extends Model
   |--------------------------------------------------------------------------
   */
   protected $casts = [
+    'team_result_settings' => 'array',
     'published'           => 'boolean',
     'results_published'   => 'boolean',
     'standings_published' => 'boolean',

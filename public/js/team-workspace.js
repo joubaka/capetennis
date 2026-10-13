@@ -22,13 +22,41 @@
   let renderedSetup;
   let draftBaseline;
   let pendingEvidenceCard;
+  let eventSettingsBaseline;
+  let eventSettingsBusy = false;
+  let eventSettingsSaved = false;
+
+  function eventSettings() {
+    const values = selector => [...document.querySelectorAll(selector + ':checked')].map(input => input.value);
+    return { region_ids: values('[data-result-region]').map(Number), excluded_result_region_ids: values('[data-result-excluded-region]').map(Number), formats: values('[data-result-format]') };
+  }
+  function updateEventSettingsStatus() {
+    if (!eventSettingsBusy) $('[data-result-settings-status]').text(JSON.stringify(eventSettings()) === eventSettingsBaseline ? (eventSettingsSaved ? 'Event settings saved.' : 'Default settings. Save to keep them for this event.') : 'Unsaved event settings.');
+  }
+  $(document).on('click', '[data-result-settings-save]', function () {
+    if (eventSettingsBusy) return;
+    const payload = eventSettings();
+    eventSettingsBusy = true;
+    $('[data-result-settings-save]').prop('disabled', true);
+    $('[data-result-settings-status]').text('Saving event settings…');
+    $.ajax({ url: document.getElementById('tab-result-rank').dataset.settingsUrl, type: 'PUT', contentType: 'application/json', data: JSON.stringify(payload) })
+      .done(() => {
+        eventSettingsBaseline = JSON.stringify(payload); eventSettingsSaved = true; eventSettingsBusy = false;
+        [['region', payload.region_ids.map(String)], ['excluded-region', payload.excluded_result_region_ids.map(String)], ['format', payload.formats]].forEach(([name, values]) => {
+          document.querySelectorAll('[data-result-' + name + ']').forEach(input => { input.defaultChecked = values.includes(input.value); });
+        });
+        updateEventSettingsStatus();
+      })
+      .fail(xhr => { eventSettingsBusy = false; $('[data-result-settings-status]').text(xhr.responseJSON?.message || 'Event settings could not be saved. Try again.'); })
+      .always(() => { $('[data-result-settings-save]').prop('disabled', false); });
+  });
 
   function draftFingerprint() { return JSON.stringify([setupState(), draftRows().map(row => {
     const card = draftCards().find(card => card.dataset.resultPlayer === row.dataset.draftKey);
     return [row.dataset.draftKey, !!card?.querySelector('[data-selection-player]').checked, card?.querySelector('[data-selection-reason]').value.trim() || ''];
   })]); }
   function markDraftChanged() { draftDirty = draftFingerprint() !== draftBaseline; editRevision++; updateDraftProgress(); }
-  function confirmDraftDiscard() { if (saveRequestBusy) { selectionStatus('Wait for the draft save to finish before changing the setup or loading a draft.'); return false; } return !draftDirty || window.confirm('Discard your unsaved draft order, selections and reasons?'); }
+  function confirmDraftDiscard() { if (saveRequestBusy) { selectionStatus('Wait for the draft save to finish before changing the setup or loading a draft.'); return false; } return !draftDirty || window.confirm('Discard your unsaved draft order, selections and comments?'); }
   function setupState() {
     return ['.category-radio', '[data-result-region]', '[data-result-excluded-region]', '[data-result-format]'].map(selector =>
       [selector, [...document.querySelectorAll(selector)].filter(input => input.checked).map(input => input.value)]);
@@ -39,22 +67,19 @@
   }
   function updateDraftProgress() {
     const rows = draftRows();
-    let selected = 0, missing = 0;
-    const calculated = draftCards().map(card => card.dataset.resultPlayer);
+    let selected = 0;
     rows.forEach((row, index) => {
       const card = draftCards().find(card => card.dataset.resultPlayer === row.dataset.draftKey);
       if (!card) return;
       const included = card.querySelector('[data-selection-player]').checked;
       if (included) selected++;
-      const required = calculated[index] !== row.dataset.draftKey || (included && (card.dataset.playerSuggested !== '1' || card.dataset.playerCutoff === '1')) || (!included && card.dataset.playerSuggested === '1');
       const field = row.querySelector('[data-draft-inline-reason]');
-      if (field) { field.closest('label').hidden = !required && !field.value.trim(); field.required = required; }
-      const marker = row.querySelector('[data-draft-changed]'); if (marker) marker.textContent = field?.value.trim() ? 'Reason recorded' : 'Reason required';
-      if (required && !card.querySelector('[data-selection-reason]').value.trim()) missing++;
+      if (field) { field.closest('label').hidden = false; field.required = false; field.setAttribute('aria-label', 'Comment (optional) for ' + card.dataset.playerName); row.querySelector('[data-draft-reason-label]').textContent = 'Comment (optional)'; }
+      const marker = row.querySelector('[data-draft-changed]'); if (marker) marker.textContent = field?.value.trim() ? 'Comment recorded' : '';
     });
     $('[data-draft-count]').text(selected + ' / 10 selected');
     $('[data-draft-state]').text(saveRequestBusy ? 'Saving private draft…' : (draftDirty ? 'Unsaved changes' : (selectionVersion ? 'Saved private draft · version ' + selectionVersion : 'Private draft · not saved')));
-    $('[data-draft-reasons]').text(missing ? missing + ' player reason' + (missing === 1 ? '' : 's') + ' needed' : '');
+    $('[data-draft-reasons]').text('Comments are optional.');
     updateDraftChrome();
   }
   function updateDraftChrome() {
@@ -67,7 +92,7 @@
     const actions = document.querySelector('.result-persistent-actions');
     document.querySelector('#tab-result-rank')?.style.setProperty('--result-toolbar-space', (actions?.getBoundingClientRect().height || 100) + 35 + 'px');
   }
-  window.addEventListener('beforeunload', event => { if (draftDirty || saveRequestBusy) { event.preventDefault(); event.returnValue = ''; } });
+  window.addEventListener('beforeunload', event => { if (draftDirty || saveRequestBusy || eventSettingsBusy || (eventSettingsBaseline !== undefined && JSON.stringify(eventSettings()) !== eventSettingsBaseline)) { event.preventDefault(); event.returnValue = ''; } });
   window.addEventListener('resize', updateDraftChrome);
   window.addEventListener('scroll', updateDraftChrome, { passive: true });
 
@@ -211,6 +236,7 @@
   }
 
   function restoreState() {
+    if (eventSettingsBaseline === undefined) { eventSettingsBaseline = JSON.stringify(eventSettings()); eventSettingsSaved = document.getElementById('tab-result-rank')?.dataset.settingsSaved === '1'; }
     restoring = true;
     const url = new URL(window.location.href);
     $('[data-roster-search]').val(url.searchParams.get('roster_search') || '');
@@ -221,10 +247,11 @@
     if (resultCategory) { const category = [...document.querySelectorAll('.category-radio')].find(input => input.value === resultCategory); if (category) category.checked = true; }
     ['regions', 'formats'].forEach(name => {
       const saved = url.searchParams.get('roster_result_' + name);
-      document.querySelectorAll('[data-result-' + (name === 'regions' ? 'region' : 'format') + ']').forEach(input => { input.checked = saved === null || saved.split(',').includes(input.value); });
+      document.querySelectorAll('[data-result-' + (name === 'regions' ? 'region' : 'format') + ']').forEach(input => { input.checked = saved === null ? input.defaultChecked : saved.split(',').includes(input.value); });
     });
-    const excludedRegions = (url.searchParams.get('roster_result_excluded_regions') || '').split(',');
-    document.querySelectorAll('[data-result-excluded-region]').forEach(input => { input.checked = excludedRegions.includes(input.value); });
+    const excludedRegions = url.searchParams.get('roster_result_excluded_regions');
+    document.querySelectorAll('[data-result-excluded-region]').forEach(input => { input.checked = excludedRegions === null ? input.defaultChecked : excludedRegions.split(',').includes(input.value); });
+    updateEventSettingsStatus();
     const tab = url.searchParams.get('roster_tab');
     const button = document.querySelector('.team-admin-workspace [data-bs-target="#tab-' + (['regions', 'order', 'result-rank'].includes(tab) ? tab : 'players') + '"]');
     if (button) bootstrap.Tab.getOrCreateInstance(button).show();
@@ -279,7 +306,7 @@
       row.querySelector('[data-draft-changed]').hidden = !changed;
       if (changed) draftCards().find(card => card.dataset.resultPlayer === row.dataset.draftKey)?.querySelector('.result-reason')?.setAttribute('open', '');
     });
-    if (announce) { markDraftChanged(); selectionStatus('Draft order changed. Explain highlighted players here, then Save draft.'); }
+    if (announce) { markDraftChanged(); selectionStatus('Draft order changed. Add optional comments here, then Save draft.'); }
     updateDraftProgress();
   }
   function buildDraftOrder() {
@@ -304,9 +331,10 @@
         const button = document.createElement('button'); button.type = 'button'; button.textContent = direction === 'up' ? '↑' : '↓'; button.dataset[direction === 'up' ? 'draftUp' : 'draftDown'] = ''; button.setAttribute('aria-label', 'Move ' + card.dataset.playerName + ' ' + direction);
         button.addEventListener('click', () => { const neighbour = direction === 'up' ? row.previousElementSibling : row.nextElementSibling; if (!neighbour) return; list.insertBefore(direction === 'up' ? row : neighbour, direction === 'up' ? neighbour : row); draftOrderChanged(); button.focus(); }); controls.append(button);
       });
-      const changed = document.createElement('span'); changed.dataset.draftChanged = ''; changed.className = 'result-draft-changed'; changed.textContent = 'Reason required';
-      const reasonLabel = document.createElement('label'); reasonLabel.className = 'result-inline-reason'; reasonLabel.textContent = 'Decision reason';
-      const reason = document.createElement('input'); reason.type = 'text'; reason.maxLength = 2000; reason.className = 'form-control'; reason.dataset.draftInlineReason = ''; reason.value = card.querySelector('[data-selection-reason]').value; reason.setAttribute('aria-label', 'Decision reason for ' + card.dataset.playerName);
+      const changed = document.createElement('span'); changed.dataset.draftChanged = ''; changed.className = 'result-draft-changed'; changed.textContent = '';
+      const reasonLabel = document.createElement('label'); reasonLabel.className = 'result-inline-reason';
+      const reasonHeading = document.createElement('span'); reasonHeading.dataset.draftReasonLabel = ''; reasonHeading.textContent = 'Comment (optional)'; reasonLabel.append(reasonHeading);
+      const reason = document.createElement('input'); reason.type = 'text'; reason.maxLength = 2000; reason.className = 'form-control'; reason.dataset.draftInlineReason = ''; reason.value = card.querySelector('[data-selection-reason]').value; reason.setAttribute('aria-label', 'Comment (optional) for ' + card.dataset.playerName);
       reason.addEventListener('input', () => { card.querySelector('[data-selection-reason]').value = reason.value; markDraftChanged(); });
       reasonLabel.append(reason);
       row.append(handle, position, selected, identity, controls, changed, reasonLabel); list.append(row);
@@ -354,7 +382,7 @@
       document.querySelectorAll('[data-result-region]').forEach(input => { input.checked = savedDraft.region_ids.map(String).includes(input.value); });
       document.querySelectorAll('[data-result-excluded-region]').forEach(input => { input.checked = (savedDraft.excluded_result_region_ids || []).map(String).includes(input.value); });
       document.querySelectorAll('[data-result-format]').forEach(input => { input.checked = savedDraft.formats.includes(input.value); });
-      applyingDraft = savedDraft; draftReady = true; saveUrl(); loadResults();
+      applyingDraft = savedDraft; draftReady = true; updateEventSettingsStatus(); saveUrl(); loadResults();
     }).fail(xhr => { if (group === selectionGroup() && generation === resultGeneration && fetchSequence === draftFetchSequence) selectionStatus(xhr.responseJSON?.message || 'Draft could not be loaded.'); });
   }
   $(document).on('click', '[data-selection-load]', () => fetchDraft(true));
@@ -467,7 +495,7 @@
   $(document).on('click', '[data-roster-expand]', function () { document.querySelectorAll('[data-roster-panel="players"]:not([hidden]) [data-roster-team]:not([hidden])').forEach(team => { team.open = this.dataset.rosterExpand === 'true'; }); });
   $(document).on('show.bs.tab', '.team-admin-workspace .tabs-wrap [data-bs-toggle="tab"]', function (event) { if (saveRequestBusy) { event.preventDefault(); selectionStatus('Wait for the draft save to finish before switching tabs.'); } });
   $(document).on('shown.bs.tab', '.team-admin-workspace .tabs-wrap [data-bs-toggle="tab"]', function () { if (!restoring) { selectRegion($('[data-roster-region]').val()); saveUrl(true); if (this.dataset.bsTarget === '#tab-result-rank' && !document.querySelector('.result-player-list, .result-empty')) loadResults(); } });
-  $(document).on('change', '.team-admin-workspace .category-radio, [data-result-region], [data-result-excluded-region], [data-result-format]', function () { if (!confirmDraftDiscard()) { restoreSetup(renderedSetup); return; } loadResults(); saveUrl(); });
+  $(document).on('change', '.team-admin-workspace .category-radio, [data-result-region], [data-result-excluded-region], [data-result-format]', function () { if (!confirmDraftDiscard()) { restoreSetup(renderedSetup); return; } loadResults(); updateEventSettingsStatus(); saveUrl(); });
   $(document).on('click', '[data-copy-contact]', async function () {
     try { await navigator.clipboard.writeText(this.dataset.copyContact); toastr.success('Contact copied.'); }
     catch (_) { toastr.info('Select the contact text to copy it.'); }

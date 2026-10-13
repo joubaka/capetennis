@@ -1,6 +1,9 @@
 @can('event.manage', $event)
-@php $resultSetup = app(\App\Services\TeamResultRankingService::class)->setup($event); @endphp
-<div class="tab-pane fade result-workspace" id="tab-result-rank" role="tabpanel" aria-labelledby="result-rank-button" data-selection-url="{{ route('backend.team-result-selection.show', $event) }}">
+@php
+  $resultSetup = app(\App\Services\TeamResultRankingService::class)->setup($event);
+  $savedResultSettings = $event->team_result_settings;
+@endphp
+<div class="tab-pane fade result-workspace" id="tab-result-rank" role="tabpanel" aria-labelledby="result-rank-button" data-settings-saved="{{ $savedResultSettings !== null ? '1' : '0' }}" data-settings-url="{{ route('backend.team-result-settings.store', $event) }}" data-selection-url="{{ route('backend.team-result-selection.show', $event) }}">
   <div class="result-page-heading">
     <div><h5>Team selection results</h5><p>Compare singles results and build a draft team of up to 10 players.</p></div>
     <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#result-ranks-setup" aria-expanded="false" aria-controls="result-ranks-setup"><i class="ti ti-adjustments-horizontal" aria-hidden="true"></i> Setup</button>
@@ -9,21 +12,22 @@
     <div class="result-setup">
       <fieldset><legend>Candidate regions</legend><div class="result-option-grid">
         @forelse($resultSetup['regions'] as $region)
-          <label class="result-choice"><input class="form-check-input" type="checkbox" data-result-region value="{{ $region->id }}" checked><span>{{ $region->region_name }}</span></label>
+          <label class="result-choice"><input class="form-check-input" type="checkbox" data-result-region value="{{ $region->id }}" @checked($savedResultSettings === null || in_array($region->id, $savedResultSettings['region_ids'] ?? []))><span>{{ $region->region_name }}</span></label>
         @empty<p class="text-muted">No event regions configured.</p>@endforelse
       </div></fieldset>
       <fieldset><legend>Exclude results involving regions</legend><div class="result-option-grid">
         @foreach($resultSetup['regions'] as $region)
-          <label class="result-choice"><input class="form-check-input" type="checkbox" data-result-excluded-region value="{{ $region->id }}"><span>{{ $region->region_name }}</span></label>
+          <label class="result-choice"><input class="form-check-input" type="checkbox" data-result-excluded-region value="{{ $region->id }}" @checked(in_array($region->id, $savedResultSettings['excluded_result_region_ids'] ?? []))><span>{{ $region->region_name }}</span></label>
         @endforeach
       </div><p class="result-setup-note">Exclude the entire match when either side represents a checked region. Candidate regions above still control which players appear.</p></fieldset>
       <fieldset><legend>Match formats</legend><div class="result-format-grid">
         @foreach($resultSetup['formats'] as $format)
-          <label class="result-choice"><input class="form-check-input" type="checkbox" data-result-format value="{{ $format }}" checked><span>{{ $format === 'reverse_singles' ? 'Reverse Singles' : 'Singles' }}</span></label>
+          <label class="result-choice"><input class="form-check-input" type="checkbox" data-result-format value="{{ $format }}" @checked($savedResultSettings === null || in_array($format, $savedResultSettings['formats'] ?? []))><span>{{ $format === 'reverse_singles' ? 'Reverse Singles' : 'Singles' }}</span></label>
         @endforeach
       </div></fieldset>
-      <p class="result-setup-note">Candidate regions choose players. Matches count unless a side's region is excluded from results. Save a draft to retain both choices.</p>
+      <p class="result-setup-note">Candidate regions choose players. Matches count unless a side's region is excluded from results. Save event settings to reuse these choices for every age group and gender when reopening this event. Saved drafts keep their own setup.</p>
     </div>
+    <div class="d-flex flex-wrap align-items-center gap-2 mt-2"><button type="button" class="btn btn-primary" data-result-settings-save>Save event settings</button><span data-result-settings-status role="status" aria-live="polite">Event settings ready.</span></div>
   </div>
   <div class="result-layout">
     <aside class="result-group-rail" aria-label="Age group and gender">
@@ -37,7 +41,7 @@
       </div>
       <div class="result-order-rail">
         <h6>Draft ranking order</h6>
-        <p>Drag or use ↑ ↓. Tick up to 10. Explain changes here, then Save draft.</p>
+        <p>Drag or use ↑ ↓. Tick up to 10. Add optional comments here, then Save draft.</p>
         <ol data-draft-order aria-label="Draft player ranking"></ol>
       </div>
     </aside>

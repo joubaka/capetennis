@@ -18,6 +18,56 @@ class TeamWorkspaceResultsTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_event_result_settings_save_without_a_draft_and_validate_event_options(): void
+    {
+        [$event, , $draw, $home, $away] = $this->groupedScenario();
+        $this->fixture($draw, $home, $away, [[6, 1], [6, 1]]);
+        $region = $event->regions()->first();
+        $otherEvent = Event::factory()->create();
+        $foreignRegion = \App\Models\TeamRegion::create(['region_name' => 'Foreign']);
+        $otherEvent->regions()->attach($foreignRegion);
+        $url = route('backend.team-result-settings.store', $event);
+        $settings = ['region_ids' => [$region->id], 'excluded_result_region_ids' => [$region->id], 'formats' => ['singles']];
+        $this->putJson($url, $settings)->assertOk()->assertHeader('Cache-Control', 'no-store, private')->assertJsonPath('settings', $settings);
+        $this->assertEquals($settings, $event->fresh()->team_result_settings);
+        $this->assertNull($otherEvent->fresh()->team_result_settings);
+        $this->assertDatabaseCount('team_result_selection_drafts', 0);
+        $this->assertDatabaseCount('team_result_selection_revisions', 0);
+        foreach ([['region_ids' => [$foreignRegion->id]], ['excluded_result_region_ids' => [$foreignRegion->id]], ['formats' => ['doubles']], ['region_ids' => [$region->id, $region->id]]] as $invalid) {
+            $this->putJson($url, array_replace($settings, $invalid))->assertUnprocessable();
+            $this->assertEquals($settings, $event->fresh()->team_result_settings);
+        }
+        $empty = ['region_ids' => [], 'excluded_result_region_ids' => [], 'formats' => []];
+        $this->putJson($url, $empty)->assertOk();
+        $this->assertEquals($empty, $event->fresh()->team_result_settings);
+        Role::findOrCreate('admin', 'web');
+        $manager = User::factory()->create()->assignRole('admin');
+        $manager->adminEvents()->attach($event);
+        $this->actingAs($manager);
+        $this->putJson($url, $empty)->assertOk();
+        $this->putJson(route('backend.team-result-settings.store', $otherEvent), $empty)->assertForbidden();
+        $this->assertNull($otherEvent->fresh()->team_result_settings);
+        $this->actingAs(User::factory()->create());
+        $this->putJson($url, $settings)->assertForbidden();
+        $this->assertEquals($empty, $event->fresh()->team_result_settings);
+    }
+
+    public function test_optional_player_comment_survives_draft_save_and_event_settings_do_not_change_snapshot(): void
+    {
+        [$event, , $draw, $home, $away] = $this->groupedScenario();
+        $this->fixture($draw, $home, $away, [[6, 1], [6, 1]]);
+        $regions = $event->regions()->pluck('team_regions.id')->all();
+        $ranking = app(\App\Services\TeamResultRankingService::class)->ranking($event, '10-boys', $regions, ['singles']);
+        $selected = $ranking->where('suggested', true)->pluck('id')->map('strval')->all();
+        $input = ['group_key' => '10-boys', 'region_ids' => $regions, 'excluded_result_region_ids' => [], 'formats' => ['singles'], 'selected_keys' => $selected, 'reasons' => [(string) $home->id => 'Optional observation'], 'version' => 0];
+        $draft = $this->putJson(route('backend.team-result-selection.store', $event), $input)->assertOk()->json('draft');
+        $this->putJson(route('backend.team-result-settings.store', $event), ['region_ids' => [], 'excluded_result_region_ids' => [], 'formats' => []])->assertOk();
+        $loaded = $this->getJson(route('backend.team-result-selection.show', $event).'?group_key=10-boys')->assertOk()->json('draft');
+        $this->assertSame('Optional observation', $loaded['reasons'][(string) $home->id]);
+        $this->assertEquals($draft, $loaded);
+        $this->assertDatabaseCount('team_result_selection_revisions', 1);
+    }
+
     public function test_regional_summary_counts_completed_match_sides_with_setup_filters_and_zero_wins(): void
     {
         [$event, , $draw, $home, $away] = $this->groupedScenario();
@@ -695,7 +745,7 @@ class TeamWorkspaceResultsTest extends TestCase
         $this->assertCount(12, $ranking);
         $this->assertCount(11, $ranking->where('cutoff_tie', true));
         $this->assertCount(1, $ranking->where('suggested', true));
-        $this->assertStringContainsString('selection decision', $response->json('html'));
+        $this->assertStringContainsString('add a comment if useful', $response->json('html'));
     }
 
     private function groupedScenario(): array

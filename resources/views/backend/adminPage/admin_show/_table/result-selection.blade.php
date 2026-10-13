@@ -11,16 +11,16 @@
 @endif
 <details class="result-rules">
   <summary>How the ranking works</summary>
-  <p>Roster bands come first: 1–2, then 3–4, 5–6, and 7–8. In each confirmed same-team pair, the higher roster player (1, 3, 5 or 7) receives one automatic roster win. Points equal actual completed match wins plus this one roster win, multiplied by the band weight: 100, 35, 12 or 2. Four actual matches plus the roster win therefore give five effective opportunities to earn points. Missing or uncertain pair evidence receives no automatic win. Actual match wins, losses and sets remain unchanged. For equal points, teammates with an unambiguous roster follow their roster positions before set difference. Players from different teams are compared by direct wins when every tied pair has the same nonzero number of counted matches. Unresolved ties require review at the selection cutoff. Candidate regions choose players; excluded result regions remove entire matches involving either side. Adjacent-band comparisons support manual review and do not promote players automatically. Explain departures from the suggestions before saving a draft.</p>
+  <p>Roster bands come first: 1–2, then 3–4, 5–6, and 7–8. In each confirmed same-team pair, the higher roster player (1, 3, 5 or 7) receives one automatic roster win. Points equal actual completed match wins plus this one roster win, multiplied by the band weight: 100, 35, 12 or 2. Four actual matches plus the roster win therefore give five effective opportunities to earn points. Missing or uncertain pair evidence receives no automatic win. Actual match wins, losses and sets remain unchanged. For equal points, teammates with an unambiguous roster follow their roster positions before set difference. Players from different teams are compared by direct wins when every tied pair has the same nonzero number of counted matches. Unresolved ties require review at the selection cutoff. Candidate regions choose players; excluded result regions remove entire matches involving either side. Adjacent-band comparisons support manual review and do not promote players automatically. Comments are optional, including when changing order or selection.</p>
 </details>
 @if($ranking->isEmpty())
   <div class="result-empty" role="status"><i class="ti ti-scoreboard" aria-hidden="true"></i><strong>No completed singles results</strong><p>Check the regions and match formats in Setup, or choose another age group. Incomplete matches and doubles are excluded.</p></div>
 @else
   @if($ranking->contains('cutoff_tie', true))
-    <div class="result-review-notice" role="status"><strong>Review the tenth-place tie.</strong> Both points and set difference are equal. Record a selection decision and reasons.</div>
+    <div class="result-review-notice" role="status"><strong>Review the tenth-place tie.</strong> Both points and set difference are equal. Choose your selection; add a comment if useful.</div>
   @endif
   <h6>Calculated ranking</h6>
-  <p class="result-heading-hint">Results stay in calculated order here. Use Reorder players to arrange your private draft and explain changes.</p>
+  <p class="result-heading-hint">Results stay in calculated order here. Use Reorder players to arrange your private draft and add optional comments.</p>
   <ol class="result-player-list" aria-label="Calculated player ranking and suggested top 10">
   @foreach($ranking as $player)
     @php $wonAllCountedBandMatches = !$player['band_attribution_uncertain'] && $player['own_band_record']['wins'] > 0 && $player['own_band_record']['losses'] === 0; @endphp
@@ -83,7 +83,7 @@
       @endforeach
       @if(count($player['ranks']) > 1)<p class="result-review-notice">Roster ranks differ across teams. Ranking uses rank {{ $player['rank'] }}; review before selection.@if($player['band_attribution_uncertain']) Ranks span different bands, so the lost-all-in-band flag is withheld.@endif</p>@endif
       <div class="result-player-disclosures">
-        <details class="result-reason"><summary>Selection reason <span>Required for changed positions, selection changes or cutoff ties</span></summary><label>Reason for {{ $player['name'] }}<input class="form-control" type="text" maxlength="2000" data-selection-reason="{{ $player['id'] }}" placeholder="Record the results supporting your decision"></label></details>
+        <details class="result-reason"><summary>Comment (optional) <span>Add context if useful; comments are never required</span></summary><label>Comment for {{ $player['name'] }}<input class="form-control" type="text" maxlength="2000" data-selection-reason="{{ $player['id'] }}" placeholder="Add an optional comment"></label></details>
         <details class="result-matches"><summary>Match results <span>{{ count($player['matches']) }} completed</span></summary><ul>
           @foreach($player['matches'] as $match)
             <li><span class="result-match-outcome {{ $match['won'] ? 'is-win' : 'is-loss' }}">{{ $match['won'] ? 'Won' : 'Lost' }}</span><div><strong>{{ $match['opponent'] }}</strong><span>{{ $match['region'] }} · Roster {{ $match['opponent_rank'] }} · {{ $match['format'] === 'reverse_singles' ? 'Reverse Singles' : 'Singles' }}</span></div><span class="result-match-score">Home–away: {{ $match['score'] }}</span></li>

@@ -39,15 +39,15 @@ class TeamResultSelectionDraftTest extends TestCase
         $this->assertDatabaseCount('team_result_selection_revisions', 2);
     }
 
-    public function test_foreign_candidates_setup_duplicates_and_missing_decision_reasons_are_rejected(): void
+    public function test_foreign_candidates_setup_duplicates_and_invalid_comments_are_rejected(): void
     {
         [$event, $input] = $this->scenario();
         $url = route('backend.team-result-selection.store', $event);
         foreach ([
             ['selected_keys' => ['999']], ['selected_keys' => ['1', '1']],
             ['selected_keys' => array_fill(0, 11, '1')], ['region_ids' => [999]],
-            ['formats' => ['doubles']], ['selected_keys' => ['imported:3:4']],
-            ['selected_keys' => []], ['reasons' => ['foreign' => 'Reason']],
+            ['formats' => ['doubles']], ['reasons' => ['foreign' => 'Comment']],
+            ['reasons' => ['1' => str_repeat('x', 2001)]],
         ] as $override) {
             $this->putJson($url, array_replace($input, $override))->assertUnprocessable();
         }
@@ -56,17 +56,17 @@ class TeamResultSelectionDraftTest extends TestCase
         $this->assertDatabaseCount('team_result_selection_revisions', 0);
     }
 
-    public function test_selecting_a_cutoff_tie_requires_a_reason(): void
+    public function test_selection_departures_and_cutoff_ties_accept_no_comments(): void
     {
         [$event, $input] = $this->scenario(true);
         $input['selected_keys'] = ['imported:3:4'];
-        $input['reasons'] = ['1' => 'Excluded for review'];
-        $this->putJson(route('backend.team-result-selection.store', $event), $input)->assertUnprocessable();
-        $input['reasons']['imported:3:4'] = 'Head to head decision at cutoff';
-        $this->putJson(route('backend.team-result-selection.store', $event), $input)->assertOk();
+        $this->putJson(route('backend.team-result-selection.store', $event), $input)->assertOk()->assertJsonPath('draft.reasons', []);
+        $input['version'] = 1;
+        $input['selected_keys'] = [];
+        $this->putJson(route('backend.team-result-selection.store', $event), $input)->assertOk()->assertJsonPath('draft.selected_keys', []);
     }
 
-    public function test_manual_order_is_validated_reasoned_and_saved_without_changing_evidence(): void
+    public function test_manual_order_is_validated_and_saved_without_comments_or_changing_evidence(): void
     {
         [$event, $input] = $this->scenario();
         $url = route('backend.team-result-selection.store', $event);
@@ -74,8 +74,6 @@ class TeamResultSelectionDraftTest extends TestCase
             $this->putJson($url, $input + ['draft_order' => $order])->assertUnprocessable();
         }
         $input['draft_order'] = ['imported:3:4', '1'];
-        $this->putJson($url, $input)->assertUnprocessable()->assertJsonValidationErrors('reasons');
-        $input['reasons'] = ['1' => 'Reviewed order', 'imported:3:4' => 'Reviewed head to head'];
         $input['selected_keys'] = ['1', 'imported:3:4'];
         // Caller-supplied indices never become persisted positions.
         $input['draft_order'] = ['91' => 'imported:3:4', '25' => '1'];
@@ -93,7 +91,25 @@ class TeamResultSelectionDraftTest extends TestCase
         $this->assertSame(2, $revision['snapshot'][0]['draft_position']);
     }
 
-    private function scenario(bool $tie = false): array
+    public function test_moving_fifth_player_only_comments_that_player_without_requiring_shifted_comments(): void
+    {
+        [$event, $input] = $this->scenario(false, 8);
+        $input['selected_keys'] = array_map('strval', range(1, 8));
+        $input['draft_order'] = ['1', '2', '3', '4', '6', '7', '8', '5'];
+        $input['reasons'] = ['5' => 'Optional context for moving this player'];
+        $url = route('backend.team-result-selection.store', $event);
+        $this->putJson($url, $input)->assertOk()->assertJsonPath('draft.snapshot.4.draft_position', 8)
+            ->assertJsonPath('draft.snapshot.5.draft_position', 5)->assertJsonCount(1, 'draft.reasons');
+        $this->getJson(route('backend.team-result-selection.show', ['event' => $event, 'group_key' => '10-boys']))
+            ->assertOk()->assertJsonPath('draft.reasons.5', 'Optional context for moving this player');
+        $input['version'] = 1;
+        $input['reasons'] = [];
+        $this->putJson($url, $input)->assertOk()->assertJsonPath('draft.reasons', [])
+            ->assertJsonPath('draft.snapshot.4.draft_position', 8);
+        $this->assertDatabaseCount('team_result_selection_revisions', 2);
+    }
+
+    private function scenario(bool $tie = false, int $players = 2): array
     {
         Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
         $this->actingAs(User::factory()->create()->assignRole('super-user'));
@@ -106,7 +122,7 @@ class TeamResultSelectionDraftTest extends TestCase
         ]);
         $rankings->shouldReceive('ranking')->withArgs(fn ($requestedEvent, $group, $regions, $formats) =>
             $requestedEvent->id === $event->id && $group === '10-boys' && $regions === [$region->id] && $formats === ['singles'])
-            ->andReturn(collect([
+            ->andReturn($players > 2 ? collect(range(1, $players))->map(fn ($id) => ['id' => $id, 'points' => 100 - $id, 'suggested' => true, 'cutoff_tie' => false]) : collect([
                 ['id' => 1, 'points' => 100, 'suggested' => true, 'cutoff_tie' => false],
                 ['id' => 'imported:3:4', 'points' => 35, 'suggested' => false, 'cutoff_tie' => $tie],
             ]));

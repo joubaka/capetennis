@@ -45,7 +45,7 @@ test('setup preserves populated exclusions and deliberate empty candidate filter
   assert.deepEqual(payload.excluded_result_region_ids, ['121', '122']);
 });
 
-test('manual order renumbers candidates, bounds move controls and opens changed-player reasons', () => {
+test('manual order renumbers candidates, bounds move controls and opens changed-player comments', () => {
   const changedSource = source.slice(source.indexOf('  function draftOrderChanged('), source.indexOf('  function buildDraftOrder('));
   const disclosures = new Set();
   const cards = ['1', '2', '3'].map(key => ({ dataset: { resultPlayer: key }, querySelector: () => ({ setAttribute: () => disclosures.add(key) }) }));
@@ -61,6 +61,25 @@ test('manual order renumbers candidates, bounds move controls and opens changed-
   assert.deepEqual([...disclosures], ['2', '1']);
   assert.equal(rows[2].elements['[data-draft-changed]'].hidden, true);
   assert.match(status, /Save|save/);
+});
+
+test('reordered and selection-departure players always have optional comments without missing-comment warnings', () => {
+  const progressSource = source.slice(source.indexOf('  function updateDraftProgress()'), source.indexOf('  function updateDraftChrome()'));
+  const text = {};
+  const rows = ['6', '5'].map(key => {
+    const field = { value: key === '5' ? 'Moved down' : '', required: true, closest: () => ({}), setAttribute(name, value) { this[name] = value; } };
+    const elements = { '[data-draft-inline-reason]': field, '[data-draft-reason-label]': {}, '[data-draft-changed]': {} };
+    return { dataset: { draftKey: key }, elements, querySelector: selector => elements[selector] };
+  });
+  const cards = ['5', '6'].map(key => ({ dataset: { resultPlayer: key, playerName: 'Player ' + key, playerSuggested: key === '5' ? '1' : '0', playerCutoff: '1' }, querySelector: () => ({ checked: key === '6', value: '' }) }));
+  new Function('$', 'draftRows', 'draftCards', `let saveRequestBusy = false, draftDirty = true, selectionVersion = 0; function updateDraftChrome() {} ${progressSource}; updateDraftProgress();`)(selector => ({ text(value) { text[selector] = value; } }), () => rows, () => cards);
+  rows.forEach(row => {
+    assert.equal(row.elements['[data-draft-inline-reason]'].required, false);
+    assert.equal(row.elements['[data-draft-reason-label]'].textContent, 'Comment (optional)');
+  });
+  assert.equal(rows[0].elements['[data-draft-changed]'].textContent, '');
+  assert.equal(rows[1].elements['[data-draft-changed]'].textContent, 'Comment recorded');
+  assert.equal(text['[data-draft-reasons]'], 'Comments are optional.');
 });
 
 function draftEditor() {

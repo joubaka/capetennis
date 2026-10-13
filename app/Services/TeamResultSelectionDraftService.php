@@ -29,27 +29,14 @@ class TeamResultSelectionDraftService
         $reasons = [];
         foreach ($input['reasons'] ?? [] as $key => $reason) {
             if (! $candidates->has((string) $key)) {
-                throw ValidationException::withMessages(['reasons' => 'Reasons must refer to ranked players in this setup.']);
+                throw ValidationException::withMessages(['reasons' => 'Comments must refer to ranked players in this setup.']);
             }
             if (trim((string) $reason) !== '') $reasons[(string) $key] = trim((string) $reason);
-        }
-        foreach ($ranking as $row) {
-            $included = in_array((string) $row['id'], $selected, true);
-            if (($included && (! $row['suggested'] || $row['cutoff_tie'])) || (! $included && $row['suggested'])) {
-                if (empty($reasons[(string) $row['id']])) {
-                    throw ValidationException::withMessages(['reasons' => 'Record a reason for each departure from the suggested selection and each selected cutoff tie.']);
-                }
-            }
         }
         $calculatedOrder = $ranking->map(fn ($row) => (string) $row['id'])->values()->all();
         $draftOrder = array_values(array_map('strval', $input['draft_order'] ?? $calculatedOrder));
         if (count($draftOrder) !== count($calculatedOrder) || count($draftOrder) !== count(array_unique($draftOrder)) || array_diff($draftOrder, $calculatedOrder)) {
             throw ValidationException::withMessages(['draft_order' => 'Include each ranked player in this setup exactly once.']);
-        }
-        foreach ($draftOrder as $position => $key) {
-            if ($calculatedOrder[$position] !== $key && empty($reasons[$key])) {
-                throw ValidationException::withMessages(['reasons' => 'Record a reason for each player moved from the calculated ranking.']);
-            }
         }
         $selected = array_values(array_filter($draftOrder, fn ($key) => in_array($key, $selected, true)));
         // Keep calculated evidence order and values; only add the reviewed draft position.
