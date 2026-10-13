@@ -10,7 +10,8 @@ class MailFailureOutcome
     {
         // Only an explicit protocol rejection proves nonacceptance. A timeout or
         // disconnect can follow acceptance and must not authorize another send.
-        $rejected = $error instanceof UnexpectedResponseException && $error->getCode() >= 400 && $error->getCode() <= 599;
+        $rejected = $error instanceof \App\Exceptions\SelectionPreviewMailAuthorizationException
+            || ($error instanceof UnexpectedResponseException && $error->getCode() >= 400 && $error->getCode() <= 599);
         if ($transportStarted && !$rejected) {
             $log->update(['status' => 'acceptance_unknown', 'error_message' => 'Mail-server acceptance is uncertain. Verify with the provider before retrying.']);
         } else {

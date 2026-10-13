@@ -22,12 +22,12 @@ class RequireEventEmailReview
         if (isset($mail->data['selection_preview_log_id'])) {
             $log = \App\Models\BulkEmailLog::find($mail->data['selection_preview_log_id']);
             $message = $log ? app(\App\Services\SelectionPreviewShareService::class)->authorizedMailable($log) : null;
-            abort_unless($message && $log->status === 'sending'
+            $allowed = $message && $log->status === 'sending'
                 && count($mail->message->getTo()) === 1 && strtolower($mail->message->getTo()[0]->getAddress()) === strtolower($log->recipient_email)
                 && ! $mail->message->getCc() && ! $mail->message->getBcc() && ! $mail->message->getAttachments()
                 && $mail->message->getTextBody() === null && $mail->message->getSubject() === $message->subjectLine
-                && $mail->message->getHtmlBody() === $message->body,
-                409, 'This private preview email is no longer authorized.');
+                && $mail->message->getHtmlBody() === $this->previewHtml($message->body);
+            if (! $allowed) throw new \App\Exceptions\SelectionPreviewMailAuthorizationException;
             return null;
         }
         // System result notifications have their own durable, recipient-specific
@@ -76,6 +76,25 @@ class RequireEventEmailReview
 
         app(\App\Services\OutboundMailHistory::class)->held($mail);
         return false;
+    }
+
+    private function previewHtml(string $html): string
+    {
+        $reference = (new \Symfony\Component\Mime\Email)->html($html);
+        // Compare exact approved content after the same registered transformation
+        // that has already run on the actual message. Never normalize submitted HTML.
+        foreach (app('events')->getRawListeners()[MessageSending::class] ?? [] as $listener) {
+            $class = is_array($listener) ? $listener[0] : $listener;
+            if (is_object($class)) $class = get_class($class);
+            if (! is_string($class)) continue;
+            $class = explode('@', $class)[0];
+            if ($class === self::class) break;
+            if ($class === \Fedeisas\LaravelMailCssInliner\CssInlinerPlugin::class) {
+                app($class)->handle(new MessageSending($reference, []));
+            }
+        }
+
+        return $reference->getHtmlBody();
     }
 
     private function events(array $data): \Illuminate\Support\Collection

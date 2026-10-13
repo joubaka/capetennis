@@ -83,6 +83,10 @@ class EventMailAttemptLifecycleTest extends TestCase
         $this->assertSame('acceptance_unknown', $log->status);
         app(MailFailureOutcome::class)->record($log, new \Symfony\Component\Mailer\Exception\UnexpectedResponseException('Rejected', 550), true);
         $this->assertSame('failed', $log->status);
+        app(MailFailureOutcome::class)->record($log, new \Symfony\Component\HttpKernel\Exception\HttpException(409, 'Unrelated error'), true);
+        $this->assertSame('acceptance_unknown', $log->status);
+        app(MailFailureOutcome::class)->record($log, new \App\Exceptions\SelectionPreviewMailAuthorizationException, true);
+        $this->assertSame('failed', $log->status);
     }
     public function test_pre_render_native_retry_keeps_first_failure_and_succeeds_on_second_attempt(): void
     {

@@ -106,6 +106,7 @@ class SelectionPreviewShareTest extends TestCase
         $log->update(['status' => 'sending']);
         $mailable = app(\App\Services\SelectionPreviewShareService::class)->authorizedMailable($log);
         $message = (new \Symfony\Component\Mime\Email)->to($user->email)->subject($mailable->subjectLine)->html($mailable->body);
+        app(\Fedeisas\LaravelMailCssInliner\CssInlinerPlugin::class)->handle(new \Illuminate\Mail\Events\MessageSending($message, []));
         $listener = app(\App\Listeners\RequireEventEmailReview::class);
         $this->assertNull($listener->handle(new \Illuminate\Mail\Events\MessageSending($message, ['selection_preview_log_id' => $log->id, 'review_event' => $event])));
         $message->html('<p>Unapproved content</p>');
@@ -206,6 +207,95 @@ class SelectionPreviewShareTest extends TestCase
         $this->getJson($url.'?q=UniqueChild')->assertForbidden();
         $this->get($url)->assertForbidden();
         Bus::assertNotDispatched(SendBulkEmailJob::class);
+    }
+
+    public function test_actual_job_accepts_canonical_preview_after_registered_css_inlining(): void
+    {
+        [$event] = $this->scenario();
+        $user = User::factory()->create();
+        $this->postJson(route('backend.selection-preview-share.store', $event), ['request_key' => (string) Str::uuid(), 'recipient_ids' => [$user->id]])->assertOk();
+        $log = BulkEmailLog::first();
+        $transport = $this->arrayMailForJob();
+        (new SendBulkEmailJob($log->id))->handle();
+        $this->assertCount(1, $transport->messages());
+        $this->assertSame('sent', $log->fresh()->status);
+        $this->assertSame($user->email, $transport->messages()->first()->getOriginalMessage()->getTo()[0]->getAddress());
+        // A runtime without the CSS listener must still compare the raw approved HTML.
+        \Illuminate\Support\Facades\Event::forget(\Illuminate\Mail\Events\MessageSending::class);
+        \Illuminate\Support\Facades\Event::listen(\Illuminate\Mail\Events\MessageSending::class, \App\Listeners\RequireEventEmailReview::class);
+        $other = User::factory()->create();
+        $this->postJson(route('backend.selection-preview-share.store', $event), ['request_key' => (string) Str::uuid(), 'recipient_ids' => [$other->id]])->assertOk();
+        $next = BulkEmailLog::latest('id')->first();
+        $rawTransport = $this->arrayMailForJob();
+        (new SendBulkEmailJob($next->id))->handle();
+        $this->assertCount(1, $rawTransport->messages());
+        $this->assertSame('sent', $next->fresh()->status);
+    }
+
+    public function test_actual_job_rejects_tampering_or_revocation_before_transport_as_failed(): void
+    {
+        [$event] = $this->scenario();
+        foreach (['html', 'subject', 'recipient', 'cc', 'text', 'attachment', 'revoked'] as $change) {
+            $user = User::factory()->create();
+            $this->postJson(route('backend.selection-preview-share.store', $event), ['request_key' => (string) Str::uuid(), 'recipient_ids' => [$user->id]])->assertOk();
+            $log = BulkEmailLog::latest('id')->first();
+            $transport = $this->arrayMailForJob();
+            $job = new class($log->id, $change) extends SendBulkEmailJob {
+                public function __construct(int $id, private string $change) { parent::__construct($id); }
+                protected function buildMailable(BulkEmailLog $log, string $fromAddress)
+                {
+                    $mailable = parent::buildMailable($log, $fromAddress);
+                    if ($this->change === 'revoked') SelectionPreviewGrant::where('user_id', $log->payload['recipient_user_id'])->update(['revoked_at' => now()]);
+                    else $mailable->withSymfonyMessage(function ($mail) {
+                        match ($this->change) {
+                            'html' => $mail->html('<p>Unapproved content</p>'),
+                            'subject' => $mail->subject('Unapproved subject'),
+                            'recipient' => $mail->to('other@example.test'),
+                            'cc' => $mail->cc('other@example.test'),
+                            'text' => $mail->text('Unapproved alternative'),
+                            'attachment' => $mail->attach('Unapproved attachment', 'test.txt'),
+                        };
+                    });
+                    return $mailable;
+                }
+            };
+            $job->handle();
+            $this->assertCount(0, $transport->messages(), $change);
+            $this->assertSame('failed', $log->fresh()->status, $change);
+            $this->assertNull($log->fresh()->accepted_at, $change);
+        }
+    }
+
+    public function test_actual_job_cannot_send_whatsapp_grant_or_retry_legacy_uncertain_mail(): void
+    {
+        [$event] = $this->scenario();
+        $user = User::factory()->create();
+        $response = $this->postJson(route('backend.selection-preview-share.store', $event), ['request_key' => (string) Str::uuid(), 'recipient_ids' => [$user->id], 'channel' => 'whatsapp'])->assertOk();
+        $log = BulkEmailLog::create(['mail_type' => 'selection_preview_share', 'related_type' => Event::class, 'related_id' => $event->id, 'recipient_email' => $user->email, 'status' => 'queued',
+            'payload' => ['preview_share_batch_id' => $response->json('batch_id'), 'recipient_user_id' => $user->id, 'event_id' => $event->id]]);
+        $transport = $this->arrayMailForJob(false);
+        (new SendBulkEmailJob($log->id))->handle();
+        $this->assertSame('skipped', $log->fresh()->status);
+        $this->assertCount(0, $transport->messages());
+        $old = BulkEmailLog::create(['mail_type' => 'selection_preview_share', 'recipient_email' => $user->email, 'status' => 'acceptance_unknown', 'error_message' => 'Historical uncertain attempt']);
+        (new SendBulkEmailJob($old->id))->handle();
+        $this->assertSame('acceptance_unknown', $old->fresh()->status);
+        $this->assertSame('Historical uncertain attempt', $old->fresh()->error_message);
+        $this->assertCount(0, $transport->messages());
+    }
+
+    private function arrayMailForJob(bool $expectsTransport = true): \Illuminate\Mail\Transport\ArrayTransport
+    {
+        $transport = new \Illuminate\Mail\Transport\ArrayTransport;
+        $mailer = new \Illuminate\Mail\Mailer('preview-array', app('view'), $transport, app('events'));
+        $manager = \Mockery::mock(\App\Services\MailAccountManager::class);
+        $manager->shouldReceive('getMailer')->once()->andReturn('preview-array');
+        $this->app->instance(\App\Services\MailAccountManager::class, $manager);
+        $mailManager = \Mockery::mock(\Illuminate\Mail\MailManager::class);
+        $expectation = $mailManager->shouldReceive('mailer')->with('preview-array')->andReturn($mailer);
+        $expectsTransport ? $expectation->once() : $expectation->never();
+        Mail::swap($mailManager);
+        return $transport;
     }
 
     private function scenario(): array
