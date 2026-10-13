@@ -1,0 +1,51 @@
+PHPUnit 12.5.35 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.5.0
+
+.﻿﻿..........................E
+
+Time: 01:14.492, Memory: 132.00 MB
+
+There was 1 error:
+
+1) Tests\Feature\AdminOperationsPagesTest::test_player_edit_retains_validation_inputs_legacy_gender_and_permission
+Illuminate\Database\QueryException: SQLSTATE[HY000]: General error: 1366 Incorrect integer value: 'male' for column 'gender' at row 1 (Connection: mysql, Host: 127.0.0.1, Port: 3306, Database: ct_testing, SQL: insert into `players` (`name`, `surname`, `cellNr`, `gender`, `userId`, `email`, `dateOfBirth`, `coach`, `identity_name_hash`, `identity_email_dob_hash`, `identity_cell_dob_hash`, `updated_at`, `created_at`) values (Example player, Testing, 0000000000, male, ?, player@example.test, 1970-05-26, Example coach, 279ffe82b5ccedead375f820535c0f704ae2f3ef334067e2237a5275bc0ad938, f1ca8eaa7a524100140436be3ddb961d1fc663f542ac11e9f36945f68ed5065b, 2e4ae5972b9fed535d4fecabec3680cf3d54e8943a12ddd003899be375336144, 2026-10-13 11:36:53, 2026-10-13 11:36:53))
+
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\Connection.php:857
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\Connection.php:813
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:42
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\Query\Processors\MySqlProcessor.php:35
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\Query\Builder.php:4313
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Builder.php:2336
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Model.php:1691
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Model.php:1607
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Model.php:1411
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Factories\Factory.php:383
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Collections\Traits\EnumeratesValues.php:275
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Factories\Factory.php:378
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Factories\Factory.php:334
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Factories\Factory.php:328
+C:\wamp64\www\ct\tests\Feature\AdminOperationsPagesTest.php:90
+
+Caused by
+PDOException: SQLSTATE[HY000]: General error: 1366 Incorrect integer value: 'male' for column 'gender' at row 1
+
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:53
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\Connection.php:846
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\Connection.php:813
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\MySqlConnection.php:42
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\Query\Processors\MySqlProcessor.php:35
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\Query\Builder.php:4313
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Builder.php:2336
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Model.php:1691
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Model.php:1607
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Model.php:1411
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Factories\Factory.php:383
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Collections\Traits\EnumeratesValues.php:275
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Factories\Factory.php:378
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Factories\Factory.php:334
+C:\wamp64\www\ct\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Factories\Factory.php:328
+C:\wamp64\www\ct\tests\Feature\AdminOperationsPagesTest.php:90
+
+ERRORS!
+Tests: 28, Assertions: 127, Errors: 1.

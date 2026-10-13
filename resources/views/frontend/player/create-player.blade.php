@@ -88,8 +88,25 @@ $(document).ready(function() {
 <div class="card mb-4">
   <div class="card-header">Link {{ $name ?? 'this player' }} {{ $surname ?? '' }}</div>
   <div class="card-body">
-    <p class="text-muted small">Search every Cape Tennis profile before creating a new one. Results show the player name, profile number, and a masked email address to help identify the correct profile.</p>
-    <select id="player-search" style="width:100%"></select>
+    <h5>One player, one Cape Tennis profile</h5>
+    <p>This player’s name is already on the team list. Linking connects that team position to their Cape Tennis player profile so you can review their details and continue with registration.</p>
+    <p>Use their existing profile whenever possible. Creating another profile for the same player can split their entries, results and ranking history across two records. A new event, team or parent account does not require a new player profile.</p>
+
+    <h6 class="mt-4">How to find and link the right profile</h6>
+    <ol class="ps-3 mb-3">
+      <li class="mb-2">Search below using the player’s name or surname (at least two characters). Try their surname on its own and any spelling they may have used before.</li>
+      <li class="mb-2">Review the matching profiles. Results show the player’s name, profile number and a masked email address. The email may belong to a parent or be an older address.</li>
+      <li class="mb-2">Select the correct player, tick the confirmation box and choose <strong>Confirm Profile and Review Details</strong>.</li>
+      <li>On the next screen, check the date of birth and update the player’s details before continuing to payment. Linking a profile does not complete registration or payment.</li>
+    </ol>
+
+    <div class="alert alert-warning" role="note">
+      <strong>Only create a new profile if this player does not already have one.</strong>
+      Search carefully first. If there are several possible matches or you are unsure, ask the player’s parent or the event organiser to confirm which profile to use. Do not create another profile just because an email address or other detail has changed.
+    </div>
+    <label for="player-search" class="form-label fw-semibold">Search existing player profiles first</label>
+    <p class="text-muted small" id="player-search-help">If you have checked all matches and the player has no existing profile, choose “Create new player” at the end of the results and complete their details.</p>
+    <select id="player-search" aria-describedby="player-search-help" style="width:100%"></select>
   </div>
 </div>
 
@@ -125,6 +142,8 @@ $(document).ready(function() {
   <div class="card">
     <h5 class="card-header">Create Player</h5>
     <div class="card-body">
+
+      <p class="alert alert-warning" role="note">Before creating this profile, make sure you have searched for this player and checked the possible matches. If they already have a profile, select it in the search above instead. You can review and update their details after selecting it.</p>
 
       <div class="mb-3">
         <label>Player Name</label>
