@@ -46,6 +46,7 @@ class TeamResultSelectionDraftService
         return DB::transaction(function () use ($event, $input, $actorId, $ranking, $regions, $excludedResultRegions, $selected, $reasons) {
             // The event lock also serializes creation when no draft row exists yet.
             Event::whereKey($event->id)->lockForUpdate()->firstOrFail();
+            abort_if(\App\Models\EventSelectionFinalization::where('event_id', $event->id)->exists(), 409, 'This event ranking is finalized. Draft order and selections are locked.');
             $draft = TeamResultSelectionDraft::where('event_id', $event->id)->where('group_key', $input['group_key'])->lockForUpdate()->first();
             abort_if((int) ($draft?->version ?? 0) !== $input['version'], 409, 'This draft changed. Reload it before saving.');
             $draft ??= new TeamResultSelectionDraft(['event_id' => $event->id, 'group_key' => $input['group_key']]);

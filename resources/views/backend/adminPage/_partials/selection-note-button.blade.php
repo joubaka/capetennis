@@ -1,0 +1,1 @@
+<button type="button" class="btn btn-sm preview-note-button" data-preview-note data-player-key="{{ $playerKey }}" data-player-name="{{ $playerName }}" data-group-key="{{ $groupKey }}" aria-label="Read note and discussion for {{ $playerName }}">Note</button>

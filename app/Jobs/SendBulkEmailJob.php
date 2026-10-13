@@ -196,6 +196,8 @@ class SendBulkEmailJob implements ShouldQueue
         $payload = $log->payload ?? [];
 
         switch ($log->mail_type) {
+            case 'selection_preview_share':
+                return app(\App\Services\SelectionPreviewShareService::class)->authorizedMailable($log);
             case 'tournament_announcement':
             case 'event_announcement':
                 if (! empty($payload['event_communication_batch_id']) && isset($payload['subject'], $payload['body'])) {

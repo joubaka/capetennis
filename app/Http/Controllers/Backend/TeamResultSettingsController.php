@@ -47,6 +47,7 @@ class TeamResultSettingsController extends Controller
             'team_size' => ['required', 'integer', 'min:1', 'max:12'],
             'reserve_count' => ['required', 'integer', 'min:0', 'max:11'],
             'age' => ['nullable', 'integer', 'min:1', 'max:99'],
+            'gender' => ['nullable', 'string', 'in:boys,girls'],
         ]);
         $teamSize = (int) $input['team_size'];
         $reserveCount = (int) $input['reserve_count'];
@@ -55,6 +56,7 @@ class TeamResultSettingsController extends Controller
         }
         $settings = DB::transaction(function () use ($event, $teamSize, $reserveCount) {
             $locked = Event::whereKey($event->id)->lockForUpdate()->firstOrFail();
+            abort_if(\App\Models\EventSelectionFinalization::where('event_id', $event->id)->exists(), 409, 'Finalized team and reserve places are locked.');
             $settings = array_replace($locked->team_result_settings ?? [], ['team_size' => $teamSize, 'reserve_count' => $reserveCount]);
             $locked->team_result_settings = $settings;
             $locked->save();
@@ -62,7 +64,7 @@ class TeamResultSettingsController extends Controller
         });
         if ($request->expectsJson()) return response()->json(['settings' => $settings])->header('Cache-Control', 'no-store, private');
 
-        return redirect()->route('backend.selection-preview.show', ['event' => $event, 'age' => $input['age'] ?? null])
+        return redirect()->route('backend.selection-preview.show', ['event' => $event, 'age' => $input['age'] ?? null, 'gender' => $input['gender'] ?? null])
             ->with('success', 'Team and reserve places saved for this event. Existing draft selections were kept.')
             ->header('Cache-Control', 'no-store, private');
     }

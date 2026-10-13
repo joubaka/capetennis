@@ -164,6 +164,29 @@ class TeamSelectionPreviewTest extends TestCase
         $this->assertDoesNotMatchRegularExpression('/data-result-format value="singles"\s+checked/', $html);
     }
 
+    public function test_navigation_chooses_one_available_age_and_gender_in_numeric_order(): void
+    {
+        [$event, $boys, $region] = $this->scenario();
+        $girls = Team::factory()->create(['category_event_id' => $boys->category_event_id, 'region_id' => $region->id, 'name' => 'Girls only team']);
+        TeamPlayer::create(['team_id' => $girls->id, 'player_id' => Player::factory()->create(['name' => 'GirlOnly', 'surname' => 'Player'])->id, 'rank' => 1]);
+        TeamResultSelectionDraft::create(['event_id' => $event->id, 'group_key' => '11-girls', 'region_ids' => [$region->id], 'formats' => [], 'excluded_result_region_ids' => [],
+            'selected_keys' => [], 'reasons' => [], 'version' => 1, 'snapshot' => [], 'updated_by' => auth()->id()]);
+        $service = app(TeamSelectionPreviewService::class);
+        $preview = $service->preview($event, 10, 'girls');
+        $this->assertSame(['10-boys', '10-girls', '11-girls'], $preview['navigationGroups']->pluck('key')->all());
+        $this->assertCount(1, $preview['groups']);
+        $this->assertSame('u/10 Girls', $preview['groups']->first()['name']);
+        $url = route('backend.selection-preview.show', $event);
+        $this->get($url.'?age=10')->assertOk()->assertSee('Source Boys')->assertDontSee('GirlOnly Player');
+        $this->get($url.'?age=10&gender=girls')->assertOk()->assertSee('GirlOnly Player')->assertDontSee('Source Boys')
+            ->assertSee('roster_result_category=10-girls', false);
+        $this->get($url.'?age=11&gender=girls')->assertOk()->assertSee('No saved selections.');
+        $this->get($url.'?age=11&gender=boys')->assertNotFound();
+        $this->getJson($url.'?age=10&gender=mixed')->assertUnprocessable();
+        $this->put(route('backend.team-selection-size.store', $event), ['team_size' => 10, 'reserve_count' => 2, 'age' => 10, 'gender' => 'girls'])
+            ->assertRedirect($url.'?age=10&gender=girls');
+    }
+
     private function setupFixture(Event $event, Team $team): void
     {
         $draw = \App\Models\Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => $team->category_event_id]);

@@ -825,6 +825,18 @@ Route::prefix('backend')->middleware('auth')->group(function () {
       ->name('backend.team-result-selection.show');
     Route::get('{event}/selection-preview', [\App\Http\Controllers\Backend\TeamSelectionPreviewController::class, 'show'])
       ->name('backend.selection-preview.show');
+    Route::post('{event}/selection-finalization', [\App\Http\Controllers\Backend\EventSelectionFinalizationController::class, 'store'])
+      ->name('backend.selection-finalization.store');
+    Route::get('{event}/selection-preview-comments', [\App\Http\Controllers\Backend\SelectionPreviewCommentController::class, 'show'])
+      ->name('backend.selection-preview-comments.show');
+    Route::post('{event}/selection-preview-comments', [\App\Http\Controllers\Backend\SelectionPreviewCommentController::class, 'store'])
+      ->middleware('throttle:20,1')->name('backend.selection-preview-comments.store');
+    Route::get('{event}/selection-preview-share', [\App\Http\Controllers\Backend\SelectionPreviewShareController::class, 'index'])
+      ->name('backend.selection-preview-share.index');
+    Route::post('{event}/selection-preview-share', [\App\Http\Controllers\Backend\SelectionPreviewShareController::class, 'store'])
+      ->middleware('throttle:5,1')->name('backend.selection-preview-share.store');
+    Route::delete('{event}/selection-preview-share/{user}', [\App\Http\Controllers\Backend\SelectionPreviewShareController::class, 'destroy'])
+      ->name('backend.selection-preview-share.destroy');
     Route::put('{event}/team-result-settings', [\App\Http\Controllers\Backend\TeamResultSettingsController::class, 'store'])
       ->name('backend.team-result-settings.store');
     Route::put('{event}/team-selection-size', [\App\Http\Controllers\Backend\TeamResultSettingsController::class, 'storeTeamSize'])

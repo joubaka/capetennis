@@ -14,6 +14,7 @@
   let applyingDraft;
   let resultGeneration = 0;
   let draftReady = false;
+  let draftFinalized = false;
   let draftFetchSequence = 0;
   let editingGroup;
   let saveRequestBusy = false;
@@ -29,15 +30,18 @@
 
   function continueSelectionPreview() {
     if (!previewPendingUrl || saveRequestBusy) return;
-    if (autosavePaused) { previewPendingUrl = null; $('[data-selection-preview]').prop('disabled', false); return; }
-    if (!draftDirty) { const url = previewPendingUrl; previewPendingUrl = null; window.location.assign(url); return; }
+    if (autosavePaused && !draftFinalized) { previewPendingUrl = null; $('[data-selection-preview]').prop('disabled', false); return; }
+    if (draftFinalized || !draftDirty) { const url = previewPendingUrl; previewPendingUrl = null; $('[data-selection-preview]').prop('disabled', false); window.location.assign(url); return; }
     autosavePending = true;
     flushDraftAutosave();
   }
   $(document).on('click', '[data-selection-preview]', function () {
-    if (autosavePaused) { selectionStatus('Resolve the paused draft save before opening the preview. Your edits are kept.'); return; }
+    if (autosavePaused && !draftFinalized) { selectionStatus('Resolve the paused draft save before opening the preview. Your edits are kept.'); return; }
     if (!document.querySelector('.result-player-list, .result-empty') || document.getElementById('category-table')?.getAttribute('aria-busy') === 'true') { selectionStatus('Wait for the results to load before opening the preview.'); return; }
-    previewPendingUrl = this.dataset.selectionPreview;
+    const group = /^(\d{1,2})-(boys|girls)$/.exec(selectionGroup() || '');
+    const previewUrl = new URL(this.dataset.selectionPreview, window.location.href);
+    if (group) { previewUrl.searchParams.set('age', group[1]); previewUrl.searchParams.set('gender', group[2]); }
+    previewPendingUrl = previewUrl.href;
     $('[data-selection-preview]').prop('disabled', true);
     selectionStatus('Saving your current choices before opening Preview Selections…');
     continueSelectionPreview();
@@ -406,6 +410,13 @@
     $('[data-selection-retry]').prop('hidden', true);
     $.getJSON(url, { group_key: group }).done(response => {
       if (group !== selectionGroup() || generation !== resultGeneration || fetchSequence !== draftFetchSequence) return;
+      draftFinalized = !!response.finalized;
+      if (draftFinalized) {
+        draftReady = false; autosavePaused = true; autosavePending = false; window.clearTimeout(autosaveTimer);
+        $('[data-selection-save], [data-selection-player], [data-selection-reason], [data-draft-select], [data-draft-inline-reason], [data-draft-up], [data-draft-down]').prop('disabled', true);
+        const list = document.querySelector('[data-draft-order]'); if (list) window.Sortable?.get(list)?.option('disabled', true);
+        updateDraftProgress(); selectionStatus('Finalized—ranking locked. Open Preview Selections to see the final ranking.'); $('[data-selection-preview]').prop('disabled', false); continueSelectionPreview(); return;
+      }
       if (saveRequestBusy || selectionVersion !== requestedVersion) { selectionStatus('The draft was saved while checking. Retry the draft check to get its latest version.'); return; }
       if (!apply) {
         draftReady = true; selectionVersion = response.draft?.version || 0;

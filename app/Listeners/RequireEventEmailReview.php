@@ -19,6 +19,17 @@ class RequireEventEmailReview
 
     public function handle(MessageSending $mail): ?bool
     {
+        if (isset($mail->data['selection_preview_log_id'])) {
+            $log = \App\Models\BulkEmailLog::find($mail->data['selection_preview_log_id']);
+            $message = $log ? app(\App\Services\SelectionPreviewShareService::class)->authorizedMailable($log) : null;
+            abort_unless($message && $log->status === 'sending'
+                && count($mail->message->getTo()) === 1 && strtolower($mail->message->getTo()[0]->getAddress()) === strtolower($log->recipient_email)
+                && ! $mail->message->getCc() && ! $mail->message->getBcc() && ! $mail->message->getAttachments()
+                && $mail->message->getTextBody() === null && $mail->message->getSubject() === $message->subjectLine
+                && $mail->message->getHtmlBody() === $message->body,
+                409, 'This private preview email is no longer authorized.');
+            return null;
+        }
         // System result notifications have their own durable, recipient-specific
         // authorization. This exception does not authorize arbitrary event mail.
         if (($mail->data['resultNotification'] ?? null) instanceof \App\Models\MatchResultNotification) {

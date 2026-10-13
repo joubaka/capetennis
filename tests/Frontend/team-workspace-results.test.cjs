@@ -7,7 +7,7 @@ const loadSource = source.slice(source.indexOf('  function loadResults()'), sour
 function autosaveEditor() {
   let timerId = 0;
   const timers = new Map(), requests = [], messages = [], handlers = {};
-  const window = { location: { assign(url) { messages.push('navigate:' + url); } }, clearTimeout(id) { timers.delete(id); }, setTimeout(callback) { timers.set(++timerId, callback); return timerId; } };
+  const window = { location: { href: 'http://localhost/workspace', assign(url) { messages.push('navigate:' + new URL(url).pathname + new URL(url).search); } }, clearTimeout(id) { timers.delete(id); }, setTimeout(callback) { timers.set(++timerId, callback); return timerId; } };
   const document = { getElementById: id => id === 'tab-result-rank' ? { dataset: { selectionUrl: '/draft' } } : { getAttribute() { return null; } }, querySelector() { return {}; } };
   const values = { comment: '', selected: true };
   const button = { disabled: false };
@@ -24,7 +24,7 @@ function autosaveEditor() {
   const autoSource = source.slice(source.indexOf('  function continueSelectionPreview()'), source.indexOf('  let eventSettingsBaseline;'));
   const saveSource = source.slice(source.indexOf("  $(document).on('click', '[data-selection-save]'"), source.indexOf("  $(document).on('change', '[data-selection-player]'"));
   const editor = new Function('$', 'window', 'document', 'values', 'selectionStatus', `
-    let previewPendingUrl, autosaveTimer, autosavePending = false, autosavePaused = false, draftDirty = false, saveRequestBusy = false, draftReady = true, selectionVersion = 3, resultGeneration = 1, savedDraft, draftBaseline = '';
+    let draftFinalized = false, previewPendingUrl, autosaveTimer, autosavePending = false, autosavePaused = false, draftDirty = false, saveRequestBusy = false, draftReady = true, selectionVersion = 3, resultGeneration = 1, savedDraft, draftBaseline = '';
     function updateDraftProgress() {} function selectionGroup() { return '10-boys'; }
     function draftFingerprint() { return JSON.stringify(values); }
     function draftRows() { return [{ dataset: { draftKey: '5' } }]; }
@@ -33,7 +33,7 @@ function autosaveEditor() {
     ${autoSource}
     ${saveSource}
     draftBaseline = draftFingerprint();
-    return { edit(comment) { values.comment = comment; draftDirty = draftFingerprint() !== draftBaseline; scheduleDraftAutosave(); }, ready(value) { draftReady = value; if(value) scheduleDraftAutosave(); }, discard: resetDraftAutosave, state() { return { draftDirty, autosavePaused, selectionVersion }; } };
+    return { edit(comment) { values.comment = comment; draftDirty = draftFingerprint() !== draftBaseline; scheduleDraftAutosave(); }, ready(value) { draftReady = value; if(value) scheduleDraftAutosave(); }, discard: resetDraftAutosave, finalized() { draftFinalized = true; autosavePaused = true; continueSelectionPreview(); }, state() { return { draftDirty, autosavePaused, selectionVersion }; } };
   `)($, window, document, values, message => messages.push(message));
   return { editor, requests, messages, tick() { const callbacks = [...timers.values()]; timers.clear(); callbacks.forEach(callback => callback()); }, success(index) { const request = requests[index]; request.done({ draft: { version: JSON.parse(request.options.data).version + 1 } }); request.always(); }, fail(index, status) { requests[index].fail({ status }); requests[index].always(); }, manual() { handlers['[data-selection-save]'].call(button); }, preview() { handlers['[data-selection-preview]'].call({ dataset: { selectionPreview: '/preview' } }); } };
 }
@@ -73,31 +73,38 @@ test('metadata readiness defers autosave and discarded setup cancels pending sav
 test('clean Preview only navigates and never overwrites stored draft choices', () => {
   const f = autosaveEditor(); f.preview();
   assert.equal(f.requests.length, 0);
-  assert.ok(f.messages.includes('navigate:/preview'));
+  assert.ok(f.messages.includes('navigate:/preview?age=10&gender=boys'));
 });
 
 test('Preview flushes dirty choices and waits for newer inflight edits before navigating', () => {
   const f = autosaveEditor(); f.editor.edit('First'); f.preview();
-  assert.equal(f.requests.length, 1); assert.ok(!f.messages.includes('navigate:/preview'));
+  assert.equal(f.requests.length, 1); assert.ok(!f.messages.includes('navigate:/preview?age=10&gender=boys'));
   f.editor.edit('Latest'); f.success(0);
-  assert.equal(f.requests.length, 2); assert.ok(!f.messages.includes('navigate:/preview'));
+  assert.equal(f.requests.length, 2); assert.ok(!f.messages.includes('navigate:/preview?age=10&gender=boys'));
   assert.equal(JSON.parse(f.requests[1].options.data).reasons['5'], 'Latest');
-  f.success(1); assert.ok(f.messages.includes('navigate:/preview'));
+  f.success(1); assert.ok(f.messages.includes('navigate:/preview?age=10&gender=boys'));
 });
 
 test('Preview never navigates after a failed or conflicting save', () => {
   for (const status of [500, 409]) {
     const f = autosaveEditor(); f.editor.edit('Keep'); f.preview(); f.fail(0, status); f.tick();
-    assert.ok(!f.messages.includes('navigate:/preview'));
+    assert.ok(!f.messages.includes('navigate:/preview?age=10&gender=boys'));
     assert.equal(f.editor.state().draftDirty, true);
   }
 });
 
 test('dirty Preview waits for metadata readiness and saves before navigation', () => {
   const f = autosaveEditor(); f.editor.ready(false); f.editor.edit('Waiting for version'); f.preview(); f.tick();
-  assert.equal(f.requests.length, 0); assert.ok(!f.messages.includes('navigate:/preview'));
+  assert.equal(f.requests.length, 0); assert.ok(!f.messages.includes('navigate:/preview?age=10&gender=boys'));
   f.editor.ready(true); f.tick(); assert.equal(f.requests.length, 1);
-  f.success(0); assert.ok(f.messages.includes('navigate:/preview'));
+  f.success(0); assert.ok(f.messages.includes('navigate:/preview?age=10&gender=boys'));
+});
+
+test('finalized metadata resolves pending Preview without saving client edits', () => {
+  const f = autosaveEditor(); f.editor.ready(false); f.editor.edit('Unsaveable edit'); f.preview();
+  f.editor.finalized();
+  assert.equal(f.requests.length, 0);
+  assert.ok(f.messages.includes('navigate:/preview?age=10&gender=boys'));
 });
 
 function readinessEditor() {
@@ -105,14 +112,14 @@ function readinessEditor() {
   let done, fail;
   const $ = selector => ({ prop(name, value) { properties[selector + ':' + name] = value; } });
   $.getJSON = () => ({ done(callback) { done = callback; return this; }, fail(callback) { fail = callback; return this; } });
-  const document = { getElementById: () => ({ dataset: { selectionUrl: '/draft' } }) };
+  const document = { querySelector() { return null; }, getElementById: () => ({ dataset: { selectionUrl: '/draft' } }) };
   const fetchSource = source.slice(source.indexOf('  function fetchDraft('), source.indexOf("  $(document).on('click', '[data-selection-retry]'"));
   const editor = new Function('$', 'document', 'selectionStatus', `
-    let draftReady = false, selectionVersion = 0, editRevision = 1, resultGeneration = 1, draftFetchSequence = 0, saveRequestBusy = false, savedDraft;
+    let draftFinalized = false, autosavePaused = false, autosavePending = false, autosaveTimer, draftReady = false, selectionVersion = 0, editRevision = 1, resultGeneration = 1, draftFetchSequence = 0, saveRequestBusy = false, savedDraft;
     const choices = ['player-5', 'player-6'];
-    function confirmDraftDiscard() { return true; } function selectionGroup() { return '10-boys'; } function updateDraftProgress() {} function scheduleDraftAutosave() {} function continueSelectionPreview() {}
+    const window = { clearTimeout() {}, Sortable: { get() { return null; } } }; function confirmDraftDiscard() { return true; } function selectionGroup() { return '10-boys'; } function updateDraftProgress() {} function scheduleDraftAutosave() {} function continueSelectionPreview() {}
     ${fetchSource}
-    return { fetch: fetchDraft, state() { return { draftReady, selectionVersion, choices }; }, edit() { editRevision++; choices.reverse(); }, saved(version) { selectionVersion = version; draftReady = true; } };
+    return { fetch: fetchDraft, state() { return { draftReady, draftFinalized, autosavePaused, selectionVersion, choices }; }, edit() { editRevision++; choices.reverse(); }, saved(version) { selectionVersion = version; draftReady = true; } };
   `)($, document, message => messages.push(message));
   return { editor, properties, messages, success(response) { done(response); }, failure(response = {}) { fail(response); } };
 }
@@ -124,6 +131,15 @@ test('existing draft check enables saving with its version while keeping edits m
   assert.equal(editor.state().selectionVersion, 7);
   assert.deepEqual(editor.state().choices, ['player-6', 'player-5']);
   assert.equal(properties['[data-selection-save]:disabled'], false);
+});
+
+test('finalized draft lookup disables changes and pauses autosave while Preview remains available', () => {
+  const { editor, properties, success } = readinessEditor();
+  editor.fetch(false); success({ finalized: true, draft: { version: 1 } });
+  assert.equal(editor.state().draftFinalized, true);
+  assert.equal(editor.state().draftReady, false);
+  assert.equal(editor.state().autosavePaused, true);
+  assert.equal(properties['[data-selection-preview]:disabled'], false);
 });
 
 test('late draft lookup cannot replace a version updated by saving', () => {
@@ -222,7 +238,7 @@ test('reordered and selection-departure players always have optional comments wi
     return { dataset: { draftKey: key }, elements, querySelector: selector => elements[selector] };
   });
   const cards = ['5', '6'].map(key => ({ dataset: { resultPlayer: key, playerName: 'Player ' + key, playerSuggested: key === '5' ? '1' : '0', playerCutoff: '1' }, querySelector: () => ({ checked: key === '6', value: '' }) }));
-  new Function('$', 'draftRows', 'draftCards', `let saveRequestBusy = false, draftDirty = true, draftReady = true, autosavePaused = false, selectionVersion = 0; function updateDraftChrome() {} ${progressSource}; updateDraftProgress();`)(selector => ({ text(value) { text[selector] = value; } }), () => rows, () => cards);
+  new Function('$', 'draftRows', 'draftCards', `let saveRequestBusy = false, draftDirty = true, draftReady = true, draftFinalized = false, autosavePaused = false, selectionVersion = 0; function updateDraftChrome() {} ${progressSource}; updateDraftProgress();`)(selector => ({ text(value) { text[selector] = value; } }), () => rows, () => cards);
   rows.forEach(row => {
     assert.equal(row.elements['[data-draft-inline-reason]'].required, false);
     assert.equal(row.elements['[data-draft-reason-label]'].textContent, 'Comment (optional)');
