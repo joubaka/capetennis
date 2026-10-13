@@ -56,7 +56,7 @@ class SelectionPreviewShareTest extends TestCase
         $users = User::factory()->count(17)->create(['name' => 'Convener']);
         $url = route('backend.selection-preview-share.store', $event);
         $this->get(route('backend.selection-preview-share.index', ['event' => $event, 'q' => 'Convener']))->assertOk()
-            ->assertHeader('Cache-Control', 'no-store, private')->assertDontSee($users[0]->email)->assertSee('Send preview link');
+            ->assertHeader('Cache-Control', 'no-store, private')->assertSee($users[0]->email)->assertSee('Send preview link');
         foreach ([[], [999999], [$users[0]->id, $users[0]->id], $users->pluck('id')->concat(range(9000, 9014))->all()] as $ids) {
             $this->postJson($url, ['request_key' => (string) Str::uuid(), 'recipient_ids' => $ids])->assertUnprocessable();
         }
@@ -129,7 +129,9 @@ class SelectionPreviewShareTest extends TestCase
         foreach (['aLD', 'BuR', 'Ald  burden', 'tennis@exam', 'ACELOG', 'A'] as $query) {
             $response = $this->getJson($url.'?q='.urlencode($query))->assertOk()->assertHeader('Cache-Control', 'no-store, private');
             $this->assertContains($person->id, array_column($response->json('users'), 'id'));
-            $response->assertDontSee($person->email);
+            $this->assertContains($person->email, array_column($response->json('users'), 'email'));
+            $this->assertArrayNotHasKey('masked_email', $response->json('users.0'));
+            $this->get($url.'?q='.urlencode($query))->assertOk()->assertSee($person->email);
         }
         $this->getJson($url.'?q=%25')->assertOk()->assertJsonCount(1, 'users')->assertJsonPath('users.0.id', $wild->id);
         $this->getJson($url.'?q=Invalid')->assertOk()->assertJsonPath('users.0.selectable', false);
@@ -143,9 +145,9 @@ class SelectionPreviewShareTest extends TestCase
         $this->assertStringNotContainsString('<svg', $body);
         if ($output = getenv('CT_SHARE_QA_OUTPUT')) {
             $body = str_replace($url, '/index.html', $body);
-            $users = User::where('name', 'Pagination Example')->orderBy('id')->get()->map(fn ($user, $index) => ['id' => $user->id, 'name' => ['Aldred Burden', 'Leonie Adams', 'Casey Jacobs'][$index % 3].' '.($index + 1), 'masked_email' => 'p***@example.test', 'selectable' => true, 'shared' => false])->all();
+            $users = User::where('name', 'Pagination Example')->orderBy('id')->get()->map(fn ($user, $index) => ['id' => $user->id, 'name' => ['Aldred Burden', 'Leonie Adams', 'Casey Jacobs'][$index % 3].' '.($index + 1), 'email' => 'person@example.test', 'selectable' => true, 'shared' => false])->all();
             $script = file_get_contents(public_path('js/selection-preview-share.js'));
-            $mock = 'const qaUsers = '.json_encode($users).'; window.fetch = async url => { const p = new URL(url, location.href).searchParams; const q=(p.get("q")||"").toLowerCase(); const found=qaUsers.filter(u=>!q||u.name.toLowerCase().includes(q)||u.masked_email.toLowerCase().includes(q)); const page=Number(p.get("users_page")||1); const link=n=>"?q="+encodeURIComponent(q)+"&users_page="+n; return {ok:true,json:async()=>({users:found.slice((page-1)*15,page*15),pagination:{current_page:page,last_page:Math.max(1,Math.ceil(found.length/15)),total:found.length,previous_page_url:page>1?link(page-1):null,next_page_url:page*15<found.length?link(page+1):null}})}; }; document.querySelector("[data-share-search] input").value=""; document.querySelector("[data-share-send]").addEventListener("submit",e=>{e.preventDefault(); alert("QA fixture: no email is sent.");});';
+            $mock = 'const qaUsers = '.json_encode($users).'; window.fetch = async url => { const p = new URL(url, location.href).searchParams; const q=(p.get("q")||"").toLowerCase(); const found=qaUsers.filter(u=>!q||u.name.toLowerCase().includes(q)||u.email.toLowerCase().includes(q)); const page=Number(p.get("users_page")||1); const link=n=>"?q="+encodeURIComponent(q)+"&users_page="+n; return {ok:true,json:async()=>({users:found.slice((page-1)*15,page*15),pagination:{current_page:page,last_page:Math.max(1,Math.ceil(found.length/15)),total:found.length,previous_page_url:page>1?link(page-1):null,next_page_url:page*15<found.length?link(page+1):null}})}; }; document.querySelector("[data-share-search] input").value=""; document.querySelector("[data-share-send]").addEventListener("submit",e=>{e.preventDefault(); alert("QA fixture: no email is sent.");});';
             $body = preg_replace('/<script src="[^"]*selection-preview-share\.js[^>]*><\/script>/', '<script>'.$mock.$script.'document.querySelector("[data-share-search]").dispatchEvent(new Event("submit", {bubbles:true,cancelable:true}));</script>', $body);
             $css = file_get_contents(public_path('assets/vendor/css/core.css')).file_get_contents(public_path('css/selection-preview-share.css'));
             if (! is_dir(dirname($output))) mkdir(dirname($output), 0777, true);
@@ -196,7 +198,7 @@ class SelectionPreviewShareTest extends TestCase
         $this->assertDatabaseCount('user_players', 1);
         $users = User::factory()->count(17)->create();
         $this->postJson(route('backend.selection-preview-share.store', $event), ['request_key' => (string) Str::uuid(), 'recipient_ids' => $users->pluck('id')->all(), 'channel' => 'whatsapp'])->assertOk();
-        $this->getJson($url.'?section=grants')->assertOk()->assertJsonCount(15, 'grants')->assertJsonPath('pagination.total', 17)->assertDontSee($users->first()->email);
+        $this->getJson($url.'?section=grants')->assertOk()->assertJsonCount(15, 'grants')->assertJsonPath('pagination.total', 17)->assertJsonPath('grants.0.email', $users->last()->email);
         $this->getJson($url.'?section=grants&grants_page=2')->assertOk()->assertJsonCount(2, 'grants');
         $foreign = Event::factory()->create();
         $this->getJson(route('backend.selection-preview-share.index', $foreign).'?section=grants')->assertForbidden();

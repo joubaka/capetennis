@@ -22,7 +22,7 @@
     selectedList.replaceChildren(); hidden.replaceChildren();
     if (!selected.size) selectedList.append(element('p', 'Choose an account to start your invitation list.', 'share-help'));
     selected.forEach(user => {
-      const row = element('div', undefined, 'share-selected-row'), identity = element('span'); identity.append(element('strong', user.name), element('small', user.masked_email));
+      const row = element('div', undefined, 'share-selected-row'), identity = element('span'); identity.append(element('strong', user.name), element('small', user.email));
       const remove = element('button', '×', 'share-remove-recipient'); remove.type = 'button'; remove.disabled = grantBusy; remove.setAttribute('aria-label', 'Remove ' + user.name); remove.addEventListener('click', () => { if (!grantBusy) { selected.delete(String(user.id)); sync(); } });
       row.append(identity, remove); selectedList.append(row);
       const input = element('input'); input.type = 'hidden'; input.name = 'recipient_ids[]'; input.value = user.id; hidden.append(input);
@@ -37,15 +37,15 @@
   root.addEventListener('change', event => {
     const input = event.target.closest('[data-share-user]'); if (!input) return;
     if (grantBusy) { sync(); return; }
-    if (input.checked) { if (selected.size >= 30 && !selected.has(input.value)) { input.checked = false; status.textContent = 'Choose no more than 30 accounts per send.'; return; } selected.set(input.value, { id: Number(input.value), name: input.dataset.name, masked_email: input.dataset.email }); }
+    if (input.checked) { if (selected.size >= 30 && !selected.has(input.value)) { input.checked = false; status.textContent = 'Choose no more than 30 accounts per send.'; return; } selected.set(input.value, { id: Number(input.value), name: input.dataset.name, email: input.dataset.email }); }
     else selected.delete(input.value); sync();
   });
   function render(data) {
     results.replaceChildren(); const list = element('div', undefined, 'share-user-list');
     if (!data.users.length) { const empty = element('div', undefined, 'share-empty'); empty.append(element('strong', 'No matching accounts'), element('p', 'Try part of a name, surname or email address.')); list.append(empty); }
     data.users.forEach(user => {
-      const label = element('label', undefined, 'share-user-card'), input = element('input'); input.type = 'checkbox'; input.className = 'form-check-input'; input.value = String(user.id); input.dataset.shareUser = ''; input.dataset.name = user.name; input.dataset.email = user.masked_email; input.dataset.selectable = user.selectable ? '1' : '0'; input.disabled = !user.selectable;
-      const identity = element('span'); identity.append(element('strong', user.name), element('small', 'Account #' + user.id + ' · ' + user.masked_email));
+      const label = element('label', undefined, 'share-user-card'), input = element('input'); input.type = 'checkbox'; input.className = 'form-check-input'; input.value = String(user.id); input.dataset.shareUser = ''; input.dataset.name = user.name; input.dataset.email = user.email; input.dataset.selectable = user.selectable ? '1' : '0'; input.disabled = !user.selectable;
+      const identity = element('span'); identity.append(element('strong', user.name), element('small', 'Account #' + user.id + ' · ' + user.email));
       if (user.shared) identity.append(element('small', 'Already has preview access', 'share-access-label'));
       if (!user.selectable) identity.append(element('small', 'Valid account email needed', 'text-danger'));
       label.append(input, identity); list.append(label);
@@ -83,7 +83,7 @@
       grants.replaceChildren();
       if (!data.grants.length) grants.append(element('p', 'No shared accounts yet.', 'share-help'));
       data.grants.forEach(user => {
-        const row = element('div', undefined, 'share-existing-row'), identity = element('span'); identity.append(element('strong', user.name), element('small', user.masked_email));
+        const row = element('div', undefined, 'share-existing-row'), identity = element('span'); identity.append(element('strong', user.name), element('small', user.email));
         const form = element('form'); form.method = 'POST'; form.action = user.revoke_url; form.dataset.shareRevoke = '';
         [['_token', root.querySelector('[data-share-send]').elements._token.value], ['_method', 'DELETE']].forEach(([name, value]) => { const input = element('input'); input.type = 'hidden'; input.name = name; input.value = value; form.append(input); });
         const button = element('button', 'Remove access', 'btn btn-outline-danger btn-sm'); button.type = 'submit'; form.append(button); row.append(identity, form); grants.append(row);

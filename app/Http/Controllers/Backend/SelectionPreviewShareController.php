@@ -48,8 +48,7 @@ class SelectionPreviewShareController extends Controller
         $name = trim($user->name ?: $user->userName);
         $surname = trim($user->userSurname ?? '');
         if ($surname !== '' && ! str_ends_with(mb_strtolower($name), mb_strtolower($surname))) $name .= ' '.$surname;
-        $parts = explode('@', (string) $user->email);
-        return ['id' => (int) $user->id, 'name' => $name, 'masked_email' => substr((string) $user->email, 0, 1).'***@'.($parts[1] ?? ''),
+        return ['id' => (int) $user->id, 'name' => $name, 'email' => (string) $user->email,
             'selectable' => (bool) filter_var($user->email, FILTER_VALIDATE_EMAIL)];
     }
 
