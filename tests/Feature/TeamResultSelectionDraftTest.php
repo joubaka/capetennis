@@ -109,6 +109,17 @@ class TeamResultSelectionDraftTest extends TestCase
         $this->assertDatabaseCount('team_result_selection_revisions', 2);
     }
 
+    public function test_private_selection_accepts_twelve_players_but_rejects_thirteen(): void
+    {
+        [$event, $input] = $this->scenario(false, 13);
+        $url = route('backend.team-result-selection.store', $event);
+        $input['selected_keys'] = array_map('strval', range(1, 13));
+        $this->putJson($url, $input)->assertUnprocessable()->assertJsonValidationErrors('selected_keys');
+        $input['selected_keys'] = array_map('strval', range(1, 12));
+        $this->putJson($url, $input)->assertOk()->assertJsonCount(12, 'draft.selected_keys');
+        $this->assertDatabaseCount('team_result_selection_revisions', 1);
+    }
+
     private function scenario(bool $tie = false, int $players = 2): array
     {
         Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);

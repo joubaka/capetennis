@@ -23,7 +23,7 @@ class TeamResultSelectionDraftService
         $ranking = $this->rankings->ranking($event, $input['group_key'], $regions, $input['formats'], $excludedResultRegions);
         $candidates = $ranking->keyBy(fn ($row) => (string) $row['id']);
         $selected = array_map('strval', $input['selected_keys']);
-        if (count($selected) !== count(array_unique($selected)) || array_diff($selected, $candidates->keys()->map(fn ($key) => (string) $key)->all())) {
+        if (count($selected) > 12 || count($selected) !== count(array_unique($selected)) || array_diff($selected, $candidates->keys()->map(fn ($key) => (string) $key)->all())) {
             throw ValidationException::withMessages(['selected_keys' => 'Choose distinct ranked players from this event and setup.']);
         }
         $reasons = [];

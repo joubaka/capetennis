@@ -5,8 +5,8 @@
 @endphp
 <div class="tab-pane fade result-workspace" id="tab-result-rank" role="tabpanel" aria-labelledby="result-rank-button" data-settings-saved="{{ $savedResultSettings !== null ? '1' : '0' }}" data-settings-url="{{ route('backend.team-result-settings.store', $event) }}" data-selection-url="{{ route('backend.team-result-selection.show', $event) }}">
   <div class="result-page-heading">
-    <div><h5>Team selection results</h5><p>Compare singles results and build a draft team of up to 10 players.</p></div>
-    <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#result-ranks-setup" aria-expanded="false" aria-controls="result-ranks-setup"><i class="ti ti-adjustments-horizontal" aria-hidden="true"></i> Setup</button>
+    <div><h5>Team selection results</h5><p>Compare singles results and build a draft team of up to 12 players.</p></div>
+    <div class="d-flex flex-wrap gap-2"><button type="button" class="btn btn-primary" data-selection-preview="{{ route('backend.selection-preview.show', $event) }}">Preview Selections</button><button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#result-ranks-setup" aria-expanded="false" aria-controls="result-ranks-setup"><i class="ti ti-adjustments-horizontal" aria-hidden="true"></i> Setup</button></div>
   </div>
   <div class="collapse" id="result-ranks-setup">
     <div class="result-setup">
@@ -41,27 +41,27 @@
       </div>
       <div class="result-order-rail">
         <h6>Draft ranking order</h6>
-        <p>Drag or use ↑ ↓. Tick up to 10. Add optional comments here, then Save draft.</p>
+        <p>Drag or use ↑ ↓. Tick up to 12. Changes and optional comments save automatically to your private draft.</p>
         <ol data-draft-order aria-label="Draft player ranking"></ol>
       </div>
     </aside>
     <section class="result-ranking-panel" aria-label="Player ranking and draft selection">
       <div class="result-ranking-header">
-        <div><h5 id="category-name"></h5><span class="result-heading-hint">Band-first ranking · Compare adjacent bands · Select up to 10</span></div>
+        <div><h5 id="category-name"></h5><span class="result-heading-hint">Band-first ranking · Compare adjacent bands · Select up to 12</span></div>
         <span class="result-heading-hint">Calculated result evidence</span>
       </div>
       <div id="category-table" class="result-ranking-body"></div>
     </section>
   </div>
-  <div class="result-persistent-actions" aria-label="Private draft controls">
-    <div class="result-draft-progress" aria-live="polite" aria-atomic="true"><strong data-draft-category></strong><strong data-draft-count>0 / 10 selected</strong><span data-draft-state>Private draft</span><small data-draft-reasons></small></div>
+  <div class="result-persistent-actions" aria-label="Private draft autosave controls">
+    <div class="result-draft-progress" aria-live="polite" aria-atomic="true"><strong data-draft-category></strong><strong data-draft-count>0 / 12 selected</strong><span data-draft-state>Private draft</span><small data-draft-reasons></small></div>
     <div class="result-draft-actions"><button type="button" class="btn btn-outline-primary" data-draft-open>Reorder players</button><button type="button" class="btn btn-outline-primary" data-selection-load>Load draft</button><button type="button" class="btn btn-primary" data-selection-save>Save draft</button></div>
-    <div data-selection-status role="status" class="result-action-status"></div>
+    <div data-selection-status role="status" class="result-action-status"></div><button type="button" class="btn btn-outline-primary" data-selection-retry hidden>Retry draft check</button>
   </div>
   <div class="offcanvas offcanvas-start result-draft-drawer" tabindex="-1" id="result-draft-drawer" aria-labelledby="result-draft-drawer-label">
     <div class="offcanvas-header"><h5 id="result-draft-drawer-label">Arrange private draft</h5><button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close draft order"></button></div>
     <div class="offcanvas-body" data-draft-drawer-body></div>
-    <div class="result-drawer-footer"><span data-draft-count></span><span data-draft-reasons></span><div data-selection-status role="status"></div><button type="button" class="btn btn-primary w-100" data-selection-save>Save draft</button></div>
+    <div class="result-drawer-footer"><span data-draft-count></span><span data-draft-reasons></span><div data-selection-status role="status"></div><button type="button" class="btn btn-outline-primary" data-selection-retry hidden>Retry draft check</button><button type="button" class="btn btn-primary w-100" data-selection-save>Save draft</button></div>
   </div>
 </div>
 @endcan

@@ -129,7 +129,9 @@ class TeamResultRankingService
                 $identity = $imported ? 'imported:'.$team->id.':'.($snapshot['anchor_id'] ?? $member->competition_anchor_id ?? $imported->id) : $player->id;
                 $fullRoster = $rosters[$fixture->id][$team->id] ??= app(TeamDrawSideResolver::class)->activeRoster($team, (int) $fixture->round_nr, (int) $fixture->id, (int) $fixture->draw_id);
                 $rosterCredit = $this->hasRosterWin($fullRoster, $rank, $player, (bool) $imported);
-                $sides[$side] = compact('player', 'team', 'rank', 'identity', 'rosterCredit');
+                $participant = ['team_id' => (int) $team->id, 'type' => $imported ? 'imported' : 'profile',
+                    'id' => (int) ($imported ? $imported->id : $player->id)];
+                $sides[$side] = compact('player', 'team', 'rank', 'identity', 'rosterCredit', 'participant');
             }
             if (count($sides) !== 2) continue;
             if (collect($sides)->contains(fn ($entry) => in_array((int) $entry['team']->region_id, $excludedResultRegionIds, true))) continue;
@@ -149,6 +151,7 @@ class TeamResultRankingService
                 $rows[$id]['ranks'][] = $entry['rank'];
                 $rows[$id]['teams'][] = $entry['team']->name;
                 $rows[$id]['source_team_ids'][] = (int) $entry['team']->id;
+                $rows[$id]['source_participants'][] = $entry['participant'];
                 $rows[$id]['roster_credit_evidence'][] = $entry['rosterCredit'];
                 $rows[$id][$won ? 'wins' : 'losses']++;
                 if ($won) $rows[$id][$this->format($fixture) === RubberType::SINGLES ? 'singles_wins' : 'reverse_singles_wins']++;
