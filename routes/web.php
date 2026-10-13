@@ -827,6 +827,8 @@ Route::prefix('backend')->middleware('auth')->group(function () {
       ->name('backend.selection-preview.show');
     Route::put('{event}/team-result-settings', [\App\Http\Controllers\Backend\TeamResultSettingsController::class, 'store'])
       ->name('backend.team-result-settings.store');
+    Route::put('{event}/team-selection-size', [\App\Http\Controllers\Backend\TeamResultSettingsController::class, 'storeTeamSize'])
+      ->name('backend.team-selection-size.store');
     Route::put('{event}/team-result-selection', [\App\Http\Controllers\Backend\TeamResultSelectionDraftController::class, 'store'])
       ->name('backend.team-result-selection.store');
 

@@ -12,7 +12,7 @@
     <div class="result-setup">
       <fieldset><legend>Candidate regions</legend><div class="result-option-grid">
         @forelse($resultSetup['regions'] as $region)
-          <label class="result-choice"><input class="form-check-input" type="checkbox" data-result-region value="{{ $region->id }}" @checked($savedResultSettings === null || in_array($region->id, $savedResultSettings['region_ids'] ?? []))><span>{{ $region->region_name }}</span></label>
+          <label class="result-choice"><input class="form-check-input" type="checkbox" data-result-region value="{{ $region->id }}" @checked(!isset($savedResultSettings['region_ids']) || in_array($region->id, $savedResultSettings['region_ids']))><span>{{ $region->region_name }}</span></label>
         @empty<p class="text-muted">No event regions configured.</p>@endforelse
       </div></fieldset>
       <fieldset><legend>Exclude results involving regions</legend><div class="result-option-grid">
@@ -22,7 +22,7 @@
       </div><p class="result-setup-note">Exclude the entire match when either side represents a checked region. Candidate regions above still control which players appear.</p></fieldset>
       <fieldset><legend>Match formats</legend><div class="result-format-grid">
         @foreach($resultSetup['formats'] as $format)
-          <label class="result-choice"><input class="form-check-input" type="checkbox" data-result-format value="{{ $format }}" @checked($savedResultSettings === null || in_array($format, $savedResultSettings['formats'] ?? []))><span>{{ $format === 'reverse_singles' ? 'Reverse Singles' : 'Singles' }}</span></label>
+          <label class="result-choice"><input class="form-check-input" type="checkbox" data-result-format value="{{ $format }}" @checked(!isset($savedResultSettings['formats']) || in_array($format, $savedResultSettings['formats']))><span>{{ $format === 'reverse_singles' ? 'Reverse Singles' : 'Singles' }}</span></label>
         @endforeach
       </div></fieldset>
       <p class="result-setup-note">Candidate regions choose players. Matches count unless a side's region is excluded from results. Save event settings to reuse these choices for every age group and gender when reopening this event. Saved drafts keep their own setup.</p>

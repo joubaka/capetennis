@@ -30,6 +30,7 @@ class TeamResultSettingsController extends Controller
             ]);
             $input['region_ids'] = array_map('intval', $input['region_ids']);
             $input['excluded_result_region_ids'] = array_map('intval', $input['excluded_result_region_ids']);
+            $input = array_replace($locked->team_result_settings ?? [], $input);
             $locked->team_result_settings = $input;
             $locked->save();
 
@@ -37,5 +38,32 @@ class TeamResultSettingsController extends Controller
         });
 
         return response()->json(['settings' => $settings])->header('Cache-Control', 'no-store, private');
+    }
+
+    public function storeTeamSize(Request $request, Event $event)
+    {
+        $this->authorize('event.manage', $event);
+        $input = $request->validate([
+            'team_size' => ['required', 'integer', 'min:1', 'max:12'],
+            'reserve_count' => ['required', 'integer', 'min:0', 'max:11'],
+            'age' => ['nullable', 'integer', 'min:1', 'max:99'],
+        ]);
+        $teamSize = (int) $input['team_size'];
+        $reserveCount = (int) $input['reserve_count'];
+        if ($teamSize + $reserveCount > 12) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['reserve_count' => 'Players per team and reserve places may total no more than 12.']);
+        }
+        $settings = DB::transaction(function () use ($event, $teamSize, $reserveCount) {
+            $locked = Event::whereKey($event->id)->lockForUpdate()->firstOrFail();
+            $settings = array_replace($locked->team_result_settings ?? [], ['team_size' => $teamSize, 'reserve_count' => $reserveCount]);
+            $locked->team_result_settings = $settings;
+            $locked->save();
+            return $settings;
+        });
+        if ($request->expectsJson()) return response()->json(['settings' => $settings])->header('Cache-Control', 'no-store, private');
+
+        return redirect()->route('backend.selection-preview.show', ['event' => $event, 'age' => $input['age'] ?? null])
+            ->with('success', 'Team and reserve places saved for this event. Existing draft selections were kept.')
+            ->header('Cache-Control', 'no-store, private');
     }
 }

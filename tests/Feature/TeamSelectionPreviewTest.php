@@ -36,13 +36,19 @@ class TeamSelectionPreviewTest extends TestCase
         $group = $preview['groups']->first();
         $this->assertSame(12, $group['selected']->count());
         $this->assertSame($players->last()->id, $group['selected']->first()['id']);
+        $this->assertSame(2, $group['selected']->where('reserve', true)->count());
+        $sourceRows = $group['teams']->firstWhere('name', $team->name)['rows'];
+        $this->assertTrue($sourceRows[0]['players']->first()['reserve']); // Draft order, not source roster rank.
+        $this->assertFalse($sourceRows[10]['players']->first()['reserve']);
         $this->assertCount(2, $group['teams']);
         $this->assertFalse($group['teams']->firstWhere('name', 'No results Boys team')['rows']->first()['players']->first()['selected']);
+        $this->assertFalse($group['teams']->firstWhere('name', 'No results Boys team')['rows']->first()['players']->first()['reserve']);
         $this->assertCount(12, $group['teams']->firstWhere('name', $team->name)['rows']);
         $url = route('backend.selection-preview.show', $event);
-        $this->get($url)->assertOk()->assertHeader('Cache-Control', 'no-store, private')
+        $response = $this->get($url)->assertOk()->assertHeader('Cache-Control', 'no-store, private')
             ->assertSee('12 selected')->assertSee('No results Boys team')->assertSee('Unselected Audit')->assertSee('class="text-success"', false)
             ->assertDontSee('Excluded source team')->assertDontSee('Foreign event team');
+        $this->assertSame(4, substr_count($response->getContent(), 'class="badge bg-danger">Reserve</span>'));
         $this->get($url.'?age=11')->assertNotFound();
         $this->assertDatabaseCount('team_result_selection_revisions', 0);
         $manager = User::factory()->create()->assignRole(Role::findOrCreate('admin', 'web'));
@@ -91,6 +97,77 @@ class TeamSelectionPreviewTest extends TestCase
         $this->assertNull($group['draft']);
         $this->assertCount(0, $group['selected']);
         $this->assertCount(10, $group['teams']->first()['rows']);
+    }
+
+    public function test_main_and_reserve_setup_is_event_scoped_and_preserves_drafts_and_other_settings(): void
+    {
+        [$event, $team, $region] = $this->scenario();
+        $this->setupFixture($event, $team);
+        $original = ['region_ids' => [$region->id], 'excluded_result_region_ids' => [$region->id], 'formats' => ['singles']];
+        $event->team_result_settings = $original;
+        $event->save();
+        $snapshot = collect(range(1, 12))->map(fn ($id) => ['id' => $id, 'name' => 'Saved '.$id, 'teams' => [$team->name], 'source_team_ids' => [$team->id], 'draft_position' => $id])->all();
+        $draft = $this->draft($event, $region, array_map('strval', range(1, 12)), $snapshot);
+        $before = $draft->fresh()->getRawOriginal();
+        $other = Event::factory()->create();
+        $url = route('backend.team-selection-size.store', $event);
+        $this->putJson($url, ['team_size' => 8, 'reserve_count' => 2])->assertOk()->assertHeader('Cache-Control', 'no-store, private');
+        $this->assertEquals($original + ['team_size' => 8, 'reserve_count' => 2], $event->fresh()->team_result_settings);
+        $this->assertSame($before, $draft->fresh()->getRawOriginal());
+        $this->assertNull($other->fresh()->team_result_settings);
+        $group = app(TeamSelectionPreviewService::class)->preview($event->fresh(), 10)['groups']->first();
+        $this->assertCount(12, $group['selected']);
+        $this->assertSame([9, 10], $group['selected']->where('reserve', true)->pluck('id')->all());
+        $this->assertSame([11, 12], $group['over_capacity']->pluck('id')->all());
+        $this->get(route('backend.selection-preview.show', $event))->assertOk()->assertSee('Additional selections were kept');
+        foreach ([['team_size' => 0, 'reserve_count' => 2], ['team_size' => 11, 'reserve_count' => 2], ['team_size' => 10, 'reserve_count' => -1]] as $invalid) {
+            $this->putJson($url, $invalid)->assertUnprocessable();
+        }
+        $this->putJson(route('backend.team-result-settings.store', $event), $original)->assertOk();
+        $this->assertSame(8, $event->fresh()->team_result_settings['team_size']);
+        $this->assertSame(2, $event->fresh()->team_result_settings['reserve_count']);
+        $this->put($url, ['team_size' => 12, 'reserve_count' => 0, 'age' => 10])->assertRedirect(route('backend.selection-preview.show', ['event' => $event, 'age' => 10]));
+        $group = app(TeamSelectionPreviewService::class)->preview($event->fresh(), 10)['groups']->first();
+        $this->assertSame(0, $group['selected']->where('reserve', true)->count());
+        $this->assertSame(0, $group['over_capacity']->count());
+        $manager = User::factory()->create()->assignRole(Role::findOrCreate('admin', 'web'));
+        $manager->adminEvents()->attach($event);
+        $this->actingAs($manager)->putJson($url, ['team_size' => 10, 'reserve_count' => 2])->assertOk();
+        $this->putJson(route('backend.team-selection-size.store', $other), ['team_size' => 10, 'reserve_count' => 2])->assertForbidden();
+        $this->actingAs(User::factory()->create())->putJson($url, ['team_size' => 10, 'reserve_count' => 2])->assertForbidden();
+        $this->assertSame($before, $draft->fresh()->getRawOriginal());
+        $this->assertDatabaseCount('team_result_selection_revisions', 0);
+    }
+
+    public function test_ten_or_fewer_selected_players_have_no_reserve_labels(): void
+    {
+        [$event, $team, $region] = $this->scenario();
+        $snapshot = collect(range(1, 10))->map(fn ($id) => ['id' => $id, 'name' => 'Saved '.$id, 'teams' => [$team->name], 'source_team_ids' => [$team->id], 'draft_position' => $id])->all();
+        $draft = $this->draft($event, $region, array_map('strval', range(1, 10)), $snapshot);
+        $this->get(route('backend.selection-preview.show', $event))->assertOk()->assertDontSee('class="badge bg-danger">Reserve</span>', false);
+        $draft->update(['selected_keys' => []]);
+        $this->get(route('backend.selection-preview.show', $event))->assertOk()->assertDontSee('class="badge bg-danger">Reserve</span>', false);
+    }
+
+    public function test_saving_capacity_first_keeps_default_regions_and_formats_checked(): void
+    {
+        [$event, $team, $region] = $this->scenario();
+        $this->setupFixture($event, $team);
+        $this->putJson(route('backend.team-selection-size.store', $event), ['team_size' => 10, 'reserve_count' => 2])->assertOk();
+        $this->assertEquals(['team_size' => 10, 'reserve_count' => 2], $event->fresh()->team_result_settings);
+        $html = view('backend.adminPage.admin_show._partials.result-ranks', ['event' => $event->fresh()])->render();
+        $this->assertMatchesRegularExpression('/data-result-region value="'.$region->id.'"\s+checked/', $html);
+        $this->assertMatchesRegularExpression('/data-result-format value="singles"\s+checked/', $html);
+        $this->putJson(route('backend.team-result-settings.store', $event), ['region_ids' => [], 'excluded_result_region_ids' => [], 'formats' => []])->assertOk();
+        $html = view('backend.adminPage.admin_show._partials.result-ranks', ['event' => $event->fresh()])->render();
+        $this->assertDoesNotMatchRegularExpression('/data-result-region value="'.$region->id.'"\s+checked/', $html);
+        $this->assertDoesNotMatchRegularExpression('/data-result-format value="singles"\s+checked/', $html);
+    }
+
+    private function setupFixture(Event $event, Team $team): void
+    {
+        $draw = \App\Models\Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => $team->category_event_id]);
+        \App\Models\TeamFixture::create(['draw_id' => $draw->id, 'age' => 'u/10 Boys', 'fixture_type' => 1, 'numSets' => 3, 'round_nr' => 1, 'match_nr' => 1]);
     }
 
     private function scenario(): array
