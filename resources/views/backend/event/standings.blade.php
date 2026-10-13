@@ -54,7 +54,7 @@
     <p class="mb-0">Totals combine team ties across the selected draws. Completed rubbers earn points; ties count as played once all required rubbers are complete. These are running standings, not final tournament placings.</p>
     @if($mixedRules)<p class="text-warning mb-0 mt-2">Draws use different scoring rules. Totals are shown alphabetically without an overall rank; use each draw's standings for its ranking.</p>@endif
   </div>
-  @include('backend.event.partials.standings-table', ['rows' => $overall])
+  @include('backend.event.partials.standings-table', ['rows' => $overall, 'agePoints' => true])
   </section>
   <h2 class="h4">Region / school standings in each age group</h2>
   <p>Totals follow the selected filters. With only an age selected, boys, girls, mixed and all match types are combined. These are current running ranks, not final tournament placings; tied regions share a rank.</p>
@@ -87,7 +87,7 @@
   <p>Ranks follow each draw's saved scoring rules. Teams tied on all configured criteria share a rank. Gender and age groups come from recorded categories, draw names and gender labels; unlabelled groups appear as Unspecified.</p>
   @forelse($sections as $section)
     <details class="card mb-4" data-standings-details><summary class="card-header" style="min-height:44px"><h3 class="h5 mb-1">{{ $section['draw']->drawName }}</h3><span class="text-muted">{{ $section['category'] }} · {{ $section['gender'] }} · {{ $section['age'] }}</span></summary>
-      @include('backend.event.partials.standings-table', ['rows' => $section['rows']])
+      @include('backend.event.partials.standings-table', ['rows' => $section['rows'], 'agePoints' => true])
     </details>
   @empty<div class="alert alert-info">No team draws match these filters.</div>@endforelse
   <p class="text-muted">Legacy fixtures contribute completed rubbers, sets, games and points by region. They do not count as completed team ties.</p>

@@ -11,7 +11,7 @@
 @endif
 <details class="result-rules">
   <summary>How the ranking works</summary>
-  <p>Roster bands come first: 1–2, then 3–4, 5–6, and 7–8. A player remains in their band even with zero wins. Within each band, points equal completed match wins multiplied by its weight: 100, 35, 12, or 2. For equal points, teammates with an unambiguous roster follow their roster positions before set difference. The highest remaining roster player from each team competes for the next place using completed-match sets won minus sets lost. Players from different teams are compared by direct wins when every tied pair has the same nonzero number of counted matches. Unresolved ties require review at the selection cutoff. Candidate regions choose players; excluded result regions remove entire matches involving either side. Adjacent-band comparisons support manual review and do not promote players automatically. Explain departures from the suggestions before saving a draft.</p>
+  <p>Roster bands come first: 1–2, then 3–4, 5–6, and 7–8. In each confirmed same-team pair, the higher roster player (1, 3, 5 or 7) receives one automatic roster win. Points equal actual completed match wins plus this one roster win, multiplied by the band weight: 100, 35, 12 or 2. Four actual matches plus the roster win therefore give five effective opportunities to earn points. Missing or uncertain pair evidence receives no automatic win. Actual match wins, losses and sets remain unchanged. For equal points, teammates with an unambiguous roster follow their roster positions before set difference. Players from different teams are compared by direct wins when every tied pair has the same nonzero number of counted matches. Unresolved ties require review at the selection cutoff. Candidate regions choose players; excluded result regions remove entire matches involving either side. Adjacent-band comparisons support manual review and do not promote players automatically. Explain departures from the suggestions before saving a draft.</p>
 </details>
 @if($ranking->isEmpty())
   <div class="result-empty" role="status"><i class="ti ti-scoreboard" aria-hidden="true"></i><strong>No completed singles results</strong><p>Check the regions and match formats in Setup, or choose another age group. Incomplete matches and doubles are excluded.</p></div>
@@ -19,19 +19,22 @@
   @if($ranking->contains('cutoff_tie', true))
     <div class="result-review-notice" role="status"><strong>Review the tenth-place tie.</strong> Both points and set difference are equal. Record a selection decision and reasons.</div>
   @endif
-  <ol class="result-player-list" aria-label="Suggested top 10 and player ranking">
+  <h6>Calculated ranking</h6>
+  <p class="result-heading-hint">Results stay in calculated order here. Use Draft ranking order on the left to arrange your selection.</p>
+  <ol class="result-player-list" aria-label="Calculated player ranking and suggested top 10">
   @foreach($ranking as $player)
     @php $wonAllCountedBandMatches = !$player['band_attribution_uncertain'] && $player['own_band_record']['wins'] > 0 && $player['own_band_record']['losses'] === 0; @endphp
-    <li @class(['result-player-card', 'result-player-card-lost-all' => $player['lost_all_counted_band_matches'], 'result-player-card-won-all' => $wonAllCountedBandMatches])>
+    <li data-result-player="{{ $player['id'] }}" data-player-name="{{ $player['name'] }}" data-player-region="{{ $player['region'] }}" @class(['result-player-card', 'result-player-card-lost-all' => $player['lost_all_counted_band_matches'], 'result-player-card-won-all' => $wonAllCountedBandMatches])>
       <div class="result-player-heading">
         <label class="result-player-select"><input type="checkbox" class="form-check-input" data-selection-player value="{{ $player['id'] }}" {{ $player['suggested'] ? 'checked' : '' }}><span class="visually-hidden">Select {{ $player['name'] }}</span></label>
-        <span class="result-position">{{ $player['position'] }}</span>
+        <span class="result-position" title="Calculated position">{{ $player['position'] }}</span>
         <div class="result-player-identity"><strong>{{ $player['name'] }}</strong><span>{{ $player['region'] }} · {{ implode(', ', $player['teams']) }}</span><span>Roster {{ implode(', ', $player['ranks']) }} · Band {{ $player['band'] }} · {{ $player['wins'] }}W / {{ $player['losses'] }}L</span></div>
         <div class="result-player-points"><strong>{{ $player['points'] }}</strong><span>points</span></div>
       </div>
       <div class="result-player-tags">
         @if($player['suggested'])<span class="result-tag result-tag-selected">Suggested top 10</span>@endif
         @if($player['cutoff_tie'])<span class="result-tag result-tag-review">Review cutoff tie</span>@endif
+        @if($player['starting_credit'])<span class="result-tag result-tag-selected">Automatic roster win +1 · Roster {{ $player['rank'] }} over {{ $player['rank'] + 1 }}</span>@endif
         @if($player['higher_rank_wins'])<span class="result-tag">{{ $player['higher_rank_wins'] }} win(s) over higher-rostered opponents</span>@endif
         @if($player['lost_all_counted_band_matches'])<span class="result-tag result-tag-review">Review: lost all counted matches in Band {{ $player['band'] }} · 0W / {{ $player['own_band_record']['losses'] }}L</span>@endif
         @if($wonAllCountedBandMatches)<span class="result-tag result-tag-selected">Won all counted band matches · {{ $player['own_band_record']['wins'] }}W / 0L</span>@endif
@@ -45,6 +48,7 @@
         <div><dt>Set win percentage</dt><dd>{{ $player['sets_won'] + $player['sets_lost'] > 0 ? number_format(100 * $player['sets_won'] / ($player['sets_won'] + $player['sets_lost']), 1).'%' : '—' }}</dd></div>
         <div><dt>Set difference</dt><dd>{{ $player['set_difference'] > 0 ? '+' : '' }}{{ $player['set_difference'] }}</dd></div>
       </dl>
+      <p class="result-heading-hint">Points: ({{ $player['wins'] }} actual wins + {{ $player['starting_credit'] }} automatic roster win) × {{ $player['points_per_win'] }} = {{ $player['points'] }}. {{ $player['roster_credit_reason'] ?? '' }}</p>
       @if(isset($player['cape_tennis_rating']))
         @php $rating = $player['cape_tennis_rating']; @endphp
         <p class="result-review-notice">
@@ -79,7 +83,7 @@
       @endforeach
       @if(count($player['ranks']) > 1)<p class="result-review-notice">Roster ranks differ across teams. Ranking uses rank {{ $player['rank'] }}; review before selection.@if($player['band_attribution_uncertain']) Ranks span different bands, so the lost-all-in-band flag is withheld.@endif</p>@endif
       <div class="result-player-disclosures">
-        <details class="result-reason"><summary>Selection reason <span>Required for changes or cutoff ties</span></summary><label>Reason for {{ $player['name'] }}<input class="form-control" type="text" maxlength="2000" data-selection-reason="{{ $player['id'] }}" placeholder="Record the results supporting your decision"></label></details>
+        <details class="result-reason"><summary>Selection reason <span>Required for changed positions, selection changes or cutoff ties</span></summary><label>Reason for {{ $player['name'] }}<input class="form-control" type="text" maxlength="2000" data-selection-reason="{{ $player['id'] }}" placeholder="Record the results supporting your decision"></label></details>
         <details class="result-matches"><summary>Match results <span>{{ count($player['matches']) }} completed</span></summary><ul>
           @foreach($player['matches'] as $match)
             <li><span class="result-match-outcome {{ $match['won'] ? 'is-win' : 'is-loss' }}">{{ $match['won'] ? 'Won' : 'Lost' }}</span><div><strong>{{ $match['opponent'] }}</strong><span>{{ $match['region'] }} · Roster {{ $match['opponent_rank'] }} · {{ $match['format'] === 'reverse_singles' ? 'Reverse Singles' : 'Singles' }}</span></div><span class="result-match-score">Home–away: {{ $match['score'] }}</span></li>

@@ -9,7 +9,7 @@ function requestFor(values) {
   const category = { value: '10-boys', dataset: { event_id: '241', name: 'u/10 Boys' } };
   const target = { setAttribute() {} };
   const document = {
-    querySelector: () => category,
+    querySelector: selector => selector === '.category-radio:checked' ? category : null,
     getElementById: id => id === 'category-table' ? target : { dataset: { resultUrl: '/results' } },
   };
   const $ = selector => ({
@@ -42,4 +42,22 @@ test('setup preserves populated exclusions and deliberate empty candidate filter
   assert.deepEqual(payload.regions, []);
   assert.deepEqual(payload.formats, []);
   assert.deepEqual(payload.excluded_result_region_ids, ['121', '122']);
+});
+
+test('manual order renumbers candidates, bounds move controls and opens changed-player reasons', () => {
+  const changedSource = source.slice(source.indexOf('  function draftOrderChanged('), source.indexOf('  function buildDraftOrder('));
+  const disclosures = new Set();
+  const cards = ['1', '2', '3'].map(key => ({ dataset: { resultPlayer: key }, querySelector: () => ({ setAttribute: () => disclosures.add(key) }) }));
+  const rows = ['2', '1', '3'].map(key => {
+    const elements = { '[data-draft-position]': {}, '[data-draft-up]': {}, '[data-draft-down]': {}, '[data-draft-changed]': {} };
+    return { dataset: { draftKey: key }, elements, querySelector: selector => elements[selector], classList: { toggle(name, value) { this[name] = value; } } };
+  });
+  let status;
+  new Function('draftCards', 'draftRows', 'selectionStatus', `${changedSource}; draftOrderChanged();`)(() => cards, () => rows, value => { status = value; });
+  assert.deepEqual(rows.map(row => row.elements['[data-draft-position]'].textContent), [1, 2, 3]);
+  assert.equal(rows[0].elements['[data-draft-up]'].disabled, true);
+  assert.equal(rows[2].elements['[data-draft-down]'].disabled, true);
+  assert.deepEqual([...disclosures], ['2', '1']);
+  assert.equal(rows[2].elements['[data-draft-changed]'].hidden, true);
+  assert.match(status, /Save|save/);
 });

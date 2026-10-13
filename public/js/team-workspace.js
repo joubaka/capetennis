@@ -196,22 +196,68 @@
     const draftToApply = applyingDraft?.group_key === group ? applyingDraft : null;
     applyingDraft = null;
     if (editingGroup !== group) { editingGroup = group; draftReady = false; selectionVersion = 0; savedDraft = null; }
-    $('[data-selection-save]').prop('disabled', !draftReady || saveRequestBusy);
+    $('[data-selection-save]').prop('disabled', true);
     $('#category-name').text(category.dataset.name);
     target.setAttribute('aria-busy', 'true'); target.setAttribute('aria-live', 'polite');
+    const orderList = document.querySelector('[data-draft-order]');
+    if (orderList) { window.Sortable?.get(orderList)?.destroy(); orderList.replaceChildren(); }
     target.textContent = 'Loading category results…';
     resultRequest = $.ajax({ url: document.getElementById('team-workspace-content').dataset.resultUrl, type: 'POST', contentType: 'application/json', data: JSON.stringify({ event_id: category.dataset.event_id, result_group: category.value, regions: $('[data-result-region]:checked').map(function () { return this.value; }).get(), formats: $('[data-result-format]:checked').map(function () { return this.value; }).get(), excluded_result_region_ids: $('[data-result-excluded-region]:checked').map(function () { return this.value; }).get() }) })
-      .done(response => { if (generation !== resultGeneration) return; target.innerHTML = response.html; if (draftToApply) { savedDraft = draftToApply; applyDraftPlayers(); } else if (!draftReady) fetchDraft(false); })
-      .fail(xhr => { if (xhr.statusText !== 'abort') { target.textContent = xhr.responseJSON?.message || 'Results could not be loaded.'; const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'btn btn-outline-secondary ms-2'; retry.textContent = 'Retry'; retry.addEventListener('click', loadResults); target.append(retry); } })
+      .done(response => { if (generation !== resultGeneration) return; target.innerHTML = response.html; buildDraftOrder(); $('[data-selection-save]').prop('disabled', !draftReady || saveRequestBusy); if (draftToApply) { savedDraft = draftToApply; applyDraftPlayers(); } else if (!draftReady) fetchDraft(false); })
+      .fail(xhr => { if (generation !== resultGeneration) return; if (xhr.statusText !== 'abort') { target.textContent = xhr.responseJSON?.message || 'Results could not be loaded.'; const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'btn btn-outline-secondary ms-2'; retry.textContent = 'Retry'; retry.addEventListener('click', loadResults); target.append(retry); } })
       .always(() => { if (generation === resultGeneration) target.removeAttribute('aria-busy'); });
   }
 
   function selectionStatus(message) { $('[data-selection-status]').text(message); }
   function selectionGroup() { return $('.category-radio:checked').val(); }
+  function draftRows() { return [...document.querySelectorAll('[data-draft-key]')]; }
+  function draftCards() { return [...document.querySelectorAll('[data-result-player]')]; }
+  function draftOrderChanged(announce = true) {
+    const calculated = draftCards().map(card => card.dataset.resultPlayer);
+    draftRows().forEach((row, index, rows) => {
+      row.querySelector('[data-draft-position]').textContent = index + 1;
+      row.querySelector('[data-draft-up]').disabled = index === 0;
+      row.querySelector('[data-draft-down]').disabled = index === rows.length - 1;
+      const changed = calculated[index] !== row.dataset.draftKey;
+      row.classList.toggle('is-reordered', changed);
+      row.querySelector('[data-draft-changed]').hidden = !changed;
+      if (changed) draftCards().find(card => card.dataset.resultPlayer === row.dataset.draftKey)?.querySelector('.result-reason')?.setAttribute('open', '');
+    });
+    if (announce) selectionStatus('Draft order changed. Record reasons for highlighted players and save the draft.');
+  }
+  function buildDraftOrder() {
+    const list = document.querySelector('[data-draft-order]');
+    if (!list) return;
+    if (window.Sortable?.get(list)) window.Sortable.get(list).destroy();
+    list.replaceChildren();
+    draftCards().forEach(card => {
+      const row = document.createElement('li'); row.dataset.draftKey = card.dataset.resultPlayer;
+      const handle = document.createElement('button'); handle.type = 'button'; handle.className = 'result-drag-handle'; handle.textContent = '⠿'; handle.setAttribute('aria-label', 'Drag ' + card.dataset.playerName);
+      const position = document.createElement('span'); position.dataset.draftPosition = '';
+      const identity = document.createElement('button'); identity.type = 'button'; identity.className = 'result-draft-identity'; identity.textContent = card.dataset.playerName + ' · ' + card.dataset.playerRegion;
+      identity.addEventListener('click', () => { card.querySelector('.result-reason')?.setAttribute('open', ''); card.scrollIntoView({ behavior: 'smooth', block: 'center' }); card.querySelector('[data-selection-reason]')?.focus({ preventScroll: true }); });
+      const selected = document.createElement('input'); selected.type = 'checkbox'; selected.className = 'form-check-input'; selected.checked = card.querySelector('[data-selection-player]').checked; selected.dataset.draftSelect = ''; selected.setAttribute('aria-label', 'Select ' + card.dataset.playerName);
+      selected.addEventListener('change', () => { card.querySelector('[data-selection-player]').checked = selected.checked; selectionStatus('Draft selection changed. Save to retain it.'); });
+      const controls = document.createElement('div'); controls.className = 'result-draft-moves';
+      ['up', 'down'].forEach(direction => {
+        const button = document.createElement('button'); button.type = 'button'; button.textContent = direction === 'up' ? '↑' : '↓'; button.dataset[direction === 'up' ? 'draftUp' : 'draftDown'] = ''; button.setAttribute('aria-label', 'Move ' + card.dataset.playerName + ' ' + direction);
+        button.addEventListener('click', () => { const neighbour = direction === 'up' ? row.previousElementSibling : row.nextElementSibling; if (!neighbour) return; list.insertBefore(direction === 'up' ? row : neighbour, direction === 'up' ? neighbour : row); draftOrderChanged(); button.focus(); }); controls.append(button);
+      });
+      const changed = document.createElement('span'); changed.dataset.draftChanged = ''; changed.className = 'result-draft-changed'; changed.textContent = 'Reason required';
+      row.append(handle, position, selected, identity, controls, changed); list.append(row);
+    });
+    if (window.Sortable) new window.Sortable(list, { animation: 150, handle: '.result-drag-handle', draggable: '[data-draft-key]', ghostClass: 'result-draft-ghost', onEnd: () => draftOrderChanged() });
+    draftOrderChanged(false);
+  }
   function applyDraftPlayers() {
     if (!savedDraft) return;
     document.querySelectorAll('[data-selection-player]').forEach(input => { input.checked = savedDraft.selected_keys.includes(input.value); });
     document.querySelectorAll('[data-selection-reason]').forEach(input => { input.value = savedDraft.reasons?.[input.dataset.selectionReason] || ''; });
+    const list = document.querySelector('[data-draft-order]');
+    const order = savedDraft.draft_order || [...(savedDraft.snapshot || [])].sort((a, b) => (a.draft_position || a.position || 0) - (b.draft_position || b.position || 0)).map(row => String(row.id));
+    order.forEach(key => { const row = draftRows().find(row => row.dataset.draftKey === key); if (row) list.append(row); });
+    draftRows().forEach(row => { row.querySelector('[data-draft-select]').checked = savedDraft.selected_keys.includes(row.dataset.draftKey); });
+    draftOrderChanged(false);
     selectionStatus('Saved draft loaded. Review the current results before saving changes.');
   }
   function fetchDraft(apply) {
@@ -240,8 +286,9 @@
     const button = this;
     const group = selectionGroup();
     const generation = resultGeneration;
-    if (saveRequestBusy || !draftReady || !group || document.getElementById('category-table')?.getAttribute('aria-busy') === 'true') return;
-    const selected = $('[data-selection-player]:checked').map(function () { return this.value; }).get();
+    if (saveRequestBusy || !draftReady || !group || document.getElementById('category-table')?.getAttribute('aria-busy') === 'true' || !document.querySelector('.result-player-list, .result-empty')) return;
+    const order = draftRows().map(row => row.dataset.draftKey);
+    const selected = order.filter(key => draftCards().find(card => card.dataset.resultPlayer === key)?.querySelector('[data-selection-player]').checked);
     if (selected.length > 10) { selectionStatus('Choose no more than 10 players.'); return; }
     const reasons = {};
     document.querySelectorAll('[data-selection-reason]').forEach(input => { if (input.value.trim()) reasons[input.dataset.selectionReason] = input.value.trim(); });
@@ -249,10 +296,15 @@
     $.ajax({ url: document.getElementById('tab-result-rank').dataset.selectionUrl, type: 'PUT', contentType: 'application/json', data: JSON.stringify({
       group_key: group, region_ids: $('[data-result-region]:checked').map(function () { return Number(this.value); }).get(),
       excluded_result_region_ids: $('[data-result-excluded-region]:checked').map(function () { return Number(this.value); }).get(),
-      formats: $('[data-result-format]:checked').map(function () { return this.value; }).get(), selected_keys: selected, reasons: reasons, version: selectionVersion
+      formats: $('[data-result-format]:checked').map(function () { return this.value; }).get(), selected_keys: selected, draft_order: order, reasons: reasons, version: selectionVersion
     }) }).done(response => { if (group !== selectionGroup() || generation !== resultGeneration) return; savedDraft = response.draft; selectionVersion = savedDraft.version; selectionStatus('Draft selection saved. It has not been published.'); })
       .fail(xhr => { if (group !== selectionGroup() || generation !== resultGeneration) return; const errors = Object.values(xhr.responseJSON?.errors || {}).flat().join(' '); selectionStatus(xhr.status === 409 ? 'This draft changed elsewhere. Load the saved draft before saving again.' : (errors || xhr.responseJSON?.message || 'Draft could not be saved.')); })
       .always(() => { saveRequestBusy = false; $('[data-selection-save]').prop('disabled', !draftReady); });
+  });
+  $(document).on('change', '[data-selection-player]', function () {
+    const row = draftRows().find(row => row.dataset.draftKey === this.value);
+    if (row) row.querySelector('[data-draft-select]').checked = this.checked;
+    selectionStatus('Draft selection changed. Save to retain it.');
   });
 
   function refreshWorkspace() {

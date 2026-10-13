@@ -55,6 +55,35 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_decline_link_requires_player_access_and_confirms_before_recording_response(): void
+    {
+        Queue::fake();
+        [$source] = $this->selectionSource();
+        $selectionImport = app(TeamRankingImportService::class)->import($source, User::factory()->create());
+        $selectionImport->update([
+            'status' => 'sent',
+            'auto_replacement_enabled' => false,
+            'response_deadline' => now()->addDay(),
+            'payment_deadline' => now()->addDays(2),
+            'replacement_payment_deadline' => now()->addDays(3),
+        ]);
+        $invitation = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $owner = User::findOrFail($invitation->player->userId);
+        $url = route('team-selection.invitations.show', [$invitation, 'action' => 'decline']);
+
+        $this->actingAs(User::factory()->create())->get($url)->assertForbidden();
+        $this->actingAs($owner)->get($url)->assertOk()
+            ->assertViewIs('frontend.team-selection.decline')->assertSee('Confirm decline')
+            ->assertDontSee('Order optional clothing');
+        $this->assertSame(TeamSelectionInvitation::INVITED, $invitation->fresh()->status);
+        $this->actingAs($owner)->post(route('team-selection.invitations.decline', $invitation), ['reason' => 'Unavailable'])
+            ->assertRedirect($url);
+        $this->assertSame(TeamSelectionInvitation::DECLINED, $invitation->fresh()->status);
+        $this->assertSame($owner->id, $invitation->fresh()->declined_by_user_id);
+        $this->assertSame('Unavailable', $invitation->fresh()->decline_reason);
+        $this->get($url)->assertOk()->assertSee('Invitation declined')->assertDontSee('Confirm decline');
+    }
+
     public function test_invitation_payment_transfer_preserves_payer_ledger_and_selection_and_rejects_stale_retry(): void
     {
         [$event, $team, $import, $source, $target, $order, $pending, $admin, $url, $payload] = $this->invitationTransferScenario();
@@ -715,6 +744,30 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             [$players[0]->email],
             $service->resolve($source->event, $eventRegion, $base + ['audience_status' => 'not_accepted'])->pluck('email')->all()
         );
+        $manager = User::factory()->create();
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $plan = app(\App\Services\EventCommunicationService::class)->plan($source->event, $manager, [
+            'source' => 'roster_target', 'event_region_id' => $eventRegion->id,
+            'selection' => $base + ['target_type' => 'filtered', 'audience_status' => 'not_accepted'],
+        ], 'Invitation reminder', 'Please respond.');
+        $this->assertCount(1, $plan['recipients']);
+        $html = $plan['recipients'][0]['html'];
+        $this->assertStringContainsString('Accept invitation', $html);
+        $this->assertStringContainsString('Decline invitation', $html);
+        $this->assertStringContainsString(e(route('events.show', ['event' => $source->event_id, 'team' => $team->id, 'player' => $players[0]->id])), $html);
+        $this->assertStringContainsString(route('team-selection.invitations.show', $invitations[0]).'?action=decline', $html);
+        $invitations[1]->update(['status' => TeamSelectionInvitation::INVITED, 'accepted_at' => null]);
+        $players[1]->update(['email' => $players[0]->email, 'userId' => $players[0]->userId]);
+        $sharedContactPlan = app(\App\Services\EventCommunicationService::class)->plan($source->event, $manager, [
+            'source' => 'roster_target', 'event_region_id' => $eventRegion->id,
+            'selection' => $base + ['target_type' => 'filtered', 'audience_status' => 'not_accepted'],
+        ], 'Invitation reminder', 'Please respond.');
+        $this->assertCount(1, $sharedContactPlan['recipients']);
+        $sharedHtml = $sharedContactPlan['recipients'][0]['html'];
+        $this->assertStringContainsString(route('team-selection.invitations.show', $invitations[0]).'?action=decline', $sharedHtml);
+        $this->assertStringContainsString(route('team-selection.invitations.show', $invitations[1]).'?action=decline', $sharedHtml);
+        $this->assertCount(2, $sharedContactPlan['recipients'][0]['player_keys']);
+        $this->assertNotSame($plan['fingerprint'], $sharedContactPlan['fingerprint']);
         $this->assertSame(
             [$players[0]->email],
             $service->resolve($source->event, $eventRegion, ['category_event_ids' => [$team->category_event_id], 'gender' => 'girls', 'audience_status' => 'active'])->pluck('email')->all()
@@ -1467,7 +1520,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'team' => $invitation->team_id,
             'player' => $invitation->player_id,
         ]), ENT_QUOTES), $html);
-        $this->assertStringContainsString('Decline opens a confirmation window with an optional reason.', $html);
+        $this->assertStringContainsString('Decline opens a confirmation page.', $html);
         $this->assertStringNotContainsString('Arrive at 08:00 at the main venue.', $html);
         $this->assertStringNotContainsString('Event information', $html);
         $this->assertStringContainsString('max-width:640px', $html);

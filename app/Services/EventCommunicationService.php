@@ -267,6 +267,25 @@ class EventCommunicationService
             abort_unless($this->access->canManage($actor, $region), 403);
             if (($options['selection']['target_type'] ?? null) === 'filtered') abort_unless($this->managesWholeEvent($event, $actor), 403);
             $recipients = app(\App\Services\TeamSelection\TeamSelectionRosterMailAudience::class)->resolve($event, $region, $options['selection']);
+            if (($options['selection']['target_type'] ?? null) === 'filtered'
+                && ($options['selection']['audience_status'] ?? null) === 'not_accepted') {
+                $invitations = \App\Models\TeamSelectionInvitation::with(['selectionImport.event', 'player', 'region', 'team'])
+                    ->where('event_id', $event->id)->where('region_id', $region->region_id)
+                    ->whereIn('id', $recipients->pluck('invitation_id')->filter())
+                    ->where('status', \App\Models\TeamSelectionInvitation::INVITED)
+                    ->whereNotNull('invited_at')->whereNull('accepted_at')->get()->keyBy('id');
+                $rows = $recipients->filter(fn ($row) => $invitations->has($row['invitation_id']))
+                    ->map(fn ($row) => [
+                        'key' => $row['player_key'], 'name' => $row['name'],
+                        'emails' => filter_var($row['email'], FILTER_VALIDATE_EMAIL) ? [mb_strtolower(trim($row['email']))] : [],
+                        'html' => view('emails.team-selection.invitation', [
+                            'invitation' => $invitations->get($row['invitation_id']),
+                            'kind' => 'custom_invitation', 'campaign' => ['message' => $body, 'include_clothing' => false],
+                        ])->render(),
+                    ]);
+
+                return $this->legacyPlan($event, $options, $rows, $subject, $body);
+            }
             return $this->legacyPlan($event, $options, $recipients->map(fn ($row) => ['key' => $row['player_key'] ?? 'email:'.$row['email'], 'name' => $row['name'], 'emails' => filter_var($row['email'], FILTER_VALIDATE_EMAIL) ? [mb_strtolower(trim($row['email']))] : []]), $subject, $body);
         }
         if (($options['source'] ?? null) === 'roster_region_selection') {
@@ -403,7 +422,8 @@ class EventCommunicationService
             if (empty($row['emails'])) $issues->put($row['key'] ?? 'missing:'.$issues->count(), $row['name'].' - no valid email address');
             foreach ($row['emails'] as $email) {
                 $previous = $recipients->get($email, []);
-                $recipients->put($email, ['email' => $email, 'name' => $row['name'], 'kind' => 'players', 'player_keys' => collect($previous['player_keys'] ?? [])->concat($row['player_keys'] ?? [$row['key'] ?? 'email:'.$email])->unique()->values()->all(), 'subject' => $subject, 'html' => nl2br(e($body))]);
+                $html = isset($row['html']) ? ($previous['html'] ?? '').$row['html'] : nl2br(e($body));
+                $recipients->put($email, ['email' => $email, 'name' => $row['name'], 'kind' => 'players', 'player_keys' => collect($previous['player_keys'] ?? [])->concat($row['player_keys'] ?? [$row['key'] ?? 'email:'.$email])->unique()->values()->all(), 'subject' => $subject, 'html' => $html]);
             }
         }
         if ($recipients->isEmpty()) throw ValidationException::withMessages(['audience' => 'No matching recipient has a valid email address.']);

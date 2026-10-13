@@ -41,9 +41,20 @@ class TeamResultSelectionDraftService
                 }
             }
         }
-        // Selection changes membership; its displayed order always follows the weighted evidence.
-        $selected = $ranking->filter(fn ($row) => in_array((string) $row['id'], $selected, true))
-            ->map(fn ($row) => (string) $row['id'])->values()->all();
+        $calculatedOrder = $ranking->map(fn ($row) => (string) $row['id'])->values()->all();
+        $draftOrder = array_values(array_map('strval', $input['draft_order'] ?? $calculatedOrder));
+        if (count($draftOrder) !== count($calculatedOrder) || count($draftOrder) !== count(array_unique($draftOrder)) || array_diff($draftOrder, $calculatedOrder)) {
+            throw ValidationException::withMessages(['draft_order' => 'Include each ranked player in this setup exactly once.']);
+        }
+        foreach ($draftOrder as $position => $key) {
+            if ($calculatedOrder[$position] !== $key && empty($reasons[$key])) {
+                throw ValidationException::withMessages(['reasons' => 'Record a reason for each player moved from the calculated ranking.']);
+            }
+        }
+        $selected = array_values(array_filter($draftOrder, fn ($key) => in_array($key, $selected, true)));
+        // Keep calculated evidence order and values; only add the reviewed draft position.
+        $positions = array_flip($draftOrder);
+        $ranking = $ranking->map(fn ($row) => $row + ['draft_position' => $positions[(string) $row['id']] + 1]);
 
         return DB::transaction(function () use ($event, $input, $actorId, $ranking, $regions, $excludedResultRegions, $selected, $reasons) {
             // The event lock also serializes creation when no draft row exists yet.

@@ -73,6 +73,9 @@ class TeamWorkspaceResultsTest extends TestCase
         $awayTeam->update(['region_id' => $west->id]);
         $alternate = Team::factory()->create(['category_event_id' => $category->id, 'region_id' => $west->id]);
         TeamPlayer::create(['team_id' => $alternate->id, 'player_id' => $home->id, 'rank' => 3]);
+        foreach ([$homeTeam, $alternate] as $source) {
+            TeamPlayer::create(['team_id' => $source->id, 'player_id' => Player::factory()->create()->id, 'rank' => 4]);
+        }
         foreach ([$homeTeam, $alternate] as $index => $source) {
             $tie = \App\Models\TeamTie::create(['draw_id' => $draw->id, 'round_nr' => 1, 'tie_nr' => $index + 1,
                 'home_team_id' => $source->id, 'away_team_id' => $awayTeam->id]);
@@ -80,6 +83,9 @@ class TeamWorkspaceResultsTest extends TestCase
             TeamFixture::where('draw_id', $draw->id)->latest('id')->first()->update(['team_tie_id' => $tie->id]);
         }
         $response = $this->groupedRequest($event)->assertOk()->assertJsonCount(2, 'ranking');
+        $merged = collect($response->json('ranking'))->firstWhere('id', $home->id);
+        $this->assertCount(2, $merged['source_team_ids']);
+        $this->assertSame(0, $merged['starting_credit']); // One identity cannot stack credits across source teams.
         $summary = collect($response->json('region_summary'))->keyBy('region_id');
         $this->assertSame(1, $summary[$homeTeam->region_id]['wins']);
         $this->assertSame(1, $summary[$homeTeam->region_id]['played']);
@@ -318,7 +324,7 @@ class TeamWorkspaceResultsTest extends TestCase
         $this->fixture($draw, $home, $away, [[1, 6], [1, 6]]);
         $this->groupedRequest($event)->assertOk()->assertJsonPath('ranking.0.id', $home->id)
             ->assertJsonPath('ranking.0.position', 1)->assertJsonPath('ranking.1.position', 2)
-            ->assertJsonPath('ranking.0.points', 100)->assertJsonPath('ranking.1.points', 100)
+            ->assertJsonPath('ranking.0.points', 200)->assertJsonPath('ranking.1.points', 100)
             ->assertJsonPath('ranking.0.set_difference', 0)->assertJsonPath('ranking.1.set_difference', 0);
     }
 
@@ -360,6 +366,108 @@ class TeamWorkspaceResultsTest extends TestCase
         }
     }
 
+    public function test_confirmed_higher_roster_in_each_band_gets_one_win_even_when_losing_all_actual_matches(): void
+    {
+        foreach ([1 => 100, 3 => 35, 5 => 12, 7 => 2] as $rank => $weight) {
+            [$event, , $draw, $home, $away] = $this->groupedScenario();
+            $member = TeamPlayer::where('player_id', $home->id)->first();
+            $member->update(['rank' => $rank]);
+            TeamPlayer::where('player_id', $away->id)->update(['team_id' => $member->team_id, 'rank' => $rank + 1]);
+            foreach (range(1, 4) as $match) $this->fixture($draw, $home, $away, [[1, 6], [1, 6]]);
+            $response = $this->groupedRequest($event)->assertOk();
+            $rows = collect($response->json('ranking'))->keyBy('id');
+            $this->assertSame(1, $rows[$home->id]['starting_credit']);
+            $this->assertSame($weight, $rows[$home->id]['points']);
+            $this->assertSame(0, $rows[$home->id]['wins']);
+            $this->assertSame(4, $rows[$home->id]['losses']);
+            $this->assertSame(8, $rows[$home->id]['sets_lost']);
+            $this->assertCount(4, $rows[$home->id]['matches']);
+            $this->assertTrue($rows[$home->id]['lost_all_counted_band_matches']);
+            $this->assertSame(0, $rows[$away->id]['starting_credit']);
+            $this->assertSame(4 * $weight, $rows[$away->id]['points']);
+            $this->assertSame(4, $response->json('region_summary.0.wins'));
+            $this->assertSame(8, $response->json('region_summary.0.played'));
+            $this->assertStringContainsString('Automatic roster win +1', $response->json('html'));
+            $this->assertDatabaseCount('team_fixtures', 4 * (array_search($rank, [1, 3, 5, 7]) + 1));
+        }
+    }
+
+    public function test_automatic_roster_win_keeps_real_results_and_resolves_daniel_michael_equal_points(): void
+    {
+        [$event, , $draw, $home, $away] = $this->groupedScenario();
+        $home->update(['name' => 'Daniel']); $away->update(['name' => 'Michael']);
+        $member = TeamPlayer::where('player_id', $home->id)->first();
+        $member->update(['rank' => 1]);
+        TeamPlayer::where('player_id', $away->id)->update(['team_id' => $member->team_id, 'rank' => 2]);
+        $this->fixture($draw, $home, $away, [[6, 1], [6, 1]]);
+        foreach (range(1, 2) as $match) $this->fixture($draw, $home, $away, [[1, 6], [1, 6]], 4);
+        $response = $this->groupedRequest($event)->assertOk()
+            ->assertJsonPath('ranking.0.id', $home->id)->assertJsonPath('ranking.0.points', 200)
+            ->assertJsonPath('ranking.1.points', 200)->assertJsonPath('ranking.0.wins', 1)
+            ->assertJsonPath('ranking.0.credited_wins', 2)->assertJsonPath('ranking.0.same_team_tiebreak', true);
+        $filtered = collect($this->groupedRequest($event, ['formats' => ['singles']])->assertOk()->json('ranking'))->keyBy('id');
+        $this->assertSame(1, $filtered[$home->id]['starting_credit']);
+        $this->assertSame(1, $filtered[$home->id]['wins']);
+        $this->assertSame(3, $response->json('region_summary.0.wins'));
+        $this->assertDatabaseCount('team_fixtures', 3);
+        $this->assertDatabaseCount('team_fixture_results', 6);
+    }
+
+    public function test_missing_foreign_duplicate_and_linked_self_pairs_withhold_roster_win(): void
+    {
+        [$event, $category, $draw, $home, $away] = $this->groupedScenario();
+        $member = TeamPlayer::where('player_id', $home->id)->first(); $member->update(['rank' => 1]);
+        $this->fixture($draw, $home, $away, [[6, 1], [6, 1]]);
+        $assertNoCredit = function () use ($event, $home) {
+            $rows = collect($this->groupedRequest($event)->assertOk()->json('ranking'))->keyBy('id');
+            $this->assertSame(0, $rows[$home->id]['starting_credit']);
+            $this->assertStringContainsString('could not be confirmed', $rows[$home->id]['roster_credit_reason']);
+        };
+        $assertNoCredit();
+        $foreignCategory = CategoryEvent::factory()->create(['event_id' => Event::factory()->create()->id]);
+        $foreign = Team::factory()->create(['category_event_id' => $foreignCategory->id]);
+        TeamPlayer::create(['team_id' => $foreign->id, 'player_id' => Player::factory()->create()->id, 'rank' => 2]);
+        $assertNoCredit();
+        $partner = TeamPlayer::create(['team_id' => $member->team_id, 'player_id' => Player::factory()->create()->id, 'rank' => 2]);
+        $rows = collect($this->groupedRequest($event)->assertOk()->json('ranking'))->keyBy('id');
+        $this->assertSame(1, $rows[$home->id]['starting_credit']); // Partner has no counted matches.
+        $mirror = \App\Models\NoProfileTeamPlayer::create(['team_id' => $member->team_id, 'name' => 'Linked', 'surname' => 'Partner', 'rank' => 2, 'player_profile' => $partner->player_id, 'pay_status' => 1]);
+        $rows = collect($this->groupedRequest($event)->assertOk()->json('ranking'))->keyBy('id');
+        $this->assertSame(1, $rows[$home->id]['starting_credit']); // A linked mirror is one occupant.
+        $mirror->delete();
+        $duplicate = TeamPlayer::create(['team_id' => $member->team_id, 'player_id' => Player::factory()->create()->id, 'rank' => 2]);
+        $assertNoCredit(); $duplicate->delete(); $partner->delete();
+        \App\Models\NoProfileTeamPlayer::create(['team_id' => $member->team_id, 'name' => 'Mirror', 'surname' => 'Player', 'rank' => 2, 'player_profile' => $home->id, 'pay_status' => 1]);
+        $assertNoCredit();
+    }
+
+    public function test_historical_rank_changes_and_missing_historic_pair_withhold_credit(): void
+    {
+        [$event, $category, $draw, $home, $away] = $this->groupedScenario();
+        $homeMember = TeamPlayer::where('player_id', $home->id)->first(); $homeMember->update(['rank' => 1]);
+        $awayMember = TeamPlayer::where('player_id', $away->id)->first();
+        TeamPlayer::create(['team_id' => $homeMember->team_id, 'player_id' => Player::factory()->create()->id, 'rank' => 2]);
+        foreach ([1, 3] as $rank) {
+            $this->fixture($draw, $home, $away, [[6, 1], [6, 1]]);
+            $slot = TeamFixture::where('draw_id', $draw->id)->latest('id')->first()->fixturePlayers->first();
+            $snapshots = [];
+            foreach ([1 => [$homeMember, $home, $rank], 2 => [$awayMember, $away, 4]] as $side => [$member, $player, $rosterRank]) {
+                $snapshots[$side] = ['event_id' => $event->id, 'source_team_id' => $member->team_id, 'category_event_id' => $category->id, 'region_id' => $member->team->region_id, 'profile_id' => $player->id, 'imported_id' => null, 'rank' => $rosterRank];
+            }
+            $slot->forceFill(['participant_snapshot' => $snapshots])->save();
+        }
+        $rows = collect($this->groupedRequest($event)->assertOk()->json('ranking'))->keyBy('id');
+        $this->assertSame([1, 3], $rows[$home->id]['ranks']);
+        $this->assertSame(0, $rows[$home->id]['starting_credit']);
+        $this->assertSame(2, $rows[$home->id]['wins']);
+        // Participant history preserves actual wins after removal, but does not
+        // invent a full historical pair from a participant-only snapshot.
+        $homeMember->delete();
+        $rows = collect($this->groupedRequest($event)->assertOk()->json('ranking'))->keyBy('id');
+        $this->assertSame(0, $rows[$home->id]['starting_credit']);
+        $this->assertSame(2, $rows[$home->id]['wins']);
+    }
+
     public function test_rank_two_with_six_wins_outranks_rank_one_with_four_wins(): void
     {
         [$event, $category, $draw, $home, $away] = $this->groupedScenario();
@@ -376,6 +484,7 @@ class TeamWorkspaceResultsTest extends TestCase
     public function test_old_draft_evidence_is_preserved_while_current_results_and_new_revision_use_band_weights(): void
     {
         [$event, , $draw, $home, $away] = $this->groupedScenario();
+        TeamPlayer::create(['team_id' => TeamPlayer::where('player_id', $home->id)->first()->team_id, 'player_id' => Player::factory()->create()->id, 'rank' => 4]);
         $this->fixture($draw, $home, $away, [[6, 1], [6, 1]]);
         $input = ['group_key' => '10-boys', 'region_ids' => $event->regions()->pluck('team_regions.id')->all(),
             'formats' => ['singles'], 'selected_keys' => array_map('strval', [$home->id, $away->id]), 'reasons' => [], 'version' => 0];
@@ -387,11 +496,11 @@ class TeamWorkspaceResultsTest extends TestCase
         ]);
         $storedOldEvidence = \Illuminate\Support\Facades\DB::table('team_result_selection_revisions')->where('draft_id', $draft->id)->where('version', 1)->value('evidence');
         $this->getJson(route('backend.team-result-selection.show', $event).'?group_key=10-boys')->assertOk()->assertJsonPath('draft.snapshot.0.points', 70)->assertJsonPath('draft.excluded_result_region_ids', []);
-        $current = $this->groupedRequest($event)->assertOk()->assertJsonPath('ranking.0.points', 35);
+        $current = $this->groupedRequest($event)->assertOk()->assertJsonPath('ranking.0.points', 70)->assertJsonPath('ranking.0.starting_credit', 1);
         $this->assertStringNotContainsString('Starting credit', $current->json('html'));
         $this->assertStringContainsString('Points per win', $current->json('html'));
         $this->putJson(route('backend.team-result-selection.store', $event), array_replace($input, ['version' => 1]))
-            ->assertOk()->assertJsonPath('draft.version', 2)->assertJsonPath('draft.snapshot.0.points', 35)->assertJsonPath('draft.snapshot.0.starting_credit', 0);
+            ->assertOk()->assertJsonPath('draft.version', 2)->assertJsonPath('draft.snapshot.0.points', 70)->assertJsonPath('draft.snapshot.0.starting_credit', 1);
         $this->assertSame($storedOldEvidence, \Illuminate\Support\Facades\DB::table('team_result_selection_revisions')->where('draft_id', $draft->id)->where('version', 1)->value('evidence'));
         $this->assertDatabaseCount('team_result_selection_revisions', 2);
     }
@@ -516,6 +625,14 @@ class TeamWorkspaceResultsTest extends TestCase
             $panel = str_replace('class="tab-pane fade result-workspace"', 'class="tab-pane fade show active result-workspace"', view('backend.adminPage.admin_show._partials.result-ranks', compact('event'))->render());
             $preview = $response->json();
             $previewRows = collect($preview['ranking']);
+            // Synthetic visual fixture includes a confirmed higher-roster bonus
+            // while leaving the real scenario and its actual match evidence intact.
+            $creditedPreview = $previewRows->first();
+            $creditedPreview['starting_credit'] = 1;
+            $creditedPreview['credited_wins'] = $creditedPreview['wins'] + 1;
+            $creditedPreview['points'] = $creditedPreview['credited_wins'] * $creditedPreview['points_per_win'];
+            $creditedPreview['roster_credit_reason'] = 'One automatic roster win for the higher player in a confirmed same-team pair.';
+            $previewRows->put(0, $creditedPreview);
             foreach (['Liam van der Merwe', 'Oliver Jacobs', 'Noah Petersen', 'Ethan du Plessis', 'Daniel Williams', 'Joshua Adams'] as $index => $name) {
                 $row = $preview['ranking'][0]; $row['id'] = 'preview-'.$index; $row['name'] = $name;
                 $row['position'] = $index + 3; $row['region'] = 'CT'; $row['teams'] = ['Cape Town A'];
@@ -529,7 +646,7 @@ class TeamWorkspaceResultsTest extends TestCase
             foreach (['10-girls' => 'u/10 Girls', '11-boys' => 'u/11 Boys', '11-girls' => 'u/11 Girls', '12-boys' => 'u/12 Boys', '12-girls' => 'u/12 Girls', '13-boys' => 'u/13 Boys', '13-girls' => 'u/13 Girls'] as $key => $label) {
                 $extraGroups .= '<label class="result-choice result-group-choice"><input class="form-check-input category-radio" type="radio" name="category-radio" value="'.$key.'" data-name="'.$label.'" data-event_id="'.$event->id.'"><span>'.$label.'</span></label>';
             }
-            $panel = preg_replace('/(<\/div>\s*<\/aside>)/', $extraGroups.'$1', $panel, 1);
+            $panel = preg_replace('/(<div class="result-group-grid">.*?)(<\/div>)/s', '$1'.$extraGroups.'$2', $panel, 1);
             $panel = str_replace('Included region', 'Cape Town', $panel);
             $extraRegions = '';
             foreach (['Cape Winelands', 'Eden District', 'West Coast', 'Overberg', 'Nelson Mandela Bay'] as $index => $regionName) $extraRegions .= '<label class="result-choice"><input class="form-check-input" type="checkbox" data-result-region value="'.(1000 + $index).'" checked><span>'.$regionName.'</span></label>';
@@ -537,7 +654,7 @@ class TeamWorkspaceResultsTest extends TestCase
             $json = json_encode($preview, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
             $directory = storage_path('app/team-results-qa');
             if (! is_dir($directory)) mkdir($directory, 0777, true);
-            file_put_contents($directory.'/index.html', '<!doctype html><html><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/public/assets/vendor/css/rtl/core.css"><link rel="stylesheet" href="/public/css/backend-workspace.css"><link rel="stylesheet" href="/public/css/team-workspace.css"><body class="ct-backend"><main class="team-admin-workspace p-3"><nav class="tabs-wrap"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-result-rank">Result Ranks</button></nav><div id="team-workspace-content" data-result-url="/mock-results">'.$panel.'</div></main><script src="/public/assets/vendor/libs/jquery/jquery.js"></script><script src="/public/assets/vendor/js/bootstrap.js"></script><script>const fixtureResponse='.$json.'; let storedDraft=null; jQuery.post=function(){const d=jQuery.Deferred();setTimeout(()=>d.resolve(fixtureResponse),80);const p=d.promise();p.abort=()=>d.reject({statusText:"abort"});return p;};jQuery.getJSON=function(){const d=jQuery.Deferred();setTimeout(()=>d.resolve({draft:storedDraft}),100);return d.promise();};jQuery.ajax=function(options){const d=jQuery.Deferred();if(options.type==="POST"){setTimeout(()=>d.resolve(fixtureResponse),80);const p=d.promise();p.abort=()=>d.reject({statusText:"abort"});return p;}const data=JSON.parse(options.data);setTimeout(()=>{storedDraft={...data,version:(storedDraft?.version||0)+1};d.resolve({draft:storedDraft});},150);return d.promise();};</script><script src="/public/js/team-workspace.js"></script></body></html>');
+            file_put_contents($directory.'/index.html', '<!doctype html><html><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/public/assets/vendor/css/rtl/core.css"><link rel="stylesheet" href="/public/css/backend-workspace.css"><link rel="stylesheet" href="/public/css/team-workspace.css"><body class="ct-backend"><main class="team-admin-workspace p-3"><nav class="tabs-wrap"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-result-rank">Result Ranks</button></nav><div id="team-workspace-content" data-result-url="/mock-results">'.$panel.'</div></main><script src="/public/assets/vendor/libs/jquery/jquery.js"></script><script src="/public/assets/vendor/js/bootstrap.js"></script><script src="/public/assets/vendor/libs/sortablejs/sortable.js"></script><script>const fixtureResponse='.$json.'; let storedDraft=null; jQuery.post=function(){const d=jQuery.Deferred();setTimeout(()=>d.resolve(fixtureResponse),80);const p=d.promise();p.abort=()=>d.reject({statusText:"abort"});return p;};jQuery.getJSON=function(){const d=jQuery.Deferred();setTimeout(()=>d.resolve({draft:storedDraft}),100);return d.promise();};jQuery.ajax=function(options){const d=jQuery.Deferred();if(options.type==="POST"){setTimeout(()=>d.resolve(fixtureResponse),80);const p=d.promise();p.abort=()=>d.reject({statusText:"abort"});return p;}const data=JSON.parse(options.data);setTimeout(()=>{storedDraft={...data,version:(storedDraft?.version||0)+1};d.resolve({draft:storedDraft});},150);return d.promise();};</script><script src="/public/js/team-workspace.js"></script></body></html>');
         }
         $this->groupedRequest($event, ['formats' => ['singles']])->assertOk()->assertJsonPath('ranking.0.wins', 2);
         $this->groupedRequest($event, ['regions' => []])->assertOk()->assertJsonCount(0, 'ranking');

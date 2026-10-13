@@ -30,6 +30,7 @@ class TeamResultSelectionDraftController extends Controller
             'excluded_result_region_ids' => ['sometimes', 'array', 'max:100'], 'excluded_result_region_ids.*' => ['integer', 'distinct'],
             'formats' => ['present', 'array', 'max:10'], 'formats.*' => ['string', 'distinct'],
             'selected_keys' => ['present', 'array', 'max:10'], 'selected_keys.*' => ['required', 'string', 'max:100', 'distinct'],
+            'draft_order' => ['sometimes', 'array', 'max:500'], 'draft_order.*' => ['required', 'string', 'max:100', 'distinct'],
             'reasons' => ['present', 'array', 'max:500'], 'reasons.*' => ['nullable', 'string', 'max:2000'],
         ]);
         $input['version'] = (int) $input['version'];

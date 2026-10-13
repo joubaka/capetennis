@@ -144,6 +144,8 @@ class EventStandingsTest extends TestCase
         $data = app(EventStandingsService::class)->forEvent($event);
         $this->assertCount(2, $data['overall']);
         $this->assertSame([6, 0], array_column($data['overall'], 'points'));
+        $this->assertSame(['boys' => 3, 'girls' => 3, 'mixed' => 0, 'other' => 0], $data['overall'][0]['gender_points']);
+        foreach ($data['overall'] as $row) { $this->assertSame($row['points'], array_sum($row['gender_points'])); }
         $this->assertSame([2, 2], array_column($data['overall'], 'played'));
         $this->assertSame([1, 2], array_column($data['overall'], 'rank'));
         $this->assertSame(4, $data['stats']['teams']);
@@ -229,7 +231,14 @@ class EventStandingsTest extends TestCase
         foreach (['Ties played', 'Ties won', 'Ties drawn', 'Ties lost', '>Other<'] as $header) {
             $this->assertStringNotContainsString($header, $ageSection[0]);
         }
-        $response->assertSee('Ties played'); // Overall and detailed draw tables retain their columns.
+        $response->assertDontSee('Ties played')->assertDontSee('Ties won')->assertDontSee('Ties drawn')->assertDontSee('Ties lost');
+        preg_match_all('/<table\b.*?<\/table>/s', $response->getContent(), $tables);
+        $standingsTables = array_values(array_filter($tables[0], fn ($table) => str_contains($table, 'Rubbers W–L')));
+        $this->assertCount(6, $standingsTables); // Overall, combined age, and four selected draws.
+        foreach ($standingsTables as $table) {
+            foreach (['>Boys<', '>Girls<', '>Mixed<', '>Total points<'] as $header) { $this->assertStringContainsString($header, $table); }
+        }
+        foreach ($response->viewData('overall') as $row) { $this->assertSame($row['points'], array_sum($row['gender_points'])); }
     }
 
     public function test_age_table_shows_unspecified_points_without_hiding_them(): void

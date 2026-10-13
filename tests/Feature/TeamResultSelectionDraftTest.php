@@ -66,6 +66,33 @@ class TeamResultSelectionDraftTest extends TestCase
         $this->putJson(route('backend.team-result-selection.store', $event), $input)->assertOk();
     }
 
+    public function test_manual_order_is_validated_reasoned_and_saved_without_changing_evidence(): void
+    {
+        [$event, $input] = $this->scenario();
+        $url = route('backend.team-result-selection.store', $event);
+        foreach ([[], ['1'], ['1', '1'], ['1', '999']] as $order) {
+            $this->putJson($url, $input + ['draft_order' => $order])->assertUnprocessable();
+        }
+        $input['draft_order'] = ['imported:3:4', '1'];
+        $this->putJson($url, $input)->assertUnprocessable()->assertJsonValidationErrors('reasons');
+        $input['reasons'] = ['1' => 'Reviewed order', 'imported:3:4' => 'Reviewed head to head'];
+        $input['selected_keys'] = ['1', 'imported:3:4'];
+        // Caller-supplied indices never become persisted positions.
+        $input['draft_order'] = ['91' => 'imported:3:4', '25' => '1'];
+        $this->putJson($url, $input)->assertOk()
+            ->assertJsonPath('draft.selected_keys', ['imported:3:4', '1'])
+            ->assertJsonPath('draft.snapshot.0.id', 1)
+            ->assertJsonPath('draft.snapshot.0.points', 100)
+            ->assertJsonPath('draft.snapshot.0.draft_position', 2)
+            ->assertJsonPath('draft.snapshot.1.draft_position', 1);
+        $this->getJson(route('backend.team-result-selection.show', ['event' => $event, 'group_key' => '10-boys']))
+            ->assertOk()->assertJsonPath('draft.snapshot.1.draft_position', 1);
+        $this->assertDatabaseCount('team_result_selection_revisions', 1);
+        $revision = json_decode(\Illuminate\Support\Facades\DB::table('team_result_selection_revisions')->value('evidence'), true);
+        $this->assertSame(['imported:3:4', '1'], $revision['selected_keys']);
+        $this->assertSame(2, $revision['snapshot'][0]['draft_position']);
+    }
+
     private function scenario(bool $tie = false): array
     {
         Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);

@@ -696,7 +696,27 @@
                 @if(!$activeImport)
                   <div class="alert alert-info mb-0">Complete the ranking and team setup first, then import the ranked players to prepare invitations.</div>
                 @else
-                  <div class="d-flex flex-wrap justify-content-between gap-2 align-items-start mb-3"><div><h6 class="mb-1">Invitation campaign</h6><div class="text-muted small">Manage reserve promotion, delivery, response and payment deadlines.</div></div><span class="badge bg-label-{{ $activeImport->status === 'sent' ? 'success' : 'warning' }}">{{ ucfirst($activeImport->status) }}</span></div>
+                  @php($unansweredInvitations = $activeImport->invitations->filter(fn ($invitation) => $invitation->status === \App\Models\TeamSelectionInvitation::INVITED && $invitation->invited_at && !$invitation->accepted_at))
+                  <h6 class="mb-1">Player invitations</h6>
+                  <p class="text-muted small">Accept opens registration and payment. Decline asks for confirmation and records the response.</p>
+                  <div class="d-flex flex-wrap gap-2 mb-3">
+                    <span class="badge bg-label-warning">Awaiting response: {{ $unansweredInvitations->count() }}</span>
+                    <span class="badge bg-label-primary">Payment pending: {{ $activeImport->invitations->where('status', 'accepted_pending_payment')->count() }}</span>
+                    <span class="badge bg-label-success">Registered: {{ $activeImport->invitations->where('status', 'paid_confirmed')->count() }}</span>
+                    <span class="badge bg-label-secondary">Declined: {{ $activeImport->invitations->where('status', 'declined')->count() }}</span>
+                  </div>
+                  @if($activeImport->status === 'sent' && $isEventManager)
+                    <button type="button" class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="filtered" data-unanswered-invitations="1" data-recipient="Players awaiting a response in this region" @disabled($unansweredInvitations->isEmpty())>Email players awaiting response</button>
+                    @if($unansweredInvitations->isEmpty())<p class="small text-muted">No sent invitations are awaiting a response.</p>@endif
+                  @elseif($activeImport->status !== 'sent')
+                    <button type="button" class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#prepare-invitations-{{ $activeImport->id }}">Prepare and send invitations</button>
+                  @endif
+                  <details class="mb-3"><summary>View player responses</summary><div class="table-responsive mt-2"><table class="table table-sm"><thead><tr><th>Player</th><th>Response</th></tr></thead><tbody>
+                  @foreach($activeImport->invitations->where('status', '!=', 'reserve') as $responseInvitation)
+                    <tr><td>{{ $responseInvitation->player?->full_name ?: 'Player' }}</td><td>{{ match ($responseInvitation->status) { 'invited' => $responseInvitation->invited_at ? 'Awaiting response' : 'Not yet sent', 'accepted_pending_payment' => 'Payment pending', 'paid_confirmed' => 'Registered', default => ucfirst(str_replace('_', ' ', $responseInvitation->status)) } }}</td></tr>
+                  @endforeach
+                  </tbody></table></div></details>
+                  <details class="border rounded p-3"><summary>Advanced settings and delivery details</summary><div class="mt-3">
                   <div class="regional-readonly rounded p-2 mb-3 small"><strong>Ranking snapshot:</strong> <code>{{ $activeImport->ranking_run_id }}</code> · locked to preserve the imported selection record.</div>
                   <form method="POST" action="{{ route('backend.team-selection.replacement-mode.update', [$event, $activeImport]) }}" class="border rounded p-3">@csrf @method('PATCH')
                     <div class="row g-3 align-items-end">
@@ -749,6 +769,7 @@
                     <div class="d-flex flex-wrap align-items-center gap-2 mt-3"><button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#prepare-invitations-{{ $activeImport->id }}"><i class="ti ti-mail-cog me-1"></i>Prepare invitations</button><span class="text-muted small">Review the message, one registration deadline and exact recipients before sending.</span></div>
                     <form method="POST" action="{{ route('backend.team-selection.restart', [$event, $activeImport]) }}" class="mt-3" onsubmit="return confirm('Remove this unsent import and clear its generated roster places?');">@csrf<button class="btn btn-sm btn-outline-danger">Restart draft import</button></form>
                   @endif
+                  </div></details>
                 @endif
               </div>
 
@@ -1714,7 +1735,18 @@ document.addEventListener('DOMContentLoaded', function () {
       const filtered = button.dataset.targetType === 'filtered';
       filterPanel?.classList.toggle('d-none', !filtered);
       filterInputs.forEach(input => { input.disabled = !filtered; });
-      if (filtered) resetFilteredPreview();
+      if (filtered) {
+        resetFilteredPreview();
+        const unanswered = button.dataset.unansweredInvitations === '1';
+        filterPanel.querySelectorAll('[name="category_event_ids[]"]').forEach(input => { input.checked = unanswered; });
+        filterPanel.querySelector('[name="gender"]').value = 'any';
+        filterPanel.querySelector('[name="audience_status"]').value = unanswered ? 'not_accepted' : 'active';
+        if (unanswered) {
+          modal.querySelector('[name="subject"]').value = @json($event->name) + ' — invitation reminder';
+          modal.querySelector('[name="message"]').value = 'Please respond to your invitation. Click Accept to register and pay, or Decline to confirm that you are unavailable.';
+          filterPanel.querySelector('[data-roster-filter-preview]').click();
+        }
+      }
       modal.querySelector('[data-roster-region-review]')?.classList.toggle('d-none', button.dataset.targetType !== 'region');
       modal.querySelectorAll('[data-roster-cohort-review]').forEach(function (review) {
         review.classList.toggle('d-none', review.dataset.rosterCohortReview !== button.dataset.targetType);

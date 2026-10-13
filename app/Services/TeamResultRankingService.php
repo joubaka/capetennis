@@ -70,6 +70,7 @@ class TeamResultRankingService
         $teams = app(EventTeamScope::class)->query($event)->with(['players', 'team_players', 'team_players_no_profile', 'competitionSubstitutions', 'regions', 'category.category'])->get();
         $rows = [];
         $performance = [];
+        $rosters = [];
         $regionSummary = $event->regions()->whereIn('team_regions.id', $regions)
             ->whereNotIn('team_regions.id', $excludedResultRegionIds)->get()->mapWithKeys(fn ($region) => [
                 (int) $region->id => ['region_id' => (int) $region->id, 'name' => $region->region_name,
@@ -102,7 +103,9 @@ class TeamResultRankingService
                 $allowedTeams = $mixed ? array_map('intval', [$mixed['boys'], $mixed['girls']]) : ($teamId ? [(int) $teamId] : []);
                 $snapshot = $slot->participant_snapshot[$sideNumber] ?? null;
                 $candidateTeams = $teams->filter(fn ($team) => ! $teamId || in_array((int) $team->id, $allowedTeams, true));
-                if (! $snapshot) $candidateTeams = $candidateTeams->map(fn ($team) => app(TeamDrawSideResolver::class)->activeRoster($team, (int) $fixture->round_nr, (int) $fixture->id, (int) $fixture->draw_id));
+                if (! $snapshot) $candidateTeams = $candidateTeams->map(function ($team) use (&$rosters, $fixture) {
+                    return $rosters[$fixture->id][$team->id] ??= app(TeamDrawSideResolver::class)->activeRoster($team, (int) $fixture->round_nr, (int) $fixture->id, (int) $fixture->draw_id);
+                });
                 $candidates = $candidateTeams->filter(function ($team) use ($fixture, $player, $imported, $region, $teamId, $allowedTeams, $slot, $sideNumber, $snapshot, $event) {
                     if (! $player || ($teamId && ! in_array((int) $team->id, $allowedTeams, true))) return false;
                     if ($region && (int) $team->region_id !== (int) $region) return false;
@@ -124,7 +127,9 @@ class TeamResultRankingService
                 $rank = $snapshot ? (int) ($snapshot['rank'] ?? 0) : (int) $member->rank;
                 if ($rank < 1) continue;
                 $identity = $imported ? 'imported:'.$team->id.':'.($snapshot['anchor_id'] ?? $member->competition_anchor_id ?? $imported->id) : $player->id;
-                $sides[$side] = compact('player', 'team', 'rank', 'identity');
+                $fullRoster = $rosters[$fixture->id][$team->id] ??= app(TeamDrawSideResolver::class)->activeRoster($team, (int) $fixture->round_nr, (int) $fixture->id, (int) $fixture->draw_id);
+                $rosterCredit = $this->hasRosterWin($fullRoster, $rank, $player, (bool) $imported);
+                $sides[$side] = compact('player', 'team', 'rank', 'identity', 'rosterCredit');
             }
             if (count($sides) !== 2) continue;
             if (collect($sides)->contains(fn ($entry) => in_array((int) $entry['team']->region_id, $excludedResultRegionIds, true))) continue;
@@ -144,6 +149,7 @@ class TeamResultRankingService
                 $rows[$id]['ranks'][] = $entry['rank'];
                 $rows[$id]['teams'][] = $entry['team']->name;
                 $rows[$id]['source_team_ids'][] = (int) $entry['team']->id;
+                $rows[$id]['roster_credit_evidence'][] = $entry['rosterCredit'];
                 $rows[$id][$won ? 'wins' : 'losses']++;
                 if ($won) $rows[$id][$this->format($fixture) === RubberType::SINGLES ? 'singles_wins' : 'reverse_singles_wins']++;
                 $rows[$id]['sets_won'] += $outcome[$side.'_sets'];
@@ -186,9 +192,13 @@ class TeamResultRankingService
             $row['source_team_ids'] = array_values(array_unique($row['source_team_ids']));
             // Conservative weighting if historic rosters disagree; expose the discrepancy for review.
             $row['rank'] = max($row['ranks']);
-            $row['points'] = $this->points($row['rank'], $row['wins']);
-            $row['starting_credit'] = 0;
-            $row['credited_wins'] = $row['wins'];
+            $row['starting_credit'] = count($row['ranks']) === 1 && count($row['source_team_ids']) === 1
+                && ! in_array(false, $row['roster_credit_evidence'], true) ? 1 : 0;
+            $row['roster_credit_reason'] = $row['starting_credit'] ? 'One automatic roster win for the higher player in a confirmed same-team pair.'
+                : (in_array($row['rank'], [1, 3, 5, 7], true) ? 'No automatic roster win: the complete same-team pair or historical roster position could not be confirmed unambiguously.' : 'The lower roster position receives no automatic roster win.');
+            unset($row['roster_credit_evidence']);
+            $row['credited_wins'] = $row['wins'] + $row['starting_credit'];
+            $row['points'] = $this->points($row['rank'], $row['credited_wins']);
             $row['points_per_win'] = $this->points($row['rank'], 1);
             $row['band_index'] = (int) ceil($row['rank'] / 2);
             $row['band'] = (2 * (int) ceil($row['rank'] / 2) - 1).'–'.(2 * (int) ceil($row['rank'] / 2));
@@ -316,6 +326,25 @@ class TeamResultRankingService
             unset($row['_position_key']);
             return $row;
         });
+    }
+
+    private function hasRosterWin(Team $team, int $rank, mixed $player, bool $imported): bool
+    {
+        if (! in_array($rank, [1, 3, 5, 7], true)) return false;
+        // Read the whole roster, independently of candidate/result filters. A
+        // participant-only historic snapshot cannot attest a missing pair.
+        $members = $team->team_players->map(fn ($member) => ['rank' => (int) $member->rank, 'identity' => 'profile:'.$member->player_id, 'person' => 'profile:'.$member->player_id])
+            ->concat($team->team_players_no_profile->map(fn ($member) => ['rank' => (int) $member->rank, 'identity' => 'imported:'.$member->id, 'person' => $member->player_profile ? 'profile:'.$member->player_profile : 'imported:'.$member->id]))
+            ->groupBy(fn ($member) => $member['rank'].':'.$member['person'])
+            ->map(fn ($mirrors) => ['rank' => $mirrors->first()['rank'], 'person' => $mirrors->first()['person'], 'identities' => $mirrors->pluck('identity')->all()]);
+        $higher = $members->where('rank', $rank);
+        $lower = $members->where('rank', $rank + 1);
+        $identity = ($imported ? 'imported:' : 'profile:').$player->id;
+        return $higher->count() === 1 && $lower->count() === 1
+            && in_array($identity, $higher->first()['identities'], true)
+            && $higher->first()['person'] !== $lower->first()['person']
+            && $members->where('person', $higher->first()['person'])->count() === 1
+            && $members->where('person', $lower->first()['person'])->count() === 1;
     }
 
     public function points(int $rank, int $wins): int

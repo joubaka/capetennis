@@ -33,6 +33,11 @@
           <label class="result-choice result-group-choice"><input class="form-check-input category-radio" type="radio" name="category-radio" value="{{ $group['key'] }}" data-name="{{ $group['name'] }}" data-event_id="{{ $event->id }}" {{ $loop->first ? 'checked' : '' }}><span>{{ $group['name'] }}</span></label>
         @empty<p class="result-rail-empty">Age groups appear here when singles fixtures are available.</p>@endforelse
       </div>
+      <div class="result-order-rail">
+        <h6>Draft ranking order</h6>
+        <p>Drag the handle or use the arrows. Tick up to 10 players. Explain changed positions, then save your private draft.</p>
+        <ol data-draft-order aria-label="Draft player ranking"></ol>
+      </div>
     </aside>
     <section class="result-ranking-panel" aria-label="Player ranking and draft selection">
       <div class="result-ranking-header">

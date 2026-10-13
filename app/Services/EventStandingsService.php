@@ -111,7 +111,9 @@ final class EventStandingsService
                 $team = $row['team_id'] ? $teams[$row['team_id']] : null;
                 $regionId = $row['region_id'] ?? ($regions->has($team?->region_id) ? $team?->region_id : null);
                 $key = $regionId ? 'region:'.$regionId : 'team:'.$team->id;
-                $overall[$key] ??= ['name' => $regionId ? $regions[$regionId]->region_name : $row['name'], 'teams' => [], 'rank' => null] + array_fill_keys(self::METRICS, 0);
+                $overall[$key] ??= ['name' => $regionId ? $regions[$regionId]->region_name : $row['name'], 'teams' => [], 'rank' => null,
+                    'gender_points' => array_fill_keys(['boys', 'girls', 'mixed', 'other'], 0)] + array_fill_keys(self::METRICS, 0);
+                foreach ($row['gender_points'] as $bucket => $points) { $overall[$key]['gender_points'][$bucket] += $points; }
                 $ageGroups[$section['age']][$key] ??= ['name' => $overall[$key]['name'], 'points' => 0,
                     'gender_points' => array_fill_keys(['boys', 'girls', 'mixed', 'other'], 0),
                     'color' => \App\Support\RegionBadge::color($regionId ? $regions[$regionId] : null)];

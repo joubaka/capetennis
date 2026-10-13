@@ -35,6 +35,11 @@ class TeamSelectionInvitationController extends Controller
     public function show(Request $request, TeamSelectionInvitation $invitation)
     {
         $invitation->load(['selectionImport.event', 'region.clothingItems.sizes', 'team', 'player']);
+        if ($request->query('action') === 'decline') {
+            $this->decisionAccess->authorizePlayerDecision($request->user(), $invitation);
+
+            return view('frontend.team-selection.decline', compact('invitation'));
+        }
         if ($request->query('action') === 'pay' && in_array($invitation->status, [
             TeamSelectionInvitation::INVITED,
             TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
@@ -86,7 +91,7 @@ class TeamSelectionInvitationController extends Controller
         $data = $request->validate(['reason' => ['nullable', 'string', 'max:1000']]);
         $replacement = $service->decline($invitation, $request->user(), $data['reason'] ?? null);
 
-        return back()->with('success', $replacement
+        return redirect()->route('team-selection.invitations.show', [$invitation, 'action' => 'decline'])->with('success', $replacement
             ? 'Your unavailability was recorded and the next reserve has been invited.'
             : 'Your unavailability was recorded.');
     }
