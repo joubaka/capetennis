@@ -24,6 +24,25 @@ use Illuminate\Validation\ValidationException;
 
 final class TeamSelectionInvitationService
 {
+    public function resetExpiredCheckout(TeamPaymentOrder $order): void
+    {
+        abort_unless($order->withdrawn_at && !$order->pay_status && !$order->payfast_paid && !$order->wallet_debited
+            && !$order->payfast_handed_off_at && (float) $order->wallet_reserved === 0.0, 422);
+        $invitations = TeamSelectionInvitation::where('order_id', $order->id)->lockForUpdate()->get();
+        foreach ($invitations as $invitation) {
+            abort_unless($invitation->status === TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT
+                && (int) $invitation->event_id === (int) $order->event_id && (int) $invitation->team_id === (int) $order->team_id
+                && (int) $invitation->player_id === $order->effective_player_id, 422);
+            $snapshot = $invitation->snapshot_json ?? [];
+            $snapshot['expired_checkout_order_ids'] = array_values(array_unique([...($snapshot['expired_checkout_order_ids'] ?? []), $order->id]));
+            // Keep the existing response/payment deadline context. Expiring a
+            // checkout does not revoke the player's selected roster place.
+            $invitation->update(['order_id' => null, 'payment_started_at' => null, 'snapshot_json' => $snapshot]);
+            activity('team-selection')->performedOn($invitation)->withProperties(['expired_order_id' => $order->id])
+                ->log('Unpaid checkout expired; selected roster place retained');
+        }
+    }
+
     public function __construct(
         private ClothingPriceService $clothingPrices,
         private TeamSelectionContactService $contacts,

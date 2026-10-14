@@ -25,7 +25,7 @@ class ReconcileMastersPayments extends Command
 
         $minutes = $this->option('pending-minutes');
         $minutes = $minutes === null
-            ? (int) config('masters.pending_payment_minutes', 60)
+            ? \App\Domain\Payments\Services\CheckoutExpiryPolicy::MINUTES
             : max(1, (int) $minutes);
         $apply = (bool) $this->option('apply');
 

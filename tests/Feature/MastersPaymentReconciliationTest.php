@@ -29,6 +29,25 @@ class MastersPaymentReconciliationTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_expired_masters_attempt_without_entry_restarts_with_new_order_and_preserved_invitation(): void
+    {
+        [$invitation, $payer] = $this->invitationScenario();
+        $type = DB::table('eventtypes')->insertGetId(['name' => 'Masters expiry', 'type' => \App\Models\EventType::INDIVIDUAL, 'code' => \App\Models\EventType::MASTERS_CODE]);
+        $invitation->batch->event->update(['eventType' => $type]);
+        $service = app(MastersInvitationService::class);
+        $original = $service->accept($invitation, $payer);
+        $original->forceFill(['created_at' => now()->subMinutes(5)])->save();
+        $replacement = $service->accept($invitation->fresh(), $payer);
+        $this->assertNotSame($original->id, $replacement->id);
+        $this->assertSame('cancelled', $original->fresh()->status);
+        $this->assertSame($replacement->id, $invitation->fresh()->order_id);
+        $this->assertSame(MastersInvitation::ACCEPTED_PENDING_PAYMENT, $invitation->fresh()->status);
+        $this->assertSame($payer->id, $replacement->user_id);
+        $this->assertDatabaseCount('masters_invitations', 1);
+        $this->assertDatabaseCount('registration_orders', 2);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
     public function test_register_starts_masters_payment_without_a_separate_acceptance(): void
     {
         [$invitation] = $this->invitationScenario();
@@ -95,6 +114,7 @@ class MastersPaymentReconciliationTest extends TestCase
         $service = app(MastersInvitationService::class);
         $order = $service->accept($invitation, $user);
         $invitation->refresh()->update(['accepted_at' => now()->subMinutes(61)]);
+        $order->forceFill(['created_at' => now()->subMinutes(61)])->save();
 
         $entry = CategoryEventRegistration::create([
             'registration_id' => $invitation->registration_id,
@@ -640,7 +660,7 @@ class MastersPaymentReconciliationTest extends TestCase
     private function invitationScenario(): array
     {
         $user = User::factory()->create();
-        $event = Event::factory()->create();
+        $event = Event::factory()->create(['published' => true, 'signUp' => true, 'start_date' => now()->addMonth(), 'deadline' => 1]);
         $categoryEvent = CategoryEvent::factory()->create([
             'event_id' => $event->id,
             'entry_fee' => 285,

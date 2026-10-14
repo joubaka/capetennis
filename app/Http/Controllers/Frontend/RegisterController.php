@@ -1376,6 +1376,21 @@ class RegisterController extends Controller
       return back()->withErrors(['msg' => implode(' ', $duplicateErrors)]);
     }
 
+    // Resolve an earlier draft through its payment service before starting a
+    // replacement. Keep active or provider-protected checkouts resumable.
+    for ($i = 0; $i < count($playerIds); $i++) {
+      $previousItems = RegistrationOrderItems::where('category_event_id', (int) $categoryIds[$i])
+        ->where('player_id', (int) $playerIds[$i])->where('user_id', $authUser->id)
+        ->whereHas('order', fn ($query) => $query->where('pay_status', 0)->where(fn ($query) => $query->whereNull('status')->orWhere('status', '!=', 'cancelled')))
+        ->orderByDesc('id')->get();
+      foreach ($previousItems as $previousItem) {
+        $previousOrder = $previousItem->order;
+        if (!app(\App\Domain\Payments\Services\RegistrationPaymentService::class)->expireUnpaidCheckout($previousOrder)) {
+          return redirect()->route('registration.checkout', $previousOrder);
+        }
+      }
+    }
+
     // ----------------------------
     // Create order + registrations inside a single transaction
     // ----------------------------
@@ -1391,20 +1406,6 @@ class RegisterController extends Controller
 
         $categoryEvent = CategoryEvent::findOrFail((int) $categoryIds[$i]);
         $currentPlayerId = (int) $playerIds[$i];
-
-        // Clean up any stale unpaid draft CER rows left by abandoned checkouts.
-        // Only removes rows where payment_status_id = 0 and status = 'active'
-        // (i.e. draft rows that were never paid). Paid rows are never touched.
-        $staleDrafts = \App\Models\CategoryEventRegistration::where('category_event_id', $categoryEvent->id)
-          ->where('payment_status_id', 0)
-          ->where('status', 'active')
-          ->where('user_id', $authUser->id)
-          ->whereHas('registration.players', fn($q) => $q->where('players.id', $currentPlayerId))
-          ->get();
-
-        foreach ($staleDrafts as $staleDraft) {
-          $staleDraft->forceDelete();
-        }
 
         $registration = new Registration();
         $registration->save();

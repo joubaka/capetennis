@@ -16,6 +16,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('player-ability:refresh --pending')->everyMinute()->withoutOverlapping(120)->runInBackground();
 
         $schedule->command('mail:record-event-issues')->everyFiveMinutes()->withoutOverlapping();
+        $schedule->command('registrations:expire-checkouts --apply')->everyMinute()->withoutOverlapping();
         // Process queued jobs safely on a shared server.
         // --stop-when-empty: exits as soon as the queue is empty (not a daemon).
         // --max-time=270: hard stop after 4.5 min so the process is gone before

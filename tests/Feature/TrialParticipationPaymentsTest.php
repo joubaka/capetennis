@@ -11,6 +11,23 @@ use Tests\TestCase;
 class TrialParticipationPaymentsTest extends TestCase {
     use RefreshDatabase;
     private Event $event; private User $admin;private User $payer;private TrialSquadSlot $slot;
+    public function test_expired_participation_checkout_detaches_payer_without_losing_squad_and_restarts(): void {
+        $service = app(TrialParticipationService::class);
+        $participation = $service->begin($this->slot, $this->payer);
+        $oldOrder = $participation->order;
+        $oldOrder->forceFill(['created_at' => now()->subMinutes(5)])->save();
+        $this->assertTrue(app(\App\Domain\Payments\Services\UnpaidCheckoutExpiryService::class)->expire($oldOrder));
+        $this->assertNull($participation->fresh()->order_id);
+        $this->assertNull($participation->fresh()->payer_id);
+        $this->assertSame($participation->player_id, $this->slot->fresh()->player_id);
+        $next = $service->begin($this->slot, $this->payer);
+        $this->assertNotSame($oldOrder->id, $next->order_id);
+        $this->assertSame($this->payer->id, $next->payer_id);
+        $this->assertSame(456.78, $next->order->total_amount);
+        $this->assertDatabaseCount('trial_participations', 1);
+        $this->assertDatabaseCount('team_payment_orders', 2);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
     protected function setUp():void {
         parent::setUp();Role::firstOrCreate(['name'=>'admin','guard_name'=>'web']);$this->admin=User::factory()->create()->assignRole('admin');$this->payer=User::factory()->create();
         $type=DB::table('eventtypes')->insertGetId(['name'=>'Trials','type'=>EventType::INDIVIDUAL,'code'=>EventType::INTERPROVINCIAL_TRIALS_CODE]);$this->event=Event::factory()->create(['eventType'=>$type,'published'=>true]);

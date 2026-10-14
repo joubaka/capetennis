@@ -4,6 +4,7 @@ namespace App\Domain\Payments\Services;
 
 use App\Models\Registration;
 use App\Models\RegistrationOrder;
+use App\Models\RegistrationOrderItems;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\WalletTransaction;
@@ -20,9 +21,11 @@ class RegistrationPaymentService
 
     public function reservePayment(RegistrationOrder $order, float $walletApplied, float $remainingAmount): RegistrationOrder
     {
+        app(UnpaidCheckoutExpiryService::class)->assertAvailable($order);
         /** @var RegistrationOrder $reserved */
         $reserved = DB::transaction(function () use ($order, $walletApplied, $remainingAmount): RegistrationOrder {
             $locked = RegistrationOrder::query()->lockForUpdate()->findOrFail($order->id);
+            app(UnpaidCheckoutExpiryService::class)->assertAvailable($locked);
             if ($locked->payfast_handed_off_at) {
                 throw ValidationException::withMessages([
                     'payment' => 'This checkout has already been sent to PayFast and cannot be changed while payment is resolving.',
@@ -59,6 +62,10 @@ class RegistrationPaymentService
         float $payfastDue
     ): RegistrationOrder
     {
+        if (!RegistrationOrder::whereKey($order->id)->where('user_id', $payer->id)->exists()) {
+            throw ValidationException::withMessages(['payment' => 'Only the payer may submit this checkout to PayFast.']);
+        }
+        app(UnpaidCheckoutExpiryService::class)->assertAvailable($order);
         if (! is_finite($walletReserved) || ! is_finite($payfastDue)) {
             throw ValidationException::withMessages(['payment' => 'The checkout amount is invalid.']);
         }
@@ -69,6 +76,7 @@ class RegistrationPaymentService
             if ((int) $locked->user_id !== (int) $payer->id) {
                 throw ValidationException::withMessages(['payment' => 'Only the payer may submit this checkout to PayFast.']);
             }
+            app(UnpaidCheckoutExpiryService::class)->assertAvailable($locked);
             if ((int) $locked->pay_status === 1 || (bool) $locked->payfast_paid
                 || (bool) $locked->wallet_debited || $locked->status === 'cancelled') {
                 throw ValidationException::withMessages(['payment' => 'This checkout can no longer be sent to PayFast.']);
@@ -168,6 +176,55 @@ class RegistrationPaymentService
 
             return $cancelled->fresh('items');
         });
+    }
+
+    public function expireUnpaidCheckout(RegistrationOrder $order, ?\Illuminate\Support\Carbon $cutoff = null): bool
+    {
+        return DB::transaction(function () use ($order, $cutoff): bool {
+            $locked = RegistrationOrder::with('items')->lockForUpdate()->findOrFail($order->id);
+            if (!CheckoutExpiryPolicy::isExpired($locked, $cutoff) || $locked->payfast_handed_off_at
+                || $this->hasSettlementEvidence($locked)
+                || $locked->items->isEmpty()
+                || (int) round((float) $locked->items->sum('item_price') * 100) !== (int) round((float) $locked->total_fee * 100)
+                || \App\Models\RegistrationManualReceipt::where('order_id', $locked->id)->exists()
+                || \App\Models\TrialPaymentProof::where('order_id', $locked->id)->whereIn('status', ['pending', 'verified'])->exists()) return false;
+            $eventIds = [];
+            foreach ($locked->items as $item) {
+                $category = \App\Models\CategoryEvent::find($item->category_event_id);
+                $entry = \App\Models\CategoryEventRegistration::where('registration_id', $item->registration_id)
+                    ->where('category_event_id', $item->category_event_id)->lockForUpdate()->first();
+                $registration = Registration::find($item->registration_id);
+                $pendingMaster = $category?->event?->isMasters() && \App\Models\MastersInvitation::where('order_id', $locked->id)
+                    ->where('registration_id', $item->registration_id)->where('category_event_id', $item->category_event_id)
+                    ->where('player_id', $item->player_id)->where('status', 'accepted_pending_payment')->exists();
+                if (!$category || (!$entry && !$pendingMaster) || (int) $item->user_id !== (int) $locked->user_id
+                    || ($entry && (int) $entry->user_id !== (int) $locked->user_id)
+                    || !$registration?->players()->where('players.id', $item->player_id)->exists()
+                    || RegistrationOrderItems::where('registration_id', $item->registration_id)->where('category_event_id', $item->category_event_id)
+                        ->where('order_id', '!=', $locked->id)->exists()) return false;
+                $eventIds[] = (int) $category->event_id;
+            }
+            if (count(array_unique($eventIds)) > 1) return false;
+            foreach ([\App\Models\MastersInvitation::class, \App\Models\InterprovincialTrialInvitation::class] as $model) {
+                foreach ($model::where('order_id', $locked->id)->lockForUpdate()->get() as $invitation) {
+                    $matched = $locked->items->contains(fn ($item) => (int) $item->registration_id === (int) $invitation->registration_id
+                        && (int) $item->category_event_id === (int) $invitation->category_event_id
+                        && (int) $item->player_id === (int) $invitation->player_id);
+                    if (!$matched || !in_array((int) $invitation->event_id, $eventIds, true)
+                        || (int) $invitation->batch?->event_id !== (int) $invitation->event_id
+                        || $invitation->paid_at || $invitation->withdrawn_at || $invitation->status !== 'accepted_pending_payment') return false;
+                }
+            }
+            $payer = User::find($locked->user_id);
+            if (!$payer) return false;
+            $cancelled = $this->cancelPayment($locked);
+            app(\App\Services\Masters\MastersInvitationService::class)->resetCancelledPayment($cancelled, $payer);
+            app(\App\Services\InterprovincialTrials\InvitationService::class)->resetCancelledPayment($cancelled, $payer);
+            app(\App\Domain\Entries\Services\EntryService::class)->removeUnpaidCheckoutEntries($cancelled);
+            activity('registration-payment')->performedOn($cancelled)->withProperties(['payer_id' => $payer->id, 'timeout_minutes' => CheckoutExpiryPolicy::MINUTES])
+                ->log('Unpaid registration checkout expired; reservation released');
+            return true;
+        }, 3);
     }
 
     private function assertSafeEvidenceReference(string $evidenceReference): void
@@ -293,11 +350,13 @@ class RegistrationPaymentService
 
     public function finalizeWalletPayment(RegistrationOrder $order, array $context = []): RegistrationOrder
     {
+        app(UnpaidCheckoutExpiryService::class)->assertAvailable($order);
         return DB::transaction(function () use ($order, $context) {
             $locked = RegistrationOrder::query()
                 ->lockForUpdate()
                 ->with('items')
                 ->findOrFail($order->id);
+            app(UnpaidCheckoutExpiryService::class)->assertAvailable($locked);
 
             $total = round((float) $locked->items->sum('item_price'), 2);
             $reserved = round((float) $locked->wallet_reserved, 2);

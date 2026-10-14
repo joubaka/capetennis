@@ -58,6 +58,27 @@ class EntryService
      *
      * @throws \RuntimeException  if category is locked or eligibility fails
      */
+    public function removeUnpaidCheckoutEntries(\App\Models\RegistrationOrder $order): void
+    {
+        DB::transaction(function () use ($order): void {
+            $locked = \App\Models\RegistrationOrder::lockForUpdate()->findOrFail($order->id);
+            abort_unless($locked->status === 'cancelled' && !$locked->pay_status && !$locked->payfast_paid
+                && !$locked->wallet_debited && !$locked->payfast_handed_off_at && (float) $locked->wallet_reserved === 0.0, 422);
+            foreach ($locked->items as $item) {
+                $entry = CategoryEventRegistration::where('registration_id', $item->registration_id)
+                    ->where('category_event_id', $item->category_event_id)->lockForUpdate()->first();
+                if (!$entry) continue;
+                abort_unless((int) $entry->user_id === (int) $locked->user_id
+                    && (int) $item->user_id === (int) $locked->user_id
+                    && !$entry->payment_status_id && !$entry->pf_transaction_id && !$entry->wallet_transaction_id
+                    && !$entry->withdrawn_at && !$entry->refunded_at && $entry->admin_payment_status !== 'paid'
+                    && in_array($entry->refund_status, [null, '', 'not_refunded'], true)
+                    && !in_array($entry->status, ['withdrawn', 'withdrawn_pending_refund', 'withdrawn_refunded'], true), 422);
+                $entry->delete();
+            }
+        });
+    }
+
     public function addPlayerAsAdmin(
         CategoryEvent $categoryEvent,
         int $playerId,

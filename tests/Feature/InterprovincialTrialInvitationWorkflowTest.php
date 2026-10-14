@@ -1361,7 +1361,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $this->assertStringContainsString('interprovincial-trials/invitations/'.$invitation->id, $rendered);
         $this->assertStringContainsString('signature=', $rendered);
         $this->assertStringContainsString('expires='.$expectedExpiry, $rendered);
-        $this->assertStringContainsString('View event and respond', $rendered);
+        $this->assertStringContainsString('View event</a>', $rendered);
     }
 
     public function test_published_event_focuses_exact_nomination_and_shows_only_owner_status_actions(): void

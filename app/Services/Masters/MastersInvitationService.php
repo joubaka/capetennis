@@ -645,7 +645,9 @@ final class MastersInvitationService
 
             $this->recordActor($locked, $user, 'started Masters registration and PayFast payment');
             if ($locked->status === MastersInvitation::ACCEPTED_PENDING_PAYMENT && $locked->order_id) {
-                return RegistrationOrder::findOrFail($locked->order_id);
+                $existing = RegistrationOrder::findOrFail($locked->order_id);
+                if (app(\App\Domain\Payments\Services\RegistrationPaymentService::class)->expireUnpaidCheckout($existing)) $locked->refresh();
+                else return $existing;
             }
             if (! $locked->batch->event?->published || ! $locked->batch->event?->registrationIsOpen()) {
                 throw ValidationException::withMessages(['invitation' => 'Masters registration is currently closed.']);
@@ -1461,24 +1463,7 @@ final class MastersInvitationService
                 return;
             }
 
-            app(PaymentOrchestrator::class)->cancelPayment($order);
-            $this->softDeleteUnpaidDraftEntry($locked->registration_id, $locked->category_event_id);
-            $oldOrderId = $locked->order_id;
-            $oldRegistrationId = $locked->registration_id;
-            $locked->update([
-                'status' => MastersInvitation::INVITED,
-                'order_id' => null,
-                'registration_id' => null,
-                'accepted_at' => null,
-            ]);
-
-            activity('masters')->performedOn($locked)
-                ->withProperties([
-                    'invitation_id' => $locked->id,
-                    'player_id' => $locked->player_id,
-                    'order_id' => $oldOrderId,
-                    'registration_id' => $oldRegistrationId,
-                ])->log('expired unpaid Masters checkout and returned invitation to register');
+            app(\App\Domain\Payments\Services\RegistrationPaymentService::class)->expireUnpaidCheckout($order, $cutoff);
         });
     }
 

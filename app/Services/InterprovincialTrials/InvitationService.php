@@ -1118,9 +1118,10 @@ class InvitationService
 
     private function normalizeComposition(Event $event, array $composition): array
     {
+        $draft = app(RegistrationMessage::class)->draft($event);
         return [
-            'subject' => (string) ($composition['subject'] ?? 'Invitation to '.$event->name),
-            'body' => (string) ($composition['body'] ?? "You have been invited to register for {$event->name}.\n\nUse the secure registration link in this email to continue."),
+            'subject' => (string) ($composition['subject'] ?? $draft['subject']),
+            'body' => (string) ($composition['body'] ?? $draft['body']),
             'from_address' => (string) ($composition['from_address'] ?? config('mail.from.address')),
             'from_name' => (string) ($composition['from_name'] ?? config('mail.from.name')),
             'reply_to' => (string) ($composition['reply_to'] ?? config('mail.from.address')),

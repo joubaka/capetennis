@@ -1,4 +1,9 @@
 @extends('layouts.backend')
+@php
+  $paidManualEntryRequired = $event->isInterprovincialTrials() && (float) $event->entryFee > 0;
+  $manualPlayerActionLabel = $paidManualEntryRequired ? 'Add paid player' : 'Add player manually';
+  $manualPlayerSubmitLabel = $paidManualEntryRequired ? 'Add paid player' : 'Add player';
+@endphp
 
 @section('title', $event->name . ' – Entries')
 
@@ -367,7 +372,7 @@
             class="btn btn-outline-success btn-sm add-player-btn"
             data-category="{{ $categoryEvent->id }}"
             data-locked="0">
-      <i class="ti ti-plus me-1"></i>Register offline
+      <i class="ti ti-plus me-1"></i>{{ $manualPlayerActionLabel }}
     </button>
   @endif
 
@@ -481,7 +486,7 @@
                   class="dropdown-item text-warning withdraw-player-btn"
                   data-url="{{ route('admin.category.registration.withdraw', $reg) }}"
                   data-player="{{ trim(($player?->name ?? '') . ' ' . ($player?->surname ?? '')) }}">
-            <i class="ti ti-user-minus me-1"></i>Withdraw
+            <i class="ti ti-user-minus me-1"></i>Remove player
           </button>
         </li>
       @endif
@@ -555,7 +560,7 @@
       <input type="hidden" id="add_player_category_id">
 
       <div class="modal-header bg-primary text-white">
-        <h5 class="modal-title" id="addPlayerModalTitle">Register without online payment</h5>
+        <h5 class="modal-title" id="addPlayerModalTitle">{{ $manualPlayerActionLabel }}</h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
 
@@ -572,11 +577,12 @@
 
         <label class="form-label fw-semibold mt-3" for="offlineCollectionStatus">Payment collection</label>
         <select name="collection_status" id="offlineCollectionStatus" class="form-select" required>
-          <option value="unpaid">Unpaid</option>
-          <option value="paid_privately">Paid privately — note only (not reconciled)</option>
+          @unless($paidManualEntryRequired)<option value="unpaid">Unpaid</option>@endunless
+          <option value="paid_privately">Paid outside the app (cash/EFT)</option>
         </select>
         <div class="form-text">
-          Operational note only: no cash/EFT amount or provider payment is reconciled. The admin entry remains canonically eligible and visible in event Finances for Cape Tennis fee reporting, but this note is not financial evidence and creates no online payment or refund record.
+          @if($paidManualEntryRequired)Only use once payment has been collected outside the app.@else Choose “Paid outside the app” only if you have collected payment.@endif
+          This records a collection note; no payment amount or receipt is reconciled in the app. The player is added to the event, and Cape Tennis fees still appear in Finances. No online payment or refund is created.
         </div>
       </div>
 
@@ -586,7 +592,7 @@
         data-bs-dismiss="modal">
   Cancel
 </button>
-     <button type="submit" class="btn btn-primary" data-register-offline-submit>Register offline</button>
+     <button type="submit" class="btn btn-primary" data-register-offline-submit>{{ $manualPlayerSubmitLabel }}</button>
       </div>
     </form>
   </div>
@@ -909,7 +915,7 @@ document.addEventListener('click', function(e) {
                     newBtn.className = 'btn btn-outline-success btn-sm add-player-btn';
                     newBtn.dataset.category = card.dataset.categoryId;
                     newBtn.dataset.locked = '0';
-                    newBtn.innerHTML = '<i class="ti ti-plus me-1"></i>Register offline';
+                    newBtn.innerHTML = '<i class="ti ti-plus me-1"></i>' + @json($manualPlayerActionLabel);
                     btn.parentElement.appendChild(newBtn);
                 }
             }
@@ -1014,11 +1020,11 @@ document.addEventListener('click', function(e) {
     };
 
     Swal.fire({
-        title: 'Withdraw ' + playerName + '?',
-        text: 'This will withdraw the player from the event. This cannot be undone.',
+        title: 'Remove ' + playerName + '?',
+        text: 'Removes the player from active event participation. Entry and payment history are retained. Any refund is handled separately.',
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonText: 'Yes, withdraw',
+        confirmButtonText: 'Yes, remove',
         cancelButtonText: 'Cancel',
         confirmButtonColor: '#d33',
     }).then(result => {
@@ -1033,7 +1039,7 @@ document.addEventListener('click', function(e) {
         }
     })
     .then(r => {
-        if (!r.ok && r.status !== 200) throw new Error('Withdraw failed');
+        if (!r.ok && r.status !== 200) throw new Error('Could not remove player');
         // If JSON response, update DOM; if redirect (non-JSON), reload
         const ct = r.headers.get('content-type') || '';
         if (ct.includes('application/json')) {
@@ -1043,7 +1049,7 @@ document.addEventListener('click', function(e) {
                 if (row) {
                     row.classList.add('table-danger', 'text-muted');
                     // Update status badge cell
-                    const statusCell = row.querySelector('.col-status, td:nth-child(5)');
+                    const statusCell = row.querySelector('td[data-label="Status"]');
                     if (statusCell) {
                         statusCell.innerHTML = '<span class="badge bg-danger">Withdrawn</span>';
                     }
@@ -1052,10 +1058,14 @@ document.addEventListener('click', function(e) {
                     if (idxCell) idxCell.textContent = '—';
                     // Remove the withdraw button from the dropdown
                     btn.closest('li')?.remove();
+                    // Match the active-only list shown after a page refresh.
+                    // The canonical withdrawal retains the server-side history.
+                    row.remove();
                 }
                 updateWithdrawnCount(card, +1);
+                updateEntryCount(card, -1);
                 reindexRows(card);
-                toastr.success(playerName + ' has been withdrawn.');
+                toastr.success(playerName + ' removed from active entries.');
                 showDrawImpact(res.draw_impact, res.redirect);
             });
         } else {
@@ -1067,7 +1077,7 @@ document.addEventListener('click', function(e) {
             }
         }
     })
-    .catch(() => toastr.error('Withdraw failed. Please try again.'));
+    .catch(() => toastr.error('Could not remove player. Please try again.'));
     }); // end Swal.then
 });
 
@@ -1088,7 +1098,7 @@ document.addEventListener('click', function(e) {
 
     const categoryId = btn.dataset.category;
     document.getElementById('add_player_category_id').value = categoryId;
-    document.getElementById('offlineCollectionStatus').value = 'unpaid';
+    document.getElementById('offlineCollectionStatus').value = @json($paidManualEntryRequired ? 'paid_privately' : 'unpaid');
 
     const select = $('#addPlayerRegistration');
 
@@ -1118,7 +1128,7 @@ if (addForm) {
         if (submitButton?.disabled) return;
         if (submitButton) {
             submitButton.disabled = true;
-            submitButton.textContent = 'Registering…';
+            submitButton.textContent = @json($paidManualEntryRequired ? 'Adding paid player…' : 'Adding player…');
         }
 
         fetch(url, {
@@ -1137,7 +1147,7 @@ if (addForm) {
                     ? Object.values(res.errors).flat()[0]
                     : null;
 
-                throw new Error(firstValidationError || res.message || 'Offline registration failed.');
+                throw new Error(firstValidationError || res.message || 'Could not add player.');
             }
 
             return res;
@@ -1148,7 +1158,7 @@ if (addForm) {
                 return;
             }
             addPlayerModal.hide();
-            toastr.success('Player registered offline successfully.');
+            toastr.success('Player added successfully.');
             // Find the category card
             const categoryId = document.getElementById('add_player_category_id').value;
             const card = document.querySelector(`.category-card[data-category-id="${categoryId}"]`);
@@ -1161,11 +1171,11 @@ if (addForm) {
                 }
             }
         })
-        .catch(error => toastr.error(error.message || 'Offline registration failed. Please try again.'))
+        .catch(error => toastr.error(error.message || 'Could not add player. Please try again.'))
         .finally(() => {
             if (submitButton) {
                 submitButton.disabled = false;
-                submitButton.textContent = 'Register offline';
+                submitButton.textContent = @json($manualPlayerSubmitLabel);
             }
         });
     });

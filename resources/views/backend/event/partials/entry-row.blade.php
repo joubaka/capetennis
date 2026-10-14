@@ -72,7 +72,7 @@
                     class="dropdown-item text-warning withdraw-player-btn"
                     data-url="{{ route('admin.category.registration.withdraw', $reg) }}"
                     data-player="{{ trim(($player?->name ?? '') . ' ' . ($player?->surname ?? '')) }}">
-              <i class="ti ti-user-minus me-1"></i>Withdraw
+              <i class="ti ti-user-minus me-1"></i>Remove player
             </button>
           </li>
         @endif

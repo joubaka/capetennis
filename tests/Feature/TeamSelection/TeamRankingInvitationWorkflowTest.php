@@ -55,6 +55,37 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_expired_selected_team_checkout_keeps_response_context_and_links_paid_retry(): void
+    {
+        Queue::fake();
+        [$source, $team] = $this->selectionSource();
+        $import = app(TeamRankingImportService::class)->import($source, User::factory()->create());
+        $import->update(['status' => 'sent', 'response_deadline' => now()->addDay(), 'payment_deadline' => now()->addDays(2)]);
+        $invitation = $import->invitations()->where('team_id', $team->id)->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $payer = $invitation->player->user;
+        $selection = app(TeamSelectionInvitationService::class);
+        $payments = app(TeamPaymentService::class);
+        $selection->beginRegistration($source->event_id, $team->id, $invitation->player_id, $payer);
+        $original = $payments->ensureOrder($payer, $team, $invitation->player, $source->event, 123.45);
+        $selection->attachOrder($original);
+        $original->forceFill(['created_at' => now()->subMinutes(5)])->save();
+        $import->update(['response_deadline' => now()->subMinute(), 'payment_deadline' => now()->addDay()]);
+        $source->event->update(['signUp' => false]);
+        $selected = $selection->beginRegistration($source->event_id, $team->id, $invitation->player_id, $payer);
+        $replacement = $payments->ensureOrder($payer, $team, $invitation->player, $source->event, 123.45);
+        $selection->attachOrder($replacement);
+        $this->assertNotSame($original->id, $replacement->id);
+        $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $selected->status);
+        $this->assertSame($replacement->id, $invitation->fresh()->order_id);
+        $this->assertSame($payer->id, $replacement->user_id);
+        $this->assertTrue(in_array($original->id, data_get($invitation->fresh()->snapshot_json, 'expired_checkout_order_ids', []), true));
+        $replacement->forceFill(['pay_status' => true, 'payfast_paid' => true])->save();
+        $selection->confirmPaidOrder($replacement->fresh());
+        $this->assertSame(TeamSelectionInvitation::PAID_CONFIRMED, $invitation->fresh()->status);
+        $this->assertDatabaseCount('team_payment_orders', 2);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
     public function test_decline_link_requires_player_access_and_confirms_before_recording_response(): void
     {
         Queue::fake();

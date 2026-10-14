@@ -307,6 +307,8 @@ class TeamPaymentService
                 $existing = $orders->first(fn (TeamPaymentOrder $order): bool => $order->withdrawn_at === null && $order->refund_status !== 'completed'
                     && ! in_array((int) $order->id, $excludedHistoricalOrderIds, true));
 
+                if ($existing && $this->expireUnpaidCheckout($existing)) $existing = null;
+
                 if ($existing) {
                     if ($this->hasUnresolvedPayfastHandoff($existing)) {
                         if (\App\Models\TrialParticipation::query()->where('order_id', $existing->id)->exists()) {
@@ -397,11 +399,13 @@ class TeamPaymentService
 
     public function reservePayment(TeamPaymentOrder $order, float $walletApplied, float $remainingAmount): TeamPaymentOrder
     {
+        app(UnpaidCheckoutExpiryService::class)->assertAvailable($order);
         if (\App\Models\TrialParticipation::where('order_id', $order->id)->exists()) {
             throw ValidationException::withMessages(['payment' => 'Use the dedicated regional participation checkout.']);
         }
         return DB::transaction(function () use ($order, $walletApplied, $remainingAmount): TeamPaymentOrder {
             $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
+            app(UnpaidCheckoutExpiryService::class)->assertAvailable($locked);
             if ($locked->withdrawn_at !== null) {
                 throw new \RuntimeException('This team checkout has been superseded or withdrawn and cannot be changed.');
             }
@@ -421,6 +425,7 @@ class TeamPaymentService
         return FinanceMutationScope::run('payment_state_write', function () use ($participation, $payer) {
             $fee = round((float) \App\Models\TrialProgramme::where('event_id', $participation->event_id)->value('participation_fee'), 2);
             abort_unless($fee > 0, 422);
+            if ($participation->order_id && $this->expireUnpaidCheckout(TeamPaymentOrder::findOrFail($participation->order_id))) $participation->refresh();
             if ($participation->order_id) {
                 $order = TeamPaymentOrder::lockForUpdate()->findOrFail($participation->order_id);
                 abort_unless((int) $order->user_id === (int) $payer->id, 403, 'Only the existing payer may resume or cancel this checkout.');
@@ -479,6 +484,10 @@ class TeamPaymentService
 
     public function recordPayfastHandoff(TeamPaymentOrder $order, User $payer, float $amount): TeamPaymentOrder
     {
+        if (!TeamPaymentOrder::whereKey($order->id)->where('user_id', $payer->id)->exists()) {
+            throw ValidationException::withMessages(['payment' => 'Only the payer may submit this checkout to PayFast.']);
+        }
+        app(UnpaidCheckoutExpiryService::class)->assertAvailable($order);
         return DB::transaction(function () use ($order, $payer, $amount): TeamPaymentOrder {
             app(\App\Services\InterprovincialTrials\TrialParticipationService::class)->lockForOrder((int)$order->id);
             $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
@@ -486,6 +495,7 @@ class TeamPaymentService
             if ((int) $locked->user_id !== (int) $payer->id) {
                 throw ValidationException::withMessages(['payment' => 'Only the payer may submit this checkout to PayFast.']);
             }
+            app(UnpaidCheckoutExpiryService::class)->assertAvailable($locked);
             if ($locked->withdrawn_at !== null || $locked->pay_status || $locked->payfast_paid || $locked->wallet_debited) {
                 throw ValidationException::withMessages(['payment' => 'This checkout is no longer available for PayFast submission.']);
             }
@@ -616,9 +626,11 @@ class TeamPaymentService
 
     public function finalizePayment(TeamPaymentOrder $order, array $context = []): TeamPaymentOrder
     {
+        if (strtolower((string) ($context['payment_method'] ?? '')) === 'wallet') app(UnpaidCheckoutExpiryService::class)->assertAvailable($order);
         return DB::transaction(function () use ($order, $context): TeamPaymentOrder {
             app(\App\Services\InterprovincialTrials\TrialParticipationService::class)->lockForOrder((int)$order->id);
             $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
+            if (strtolower((string) ($context['payment_method'] ?? '')) === 'wallet') app(UnpaidCheckoutExpiryService::class)->assertAvailable($locked);
             if (\App\Models\TrialParticipation::where('order_id', $locked->id)->exists()
                 && (! array_key_exists('payfast_amount_received', $context) || ($context['payment_method'] ?? '') !== 'payfast' || (float) $locked->wallet_reserved !== 0.0 || empty($context['pf_payment_id']))) {
                 throw ValidationException::withMessages(['payment' => 'Regional participation requires a verified PayFast result or recorded manual receipt.']);
@@ -642,8 +654,10 @@ class TeamPaymentService
 
     public function finalizeWalletPayment(TeamPaymentOrder $order, array $context = []): TeamPaymentOrder
     {
+        app(UnpaidCheckoutExpiryService::class)->assertAvailable($order);
         return DB::transaction(function () use ($order, $context) {
             $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
+            app(UnpaidCheckoutExpiryService::class)->assertAvailable($locked);
             $total = round((float) $locked->total_amount, 2);
             $reserved = round((float) $locked->wallet_reserved, 2);
             $payfastDue = round((float) $locked->payfast_amount_due, 2);
@@ -769,6 +783,36 @@ class TeamPaymentService
         $cancelled = $this->paymentOrchestrator->cancelPayment($order);
 
         return $cancelled;
+    }
+
+    public function expireUnpaidCheckout(TeamPaymentOrder $order): bool
+    {
+        return DB::transaction(function () use ($order): bool {
+            app(\App\Services\InterprovincialTrials\TrialParticipationService::class)->lockForOrder((int) $order->id);
+            $locked = TeamPaymentOrder::lockForUpdate()->findOrFail($order->id);
+            if (!CheckoutExpiryPolicy::isExpired($locked) || !$this->isWhollyUnpaid($locked) || $locked->payfast_handed_off_at
+                || \App\Models\TrialParticipationReceipt::where('order_id', $locked->id)->exists()
+                || \App\Models\TrialParticipationProof::where('order_id', $locked->id)->whereIn('status', ['pending', 'verified'])->exists()) return false;
+            try { $this->assertUnpaidRosterCheckoutMayBeReset($locked); }
+            catch (ValidationException $exception) { return false; }
+            $team = $locked->team;
+            if (!$locked->team_id && !\App\Models\TrialParticipation::where('order_id', $locked->id)->exists()) return false;
+            if ($locked->team_id && (!$team || (int) $team->category?->event_id !== (int) $locked->event_id)) return false;
+            $slot = $locked->team_id ? \App\Models\TeamPlayer::withoutGlobalScopes()->where('team_id', $locked->team_id)
+                ->where('player_id', $locked->effective_player_id)->lockForUpdate()->first() : null;
+            if ($locked->team_id && (!$slot || $slot->pay_status)) return false;
+            $invitations = \App\Models\TeamSelectionInvitation::where('order_id', $locked->id)->lockForUpdate()->get();
+            if ($invitations->contains(fn ($invitation) => (int) $invitation->event_id !== (int) $locked->event_id
+                || (int) $invitation->team_id !== (int) $locked->team_id || (int) $invitation->player_id !== $locked->effective_player_id
+                || (int) $invitation->selectionImport?->event_id !== (int) $locked->event_id
+                || $invitation->status !== \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT)) return false;
+            $cancelled = $this->closeUnpaidLifecycle($locked, null);
+            app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->resetExpiredCheckout($cancelled);
+            app(\App\Services\InterprovincialTrials\TrialParticipationService::class)->resetExpiredCheckout($cancelled);
+            activity('team-payment')->performedOn($cancelled)->withProperties(['timeout_minutes' => CheckoutExpiryPolicy::MINUTES, 'payer_id' => $locked->user_id])
+                ->log('Unpaid team checkout expired; reservation released');
+            return true;
+        }, 3);
     }
 
     public function closeUnpaidLifecycle(TeamPaymentOrder $order, ?User $actor): TeamPaymentOrder

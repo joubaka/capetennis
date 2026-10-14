@@ -7,6 +7,18 @@ use Illuminate\Support\Facades\{DB,Storage};
 use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\ValidationException;
 class TrialParticipationService {
+    public function resetExpiredCheckout(TeamPaymentOrder $order): void {
+        $participation = TrialParticipation::where('order_id', $order->id)->lockForUpdate()->first();
+        if (!$participation) return;
+        abort_unless($order->withdrawn_at && !$order->pay_status && !$order->payfast_paid && !$order->wallet_debited
+            && !$order->payfast_handed_off_at && (float) $order->wallet_reserved === 0.0
+            && (int) $participation->payer_id === (int) $order->user_id && (int) $participation->event_id === (int) $order->event_id
+            && (int) $participation->player_id === (int) $order->player_id, 422);
+        $participation->update(['order_id' => null, 'payer_id' => null]);
+        activity('interprovincial-trials')->performedOn($participation)->withProperties(['expired_order_id' => $order->id])
+            ->log('Unpaid participation checkout expired; squad place retained');
+    }
+
     public function __construct(private TeamPaymentService $payments,private TrialProgrammeService $programmes) {}
     public function assertSlot(TrialSquadSlot $slot): void {
         $draft=$slot->draft;
