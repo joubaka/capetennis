@@ -11,6 +11,10 @@ final class TeamCommunicationService
 {
     public function player(TeamPaymentOrder $order, string $action, array $details = []): void
     {
+        if ($action === 'registration' && ! $order->fresh()?->event?->isInterprovincialTrials()) {
+            app(TeamRegistrationConfirmationService::class)->record($order);
+            return;
+        }
         $setting = match ($action) {
             'registration' => 'player_email_on_team_registration',
             'withdrawal' => 'player_email_on_team_withdrawal',
