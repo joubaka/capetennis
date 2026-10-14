@@ -170,9 +170,9 @@ return new class extends Migration
         if (! Schema::hasTable('teams')) {
             Schema::create('teams', function (Blueprint $table) {
                 $table->bigIncrements('id');
-                $table->unsignedBigInteger('user_id')->index();
+                $table->unsignedBigInteger('user_id')->nullable()->index();
                 $table->string('name');
-                $table->boolean('personal_team');
+                $table->boolean('personal_team')->default(false);
                 $table->timestamps();
             });
         }

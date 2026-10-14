@@ -4,13 +4,51 @@ namespace Tests\Feature;
 
 use App\Models\{Category, CategoryEvent, Event, EventAdmin, EventRegion, EventSelectionFinalization, EventSelectionReopening, EventSelectionRosterImport, EventType, NoProfileTeamPlayer, Player, Team, TeamPlayer, TeamRegion, User};
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\{DB, Mail, Queue};
+use Illuminate\Support\Facades\{DB, Mail, Queue, Schema};
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class EventSelectionRosterImportTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // The testing bootstrap conflates Jetstream personal teams with event teams.
+        // Exercise imports against event-team columns actually supported in production.
+        if (DB::connection()->getDriverName() === 'sqlite' && Schema::hasColumn('teams', 'user_id')) {
+            Schema::table('teams', function ($table) {
+                $table->dropIndex('teams_user_id_index');
+                $table->dropColumn(['user_id', 'personal_team']);
+            });
+        }
+    }
+
+    public function test_new_team_import_uses_event_team_schema_without_personal_ownership_columns_and_audits_actor(): void
+    {
+        if (DB::connection()->getDriverName() !== 'sqlite') {
+            $this->markTestSkipped('Schema absence regression uses isolated SQLite; MySQL tests retain their bootstrap columns without transaction-breaking DDL.');
+        }
+        $this->assertFalse(Schema::hasColumn('teams', 'user_id'));
+        $this->assertFalse(Schema::hasColumn('teams', 'personal_team'));
+        [$source, $target, $final, $region, $actor, $players] = $this->scenario();
+        $input = ['finalization_id' => $final->id, 'region_id' => $region->id, 'mapping' => ['10-boys' => 0], 'confirm_import' => 1];
+        $url = route('backend.selection-import.store', $target);
+        $this->post($url, $input)->assertRedirect()->assertSessionHasNoErrors();
+        $this->post($url, $input)->assertRedirect()->assertSessionHasNoErrors();
+        $team = Team::whereHas('category', fn ($query) => $query->where('event_id', $target->id))->sole();
+        $this->assertSame((int) $region->id, (int) $team->region_id);
+        $this->assertFalse((bool) $team->published);
+        $this->assertTrue($team->noProfile);
+        $this->assertSame([(string) $players[1]->id, (string) $players[0]->id], array_column(EventSelectionRosterImport::sole()->groups['10-boys']['players'], 'key'));
+        $this->assertSame((int) $actor->id, (int) EventSelectionRosterImport::sole()->imported_by);
+        $this->assertDatabaseHas('activity_log', ['log_name' => 'team-selection', 'causer_id' => $actor->id, 'subject_id' => $target->id, 'description' => 'imported finalized selected teams and reserves']);
+        $this->assertDatabaseCount('event_selection_roster_imports', 1);
+        $this->assertDatabaseCount('no_profile_team_players', 2);
+        $this->assertDatabaseCount('team_payment_orders', 0);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
 
     public function test_distinct_source_categories_with_same_group_import_and_reuse_unique_matching_destination_category(): void
     {
@@ -39,7 +77,7 @@ class EventSelectionRosterImportTest extends TestCase
         $category = CategoryEvent::factory()->create(['event_id' => $target->id, 'category_id' => Category::factory()->create(['name' => 'U10 Boys'])->id]);
         CategoryEvent::factory()->create(['event_id' => $target->id, 'category_id' => Category::factory()->create(['name' => 'u/10 Boys'])->id]);
         $team = new Team(['name' => 'Matching destination', 'category_event_id' => $category->id, 'region_id' => $region->id, 'published' => false, 'num_team_members' => 1, 'year' => 2026]);
-        $team->forceFill(['user_id' => $actor->id, 'personal_team' => false])->save();
+        $team->save();
         $input = ['finalization_id' => $final->id, 'region_id' => $region->id, 'mapping' => ['10-boys' => 0], 'confirm_import' => 1];
         $url = route('backend.selection-import.store', $target);
         $this->postJson($url, $input)->assertUnprocessable()->assertJsonValidationErrors('mapping');
@@ -278,7 +316,7 @@ class EventSelectionRosterImportTest extends TestCase
         $this->postJson($url, array_replace($input, ['mapping' => ['10-boys' => $sourceTeam->id]]))->assertUnprocessable();
         $category = CategoryEvent::create(['event_id' => $target->id, 'category_id' => $sourceTeam->category->category_id, 'entry_fee' => 0]);
         $occupied = new Team(['name' => 'Occupied', 'region_id' => $region->id, 'category_event_id' => $category->id, 'num_team_members' => 2, 'published' => false, 'year' => 2026]);
-        $occupied->forceFill(['user_id' => $actor->id, 'personal_team' => false])->save();
+        $occupied->save();
         TeamPlayer::create(['team_id' => $occupied->id, 'player_id' => $players[0]->id, 'rank' => 1, 'pay_status' => 1]);
         $this->postJson($url, array_replace($input, ['mapping' => ['10-boys' => $occupied->id]]))->assertUnprocessable();
         $this->assertDatabaseCount('event_selection_roster_imports', 0);
@@ -329,7 +367,7 @@ class EventSelectionRosterImportTest extends TestCase
         $sourceTeam->update(['noProfile' => true]);
         $member = NoProfileTeamPlayer::create(['team_id' => $sourceTeam->id, 'name' => 'Canonical', 'surname' => 'Imported', 'rank' => 1, 'player_profile' => $players[0]->id, 'pay_status' => 1]);
         $away = new Team(['name' => 'Away u/10 Boys', 'category_event_id' => $sourceTeam->category_event_id, 'region_id' => $region->id, 'published' => true, 'num_team_members' => 1, 'year' => 2026]);
-        $away->forceFill(['user_id' => $actor->id, 'personal_team' => false])->save();
+        $away->save();
         TeamPlayer::create(['team_id' => $away->id, 'player_id' => $players[1]->id, 'rank' => 1, 'pay_status' => 1]);
         $draw = \App\Models\Draw::factory()->create(['event_id' => $source->id, 'category_event_id' => $sourceTeam->category_event_id]);
         $fixture = \App\Models\TeamFixture::create(['draw_id' => $draw->id, 'fixture_type' => 1, 'numSets' => 3, 'round_nr' => 1, 'match_nr' => 1]);
@@ -364,7 +402,7 @@ class EventSelectionRosterImportTest extends TestCase
         $this->app->forgetInstance(\App\Services\PlayerEligibilityService::class);
         $otherCategory = CategoryEvent::factory()->create(['event_id' => $target->id]);
         $otherTeam = new Team(['name' => 'Other category team', 'category_event_id' => $otherCategory->id, 'region_id' => $region->id, 'published' => false, 'num_team_members' => 1, 'year' => 2026]);
-        $otherTeam->forceFill(['user_id' => $actor->id, 'personal_team' => false])->save();
+        $otherTeam->save();
         TeamPlayer::create(['team_id' => $otherTeam->id, 'player_id' => $players[0]->id, 'rank' => 1, 'pay_status' => 0]);
         $this->postJson($url, $input)->assertUnprocessable();
         $this->assertDatabaseCount('event_selection_roster_imports', 0);
@@ -467,7 +505,7 @@ class EventSelectionRosterImportTest extends TestCase
         $category = Category::factory()->create(['name' => 'u/12 Girls']);
         $categoryEvent = CategoryEvent::factory()->create(['event_id' => $source->id, 'category_id' => $category->id]);
         $team = new Team(['name' => 'Second u/12 Girls', 'category_event_id' => $categoryEvent->id, 'region_id' => $region->id, 'num_team_members' => 1, 'published' => true, 'year' => 2026]);
-        $team->forceFill(['user_id' => $actor->id, 'personal_team' => false])->save();
+        $team->save();
         $player = Player::factory()->create();
         $groups = $final->groups;
         $groups['12-girls'] = ['region_ids' => [$region->id], 'snapshot' => [['id' => $player->id, 'name' => $player->name.' '.$player->surname, 'source_team_ids' => [$team->id], 'source_participants' => [['team_id' => $team->id, 'type' => 'profile', 'id' => $player->id]]]],
@@ -490,7 +528,7 @@ class EventSelectionRosterImportTest extends TestCase
         $category = Category::factory()->create(['name' => 'u/10 Boys']);
         $categoryEvent = CategoryEvent::factory()->create(['event_id' => $source->id, 'category_id' => $category->id]);
         $team = new Team(['name' => 'Source u/10 Boys', 'category_event_id' => $categoryEvent->id, 'region_id' => $region->id, 'num_team_members' => 3, 'published' => true, 'year' => 2026]);
-        $team->forceFill(['user_id' => $actor->id, 'personal_team' => false])->save();
+        $team->save();
         $players = Player::factory()->count(3)->create();
         $snapshot = $players->map(fn ($player, $index) => ['id' => $player->id, 'name' => $player->name.' '.$player->surname, 'source_team_ids' => [$team->id], 'source_participants' => [['team_id' => $team->id, 'type' => 'profile', 'id' => $player->id]], 'draft_position' => $index + 1])->all();
         $final = EventSelectionFinalization::create(['event_id' => $source->id, 'finalized_by' => $actor->id, 'draft_versions' => ['10-boys' => 1], 'fingerprint' => str_repeat('a', 64), 'team_size' => 1, 'reserve_count' => 1, 'finalized_at' => now(),

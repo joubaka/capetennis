@@ -155,7 +155,7 @@ class EventSelectionRosterImportService
                     }
                     $team = new Team(['name' => trim(($region->short_name ?: $region->region_name).' '.$group['label']), 'year' => $target->start_date?->format('Y') ?: date('Y'),
                         'region_id' => $regionId, 'category_event_id' => $category->id, 'published' => false, 'noProfile' => true, 'num_team_members' => $group['main_count']]);
-                    $team->forceFill(['user_id' => $actor->id, 'personal_team' => false])->save();
+                    $team->save();
                 }
                 app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
                 $team->update(['num_team_members' => $group['main_count'], 'noProfile' => true]);
