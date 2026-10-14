@@ -225,8 +225,9 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
                     data-url="${APP_URL}/backend/event/${eventId}/region/${res.id}/teams/publish"
                     data-team-count="0"
                     data-unpublished-count="0"
+                    data-target-state="1"
                     disabled>
-              <i class="ti ti-eye me-1"></i> Publish All Teams
+              <i class="ti ti-eye me-1"></i> Publish all teams
             </button>
             </div>
           </section>
@@ -377,10 +378,14 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
       .attr('data-team-count', $teamButtons.length)
       .data('unpublished-count', unpublishedCount)
       .attr('data-unpublished-count', unpublishedCount)
-      .prop('disabled', $teamButtons.length === 0 || unpublishedCount === 0)
+      .data('target-state', unpublishedCount === 0 && $teamButtons.length > 0 ? 0 : 1)
+      .attr('data-target-state', unpublishedCount === 0 && $teamButtons.length > 0 ? 0 : 1)
+      .toggleClass('btn-warning', unpublishedCount === 0 && $teamButtons.length > 0)
+      .toggleClass('btn-success', unpublishedCount > 0 || $teamButtons.length === 0)
+      .prop('disabled', $teamButtons.length === 0)
       .html(unpublishedCount === 0 && $teamButtons.length > 0
-        ? '<i class="ti ti-check me-1"></i> All Teams Published'
-        : '<i class="ti ti-eye me-1"></i> Publish All Teams');
+        ? '<i class="ti ti-eye-off me-1"></i> Unpublish all teams'
+        : '<i class="ti ti-eye me-1"></i> Publish all teams');
   }
 
   $(document).on('click', '.publishTeam', function (e) {
@@ -431,31 +436,35 @@ window.importNoProfileUrl = window.importNoProfileUrl || null;
     const $btn = $(this);
     const $regionRow = $btn.closest('[data-region-row]');
     const unpublishedCount = Number($btn.data('unpublished-count')) || 0;
+    const teamCount = Number($btn.data('team-count')) || 0;
+    const targetState = Number($btn.data('target-state')) === 1;
+    const action = targetState ? 'Publish' : 'Unpublish';
 
-    if ($btn.prop('disabled') || unpublishedCount === 0) return;
+    if ($btn.prop('disabled') || teamCount === 0) return;
 
     Swal.fire({
-      title: 'Publish all teams in this region?',
-      text: `${unpublishedCount} unpublished ${unpublishedCount === 1 ? 'team' : 'teams'} will become visible.`,
+      title: `${action} all teams in this region?`,
+      text: targetState ? `${unpublishedCount} unpublished ${unpublishedCount === 1 ? 'team' : 'teams'} will become visible.` : `${teamCount} ${teamCount === 1 ? 'team' : 'teams'} will become private.`,
       icon: 'question',
       showCancelButton: true,
-      confirmButtonText: 'Publish all'
+      confirmButtonText: `${action} all`
     }).then(r => {
       if (!r.isConfirmed) return;
 
       $btn.prop('disabled', true);
 
-      $.post($btn.data('url'), { _token: CSRF })
+      $.post($btn.data('url'), { _token: CSRF, published: targetState ? 1 : 0 })
         .done(res => {
+          const teamIds = new Set((res.team_ids || []).map(String));
           $regionRow.find('.publishTeam').each(function () {
-            renderTeamPublicationButton($(this), true);
+            if (teamIds.has(String($(this).data('id')))) renderTeamPublicationButton($(this), !!res.state);
           });
           syncRegionPublicationButton($regionRow);
-          toastr.success(res.message || 'All teams in this region are published.');
+          toastr.success(res.message || `All teams in this region are ${targetState ? 'published' : 'unpublished'}.`);
         })
         .fail(xhr => {
           logXhrFail('Publish region teams failed', xhr);
-          toastr.error(xhr.responseJSON?.message || 'Could not publish the teams in this region.');
+          toastr.error(xhr.responseJSON?.message || 'Could not change team publication in this region.');
           syncRegionPublicationButton($regionRow);
         });
     });

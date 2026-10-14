@@ -498,6 +498,35 @@ class TeamControllerAuthorizationTest extends TestCase
         $this->assertDatabaseHas('teams', ['id' => $firstEventTeam->id, 'published' => 1]);
         $this->assertDatabaseHas('teams', ['id' => $alreadyPublishedTeam->id, 'published' => 1]);
         $this->assertDatabaseHas('teams', ['id' => $otherEventTeam->id, 'published' => 0]);
+        $url = route('backend.region.teams.publish', [$this->event, $region]);
+        $otherEventTeam->update(['published' => true]);
+        $this->postJson($url, ['published' => false])->assertOk()->assertJson(['state' => false, 'changed' => 2]);
+        $this->postJson($url, ['published' => false])->assertOk()->assertJson(['state' => false, 'changed' => 0]);
+        $this->assertDatabaseHas('teams', ['id' => $firstEventTeam->id, 'published' => 0]);
+        $this->assertDatabaseHas('teams', ['id' => $alreadyPublishedTeam->id, 'published' => 0]);
+        $this->assertDatabaseHas('teams', ['id' => $otherEventTeam->id, 'published' => 1]);
+        $this->assertDatabaseHas('events', ['id' => $this->event->id, 'results_published' => 0]);
+        $otherEventTeam->update(['published' => false]);
+        $this->postJson($url, ['published' => true])->assertOk()->assertJson(['state' => true, 'changed' => 2]);
+        $this->postJson($url, ['published' => true])->assertOk()->assertJson(['state' => true, 'changed' => 0]);
+        $this->assertDatabaseHas('teams', ['id' => $otherEventTeam->id, 'published' => 0]);
+    }
+
+    public function test_region_publication_rejects_unauthorized_foreign_region_and_invalid_state_without_changes(): void
+    {
+        $region = TeamRegion::create(['region_name' => 'Publication region']);
+        $this->event->regions()->attach($region);
+        $this->team->update(['region_id' => $region->id, 'published' => true]);
+        $url = route('backend.region.teams.publish', [$this->event, $region]);
+        $this->actingAs($this->otherAdmin)->postJson($url, ['published' => false])->assertForbidden();
+        $this->actingAs($this->admin)->postJson($url, ['published' => 'toggle'])->assertUnprocessable();
+        $foreign = TeamRegion::create(['region_name' => 'Foreign region']);
+        $this->postJson(route('backend.region.teams.publish', [$this->event, $foreign]), ['published' => false])->assertNotFound();
+        $this->assertDatabaseHas('teams', ['id' => $this->team->id, 'published' => true]);
+        $empty = TeamRegion::create(['region_name' => 'Empty region']);
+        $this->event->regions()->attach($empty);
+        $this->postJson(route('backend.region.teams.publish', [$this->event, $empty]), ['published' => false])
+            ->assertOk()->assertJson(['total' => 0, 'changed' => 0, 'state' => false, 'message' => 'No teams in this region yet.']);
     }
 
     public function test_region_short_name_can_be_saved_cleared_and_preserved_by_legacy_updates(): void

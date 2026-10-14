@@ -439,7 +439,7 @@ class TeamController extends Controller
     ]);
   }
 
-  public function publishRegionTeams(Event $event, TeamRegion $region)
+  public function publishRegionTeams(Request $request, Event $event, TeamRegion $region)
   {
     $this->authorize('event-draw.view', $event);
 
@@ -449,24 +449,30 @@ class TeamController extends Controller
       'This region does not belong to the event.'
     );
 
+    $validated = $request->validate(['published' => 'sometimes|required|boolean']);
+    // Older callers publish only; explicit target states make current retries safe.
+    $targetState = array_key_exists('published', $validated) ? (bool) $validated['published'] : true;
     $teams = Team::query()
       ->where('region_id', $region->id)
       ->whereHas('category', fn ($query) => $query->where('event_id', $event->id));
 
-    $total = (clone $teams)->count();
-    $published = (clone $teams)->where('published', false)->update(['published' => true]);
-    $message = match (true) {
-      $published === 1 => '1 team published.',
-      $published > 1 => "{$published} teams published.",
-      default => 'All teams in this region were already published.',
-    };
+    $teamIds = (clone $teams)->pluck('id');
+    $total = $teamIds->count();
+    $changed = (clone $teams)->where('published', ! $targetState)->update(['published' => $targetState]);
+    $status = $targetState ? 'published' : 'unpublished';
+    $message = $total === 0 ? 'No teams in this region yet.' : ($changed > 0
+      ? $changed.' '.str('team')->plural($changed).' '.$status.'.'
+      : 'All teams in this region were already '.$status.'.');
 
     return response()->json([
       'success' => true,
       'event_id' => $event->id,
       'region_id' => $region->id,
       'total' => $total,
-      'published' => $published,
+      'published' => $changed,
+      'changed' => $changed,
+      'state' => $targetState,
+      'team_ids' => $teamIds,
       'message' => $message,
     ]);
   }

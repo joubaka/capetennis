@@ -112,13 +112,14 @@
                     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
                       <div><h3 class="h6 mb-1">Team publication</h3><p class="small text-muted mb-0">Review the teams before publishing. Draws, schedules and results use separate publication controls.</p></div>
                     <button type="button"
-                            class="btn btn-sm btn-success publishRegionTeams"
+                            class="btn btn-sm {{ $regionTeamCount > 0 && $regionUnpublishedCount === 0 ? 'btn-warning' : 'btn-success' }} publishRegionTeams"
                             data-url="{{ route('backend.region.teams.publish', [$event, $region]) }}"
                             data-team-count="{{ $regionTeamCount }}"
                             data-unpublished-count="{{ $regionUnpublishedCount }}"
-                            @disabled($regionTeamCount === 0 || $regionUnpublishedCount === 0)>
-                      <i class="ti ti-eye me-1"></i>
-                      {{ $regionTeamCount > 0 && $regionUnpublishedCount === 0 ? 'All Teams Published' : 'Publish All Teams' }}
+                            data-target-state="{{ $regionTeamCount > 0 && $regionUnpublishedCount === 0 ? 0 : 1 }}"
+                            @disabled($regionTeamCount === 0)>
+                      <i class="ti {{ $regionTeamCount > 0 && $regionUnpublishedCount === 0 ? 'ti-eye-off' : 'ti-eye' }} me-1"></i>
+                      {{ $regionTeamCount > 0 && $regionUnpublishedCount === 0 ? 'Unpublish all teams' : 'Publish all teams' }}
                     </button>
                     </div>
                   </section>
