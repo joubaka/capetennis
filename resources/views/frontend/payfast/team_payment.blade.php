@@ -45,6 +45,16 @@
             </li>
           </ul>
 
+          @php
+            $region = $team->regions;
+          @endphp
+          @if(!$autoSubmitPayfast && $event->published && $team->published && $region?->clothingOrdersAvailable())
+          <section class="border rounded p-3 mt-3" aria-label="Optional team clothing">
+            <h6>Clothing (optional)</h6>
+            <p class="small mb-1">Order clothing for this player using the team catalogue. Clothing has its own checkout and payment; your registration total stays the same.</p>
+            @include('frontend.event.partials.player-clothing-controls', ['playerName' => trim($player->name.' '.$player->surname)])
+          </section>
+          @endif
           <div class="row g-3 mb-3">
             <div class="col-md-6">
               <div class="border rounded p-3 h-100">
@@ -181,4 +191,9 @@
     </div>
   </div>
 </div>
+@include('frontend.event.partials._clothing_order_modal')
+@endsection
+
+@section('page-script')
+@include('frontend.event.partials.player-clothing-script')
 @endsection

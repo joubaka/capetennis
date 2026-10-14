@@ -105,6 +105,8 @@
 
               </div>
             </div>
+            @include('frontend.event.partials.player-clothing-controls', ['player' => $hasLinkedProfile && (int) $teamSlot?->player_id === (int) $play->player_profile ? $play->profile : null])
+            @if(!$hasLinkedProfile && $region->clothingOrdersAvailable())<p class="small text-muted mt-2 mb-0">Link a player profile before ordering clothing.</p>@endif
           </li>
 
         @empty
@@ -115,7 +117,7 @@
         @endforelse
 
       </ul>
-      @include('frontend.event.partials.selected-team-reserves')
+
     </div>
     @endif
 

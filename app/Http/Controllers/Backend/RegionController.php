@@ -107,7 +107,7 @@ class RegionController extends Controller
       ->get();
 
     $clothingItems->each(function (ClothingItemType $item) use ($prices): void {
-      $item->setAttribute('customer_price', $prices->totals((float) $item->price)['total']);
+      $item->setAttribute('customer_price', $item->final_amount !== null ? round((float) $item->final_amount, 2) : $prices->totals((float) $item->price)['total']);
     });
 
     return view('frontend.clothing.partials.items', [

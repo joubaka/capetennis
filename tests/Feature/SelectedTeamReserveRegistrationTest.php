@@ -26,7 +26,7 @@ class SelectedTeamReserveRegistrationTest extends TestCase
         app(SelectedTeamRosterStatus::class)->assertMainPlayer($event, $team, $slots[0]->player_profile);
     }
 
-    public function test_profile_only_roster_displays_main_ten_reserve_two_and_keeps_paid_reserve_withdrawal(): void
+    public function test_profile_only_public_roster_hides_reserves_and_keeps_paid_reserve_history(): void
     {
         [$event, $team, $slots, $actor] = $this->scenario();
         \Illuminate\Support\Facades\DB::table('no_profile_team_players')->delete();
@@ -39,9 +39,8 @@ class SelectedTeamReserveRegistrationTest extends TestCase
         $html = view('frontend.event.partials.profile-team', ['event' => $event, 'team' => $team, 'region' => $region, 'canWithdraw' => true,
             'myPaidTeamOrdersByPlayer' => collect([$team->id.'-'.$slots[10]->player_profile => $order])])->render();
         $this->assertSame(10, preg_match_all('/>Register\s*</', $html));
-        $this->assertStringContainsString('Reserves (2)', $html);
-        $this->assertStringContainsString('>Registered', $html);
-        $this->assertStringContainsString(route('team.player.withdraw', [$team->id, $slots[10]->player_profile, $event->id]), $html);
+        $this->assertStringNotContainsString('Reserves (2)', $html);
+        $this->assertStringNotContainsString(route('team.player.withdraw', [$team->id, $slots[10]->player_profile, $event->id]), $html);
         $this->assertDatabaseHas('team_payment_orders', ['id' => $order->id, 'pay_status' => true]);
         if (getenv('CT_SELECTED_RESERVE_BROWSER_FIXTURE')) file_put_contents(storage_path('app/testing/selected-reserve-profile-only.html'), $html);
         TeamPlayer::where('team_id', $team->id)->where('player_id', $slots[0]->player_profile)->update(['rank' => 20]);
@@ -117,7 +116,7 @@ class SelectedTeamReserveRegistrationTest extends TestCase
         $this->assertDatabaseCount('team_payment_orders', 0);
     }
 
-    public function test_public_roster_separates_ten_main_players_and_two_reserves_for_both_presentations(): void
+    public function test_public_roster_shows_only_main_players_for_both_presentations(): void
     {
         [$event, $team, $slots, $actor] = $this->scenario();
         app(EventPageDataService::class)->prepareRegions($event);
@@ -125,10 +124,10 @@ class SelectedTeamReserveRegistrationTest extends TestCase
         foreach (['no-profile-team', 'profile-team'] as $partial) {
             $team->noProfile = $partial === 'no-profile-team';
             $html = view('frontend.event.partials.'.$partial, compact('event', 'team', 'region'))->render();
-            $this->assertStringContainsString('Reserves (2)', $html);
+            $this->assertStringNotContainsString('Reserves (2)', $html);
             $this->assertSame(10, preg_match_all('/>Register\s*</', $html));
-            $this->assertStringContainsString('Reserve11', $html);
-            $this->assertStringContainsString('Reserve12', $html);
+            $this->assertStringNotContainsString('Reserve11', $html);
+            $this->assertStringNotContainsString('Reserve12', $html);
             $this->assertStringNotContainsString(route('team.payment.payfast', [$team->id, $slots[10]->player_profile, $event->id]), $html);
             if (getenv('CT_SELECTED_RESERVE_BROWSER_FIXTURE')) file_put_contents(storage_path('app/testing/selected-reserve-'.$partial.'.html'), $html);
         }

@@ -346,7 +346,7 @@ class ClothingOrderIntegrityTest extends TestCase
             'name' => 'Clothing team event', 'type' => 2,
             'code' => 'cloth-order-'.substr((string) str()->uuid(), 0, 8), 'created_at' => now(), 'updated_at' => now(),
         ]);
-        $event = Event::factory()->create(['eventType' => $typeId]);
+        $event = Event::factory()->create(['eventType' => $typeId, 'start_date' => now()->addMonth(), 'deadline' => 2, 'signUp' => true]);
         $region = TeamRegion::create(['region_name' => 'West Coast 2026', 'clothing_order' => true]);
         DB::table('event_regions')->insert(['event_id' => $event->id, 'region_id' => $region->id, 'ordering' => 1]);
         $categoryEvent = CategoryEvent::factory()->create(['event_id' => $event->id]);

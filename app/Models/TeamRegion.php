@@ -108,6 +108,15 @@ class TeamRegion extends Model
       : $this->clothingItems()->exists();
   }
 
+  /** An open online catalogue needs at least one selectable item and size. */
+  public function clothingOrdersAvailable(): bool
+  {
+    if (! $this->usesOnlineClothingOrders() || ! $this->isClothingEnabled()) return false;
+    return $this->relationLoaded('clothingItems') && $this->clothingItems->every(fn ($item) => $item->relationLoaded('sizes'))
+      ? $this->clothingItems->contains(fn ($item) => (float) $item->price > 0 && $item->sizes->isNotEmpty())
+      : $this->clothingItems()->where('price', '>', 0)->whereHas('sizes')->exists();
+  }
+
   /**
    * Combined accessor — returns true if either order or admin mode is active.
    *

@@ -1,0 +1,47 @@
+<div id="clothingPricingSettings" class="d-none" data-payfast-percentage="3.2" data-payfast-flat="2" data-payfast-vat="14"></div>
+  <div class="card mb-2 clothing-item"
+       data-item="1"
+       data-price="200.00" data-customer-price="275.00">
+
+    <div class="card-body py-2">
+
+      <div class="form-check">
+        <input class="form-check-input item-toggle"
+               type="checkbox"
+               id="item-1">
+
+        <label class="form-check-label fw-semibold"
+               for="item-1">
+          Shirt
+          <span class="text-muted ms-2">
+            (R275.00)
+          </span>
+        </label>
+      </div>
+
+      <div class="row g-2 mt-2 item-options d-none">
+        <div class="col-md-6">
+          <label class="form-label small">Size <span class="text-danger">(required)</span></label>
+          <select class="form-select form-select-sm size-select">
+            <option value="">Select size to calculate price</option>
+                          <option value="1">M</option>
+                      </select>
+          <div class="form-text">The item total remains R0.00 until a size is selected.</div>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label small">Qty</label>
+          <input type="number"
+                 min="1"
+                 value="1"
+                 class="form-control form-control-sm qty-input">
+        </div>
+
+        <div class="col-md-3 text-end align-self-end">
+          <div class="small text-muted">Item total</div>
+          <strong class="item-total">R0.00</strong>
+        </div>
+      </div>
+
+    </div>
+  </div>

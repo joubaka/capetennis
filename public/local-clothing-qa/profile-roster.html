@@ -1,0 +1,2164 @@
+<!DOCTYPE html>
+
+<html lang="en"
+      class="light-style  layout-menu-fixed   "
+      dir="ltr"
+      data-theme="theme-default"
+      data-assets-path="http://localhost/ct/public/assets/"
+      data-base-url="http://localhost"
+      data-framework="laravel"
+      data-template="horizontal-menu-theme-default-light">
+
+<head>
+
+  <meta charset="utf-8" />
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0" />
+
+  <title>
+    Event Details |
+    Cape Tennis -
+     Cape Tennis
+  </title>
+
+  <meta name="description" content="" />
+  <meta name="keywords" content="">
+
+  <!-- CSRF -->
+  <meta name="csrf-token" content="oKNzks0nphhGl6La8pvTlVc8zeM9K0ZX791b6IGM">
+
+  <!-- Canonical SEO -->
+  <link rel="canonical" href="https://capetennis.co.za">
+
+  <!-- Favicon -->
+      <link rel="icon" type="image/png" sizes="192x192" href="http://localhost/ct/public/assets/img/pwa/cape-tennis-app-192.png" />
+  <link rel="manifest" href="http://localhost/ct/public/manifest.webmanifest" />
+  <link rel="apple-touch-icon" sizes="192x192" href="http://localhost/ct/public/assets/img/pwa/cape-tennis-app-192.png" />
+  <meta name="theme-color" content="#12358f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Cape Tennis" />
+
+  <!-- Styles -->
+  <!-- BEGIN: Theme CSS-->
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap" rel="stylesheet">
+
+
+<link rel="stylesheet" href="http://localhost/ct/public/assets/vendor/fonts/fontawesome.css?id=67b86ddfdbff16af8d3e7d4ab7587161" />
+<link rel="stylesheet" href="http://localhost/ct/public/assets/vendor/fonts/tabler-icons.css?id=2453a120e527a28a5332ba0632c09bb3" />
+<link rel="stylesheet" href="http://localhost/ct/public/assets/vendor/fonts/flag-icons.css?id=a09f79d31e1c94c4f7c77f77774ffa08" />
+
+
+<style>
+  @font-face {
+    font-family: "tabler-icons";
+    font-style: normal;
+    font-weight: 400;
+    font-display: block;
+    src: url("/assets/vendor/fonts/tabler/tabler-icons.woff2?v=20260910") format("woff2"),
+         url("/assets/vendor/fonts/tabler/tabler-icons.woff?v=20260910") format("woff");
+  }
+</style>
+
+
+<style>
+  .ti-users-group::before { content: "\ebf2"; }
+  .ti-user-edit::before, .ti-user-cog::before { content: "\ea98"; }
+  .ti-check-circle::before { content: "\ea67"; }
+  .ti-credit-card-refund::before, .ti-pay::before { content: "\ea84"; }
+  .ti-calendar-meet::before, .ti-calendar-event::before { content: "\ea53"; }
+  .ti-megaphone::before { content: "\ed61"; }
+  .ti-sliders::before { content: "\ea03"; }
+  .ti-list-ordered::before, .ti-insert::before { content: "\eb6b"; }
+  .ti-currency-rand::before { content: "\eb84"; }
+  .ti-file-type-pdf::before { content: "\eb67"; }
+  .ti-reload::before { content: "\eb56"; }
+  .ti-shield-search::before { content: "\eb22"; }
+  .ti-user-heart::before { content: "\eb4d"; }
+  .ti-target-arrow::before { content: "\eb35"; }
+  .ti-device-mobile-down::before { content: "\ea8a"; }
+  .ti-users-minus::before { content: "\ebf2"; }
+  .ti-plus-circle::before { content: "\eb4b"; }
+  .ti-trending-::before { content: "\eb43"; }
+
+  /* DataTables must not inherit an icon font for its sort indicators. */
+  table.dataTable thead th.sorting::after,
+  table.dataTable thead th.sorting_asc::after,
+  table.dataTable thead th.sorting_desc::after { font-family: Arial, sans-serif; }
+</style>
+
+<!-- Core CSS -->
+<link rel="stylesheet" href="http://localhost/ct/public/assets/vendor/css/rtl/core.css?id=f77da395e19c80ff3fdf75ca7bfe7db8" class="" />
+<link rel="stylesheet" href="http://localhost/ct/public/assets/vendor/css/rtl/theme-default.css?id=b022079154a42c9e711dc3f18411b0ec" class="" />
+
+<link rel="stylesheet" href="http://localhost/ct/public/assets/css/demo.css" />
+
+
+<link rel="stylesheet" href="http://localhost/ct/public/assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.css?id=0515f570433c3c071d76a93a194d8966" />
+<link rel="stylesheet" href="http://localhost/ct/public/assets/vendor/libs/node-waves/node-waves.css?id=aa72fb97dfa8e932ba88c8a3c04641bc" />
+<link rel="stylesheet" href="http://localhost/ct/public/assets/vendor/libs/typeahead-js/typeahead.css?id=16a78ddefa148df10b78cf41a4fa0629" />
+<link rel="stylesheet" href="http://localhost/ct/public/assets/vendor/libs/toastr/toastr.css" />
+
+<!-- Vendor Styles -->
+<link rel="stylesheet" href="http://localhost/ct/public/assets/vendor/libs/datatables-bs5/datatables.bootstrap5.css">
+<link rel="stylesheet" href="http://localhost/ct/public/assets/vendor/libs/datatables-responsive-bs5/responsive.bootstrap5.css">
+<link rel="stylesheet" href="http://localhost/ct/public/assets/vendor/libs/datatables-checkboxes-jquery/datatables.checkboxes.css">
+<link rel="stylesheet" href="http://localhost/ct/public/assets/vendor/libs/quill/typography.css">
+<link rel="stylesheet" href="http://localhost/ct/public/assets/vendor/libs/quill/katex.css">
+<link rel="stylesheet" href="http://localhost/ct/public/assets/vendor/libs/quill/editor.css">
+<link rel="stylesheet" href="http://localhost/ct/public/assets/vendor/libs/spinkit/spinkit.css">
+<link rel="stylesheet" href="http://localhost/ct/public/assets/vendor/libs/select2/select2.css">
+<link rel="stylesheet" href="http://localhost/ct/public/assets/vendor/libs/animate-css/animate.css">
+<link rel="stylesheet" href="http://localhost/ct/public/assets/vendor/libs/sweetalert2/sweetalert2.css">
+
+
+<!-- Page Styles -->
+<link rel="stylesheet" href="http://localhost/ct/public/assets/vendor/css/pages/page-profile.css">
+<style>
+  .public-event-view .event-section-card {
+    border: 1px solid #e1e8ee;
+    box-shadow: 0 .25rem 1rem rgba(23, 46, 69, .06);
+  }
+
+  .user-profile-header-banner img {
+    height: 132px;
+    object-position: center 44%;
+  }
+
+  .user-profile-header { margin-top: -2.5rem; }
+
+  .user-profile-header h4 {
+    color: #172e45;
+    font-size: clamp(1.25rem, 2.2vw, 1.65rem);
+    font-weight: 650;
+  }
+
+  .public-event-view .event-section-heading {
+    display: flex;
+    align-items: flex-start;
+    gap: .75rem;
+  }
+
+  .public-event-view .event-section-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: .65rem;
+    background: rgba(20, 121, 110, .12);
+    color: #14796e;
+  }
+
+  .public-event-view .event-section-icon-svg {
+    fill: none;
+    height: 1.35rem;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
+    width: 1.35rem;
+  }
+
+  .public-event-view .event-information-content {
+    color: #4b465c;
+    font-size: .975rem;
+    line-height: 1.75;
+    overflow-wrap: anywhere;
+  }
+
+  .public-event-view .event-information-content > :last-child {
+    margin-bottom: 0;
+  }
+
+  .public-event-view .event-information-content p {
+    margin-bottom: 1rem;
+  }
+
+  .public-event-view .event-information-content h1,
+  .public-event-view .event-information-content h2,
+  .public-event-view .event-information-content h3,
+  .public-event-view .event-information-content h4,
+  .public-event-view .event-information-content h5,
+  .public-event-view .event-information-content h6 {
+    margin-top: 1.75rem;
+    margin-bottom: .65rem;
+    color: #2f2b3d;
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+
+  .public-event-view .event-information-content ul,
+  .public-event-view .event-information-content ol {
+    padding-left: 1.3rem;
+    margin-bottom: 1rem;
+  }
+
+  .public-event-view .event-information-content li + li {
+    margin-top: .35rem;
+  }
+
+  .public-event-view .event-document {
+    padding: .75rem;
+    border: 1px solid rgba(75, 70, 92, .12);
+    border-radius: .5rem;
+  }
+
+  .public-event-view .event-category {
+    border-color: #e1e8ee !important;
+    overflow: hidden;
+  }
+
+  .public-event-view .event-category .list-group-item {
+    gap: .75rem;
+    padding-inline: .75rem;
+  }
+
+  .individual-event-view .event-draws-card {
+    border: 1px solid #dbe5ec;
+    box-shadow: 0 .35rem 1.25rem rgba(23, 46, 69, .08);
+    overflow: hidden;
+  }
+  .individual-event-view .event-draws-header {
+    align-items: flex-start;
+    background: linear-gradient(135deg, rgba(20, 121, 110, .09), rgba(60, 105, 180, .06));
+    border-bottom: 1px solid #e2eaf0;
+    display: flex;
+    gap: .75rem;
+  }
+  .individual-event-view .event-draws-header-icon {
+    align-items: center;
+    background: #14796e;
+    border-radius: .65rem;
+    color: #fff;
+    display: inline-flex;
+    flex: 0 0 auto;
+    font-size: 1.2rem;
+    height: 2.5rem;
+    justify-content: center;
+    width: 2.5rem;
+  }
+  .individual-event-view .event-draw-grid { display: grid; gap: .8rem; }
+  .individual-event-view .event-draw-card {
+    background: linear-gradient(180deg, #fff 0%, #fbfcfd 100%);
+    border: 1px solid #dbe5ec;
+    border-left: 3px solid #14796e;
+    border-radius: .75rem;
+    display: grid;
+    gap: .9rem;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 1rem;
+    transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+  }
+  .individual-event-view .event-draw-card:hover {
+    border-color: #a9c9c4;
+    box-shadow: 0 .4rem 1rem rgba(23, 46, 69, .08);
+    transform: translateY(-1px);
+  }
+  .individual-event-view .event-draw-card-heading {
+    align-items: flex-start;
+    display: flex;
+    gap: .65rem;
+    justify-content: space-between;
+  }
+  .individual-event-view .event-draw-name {
+    color: #172e45;
+    font-size: 1rem;
+    font-weight: 750;
+    line-height: 1.3;
+    min-width: 0;
+  }
+  .individual-event-view .event-draw-state {
+    background: rgba(20, 121, 110, .1);
+    border-radius: 999px;
+    color: #11665d;
+    flex: 0 0 auto;
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .02em;
+    padding: .25rem .5rem;
+    text-transform: uppercase;
+  }
+  .individual-event-view .event-draw-meta {
+    color: #65788b;
+    display: grid;
+    font-size: .82rem;
+    gap: .45rem;
+    margin-top: .55rem;
+  }
+  .individual-event-view .event-draw-meta > span {
+    align-items: start;
+    display: grid;
+    gap: .45rem;
+    grid-template-columns: 1rem minmax(0, 1fr);
+    line-height: 1.35;
+  }
+  .individual-event-view .event-draw-meta > span > i {
+    color: #14796e;
+    font-size: 1rem;
+    margin-top: .05rem;
+  }
+  .individual-event-view .event-draw-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    justify-content: flex-start;
+  }
+  .individual-event-view .event-draw-actions .btn {
+    align-items: center;
+    display: inline-flex;
+    flex: 1 1 6rem;
+    justify-content: center;
+    min-height: 2.35rem;
+  }
+  .individual-event-view .event-draw-actions .event-draw-score {
+    flex: 0 0 auto;
+    padding-inline: .7rem;
+  }
+  #event-draws-match-times { scroll-margin-top: 8rem; }
+  #event-draws-match-times:focus,
+  #event-draws-match-times:target {
+    outline: 3px solid rgba(20, 121, 110, .28);
+    outline-offset: 2px;
+  }
+
+  @media (max-width: 767.98px) {
+    .public-event-view .card-body,
+    .public-event-view .event-card-padding {
+      padding: 1.1rem !important;
+    }
+
+    .public-event-view .event-information-content {
+      font-size: .925rem;
+      line-height: 1.65;
+    }
+
+    .user-profile-header-banner img { height: 88px; }
+    .user-profile-header { margin-top: -2.25rem; }
+    .user-profile-header .user-profile-img { height: 76px; max-width: 76px; width: 76px; }
+    .user-profile-header .flex-grow-1 { margin-top: .75rem !important; }
+    .user-profile-header .mx-4 { margin-inline: 1.1rem !important; }
+    .public-event-view .event-category .list-group-item { align-items: flex-start !important; flex-direction: column; }
+    .individual-event-view .event-draw-card { padding: .9rem; }
+    .individual-event-view .event-draw-actions .btn:not(.event-draw-score) { flex-basis: 100%; }
+  }
+
+  @media (max-width: 991.98px) {
+    .user-profile-header .user-profile-img {
+      width: 88px;
+    }
+  }
+
+  .user-profile-header .user-profile-img {
+    height: 120px;
+    max-width: 120px;
+    object-fit: contain;
+  }
+
+  @media (max-width: 991.98px) {
+    .user-profile-header .user-profile-img {
+      height: 88px;
+      max-width: 88px;
+    }
+  }
+</style>
+
+
+
+
+
+<link rel="stylesheet" href="http://localhost/ct/public/assets/css/result-outcomes.css?v=20261009">
+  <link rel="stylesheet" href="http://localhost/ct/public/css/tennis-bracket.css?v=1791531879">
+  <script defer src="http://localhost/ct/public/js/tennis-bracket.js?v=1788444383"></script>
+      <link rel="stylesheet" href="http://localhost/ct/public/css/frontend-workspace.css?v=1789145279">
+  
+  <style>
+    /* Keep the circular brand mark fully visible in navbar, menu and auth headers. */
+    .app-brand-logo {
+      align-items: center;
+      background: transparent !important;
+      display: inline-flex;
+      flex: 0 0 40px;
+      height: 40px;
+      justify-content: center;
+      overflow: visible;
+      width: 40px;
+    }
+    .app-brand-logo img {
+      background: transparent !important;
+      display: block;
+      height: 40px;
+      max-height: 40px;
+      max-width: 40px;
+      object-fit: contain;
+      width: 40px;
+    }
+
+    /* Vuexy clips the desktop brand to its line-height by default. */
+    @media (min-width: 1200px) {
+      #layout-navbar .navbar-brand.app-brand {
+        align-self: stretch;
+        min-height: 56px;
+        overflow: visible;
+      }
+      #layout-navbar .navbar-brand .app-brand-link {
+        min-height: 56px;
+        overflow: visible;
+      }
+      #layout-navbar .navbar-brand .app-brand-logo {
+        flex-basis: 44px;
+        height: 44px;
+        overflow: visible;
+        width: 44px;
+      }
+      #layout-navbar .navbar-brand .app-brand-logo img {
+        height: 44px;
+        max-height: 44px;
+        max-width: 44px;
+        object-fit: contain;
+        width: 44px;
+      }
+    }
+
+    @media (max-width: 575.98px) {
+      .app-brand-logo {
+        flex-basis: 36px;
+        height: 36px;
+        width: 36px;
+      }
+      .app-brand-logo img {
+        height: 36px;
+        max-height: 36px;
+        max-width: 36px;
+        width: 36px;
+      }
+
+      #layout-menu .app-brand-logo {
+        flex-basis: 44px;
+        height: 44px;
+        width: 44px;
+      }
+      #layout-menu .app-brand-logo img {
+        height: 42px;
+        max-height: 42px;
+        max-width: 42px;
+        object-fit: contain;
+        width: 42px;
+      }
+    }
+  </style>
+
+  <!-- Vuexy core helpers / config -->
+  <!-- laravel style -->
+<script src="http://localhost/ct/public/assets/vendor/js/helpers.js"></script>
+<!-- beautify ignore:start -->
+
+  <!--? Config:  Mandatory theme config file contain global vars & default theme options, Set your preferred theme option in this file.  -->
+  <script src="http://localhost/ct/public/assets/js/config.js"></script>
+
+</head>
+
+<body class="ct-frontend">
+
+  <!-- Layout Content -->
+  <div class="layout-wrapper layout-navbar-full layout-horizontal layout-without-menu">
+  <div class="layout-container">
+
+    <!-- BEGIN: Navbar-->
+        <style>
+@media (max-width: 1199.98px) {
+  .mobile-horizontal-menu-toggle {
+    align-items: center;
+    background: #fff;
+    border: 1px solid rgba(75, 70, 92, .18);
+    border-radius: .5rem;
+    color: #5d596c;
+    display: inline-flex !important;
+    flex: 0 0 2.5rem;
+    font-size: 1.35rem;
+    height: 2.5rem;
+    justify-content: center;
+    margin-right: .75rem;
+    order: -1;
+    padding: .35rem;
+    position: relative;
+    width: 2.5rem;
+    z-index: 1101;
+  }
+
+  .mobile-horizontal-menu-toggle svg {
+    display: block;
+    height: 1.35rem;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-width: 2;
+    width: 1.35rem;
+  }
+
+  .mobile-menu-refund-badge {
+    align-items: center;
+    background: #28c76f;
+    border: 2px solid #fff;
+    border-radius: 999px;
+    color: #fff;
+    display: flex;
+    font-size: .65rem;
+    font-weight: 700;
+    height: 1.25rem;
+    justify-content: center;
+    min-width: 1.25rem;
+    padding: 0 .2rem;
+    position: absolute;
+    right: -.45rem;
+    top: -.45rem;
+  }
+
+  .mobile-navbar-action {
+    display: none !important;
+  }
+
+  .layout-horizontal .layout-menu-toggle {
+    display: none !important;
+  }
+
+  .layout-horizontal #layout-menu {
+    background: var(--bs-body-bg, #fff);
+    box-shadow: 0 .5rem 1rem rgba(75, 70, 92, .14);
+    display: none;
+    left: 0;
+    position: fixed;
+    bottom: 0;
+    max-width: calc(100vw - 3rem);
+    right: auto;
+    top: 0;
+    transform: translate3d(-100%, 0, 0) !important;
+    transition: transform .25s ease;
+    visibility: hidden;
+    width: 17rem;
+    z-index: 1095;
+  }
+
+  .layout-horizontal.mobile-menu-open #layout-menu {
+    display: block;
+    transform: translate3d(0, 0, 0) !important;
+    visibility: visible;
+  }
+
+  .layout-horizontal.mobile-menu-open::before {
+    background: rgba(47, 43, 61, .38);
+    content: '';
+    inset: 0;
+    position: fixed;
+    z-index: 1090;
+  }
+
+  .layout-horizontal #layout-menu .menu-inner {
+    display: flex;
+    flex-direction: column;
+    max-height: 100vh;
+    overflow-y: auto;
+    padding: .5rem 0;
+  }
+
+  .layout-horizontal #layout-menu .menu-item,
+  .layout-horizontal #layout-menu .menu-link {
+    width: 100%;
+  }
+
+  .layout-horizontal #layout-menu .menu-link {
+    align-items: center;
+    display: flex;
+    min-height: 2.75rem;
+    padding: .65rem 1rem;
+  }
+}
+
+@media (max-width: 1199px) {
+
+  /* 🔴 REAL CLICK BLOCKER FIX */
+  .navbar-nav-right {
+    position: static !important;
+  }
+
+  .navbar-nav-right > ul.navbar-nav {
+    pointer-events: none;
+  }
+
+  .navbar-nav-right > ul.navbar-nav > li,
+  .navbar-nav-right > ul.navbar-nav > li * {
+    pointer-events: auto;
+  }
+
+  /* Ensure menu toggle always wins */
+  .layout-menu-toggle {
+    position: relative;
+    z-index: 1100;
+  }
+}
+</style>
+
+
+<!-- Navbar -->
+<nav class="layout-navbar navbar navbar-expand-xl align-items-center bg-navbar-theme" id="layout-navbar">
+  <div class="container-xxl">
+
+    <button type="button" class="mobile-horizontal-menu-toggle d-xl-none" aria-controls="layout-menu" aria-expanded="false" aria-label="Open navigation menu">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+        <path d="M4 6h16M4 12h16M4 18h16"></path>
+      </svg>
+          </button>
+
+  <!-- Brand -->
+    <div class="navbar-brand app-brand demo d-none d-xl-flex py-0 me-4">
+    <a href="http://localhost" class="app-brand-link gap-2">
+      <span class="app-brand-logo demo">
+        <img src="http://localhost/ct/public/assets/img/logos/cape-tennis-logo-transparent.png?v=1787744047" height="40" width="40" alt="Cape Tennis logo">
+      </span>
+      <span class="app-brand-text demo menu-text fw-bold">
+        Cape Tennis
+      </span>
+    </a>
+  </div>
+  
+  <!-- Menu toggle -->
+    <div class="layout-menu-toggle navbar-nav align-items-xl-center me-3 me-xl-0
+       d-xl-none 
+      "
+      style="z-index:1051;">
+    <a class="nav-item nav-link px-0 me-xl-4" href="javascript:void(0)">
+      <i class="ti ti-menu-2 ti-sm"></i>
+    </a>
+  </div>
+  
+  <div class="navbar-nav-right d-flex align-items-center" id="navbar-collapse">
+                    
+    <!-- Style Switcher -->
+        <div class="navbar-nav align-items-center">
+      <a class="nav-link style-switcher-toggle hide-arrow" href="javascript:void(0);">
+        <i class="ti ti-sm"></i>
+      </a>
+    </div>
+    
+    <ul class="navbar-nav flex-row align-items-center ms-auto">
+
+      
+      
+      
+      
+      
+              <li class="nav-item me-2 mobile-navbar-action">
+          <a href="http://localhost/ct/public/my-tennis" class="btn btn-outline-success btn-sm">
+            <i class="ti ti-ball-tennis me-1"></i> My Tennis
+          </a>
+        </li>
+        <li class="nav-item me-2 mobile-navbar-action">
+          <a href="http://localhost/ct/public/backend/dashboard" class="btn btn-warning btn-sm">
+            My Profile
+          </a>
+        </li>
+      
+      <!-- User dropdown -->
+      <li class="nav-item navbar-dropdown dropdown-user dropdown">
+        <a class="nav-link dropdown-toggle hide-arrow" href="javascript:void(0);" data-bs-toggle="dropdown">
+          <div class="avatar avatar-online">
+                          <img src="http://localhost/ct/public/assets/img/avatars/default.svg"
+                   class="w-px-40 h-auto rounded-circle">
+                      </div>
+        </a>
+
+        <ul class="dropdown-menu dropdown-menu-end">
+
+          <li>
+            <a class="dropdown-item" href="http://localhost/ct/public/backend/dashboard">
+              <div class="d-flex">
+                <div class="flex-shrink-0 me-3">
+                  <div class="avatar avatar-online">
+                    <img src="http://localhost/ct/public/assets/img/avatars/default.svg"
+                         class="w-px-40 h-auto rounded-circle">
+                  </div>
+                </div>
+                <div class="flex-grow-1">
+                  <span class="fw-semibold d-block">
+                    Imogene Mohr
+                  </span>
+                </div>
+              </div>
+            </a>
+          </li>
+
+          <li><div class="dropdown-divider"></div></li>
+
+          
+                              <li><a class="dropdown-item" href="http://localhost/ct/public/backend/email/issues">Email issues <span class="badge bg-danger">0</span></a></li>
+                    <li>
+            <a class="dropdown-item" href="http://localhost/ct/public/my-tennis">
+              <i class="ti ti-ball-tennis me-2"></i>
+              My Tennis
+            </a>
+          </li>
+          
+          <li>
+            <a class="dropdown-item" href="http://localhost/ct/public/backend/dashboard">
+              <i class="ti ti-user-check me-2"></i>
+              My Profile
+            </a>
+          </li>
+
+                    <li>
+            <a class="dropdown-item" href="http://localhost/ct/public/player/profile/create">
+              <i class="ti ti-user-plus me-2"></i>
+              Add Player Profile
+            </a>
+          </li>
+          
+          
+                    <li>
+            <a class="dropdown-item" href="http://localhost/ct/public/backend/wallet/2">
+              <i class="fa-solid fa-wallet me-2"></i>
+              My Wallet
+            </a>
+          </li>
+          
+          
+          <li><div class="dropdown-divider"></div></li>
+
+                    <li>
+            <a class="dropdown-item"
+               href="http://localhost/ct/public/logout"
+               onclick="event.preventDefault(); document.getElementById('logout-form').submit();">
+              <i class="ti ti-logout me-2"></i>
+              Logout
+            </a>
+          </li>
+
+          <form method="POST" id="logout-form" action="http://localhost/ct/public/logout">
+            <input type="hidden" name="_token" value="oKNzks0nphhGl6La8pvTlVc8zeM9K0ZX791b6IGM" autocomplete="off">          </form>
+          
+        </ul>
+      </li>
+      <!--/ User -->
+    </ul>
+  </div>
+
+
+</nav>
+<!-- / Navbar -->
+        <!-- END: Navbar-->
+
+
+    <!-- Layout page -->
+    <div class="layout-page">
+
+      <!-- Content wrapper -->
+      <div class="content-wrapper">
+
+                <style>
+  #layout-menu > .horizontal-menu-shell {
+    max-width: 1180px;
+    margin-inline: auto;
+    width: 100%;
+  }
+
+  @media (max-width: 1199.98px) {
+    #layout-menu > .horizontal-menu-shell {
+      max-width: none;
+    }
+  }
+</style>
+<!-- Horizontal Menu -->
+<aside id="layout-menu" class="layout-menu-horizontal menu-horizontal menu bg-menu-theme flex-grow-0" aria-label="Primary navigation">
+  <div class="horizontal-menu-shell container-xxl d-flex h-100">
+    <ul class="menu-inner">
+                  
+      
+      
+      
+
+                  <li class="menu-item ">
+        <a href="http://localhost" class="menu-link"  >
+                    <i class="menu-icon tf-icons ti ti-smart-home"></i>
+                    <div>Home</div>
+        </a>
+
+        
+              </li>
+                  
+      
+      
+      
+
+                  <li class="menu-item ">
+        <a href="http://localhost/ct/public/rankings" class="menu-link"  >
+                    <i class="menu-icon tf-icons ti ti-trophy"></i>
+                    <div>Rankings</div>
+        </a>
+
+        
+              </li>
+                  
+      
+      
+      
+
+                        
+
+    </ul>
+  </div>
+</aside>
+<!--/ Horizontal Menu -->
+
+        
+        <!-- Content -->
+        
+          <div class="container-xxl flex-grow-1 container-p-y">
+            
+            
+<input type="hidden" id="event_id" value="1">
+
+
+
+<div class="row event-hero">
+  <div class="col-12">
+    <div class="card mb-4">
+      <div class="user-profile-header-banner">
+        <img src="http://localhost/ct/public/assets/img/pages/profile-banner.png" class="rounded-top" alt="">
+      </div>
+
+      <div class="user-profile-header d-flex flex-column flex-sm-row mb-4">
+        <div class="flex-shrink-0 mt-n2 mx-sm-0 mx-auto">
+          <img
+            src="http://localhost/ct/public/assets/img/misc/placeholder-logo.png"
+            class="rounded user-profile-img"
+            alt="Magni incidunt aut. logo">
+        </div>
+
+        <div class="flex-grow-1 mt-3 mt-sm-5">
+          <div class="mx-4">
+            <h4>Magni incidunt aut.</h4>
+
+            <ul class="list-inline d-flex gap-2 flex-wrap">
+                            <li class="list-inline-item">
+                <i class="ti ti-map-pin"></i> []
+              </li>
+            </ul>
+            <div class="d-inline-flex align-items-center gap-2 flex-wrap rounded bg-label-primary px-3 py-2" aria-label="Tournament match progress">
+              <i class="ti ti-ball-tennis" aria-hidden="true"></i>
+              <span><strong>0 / 0</strong> matches finished</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<div class="row">
+  <div class="col-12">
+    <ul class="nav nav-pills flex-column flex-sm-row mb-4 align-items-center">
+
+
+
+
+
+    </ul>
+  </div>
+</div>
+
+
+<div class="public-event-view">
+    <style>
+.team-public-event {
+  --team-navy: #173f7a;
+  --team-blue: #2f6fd0;
+  --team-orange: #f28c28;
+  --team-teal: #159b91;
+  --team-gold: #f2be3e;
+  background:
+    radial-gradient(circle at 8% 3%, rgba(47, 111, 208, .14), transparent 28rem),
+    radial-gradient(circle at 96% 18%, rgba(242, 140, 40, .13), transparent 24rem),
+    linear-gradient(180deg, rgba(23, 63, 122, .035), rgba(21, 155, 145, .035));
+  border: 1px solid rgba(47, 111, 208, .12);
+  border-radius: 1.25rem;
+  padding: clamp(.75rem, 2vw, 1.5rem);
+}
+
+.team-public-event .event-section-card,
+.team-public-event .team-region-directory,
+.team-public-event .team-documents-card {
+  border: 0;
+  border-top: 4px solid var(--team-teal);
+  box-shadow: 0 .65rem 1.6rem rgba(23, 63, 122, .10) !important;
+  overflow: hidden;
+}
+
+.team-public-event .event-section-icon {
+  background: linear-gradient(135deg, var(--team-teal), var(--team-blue));
+  box-shadow: 0 .35rem .8rem rgba(21, 155, 145, .22);
+  color: #fff;
+}
+
+.team-public-event .team-region-directory {
+  background: linear-gradient(180deg, rgba(242, 140, 40, .08), #fff 9rem);
+  border-top-color: var(--team-orange);
+}
+
+.team-public-event .team-region-kicker {
+  background: linear-gradient(135deg, var(--team-orange), #f5aa3f);
+  box-shadow: 0 .3rem .75rem rgba(242, 140, 40, .22);
+  color: #fff;
+  letter-spacing: .01em;
+}
+
+.team-public-event .team-documents-card { border-top-color: var(--team-blue); }
+.team-public-event .team-documents-card .card-header {
+  background: linear-gradient(135deg, rgba(47, 111, 208, .11), rgba(21, 155, 145, .08));
+}
+
+.team-public-event .file-item:hover {
+  background-color: rgba(47, 111, 208, .07);
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+}
+
+.team-public-event .card .btn-outline-primary {
+  border-radius: 50px;
+  font-size: 0.875rem;
+  padding: 0.25rem 0.75rem;
+}
+
+.team-public-event .card .btn-outline-primary:hover {
+  background-color: var(--team-blue);
+  color: #fff;
+}
+
+.team-public-event .region-tab-grid .nav-link {
+  border-left: 4px solid var(--team-blue);
+  box-shadow: 0 .25rem .75rem rgba(23, 63, 122, .07);
+}
+
+.team-public-event .region-tab-grid .nav-item:nth-child(3n+2) .nav-link { border-left-color: var(--team-orange); }
+.team-public-event .region-tab-grid .nav-item:nth-child(3n+3) .nav-link { border-left-color: var(--team-teal); }
+.team-public-event .region-tab-grid .nav-link:hover {
+  border-color: var(--team-orange);
+  transform: translateY(-1px);
+}
+.team-public-event .region-tab-grid .nav-link.active {
+  background: linear-gradient(135deg, var(--team-navy), var(--team-blue));
+  border-color: var(--team-navy);
+  box-shadow: 0 .45rem 1rem rgba(23, 63, 122, .2);
+  color: #fff;
+}
+
+.team-public-event .tab-pane > .row > div:nth-child(4n+1) .card-header { border-top: 3px solid var(--team-blue); }
+.team-public-event .tab-pane > .row > div:nth-child(4n+2) .card-header { border-top: 3px solid var(--team-orange); }
+.team-public-event .tab-pane > .row > div:nth-child(4n+3) .card-header { border-top: 3px solid var(--team-teal); }
+.team-public-event .tab-pane > .row > div:nth-child(4n+4) .card-header { border-top: 3px solid var(--team-gold); }
+.team-public-event .tab-pane > .row > div .card {
+  border: 1px solid rgba(23, 63, 122, .14);
+  box-shadow: 0 .45rem 1rem rgba(23, 63, 122, .08) !important;
+  transition: box-shadow .18s ease, transform .18s ease;
+}
+.team-public-event .tab-pane > .row > div .card:hover {
+  box-shadow: 0 .7rem 1.4rem rgba(23, 63, 122, .14) !important;
+  transform: translateY(-2px);
+}
+
+@media (max-width: 767.98px) {
+  .team-public-event { border-radius: .9rem; padding: .65rem; }
+}
+</style>
+
+
+
+<div class="team-public-event col-xl-12">
+  <div class="row mb-4">
+
+    <!-- ================= LEFT COLUMN ================= -->
+    <div class="col-xl-8 col-lg-7 col-md-7">
+
+      <div class="card event-section-card mb-4">
+  <div class="card-body event-card-padding p-4 p-xl-5">
+    <div class="event-section-heading mb-4">
+      <span class="event-section-icon" aria-hidden="true">
+        <svg class="event-section-icon-svg" viewBox="0 0 24 24" focusable="false">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 10v6m0-9v.01" />
+        </svg>
+      </span>
+      <div>
+        <h4 class="mb-1">Event information</h4>
+        <p class="text-muted mb-0">Please review these details before entering the tournament.</p>
+      </div>
+    </div>
+
+          <div class="event-information-content">
+        Ut voluptas sed omnis. Esse porro vel nostrum ipsa et sed. Ullam perferendis unde et iusto et architecto consequatur. Tempore voluptas ratione rerum neque.
+      </div>
+      </div>
+</div>
+      
+      
+      <div class="card d-block d-md-none mb-4">
+        <div class="card-body">
+          <style>
+  .event-published-draw-link.btn { background: #fff; color: #173f7a; border: 1px solid #173f7a; font-weight: 600; min-height: 44px; white-space: normal; text-align: left; }
+  .event-published-draw-link.btn:hover, .event-published-draw-link.btn:focus-visible { background: #173f7a; color: #fff; }
+  .event-published-draw-link.btn .badge { background: #e8eff8 !important; color: #173f7a !important; white-space: normal; }
+  .event-published-draw-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 10px; }
+  .event-published-draw-row { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+  .event-published-draw-link.btn { display: flex; flex: 1 1 220px; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; font-size: 1rem; line-height: 1.4; min-width: 0; flex-wrap: wrap; }
+  .event-published-draw-name { overflow-wrap: anywhere; }
+  .event-published-draw-link.btn .badge { margin-left: 0 !important; font-size: .8125rem; line-height: 1.4; padding: 5px 8px; }
+  .event-published-draw-row > .btn-light { min-height: 44px; }
+  .event-published-draw-link.btn .badge.draw-scheduled { background: #eef6f1 !important; color: #235c31 !important; border: 1px solid #b9d7c1; }
+  .event-published-draw-link.btn .badge.draw-partly-scheduled { background: #fff6e8 !important; color: #805214 !important; border: 1px solid #e7cfa7; }
+</style>
+<div class="card mb-4">
+  <div class="card-header">
+    <small class="card-text text-uppercase">Draws and Order of Play</small>
+  </div>
+
+  <div class="card-body">
+        
+    
+<div class="mb-3">
+  <h6 class="fw-bold">Published Draws</h6>
+
+  
+      <div class="alert alert-info m-0"><strong>Draws are being finalised.</strong> They will appear here when released; match times may follow later.</div>
+      
+
+</div>
+
+    
+    
+ 
+
+ 
+
+
+   
+  </div>
+</div>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+        </div>
+      </div>
+
+      
+      <div class="card team-region-directory p-3 p-sm-4">
+        <div class="card-body p-0 pb-2">
+          <div class="badge team-region-kicker mb-3">
+            Click on a Region below to register
+          </div>
+        </div>
+
+                  <div class="region-team-picker" id="event-region-picker-1">
+  <div class="region-picker-label fw-semibold mb-2">Choose a region</div>
+  <ul class="nav nav-tabs region-tab-grid" role="tablist" aria-label="Event regions">
+                <li class="nav-item" role="presentation">
+        <button type="button"
+                class="nav-link active"
+                data-bs-toggle="tab"
+                data-bs-target="#team-1-1"
+                role="tab"
+                aria-controls="team-1-1"
+                aria-selected="true">
+          <i class="ti ti-map-pin me-1" aria-hidden="true"></i>
+          <span class="region-name">
+                          Clothing test region                      </span>
+        </button>
+      </li>
+      </ul>
+
+  <div class="tab-content pt-3">
+                <div class="tab-pane fade active show" id="team-1-1" role="tabpanel">
+        <div class="alert alert-info py-2" role="status"><i class="ti ti-shirt me-1" aria-hidden="true"></i>Clothing orders open for Clothing test region. Choose a player below to order.</div>        <div class="row">
+                                    <div class="col-12 col-xl-6 team-roster-column">
+  <div class="card h-100 shadow-sm">
+
+    
+    <div class="card-header border rounded-top">
+      <div class="d-flex align-items-center">
+        <i class="ti ti-users fs-4 text-primary me-2"></i>
+        <h5 class="m-0 fw-semibold">Clothing test team</h5>
+      </div>
+    </div>
+
+    
+    
+      <div class="card-body p-0">
+        <ul class="list-group list-group-flush m-0">
+
+          
+                      
+            <li id="team-registration-1-1"
+                class="list-group-item  "
+                >
+              <div class="d-flex flex-column flex-xl-row justify-content-between align-items-xl-center gap-2 team-player-row">
+
+                
+                <div class="d-flex align-items-center">
+                  <span class="badge bg-light text-muted border rounded-circle me-2" style="width: 24px; height: 24px; line-height: 16px; font-size: 0.75rem;">
+                    1
+                  </span>
+                  <span class="fw-medium">
+                    Trinity McKenzie                  </span>
+                </div>
+
+                
+                <div class="d-flex align-items-center justify-content-xl-end flex-wrap gap-1 team-player-actions">
+
+                  
+                    
+                                          <a href="http://localhost/ct/public/backend/team/payment/1/1/1"
+                         class="btn btn-sm btn-warning team-registration-button">
+                        <i class="ti ti-credit-card me-1"></i>Register
+                      </a>
+
+                    
+                    
+                  
+                </div>
+              </div>
+
+              <div class="d-flex flex-wrap gap-1 mt-2">
+                    
+                                          <a href="javascript:void(0)"
+                         class="btn btn-sm btn-outline-secondary clothing-order"
+                         title="Order clothing for Trinity McKenzie"
+                         aria-label="Order clothing for Trinity McKenzie"
+                         data-playerid="1"
+                         data-name="Trinity McKenzie"
+                         data-team="1"
+                         data-region="1"
+                         data-eventid="1"
+                         data-bs-toggle="modal"
+                         data-bs-target="#clothing-order-modal">
+                        <i class="ti ti-shirt me-1" aria-hidden="true"></i>Order clothing
+                      </a>
+                    
+                                          <button type="button"
+                              class="btn btn-sm btn-outline-success"
+                              data-bs-toggle="collapse"
+                              data-bs-target="#clothing-orders-1-1-1"
+                              aria-expanded="false"
+                              aria-controls="clothing-orders-1-1-1">
+                        <i class="ti ti-shopping-bag-check me-1" aria-hidden="true"></i>
+                        2 items ordered
+                      </button>
+                    
+</div>
+                              <div class="collapse mt-2" id="clothing-orders-1-1-1">
+                  <div class="border rounded bg-light-subtle p-2" aria-label="Clothing ordered for Trinity McKenzie">
+                    <div class="small fw-semibold mb-1">Your clothing order for Trinity McKenzie</div>
+                    <ul class="list-unstyled small mb-0">
+                                                                                                  <li class="d-flex flex-wrap justify-content-between gap-2 py-1">
+                            <span>
+                              <i class="ti ti-shirt me-1 text-success" aria-hidden="true"></i>
+                              My shirt
+                                                              <span class="text-muted">(M)</span>
+                                                          </span>
+                            <span class="fw-semibold">Qty 2</span>
+                          </li>
+                                                                  </ul>
+                  </div>
+                </div>
+                          </li>
+
+          
+        </ul>
+
+      </div>
+
+    
+  </div>
+</div>
+
+  <style>
+    @media (max-width: 1199.98px) {
+      .team-player-actions {
+        width: 100%;
+      }
+
+      .team-player-actions > .btn,
+      .team-player-actions > .badge {
+        display: inline-flex;
+        flex: 1 1 10rem;
+        align-items: center;
+        justify-content: center;
+        min-height: 2.375rem;
+        white-space: normal;
+      }
+    }
+
+    @media (max-width: 575.98px) {
+      .team-player-actions > .btn,
+      .team-player-actions > .badge {
+        flex-basis: 100%;
+      }
+    }
+  </style>
+                              </div>
+      </div>
+      </div>
+</div>
+
+  <style>
+      .region-tab-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: .6rem;
+        border-bottom: 0;
+      }
+      .region-tab-grid .nav-item { min-width: 0; }
+      .region-tab-grid .nav-link {
+        width: 100%;
+        height: 100%;
+        padding: .75rem .9rem;
+        border: 1px solid var(--bs-border-color);
+        border-radius: .65rem;
+        background: var(--bs-body-bg);
+        color: var(--bs-body-color);
+        text-align: left;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        line-height: 1.25;
+      }
+      .region-tab-grid .nav-link:hover { border-color: var(--bs-primary); }
+      .region-tab-grid .nav-link.active {
+        border-color: var(--bs-primary);
+        background: var(--bs-primary-bg-subtle);
+        color: var(--bs-primary-text-emphasis);
+        box-shadow: 0 .2rem .6rem rgba(0, 0, 0, .08);
+      }
+      @media (max-width: 767.98px) {
+        .region-tab-grid .nav-link {
+          min-height: 48px;
+          display: flex;
+          align-items: center;
+        }
+      }
+      @media (min-width: 768px) {
+        .region-tab-grid {
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        }
+      }
+  </style>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const target = document.querySelector('[data-team-registration-target="true"]');
+      if (!target) return;
+
+      const pane = target.closest('.tab-pane');
+      const tab = pane ? document.querySelector('[data-bs-target="#' + pane.id + '"]') : null;
+      if (tab && window.bootstrap) bootstrap.Tab.getOrCreateInstance(tab).show();
+
+      window.setTimeout(function () {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const register = target.querySelector('.team-registration-button');
+        if (register) register.focus({ preventScroll: true });
+      }, 150);
+    });
+  </script>
+              </div>
+    </div>
+
+    <!-- ================= RIGHT COLUMN ================= -->
+    <div class="col-xl-4 col-lg-5 col-md-5">
+
+      <div class="card event-section-card mb-4">
+    <div class="card-body">
+      <small class="card-text text-uppercase">About</small>
+
+      <ul class="list-unstyled mb-4 mt-3">
+                  <li class="d-flex align-items-center flex-wrap gap-2 mb-3">
+            <i class="fa-regular fa-calendar" aria-hidden="true"></i>
+            <span class="fw-bold">Start Date:</span>
+            <span class="badge bg-label-success">Sat 14 Nov 2026</span>
+          </li>
+        
+                  <li class="d-flex align-items-center flex-wrap gap-2 mb-3">
+            <i class="fa-regular fa-calendar" aria-hidden="true"></i>
+            <span class="fw-bold">End Date:</span>
+            <span class="badge bg-label-success">Wed 09 Dec 2026</span>
+          </li>
+        
+        <li class="d-flex align-items-center flex-wrap gap-2 mb-3">
+          <i class="ti ti-users" aria-hidden="true"></i>
+          <span class="fw-bold">Confirmed entries:</span>
+          <span class="badge bg-label-info">0</span>
+        </li>
+
+                  <li class="d-flex align-items-center flex-wrap gap-2 mb-3">
+            <i class="ti ti-check" aria-hidden="true"></i>
+            <span class="fw-bold">Entry deadline:</span>
+            <span class="badge bg-label-warning">Thu 12 Nov 2026</span>
+          </li>
+        
+                  <li class="d-flex align-items-center flex-wrap gap-2 mb-3">
+            <i class="ti ti-x" aria-hidden="true"></i>
+            <span class="fw-bold">Withdrawal deadline:</span>
+            <span class="badge bg-label-danger">Sun 06 Dec 2026</span>
+          </li>
+        
+        
+        
+        
+                  <li class="mb-2">
+    <strong>Entry fee:</strong>
+    <span class="badge bg-label-primary">R261.88</span>
+  </li>
+              </ul>
+
+              <small class="card-text text-uppercase">Contact</small>
+        <ul class="list-unstyled mb-0 mt-3">
+                      <li class="d-flex align-items-start gap-2 mb-3">
+              <i class="ti ti-phone-call mt-1" aria-hidden="true"></i>
+              <span><strong>Organizer:</strong> Maida Schaefer</span>
+            </li>
+          
+                      <li class="d-flex align-items-start gap-2 mb-0">
+              <i class="ti ti-mail mt-1" aria-hidden="true"></i>
+              <span class="text-break"><strong>Email:</strong> <a href="mailto:schuppe.anabel@example.net">schuppe.anabel@example.net</a></span>
+            </li>
+                  </ul>
+          </div>
+  </div>
+
+      
+      <div class="card team-documents-card mb-4 shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h6 class="text-uppercase mb-0">
+            <i class="ti ti-folder text-primary me-2"></i> Documents
+          </h6>
+
+                      <form action="http://localhost/ct/public/file" method="POST"
+                  enctype="multipart/form-data" class="mb-0">
+              <input type="hidden" name="_token" value="oKNzks0nphhGl6La8pvTlVc8zeM9K0ZX791b6IGM" autocomplete="off">              <input type="hidden" name="event_id" value="1">
+              <label class="btn btn-sm btn-outline-primary mb-0">
+                Upload
+                <input type="file" name="myFile" class="d-none"
+                       accept=".pdf,.doc,.docx,.xls,.xlsx,.csv"
+                       onchange="this.form.submit()">
+              </label>
+            </form>
+                  </div>
+
+        <div class="card-body pb-2">
+                      <div class="text-muted">No documents uploaded yet.</div>
+                  </div>
+      </div>
+
+      
+      <div class="d-none d-md-block">
+        <div class="card mb-4">
+  <div class="card-header">
+    <small class="card-text text-uppercase">Draws and Order of Play</small>
+  </div>
+
+  <div class="card-body">
+        
+    
+<div class="mb-3">
+  <h6 class="fw-bold">Published Draws</h6>
+
+  
+      <div class="alert alert-info m-0"><strong>Draws are being finalised.</strong> They will appear here when released; match times may follow later.</div>
+      
+
+</div>
+
+    
+    
+ 
+
+ 
+
+
+   
+  </div>
+</div>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+<style>
+/* MOBILE FIX: force scroll inside modal */
+@media (max-width: 576px) {
+  #clothing-order-modal .modal-dialog {
+    margin: 0.5rem;
+    height: calc(100dvh - 1rem);
+    max-height: calc(100dvh - 1rem);
+  }
+
+  #clothing-order-modal .modal-content {
+    height: 100%;
+    max-height: 100%;
+  }
+
+  #clothing-order-modal .modal-body {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    max-height: calc(100dvh - 160px); /* header + footer */
+  }
+}
+</style>
+
+
+
+
+<div class="modal fade" id="clothing-order-modal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+
+      
+      <div class="modal-header">
+        <h5 class="modal-title">
+          Clothing Order – <span id="orderPlayerName" class="fw-semibold"></span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      
+      <form id="clothingOrderForm" method="POST" action="http://localhost/ct/public/backend/clothingOrder">
+        <input type="hidden" name="_token" value="oKNzks0nphhGl6La8pvTlVc8zeM9K0ZX791b6IGM" autocomplete="off">
+        
+        <input type="hidden" name="event_id" id="order_event_id">
+        <input type="hidden" name="region_id" id="order_region_id">
+        <input type="hidden" name="player_id" id="order_player_id">
+        <input type="hidden" name="team_id" id="order_team_id">
+        <input type="hidden"
+               name="request_token"
+               id="clothing_request_token"
+               value="43070e10-31c2-4320-bf95-e0356eb3e92d">
+
+        <div class="modal-body">
+
+          <div class="alert alert-info py-2" role="note">
+            Any signed-in user may order for this player. The player does not need to be linked to your account.
+          </div>
+
+          
+          <div id="clothingOrderList">
+            <div class="alert alert-info mb-0">Loading clothing…</div>
+          </div>
+
+          
+          <div class="border-top pt-3 mt-3">
+            <div class="d-flex justify-content-between fs-5 mt-2"><strong>Total payable</strong><strong id="orderTotal">R0.00</strong></div>
+          </div>
+
+        </div>
+
+        
+        <div class="modal-footer">
+          <button type="button"
+                  class="btn btn-outline-secondary"
+                  data-bs-dismiss="modal">
+            Cancel
+          </button>
+
+          <button type="submit"
+                  class="btn btn-primary"
+                  id="submitClothingOrderBtn">
+            Submit Order
+          </button>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+</div>
+
+
+<script>
+  window.CLOTHING_ITEMS_URL = "http://localhost/ct/public/local-clothing-qa/catalogue.html";
+
+  (function () {
+    const tokenInput = document.getElementById('clothing_request_token');
+    const modal = document.getElementById('clothing-order-modal');
+    const form = document.getElementById('clothingOrderForm');
+
+    if (!tokenInput || !modal || !form) return;
+
+    const generateToken = function () {
+      if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (char) {
+        const random = Math.random() * 16 | 0;
+        return (char === 'x' ? random : (random & 0x3 | 0x8)).toString(16);
+      });
+    };
+
+    const refreshToken = function () {
+      tokenInput.value = generateToken();
+    };
+
+    // Generate a fresh idempotency key for each checkout attempt. The submit
+    // safeguard also covers keyboard submission or a missed modal event.
+    modal.addEventListener('show.bs.modal', refreshToken);
+    form.addEventListener('submit', function () {
+      if (!tokenInput.value) refreshToken();
+    });
+  })();
+</script>
+
+
+
+
+
+
+</div>
+
+
+            <!-- pricingModal -->
+                        <!--/ pricingModal -->
+
+          </div>
+          <!-- / Content -->
+
+          
+                  <script>
+          (function () {
+            const toggle = document.querySelector('.mobile-horizontal-menu-toggle');
+            const layout = document.querySelector('.layout-horizontal');
+            const menu = document.getElementById('layout-menu');
+
+            if (!toggle || !layout || !menu || toggle.dataset.menuReady === 'true') return;
+            toggle.dataset.menuReady = 'true';
+
+            const closeMenu = function () {
+              layout.classList.remove('mobile-menu-open');
+              document.documentElement.classList.remove('layout-menu-expanded');
+              toggle.setAttribute('aria-expanded', 'false');
+              toggle.setAttribute('aria-label', 'Open navigation menu');
+            };
+
+            toggle.addEventListener('click', function (event) {
+              event.preventDefault();
+              event.stopPropagation();
+              const open = layout.classList.toggle('mobile-menu-open');
+              document.documentElement.classList.toggle('layout-menu-expanded', open);
+              toggle.setAttribute('aria-expanded', String(open));
+              toggle.setAttribute('aria-label', open ? 'Close navigation menu' : 'Open navigation menu');
+              if (open) {
+                window.requestAnimationFrame(() => menu.querySelector('a, button')?.focus());
+              }
+            });
+
+            document.addEventListener('click', function (event) {
+              if (layout.classList.contains('mobile-menu-open') && !menu.contains(event.target) && !toggle.contains(event.target)) {
+                closeMenu();
+              }
+            });
+
+            menu.addEventListener('click', function (event) {
+              if (event.target.closest('a:not(.menu-toggle)')) closeMenu();
+            });
+
+            document.addEventListener('keydown', function (event) {
+              if (event.key === 'Escape' && layout.classList.contains('mobile-menu-open')) {
+                closeMenu();
+                toggle.focus();
+              }
+              if (event.key === 'Tab' && layout.classList.contains('mobile-menu-open')) {
+                const focusable = [...menu.querySelectorAll('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+                  .filter(element => element.offsetParent !== null);
+                if (!focusable.length) return;
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                if (event.shiftKey && document.activeElement === first) {
+                  event.preventDefault();
+                  last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                  event.preventDefault();
+                  first.focus();
+                }
+              }
+            });
+
+            window.addEventListener('resize', function () {
+              if (window.innerWidth >= 1200) closeMenu();
+            });
+          })();
+        </script>
+          
+          <!-- Footer -->
+                    <!-- Footer-->
+<footer class="content-footer footer bg-footer-theme">
+  <div class="container-xxl">
+    <div class="footer-container d-flex align-items-center justify-content-between py-2 flex-md-row flex-column">
+      <div>
+        &copy; 2026 Cape Tennis. All rights reserved.
+        <span class="d-block d-md-inline">Developed by SportStack Technologies.</span>
+      </div>
+      <div>
+   
+      </div>
+    </div>
+  </div>
+</footer>
+<!--/ Footer-->
+<script>
+var APP_URL = "http:\/\/localhost"
+</script>
+                    <!-- / Footer -->
+          <div class="content-backdrop fade"></div>
+        </div>
+        <!--/ Content wrapper -->
+      </div>
+      <!-- / Layout page -->
+    </div>
+    <!-- / Layout Container -->
+
+        <!-- Overlay -->
+    <div class="layout-overlay layout-menu-toggle"></div>
+        <!-- Drag Target Area To SlideIn Menu On Small Screens -->
+    <div class="drag-target"></div>
+  </div>
+  <!-- / Layout wrapper -->
+    <!-- / Layout Content -->
+
+  <!-- Vuexy scripts -->
+  <!-- BEGIN: Vendor JS -->
+<script>console.log('🎾 Cape Tennis v1.0.2');</script>
+
+
+<script src="http://localhost/ct/public/assets/vendor/libs/jquery/jquery.js"></script>
+
+
+<script src="https://code.jquery.com/ui/1.14.1/jquery-ui.js"></script>
+
+
+<script src="http://localhost/ct/public/assets/vendor/libs/popper/popper.js"></script>
+<script src="http://localhost/ct/public/assets/vendor/js/bootstrap.js"></script>
+
+
+<script src="http://localhost/ct/public/assets/vendor/js/helpers.js"></script>
+
+
+<script src="http://localhost/ct/public/assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.js"></script>
+<script src="http://localhost/ct/public/assets/vendor/libs/node-waves/node-waves.js"></script>
+<script src="http://localhost/ct/public/assets/vendor/libs/hammer/hammer.js"></script>
+<script src="http://localhost/ct/public/assets/vendor/libs/i18n/i18n.js"></script>
+<script src="http://localhost/ct/public/assets/vendor/libs/typeahead-js/typeahead.js"></script>
+
+
+<script src="http://localhost/ct/public/assets/vendor/js/menu.js"></script>
+<script src="http://localhost/ct/public/assets/js/main.js"></script>
+
+
+<script src="http://localhost/ct/public/js/app.js?id=5208c2e7a94d9035b6678e8083dfe9c9"></script>
+
+
+<script src="http://localhost/ct/public/assets/vendor/libs/datatables-bs5/datatables-bootstrap5.js"></script>
+<script src="http://localhost/ct/public/assets/vendor/libs/pickr/pickr.js"></script>
+<script src="http://localhost/ct/public/assets/vendor/libs/quill/katex.js"></script>
+<script src="http://localhost/ct/public/assets/vendor/libs/quill/quill.js"></script>
+<script src="http://localhost/ct/public/assets/vendor/libs/select2/select2.js"></script>
+<script src="http://localhost/ct/public/assets/vendor/libs/sweetalert2/sweetalert2.js"></script>
+
+<!-- END: Vendor JS -->
+
+
+
+<script src="http://localhost/ct/public/assets/vendor/libs/toastr/toastr.js"></script>
+<script>
+toastr.options = { positionClass: 'toast-top-right', timeOut: 5000, closeButton: true, progressBar: true };
+
+(function (root) {
+  const storageKey = 'ct.feedback.afterReload';
+
+  function liveRegion() {
+    let region = document.getElementById('app-feedback-live-region');
+    if (region) return region;
+
+    region = document.createElement('div');
+    region.id = 'app-feedback-live-region';
+    region.className = 'visually-hidden';
+    region.setAttribute('role', 'status');
+    region.setAttribute('aria-live', 'polite');
+    region.setAttribute('aria-atomic', 'true');
+    document.body.appendChild(region);
+    return region;
+  }
+
+  function show(message, type = 'success', title = null) {
+    if (!message) return;
+
+    const normalizedType = type === 'danger' ? 'error' : type;
+    const region = liveRegion();
+    region.setAttribute('role', normalizedType === 'error' ? 'alert' : 'status');
+    region.textContent = '';
+    window.setTimeout(() => { region.textContent = String(message); }, 10);
+
+    if (root.toastr && typeof root.toastr[normalizedType] === 'function') {
+      root.toastr[normalizedType](String(message), title || undefined);
+      return;
+    }
+
+    console[normalizedType === 'error' ? 'error' : 'log'](`[${normalizedType}] ${message}`);
+  }
+
+  function messagesFrom(data, fallback) {
+    if (data?.errors) {
+      const messages = Object.values(data.errors).flat().filter(Boolean);
+      if (messages.length) return messages;
+    }
+
+    return [data?.message || fallback || 'Something went wrong.'];
+  }
+
+  async function responseError(response, fallback) {
+    const data = await response.json().catch(() => ({}));
+    const error = new Error(messagesFrom(data, fallback)[0]);
+    error.messages = messagesFrom(data, fallback);
+    error.status = response.status;
+    return error;
+  }
+
+  function fromError(error, fallback) {
+    const messages = error?.messages?.length ? error.messages : [error?.message || fallback || 'Something went wrong.'];
+    messages.forEach(message => show(message, 'error'));
+  }
+
+  function afterReload(message, type = 'success') {
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify({ message, type }));
+    } catch (error) {
+      show(message, type);
+    }
+  }
+
+  root.AppFeedback = {
+    show,
+    success: message => show(message, 'success'),
+    error: message => show(message, 'error'),
+    warning: message => show(message, 'warning'),
+    info: message => show(message, 'info'),
+    fromError,
+    responseError,
+    afterReload,
+  };
+
+  // Compatibility for older pages that already call a global helper.
+  root.showToast = function (message, type = 'success') { show(message, type); };
+
+  try {
+    const pending = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+    sessionStorage.removeItem(storageKey);
+    if (pending?.message) show(pending.message, pending.type || 'success');
+  } catch (error) {
+    sessionStorage.removeItem(storageKey);
+  }
+}(window));
+</script>
+
+
+<script src="http://localhost/ct/public/js/manual-email.js?v=1791383528"></script>
+
+<script>
+'use strict';
+
+window.APP_URL  = "http:\/\/localhost";
+window.EVENT_ID = 1;
+window.auth = {
+  loggedIn: true,
+  loginUrl: "http:\/\/localhost\/login"};
+/* ===============================
+   DEBUG: EVENT DATE DATA
+=============================== */
+window.EVENT_DATA = {
+  id: 1,
+  start_date: "2026-11-14 00:00:00",
+  end_date: "2026-12-09 00:00:00",
+  entry_deadline: "2026-11-12 23:59:59",
+  withdrawal_deadline: "2026-12-06 14:20:19",
+};
+
+console.log('[EVENT_DATA]', window.EVENT_DATA);
+
+
+
+</script>
+
+<script src="http://localhost/ct/public/assets/js/pages-profile.js"></script>
+<script src="http://localhost/ct/public/assets/js/forms-editors.js"></script>
+<script src="http://localhost/ct/public/assets/js/select2-search-addon.js"></script>
+<script src="http://localhost/ct/public/js/event-show.js?id=200fa5b2ef8321770102d9392ae0e172?v=1.0.2"></script>
+
+
+
+<script>
+$(document).on('click', '.deleteFileButton', function (e) {
+  e.preventDefault();
+
+  const fileId = $(this).data('id');
+  if (!fileId) return;
+
+  const url = "http://localhost/ct/public/file/__ID__".replace('__ID__', fileId);
+
+  Swal.fire({
+    title: 'Delete file?',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'Delete'
+  }).then((result) => {
+    if (!result.isConfirmed) return;
+
+    $.post(url, {
+      _method: 'DELETE',
+      _token: $('meta[name="csrf-token"]').attr('content')
+    }).done(() => {
+      location.reload();
+    });
+  });
+});
+</script>
+<script>
+(function ($) {
+  const modal = document.getElementById('clothing-order-modal');
+  if (!modal) return;
+  let catalogueRequest; let catalogueGeneration = 0;
+  modal.addEventListener('show.bs.modal', function (event) {
+    if (!true) { event.preventDefault(); window.location.href = "http:\/\/localhost\/login" + '?redirect=' + encodeURIComponent(window.location.href); return; }
+    const button = event.relatedTarget;
+    if (!button) return;
+    $('#order_event_id').val(button.dataset.eventid); $('#order_region_id').val(button.dataset.region);
+    $('#order_player_id').val(button.dataset.playerid); $('#order_team_id').val(button.dataset.team);
+    $('#orderPlayerName').text(button.dataset.name); $('#orderTotal').text('R0.00');
+    $('#clothingOrderList').html('<div class="alert alert-info mb-0">Loading clothing…</div>');
+    $('#submitClothingOrderBtn').prop('disabled', true);
+    catalogueRequest?.abort(); const generation = ++catalogueGeneration;
+    catalogueRequest = $.post(window.CLOTHING_ITEMS_URL, {region: button.dataset.region, _token: $('#clothingOrderForm input[name="_token"]').val()})
+      .done(function (html) { if (generation !== catalogueGeneration) return; $('#clothingOrderList').html(html); $('#submitClothingOrderBtn').prop('disabled', false); })
+      .fail(function (xhr) { if (generation !== catalogueGeneration || xhr.statusText === 'abort') return; $('#clothingOrderList').html('<div class="alert alert-danger mb-0">Could not load clothing. Close and try again.</div>'); });
+  });
+  function updateTotals() {
+    let total = 0;
+    $('#clothingOrderList .clothing-item').each(function () {
+      const card = $(this); const qty = Number(card.find('.qty-input').val()) || 0;
+      if (!card.find('.item-toggle').is(':checked') || !card.find('.size-select').val() || qty < 1) { card.find('.item-total').text('R0.00'); return; }
+      const itemTotal = Number(card.data('customer-price')) * qty;
+      total += itemTotal; card.find('.item-total').text('R' + itemTotal.toFixed(2));
+    });
+    $('#orderTotal').text('R' + total.toFixed(2));
+  }
+  $(document).on('change', '#clothingOrderList .item-toggle', function () {
+    const options = $(this).closest('.clothing-item').find('.item-options'); options.toggleClass('d-none', !this.checked);
+    if (!this.checked) { options.find('select').val(''); options.find('input[type="number"]').val(1); } updateTotals();
+  });
+  $(document).on('change input', '#clothingOrderList .size-select, #clothingOrderList .qty-input', updateTotals);
+  $('#clothingOrderForm').on('submit', function (event) {
+    $(this).find('.order-line').remove(); let selected = 0; let valid = true;
+    $('#clothingOrderList .clothing-item').each(function () {
+      const card = $(this); if (!card.find('.item-toggle').is(':checked')) return; selected++;
+      const size = card.find('.size-select').val(); const qty = Number(card.find('.qty-input').val());
+      if (!size || !Number.isInteger(qty) || qty < 1 || qty > 20) { valid = false; return; }
+      $('<input>', {type:'hidden', name:`items[${card.data('item')}][size]`, value:size, class:'order-line'}).appendTo('#clothingOrderForm');
+      $('<input>', {type:'hidden', name:`items[${card.data('item')}][qty]`, value:qty, class:'order-line'}).appendTo('#clothingOrderForm');
+    });
+    if (!selected || !valid) { event.preventDefault(); alert('Select at least one item and choose a size and quantity from 1 to 20 for every selected item.'); }
+  });
+})(jQuery);
+</script>
+
+
+  <style>
+  .ct-install-app {
+    position: fixed;
+    right: 1rem;
+    bottom: 1rem;
+    z-index: 1080;
+    display: none;
+    align-items: center;
+    gap: .5rem;
+    border: 0;
+    border-radius: 999px;
+    padding: .7rem 1rem;
+    color: #fff;
+    background: #12358f;
+    box-shadow: 0 .4rem 1.2rem rgba(18, 53, 143, .3);
+    font-weight: 600;
+  }
+  .ct-install-app:hover,
+  .ct-install-app:focus { background: #0b276f; color: #fff; }
+  .ct-install-app.is-visible { display: inline-flex; }
+  @media (max-width: 575.98px) {
+    .ct-install-app { right: .75rem; bottom: .75rem; }
+  }
+</style>
+
+<button type="button" class="ct-install-app" id="ct-install-app" aria-haspopup="dialog">
+  <i class="ti ti-device-mobile-down" aria-hidden="true"></i>
+  <span>Install Cape Tennis</span>
+</button>
+
+<div class="modal fade" id="ct-install-help" tabindex="-1" aria-labelledby="ct-install-help-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="ct-install-help-title">Install Cape Tennis</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">Add Cape Tennis to your home screen so it opens like an app.</p>
+        <ol class="mb-0 ps-3" id="ct-install-steps"></ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (() => {
+    const installButton = document.getElementById('ct-install-app');
+    const installSteps = document.getElementById('ct-install-steps');
+    let installPrompt = null;
+    const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('http://localhost/ct/public/service-worker.js').catch(() => {});
+      });
+    }
+
+    if (standalone) return;
+
+    const showHelp = () => {
+      const steps = isIos
+        ? ['Tap the Share button in Safari.', 'Choose Add to Home Screen.', 'Tap Add.']
+        : ['Open your browser menu.', 'Choose Install app or Add to home screen.', 'Confirm Install.'];
+      installSteps.replaceChildren(...steps.map(step => {
+        const item = document.createElement('li');
+        item.textContent = step;
+        return item;
+      }));
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('ct-install-help')).show();
+    };
+
+    window.addEventListener('beforeinstallprompt', event => {
+      event.preventDefault();
+      installPrompt = event;
+      installButton.classList.add('is-visible');
+    });
+
+    if (isIos) installButton.classList.add('is-visible');
+
+    installButton.addEventListener('click', async () => {
+      if (!installPrompt) return showHelp();
+      installPrompt.prompt();
+      await installPrompt.userChoice;
+      installPrompt = null;
+      installButton.classList.remove('is-visible');
+    });
+
+    window.addEventListener('appinstalled', () => installButton.classList.remove('is-visible'));
+  })();
+</script>
+  <script>
+(() => {
+  const endpoint = "http:\/\/localhost\/audit\/interactions";
+  const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+  if (!endpoint || !csrf || !navigator.sendBeacon) return;
+
+  const clean = value => String(value || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+  const stableAction = element => {
+    if (element.dataset.auditAction) return clean(element.dataset.auditAction).replace(/[^A-Za-z0-9._-]/g, '-');
+    if (element.id) return `clicked.${clean(element.id).replace(/[^A-Za-z0-9._-]/g, '-')}`;
+    if (element.name) return `clicked.${clean(element.name).replace(/[^A-Za-z0-9._-]/g, '-')}`;
+    const href = element.getAttribute('href');
+    if (href && !href.startsWith('javascript:') && href !== '#') {
+      try {
+        const url = new URL(href, window.location.href);
+        return `navigate.${clean(url.pathname).replace(/[^A-Za-z0-9._/-]/g, '-')}`;
+      } catch (_) {}
+    }
+    return `clicked.${element.tagName.toLowerCase()}`;
+  };
+
+  document.addEventListener('click', event => {
+    const element = event.target.closest('button, a, [role="button"], input[type="submit"], input[type="button"]');
+    if (!element || element.dataset.auditIgnore === 'true') return;
+
+    let targetPath = null;
+    const href = element.getAttribute('href');
+    if (href && !href.startsWith('javascript:')) {
+      try {
+        const url = new URL(href, window.location.href);
+        targetPath = url.origin === window.location.origin ? url.pathname : `[external] ${url.hostname}`;
+      } catch (_) {}
+    }
+
+    const payload = new FormData();
+    payload.append('_token', csrf);
+    payload.append('action', stableAction(element).slice(0, 120));
+    payload.append('label', clean(element.getAttribute('aria-label') || element.title || element.innerText || element.value));
+    payload.append('element', element.tagName.toLowerCase());
+    payload.append('page_path', window.location.pathname);
+    payload.append('client_at', new Date().toISOString());
+    payload.append('viewport_width', String(window.innerWidth));
+    payload.append('viewport_height', String(window.innerHeight));
+    if (targetPath) payload.append('target_path', targetPath);
+    const orderId = element.dataset.auditOrderId || element.closest('[data-audit-order-id]')?.dataset.auditOrderId;
+    if (orderId) payload.append('order_id', orderId);
+    navigator.sendBeacon(endpoint, payload);
+    if (element.form && (element.matches('button[type="submit"], input[type="submit"]') || element.tagName === 'BUTTON')) {
+      element.form.dataset.auditClickRecorded = 'true';
+    }
+  }, {capture: true});
+
+  const record = (action, element, extra = {}) => {
+    if (!navigator.sendBeacon || !element || element.dataset.auditIgnore === 'true') return;
+    const payload = new FormData();
+    payload.append('_token', csrf);
+    payload.append('action', action.slice(0, 120));
+    payload.append('label', clean(element.getAttribute('aria-label') || element.title || element.innerText || element.name || element.id));
+    payload.append('element', element.tagName.toLowerCase());
+    payload.append('page_path', window.location.pathname);
+    payload.append('client_at', new Date().toISOString());
+    payload.append('viewport_width', String(window.innerWidth));
+    payload.append('viewport_height', String(window.innerHeight));
+    Object.entries(extra).forEach(([key, value]) => {
+      if (value !== null && value !== undefined && value !== '') payload.append(key, String(value));
+    });
+    navigator.sendBeacon(endpoint, payload);
+  };
+
+  document.addEventListener('submit', event => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement) || form.dataset.auditIgnore === 'true') return;
+    if (form.dataset.auditClickRecorded === 'true') return;
+    const action = form.dataset.auditAction || 'form.submitted';
+    const orderId = form.dataset.auditOrderId || form.querySelector('[name="order_id"], [name="custom_int5"]')?.value;
+    record(action, form, {target_path: form.action ? new URL(form.action, window.location.href).pathname : null, order_id: orderId});
+  }, {capture: true});
+
+  document.addEventListener('change', event => {
+    const element = event.target;
+    if (!(element instanceof HTMLSelectElement) && !(element instanceof HTMLInputElement)) return;
+    if (!['select-one', 'select-multiple', 'checkbox', 'radio'].includes(element.type)) return;
+    // Record that a choice changed, never the selected value or typed content.
+    record(element.dataset.auditAction || `field.changed.${clean(element.name || element.id || element.tagName).replace(/[^A-Za-z0-9._-]/g, '-')}`, element, {
+      order_id: element.dataset.auditOrderId || element.closest('[data-audit-order-id]')?.dataset.auditOrderId
+    });
+  }, {capture: true});
+})();
+</script>
+      <style>
+  #match-reminder { color: #3e4c48; }
+  #match-reminder .modal-dialog { width: calc(100% - 2rem); max-width: 960px; margin-left: auto; margin-right: auto; }
+  #match-reminder .modal-content { background: #fcfcfa; border: 1px solid #e1e6e0; border-radius: 18px; box-shadow: 0 18px 60px rgba(34, 48, 42, .14); }
+  #match-reminder .modal-header { gap: .5rem; padding: 1.35rem 1.5rem .75rem; border: 0; }
+  #match-reminder .modal-title { flex: 1; color: #35463f; font-size: 1.25rem; font-weight: 600; white-space: normal; overflow: visible; text-overflow: clip; min-width: 0; overflow-wrap: anywhere; }
+  #match-reminder .modal-header .btn-close { position: static; flex: 0 0 auto; margin: 0; opacity: .55; }
+  #match-reminder .modal-body { padding: .25rem 1.5rem 1rem; }
+  #match-reminder-description { color: #68756e; font-size: .9rem; line-height: 1.55; margin-bottom: 1.35rem; }
+  #match-reminder .reminder-player { margin-bottom: 1.25rem; }
+  #match-reminder .reminder-player:last-child { margin-bottom: 0; }
+  #match-reminder .reminder-player-name { color: #56645c; font-size: .9rem; font-weight: 600; margin-bottom: .5rem; }
+  #match-reminder article { overflow-wrap: anywhere; padding: .9rem 1rem; background: #f2f5f0; border-radius: 10px; margin-bottom: .5rem; }
+  #match-reminder .reminder-time { color: #586e5d; font-size: .85rem; font-weight: 600; margin-bottom: .35rem; }
+  #match-reminder .reminder-participants { color: #35463f; font-weight: 600; line-height: 1.5; }
+  #match-reminder .reminder-event { color: #657168; font-size: .8rem; margin-top: .2rem; }
+  #match-reminder .reminder-venue { color: #58665e; font-size: .9rem; margin-top: .4rem; }
+  #match-reminder .reminder-fixtures { display: inline-flex; align-items: center; min-height: 44px; color: #526b58; font-size: .85rem; text-decoration: underline; text-underline-offset: 3px; }
+  #match-reminder .reminder-fixtures:hover { color: #304b38; }
+  #match-reminder .modal-footer { display: block; padding: 1rem 1.5rem 1.25rem; background: #f7f8f5; border-top: 1px solid #e6eae3; border-radius: 0 0 18px 18px; }
+  #match-reminder .reminder-settings { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .5rem .75rem; align-items: end; margin: 0; }
+  #match-reminder .reminder-settings label { display: block; margin-bottom: .35rem; color: #68756e; font-size: .8rem; }
+  #match-reminder .reminder-preference { min-width: 0; }
+  #match-reminder .form-select { width: 100%; min-height: 44px; border-color: #dce3d9; background-color: #fcfcfa; color: #56645c; font-size: .875rem; }
+  #match-reminder .select2-container { max-width: 100%; }
+  #match-reminder .select2-selection { background: #fcfcfa; border-color: #dce3d9; }
+  #match-reminder .reminder-help { margin: .65rem 0 .9rem; color: #657168; font-size: .8rem; }
+  #match-reminder .reminder-help summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; text-decoration: underline; text-underline-offset: 3px; }
+  #match-reminder .reminder-help p { line-height: 1.5; margin-bottom: .5rem; }
+  #match-reminder .reminder-actions { display: flex; justify-content: space-between; align-items: center; gap: .75rem; margin: 0; }
+  #match-reminder .btn { min-height: 44px; font-size: .875rem; box-shadow: none; }
+  #match-reminder .reminder-apply { background: #e5ece2; color: #435c47; border: 1px solid #d7e1d2; }
+  #match-reminder .reminder-apply:hover { background: #d9e4d5; }
+  #match-reminder .reminder-all { display: inline-flex; align-items: center; min-height: 44px; color: #526b58; font-size: .875rem; text-decoration: underline; text-underline-offset: 3px; }
+  #match-reminder .reminder-close { color: #647067; background: transparent; border: 1px solid #dce3d9; }
+  #match-reminder a:focus-visible, #match-reminder summary:focus-visible, #match-reminder button:focus-visible { outline: 2px solid #697f6d; outline-offset: 3px; }
+  @media (min-width: 576px) {
+    #match-reminder .modal-header { padding: .85rem 1.25rem .35rem; }
+    #match-reminder .modal-body { padding: .25rem 1.25rem .75rem; }
+    #match-reminder-description { margin-bottom: .75rem; }
+    #match-reminder .reminder-player { margin-bottom: .85rem; }
+    #match-reminder article { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 1rem; padding: .75rem 1rem; }
+    #match-reminder .reminder-time, #match-reminder .reminder-participants, #match-reminder .reminder-event, #match-reminder .reminder-venue { grid-column: 1; }
+    #match-reminder .reminder-fixtures { grid-column: 2; grid-row: 1 / span 4; align-self: center; }
+    #match-reminder .modal-footer { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .25rem 1rem; padding: .65rem 1.25rem .75rem; }
+    #match-reminder .reminder-settings { grid-column: 1 / -1; }
+    #match-reminder .reminder-preference { display: flex; align-items: center; gap: .75rem; }
+    #match-reminder .reminder-settings label { flex-shrink: 0; margin: 0; }
+    #match-reminder .reminder-help { margin: 0; }
+    #match-reminder .reminder-help[open] { grid-column: 1 / -1; }
+    #match-reminder .reminder-actions { justify-content: flex-end; }
+  }
+  @media (max-width: 575.98px) {
+    #match-reminder .modal-dialog { width: auto; margin: .5rem; }
+    #match-reminder .modal-body, #match-reminder .modal-header, #match-reminder .modal-footer { padding-left: 1rem; padding-right: 1rem; }
+    #match-reminder .reminder-settings { grid-template-columns: minmax(0, 1fr); }
+    #match-reminder .reminder-apply { width: 100%; }
+  }
+  @media (max-width: 575.98px), (max-height: 600px) {
+    #match-reminder .modal-content { max-height: calc(100vh - 1rem); max-height: calc(100dvh - 1rem); overflow-y: auto; }
+    #match-reminder .modal-body { overflow-y: visible; flex: 0 0 auto; }
+    #match-reminder .modal-header, #match-reminder .modal-footer { flex-shrink: 0; }
+  }
+</style>
+<div class="modal fade" id="match-reminder" tabindex="-1" aria-labelledby="match-reminder-title" aria-describedby="match-reminder-description" aria-hidden="true"
+     data-endpoint="http://localhost/ct/public/my-tennis/match-reminder" data-account="2" data-login="existing-session" data-auto-open="0" data-day="2026-10-14">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title" id="match-reminder-title">Your week in tennis</h2>
+        <button type="button" class="btn-close p-3" data-bs-dismiss="modal" aria-label="Close reminder"></button>
+      </div>
+      <div class="modal-body">
+        <p id="match-reminder-description">Published matches for your players over the next 7 days. Check fixtures for the latest details.</p>
+        <div data-reminder-players></div>
+      </div>
+      <div class="modal-footer">
+        <div class="reminder-settings">
+          <div class="reminder-preference">
+            <label for="match-reminder-preference">Remind me</label>
+            <select id="match-reminder-preference" class="form-select" data-reminder-preference data-select2-script="http://localhost/ct/public/assets/vendor/libs/select2/select2.js" data-select2-style="http://localhost/ct/public/assets/vendor/libs/select2/select2.css" aria-describedby="match-reminder-timing-help">
+              <option value="login">Close for this login</option>
+              <option value="hour">Snooze for 1 hour</option>
+              <option value="week">Hide for 7 days</option>
+              <option value="match-day" data-reminder-next-day disabled>On the next match day</option>
+            </select>
+          </div>
+          <button type="button" class="btn reminder-apply" data-reminder-apply>Apply and close</button>
+        </div>
+        <details class="reminder-help">
+          <summary>About reminders</summary>
+          <p id="match-reminder-timing-help">After a snooze ends, the automatic reminder can appear at your next login. Next match day uses midnight in South Africa, or the next match time if only today’s matches remain. Reopen anytime using Upcoming matches in My Tennis.</p>
+        </details>
+        <div class="reminder-actions">
+          <a href="http://localhost/ct/public/my-tennis" class="reminder-all">View all in My Tennis</a>
+          <button type="button" class="btn reminder-close" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="http://localhost/ct/public/js/match-reminder.js?v=1791401602" defer></script>
+  
+
+</body>
+</html>
+

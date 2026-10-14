@@ -2,7 +2,7 @@
 @forelse($clothingItems as $item)
   <div class="card mb-2 clothing-item"
        data-item="{{ $item->id }}"
-       data-price="{{ $item->price }}">
+       data-price="{{ $item->price }}" data-customer-price="{{ number_format($item->customer_price, 2, '.', '') }}">
 
     <div class="card-body py-2">
 

@@ -72,7 +72,8 @@ class TeamWorkspaceResultsTest extends TestCase
         $draft = $this->putJson(route('backend.team-result-selection.store', $event), $input)->assertOk()->assertJsonPath('draft.formats', ['singles', 'reverse_singles'])->json('draft');
         $this->assertSame(\App\Services\TeamSelectionCriteria::PLATTELAND, $draft['snapshot'][0]['selection_criteria']['preset']);
         $this->putJson($url, ['criteria_preset' => 'legacy', 'excluded_result_region_ids' => []])->assertOk();
-        $this->getJson(route('backend.team-result-selection.show', $event).'?group_key=10-boys')->assertOk()->assertJsonPath('draft.snapshot', $draft['snapshot']);
+        $loaded = $this->getJson(route('backend.team-result-selection.show', $event).'?group_key=10-boys')->assertOk()->json('draft.snapshot');
+        $this->assertEquals($draft['snapshot'], $loaded);
         $input['version'] = 1;
         $this->putJson(route('backend.team-result-selection.store', $event), $input)->assertConflict();
         $this->assertDatabaseCount('team_result_selection_revisions', 1);
