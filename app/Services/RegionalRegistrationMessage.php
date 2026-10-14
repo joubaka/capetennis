@@ -61,8 +61,6 @@ final class RegionalRegistrationMessage
                 $team->team_players->map(fn ($slot) => [$slot->id, $slot->player_id, $slot->rank])->all(),
                 $team->team_players_no_profile->map(fn ($slot) => [$slot->id, $slot->player_profile, $slot->rank])->all()])->all(), $roles,
             $rows->all(), $available, $clothing,
-            $options['registration_deadline'] ?? null, $options['clothing_deadline'] ?? null,
-            $options['registration_deadline_time'] ?? null, $options['clothing_deadline_time'] ?? null,
         ], JSON_THROW_ON_ERROR));
         return compact('region', 'rows', 'clothing', 'available', 'fingerprint');
     }
@@ -71,17 +69,15 @@ final class RegionalRegistrationMessage
     {
         $context = $this->context($event, $actor, $options);
         $name = $context['region']->region->region_name;
-        $registrationDeadline = $options['registration_deadline'] ?? $event->registrationClosesAt()?->timezone('Africa/Johannesburg')->format('Y-m-d');
-        $deadline = $registrationDeadline ? $this->formatDeadline($registrationDeadline, $options['registration_deadline_time'] ?? null) : 'Please register as soon as possible.';
-        $body = "Dear players and parents,\n\nCongratulations on being selected for {$name} for {$event->name}!\n\nRegistration is now open. Please visit the event page, find your player in the {$name} team and click Register to complete registration and payment.\n\nRegistration deadline: {$deadline}\n\n".route('events.show', $event);
+        $body = "Dear players and parents,\n\nCongratulations on being selected for {$name} for {$event->name}!\n\nRegistration is now open. Please visit the event page, find your player in the {$name} team and click Register to complete registration and payment.\n\nRegistration closing date and deadline:\nClothing orders closing date and deadline:\n\n".route('events.show', $event);
         if ($context['clothing']) {
             $body .= "\n\nClothing orders are open for {$name}. On the event page, choose Order clothing beside your player, select the items and sizes you need, and complete payment.\n";
-            if (! empty($options['clothing_deadline'])) $body .= "\nClothing order deadline: ".$this->formatDeadline($options['clothing_deadline'], $options['clothing_deadline_time'] ?? null)."\n";
             $body .= "\nClothing catalogue (customer prices):\n";
             foreach ($context['clothing'] as $item) $body .= $item['name'].' — R'.number_format($item['price'], 2).'; sizes: '.implode(', ', array_column($item['sizes'], 'name'))."\n";
         }
         return ['subject' => $event->name.' — Congratulations '.$name.'! Registration is open',
-            'body' => $body."\n\nKind regards,\nCape Tennis", 'registration_fingerprint' => $context['fingerprint']];
+            'body' => $this->synchronizeDeadlines($body."\n\nKind regards,\nCape Tennis", $options),
+            'registration_fingerprint' => $context['fingerprint']];
     }
 
     public function audience(Event $event, User $actor, array $options): array
@@ -98,5 +94,31 @@ final class RegionalRegistrationMessage
     {
         $label = \Carbon\Carbon::parse($date, 'Africa/Johannesburg')->format('d F Y');
         return $time ? $label.' at '.$time.' (South African time)' : $label;
+    }
+
+    /** Update only the managed deadline lines, preserving the organiser's edits. */
+    public function synchronizeDeadlines(string $body, array $options): string
+    {
+        foreach ([
+            ['registration_deadline', 'Registration closing date and deadline', '/^Registration (?:deadline|closing date and deadline):[^\r\n]*/mi'],
+            ['clothing_deadline', 'Clothing orders closing date and deadline', '/^Clothing (?:order deadline|orders closing date and deadline):[^\r\n]*/mi'],
+        ] as [$field, $label, $pattern]) {
+            $date = $options[$field] ?? null;
+            $line = $date ? $label.': '.$this->formatDeadline($date, $options[$field.'_time'] ?? null) : '';
+            $found = false;
+            $body = preg_replace_callback($pattern, function () use (&$found, $line): string {
+                $replacement = $found ? '' : $line;
+                $found = true;
+                return $replacement;
+            }, $body);
+            if (! $found && $line !== '') {
+                $signature = '/\r?\n\r?\n(?=Kind regards,)/i';
+                $body = preg_match($signature, $body)
+                    ? preg_replace_callback($signature, fn () => "\n\n".$line."\n\n", $body, 1)
+                    : rtrim($body)."\n\n".$line;
+            }
+        }
+
+        return $body;
     }
 }

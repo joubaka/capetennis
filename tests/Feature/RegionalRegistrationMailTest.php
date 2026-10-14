@@ -74,15 +74,16 @@ class RegionalRegistrationMailTest extends TestCase
         $this->assertDatabaseCount('bulk_email_logs', 0);
     }
 
-    public function test_foreign_region_unauthorized_user_and_changed_dates_cannot_skip_fresh_review(): void
+    public function test_foreign_region_and_unauthorized_user_are_rejected_while_changed_dates_get_a_fresh_review(): void
     {
         [$event, $actor, $region] = $this->scenario();
         $input = $this->input($event, $actor, $region);
-        $this->post(route('backend.regional-registration-mail.preview', $event), array_replace($input, ['registration_deadline' => '2026-11-01']))->assertSessionHasErrors('preview');
+        $this->post(route('backend.regional-registration-mail.preview', $event), array_replace($input, ['registration_deadline' => '2026-11-01']))
+            ->assertOk()->assertSee('Registration closing date and deadline: 01 November 2026');
         $foreign = EventRegion::forceCreate(['event_id' => Event::factory()->create()->id, 'region_id' => TeamRegion::create(['region_name' => 'Foreign'])->id]);
         $this->post(route('backend.regional-registration-mail.preview', $event), array_replace($input, ['event_region_id' => $foreign->id]))->assertForbidden();
         $this->actingAs(User::factory()->create())->get(route('backend.regional-registration-mail.compose', $event))->assertForbidden();
-        $this->assertDatabaseCount('event_communication_batches', 0);
+        $this->assertDatabaseCount('event_communication_batches', 1);
         $this->assertDatabaseCount('bulk_email_logs', 0);
     }
 
@@ -99,7 +100,7 @@ class RegionalRegistrationMailTest extends TestCase
         Mail::assertNothingSent();
     }
 
-    public function test_email_deadline_times_are_generated_reviewed_retained_when_editing_and_require_fresh_review_after_change(): void
+    public function test_email_deadline_times_are_generated_retained_when_editing_and_changed_times_get_a_fresh_review(): void
     {
         [$event, $actor, $region] = $this->scenario();
         $this->clothing($region);
@@ -122,7 +123,7 @@ class RegionalRegistrationMailTest extends TestCase
             ->assertSee('value="17:00"', false)->assertSee('value="18:30"', false);
         foreach (['registration_deadline_time', 'clothing_deadline_time'] as $field) {
             $this->post(route('backend.regional-registration-mail.preview', $event), array_replace($input, [$field => '20:00']))
-                ->assertSessionHasErrors('preview');
+                ->assertOk()->assertSee('20:00 (South African time)');
         }
         $this->assertSame($before, $event->fresh()->getAttributes());
         $this->assertDatabaseCount('bulk_email_logs', 0);
@@ -147,6 +148,51 @@ class RegionalRegistrationMailTest extends TestCase
             ->assertSee('name="registration_deadline_time" value="'.$defaultTime.'"', false);
         $this->assertDatabaseCount('event_communication_batches', 0);
         $this->assertDatabaseCount('bulk_email_logs', 0);
+    }
+
+    public function test_changed_deadlines_are_synchronized_server_side_without_clothing_catalogue_or_losing_manual_edits(): void
+    {
+        [$event, $actor, $region] = $this->scenario();
+        $input = $this->input($event, $actor, $region);
+        $input['body'] .= "\n\nBring your tennis shoes and a water bottle.";
+        $input['registration_deadline'] = '2026-10-18';
+        $input['registration_deadline_time'] = '21:00';
+        $input['clothing_deadline'] = '2026-10-16';
+        $input['clothing_deadline_time'] = '18:00';
+        $before = $event->fresh()->getAttributes();
+        $this->post(route('backend.regional-registration-mail.preview', $event), $input)->assertOk()
+            ->assertSee('Registration closing date and deadline: 18 October 2026 at 21:00 (South African time)')
+            ->assertSee('Clothing orders closing date and deadline: 16 October 2026 at 18:00 (South African time)')
+            ->assertSee('Bring your tennis shoes and a water bottle.');
+        $batch = EventCommunicationBatch::sole();
+        $this->assertStringNotContainsString('Clothing orders are open', $batch->body);
+        $this->assertStringNotContainsString('Clothing catalogue', $batch->body);
+        $this->assertStringNotContainsString('31 October 2026', $batch->body);
+        $this->assertStringNotContainsString('02 November 2026', $batch->body);
+        $this->assertSame(1, substr_count($batch->body, 'Registration closing date and deadline:'));
+        $this->assertSame(1, substr_count($batch->body, 'Clothing orders closing date and deadline:'));
+        $this->assertSame($before, $event->fresh()->getAttributes());
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+    }
+
+    public function test_legacy_deadline_lines_are_replaced_once_and_blank_dates_remove_only_managed_lines(): void
+    {
+        [$event, $actor, $region] = $this->scenario();
+        $body = "Dear parents,\n\nMy custom introduction.\nRegistration deadline: old value\nRegistration deadline: duplicate\nClothing order deadline: old clothing value\n\nPlease keep this paragraph.\n\nKind regards,\nOffice";
+        $message = app(RegionalRegistrationMessage::class);
+        $updated = $message->synchronizeDeadlines($body, ['registration_deadline' => '2026-10-18', 'registration_deadline_time' => '17:00',
+            'clothing_deadline' => '2026-10-16', 'clothing_deadline_time' => '18:00']);
+        $this->assertSame(1, substr_count($updated, 'Registration closing date and deadline:'));
+        $this->assertSame(1, substr_count($updated, 'Clothing orders closing date and deadline:'));
+        $this->assertStringNotContainsString('old value', $updated);
+        $this->assertStringNotContainsString('duplicate', $updated);
+        $cleared = $message->synchronizeDeadlines($updated, ['registration_deadline' => null, 'clothing_deadline' => null]);
+        $this->assertStringNotContainsString('closing date and deadline:', $cleared);
+        $this->assertStringContainsString('My custom introduction.', $cleared);
+        $this->assertStringContainsString('Please keep this paragraph.', $cleared);
+        $draft = $message->draft($event, $actor, ['event_region_id' => $region->id, 'include_clothing' => false,
+            'registration_deadline' => null, 'clothing_deadline' => null]);
+        $this->assertStringNotContainsString('closing date and deadline:', $draft['body']);
     }
 
     public function test_super_user_composer_and_omitted_sender_fields_use_assigned_event_administrator(): void

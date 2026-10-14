@@ -63,7 +63,8 @@ final class RegionalRegistrationMailController extends Controller
             return response()->view('backend.event.communications.regional-registration', compact('event', 'regions', 'options', 'draft', 'context'))->header('Cache-Control', 'private, no-store');
         }
         $options['registration_fingerprint'] = $data['registration_fingerprint'];
-        $batch = $communications->preview($event, $request->user(), $options, $data['subject'], $data['body']);
+        $body = $message->synchronizeDeadlines($data['body'], $options);
+        $batch = $communications->preview($event, $request->user(), $options, $data['subject'], $body);
         return response()->view('backend.event.communications.preview', compact('event', 'batch'))->header('Cache-Control', 'private, no-store');
     }
 }
