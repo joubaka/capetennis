@@ -8,6 +8,50 @@ use PHPUnit\Framework\TestCase;
 
 class TeamResultRankingOrderTest extends TestCase
 {
+    public function test_platteland_uses_set_win_ratio_instead_of_difference_and_does_not_reorder_bands(): void
+    {
+        $a = $this->plattelandRow(1, 1, 1, 2, 3, 1); // 75%, difference 2.
+        $b = $this->plattelandRow(2, 2, 1, 2, 8, 4); // 66.7%, difference 4.
+        $lowerBand = $this->plattelandRow(3, 3, 3, 10, 20, 0);
+        $ranked = (new TeamResultRankingService)->orderRanking(collect([$lowerBand, $b, $a]), \App\Services\TeamSelectionCriteria::PLATTELAND);
+        $this->assertSame([1, 2, 3], $ranked->pluck('id')->all());
+        $this->assertFalse($ranked->contains(fn ($row) => $row['head_to_head']['applied']));
+    }
+
+    public function test_platteland_same_team_roster_precedes_ratio_in_any_input_order(): void
+    {
+        $higher = $this->plattelandRow(1, 10, 1, 2, 2, 4);
+        $lower = $this->plattelandRow(2, 10, 2, 2, 4, 2);
+        $other = $this->plattelandRow(3, 11, 1, 2, 3, 3);
+        foreach ([[$higher, $lower, $other], [$other, $lower, $higher], [$lower, $higher, $other]] as $rows) {
+            $ranked = (new TeamResultRankingService)->orderRanking(collect($rows), \App\Services\TeamSelectionCriteria::PLATTELAND);
+            $this->assertSame([3, 1, 2], $ranked->pluck('id')->all());
+            $this->assertTrue($ranked[1]['same_team_tiebreak']);
+        }
+    }
+
+    public function test_platteland_mixed_team_tie_does_not_tie_a_same_team_pair_or_use_rounded_ratios(): void
+    {
+        $higher = $this->plattelandRow(1, 10, 1, 2, 1, 1);
+        $lower = $this->plattelandRow(2, 10, 2, 2, 2, 2);
+        $other = $this->plattelandRow(3, 11, 1, 2, 3, 3);
+        $ranked = (new TeamResultRankingService)->orderRanking(collect([$lower, $other, $higher]), \App\Services\TeamSelectionCriteria::PLATTELAND, 1);
+        $this->assertSame([1, 3, 2], $ranked->pluck('id')->all());
+        $this->assertSame([1, 1, 3], $ranked->pluck('position')->all());
+        $this->assertSame([1, 3], $ranked->where('cutoff_tie', true)->pluck('id')->all());
+        $nearA = $this->plattelandRow(4, 12, 1, 2, 10000, 10001);
+        $nearB = $this->plattelandRow(5, 13, 1, 2, 10001, 10002);
+        $ranked = (new TeamResultRankingService)->orderRanking(collect([$nearA, $nearB]), \App\Services\TeamSelectionCriteria::PLATTELAND, 1);
+        $this->assertSame([5, 4], $ranked->pluck('id')->all());
+        $this->assertCount(0, $ranked->where('cutoff_tie', true));
+    }
+
+    private function plattelandRow(int $id, int $team, int $rank, int $wins, int $setsWon, int $setsLost): array
+    {
+        return array_replace($this->row($id, $wins, []), ['name' => 'Player '.$id, 'credited_wins' => $wins,
+            'source_team_ids' => [$team], 'ranks' => [$rank], 'rank' => $rank, 'sets_won' => $setsWon, 'sets_lost' => $setsLost]);
+    }
+
     public function test_equal_points_teammates_follow_roster_before_sets_and_other_teams_use_sets(): void
     {
         $simeon = array_replace($this->row(10, 70, [], 'Simeon'), ['rank' => 3, 'ranks' => [3], 'source_team_ids' => [1], 'set_difference' => 3]);

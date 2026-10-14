@@ -18,6 +18,91 @@ class TeamWorkspaceResultsTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_platteland_preset_settings_are_reusable_event_scoped_and_finalization_locked(): void
+    {
+        [$event] = $this->groupedScenario(); $this->makeTeamEvent($event);
+        $other = Event::factory()->create(); $this->makeTeamEvent($other);
+        $foreign = \App\Models\TeamRegion::create(['region_name' => 'Foreign']); $other->regions()->attach($foreign);
+        $input = ['criteria_preset' => \App\Services\TeamSelectionCriteria::PLATTELAND, 'criteria_expected_matches' => 4,
+            'criteria_weak_max_wins' => 1, 'excluded_result_region_ids' => $event->regions()->pluck('team_regions.id')->all()];
+        $url = route('backend.team-selection-criteria.store', $event);
+        $this->putJson($url, $input)->assertOk()->assertJsonPath('settings.formats', ['singles', 'reverse_singles']);
+        $this->assertNull($other->fresh()->team_result_settings);
+        $this->putJson($url, array_replace($input, ['criteria_preset' => 'untrusted']))->assertUnprocessable();
+        $this->putJson($url, array_replace($input, ['excluded_result_region_ids' => [$foreign->id]]))->assertUnprocessable();
+        $this->putJson(route('backend.team-selection-criteria.store', $other), ['criteria_preset' => \App\Services\TeamSelectionCriteria::PLATTELAND, 'excluded_result_region_ids' => []])->assertOk();
+        $this->assertNull($other->fresh()->team_result_settings['criteria_expected_matches']);
+        $this->assertSame([], $other->fresh()->team_result_settings['excluded_result_region_ids']);
+        \App\Models\EventSelectionFinalization::create(['event_id' => $event->id, 'finalized_by' => auth()->id(), 'draft_versions' => [], 'groups' => [], 'fingerprint' => str_repeat('a', 64), 'team_size' => 10, 'reserve_count' => 2, 'finalized_at' => now()]);
+        $this->putJson($url, array_replace($input, ['criteria_preset' => 'legacy']))->assertConflict();
+        $this->actingAs(User::factory()->create())->putJson(route('backend.team-selection-criteria.store', $other), $input)->assertForbidden();
+    }
+
+    public function test_platteland_combines_formats_credit_and_canonical_event_exclusion_without_synthetic_sets(): void
+    {
+        [$event, $category, $draw, $home, $away] = $this->groupedScenario(); $this->makeTeamEvent($event);
+        $homeTeam = TeamPlayer::where('player_id', $home->id)->first()->team;
+        TeamPlayer::create(['team_id' => $homeTeam->id, 'player_id' => Player::factory()->create()->id, 'rank' => 4]);
+        $zf = \App\Models\TeamRegion::create(['region_name' => 'ZF Mcawu']); $event->regions()->attach($zf);
+        TeamPlayer::where('player_id', $away->id)->first()->team->update(['region_id' => $zf->id]);
+        $this->fixture($draw, $home, $away, [[6, 1], [6, 1]]);
+        $this->fixture($draw, $home, $away, [[6, 1], [6, 1]], 4);
+        $event->team_result_settings = ['criteria_preset' => \App\Services\TeamSelectionCriteria::PLATTELAND]; $event->save();
+        $response = $this->groupedRequest($event, ['formats' => ['singles']])->assertOk();
+        $winner = collect($response->json('ranking'))->firstWhere('id', $home->id);
+        $this->assertSame(2, $winner['wins']); $this->assertSame(1, $winner['starting_credit']);
+        $this->assertSame(3, $winner['credited_wins']); $this->assertSame(4, $winner['sets_won']);
+        $this->assertSame(1, $winner['singles_wins']); $this->assertSame(1, $winner['reverse_singles_wins']);
+        $event->team_result_settings = ['criteria_preset' => \App\Services\TeamSelectionCriteria::PLATTELAND, 'excluded_result_region_ids' => [$zf->id]]; $event->save();
+        $this->groupedRequest($event, ['excluded_result_region_ids' => []])->assertOk()->assertJsonCount(0, 'ranking');
+    }
+
+    public function test_platteland_stale_browser_cannot_save_and_snapshot_keeps_its_criteria(): void
+    {
+        [$event, , $draw, $home, $away] = $this->groupedScenario(); $this->makeTeamEvent($event);
+        $this->fixture($draw, $home, $away, [[6, 1], [6, 1]]);
+        $oldFingerprint = $this->groupedRequest($event)->assertOk()->json('criteria_fingerprint');
+        $url = route('backend.team-selection-criteria.store', $event);
+        $this->putJson($url, ['criteria_preset' => \App\Services\TeamSelectionCriteria::PLATTELAND, 'excluded_result_region_ids' => []])->assertOk();
+        $input = ['group_key' => '10-boys', 'region_ids' => $event->regions()->pluck('team_regions.id')->all(), 'formats' => ['singles', 'reverse_singles'],
+            'excluded_result_region_ids' => [], 'selected_keys' => [(string) $home->id], 'reasons' => [], 'version' => 0, 'criteria_fingerprint' => $oldFingerprint];
+        $this->putJson(route('backend.team-result-selection.store', $event), $input)->assertConflict();
+        $this->assertDatabaseCount('team_result_selection_revisions', 0);
+        $input['criteria_fingerprint'] = $this->groupedRequest($event)->assertOk()->json('criteria_fingerprint');
+        $draft = $this->putJson(route('backend.team-result-selection.store', $event), $input)->assertOk()->assertJsonPath('draft.formats', ['singles', 'reverse_singles'])->json('draft');
+        $this->assertSame(\App\Services\TeamSelectionCriteria::PLATTELAND, $draft['snapshot'][0]['selection_criteria']['preset']);
+        $this->putJson($url, ['criteria_preset' => 'legacy', 'excluded_result_region_ids' => []])->assertOk();
+        $this->getJson(route('backend.team-result-selection.show', $event).'?group_key=10-boys')->assertOk()->assertJsonPath('draft.snapshot', $draft['snapshot']);
+        $input['version'] = 1;
+        $this->putJson(route('backend.team-result-selection.store', $event), $input)->assertConflict();
+        $this->assertDatabaseCount('team_result_selection_revisions', 1);
+    }
+
+    public function test_platteland_unbeaten_review_uses_all_actual_played_matches_and_optional_event_count(): void
+    {
+        [$event, , $draw, $home, $away] = $this->groupedScenario(); $this->makeTeamEvent($event);
+        TeamPlayer::where('player_id', $away->id)->update(['rank' => 1]);
+        $this->fixture($draw, $home, $away, [[6, 1], [6, 1]]);
+        $event->team_result_settings = ['criteria_preset' => \App\Services\TeamSelectionCriteria::PLATTELAND]; $event->save();
+        $response = $this->groupedRequest($event)->assertOk();
+        $this->assertSame($away->id, $response->json('ranking.0.id')); // Band first even though it lost.
+        $lower = collect($response->json('ranking'))->firstWhere('id', $home->id);
+        $this->assertCount(1, $lower['platteland_manual_review']);
+        $event->team_result_settings = ['criteria_preset' => \App\Services\TeamSelectionCriteria::PLATTELAND, 'criteria_expected_matches' => 4]; $event->save();
+        $lower = collect($this->groupedRequest($event)->assertOk()->json('ranking'))->firstWhere('id', $home->id);
+        $this->assertCount(0, $lower['platteland_manual_review']);
+        $event->team_result_settings = ['criteria_preset' => \App\Services\TeamSelectionCriteria::PLATTELAND]; $event->save();
+        $this->fixture($draw, $home, $away, [[1, 6], [1, 6]], 4);
+        $lower = collect($this->groupedRequest($event)->assertOk()->json('ranking'))->firstWhere('id', $home->id);
+        $this->assertCount(0, $lower['platteland_manual_review']);
+    }
+
+    private function makeTeamEvent(Event $event): void
+    {
+        $type = \Illuminate\Support\Facades\DB::table('eventtypes')->insertGetId(['name' => 'Platteland preset test', 'type' => \App\Models\EventType::TEAM]);
+        $event->eventType = $type; $event->save();
+    }
+
     public function test_event_result_settings_save_without_a_draft_and_validate_event_options(): void
     {
         [$event, , $draw, $home, $away] = $this->groupedScenario();
