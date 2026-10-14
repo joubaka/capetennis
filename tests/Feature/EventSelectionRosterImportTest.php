@@ -12,6 +12,76 @@ class EventSelectionRosterImportTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_approved_selected_team_reviews_and_imports_all_groups_and_reserves_idempotently(): void
+    {
+        [$source, $target, $final, $region, $actor, $players] = $this->scenario();
+        [$secondRegion, $secondPlayer] = $this->addSecondRegionGroup($source, $final, $actor);
+        $this->get(route('backend.selection-import.index', ['event' => $target, 'source_event_id' => $source->id, 'choose_regions' => 1]))
+            ->assertOk()->assertSee('Approved selected team · '.$source->name)->assertSee('Review approved selected team');
+        $this->get(route('backend.selection-import.index', ['event' => $target, 'source_event_id' => $source->id, 'import_mode' => 'approved_team']))
+            ->assertOk()->assertSee($players[0]->name)->assertSee($players[1]->name)->assertSee($secondPlayer->name)
+            ->assertSee('Reserve')->assertSee('data-import-mode="approved_team"', false)
+            ->assertDontSee('type="hidden" name="source_region_ids[]"', false);
+        $input = ['import_mode' => 'approved_team', 'source_event_id' => $source->id, 'finalization_id' => $final->id,
+            'region_id' => $region->id, 'mapping' => ['10-boys' => 0, '12-girls' => 0], 'confirm_import' => 1];
+        $url = route('backend.selection-import.store', $target);
+        $this->post($url, $input)->assertRedirect()->assertSessionHasNoErrors();
+        $this->post($url, $input)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertDatabaseCount('event_selection_roster_imports', 1);
+        $this->assertDatabaseCount('no_profile_team_players', 3);
+        $this->assertSame([(string) $players[1]->id, (string) $players[0]->id], array_column(EventSelectionRosterImport::first()->groups['10-boys']['players'], 'key'));
+        $this->assertSame(['main', 'reserve'], array_column(EventSelectionRosterImport::first()->groups['10-boys']['players'], 'status'));
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->assertDatabaseCount('team_payment_orders', 0);
+    }
+
+    public function test_approved_team_modes_reject_mixed_or_missing_selection_and_wrong_approval(): void
+    {
+        [$source, $target, $final, $region] = $this->scenario();
+        $url = route('backend.selection-import.store', $target);
+        $input = ['import_mode' => 'approved_team', 'source_event_id' => $source->id, 'finalization_id' => $final->id,
+            'region_id' => $region->id, 'mapping' => ['10-boys' => 0], 'confirm_import' => 1];
+        $this->postJson($url, $input + ['source_region_ids' => [$region->id]])->assertUnprocessable();
+        $missingSource = $input;
+        unset($missingSource['source_event_id']);
+        $this->postJson($url, $missingSource)->assertUnprocessable();
+        $this->postJson($url, array_replace($input, ['import_mode' => 'regions']))->assertUnprocessable();
+        $this->postJson($url, array_replace($input, ['source_event_id' => $target->id]))->assertUnprocessable();
+        $this->getJson(route('backend.selection-import.index', ['event' => $target, 'source_event_id' => $source->id,
+            'import_mode' => 'approved_team', 'review_regions' => 1]))->assertUnprocessable();
+        EventSelectionReopening::create(['finalization_id' => $final->id, 'reopened_by' => $final->finalized_by, 'reason' => 'Review', 'reopened_at' => now()]);
+        $this->get(route('backend.selection-import.index', ['event' => $target, 'source_event_id' => $source->id, 'import_mode' => 'approved_team']))
+            ->assertOk()->assertSee('No teams are approved yet.')->assertDontSee('Review approved selected team')->assertDontSee('name="mapping[', false);
+        $this->postJson($url, $input)->assertConflict();
+        $this->assertDatabaseCount('event_selection_roster_imports', 0);
+        $this->assertDatabaseCount('no_profile_team_players', 0);
+    }
+
+    public function test_source_without_any_approved_selection_cannot_review_an_approved_team(): void
+    {
+        [$source, $target, $final] = $this->scenario();
+        DB::table('event_selection_finalizations')->where('id', $final->id)->delete();
+        $this->get(route('backend.selection-import.index', ['event' => $target, 'source_event_id' => $source->id, 'import_mode' => 'approved_team']))
+            ->assertOk()->assertSee('No teams are approved yet.')->assertDontSee('Review approved selected team')->assertDontSee('name="mapping[', false);
+        $this->assertDatabaseCount('event_selection_roster_imports', 0);
+    }
+
+    public function test_approved_team_requires_access_to_both_events(): void
+    {
+        [$source, $target, $final, $region] = $this->scenario();
+        $outsider = User::factory()->create()->assignRole('admin');
+        $this->actingAs($outsider);
+        $query = ['event' => $target, 'source_event_id' => $source->id, 'import_mode' => 'approved_team'];
+        $input = ['import_mode' => 'approved_team', 'source_event_id' => $source->id, 'finalization_id' => $final->id,
+            'region_id' => $region->id, 'mapping' => ['10-boys' => 0], 'confirm_import' => 1];
+        $this->get(route('backend.selection-import.index', $query))->assertForbidden();
+        $this->postJson(route('backend.selection-import.store', $target), $input)->assertForbidden();
+        $outsider->adminEvents()->attach($target);
+        $this->get(route('backend.selection-import.index', $query))->assertForbidden();
+        $this->postJson(route('backend.selection-import.store', $target), $input)->assertForbidden();
+        $this->assertDatabaseCount('event_selection_roster_imports', 0);
+    }
+
     public function test_region_chooser_does_not_validate_players_or_categories_but_review_and_import_do(): void
     {
         [$source, $target, $final, $region, $actor, $players, $team] = $this->scenario();

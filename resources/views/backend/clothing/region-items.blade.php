@@ -150,7 +150,7 @@
           @csrf
           <input type="hidden" name="source_region_id" value="{{ $copySource->id }}">
           <div class="table-responsive">
-            <table class="table align-middle">
+            <table class="table align-middle clothing-copy-table">
               <thead class="table-light"><tr><th style="width:48px">Copy</th><th>{{ $targetYear }} item name</th><th style="width:145px">Buying amount (R)</th><th style="width:155px">Clothing amount (R)</th><th style="width:135px">Vendor profit</th><th style="width:135px">PayFast fee</th><th style="width:155px">Final amount</th><th style="width:110px">Display order</th><th>Sizes copied</th></tr></thead>
               <tbody>
                 @foreach($copySource->clothingItems->sortBy([['ordering','asc'],['item_type_name','asc']])->values() as $rowIndex => $sourceItem)
@@ -160,7 +160,10 @@
                       <input class="form-check-input clothing-copy-toggle" type="checkbox" name="items[{{ $rowIndex }}][selected]" value="1" checked aria-label="Copy {{ $sourceItem->item_type_name }}">
                       <input type="hidden" name="items[{{ $rowIndex }}][source_item_id]" value="{{ $sourceItem->id }}">
                     </td>
-                    <td><input class="form-control" name="items[{{ $rowIndex }}][item_type_name]" value="{{ old("items.$rowIndex.item_type_name", preg_replace('/\b20\d{2}\b/u', (string) $targetYear, $sourceItem->item_type_name)) }}" required maxlength="191"></td>
+                    <td class="clothing-copy-name">
+                      <label class="form-label fw-semibold text-wrap" for="copy-item-name-{{ $rowIndex }}">{{ $sourceItem->item_type_name }}</label>
+                      <input id="copy-item-name-{{ $rowIndex }}" class="form-control" name="items[{{ $rowIndex }}][item_type_name]" value="{{ old("items.$rowIndex.item_type_name", preg_replace('/\b20\d{2}\b/u', (string) $targetYear, $sourceItem->item_type_name)) }}" required maxlength="191">
+                    </td>
                     <td><input class="form-control clothing-cost-price" type="number" step="0.01" name="items[{{ $rowIndex }}][cost_price]" value="{{ old("items.$rowIndex.cost_price", $sourceItem->cost_price !== null ? number_format((float) $sourceItem->cost_price, 2, '.', '') : '') }}" min="0" inputmode="decimal" aria-label="Buying amount for {{ $sourceItem->item_type_name }}"></td>
                     <td>
                       <input class="form-control clothing-preview-price" type="number" step="0.01" name="items[{{ $rowIndex }}][price]" value="{{ old("items.$rowIndex.price", number_format((float) $sourceItem->price, 2, '.', '')) }}" min="0" required inputmode="decimal" aria-label="Clothing amount for {{ $sourceItem->item_type_name }}">
@@ -195,6 +198,8 @@
 .clothing-setup-admin :is(.btn, input:not([type=hidden]), select) { min-height:44px !important; }
 .clothing-setup-admin input[type=checkbox] { min-height:0; }
 .clothing-copy-card { margin-top:1.5rem; }
+.clothing-copy-table { min-width:1450px; }
+.clothing-copy-table .clothing-copy-name { min-width:300px; width:300px; white-space:normal; }
 .clothing-setup-admin .btn-del-size { min-width:44px; }
 .clothing-setup-admin :is(input, .sizes-wrap) { min-width:0; }
 @media(max-width:767px) {

@@ -4,7 +4,7 @@
 @include('backend.event.partials.header', ['eventWorkspaceActive' => 'teams', 'eventWorkspaceSubtitle' => 'Import selected teams and reserves from a finalized event'])
 <div class="card mb-3"><div class="card-body">
   <h3>Import selected team + reserves</h3>
-  <p>Choose a source event, select the regions included in its finalized selection, then review the destination teams. Players and reserves keep their saved order.</p>
+  <p>Choose a source event, then review its approved selected team or select source regions. Players and reserves keep their saved order.</p>
   @if(session('success'))<div class="alert alert-success" role="status">{{ session('success') }}</div>@endif
   @if($previewErrors)<div class="alert alert-danger" role="alert"><strong>Unable to review these teams.</strong><ul class="mb-0">@foreach($previewErrors as $message)<li>{{ $message }}</li>@endforeach</ul></div>@endif
   @if($errors->any())<div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>@endif
@@ -17,10 +17,24 @@
   <div class="mt-3">{{ $sources->withQueryString()->links('pagination::bootstrap-5') }}</div>
 </div></div>
 @if($sourceEvent)
+<section class="card mb-3"><div class="card-body">
+  <h4>Approved selected team · {{ $sourceEvent->name }}</h4>
+  @if($finalization)
+    <p>Approved {{ $finalization->finalized_at->format('d M Y H:i') }} · {{ count($finalization->groups) }} age/gender {{ count($finalization->groups) === 1 ? 'group' : 'groups' }}. Includes the complete saved selection and its reserves.</p>
+    <form method="GET" action="{{ route('backend.selection-import.index', $event) }}">
+      <input type="hidden" name="source_event_id" value="{{ $sourceEvent->id }}">
+      <input type="hidden" name="import_mode" value="approved_team">
+      <button class="btn btn-primary" style="min-height:44px">Review approved selected team</button>
+    </form>
+  @else
+    <p class="mb-0">No teams are approved yet.</p>
+  @endif
+</div></section>
 <form method="GET" action="{{ route('backend.selection-import.index', $event) }}" class="card mb-3"><div class="card-body">
   <input type="hidden" name="source_event_id" value="{{ $sourceEvent->id }}">
   <input type="hidden" name="choose_regions" value="1">
   <input type="hidden" name="review_regions" value="1">
+  <input type="hidden" name="import_mode" value="regions">
   <h4>Regions in {{ $sourceEvent->name }}</h4>
   <p>Check the regions to import. A finalized age/gender selection can combine several regions; select those regions together to keep its team and reserves intact.</p>
   @forelse($sourceRegions as $sourceRegion)
@@ -41,6 +55,13 @@
 <form method="POST" action="{{ route('backend.selection-import.store', $event) }}" class="card mb-3"><div class="card-body">
   @csrf
   <input type="hidden" name="finalization_id" value="{{ $finalization->id }}">
+  @if($importMode === 'approved_team')
+    <input type="hidden" name="import_mode" value="approved_team">
+    <input type="hidden" name="source_event_id" value="{{ $sourceEvent->id }}">
+    <p class="alert alert-info">Importing the approved selected team from {{ $sourceEvent->name }}, including all reserves.</p>
+  @elseif($selectedRegionIds)
+    <input type="hidden" name="import_mode" value="regions">
+  @endif
   @foreach($selectedRegionIds as $selectedRegionId)<input type="hidden" name="source_region_ids[]" value="{{ $selectedRegionId }}">@endforeach
   <h4>{{ $preview['source']->name }}</h4><p>Finalized {{ $finalization->finalized_at->format('d M Y H:i') }}. Only selected players and reserves are included.</p>
   <label for="destination-region" class="form-label">Destination region</label><select id="destination-region" class="form-select mb-3" name="region_id" required><option value="">Choose the region these teams represent</option>@foreach($regions as $region)<option value="{{ $region->id }}" @selected((int)old('region_id') === (int)$region->id)>{{ $region->region_name }}</option>@endforeach</select>
@@ -55,7 +76,7 @@
   <p>Existing teams must be empty and private. New rosters start unpaid and private. Main players and reserves keep their finalized order.</p>
   <label class="d-block mb-3"><input type="checkbox" name="confirm_import" value="1" required> I have reviewed these teams and their destination region.</label>
   <p id="regions-changed" class="alert alert-warning" role="status" hidden>Regions changed. Click Review selected regions again before importing.</p>
-  <button class="btn btn-primary" id="import-selected-regions" style="min-height:44px" @disabled($regions->isEmpty())>Import teams and reserves</button>
+  <button class="btn btn-primary" id="import-selected-regions" data-import-mode="{{ $importMode }}" style="min-height:44px" @disabled($regions->isEmpty())>Import teams and reserves</button>
 </div></form>
 @endif
 @foreach($imports as $import)
@@ -70,6 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('input[name="source_region_ids[]"][type="checkbox"]').forEach(checkbox => {
     checkbox.addEventListener('change', () => {
       const importButton = document.getElementById('import-selected-regions');
+      if (importButton?.dataset.importMode === 'approved_team') return;
       const notice = document.getElementById('regions-changed');
       if (importButton) importButton.disabled = true;
       if (notice) notice.hidden = false;
