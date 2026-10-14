@@ -149,6 +149,63 @@ class RegionalRegistrationMailTest extends TestCase
         $this->assertDatabaseCount('bulk_email_logs', 0);
     }
 
+    public function test_super_user_composer_and_omitted_sender_fields_use_assigned_event_administrator(): void
+    {
+        [$event, $admin, $region] = $this->scenario();
+        $admin->update(['name' => 'Regional organiser', 'email' => 'regional-organiser@example.test']);
+        $event->update(['email' => $admin->email]);
+        Role::findOrCreate('super-user', 'web');
+        $operator = User::factory()->create(['name' => 'Super operator', 'email' => 'super-operator@example.test'])->assignRole('super-user');
+        $this->actingAs($operator);
+        $this->get(route('backend.regional-registration-mail.compose', $event))->assertOk()
+            ->assertSee('value="Regional organiser"', false)->assertSee('value="regional-organiser@example.test"', false)
+            ->assertDontSee('value="super-operator@example.test"', false);
+        $input = $this->input($event, $operator, $region);
+        $this->post(route('backend.regional-registration-mail.preview', $event), array_replace($input, ['intent' => 'generate']))
+            ->assertOk()->assertSee('value="Regional organiser"', false)->assertSee('value="regional-organiser@example.test"', false);
+        $this->post(route('backend.regional-registration-mail.preview', $event), $input)->assertOk();
+        $batch = EventCommunicationBatch::sole();
+        $this->assertSame($admin->name, $batch->options['from_name']);
+        $this->assertSame($admin->email, $batch->options['reply_to']);
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+    }
+
+    public function test_custom_reviewed_sender_pair_survives_editing_and_regeneration(): void
+    {
+        [$event, $actor, $region] = $this->scenario();
+        $input = $this->input($event, $actor, $region) + ['from_name' => 'Tournament office', 'reply_to' => 'tournament-office@example.test'];
+        $this->post(route('backend.regional-registration-mail.preview', $event), $input)->assertOk();
+        $batch = EventCommunicationBatch::sole();
+        $this->get(route('backend.regional-registration-mail.compose', ['event' => $event, 'edit_batch' => $batch->id]))
+            ->assertOk()->assertSee('value="Tournament office"', false)->assertSee('value="tournament-office@example.test"', false);
+        $this->post(route('backend.regional-registration-mail.preview', $event), array_replace($input, ['intent' => 'generate']))
+            ->assertOk()->assertSee('value="Tournament office"', false)->assertSee('value="tournament-office@example.test"', false);
+        foreach (['from_name' => '', 'reply_to' => ''] as $field => $value) {
+            $this->post(route('backend.regional-registration-mail.preview', $event), array_replace($input, [$field => $value]))->assertSessionHasErrors($field);
+        }
+        $this->assertDatabaseCount('event_communication_batches', 1);
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+    }
+
+    public function test_event_sender_selection_is_deterministic_and_preserves_name_and_email_pair(): void
+    {
+        [$event, $firstAdmin] = $this->scenario();
+        Role::findOrCreate('super-user', 'web');
+        $firstAdmin->assignRole('super-user');
+        $other = User::factory()->create(['name' => 'Second event admin', 'email' => 'second-admin@example.test']);
+        $other->adminEvents()->attach($event);
+        $event->update(['email' => $other->email]);
+        $this->assertSame(['from_name' => $other->name, 'reply_to' => $other->email], \App\Services\CommunicationSender::eventDefaults($event, $firstAdmin));
+        $event->update(['email' => 'event-contact@example.test']);
+        $this->assertSame(['from_name' => $other->name, 'reply_to' => $other->email], \App\Services\CommunicationSender::eventDefaults($event, $firstAdmin));
+        $event->admins()->detach();
+        $event->update(['organizer' => 'Event contact person']);
+        $this->assertSame(['from_name' => 'Event contact person', 'reply_to' => 'event-contact@example.test'], \App\Services\CommunicationSender::eventDefaults($event, $firstAdmin));
+        $event->update(['email' => null, 'organizer' => null]);
+        $this->assertSame(['from_name' => $firstAdmin->name, 'reply_to' => $firstAdmin->email], \App\Services\CommunicationSender::eventDefaults($event, $firstAdmin));
+        $this->assertSame(['from_name' => $firstAdmin->name, 'reply_to' => $firstAdmin->email], \App\Services\CommunicationSender::resolve([], $firstAdmin));
+    }
+
     public function test_profile_imported_and_linked_reserves_and_their_parents_are_excluded_and_rank_changes_invalidate_review(): void
     {
         [$event, $actor, $region, $team] = $this->scenario();

@@ -20,7 +20,8 @@ final class RegionalRegistrationMailController extends Controller
             'registration_deadline' => $registrationClosesAt?->format('Y-m-d'),
             'registration_deadline_time' => $registrationClosesAt?->format('H:i'),
             'clothing_deadline' => null, 'clothing_deadline_time' => null];
-        $draft = $message->draft($event, $request->user(), $options);
+        $draft = $message->draft($event, $request->user(), $options)
+            + CommunicationSender::eventDefaults($event, $request->user());
         if ($request->filled('edit_batch')) {
             $batch = EventCommunicationBatch::where('event_id', $event->id)->where('created_by', $request->user()->id)->findOrFail($request->query('edit_batch'));
             abort_unless(($batch->options['source'] ?? '') === 'regional_registration_open', 404);
@@ -46,6 +47,7 @@ final class RegionalRegistrationMailController extends Controller
             'subject' => 'required_if:intent,preview|nullable|string|max:200',
             'body' => 'required_if:intent,preview|nullable|string|max:30000',
             'registration_fingerprint' => 'required_if:intent,preview|nullable|string|size:64',
+            'from_name' => 'sometimes|required|string|max:150', 'reply_to' => 'sometimes|required|email:rfc|max:255',
         ]);
         $options = ['source' => 'regional_registration_open', 'scope' => 'all', 'recipients' => 'players', 'filter' => 'all',
             'event_region_id' => (int) $data['event_region_id'], 'include_clothing' => $request->boolean('include_clothing'),
@@ -53,7 +55,7 @@ final class RegionalRegistrationMailController extends Controller
             'registration_deadline_time' => $data['registration_deadline_time'] ?? null,
             'clothing_deadline' => $data['clothing_deadline'] ?? null,
             'clothing_deadline_time' => $data['clothing_deadline_time'] ?? null]
-            + CommunicationSender::resolve($request->all(), $request->user());
+            + CommunicationSender::resolve($request->all() + CommunicationSender::eventDefaults($event, $request->user()), $request->user());
         if ($data['intent'] === 'generate') {
             $draft = $message->draft($event, $request->user(), $options)
                 + ['from_name' => $options['from_name'], 'reply_to' => $options['reply_to']];

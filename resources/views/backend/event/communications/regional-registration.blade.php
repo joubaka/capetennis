@@ -26,6 +26,7 @@
 <label class="d-block mb-3">Message<textarea class="form-control" name="body" rows="18" maxlength="30000" required>{{ old('body', $draft['body']) }}</textarea></label>
 <label class="d-block mb-3">Sender name<input class="form-control" name="from_name" maxlength="150" value="{{ old('from_name', $draft['from_name'] ?? auth()->user()->name) }}" required></label>
 <label class="d-block">Reply-to email<input class="form-control" type="email" name="reply_to" value="{{ old('reply_to', $draft['reply_to'] ?? auth()->user()->email) }}" required></label></div>
+<p class="form-text">Sender details default to the event administrator where assigned. You can edit them before reviewing the email.</p>
 <button class="btn btn-primary" name="intent" value="preview">Review addresses and email</button>
 <a class="btn btn-outline-secondary" href="{{ route('backend.event-communications.index', $event) }}">Back to messages</a>
 <p class="mt-2">Nothing is sent until you review and explicitly approve the next screen.</p>
