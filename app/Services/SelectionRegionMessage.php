@@ -46,7 +46,7 @@ class SelectionRegionMessage
     public function audience(Event $event, User $actor, array $options): array
     {
         $regions = $this->regions($event, $actor);
-        $ids = collect($options['selection_region_ids'] ?? [])->map('intval')->unique();
+        $ids = collect($options['selection_region_ids'] ?? [])->map(fn ($id) => (int) $id)->unique();
         abort_if($ids->isEmpty() || $ids->count() > 500, 422);
         abort_unless($ids->diff($regions->pluck('region_id'))->isEmpty(), 403);
         if (! hash_equals($this->draft($event)['selection_fingerprint'], $options['selection_fingerprint'] ?? '')) {

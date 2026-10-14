@@ -821,6 +821,9 @@ Route::prefix('backend')->middleware('auth')->group(function () {
  */
   Route::prefix('event')->group(function () {
 
+    Route::get('{event}/selection-import', [\App\Http\Controllers\Backend\EventSelectionRosterImportController::class, 'index'])->name('backend.selection-import.index');
+    Route::post('{event}/selection-import', [\App\Http\Controllers\Backend\EventSelectionRosterImportController::class, 'store'])->name('backend.selection-import.store');
+
     Route::get('{event}/team-result-selection', [\App\Http\Controllers\Backend\TeamResultSelectionDraftController::class, 'show'])
       ->name('backend.team-result-selection.show');
     Route::get('{event}/selection-region-mail', [\App\Http\Controllers\Backend\SelectionRegionMailController::class, 'compose'])->name('backend.selection-region-mail.compose');

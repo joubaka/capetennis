@@ -58,6 +58,62 @@ class SelectionRegionMailTest extends TestCase
         Mail::assertNothingSent();
     }
 
+    public function test_all_regions_and_extra_bcc_are_reviewed_and_receive_one_copy_each(): void
+    {
+        [$event, , $regions] = $this->scenario();
+        $input = app(SelectionRegionMessage::class)->draft($event) + [
+            'selection_region_ids' => $regions->pluck('id')->map(fn ($id) => (string) $id)->all(),
+            'bcc_emails' => "EXTRA@example.test; extra@example.test\nother@example.test, ONE@example.test",
+            'from_name' => 'Tournament office', 'reply_to' => 'office@example.test',
+        ];
+        $this->post(route('backend.selection-region-mail.preview', $event), $input)->assertOk()->assertSee('Extra BCC addresses')->assertSee('extra@example.test');
+        $batch = EventCommunicationBatch::sole();
+        $this->assertCount(4, $batch->recipients);
+        $this->assertEqualsCanonicalizing(['extra@example.test', 'other@example.test'], collect($batch->recipients)->where('kind', 'bcc')->pluck('email')->all());
+        $this->get(route('backend.selection-region-mail.compose', ['event' => $event, 'edit_batch' => $batch->id]))->assertOk()->assertSee('extra@example.test');
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        foreach ([1, 2] as $attempt) $this->post(route('backend.event-communications.send', $event), ['token' => $batch->token, 'confirm_send' => 1, 'bcc_emails' => 'unreviewed@example.test'])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertDatabaseCount('bulk_email_logs', 4);
+        $this->assertDatabaseMissing('bulk_email_logs', ['recipient_email' => 'unreviewed@example.test']);
+
+        // Exercise the real job with an in-memory transport; no external mail is sent.
+        Mail::swap($this->app->make('mail.manager'));
+        $this->mock(\App\Services\MailAccountManager::class)->shouldReceive('getMailer')->andReturn('array');
+        $mailer = Mail::mailer('array');
+        $mailer->getSymfonyTransport()->flush();
+        foreach (\App\Models\BulkEmailLog::all() as $log) (new \App\Jobs\SendBulkEmailJob($log->id))->handle();
+        $sent = $mailer->getSymfonyTransport()->messages();
+        $this->assertCount(4, $sent);
+        $bccAddresses = [];
+        foreach ($sent as $message) {
+            $email = $message->getOriginalMessage();
+            $this->assertSame('Tournament office', $email->getFrom()[0]->getName());
+            $this->assertSame('office@example.test', $email->getReplyTo()[0]->getAddress());
+            $this->assertSame([], $email->getCc());
+            if ($email->getBcc()) {
+                $this->assertSame([], $email->getTo());
+                $this->assertCount(1, $email->getBcc());
+                $bccAddresses[] = $email->getBcc()[0]->getAddress();
+                $this->assertStringNotContainsString('Bcc:', $message->toString());
+            } else {
+                $this->assertCount(1, $email->getTo());
+            }
+        }
+        $this->assertEqualsCanonicalizing(['extra@example.test', 'other@example.test'], $bccAddresses);
+        $this->assertDatabaseCount('bulk_email_logs', 4);
+    }
+
+    public function test_invalid_or_excessive_bcc_is_rejected_before_review(): void
+    {
+        [$event, , $regions] = $this->scenario();
+        $input = app(SelectionRegionMessage::class)->draft($event) + ['selection_region_ids' => [$regions[0]->id]];
+        foreach (['valid@example.test, invalid', implode(',', array_map(fn ($i) => "copy{$i}@example.test", range(1, 51)))] as $bcc) {
+            $this->post(route('backend.selection-region-mail.preview', $event), $input + ['bcc_emails' => $bcc])->assertRedirect()->assertSessionHasErrors();
+        }
+        $this->assertDatabaseCount('event_communication_batches', 0);
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+    }
+
     public function test_changed_selections_or_contacts_require_a_fresh_review_and_foreign_regions_are_rejected(): void
     {
         [$event, , $regions, $saved] = $this->scenario();

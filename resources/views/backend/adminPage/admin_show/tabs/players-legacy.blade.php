@@ -168,6 +168,7 @@
                         <tr data-playerteamid="{{ $slot->id }}">
                           <td>
                             <span class="badge bg-label-primary">{{ $slot->rank }}</span>
+                            @if($slot->selected_team_reserve)<span class="badge bg-label-warning ms-1">Reserve</span>@endif
                           </td>
 
                           <td>

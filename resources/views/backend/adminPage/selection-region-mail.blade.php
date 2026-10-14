@@ -15,7 +15,9 @@
 <label class="d-block w-100 mb-3">Subject<input class="form-control" name="subject" maxlength="200" value="{{ old('subject', $draft['subject']) }}" required></label>
 <label class="d-block w-100 mb-3">Message<textarea class="form-control" name="body" rows="24" maxlength="30000" required>{{ old('body', $draft['body']) }}</textarea></label>
 <label class="d-block w-100 mb-3">Sender name<input class="form-control" name="from_name" maxlength="150" value="{{ old('from_name', $draft['from_name'] ?? auth()->user()->name) }}" required></label>
-<label class="d-block w-100">Reply-to email<input class="form-control" type="email" name="reply_to" value="{{ old('reply_to', $draft['reply_to'] ?? auth()->user()->email) }}" required></label></div>
+<label class="d-block w-100 mb-3">Reply-to email<input class="form-control" type="email" name="reply_to" value="{{ old('reply_to', $draft['reply_to'] ?? auth()->user()->email) }}" required></label>
+<label class="d-block w-100">Extra BCC email addresses (optional)<textarea class="form-control" name="bcc_emails" rows="3" maxlength="13000" aria-describedby="bcc-help">{{ old('bcc_emails', $draft['bcc_emails'] ?? '') }}</textarea></label>
+<p class="form-text" id="bcc-help">Separate addresses with commas, semicolons or new lines (up to 50). Each extra address receives one hidden copy. An address already in the player or parent audience receives only its usual email. You will review these addresses before sending.</p></div>
 <button class="btn btn-primary">Review recipients and email</button>
 <a class="btn btn-outline-secondary" href="{{ route('backend.selection-preview.show', $event) }}">Back to selections</a>
 <p class="mt-2">Nothing is sent at this step. You will approve the reviewed email on the next screen.</p>

@@ -49,7 +49,7 @@
               $paid = (int) $slot->pay_status === 1;
             @endphp
             <tr data-roster-row="{{ $slot->id ?? 'imported-'.$np?->id }}" data-occupied="{{ ($player || $np) ? 'true' : 'false' }}" data-search="{{ $name.' '.$email.' '.$cell }}" data-payment="{{ ($player || $np) ? ($paid ? 'paid' : 'unpaid') : 'vacant' }}" data-profile="{{ $player ? 'linked' : ($np ? 'imported' : 'vacant') }}">
-              <td data-label="Rank"><span class="badge bg-label-primary">{{ $slot->rank }}</span></td>
+              <td data-label="Rank"><span class="badge bg-label-primary">{{ $slot->rank }}</span>@if($slot->selected_team_reserve)<span class="badge bg-label-warning ms-1">Reserve</span>@endif</td>
               <td data-label="Player"><strong>{{ $name }}</strong>@if($player)<x-player-rating :player-id="$player->id" :context="$team->category" />@else<span class="badge bg-label-warning ms-1">{{ $np ? 'Unlinked profile' : 'Vacant' }}</span>@endif</td>
               <td data-label="Contact"><div class="roster-contact">
                 @if($email)<div class="d-flex align-items-center gap-2"><a href="mailto:{{ $email }}">{{ $email }}</a></div>@endif

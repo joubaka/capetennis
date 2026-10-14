@@ -141,7 +141,8 @@ class SendBulkEmailJob implements ShouldQueue
             // Send the email
             $mailTransport = Mail::mailer($mailer);
             $transportStarted = true;
-            $sent = $mailTransport->to($log->recipient_email)->sendNow($mailable);
+            $recipientMethod = ($log->payload['recipient_kind'] ?? null) === 'bcc' ? 'bcc' : 'to';
+            $sent = $mailTransport->{$recipientMethod}($log->recipient_email)->sendNow($mailable);
             $transportAccepted = $sent !== null;
             if ($sent === null) {
                 $transportStarted = false;

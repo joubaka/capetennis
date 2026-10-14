@@ -262,6 +262,12 @@ class EventCommunicationService
         if (($options['source'] ?? null) === 'selection_regions') {
             $rows = app(SelectionRegionMessage::class)->audience($event, $actor, $options);
             $plan = $this->legacyPlan($event, $options, collect($rows), $subject, $body);
+            // Queue a separate hidden copy once per extra address, not once per player.
+            $primaryEmails = array_column($plan['recipients'], 'email');
+            foreach ($options['bcc_emails'] ?? [] as $email) {
+                if (in_array($email, $primaryEmails, true)) continue;
+                $plan['recipients'][] = ['email' => $email, 'name' => null, 'kind' => 'bcc', 'player_keys' => [], 'subject' => $subject, 'html' => nl2br(e($body))];
+            }
             $plan['fingerprint'] = $this->planFingerprint([$event->id, $options, $subject, $body, $plan['recipients'], $plan['issues'], $rows]);
             return $plan;
         }

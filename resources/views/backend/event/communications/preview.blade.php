@@ -6,6 +6,9 @@
 <h4>{{ $event->name }} — Review emails</h4>
 <h5>1. Recipients</h5>@if(($batch->options['source'] ?? null) === 'selection_regions')<p>Recipients are players and parents in {{ count($batch->options['selection_region_ids']) }} selected regions. Review all selected teams and reserves below.</p>@endif
 <p>{{ count($batch->recipients) }} emails. Nothing is sent until you approve below.</p>
+@if(($batch->options['source'] ?? null) === 'selection_regions' && !empty($batch->options['bcc_emails']))
+<div class="card card-body mb-3"><h5>Extra BCC addresses</h5><p class="text-break">{{ implode(', ', $batch->options['bcc_emails']) }}</p><p class="mb-0">Each extra address receives one hidden copy. Addresses already receiving a player or parent email are not copied again. BCC addresses are hidden from recipients.</p></div>
+@endif
 @php($coveredPlayers = collect($batch->recipients)->flatMap(fn ($recipient) => $recipient['player_keys'] ?? [])->unique()->count())
 @if($coveredPlayers)<p>{{ $coveredPlayers }} distinct players covered; {{ count($batch->issues ?? []) }} missing contacts. Shared addresses receive one email.</p>@endif
 @if(($batch->options['scope'] ?? null)==='rankings')

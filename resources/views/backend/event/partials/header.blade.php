@@ -18,6 +18,11 @@
       @if($event->status_label)<span class="badge bg-label-primary">{{ $event->status_label }}</span>@endif
     </x-slot:meta>
     <x-slot:actions>
+      @if($event->isTeam())
+      @can('event.manage', $event)
+      <a class="event-workspace-action" href="{{ route('backend.selection-import.index', $event) }}"><i class="ti ti-download" aria-hidden="true"></i><span>Import team + reserves</span></a>
+      @endcan
+      @endif
       @if(auth()->check() && app(\App\Services\EventCommunicationService::class)->managesWholeEvent($event, auth()->user()))
       <a class="event-workspace-action" href="{{ route('backend.event-communications.index', ['event' => $event, 'wrap_up' => 1]) }}"><i class="ti ti-mail" aria-hidden="true"></i><span>Wrap-up email</span></a>
       @endif

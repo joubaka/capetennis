@@ -83,10 +83,13 @@ class EventAdminController extends Controller
     $teams = app(\App\Services\EventTeamScope::class)->query($event, $teamSelectionInvitations->keys()->all())
       ->with(['category.category', 'teamPlayers', 'team_players_no_profile'])
       ->orderBy('name')->get()->groupBy('region_id');
-    $event->regions->each(function ($region) use ($teams) {
+    $selectionImports = \App\Models\EventSelectionRosterImport::where('event_id', $event->id)->orderBy('id')->limit(501)->get(['groups']);
+    abort_if($selectionImports->count() > 500, 422, 'This workspace supports up to 500 selected-team imports.');
+    $reserveSlots = $selectionImports->flatMap(fn ($import) => collect($import->groups)->flatMap(fn ($group) => collect($group['players'])->where('status', 'reserve')->pluck('slot_id')))->map('intval')->all();
+    $event->regions->each(function ($region) use ($teams, $reserveSlots) {
       $region->setRelation('teams', $teams->get($region->id, new Collection));
       // This relation depends on the slot instance; map it explicitly by team/rank.
-      $region->teams->each(function ($team) {
+      $region->teams->each(function ($team) use ($reserveSlots) {
         $team->teamPlayers->each(fn ($slot) => $slot->setRelation('noProfile',
           $team->team_players_no_profile->firstWhere('rank', $slot->rank)));
         $slots = $team->teamPlayers->keyBy('rank');
@@ -99,6 +102,7 @@ class EventAdminController extends Controller
           }
         }
         $team->setRelation('workspaceSlots', $slots->sortKeys()->values());
+        $team->workspaceSlots->each(fn ($slot) => $slot->setRelation('selected_team_reserve', $slot->noProfile && in_array((int) $slot->noProfile->id, $reserveSlots, true)));
       });
     });
 

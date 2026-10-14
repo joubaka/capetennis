@@ -130,7 +130,8 @@ class TeamResultRankingService
                 $fullRoster = $rosters[$fixture->id][$team->id] ??= app(TeamDrawSideResolver::class)->activeRoster($team, (int) $fixture->round_nr, (int) $fixture->id, (int) $fixture->draw_id);
                 $rosterCredit = $this->hasRosterWin($fullRoster, $rank, $player, (bool) $imported);
                 $participant = ['team_id' => (int) $team->id, 'type' => $imported ? 'imported' : 'profile',
-                    'id' => (int) ($imported ? $imported->id : $player->id)];
+                    'id' => (int) ($imported ? $imported->id : $player->id),
+                    'profile_id' => $imported ? ($imported->player_profile ? (int) $imported->player_profile : null) : (int) $player->id];
                 $sides[$side] = compact('player', 'team', 'rank', 'identity', 'rosterCredit', 'participant');
             }
             if (count($sides) !== 2) continue;

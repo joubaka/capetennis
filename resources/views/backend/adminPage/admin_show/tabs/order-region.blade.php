@@ -27,7 +27,7 @@
             @endphp
             <tr class="drag-item" data-playerteamid="{{ $id }}" data-teamplayerid="{{ $slot?->id }}" data-noprofileid="{{ $np?->id }}" data-type="{{ $type }}">
               <td data-label="{{ $editable ? 'Move' : 'Order status' }}">@if($editable && $id)<span class="drag-handle" title="Drag to reorder" aria-hidden="true"><i class="ti ti-grip-vertical"></i></span><button type="button" class="btn btn-outline-secondary" data-order-move="up" aria-label="Move {{ $name }} up">↑</button><button type="button" class="btn btn-outline-secondary" data-order-move="down" aria-label="Move {{ $name }} down">↓</button>@else<span class="text-muted">{{ $editable ? 'No roster place' : $orderStatus }}</span>@endif</td>
-              <td data-label="Rank"><span class="badge bg-label-primary">{{ $rank }}</span></td>
+              <td data-label="Rank"><span class="badge bg-label-primary">{{ $rank }}</span>@if($team->workspaceSlots->firstWhere('rank', $rank)?->selected_team_reserve)<span class="badge bg-label-warning ms-1">Reserve</span>@endif</td>
               <td data-label="Player">{{ $name }}</td>
               <td data-label="Payment"><span class="badge {{ !$player && !$np ? 'bg-label-secondary' : ((int) $slot?->pay_status === 1 ? 'bg-label-success' : 'bg-label-warning') }}">{{ !$player && !$np ? 'Vacant' : ((int) $slot?->pay_status === 1 ? 'Paid' : 'Unpaid') }}</span></td>
             </tr>
