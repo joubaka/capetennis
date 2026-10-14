@@ -75,21 +75,24 @@ class EventSelectionRosterImportService
                 $sourceIds = array_map('intval', $row['source_team_ids'] ?? []);
                 abort_unless($sourceIds !== [] && ! array_diff($sourceIds, $sourceTeams->keys()->all()), 422, 'A selected player has source teams outside this event.');
                 foreach ($sourceIds as $teamId) {
-                    $categoryId = $sourceTeams[$teamId]->category?->category_id;
-                    if ($categoryId) $categoryIds[] = (int) $categoryId;
+                    $category = $sourceTeams[$teamId]->category;
+                    abort_unless($category && (int) $category->event_id === (int) $source->id && $category->category,
+                        422, 'Link every selected source team to a category belonging to the source event before importing.');
+                    abort_unless($this->categoryGroup($category) === $key,
+                        422, 'The source category does not match the finalized age and gender group.');
+                    $categoryIds[] = (int) $category->category_id;
                 }
                 $person = $this->person($sourceTeams, $row);
                 $players[] = $person + ['key' => (string) $identity, 'name' => $row['name'], 'status' => $group['selection_statuses'][(string) $identity]['status'],
                     'rank' => (int) $group['selection_statuses'][(string) $identity]['position']];
             }
             $categoryIds = array_values(array_unique($categoryIds));
-            abort_unless(count($categoryIds) === 1, 422, 'Link the source teams for '.$key.' to one category before importing.');
+            abort_unless($categoryIds !== [], 422, 'Link the source teams for '.$key.' to a category before importing.');
+            sort($categoryIds, SORT_NUMERIC);
             $categoryId = $categoryIds[0];
-            $categoryName = $sourceTeams->first(fn ($team) => (int) $team->category?->category_id === $categoryId)?->category?->category?->name;
-            abort_unless((app(TeamResultRankingService::class)->group(new TeamFixture(['age' => $categoryName]))['key'] ?? null) === $key,
-                422, 'The source category does not match the finalized age and gender group.');
             $groups[$key] = ['label' => 'u/'.str_replace('-', ' ', $key), 'category_id' => $categoryId, 'players' => $players, 'source_region_ids' => $cohort,
-                'teams' => $targetTeams->filter(fn ($team) => (int) $team->category?->category_id === $categoryId)->values(),
+                'teams' => $targetTeams->filter(fn ($team) => (int) $team->category?->event_id === (int) $target->id
+                    && $this->categoryGroup($team->category) === $key)->values(),
                 'main_count' => collect($players)->where('status', 'main')->count(), 'reserve_count' => collect($players)->where('status', 'reserve')->count()];
         }
         if ($selectedRegions !== null && ($groups === [] || array_diff($selectedRegions, array_keys($regionGroups)))) {
@@ -131,6 +134,8 @@ class EventSelectionRosterImportService
                     $team = $group['teams']->firstWhere('id', $teamId);
                     abort_unless($team && (int) $team->region_id === $regionId, 422, 'Choose a matching destination team and region.');
                     $team = Team::whereKey($teamId)->lockForUpdate()->firstOrFail();
+                    abort_unless((int) $team->region_id === $regionId && (int) $team->category?->event_id === (int) $target->id
+                        && $this->categoryGroup($team->category) === $key, 422, 'Choose a matching destination team and region.');
                     app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
                     if (TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where(fn ($q) => $q->where('player_id', '>', 0)->orWhere('pay_status', 1))->exists()
                         || NoProfileTeamPlayer::where('team_id', $team->id)->exists() || $team->published
@@ -138,7 +143,13 @@ class EventSelectionRosterImportService
                         throw ValidationException::withMessages(['mapping' => $team->name.' already contains players, payment history or is published. Choose an empty private team.']);
                     }
                 } else {
-                    $category = CategoryEvent::firstOrCreate(['event_id' => $target->id, 'category_id' => $group['category_id']], ['entry_fee' => 0, 'ordering' => (int) CategoryEvent::where('event_id', $target->id)->max('ordering') + 1]);
+                    $categories = CategoryEvent::where('event_id', $target->id)->with('category')->orderBy('id')->limit(501)->lockForUpdate()->get();
+                    abort_if($categories->count() > 500, 422, 'Selection import supports up to 500 categories per event.');
+                    $matching = $categories->filter(fn ($category) => $this->categoryGroup($category) === $key);
+                    if ($matching->count() > 1) {
+                        throw ValidationException::withMessages(['mapping' => 'Several destination categories match '.$group['label'].'. Select an existing destination team explicitly.']);
+                    }
+                    $category = $matching->first() ?? CategoryEvent::firstOrCreate(['event_id' => $target->id, 'category_id' => $group['category_id']], ['entry_fee' => 0, 'ordering' => (int) CategoryEvent::where('event_id', $target->id)->max('ordering') + 1]);
                     if (Team::where('category_event_id', $category->id)->where('region_id', $regionId)->exists()) {
                         throw ValidationException::withMessages(['mapping' => 'A destination team already exists for '.$group['label'].'. Select it explicitly.']);
                     }
@@ -174,6 +185,12 @@ class EventSelectionRosterImportService
             activity('team-selection')->performedOn($target)->causedBy($actor)->withProperties(['source_event_id' => $finalization->event_id, 'finalization_id' => $finalization->id, 'source_fingerprint' => $finalization->fingerprint, 'import_id' => $import->id, 'team_ids' => collect($groups)->pluck('team_id')->all()])->log('imported finalized selected teams and reserves');
             return $import;
         });
+    }
+
+    private function categoryGroup(?CategoryEvent $category): ?string
+    {
+        $name = $category?->category?->name;
+        return $name ? (app(TeamResultRankingService::class)->group(new TeamFixture(['age' => $name]))['key'] ?? null) : null;
     }
 
     private function person($sourceTeams, array $row): array

@@ -12,6 +12,78 @@ class EventSelectionRosterImportTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_distinct_source_categories_with_same_group_import_and_reuse_unique_matching_destination_category(): void
+    {
+        [$source, $target, $final, $region, $actor, $players, $sourceTeam] = $this->scenario();
+        $otherCategory = CategoryEvent::factory()->create(['event_id' => $source->id, 'category_id' => Category::factory()->create(['name' => 'U10 Boys'])->id]);
+        $otherTeam = $sourceTeam->replicate();
+        $otherTeam->category_event_id = $otherCategory->id;
+        $otherTeam->save();
+        $groups = $final->groups;
+        foreach ($groups['10-boys']['snapshot'] as &$row) $row['source_team_ids'][] = $otherTeam->id;
+        unset($row);
+        DB::table('event_selection_finalizations')->where('id', $final->id)->update(['groups' => json_encode($groups)]);
+        $targetCategory = CategoryEvent::factory()->create(['event_id' => $target->id, 'category_id' => Category::factory()->create(['name' => 'u/10 Boys'])->id]);
+        $url = route('backend.selection-import.index', ['event' => $target, 'source_event_id' => $source->id, 'import_mode' => 'approved_team']);
+        $this->get($url)->assertOk()->assertSee($players[1]->name)->assertSee('Reserve')->assertDontSee('Unable to review these teams.');
+        $input = ['finalization_id' => $final->id, 'region_id' => $region->id, 'mapping' => ['10-boys' => 0], 'confirm_import' => 1];
+        $this->post(route('backend.selection-import.store', $target), $input)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame(1, CategoryEvent::where('event_id', $target->id)->count());
+        $this->assertDatabaseHas('teams', ['category_event_id' => $targetCategory->id, 'region_id' => $region->id, 'published' => 0]);
+        $this->assertSame(['main', 'reserve'], array_column(EventSelectionRosterImport::first()->groups['10-boys']['players'], 'status'));
+    }
+
+    public function test_matching_existing_destination_team_uses_semantic_group_and_ambiguous_new_category_requires_explicit_team(): void
+    {
+        [$source, $target, $final, $region, $actor] = $this->scenario();
+        $category = CategoryEvent::factory()->create(['event_id' => $target->id, 'category_id' => Category::factory()->create(['name' => 'U10 Boys'])->id]);
+        CategoryEvent::factory()->create(['event_id' => $target->id, 'category_id' => Category::factory()->create(['name' => 'u/10 Boys'])->id]);
+        $team = new Team(['name' => 'Matching destination', 'category_event_id' => $category->id, 'region_id' => $region->id, 'published' => false, 'num_team_members' => 1, 'year' => 2026]);
+        $team->forceFill(['user_id' => $actor->id, 'personal_team' => false])->save();
+        $input = ['finalization_id' => $final->id, 'region_id' => $region->id, 'mapping' => ['10-boys' => 0], 'confirm_import' => 1];
+        $url = route('backend.selection-import.store', $target);
+        $this->postJson($url, $input)->assertUnprocessable()->assertJsonValidationErrors('mapping');
+        $this->assertDatabaseCount('event_selection_roster_imports', 0);
+        $this->assertDatabaseCount('no_profile_team_players', 0);
+        $this->get(route('backend.selection-import.index', ['event' => $target, 'source_event_id' => $source->id]))->assertOk()->assertSee('Matching destination');
+        $foreignTeam = $team->replicate();
+        $foreignTeam->name = 'Foreign semantic match';
+        $foreignTeam->category_event_id = CategoryEvent::factory()->create(['event_id' => $source->id, 'category_id' => $category->category_id])->id;
+        $foreignTeam->save();
+        $this->get(route('backend.selection-import.index', ['event' => $target, 'source_event_id' => $source->id]))->assertOk()->assertDontSee('Foreign semantic match');
+        $this->postJson($url, array_replace($input, ['mapping' => ['10-boys' => $foreignTeam->id]]))->assertUnprocessable();
+        $this->assertDatabaseCount('event_selection_roster_imports', 0);
+        $input['mapping']['10-boys'] = $team->id;
+        $this->post($url, $input)->assertRedirect()->assertSessionHasNoErrors();
+        $this->post($url, $input)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertDatabaseCount('event_selection_roster_imports', 1);
+        $this->assertDatabaseCount('no_profile_team_players', 2);
+        $this->assertDatabaseHas('teams', ['id' => $team->id, 'category_event_id' => $category->id]);
+    }
+
+    public function test_every_source_category_is_validated_and_foreign_missing_or_mismatched_categories_make_no_import(): void
+    {
+        [$source, $target, $final, $region, $actor, $players, $team] = $this->scenario();
+        $original = $team->category_event_id;
+        $foreign = CategoryEvent::factory()->create(['event_id' => $target->id, 'category_id' => $team->category->category_id]);
+        $url = route('backend.selection-import.store', $target);
+        $input = ['finalization_id' => $final->id, 'region_id' => $region->id, 'mapping' => ['10-boys' => 0], 'confirm_import' => 1];
+        $team->update(['category_event_id' => $foreign->id]);
+        $this->postJson($url, $input)->assertUnprocessable();
+        $team->update(['category_event_id' => null]);
+        $this->postJson($url, $input)->assertUnprocessable();
+        $team->update(['category_event_id' => $original]);
+        $mismatch = CategoryEvent::factory()->create(['event_id' => $source->id, 'category_id' => Category::factory()->create(['name' => 'u/12 Girls'])->id]);
+        $otherTeam = $team->replicate(); $otherTeam->category_event_id = $mismatch->id; $otherTeam->save();
+        $groups = $final->groups;
+        $groups['10-boys']['snapshot'][0]['source_team_ids'][] = $otherTeam->id;
+        DB::table('event_selection_finalizations')->where('id', $final->id)->update(['groups' => json_encode($groups)]);
+        $this->postJson($url, $input)->assertUnprocessable();
+        $this->assertDatabaseCount('event_selection_roster_imports', 0);
+        $this->assertDatabaseCount('no_profile_team_players', 0);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
     public function test_ajax_source_choices_are_private_escaped_and_do_not_run_full_import_preview(): void
     {
         [$source, $target, $final, $region, $actor, $players, $team] = $this->scenario();
@@ -128,6 +200,7 @@ class EventSelectionRosterImportTest extends TestCase
         $response = $this->get(route('backend.selection-import.index', $query))->assertOk()
             ->assertSee('The source category does not match the finalized age and gender group.')
             ->assertDontSee('name="mapping[', false)->assertHeader('Cache-Control', 'no-store, private');
+        $this->assertSame(1, substr_count($response->getContent(), 'The source category does not match the finalized age and gender group.'));
         $this->assertMatchesRegularExpression('/id="source-region-'.$region->id.'"[^>]*checked/', $response->getContent());
         $this->postJson(route('backend.selection-import.store', $target), ['finalization_id' => $final->id,
             'region_id' => $region->id, 'source_region_ids' => [$region->id], 'mapping' => ['10-boys' => 0], 'confirm_import' => 1])->assertUnprocessable();

@@ -1,6 +1,6 @@
 @if($sourceEvent)
 @if(!$finalization)<p class="alert alert-info" role="status">No teams are approved yet.</p>@endif
-@if($previewErrors)<div class="alert alert-danger" role="alert">@foreach($previewErrors as $message)<p class="mb-0">{{ $message }}</p>@endforeach</div>@endif
+@if(request()->boolean('source_choices') && $previewErrors)<div class="alert alert-danger" role="alert">@foreach($previewErrors as $message)<p class="mb-0">{{ $message }}</p>@endforeach</div>@endif
 <fieldset class="card mb-3"><div class="card-body"><legend class="h5">What do you want to import?</legend><label class="d-block mb-3"><input type="radio" name="source-choice-mode" value="approved_team" @checked($importMode === 'approved_team') @disabled(!$finalization)> Approved selected team · {{ $sourceEvent->name }}</label><label class="d-block"><input type="radio" name="source-choice-mode" value="regions" @checked($importMode !== 'approved_team' || !$finalization)> Source regions</label></div></fieldset>
 <section class="card mb-3" data-source-mode="approved_team"><div class="card-body">
   <h4>Approved selected team · {{ $sourceEvent->name }}</h4>
