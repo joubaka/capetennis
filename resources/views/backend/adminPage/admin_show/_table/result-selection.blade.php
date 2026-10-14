@@ -11,13 +11,17 @@
 @endif
 <details class="result-rules">
   <summary>How the ranking works</summary>
+  @if(($criteria['preset'] ?? 'legacy') === 'platteland_v1')
+  <p><strong>{{ $criteria['label'] }} (version {{ $criteria['version'] }})</strong>. Roster bands 1–2, 3–4 and subsequent pairs come first. Completed singles and reverse singles count together. In each confirmed same-team pair, the higher player receives one win credit, with no sets added. Within each band, actual wins plus this credit decide the order. Equal totals on the same actual team follow roster position first; different teams use exact set win percentage. Equal percentages need manual review. An unbeaten player's actual played results may trigger an adjacent higher-band comparison; the roster credit does not count as a played match. This never promotes a player automatically. Event Settings control optional played-match and higher-band win limits and excluded regions.</p>
+  @else
   <p>Roster bands come first: 1–2, then 3–4, 5–6, and 7–8. In each confirmed same-team pair, the higher roster player (1, 3, 5 or 7) receives one automatic roster win. Points equal actual completed match wins plus this one roster win, multiplied by the band weight: 100, 35, 12 or 2. Four actual matches plus the roster win therefore give five effective opportunities to earn points. Missing or uncertain pair evidence receives no automatic win. Actual match wins, losses and sets remain unchanged. For equal points, teammates with an unambiguous roster follow their roster positions before set difference. Players from different teams are compared by direct wins when every tied pair has the same nonzero number of counted matches. Unresolved ties require review at the selection cutoff. Candidate regions choose players; excluded result regions remove entire matches involving either side. Adjacent-band comparisons support manual review and do not promote players automatically. Comments are optional, including when changing order or selection.</p>
+  @endif
 </details>
 @if($ranking->isEmpty())
   <div class="result-empty" role="status"><i class="ti ti-scoreboard" aria-hidden="true"></i><strong>No completed singles results</strong><p>Check the regions and match formats in Setup, or choose another age group. Incomplete matches and doubles are excluded.</p></div>
 @else
   @if($ranking->contains('cutoff_tie', true))
-    <div class="result-review-notice" role="status"><strong>Review the tenth-place tie.</strong> Both points and set difference are equal. Choose your selection; add a comment if useful.</div>
+    <div class="result-review-notice" role="status"><strong>Review the selection cutoff tie.</strong> {{ ($criteria['preset'] ?? 'legacy') === 'platteland_v1' ? 'Credited wins and set win percentage are equal.' : 'Both points and set difference are equal.' }} Choose your selection; add a comment if useful.</div>
   @endif
   <h6>Calculated ranking</h6>
   <p class="result-heading-hint">Results stay in calculated order here. Use Reorder players to arrange your private draft and add optional comments.</p>
@@ -38,6 +42,7 @@
         @if($player['higher_rank_wins'])<span class="result-tag">{{ $player['higher_rank_wins'] }} win(s) over higher-rostered opponents</span>@endif
         @if($player['lost_all_counted_band_matches'])<span class="result-tag result-tag-review">Review: lost all counted matches in Band {{ $player['band'] }} · 0W / {{ $player['own_band_record']['losses'] }}L</span>@endif
         @if($wonAllCountedBandMatches)<span class="result-tag result-tag-selected">Won all counted band matches · {{ $player['own_band_record']['wins'] }}W / 0L</span>@endif
+        @if(!empty($player['platteland_manual_review']))<span class="result-tag result-tag-review">Manual comparison needed: unbeaten played record against adjacent higher-band results</span>@endif
       </div>
       <dl class="result-metrics">
         <div><dt>Points per win</dt><dd>{{ $player['points_per_win'] }}</dd></div>
@@ -78,6 +83,9 @@
           </div>
         @endforeach
       </details>
+      @if(!empty($player['platteland_manual_review']))
+        <details class="result-evidence"><summary>Platteland manual comparison — no automatic promotion</summary><p>This player won all {{ $player['wins'] }} counted played matches. Review other results before deciding whether to change the private draft.</p><ul>@foreach($player['platteland_manual_review'] as $other)<li>{{ $other['name'] }} · Band {{ $other['band'] }} · {{ $other['wins'] }}W / {{ $other['losses'] }}L</li>@endforeach</ul></details>
+      @endif
       @foreach($player['cross_band_review'] as $review)
         <details class="result-review-notice result-review-details"><summary><strong>Review consecutive roster records</strong> · {{ $review['team'] }} · Ranks {{ implode(', ', $review['ranks']) }}</summary><p>Each consecutive player has at least two completed matches and more wins than losses in this setup. Different opponents can affect these records; the band-first order is retained.</p><div class="result-review-records">@foreach($review['records'] as $rank => $record)<span>Rank {{ $rank }}: {{ $record['wins'] }}W / {{ $record['losses'] }}L</span>@endforeach</div></details>
       @endforeach

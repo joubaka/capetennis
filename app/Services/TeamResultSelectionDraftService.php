@@ -13,12 +13,21 @@ class TeamResultSelectionDraftService
 
     public function save(Event $event, array $input, int $actorId): TeamResultSelectionDraft
     {
+        $event = $event->fresh();
+        $criteriaFingerprint = app(TeamSelectionCriteria::class)->fingerprint($event);
+        if (isset($event->team_result_settings['criteria_preset']) || isset($input['criteria_fingerprint'])) {
+            abort_unless(hash_equals($criteriaFingerprint, $input['criteria_fingerprint'] ?? ''), 409, 'Selection criteria changed. Reload the ranking before saving.');
+        }
         $setup = $this->rankings->setup($event);
         abort_unless($setup['groups']->contains('key', $input['group_key']), 404);
         $regions = array_map('intval', $input['region_ids']);
         $excludedResultRegions = array_map('intval', $input['excluded_result_region_ids'] ?? []);
         if (array_diff($regions, $setup['regions']->pluck('id')->all()) || array_diff($excludedResultRegions, $setup['regions']->pluck('id')->all()) || array_diff($input['formats'], $setup['formats']->all())) {
             throw ValidationException::withMessages(['setup' => 'Choose regions and singles formats belonging to this event.']);
+        }
+        if (app(TeamSelectionCriteria::class)->isPlatteland($event)) {
+            $excludedResultRegions = app(TeamSelectionCriteria::class)->context($event, $excludedResultRegions)['excluded_result_region_ids'];
+            $input['formats'] = ['singles', 'reverse_singles'];
         }
         $ranking = $this->rankings->ranking($event, $input['group_key'], $regions, $input['formats'], $excludedResultRegions);
         $candidates = $ranking->keyBy(fn ($row) => (string) $row['id']);
@@ -43,9 +52,10 @@ class TeamResultSelectionDraftService
         $positions = array_flip($draftOrder);
         $ranking = $ranking->map(fn ($row) => $row + ['draft_position' => $positions[(string) $row['id']] + 1]);
 
-        return DB::transaction(function () use ($event, $input, $actorId, $ranking, $regions, $excludedResultRegions, $selected, $reasons) {
+        return DB::transaction(function () use ($event, $input, $actorId, $ranking, $regions, $excludedResultRegions, $selected, $reasons, $criteriaFingerprint) {
             // The event lock also serializes creation when no draft row exists yet.
-            Event::whereKey($event->id)->lockForUpdate()->firstOrFail();
+            $locked = Event::whereKey($event->id)->lockForUpdate()->firstOrFail();
+            abort_unless(hash_equals($criteriaFingerprint, app(TeamSelectionCriteria::class)->fingerprint($locked)), 409, 'Selection criteria changed. Reload the ranking before saving.');
             abort_if(\App\Models\EventSelectionFinalization::active()->where('event_id', $event->id)->exists(), 409, 'This event ranking is finalized. Draft order and selections are locked.');
             $draft = TeamResultSelectionDraft::where('event_id', $event->id)->where('group_key', $input['group_key'])->lockForUpdate()->first();
             abort_if((int) ($draft?->version ?? 0) !== $input['version'], 409, 'This draft changed. Reload it before saving.');

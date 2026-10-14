@@ -26,6 +26,7 @@ class TeamResultSelectionDraftController extends Controller
         $this->authorize('event.manage', $event);
         $input = $request->validate([
             'group_key' => ['required', 'string', 'max:40'], 'version' => ['required', 'integer', 'min:0'],
+            'criteria_fingerprint' => ['sometimes', 'required', 'string', 'size:64'],
             'region_ids' => ['present', 'array', 'max:100'], 'region_ids.*' => ['integer', 'distinct'],
             'excluded_result_region_ids' => ['sometimes', 'array', 'max:100'], 'excluded_result_region_ids.*' => ['integer', 'distinct'],
             'formats' => ['present', 'array', 'max:10'], 'formats.*' => ['string', 'distinct'],

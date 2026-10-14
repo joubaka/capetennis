@@ -52,7 +52,7 @@ class TeamResultRankingService
         $fixtures = $this->fixtures($event);
         return [
             'groups' => $fixtures->map(fn ($fixture) => $this->group($fixture))->filter()->unique('key')->sortBy('age')->values(),
-            'formats' => $fixtures->map(fn ($fixture) => $this->format($fixture))->unique()->values(),
+            'formats' => app(TeamSelectionCriteria::class)->isPlatteland($event) ? collect([RubberType::SINGLES, RubberType::REVERSE_SINGLES]) : $fixtures->map(fn ($fixture) => $this->format($fixture))->unique()->values(),
             'regions' => $event->regions()->get(),
         ];
     }
@@ -64,6 +64,10 @@ class TeamResultRankingService
 
     public function selectionEvidence(Event $event, string $group, array $regions, array $formats, array $excludedResultRegionIds = [], bool $includeRatings = false): array
     {
+        $criteria = app(TeamSelectionCriteria::class)->context($event, $excludedResultRegionIds);
+        $platteland = $criteria['preset'] === TeamSelectionCriteria::PLATTELAND;
+        if ($platteland) $formats = [RubberType::SINGLES, RubberType::REVERSE_SINGLES];
+        $excludedResultRegionIds = $criteria['excluded_result_region_ids'];
         $excludedResultRegionIds = array_map('intval', $excludedResultRegionIds);
         $fixtures = $this->fixtures($event)->filter(fn ($fixture) => ($this->group($fixture)['key'] ?? null) === $group && in_array($this->format($fixture), $formats, true));
         $fixtures->load(['fixturePlayers.player1', 'fixturePlayers.player2', 'fixturePlayers.noProfile1', 'fixturePlayers.noProfile2', 'teamResults', 'teamTie']);
@@ -128,7 +132,7 @@ class TeamResultRankingService
                 if ($rank < 1) continue;
                 $identity = $imported ? 'imported:'.$team->id.':'.($snapshot['anchor_id'] ?? $member->competition_anchor_id ?? $imported->id) : $player->id;
                 $fullRoster = $rosters[$fixture->id][$team->id] ??= app(TeamDrawSideResolver::class)->activeRoster($team, (int) $fixture->round_nr, (int) $fixture->id, (int) $fixture->draw_id);
-                $rosterCredit = $this->hasRosterWin($fullRoster, $rank, $player, (bool) $imported);
+                $rosterCredit = $this->hasRosterWin($fullRoster, $rank, $player, (bool) $imported, $platteland);
                 $participant = ['team_id' => (int) $team->id, 'type' => $imported ? 'imported' : 'profile',
                     'id' => (int) ($imported ? $imported->id : $player->id),
                     'profile_id' => $imported ? ($imported->player_profile ? (int) $imported->player_profile : null) : (int) $player->id];
@@ -168,7 +172,7 @@ class TeamResultRankingService
         }
         // Only each source team's unambiguous consecutive roster positions count.
         // Only completed match wins supply evidence of a winning record.
-        foreach ($performance as $teamId => $ranks) {
+        foreach ($platteland ? [] : $performance as $teamId => $ranks) {
             ksort($ranks);
             $identityRanks = [];
             foreach ($ranks as $rank => $players) foreach ($players as $player) $identityRanks[$player['id']][] = $rank;
@@ -190,7 +194,8 @@ class TeamResultRankingService
                 foreach ($run as $player) $rows[$player['id']]['cross_band_review'][] = $context;
             }
         }
-        $ranking = collect($rows)->map(function ($row) {
+        $ranking = collect($rows)->map(function ($row) use ($criteria, $platteland) {
+            $row['selection_criteria'] = $criteria;
             $row['ranks'] = array_values(array_unique($row['ranks']));
             $row['teams'] = array_values(array_unique($row['teams']));
             $row['source_team_ids'] = array_values(array_unique($row['source_team_ids']));
@@ -199,25 +204,33 @@ class TeamResultRankingService
             $row['starting_credit'] = count($row['ranks']) === 1 && count($row['source_team_ids']) === 1
                 && ! in_array(false, $row['roster_credit_evidence'], true) ? 1 : 0;
             $row['roster_credit_reason'] = $row['starting_credit'] ? 'One automatic roster win for the higher player in a confirmed same-team pair.'
-                : (in_array($row['rank'], [1, 3, 5, 7], true) ? 'No automatic roster win: the complete same-team pair or historical roster position could not be confirmed unambiguously.' : 'The lower roster position receives no automatic roster win.');
+                : (($platteland ? $row['rank'] % 2 === 1 : in_array($row['rank'], [1, 3, 5, 7], true)) ? 'No automatic roster win: the complete same-team pair or historical roster position could not be confirmed unambiguously.' : 'The lower roster position receives no automatic roster win.');
             unset($row['roster_credit_evidence']);
             $row['credited_wins'] = $row['wins'] + $row['starting_credit'];
-            $row['points'] = $this->points($row['rank'], $row['credited_wins']);
-            $row['points_per_win'] = $this->points($row['rank'], 1);
+            $row['points_per_win'] = $platteland && $row['rank'] > 8 ? 1 : $this->points($row['rank'], 1);
+            $row['points'] = $row['points_per_win'] * $row['credited_wins'];
             $row['band_index'] = (int) ceil($row['rank'] / 2);
             $row['band'] = (2 * (int) ceil($row['rank'] / 2) - 1).'–'.(2 * (int) ceil($row['rank'] / 2));
             $row['set_difference'] = $row['sets_won'] - $row['sets_lost'];
             return $row;
         });
-        $ranking = $ranking->map(function ($row) use ($ranking) {
+        $ranking = $ranking->map(function ($row) use ($ranking, $platteland, $criteria) {
             $ownBandMatches = collect($row['matches'])->filter(fn ($match) => (int) ceil($match['opponent_rank'] / 2) === $row['band_index']
                 && (int) ceil($match['roster_rank'] / 2) === $row['band_index']);
             $row['own_band_record'] = ['wins' => $ownBandMatches->where('won', true)->count(), 'losses' => $ownBandMatches->where('won', false)->count()];
             $row['band_attribution_uncertain'] = collect($row['ranks'])->map(fn ($rank) => (int) ceil($rank / 2))->unique()->count() > 1;
             $row['lost_all_counted_band_matches'] = ! $row['band_attribution_uncertain'] && $row['own_band_record']['wins'] === 0 && $row['own_band_record']['losses'] > 0;
             $row['adjacent_band_comparisons'] = [];
+            $row['platteland_manual_review'] = [];
+            if ($platteland && ! $row['band_attribution_uncertain'] && $row['wins'] > 0 && $row['losses'] === 0
+                && ($criteria['expected_matches'] === null || $row['wins'] === $criteria['expected_matches'])) {
+                $row['platteland_manual_review'] = $ranking->filter(fn ($other) => $other['band_index'] === $row['band_index'] - 1
+                    && $other['wins'] + $other['losses'] > 0
+                    && ($criteria['weak_record_max_wins'] === null || $other['wins'] <= $criteria['weak_record_max_wins']))
+                    ->map(fn ($other) => ['id' => $other['id'], 'name' => $other['name'], 'band' => $other['band'], 'wins' => $other['wins'], 'losses' => $other['losses']])->values()->all();
+            }
             foreach ([$row['band_index'] - 1, $row['band_index'] + 1] as $band) {
-                if ($band < 1 || $band > 4) continue;
+                if ($band < 1 || $band > ($platteland ? (int) ceil($ranking->max('rank') / 2) : 4)) continue;
                 $direct = collect($row['matches'])->filter(fn ($match) => (int) ceil($match['opponent_rank'] / 2) === $band
                     && (int) ceil($match['roster_rank'] / 2) === $row['band_index']);
                 $opponents = $direct->groupBy(fn ($match) => (string) $match['opponent_id'])->map(fn ($matches) => [
@@ -238,17 +251,18 @@ class TeamResultRankingService
             }
             return $row;
         });
-        $ranking = $this->orderRanking($ranking);
+        $ranking = $this->orderRanking($ranking, $criteria['preset'], max(1, min(12, (int) ($event->team_result_settings['team_size'] ?? 10))));
         $ranking = $includeRatings ? app(TeamResultRatingService::class)->enrich($ranking, $event, $fixtures->isEmpty() ? null : $this->group($fixtures->first())) : $ranking;
         $regionSummary = collect($regionSummary)->map(function ($row) {
             $row['win_percentage'] = $row['played'] ? round(100 * $row['wins'] / $row['played'], 1) : null;
             return $row;
         })->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)->values();
-        return compact('ranking', 'regionSummary');
+        return compact('ranking', 'regionSummary', 'criteria');
     }
 
-    public function orderRanking(Collection $ranking): Collection
+    public function orderRanking(Collection $ranking, string $preset = 'legacy', int $teamSize = 10): Collection
     {
+        if ($preset === TeamSelectionCriteria::PLATTELAND) return $this->orderPlatteland($ranking, $teamSize);
         $band = fn ($row) => (int) ceil($row['rank'] / 2);
         $ranking = $ranking->sort(fn ($a, $b) => ($band($a) <=> $band($b)) ?: ($b['points'] <=> $a['points']) ?: ($b['set_difference'] <=> $a['set_difference']))
             ->groupBy(fn ($row) => $band($row).':'.$row['points'].':'.$row['set_difference'])
@@ -332,9 +346,52 @@ class TeamResultRankingService
         });
     }
 
-    private function hasRosterWin(Team $team, int $rank, mixed $player, bool $imported): bool
+    private function orderPlatteland(Collection $ranking, int $teamSize): Collection
     {
-        if (! in_array($rank, [1, 3, 5, 7], true)) return false;
+        $source = fn ($row) => count($row['source_team_ids']) === 1 && count($row['ranks']) === 1 ? $row['source_team_ids'][0] : null;
+        $compareSets = function ($a, $b): int {
+            $aTotal = $a['sets_won'] + $a['sets_lost']; $bTotal = $b['sets_won'] + $b['sets_lost'];
+            if (! $aTotal || ! $bTotal) return ($bTotal > 0) <=> ($aTotal > 0);
+            // Exact ratios: rounded display percentages never decide the order.
+            return ($b['sets_won'] * $aTotal) <=> ($a['sets_won'] * $bTotal);
+        };
+        $ordered = $ranking->sort(fn ($a, $b) => ((int) ceil($a['rank'] / 2) <=> (int) ceil($b['rank'] / 2))
+            ?: ($b['credited_wins'] <=> $a['credited_wins']))
+            ->groupBy(fn ($row) => (int) ceil($row['rank'] / 2).':'.$row['credited_wins'])
+            ->flatMap(function ($bucket, $scoreKey) use ($source, $compareSets) {
+                $remaining = $bucket->sort(fn ($a, $b) => $compareSets($a, $b) ?: strcasecmp($a['name'], $b['name']) ?: ((string) $a['id'] <=> (string) $b['id']))->values();
+                $result = collect(); $stage = 0;
+                while ($remaining->isNotEmpty()) {
+                    // A teammate with a lower roster position cannot leapfrog its higher teammate.
+                    $eligible = $remaining->filter(fn ($row) => $source($row) === null || ! $remaining->contains(fn ($other) => $source($other) === $source($row) && $other['rank'] < $row['rank']));
+                    $best = $eligible->first();
+                    $tied = $eligible->filter(fn ($row) => $compareSets($row, $best) === 0);
+                    foreach ($tied as $index => $row) {
+                        $row['same_team_tiebreak'] = $source($row) !== null && $bucket->contains(fn ($other) => $source($other) === $source($row) && $other['rank'] !== $row['rank']);
+                        $row['head_to_head'] = ['applied' => false, 'wins' => 0, 'losses' => 0, 'tied_players' => $tied->count(),
+                            'reason' => $row['same_team_tiebreak'] ? 'Same actual team: roster position takes precedence over set win percentage.' : 'Different teams: exact set win percentage; equal percentages require manual review.'];
+                        $row['_position_key'] = $scoreKey.':stage:'.$stage;
+                        $result->push($row); $remaining->forget($index);
+                    }
+                    $stage++;
+                }
+                return $result;
+            })->values();
+        $cutoffKeys = $ordered->take($teamSize)->pluck('_position_key')->intersect($ordered->slice($teamSize)->pluck('_position_key'))->all();
+        $position = 0; $previous = null;
+        return $ordered->map(function ($row, $index) use ($teamSize, $cutoffKeys, &$position, &$previous) {
+            if ($previous !== $row['_position_key']) $position = $index + 1;
+            $previous = $row['_position_key'];
+            $row['position'] = $position; $row['cutoff_tie'] = in_array($row['_position_key'], $cutoffKeys, true);
+            $row['suggested'] = $index < $teamSize && ! $row['cutoff_tie'];
+            unset($row['_position_key']);
+            return $row;
+        });
+    }
+
+    private function hasRosterWin(Team $team, int $rank, mixed $player, bool $imported, bool $platteland = false): bool
+    {
+        if ($platteland ? $rank < 1 || $rank % 2 !== 1 : ! in_array($rank, [1, 3, 5, 7], true)) return false;
         // Read the whole roster, independently of candidate/result filters. A
         // participant-only historic snapshot cannot attest a missing pair.
         $members = $team->team_players->map(fn ($member) => ['rank' => (int) $member->rank, 'identity' => 'profile:'.$member->player_id, 'person' => 'profile:'.$member->player_id])

@@ -12,6 +12,31 @@ use Illuminate\Validation\Rule;
 
 class TeamResultSettingsController extends Controller
 {
+    public function storeCriteria(Request $request, Event $event): JsonResponse
+    {
+        $this->authorize('event.settings.manage', $event);
+        abort_unless($event->isTeam(), 422, 'Team selection criteria are available for team events.');
+        $settings = DB::transaction(function () use ($request, $event) {
+            $locked = Event::whereKey($event->id)->lockForUpdate()->firstOrFail();
+            abort_if(\App\Models\EventSelectionFinalization::active()->where('event_id', $event->id)->exists(), 409, 'Reopen finalized selections before changing their criteria.');
+            $input = $request->validate([
+                'criteria_preset' => ['required', Rule::in(['legacy', \App\Services\TeamSelectionCriteria::PLATTELAND])],
+                'criteria_expected_matches' => ['nullable', 'integer', 'min:1', 'max:100'],
+                'criteria_weak_max_wins' => ['nullable', 'integer', 'min:0', 'max:100'],
+                'excluded_result_region_ids' => ['present', 'array', 'max:100'],
+                'excluded_result_region_ids.*' => ['integer', 'distinct', Rule::in($locked->regions()->pluck('team_regions.id')->all())],
+            ]);
+            $input['criteria_expected_matches'] = isset($input['criteria_expected_matches']) ? (int) $input['criteria_expected_matches'] : null;
+            $input['criteria_weak_max_wins'] = isset($input['criteria_weak_max_wins']) ? (int) $input['criteria_weak_max_wins'] : null;
+            $input['excluded_result_region_ids'] = array_map('intval', $input['excluded_result_region_ids']);
+            $settings = array_replace($locked->team_result_settings ?? [], $input);
+            if ($input['criteria_preset'] === \App\Services\TeamSelectionCriteria::PLATTELAND) $settings['formats'] = ['singles', 'reverse_singles'];
+            $locked->team_result_settings = $settings; $locked->save();
+            return $settings;
+        });
+        return response()->json(['settings' => $settings])->header('Cache-Control', 'no-store, private');
+    }
+
     public function store(Request $request, Event $event, TeamResultRankingService $rankings): JsonResponse
     {
         $this->authorize('event.manage', $event);
@@ -30,6 +55,10 @@ class TeamResultSettingsController extends Controller
             ]);
             $input['region_ids'] = array_map('intval', $input['region_ids']);
             $input['excluded_result_region_ids'] = array_map('intval', $input['excluded_result_region_ids']);
+            if (app(\App\Services\TeamSelectionCriteria::class)->isPlatteland($locked)) {
+                abort_if($input['excluded_result_region_ids'] !== ($locked->team_result_settings['excluded_result_region_ids'] ?? []), 409, 'Change Platteland excluded regions in event Settings.');
+                $input['formats'] = ['singles', 'reverse_singles'];
+            }
             $input = array_replace($locked->team_result_settings ?? [], $input);
             $locked->team_result_settings = $input;
             $locked->save();

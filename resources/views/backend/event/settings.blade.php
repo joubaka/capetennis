@@ -65,6 +65,7 @@
     <a href="#settings-information">Public information</a>
     <a href="#settings-schedule">Schedule</a>
     <a href="#result-controls">Results updates</a>
+    @if($event->isTeam())<a href="#settings-team-selection">Team selection</a>@endif
     <a href="#settings-access">Access</a>
   </nav>
   <div class="d-md-none flex-grow-1">
@@ -74,6 +75,7 @@
       <option value="#settings-information">Public information</option>
       <option value="#settings-schedule">Schedule</option>
       <option value="#result-controls">Results updates</option>
+      @if($event->isTeam())<option value="#settings-team-selection">Team selection</option>@endif
       <option value="#settings-access">Access</option>
     </select>
   </div>
@@ -86,6 +88,36 @@
 <div class="row g-4">
 
 @if($event->isTeam())
+@can('event.settings.manage', $event)
+@php
+  $selectionCriteria = app(\App\Services\TeamSelectionCriteria::class)->context($event);
+  $selectionCriteriaLocked = \App\Models\EventSelectionFinalization::active()->where('event_id', $event->id)->exists();
+@endphp
+<div class="col-12"><section class="card settings-card" id="settings-team-selection"><div class="card-body">
+  <h5>Platteland criteria for selection of teams</h5>
+  <p>Choose this reusable preset for this team event. Other events keep their own selection criteria.</p>
+  <label class="form-label" for="selection-criteria-preset">Selection criteria</label>
+  <select id="selection-criteria-preset" class="form-select mb-3" @disabled($selectionCriteriaLocked)>
+    <option value="legacy" @selected($selectionCriteria['preset'] === 'legacy')>Existing selection criteria</option>
+    <option value="platteland_v1" @selected($selectionCriteria['preset'] === 'platteland_v1')>Platteland criteria for selection of teams (version 1)</option>
+  </select>
+  <ul>
+    <li>Roster bands come first: 1–2, 3–4, 5–6, and subsequent pairs. Count completed singles and reverse singles together.</li>
+    <li>The higher player in each confirmed same-team pair receives one extra win credit. It adds no match or set result.</li>
+    <li>Within a band, total actual wins plus the credit decide the order. Equal totals on the same actual team follow roster position first. Different teams use exact set win percentage, not set difference or head-to-head.</li>
+    <li>An unbeaten lower-band player can be flagged for manual comparison with the adjacent higher band's results. Assess other results and any weak record before changing a private draft. Players never move between bands automatically.</li>
+  </ul>
+  <div class="row g-3 mb-3">
+    <div class="col-md-6"><label class="form-label" for="selection-expected-matches">Expected played matches for unbeaten review (optional)</label><input id="selection-expected-matches" class="form-control" type="number" min="1" max="100" value="{{ $selectionCriteria['expected_matches'] }}" @disabled($selectionCriteriaLocked)><p class="field-help">Leave blank to review any played unbeaten record. For an event with four counted matches, enter 4. Roster credit is not a played match.</p></div>
+    <div class="col-md-6"><label class="form-label" for="selection-weak-wins">Higher-band maximum actual wins for review (optional)</label><input id="selection-weak-wins" class="form-control" type="number" min="0" max="100" value="{{ $selectionCriteria['weak_record_max_wins'] }}" @disabled($selectionCriteriaLocked)><p class="field-help">Leave blank to inspect all played higher-band records manually. Enter a limit only if this event has agreed what a weak record means.</p></div>
+  </div>
+  <fieldset class="mb-3"><legend class="fs-6">Exclude results involving these event regions</legend>
+  @foreach($event->regions()->get() as $region)<label class="d-block mb-2"><input type="checkbox" data-selection-criteria-excluded value="{{ $region->id }}" @checked(in_array((int) $region->id, $selectionCriteria['excluded_result_region_ids'], true)) @disabled($selectionCriteriaLocked)> {{ $region->region_name }}</label>@endforeach
+  <p class="field-help">A checked region removes the whole match when either side represents it. Choose ZF Mcawu here for the 2026 comparison if required; this exclusion is never applied to other events automatically.</p></fieldset>
+  <p class="field-help">Saved drafts and finalized snapshots retain their original evidence. After changing criteria, review the current results and explicitly save a fresh draft.</p>
+  @if($selectionCriteriaLocked)<p class="alert alert-info mb-0">Selection criteria are locked while selections are finalized. Reopen selections before changing them.</p>@else<button type="button" class="btn btn-primary" id="save-selection-criteria">Save selection criteria</button><span id="selection-criteria-status" class="ms-2" role="status" aria-live="polite"></span>@endif
+</div></section></div>
+@endcan
 <div class="col-12"><section class="card settings-card"><div class="card-body">
   <h5>Main conveners by age group</h5>
   <p class="text-muted">Assign one account per age group. They can view that age group's standings after every match in the group has been processed.</p>
@@ -494,6 +526,18 @@ $(function () {
   const scoringVenues = @json($scoringVenues->map(fn ($venue) => ['id' => $venue->id, 'name' => $venue->name])->values());
   const initialScoringVenueAssignments = @json($scoringAccounts->mapWithKeys(fn ($account) => [(string) $account->user_id => $account->venue_id]));
   const feedback = window.AppFeedback;
+  $('#save-selection-criteria').on('click', function () {
+    const button = $(this).prop('disabled', true);
+    $('#selection-criteria-status').text('Saving…');
+    $.ajax({url: @json(route('backend.team-selection-criteria.store', $event)), method:'PUT', headers:{'X-CSRF-TOKEN':csrf}, contentType:'application/json', data:JSON.stringify({
+      criteria_preset: $('#selection-criteria-preset').val(),
+      criteria_expected_matches: $('#selection-expected-matches').val() || null,
+      criteria_weak_max_wins: $('#selection-weak-wins').val() || null,
+      excluded_result_region_ids: $('[data-selection-criteria-excluded]:checked').map(function(){return Number(this.value);}).get()
+    })}).done(function(){ $('#selection-criteria-status').text('Selection criteria saved. Review the current results before saving a fresh draft.'); })
+      .fail(function(xhr){$('#selection-criteria-status').text(xhr.responseJSON?.message || 'Could not save selection criteria.');})
+      .always(function(){button.prop('disabled',false);});
+  });
 
   if (window.toastr) {
     Object.assign(window.toastr.options, { closeButton:true, progressBar:true, timeOut:3500, preventDuplicates:true });

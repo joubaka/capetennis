@@ -375,7 +375,7 @@ class EventAdminController extends Controller
         throw \Illuminate\Validation\ValidationException::withMessages(['setup' => 'Choose regions and formats from this event.']);
       }
       $evidence = $service->selectionEvidence($event, $data['result_group'], $regions, $data['formats'], $excludedResultRegions, includeRatings: true);
-      return response()->json(['html' => view('backend.adminPage.admin_show._table.result-selection', $evidence)->render(), 'ranking' => $evidence['ranking'], 'region_summary' => $evidence['regionSummary']])->header('Cache-Control', 'no-store, private');
+      return response()->json(['html' => view('backend.adminPage.admin_show._table.result-selection', $evidence)->render(), 'ranking' => $evidence['ranking'], 'region_summary' => $evidence['regionSummary'], 'criteria_fingerprint' => app(\App\Services\TeamSelectionCriteria::class)->fingerprint($event)])->header('Cache-Control', 'no-store, private');
     }
     $data = $request->validate(['event_id' => 'required|integer|exists:events,id', 'categoryEvent' => 'required|integer|exists:category_events,id']);
     $event = Event::findOrFail($data['event_id']);

@@ -10,6 +10,7 @@
   const savedOpen = new Map();
   let resultRequest;
   let selectionVersion = 0;
+  let rankingCriteriaFingerprint = null;
   let savedDraft;
   let applyingDraft;
   let resultGeneration = 0;
@@ -325,7 +326,7 @@
     if (orderList) { window.Sortable?.get(orderList)?.destroy(); orderList.replaceChildren(); }
     target.textContent = 'Loading category results…';
     resultRequest = $.ajax({ url: document.getElementById('team-workspace-content').dataset.resultUrl, type: 'POST', contentType: 'application/json', data: JSON.stringify({ event_id: category.dataset.event_id, result_group: category.value, regions: $('[data-result-region]:checked').map(function () { return this.value; }).get(), formats: $('[data-result-format]:checked').map(function () { return this.value; }).get(), excluded_result_region_ids: $('[data-result-excluded-region]:checked').map(function () { return this.value; }).get() }) })
-      .done(response => { if (generation !== resultGeneration) return; target.innerHTML = response.html; buildDraftOrder(); $('[data-selection-save]').prop('disabled', !draftReady || saveRequestBusy); if (draftToApply) { savedDraft = draftToApply; applyDraftPlayers(); } else if (!draftReady) fetchDraft(false); })
+      .done(response => { if (generation !== resultGeneration) return; rankingCriteriaFingerprint = response.criteria_fingerprint; target.innerHTML = response.html; buildDraftOrder(); $('[data-selection-save]').prop('disabled', !draftReady || saveRequestBusy); if (draftToApply) { savedDraft = draftToApply; applyDraftPlayers(); } else if (!draftReady) fetchDraft(false); })
       .fail(xhr => { if (generation !== resultGeneration) return; if (xhr.statusText !== 'abort') { target.textContent = xhr.responseJSON?.message || 'Results could not be loaded.'; const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'btn btn-outline-secondary ms-2'; retry.textContent = 'Retry'; retry.addEventListener('click', loadResults); target.append(retry); } })
       .always(() => { if (generation === resultGeneration) target.removeAttribute('aria-busy'); });
   }
@@ -458,7 +459,7 @@
     $.ajax({ url: document.getElementById('tab-result-rank').dataset.selectionUrl, type: 'PUT', contentType: 'application/json', data: JSON.stringify({
       group_key: group, region_ids: $('[data-result-region]:checked').map(function () { return Number(this.value); }).get(),
       excluded_result_region_ids: $('[data-result-excluded-region]:checked').map(function () { return Number(this.value); }).get(),
-      formats: $('[data-result-format]:checked').map(function () { return this.value; }).get(), selected_keys: selected, draft_order: order, reasons: reasons, version: selectionVersion
+      formats: $('[data-result-format]:checked').map(function () { return this.value; }).get(), selected_keys: selected, draft_order: order, reasons: reasons, version: selectionVersion, criteria_fingerprint: rankingCriteriaFingerprint
     }) }).done(response => { if (group !== selectionGroup() || generation !== resultGeneration) return; savedDraft = response.draft; selectionVersion = savedDraft.version; draftBaseline = submittedFingerprint; draftDirty = draftFingerprint() !== draftBaseline; selectionStatus(draftDirty ? 'Earlier changes saved. You have newer unsaved changes.' : 'Draft selection saved. It has not been published.'); })
       .fail(xhr => { if (group !== selectionGroup() || generation !== resultGeneration) return; autosavePaused = true; previewPendingUrl = null; $('[data-selection-preview]').prop('disabled', false); window.clearTimeout(autosaveTimer); autosavePending = false; const errors = Object.values(xhr.responseJSON?.errors || {}).flat().join(' '); selectionStatus(xhr.status === 409 ? 'Autosave paused: this draft changed elsewhere. Your edits are kept. Load the saved draft before saving again.' : ('Autosave paused. Your edits are kept. Use Save draft to retry. ' + (errors || xhr.responseJSON?.message || 'Draft could not be saved.'))); })
       .always(() => { saveRequestBusy = false; $('[data-selection-save]').prop('disabled', !draftReady || document.getElementById('category-table')?.getAttribute('aria-busy') === 'true' || !document.querySelector('.result-player-list, .result-empty')); updateDraftProgress(); if (!autosavePaused) scheduleDraftAutosave(); continueSelectionPreview(); });
