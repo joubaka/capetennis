@@ -5,7 +5,8 @@
   $clothingQuantity = $playerClothingOrders->sum(fn ($order) => $order->items->sum(fn ($item) => max(1, (int) ($item->qty ?? 1))));
   $clothingDetailsId = 'clothing-orders-'.$event->id.'-'.$team->id.'-'.$player->id;
 @endphp
-<div class="d-flex flex-wrap gap-1 mt-2">
+@if($canOrder || $playerClothingOrders->isNotEmpty())
+<div class="d-flex flex-wrap gap-1 mt-2 team-player-clothing-controls">
                     {{-- CLOTHING --}}
                     @if($canOrder)
                       <a href="javascript:void(0)"
@@ -36,6 +37,7 @@
                     @endif
 
 </div>
+@endif
               @if($playerClothingOrders->isNotEmpty())
                 <div class="collapse mt-2" id="{{ $clothingDetailsId }}">
                   <div class="border rounded bg-light-subtle p-2" aria-label="Clothing ordered for {{ $playerName }}">

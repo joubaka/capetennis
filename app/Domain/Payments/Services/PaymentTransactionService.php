@@ -130,6 +130,18 @@ class PaymentTransactionService
                 ->where('pf_payment_id', $data['pf_payment_id'])
                 ->lockForUpdate()
                 ->first() ?? new Transaction();
+            if ($transaction->exists) {
+                foreach (['custom_str5', 'custom_int5', 'custom_int4', 'custom_int3', 'custom_int2'] as $field) {
+                    if ((string) $transaction->{$field} !== (string) ($data[$field] ?? '')) {
+                        throw new \RuntimeException('PayFast receipt already belongs to another payment.');
+                    }
+                }
+                if (round((float) $transaction->amount_gross, 2) !== round((float) ($data['amount_gross'] ?? 0), 2)) {
+                    throw new \RuntimeException('A recorded PayFast receipt cannot change its amount.');
+                }
+
+                return $transaction;
+            }
         }
 
         $transaction->transaction_type = $transaction->transaction_type ?: 'Registration';

@@ -12,6 +12,36 @@ class ClothingPublicRosterTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_linked_rosters_share_compact_layout_and_keep_ratings_privileged(): void
+    {
+        [$event, $team, $player, $region, $actor] = $this->scenario();
+        $region->clothing_order = false;
+        $this->actingAs($actor);
+
+        foreach (['no-profile-team', 'profile-team'] as $partial) {
+            $html = view('frontend.event.partials.'.$partial, compact('event', 'team', 'region'))->render();
+            $this->assertStringContainsString('col-12 col-md-6 team-roster-column', $html);
+            $this->assertStringContainsString('card-header border rounded-top', $html);
+            $this->assertStringContainsString('flex-sm-row justify-content-between align-items-sm-center gap-2 team-player-row', $html);
+            $this->assertStringContainsString('team-player-identity', $html);
+            $this->assertStringNotContainsString('team-player-clothing-controls', $html);
+            $this->assertStringNotContainsString('data-rating-player=', $html);
+        }
+
+        \Spatie\Permission\Models\Role::findOrCreate('super-user', 'web');
+        $actor->assignRole('super-user');
+        foreach (['no-profile-team', 'profile-team'] as $partial) {
+            $html = view('frontend.event.partials.'.$partial, compact('event', 'team', 'region'))->render();
+            $this->assertSame(1, substr_count($html, 'data-rating-player="'.$player->id.'"'));
+            $this->assertStringContainsString('data-rating-field="'.$team->category->id.'"', $html);
+        }
+
+        $team->team_players_no_profile->first()->player_profile = null;
+        $team->team_players_no_profile->first()->unsetRelation('profile');
+        $html = view('frontend.event.partials.no-profile-team', compact('event', 'team', 'region'))->render();
+        $this->assertStringNotContainsString('data-rating-player=', $html);
+    }
+
     public function test_linked_imported_and_profile_rosters_use_the_same_canonical_clothing_context(): void
     {
         [$event, $team, $player, $region] = $this->scenario();

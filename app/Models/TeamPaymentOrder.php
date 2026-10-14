@@ -141,7 +141,7 @@ class TeamPaymentOrder extends Model
    */
   public function maxRefundableAmount(): float
   {
-    if ($this->isRefundCompleted() || $this->isRefundWaived()) {
+    if ($this->collection_status === 'reconciliation_required' || $this->isRefundCompleted() || $this->isRefundWaived()) {
       return 0.0;
     }
 

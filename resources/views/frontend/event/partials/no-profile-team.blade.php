@@ -1,10 +1,10 @@
 {{-- resources/views/frontend/event/partials/no-profile-team.blade.php --}}
 
-  <div class="col-12 col-md-6">
+<div class="col-12 col-md-6 team-roster-column">
   <div class="card h-100 shadow-sm">
 
     {{-- HEADER --}}
-    <div class="card-header border">
+    <div class="card-header border rounded-top">
       <div class="d-flex align-items-center">
         <i class="ti ti-users fs-4 text-primary me-2"></i>
         <h5 class="m-0 fw-semibold">{{ $team->name ?? 'Team' }}</h5>
@@ -48,16 +48,16 @@
           @endphp
 
           <li class="list-group-item">
-            <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2">
+            <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 team-player-row">
 
               {{-- LEFT: RANK + NAME --}}
-              <div class="d-flex align-items-center">
+              <div class="d-flex align-items-center team-player-identity">
                 <span class="badge bg-light text-muted border rounded-circle me-2" style="width: 24px; height: 24px; line-height: 16px; font-size: 0.75rem;">
                   {{ $play->rank }}
                 </span>
 
                 @if($hasLinkedProfile)
-                  <span class="fw-medium">{{ $playerName }}</span>
+                  <span class="fw-medium">{{ $playerName }}<x-player-rating :player-id="$play->profile->id" :context="$team->category" /></span>
                 @elseif($registrationOpen)
                   <a href="{{ $linkProfileUrl }}" class="text-primary fw-medium" title="Click to link a player profile">
                     <i class="ti ti-link me-1"></i>{{ $playerName }}
@@ -68,7 +68,7 @@
               </div>
 
               {{-- RIGHT: STATUS / ACTIONS --}}
-              <div class="d-flex align-items-center gap-1">
+              <div class="d-flex align-items-center justify-content-sm-end flex-wrap gap-1 team-player-actions">
 
                 @if($paystatus)
                   <span class="badge bg-success-subtle text-success px-2 py-1">
@@ -91,12 +91,12 @@
 
                 @elseif($hasLinkedProfile && $registrationOpen)
                   <a href="{{ route('team.payment.payfast', [$teamModel->id, $play->player_profile, $event->id]) }}"
-                     class="btn btn-sm btn-warning">
+                     class="btn btn-sm btn-warning team-registration-button">
                     <i class="ti ti-credit-card me-1"></i>Register
                   </a>
 
                 @elseif(!$hasLinkedProfile && $registrationOpen)
-                  <a href="{{ $linkProfileUrl }}" class="btn btn-xs btn-outline-primary" title="Link a profile first">
+                  <a href="{{ $linkProfileUrl }}" class="btn btn-sm btn-outline-primary" title="Link a profile first">
                     <i class="ti ti-user-plus me-1"></i>Link Profile
                   </a>
                 @else
@@ -123,3 +123,5 @@
 
   </div>
 </div>
+
+@include('frontend.event.partials.team-roster-styles')

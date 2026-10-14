@@ -308,13 +308,24 @@ class TeamPaymentService
                     && ! in_array((int) $order->id, $excludedHistoricalOrderIds, true));
 
                 if ($existing) {
+                    if ($this->hasUnresolvedPayfastHandoff($existing)) {
+                        if (\App\Models\TrialParticipation::query()->where('order_id', $existing->id)->exists()) {
+                            if ((int) $existing->user_id === (int) $user->id) {
+                                return $existing;
+                            }
+                            throw ValidationException::withMessages([
+                                'payment' => 'This checkout is currently being processed by PayFast. Please try again later.',
+                            ]);
+                        }
+                        if ($existing->payfast_handed_off_at->getTimestamp() < now()->subMinutes(5)->getTimestamp()) {
+                            return $this->restartUnresolvedCheckout($existing, $user, $total);
+                        }
+                        throw ValidationException::withMessages([
+                            'payment' => 'Someone is busy processing a payment. Please wait five minutes before trying again.',
+                        ]);
+                    }
                     if ((int) ($existing->pay_status ?? 0) !== 1 && !(bool) ($existing->payfast_paid ?? false)) {
                         if ((int) $existing->user_id !== (int) $user->id) {
-                            if ($this->hasUnresolvedPayfastHandoff($existing)) {
-                                throw ValidationException::withMessages([
-                                    'payment' => 'This checkout is currently being processed by PayFast. Please try again later.',
-                                ]);
-                            }
                             if (! $this->isWhollyUnpaid($existing)) {
                                 throw ValidationException::withMessages([
                                     'payment' => 'This checkout contains payment evidence and cannot be restarted by another payer.',
@@ -354,9 +365,6 @@ class TeamPaymentService
                                 ])->log('restarted abandoned team checkout for a new payer');
 
                             return $replacement;
-                        }
-                        if ($this->hasUnresolvedPayfastHandoff($existing)) {
-                            return $existing;
                         }
                         $totalChanged = round((float) $existing->total_amount, 2) !== round($total, 2);
                         $existing->total_amount = $total;
@@ -514,6 +522,95 @@ class TeamPaymentService
                 ])->log('team checkout handed off to PayFast');
 
             return $locked->refresh();
+        });
+    }
+
+    private function restartUnresolvedCheckout(TeamPaymentOrder $order, User $payer, float $total): TeamPaymentOrder
+    {
+        $this->assertPayfastHandoffMayBeReleased($order);
+        if (\App\Models\Transaction::query()->where('custom_str5', 'TeamOrder')
+            ->where('custom_int5', $order->id)->lockForUpdate()->get()->isNotEmpty()
+            || \App\Models\WalletTransaction::query()->where('source_type', 'team_registration_wallet_payment')
+                ->where('source_id', $order->id)->lockForUpdate()->get()->isNotEmpty()) {
+            throw ValidationException::withMessages(['payment' => 'This checkout contains payment evidence and cannot be restarted.']);
+        }
+        $snapshot = [
+            'event_id' => (int) $order->event_id,
+            'team_id' => (int) $order->team_id,
+            'player_id' => (int) $order->player_id,
+            'payer_id' => (int) $order->user_id,
+            'expected_provider_amount' => round((float) $order->payfast_amount_due, 2),
+            'reserved_wallet_amount' => round((float) $order->wallet_reserved, 2),
+            'handed_off_at' => $order->payfast_handed_off_at->toIso8601String(),
+        ];
+        // The previous provider attempt can still settle. Retain its immutable
+        // amount and identity separately from the released local reservation.
+        FinanceMutationScope::run('payment_state_write', function () use ($order): void {
+            $order->forceFill(['payfast_handed_off_at' => null])->save();
+        });
+        $superseded = $this->closeUnpaidLifecycle($order, $payer);
+        $replacement = TeamPaymentOrder::create([
+            'user_id' => $payer->id, 'team_id' => $order->team_id,
+            'player_id' => $order->player_id, 'event_id' => $order->event_id,
+            'total_amount' => $total, 'wallet_reserved' => 0,
+            'payfast_amount_due' => $total, 'wallet_debited' => false,
+            'payfast_paid' => false, 'pay_status' => false,
+        ]);
+        TeamSelectionInvitation::query()->where('event_id', $order->event_id)
+            ->where('team_id', $order->team_id)->where('player_id', $order->player_id)
+            ->where('status', TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT)
+            ->where('order_id', $superseded->id)->update(['order_id' => $replacement->id]);
+        activity('team-payment')->performedOn($superseded)->causedBy($payer)
+            ->withProperties($snapshot + ['replacement_order_id' => $replacement->id])
+            ->log('superseded unresolved team PayFast checkout');
+
+        return $replacement;
+    }
+
+    /** Record a delayed charge against its original payer, never as roster coverage. */
+    public function recordSupersededPayfastReceipt(TeamPaymentOrder $order, array $data): bool
+    {
+        return FinanceMutationScope::run('payment_state_write', function () use ($order, $data): bool {
+            return DB::transaction(function () use ($order, $data): bool {
+                $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
+                $audit = \Spatie\Activitylog\Models\Activity::query()
+                    ->where('subject_type', $locked->getMorphClass())->where('subject_id', $locked->id)
+                    ->where('description', 'superseded unresolved team PayFast checkout')->first();
+                if (! $audit) {
+                    return false;
+                }
+                $snapshot = $audit->properties;
+                $providerId = trim((string) ($data['pf_payment_id'] ?? ''));
+                if (! $locked->withdrawn_at || ($data['payment_status'] ?? '') !== 'COMPLETE'
+                    || $providerId === '' || ($data['custom_str5'] ?? '') !== 'TeamOrder'
+                    || (string) ($data['custom_int5'] ?? '') !== (string) $locked->id
+                    || (string) ($data['custom_int4'] ?? '') !== (string) $snapshot['payer_id']
+                    || (string) ($data['custom_int3'] ?? '') !== (string) $snapshot['event_id']
+                    || (string) ($data['custom_int2'] ?? '') !== (string) $snapshot['player_id']
+                    || round((float) ($data['amount_gross'] ?? 0), 2) !== (float) $snapshot['expected_provider_amount']) {
+                    throw new \RuntimeException('Superseded PayFast receipt does not match its original handoff.');
+                }
+                $receipt = \App\Models\Transaction::query()->where('pf_payment_id', $providerId)->lockForUpdate()->first();
+                if ($receipt) {
+                    if ($receipt->custom_str5 !== 'TeamOrder' || (int) $receipt->custom_int5 !== (int) $locked->id
+                        || round((float) $receipt->amount_gross, 2) !== (float) $snapshot['expected_provider_amount']) {
+                        throw new \RuntimeException('PayFast receipt already belongs to another payment.');
+                    }
+                    return true;
+                }
+                app(PaymentTransactionService::class)->record(array_replace($data, ['cape_tennis_fee' => 0]), $locked);
+                // pay_status remains false: released wallet funds must never be
+                // debited by a late callback or counted as a completed entry.
+                $locked->forceFill(['collection_status' => 'reconciliation_required'])->save();
+                activity('team-payment')->performedOn($locked)
+                    ->withProperties(['pf_payment_id' => $providerId,
+                        'amount' => (float) $snapshot['expected_provider_amount'],
+                        'payer_id' => (int) $snapshot['payer_id'],
+                        'replacement_order_id' => (int) $snapshot['replacement_order_id']])
+                    ->log('superseded team PayFast charge requires reconciliation');
+
+                return true;
+            });
         });
     }
 

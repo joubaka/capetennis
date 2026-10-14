@@ -543,12 +543,18 @@ class FinancialLedgerService
 
     private function mapPayfastRow(Transaction $tx, float $feePerEntry): object
     {
+        $reconciliationOrder = $tx->custom_str5 === 'TeamOrder'
+            ? \App\Models\TeamPaymentOrder::query()->whereKey($tx->custom_int5)
+                ->where('event_id', $tx->event_id)->where('user_id', $tx->custom_int4)
+                ->where('collection_status', 'reconciliation_required')->first()
+            : null;
+        $requiresReconciliation = $reconciliationOrder !== null;
         $participation = $tx->custom_str5 === 'TeamOrder' ? \App\Models\TrialParticipation::where('order_id', $tx->custom_int5)->first() : null;
-        $resolvedOrder = $participation ? $participation->order : $tx->order;
-        $items        = collect($participation ? [] : (optional($resolvedOrder)->items ?? []));
-        $entryCount   = max(1, $items->count());
+        $resolvedOrder = $reconciliationOrder ?? ($participation ? $participation->order : $tx->order);
+        $items        = collect(($participation || $requiresReconciliation) ? [] : (optional($resolvedOrder)->items ?? []));
+        $entryCount   = $requiresReconciliation ? 0 : max(1, $items->count());
         $payfastGross = round((float) $tx->amount_gross, 2);
-        $walletUsed   = round((float) optional($resolvedOrder)->wallet_reserved, 2);
+        $walletUsed   = $requiresReconciliation ? 0.0 : round((float) optional($resolvedOrder)->wallet_reserved, 2);
         $grossTx      = $payfastGross + $walletUsed;
 
         $isAdminEntry = $tx->item_name === 'Admin Entry'
@@ -584,7 +590,7 @@ class FinancialLedgerService
                 ? abs(round((float) $capturedCapeFee, 2))
                 : round($feePerEntry * $entryCount, 2))
             : 0.0;
-        $capeFeeTx = $participation ? 0.0 : -1 * $capeFeeAmount;
+        $capeFeeTx = ($participation || $requiresReconciliation) ? 0.0 : -1 * $capeFeeAmount;
         $netTx     = round($grossTx + $pfFeeTx + $capeFeeTx, 2);
 
         $playerName = ($tx->pf_payment_id === null)
@@ -610,19 +616,19 @@ class FinancialLedgerService
             'type'             => $isAdminEntry
                 ? 'admin_entry_fee'
                 : ($isUnmarkedZeroValue ? 'unreconciled' : 'payment'),
-            'subtype'          => $isAdminEntry
+            'subtype'          => $requiresReconciliation ? 'superseded_payfast_receipt' : ($isAdminEntry
                 ? 'admin_entry_fee_liability'
-                : ($isUnmarkedZeroValue ? 'unreconciled_zero_value' : strtolower(str_replace(' ', '_', $method))),
+                : ($isUnmarkedZeroValue ? 'unreconciled_zero_value' : strtolower(str_replace(' ', '_', $method)))),
             'amount_gross'     => $grossTx,
             'amount_fee'       => $pfFeeTx,
             'amount_net'       => $netTx,
             'payment_method'   => ($isAdminEntry || $isUnmarkedZeroValue) ? null : $method,
             'refund_status'    => null,
             'withdrawal_status'=> null,
-            'status_label'     => $isAdminEntry
+            'status_label'     => $requiresReconciliation ? 'Late payment — reconciliation required' : ($isAdminEntry
                 ? 'Admin entry fee liability'
-                : ($isUnmarkedZeroValue ? 'Unreconciled zero-value record' : $method),
-            'status_colour'    => ($isAdminEntry || $isUnmarkedZeroValue) ? 'warning' : 'primary',
+                : ($isUnmarkedZeroValue ? 'Unreconciled zero-value record' : $method)),
+            'status_colour'    => ($requiresReconciliation || $isAdminEntry || $isUnmarkedZeroValue) ? 'warning' : 'primary',
             'source_tx_id'     => $tx->id,
             'source_order_id'  => optional($resolvedOrder)->id,
             'source_pf_id'     => $tx->pf_payment_id,
@@ -631,7 +637,7 @@ class FinancialLedgerService
             // ── Legacy fields (keep for Blade/view compatibility) ─────────
             'created_at'    => $tx->created_at,
             'player'        => $playerName ?: optional($tx->user)->name,
-            'method'        => $method,
+            'method'        => $requiresReconciliation ? 'PayFast (reconciliation required)' : $method,
             'gross'         => $grossTx,
             'fee'           => $pfFeeTx,
             'capeFee'       => $capeFeeTx,

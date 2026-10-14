@@ -892,10 +892,33 @@ class RegisterController extends Controller
     try {
       $processed = DB::transaction(function () use ($orderId, $data) {
         app(\App\Services\InterprovincialTrials\TrialParticipationService::class)->lockForOrder($orderId);
+        $checkoutTeamId = \App\Models\TeamPaymentOrder::query()->whereKey($orderId)->value('team_id');
+        if ($checkoutTeamId) {
+          \App\Models\Team::query()->whereKey($checkoutTeamId)->lockForUpdate()->firstOrFail();
+        }
         $order = \App\Models\TeamPaymentOrder::query()
           ->lockForUpdate()
           ->with(['user.wallet', 'event', 'team', 'player'])
           ->findOrFail($orderId);
+
+        if (($data['custom_str5'] ?? '') !== 'TeamOrder'
+          || (string) ($data['custom_int4'] ?? '') !== (string) $order->user_id
+          || (string) ($data['custom_int3'] ?? '') !== (string) $order->event_id
+          || (string) ($data['custom_int2'] ?? '') !== (string) $order->player_id
+          || trim((string) ($data['pf_payment_id'] ?? '')) === '') {
+          throw new \RuntimeException('Team payment callback metadata does not match its order.');
+        }
+        $existingReceipt = \App\Models\Transaction::query()
+          ->where('pf_payment_id', $data['pf_payment_id'])->lockForUpdate()->first();
+        if ($existingReceipt && ($existingReceipt->custom_str5 !== 'TeamOrder'
+          || (int) $existingReceipt->custom_int5 !== (int) $order->id)) {
+          throw new \RuntimeException('PayFast receipt already belongs to another payment.');
+        }
+
+        if (app(\App\Domain\Payments\Services\TeamPaymentService::class)
+          ->recordSupersededPayfastReceipt($order, $data)) {
+          return true;
+        }
 
         $trialParticipation = \App\Models\TrialParticipation::where('order_id', $order->id)->first();
         if ($trialParticipation && (
