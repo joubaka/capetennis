@@ -8,7 +8,7 @@ use Illuminate\Validation\ValidationException;
 
 class EventSelectionRosterImportService
 {
-    public function preview(Event $target, EventSelectionFinalization $finalization, User $actor): array
+    public function preview(Event $target, EventSelectionFinalization $finalization, User $actor, ?array $sourceRegionIds = null): array
     {
         abort_unless($actor->can('event.manage', $target), 403);
         $source = Event::findOrFail($finalization->event_id);
@@ -18,8 +18,30 @@ class EventSelectionRosterImportService
         $sourceTeams = app(EventTeamScope::class)->query($source)->with('category.category')->limit(501)->get()->keyBy('id');
         $targetTeams = app(EventTeamScope::class)->query($target)->with('category.category')->orderBy('name')->limit(501)->get();
         abort_if($sourceTeams->count() > 500 || $targetTeams->count() > 500, 422, 'Selection import supports up to 500 teams per event.');
+        $sourceRegions = $source->regions()->orderBy('region_name')->limit(501)->get();
+        abort_if($sourceRegions->count() > 500, 422, 'Selection import supports up to 500 regions per event.');
+        $selectedRegions = $sourceRegionIds === null ? null : array_values(array_unique(array_map('intval', $sourceRegionIds)));
+        if ($selectedRegions !== null && ($selectedRegions === [] || array_diff($selectedRegions, $sourceRegions->modelKeys()))) {
+            throw ValidationException::withMessages(['source_region_ids' => 'Choose regions belonging to the source event.']);
+        }
+        $regionGroups = [];
         $groups = [];
         foreach ($finalization->groups as $key => $group) {
+            // An age/gender selection may combine several regions. Keep that frozen
+            // selection intact rather than splitting players or changing their ranks.
+            $cohort = array_values(array_unique(array_map('intval', $group['region_ids'] ?? [])));
+            if ($cohort === []) {
+                $teamIds = collect($group['snapshot'] ?? [])->flatMap(fn ($row) => $row['source_team_ids'] ?? [])->map(fn ($id) => (int) $id);
+                $cohort = $sourceTeams->only($teamIds->all())->pluck('region_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+            }
+            abort_unless($cohort !== [] && ! array_diff($cohort, $sourceRegions->modelKeys()), 422, 'The finalized selection has regions outside the source event. Review its region links before importing.');
+            foreach ($cohort as $id) $regionGroups[$id][] = $key;
+            if ($selectedRegions !== null) {
+                if (! array_intersect($cohort, $selectedRegions)) continue;
+                if (array_diff($cohort, $selectedRegions)) {
+                    throw ValidationException::withMessages(['source_region_ids' => 'The finalized u/'.str_replace('-', ' ', $key).' selection combines regions. Select all of these regions together: '.$sourceRegions->whereIn('id', $cohort)->pluck('region_name')->implode(', ').'.']);
+                }
+            }
             $snapshot = collect($group['snapshot'])->keyBy(fn ($row) => (string) $row['id']);
             $players = [];
             $categoryIds = [];
@@ -42,28 +64,36 @@ class EventSelectionRosterImportService
             $categoryName = $sourceTeams->first(fn ($team) => (int) $team->category?->category_id === $categoryId)?->category?->category?->name;
             abort_unless((app(TeamResultRankingService::class)->group(new TeamFixture(['age' => $categoryName]))['key'] ?? null) === $key,
                 422, 'The source category does not match the finalized age and gender group.');
-            $groups[$key] = ['label' => 'u/'.str_replace('-', ' ', $key), 'category_id' => $categoryId, 'players' => $players,
+            $groups[$key] = ['label' => 'u/'.str_replace('-', ' ', $key), 'category_id' => $categoryId, 'players' => $players, 'source_region_ids' => $cohort,
                 'teams' => $targetTeams->filter(fn ($team) => (int) $team->category?->category_id === $categoryId)->values(),
                 'main_count' => collect($players)->where('status', 'main')->count(), 'reserve_count' => collect($players)->where('status', 'reserve')->count()];
         }
-        return compact('source', 'groups');
+        if ($selectedRegions !== null && ($groups === [] || array_diff($selectedRegions, array_keys($regionGroups)))) {
+            throw ValidationException::withMessages(['source_region_ids' => 'Only regions included in a finalized selection can be imported.']);
+        }
+        return compact('source', 'groups', 'sourceRegions', 'regionGroups');
     }
 
-    public function import(Event $target, EventSelectionFinalization $finalization, int $regionId, array $mapping, User $actor): EventSelectionRosterImport
+    public function import(Event $target, EventSelectionFinalization $finalization, int $regionId, array $mapping, User $actor, ?array $sourceRegionIds = null): EventSelectionRosterImport
     {
-        return DB::transaction(function () use ($target, $finalization, $regionId, $mapping, $actor) {
+        return DB::transaction(function () use ($target, $finalization, $regionId, $mapping, $actor, $sourceRegionIds) {
             // The same source-event lock serializes unlock, finalization and import.
             Event::whereIn('id', [$target->id, $finalization->event_id])->orderBy('id')->lockForUpdate()->get();
-            $preview = $this->preview($target, $finalization->fresh(), $actor);
+            $preview = $this->preview($target, $finalization->fresh(), $actor, $sourceRegionIds);
             abort_unless($target->regions()->where('team_regions.id', $regionId)->exists(), 422, 'Choose a region belonging to the destination event.');
+            if (array_diff(array_keys($preview['groups']), array_keys($mapping)) || array_diff(array_keys($mapping), array_keys($preview['groups']))) {
+                throw ValidationException::withMessages(['mapping' => 'Choose a destination for every selected finalized group.']);
+            }
             $existing = EventSelectionRosterImport::where('event_id', $target->id)->where('finalization_id', $finalization->id)->where('region_id', $regionId)->first();
-            if ($existing) return $existing;
+            if ($existing) {
+                if (array_diff(array_keys($existing->groups), array_keys($preview['groups'])) || array_diff(array_keys($preview['groups']), array_keys($existing->groups))) {
+                    throw ValidationException::withMessages(['source_region_ids' => 'A different selection from this finalized event was already imported into this destination region. Review the existing import before continuing.']);
+                }
+                return $existing;
+            }
             if (TeamFixture::whereHas('draw', fn ($q) => $q->where('event_id', $target->id))->exists()
                 || \App\Models\TeamTie::whereHas('draw', fn ($q) => $q->where('event_id', $target->id))->exists()) {
                 throw ValidationException::withMessages(['mapping' => 'This event already has fixtures. Use its roster replacement workflow to preserve the competition.']);
-            }
-            if (array_diff(array_keys($preview['groups']), array_keys($mapping)) || array_diff(array_keys($mapping), array_keys($preview['groups']))) {
-                throw ValidationException::withMessages(['mapping' => 'Choose a destination for every finalized group.']);
             }
             $region = TeamRegion::findOrFail($regionId);
             $groups = [];
@@ -114,7 +144,7 @@ class EventSelectionRosterImportService
                     }
                     $groups[$key]['players'][] = ['key' => $person['key'], 'name' => $person['name'], 'rank' => $person['rank'], 'status' => $person['status'], 'slot_id' => $slot->id, 'profile_id' => $person['profile_id']];
                 }
-                $groups[$key] += ['team_id' => $team->id, 'team_name' => $team->name, 'main_count' => $group['main_count'], 'reserve_count' => $group['reserve_count']];
+                $groups[$key] += ['team_id' => $team->id, 'team_name' => $team->name, 'main_count' => $group['main_count'], 'reserve_count' => $group['reserve_count'], 'source_region_ids' => $group['source_region_ids']];
             }
             $import = EventSelectionRosterImport::create(['event_id' => $target->id, 'finalization_id' => $finalization->id, 'region_id' => $regionId, 'imported_by' => $actor->id, 'groups' => $groups, 'imported_at' => now()]);
             activity('team-selection')->performedOn($target)->causedBy($actor)->withProperties(['source_event_id' => $finalization->event_id, 'finalization_id' => $finalization->id, 'source_fingerprint' => $finalization->fingerprint, 'import_id' => $import->id, 'team_ids' => collect($groups)->pluck('team_id')->all()])->log('imported finalized selected teams and reserves');

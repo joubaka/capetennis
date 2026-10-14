@@ -88,7 +88,12 @@ class EventMailLogController extends Controller
     public function issues(Request $request, EventMailLogService $service)
     {
         abort_unless(\Illuminate\Support\Facades\Schema::hasTable('event_mail_issues'), 503, 'Email issues are awaiting the required database migration.');
-        $issues = EventMailIssue::where('user_id', $request->user()->id)->latest()->paginate(25);
+        $filters = $request->validate(['show' => 'nullable|in:unread,all']);
+        $showAcknowledged = ($filters['show'] ?? 'unread') === 'all';
+        $ownIssues = EventMailIssue::where('user_id', $request->user()->id);
+        $unreadCutoff = (clone $ownIssues)->whereNull('read_at')->max('id');
+        $clearToken = $unreadCutoff ? \Illuminate\Support\Facades\Crypt::encryptString($request->user()->id.':'.$unreadCutoff) : null;
+        $issues = $ownIssues->when(! $showAcknowledged, fn ($query) => $query->whereNull('read_at'))->latest('id')->paginate(25)->withQueryString();
         $visible = collect();
         foreach ($issues as $issue) {
             $event = Event::find($issue->event_id);
@@ -103,7 +108,24 @@ class EventMailLogController extends Controller
                 // Own generic outcome remains visible without private event or message data.
             }
         }
-        return view('backend.event.mail-log.issues', compact('issues', 'visible'));
+        return response()->view('backend.event.mail-log.issues', compact('issues', 'visible', 'showAcknowledged', 'clearToken'))->header('Cache-Control', 'no-store, private');
+    }
+    public function clearIssues(Request $request)
+    {
+        abort_unless(\Illuminate\Support\Facades\Schema::hasTable('event_mail_issues'), 503, 'Email issues are awaiting the required database migration.');
+        $input = $request->validate(['snapshot' => 'required|string|max:2048']);
+        try {
+            $snapshot = \Illuminate\Support\Facades\Crypt::decryptString($input['snapshot']);
+        } catch (\Illuminate\Contracts\Encryption\DecryptException) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['snapshot' => 'Reload your email issues before clearing the list.']);
+        }
+        abort_unless(preg_match('/^(\d+):(\d+)$/', $snapshot, $matches), 422);
+        abort_unless((int) $matches[1] === (int) $request->user()->id, 403);
+        // Acknowledge across every page, but leave alerts created after the viewed
+        // snapshot unread. Neither delivery records nor attempt history are changed.
+        $count = EventMailIssue::where('user_id', $request->user()->id)->whereNull('read_at')
+            ->where('id', '<=', (int) $matches[2])->update(['read_at' => now()]);
+        return redirect()->route('backend.email-issues')->with('success', $count.' email '.($count === 1 ? 'alert' : 'alerts').' cleared. Email records and outcomes are retained.');
     }
     public function acknowledge(Request $request, Event $event, EventMailIssue $issue, EventMailLogService $service)
     {

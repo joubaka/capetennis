@@ -113,7 +113,6 @@ class EventSelectionRosterImportTest extends TestCase
     {
         [$source, $target, $oldFinal, $region, $actor, $players, $sourceTeam] = $this->scenario();
         DB::table('event_selection_finalizations')->where('id', $oldFinal->id)->delete();
-        $source->regions()->attach($region);
         $source->team_result_settings = ['team_size' => 1, 'reserve_count' => 0]; $source->save();
         $sourceTeam->update(['noProfile' => true]);
         $member = NoProfileTeamPlayer::create(['team_id' => $sourceTeam->id, 'name' => 'Canonical', 'surname' => 'Imported', 'rank' => 1, 'player_profile' => $players[0]->id, 'pay_status' => 1]);
@@ -161,6 +160,110 @@ class EventSelectionRosterImportTest extends TestCase
         $this->assertSame(1, Team::whereHas('category', fn ($q) => $q->where('event_id', $target->id))->count());
     }
 
+    public function test_source_region_chooser_shows_all_regions_and_unfinalized_source_events(): void
+    {
+        [$source, $target, $final, $region, $actor] = $this->scenario();
+        $unselected = TeamRegion::create(['region_name' => 'Unselected source region']);
+        $source->regions()->attach($unselected);
+        $url = route('backend.selection-import.index', ['event' => $target, 'source_event_id' => $source->id, 'choose_regions' => 1]);
+        $response = $this->get($url)->assertOk()->assertSee('Regions in '.$source->name)->assertSee($region->region_name)
+            ->assertSee($unselected->region_name)->assertSee('Included in finalized selection')->assertSee('No finalized selection')
+            ->assertDontSee('name="mapping[', false);
+        $this->assertMatchesRegularExpression('/id="source-region-'.$unselected->id.'"[^>]*disabled/', $response->getContent());
+        if (getenv('CT_SELECTION_IMPORT_BROWSER_FIXTURE')) file_put_contents(storage_path('app/testing/selection-import-regions.html'), $response->getContent());
+        EventSelectionReopening::create(['finalization_id' => $final->id, 'reopened_by' => $actor->id, 'reason' => 'Review', 'reopened_at' => now()]);
+        $this->get(route('backend.selection-import.index', $target))->assertOk()->assertSee($source->name);
+        $this->get($url)->assertOk()->assertDontSee('Included in finalized selection')->assertSee('Finalize the saved teams');
+    }
+
+    public function test_region_subset_import_preserves_groups_and_retry_but_rejects_changed_subset(): void
+    {
+        [$source, $target, $final, $region, $actor, $players, $sourceTeam] = $this->scenario();
+        [$secondRegion, $secondPlayer] = $this->addSecondRegionGroup($source, $final, $actor);
+        $url = route('backend.selection-import.index', ['event' => $target, 'source_event_id' => $source->id, 'choose_regions' => 1, 'review_regions' => 1, 'source_region_ids' => [$region->id]]);
+        $response = $this->get($url)->assertOk()->assertSee('u/10 boys')->assertDontSee('u/12 girls')->assertDontSee($secondPlayer->name);
+        if (getenv('CT_SELECTION_IMPORT_BROWSER_FIXTURE')) file_put_contents(storage_path('app/testing/selection-import-selected-regions.html'), $response->getContent());
+        $input = ['finalization_id' => $final->id, 'source_region_ids' => [$region->id], 'region_id' => $region->id, 'mapping' => ['10-boys' => 0], 'confirm_import' => 1];
+        $store = route('backend.selection-import.store', $target);
+        $this->postJson($store, array_replace($input, ['mapping' => ['10-boys' => 0, '12-girls' => 0]]))->assertUnprocessable()->assertJsonValidationErrors('mapping');
+        $this->assertDatabaseCount('event_selection_roster_imports', 0);
+        $this->post($store, $input)->assertRedirect()->assertSessionHasNoErrors();
+        $this->post($store, $input)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertDatabaseCount('event_selection_roster_imports', 1);
+        $this->assertDatabaseCount('no_profile_team_players', 2);
+        $import = EventSelectionRosterImport::firstOrFail();
+        $this->assertSame(['10-boys'], array_keys($import->groups));
+        $this->assertSame([$region->id], $import->groups['10-boys']['source_region_ids']);
+        $this->assertSame([1, 2], array_column($import->groups['10-boys']['players'], 'rank'));
+        $this->postJson($store, array_replace($input, ['source_region_ids' => [$secondRegion->id], 'mapping' => ['12-girls' => 0]]))->assertUnprocessable()->assertJsonValidationErrors('source_region_ids');
+        $this->assertDatabaseCount('event_selection_roster_imports', 1);
+        $this->assertDatabaseCount('no_profile_team_players', 2);
+        $this->assertSame($import->groups, $import->fresh()->groups);
+    }
+
+    public function test_partial_combined_finalized_region_cohort_is_rejected_without_splitting_players(): void
+    {
+        [$source, $target, $final, $region, $actor] = $this->scenario();
+        $second = TeamRegion::create(['region_name' => 'Second combined region']);
+        $source->regions()->attach($second);
+        $groups = $final->groups;
+        $groups['10-boys']['region_ids'] = [$region->id, $second->id];
+        DB::table('event_selection_finalizations')->where('id', $final->id)->update(['groups' => json_encode($groups)]);
+        $input = ['finalization_id' => $final->id, 'source_region_ids' => [$region->id], 'region_id' => $region->id, 'mapping' => ['10-boys' => 0], 'confirm_import' => 1];
+        $this->postJson(route('backend.selection-import.store', $target), $input)->assertUnprocessable()->assertJsonValidationErrors('source_region_ids');
+        $this->assertDatabaseCount('no_profile_team_players', 0);
+        $this->assertDatabaseCount('event_selection_roster_imports', 0);
+        $this->post(route('backend.selection-import.store', $target), array_replace($input, ['source_region_ids' => [$second->id, $region->id]]))->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertDatabaseCount('no_profile_team_players', 2);
+        $this->assertSame(['main', 'reserve'], array_column(EventSelectionRosterImport::first()->groups['10-boys']['players'], 'status'));
+    }
+
+    public function test_foreign_unfinalized_duplicate_and_empty_source_regions_cannot_be_imported(): void
+    {
+        [$source, $target, $final, $region] = $this->scenario();
+        $unfinalized = TeamRegion::create(['region_name' => 'No selection']);
+        $source->regions()->attach($unfinalized);
+        $foreign = TeamRegion::create(['region_name' => 'Foreign event region']);
+        $input = ['finalization_id' => $final->id, 'region_id' => $region->id, 'mapping' => ['10-boys' => 0], 'confirm_import' => 1];
+        foreach ([[], [$foreign->id], [$unfinalized->id], [$region->id, $region->id]] as $ids) {
+            $this->postJson(route('backend.selection-import.store', $target), $input + ['source_region_ids' => $ids])->assertUnprocessable();
+        }
+        $this->assertDatabaseCount('event_selection_roster_imports', 0);
+        $this->assertDatabaseCount('no_profile_team_players', 0);
+    }
+
+    public function test_frozen_region_cohort_is_used_even_if_source_team_region_changes(): void
+    {
+        [$source, $target, $final, $region, $actor, $players, $team] = $this->scenario();
+        $newRegion = TeamRegion::create(['region_name' => 'Changed team region']);
+        $source->regions()->attach($newRegion);
+        $groups = $final->groups;
+        $groups['10-boys']['region_ids'] = [$region->id];
+        DB::table('event_selection_finalizations')->where('id', $final->id)->update(['groups' => json_encode($groups)]);
+        $team->update(['region_id' => $newRegion->id]);
+        $service = app(\App\Services\EventSelectionRosterImportService::class);
+        $preview = $service->preview($target, $final->fresh(), $actor, [$region->id]);
+        $this->assertSame([$region->id], $preview['groups']['10-boys']['source_region_ids']);
+        $this->assertArrayNotHasKey($newRegion->id, $preview['regionGroups']);
+        $this->assertSame([(string)$players[1]->id, (string)$players[0]->id], array_column($preview['groups']['10-boys']['players'], 'key'));
+    }
+
+    private function addSecondRegionGroup(Event $source, EventSelectionFinalization $final, User $actor): array
+    {
+        $region = TeamRegion::create(['region_name' => 'Second source region']);
+        $source->regions()->attach($region);
+        $category = Category::factory()->create(['name' => 'u/12 Girls']);
+        $categoryEvent = CategoryEvent::factory()->create(['event_id' => $source->id, 'category_id' => $category->id]);
+        $team = new Team(['name' => 'Second u/12 Girls', 'category_event_id' => $categoryEvent->id, 'region_id' => $region->id, 'num_team_members' => 1, 'published' => true, 'year' => 2026]);
+        $team->forceFill(['user_id' => $actor->id, 'personal_team' => false])->save();
+        $player = Player::factory()->create();
+        $groups = $final->groups;
+        $groups['12-girls'] = ['region_ids' => [$region->id], 'snapshot' => [['id' => $player->id, 'name' => $player->name.' '.$player->surname, 'source_team_ids' => [$team->id], 'source_participants' => [['team_id' => $team->id, 'type' => 'profile', 'id' => $player->id]]]],
+            'selected_keys' => [(string)$player->id], 'selection_statuses' => [(string)$player->id => ['position' => 1, 'status' => 'main']]];
+        DB::table('event_selection_finalizations')->where('id', $final->id)->update(['groups' => json_encode($groups)]);
+        return [$region, $player];
+    }
+
     private function scenario(): array
     {
         Role::findOrCreate('admin', 'web');
@@ -171,6 +274,7 @@ class EventSelectionRosterImportTest extends TestCase
         $actor->adminEvents()->attach([$source->id, $target->id]); $this->actingAs($actor);
         $region = TeamRegion::create(['region_name' => 'Platteland', 'short_name' => 'PL']);
         (new EventRegion)->forceFill(['event_id' => $target->id, 'region_id' => $region->id, 'ordering' => 1])->save();
+        $source->regions()->attach($region);
         $category = Category::factory()->create(['name' => 'u/10 Boys']);
         $categoryEvent = CategoryEvent::factory()->create(['event_id' => $source->id, 'category_id' => $category->id]);
         $team = new Team(['name' => 'Source u/10 Boys', 'category_event_id' => $categoryEvent->id, 'region_id' => $region->id, 'num_team_members' => 3, 'published' => true, 'year' => 2026]);

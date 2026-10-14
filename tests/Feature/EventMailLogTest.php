@@ -52,6 +52,81 @@ class EventMailLogTest extends TestCase
         $this->actingAs($other)->post(route('backend.event-mail-log.acknowledge', [$event, $issue]))->assertNotFound();
     }
 
+    public function test_clear_list_acknowledges_all_own_pages_without_changing_mail_or_other_users(): void
+    {
+        \Illuminate\Support\Facades\Bus::fake();
+        \Illuminate\Support\Facades\Mail::fake();
+        $event = Event::factory()->create(['name' => 'Secret tournament name']);
+        $actor = User::factory()->create();
+        $other = User::factory()->create();
+        for ($index = 0; $index < 31; $index++) $this->log($event, ['created_by' => $actor->id], 'failed');
+        $otherLog = $this->log($event, ['created_by' => $other->id], 'failed');
+        $acknowledged = EventMailIssue::where('user_id', $actor->id)->firstOrFail();
+        $acknowledged->update(['read_at' => now()->subDay()]);
+        $originalRead = $acknowledged->read_at->toISOString();
+        $logs = DB::table('bulk_email_logs')->orderBy('id')->get()->toArray();
+        $history = DB::table('event_mail_attempt_history')->orderBy('id')->get()->toArray();
+        $page = $this->actingAs($actor)->get(route('backend.email-issues', ['page' => 2]))->assertOk()
+            ->assertViewHas('issues', fn ($issues) => $issues->total() === 30)
+            ->assertSee('Clear list')->assertDontSee('Secret tournament name')->assertDontSee('parent@example.test');
+        if (getenv('CT_EMAIL_ISSUES_BROWSER_FIXTURE')) file_put_contents(storage_path('app/testing/email-issues.html'), $page->getContent());
+        $token = $page->viewData('clearToken');
+        $this->post(route('backend.email-issues.clear'), ['snapshot' => $token, 'user_id' => $other->id])->assertRedirect(route('backend.email-issues'));
+        $this->assertSame(0, EventMailIssue::where('user_id', $actor->id)->whereNull('read_at')->count());
+        $this->assertDatabaseHas('event_mail_issues', ['log_id' => $otherLog->id, 'user_id' => $other->id, 'read_at' => null]);
+        $this->assertSame($originalRead, $acknowledged->fresh()->read_at->toISOString());
+        $readTimes = EventMailIssue::where('user_id', $actor->id)->orderBy('id')->pluck('read_at')->map(fn ($date) => $date->toISOString())->all();
+        $this->travel(1)->minutes();
+        $this->post(route('backend.email-issues.clear'), ['snapshot' => $token])->assertRedirect();
+        $this->assertSame($readTimes, EventMailIssue::where('user_id', $actor->id)->orderBy('id')->pluck('read_at')->map(fn ($date) => $date->toISOString())->all());
+        $this->assertEquals($logs, DB::table('bulk_email_logs')->orderBy('id')->get()->toArray());
+        $this->assertEquals($history, DB::table('event_mail_attempt_history')->orderBy('id')->get()->toArray());
+        $this->assertDatabaseCount('event_mail_issues', 32);
+        $empty = $this->get(route('backend.email-issues'))->assertOk()->assertSee('No email issues need attention.')
+            ->assertDontSee('Clear list</button>', false)->assertViewHas('issues', fn ($issues) => $issues->total() === 0)
+            ->assertDontSee('email issues need attention"', false);
+        if (getenv('CT_EMAIL_ISSUES_BROWSER_FIXTURE')) file_put_contents(storage_path('app/testing/email-issues-cleared.html'), $empty->getContent());
+        $this->get(route('backend.email-issues', ['show' => 'all', 'page' => 2]))->assertOk()->assertSee('Acknowledged')
+            ->assertSee('Show outstanding only')->assertViewHas('issues', fn ($issues) => $issues->total() === 31);
+        \Illuminate\Support\Facades\Bus::assertNothingDispatched();
+        \Illuminate\Support\Facades\Mail::assertNothingSent();
+        \Illuminate\Support\Facades\Mail::assertNothingQueued();
+    }
+
+    public function test_clear_snapshot_preserves_new_alerts_and_failed_retry_attempts_remain_visible(): void
+    {
+        $event = Event::factory()->create();
+        $actor = User::factory()->create();
+        $log = $this->log($event, ['created_by' => $actor->id], 'failed');
+        $token = $this->actingAs($actor)->get(route('backend.email-issues'))->assertOk()->viewData('clearToken');
+        $new = $this->log($event, ['created_by' => $actor->id], 'failed');
+        $this->post(route('backend.email-issues.clear'), ['snapshot' => $token])->assertRedirect();
+        $this->assertDatabaseHas('event_mail_issues', ['log_id' => $new->id, 'read_at' => null]);
+        $this->assertNotNull(EventMailIssue::where('log_id', $log->id)->sole()->read_at);
+        app(EventMailLogService::class)->recordIssue($log->fresh());
+        $this->assertSame(1, EventMailIssue::where('user_id', $actor->id)->whereNull('read_at')->count());
+        $log->update(['status' => 'queued', 'failed_at' => null, 'payload' => [...$log->payload, 'retry_actor_id' => $actor->id]]);
+        $log->refresh()->markAsFailed('New failed attempt');
+        $this->assertDatabaseHas('event_mail_issues', ['log_id' => $log->id, 'attempt_number' => 2, 'read_at' => null]);
+        $this->get(route('backend.email-issues'))->assertOk()->assertSee('Attempt 2')
+            ->assertViewHas('issues', fn ($issues) => $issues->total() === 2);
+        $this->post(route('backend.email-issues.clear'), ['snapshot' => $token])->assertRedirect();
+        $this->assertSame(2, EventMailIssue::where('user_id', $actor->id)->whereNull('read_at')->count());
+    }
+
+    public function test_clear_requires_authentication_and_rejects_other_users_or_tampered_snapshots(): void
+    {
+        $event = Event::factory()->create();
+        $actor = User::factory()->create();
+        $this->log($event, ['created_by' => $actor->id], 'failed');
+        $this->post(route('backend.email-issues.clear'), ['snapshot' => 'invalid'])->assertRedirect(route('login'));
+        $token = $this->actingAs($actor)->get(route('backend.email-issues'))->assertOk()->viewData('clearToken');
+        $this->postJson(route('backend.email-issues.clear'), [])->assertUnprocessable()->assertJsonValidationErrors('snapshot');
+        $this->postJson(route('backend.email-issues.clear'), ['snapshot' => 'invalid'])->assertUnprocessable()->assertJsonValidationErrors('snapshot');
+        $this->actingAs(User::factory()->create())->postJson(route('backend.email-issues.clear'), ['snapshot' => $token])->assertForbidden();
+        $this->assertSame(1, EventMailIssue::whereNull('read_at')->count());
+    }
+
     private function log(Event $event, array $payload = [], string $status = 'queued'): BulkEmailLog
     {
         return BulkEmailLog::create(['mail_type' => 'event_email', 'recipient_email' => 'parent@example.test', 'status' => $status, 'payload' => $payload + ['event_id' => $event->id, 'subject' => 'Event arrangements', 'message' => '<p>Clothing collection</p>']]);
