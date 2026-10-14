@@ -13,6 +13,10 @@ class EventSelectionRosterImportController extends Controller
     {
         $this->authorize('event.manage', $event);
         abort_unless($event->isTeam(), 404);
+        $request->validate(['source_choices' => 'sometimes|in:1', 'source_event_id' => 'required_if:source_choices,1|integer',
+            'import_mode' => 'prohibited_if:source_choices,1', 'review_regions' => 'prohibited_if:source_choices,1',
+            'source_region_ids' => 'prohibited_if:source_choices,1']);
+        $choicesOnly = $request->boolean('source_choices');
         $sourcesQuery = Event::where('id', '!=', $event->id)
             ->whereHas('eventTypeModel', fn ($q) => $q->where('type', \App\Models\EventType::TEAM));
         if (! $request->user()->hasRole('super-user')) {
@@ -49,7 +53,7 @@ class EventSelectionRosterImportController extends Controller
                     } elseif ($request->boolean('review_regions')) {
                         if ($selectedRegionIds === []) throw \Illuminate\Validation\ValidationException::withMessages(['source_region_ids' => 'Select at least one finalized region to review.']);
                         $preview = $service->preview($event, $finalization, $request->user(), $selectedRegionIds);
-                    } elseif (! $request->boolean('choose_regions')) {
+                    } elseif (! $choicesOnly && ! $request->boolean('choose_regions')) {
                         $preview = $service->preview($event, $finalization, $request->user());
                     }
                 } elseif ($importMode === 'approved_team') {
@@ -63,6 +67,10 @@ class EventSelectionRosterImportController extends Controller
                 if (! in_array($exception->getStatusCode(), [409, 422], true)) throw $exception;
                 $previewErrors = [$exception->getMessage()];
             }
+        }
+        if ($choicesOnly) {
+            return response()->view('backend.adminPage.partials.selection-import-source-choices', compact('event', 'finalization', 'sourceEvent', 'sourceRegions', 'regionGroups', 'selectedRegionIds', 'previewErrors', 'importMode'))
+                ->header('Cache-Control', 'no-store, private')->header('X-Selection-Source-Choices', '1');
         }
         $regions = $event->regions()->orderBy('region_name')->get();
         $imports = EventSelectionRosterImport::where('event_id', $event->id)->with('finalization', 'region')->orderByDesc('id')->paginate(10, ['*'], 'imports_page');

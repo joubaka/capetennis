@@ -8,51 +8,20 @@
   @if(session('success'))<div class="alert alert-success" role="status">{{ session('success') }}</div>@endif
   @if($previewErrors)<div class="alert alert-danger" role="alert"><strong>Unable to review these teams.</strong><ul class="mb-0">@foreach($previewErrors as $message)<li>{{ $message }}</li>@endforeach</ul></div>@endif
   @if($errors->any())<div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>@endif
-  <form method="GET" action="{{ route('backend.selection-import.index', $event) }}" class="row g-3 align-items-end">
+  <form method="GET" action="{{ route('backend.selection-import.index', $event) }}" id="source-event-form" class="row g-3 align-items-end">
     <input type="hidden" name="choose_regions" value="1">
     <div class="col-12 col-md-8"><label class="form-label" for="source-event">Source event</label><select id="source-event" name="source_event_id" class="form-select" required><option value="">Choose a source event</option>@if($sourceEvent && !$sources->contains('id', $sourceEvent->id))<option value="{{ $sourceEvent->id }}" selected>{{ $sourceEvent->name }}</option>@endif @foreach($sources as $source)<option value="{{ $source->id }}" @selected((int)request('source_event_id') === (int)$source->id)>{{ $source->name }}</option>@endforeach</select></div>
-    <div class="col-12 col-md-4"><button class="btn btn-primary" style="min-height:44px">Show source regions</button></div>
+    <div class="col-12 col-md-4"><button class="btn btn-primary" style="min-height:44px">Show source options</button></div>
   </form>
   @if($sources->isEmpty())<p class="mt-3 mb-0">No source team events are available for you to manage.</p>@endif
   <div class="mt-3">{{ $sources->withQueryString()->links('pagination::bootstrap-5') }}</div>
 </div></div>
-@if($sourceEvent)
-<section class="card mb-3"><div class="card-body">
-  <h4>Approved selected team · {{ $sourceEvent->name }}</h4>
-  @if($finalization)
-    <p>Approved {{ $finalization->finalized_at->format('d M Y H:i') }} · {{ count($finalization->groups) }} age/gender {{ count($finalization->groups) === 1 ? 'group' : 'groups' }}. Includes the complete saved selection and its reserves.</p>
-    <form method="GET" action="{{ route('backend.selection-import.index', $event) }}">
-      <input type="hidden" name="source_event_id" value="{{ $sourceEvent->id }}">
-      <input type="hidden" name="import_mode" value="approved_team">
-      <button class="btn btn-primary" style="min-height:44px">Review approved selected team</button>
-    </form>
-  @else
-    <p class="mb-0">No teams are approved yet.</p>
-  @endif
-</div></section>
-<form method="GET" action="{{ route('backend.selection-import.index', $event) }}" class="card mb-3"><div class="card-body">
-  <input type="hidden" name="source_event_id" value="{{ $sourceEvent->id }}">
-  <input type="hidden" name="choose_regions" value="1">
-  <input type="hidden" name="review_regions" value="1">
-  <input type="hidden" name="import_mode" value="regions">
-  <h4>Regions in {{ $sourceEvent->name }}</h4>
-  <p>Check the regions to import. A finalized age/gender selection can combine several regions; select those regions together to keep its team and reserves intact.</p>
-  @forelse($sourceRegions as $sourceRegion)
-  @php($available = isset($regionGroups[$sourceRegion->id]))
-  <label class="d-flex align-items-start gap-3 border rounded p-3 mb-2" for="source-region-{{ $sourceRegion->id }}">
-    <input type="checkbox" class="form-check-input mt-1" id="source-region-{{ $sourceRegion->id }}" name="source_region_ids[]" value="{{ $sourceRegion->id }}" @disabled(!$available) @checked($available && in_array((int)$sourceRegion->id, array_map('intval', (array)old('source_region_ids', $selectedRegionIds)), true))>
-    <span><strong>{{ $sourceRegion->region_name }}</strong><br>
-      @if($available)<span class="badge bg-label-success">Included in finalized selection</span> <span class="small">{{ count($regionGroups[$sourceRegion->id]) }} age/gender {{ count($regionGroups[$sourceRegion->id]) === 1 ? 'group' : 'groups' }}</span>
-      @else<span class="badge bg-label-secondary">No finalized selection</span>@endif
-    </span>
-  </label>
-  @empty<p>No regions are linked to this source event.</p>@endforelse
-  @if(!$finalization)<p class="mt-3">Finalize the saved teams in the source event to make its selections available here.</p>@endif
-  <button class="btn btn-primary mt-3" style="min-height:44px" @disabled($regionGroups === [])>Review selected regions</button>
-</div></form>
-@endif
+<p id="source-choices-status" role="status" class="mt-3" hidden></p>
+<div id="source-choices" aria-live="polite">
+@include('backend.adminPage.partials.selection-import-source-choices')
+</div>
 @if($preview)
-<form method="POST" action="{{ route('backend.selection-import.store', $event) }}" class="card mb-3"><div class="card-body">
+<form id="selection-import-review" method="POST" action="{{ route('backend.selection-import.store', $event) }}" class="card mb-3"><div class="card-body">
   @csrf
   <input type="hidden" name="finalization_id" value="{{ $finalization->id }}">
   @if($importMode === 'approved_team')
@@ -88,14 +57,67 @@
 {{ $imports->withQueryString()->links('pagination::bootstrap-5') }}
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('input[name="source_region_ids[]"][type="checkbox"]').forEach(checkbox => {
-    checkbox.addEventListener('change', () => {
+  const choices = document.getElementById('source-choices');
+  const status = document.getElementById('source-choices-status');
+  const sourceForm = document.getElementById('source-event-form');
+  const sourceSelect = document.getElementById('source-event');
+  const applyMode = () => {
+    const mode = choices.querySelector('input[name="source-choice-mode"]:checked')?.value;
+    choices.querySelectorAll('[data-source-mode]').forEach(panel => panel.hidden = panel.dataset.sourceMode !== mode);
+  };
+  applyMode();
+  choices.addEventListener('change', event => {
+    if (event.target.matches('input[name="source-choice-mode"]')) {
+      applyMode();
+      document.getElementById('selection-import-review')?.remove();
+    }
+    if (event.target.matches('input[name="source_region_ids[]"][type="checkbox"]')) {
       const importButton = document.getElementById('import-selected-regions');
       if (importButton?.dataset.importMode === 'approved_team') return;
-      const notice = document.getElementById('regions-changed');
       if (importButton) importButton.disabled = true;
+      const notice = document.getElementById('regions-changed');
       if (notice) notice.hidden = false;
-    });
+    }
+  });
+  let sourceRequest = 0;
+  let sourceAbort;
+  const loadSource = async () => {
+    const request = ++sourceRequest;
+    sourceAbort?.abort();
+    sourceAbort = new AbortController();
+    choices.replaceChildren();
+    document.getElementById('selection-import-review')?.remove();
+    if (!sourceSelect.value) {
+      choices.removeAttribute('aria-busy');
+      status.hidden = false;
+      status.textContent = 'Choose a source event to see its approved team and regions.';
+      return;
+    }
+    status.hidden = false;
+    status.textContent = 'Loading source options…';
+    choices.setAttribute('aria-busy', 'true');
+    const url = new URL(sourceForm.action);
+    url.searchParams.set('source_event_id', sourceSelect.value);
+    url.searchParams.set('source_choices', '1');
+    try {
+      const response = await fetch(url, { headers: { 'Accept': 'text/html', 'X-Requested-With': 'XMLHttpRequest' }, signal: sourceAbort.signal, credentials: 'same-origin', cache: 'no-store' });
+      if (!response.ok || response.redirected || response.headers.get('X-Selection-Source-Choices') !== '1') throw new Error('Source options unavailable');
+      const html = await response.text();
+      if (request !== sourceRequest) return;
+      choices.innerHTML = html;
+      applyMode();
+      status.textContent = 'Source options loaded. Choose the approved selected team or source regions.';
+    } catch (error) {
+      if (request !== sourceRequest || error.name === 'AbortError') return;
+      status.textContent = 'Unable to load source options. Try again using Show source options.';
+    } finally {
+      if (request === sourceRequest) choices.removeAttribute('aria-busy');
+    }
+  };
+  sourceSelect.addEventListener('change', loadSource);
+  sourceForm.addEventListener('submit', event => {
+    event.preventDefault();
+    loadSource();
   });
   const region = document.getElementById('destination-region');
   if (!region) return;

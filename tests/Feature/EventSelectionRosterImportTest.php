@@ -12,6 +12,41 @@ class EventSelectionRosterImportTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_ajax_source_choices_are_private_escaped_and_do_not_run_full_import_preview(): void
+    {
+        [$source, $target, $final, $region, $actor, $players, $team] = $this->scenario();
+        $team->category->category->update(['name' => 'u/12 Girls']);
+        $source->update(['name' => '<script>alert(1)</script> Source weekend']);
+        $query = ['event' => $target, 'source_event_id' => $source->id, 'source_choices' => 1];
+        $response = $this->get(route('backend.selection-import.index', $query))->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')->assertHeader('X-Selection-Source-Choices', '1')
+            ->assertSee('Approved selected team')->assertSee('Source regions')->assertSee($source->name)
+            ->assertDontSee('<script>alert(1)</script>', false)->assertDontSee('<html', false)
+            ->assertDontSee('name="mapping[', false)->assertDontSee('Unable to review these teams.');
+        if (getenv('CT_SELECTION_IMPORT_BROWSER_FIXTURE')) {
+            file_put_contents(storage_path('app/testing/selection-import-ajax-choices.html'), $response->getContent());
+            file_put_contents(storage_path('app/testing/selection-import-ajax-page.html'), $this->get(route('backend.selection-import.index', $target))->getContent());
+        }
+        EventSelectionReopening::create(['finalization_id' => $final->id, 'reopened_by' => $actor->id, 'reason' => 'Review', 'reopened_at' => now()]);
+        $this->get(route('backend.selection-import.index', $query))->assertOk()->assertSee('No teams are approved yet.')
+            ->assertDontSee('Review approved selected team');
+        $this->assertDatabaseCount('event_selection_roster_imports', 0);
+    }
+
+    public function test_ajax_source_choices_require_both_event_permissions_and_reject_mixed_preview_inputs(): void
+    {
+        [$source, $target] = $this->scenario();
+        $query = ['event' => $target, 'source_event_id' => $source->id, 'source_choices' => 1];
+        $this->getJson(route('backend.selection-import.index', $query + ['import_mode' => 'approved_team']))->assertUnprocessable();
+        $this->getJson(route('backend.selection-import.index', ['event' => $target, 'source_choices' => 1]))->assertUnprocessable();
+        $this->getJson(route('backend.selection-import.index', ['event' => $target, 'source_choices' => 'yes']))->assertUnprocessable();
+        $outsider = User::factory()->create()->assignRole('admin');
+        $this->actingAs($outsider)->get(route('backend.selection-import.index', $query))->assertForbidden();
+        $outsider->adminEvents()->attach($target);
+        $this->get(route('backend.selection-import.index', $query))->assertForbidden();
+        $this->assertDatabaseCount('event_selection_roster_imports', 0);
+    }
+
     public function test_approved_selected_team_reviews_and_imports_all_groups_and_reserves_idempotently(): void
     {
         [$source, $target, $final, $region, $actor, $players] = $this->scenario();
