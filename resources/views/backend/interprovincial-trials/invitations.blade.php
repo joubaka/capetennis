@@ -10,17 +10,41 @@
 <style>
   .interpro-filter-bar .btn { min-height:44px; }
   .interpro-filter-bar { display:flex; flex-wrap:wrap; gap:.5rem; }
-  .interpro-nomination-row { align-items:flex-start; border-top:1px solid #ebeaf0; display:grid; gap:.8rem; grid-template-columns:minmax(12rem,1.4fr) minmax(10rem,1fr) minmax(12rem,1.2fr) auto; padding:1rem 0; }
+  .interpro-nomination-table { --nomination-columns:minmax(0,1.15fr) minmax(0,.9fr) minmax(0,1fr) minmax(0,1.2fr); }
+  .interpro-nomination-head, .interpro-nomination-row { display:grid; gap:1rem; grid-template-columns:var(--nomination-columns); padding:.8rem 1rem; }
+  .interpro-nomination-head { background:#f6f7fa; border-bottom:1px solid #e6e8ee; color:#687185; font-size:.75rem; font-weight:600; }
+  .interpro-nomination-row { align-items:start; border-top:1px solid #ebeaf0; }
   .interpro-nomination-row:first-child { border-top:0; }
-  .interpro-nomination-row__identity, .interpro-nomination-row__status, .interpro-nomination-row__timeline { min-width:0; }
-  .interpro-nomination-row__status, .interpro-nomination-row__timeline { display:flex; flex-direction:column; gap:.25rem; }
-  .interpro-nomination-row__actions { align-items:flex-end; display:flex; flex-direction:column; gap:.4rem; }
+  .interpro-nomination-row:hover { background:#fbfcfe; }
+  .interpro-nomination-row__identity, .interpro-nomination-row__status, .interpro-nomination-row__timeline, .interpro-nomination-row__actions { min-width:0; overflow-wrap:anywhere; }
+  .interpro-nomination-row__status, .interpro-nomination-row__timeline { align-items:flex-start; display:flex; flex-direction:column; gap:.3rem; }
+  .interpro-nomination-row__status .badge { white-space:normal; text-align:left; line-height:1.3; }
+  .interpro-nomination-row__actions { align-items:flex-start; display:flex; flex-wrap:wrap; gap:.4rem; }
+  .interpro-nomination-row__actions details { min-width:0; max-width:100%; }
+  .interpro-nomination-row__actions details[open] { flex-basis:100%; padding:.6rem; border:1px solid #dce7df; border-radius:.4rem; background:#f7faf8; }
+  .interpro-nomination-row__actions details[open] summary { margin-bottom:.25rem; }
+  .interpro-nomination-row__actions p { margin-bottom:.5rem; }
+  .interpro-cell-label { display:none; }
+  .interpro-row-category { display:none; }
+  .interpro-category-title { background:#fff; margin:0; padding:.9rem 1rem; font-size:.95rem; }
   .interpro-email { display:inline-block; max-width:100%; overflow-wrap:anywhere; word-break:break-word; }
-  .interpro-row-action { min-height:44px; min-width:44px; }
+  .interpro-row-action { min-height:36px; min-width:44px; padding:.35rem .65rem; font-size:.78rem; line-height:1.3; }
   @media (max-width: 991.98px) {
-    .interpro-nomination-row { grid-template-columns:1fr; }
-    .interpro-nomination-row__actions { align-items:stretch; flex-direction:row; flex-wrap:wrap; }
-    .interpro-nomination-row__actions form, .interpro-nomination-row__actions .interpro-row-action { width:100%; }
+    .interpro-nomination-head { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); clip-path:inset(50%); white-space:nowrap; border:0; }
+    .interpro-nomination-row { grid-template-columns:1fr 1fr; gap:.75rem 1rem; }
+    .interpro-nomination-row__identity, .interpro-nomination-row__actions { grid-column:1 / -1; }
+    .interpro-cell-label { display:block; color:#687185; font-size:.7rem; font-weight:600; margin-bottom:.2rem; }
+    .interpro-row-category { display:block; }
+    .interpro-row-action { min-height:44px; }
+    .interpro-nomination-row__actions details[open] { max-width:30rem; }
+  }
+  @media (max-width: 575.98px) {
+    .interpro-nomination-row { grid-template-columns:1fr; padding:1rem; }
+    .interpro-nomination-row__identity { font-size:1rem; }
+    .interpro-nomination-row__actions { gap:.5rem; }
+    .interpro-nomination-row__actions > form, .interpro-nomination-row__actions > details { flex:1 1 auto; }
+    .interpro-nomination-row__actions > form .interpro-row-action, .interpro-nomination-row__actions > details summary { width:100%; }
+    .interpro-nomination-row__actions > a { flex-basis:100%; min-height:44px; display:flex; align-items:center; }
   }
 </style>
 @endsection
@@ -137,12 +161,14 @@
     <div class="row g-3">
     @forelse($event->categoryEvents as $categoryEvent)
       @php($categoryNominations = $nominations->getCollection()->where('category_event_id', $categoryEvent->id))
-      <div class="col-12"><div class="border rounded p-3" data-nomination-category="{{ $categoryEvent->id }}"><h6>{{ $categoryEvent->category?->name ?? 'Category' }} <span class="badge bg-label-primary" data-nomination-count>{{ $categoryEvent->nominations_count }}</span></h6><div data-nomination-list>
+      <div class="col-12"><div class="border rounded overflow-hidden interpro-nomination-table" role="table" aria-label="{{ $categoryEvent->category?->name ?? 'Category' }} nominations" data-nomination-category="{{ $categoryEvent->id }}"><h6 class="interpro-category-title">{{ $categoryEvent->category?->name ?? 'Category' }} <span class="badge bg-label-primary ms-1" data-nomination-count>{{ $categoryEvent->nominations_count }}</span></h6>
+      <div class="interpro-nomination-head" role="row"><span role="columnheader">Player</span><span role="columnheader">Status</span><span role="columnheader">Registration history</span><span role="columnheader">Actions</span></div>
+      <div role="rowgroup" data-nomination-list>
       @forelse($categoryNominations as $nomination)
         @include('backend.interprovincial-trials._nomination-row', [
           'presentation' => $nominationPresentations->get($nomination->id),
         ])
-      @empty<div class="text-muted" data-empty-nominations>{{ $categoryEvent->nominations_count ? 'No nominations from this category on this page.' : 'No players nominated yet.' }}</div>@endforelse
+      @empty<div class="text-muted p-3" data-empty-nominations>{{ $categoryEvent->nominations_count ? 'No nominations from this category on this page.' : 'No players nominated yet.' }}</div>@endforelse
       </div></div></div>
     @empty<div class="col-12"><div class="alert alert-warning mb-0">Add event categories before nominating players.</div></div>@endforelse
     </div>

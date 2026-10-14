@@ -1,6 +1,6 @@
 @php($invitation = $presentation['invitation'])
-<div class="interpro-nomination-row" data-nomination-row data-nomination-state="{{ $presentation['filter_key'] }}">
-  <div class="interpro-nomination-row__identity">
+<div class="interpro-nomination-row" role="row" data-nomination-row data-nomination-state="{{ $presentation['filter_key'] }}">
+  <div class="interpro-nomination-row__identity" role="cell">
     <div class="fw-semibold">{{ $nomination->display_name }}</div>
     @if($nomination->player_id === null)<span class="badge bg-label-warning">Profile required</span>@endif
     @if($nomination->player_id === null)
@@ -11,21 +11,23 @@
         <button class="btn btn-sm btn-outline-primary mt-1">Save email</button>
       </form>
     @endif
-    <div class="text-muted small">{{ $categoryEvent->category?->name ?? 'Category unavailable' }}</div>
+    <div class="text-muted small interpro-row-category">{{ $categoryEvent->category?->name ?? 'Category unavailable' }}</div>
     @if($invitation?->recipient_email)
       <a class="small interpro-email" href="mailto:{{ rawurlencode($invitation->recipient_email) }}">{{ $invitation->recipient_email }}</a>
     @elseif($invitation)
-      <span class="small text-danger">No linked account email</span>
+      <span class="small text-muted">Email not available</span>
     @endif
   </div>
-  <div class="interpro-nomination-row__status">
+  <div class="interpro-nomination-row__status" role="cell">
+    <span class="interpro-cell-label" aria-hidden="true">Status</span>
     <span class="badge bg-label-{{ $presentation['tone'] }}">{{ $invitation?->status === 'paid_confirmed' && $invitation->registration_id && !$invitation->order_id ? 'Paid privately' : $presentation['label'] }}</span>
     @if($invitation?->status === 'paid_confirmed' && $invitation->registration_id && !$invitation->order_id)<span class="small text-muted">Private collection; not reconciled</span>@endif
     @if($invitation && in_array($invitation->status, ['queued', 'sending', 'sent'], true))
       <span class="small text-muted">{{ str($invitation->status)->title() }}</span>
     @endif
   </div>
-  <div class="interpro-nomination-row__timeline small">
+  <div class="interpro-nomination-row__timeline small" role="cell">
+    <span class="interpro-cell-label" aria-hidden="true">Registration history</span>
     @if($invitation)
       @foreach([
         'Queued' => $invitation->queued_at,
@@ -38,10 +40,11 @@
       @endforeach
     @endif
     @if(!$invitation || (!$invitation->queued_at && !$invitation->sent_at && !$invitation->accepted_at && !$invitation->paid_at && !$invitation->withdrawn_at))
-      <span class="text-muted">No lifecycle timestamps yet</span>
+      <span class="text-muted" aria-label="No registration activity yet">—</span>
     @endif
   </div>
-  <div class="interpro-nomination-row__actions">
+  <div class="interpro-nomination-row__actions" role="cell">
+    <span class="interpro-cell-label w-100" aria-hidden="true">Actions</span>
     @if($presentation['can_administer'])
       <form method="POST" action="{{ route('backend.interprovincial-trials.nominations.administer', [$event, $categoryEvent, $nomination]) }}">
         @csrf<input type="hidden" name="action" value="decline">
