@@ -23,6 +23,10 @@ class ExternalTeamRosterService
             return $team->category()->where('event_id', $event->id)->exists();
         }
 
+        if ($event->isTeam() && !$event->isInterprovincialTrials()) {
+            return app(\App\Services\EventTeamScope::class)->query($event)->whereKey($team->id)->exists();
+        }
+
         return $team->region_id && DB::table('event_regions')
             ->where('event_id', $event->id)
             ->where('region_id', $team->region_id)
@@ -193,6 +197,21 @@ class ExternalTeamRosterService
         $this->assertClaimAvailable($event, $team, $slot);
     }
 
+    public function assertClaimRegistrationAvailable(Event $event, Team $team, NoProfileTeamPlayer $slot): void
+    {
+        $this->assertClaimAvailable($event, $team, $slot);
+        app(\App\Services\SelectedTeamRosterStatus::class)->assertMainSlot($event, $team, $slot);
+    }
+
+    public function assertSelectedRole(Event $event, Team $team, Player $player): void
+    {
+        $this->assertTeamBelongsToEvent($team, $event);
+        app(\App\Services\SelectedTeamRosterStatus::class)->assertMainPlayer($event, $team->fresh(), $player->id);
+        foreach (NoProfileTeamPlayer::where('team_id', $team->id)->where('player_profile', $player->id)->get() as $slot) {
+            app(\App\Services\SelectedTeamRosterStatus::class)->assertMainSlot($event, $team->fresh(), $slot);
+        }
+    }
+
     public function assertCanRegister(User $user, Event $event, Team $team, Player $player): TeamPlayer
     {
         return $this->assertSelectedPlayerCanRegister($event, $team, $player);
@@ -207,6 +226,7 @@ class ExternalTeamRosterService
 
         return DB::transaction(function () use ($event, $team, $player): TeamPlayer {
             app(\App\Services\TeamDrawAdaptationService::class)->lockEvent($event->id);
+            $this->assertSelectedRole($event, $team, $player);
             if (! $team->noProfile) {
                 $teamPlayer = TeamPlayer::query()
                     ->where('team_id', $team->id)

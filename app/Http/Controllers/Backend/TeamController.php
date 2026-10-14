@@ -492,6 +492,7 @@ class TeamController extends Controller
     $event = \App\Models\Event::findOrFail($eventId);
 
     try {
+      app(ExternalTeamRosterService::class)->assertSelectedRole($event, $team, $player);
       app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)
         ->beginRegistration($event->id, $team->id, $player->id, $user);
       app(ExternalTeamRosterService::class)->assertCanRegister($user, $event, $team, $player);

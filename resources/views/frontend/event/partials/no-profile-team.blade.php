@@ -26,7 +26,7 @@
       @endphp
       <ul class="list-group list-group-flush m-0">
 
-        @forelse($team->team_players_no_profile as $play)
+        @forelse($team->team_players_no_profile->filter(fn($member) => !$member->selected_team_reserve) as $play)
           @php
             $teamModel  = $play->team;
             $teamSlot = $teamModel->team_players->firstWhere('rank', $play->rank);
@@ -115,6 +115,7 @@
         @endforelse
 
       </ul>
+      @include('frontend.event.partials.selected-team-reserves')
     </div>
     @endif
 

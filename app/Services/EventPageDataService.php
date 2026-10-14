@@ -35,10 +35,13 @@ final class EventPageDataService
     public function prepareRegions(Event $event): void
     {
         $event->regions->load(['clothingItems', 'teams' => fn ($query) => $query
+            ->when($event->isTeam() && !$event->isInterprovincialTrials(), fn ($teams) => $teams->whereIn('teams.id', app(EventTeamScope::class)->query($event)->select('teams.id')))
             ->where(fn ($teams) => $teams->whereNull('category_event_id')
                 ->orWhereHas('category', fn ($category) => $category->where('event_id', $event->id)))
             ->with(['category.category', 'team_players.player', 'team_players_no_profile.profile'])]);
 
+        $rosterStatus = app(SelectedTeamRosterStatus::class)->classify($event, $event->regions->flatMap(fn ($region) => $region->teams));
+        $reserveSlots = $rosterStatus['imported'];
         foreach ($event->regions as $region) {
             foreach ($region->teams as $team) {
                 // Both aliases are used by the profile and imported roster views.
@@ -46,6 +49,10 @@ final class EventPageDataService
                 $team->category?->setRelation('event', $event);
                 foreach ($team->team_players_no_profile as $slot) {
                     $slot->setRelation('team', $team);
+                    $slot->setRelation('selected_team_reserve', isset($reserveSlots[$team->id][$slot->id]));
+                }
+                foreach ($team->teamPlayers as $slot) {
+                    $slot->setRelation('selected_team_reserve', isset($rosterStatus['profile'][$team->id][$slot->player_id]));
                 }
             }
         }

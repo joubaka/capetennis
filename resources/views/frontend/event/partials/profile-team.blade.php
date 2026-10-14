@@ -18,7 +18,7 @@
         <ul class="list-group list-group-flush m-0">
 
           {{-- LOOP THROUGH SLOTS --}}
-          @forelse($team->teamPlayers as $slot)
+          @forelse($team->teamPlayers->filter(fn($member) => !$member->selected_team_reserve) as $slot)
             @php
               $dummyId    = 0;
               $isDummy    = (int) $slot->player_id === $dummyId;
@@ -180,6 +180,7 @@
           @endforelse
 
         </ul>
+        @include('frontend.event.partials.selected-team-reserves')
       </div>
 
     @else

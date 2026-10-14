@@ -146,7 +146,7 @@ class PlayerController extends Controller
       $noProfile = NoProfileTeamPlayer::findOrFail($request->noProfile);
       $team = Team::findOrFail($request->integer('team'));
       $event = Event::findOrFail($request->integer('event'));
-      $this->externalRosters->assertClaimAvailable($event, $team, $noProfile);
+      $this->externalRosters->assertClaimRegistrationAvailable($event, $team, $noProfile);
 
       $data['name'] = $noProfile->name ?? '';
       $data['surname'] = $noProfile->surname ?? '';
@@ -193,13 +193,16 @@ class PlayerController extends Controller
         'team' => Team::findOrFail($claimIds['team']),
         'event' => Event::findOrFail($claimIds['event']),
       ];
-      $this->externalRosters->assertClaimAvailable(
+      $this->externalRosters->assertClaimRegistrationAvailable(
         $claimContext['event'], $claimContext['team'], $claimContext['slot']
       );
     }
 
     $result = DB::transaction(function () use ($validated, $claimContext, $request) {
-      if ($claimContext) app(\App\Services\TeamDrawAdaptationService::class)->lockEvent((int) $claimContext['event']->id);
+      if ($claimContext) {
+        app(\App\Services\TeamDrawAdaptationService::class)->lockEvent((int) $claimContext['event']->id);
+        $this->externalRosters->assertClaimRegistrationAvailable($claimContext['event'], $claimContext['team']->fresh(), $claimContext['slot']->fresh());
+      }
       $result = $this->playerIdentity->findOrCreate([
         'name' => $validated['player_name'],
         'surname' => $validated['player_surname'],
@@ -634,6 +637,7 @@ class PlayerController extends Controller
     $noProfile = NoProfileTeamPlayer::findOrFail($validated['noProfile']);
 
     $this->externalRosters->assertClaimCandidate($event, $team, $noProfile, $player);
+    $this->externalRosters->assertClaimRegistrationAvailable($event, $team, $noProfile);
 
     $request->session()->put('team_profile_claim', [
       'user_id' => $request->user()->id,
@@ -686,6 +690,7 @@ class PlayerController extends Controller
 
     DB::transaction(function () use ($request, $claim, $player, $validated): void {
       app(\App\Services\TeamDrawAdaptationService::class)->lockEvent((int) $claim['event']->id);
+      $this->externalRosters->assertClaimRegistrationAvailable($claim['event'], $claim['team']->fresh(), $claim['slot']->fresh());
       $player = Player::whereKey($player->id)->lockForUpdate()->firstOrFail();
       $player->update([
         'dateOfBirth' => $validated['dateOfBirth'],
@@ -726,6 +731,7 @@ class PlayerController extends Controller
     $event = Event::findOrFail((int) $pending['event_id']);
     $slot = NoProfileTeamPlayer::findOrFail((int) $pending['no_profile_id']);
     $this->externalRosters->assertClaimCandidate($event, $team, $slot, $player);
+    $this->externalRosters->assertClaimRegistrationAvailable($event, $team, $slot);
 
     return compact('player', 'team', 'event', 'slot');
   }
