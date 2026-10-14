@@ -12,6 +12,39 @@ class EventSelectionRosterImportTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_region_chooser_does_not_validate_players_or_categories_but_review_and_import_do(): void
+    {
+        [$source, $target, $final, $region, $actor, $players, $team] = $this->scenario();
+        $team->category->category->update(['name' => 'u/12 Girls']);
+        $query = ['event' => $target, 'source_event_id' => $source->id, 'choose_regions' => 1];
+        $this->get(route('backend.selection-import.index', $query))->assertOk()
+            ->assertSee('Included in finalized selection')->assertDontSee('Unable to review these teams.');
+        $query += ['review_regions' => 1, 'source_region_ids' => [$region->id]];
+        $response = $this->get(route('backend.selection-import.index', $query))->assertOk()
+            ->assertSee('The source category does not match the finalized age and gender group.')
+            ->assertDontSee('name="mapping[', false)->assertHeader('Cache-Control', 'no-store, private');
+        $this->assertMatchesRegularExpression('/id="source-region-'.$region->id.'"[^>]*checked/', $response->getContent());
+        $this->postJson(route('backend.selection-import.store', $target), ['finalization_id' => $final->id,
+            'region_id' => $region->id, 'source_region_ids' => [$region->id], 'mapping' => ['10-boys' => 0], 'confirm_import' => 1])->assertUnprocessable();
+        $this->assertDatabaseCount('event_selection_roster_imports', 0);
+        $this->assertDatabaseCount('no_profile_team_players', 0);
+    }
+
+    public function test_region_chooser_rejects_foreign_region_metadata_and_missing_region_review_stays_on_page(): void
+    {
+        [$source, $target, $final, $region] = $this->scenario();
+        $query = ['event' => $target, 'source_event_id' => $source->id, 'choose_regions' => 1, 'review_regions' => 1];
+        $this->get(route('backend.selection-import.index', $query))->assertOk()->assertSee('Select at least one finalized region to review.');
+        $groups = $final->groups;
+        $foreign = TeamRegion::create(['region_name' => 'Foreign region']);
+        $groups['10-boys']['region_ids'] = [$foreign->id];
+        DB::table('event_selection_finalizations')->where('id', $final->id)->update(['groups' => json_encode($groups)]);
+        $this->get(route('backend.selection-import.index', $query))->assertOk()
+            ->assertSee('The finalized selection has regions outside the source event.')
+            ->assertDontSee('Included in finalized selection')->assertDontSee('name="mapping[', false);
+        $this->assertDatabaseCount('event_selection_roster_imports', 0);
+    }
+
     public function test_selected_team_and_reserves_import_in_frozen_order_privately_unpaid_and_retry_does_not_duplicate(): void
     {
         [$source, $target, $final, $region, $actor, $players] = $this->scenario();
@@ -48,6 +81,7 @@ class EventSelectionRosterImportTest extends TestCase
         $this->actingAs($outsider)->postJson($url, $input)->assertForbidden();
         $outsider->adminEvents()->attach($target);
         $this->postJson($url, $input)->assertForbidden();
+        $this->get(route('backend.selection-import.index', ['event' => $target, 'source_event_id' => $source->id, 'choose_regions' => 1]))->assertForbidden();
         $this->get(route('backend.selection-import.index', $target))->assertOk()->assertDontSee($source->name);
         $this->actingAs($actor);
         EventSelectionReopening::create(['finalization_id' => $final->id, 'reopened_by' => $actor->id, 'reason' => 'Review', 'reopened_at' => now()]);

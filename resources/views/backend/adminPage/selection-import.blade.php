@@ -6,6 +6,7 @@
   <h3>Import selected team + reserves</h3>
   <p>Choose a source event, select the regions included in its finalized selection, then review the destination teams. Players and reserves keep their saved order.</p>
   @if(session('success'))<div class="alert alert-success" role="status">{{ session('success') }}</div>@endif
+  @if($previewErrors)<div class="alert alert-danger" role="alert"><strong>Unable to review these teams.</strong><ul class="mb-0">@foreach($previewErrors as $message)<li>{{ $message }}</li>@endforeach</ul></div>@endif
   @if($errors->any())<div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>@endif
   <form method="GET" action="{{ route('backend.selection-import.index', $event) }}" class="row g-3 align-items-end">
     <input type="hidden" name="choose_regions" value="1">
@@ -13,7 +14,7 @@
     <div class="col-12 col-md-4"><button class="btn btn-primary" style="min-height:44px">Show source regions</button></div>
   </form>
   @if($sources->isEmpty())<p class="mt-3 mb-0">No source team events are available for you to manage.</p>@endif
-  <div class="mt-3">{{ $sources->withQueryString()->links() }}</div>
+  <div class="mt-3">{{ $sources->withQueryString()->links('pagination::bootstrap-5') }}</div>
 </div></div>
 @if($sourceEvent)
 <form method="GET" action="{{ route('backend.selection-import.index', $event) }}" class="card mb-3"><div class="card-body">
@@ -63,7 +64,7 @@
 <a class="btn btn-outline-primary" href="{{ route('admin.events.teams', $event) }}">Manage event rosters</a>
 </div></section>
 @endforeach
-{{ $imports->withQueryString()->links() }}
+{{ $imports->withQueryString()->links('pagination::bootstrap-5') }}
 <script>
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('input[name="source_region_ids[]"][type="checkbox"]').forEach(checkbox => {

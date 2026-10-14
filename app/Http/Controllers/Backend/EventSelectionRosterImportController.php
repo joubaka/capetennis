@@ -23,6 +23,7 @@ class EventSelectionRosterImportController extends Controller
         }
         $sources = $sourcesQuery->orderByDesc('start_date')->paginate(30);
         $preview = null;
+        $previewErrors = [];
         $finalization = null;
         $sourceEvent = null;
         $sourceRegions = collect();
@@ -36,24 +37,31 @@ class EventSelectionRosterImportController extends Controller
             $sourceRegions = $sourceEvent->regions()->orderBy('region_name')->limit(501)->get();
             abort_if($sourceRegions->count() > 500, 422, 'Selection import supports up to 500 regions per event.');
             $finalization = EventSelectionFinalization::active()->where('event_id', $sourceEvent->id)->first();
-            if ($finalization) {
-                $overview = $service->preview($event, $finalization, $request->user());
-                $regionGroups = $overview['regionGroups'];
-                // Preserve bookmarked legacy previews; the current chooser explicitly
-                // asks for a region selection before showing destination mappings.
-                if ($request->boolean('review_regions')) {
-                    if ($selectedRegionIds === []) throw \Illuminate\Validation\ValidationException::withMessages(['source_region_ids' => 'Select at least one finalized region to review.']);
-                    $preview = $service->preview($event, $finalization, $request->user(), $selectedRegionIds);
-                } elseif (! $request->boolean('choose_regions')) {
-                    $preview = $overview;
+            try {
+                if ($finalization) {
+                    $overview = $service->regionOverview($event, $finalization, $request->user());
+                    $regionGroups = $overview['regionGroups'];
+                    // Preserve bookmarked legacy previews; the current chooser explicitly
+                    // asks for a region selection before showing destination mappings.
+                    if ($request->boolean('review_regions')) {
+                        if ($selectedRegionIds === []) throw \Illuminate\Validation\ValidationException::withMessages(['source_region_ids' => 'Select at least one finalized region to review.']);
+                        $preview = $service->preview($event, $finalization, $request->user(), $selectedRegionIds);
+                    } elseif (! $request->boolean('choose_regions')) {
+                        $preview = $service->preview($event, $finalization, $request->user());
+                    }
+                } elseif ($request->boolean('review_regions')) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['source_region_ids' => 'Finalize the saved selection in the source event before importing.']);
                 }
-            } elseif ($request->boolean('review_regions')) {
-                throw \Illuminate\Validation\ValidationException::withMessages(['source_region_ids' => 'Finalize the saved selection in the source event before importing.']);
+            } catch (\Illuminate\Validation\ValidationException $exception) {
+                $previewErrors = array_merge(...array_values($exception->errors()));
+            } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+                if (! in_array($exception->getStatusCode(), [409, 422], true)) throw $exception;
+                $previewErrors = [$exception->getMessage()];
             }
         }
         $regions = $event->regions()->orderBy('region_name')->get();
         $imports = EventSelectionRosterImport::where('event_id', $event->id)->with('finalization', 'region')->orderByDesc('id')->paginate(10, ['*'], 'imports_page');
-        return response()->view('backend.adminPage.selection-import', compact('event', 'sources', 'preview', 'finalization', 'regions', 'imports', 'sourceEvent', 'sourceRegions', 'regionGroups', 'selectedRegionIds'))->header('Cache-Control', 'no-store, private');
+        return response()->view('backend.adminPage.selection-import', compact('event', 'sources', 'preview', 'finalization', 'regions', 'imports', 'sourceEvent', 'sourceRegions', 'regionGroups', 'selectedRegionIds', 'previewErrors'))->header('Cache-Control', 'no-store, private');
     }
 
     public function store(Request $request, Event $event, EventSelectionRosterImportService $service)

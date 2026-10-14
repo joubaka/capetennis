@@ -8,6 +8,35 @@ use Illuminate\Validation\ValidationException;
 
 class EventSelectionRosterImportService
 {
+    public function regionOverview(Event $target, EventSelectionFinalization $finalization, User $actor): array
+    {
+        abort_unless($actor->can('event.manage', $target), 403);
+        $source = Event::findOrFail($finalization->event_id);
+        abort_unless($actor->can('event.manage', $source), 403);
+        abort_unless($target->isTeam() && $source->isTeam() && $source->id !== $target->id, 422, 'Choose a different team event.');
+        abort_unless(EventSelectionFinalization::active()->whereKey($finalization->id)->exists(), 409, 'The source teams were unlocked. Finalize them again before importing.');
+        $sourceRegions = $source->regions()->orderBy('region_name')->limit(501)->get();
+        abort_if($sourceRegions->count() > 500, 422, 'Selection import supports up to 500 regions per event.');
+        $sourceTeams = app(EventTeamScope::class)->query($source)->limit(501)->get()->keyBy('id');
+        abort_if($sourceTeams->count() > 500, 422, 'Selection import supports up to 500 teams per event.');
+        $regionGroups = [];
+        foreach ($finalization->groups as $key => $group) {
+            foreach ($this->groupRegions($group, $sourceTeams, $sourceRegions) as $id) $regionGroups[$id][] = $key;
+        }
+        return compact('source', 'sourceRegions', 'regionGroups');
+    }
+
+    private function groupRegions(array $group, $sourceTeams, $sourceRegions): array
+    {
+        $cohort = array_values(array_unique(array_map('intval', $group['region_ids'] ?? [])));
+        if ($cohort === []) {
+            $teamIds = collect($group['snapshot'] ?? [])->flatMap(fn ($row) => $row['source_team_ids'] ?? [])->map(fn ($id) => (int) $id);
+            $cohort = $sourceTeams->only($teamIds->all())->pluck('region_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+        }
+        abort_unless($cohort !== [] && ! array_diff($cohort, $sourceRegions->modelKeys()), 422, 'The finalized selection has regions outside the source event. Review its region links before importing.');
+        return $cohort;
+    }
+
     public function preview(Event $target, EventSelectionFinalization $finalization, User $actor, ?array $sourceRegionIds = null): array
     {
         abort_unless($actor->can('event.manage', $target), 403);
@@ -29,12 +58,7 @@ class EventSelectionRosterImportService
         foreach ($finalization->groups as $key => $group) {
             // An age/gender selection may combine several regions. Keep that frozen
             // selection intact rather than splitting players or changing their ranks.
-            $cohort = array_values(array_unique(array_map('intval', $group['region_ids'] ?? [])));
-            if ($cohort === []) {
-                $teamIds = collect($group['snapshot'] ?? [])->flatMap(fn ($row) => $row['source_team_ids'] ?? [])->map(fn ($id) => (int) $id);
-                $cohort = $sourceTeams->only($teamIds->all())->pluck('region_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
-            }
-            abort_unless($cohort !== [] && ! array_diff($cohort, $sourceRegions->modelKeys()), 422, 'The finalized selection has regions outside the source event. Review its region links before importing.');
+            $cohort = $this->groupRegions($group, $sourceTeams, $sourceRegions);
             foreach ($cohort as $id) $regionGroups[$id][] = $key;
             if ($selectedRegions !== null) {
                 if (! array_intersect($cohort, $selectedRegions)) continue;
