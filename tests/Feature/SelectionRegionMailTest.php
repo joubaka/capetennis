@@ -77,7 +77,7 @@ class SelectionRegionMailTest extends TestCase
         $this->assertDatabaseMissing('bulk_email_logs', ['recipient_email' => 'unreviewed@example.test']);
 
         // Exercise the real job with an in-memory transport; no external mail is sent.
-        Mail::swap($this->app->make('mail.manager'));
+        Mail::swap(new \Illuminate\Mail\MailManager($this->app));
         $this->mock(\App\Services\MailAccountManager::class)->shouldReceive('getMailer')->andReturn('array');
         $mailer = Mail::mailer('array');
         $mailer->getSymfonyTransport()->flush();
