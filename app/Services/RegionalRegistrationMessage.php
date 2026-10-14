@@ -62,6 +62,7 @@ final class RegionalRegistrationMessage
                 $team->team_players_no_profile->map(fn ($slot) => [$slot->id, $slot->player_profile, $slot->rank])->all()])->all(), $roles,
             $rows->all(), $available, $clothing,
             $options['registration_deadline'] ?? null, $options['clothing_deadline'] ?? null,
+            $options['registration_deadline_time'] ?? null, $options['clothing_deadline_time'] ?? null,
         ], JSON_THROW_ON_ERROR));
         return compact('region', 'rows', 'clothing', 'available', 'fingerprint');
     }
@@ -70,12 +71,12 @@ final class RegionalRegistrationMessage
     {
         $context = $this->context($event, $actor, $options);
         $name = $context['region']->region->region_name;
-        $registrationDeadline = $options['registration_deadline'] ?? $event->registrationClosesAt()?->format('Y-m-d');
-        $deadline = $registrationDeadline ? \Carbon\Carbon::parse($registrationDeadline)->format('d F Y') : 'Please register as soon as possible.';
+        $registrationDeadline = $options['registration_deadline'] ?? $event->registrationClosesAt()?->timezone('Africa/Johannesburg')->format('Y-m-d');
+        $deadline = $registrationDeadline ? $this->formatDeadline($registrationDeadline, $options['registration_deadline_time'] ?? null) : 'Please register as soon as possible.';
         $body = "Dear players and parents,\n\nCongratulations on being selected for {$name} for {$event->name}!\n\nRegistration is now open. Please visit the event page, find your player in the {$name} team and click Register to complete registration and payment.\n\nRegistration deadline: {$deadline}\n\n".route('events.show', $event);
         if ($context['clothing']) {
             $body .= "\n\nClothing orders are open for {$name}. On the event page, choose Order clothing beside your player, select the items and sizes you need, and complete payment.\n";
-            if (! empty($options['clothing_deadline'])) $body .= "\nClothing order deadline: ".\Carbon\Carbon::parse($options['clothing_deadline'])->format('d F Y')."\n";
+            if (! empty($options['clothing_deadline'])) $body .= "\nClothing order deadline: ".$this->formatDeadline($options['clothing_deadline'], $options['clothing_deadline_time'] ?? null)."\n";
             $body .= "\nClothing catalogue (customer prices):\n";
             foreach ($context['clothing'] as $item) $body .= $item['name'].' — R'.number_format($item['price'], 2).'; sizes: '.implode(', ', array_column($item['sizes'], 'name'))."\n";
         }
@@ -91,5 +92,11 @@ final class RegionalRegistrationMessage
             throw ValidationException::withMessages(['preview' => 'The roster, contacts, registration settings or clothing catalogue changed. Update the suggested email and review again.']);
         }
         return $context['rows']->all();
+    }
+
+    private function formatDeadline(string $date, ?string $time): string
+    {
+        $label = \Carbon\Carbon::parse($date, 'Africa/Johannesburg')->format('d F Y');
+        return $time ? $label.' at '.$time.' (South African time)' : $label;
     }
 }

@@ -99,6 +99,56 @@ class RegionalRegistrationMailTest extends TestCase
         Mail::assertNothingSent();
     }
 
+    public function test_email_deadline_times_are_generated_reviewed_retained_when_editing_and_require_fresh_review_after_change(): void
+    {
+        [$event, $actor, $region] = $this->scenario();
+        $this->clothing($region);
+        $options = ['event_region_id' => $region->id, 'include_clothing' => true,
+            'registration_deadline' => '2026-10-18', 'registration_deadline_time' => '17:00',
+            'clothing_deadline' => '2026-10-16', 'clothing_deadline_time' => '18:30'];
+        $input = app(RegionalRegistrationMessage::class)->draft($event->fresh(), $actor, $options) + $options + ['intent' => 'preview'];
+        $this->assertStringContainsString('18 October 2026 at 17:00 (South African time)', $input['body']);
+        $this->assertStringContainsString('16 October 2026 at 18:30 (South African time)', $input['body']);
+        $before = $event->fresh()->getAttributes();
+        $this->post(route('backend.regional-registration-mail.preview', $event), array_replace($input, ['intent' => 'generate']))
+            ->assertOk()->assertSee('value="17:00"', false)->assertSee('value="18:30"', false);
+        $this->post(route('backend.regional-registration-mail.preview', $event), $input)->assertOk()
+            ->assertSee('18 October 2026 at 17:00 (South African time)');
+        $batch = EventCommunicationBatch::sole();
+        $this->assertSame('17:00', $batch->options['registration_deadline_time']);
+        $this->assertSame('18:30', $batch->options['clothing_deadline_time']);
+        $this->get(route('backend.regional-registration-mail.compose', ['event' => $event, 'edit_batch' => $batch->id]))
+            ->assertOk()->assertSee('value="2026-10-18"', false)->assertSee('value="2026-10-16"', false)
+            ->assertSee('value="17:00"', false)->assertSee('value="18:30"', false);
+        foreach (['registration_deadline_time', 'clothing_deadline_time'] as $field) {
+            $this->post(route('backend.regional-registration-mail.preview', $event), array_replace($input, [$field => '20:00']))
+                ->assertSessionHasErrors('preview');
+        }
+        $this->assertSame($before, $event->fresh()->getAttributes());
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        Mail::assertNothingSent();
+    }
+
+    public function test_invalid_times_and_time_without_date_are_rejected_and_registration_default_uses_local_closing_time(): void
+    {
+        [$event, $actor, $region] = $this->scenario();
+        $input = $this->input($event, $actor, $region);
+        foreach (['registration_deadline_time', 'clothing_deadline_time'] as $field) {
+            foreach (['24:00', '17:99', '5pm', '17:00:01'] as $time) {
+                $this->post(route('backend.regional-registration-mail.preview', $event), array_replace($input, [$field => $time]))
+                    ->assertSessionHasErrors($field);
+            }
+            $dateField = str_replace('_time', '', $field);
+            $this->post(route('backend.regional-registration-mail.preview', $event), array_replace($input, [$field => '17:00', $dateField => null]))
+                ->assertSessionHasErrors($dateField);
+        }
+        $defaultTime = $event->registrationClosesAt()?->timezone('Africa/Johannesburg')->format('H:i');
+        $this->get(route('backend.regional-registration-mail.compose', $event))->assertOk()
+            ->assertSee('name="registration_deadline_time" value="'.$defaultTime.'"', false);
+        $this->assertDatabaseCount('event_communication_batches', 0);
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+    }
+
     public function test_profile_imported_and_linked_reserves_and_their_parents_are_excluded_and_rank_changes_invalidate_review(): void
     {
         [$event, $actor, $region, $team] = $this->scenario();
