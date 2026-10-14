@@ -821,6 +821,7 @@
               <div><h6 class="mb-1">{{ $usesRegionalClothing ? 'Messages & clothing' : 'Messages' }}</h6><p class="text-muted small mb-0">{{ $usesRegionalClothing ? 'Contact selected players and manage the regional clothing workflow.' : 'Contact selected players in this region.' }}</p></div>
               <div class="d-flex flex-wrap gap-2">
                 @if($isEventManager)
+                  <a href="{{ route('backend.regional-registration-mail.compose', ['event' => $event, 'region_id' => $eventRegion->region_id]) }}" class="btn btn-primary"><i class="ti ti-mail me-1"></i>Registration open email</a>
                   <button class="btn btn-outline-warning" type="button" data-bs-toggle="modal" data-bs-target="#final-team-reminders-{{ $eventRegion->id }}" data-reminder-open-kind="registration_clothing"><i class="ti ti-user-exclamation me-1"></i>Registration reminder</button>
                   @if($usesRegionalClothing)<button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#final-team-reminders-{{ $eventRegion->id }}" data-reminder-open-kind="incomplete_clothing"><i class="ti ti-shirt me-1"></i>Incomplete clothing reminder</button>@endif
                 @endif

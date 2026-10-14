@@ -259,6 +259,10 @@ class EventCommunicationService
 
     public function plan(Event $event, User $actor, array $options, string $subject, string $body): array
     {
+        if (($options['source'] ?? null) === 'regional_registration_open') {
+            $rows = app(RegionalRegistrationMessage::class)->audience($event, $actor, $options);
+            return $this->legacyPlan($event, $options, collect($rows), $subject, $body);
+        }
         if (($options['source'] ?? null) === 'selection_regions') {
             $rows = app(SelectionRegionMessage::class)->audience($event, $actor, $options);
             $plan = $this->legacyPlan($event, $options, collect($rows), $subject, $body);
@@ -530,7 +534,7 @@ class EventCommunicationService
             return EventCommunicationBatch::create(['event_id' => $event->id, 'created_by' => $actor->id, 'token' => (string) Str::uuid(), 'subject' => $recipient['subject'], 'body' => '', 'options' => ['source' => 'invitation_retry', 'log_id' => $log->id, 'payload_fingerprint' => hash('sha256', json_encode($log->payload, JSON_THROW_ON_ERROR))], 'recipients' => [$recipient], 'issues' => [], 'fingerprint' => hash('sha256', json_encode($recipient, JSON_THROW_ON_ERROR))]);
         }
         $original = EventCommunicationBatch::where('event_id', $event->id)->where('created_by', $actor->id)->findOrFail($log->payload['event_communication_batch_id'] ?? 0);
-        abort_if(($original->options['source'] ?? null) === 'selection_regions', 422, 'Reopen the selection email and review current teams and contacts before sending again.');
+        abort_if(in_array($original->options['source'] ?? null, ['selection_regions', 'regional_registration_open'], true), 422, 'Reopen the regional email and review current teams and contacts before sending again.');
         $this->validateWrapUpResults($event, $log->payload);
         $this->checkRankingRetry($original, $actor);
         $this->validateWrapUpResults($event, $original->options);
@@ -602,7 +606,7 @@ class EventCommunicationService
             $this->validateWrapUpResults($batch->event, $batch->options);
             if (($batch->options['source'] ?? null) === 'retry') {
                 $original = EventCommunicationBatch::where('event_id', $batch->event_id)->findOrFail($batch->options['original_batch_id']);
-                abort_if(($original->options['source'] ?? null) === 'selection_regions', 422, 'Review a fresh selection email before sending again.');
+                abort_if(in_array($original->options['source'] ?? null, ['selection_regions', 'regional_registration_open'], true), 422, 'Review a fresh regional email before sending again.');
                 $this->validateWrapUpResults($batch->event, $original->options);
                 $log = BulkEmailLog::whereKey($batch->options['log_id'])->firstOrFail();
                 $this->validateWrapUpResults($batch->event, $log->payload);

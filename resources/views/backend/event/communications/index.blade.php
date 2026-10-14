@@ -8,6 +8,7 @@
 @endforeach
 <div class="mb-4">
 @if($teamAudience)
+<a class="btn btn-primary mb-3" href="{{ route('backend.regional-registration-mail.compose', ['event' => $event]) }}">Registration open email</a>
 <form method="get" class="mb-3"><input type="hidden" name="compose" value="1">@foreach(request()->except(['team_search','compose']) as $key=>$value)@if(is_scalar($value))<input type="hidden" name="{{ $key }}" value="{{ $value }}">@endif @endforeach<label>Find a team <input name="team_search" value="{{ request('team_search') }}" class="form-control" maxlength="100"></label><button class="btn btn-outline-primary">Search teams</button></form>
 @endif
 <h4>{{ $event->name }} — Send an email</h4>

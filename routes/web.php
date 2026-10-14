@@ -828,6 +828,8 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::get('{event}/team-result-selection', [\App\Http\Controllers\Backend\TeamResultSelectionDraftController::class, 'show'])
       ->name('backend.team-result-selection.show');
     Route::get('{event}/selection-region-mail', [\App\Http\Controllers\Backend\SelectionRegionMailController::class, 'compose'])->name('backend.selection-region-mail.compose');
+    Route::get('{event}/regional-registration-mail', [\App\Http\Controllers\Backend\RegionalRegistrationMailController::class, 'compose'])->name('backend.regional-registration-mail.compose');
+    Route::post('{event}/regional-registration-mail', [\App\Http\Controllers\Backend\RegionalRegistrationMailController::class, 'preview'])->name('backend.regional-registration-mail.preview');
     Route::post('{event}/selection-region-mail', [\App\Http\Controllers\Backend\SelectionRegionMailController::class, 'preview'])->name('backend.selection-region-mail.preview');
     Route::get('{event}/selection-preview', [\App\Http\Controllers\Backend\TeamSelectionPreviewController::class, 'show'])
       ->name('backend.selection-preview.show');
