@@ -107,6 +107,12 @@ class InvitationService
                 throw ValidationException::withMessages(['invitation' => 'The registration deadline has passed.']);
             }
 
+            $latestResponse = InterprovincialTrialInvitation::where('event_id', $lockedEvent->id)
+                ->where('nomination_id', $lockedNomination->id)->where('status', '!=', 'prepared')->latest('id')->value('status');
+            if ($latestResponse === 'admin_declined') {
+                throw ValidationException::withMessages(['invitation' => 'This nomination is no longer available for registration.']);
+            }
+
             $existingOrderAttempt = InterprovincialTrialInvitation::query()
                 ->where('event_id', $lockedEvent->id)
                 ->where('category_event_id', $lockedCategory->id)
@@ -690,6 +696,7 @@ class InvitationService
                     InterprovincialTrialInvitation::PAID_CONFIRMED,
                     InterprovincialTrialInvitation::WITHDRAWN,
                     InterprovincialTrialInvitation::DECLINED,
+                    'admin_declined',
                 ], true)) {
                     $attributes['status'] = 'prepared';
                 } elseif (! $existing) {
@@ -806,6 +813,7 @@ class InvitationService
                     InterprovincialTrialInvitation::PAID_CONFIRMED,
                     InterprovincialTrialInvitation::WITHDRAWN,
                     InterprovincialTrialInvitation::DECLINED,
+                    'admin_declined',
                 ], true)) $attributes['status'] = 'prepared';
                 elseif (! $invitation) $attributes['status'] = $latestStatus;
                 InterprovincialTrialInvitation::updateOrCreate(
@@ -1016,7 +1024,9 @@ class InvitationService
         $snapshotRows = collect($this->snapshotRows($event, $nominations))->keyBy('nomination_id');
         $invitationQuery = InterprovincialTrialInvitation::query()->where('event_id', $event->id)->orderByDesc('id');
         if ($lock) $invitationQuery->lockForUpdate();
-        $invitations = $invitationQuery->get()->unique('nomination_id')->keyBy('nomination_id');
+        $allInvitations = $invitationQuery->get();
+        $invitations = $allInvitations->unique('nomination_id')->keyBy('nomination_id');
+        $responses = $allInvitations->where('status', '!=', 'prepared')->unique('nomination_id')->keyBy('nomination_id');
         $successfulInitialIds = DB::table('interprovincial_trial_mail_dispatches as dispatches')
             ->join('bulk_email_logs as logs', 'logs.id', '=', 'dispatches.bulk_email_log_id')
             ->where('dispatches.kind', 'initial')->where('logs.status', 'sent')->whereNotNull('logs.sent_at')
@@ -1026,6 +1036,7 @@ class InvitationService
         $recipients = [];
         $blockers = [];
         foreach ($nominations as $nomination) {
+            if ($responses->get((int) $nomination->id)?->status === 'admin_declined') continue;
             if ($mode === 'profileless' && $nomination->player_id !== null) continue;
             $row = $snapshotRows->get((int) $nomination->id);
             $invitation = $invitations->get((int) $nomination->id);

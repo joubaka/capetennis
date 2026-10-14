@@ -25,13 +25,13 @@
 <div class="container-xl interpro-page">
   @include('backend.event.partials.header', [
     'event' => $event,
-    'eventWorkspaceSubtitle' => 'Manage Interpro nominations, invitations and tournament readiness.',
+    'eventWorkspaceSubtitle' => 'Nominate players and manage their participation.',
   ])
 
   <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
       <h4 class="mb-1">Interpro Dashboard</h4>
-      <p class="text-muted mb-0">A focused workspace for nominations, fast invitations, registration and event operations.</p>
+      <p class="text-muted mb-0">Start with nominations. Remove, decline or mark players paid manually from the player list.</p>
     </div>
   </div>
 
@@ -44,9 +44,9 @@
         </div>
         <div class="card-body d-grid gap-2">
           <a href="{{ route('backend.interprovincial-trials.invitations.index', $event) }}" class="btn btn-primary dashboard-action">
-            <i class="ti ti-send me-1"></i>Nominations &amp; invitations
+            <i class="ti ti-send me-1"></i>Manage nominations
           </a>
-          <a href="{{ route('backend.interprovincial-trials.programme.index', $event) }}" class="btn btn-outline-primary dashboard-action">Regional payments &amp; team selection</a>
+          <details><summary class="small fw-semibold">Advanced regional programme</summary><a href="{{ route('backend.interprovincial-trials.programme.index', $event) }}" class="btn btn-outline-primary dashboard-action mt-2">Regional payments &amp; team selection</a></details>
           @can('event-draw.view', $event)
             <a href="{{ route('admin.events.entries.new', $event) }}" class="btn btn-outline-primary dashboard-action">
               <i class="ti ti-users me-1"></i>Entries
@@ -86,11 +86,6 @@
               <i class="ti ti-chevron-right setup-link__arrow" aria-hidden="true"></i>
             </a>
           @endcan
-          <a href="{{ route('backend.interprovincial-trials.invitations.index', $event) }}" class="setup-link">
-            <span class="setup-link__icon"><i class="ti ti-user-check"></i></span>
-            <span class="setup-link__copy"><span class="setup-link__title">Interpro setup</span><span class="setup-link__description">Nominate players, edit the message and use the fast send flow.</span></span>
-            <i class="ti ti-chevron-right setup-link__arrow" aria-hidden="true"></i>
-          </a>
           <a href="{{ route('backend.event-venue-schedule.index', $event) }}" class="setup-link">
             <span class="setup-link__icon"><i class="ti ti-map-pin"></i></span>
             <span class="setup-link__copy"><span class="setup-link__title">Venues &amp; schedule</span><span class="setup-link__description">Configure courts and schedule assignments.</span></span>

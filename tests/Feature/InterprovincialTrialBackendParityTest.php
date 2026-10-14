@@ -26,6 +26,98 @@ class InterprovincialTrialBackendParityTest extends TestCase
 
     private CategoryEvent $category;
 
+    public function test_nominee_can_be_declined_without_email_and_history_is_retained(): void
+    {
+        $player = Player::factory()->create();
+        $nomination = EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id]);
+        $url = route('backend.interprovincial-trials.nominations.administer', [$this->event, $this->category, $nomination]);
+        $this->actingAs($this->admin)->post($url, ['action' => 'decline'])->assertRedirect();
+        $declined = InterprovincialTrialInvitation::where('nomination_id', $nomination->id)->firstOrFail();
+        $draftBatch = $declined->batch->replicate();
+        $draftBatch->save();
+        $draft = $declined->replicate();
+        $draft->batch_id = $draftBatch->id;
+        $draft->status = 'prepared';
+        $draft->save();
+        $this->actingAs($this->admin)->postJson($url, ['action' => 'paid_privately'])->assertUnprocessable();
+        $this->actingAs($this->admin)->post($url, ['action' => 'decline'])->assertRedirect();
+        $this->assertDatabaseHas('event_nominations', ['id' => $nomination->id]);
+        $this->assertDatabaseHas('interprovincial_trial_invitations', ['nomination_id' => $nomination->id, 'status' => 'admin_declined']);
+        $this->assertSame(2, InterprovincialTrialInvitation::where('nomination_id', $nomination->id)->count());
+        $this->assertDatabaseCount('registration_orders', 0);
+        $this->actingAs($this->admin)->get(route('backend.interprovincial-trials.invitations.index', $this->event))->assertOk()->assertSee('Declined');
+        $this->category->update(['nominations_published' => true]);
+        $this->withoutMiddleware([\App\Http\Middleware\EnsureAgreementAccepted::class, \App\Http\Middleware\EnsurePlayerProfileUpdated::class]);
+        $this->actingAs(User::factory()->create())->postJson(route('interprovincial-trials.nominations.register', [$this->event, $this->category, $nomination]))->assertUnprocessable();
+        $this->assertDatabaseCount('registration_orders', 0);
+        $this->assertSame(2, InterprovincialTrialInvitation::where('nomination_id', $nomination->id)->count());
+    }
+
+    public function test_manual_private_collection_uses_admin_entry_once_and_blocks_removal(): void
+    {
+        $player = Player::factory()->create();
+        $nomination = EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id]);
+        $url = route('backend.interprovincial-trials.nominations.administer', [$this->event, $this->category, $nomination]);
+        $this->actingAs($this->admin)->post($url, ['action' => 'paid_privately'])->assertRedirect();
+        $paid = InterprovincialTrialInvitation::where('nomination_id', $nomination->id)->firstOrFail();
+        $draftBatch = $paid->batch->replicate();
+        $draftBatch->save();
+        $draft = $paid->replicate();
+        $draft->batch_id = $draftBatch->id;
+        $draft->status = 'prepared';
+        $draft->registration_id = null;
+        $draft->order_id = null;
+        $draft->paid_at = null;
+        $draft->save();
+        $this->actingAs($this->admin)->post($url, ['action' => 'paid_privately'])->assertRedirect();
+        $this->assertSame(1, $this->category->categoryEventRegistrations()->count());
+        $this->assertDatabaseHas('category_event_registrations', ['category_event_id' => $this->category->id, 'admin_payment_status' => 'paid', 'payment_status_id' => 1]);
+        $this->assertDatabaseCount('registration_orders', 0);
+        $this->assertDatabaseCount('registration_manual_receipts', 0);
+        $this->assertDatabaseCount('transactions_pf', 1);
+        $this->assertSame(0.0, (float) DB::table('transactions_pf')->value('amount_gross'));
+        $this->assertDatabaseCount('user_players', 0);
+        $this->actingAs($this->admin)->delete(route('backend.interprovincial-trials.nominations.destroy', [$this->event, $this->category, $nomination]))->assertStatus(422);
+        $this->actingAs($this->admin)->get(route('backend.interprovincial-trials.invitations.index', $this->event))->assertOk()->assertSee('Paid privately')->assertSee('Private collection; not reconciled');
+    }
+
+    public function test_nomination_admin_actions_deny_unassigned_admin_and_cross_event_category(): void
+    {
+        $nomination = EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => Player::factory()->create()->id]);
+        $url = route('backend.interprovincial-trials.nominations.administer', [$this->event, $this->category, $nomination]);
+        $this->actingAs(User::factory()->create()->assignRole('admin'))->post($url, ['action' => 'paid_privately'])->assertForbidden();
+        $otherCategory = CategoryEvent::factory()->create();
+        $this->actingAs($this->admin)->post(route('backend.interprovincial-trials.nominations.administer', [$this->event, $otherCategory, $nomination]), ['action' => 'decline'])->assertNotFound();
+        $this->assertDatabaseCount('interprovincial_trial_invitations', 0);
+        $this->assertDatabaseCount('category_event_registrations', 0);
+    }
+
+    public function test_admin_nomination_actions_preserve_pending_checkout_and_queued_delivery(): void
+    {
+        foreach (['accepted_pending_payment', 'queued', 'sending'] as $status) {
+            $player = Player::factory()->create();
+            $nomination = EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id]);
+            $batch = InterprovincialTrialInvitationBatch::create(['event_id' => $this->event->id, 'status' => 'draft', 'snapshot_hash' => str_repeat('a', 64), 'created_by_user_id' => $this->admin->id]);
+            $payer = User::factory()->create();
+            $order = $status === 'accepted_pending_payment' ? \App\Models\RegistrationOrder::create(['user_id' => $payer->id, 'total_fee' => 100, 'wallet_reserved' => 25, 'payfast_amount_due' => 75, 'pay_status' => false, 'status' => 'pending']) : null;
+            $invitation = InterprovincialTrialInvitation::create(['batch_id' => $batch->id, 'event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'nomination_id' => $nomination->id, 'player_id' => $player->id, 'status' => $status, 'order_id' => $order?->id]);
+            $before = $invitation->fresh()->getAttributes();
+            foreach (['decline', 'paid_privately'] as $action) {
+                $this->actingAs($this->admin)->postJson(route('backend.interprovincial-trials.nominations.administer', [$this->event, $this->category, $nomination]), ['action' => $action])->assertUnprocessable();
+            }
+            $this->assertSame($before, $invitation->fresh()->getAttributes());
+            if ($order) {
+                $this->assertEquals(25, $order->fresh()->wallet_reserved);
+                $this->assertSame($payer->id, $order->fresh()->user_id);
+            }
+        }
+        $this->assertDatabaseCount('interprovincial_trial_invitations', 3);
+        $this->assertDatabaseCount('registration_orders', 1);
+        $this->assertDatabaseCount('category_event_registrations', 0);
+        $this->assertDatabaseCount('registration_manual_receipts', 0);
+        $this->assertDatabaseCount('transactions_pf', 0);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -111,13 +203,14 @@ class InterprovincialTrialBackendParityTest extends TestCase
     {
         $overview = route('admin.events.overview', $this->event);
 
-        $this->event->update(['status' => 'closed']);
+        $this->event->update(['status' => 'closed', 'signUp' => false]);
         $this->actingAs($this->admin)->get($overview)
             ->assertOk()
             ->assertSeeInOrder(['Registration:', '>Closed<'], false);
 
         $this->event->update([
             'status' => 'open',
+            'signUp' => true,
             'start_date' => now()->subDays(2),
             'deadline' => 1,
         ]);
@@ -255,7 +348,7 @@ class InterprovincialTrialBackendParityTest extends TestCase
             $presentation = $response->viewData('nominationPresentations')->get($nominationId);
             $this->assertSame($details['invitation']->id, $presentation['invitation']->id);
             $this->assertSame($details['status_key'], $presentation['filter_key']);
-            $this->assertFalse($presentation['can_remove']);
+            $this->assertSame(in_array($details['invitation']->status, ['sent', 'failed', 'declined'], true), $presentation['can_remove']);
         }
         $failedInvitation = $expected[array_key_last($expected)]['invitation'];
         $response->assertSee(route('backend.interprovincial-trials.invitations.retry', [
@@ -269,7 +362,7 @@ class InterprovincialTrialBackendParityTest extends TestCase
         $rows = collect($ajax->json('nominations'))->keyBy('id');
         foreach ($expected as $nominationId => $details) {
             $this->assertSame($details['status_key'], $rows[$nominationId]['status_key']);
-            $this->assertFalse($rows[$nominationId]['can_remove']);
+            $this->assertSame(in_array($details['invitation']->status, ['sent', 'failed', 'declined'], true), $rows[$nominationId]['can_remove']);
         }
         foreach ($before as $table => $count) {
             $this->assertSame($count, DB::table($table)->count());

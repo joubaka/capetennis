@@ -950,6 +950,7 @@ class EventAdminController extends Controller
         'acceptedPendingPayment' => (int) ($invitationStates[\App\Models\InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT] ?? 0),
         'paidConfirmed' => (int) ($invitationStates[\App\Models\InterprovincialTrialInvitation::PAID_CONFIRMED] ?? 0),
         'declinedOrWithdrawn' => (int) (($invitationStates[\App\Models\InterprovincialTrialInvitation::DECLINED] ?? 0)
+          + ($invitationStates['admin_declined'] ?? 0)
           + ($invitationStates[\App\Models\InterprovincialTrialInvitation::WITHDRAWN] ?? 0)),
         'failed' => (int) ($invitationStates['failed'] ?? 0),
         'publication' => $publishedCategoryCount === 0

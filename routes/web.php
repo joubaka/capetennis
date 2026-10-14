@@ -483,6 +483,7 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::put('events/{event}/nominations/publication', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'publication'])->name('nominations.publication');
     Route::post('events/{event}/categories/{categoryEvent}/nominations', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'nominate'])->name('nominations.store');
     Route::delete('events/{event}/categories/{categoryEvent}/nominations/{nomination}', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'removeNomination'])->name('nominations.destroy');
+    Route::post('events/{event}/categories/{categoryEvent}/nominations/{nomination}/administer', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'administerNomination'])->name('nominations.administer');
     Route::post('events/{event}/invitations/prepare', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'prepare'])->name('invitations.prepare');
     Route::post('events/{event}/invitations/send', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'sendCurrent'])->name('invitations.send-current');
     Route::post('events/{event}/invitations/send-preview', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'previewSend'])

@@ -32,7 +32,9 @@
                         @endphp
                         <li id="trial-nomination-{{ $nomination->id }}" class="list-group-item px-0 d-flex flex-wrap justify-content-between align-items-center gap-2 {{ $focused ? 'border border-primary rounded px-2 bg-label-primary' : '' }}" @if($focused) tabindex="-1" autofocus @endif>
                           <span>{{ $nomination->display_name }}</span>
-                          @if($nomination->player_id === null)
+                          @if($tupleMatches && $trialInvitation->status === 'admin_declined')
+                            <span class="badge bg-label-secondary">Registration unavailable</span>
+                          @elseif($nomination->player_id === null)
                             <div class="d-flex flex-wrap align-items-center gap-2">
                               <span class="badge bg-label-warning">Profile required</span>
                               @if($registrationOpen)

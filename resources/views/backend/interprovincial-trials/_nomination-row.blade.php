@@ -19,7 +19,8 @@
     @endif
   </div>
   <div class="interpro-nomination-row__status">
-    <span class="badge bg-label-{{ $presentation['tone'] }}">{{ $presentation['label'] }}</span>
+    <span class="badge bg-label-{{ $presentation['tone'] }}">{{ $invitation?->status === 'paid_confirmed' && $invitation->registration_id && !$invitation->order_id ? 'Paid privately' : $presentation['label'] }}</span>
+    @if($invitation?->status === 'paid_confirmed' && $invitation->registration_id && !$invitation->order_id)<span class="small text-muted">Private collection; not reconciled</span>@endif
     @if($invitation && in_array($invitation->status, ['queued', 'sending', 'sent'], true))
       <span class="small text-muted">{{ str($invitation->status)->title() }}</span>
     @endif
@@ -41,6 +42,30 @@
     @endif
   </div>
   <div class="interpro-nomination-row__actions">
+    @if($presentation['can_administer'])
+      <form method="POST" action="{{ route('backend.interprovincial-trials.nominations.administer', [$event, $categoryEvent, $nomination]) }}">
+        @csrf<input type="hidden" name="action" value="decline">
+        <button class="btn btn-sm btn-outline-secondary interpro-row-action">Decline</button>
+      </form>
+      @if($nomination->player_id)
+        <details><summary class="btn btn-sm btn-outline-success interpro-row-action">Mark paid manually</summary>
+          <form method="POST" action="{{ route('backend.interprovincial-trials.nominations.administer', [$event, $categoryEvent, $nomination]) }}" class="mt-2">
+            @csrf<input type="hidden" name="action" value="paid_privately">
+            <p class="small text-muted">Creates an entry with private collection marked paid. No payment amount or reconciled receipt is recorded.</p>
+            <button class="btn btn-sm btn-success interpro-row-action">Confirm paid privately</button>
+          </form>
+        </details>
+      @endif
+    @elseif($invitation?->status === 'accepted_pending_payment' && $invitation->order_id)
+      <details><summary class="btn btn-sm btn-outline-success interpro-row-action">Mark paid manually</summary>
+        <form method="POST" action="{{ route('backend.interprovincial-trials.orders.mark-paid', [$event, $invitation->order_id]) }}" class="mt-2">
+          @csrf<label class="form-label small" for="manual-reference-{{ $nomination->id }}">Payment reference</label>
+          <input id="manual-reference-{{ $nomination->id }}" name="reference" class="form-control form-control-sm" minlength="3" maxlength="120" required>
+          <p class="small text-muted">Records the exact checkout amount as received. Payments already in progress cannot be marked manually.</p>
+          <button class="btn btn-sm btn-success interpro-row-action">Record payment received</button>
+        </form>
+      </details>
+    @endif
     @if($presentation['can_resend'])
       <button type="button" class="btn btn-sm btn-outline-secondary interpro-row-action" data-send-preview-mode="individual" data-invitation-id="{{ $invitation->id }}">Resend invitation</button>
     @endif
@@ -62,7 +87,7 @@
         <button class="btn btn-sm btn-outline-danger interpro-row-action">Remove</button>
       </form>
     @else
-      <span class="small text-muted">History retained</span>
+      <a class="small" href="{{ route('admin.events.entries.new', $event) }}">Manage registration in Entries</a>
     @endif
   </div>
 </div>

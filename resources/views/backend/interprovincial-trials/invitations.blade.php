@@ -17,7 +17,7 @@
   .interpro-nomination-row__actions { align-items:flex-end; display:flex; flex-direction:column; gap:.4rem; }
   .interpro-email { display:inline-block; max-width:100%; overflow-wrap:anywhere; word-break:break-word; }
   .interpro-row-action { min-height:44px; min-width:44px; }
-  @media (max-width: 767.98px) {
+  @media (max-width: 991.98px) {
     .interpro-nomination-row { grid-template-columns:1fr; }
     .interpro-nomination-row__actions { align-items:stretch; flex-direction:row; flex-wrap:wrap; }
     .interpro-nomination-row__actions form, .interpro-nomination-row__actions .interpro-row-action { width:100%; }
@@ -29,12 +29,13 @@
   @include('backend.event.partials.header', ['event' => $event])
 
   <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
-    <div><h2 class="mb-1">Nominations &amp; invitations</h2><p class="text-muted mb-0">Nominate players, choose whether names are public, then review invitation emails separately.</p></div>
+    <div><h2 class="mb-1">Nominations &amp; invitations</h2><p class="text-muted mb-0">Nominate players, then remove, decline or mark them paid manually. Publishing names and sending emails are optional separate steps.</p></div>
     <a class="btn btn-outline-secondary" href="{{ route('admin.events.overview', $event) }}">Back to event overview</a>
   </div>
   @if(session('success')) <div class="alert alert-success">{{ session('success') }}</div> @endif
   @if($errors->any()) <div class="alert alert-danger">{{ $errors->first() }}</div> @endif
 
+  <details class="mb-4"><summary class="fw-semibold mb-2">Email readiness and audit history</summary>
   <section class="card mb-4" aria-labelledby="invitation-readiness-heading" data-testid="invitation-readiness">
     <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
       <div>
@@ -66,7 +67,7 @@
         </div>
       @endif
     </div>
-  </section>
+  </section></details>
 
   @php
     $publishedCategoryCount = $event->categoryEvents->where('nominations_published', true)->count();
@@ -116,12 +117,15 @@
     </details>
   </div></div>
 
-  <div class="card mb-4"><div class="card-header"><h5 class="mb-0">2. Review nominations by category</h5></div><div class="card-body">
+  <div class="card mb-4"><div class="card-header"><h5 class="mb-0">2. Manage nominated players</h5></div><div class="card-body">
+    <p class="text-muted small">Use Remove for an unused nomination, Decline to retain the decision, or Mark paid manually to record collection. Existing registrations must be cancelled or withdrawn in Entries.</p>
+    <details class="mb-3"><summary class="fw-semibold mb-2">Optional invitation emails</summary>
     <div class="d-flex flex-wrap gap-2 mb-3">
       <button type="button" class="btn btn-primary" data-send-preview-mode="new"><i class="ti ti-send me-1"></i>Review emails for newly nominated</button>
       <button type="button" class="btn btn-outline-primary" data-send-preview-mode="profileless">Review emails for players without profiles</button>
       <button type="button" class="btn btn-outline-primary" data-send-preview-mode="not_registered"><i class="ti ti-mail-forward me-1"></i>Review emails for players not registered</button>
     </div>
+    </details>
     <p class="text-muted small mb-2">Showing {{ $nominations->firstItem() ?? 0 }}–{{ $nominations->lastItem() ?? 0 }} of {{ $nominations->total() }} nominations. Filters apply to this page.</p>
     <div class="interpro-filter-bar mb-3" aria-label="Filter nominated players on this page">
       @foreach($nominationFilterGroups as $filter)
@@ -162,7 +166,7 @@
   @endif
 
   <div class="card overflow-hidden">
-    <div class="card-header"><h5 class="mb-0">3. Send invitation emails</h5></div>
+    <div class="card-header"><h5 class="mb-0">Optional: send invitation emails</h5></div>
     <div class="card-body">
       @if($batch)
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><span><strong>Latest batch #{{ $batch->id }}</strong> <span class="badge bg-label-info">{{ ucfirst($batch->status) }}</span></span><span class="text-muted small">{{ $readiness['invitation_count'] }} invitation{{ $readiness['invitation_count'] === 1 ? '' : 's' }}</span></div>

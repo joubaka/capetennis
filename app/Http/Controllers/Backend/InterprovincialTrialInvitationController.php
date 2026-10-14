@@ -88,7 +88,7 @@ class InterprovincialTrialInvitationController extends Controller
             && (! $registrationClosesAt || now()->lte($registrationClosesAt));
         $knownInvitationStates = [
             'prepared', 'queued', 'sending', 'sent', 'failed',
-            'accepted_pending_payment', 'paid_confirmed', 'declined', 'withdrawn', 'cancelled',
+            'accepted_pending_payment', 'paid_confirmed', 'declined', 'admin_declined', 'withdrawn', 'cancelled',
         ];
         $invitationCounts = $batch
             ? $this->batchInvitationQuery($batch, $event)
@@ -270,6 +270,14 @@ class InterprovincialTrialInvitationController extends Controller
             ->with('success', 'Nomination removed.');
     }
 
+    public function administerNomination(Request $request, Event $event, CategoryEvent $categoryEvent, EventNomination $nomination, \App\Services\InterprovincialTrials\NominationAdministrationService $service)
+    {
+        $this->authorizeEvent($event);
+        $data = $request->validate(['action' => 'required|in:decline,paid_privately']);
+        $service->act($event, $categoryEvent, $nomination, $request->user(), $data['action']);
+        return back()->with('success', $data['action'] === 'decline' ? 'Nomination declined; history retained.' : 'Paid privately recorded and entry created. This is not a reconciled payment receipt.');
+    }
+
     public function publication(Request $request, Event $event)
     {
         $this->authorizeEvent($event);
@@ -401,7 +409,7 @@ class InterprovincialTrialInvitationController extends Controller
             'queued', 'sending', 'sent' => ['invited', 'invited', 'Invited - awaiting response', 'primary'],
             InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT => ['payment-pending', 'payment-pending', 'Payment pending', 'warning'],
             InterprovincialTrialInvitation::PAID_CONFIRMED => ['registered', 'registered', 'Registered', 'success'],
-            InterprovincialTrialInvitation::DECLINED => ['declined', 'declined-withdrawn', 'Declined', 'secondary'],
+            InterprovincialTrialInvitation::DECLINED, 'admin_declined' => ['declined', 'declined-withdrawn', 'Declined', 'secondary'],
             InterprovincialTrialInvitation::WITHDRAWN => ['withdrawn', 'declined-withdrawn', 'Withdrawn', 'secondary'],
             'failed' => ['delivery-failed', 'delivery-failed', 'Delivery failed', 'danger'],
             'cancelled' => ['cancelled', 'cancelled', 'Cancelled', 'dark'],
@@ -414,7 +422,8 @@ class InterprovincialTrialInvitationController extends Controller
             'filter_key' => $filterKey,
             'label' => $label,
             'tone' => $tone,
-            'can_remove' => ! $invitation || $status === 'prepared',
+            'can_remove' => ! $invitation || (!$invitation->order_id && !$invitation->registration_id && in_array($status, ['prepared', 'sent', 'failed', 'declined', 'admin_declined', 'open_registration'], true)),
+            'can_administer' => ! $invitation || (!$invitation->order_id && !$invitation->registration_id && in_array($status, ['prepared', 'sent', 'failed', 'open_registration'], true)),
             'can_resend' => $hasSuccessfulInitial && in_array($status, ['sent', InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT], true),
             'can_retry_follow_up' => $hasFailedFollowUp && in_array($status, ['sent', InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT], true),
         ];
