@@ -1,10 +1,18 @@
 @php
   $restoreRefund = (string) old('item_id') === (string) $item->id;
   $remainingCents = \App\Services\Clothing\ClothingRefundService::cents($item->line_total) - $item->refundItems->filter(fn ($entry) => in_array($entry->refund?->refund_status, ['pending', 'completed'], true))->sum(fn ($entry) => \App\Services\Clothing\ClothingRefundService::cents($entry->amount));
+  $activeRefunds = $order->refunds->whereIn('refund_status', ['pending', 'completed']);
+  $orderRemainingCents = \App\Services\Clothing\ClothingRefundService::cents($order->amount_paid ?? '0') - $activeRefunds->sum(fn ($refund) => \App\Services\Clothing\ClothingRefundService::cents($refund->refund_gross));
+  $payfastRemainingCents = \App\Services\Clothing\ClothingRefundService::cents($order->payfast_amount_due ?? '0') - $activeRefunds->where('refund_method', 'payfast')->sum(fn ($refund) => \App\Services\Clothing\ClothingRefundService::cents($refund->refund_net));
+  $summaryPayfast = $restoreRefund && old('method') === 'payfast';
 @endphp
 <p class="small mt-2 mb-2">{{ $item->item_name ?: 'Clothing item' }} · R{{ number_format(max(0, $remainingCents) / 100, 2) }} available · {{ $item->remaining_quantity }} units available.</p>
 @if($remainingCents > 0)
-<form method="POST" action="{{ route('backend.clothing.refunds.store', [$event, $order]) }}" class="border rounded p-2 mb-2">
+<form method="POST" action="{{ route('backend.clothing.refunds.store', [$event, $order]) }}" class="border rounded p-2 mb-2"
+      data-refund-line-cents="{{ \App\Services\Clothing\ClothingRefundService::cents($item->line_total) }}"
+      data-refund-remaining-cents="{{ $remainingCents }}" data-refund-total-quantity="{{ $item->qty }}"
+      data-refund-used-quantity="{{ $item->refunded_quantity }}" data-refund-remaining-quantity="{{ $item->remaining_quantity }}"
+      data-refund-order-cents="{{ $orderRemainingCents }}" data-refund-payfast-cents="{{ $payfastRemainingCents }}">
   @csrf
   <input type="hidden" name="request_token" value="{{ old('item_id') == $item->id ? old('request_token', (string) str()->uuid()) : (string) str()->uuid() }}">
   <input type="hidden" name="item_id" value="{{ $item->id }}">
@@ -31,6 +39,21 @@
   </details>
   <label class="form-label" for="{{ $formKey }}-reason">Reason</label><input required maxlength="500" name="reason" value="{{ $restoreRefund ? old('reason') : '' }}" class="form-control mb-2" id="{{ $formKey }}-reason">
   @include('backend.clothing.partials.late-note', ['noteKey' => $formKey.'-late'])
+  <div class="alert alert-info mb-2" role="status" aria-live="polite" aria-atomic="true">
+    <strong>Refund summary</strong>
+    <p class="mb-1" data-refund-summary>
+      @if($restoreRefund && old('mode', 'full') !== 'full')
+        Select a valid refund size to see the amount.
+      @elseif($remainingCents <= $orderRemainingCents && (!$summaryPayfast || $remainingCents <= $payfastRemainingCents))
+        {{ $remainingCents === \App\Services\Clothing\ClothingRefundService::cents($item->line_total) ? 'Full item refund.' : 'Full remaining item refund.' }}
+        Refund amount: R{{ number_format($remainingCents / 100, 2) }} {{ $summaryPayfast ? 'will be submitted to PayFast for the original payer.' : 'will be credited to the original payer’s wallet.' }}
+        R0.00 remains refundable for this item.
+      @else
+        This amount exceeds the remaining {{ $summaryPayfast ? 'PayFast' : 'order' }} payment. Choose a smaller refund.
+      @endif
+    </p>
+    <small>Original payer: {{ $order->user?->name ?: 'Order payer' }}. The amount is checked again when you confirm.</small>
+  </div>
   <button class="btn btn-outline-danger" type="submit">Confirm refund</button>
 </form>
 @else
