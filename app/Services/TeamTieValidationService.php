@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Domain\TeamDraw\RubberType;
 use App\Models\Draw;
 use App\Models\Player;
 use App\Models\Team;
@@ -241,8 +242,8 @@ class TeamTieValidationService
                     }
                     $profileIds = $rubber->fixturePlayers->pluck("team{$side}_id")->filter()->all();
                     $importedIds = $rubber->fixturePlayers->pluck("team{$side}_no_profile_id")->filter()->all();
-                    if ($tie->draw->team_draw_selection['mixed_sides'] ?? []) {
-                        app(TeamDrawSideResolver::class)->assertMixedSources($tie->draw, $team->id, $profileIds, $importedIds);
+                    if (($tie->draw->team_draw_selection['mixed_sides'] ?? []) && (isset($tie->draw->team_draw_selection['competition']) || in_array($rubber->rubber_code, [RubberType::MIXED_DOUBLES, RubberType::REVERSE_MIXED_DOUBLES], true))) {
+                        app(TeamDrawSideResolver::class)->assertMixedSources($tie->draw, $team->id, $profileIds, $importedIds, $rubber->gender_rule ?? 'mixed');
                     }
                     $historicalProfiles = []; $historicalImported = [];
                     $map = $tie->draw->team_draw_selection['mixed_sides'][$team->id] ?? null;

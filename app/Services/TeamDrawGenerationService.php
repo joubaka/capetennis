@@ -66,6 +66,7 @@ class TeamDrawGenerationService
 
         return DB::transaction(function () use ($draw, $schedule, $format, $allowOverride, $captureSnapshot) {
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
+            abort_if(($draw->team_draw_selection['competition']['phase'] ?? null) === 'playoff' || !empty($draw->team_draw_selection['competition']['playoff_draw_id']), 409, 'Qualified playoff pairings and their source standings are fixed.');
             \App\Models\TeamFixture::where('draw_id', $draw->id)->lockForUpdate()->get();
             if (!\App\Services\Draw\DrawMutationPolicy::for($draw)->canGenerateFixtures()
                 || \App\Models\TeamFixture::where('draw_id', $draw->id)->whereHas('fixtureResults')->exists()

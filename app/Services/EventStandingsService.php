@@ -43,6 +43,7 @@ final class EventStandingsService
             ->when($drawId !== null, fn ($query) => $query->whereKey($drawId))
             ->with(['draw_types', 'categoryEvent.category', 'team_category'])->orderBy('drawName')->get();
         $sections = [];
+        $placementSections = [];
         foreach ($draws as $draw) {
             $draw->setRelation('event', $event);
             if (!$draw->isTeamDraw()) { continue; }
@@ -52,6 +53,11 @@ final class EventStandingsService
             $label = ($category === 'Unspecified' ? $draw->drawName : $category.' '.$draw->drawName).' '.$draw->gender;
             $gender = preg_match('/\b(mixed)\b/i', $label) ? 'Mixed' : (preg_match('/\b(girls?|female|women)\b/i', $label) ? 'Girls / Women' : (preg_match('/\b(boys?|male|men)\b/i', $label) ? 'Boys / Men' : 'Unspecified'));
             $age = preg_match('/\b(?:u\s*[\/-]?\s*|under\s*-?\s*)(\d+)\b/i', $label, $matches) ? 'U'.(int) $matches[1] : 'Unspecified';
+            if (($draw->team_draw_selection['competition']['phase'] ?? null) === 'playoff') {
+                $results = app(TeamPlacementResultsService::class)->forDraw($draw, $publishedOnly, $teamIds);
+                $placementSections[] = compact('draw', 'category', 'gender', 'age', 'results');
+                continue;
+            }
             $rows = app(TeamStandingsService::class)->forDraw($draw, $publishedOnly, $teamIds);
             $legacyRows = [];
             $results = app(TeamRubberResultService::class);
@@ -94,9 +100,10 @@ final class EventStandingsService
         }
         $options = [];
         foreach (['gender', 'age', 'category'] as $key) {
-            $options[$key] = collect($sections)->pluck($key)->unique()->sort()->values()->all();
+            $options[$key] = collect(array_merge($sections, $placementSections))->pluck($key)->unique()->sort()->values()->all();
         }
         $sections = array_values(array_filter($sections, fn ($section) => collect($filters)->every(fn ($value, $key) => !$value || $section[$key] === $value)));
+        $placementSections = array_values(array_filter($placementSections, fn ($section) => collect($filters)->every(fn ($value, $key) => !$value || $section[$key] === $value)));
         $overall = [];
         $ageGroups = [];
         $ageStandings = [];
@@ -183,7 +190,7 @@ final class EventStandingsService
             ])->all();
         }
 
-        return compact('sections', 'overall', 'mixedRules', 'options', 'filters', 'stats', 'breakdowns', 'ageGroups', 'ageMixedRules', 'ageStandings');
+        return compact('sections', 'placementSections', 'overall', 'mixedRules', 'options', 'filters', 'stats', 'breakdowns', 'ageGroups', 'ageMixedRules', 'ageStandings');
     }
 
     private function criteria(array $row, array $rules): array

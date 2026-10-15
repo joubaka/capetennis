@@ -38,6 +38,33 @@ class TeamDrawAdaptationService
             $report = ['added_fixture_ids' => [], 'cleared_fixture_ids' => [], 'removed_fixture_ids' => [],
                 'removed_bookings' => [], 'updated_lineups' => 0, 'retained_protected_ids' => [], 'review_required' => false, 'review_tie_ids' => [], 'warnings' => []];
             if ($draw->locked || !$draw->isTeamDraw()) return $report;
+            if (isset($draw->team_draw_selection['competition'])) {
+                $calendar = app(UnifiedTeamScheduleService::class);
+                foreach ($draw->teamTies()->with('rubbers', 'homeTeam', 'awayTeam')->lockForUpdate()->get() as $tie) {
+                    foreach ($tie->rubbers as $fixture) {
+                        if ($calendar->protected($fixture)) continue;
+                        try {
+                            if ($refreshLineups && $this->refreshLineup($draw, $tie, $fixture)) {
+                                $report['updated_lineups']++;
+                                $changedFixtureIds[] = $fixture->id;
+                                $tie->update(['status' => TeamTie::STATUS_DRAFT, 'published_at' => null]);
+                                $report['review_tie_ids'][] = $tie->id;
+                            }
+                        } catch (\InvalidArgumentException $exception) {
+                            $fixture->fixturePlayers()->delete();
+                            $report['removed_bookings'][$fixture->id] = $fixture->only(['scheduled_at', 'venue_id', 'court_label', 'duration_min', 'gap_minutes']);
+                            $fixture->update(['scheduled_at' => null, 'venue_id' => null, 'court_label' => null, 'duration_min' => null, 'gap_minutes' => 0, 'scheduled' => 0, 'clash_flag' => true]);
+                            $tie->update(['status' => TeamTie::STATUS_DRAFT, 'published_at' => null]);
+                            $report['cleared_fixture_ids'][] = $fixture->id;
+                            $report['review_tie_ids'][] = $tie->id;
+                            $report['warnings'][] = $exception->getMessage();
+                        }
+                    }
+                }
+                $report['review_required'] = true;
+                $report['warnings'][] = 'Phase pairings and qualified standings are retained. Review changed lineups before publishing upcoming ties.';
+                $refreshLineups = false;
+            }
             $calendar = app(UnifiedTeamScheduleService::class);
             $ties = $draw->teamTies()->with(['rubbers.fixtureResults', 'rubbers.fixturePlayers', 'homeTeam', 'awayTeam'])
                 ->orderBy('id')->lockForUpdate()->get();
@@ -127,7 +154,7 @@ class TeamDrawAdaptationService
             }
             $saved = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true) ?: [];
             $progression = $saved['round_progression'] ?? 'team_ready';
-            $clearedKeys = array_map(fn ($id) => 'team:'.$id, $report['added_fixture_ids']);
+            $clearedKeys = array_map(fn ($id) => 'team:'.$id, array_unique(array_merge($report['added_fixture_ids'], $report['cleared_fixture_ids'])));
             $nodes = $calendar->nodes($draw->fresh(), $progression);
             // Iterate in dependency order. Clearing a prerequisite also clears its unplayed successors.
             foreach ($nodes as $node) {

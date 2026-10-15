@@ -513,10 +513,10 @@ class TeamFixtureController extends Controller
         ]);
       }
 
-      if ($draw->team_draw_selection['mixed_sides'] ?? []) {
+      if (($draw->team_draw_selection['mixed_sides'] ?? []) && (isset($draw->team_draw_selection['competition']) || in_array($team_fixture->rubber_code, ['mixed_doubles', 'reverse_mixed_doubles'], true))) {
         foreach ([$tie->home_team_id => $homePlayers, $tie->away_team_id => $awayPlayers] as $teamId => $ids) {
-          if (count($ids) === 2) {
-            try { $resolver->assertMixedSources($draw, $teamId, $ids, []); }
+          if (count($ids) > 0) {
+            try { $resolver->assertMixedSources($draw, $teamId, $ids, [], $team_fixture->gender_rule ?? 'mixed'); }
             catch (\InvalidArgumentException $e) { throw ValidationException::withMessages(['home_players' => $e->getMessage()]); }
           }
         }

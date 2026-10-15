@@ -32,6 +32,7 @@ final class EventVenueScheduleController extends Controller
                 $typeOrder, mb_strtolower($draw->drawName), $draw->id];
         })->values();
         $availableRounds = app(EventVenueScheduleService::class)->availableDrawRounds($eventDraws);
+        $programmeRounds = app(EventVenueScheduleService::class)->availableDrawRounds($eventDraws, true);
         $selectionSupplied = $request->has('draw_ids');
         $requestedDrawIds = collect($request->validate([
             'draw_ids' => ['sometimes', 'array', 'max:200'],
@@ -61,14 +62,14 @@ final class EventVenueScheduleController extends Controller
             if (! $scheduledCounts->has($id)) $scheduledCounts[$id] = (int) $count;
         }
 
-        $draws = $eventDraws->map(function ($draw) use ($courtAllocations, $scheduledCounts, $selectionSupplied, $requestedDrawIds, $availableRounds) {
+        $draws = $eventDraws->map(function ($draw) use ($courtAllocations, $scheduledCounts, $selectionSupplied, $requestedDrawIds, $availableRounds, $programmeRounds) {
             $allocations = [];
             foreach ($draw->venues as $venue) {
                 $allocations[$venue->id] = ($courtAllocations[$draw->id.'|'.$venue->id] ?? collect())
                     ->pluck('court_label')->map(fn ($label) => (string) $label)->all();
             }
             return ['id' => $draw->id, 'name' => $draw->drawName,
-                'programme_age' => app(\App\Services\Scheduling\ScheduleProgramme::class)->age($draw),
+                'programme_age' => app(\App\Services\Scheduling\ScheduleProgramme::class)->key($draw),
                 'rubber_code' => $draw->team_draw_selection['rubber_code'] ?? null,
                 'doubles_pair_count' => $this->standardPairCount($draw, 'doubles'),
                 'mixed_pair_count' => $this->standardPairCount($draw, 'mixed_doubles'),
@@ -77,7 +78,9 @@ final class EventVenueScheduleController extends Controller
                 'applied_match_count' => (int) ($scheduledCounts[$draw->id] ?? 0),
                 'locked' => (bool) $draw->locked, 'published' => (bool) $draw->published,
                 'is_team' => $draw->isTeamDraw(),
+                'programme_supported' => app(\App\Services\Scheduling\ScheduleProgramme::class)->supports($draw),
                 'rounds' => $availableRounds[$draw->id] ?? [],
+                'programme_rounds' => $programmeRounds[$draw->id] ?? [],
                 'selected' => ! $selectionSupplied || $requestedDrawIds->contains((int) $draw->id)];
         });
         $venues = $availableVenues->map(function ($venue) use ($drawVenues, $courtRows) {
@@ -263,11 +266,12 @@ final class EventVenueScheduleController extends Controller
             && substr($row['scheduled_at'], 0, 10) === $data['date'])->values();
         $venues = $event->venues()->get()->concat($draw->venues()->get())->unique('id')->sortBy('name');
         $stored = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true) ?: [];
-        $age = app(\App\Services\Scheduling\ScheduleProgramme::class)->age($draw);
+        $age = app(\App\Services\Scheduling\ScheduleProgramme::class)->key($draw);
         $settings = $stored['programme_settings'][(string) $age] ?? $stored;
         $courtOptions = $scheduler->dayCourtLabels($event, $draw);
         $defaultCourts = [];
-        $dayRounds = $rows->pluck('round_nr')->filter()->unique();
+        $fixtureRounds = $draw->usesFlexibleMonrad() ? $scheduler->programmeFixtureRounds($draw) : [];
+        $dayRounds = $rows->map(fn ($row) => $fixtureRounds[$row['fixture_id']] ?? $row['round_nr'])->filter()->unique();
         $roundSetups = collect($stored['round_venue_setups'] ?? [])->filter(fn ($row) => (int) $row['draw_id'] === $draw->id && $dayRounds->contains((int) $row['round']));
         $selectedVenues = $rows->pluck('venue_id')->unique()->all();
         foreach ($courtOptions as $venueId => $labels) {

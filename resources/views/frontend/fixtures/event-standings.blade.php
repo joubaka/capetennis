@@ -75,6 +75,7 @@
   </form>
   @include('frontend.fixtures.partials.live-results-status')
   <div data-live-results="event-standings">
+    @include('frontend.fixtures.partials.team-placement-results')
     <div class="points-groups">
       @forelse($ageStandings as $age => $rows)
       @php

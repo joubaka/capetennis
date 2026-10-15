@@ -1635,6 +1635,10 @@ Route::delete(
   // Every action additionally enforces object-level authorization via
   // TeamDrawPolicy / Gate::define abilities (see TeamDrawController).
   Route::prefix('team-draw')->name('team-draw.')->middleware('auth')->group(function () {
+    Route::get('{event}/competition', [\App\Http\Controllers\Backend\TeamPlacementCompetitionController::class, 'setup'])->name('competition.setup');
+    Route::post('{event}/competition', [\App\Http\Controllers\Backend\TeamPlacementCompetitionController::class, 'store'])->name('competition.store');
+    Route::match(['get', 'post'], '{draw}/competition-scoring', [\App\Http\Controllers\Backend\TeamPlacementCompetitionController::class, 'scoring'])->name('competition.scoring');
+    Route::post('{draw}/placement-playoffs', [\App\Http\Controllers\Backend\TeamPlacementCompetitionController::class, 'playoffs'])->name('competition.playoffs');
     // Format management
     Route::get('{event}/formats',    [TeamDrawController::class, 'listFormats'])->name('formats.index');
     Route::post('{event}/formats',   [TeamDrawController::class, 'storeFormat'])->name('formats.store');

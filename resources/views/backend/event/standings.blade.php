@@ -50,6 +50,7 @@
   </form>
   @include('frontend.fixtures.partials.live-results-status')
   <div data-live-results="admin-event-standings">
+  @include('frontend.fixtures.partials.team-placement-results')
   <section class="card mb-4"><div class="card-header"><h2 class="h5 mb-2">{{ array_filter($filters) ? 'Filtered' : 'Full event' }} standings by region / school</h2>
     <p class="mb-0">Totals combine team ties across the selected draws. Completed rubbers earn points; ties count as played once all required rubbers are complete. These are running standings, not final tournament placings.</p>
     @if($mixedRules)<p class="text-warning mb-0 mt-2">Draws use different scoring rules. Totals are shown alphabetically without an overall rank; use each draw's standings for its ranking.</p>@endif

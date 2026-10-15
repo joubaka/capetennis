@@ -17,8 +17,8 @@ final class RoundVenueSetup
             $normalized = [];
             foreach ($rows as $row) {
                 $draw = $draws[$row['draw_id']] ?? null;
-                if (! $draw || ! $draw->isTeamDraw() || $draw->locked) throw new \InvalidArgumentException('Choose an unlocked team draw in this event.');
-                if (! TeamFixture::where('draw_id', $draw->id)->where('round_nr', $row['round'])->exists()) throw new \InvalidArgumentException('Choose a generated round in this draw.');
+                if (! $draw || ! app(ScheduleProgramme::class)->supports($draw) || $draw->locked) throw new \InvalidArgumentException('Choose an unlocked team or Monrad draw in this event.');
+                if (! in_array((int) $row['round'], app(EventVenueScheduleService::class)->availableDrawRounds(collect([$draw]), true)[$draw->id] ?? [], true)) throw new \InvalidArgumentException('Choose a generated round in this draw.');
                 $venues = array_values(array_unique(array_map('intval', $row['venue_ids'])));
                 if (! $venues || array_diff($venues, $allowed)) throw new \InvalidArgumentException('Choose venues assigned to this event.');
                 $courts = [];
@@ -40,6 +40,7 @@ final class RoundVenueSetup
                     $courts[$id] = $labels;
                 }
                 if (array_diff($venues, array_keys($courts))) throw new \InvalidArgumentException('Allocate courts to every selected venue.');
+                if (! $draw->isTeamDraw() && ! empty($row['rank_venue_preferences'])) throw new \InvalidArgumentException('Roster position bands apply only to team draws.');
                 $rules = [];
                 foreach ($row['rank_venue_preferences'] ?? [] as $rule) {
                     $min = (int) $rule['min_rank']; $max = (int) $rule['max_rank']; $venue = (int) $rule['venue_id'];

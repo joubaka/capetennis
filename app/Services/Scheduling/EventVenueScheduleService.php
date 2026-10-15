@@ -57,17 +57,17 @@ final class EventVenueScheduleService
 
         $foreignDraws = array_diff($selectedDraws, $draws->pluck('id')->map(fn ($id) => (int) $id)->all());
         if ($foreignDraws) throw new \InvalidArgumentException('One or more selected draws do not belong to this event.');
-        $programme = app(ScheduleProgramme::class)->normalize($options['programme'] ?? [], $draws, $this->availableDrawRounds($draws));
+        $programme = app(ScheduleProgramme::class)->normalize($options['programme'] ?? [], $draws, $this->availableDrawRounds($draws, true));
         if ($programme) {
             $options['allow_partial'] = false;
             $programmeService = app(ScheduleProgramme::class);
-            $ages = $draws->map(fn ($draw) => $programmeService->age($draw))->unique();
+            $ages = $draws->map(fn ($draw) => $programmeService->key($draw))->unique();
             if ($ages->count() !== 1 || $ages->first() === null) throw new \InvalidArgumentException('Select one complete age group for the programme.');
-            $expected = $event->draws()->get()->filter(fn ($draw) => $draw->isTeamDraw() && $programmeService->age($draw) === $ages->first())->pluck('id');
+            $expected = $event->draws()->get()->filter(fn ($draw) => $programmeService->supports($draw) && $programmeService->key($draw) === $ages->first())->pluck('id');
             if ($expected->diff($draws->pluck('id'))->isNotEmpty()) throw new \InvalidArgumentException('Include every discipline of the selected age group.');
             if ($draws->contains('locked', true)) throw new \InvalidArgumentException('Unlock all age-group draws before creating a complete programme.');
             if ($options['draw_rounds'] ?? []) throw new \InvalidArgumentException('A complete programme cannot also filter rounds.');
-            if ($draws->contains(fn ($draw) => ! $draw->isTeamDraw())) throw new \InvalidArgumentException('The three-day programme requires team draws.');
+            if ($draws->contains(fn ($draw) => ! $programmeService->supports($draw))) throw new \InvalidArgumentException('The three-day programme requires team or individual Monrad draws.');
             $start = Carbon::parse($programme['days'][0]['start']);
             $end = Carbon::parse($programme['days'][2]['end']);
         }
@@ -139,7 +139,7 @@ final class EventVenueScheduleService
                 $warnings[] = "{$draw->drawName} was not changed because the draw is locked.";
                 continue;
             }
-            foreach (($draw->isTeamDraw() ? app(UnifiedTeamScheduleService::class)->nodes($draw, $roundProgression) : $this->nodesForDraw($draw, $start, $waveMinutes)) as $id => $node) {
+            foreach (($draw->isTeamDraw() ? app(UnifiedTeamScheduleService::class)->nodes($draw, $roundProgression) : $this->nodesForDraw($draw, $start, $waveMinutes, (bool) $programme)) as $id => $node) {
                 $node['draw_start'] = $drawStarts[$draw->id] ?? $start->copy();
                 $node['selected_round'] = ! $roundSelection->has($draw->id) || in_array($node['round'], $roundSelection[$draw->id], true);
                 $node['gender'] = $this->drawGender($draw);
@@ -155,7 +155,7 @@ final class EventVenueScheduleService
                         ->filter(fn ($label) => in_array((string) $label, $courtLabels[$venueId], true))->values()->all();
                     $node['venue_courts'][$venueId] = $restricted ?: $courtLabels[$venueId];
                 }
-                $roundSetup = $roundSetups[$draw->id.'|'.$node['round']] ?? null;
+                $roundSetup = $roundSetups[$draw->id.'|'.($node['venue_round'] ?? $node['round'])] ?? null;
                 if ($roundSetup) {
                     $node['venue_courts'] = [];
                     foreach ($roundSetup['court_allocations'] as $allocation) {
@@ -189,7 +189,7 @@ final class EventVenueScheduleService
         if ($displayFixtures->isNotEmpty()) app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($displayFixtures);
         foreach ($nodes as &$node) {
             $node['rank_preference'] = $rankChoices[$node['fixture']->id] ?? null;
-            $roundSetup = $roundSetups[$node['draw_id'].'|'.$node['round']] ?? null;
+            $roundSetup = $roundSetups[$node['draw_id'].'|'.($node['venue_round'] ?? $node['round'])] ?? null;
             if ($roundSetup && ! ($dayScope && $node['selected_round']) && ($node['fixture_kind'] ?? '') === 'team') {
                 $node['rank_preference'] = $preferenceService->choices(collect([$node['fixture']]), $roundSetup['rank_venue_preferences'], $crossBandPolicy)[$node['fixture']->id] ?? null;
             }
@@ -714,7 +714,7 @@ final class EventVenueScheduleService
                 $stored = json_decode((string) ($draft->options ?? ''), true) ?: [];
                 $legacyRound = $stored['programme']['rounds'][0] ?? null;
                 $legacyDraw = $legacyRound ? Draw::where('event_id', $event->id)->find($legacyRound['draw_id'] ?? $legacyRound['drawId'] ?? 0) : null;
-                $legacyAge = $legacyDraw ? app(ScheduleProgramme::class)->age($legacyDraw) : null;
+                $legacyAge = $legacyDraw ? app(ScheduleProgramme::class)->key($legacyDraw) : null;
                 if ($legacyAge !== null && ! isset($stored['programme_settings'][(string) $legacyAge])) {
                     $stored['programme_settings'][(string) $legacyAge] = array_intersect_key($stored, array_flip([
                         'duration', 'player_rest', 'court_gap', 'gender_waves', 'gender_wave_release', 'reschedule_existing',
@@ -722,7 +722,7 @@ final class EventVenueScheduleService
                 }
                 $programme = $preview['input']['programme'];
                 $firstDraw = Draw::where('event_id', $event->id)->find($programme['rounds'][0]['drawId']);
-                $age = app(ScheduleProgramme::class)->age($firstDraw);
+                $age = app(ScheduleProgramme::class)->key($firstDraw);
                 $stored['programme'] = $programme;
                 $stored['programme_settings'][(string) $age] = array_intersect_key($options, array_flip([
                     'duration', 'player_rest', 'court_gap', 'gender_waves', 'gender_wave_release', 'reschedule_existing',
@@ -960,7 +960,7 @@ final class EventVenueScheduleService
         return ['count' => 1, 'message' => 'One match assignment was removed. Other scheduled matches were preserved.'];
     }
 
-    private function nodesForDraw(Draw $draw, Carbon $start, int $waveMinutes): array
+    private function nodesForDraw(Draw $draw, Carbon $start, int $waveMinutes, bool $programme = false): array
     {
         if ($draw->usesFlexibleMonrad()) {
             $matches = (array) app(FlexibleMonradService::class)->state($draw)['matches'];
@@ -978,6 +978,9 @@ final class EventVenueScheduleService
                     $match['sources']))), $participants[$key] ?? [], (bool) $match['automatic'], (bool) $match['sets'] || $fixture->fixtureResults->isNotEmpty() || (int) $fixture->match_status !== 0,
                     $sourceLabels);
             }
+            // Placement sections restart fixture round numbers; programme rounds follow graph depth.
+            foreach (array_keys($nodes) as $id) $nodes[$id]['venue_round'] = $this->wave($id, $nodes);
+            if ($programme) foreach (array_keys($nodes) as $id) $nodes[$id]['round'] = $nodes[$id]['venue_round'];
             return $nodes;
         }
 
@@ -1130,14 +1133,26 @@ final class EventVenueScheduleService
                 $nodes[$best['id']]['play_order'], $best['id']]) < 0;
     }
 
-    public function availableDrawRounds(Collection $draws): array
+    public function programmeFixtureRounds(Draw $draw): array
+    {
+        $draw->loadMissing('drawFixtures.fixtureResults');
+        return collect($this->nodesForDraw($draw, Carbon::now(), 90, true))->mapWithKeys(fn ($node, $id) => [$id => $node['round']])->all();
+    }
+
+    public function availableDrawRounds(Collection $draws, bool $programme = false): array
     {
         $teamIds = $draws->filter(fn ($draw) => $draw->isTeamDraw())->pluck('id');
         $individualIds = $draws->reject(fn ($draw) => $draw->isTeamDraw())->pluck('id');
         $rows = Fixture::whereIn('draw_id', $individualIds)->select('draw_id', 'round')->distinct()->get()
             ->concat(TeamFixture::whereIn('draw_id', $teamIds)->selectRaw('draw_id, round_nr as round')->distinct()->get());
-        return $rows->groupBy('draw_id')->map(fn ($rounds) => $rounds->pluck('round')->map(fn ($round) => max(1, (int) $round))
+        $available = $rows->groupBy('draw_id')->map(fn ($rounds) => $rounds->pluck('round')->map(fn ($round) => max(1, (int) $round))
             ->unique()->sort()->values()->all())->all();
+        foreach ($draws->filter(fn ($draw) => $programme && $draw->usesFlexibleMonrad()) as $draw) {
+            $draw->loadMissing('drawFixtures.fixtureResults');
+            $available[$draw->id] = collect($this->nodesForDraw($draw, Carbon::now(), 90, true))
+                ->pluck('round')->unique()->sort()->values()->all();
+        }
+        return $available;
     }
 
     public function normalizeDrawRounds(Collection $draws, array $rows): array
@@ -1190,7 +1205,7 @@ final class EventVenueScheduleService
                 default => null,
             };
         }
-        $name = strtolower((string) $draw->drawName);
+        $name = strtolower((string) ($draw->categoryEvent?->category?->name ?: $draw->drawName));
         if (preg_match('/\bmixed\b/', $name)) return null;
         if (preg_match('/\b(girls?|female|women)\b/', $name)) return 'girls';
         return preg_match('/\b(boys?|male|men)\b/', $name) ? 'boys' : null;

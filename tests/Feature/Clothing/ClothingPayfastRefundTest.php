@@ -32,8 +32,7 @@ class ClothingPayfastRefundTest extends TestCase
         [$admin, , $event, $order] = $this->fixture();
         $input = ['request_token' => (string) str()->uuid(), 'mode' => 'amount', 'item_id' => $order->items->first()->id,
             'amount' => '10.01', 'method' => 'payfast', 'reason' => 'Returned clothing'];
-        $this->actingAs($admin)->post(route('backend.clothing.refunds.review', [$event, $order]), $input)->assertSessionHasNoErrors();
-        $page = $this->get(route('backend.clothing.refunds.review.show', [$event, $order]))->assertOk();
+        $page = $this->actingAs($admin)->post(route('backend.clothing.refunds.review', [$event, $order]), $input)->assertOk()->assertSessionHasNoErrors();
         $token = $page->viewData('reviewToken');
         $bank = ['account_holder' => 'QA Payer', 'bank_name' => 'FNB', 'branch_code' => '250655', 'account_number' => 'invalid', 'account_type' => 'current', 'original_payer' => 1];
         $response = $this->post(route('backend.clothing.refunds.store', [$event, $order]), ['review_token' => $token, 'bank_details' => $bank])

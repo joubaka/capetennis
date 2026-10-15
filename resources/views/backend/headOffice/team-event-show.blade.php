@@ -125,6 +125,7 @@
   @endcan
   @can('team-draw.createFormat', $event)
   <a class="btn btn-outline-primary" href="{{ route('backend.team-rules.edit', $event) }}">Event scoring rules</a>
+  <a class="btn btn-outline-primary" href="{{ route('team-draw.competition.setup', $event) }}">Round robin and placement playoffs</a>
   @endcan
   <button class="btn btn-primary" id="createNewDrawBtn" data-bs-toggle="modal" data-bs-target="#createDrawModal">
       <i class="ti ti-plus me-1"></i> Create New Draw

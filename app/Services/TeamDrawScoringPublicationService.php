@@ -22,7 +22,7 @@ final class TeamDrawScoringPublicationService
 
         return [
             'canonical' => $canonical,
-            'ready' => $canonical ? $total > 0 && $pending === 0 && ! $orphaned : $draw->fixtures()->exists(),
+            'ready' => !($draw->team_scoring_rules['undecided'] ?? false) && ($canonical ? $total > 0 && $pending === 0 && ! $orphaned : $draw->fixtures()->exists()),
             'pending' => $pending,
             'total' => $total,
         ];
@@ -30,6 +30,7 @@ final class TeamDrawScoringPublicationService
 
     public function enableLocked(Draw $draw): array
     {
+        if ($draw->team_scoring_rules['undecided'] ?? false) throw new \RuntimeException('Scoring is to be decided. Confirm the phase scoring rules first.');
         $ties = $draw->teamTies()->orderBy('id')->lockForUpdate()->get();
         if ($ties->isEmpty()) {
             if ($draw->team_format_snapshot !== null || $draw->team_scoring_rules !== null) {

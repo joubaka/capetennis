@@ -125,17 +125,22 @@ class TeamDrawSideResolver
         return $entry ? $entry['name'] : $team->name;
     }
 
-    public function assertMixedSources(Draw $draw, int $teamId, array $profiles, array $imported): void
+    public function assertMixedSources(Draw $draw, int $teamId, array $profiles, array $imported, string $gender = 'mixed'): void
     {
         $entry = $draw->team_draw_selection['mixed_sides'][$teamId] ?? null;
         if (!$entry) return;
         $counts = [];
-        foreach (['boys', 'girls'] as $gender) {
-            $source = Team::findOrFail($entry[$gender]);
+        foreach (['boys', 'girls'] as $sourceGender) {
+            $source = Team::findOrFail($entry[$sourceGender]);
             $history = $source->competitionSubstitutions->pluck('details');
             $sourceProfiles = array_merge($source->team_players->pluck('player_id')->all(), $history->where('new_type', 'profile')->pluck('new_identity_id')->all());
             $sourceImported = array_merge($source->team_players_no_profile->pluck('id')->all(), $history->where('new_type', 'imported')->pluck('new_identity_id')->all());
-            $counts[$gender] = count(array_intersect($profiles, $sourceProfiles)) + count(array_intersect($imported, $sourceImported));
+            $counts[$sourceGender] = count(array_intersect($profiles, $sourceProfiles)) + count(array_intersect($imported, $sourceImported));
+        }
+        if ($gender !== 'mixed') {
+            $expected = $gender === 'male' ? 'boys' : 'girls';
+            if ($counts[$expected] !== count($profiles) + count($imported)) throw new \InvalidArgumentException('Players must belong to the correct boys or girls source roster.');
+            return;
         }
         if ($counts['boys'] !== 1 || $counts['girls'] !== 1 || count($profiles) + count($imported) !== 2) {
             throw new \InvalidArgumentException('A mixed pair must contain exactly one player from each selected boys and girls source roster.');

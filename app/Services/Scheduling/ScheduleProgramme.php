@@ -8,10 +8,21 @@ use Illuminate\Support\Collection;
 /** A complete round-to-day programme, evaluated against one shared calendar. */
 final class ScheduleProgramme
 {
+    public function supports(\App\Models\Draw $draw): bool
+    {
+        return $draw->isTeamDraw() || ($draw->usesFlexibleMonrad() && in_array($draw->settings?->workflow, ['monrad', 'custom_monrad'], true));
+    }
+
+    public function key(\App\Models\Draw $draw): ?string
+    {
+        $age = $this->age($draw);
+        return $age === null ? null : ($draw->usesFlexibleMonrad() && ! $draw->isTeamDraw() ? 'monrad:'.$age : (string) $age);
+    }
+
     public function age(\App\Models\Draw $draw): ?int
     {
         $ids = $draw->team_draw_selection['category_ids'] ?? [];
-        $names = $ids ? \App\Models\CategoryEvent::with('category')->where('event_id', $draw->event_id)->whereIn('id', $ids)->get()->map(fn ($row) => $row->category?->name) : collect([$draw->drawName]);
+        $names = $ids ? \App\Models\CategoryEvent::with('category')->where('event_id', $draw->event_id)->whereIn('id', $ids)->get()->map(fn ($row) => $row->category?->name) : collect([preg_match('/^(?:u\s*\/?\s*|under\s+)(\d+)\b/i', trim((string) $draw->drawName)) ? $draw->drawName : ($draw->categoryEvent?->category?->name ?: $draw->drawName)]);
         $ages = $names->map(fn ($name) => preg_match('/^(?:u\s*\/?\s*|under\s+)(\d+)\b/i', trim((string) $name), $matches) ? (int) $matches[1] : null)->unique();
         return $ages->count() === 1 ? $ages->first() : null;
     }

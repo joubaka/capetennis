@@ -27,6 +27,7 @@ final class TeamDrawMutationGuard
 
     public function destructive(Draw $draw): void
     {
+        abort_if(isset($draw->team_draw_selection['competition']), 409, 'A placement competition retains its phase pairings and qualification history.');
         abort_if(\App\Models\TeamSubstitution::where('event_id', $draw->event_id)->exists(), 409,
             'This event has substitution history. Preserve its fixture identities; use targeted fixture scheduling or a new draw instead of destructive regeneration.');
         $this->schedule($draw);

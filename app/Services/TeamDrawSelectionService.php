@@ -28,7 +28,7 @@ class TeamDrawSelectionService
         return null;
     }
 
-    public function plan(Event $event, array $item): array
+    public function plan(Event $event, array $item, bool $useDefaultFormat = true): array
     {
         $type = DrawType::where('type', 'team')->findOrFail($item['draw_type_id']);
         $code = $this->code($type);
@@ -64,7 +64,7 @@ class TeamDrawSelectionService
             $teams = $complete;
         }
         $format = !empty($item['format_id']) ? TeamEventFormat::forEvent($event->id)->with('rubbers')->findOrFail($item['format_id'])
-            : TeamEventFormat::where('event_id', $event->id)->where('is_default', true)->with('rubbers')->first();
+            : ($useDefaultFormat ? TeamEventFormat::where('event_id', $event->id)->where('is_default', true)->with('rubbers')->first() : null);
         if ($format) {
             $snapshot = $format->toArray();
             $snapshot['rubbers'] = $format->rubbers->where('rubber_code', $code)->values()->map->toArray()->all();

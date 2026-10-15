@@ -39,8 +39,7 @@ class ClothingRefundTest extends TestCase
     private function reviewSelection(Event $event, ClothingOrder $order, array $input)
     {
         $response = $this->post(route('backend.clothing.refunds.review', [$event, $order]), $input);
-        $response->assertRedirect(route('backend.clothing.refunds.review.show', [$event, $order]))->assertSessionHasNoErrors();
-        return $this->get(route('backend.clothing.refunds.review.show', [$event, $order]))->assertOk();
+        return $response->assertOk()->assertSessionHasNoErrors();
     }
 
     private function exportRefundQa(string $name, string $html): void

@@ -115,22 +115,18 @@ class ClothingRefundController extends Controller
             throw \Illuminate\Validation\ValidationException::withMessages(['late_refund_note' => 'Explain the late refund and the clothing payout adjustment to reconcile.']);
         }
         $reviewToken = $reviews->token($event, $order, $request->user(), $validated, $quote);
-        $request->session()->put('clothing_refund_review.'.$event->id.'.'.$order->id, $reviewToken);
-        return redirect()->route('backend.clothing.refunds.review.show', [$event, $order]);
+        // Render the read-only review in this response. Background audit requests
+        // can save an older session payload; the financial intent must not depend
+        // on a token surviving a separate session write and redirect.
+        $order->load('user');
+        return response()->view('backend.clothing.refund-review', compact('event', 'order', 'quote', 'validated', 'reviewToken'))
+            ->header('Cache-Control', 'private, no-store');
     }
 
-    public function reviewPage(Request $request, Event $event, ClothingOrder $order, \App\Services\Clothing\ClothingRefundReviewService $reviews)
+    public function reviewPage(Request $request, Event $event, ClothingOrder $order)
     {
         app(ClothingRefundService::class)->authorizeOrder($event, $order, $request->user());
-        $request->headers->set('referer', route('backend.clothing.refunds.show', [$event, $order]));
-        $reviewToken = $request->session()->get('clothing_refund_review.'.$event->id.'.'.$order->id, '');
-        $validated = $reviews->resolve($reviewToken, $event, $order, $request->user());
-        $quote = $reviews->quote($order, $validated);
-        if (! hash_equals($validated['_review_snapshot'], $quote['snapshot'])) {
-            return redirect()->route('backend.clothing.refunds.show', [$event, $order])->withErrors(['refund' => 'This order changed after review. Select the items and review the current amounts again.']);
-        }
-        $order->load('user');
-        return view('backend.clothing.refund-review', compact('event', 'order', 'quote', 'validated', 'reviewToken'));
+        return redirect()->route('backend.clothing.refunds.show', [$event, $order]);
     }
 
     public function retry(Request $request, Event $event, ClothingOrder $order, ClothingRefund $refund, ClothingRefundService $refunds)

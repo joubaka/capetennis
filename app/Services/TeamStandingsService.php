@@ -59,6 +59,7 @@ final class TeamStandingsService
 
     public function forDraw(Draw $draw, bool $publishedOnly = false, ?array $teamIds = null): array
     {
+        if ($draw->team_scoring_rules['undecided'] ?? false) return [];
         $rows = [];
         $rules = app(TeamEventRulesService::class)->forDraw($draw);
         $results = app(TeamRubberResultService::class);

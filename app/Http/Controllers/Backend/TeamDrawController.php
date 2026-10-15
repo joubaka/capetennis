@@ -585,6 +585,7 @@ class TeamDrawController extends Controller
                 if ($current->status !== TeamTie::STATUS_VALIDATED) {
                     throw new \InvalidArgumentException("Tie #{$tie->id} must be validated before publishing.");
                 }
+                abort_if($draw->team_scoring_rules['undecided'] ?? false, 409, 'Scoring is to be decided. Confirm scoring before publishing ties.');
                 // Assignments can change after validation; check again at publication.
                 $this->validator->assertTieComplete($current);
                 $current->update(['status' => TeamTie::STATUS_PUBLISHED, 'published_at' => now()]);

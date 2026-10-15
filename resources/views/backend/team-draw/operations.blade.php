@@ -10,6 +10,42 @@
       <a class="btn btn-outline-primary" href="{{ route('backend.team-draw.standings', $draw) }}">Standings</a>
     </div>
   </div>
+  @if(isset($draw->team_draw_selection['competition']))
+    @php($competition = $draw->team_draw_selection['competition'])
+    <div class="card card-body mb-3">
+      <h2 class="h5">{{ ($competition['phase'] ?? '') === 'playoff' ? 'Placement playoffs' : 'One round-robin group' }}</h2>
+      @if($draw->team_scoring_rules['undecided'] ?? false)
+        <p>Scoring: <strong>To be decided.</strong> Scheduling and lineup review are available. Confirm scoring before publishing ties or entering results.</p>
+      @else<p>Scoring has been confirmed for this phase.</p>@endif
+      @can('team-draw.updateTeamDraw', $draw)
+        @if(!$draw->published && !$draw->locked && !$draw->teamTies()->whereNotNull('published_at')->exists())
+          <a class="btn btn-outline-primary align-self-start" href="{{ route('team-draw.competition.scoring', $draw) }}">Review and confirm scoring</a>
+        @endif
+      @endcan
+      @if(($competition['phase'] ?? '') === 'round_robin')
+        <p class="mt-3">Complete every encounter and resolve tied standings before qualifying teams. Playoff qualification freezes these round-robin results.</p>
+        @if(!empty($competition['playoff_draw_id']))
+          <a href="{{ route('backend.team-draw.operations', $competition['playoff_draw_id']) }}">Open placement playoffs</a>
+        @else
+          @can('team-draw.createFormat', $draw->event)
+            <form method="POST" action="{{ route('team-draw.competition.playoffs', $draw) }}">@csrf<button class="btn btn-primary" @disabled($draw->team_scoring_rules['undecided'] ?? false)>Create 1st/2nd and 3rd/4th playoffs</button></form>
+          @endcan
+        @endif
+      @else
+        <a href="{{ route('backend.team-draw.standings', $competition['source_draw_id']) }}">Round-robin standings</a>
+        <p class="mt-2">Tie 1 decides places 1 and 2. Tie 2 decides places 3 and 4. A level match total remains unresolved and must be reviewed by the organiser.</p>
+        @foreach($ties as $placementTie)
+          @php($outcome = app(\App\Services\TeamStandingsService::class)->tieOutcome($placementTie))
+          <p>{{ $placementTie->tie_nr === 1 ? '1st / 2nd' : '3rd / 4th' }}:
+            @if($outcome['complete'] && $outcome['winner_team_id'])
+              {{ $outcome['winner_team_id'] === $placementTie->home_team_id ? $placementTie->home_side_name : $placementTie->away_side_name }} wins ({{ $outcome['home'] }}–{{ $outcome['away'] }})
+            @else Awaiting a decisive result @endif
+          </p>
+        @endforeach
+      @endif
+    </div>
+  @endif
+  @if($errors->any())<div class="alert alert-danger"><ul>@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
   <p><strong>1. Review players → 2. Validate tie → 3. Publish tie.</strong></p>
   <p>Review the players for each rubber, validate the complete tie, then publish it before entering scores. Draw publication controls public visibility separately.</p>
   @if($draw->locked || $draw->published)<div class="alert alert-info">This draw is protected. Tie validation and publication changes are unavailable.</div>@endif

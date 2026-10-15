@@ -14,10 +14,8 @@ trait ReviewsClothingRefunds
         $key = hash('sha256', $uri.json_encode($selection));
         if (! isset($this->clothingReviewTokens[$key])) {
             $response = $this->post($uri.'/review', $selection);
-            if ($response->headers->get('Location') !== $uri.'/review') return $response;
-            $page = $this->get($uri.'/review');
-            if ($page->status() !== 200) return $page;
-            $this->clothingReviewTokens[$key] = $page->viewData('reviewToken');
+            if ($response->status() !== 200) return $response;
+            $this->clothingReviewTokens[$key] = $response->viewData('reviewToken');
         }
         $confirm = ['review_token' => $this->clothingReviewTokens[$key]];
         if (isset($input['bank_details'])) $confirm['bank_details'] = $input['bank_details'];
