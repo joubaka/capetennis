@@ -7,6 +7,24 @@
   const submit = document.getElementById('competition-submit');
   const message = document.getElementById('competition-message');
   let group = null;
+  let step = 2;
+  let pending = false;
+  const next = root.querySelector('[data-competition-next]');
+  const back = root.querySelector('[data-competition-back]');
+  function showStep(value) {
+    step = value;
+    root.querySelectorAll('[data-competition-panel]').forEach(panel => { panel.hidden = Number(panel.dataset.competitionPanel) !== step; });
+    root.querySelector('[data-competition-step]').textContent = `Step ${step} of 6 · ${['Participants', 'Competition format', 'Match setup'][step - 2]}`;
+    next.hidden = step === 4;
+    back.hidden = step === 2;
+    submit.hidden = step !== 4;
+    groupSelect.required = step === 2;
+  }
+  next.addEventListener('click', () => {
+    if (!group?.round_robin.length) { message.textContent = 'Choose an age group with compatible configured teams.'; return; }
+    message.textContent = ''; showStep(Math.min(4, step + 1));
+  });
+  back.addEventListener('click', () => { if (!pending) showStep(Math.max(2, step - 1)); });
   function element(tag, attributes = {}, text = '') {
     const node = document.createElement(tag);
     Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, value));
@@ -70,15 +88,17 @@
     root.querySelectorAll('[data-phase]').forEach(list => { list.replaceChildren(); (group?.[list.dataset.phase] || []).forEach(data => add(list.dataset.phase, data)); });
     const summary = document.getElementById('competition-team-summary'); summary.replaceChildren();
     if (group) {
+      root.querySelector('[data-competition-selected-summary]').textContent = `${group.label} · ${group.teams.map(team => team.name).join(', ')}`;
       summary.append(element('p', {}, `Configured players per gender team: ${group.size || 'sizes differ'}.`));
       const list = element('ul'); group.teams.forEach(team => list.append(element('li', {}, `${team.name}: ${team.size} players`))); summary.append(list);
       if (!group.round_robin.length) message.textContent = 'Use equal, even configured team sizes between 2 and 12 before creating this group.';
-    }
+    } else root.querySelector('[data-competition-selected-summary]').textContent = '';
     submit.disabled = !group?.round_robin.length; counts();
   });
   root.querySelectorAll('[data-add]').forEach(button => button.addEventListener('click', () => { if (group) add(button.dataset.add); }));
   document.getElementById('competition-form').addEventListener('submit', async event => {
-    event.preventDefault(); if (!group || submit.disabled) return;
+    event.preventDefault(); if (!group || submit.disabled || pending) return;
+    if (step !== 4) { next.click(); return; }
     const input = { category_ids: group.category_ids };
     root.querySelectorAll('[data-phase]').forEach(list => {
       input[list.dataset.phase] = Array.from(list.children).map(card => {
@@ -87,12 +107,18 @@
         return row;
       });
     });
-    submit.disabled = true; message.textContent = 'Creating competition…';
+    pending = true; submit.disabled = true; back.disabled = true; message.textContent = 'Creating competition…';
     try {
       const response = await fetch(root.dataset.url, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': root.querySelector('[name="_token"]').value }, body: JSON.stringify(input) });
       const result = await response.json();
       if (!response.ok) throw new Error(Object.values(result.errors || {}).flat().join(' ') || result.message || 'Unable to create competition.');
       window.location.assign(result.url);
-    } catch (error) { message.textContent = error.message; submit.disabled = false; }
+    } catch (error) { message.textContent = error.message; submit.disabled = false; back.disabled = false; pending = false; }
   });
+  const selected = new URLSearchParams(window.location.search);
+  if (selected.has('group') && groups[selected.get('group')]) {
+    groupSelect.value = selected.get('group');
+    groupSelect.dispatchEvent(new Event('change'));
+    showStep(selected.get('step') === '4' && group?.round_robin.length ? 4 : 2);
+  } else showStep(2);
 })();

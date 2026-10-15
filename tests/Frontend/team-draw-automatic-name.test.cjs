@@ -3,12 +3,14 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-function dialog(initialMode = 'team', guided = false, ajax = false) {
+function dialog(initialMode = 'team', guided = false, ajax = false, regional = false) {
   const state = { mode: '', type: null, choices: {}, manual: [], bulkTypes: [], bulkCategories: [] };
   const name = { id: 'drawName', value: '', required: false };
   const bulk = { checked: false };
   const manual = { checked: false };
   const individualManual = { checked: false };
+  const scope = {value:'category', addEventListener(_, callback) {this.change=callback;}};
+  const age = {value:''};
   const handlers = [];
   const formHandlers = {};
   const classes = {};
@@ -42,7 +44,7 @@ function dialog(initialMode = 'team', guided = false, ajax = false) {
     addEventListener(event, handler) { formHandlers[event] = handler; },
     reset() { state.mode = ''; state.type = null; state.choices = {}; state.manual = []; }
   };
-  const document = { querySelector() { return null; }, getElementById(id) { return { createDrawForm: form, drawName: name, bulkTeamDraws: bulk, manualTeamCategories: manual, manualIndividualCategories: individualManual, previewTeamDrawButton: previewButton }[id] || {}; } };
+  const document = { querySelector() { return null; }, getElementById(id) { if(regional && id==='team-participant-scope')return scope;if(regional && id==='regional-age-group')return age;return { createDrawForm: form, drawName: name, bulkTeamDraws: bulk, manualTeamCategories: manual, manualIndividualCategories: individualManual, previewTeamDrawButton: previewButton }[id] || {}; } };
   function $(selector) {
     const chain = {
       on(event, target, handler) { handlers.push({ event, selector: typeof target === 'string' ? target : selector, handler: handler || target }); return chain; },
@@ -68,7 +70,7 @@ function dialog(initialMode = 'team', guided = false, ajax = false) {
     const chain = { done(handler) { handlers.done = handler; return chain; }, fail(handler) { handlers.fail = handler; return chain; }, always(handler) { handlers.always = handler; return chain; } };
     return chain;
   };
-  const window = { HeadOffice: { individualDrawTypeId: 88, createUrl: '/team', individualCreateUrl: '/individual' }, jQuery: $,
+  const window = { HeadOffice: { individualDrawTypeId: 88, createUrl: '/team', individualCreateUrl: '/individual', competitionSetupUrl:'/regional' }, jQuery: $,
     location: { reload() { navigation.push('reload'); }, assign(url) { navigation.push(url); } },
     toastr: { error(message) { errors.push(message); } },
     setTimeout(callback) { callback(); }, setInterval(callback) { timers.set(++timerId, callback); return timerId; }, clearInterval(id) { timers.delete(id); } };
@@ -80,7 +82,7 @@ function dialog(initialMode = 'team', guided = false, ajax = false) {
       .forEach(h => h.handler.call(field === 'draw_mode' ? { value: state.mode } : {}));
   }
   state.mode = initialMode; change('draw_mode');
-  return { state, name, bulk, manual, individualManual, classes, values, attributes, requests, timers, navigation, errors, submitButton, change, guide, modalCalls,
+  return { state, name, bulk, manual, individualManual, scope, age, classes, values, attributes, requests, timers, navigation, errors, submitButton, change, guide, modalCalls,
     tick() { [...timers.values()].forEach(callback => callback()); },
     submit() { formHandlers.submit({ preventDefault() {}, stopImmediatePropagation() {} }); },
     hide() { let prevented = false; handlers.find(h => h.event === 'hide.bs.modal').handler({ preventDefault() { prevented = true; } }); return prevented; }, close() { handlers.find(h => h.event === 'hidden.bs.modal').handler(); }, customize(value) { name.value = value; formHandlers.input({ target: name }); } };
@@ -277,9 +279,23 @@ test('guided team create starts with competition only and Continue reveals selec
   assert.equal(ui.guide.continue.hidden,false);
   ui.guide.continue.click();
   assert.equal(ui.guide.details.hidden,false);
+  assert.equal(ui.submitButton.hidden,true);
+  assert.equal(ui.guide.continue.hidden,false);
+  assert.equal(ui.requests.length,0);
+  assert.match(ui.guide.status.textContent,/Participants/);
+  ui.guide.continue.click();
+  assert.match(ui.errors[0], /participating categories/);
+  assert.match(ui.guide.status.textContent,/Participants/);
+  ui.state.choices.category_choice = {value:'201', dataset:{age:'u/13 Boys',pivotId:'201'}};
+  ui.guide.continue.click();
+  assert.match(ui.guide.status.textContent,/Competition format/);
+  ui.submit();
+  assert.match(ui.guide.status.textContent,/Match setup/);
   assert.equal(ui.submitButton.hidden,false);
   assert.equal(ui.guide.continue.hidden,true);
-  assert.equal(ui.requests.length,0);
+  assert.equal(ui.requests.length,0,'Enter advances the guide without an early create');
+  ui.guide.back.click();
+  ui.guide.back.click();
   ui.guide.back.click();
   assert.equal(ui.guide.details.hidden,true);
   ui.submit();
@@ -293,6 +309,38 @@ test('created individual opens authorized Ajax guide while canonical format fall
     ui.requests[0].resolve({success:true,setup_url:guide?'/guide':'/format',guide_url:guide?'/guide':null});
     if(guide){assert.deepEqual(ui.navigation,[]);assert.deepEqual(ui.modalCalls[1],['open','/guide']);assert.equal(ui.submitButton.disabled,false);}else{assert.deepEqual(ui.navigation,['/format']);assert.equal(ui.modalCalls.length,0);}
   }
+});
+
+test('guided category team creates only after format and match setup with its selected category and generated name', () => {
+  const ui = dialog('team', true);
+  ui.guide.continue.click();
+  ui.state.choices.category_choice = { value: '201', dataset: { age: 'u/13 Boys', pivotId: '201' } };
+  ui.change('category_choice');
+  ui.guide.continue.click();
+  assert.equal(ui.requests.length, 0);
+  ui.guide.continue.click();
+  ui.state.type = { id: 'singles', value: '19', dataset: { code: 'singles' } };
+  ui.change('draw_type_id');
+  ui.submit();
+  assert.equal(ui.requests.length, 1);
+  assert.equal(ui.requests[0].payload.drawName, 'u/13 Boys – Singles');
+  assert.deepEqual(Array.from(ui.requests[0].payload.category_ids), ['201']);
+  assert.equal(ui.requests[0].payload.guided_setup, 1);
+});
+
+test('guided regional competition requires an age group and transfers it into match setup after format review', () => {
+  const ui = dialog('team', true, false, true);
+  ui.guide.continue.click();
+  ui.scope.value = 'regional'; ui.scope.change();
+  ui.guide.continue.click();
+  assert.match(ui.errors[0], /age group/);
+  assert.match(ui.guide.status.textContent, /Participants/);
+  ui.age.value = '0';
+  ui.guide.continue.click();
+  assert.match(ui.guide.status.textContent, /Competition format/);
+  ui.guide.continue.click();
+  assert.deepEqual(ui.navigation, ['/regional?group=0&step=4']);
+  assert.equal(ui.requests.length, 0, 'Review and configure matches before creating anything');
 });
 test('created team batch opens in-page draw choices without navigating',()=>{
   const ui=dialog('team',false,true);ui.state.type={id:'singles',value:'19',dataset:{code:'singles'}};ui.state.choices.category_choice={value:'201',dataset:{age:'u/13 Boys',pivotId:'201'}};ui.change('category_choice');ui.submit();

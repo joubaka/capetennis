@@ -12,6 +12,11 @@ final class DrawSetupGuide
     public function state(Draw $draw): array
     {
         $team = $draw->isTeamDraw();
+        $competition = $draw->team_draw_selection['competition'] ?? null;
+        $linkedPlayoff = $competition && !empty($competition['playoff_draw_id'])
+            ? Draw::where('event_id', $draw->event_id)->find($competition['playoff_draw_id']) : null;
+        $sourceDraw = $competition && !empty($competition['source_draw_id'])
+            ? Draw::where('event_id', $draw->event_id)->find($competition['source_draw_id']) : null;
         $workspace = $team ? ($draw->team_format_snapshot !== null ? route('backend.team-draw.operations', $draw) : route('draws.manage', $draw)) : route('backend.draw.roundrobin.show', $draw);
         $participants = $team ? $draw->teams_in_draw()->count() : $draw->registrations()->reorder()->count();
         $category = $draw->categoryEvent()->where('event_id', $draw->event_id)->exists();
@@ -26,7 +31,6 @@ final class DrawSetupGuide
                 try { app(\App\Services\TeamTieValidationService::class)->assertTieComplete($tie); }
                 catch (\InvalidArgumentException $exception) { $warnings[] = 'Review team lineups: '.$exception->getMessage(); break; }
             }
-            if ($draw->team_scoring_rules['undecided'] ?? false) $warnings[] = 'Confirm the team scoring rules before publication.';
         } elseif ($draw->usesFlexibleMonrad()) {
             try { $state = app(FlexibleMonradService::class)->state($draw); }
             catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $exception) {
@@ -52,14 +56,24 @@ final class DrawSetupGuide
         $snapshotCurrent = $scheduleComplete && $this->snapshotCurrent($draw);
         $steps = [
             ['label' => 'Competition', 'complete' => true, 'detail' => $team ? 'Team tie' : 'Individual singles', 'url' => route('headOffice.show', $draw->event_id)],
-            ['label' => 'Players / category', 'complete' => $category || $eventWide || (!$team && ($participants > 0 || $generated)), 'detail' => $category ? ($draw->categoryEvent?->category?->name ?? 'Category selected') : ($eventWide ? 'Players from multiple event categories.' : 'Choose the players or category for this draw.'), 'url' => $team ? route('draws.manage', $draw) : $workspace.'#groups'],
-            ['label' => 'Format', 'complete' => $format, 'detail' => $team ? 'Use the saved team tie format.' : (\App\Http\Controllers\Backend\DrawSetupController::OPTIONS[$draw->settings?->workflow][0] ?? ($format ? 'Existing draw format. Review it in the workspace.' : 'Choose how this draw will run.')), 'url' => $team ? route('draws.manage', $draw) : route('draw.setup.show', $draw)],
-            ['label' => 'Draw setup', 'complete' => $generated && !$warnings, 'detail' => $generated ? $playable->count().' playable matches generated. Review pairings and positions.' : ($team ? 'Review the selected teams and create their ties.' : 'Place players and generate the draw. Monrad supports 8, 16 or 32 positions.'), 'url' => $workspace],
-            ['label' => 'Schedule', 'complete' => $scheduleComplete, 'detail' => $scheduled.' / '.$playable->count().' playable matches have a time, venue and court.', 'url' => route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]])],
+            ['label' => 'Participants', 'complete' => $category || $eventWide || (!$team && ($participants > 0 || $generated)), 'detail' => $category ? ($draw->categoryEvent?->category?->name ?? 'Category selected') : ($eventWide ? 'Players from multiple event categories.' : 'Choose the players or category for this draw.'), 'url' => $team ? route('draws.manage', $draw) : $workspace.'#groups'],
+            ['label' => 'Competition format', 'complete' => $format, 'detail' => $team ? 'Use the saved team tie format.' : (\App\Http\Controllers\Backend\DrawSetupController::OPTIONS[$draw->settings?->workflow][0] ?? ($format ? 'Existing draw format. Review it in the workspace.' : 'Choose how this draw will run.')), 'url' => $team ? route('draws.manage', $draw) : route('draw.setup.show', $draw)],
+            ['label' => 'Match setup', 'complete' => $generated && !$warnings, 'detail' => $generated ? $playable->count().' playable matches generated. Review pairings and positions.' : ($team ? 'Review the selected teams and create their ties.' : 'Place players and generate the draw. Monrad supports 8, 16 or 32 positions.'), 'url' => $workspace],
+            ['label' => 'Programme & schedule', 'complete' => $scheduleComplete, 'detail' => $scheduled.' / '.$playable->count().' playable matches have a time, venue and court.', 'url' => route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]])],
             ['label' => 'Review & publish', 'complete' => $generated && $scheduleComplete && $snapshotCurrent && !$warnings && $draw->published && $draw->oop_published, 'detail' => $draw->oop_published && !$snapshotCurrent ? 'Saved match times differ from the published schedule. Review and publish the updates explicitly.' : 'Review the draw and match times, then publish each explicitly.', 'url' => $workspace],
         ];
+        if ($competition) {
+            $steps[1]['detail'] = $competition['group'].' · combined boys and girls regional sides.';
+            $steps[2]['detail'] = ($competition['phase'] ?? null) === 'playoff' ? 'Placement playoffs from confirmed group standings.' : 'One round-robin group followed by 1st/2nd and 3rd/4th playoffs.';
+            $steps[3]['detail'] .= ' Group and playoff match formats are saved separately.';
+            $steps[4]['detail'] .= ($competition['phase'] ?? null) === 'round_robin' && !$linkedPlayoff ? ' This schedules the group phase. Playoff matches become available after confirmed qualification.' : '';
+        }
+        if ($draw->team_scoring_rules['undecided'] ?? false) {
+            $warnings[] = 'Confirm the team scoring rules before publication. You can set up the programme and schedule first.';
+            $steps[5]['complete'] = false;
+        }
         $next = collect($steps)->search(fn ($step) => !$step['complete']);
-        return compact('steps', 'warnings', 'team', 'participants', 'generated', 'scheduleComplete', 'workspace') + ['next' => $next === false ? 5 : $next];
+        return compact('steps', 'warnings', 'team', 'participants', 'generated', 'scheduleComplete', 'workspace', 'competition', 'linkedPlayoff', 'sourceDraw') + ['next' => $next === false ? 5 : $next];
     }
 
     private function snapshotCurrent(Draw $draw): bool

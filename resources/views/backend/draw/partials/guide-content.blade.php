@@ -5,6 +5,27 @@
   @if($errors->any())<div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>@endif
   @if($draw->locked)<div class="alert alert-warning">This draw is locked. Review is available; use the existing workspace controls before changing protected setup.</div>@endif
   @foreach($guide['warnings'] as $warning)<div class="alert alert-warning">{{ $warning }}</div>@endforeach
+  @if($guide['competition'])
+    <section class="card card-body mb-3">
+      <h2 class="h5">Competition phases</h2>
+      @if($guide['sourceDraw'])
+        <p>The round-robin results determined these playoff pairings.</p>
+        <a class="btn btn-outline-primary align-self-start" href="{{ route('draw.guide.show', [$event, $guide['sourceDraw']]) }}">Review round-robin phase</a>
+      @elseif($guide['linkedPlayoff'])
+        <p>Round-robin and playoff setup have separate schedules and publication reviews.</p>
+        <a class="btn btn-primary align-self-start" href="{{ route('draw.guide.show', [$event, $guide['linkedPlayoff']]) }}">Continue playoff programme &amp; schedule</a>
+      @else
+        <p>Current phase: round robin. Playoff pairings and times remain pending until every group encounter is complete and standings are resolved. Completing this phase's setup does not complete playoff setup.</p>
+        @can('team-draw.createFormat', $event)
+          <a class="btn btn-outline-primary align-self-start mb-2" href="{{ route('backend.team-draw.standings', $draw) }}">Review qualifiers</a>
+          <form method="POST" action="{{ route('team-draw.competition.playoffs', $draw) }}">@csrf<button class="btn btn-outline-primary" @disabled($draw->locked || ($draw->team_scoring_rules['undecided'] ?? false))>Confirm qualifiers &amp; create playoffs</button></form>
+        @endcan
+      @endif
+      @if($draw->team_scoring_rules['undecided'] ?? false)
+        <a class="btn btn-outline-primary align-self-start mt-3" href="{{ route('team-draw.competition.scoring', $draw) }}">Confirm scoring before publication</a>
+      @endif
+    </section>
+  @endif
   <ol class="list-unstyled d-flex flex-wrap gap-2 mb-4" aria-label="Draw setup progress">
     @foreach($guide['steps'] as $index => $step)
       <li class="border rounded px-3 py-2 {{ $index === $guide['next'] ? 'border-primary' : '' }}" @if($index === $guide['next']) aria-current="step" @endif>

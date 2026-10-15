@@ -23,7 +23,7 @@ final class TeamPlacementCompetitionController extends Controller
         $input = $request->validate(['category_ids' => 'required|array|min:2|max:10', 'category_ids.*' => 'required|integer|distinct',
             'round_robin' => 'required|array|min:1|max:100', 'playoff' => 'required|array|min:1|max:100']);
         $draw = $service->create($event, $input);
-        return response()->json(['url' => route('backend.team-draw.operations', $draw)]);
+        return response()->json(['url' => route('draw.guide.show', [$event, $draw])]);
     }
 
     public function scoring(Request $request, Draw $draw, TeamPlacementCompetitionService $service, TeamEventRulesService $rules)
@@ -33,7 +33,7 @@ final class TeamPlacementCompetitionController extends Controller
         if ($request->isMethod('get')) return view('backend.team-draw.competition-scoring', ['draw' => $draw,
             'rules' => $rules->forDraw($draw), 'orderOptions' => TeamEventRulesService::STANDINGS_ORDER]);
         $service->configureScoring($draw, $rules->validate($request));
-        return redirect()->route('backend.team-draw.operations', $draw)->with('success', 'Scoring confirmed for this phase.');
+        return redirect()->route('draw.guide.show', [$draw->event_id, $draw])->with('success', 'Scoring confirmed for this phase.');
     }
 
     public function playoffs(Draw $draw, TeamPlacementCompetitionService $service)
@@ -41,6 +41,6 @@ final class TeamPlacementCompetitionController extends Controller
         $this->authorize('team-draw.createFormat', $draw->event);
         abort_unless($draw->event->isTeam(), 404);
         $playoff = $service->playoffs($draw);
-        return redirect()->route('backend.team-draw.operations', $playoff);
+        return redirect()->route('draw.guide.show', [$playoff->event_id, $playoff]);
     }
 }

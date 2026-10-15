@@ -5,7 +5,7 @@
 @include('backend.draw.partials.guide-modal')
 @if(!empty($scope['draw_id']))
   @php($guideDraw = $event->draws()->find($scope['draw_id']))
-  @if($guideDraw)<a data-draw-guide-open class="btn btn-primary m-3" href="{{ route('draw.guide.show', [$event, $guideDraw]) }}">Continue draw setup</a>@endif
+  @if($guideDraw)<a data-draw-guide-open class="btn btn-primary m-3" href="{{ route('draw.guide.show', [$event, $guideDraw]) }}">Step 6 · Review setup &amp; publication</a>@endif
 @endif
 <div class="container-xxl py-3" data-saved-calendar>
   <div class="d-flex flex-wrap justify-content-between gap-3 mb-3"><div><h3 class="mb-1">Saved schedule</h3><p class="text-muted mb-0">{{ $event->name }} · Add batches across the weekend. Saved changes stay private until you publish them.</p></div><div class="d-flex flex-wrap gap-2 align-self-start"><a class="btn btn-outline-primary" href="{{ route('headOffice.show', $event) }}">Back to event dashboard</a>@if($date !== 'all' && !empty($scope['draw_id']))

@@ -58,8 +58,16 @@ class TeamPlacementCompetitionTest extends TestCase
             if (!is_dir($directory)) mkdir($directory, 0777, true);
             file_put_contents($directory.'/setup.html', str_replace(['http://localhost/', 'https://localhost/'], 'http://localhost/ct/public/', $setup->getContent()));
         }
-        $this->actingAs($this->admin)->postJson(route('team-draw.competition.store', $this->event), $input)->assertOk();
+        $response = $this->actingAs($this->admin)->postJson(route('team-draw.competition.store', $this->event), $input)->assertOk();
         $draw = Draw::firstOrFail();
+        $response->assertJsonPath('url', route('draw.guide.show', [$this->event, $draw]));
+        $guide = app(\App\Services\Draw\DrawSetupGuide::class)->state($draw->fresh());
+        $this->assertSame(4, $guide['next'], 'Undecided scoring must allow programme scheduling before publication.');
+        $this->assertFalse($guide['steps'][5]['complete']);
+        $this->assertNull($guide['linkedPlayoff']);
+        $guidePage = $this->get(route('draw.guide.show', [$this->event, $draw]))->assertOk()
+            ->assertSee('Programme &amp; schedule', false)->assertSee('Playoff pairings and times remain pending');
+        if ($directory = getenv('CT_PLACEMENT_QA_OUTPUT')) file_put_contents($directory.'/guide.html', str_replace(['http://localhost/', 'https://localhost/'], 'http://localhost/ct/public/', $guidePage->getContent()));
         $this->assertSame(6, $draw->teamTies()->count());
         $this->assertSame(72, $draw->fixtures()->count());
         $this->assertCount(4, $draw->team_draw_selection['mixed_sides']);

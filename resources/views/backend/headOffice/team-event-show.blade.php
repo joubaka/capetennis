@@ -83,6 +83,7 @@
   window.HeadOffice = {
     venues: @json($allVenues),
     previewUrl: "{{ route('headoffice.previewTeamDraw', $event) }}",
+    competitionSetupUrl: @json(route('team-draw.competition.setup', $event)),
     createUrl: "{{ route('headoffice.createSingleDraw.team', $event) }}",
     individualCreateUrl: "{{ route('headoffice.createSingleDraw', $event) }}",
     individualDrawTypeId: @json(($individualDrawTypes->firstWhere('drawTypeName', 'Singles') ?? $individualDrawTypes->first())?->id),
@@ -426,14 +427,8 @@
 
         <div class="modal-body">
 
-          @can('team-draw.createFormat', $event)
-            <div class="mb-3">
-              <a class="btn btn-outline-primary" href="{{ route('team-draw.competition.setup', $event) }}">Round robin and placement playoffs</a>
-            </div>
-          @endcan
-
           <p class="small text-primary" data-create-guide-status>Step 1 of 6 · Competition</p>
-          <fieldset class="mb-3">
+          <fieldset class="mb-3" data-create-competition>
             <legend class="form-label fw-bold mb-2">Competition</legend>
             <div class="row g-2">
               <div class="col-sm-6">
@@ -459,6 +454,33 @@
           </fieldset>
 
           <div data-create-guide-details hidden>
+          @can('team-draw.createFormat', $event)
+          <div data-regional-participants hidden>
+            <label class="form-label" for="team-participant-scope">Participating sides</label>
+            <select class="form-select mb-3" id="team-participant-scope">
+              <option value="category">Teams from selected categories</option>
+              <option value="regional">Combined regional sides (boys and girls)</option>
+            </select>
+            <div data-regional-age hidden>
+              <label class="form-label" for="regional-age-group">Age group</label>
+              <select class="form-select" id="regional-age-group"><option value="">Choose an age group</option>
+                @foreach(app(\App\Services\TeamPlacementCompetitionService::class)->groups($event) as $groupIndex => $competitionGroup)
+                  <option value="{{ $groupIndex }}">{{ $competitionGroup['label'] }} · {{ count($competitionGroup['teams']) }} gender teams</option>
+                @endforeach
+              </select>
+              <p class="form-text">Each region combines its boys and girls teams into one side. Review the full team list before saving.</p>
+            </div>
+          </div>
+          @endcan
+          <div data-team-competition-format hidden>
+            <h6>Competition format</h6>
+            <label class="form-check border rounded p-3 mb-2"><input class="form-check-input" type="radio" name="guided_team_format" value="category"><span class="form-check-label">Round robin · selected category teams</span></label>
+            @can('team-draw.createFormat', $event)
+              <label class="form-check border rounded p-3 mb-2"><input class="form-check-input" type="radio" name="guided_team_format" value="regional"><span class="form-check-label">Round robin with placement playoffs · combined regional sides</span></label>
+            @endcan
+            <p data-team-format-description></p>
+            <p class="small text-muted">Next: review match types and pairings, then set up the programme and schedule. Draws and match times are published separately.</p>
+          </div>
           <div id="bulkDrawNameHelp" class="form-text mb-3 d-none">Team draw names are generated automatically from the selected categories and draw types.</div>
 
           {{-- Draw Type --}}

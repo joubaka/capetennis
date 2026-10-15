@@ -188,7 +188,13 @@
 @endphp
 <div class="container-xxl flex-grow-1 container-p-y schedule-workspace">
   @php($guideSelection = $event->draws->whereIn('id', collect($draws)->where('selected', true)->pluck('id')))
-  @if($guideSelection->count() === 1)<a data-draw-guide-open class="btn btn-primary mb-3" href="{{ route('draw.guide.show', [$event, $guideSelection->first()]) }}">Continue draw setup</a>@endif
+  @if($guideSelection->isNotEmpty())
+    <section class="card card-body mb-3">
+      <h2 class="h5">Step 5 of 6 · Programme &amp; schedule</h2>
+      <p>Arrange rounds, match order, playing days, venues and courts. Preview and save the schedule, then continue to review publication. Saving does not publish match times.</p>
+      <div class="d-flex flex-wrap gap-2">@foreach($guideSelection as $guideDraw)<a data-draw-guide-open class="btn btn-outline-primary" href="{{ route('draw.guide.show', [$event, $guideDraw]) }}">Review setup &amp; publication · {{ $guideDraw->drawName }}</a>@endforeach</div>
+    </section>
+  @endif
   @include('backend.event.partials.header', [
     'eventWorkspaceActive' => 'schedule',
     'eventWorkspaceIcon' => 'ti-calendar-event',

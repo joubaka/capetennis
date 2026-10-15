@@ -9,21 +9,66 @@
   var guideDetails = form.querySelector('[data-create-guide-details]');
   var guideContinue = form.querySelector('[data-create-guide-continue]');
   var guideBack = form.querySelector('[data-create-guide-back]');
-  function showGuideDetails(show) {
+  var createStep = 1;
+  var scope = document.getElementById('team-participant-scope');
+  function regionalMode() { return selectedMode() === 'team' && scope && scope.value === 'regional'; }
+  function showGuideDetails(show) { showCreateStep(show ? 2 : 1); }
+  function showCreateStep(step) {
     if (!guideDetails) return;
-    guideDetails.hidden = !show;
-    guideContinue.hidden = show;
-    guideBack.hidden = !show;
-    submitButton.hidden = !show;
-    form.querySelector('[data-create-guide-status]').textContent = show ? 'Step 2 of 6 · Players / category' : 'Step 1 of 6 · Competition';
+    createStep = step;
+    guideDetails.hidden = step === 1;
+    guideContinue.hidden = step === 4 || (selectedMode() === 'individual' && step === 2);
+    guideBack.hidden = step === 1;
+    submitButton.hidden = step !== 4 && !(selectedMode() === 'individual' && step === 2);
+    var competition = form.querySelector('[data-create-competition]');
+    if (competition) competition.hidden = step !== 1;
+    form.querySelector('[data-create-guide-status]').textContent = 'Step ' + step + ' of 6 · ' + ['Competition', 'Participants', 'Competition format', 'Match setup'][step - 1];
+    var participants = form.querySelector('[data-regional-participants]');
+    if (participants) participants.hidden = step !== 2 || selectedMode() !== 'team';
+    var age = form.querySelector('[data-regional-age]');
+    if (age) age.hidden = !regionalMode();
+    var format = form.querySelector('[data-team-competition-format]');
+    if (format) {
+      format.hidden = step !== 3;
+      form.querySelectorAll('input[name="guided_team_format"]').forEach(function(input) { input.checked = input.value === (regionalMode() ? 'regional' : 'category'); });
+      form.querySelector('[data-team-format-description]').textContent = regionalMode()
+        ? 'Round robin with placement playoffs: all regional sides meet in one group. The top four qualify for 1st/2nd and 3rd/4th playoffs.'
+        : 'Round robin: create the selected team draws and review the encounters before scheduling.';
+    }
+    ['bulkTeamGroup', 'manualCategoryToggleGroup', 'manualCategoryChoices', 'categorySection', 'type3Categories', 'mixedPlaceholder', 'singleDrawNameGroup', 'bulkDrawNameHelp'].forEach(function(id) { var node = document.getElementById(id); if(node) node.hidden = regionalMode() || (step !== 2 && !(step === 4 && ['type3Categories','manualCategoryChoices','mixedPlaceholder'].indexOf(id) !== -1)); });
+    ['teamDrawTypeSection','formatSelectGroup'].forEach(function(id) { var node=document.getElementById(id); if(node) node.hidden=step!==4; });
     var preview = document.getElementById('previewTeamDrawButton');
-    if (preview) preview.hidden = !show;
+    if (preview) preview.hidden = step !== 4;
+    var previewPanel = document.getElementById('teamDrawPreview');
+    if (previewPanel) previewPanel.hidden = step !== 4;
   }
-  if (guideContinue) guideContinue.addEventListener('click', function () {
+  function continueCreation() {
     if (!selectedMode()) return showError('Choose individual singles or team tie');
-    showGuideDetails(true);
+    if (createStep === 2 && regionalMode() && !document.getElementById('regional-age-group').value) return showError('Choose an age group');
+    if (createStep === 2 && selectedMode() === 'team' && !regionalMode()) {
+      var bulkSelected = document.getElementById('bulkTeamDraws').checked;
+      var manualSelected = document.getElementById('manualTeamCategories').checked;
+      var participantSelected = bulkSelected ? form.querySelectorAll('input[name="bulk_categories[]"]:checked').length
+        : manualSelected ? form.querySelectorAll('input[name="manual_category_ids[]"]:checked:not(:disabled)').length
+        : form.querySelector('input[name="category_choice"]:checked:not(:disabled)') ||
+          (form.querySelector('input[name="category_choice_boys"]:checked:not(:disabled)') && form.querySelector('input[name="category_choice_girls"]:checked:not(:disabled)'));
+      if (!participantSelected) return showError('Select the participating categories before continuing');
+    }
+    if (createStep === 3 && regionalMode()) {
+      window.location.assign(data.competitionSetupUrl + '?group=' + encodeURIComponent(document.getElementById('regional-age-group').value) + '&step=4');
+      return;
+    }
+    showCreateStep(Math.min(4, createStep + 1));
+  }
+  if (guideContinue) guideContinue.addEventListener('click', continueCreation);
+  if (guideBack) guideBack.addEventListener('click', function () { showCreateStep(Math.max(1, createStep - 1)); });
+  if (scope && scope.addEventListener) scope.addEventListener('change', function() { showCreateStep(createStep); });
+  form.querySelectorAll('input[name="guided_team_format"]').forEach(function(input) {
+    if (!input.addEventListener) return;
+    input.addEventListener('change', function() {
+      if (scope && input.value !== scope.value) { scope.value = input.value; showCreateStep(2); }
+    });
   });
-  if (guideBack) guideBack.addEventListener('click', function () { showGuideDetails(false); });
   var previewRevision = 0;
   var nameCustomized = false;
   var individualNameDraft = '';
@@ -435,10 +480,10 @@
       event.stopImmediatePropagation();
       return;
     }
-    if (guideDetails && guideDetails.hidden) {
+    if (guideDetails && createStep < 4 && !(selectedMode() === 'individual' && createStep === 2)) {
       event.preventDefault(); event.stopImmediatePropagation();
       if (!selectedMode()) return showError('Choose individual singles or team tie');
-      showGuideDetails(true); return;
+      continueCreation(); return;
     }
     var mode = selectedMode();
 
