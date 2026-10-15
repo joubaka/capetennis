@@ -36,6 +36,7 @@
   .regional-more-options-menu { position: absolute; right: 0; top: 100%; z-index: 10; min-width: 12rem; padding: .4rem; background: #fff; border: 1px solid #dbe6f4; border-radius: .65rem; box-shadow: 0 .35rem 1rem rgba(31, 57, 104, .12); }
   .regional-more-options-menu .nav-link { width: 100%; justify-content: flex-start; }
   .region-task-panel { padding-top: 1rem; }
+  [data-region-tabs] .nav-link { flex: 0 0 auto; width: auto; }
   .selection-progress { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .6rem; margin: 0; padding: 0; list-style: none; }
   .selection-progress-step { position: relative; min-width: 0; padding: .85rem; border: 1px solid #dbe6f4; border-radius: .65rem; background: #fff; }
   .selection-progress-step::before { display: inline-grid; place-items: center; width: 1.65rem; height: 1.65rem; margin-bottom: .55rem; border-radius: 50%; content: attr(data-step); background: #edf2f7; color: #68778c; font-weight: 700; }
@@ -52,7 +53,14 @@
   .roster-order-sortable[aria-busy="true"] { opacity: .65; cursor: wait; }
   .team-publication-button[disabled], .clothing-order-toggle[disabled] { cursor: wait; }
   @media (max-width: 767.98px) {
+    .region-selection-container { padding-right: .75rem; padding-left: .75rem; }
+    .region-workspaces.tab-content { padding: 0; background: transparent; box-shadow: none; }
+    .region-workspace-card > .card-header { padding: 1rem; }
+    .region-workspace-card > .card-header > * { min-width: 0; max-width: 100%; }
+    .region-workspace-card > .card-header h5 { overflow-wrap: anywhere; }
+    .region-workspace-card > .card-header .badge { white-space: normal; text-align: left; }
     .region-workspace-card > .card-body { padding: .75rem; }
+    .region-workspace-card > .card-body > .tab-content { padding: 0; box-shadow: none; }
     .regional-team-card .card-header[data-team-workspace-header] { align-items: stretch !important; padding: .85rem; }
     .regional-team-card .card-header[data-team-workspace-header] > * { min-width: 0; width: 100%; }
     .regional-team-card .card-header[data-team-workspace-header] h6,
@@ -78,8 +86,12 @@
     .regional-team-card .team-player-table td[data-mobile-full]::before { content: none; }
     .regional-team-card .replacement-player-form { min-width: 0; width: min(18rem, calc(100vw - 2rem)); max-width: 100%; }
     .regional-more-options-menu { position: static; box-shadow: none; }
-    .region-task-tabs { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scroll-snap-type: x proximity; }
-    .region-task-tabs .nav-link { flex: 0 0 auto; width: auto !important; min-width: max-content; padding: .6rem .8rem; scroll-snap-align: start; }
+    .region-task-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+    .region-task-tabs .nav-link { width: 100% !important; min-width: 0; padding: .6rem .4rem; white-space: normal; line-height: 1.3; font-size: .85rem; }
+    .region-task-tabs .nav-link .ti { flex-shrink: 0; }
+    .regional-more-options { min-width: 0; }
+    .regional-more-options > summary { min-height: 2.75rem; padding: .65rem .4rem; font-size: .85rem; }
+    .regional-more-options-menu { min-width: 0; }
     .regional-team-card .team-player-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .25rem .65rem; box-shadow: none; padding: 1rem; }
     .regional-team-card .team-player-table td { grid-column: 1 / -1; min-width: 0; width: auto; grid-template-columns: 5rem minmax(0, 1fr); font-size: .85rem; }
     .regional-team-card .team-player-table td[data-label="Player"] { grid-column: 1; grid-row: 1; display: block; padding: 0; font-size: 1rem; }
@@ -117,7 +129,7 @@
   'eventWorkspaceRegionalOnly' => ! $isEventManager,
   'eventWorkspaceShowHome' => $isEventManager,
 ])
-<div class="container-xxl flex-grow-1 container-p-y">
+<div class="container-xxl flex-grow-1 container-p-y region-selection-container">
   @if(session('replacement_confirmation'))
     @php($replacementConfirmation = session('replacement_confirmation'))
     @php($replacementDeliveryStatus = $replacementConfirmation['delivery_status'] ?? 'queued')
@@ -178,7 +190,15 @@
   @endif
 
   @if($eventRegions->count() > 1)
-    <div class="nav nav-tabs flex-nowrap overflow-auto mb-3" role="tablist" aria-label="Event regions" data-region-tabs>
+    <div class="d-md-none mb-3">
+      <label class="form-label" for="mobile-event-region">Region</label>
+      <select class="form-select" id="mobile-event-region" data-region-select>
+        @foreach($eventRegions as $eventRegion)
+          <option value="{{ $eventRegion->id }}">{{ $eventRegion->region?->region_name }}</option>
+        @endforeach
+      </select>
+    </div>
+    <div class="nav nav-tabs d-none d-md-flex flex-nowrap overflow-auto mb-3" role="tablist" aria-label="Event regions" data-region-tabs>
       @foreach($eventRegions as $eventRegion)
         <button
           type="button"
@@ -195,7 +215,7 @@
     </div>
   @endif
 
-  <div class="{{ $eventRegions->count() > 1 ? 'tab-content' : 'row g-3' }}">
+  <div class="region-workspaces {{ $eventRegions->count() > 1 ? 'tab-content' : 'row g-3' }}">
     @foreach($eventRegions as $eventRegion)
       @php($source = $eventRegion->rankingSource)
       @php($sourceReady = $source && $readySeriesIds->contains($source->series_id))
@@ -1043,10 +1063,12 @@ document.addEventListener('DOMContentLoaded', function () {
     document.body.appendChild(modal);
   });
   const workspaceStateKey = 'team-selection-workspace-{{ $event->id }}';
+  const regionSelect = document.querySelector('[data-region-select]');
   const openWorkspace = function (regionId, taskKey, updateLocation = true) {
     const regionTab = document.querySelector(`[data-bs-target="#region-panel-${regionId}"]`);
     const taskTab = document.querySelector(`#region-${regionId}-${taskKey}-tab`);
     if (!taskTab || !window.bootstrap?.Tab) return;
+    if (regionSelect) regionSelect.value = regionId;
     if (regionTab) bootstrap.Tab.getOrCreateInstance(regionTab).show();
     const moreOptions = taskTab.closest('details');
     if (moreOptions) moreOptions.open = true;
@@ -1078,11 +1100,17 @@ document.addEventListener('DOMContentLoaded', function () {
   document.querySelectorAll('[data-region-tabs] [data-region-id]').forEach(function (regionTab) {
     regionTab.addEventListener('shown.bs.tab', function () {
       const regionId = regionTab.dataset.regionId;
+      if (regionSelect) regionSelect.value = regionId;
       const activeTask = document.querySelector(`#region-panel-${regionId} [data-region-task].active`)?.dataset.regionTask || 'teams';
       const state = `${regionId}/${activeTask}`;
       sessionStorage.setItem(workspaceStateKey, state);
       history.replaceState(null, '', `${window.location.pathname}${window.location.search}#region-${state}`);
     });
+  });
+  regionSelect?.addEventListener('change', function () {
+    const regionId = regionSelect.value;
+    const activeTask = document.querySelector(`#region-panel-${regionId} [data-region-task].active`)?.dataset.regionTask || 'teams';
+    openWorkspace(regionId, activeTask);
   });
   document.querySelectorAll('[data-open-region-task]').forEach(function (button) {
     button.addEventListener('click', function () {

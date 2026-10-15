@@ -391,6 +391,9 @@ class RegionClothingController extends Controller
     }
 
     $clothings = \App\Models\ClothingOrder::with([
+      'event',
+      'items.refundItems.refund',
+      'refunds.items.item',
       'items.itemType',
       'items.size',
       'player',

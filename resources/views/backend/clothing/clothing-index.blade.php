@@ -22,6 +22,8 @@
     </div>
   </div>
   <div class="card-body">
+    @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
+    @if($errors->any())<div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>@endif
     <p class="text-muted">{{ $clothings->count() }} paid orders · {{ $clothings->sum(fn ($order) => $order->items->count()) }} item lines. Downloads include all paid orders in the current region and event scope.</p>
     <div class="row g-2 mb-3">
       <div class="col-md-8"><label class="form-label" for="clothing-order-search">Find a player, team, item or size</label><input type="search" class="form-control" id="clothing-order-search" placeholder="Search these orders"></div>
@@ -60,14 +62,27 @@
                   <td data-label="Size">{{ $item->size_name ?: optional($item->size)->size }}</td>
                   <td data-label="Qty">{{ $qty }}</td>
                   <td data-label="Status"><span class="badge bg-label-success">Paid</span></td>
-                  <td data-label="Order details"><details><summary>Details</summary><dl class="mt-2 mb-0 text-break">
+                  <td data-label="Order details"><div class="clothing-order-actions"><details><summary>Details</summary><dl class="mt-2 mb-0 text-break">
                     <dt>Order</dt><dd>#{{ $order->id }}</dd>
                     <dt>Date</dt><dd>{{ $order->created_at->format('d-m-Y') }}</dd>
                     <dt>Payfast ID</dt><dd>{{ $order->pf_id }}</dd>
                     <dt>Unit Price</dt><dd>R{{ number_format($price, 2) }}</dd>
                     <dt>Line Total</dt><dd>R{{ number_format($lineTotal, 2) }}</dd>
-                  </dl></details></td>
+                  </dl></details>
+                    @if(auth()->user()?->hasRole('super-user'))
+                      <button type="button" class="btn btn-sm btn-outline-danger" data-refund-toggle="refund-line-{{ $item->id }}" aria-controls="refund-line-{{ $item->id }}" aria-expanded="{{ old('item_id') == $item->id ? 'true' : 'false' }}">Refund</button>
+                    @endif
+                  </div></td>
                 </tr>
+                @if(auth()->user()?->hasRole('super-user'))
+                <tr id="refund-line-{{ $item->id }}" data-refund-row @if(old('item_id') != $item->id) hidden @endif><td colspan="7">
+                  <div class="clothing-refund-panel p-2">
+                    <strong>Refund — {{ $order->player?->name }}</strong>
+                    @include('backend.clothing.partials.refund-item', ['event' => $order->event, 'formKey' => 'inline-'.$item->id])
+                    <a href="{{ route('backend.clothing.refunds.show', [$order->event_id, $order]) }}">Refund history / pending PayFast refunds</a>
+                  </div>
+                </td></tr>
+                @endif
                 @php
                   $grandTotal += $lineTotal;
                 @endphp
@@ -91,6 +106,9 @@
   </div>
 </div>
 <style>
+.clothing-order-actions { display:flex; flex-wrap:wrap; gap:.75rem; align-items:start; }
+.clothing-refund-panel { width:100%; max-width:40rem; min-width:0; }
+.clothing-refund-panel form { min-width:0; }
 .clothing-orders-admin summary { min-height:44px !important; cursor:pointer; align-content:center; }
 .clothing-orders-admin .btn { min-height:44px !important; }
 .clothing-orders-admin :is(input,select) { min-height:44px !important; }
@@ -118,14 +136,22 @@
     lines.forEach(line => {
       const matches = (!team.value || line.dataset.teamId === team.value) && line.textContent.toLocaleLowerCase().includes(term);
       line.hidden = !matches;
+      const trigger = line.querySelector('[data-refund-toggle]');
+      if (trigger) document.getElementById(trigger.dataset.refundToggle).hidden = !matches || trigger.getAttribute('aria-expanded') !== 'true';
       if (matches) shown++;
     });
     document.getElementById('clothing-order-count').textContent = `${shown} of ${lines.length} item lines shown`;
     document.getElementById('clothing-order-empty').hidden = shown > 0 || lines.length === 0;
   };
+  document.querySelectorAll('[data-refund-toggle]').forEach(button => button.addEventListener('click', () => {
+    const open = button.getAttribute('aria-expanded') !== 'true';
+    button.setAttribute('aria-expanded', String(open));
+    document.getElementById(button.dataset.refundToggle).hidden = !open;
+  }));
   search.addEventListener('input', filter);
   team.addEventListener('change', filter);
   filter();
 })();
 </script>
+@include('backend.clothing.partials.refund-script')
 @endsection

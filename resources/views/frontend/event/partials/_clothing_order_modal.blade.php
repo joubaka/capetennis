@@ -1,22 +1,38 @@
 <style>
-/* MOBILE FIX: force scroll inside modal */
-@media (max-width: 576px) {
-  #clothing-order-modal .modal-dialog {
-    margin: 0.5rem;
-    height: calc(100dvh - 1rem);
-    max-height: calc(100dvh - 1rem);
-  }
+/* Constrain the whole form so its body can scroll on short or narrow screens. */
+#clothing-order-modal .modal-dialog {
+  height: calc(100vh - var(--bs-modal-margin, 0.5rem) * 2);
+  height: calc(100dvh - var(--bs-modal-margin, 0.5rem) * 2);
+}
 
-  #clothing-order-modal .modal-content {
-    height: 100%;
-    max-height: 100%;
-  }
+#clothing-order-modal .modal-content {
+  max-height: 100%;
+  min-height: 0;
+}
 
-  #clothing-order-modal .modal-body {
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    max-height: calc(100dvh - 160px); /* header + footer */
-  }
+#clothingOrderForm {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#clothing-order-modal .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+#clothing-order-modal .modal-header,
+#clothing-order-modal .modal-footer {
+  flex-shrink: 0;
+}
+
+#clothing-order-modal .modal-footer {
+  padding-bottom: max(var(--bs-modal-padding, 1rem), env(safe-area-inset-bottom, 0px));
 }
 </style>
 

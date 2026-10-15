@@ -35,6 +35,9 @@ final class ClothingRefundService
                 $lockedOrder = ClothingOrder::lockForUpdate()->findOrFail($order->id);
                 $this->authorizeOrder($event, $lockedOrder, $actor);
                 $locked = ClothingRefund::lockForUpdate()->findOrFail($refund->id);
+                if (DB::table('clothing_provider_refund_attempts')->where('clothing_refund_id', $locked->id)->exists()) {
+                    throw ValidationException::withMessages(['refund' => 'This refund has a PayFast submission. Reconcile its provider result before recording any manual payment.']);
+                }
                 abort_unless((int) $locked->clothing_order_id === (int) $lockedOrder->id
                     && (int) $locked->event_id === (int) $event->id
                     && (int) $locked->payer_id === (int) $lockedOrder->user_id, 404);
