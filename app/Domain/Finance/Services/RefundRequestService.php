@@ -33,62 +33,12 @@ class RefundRequestService
                     $service->recordLateNote($existing, $locked, $actor, $input['late_refund_note'] ?? null);
                     return $existing;
                 }
-                $fail = fn ($message) => throw ValidationException::withMessages(['refund' => $message]);
-                if ($input['method'] === 'payfast' && DB::table('clothing_provider_refund_attempts')->where('clothing_order_id', $locked->id)->whereIn('status', ['dispatching', 'uncertain'])->exists()) {
-                    $fail('An earlier PayFast refund needs reconciliation before another can be submitted.');
+                $quote = app(\App\Services\Clothing\ClothingRefundReviewService::class)->quote($locked, $input);
+                if (isset($input['_review_snapshot']) && ! hash_equals($input['_review_snapshot'], $quote['snapshot'])) {
+                    throw ValidationException::withMessages(['refund' => 'This order changed after review. Select the items and review the current amounts again.']);
                 }
-                $paid = $service::cents($locked->amount_paid ?? '0');
-                if ($locked->pay_status !== 1 || $locked->status !== 'completed' || ! $locked->user_id || ! $locked->paid_at || $paid <= 0 || $paid !== $service::cents($locked->total)) {
-                    $fail('A reconciled completed payment is required.');
-                }
-                if ($input['method'] === 'payfast' && (! $locked->payfast_paid || ! $locked->payfast_pf_payment_id)) {
-                    $fail('This order has no verified original PayFast payment.');
-                }
-                $lines = $locked->items()->with('refundItems.refund')->lockForUpdate()->get()->keyBy('id');
-                if ($lines->sum(fn ($line) => $service::cents($line->line_total)) !== $paid) {
-                    $fail('The clothing item amounts do not match the paid order. Reconcile this order before refunding.');
-                }
-                $selected = $mode === 'quantity' ? $items : [($input['item_id'] ?? 0) => 0];
-                $allocations = [];
-                $total = 0;
-                foreach ($selected as $id => $quantity) {
-                    $line = $lines->get($id);
-                    if (! $line || $line->qty <= 0) {
-                        $fail('Choose an item belonging to this order.');
-                    }
-                    $linePaid = $service::cents($line->line_total);
-                    $used = $line->refundItems->filter(fn ($entry) => in_array($entry->refund?->refund_status, ['pending', 'completed'], true));
-                    $remaining = $linePaid - $used->sum(fn ($entry) => $service::cents($entry->amount));
-                    if ($mode === 'quantity') {
-                        if ($quantity < 1 || $quantity > $line->remaining_quantity) {
-                            $fail('The selected quantity has already been refunded or reserved.');
-                        }
-                        // Cumulative allocation preserves the final cent for uneven unit prices.
-                        $before = $line->refunded_quantity;
-                        $amount = intdiv($linePaid * ($before + $quantity), $line->qty) - intdiv($linePaid * $before, $line->qty);
-                        $amount = min($amount, $remaining);
-                    } else {
-                        $amount = $mode === 'full' ? $remaining : $service::cents($input['amount'] ?? '0');
-                        if ($mode === 'full') {
-                            $quantity = $line->remaining_quantity;
-                        }
-                    }
-                    if ($amount <= 0 || $amount > $remaining) {
-                        $fail('The refund exceeds this item’s remaining paid amount.');
-                    }
-                    $allocations[$id] = ['quantity' => (int) $quantity, 'amount' => sprintf('%.2f', $amount / 100)];
-                    $total += $amount;
-                }
-                $reserved = $locked->refunds()->whereIn('refund_status', ['pending', 'completed'])->get()->sum(fn ($refund) => $service::cents($refund->refund_gross));
-                if ($total <= 0 || $total > $paid - $reserved) {
-                    $fail('The refund exceeds the order’s remaining payment.');
-                }
-                if ($input['method'] === 'payfast') {
-                    $external = $locked->refunds()->where('refund_method', 'payfast')->whereIn('refund_status', ['pending', 'completed'])->get()->sum(fn ($refund) => $service::cents($refund->refund_net));
-                    if ($total > $service::cents($locked->payfast_amount_due) - $external) {
-                        $fail('The refund exceeds the original PayFast portion.');
-                    }
-                }
+                $allocations = $quote['allocations'];
+                $total = $quote['total_cents'];
                 $deadline = $service->deadline($event, $locked);
                 $refund = $locked->refunds()->create([
                     'clothing_deadline_at' => $deadline,

@@ -1458,6 +1458,8 @@ Route::delete(
   Route::post('event/{event}/clothing/regions/{region}/deadline', [\App\Http\Controllers\Backend\ClothingRefundController::class, 'deadline'])->name('backend.clothing.deadline');
   Route::post('event/{event}/clothing/orders/{order}/refunds/{refund}/reconcile', [\App\Http\Controllers\Backend\ClothingRefundController::class, 'reconcile'])->name('backend.clothing.refunds.reconcile');
   Route::get('event/{event}/clothing/orders/{order}/refunds', [\App\Http\Controllers\Backend\ClothingRefundController::class, 'show'])->name('backend.clothing.refunds.show');
+  Route::post('event/{event}/clothing/orders/{order}/refunds/review', [\App\Http\Controllers\Backend\ClothingRefundController::class, 'review'])->name('backend.clothing.refunds.review');
+  Route::get('event/{event}/clothing/orders/{order}/refunds/review', [\App\Http\Controllers\Backend\ClothingRefundController::class, 'reviewPage'])->name('backend.clothing.refunds.review.show');
   Route::post('event/{event}/clothing/orders/{order}/refunds', [\App\Http\Controllers\Backend\ClothingRefundController::class, 'store'])->name('backend.clothing.refunds.store');
   Route::post('event/{event}/clothing/orders/{order}/refunds/{refund}/retry', [\App\Http\Controllers\Backend\ClothingRefundController::class, 'retry'])->name('backend.clothing.refunds.retry');
   Route::post('event/{event}/clothing/orders/{order}/refunds/{refund}/complete', [\App\Http\Controllers\Backend\ClothingRefundController::class, 'complete'])->name('backend.clothing.refunds.complete');

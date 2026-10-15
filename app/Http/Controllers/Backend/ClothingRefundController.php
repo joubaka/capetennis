@@ -25,6 +25,7 @@ class ClothingRefundController extends Controller
     public function store(Request $request, Event $event, ClothingOrder $order, RefundRequestService $refunds)
     {
         app(ClothingRefundService::class)->authorizeOrder($event, $order, $request->user());
+        $request->headers->set('referer', route('backend.clothing.refunds.show', [$event, $order]));
         // Bank details are used only for this provider call, never stored or flashed back.
         $bankInput = $request->input('bank_details', []);
         $request->request->remove('bank_details');
@@ -44,8 +45,57 @@ class ClothingRefundController extends Controller
             ])->validate();
             unset($bankDetails['original_payer']);
         }
+        $request->validate(['review_token' => ['required', 'string', 'max:30000']]);
+        $validated = app(\App\Services\Clothing\ClothingRefundReviewService::class)->resolve($request->input('review_token'), $event, $order, $request->user());
+        // Only the reviewed values determine the financial mutation.
+        foreach (['method', 'items', 'mode', 'amount', 'item_id', 'request_token', 'reason', 'late_refund_note'] as $field) {
+            if ($request->exists($field)) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['refund' => 'Confirm the reviewed refund without changing its selection. Review again to make changes.']);
+            }
+        }
+        $refund = $refunds->requestClothingRefund($event, $order, $request->user(), $validated);
+        if ($validated['method'] === 'payfast') {
+            app(\App\Services\Clothing\ClothingPayfastRefundService::class)->dispatch($refund, $request->user(), $bankDetails, $validated['late_refund_note'] ?? null);
+        }
+        return $this->completedResponse($request, $event, $order, $refund, $validated);
+    }
+
+    private function completedResponse(Request $request, Event $event, ClothingOrder $order, ClothingRefund $refund, array $validated = [])
+    {
+        $refund->refresh()->load(['payer', 'items.item']);
+        if ($refund->refund_status !== 'completed') {
+            return redirect()->route('backend.clothing.refunds.show', [$event, $order])->withErrors(['refund' => 'This refund is still pending. Check its history before taking further action.']);
+        }
+        $parameters = ['region' => $order->team->region_id, 'event_id' => $event->id,
+            'sort' => $validated['return_sort'] ?? 'rank', 'search' => $validated['return_search'] ?? '', 'team' => $validated['return_team'] ?? ''];
+        if (($validated['return_all_events'] ?? false) && $request->user()->hasRole('super-user')) unset($parameters['event_id']);
+        $response = redirect()->route('backend.region.clothing.orders', $parameters);
+        $shown = $request->session()->get('clothing_refund_receipts', []);
+        if (! in_array($refund->id, $shown, true)) {
+            $response->with('clothing_refund_completed', ['id' => $refund->id, 'order_id' => $refund->clothing_order_id,
+                'event_id' => $refund->event_id, 'region_id' => $order->team->region_id, 'payer' => $refund->payer?->name,
+                'net' => $refund->refund_net, 'fee' => $refund->refund_fee, 'method' => $refund->refund_method,
+                'items' => $refund->items->map(fn ($line) => ['name' => $line->item?->item_name, 'size' => $line->item?->size_name,
+                    'quantity' => $line->quantity, 'amount' => $line->amount])->all()]);
+            $request->session()->put('clothing_refund_receipts', array_slice([...$shown, $refund->id], -50));
+        }
+        return $response;
+    }
+
+    public function review(Request $request, Event $event, ClothingOrder $order, \App\Services\Clothing\ClothingRefundReviewService $reviews)
+    {
+        app(ClothingRefundService::class)->authorizeOrder($event, $order, $request->user());
+        $request->headers->set('referer', route('backend.clothing.refunds.show', [$event, $order]));
+        // Review never accepts, stores or flashes personal banking details.
+        $request->request->remove('bank_details');
+        $request->query->remove('bank_details');
+        if ($request->isJson()) $request->json()->remove('bank_details');
         $validated = $request->validate([
             'request_token' => ['required', 'uuid'],
+            'return_sort' => ['nullable', 'in:rank,name'],
+            'return_search' => ['nullable', 'string', 'max:120'],
+            'return_team' => ['nullable', 'integer'],
+            'return_all_events' => ['nullable', 'boolean'],
             'method' => ['required', 'in:wallet,payfast'],
             'late_refund_note' => ['nullable', 'string', 'max:1000'],
             'reason' => ['required', 'string', 'max:500'],
@@ -55,22 +105,41 @@ class ClothingRefundController extends Controller
             'items' => ['sometimes', 'array', 'min:1', 'max:100'],
             'items.*' => ['required', 'integer', 'min:0', 'max:1000'],
         ]);
-        $refund = $refunds->requestClothingRefund($event, $order, $request->user(), $validated);
-        if ($validated['method'] === 'payfast') {
-            app(\App\Services\Clothing\ClothingPayfastRefundService::class)->dispatch($refund, $request->user(), $bankDetails, $validated['late_refund_note'] ?? null);
+        if (! empty($validated['return_team']) && ! \App\Models\Team::whereKey($validated['return_team'])->where('region_id', $order->team->region_id)
+            ->whereHas('category', fn ($query) => $query->where('event_id', $event->id))->exists()) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['return_team' => 'Choose a team in this event and region.']);
         }
+        $quote = $reviews->quote($order, $validated);
+        $deadline = app(ClothingRefundService::class)->deadline($event, $order);
+        if ($deadline && now()->gte($deadline) && trim($validated['late_refund_note'] ?? '') === '') {
+            throw \Illuminate\Validation\ValidationException::withMessages(['late_refund_note' => 'Explain the late refund and the clothing payout adjustment to reconcile.']);
+        }
+        $reviewToken = $reviews->token($event, $order, $request->user(), $validated, $quote);
+        $request->session()->put('clothing_refund_review.'.$event->id.'.'.$order->id, $reviewToken);
+        return redirect()->route('backend.clothing.refunds.review.show', [$event, $order]);
+    }
 
-        return redirect()->route('backend.clothing.refunds.show', [$event, $order])
-            ->with('success', $validated['method'] === 'wallet' ? 'Refund credited to the original payer’s wallet.' : 'PayFast refund completed to the original payer.');
+    public function reviewPage(Request $request, Event $event, ClothingOrder $order, \App\Services\Clothing\ClothingRefundReviewService $reviews)
+    {
+        app(ClothingRefundService::class)->authorizeOrder($event, $order, $request->user());
+        $request->headers->set('referer', route('backend.clothing.refunds.show', [$event, $order]));
+        $reviewToken = $request->session()->get('clothing_refund_review.'.$event->id.'.'.$order->id, '');
+        $validated = $reviews->resolve($reviewToken, $event, $order, $request->user());
+        $quote = $reviews->quote($order, $validated);
+        if (! hash_equals($validated['_review_snapshot'], $quote['snapshot'])) {
+            return redirect()->route('backend.clothing.refunds.show', [$event, $order])->withErrors(['refund' => 'This order changed after review. Select the items and review the current amounts again.']);
+        }
+        $order->load('user');
+        return view('backend.clothing.refund-review', compact('event', 'order', 'quote', 'validated', 'reviewToken'));
     }
 
     public function retry(Request $request, Event $event, ClothingOrder $order, ClothingRefund $refund, ClothingRefundService $refunds)
     {
         $refunds->authorizeOrder($event, $order, $request->user());
         abort_unless((int) $refund->clothing_order_id === (int) $order->id && (int) $refund->event_id === (int) $event->id, 404);
-        app(\App\Services\Clothing\ClothingPayfastRefundService::class)->dispatch($refund, $request->user(), [], $request->validate(['late_refund_note' => ['nullable', 'string', 'max:1000']])['late_refund_note'] ?? null);
+        $refund = app(\App\Services\Clothing\ClothingPayfastRefundService::class)->dispatch($refund, $request->user(), [], $request->validate(['late_refund_note' => ['nullable', 'string', 'max:1000']])['late_refund_note'] ?? null);
 
-        return redirect()->route('backend.clothing.refunds.show', [$event, $order])->with('success', 'PayFast refund reconciled.');
+        return $this->completedResponse($request, $event, $order, $refund);
     }
 
     public function deadline(Request $request, Event $event, \App\Models\TeamRegion $region)
@@ -103,8 +172,8 @@ class ClothingRefundController extends Controller
             'reference' => ['required', 'string', 'regex:/^[A-Za-z0-9][A-Za-z0-9._:\/\-]{2,119}$/'],
             'paid_to_original_payer' => ['accepted'],
         ]);
-        $refunds->completeExternal($event, $order, $refund, $request->user(), $validated['reference'], $validated['late_refund_note'] ?? null);
+        $refund = $refunds->completeExternal($event, $order, $refund, $request->user(), $validated['reference'], $validated['late_refund_note'] ?? null);
 
-        return redirect()->route('backend.clothing.refunds.show', [$event, $order])->with('success', 'External refund recorded.');
+        return $this->completedResponse($request, $event, $order, $refund);
     }
 }

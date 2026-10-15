@@ -5,14 +5,14 @@
   $refundAllowed = app(\App\Services\Clothing\ClothingRefundService::class)->canRefund($event, $order, auth()->user());
   $refundDeadline = app(\App\Services\Clothing\ClothingRefundService::class)->deadline($event, $order);
 @endphp
-<div class="card"><div class="card-body">
+<div class="card clothing-refund-workspace"><div class="card-body">
 <h4>Clothing refunds — {{ $order->player?->full_name }}</h4>
 <p>Order #{{ $order->id }} · {{ $event->name }} · Original payer: {{ $order->user?->name }}</p>
-<a class="btn btn-outline-secondary mb-3" href="{{ route('backend.region.clothing.orders', ['region' => $order->team->region_id, 'event_id' => $event->id]) }}">Back to clothing orders</a>
+<a class="btn btn-outline-secondary mb-3" href="{{ route('backend.region.clothing.orders', array_filter(['region' => $order->team->region_id, 'event_id' => request()->boolean('all_events') && auth()->user()->hasRole('super-user') ? null : $event->id, 'sort' => request('sort') === 'name' ? 'name' : 'rank', 'search' => request('search', ''), 'team' => request('team', '')], fn ($value) => $value !== null)) }}">Back to clothing orders</a>
 @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
 @if($errors->any())<div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>@endif
 @if($refundAllowed)
-<div class="row g-3">@foreach($order->items as $item)<div class="col-md-6">@include('backend.clothing.partials.refund-item', ['formKey' => 'order-'.$item->id])</div>@endforeach</div>
+@include('backend.clothing.partials.refund-selection')
 @else<p>Only a super-user can refund after the clothing deadline or while no deadline is set.</p>@endif
 <h5 class="mt-4">Refund history</h5>
 @forelse($order->refunds->sortByDesc('id') as $refund)
@@ -47,4 +47,5 @@
 @empty<p>No refunds yet.</p>@endforelse
 </div></div>
 @include('backend.clothing.partials.refund-script')
+@include('backend.clothing.partials.refund-styles')
 @endsection

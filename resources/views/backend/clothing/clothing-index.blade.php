@@ -83,19 +83,10 @@
                     <dt>Line Total</dt><dd>R{{ number_format($lineTotal, 2) }}</dd>
                   </dl></details>
                     @if($refundAllowed)
-                      <button type="button" class="btn btn-sm btn-outline-danger" data-refund-toggle="refund-line-{{ $item->id }}" aria-controls="refund-line-{{ $item->id }}" aria-expanded="{{ old('item_id') == $item->id ? 'true' : 'false' }}">Refund</button>
+                      <a class="btn btn-sm btn-outline-danger" data-order-refund-link href="{{ route('backend.clothing.refunds.show', [$order->event_id, $order, 'sort' => $orderSort ?? 'rank', 'search' => request('search', ''), 'team' => request('team', ''), 'all_events' => $clothingEvent ? 0 : 1]) }}">Select items to refund</a>
                     @endif
                   </div></td>
                 </tr>
-                @if($refundAllowed)
-                <tr id="refund-line-{{ $item->id }}" data-refund-row @if(old('item_id') != $item->id) hidden @endif><td colspan="7">
-                  <div class="clothing-refund-panel p-2">
-                    <strong>Refund — {{ $order->player?->full_name }}</strong>
-                    @include('backend.clothing.partials.refund-item', ['event' => $order->event, 'formKey' => 'inline-'.$item->id])
-                    <a href="{{ route('backend.clothing.refunds.show', [$order->event_id, $order]) }}">Refund history / pending PayFast refunds</a>
-                  </div>
-                </td></tr>
-                @endif
                 @php
                   $grandTotal += $lineTotal;
                 @endphp
@@ -145,14 +136,22 @@
   const search = document.getElementById('clothing-order-search');
   const team = document.getElementById('clothing-team-filter');
   const lines = [...document.querySelectorAll('[data-clothing-order-line]')];
+  const context = new URLSearchParams(window.location.search);
+  search.value = context.get('search') || '';
+  team.value = context.get('team') || '';
+
   const filter = () => {
     const term = search.value.trim().toLocaleLowerCase();
+    document.querySelectorAll('[data-order-refund-link]').forEach(link => {
+      const url = new URL(link.href);
+      url.searchParams.set('search', search.value.slice(0, 120));
+      url.searchParams.set('team', team.value);
+      link.href = url.toString();
+    });
     let shown = 0;
     lines.forEach(line => {
       const matches = (!team.value || line.dataset.teamId === team.value) && line.textContent.toLocaleLowerCase().includes(term);
       line.hidden = !matches;
-      const trigger = line.querySelector('[data-refund-toggle]');
-      if (trigger) document.getElementById(trigger.dataset.refundToggle).hidden = !matches || trigger.getAttribute('aria-expanded') !== 'true';
       if (matches) shown++;
     });
     document.querySelectorAll('[data-clothing-team-group]').forEach(group => {
@@ -162,15 +161,10 @@
     document.getElementById('clothing-order-count').textContent = `${shown} of ${lines.length} item lines shown`;
     document.getElementById('clothing-order-empty').hidden = shown > 0 || lines.length === 0;
   };
-  document.querySelectorAll('[data-refund-toggle]').forEach(button => button.addEventListener('click', () => {
-    const open = button.getAttribute('aria-expanded') !== 'true';
-    button.setAttribute('aria-expanded', String(open));
-    document.getElementById(button.dataset.refundToggle).hidden = !open;
-  }));
   search.addEventListener('input', filter);
   team.addEventListener('change', filter);
   filter();
 })();
 </script>
-@include('backend.clothing.partials.refund-script')
+@include('backend.clothing.partials.refund-completed')
 @endsection
