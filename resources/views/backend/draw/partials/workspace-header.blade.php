@@ -9,7 +9,7 @@
     <span class="small text-muted" role="status" data-share-status></span>
   </x-slot:meta>
   <x-slot:actions>
-      @can('event.manage', $draw->event)<a class="btn btn-sm btn-primary" href="{{ route('draw.guide.show', [$draw->event_id, $draw]) }}">Continue setup</a>@endcan
+      @can('event.manage', $draw->event)<a data-draw-guide-open class="btn btn-sm btn-primary" href="{{ route('draw.guide.show', [$draw->event_id, $draw]) }}">Continue setup</a>@endcan
       @if(!empty($rankingReference))
         <div class="dropdown draw-ranking-reference">
           <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
@@ -92,3 +92,5 @@
   <link rel="stylesheet" href="{{ asset('css/draw-workspace-navigation.css') }}?v={{ filemtime(public_path('css/draw-workspace-navigation.css')) }}">
   <script src="{{ asset('js/draw-workspace-navigation.js') }}?v={{ filemtime(public_path('js/draw-workspace-navigation.js')) }}" defer></script>
 @endonce
+
+@include('backend.draw.partials.guide-modal')

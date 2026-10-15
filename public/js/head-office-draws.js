@@ -131,7 +131,7 @@ $(function () {
     }
     const $submit = $(this).find('[type="submit"]').prop('disabled', true);
     $.post(config.createUrl, $(this).serialize())
-      .done(response => location.assign(response.setup_url || location.href))
+      .done(response => { if (window.DrawSetupGuide && response.guide_url) { window.DrawSetupGuide.created([{name:response.draw?.drawName || 'Saved draw',url:response.guide_url}]); window.DrawSetupGuide.open(response.guide_url); } else location.assign(response.setup_url || location.href); })
       .fail(xhr => error(xhr, 'Could not create draw.'))
       .always(() => $submit.prop('disabled', false));
   });

@@ -455,13 +455,21 @@
       var payload = teamPayload();
       if (!payload) return;
       startCreationProgress();
-      $.post(data.createUrl, payload).done(function (response) {
+      $.post(data.createUrl, Object.assign(payload, {guided_setup: 1})).done(function (response) {
         if (!response || response.success !== true) {
           failCreationProgress({ responseJSON: { message: 'Could not confirm draw creation. Check your draws before retrying.' } });
           return;
         }
         completeCreationProgress();
-        window.location.assign(response.continue_url || window.location.href);
+        creationPending = false;
+        if (window.DrawSetupGuide && response.continue_url) {
+          creationControls.forEach(function(state){state.control.disabled=state.disabled;});
+          if(submitButton)submitButton.textContent=creationButtonText;
+          var guides=response.guides || [{name:'Saved draw',url:response.continue_url}];
+          window.DrawSetupGuide.created(guides);
+          if(guides.length>1)window.DrawSetupGuide.choose(guides);else window.DrawSetupGuide.open(response.continue_url);
+        }
+        else window.location.assign(response.continue_url || window.location.href);
       }).fail(failCreationProgress);
       return;
     }
@@ -502,7 +510,13 @@
         return;
       }
       completeCreationProgress();
-      window.location.assign(response.setup_url);
+      creationPending = false;
+      if (window.DrawSetupGuide && response.guide_url) {
+        creationControls.forEach(function(state){state.control.disabled=state.disabled;});
+        if(submitButton)submitButton.textContent=creationButtonText;
+        window.DrawSetupGuide.created([{name:drawName,url:response.guide_url}]);
+        window.DrawSetupGuide.open(response.guide_url);
+      } else window.location.assign(response.setup_url);
     }).fail(failCreationProgress);
   }, true);
 

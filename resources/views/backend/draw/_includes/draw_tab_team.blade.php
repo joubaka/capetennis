@@ -26,7 +26,7 @@
         <small class="text-muted">None assigned</small>
       @endforelse
     </div>
-    @can('event.manage', $draw->event)<a class="btn btn-sm btn-primary mb-2" href="{{ route('draw.guide.show', [$draw->event_id, $draw]) }}">Continue setup</a>@endcan
+    @can('event.manage', $draw->event)<a data-draw-guide-open class="btn btn-sm btn-primary mb-2" href="{{ route('draw.guide.show', [$draw->event_id, $draw]) }}">Continue setup</a>@endcan
     <div class="draw-card-actions draw-card-primary d-flex flex-wrap gap-2 mt-3" role="group" aria-label="Draw workspace">
       <a class="btn btn-sm btn-primary" href="{{ $isTeamDraw ? route('backend.team-fixtures.index', ['draw_id' => $draw->id]) : $individualWorkspaceUrl }}">{{ $isTeamDraw ? 'Open team fixtures' : 'Open singles draw' }}</a>
       <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]) }}"><i class="ti ti-calendar me-1"></i>Schedule matches</a>
@@ -62,3 +62,5 @@
     </div>
   </div>
 </div>
+
+@include('backend.draw.partials.guide-modal')

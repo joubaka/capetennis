@@ -46,6 +46,23 @@ class DrawSetupGuideTest extends TestCase
         $this->post($categoryUrl, ['category_event_id' => $category->id])->assertForbidden();
     }
 
+    public function test_ajax_guide_returns_private_fragment_and_category_save_returns_resume_url(): void
+    {
+        [$event, $draw] = $this->scenario(false);
+        $url = route('draw.guide.show', [$event, $draw]);
+        $response = $this->getJson($url)->assertOk()->assertJsonPath('guide_url', $url);
+        $this->assertStringContainsString('data-draw-guide', $response->json('html'));
+        $this->assertStringNotContainsString('<html', $response->json('html'));
+        $this->assertStringNotContainsString('<script', $response->json('html'));
+        $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
+        $this->assertSame(0, Fixture::count());
+        $category = CategoryEvent::factory()->create(['event_id' => $event->id]);
+        $this->postJson(route('draw.guide.category', [$event, $draw]), ['category_event_id' => $category->id])
+            ->assertOk()->assertJsonPath('guide_url', $url);
+        $this->getJson($url)->assertOk()->assertSee('Step 3 of 6');
+        $this->assertFalse((bool) $draw->fresh()->published);
+    }
+
     public function test_unrelated_admin_and_foreign_event_cannot_resume_or_edit(): void
     {
         [$event, $draw] = $this->scenario();
@@ -64,7 +81,7 @@ class DrawSetupGuideTest extends TestCase
         $response = $this->postJson(route('headoffice.createSingleDraw', $event), ['drawName' => 'Combined trial', 'category_scope' => 'event'])->assertOk();
         $created = Draw::findOrFail($response->json('draw.id'));
         $this->assertNull($created->category_event_id);
-        $response->assertJsonPath('setup_url', route('draw.setup.show', $created));
+        $response->assertJsonPath('setup_url', route('draw.setup.show', $created))->assertJsonPath('guide_url', null);
         $this->assertSame(0, Fixture::count());
         $created->settings()->create(['workflow' => 'round_robin']);
         $state = app(DrawSetupGuide::class)->state($created->fresh());

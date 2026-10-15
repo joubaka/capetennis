@@ -10,6 +10,11 @@
 </style>
 @endsection
 @section('content')
+@include('backend.draw.partials.guide-modal')
+@if(!empty($scope['draw_id']))
+  @php($guideDraw = $event->draws()->find($scope['draw_id']))
+  @if($guideDraw)<a data-draw-guide-open class="btn btn-primary m-3" href="{{ route('draw.guide.show', [$event, $guideDraw]) }}">Continue draw setup</a>@endif
+@endif
 <div class="container-xxl py-3" data-draw-match-review>
   <div class="d-flex flex-wrap justify-content-between gap-3 mb-3">
     <div><h3 class="mb-1">Scheduled matches by draw</h3><p class="text-muted mb-1">{{ $event->name }}</p><p class="small mb-0">Private review of actual saved matches and assigned players. Times follow date and time, then roster rank within each draw. This review does not publish any changes.</p></div>

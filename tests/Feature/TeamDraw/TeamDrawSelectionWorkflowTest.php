@@ -65,9 +65,9 @@ class TeamDrawSelectionWorkflowTest extends TestCase
 
     public function test_guided_creation_saves_selection_without_generation_then_explicitly_generates_once(): void
     {
-        $payload = ['draws' => [$this->item('Singles', [$this->categories['Boys']])], 'batch_key' => 'guided-test', 'guided_setup' => true];
+        $payload = ['draws' => [$this->item('Singles', [$this->categories['Boys']])], 'batch_key' => 'guided-test', 'guided_setup' => 1];
         $url = route('headoffice.createSingleDraw.team', $this->event);
-        $response = $this->actingAs($this->admin)->postJson($url, $payload)->assertOk();
+        $response = $this->actingAs($this->admin)->post($url, $payload)->assertOk();
         $draw = Draw::findOrFail($response->json('draw.id'));
         $this->assertNotNull($draw->team_format_snapshot);
         $this->assertSame(0, $draw->teamTies()->count());
@@ -78,12 +78,14 @@ class TeamDrawSelectionWorkflowTest extends TestCase
         $guide = $this->get($guideUrl)->assertOk()->assertSee('Step 4 of 6')->assertSee('Generate team ties');
         if (getenv('DRAW_GUIDE_SNAPSHOT_DIR')) {
             file_put_contents(getenv('DRAW_GUIDE_SNAPSHOT_DIR').'/team-guide.html', $guide->getContent());
+            $fragment = $this->getJson($guideUrl)->assertOk()->json();
+            file_put_contents(getenv('DRAW_GUIDE_SNAPSHOT_DIR').'/team-guide.json', json_encode($fragment));
             $eventPage = $this->get(route('headOffice.show', $this->event))->assertOk();
             file_put_contents(getenv('DRAW_GUIDE_SNAPSHOT_DIR').'/team-create.html', $eventPage->getContent());
         }
         $this->assertSame(0, $draw->fixtures()->count());
         $generate = route('draw.guide.generate-team', [$this->event, $draw]);
-        $this->post($generate, ['confirm_generation' => 1])->assertRedirect($guideUrl);
+        $this->postJson($generate, ['confirm_generation' => 1])->assertOk()->assertJsonPath('guide_url', $guideUrl);
         $this->assertGreaterThan(0, $draw->fixtures()->count());
         $count = $draw->fixtures()->count();
         $this->post($generate, ['confirm_generation' => 1])->assertStatus(409);

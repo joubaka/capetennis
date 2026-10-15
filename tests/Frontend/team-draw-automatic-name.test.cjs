@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-function dialog(initialMode = 'team', guided = false) {
+function dialog(initialMode = 'team', guided = false, ajax = false) {
   const state = { mode: '', type: null, choices: {}, manual: [], bulkTypes: [], bulkCategories: [] };
   const name = { id: 'drawName', value: '', required: false };
   const bulk = { checked: false };
@@ -72,13 +72,15 @@ function dialog(initialMode = 'team', guided = false) {
     location: { reload() { navigation.push('reload'); }, assign(url) { navigation.push(url); } },
     toastr: { error(message) { errors.push(message); } },
     setTimeout(callback) { callback(); }, setInterval(callback) { timers.set(++timerId, callback); return timerId; }, clearInterval(id) { timers.delete(id); } };
+  const modalCalls=[];
+  if(ajax)window.DrawSetupGuide={open:url=>modalCalls.push(['open',url]),choose:guides=>modalCalls.push(['choose',guides]),created:guides=>modalCalls.push(['created',guides])};
   vm.runInNewContext(fs.readFileSync('public/js/team-draw-mode.js', 'utf8'), { window, document });
   function change(field) {
     handlers.filter(h => h.event === 'change' && (h.selector.includes('name="' + field + '"') || h.selector.includes('#' + field)))
       .forEach(h => h.handler.call(field === 'draw_mode' ? { value: state.mode } : {}));
   }
   state.mode = initialMode; change('draw_mode');
-  return { state, name, bulk, manual, individualManual, classes, values, attributes, requests, timers, navigation, errors, submitButton, change, guide,
+  return { state, name, bulk, manual, individualManual, classes, values, attributes, requests, timers, navigation, errors, submitButton, change, guide, modalCalls,
     tick() { [...timers.values()].forEach(callback => callback()); },
     submit() { formHandlers.submit({ preventDefault() {}, stopImmediatePropagation() {} }); },
     hide() { let prevented = false; handlers.find(h => h.event === 'hide.bs.modal').handler({ preventDefault() { prevented = true; } }); return prevented; }, close() { handlers.find(h => h.event === 'hidden.bs.modal').handler(); }, customize(value) { name.value = value; formHandlers.input({ target: name }); } };
@@ -255,6 +257,7 @@ test('bulk creation uses one request with estimated progress and confirmed compl
   ui.submit();
   assert.equal(ui.requests.length, 1);
   assert.equal(ui.requests[0].url, '/team');
+  assert.equal(ui.requests[0].payload.guided_setup, 1);
   assert.equal(ui.requests[0].payload.draws.length, 2);
   assert.equal(ui.values['#drawCreationPercent'], '0%');
   ui.tick(); ui.submit();
@@ -282,4 +285,17 @@ test('guided team create starts with competition only and Continue reveals selec
   ui.submit();
   assert.equal(ui.guide.details.hidden,false,'Enter follows Continue instead of creating a draw');
   assert.equal(ui.requests.length,0);
+});
+
+test('created individual opens authorized Ajax guide while canonical format fallback still navigates',()=>{
+  for(const guide of [true,false]){
+    const ui=dialog('individual',false,true);ui.state.choices.category_choice={value:'201',dataset:{age:'u/13 Boys',pivotId:'201'}};ui.change('category_choice');ui.submit();
+    ui.requests[0].resolve({success:true,setup_url:guide?'/guide':'/format',guide_url:guide?'/guide':null});
+    if(guide){assert.deepEqual(ui.navigation,[]);assert.deepEqual(ui.modalCalls[1],['open','/guide']);assert.equal(ui.submitButton.disabled,false);}else{assert.deepEqual(ui.navigation,['/format']);assert.equal(ui.modalCalls.length,0);}
+  }
+});
+test('created team batch opens in-page draw choices without navigating',()=>{
+  const ui=dialog('team',false,true);ui.state.type={id:'singles',value:'19',dataset:{code:'singles'}};ui.state.choices.category_choice={value:'201',dataset:{age:'u/13 Boys',pivotId:'201'}};ui.change('category_choice');ui.submit();
+  const guides=[{name:'Boys',url:'/guide/1'},{name:'Girls',url:'/guide/2'}];ui.requests[0].resolve({success:true,continue_url:'/event',draws:[{id:1},{id:2}],guides});
+  assert.deepEqual(ui.navigation,[]);assert.equal(ui.modalCalls[1][0],'choose');assert.deepEqual(ui.modalCalls[1][1],guides);assert.equal(ui.submitButton.disabled,false);
 });

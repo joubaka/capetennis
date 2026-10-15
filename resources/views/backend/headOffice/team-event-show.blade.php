@@ -111,6 +111,7 @@
 
 
 @section('content')
+@include('backend.draw.partials.guide-modal')
 
 @include('backend.event.partials.header', [
   'eventWorkspaceActive' => 'draws',
@@ -125,7 +126,6 @@
   @endcan
   @can('team-draw.createFormat', $event)
   <a class="btn btn-outline-primary" href="{{ route('backend.team-rules.edit', $event) }}">Event scoring rules</a>
-  <a class="btn btn-outline-primary" href="{{ route('team-draw.competition.setup', $event) }}">Round robin and placement playoffs</a>
   @endcan
   <button class="btn btn-primary" id="createNewDrawBtn" data-bs-toggle="modal" data-bs-target="#createDrawModal">
       <i class="ti ti-plus me-1"></i> Create New Draw
@@ -343,7 +343,7 @@
               @can('team-fixture.view', $draw)
               <div class="event-draw-links">
               @if($draw->team_format_snapshot !== null)
-              <a class="btn btn-sm btn-primary me-2" href="{{ route('draw.guide.show', [$event, $draw]) }}">Continue setup</a>
+              <a data-draw-guide-open class="btn btn-sm btn-primary me-2" href="{{ route('draw.guide.show', [$event, $draw]) }}">Continue setup</a>
               <a class="btn btn-sm btn-outline-primary me-2" href="{{ route('backend.team-draw.operations', $draw) }}">Team ties</a>
               @endif
               <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.team-draw.standings', $draw) }}">Standings</a>
@@ -425,6 +425,12 @@
         </div>
 
         <div class="modal-body">
+
+          @can('team-draw.createFormat', $event)
+            <div class="mb-3">
+              <a class="btn btn-outline-primary" href="{{ route('team-draw.competition.setup', $event) }}">Round robin and placement playoffs</a>
+            </div>
+          @endcan
 
           <p class="small text-primary" data-create-guide-status>Step 1 of 6 · Competition</p>
           <fieldset class="mb-3">

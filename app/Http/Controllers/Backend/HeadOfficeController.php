@@ -1262,7 +1262,7 @@ class HeadOfficeController extends Controller
       $request->validate(['guided_setup' => ['sometimes', 'boolean']]);
       if ($request->boolean('guided_setup')) $this->authorize('event.manage', $event);
       $created = $service->create($event, $items, $validated['batch_key'], $request->boolean('guided_setup'));
-      return response()->json(['success' => true, 'draw' => $created[0], 'draws' => $created, 'continue_url' => count($created) === 1 ? route('draw.guide.show', [$event, $created[0]['id']]) : route('headOffice.show', $event)]);
+      return response()->json(['success' => true, 'draw' => $created[0], 'draws' => $created, 'guides' => array_map(fn ($row) => ['name' => $row['name'], 'url' => route('draw.guide.show', [$event, $row['id']])], $created), 'continue_url' => count($created) === 1 ? route('draw.guide.show', [$event, $created[0]['id']]) : route('headOffice.show', $event)]);
     }
     $previews = [];
     foreach ($items as $item) {

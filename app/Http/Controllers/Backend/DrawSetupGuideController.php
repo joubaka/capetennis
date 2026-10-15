@@ -18,11 +18,13 @@ final class DrawSetupGuideController extends Controller
         $this->authorize('view', $draw);
     }
 
-    public function show(Event $event, Draw $draw, DrawSetupGuide $guide)
+    public function show(Request $request, Event $event, Draw $draw, DrawSetupGuide $guide)
     {
         $this->authorizeGuide($event, $draw);
-        return view('backend.draw.guide', ['draw' => $draw, 'event' => $event, 'guide' => $guide->state($draw),
-            'categories' => $event->categoryEvents()->with('category')->get()]);
+        $data = ['draw' => $draw, 'event' => $event, 'guide' => $guide->state($draw),
+            'categories' => $event->categoryEvents()->with('category')->get()];
+        if ($request->expectsJson()) return response()->json(['html' => view('backend.draw.partials.guide-content', $data)->render(), 'guide_url' => route('draw.guide.show', [$event, $draw])])->header('Cache-Control', 'private, no-store');
+        return response()->view('backend.draw.guide', $data)->header('Cache-Control', 'private, no-store');
     }
 
     public function category(Request $request, Event $event, Draw $draw)
@@ -37,6 +39,7 @@ final class DrawSetupGuideController extends Controller
                 || !empty($draw->flexibleMonrad?->draft['slots']) || !empty($draw->flexibleMonrad?->graph), 409, 'Review this draw in its existing workspace before changing its category.');
             $draw->update($data);
         });
+        if ($request->expectsJson()) return response()->json(['guide_url' => route('draw.guide.show', [$event, $draw])]);
         return redirect()->route('draw.guide.show', [$event, $draw]);
     }
 
@@ -55,6 +58,7 @@ final class DrawSetupGuideController extends Controller
             $ties = app(\App\Services\TeamDrawGenerationService::class)->generate($draw, $teams);
             foreach ($ties as $tie) app(\App\Services\TeamTieGenerationService::class)->generateForTie($tie);
         });
+        if ($request->expectsJson()) return response()->json(['guide_url' => route('draw.guide.show', [$event, $draw])]);
         return redirect()->route('draw.guide.show', [$event, $draw]);
     }
 }

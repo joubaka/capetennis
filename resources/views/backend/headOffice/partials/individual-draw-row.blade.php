@@ -77,7 +77,7 @@
       </span>
   </div>
   <div class="draw-overview-actions">
-    @can('event.manage', $draw->event)<a class="btn draws-button draw-open-button" href="{{ route('draw.guide.show', [$draw->event_id, $draw]) }}">Continue setup</a>@endcan
+    @can('event.manage', $draw->event)<a data-draw-guide-open class="btn draws-button draw-open-button" href="{{ route('draw.guide.show', [$draw->event_id, $draw]) }}">Continue setup</a>@endcan
     <a class="btn draws-button draw-open-button" href="{{ $drawUrl }}">Open draw @include('backend.headOffice.partials.draw-icon', ['icon' => 'arrow'])</a>
     <a class="btn draws-button draw-schedule-button" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]) }}">@include('backend.headOffice.partials.draw-icon', ['icon' => 'calendar']) <span>Schedule</span></a>
     @if($draw->settings?->workflow === 'round_robin_playoffs')
@@ -142,3 +142,5 @@
     </div>
   </div>
 </article>
+
+@include('backend.draw.partials.guide-modal')

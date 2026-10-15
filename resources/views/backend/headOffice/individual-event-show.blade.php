@@ -489,6 +489,8 @@ $(document).ready(function () {
 @endsection
 
 @section('content')
+<script src="{{ asset('js/guided-create-draw.js') }}?v={{ filemtime(public_path('js/guided-create-draw.js')) }}" defer></script>
+@include('backend.draw.partials.guide-modal')
 
 @include('backend.headOffice.partials.individual-draw-overview')
 
@@ -786,5 +788,3 @@ $(document).ready(function () {
 @endif
 
 @endsection
-
-<script src="{{ asset('js/guided-create-draw.js') }}?v={{ filemtime(public_path('js/guided-create-draw.js')) }}" defer></script>

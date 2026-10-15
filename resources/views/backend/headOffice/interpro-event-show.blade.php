@@ -50,6 +50,8 @@
 @endsection
 
 @section('content')
+<script src="{{ asset('js/guided-create-draw.js') }}?v={{ filemtime(public_path('js/guided-create-draw.js')) }}" defer></script>
+@include('backend.draw.partials.guide-modal')
 
 @include('backend.event.partials.header', ['eventWorkspaceActive' => 'draws'])
 
@@ -232,7 +234,7 @@ $(document).ready(function () {
         .done(function (data) {
             toastr.success(data.message);
             $('#createDrawModal').modal('hide');
-            location.assign(data.setup_url || location.href);
+            if (window.DrawSetupGuide && data.guide_url) { window.DrawSetupGuide.created([{name:drawName,url:data.guide_url}]); window.DrawSetupGuide.open(data.guide_url); } else location.assign(data.setup_url || location.href);
         })
         .fail(function () {
             toastr.error('Error creating draw');
@@ -478,5 +480,3 @@ $(document).ready(function () {
 
 
 @endsection
-
-<script src="{{ asset('js/guided-create-draw.js') }}?v={{ filemtime(public_path('js/guided-create-draw.js')) }}" defer></script>

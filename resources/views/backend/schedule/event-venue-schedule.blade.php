@@ -178,6 +178,7 @@
 @endsection
 
 @section('content')
+@include('backend.draw.partials.guide-modal')
 @if($planningDate)
 <div class="container-xxl pt-3"><div class="alert alert-info mb-0">Reschedule {{ \Carbon\Carbon::parse($planningDate)->format('D j M Y') }}{{ !empty($planningScope['draw_id']) ? ' · selected draw' : '' }}{{ !empty($planningScope['venue_id']) ? ' · selected venue' : '' }}. This batch uses only this day and preserves existing saved times. Clear the day first to replace its schedule.</div></div>
 @endif
@@ -187,7 +188,7 @@
 @endphp
 <div class="container-xxl flex-grow-1 container-p-y schedule-workspace">
   @php($guideSelection = $event->draws->whereIn('id', collect($draws)->where('selected', true)->pluck('id')))
-  @if($guideSelection->count() === 1)<a class="btn btn-primary mb-3" href="{{ route('draw.guide.show', [$event, $guideSelection->first()]) }}">Continue draw setup</a>@endif
+  @if($guideSelection->count() === 1)<a data-draw-guide-open class="btn btn-primary mb-3" href="{{ route('draw.guide.show', [$event, $guideSelection->first()]) }}">Continue draw setup</a>@endif
   @include('backend.event.partials.header', [
     'eventWorkspaceActive' => 'schedule',
     'eventWorkspaceIcon' => 'ti-calendar-event',
@@ -751,7 +752,7 @@
   const venueUrl = @json(route('backend.event-venue-schedule.venues', $event));
   const courtUrl = @json(route('backend.event-venue-schedule.courts', $event));
   const announcementUrl = @json(route('admin.events.announcements.store', $event));
-  const drawsUrl = @json(route('backend.event-venue-schedule.calendar', $event));
+  const drawsUrl = @json(route('backend.event-venue-schedule.calendar', ['event' => $event] + ($guideSelection->count() === 1 ? ['draw_id' => $guideSelection->first()->id] : [])));
   const eventName = @json($event->name);
   const manualMode = @json(request()->boolean('manual'));
   const drawIds = @json($draws->reject(fn($draw) => $draw['locked'])->pluck('id')->values());

@@ -708,6 +708,7 @@ class EventAdminController extends Controller
       'message' => 'Draw created successfully',
       'draw' => $draw,
       'setup_url' => $request->user()->can('event.manage', $event) && empty($validated['category_scope']) ? route('draw.guide.show', [$event, $draw]) : route('draw.setup.show', $draw),
+      'guide_url' => $request->user()->can('event.manage', $event) && empty($validated['category_scope']) ? route('draw.guide.show', [$event, $draw]) : null,
     ]);
   }
 
