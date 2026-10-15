@@ -2,6 +2,10 @@
 @section('title', 'Saved schedule – '.$event->name)
 @section('page-style')<style>[data-saved-calendar] nav a { flex-shrink:0; } [data-saved-calendar] .btn, [data-saved-calendar] select {min-height:44px;}</style>@endsection
 @section('content')
+@if(!empty($scope['draw_id']))
+  @php($guideDraw = $event->draws()->find($scope['draw_id']))
+  @if($guideDraw)<a class="btn btn-primary m-3" href="{{ route('draw.guide.show', [$event, $guideDraw]) }}">Continue draw setup</a>@endif
+@endif
 <div class="container-xxl py-3" data-saved-calendar>
   <div class="d-flex flex-wrap justify-content-between gap-3 mb-3"><div><h3 class="mb-1">Saved schedule</h3><p class="text-muted mb-0">{{ $event->name }} · Add batches across the weekend. Saved changes stay private until you publish them.</p></div><div class="d-flex flex-wrap gap-2 align-self-start"><a class="btn btn-outline-primary" href="{{ route('headOffice.show', $event) }}">Back to event dashboard</a>@if($date !== 'all' && !empty($scope['draw_id']))
         <a class="btn btn-primary" href="{{ route('backend.event-venue-schedule.calendar.edit-day', ['event'=>$event->id, 'date'=>$date, 'draw_id'=>$scope['draw_id']]) }}">Change venues / reschedule this draw</a>

@@ -91,10 +91,10 @@ class TeamDrawSelectionService
         return compact('type', 'teams', 'selection', 'snapshot', 'format', 'preview', 'errors') + ['name' => $item['drawName']];
     }
 
-    public function create(Event $event, array $items, string $batchKey): array
+    public function create(Event $event, array $items, string $batchKey, bool $deferGeneration = false): array
     {
-        $fingerprint = hash('sha256', json_encode($items));
-        return DB::transaction(function () use ($event, $items, $batchKey, $fingerprint) {
+        $fingerprint = hash('sha256', json_encode($deferGeneration ? ['draft' => true, 'items' => $items] : $items));
+        return DB::transaction(function () use ($event, $items, $batchKey, $fingerprint, $deferGeneration) {
             Event::whereKey($event->id)->lockForUpdate()->firstOrFail();
             $existing = Draw::where('event_id', $event->id)->where('team_draw_batch_key', $batchKey)->orderBy('team_draw_batch_index')->get();
             if ($existing->isNotEmpty()) {
@@ -122,7 +122,7 @@ class TeamDrawSelectionService
                 $draw->team_scoring_rules = app(TeamEventRulesService::class)->forEvent($event);
                 $draw->save();
                 $draw->teams_in_draw()->sync($plan['teams']->pluck('id')->all());
-                $ties = $this->generator->generate($draw, $plan['teams']);
+                $ties = $deferGeneration ? collect() : $this->generator->generate($draw, $plan['teams']);
                 foreach ($ties as $tie) $this->ties->generateForTie($tie);
                 $created[] = ['id' => $draw->id, 'name' => $draw->drawName, 'ties_count' => $ties->count()];
             }

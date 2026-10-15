@@ -112,10 +112,11 @@
 
 <!-- Modal: Create New Draw -->
 <!-- Modal: Create New Draw (Individual Event) -->
+@include('backend.draw.partials.guide-visibility')
 <div class="modal fade" id="createDrawModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-md">
     <div class="modal-content">
-      <form id="createDrawForm">
+      <form id="createDrawForm" data-guided-create>
         @csrf
 
         <div class="modal-header">
@@ -124,6 +125,9 @@
         </div>
 
         <div class="modal-body">
+          <p class="small text-primary" data-create-guide-status>Step 1 of 6 · Competition</p>
+          <p data-create-guide-intro><strong>Individual singles</strong><br>Choose your player category next, then the format, draw positions, schedule and publication.</p>
+          <div data-create-guide-details hidden>
 
           {{-- Only draw name required --}}
           <div class="mb-3">
@@ -137,9 +141,10 @@
 
         </div>
 
+          </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="submit" class="btn btn-primary">Create</button>
+          <button type="button" class="btn btn-outline-secondary" data-create-guide-back hidden>Back</button><button type="button" class="btn btn-primary" data-create-guide-continue>Continue</button><button type="submit" class="btn btn-primary" data-create-guide-submit hidden>Save draw &amp; continue</button>
         </div>
 
       </form>
@@ -227,7 +232,7 @@ $(document).ready(function () {
         .done(function (data) {
             toastr.success(data.message);
             $('#createDrawModal').modal('hide');
-            location.reload();
+            location.assign(data.setup_url || location.href);
         })
         .fail(function () {
             toastr.error('Error creating draw');
@@ -473,3 +478,5 @@ $(document).ready(function () {
 
 
 @endsection
+
+<script src="{{ asset('js/guided-create-draw.js') }}?v={{ filemtime(public_path('js/guided-create-draw.js')) }}" defer></script>

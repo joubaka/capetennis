@@ -1259,8 +1259,10 @@ class HeadOfficeController extends Controller
     }
     $service = app(\App\Services\TeamDrawSelectionService::class);
     if (!$preview) {
-      $created = $service->create($event, $items, $validated['batch_key']);
-      return response()->json(['success' => true, 'draw' => $created[0], 'draws' => $created]);
+      $request->validate(['guided_setup' => ['sometimes', 'boolean']]);
+      if ($request->boolean('guided_setup')) $this->authorize('event.manage', $event);
+      $created = $service->create($event, $items, $validated['batch_key'], $request->boolean('guided_setup'));
+      return response()->json(['success' => true, 'draw' => $created[0], 'draws' => $created, 'continue_url' => count($created) === 1 ? route('draw.guide.show', [$event, $created[0]['id']]) : route('headOffice.show', $event)]);
     }
     $previews = [];
     foreach ($items as $item) {

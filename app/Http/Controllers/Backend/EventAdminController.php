@@ -657,6 +657,7 @@ class EventAdminController extends Controller
         'integer',
         \Illuminate\Validation\Rule::exists('draw_types', 'id')->where('type', 'individual'),
       ],
+      'category_scope' => ['nullable', 'in:event'],
       'category_selection_mode' => ['nullable', 'in:automatic,manual'],
       'category_event_id' => [
         'required_with:category_selection_mode',
@@ -706,7 +707,7 @@ class EventAdminController extends Controller
       'success' => true,
       'message' => 'Draw created successfully',
       'draw' => $draw,
-      'setup_url' => route('draw.setup.show', $draw),
+      'setup_url' => $request->user()->can('event.manage', $event) && empty($validated['category_scope']) ? route('draw.guide.show', [$event, $draw]) : route('draw.setup.show', $draw),
     ]);
   }
 

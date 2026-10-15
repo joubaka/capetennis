@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-function dialog(initialMode = 'team') {
+function dialog(initialMode = 'team', guided = false) {
   const state = { mode: '', type: null, choices: {}, manual: [], bulkTypes: [], bulkCategories: [] };
   const name = { id: 'drawName', value: '', required: false };
   const bulk = { checked: false };
@@ -21,8 +21,10 @@ function dialog(initialMode = 'team') {
   const submitButton = { disabled: false, textContent: 'Create Draw' };
   const previewButton = { disabled: false };
   let timerId = 0;
+  const guide = Object.fromEntries(['details','continue','back','status'].map(key => [key, {hidden:false,addEventListener(_,fn){this.click=fn;}}]));
   const form = {
     querySelector(selector) {
+      if (selector.startsWith('[data-create-guide-')) return guided ? guide[selector.match(/guide-([^\]]+)/)[1]] : null;
       if (selector.includes('button[type')) return submitButton;
       if (selector.includes('draw_mode')) return { value: state.mode };
       if (selector.includes('draw_type_id')) return state.type;
@@ -40,7 +42,7 @@ function dialog(initialMode = 'team') {
     addEventListener(event, handler) { formHandlers[event] = handler; },
     reset() { state.mode = ''; state.type = null; state.choices = {}; state.manual = []; }
   };
-  const document = { getElementById(id) { return { createDrawForm: form, drawName: name, bulkTeamDraws: bulk, manualTeamCategories: manual, manualIndividualCategories: individualManual, previewTeamDrawButton: previewButton }[id] || {}; } };
+  const document = { querySelector() { return null; }, getElementById(id) { return { createDrawForm: form, drawName: name, bulkTeamDraws: bulk, manualTeamCategories: manual, manualIndividualCategories: individualManual, previewTeamDrawButton: previewButton }[id] || {}; } };
   function $(selector) {
     const chain = {
       on(event, target, handler) { handlers.push({ event, selector: typeof target === 'string' ? target : selector, handler: handler || target }); return chain; },
@@ -76,7 +78,7 @@ function dialog(initialMode = 'team') {
       .forEach(h => h.handler.call(field === 'draw_mode' ? { value: state.mode } : {}));
   }
   state.mode = initialMode; change('draw_mode');
-  return { state, name, bulk, manual, individualManual, classes, values, attributes, requests, timers, navigation, errors, submitButton, change,
+  return { state, name, bulk, manual, individualManual, classes, values, attributes, requests, timers, navigation, errors, submitButton, change, guide,
     tick() { [...timers.values()].forEach(callback => callback()); },
     submit() { formHandlers.submit({ preventDefault() {}, stopImmediatePropagation() {} }); },
     hide() { let prevented = false; handlers.find(h => h.event === 'hide.bs.modal').handler({ preventDefault() { prevented = true; } }); return prevented; }, close() { handlers.find(h => h.event === 'hidden.bs.modal').handler(); }, customize(value) { name.value = value; formHandlers.input({ target: name }); } };
@@ -227,9 +229,9 @@ test('team creation errors stop progress, restore controls and permit a retry wi
   ui.submit();
   assert.equal(ui.requests.length, 2);
   assert.equal(ui.requests[0].payload.batch_key, ui.requests[1].payload.batch_key);
-  ui.requests[1].resolve({ success: true });
+  ui.requests[1].resolve({ success: true, continue_url:'/continue' });
   assert.equal(ui.values['#drawCreationPercent'], '100%');
-  assert.deepEqual(ui.navigation, ['reload']);
+  assert.deepEqual(ui.navigation, ['/continue']);
 });
 
 test('unconfirmed creation response never displays completed progress', () => {
@@ -258,8 +260,26 @@ test('bulk creation uses one request with estimated progress and confirmed compl
   ui.tick(); ui.submit();
   assert.equal(ui.requests.length, 1);
   assert.equal(ui.hide(), true);
-  ui.requests[0].resolve({ success: true, draws: [{ id: 1 }, { id: 2 }] });
+  ui.requests[0].resolve({ success: true, continue_url:'/continue', draws: [{ id: 1 }, { id: 2 }] });
   assert.equal(ui.values['#drawCreationPercent'], '100%');
   assert.equal(ui.timers.size, 0);
-  assert.deepEqual(ui.navigation, ['reload']);
+  assert.deepEqual(ui.navigation, ['/continue']);
+});
+
+test('guided team create starts with competition only and Continue reveals selection without a request', () => {
+  const ui = dialog('team', true);
+  assert.equal(ui.guide.details.hidden,true);
+  assert.equal(ui.submitButton.hidden,true);
+  assert.equal(ui.guide.back.hidden,true);
+  assert.equal(ui.guide.continue.hidden,false);
+  ui.guide.continue.click();
+  assert.equal(ui.guide.details.hidden,false);
+  assert.equal(ui.submitButton.hidden,false);
+  assert.equal(ui.guide.continue.hidden,true);
+  assert.equal(ui.requests.length,0);
+  ui.guide.back.click();
+  assert.equal(ui.guide.details.hidden,true);
+  ui.submit();
+  assert.equal(ui.guide.details.hidden,false,'Enter follows Continue instead of creating a draw');
+  assert.equal(ui.requests.length,0);
 });

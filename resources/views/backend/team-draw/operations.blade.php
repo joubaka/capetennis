@@ -6,6 +6,7 @@
   <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
     <h1 class="h4 mb-0">{{ $draw->drawName }}: team ties</h1>
     <div class="d-flex flex-wrap gap-2">
+      @can('event.manage', $draw->event)<a class="btn btn-primary" href="{{ route('draw.guide.show', [$draw->event_id, $draw]) }}">Continue setup</a>@endcan
       @can('team-fixture.schedule', $draw)<a class="btn btn-outline-primary" href="{{ route('backend.team-schedule.page', $draw) }}">Schedule rubbers</a>@endcan
       <a class="btn btn-outline-primary" href="{{ route('backend.team-draw.standings', $draw) }}">Standings</a>
     </div>

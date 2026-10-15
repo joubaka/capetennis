@@ -6,6 +6,24 @@
 
   var data = window.HeadOffice || {};
   var submitButton = form.querySelector('button[type="submit"]');
+  var guideDetails = form.querySelector('[data-create-guide-details]');
+  var guideContinue = form.querySelector('[data-create-guide-continue]');
+  var guideBack = form.querySelector('[data-create-guide-back]');
+  function showGuideDetails(show) {
+    if (!guideDetails) return;
+    guideDetails.hidden = !show;
+    guideContinue.hidden = show;
+    guideBack.hidden = !show;
+    submitButton.hidden = !show;
+    form.querySelector('[data-create-guide-status]').textContent = show ? 'Step 2 of 6 · Players / category' : 'Step 1 of 6 · Competition';
+    var preview = document.getElementById('previewTeamDrawButton');
+    if (preview) preview.hidden = !show;
+  }
+  if (guideContinue) guideContinue.addEventListener('click', function () {
+    if (!selectedMode()) return showError('Choose individual singles or team tie');
+    showGuideDetails(true);
+  });
+  if (guideBack) guideBack.addEventListener('click', function () { showGuideDetails(false); });
   var previewRevision = 0;
   var nameCustomized = false;
   var individualNameDraft = '';
@@ -103,6 +121,7 @@
   }
 
   function setMode(mode) {
+    if (guideDetails) showGuideDetails(false);
     nameCustomized = mode === 'individual' && individualNameCustomized;
     var nameInput = document.getElementById('drawName');
     if (nameInput) nameInput.value = nameCustomized ? individualNameDraft : '';
@@ -143,7 +162,7 @@
     }
 
     if (submitButton) {
-      submitButton.textContent = isIndividual ? 'Create Singles Draw' : (isTeam ? 'Create Team Draw' : 'Create Draw');
+      submitButton.textContent = 'Save draw & continue';
     }
     updateCategorySelection();
   }
@@ -165,10 +184,10 @@
     $('#teamDrawTypeSection, #manualCategoryToggleGroup').toggleClass('d-none', !isTeam || bulk);
     if (bulk) {
       $('#categorySection, #type3Categories, #manualCategoryChoices').addClass('d-none');
-      if (submitButton) submitButton.textContent = 'Create Selected Draws';
+      if (submitButton) submitButton.textContent = 'Save draws & continue';
       return;
     }
-    if (submitButton && isTeam) submitButton.textContent = 'Create Team Draw';
+    if (submitButton && isTeam) submitButton.textContent = 'Save draw & continue';
     var manual = isTeam && document.getElementById('manualTeamCategories').checked;
     var type = form.querySelector('input[name="draw_type_id"]:checked');
     var mixed = type && (type.dataset.code ? type.dataset.code === 'mixed_doubles' : (type.value === '3' || type.dataset.mixed === '1'));
@@ -416,6 +435,11 @@
       event.stopImmediatePropagation();
       return;
     }
+    if (guideDetails && guideDetails.hidden) {
+      event.preventDefault(); event.stopImmediatePropagation();
+      if (!selectedMode()) return showError('Choose individual singles or team tie');
+      showGuideDetails(true); return;
+    }
     var mode = selectedMode();
 
     if (!mode) {
@@ -437,7 +461,7 @@
           return;
         }
         completeCreationProgress();
-        window.location.reload();
+        window.location.assign(response.continue_url || window.location.href);
       }).fail(failCreationProgress);
       return;
     }
@@ -483,6 +507,7 @@
   }, true);
 
   setMode(selectedMode());
+  showGuideDetails(false);
 })(window, document, window.jQuery);
 
 (function (window, document) {

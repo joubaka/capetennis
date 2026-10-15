@@ -63,6 +63,42 @@ class TeamDrawSelectionWorkflowTest extends TestCase
         return $this->actingAs($this->admin)->postJson(route($preview ? 'headoffice.previewTeamDraw' : 'headoffice.createSingleDraw.team', $this->event), ['batch_key' => $key, 'draws' => $items]);
     }
 
+    public function test_guided_creation_saves_selection_without_generation_then_explicitly_generates_once(): void
+    {
+        $payload = ['draws' => [$this->item('Singles', [$this->categories['Boys']])], 'batch_key' => 'guided-test', 'guided_setup' => true];
+        $url = route('headoffice.createSingleDraw.team', $this->event);
+        $response = $this->actingAs($this->admin)->postJson($url, $payload)->assertOk();
+        $draw = Draw::findOrFail($response->json('draw.id'));
+        $this->assertNotNull($draw->team_format_snapshot);
+        $this->assertSame(0, $draw->teamTies()->count());
+        $this->assertSame(0, $draw->fixtures()->count());
+        $this->postJson($url, $payload)->assertOk()->assertJsonPath('draw.id', $draw->id);
+        $this->assertSame(1, Draw::count());
+        $guideUrl = route('draw.guide.show', [$this->event, $draw]);
+        $guide = $this->get($guideUrl)->assertOk()->assertSee('Step 4 of 6')->assertSee('Generate team ties');
+        if (getenv('DRAW_GUIDE_SNAPSHOT_DIR')) {
+            file_put_contents(getenv('DRAW_GUIDE_SNAPSHOT_DIR').'/team-guide.html', $guide->getContent());
+            $eventPage = $this->get(route('headOffice.show', $this->event))->assertOk();
+            file_put_contents(getenv('DRAW_GUIDE_SNAPSHOT_DIR').'/team-create.html', $eventPage->getContent());
+        }
+        $this->assertSame(0, $draw->fixtures()->count());
+        $generate = route('draw.guide.generate-team', [$this->event, $draw]);
+        $this->post($generate, ['confirm_generation' => 1])->assertRedirect($guideUrl);
+        $this->assertGreaterThan(0, $draw->fixtures()->count());
+        $count = $draw->fixtures()->count();
+        $this->post($generate, ['confirm_generation' => 1])->assertStatus(409);
+        $this->assertSame($count, $draw->fixtures()->count());
+        $this->assertFalse((bool) $draw->fresh()->published);
+        $this->assertFalse((bool) $draw->fresh()->oop_published);
+        $venue = \App\Models\Venue::forceCreate(['name' => 'Synthetic courts']);
+        $draw->fixtures()->update(['scheduled_at' => '2026-10-30 09:00:00', 'venue_id' => $venue->id, 'court_label' => '1']);
+        $progress = app(\App\Services\Draw\DrawSetupGuide::class)->state($draw->fresh());
+        $this->assertTrue($progress['scheduleComplete']);
+        $this->assertSame(5, $progress['next']);
+        $other = Event::factory()->create();
+        $this->get(route('draw.guide.show', [$other, $draw]))->assertNotFound();
+    }
+
     public function test_fixture_index_displays_regions_once_and_original_player_ranks(): void
     {
         $items = [$this->item('Doubles', [$this->categories['Boys']]), $this->item('Singles Reverse', [$this->categories['Boys']]), $this->item()];

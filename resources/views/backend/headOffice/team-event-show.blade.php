@@ -343,6 +343,7 @@
               @can('team-fixture.view', $draw)
               <div class="event-draw-links">
               @if($draw->team_format_snapshot !== null)
+              <a class="btn btn-sm btn-primary me-2" href="{{ route('draw.guide.show', [$event, $draw]) }}">Continue setup</a>
               <a class="btn btn-sm btn-outline-primary me-2" href="{{ route('backend.team-draw.operations', $draw) }}">Team ties</a>
               @endif
               <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.team-draw.standings', $draw) }}">Standings</a>
@@ -411,6 +412,7 @@
 </div>
 
 <!-- Modal: Create New Draw (Team Event) -->
+@include('backend.draw.partials.guide-visibility')
 <div class="modal fade" id="createDrawModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-md modal-dialog-centered">
     <div class="modal-content">
@@ -424,6 +426,7 @@
 
         <div class="modal-body">
 
+          <p class="small text-primary" data-create-guide-status>Step 1 of 6 · Competition</p>
           <fieldset class="mb-3">
             <legend class="form-label fw-bold mb-2">Competition</legend>
             <div class="row g-2">
@@ -449,6 +452,7 @@
             <div class="form-text">Choose individual singles for a normal player draw.</div>
           </fieldset>
 
+          <div data-create-guide-details hidden>
           <div id="bulkDrawNameHelp" class="form-text mb-3 d-none">Team draw names are generated automatically from the selected categories and draw types.</div>
 
           {{-- Draw Type --}}
@@ -688,6 +692,7 @@
 
         </div>
 
+          </div>
         <div id="teamDrawPreview" class="px-4 pb-3 d-none" aria-live="polite"></div>
 
         <div id="drawCreationProgress" class="px-4 pb-3 d-none">
@@ -706,7 +711,9 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
           <button type="button" id="previewTeamDrawButton" class="btn btn-outline-primary d-none">Preview team ties</button>
-          <button type="submit" class="btn btn-primary">Create Draw</button>
+          <button type="button" class="btn btn-outline-secondary" data-create-guide-back hidden>Back</button>
+          <button type="button" class="btn btn-primary" data-create-guide-continue>Continue</button>
+          <button type="submit" class="btn btn-primary" data-create-guide-submit hidden>Save draw &amp; continue</button>
         </div>
 
       </form>

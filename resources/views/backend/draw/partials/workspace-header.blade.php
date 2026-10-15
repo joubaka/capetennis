@@ -9,6 +9,7 @@
     <span class="small text-muted" role="status" data-share-status></span>
   </x-slot:meta>
   <x-slot:actions>
+      @can('event.manage', $draw->event)<a class="btn btn-sm btn-primary" href="{{ route('draw.guide.show', [$draw->event_id, $draw]) }}">Continue setup</a>@endcan
       @if(!empty($rankingReference))
         <div class="dropdown draw-ranking-reference">
           <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">

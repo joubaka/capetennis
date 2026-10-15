@@ -11,13 +11,13 @@ function submit(type, choices, manualChoices, bulkChoices) {
   Object.values(choices).forEach(choice => { choice.dataset.age = choice.dataset.age || 'u/10 Boys'; });
   if (manualChoices) manualChoices.forEach(choice => { choice.dataset.name = choice.dataset.name || 'u/10 ' + (choice.dataset.gender || 'Boys'); choice.dataset.age = 'u/10'; });
   if (type === '3') Object.values(choices).forEach(choice => { choice.dataset.age = 'u/10'; });
-  const form = {
+  const form = { setAttribute() {},
     querySelector(selector) {
       if (selector === 'button[type="submit"]') return button;
       if (selector.includes('draw_mode')) return { value: 'team' };
       if (selector.includes('draw_type_id')) return { value: type, dataset: {} };
       if (selector.startsWith('label[')) return { textContent: type === '3' ? 'Mixed doubles' : 'Singles' };
-      return choices[selector.match(/name="([^"]+)"/)[1]];
+      return choices[selector.match(/name="([^"]+)"/)?.[1]];
     },
     querySelectorAll(selector) {
       if (selector.includes('bulk_draw_types')) return bulkChoices ? bulkChoices.types : [];
@@ -29,9 +29,9 @@ function submit(type, choices, manualChoices, bulkChoices) {
   const toggle = { checked: false };
   const otherToggle = { checked: false };
   const bulkToggle = { checked: false };
-  const document = { getElementById(id) { return id === 'createDrawForm' ? form : (id === 'drawName' ? nameInput : (id === 'manualTeamCategories' ? toggle : (id === 'bulkTeamDraws' ? bulkToggle : otherToggle))); } };
+  const document = { querySelector() { return null; }, getElementById(id) { return id === 'createDrawForm' ? form : (id === 'drawName' ? nameInput : (id === 'manualTeamCategories' ? toggle : (id === 'bulkTeamDraws' ? bulkToggle : otherToggle))); } };
   function $(selector) {
-    const chain = { on() { return chain; }, off() { return chain; }, toggleClass() { return chain; }, prop() { return chain; },
+    const chain = { on() { return chain; }, off() { return chain; }, toggleClass() { return chain; }, text() { return chain; }, css() { return chain; }, prop() { return chain; },
       empty() { return chain; }, addClass() { return chain; }, removeClass() { return chain; },
       val(value) { if (selector === '#drawName') { if (value !== undefined) nameInput.value = value; return nameInput.value; } return ''; }, attr() { return 'csrf'; } };
     return chain;
@@ -41,7 +41,7 @@ function submit(type, choices, manualChoices, bulkChoices) {
     const chain = { done() { return chain; }, fail() { return chain; }, always() { return chain; } };
     return chain;
   };
-  const window = { jQuery: $, HeadOffice: { createUrl: '/draw' } };
+  const window = { setInterval() { return 1; }, clearInterval() {}, crypto:{randomUUID:()=> 'synthetic-batch'}, jQuery: $, HeadOffice: { createUrl: '/draw' } };
   vm.runInNewContext(fs.readFileSync('public/js/team-draw-mode.js', 'utf8'), { window, document });
   toggle.checked = !!manualChoices;
   bulkToggle.checked = !!bulkChoices;

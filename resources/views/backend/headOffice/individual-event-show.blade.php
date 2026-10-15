@@ -582,10 +582,11 @@ $(document).ready(function () {
 @endif
 
 <!-- Modal: Create New Draw -->
+@include('backend.draw.partials.guide-visibility')
 <div class="modal fade" id="createDrawModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-md">
     <div class="modal-content">
-      <form id="createDrawForm">
+      <form id="createDrawForm" data-guided-create>
         @csrf
 
         <div class="modal-header">
@@ -594,12 +595,11 @@ $(document).ready(function () {
         </div>
 
         <div class="modal-body">
+          <p class="small text-primary" data-create-guide-status>Step 1 of 6 · Competition</p>
+          <p data-create-guide-intro><strong>Individual singles</strong><br>Choose your player category next, then the format, draw positions, schedule and publication.</p>
+          <div data-create-guide-details hidden>
 
-          <ol class="small text-muted ps-3 mb-4" aria-label="Draw setup steps">
-            <li><strong>Name and category</strong></li>
-            <li>Choose the draw format</li>
-            <li>Place players and generate fixtures</li>
-          </ol>
+          <p class="small text-muted">Choose a name and player category. Format, draw positions, scheduling and review follow after saving this draft.</p>
 
           <div class="mb-3">
             <label for="drawName" class="form-label fw-bold">Draw Name</label>
@@ -623,7 +623,7 @@ $(document).ready(function () {
               <div class="form-text">Player placement starts with paid, active entries in this category.</div>
             </div>
             <div class="form-check border rounded p-3 ps-5 mb-0">
-              <input class="form-check-input" type="checkbox" id="eventWideDraw">
+              <input class="form-check-input" type="checkbox" id="eventWideDraw" name="category_scope" value="event">
               <label class="form-check-label" for="eventWideDraw">
                 <strong>Combine players from different categories</strong>
                 <span class="d-block small text-muted">Advanced: use this only when the competition intentionally mixes categories.</span>
@@ -637,9 +637,10 @@ $(document).ready(function () {
 
         </div>
 
+          </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="submit" class="btn btn-primary">Create &amp; choose format →</button>
+          <button type="button" class="btn btn-outline-secondary" data-create-guide-back hidden>Back</button><button type="button" class="btn btn-primary" data-create-guide-continue>Continue</button><button type="submit" class="btn btn-primary" data-create-guide-submit hidden>Save draw &amp; continue</button>
         </div>
 
       </form>
@@ -785,3 +786,5 @@ $(document).ready(function () {
 @endif
 
 @endsection
+
+<script src="{{ asset('js/guided-create-draw.js') }}?v={{ filemtime(public_path('js/guided-create-draw.js')) }}" defer></script>

@@ -186,6 +186,8 @@
   $unapplyRouteAvailable = \Illuminate\Support\Facades\Route::has('backend.event-venue-schedule.unapply');
 @endphp
 <div class="container-xxl flex-grow-1 container-p-y schedule-workspace">
+  @php($guideSelection = $event->draws->whereIn('id', collect($draws)->where('selected', true)->pluck('id')))
+  @if($guideSelection->count() === 1)<a class="btn btn-primary mb-3" href="{{ route('draw.guide.show', [$event, $guideSelection->first()]) }}">Continue draw setup</a>@endif
   @include('backend.event.partials.header', [
     'eventWorkspaceActive' => 'schedule',
     'eventWorkspaceIcon' => 'ti-calendar-event',
