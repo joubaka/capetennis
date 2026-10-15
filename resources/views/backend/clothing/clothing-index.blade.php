@@ -31,6 +31,18 @@
     </div>
     <p class="small text-muted" id="clothing-order-count" role="status" aria-live="polite"></p>
     <div class="alert alert-light border" id="clothing-order-empty" hidden>No item lines match these filters.</div>
+    @if($clothingEvent)
+      <p class="small">Clothing deadline: {{ $clothingDeadline?->timezone('Africa/Johannesburg')->format('d M Y H:i') ?? 'Not set — only a super-user can refund' }} (South Africa). Scoped administrators can refund before this deadline; afterward only a super-user can refund.</p>
+      @if(auth()->user()->hasRole('super-user'))
+      <details class="mb-3"><summary>Set clothing deadline</summary><form method="POST" action="{{ route('backend.clothing.deadline', [$clothingEvent, $region]) }}">@csrf
+        <label for="clothing-deadline" class="form-label">Clothing deadline (South Africa)</label><input type="datetime-local" class="form-control mb-2" id="clothing-deadline" name="clothing_deadline_at" value="{{ $clothingDeadline?->timezone('Africa/Johannesburg')->format('Y-m-d\TH:i') }}"><button class="btn btn-outline-primary">Save deadline</button>
+      </form></details>
+      @endif
+    @endif
+    <form method="GET" class="mb-3">@if(request('event_id'))<input type="hidden" name="event_id" value="{{ request('event_id') }}">@endif<label for="clothing-order-sort" class="form-label">Player order within each team</label><select class="form-select" id="clothing-order-sort" name="sort" onchange="this.form.submit()"><option value="rank" @selected(($orderSort ?? 'rank') === 'rank')>Team ranking / position</option><option value="name" @selected(($orderSort ?? 'rank') === 'name')>Player name</option></select><noscript><button class="btn btn-outline-primary">Sort players</button></noscript></form>
+    @php $grandTotal = 0; @endphp
+    @foreach($clothings->groupBy('team_id') as $teamOrders)
+    <details class="border rounded p-2 mb-3" data-clothing-team-group open><summary class="fw-semibold">{{ $teamOrders->first()->team?->name }} · {{ $teamOrders->count() }} orders</summary>
     <div class="table-responsive">
       <table class="table table-striped align-middle clothing-fulfillment-table">
         <thead class="table-light">
@@ -45,10 +57,11 @@
           </tr>
         </thead>
         <tbody>
-          @php 
-            $grandTotal = 0;
-          @endphp
-          @forelse($clothings as $order)
+          @forelse($teamOrders as $order)
+            @php
+              $refundAllowed = app(\App\Services\Clothing\ClothingRefundService::class)->canRefund($order->event, $order, auth()->user());
+              $refundDeadline = app(\App\Services\Clothing\ClothingRefundService::class)->deadline($order->event, $order);
+            @endphp
             @foreach($order->items as $item)
                 @php
                   $price = (float) $item->price;
@@ -56,12 +69,12 @@
                   $lineTotal = (float) ($item->line_total ?: $price * $qty);
                 @endphp
                 <tr data-clothing-order-line data-team-id="{{ $order->team_id }}">
-                  <td data-label="Player">{{ optional($order->player)->name }}</td>
+                  <td data-label="Player">@php $rosterRank = $order->team?->team_players->firstWhere('player_id', $order->player_id)?->rank; @endphp@if($rosterRank > 0)<span class="text-muted">#{{ $rosterRank }}</span> @endif{{ $order->player?->full_name }}</td>
                   <td data-label="Team">{{ optional($order->team)->name }}</td>
                   <td data-label="Item">{{ $item->item_name ?: optional($item->itemType)->item_type_name }}</td>
                   <td data-label="Size">{{ $item->size_name ?: optional($item->size)->size }}</td>
                   <td data-label="Qty">{{ $qty }}</td>
-                  <td data-label="Status"><span class="badge bg-label-success">Paid</span></td>
+                  <td data-label="Status"><span class="badge bg-label-success">Paid</span>@if($order->refunds->isNotEmpty())<a class="d-block small" href="{{ route('backend.clothing.refunds.show', [$order->event_id, $order]) }}">Refund history</a>@endif</td>
                   <td data-label="Order details"><div class="clothing-order-actions"><details><summary>Details</summary><dl class="mt-2 mb-0 text-break">
                     <dt>Order</dt><dd>#{{ $order->id }}</dd>
                     <dt>Date</dt><dd>{{ $order->created_at->format('d-m-Y') }}</dd>
@@ -69,15 +82,15 @@
                     <dt>Unit Price</dt><dd>R{{ number_format($price, 2) }}</dd>
                     <dt>Line Total</dt><dd>R{{ number_format($lineTotal, 2) }}</dd>
                   </dl></details>
-                    @if(auth()->user()?->hasRole('super-user'))
+                    @if($refundAllowed)
                       <button type="button" class="btn btn-sm btn-outline-danger" data-refund-toggle="refund-line-{{ $item->id }}" aria-controls="refund-line-{{ $item->id }}" aria-expanded="{{ old('item_id') == $item->id ? 'true' : 'false' }}">Refund</button>
                     @endif
                   </div></td>
                 </tr>
-                @if(auth()->user()?->hasRole('super-user'))
+                @if($refundAllowed)
                 <tr id="refund-line-{{ $item->id }}" data-refund-row @if(old('item_id') != $item->id) hidden @endif><td colspan="7">
                   <div class="clothing-refund-panel p-2">
-                    <strong>Refund — {{ $order->player?->name }}</strong>
+                    <strong>Refund — {{ $order->player?->full_name }}</strong>
                     @include('backend.clothing.partials.refund-item', ['event' => $order->event, 'formKey' => 'inline-'.$item->id])
                     <a href="{{ route('backend.clothing.refunds.show', [$order->event_id, $order]) }}">Refund history / pending PayFast refunds</a>
                   </div>
@@ -95,7 +108,9 @@
         </tbody>
 
       </table>
-    </div>
+    </div></details>
+    @endforeach
+    @if($clothings->isEmpty())<p class="text-muted">No clothing orders found for this region</p>@endif
     <details class="border rounded p-3 mt-3"><summary>Financial summary</summary><div class="row g-3 mt-1">
       <div class="col-md-4"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Customer payments received</small><strong class="fs-5 text-success">R{{ number_format($clothingFinancials['received'], 2) }}</strong></div></div>
       <div class="col-md-4"><div class="border rounded p-3 h-100"><small class="text-muted d-block">PayFast fees</small><strong class="fs-5 text-warning">− R{{ number_format($clothingFinancials['payfast_fees'], 2) }}</strong></div></div>
@@ -139,6 +154,10 @@
       const trigger = line.querySelector('[data-refund-toggle]');
       if (trigger) document.getElementById(trigger.dataset.refundToggle).hidden = !matches || trigger.getAttribute('aria-expanded') !== 'true';
       if (matches) shown++;
+    });
+    document.querySelectorAll('[data-clothing-team-group]').forEach(group => {
+      group.hidden = ![...group.querySelectorAll('[data-clothing-order-line]')].some(line => !line.hidden);
+      if (term) group.open = !group.hidden;
     });
     document.getElementById('clothing-order-count').textContent = `${shown} of ${lines.length} item lines shown`;
     document.getElementById('clothing-order-empty').hidden = shown > 0 || lines.length === 0;

@@ -30,6 +30,7 @@ class RefundRequestService
                     if ($existing->request_fingerprint !== $fingerprint) {
                         throw ValidationException::withMessages(['refund' => 'This refund request was already used with different details.']);
                     }
+                    $service->recordLateNote($existing, $locked, $actor, $input['late_refund_note'] ?? null);
                     return $existing;
                 }
                 $fail = fn ($message) => throw ValidationException::withMessages(['refund' => $message]);
@@ -88,12 +89,15 @@ class RefundRequestService
                         $fail('The refund exceeds the original PayFast portion.');
                     }
                 }
+                $deadline = $service->deadline($event, $locked);
                 $refund = $locked->refunds()->create([
+                    'clothing_deadline_at' => $deadline,
                     'event_id' => $event->id, 'payer_id' => $locked->user_id, 'requested_by' => $actor->id,
                     'request_token' => $input['request_token'], 'request_fingerprint' => $fingerprint,
                     'refund_method' => $input['method'], 'refund_status' => 'pending',
                     'refund_gross' => sprintf('%.2f', $total / 100), 'refund_fee' => '0.00', 'refund_net' => sprintf('%.2f', $total / 100), 'reason' => trim($input['reason']),
                 ]);
+                $service->recordLateNote($refund, $locked, $actor, $input['late_refund_note'] ?? null);
                 foreach ($allocations as $id => $allocation) {
                     $refund->items()->create(['clothing_order_item_id' => $id] + $allocation);
                 }
@@ -161,6 +165,30 @@ class RefundRequestService
             });
         });
     }
+    public function updatePendingRegistrationBankDetails(CategoryEventRegistration $registration, User $actor, array $details): CategoryEventRegistration
+    {
+        return FinanceMutationScope::run('refund_state_write', function () use ($registration, $actor, $details) {
+            return DB::transaction(function () use ($registration, $actor, $details) {
+                $locked = CategoryEventRegistration::with('categoryEvent.event')->lockForUpdate()->findOrFail($registration->id);
+                abort_unless((int) $locked->user_id === (int) $actor->id, 403);
+                $this->assertRegistrationRefundEligible($locked, $actor);
+                if ($locked->refund_status !== 'pending' || $locked->refund_method !== 'bank') {
+                    throw ValidationException::withMessages(['refund' => 'Only pending bank refund details can be corrected.']);
+                }
+                $fields = ['refund_account_name', 'refund_bank_name', 'refund_account_number', 'refund_branch_code', 'refund_account_type'];
+                $locked->fill(array_intersect_key($details, array_flip($fields)));
+                $changedFields = array_keys($locked->getDirty());
+                if ($changedFields !== []) {
+                    $locked->save();
+                    activity('refund')->performedOn($locked)->causedBy($actor)
+                        ->withProperties(['registration_id' => $locked->id, 'event_id' => $locked->categoryEvent->event_id, 'changed_fields' => $changedFields])
+                        ->log('Pending bank refund details corrected; administrator review required');
+                }
+                return $locked;
+            });
+        });
+    }
+
     public function requestRegistrationRefund(CategoryEventRegistration $registration, array $attributes, ?User $actor = null): CategoryEventRegistration
     {
         return FinanceMutationScope::run('refund_state_write', function () use ($registration, $attributes, $actor) {

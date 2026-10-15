@@ -15,6 +15,7 @@ use App\Models\TeamPlayer;
 use App\Models\TeamSelectionInvitation;
 use App\Models\TeamRegion;
 use App\Models\User;
+use App\Support\FinanceMutationScope;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -140,7 +141,7 @@ final class ClothingOrderService
             $subtotal = round($subtotal, 2);
             $customerTotal = round($customerTotal, 2);
             $payfastFee = round($customerTotal - $subtotal, 2);
-            $order = ClothingOrder::create([
+            $order = FinanceMutationScope::run('payment_state_write', fn () => ClothingOrder::create([
                 'player_id' => $player->id,
                 'team_id' => $team->id,
                 'event_id' => $event->id,
@@ -151,7 +152,7 @@ final class ClothingOrderService
                 'subtotal' => $subtotal,
                 'payfast_fee' => $payfastFee,
                 'total' => $customerTotal,
-            ]);
+            ]));
             foreach ($rows as $row) {
                 ClothingOrderItem::create([
                     'clothing_order_id' => $order->id,

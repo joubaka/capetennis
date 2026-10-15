@@ -17,12 +17,40 @@ use App\Services\Clothing\ClothingOrderService;
 use App\Services\Clothing\ClothingPaymentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class ClothingOrderIntegrityTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_checkout_initializes_unpaid_order_inside_financial_scope_without_disabling_guard(): void
+    {
+        $data = $this->orderContext();
+        Log::spy();
+
+        $order = app(ClothingOrderService::class)->create(
+            $data['user'], $data['event'], $data['region'], $data['team'], $data['player'],
+            [$data['item']->id => ['size' => $data['size']->id, 'qty' => 1]], (string) str()->uuid()
+        );
+
+        $this->assertSame(0, $order->pay_status);
+        $this->assertNull($order->paid_at);
+        $this->assertSame([], \App\Support\FinanceMutationScope::current());
+        Log::shouldNotHaveReceived('warning', [
+            'FINANCE LOCKDOWN: direct financial state mutation detected',
+            \Mockery::on(fn (array $context) => $context['model'] === ClothingOrder::class),
+        ]);
+
+        $order->pay_status = 1;
+        app(\App\Observers\FinancialMutationObserver::class)->saving($order);
+        Log::shouldHaveReceived('warning')->once()->with(
+            'FINANCE LOCKDOWN: direct financial state mutation detected',
+            \Mockery::on(fn (array $context) => $context['model'] === ClothingOrder::class
+                && $context['dirty'] === ['pay_status'] && $context['scopes'] === [])
+        );
+    }
 
     public function test_valid_order_uses_locked_catalogue_values_snapshots_and_idempotency(): void
     {

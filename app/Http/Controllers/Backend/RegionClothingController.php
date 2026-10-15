@@ -397,7 +397,7 @@ class RegionClothingController extends Controller
       'items.itemType',
       'items.size',
       'player',
-      'team'
+      'team.team_players'
     ])
       ->whereHas('team', fn($q) => $q->where('region_id', $region->id))
       ->where('pay_status', 1)
@@ -413,8 +413,15 @@ class RegionClothingController extends Controller
     ];
 
     $clothingEvent = $eventId ? $eventRegion->events : null;
+    $clothingDeadline = $eventId ? $eventRegion->clothing_deadline_at : null;
+    $orderSort = $request->validate(['sort' => ['nullable', 'in:rank,name']])['sort'] ?? 'rank';
+    $clothings = $clothings->sortBy(fn ($order) => [
+      $order->team?->name ?? '',
+      $orderSort === 'rank' ? (($order->team?->team_players->firstWhere('player_id', $order->player_id)?->rank ?: PHP_INT_MAX)) : 0,
+      mb_strtolower($order->player?->full_name ?? ''), $order->id,
+    ])->values();
 
-    return view('backend.clothing.clothing-index', compact('region', 'clothings', 'clothingFinancials', 'clothingEvent'));
+    return view('backend.clothing.clothing-index', compact('region', 'clothings', 'clothingFinancials', 'clothingEvent', 'clothingDeadline', 'orderSort'));
   }
 
 

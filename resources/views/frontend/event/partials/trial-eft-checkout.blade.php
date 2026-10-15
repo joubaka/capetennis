@@ -1,5 +1,6 @@
 @php
-  $trialItem = $order->items->first();
+  // Team checkouts share this view but do not have registration items.
+  $trialItem = $order instanceof \App\Models\RegistrationOrder ? $order->items->first() : null;
   $trialEvent = $trialItem?->category_event?->event;
   $trialProgramme = $trialEvent?->isInterprovincialTrials() && \Illuminate\Support\Facades\Schema::hasTable('trial_programmes')
     ? \App\Models\TrialProgramme::where('event_id', $trialEvent->id)->first() : null;

@@ -13,6 +13,72 @@ class RegistrationRefundFlowTest extends TestCase
 {
     use RefreshDatabase;
 
+    private function pendingBankRefund(): CategoryEventRegistration
+    {
+        $registration = CategoryEventRegistration::factory()->pendingRefund()->create([
+            'refund_gross' => 375, 'refund_fee' => 37.50, 'refund_net' => 337.50,
+            'refund_account_name' => 'Original Payer', 'refund_bank_name' => 'FNB',
+            'refund_account_number' => '123456789', 'refund_branch_code' => '250655',
+            'refund_account_type' => 'current',
+        ]);
+        $registration->categoryEvent->event->update(['withdrawal_deadline' => now()->addDay()]);
+        return $registration;
+    }
+
+    public function test_pending_bank_details_can_be_corrected_without_payment_or_amount_changes(): void
+    {
+        \Illuminate\Support\Facades\Http::preventStrayRequests();
+        \Illuminate\Support\Facades\Mail::fake();
+        $registration = $this->pendingBankRefund();
+        $unrelated = $this->pendingBankRefund();
+        $count = CategoryEventRegistration::count();
+        $walletCount = \App\Models\WalletTransaction::count();
+        $payload = ['method' => 'bank', 'account_name' => 'Corrected Payer', 'bank_name' => 'FNB',
+            'account_number' => '987654321', 'branch_code' => '250655', 'account_type' => 'savings',
+            'refund_net' => '9999', 'user_id' => $unrelated->user_id, 'category_event_id' => $unrelated->category_event_id];
+        $this->actingAs($registration->user);
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            $this->post(route('registrations.refund.request', $registration), $payload)
+                ->assertRedirect(route('registrations.refund.choose', $registration))
+                ->assertSessionHas('success', 'Bank details saved. Your refund remains pending administrator review. No payment was retried.');
+        }
+        $registration->refresh();
+        $this->assertSame('987654321', $registration->refund_account_number);
+        $this->assertSame('pending', $registration->refund_status);
+        $this->assertSame('bank', $registration->refund_method);
+        $this->assertSame(337.50, (float) $registration->refund_net);
+        $this->assertSame(375.0, (float) $registration->refund_gross);
+        $this->assertSame(37.50, (float) $registration->refund_fee);
+        $this->assertTrue($registration->is_paid);
+        $this->assertNull($registration->refunded_at);
+        $this->assertSame($count, CategoryEventRegistration::count());
+        $this->assertSame($walletCount, \App\Models\WalletTransaction::count());
+        $this->assertSame('123456789', $unrelated->fresh()->refund_account_number);
+        $this->assertSame(1, \Spatie\Activitylog\Models\Activity::where('description', 'Pending bank refund details corrected; administrator review required')->count());
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+        \Illuminate\Support\Facades\Mail::assertNothingOutgoing();
+    }
+
+    public function test_pending_bank_correction_is_payer_only_even_via_the_service(): void
+    {
+        $registration = $this->pendingBankRefund();
+        $this->expectException(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+        app(RefundRequestService::class)->updatePendingRegistrationBankDetails($registration, User::factory()->create(), ['refund_account_number' => '999999999']);
+    }
+
+    public function test_completed_refund_cannot_have_bank_details_changed_using_stale_pending_model(): void
+    {
+        $registration = $this->pendingBankRefund();
+        \App\Support\FinanceMutationScope::run('refund_state_write', fn () => $registration->fresh()->update(['refund_status' => 'completed']));
+        try {
+            app(RefundRequestService::class)->updatePendingRegistrationBankDetails($registration, $registration->user, ['refund_account_number' => '999999999']);
+            $this->fail('Completed refund was editable.');
+        } catch (ValidationException) {
+            $this->assertSame('123456789', $registration->fresh()->refund_account_number);
+            $this->assertSame('completed', $registration->fresh()->refund_status);
+        }
+    }
+
     // -----------------------------------------------------------------------
     // choose — GET /registrations/{registration}/refund/choose
     // -----------------------------------------------------------------------

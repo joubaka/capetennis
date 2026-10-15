@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Model;
 class EventRegion extends Model
 {
     use HasFactory;
+
+    protected $casts = ['clothing_deadline_at' => 'immutable_datetime'];
     
     public function events()
     {

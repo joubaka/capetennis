@@ -1455,6 +1455,8 @@ Route::delete(
   Route::get('region/{region}/clothing/orders', [RegionClothingController::class, 'orders'])
     ->name('backend.region.clothing.orders');
 
+  Route::post('event/{event}/clothing/regions/{region}/deadline', [\App\Http\Controllers\Backend\ClothingRefundController::class, 'deadline'])->name('backend.clothing.deadline');
+  Route::post('event/{event}/clothing/orders/{order}/refunds/{refund}/reconcile', [\App\Http\Controllers\Backend\ClothingRefundController::class, 'reconcile'])->name('backend.clothing.refunds.reconcile');
   Route::get('event/{event}/clothing/orders/{order}/refunds', [\App\Http\Controllers\Backend\ClothingRefundController::class, 'show'])->name('backend.clothing.refunds.show');
   Route::post('event/{event}/clothing/orders/{order}/refunds', [\App\Http\Controllers\Backend\ClothingRefundController::class, 'store'])->name('backend.clothing.refunds.store');
   Route::post('event/{event}/clothing/orders/{order}/refunds/{refund}/retry', [\App\Http\Controllers\Backend\ClothingRefundController::class, 'retry'])->name('backend.clothing.refunds.retry');

@@ -113,6 +113,29 @@ class ClothingPayfastRefundTest extends TestCase
         $this->assertStringNotContainsString('123456789', json_encode(DB::table('activity_log')->get()));
     }
 
+    public function test_late_pending_provider_refund_cannot_dispatch_without_note_and_manager_cannot_recover_after_cutoff(): void
+    {
+        [$super, , $event, $order] = $this->fixture();
+        $manager = User::factory()->create()->assignRole(Role::findOrCreate('admin', 'web'));
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $manager->id]);
+        DB::table('event_regions')->where('event_id', $event->id)->update(['clothing_deadline_at' => now()->addMinute()]);
+        $refund = app(\App\Domain\Finance\Services\RefundRequestService::class)->requestClothingRefund($event, $order, $manager, [
+            'request_token' => (string) str()->uuid(), 'mode' => 'amount', 'item_id' => $order->items->first()->id, 'amount' => '10.01', 'method' => 'payfast', 'reason' => 'Returned clothing',
+        ]);
+        $this->travel(2)->minutes();
+        $payfast = $this->mock(\App\Services\Payfast::class);
+        $payfast->shouldReceive('refundUsingAvailableMethod')->once()->andReturn(['success' => true, 'data' => ['code' => 200, 'status' => 'success', 'data' => ['response' => true]]]);
+        $url = route('backend.clothing.refunds.retry', [$event, $order, $refund]);
+        $this->actingAs($manager)->post($url)->assertForbidden();
+        $this->actingAs($super)->post($url)->assertSessionHasErrors('late_refund_note');
+        $this->assertDatabaseCount('clothing_provider_refund_attempts', 0);
+        $this->post($url, ['late_refund_note' => 'Reconcile regional clothing payout'])->assertSessionHasNoErrors();
+        $this->assertSame('completed', $refund->fresh()->refund_status);
+        $this->assertSame('open', $refund->fresh()->reconciliation_status);
+        $this->assertDatabaseCount('clothing_provider_refund_attempts', 1);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
     private function fixture(int $quantity = 3): array
     {
         $admin = User::factory()->create()->assignRole(Role::findOrCreate('super-user', 'web'));

@@ -55,6 +55,12 @@ class RegistrationRefundController extends Controller
     $fee          = SiteSetting::calculateWithdrawalFee($gross); // fixed 10% of gross
     $net          = round($gross - $fee, 2);
     $bankNames    = BankDetailsController::BANK_NAMES;
+    $pendingBank = $registration->isRefundPending() && $registration->refund_method === 'bank';
+    if ($pendingBank) {
+      $gross = (float) $registration->refund_gross;
+      $fee = (float) $registration->refund_fee;
+      $net = (float) $registration->refund_net;
+    }
 
     return view('frontend.registrations.choose-refund', compact(
       'registration',
@@ -63,7 +69,8 @@ class RegistrationRefundController extends Controller
       'net',
       'walletPaid',
       'payfastGross',
-      'bankNames'
+      'bankNames',
+      'pendingBank'
     ));
   }
 
@@ -110,6 +117,17 @@ class RegistrationRefundController extends Controller
     }
 
     if ($registration->isRefundPending()) {
+      if ($registration->refund_method === 'bank' && $request->input('method') === 'bank') {
+        app(RefundRequestService::class)->updatePendingRegistrationBankDetails($registration, $user, [
+          'refund_account_name' => $request->account_name,
+          'refund_bank_name' => $request->bank_name,
+          'refund_account_number' => $request->account_number,
+          'refund_branch_code' => $request->branch_code,
+          'refund_account_type' => $request->account_type,
+        ]);
+        return redirect()->route('registrations.refund.choose', $registration)
+          ->with('success', 'Bank details saved. Your refund remains pending administrator review. No payment was retried.');
+      }
       Log::info('REFUND BLOCKED: Already pending', [
         'registration_id' => $registration->id,
       ]);

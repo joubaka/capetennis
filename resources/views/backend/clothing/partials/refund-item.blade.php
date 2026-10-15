@@ -30,6 +30,7 @@
     <label><input type="checkbox" name="bank_details[original_payer]" value="1" disabled> These bank details belong to the original payer.</label>
   </details>
   <label class="form-label" for="{{ $formKey }}-reason">Reason</label><input required maxlength="500" name="reason" value="{{ $restoreRefund ? old('reason') : '' }}" class="form-control mb-2" id="{{ $formKey }}-reason">
+  @include('backend.clothing.partials.late-note', ['noteKey' => $formKey.'-late'])
   <button class="btn btn-outline-danger" type="submit">Confirm refund</button>
 </form>
 @else

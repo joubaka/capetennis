@@ -14,17 +14,18 @@ use Illuminate\Validation\ValidationException;
 
 final class ClothingPayfastRefundService
 {
-    public function dispatch(ClothingRefund $refund, User $actor, array $bankDetails = []): ClothingRefund
+    public function dispatch(ClothingRefund $refund, User $actor, array $bankDetails = [], ?string $lateNote = null): ClothingRefund
     {
         if (DB::transactionLevel() !== 0) {
             throw new \LogicException('Provider refunds require a committed request.');
         }
         $dispatch = false;
-        $attempt = DB::transaction(function () use ($refund, $actor, &$dispatch) {
+        $attempt = DB::transaction(function () use ($refund, $actor, &$dispatch, $lateNote) {
             $order = ClothingOrder::lockForUpdate()->findOrFail($refund->clothing_order_id);
             app(ClothingRefundService::class)->authorizeOrder($order->event, $order, $actor);
             $locked = ClothingRefund::lockForUpdate()->findOrFail($refund->id);
             $this->assertEligible($locked, $order);
+            \App\Support\FinanceMutationScope::run('refund_state_write', fn () => app(ClothingRefundService::class)->recordLateNote($locked, $order, $actor, $lateNote));
             $existing = DB::table('clothing_provider_refund_attempts')->where('clothing_refund_id', $locked->id)->first();
             if ($existing) {
                 if ($existing->status !== 'confirmed' || $existing->pf_payment_id !== $order->payfast_pf_payment_id
@@ -69,7 +70,7 @@ final class ClothingPayfastRefundService
             }
         }
 
-        return DB::transaction(function () use ($refund, $actor, $attempt) {
+        return DB::transaction(function () use ($refund, $actor, $attempt, $lateNote) {
             $order = ClothingOrder::lockForUpdate()->findOrFail($refund->clothing_order_id);
             app(ClothingRefundService::class)->authorizeOrder($order->event, $order, $actor);
             $locked = ClothingRefund::lockForUpdate()->findOrFail($refund->id);
@@ -83,6 +84,7 @@ final class ClothingPayfastRefundService
             if ($locked->refund_status === 'completed') {
                 return $locked;
             }
+            app(ClothingRefundService::class)->recordLateNote($locked, $order, $actor, $lateNote);
             $completed = app(RefundExecutionService::class)->executeBankRefund($locked, ['refund_method' => 'payfast']);
             activity('refund')->performedOn($completed)->causedBy($actor)->withProperties([
                 'attempt_id' => $attempt->id, 'payer_id' => $locked->payer_id, 'order_id' => $order->id,

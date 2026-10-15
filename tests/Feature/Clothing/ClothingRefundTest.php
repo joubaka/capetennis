@@ -23,12 +23,12 @@ class ClothingRefundTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_refund_routes_reject_regular_payers_and_event_managers(): void
+    public function test_refund_mutations_reject_managers_when_no_deadline_is_set(): void
     {
         [$admin, $payer, $event, $order] = $this->fixture();
         foreach ([$payer, User::factory()->create()->assignRole(Role::findOrCreate('admin', 'web'))] as $actor) {
             DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $actor->id]);
-            $this->actingAs($actor)->get(route('backend.clothing.refunds.show', [$event, $order]))->assertForbidden();
+            $this->actingAs($actor)->get(route('backend.clothing.refunds.show', [$event, $order]))->assertOk();
             $this->actingAs($actor)->post(route('backend.clothing.refunds.store', [$event, $order]), $this->request($order))->assertForbidden();
         }
         $this->assertDatabaseCount('clothing_refunds', 0);
@@ -137,6 +137,89 @@ class ClothingRefundTest extends TestCase
         $this->assertSame(['33.33', '33.33', '33.34'], ClothingRefund::orderBy('id')->pluck('refund_net')->all());
         $this->assertEquals(100, $payer->fresh()->wallet->balance);
         $this->assertDatabaseCount('wallet_transactions', 3);
+    }
+
+    public function test_scoped_manager_can_refund_before_deadline_but_not_at_or_after_or_without_deadline(): void
+    {
+        [$super, , $event, $order, $region] = $this->fixture();
+        $manager = User::factory()->create()->assignRole(Role::findOrCreate('admin', 'web'));
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $manager->id]);
+        $this->travelTo(\Carbon\CarbonImmutable::parse('2026-10-15 17:00', 'Africa/Johannesburg'));
+        $deadlineUrl = route('backend.clothing.deadline', [$event, $region]);
+        $this->actingAs($super)->post($deadlineUrl, ['clothing_deadline_at' => '2026-10-15T18:00'])->assertSessionHasNoErrors();
+        $scope = \App\Models\EventRegion::where('event_id', $event->id)->firstOrFail();
+        $this->assertSame('2026-10-15 18:00', $scope->clothing_deadline_at->timezone('Africa/Johannesburg')->format('Y-m-d H:i'));
+        $this->actingAs($manager)->post($deadlineUrl, ['clothing_deadline_at' => '2026-10-16T18:00'])->assertForbidden();
+        $this->patchJson(route('eventRegion.update', $scope->id), ['region_name' => $region->region_name, 'clothing_deadline_at' => '2026-10-16T18:00'])->assertOk();
+        $this->assertSame('2026-10-15 18:00', $scope->fresh()->clothing_deadline_at->format('Y-m-d H:i'));
+        $url = route('backend.clothing.refunds.store', [$event, $order]);
+        $this->post($url, $this->request($order))->assertSessionHasNoErrors();
+        $this->travelTo($scope->clothing_deadline_at);
+        $this->post($url, $this->request($order))->assertForbidden();
+        $this->get(route('backend.clothing.refunds.show', [$event, $order]))->assertOk()->assertSee('Only a super-user can refund');
+        DB::table('event_regions')->where('id', $scope->id)->update(['clothing_deadline_at' => null]);
+        $this->post($url, $this->request($order))->assertForbidden();
+        $this->assertDatabaseCount('clothing_refunds', 1);
+        $this->assertDatabaseCount('wallet_transactions', 1);
+    }
+
+    public function test_late_refund_requires_note_and_records_payout_reconciliation_without_payout_mutation(): void
+    {
+        [$super, $payer, $event, $order] = $this->fixture();
+        DB::table('event_regions')->where('event_id', $event->id)->update(['clothing_deadline_at' => now()->subMinute()]);
+        $url = route('backend.clothing.refunds.store', [$event, $order]);
+        $this->actingAs($super)->post($url, $this->request($order))->assertSessionHasErrors('late_refund_note');
+        $this->assertDatabaseCount('clothing_refunds', 0);
+        $input = $this->request($order) + ['late_refund_note' => 'Supplier already paid: reconcile clothing payout'];
+        $this->post($url, $input)->assertSessionHasNoErrors();
+        $this->post($url, $input)->assertSessionHasNoErrors();
+        $refund = ClothingRefund::firstOrFail();
+        $this->assertSame('open', $refund->reconciliation_status);
+        $this->assertSame($input['late_refund_note'], $refund->late_refund_note);
+        $this->assertNotNull($refund->clothing_deadline_at);
+        $this->assertDatabaseCount('event_payouts', 0);
+        $this->assertDatabaseCount('wallet_transactions', 1);
+        $resolve = route('backend.clothing.refunds.reconcile', [$event, $order, $refund]);
+        $this->actingAs($payer)->post($resolve, ['reconciliation_note' => 'Not authorized'])->assertForbidden();
+        $this->actingAs($super)->post($resolve, ['reconciliation_note' => 'Supplier credit note CN123 recorded'])->assertSessionHasNoErrors();
+        $this->post($resolve, ['reconciliation_note' => 'Different note'])->assertSessionHasNoErrors();
+        $this->assertSame('Supplier credit note CN123 recorded', $refund->fresh()->reconciliation_note);
+        $this->assertSame('resolved', $refund->fresh()->reconciliation_status);
+        $this->assertDatabaseCount('event_payouts', 0);
+        $this->assertDatabaseCount('wallet_transactions', 1);
+    }
+
+    public function test_orders_group_teams_show_full_names_and_sort_by_team_position(): void
+    {
+        [$super, , $event, $order, $region] = $this->fixture();
+        $order->player->update(['name' => 'Zulu', 'surname' => 'First Ranked']);
+        \App\Models\TeamPlayer::create(['team_id' => $order->team_id, 'player_id' => $order->player_id, 'rank' => 1]);
+        $player = Player::factory()->create(['name' => 'Alpha', 'surname' => 'Second Ranked']);
+        $second = $order->replicate();
+        $second->player_id = $player->id;
+        $second->request_token = (string) str()->uuid();
+        $second->payfast_pf_payment_id = 'another-payment';
+        $second->save();
+        $item = $order->items->first()->replicate();
+        $item->clothing_order_id = $second->id;
+        $item->save();
+        \App\Models\TeamPlayer::create(['team_id' => $order->team_id, 'player_id' => $player->id, 'rank' => 2]);
+        $url = route('backend.region.clothing.orders', ['region' => $region, 'event_id' => $event->id]);
+        $this->actingAs($super)->get($url)->assertOk()->assertSee('data-clothing-team-group', false)->assertSeeInOrder(['Zulu First Ranked', 'Alpha Second Ranked']);
+        $this->get($url.'&sort=name')->assertOk()->assertSeeInOrder(['Alpha Second Ranked', 'Zulu First Ranked']);
+    }
+
+    public function test_management_of_the_same_region_in_another_event_does_not_grant_refund_access(): void
+    {
+        [$super, , $event, $order, $region] = $this->fixture();
+        $actor = User::factory()->create()->assignRole(Role::findOrCreate('admin', 'web'));
+        $other = Event::factory()->create();
+        DB::table('event_regions')->insert(['event_id' => $other->id, 'region_id' => $region->id, 'ordering' => 1, 'clothing_deadline_at' => now()->addDay()]);
+        DB::table('event_admins')->insert(['event_id' => $other->id, 'user_id' => $actor->id]);
+        DB::table('event_regions')->where('event_id', $event->id)->update(['clothing_deadline_at' => now()->addDay()]);
+        $this->actingAs($actor)->post(route('backend.clothing.refunds.store', [$event, $order]), $this->request($order))->assertForbidden();
+        $this->assertDatabaseCount('clothing_refunds', 0);
+        $this->assertDatabaseCount('wallet_transactions', 0);
     }
 
     private function request(ClothingOrder $order, string $method = 'wallet', int $quantity = 1): array

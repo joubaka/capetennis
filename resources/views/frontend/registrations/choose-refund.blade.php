@@ -52,6 +52,13 @@
 
     <div class="card-body">
 
+      @if($pendingBank)
+        <div class="alert alert-warning">
+          Your bank refund is pending administrator review. This does not confirm that money has been returned.
+          You can correct the bank details below. Saving them will not retry the payment.
+        </div>
+      @endif
+
       {{-- Amount summary --}}
       <div class="mb-3">
         <p class="mb-1">
@@ -80,6 +87,7 @@
       <hr>
 
       {{-- WALLET REFUND --}}
+      @if(!$registration->isRefundPending() && !$registration->isRefundCompleted())
       <form method="POST"
             action="{{ route('registrations.refund.request', $registration) }}"
             class="mb-3">
@@ -97,19 +105,20 @@
           Wallet refunds are processed immediately.
         </small>
       </form>
+      @endif
 
-      @if(($payfastGross ?? 0) > 0)
+      @if(($payfastGross ?? 0) > 0 && !$registration->isRefundCompleted())
       {{-- BANK REFUND BUTTON --}}
       <button type="button"
               class="btn btn-outline-primary w-100"
               data-bs-toggle="modal"
               data-bs-target="#bankRefundModal">
         <i class="ti ti-building-bank me-1"></i>
-        Refund PayFast Portion
+        {{ $pendingBank ? 'Correct Bank Details' : 'Refund PayFast Portion' }}
       </button>
 
       <small class="text-muted d-block mt-1">
-        Bank refunds are processed manually and may take 2–3 business days.
+        Bank details must match the account used for the original payment. If the automatic refund fails, an administrator must review the request.
       </small>
       @endif
 
@@ -119,7 +128,7 @@
 
 
 {{-- ================= BANK REFUND MODAL ================= --}}
-@if(($payfastGross ?? 0) > 0)
+@if(($payfastGross ?? 0) > 0 && !$registration->isRefundCompleted())
 <div class="modal fade" id="bankRefundModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -138,10 +147,13 @@
 
         <div class="modal-body">
 
+          <p class="text-muted">Use the original payer's bank account. PayFast may reject details that do not match the original transaction.</p>
+
           <div class="mb-3">
             <label class="form-label">Account Holder Name</label>
             <input type="text"
                    name="account_name"
+                   value="{{ old('account_name', $registration->refund_account_name) }}"
                    class="form-control"
                    required>
           </div>
@@ -151,7 +163,7 @@
             <select name="bank_name" class="form-select" required>
               <option value="">Select bank</option>
               @foreach($bankNames as $value => $label)
-                <option value="{{ $value }}">{{ $label }}</option>
+                <option value="{{ $value }}" @selected(old('bank_name', $registration->refund_bank_name) === $value)>{{ $label }}</option>
               @endforeach
             </select>
           </div>
@@ -160,6 +172,7 @@
             <label class="form-label">Account Number</label>
             <input type="text"
                    name="account_number"
+                   value="{{ old('account_number', $registration->refund_account_number) }}"
                    class="form-control"
                    inputmode="numeric"
                    maxlength="12"
@@ -170,6 +183,7 @@
             <label class="form-label">Branch Code</label>
             <input type="text"
                    name="branch_code"
+                   value="{{ old('branch_code', $registration->refund_branch_code) }}"
                    class="form-control"
                    inputmode="numeric"
                    maxlength="6"
@@ -182,8 +196,8 @@
                     class="form-select"
                     required>
               <option value="">Select</option>
-              <option value="current">Current / Cheque</option>
-              <option value="savings">Savings</option>
+              <option value="current" @selected(old('account_type', $registration->refund_account_type) === 'current')>Current / Cheque</option>
+              <option value="savings" @selected(old('account_type', $registration->refund_account_type) === 'savings')>Savings</option>
             </select>
           </div>
 
@@ -199,7 +213,7 @@
           <button type="submit"
                   class="btn btn-primary"
                   onclick="this.disabled=true; this.form.submit();">
-            Submit Refund Request
+            {{ $pendingBank ? 'Save Corrected Bank Details' : 'Submit Refund Request' }}
           </button>
         </div>
 
