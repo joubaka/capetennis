@@ -705,7 +705,7 @@ class RegistrationRefundController extends Controller
       // the wallet portion is refunded in full (no fee) to the wallet.
       $payfastGross = $payment['gross'] ?? 0;
       $walletPaid   = $payment['wallet_paid'] ?? 0;
-      $payfastNet   = $payment['net'] ?? round($payfastGross * 0.90, 2);
+      $payfastNet   = round($payfastGross * 0.90, 2);
       $walletNet    = $walletPaid;
 
       try {

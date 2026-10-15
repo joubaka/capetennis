@@ -74,6 +74,45 @@ class RegistrationRefundFlowTest extends TestCase
             ->assertSee('337.50')->assertSee('original payer', false)->assertDontSee('Refund to Wallet (Instant)');
     }
 
+    public function test_legacy_bank_refund_tools_are_super_user_only(): void
+    {
+        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        $admin = User::factory()->create()->assignRole('admin');
+        $registration = $this->pendingBankRefund();
+        $this->actingAs($admin)->get(route('admin.registration.refunds.bank.index'))->assertForbidden();
+        $this->get(route('admin.registration.refunds.bank.show', $registration))->assertForbidden();
+        $this->post(route('admin.registration.refunds.bank.complete', $registration))->assertForbidden();
+        $teamOrder = \App\Models\TeamPaymentOrder::create(['user_id' => $registration->user_id, 'total_amount' => 375]);
+        $this->post(route('admin.registration.refunds.bank.complete.team', $teamOrder))->assertForbidden();
+        $this->assertSame('pending', $registration->fresh()->refund_status);
+    }
+
+    public function test_admin_retry_uses_withdrawal_policy_amount_instead_of_processor_settlement_net(): void
+    {
+        \Illuminate\Support\Facades\Mail::fake();
+        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        $admin = User::factory()->create()->assignRole('super-user');
+        $registration = $this->pendingBankRefund();
+        $order = \App\Models\RegistrationOrder::create(['user_id' => $registration->user_id, 'pay_status' => 1]);
+        \Illuminate\Support\Facades\DB::table('registration_order_items')->insert([
+            'order_id' => $order->id, 'registration_id' => $registration->registration_id,
+            'category_event_id' => $registration->category_event_id, 'item_price' => 375,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->assertNotEquals(337.50, $registration->fresh()->paymentInfo()['net']);
+        \Illuminate\Support\Facades\Http::fake([
+            'api.payfast.co.za/refunds/query/*' => \Illuminate\Support\Facades\Http::response(['data' => [
+                'status' => 'REFUNDABLE', 'amount_available_for_refund' => 37500,
+                'refund_partial' => ['method' => 'PAYMENT_SOURCE'],
+            ]]),
+            'api.payfast.co.za/refunds/*' => \Illuminate\Support\Facades\Http::response(['status' => 'error'], 400),
+        ]);
+        $this->actingAs($admin)->post(route('admin.registration.refunds.bank.complete', $registration))->assertSessionHasErrors();
+        \Illuminate\Support\Facades\Http::assertSent(fn ($request) => $request->method() === 'POST' && $request['amount'] === 33750);
+        $this->assertSame('pending', $registration->fresh()->refund_status);
+        $this->assertSame(337.50, (float) $registration->refund_net);
+    }
+
     public function test_completed_refund_cannot_have_bank_details_changed_using_stale_pending_model(): void
     {
         $registration = $this->pendingBankRefund();

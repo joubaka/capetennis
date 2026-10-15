@@ -342,7 +342,7 @@ Route::post(
 
 
 
-Route::middleware(['auth', 'role:super-user|admin'])
+Route::middleware(['auth', 'role:super-user'])
   ->prefix('admin/refunds')
   ->group(function () {
 
