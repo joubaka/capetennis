@@ -70,7 +70,8 @@
                       Choose Refund
                     </a>
                   @elseif($reg->refund_status === 'pending' && $reg->refund_method === 'bank')
-                    <span class="text-muted small">Awaiting bank transfer</span>
+                    <span class="text-muted small d-block">Awaiting administrator review</span>
+                    <a href="{{ route('registrations.refund.choose', $reg) }}" class="btn btn-sm btn-outline-primary">Review bank details</a>
                   @elseif($reg->refund_status === 'completed')
                     <span class="text-success small">
                       <i class="ti ti-check me-1"></i>Done

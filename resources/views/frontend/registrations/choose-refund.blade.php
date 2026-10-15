@@ -107,7 +107,7 @@
       </form>
       @endif
 
-      @if(($payfastGross ?? 0) > 0 && !$registration->isRefundCompleted())
+      @if(($pendingBank || ($payfastGross ?? 0) > 0) && !$registration->isRefundCompleted())
       {{-- BANK REFUND BUTTON --}}
       <button type="button"
               class="btn btn-outline-primary w-100"
@@ -128,7 +128,7 @@
 
 
 {{-- ================= BANK REFUND MODAL ================= --}}
-@if(($payfastGross ?? 0) > 0 && !$registration->isRefundCompleted())
+@if(($pendingBank || ($payfastGross ?? 0) > 0) && !$registration->isRefundCompleted())
 <div class="modal fade" id="bankRefundModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">

@@ -109,6 +109,9 @@
         <i class="ti ti-clock"></i>
         {{ $registration->display_name }} – Bank refund pending
       </span>
+      @if((int) auth()->id() === (int) $registration->user_id)
+        <a href="{{ route('registrations.refund.choose', $registration) }}" class="btn btn-outline-primary btn-sm">Review bank details</a>
+      @endif
 
     @elseif($registration->refund_status === 'completed' && $registration->refund_method === 'bank')
       <span class="btn btn-outline-success btn-sm disabled">

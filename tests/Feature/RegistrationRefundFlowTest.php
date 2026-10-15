@@ -66,6 +66,14 @@ class RegistrationRefundFlowTest extends TestCase
         app(RefundRequestService::class)->updatePendingRegistrationBankDetails($registration, User::factory()->create(), ['refund_account_number' => '999999999']);
     }
 
+    public function test_pending_bank_chooser_explains_review_and_hides_wallet_resubmission(): void
+    {
+        $registration = $this->pendingBankRefund();
+        $this->actingAs($registration->user)->get(route('registrations.refund.choose', $registration))
+            ->assertOk()->assertSee('pending administrator review')->assertSee('Correct Bank Details')
+            ->assertSee('337.50')->assertSee('original payer', false)->assertDontSee('Refund to Wallet (Instant)');
+    }
+
     public function test_completed_refund_cannot_have_bank_details_changed_using_stale_pending_model(): void
     {
         $registration = $this->pendingBankRefund();
