@@ -92,11 +92,8 @@
     <div class="col-md-2">
       <div class="card border-start border-primary h-100">
         <div class="card-body">
-          <small class="text-muted d-block mb-1">Total Received</small>
+          <small class="text-muted d-block mb-1">Registration received</small>
           <h4 class="mb-1">R {{ number_format($totalGross, 2) }}</h4>
-          @if(($clothingReceived ?? 0) > 0)
-            <small class="text-muted d-block">Registration R {{ number_format($registrationReceived ?? $totalGross, 2) }} · Clothing R {{ number_format($clothingReceived, 2) }}</small>
-          @endif
           <small class="text-muted d-block">
             {{ $totalEntries }} total {{ $totalEntries === 1 ? 'entry' : 'entries' }}
             @if(($totalWithdrawnCount ?? 0) > 0) · {{ $totalWithdrawnCount }} withdrew @endif
@@ -126,7 +123,7 @@
             $activeEntries = $totalEntries - ($completedRefundCount ?? 0);
           @endphp
           <small class="text-muted d-block mb-1">
-            Withdrawals ({{ $totalWithdrawnCount }})
+            Registration withdrawals ({{ $totalWithdrawnCount }})
             @if(($pendingRefundCount ?? 0) > 0)
               <span class="badge bg-warning text-dark ms-1">{{ $pendingRefundCount }} pending</span>
             @endif
@@ -155,7 +152,7 @@
     <div class="col-md-2">
       <div class="card border-start border-warning h-100">
         <div class="card-body">
-          <small class="text-muted d-block mb-1">PayFast Fees (net)</small>
+          <small class="text-muted d-block mb-1">Registration PayFast fees (net)</small>
           <h4 class="text-warning mb-1">− R {{ number_format(abs($totalPayfastFees), 2) }}</h4>
           @php $activePayfastEntries = $totalEntries - $completedRefundCount - $adminEntriesCount; @endphp
           @if($adminEntriesCount > 0)
@@ -175,7 +172,7 @@
     <div class="col-md-2">
       <div class="card border-start border-danger h-100">
         <div class="card-body">
-          <small class="text-muted d-block mb-1">Cape Tennis Fees (net)</small>
+          <small class="text-muted d-block mb-1">Registration Cape Tennis fees (net)</small>
           <h4 class="text-danger mb-1">− R {{ number_format(abs($totalCapeTennisFees), 2) }}</h4>
           @php
             $chargedEntries = max(0, $totalEntries - ($completedRefundCount ?? 0));
@@ -208,7 +205,7 @@
     <div class="col-md-2">
       <div class="card border-start border-success h-100">
         <div class="card-body">
-          <small class="text-muted d-block mb-1">Net Tournament Income</small>
+          <small class="text-muted d-block mb-1">Registration balance</small>
           <h4 class="{{ $netTournamentIncome >= 0 ? 'text-success' : 'text-danger' }} mb-1">R {{ number_format($netTournamentIncome, 2) }}</h4>
           @if($adminEntriesCount > 0)
             @php $unreconciledNominalValue = round($adminEntriesCount * (float) $event->entryFee, 2); @endphp
@@ -224,6 +221,39 @@
 
   </div>
 
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h3 class="h5">Regional clothing funds</h3>
+      <p class="text-muted">Clothing is payable to regional convenors and excluded from registration income, fees and payouts. Pending refunds are shown separately and do not reduce funds until completed.</p>
+      <div class="table-responsive"><table class="table table-sm">
+        <thead>
+          <tr>
+            <th>Region</th>
+            <th>Clothing received</th>
+            <th>Clothing fees (net)</th>
+            <th>Completed clothing refunds</th>
+            <th>Pending clothing refunds</th>
+            <th>Net payable to convenor</th>
+          </tr>
+        </thead>
+        <tbody>
+        @forelse($receiptSections['clothing']['groups'] as $region => $group)
+          <tr>
+            <td>{{ $region }}</td>
+            <td>R {{ number_format($group['totals']['gross'], 2) }}</td>
+            <td>R {{ number_format(abs($group['rows']->reject(fn ($row) => $row->type === 'withdrawal' || ($row->type === 'refund' && ($row->refund_status ?? '') !== 'completed'))->sum(fn ($row) => ($row->fee ?? 0) + ($row->capeFee ?? 0))), 2) }}</td>
+            <td>R {{ number_format($group['totals']['completed_refunds'], 2) }}</td>
+            <td>R {{ number_format($group['totals']['pending_refunds'], 2) }}</td>
+            <td>R {{ number_format($group['totals']['net'], 2) }}</td>
+          </tr>
+        @empty
+          <tr><td colspan="6">No clothing transactions.</td></tr>
+        @endforelse
+        </tbody>
+      </table></div>
+    </div>
+  </div>
 
   {{-- TABLE --}}
   <div class="card">
@@ -241,7 +271,7 @@
     <th style="width:80px;" class="text-end">Gross</th>
 <th style="width:100px;" class="text-end">PayFast Fee</th>
 <th style="width:110px;" class="text-end">Cape Tennis Fee</th>
-<th style="width:110px;" class="text-end">Net to Event</th>
+<th style="width:110px;" class="text-end">Net movement</th>
   </tr>
 </thead>
 
@@ -281,22 +311,30 @@ if ($tx->type === 'payment' && isset($tx->order)) {
 }
 
 if ($tx->type === 'clothing_payment') {
-  $payload = collect($tx->registrationDetails ?? [])->map(fn ($item) => [
-    'mode' => 'payment_item',
+  $payload = collect([[
+    'mode' => 'clothing_summary',
+    'gross' => number_format($tx->gross, 2),
+    'fee' => number_format(abs($tx->fee), 2),
+    'net' => number_format($tx->net, 2),
+  ]])->merge(collect($tx->registrationDetails ?? [])->map(fn ($item) => [
+    'mode' => 'clothing_item',
     'player' => $item['player'] ?? '—',
-    'category' => trim(($item['item'] ?? 'Clothing') . ' · ' . ($item['size'] ?? '—')),
+    'item' => $item['item'] ?? 'Clothing',
+    'size' => $item['size'] ?? '—',
     'price' => number_format($item['price'] ?? 0, 2),
-  ]);
+  ]));
 }
-
 
             // REFUND CHILD DATA
             if ($tx->type === 'refund') {
               $payload = collect([[
-                'mode'              => 'refund',
+                'mode'              => ($tx->subtype ?? '') === 'clothing_refund' ? 'clothing_refund' : 'refund',
+                'clothing_gross'    => number_format($tx->refund_gross ?? abs($tx->gross), 2),
+                'clothing_fee'      => number_format($tx->refund_fee ?? $tx->fee ?? 0, 2),
+                'clothing_net'      => number_format($tx->refund_net ?? abs($tx->net), 2),
                 'refund_status'     => $tx->refund_status ?? '—',
                 'pf_payment_id'     => $tx->pf_payment_id ?? '—',
-                'paid_at'           => optional($tx->paid_at)->format('Y-m-d'),
+                'paid_at'           => optional($tx->paid_at ?? null)->format('Y-m-d'),
                 'category'          => $tx->category ?? '—',
                 'gross_original'    => number_format(abs($tx->gross), 2),
                 'payfast_fee'       => number_format($tx->displayFee ?? 0, 2),
@@ -311,7 +349,7 @@ if ($tx->type === 'clothing_payment') {
               $payload = collect([[
                 'mode'           => 'withdrawal',
                 'category'       => $tx->category ?? '—',
-                'paid_at'        => optional($tx->paid_at)->format('Y-m-d'),
+                'paid_at'        => optional($tx->paid_at ?? null)->format('Y-m-d'),
                 'original_gross' => number_format($tx->original_gross ?? 0, 2),
                 'refund_status'  => 'No Refund Issued',
               ]]);
@@ -335,11 +373,11 @@ if ($tx->type === 'clothing_payment') {
               @if($tx->type === 'admin_entry_fee')
                 <span class="badge bg-warning text-dark">Admin fee liability</span>
               @elseif($tx->type === 'payment')
-                <span class="badge bg-success">Payment</span>
+                <span class="badge bg-success">Registration received</span>
               @elseif($tx->type === 'clothing_payment')
                 <span class="badge bg-primary">Clothing received</span>
               @elseif($tx->type === 'refund')
-                <span class="badge bg-danger">Refunded</span>
+                <span class="badge bg-danger">{{ ($tx->subtype ?? '') === 'clothing_refund' ? 'Clothing refund' : 'Registration refund' }}</span>
                 @if(($tx->refund_status ?? '') === 'pending')
                   <span class="badge bg-warning text-dark ms-1"><i class="ti ti-clock me-1"></i>Bank Pending</span>
                 @endif
@@ -467,6 +505,42 @@ $(function () {
     /* =========================
        REFUND
     ========================= */
+    if (items[0].mode === 'clothing_summary') {
+      const s = items[0];
+      const escape = value => $('<div>').text(value ?? '—').html();
+      const lines = items.filter(item => item.mode === 'clothing_item').map(item => `
+        <tr><td>${escape(item.player)}</td><td>${escape(item.item)}</td><td>${escape(item.size)}</td><td>R ${escape(item.price)}</td></tr>
+      `).join('');
+      return `
+        <table class="table table-sm mb-0 child-table">
+          <tbody>
+            <tr><th>Clothing received</th><td>R ${s.gross}</td></tr>
+            <tr><th>Clothing PayFast fee</th><td>R ${s.fee}</td></tr>
+            <tr><th>Net clothing funds for region</th><td>R ${s.net}</td></tr>
+          </tbody>
+        </table>
+        <table class="table table-sm mb-0 child-table mt-2">
+          <thead><tr><th>Player</th><th>Clothing item</th><th>Size</th><th>Amount</th></tr></thead>
+          <tbody>${lines}</tbody>
+        </table>
+      `;
+    }
+
+    if (items[0].mode === 'clothing_refund') {
+      const r = items[0];
+      const pending = r.refund_status === 'pending';
+      return `
+        <table class="table table-sm mb-0 child-table">
+          <tbody>
+            <tr><th>Clothing refund status</th><td>${pending ? 'Pending' : 'Completed'}</td></tr>
+            <tr><th>Clothing refund gross</th><td>R ${r.clothing_gross}</td></tr>
+            <tr><th>Clothing refund fee retained</th><td>R ${r.clothing_fee}</td></tr>
+            <tr><th>${pending ? 'Net clothing refund pending' : 'Net clothing refund returned'}</th><td>R ${r.clothing_net}</td></tr>
+          </tbody>
+        </table>
+      `;
+    }
+
     if (items[0].mode === 'refund') {
       const r = items[0];
       const statusBadge = r.refund_status === 'pending'
@@ -532,7 +606,7 @@ $(function () {
             <tr><th>PayFast Fee</th><td class="text-danger">− R ${s.pf_fee}</td></tr>
             <tr><th>Cape Tennis Fee</th><td class="text-danger">− R ${s.cape_fee}</td></tr>
             <tr class="fw-bold text-success">
-              <th>Net to Event</th>
+              <th>Registration net income</th>
               <td>R ${s.net}</td>
             </tr>
           </tbody>

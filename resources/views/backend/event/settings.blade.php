@@ -59,13 +59,22 @@
   'eventWorkspaceIcon' => 'ti-settings',
   'eventWorkspaceSubtitle' => 'Event settings',
 ])
+@php
+  $showSelectionCriteriaTab = $event->isTeam() && auth()->user()->can('event.settings.manage', $event);
+@endphp
+@if($showSelectionCriteriaTab)
+<ul class="nav nav-tabs mb-3" role="tablist" aria-label="Event settings">
+  <li class="nav-item" role="presentation"><button type="button" class="nav-link active" id="settings-general-tab" data-bs-toggle="tab" data-bs-target="#settings-general-pane" role="tab" aria-controls="settings-general-pane" aria-selected="true" style="min-height:44px">General settings</button></li>
+  <li class="nav-item" role="presentation"><button type="button" class="nav-link" id="settings-selection-tab" data-bs-toggle="tab" data-bs-target="#settings-selection-pane" role="tab" aria-controls="settings-selection-pane" aria-selected="false" style="min-height:44px">Selection criteria</button></li>
+</ul>
+@endif
 <div class="settings-toolbar rounded-3 d-flex align-items-center justify-content-between gap-3 px-3 py-2 mb-4 no-print">
   <nav class="settings-jump-links" aria-label="Settings sections">
     <a href="#settings-basics">Basics</a>
     <a href="#settings-information">Public information</a>
     <a href="#settings-schedule">Schedule</a>
     <a href="#result-controls">Results updates</a>
-    @if($event->isTeam())<a href="#settings-team-selection">Team selection</a>@endif
+    @if($showSelectionCriteriaTab)<a href="#settings-team-selection">Selection criteria</a>@endif
     <a href="#settings-access">Access</a>
   </nav>
   <div class="d-md-none flex-grow-1">
@@ -75,7 +84,7 @@
       <option value="#settings-information">Public information</option>
       <option value="#settings-schedule">Schedule</option>
       <option value="#result-controls">Results updates</option>
-      @if($event->isTeam())<option value="#settings-team-selection">Team selection</option>@endif
+      @if($showSelectionCriteriaTab)<option value="#settings-team-selection">Selection criteria</option>@endif
       <option value="#settings-access">Access</option>
     </select>
   </div>
@@ -85,10 +94,10 @@
   </div>
 </div>
 
+@if($showSelectionCriteriaTab)
+<div class="tab-content p-0">
+<div class="tab-pane" id="settings-selection-pane" role="tabpanel" aria-labelledby="settings-selection-tab" tabindex="0">
 <div class="row g-4">
-
-@if($event->isTeam())
-@can('event.settings.manage', $event)
 @php
   $selectionCriteria = app(\App\Services\TeamSelectionCriteria::class)->context($event);
   $selectionCriteriaLocked = \App\Models\EventSelectionFinalization::active()->where('event_id', $event->id)->exists();
@@ -117,7 +126,12 @@
   <p class="field-help">Saved drafts and finalized snapshots retain their original evidence. After changing criteria, review the current results and explicitly save a fresh draft.</p>
   @if($selectionCriteriaLocked)<p class="alert alert-info mb-0">Selection criteria are locked while selections are finalized. Reopen selections before changing them.</p>@else<button type="button" class="btn btn-primary" id="save-selection-criteria">Save selection criteria</button><span id="selection-criteria-status" class="ms-2" role="status" aria-live="polite"></span>@endif
 </div></section></div>
-@endcan
+</div>
+</div>
+<div class="tab-pane active" id="settings-general-pane" role="tabpanel" aria-labelledby="settings-general-tab" tabindex="0">
+@endif
+<div class="row g-4">
+@if($event->isTeam())
 <div class="col-12"><section class="card settings-card"><div class="card-body">
   <h5>Main conveners by age group</h5>
   <p class="text-muted">Assign one account per age group. They can view that age group's standings after every match in the group has been processed.</p>
@@ -515,6 +529,10 @@
 </div>
 
 </div>
+@if($showSelectionCriteriaTab)
+</div>
+</div>
+@endif
 </form>
 </div>
 @endsection
@@ -777,13 +795,40 @@ $(function () {
     }, 700);
   }
 
-  $('#settings-section-select').on('change', function () {
-    const section = document.querySelector(this.value);
+  let openingSettingsSection = false;
+  function openSettingsSection(hash, updateHash = true) {
+    const section = document.getElementById(hash.replace(/^#/, ''));
     if (!section) return;
+    const pane = section.closest('.tab-pane');
+    if (pane) {
+      const tab = document.querySelector('[data-bs-target="#' + pane.id + '"]');
+      if (tab) {
+        openingSettingsSection = true;
+        bootstrap.Tab.getOrCreateInstance(tab).show();
+        openingSettingsSection = false;
+      }
+    }
+    $('#settings-section-select').val(hash);
+    if (updateHash) history.replaceState(null, '', hash);
     section.scrollIntoView({ block: 'start' });
     section.setAttribute('tabindex', '-1');
     section.focus({ preventScroll: true });
+  }
+  $('#settings-section-select').on('change', function () {
+    openSettingsSection(this.value);
   });
+  $('.settings-jump-links a').on('click', function (event) {
+    event.preventDefault();
+    openSettingsSection(this.hash);
+  });
+  $('[data-bs-toggle="tab"][id^="settings-"]').on('shown.bs.tab', function () {
+    if (openingSettingsSection) return;
+    const hash = this.id === 'settings-selection-tab' ? '#settings-team-selection' : '#settings-basics';
+    $('#settings-section-select').val(hash);
+    history.replaceState(null, '', hash);
+  });
+  $(window).on('hashchange', function () { openSettingsSection(location.hash, false); });
+  if (location.hash) openSettingsSection(location.hash, false);
   $('[data-result-state]').each(function () {
     const badge = this;
     $('#' + badge.dataset.resultState).on('change', function () { badge.textContent = (this.checked ? 'On' : 'Off') + ' - unsaved'; });

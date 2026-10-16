@@ -29,7 +29,7 @@ class EventFinanceReceiptReport
 
         return collect(['registrations' => 'Registration receipts', 'clothing' => 'Clothing receipts'])
             ->map(function ($label, $key) use ($rows, $event, $orders, $transactionRegions) {
-                $sectionRows = $rows->filter(fn ($row) => ($row->type === 'clothing_payment') === ($key === 'clothing'));
+                $sectionRows = $rows->filter(fn ($row) => ($row->type === 'clothing_payment' || ($row->subtype ?? null) === 'clothing_refund') === ($key === 'clothing'));
                 $groups = $sectionRows->groupBy(function ($row) use ($event, $orders, $transactionRegions) {
                     $order = $row->order ?? null;
                     if ($order instanceof ClothingOrder) {
@@ -83,6 +83,8 @@ class EventFinanceReceiptReport
             'gross' => round($payments->sum('gross'), 2),
             'fees' => round($payments->sum(fn ($row) => ($row->fee ?? 0) + ($row->capeFee ?? 0)), 2),
             'completed_refunds' => round($completed->sum('refund_gross'), 2),
+            'completed_refund_net' => round(-$completed->sum('net'), 2),
+            'pending_refund_net' => round(-$rows->where('type', 'refund')->where('refund_status', 'pending')->sum('net'), 2),
             'pending_refunds' => round($rows->where('type', 'refund')->where('refund_status', 'pending')->sum('refund_gross'), 2),
             'net' => round($payments->sum('net') + $completed->sum('net'), 2),
         ];

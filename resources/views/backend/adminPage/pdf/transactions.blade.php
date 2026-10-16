@@ -14,7 +14,39 @@
 <body>
     <h2>Transactions - {{ $event->name }}</h2>
 
-    @php $runningBalance = 0; @endphp
+    @foreach($receiptSections as $key => $section)
+    <h3>{{ $key === 'clothing' ? 'Regional clothing funds — payable to convenors' : 'Registration reconciliation' }}</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Region</th>
+          <th>Received</th>
+          <th>Fees deducted (net)</th>
+          <th>Completed refunds</th>
+          <th>Pending refunds</th>
+          <th>{{ $key === 'clothing' ? 'Net payable to convenor' : 'Registration net income' }}</th>
+        </tr>
+      </thead>
+      <tbody>
+      @forelse($section['groups'] as $region => $group)
+        <tr>
+          <td>{{ $region }}</td>
+          <td>R{{ number_format($group['totals']['gross'], 2) }}</td>
+          <td>R{{ number_format(abs($group['rows']->reject(fn ($row) => $row->type === 'withdrawal' || ($row->type === 'refund' && ($row->refund_status ?? '') !== 'completed'))->sum(fn ($row) => ($row->fee ?? 0) + ($row->capeFee ?? 0))), 2) }}</td>
+          <td>R{{ number_format($group['totals']['completed_refunds'], 2) }}</td>
+          <td>R{{ number_format($group['totals']['pending_refunds'], 2) }}</td>
+          <td>R{{ number_format($group['totals']['net'], 2) }}</td>
+        </tr>
+      @empty
+        <tr><td colspan="6">No transactions.</td></tr>
+      @endforelse
+      </tbody>
+    </table>
+    @if($key === 'registrations')
+      <p>Registration payouts: R{{ number_format($totalPayouts, 2) }}. Registration balance: R{{ number_format($section['totals']['net'] - $totalPayouts, 2) }}.</p>
+    @endif
+    @endforeach
+    <p>Clothing funds are excluded from registration income and payouts. Pending refunds do not reduce funds until completed.</p>
 
     <table>
         <thead>
@@ -28,19 +60,19 @@
                 <th>PayFast Fee</th>
                 <th>Cape Tennis Fee</th>
                 <th>Net</th>
-                <th>Balance</th>
+
             </tr>
         </thead>
         <tbody>
             @foreach($ledger as $t)
             @php
-                $runningBalance = round($runningBalance + $t->net, 2);
+
                 $isRefund = $t->type === 'refund';
             @endphp
             <tr class="{{ $isRefund ? 'refund-row' : '' }}">
                 <td>{{ $t->pf_payment_id ?? '-' }}</td>
                 <td>{{ \Carbon\Carbon::parse($t->created_at)->format('d M Y') }}</td>
-                <td>{{ $t->type === 'clothing_payment' ? 'Clothing received' : ucfirst($t->type) }}</td>
+                <td>{{ $t->type === 'clothing_payment' ? 'Clothing received' : ($t->type === 'refund' ? (($t->subtype ?? '') === 'clothing_refund' ? 'Clothing refund' : 'Registration refund') : ($t->type === 'payment' ? 'Registration received' : ucfirst($t->type))) }}</td>
                 <td style="text-align: left;">
                     <strong>{{ $t->player ?? '-' }}</strong>
                     @if(!$isRefund && isset($t->order) && $t->order && $t->order->items && $t->order->items->count())
@@ -78,37 +110,11 @@
                     @endif
                 </td>
                 <td>{{ $t->net < 0 ? '-' : '' }} R{{ number_format(abs($t->net), 2) }}</td>
-                <td>R{{ number_format($runningBalance, 2) }}</td>
+
             </tr>
             @endforeach
         </tbody>
-        <tfoot>
-            <tr>
-                <th colspan="4" style="text-align: right;">Totals:</th>
-                <th></th>
-                <th>R{{ number_format($totalGross, 2) }}</th>
-                <th>R{{ number_format(abs($totalPayfastFees) + ($totalWithdrawalFees ?? 0), 2) }}</th>
-                <th>R{{ number_format(abs($totalCapeTennisFees), 2) }}</th>
-                <th>R{{ number_format($netTournamentIncome, 2) }}</th>
-                <th>R{{ number_format($runningBalance, 2) }}</th>
-            </tr>
-            @if(($totalWithdrawalFees ?? 0) > 0)
-            <tr>
-                <th colspan="9" style="text-align: right; font-weight: normal;">
-                    Incl. withdrawal fees retained (10%): R{{ number_format($totalWithdrawalFees, 2) }}
-                </th>
-                <th></th>
-            </tr>
-            @endif
-            @if($totalPayouts > 0)
-            <tr>
-                <th colspan="9" style="text-align: right;">
-                    Payouts: - R{{ number_format($totalPayouts, 2) }}
-                </th>
-                <th></th>
-            </tr>
-            @endif
-        </tfoot>
+
     </table>
 </body>
 </html>

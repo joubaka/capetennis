@@ -51,6 +51,9 @@ class EventOperationsService
         $totals = $ledger['totals'];
         $paymentRows = $ledger['paymentRows'];
         $entryRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee']);
+        $totals['total_entries'] = $event->isTeam() ? $entryRows->count() : $entryRows->sum(fn ($row) => $row->entryCount ?? 1);
+        $totals['registration_pending_refund_net'] = round(-$ledger['refundRows']->where('type', 'refund')
+            ->where('subtype', '!=', 'clothing_refund')->where('refund_status', 'pending')->sum('net'), 2);
         $finance = [
             'event' => $event,
             'gross_payments' => $totals['gross_payments'],
@@ -88,7 +91,7 @@ class EventOperationsService
             'finance' => $finance,
             'financeTotals' => $totals,
             'clothingReceipts' => app(\App\Domain\Finance\Services\EventFinanceReceiptReport::class)
-                ->build($event, $paymentRows->where('type', 'clothing_payment'))['clothing'],
+                ->build($event, $paymentRows->merge($ledger['refundRows']))['clothing'],
             'warnings' => $warnings->values(),
         ];
     }

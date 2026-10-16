@@ -57,7 +57,7 @@ class EventFinanceReceiptReportTest extends TestCase
         $report = app(EventFinanceReceiptReport::class)->build($event, $rows);
         $registrations = $report['registrations'];
         $this->assertSame(['North', 'South'], $registrations['groups']->keys()->all());
-        $this->assertEquals(['gross' => 100, 'fees' => -5, 'completed_refunds' => 20, 'pending_refunds' => 0, 'net' => 77], $registrations['groups']['North']['totals']);
+        $this->assertEquals(['gross' => 100, 'fees' => -5, 'completed_refunds' => 20, 'completed_refund_net' => 18, 'pending_refund_net' => 0, 'pending_refunds' => 0, 'net' => 77], $registrations['groups']['North']['totals']);
         $this->assertEquals(200, $registrations['groups']['South']['totals']['net']);
         $this->assertEquals(30, $registrations['groups']['South']['totals']['pending_refunds']);
         $this->assertSame(5, $registrations['count']);
@@ -100,6 +100,35 @@ class EventFinanceReceiptReportTest extends TestCase
         ]));
         $this->assertSame(['Region not recorded'], $report['registrations']['groups']->keys()->all());
         $this->assertSame(2, $report['registrations']['count']);
+    }
+
+    public function test_clothing_refunds_stay_with_their_region_and_never_reduce_registration_income(): void
+    {
+        $event = Event::factory()->create();
+        $other = Event::factory()->create();
+        $payer = User::factory()->create();
+        $category = CategoryEvent::factory()->create(['event_id' => $event->id]);
+        $north = TeamRegion::create(['region_name' => 'North']);
+        $south = TeamRegion::create(['region_name' => 'South']);
+        $orders = collect([$north, $south])->map(fn ($region) => ClothingOrder::create([
+            'event_id' => $event->id, 'user_id' => $payer->id, 'total' => 100,
+            'team_id' => Team::factory()->create(['category_event_id' => $category->id, 'region_id' => $region->id])->id,
+        ]));
+        $report = app(EventFinanceReceiptReport::class)->build($event, collect([
+            $this->row(['gross' => 200, 'fee' => -8, 'capeFee' => -15, 'net' => 177]),
+            $this->row(['type' => 'clothing_payment', 'order' => $orders[0], 'gross' => 100, 'fee' => -4, 'net' => 96]),
+            $this->row(['type' => 'clothing_payment', 'order' => $orders[1], 'gross' => 100, 'fee' => -4, 'net' => 96]),
+            $this->row(['type' => 'refund', 'subtype' => 'clothing_refund', 'order' => $orders[0], 'refund_status' => 'completed', 'refund_gross' => 50, 'net' => -48]),
+            $this->row(['type' => 'refund', 'subtype' => 'clothing_refund', 'order' => $orders[1], 'refund_status' => 'pending', 'refund_gross' => 30, 'net' => -28.80]),
+            $this->row(['event_id' => $other->id, 'type' => 'refund', 'subtype' => 'clothing_refund', 'order' => $orders[0], 'refund_status' => 'completed', 'refund_gross' => 999, 'net' => -999]),
+        ]));
+        $this->assertSame(1, $report['registrations']['count']);
+        $this->assertEquals(177, $report['registrations']['totals']['net']);
+        $this->assertEquals(48, $report['clothing']['groups']['North']['totals']['net']);
+        $this->assertEquals(96, $report['clothing']['groups']['South']['totals']['net']);
+        $this->assertEquals(48, $report['clothing']['totals']['completed_refund_net']);
+        $this->assertEquals(28.80, $report['clothing']['totals']['pending_refund_net']);
+        $this->assertEquals(144, $report['clothing']['totals']['net']);
     }
 
     private function row(array $values): object

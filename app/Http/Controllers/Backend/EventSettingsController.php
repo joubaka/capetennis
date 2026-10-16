@@ -84,7 +84,7 @@ class EventSettingsController extends Controller
       'information' => 'sometimes|nullable|string',
       'venue_notes' => 'sometimes|nullable|string',
       'entryFee' => 'sometimes|nullable|integer',
-      'deadline' => 'sometimes|nullable|integer',
+      'deadline' => 'sometimes|nullable|integer|min:0',
       'withdrawal_deadline' => 'sometimes|nullable|date',
       'eventType' => 'sometimes|required|integer',
       'email' => 'sometimes|nullable|email',
@@ -134,6 +134,11 @@ class EventSettingsController extends Controller
       'scoring_starts_at' => 'sometimes|nullable|date',
       'scoring_expires_at' => 'sometimes|nullable|date|after:scoring_starts_at',
     ]);
+
+    // Leaving the deadline blank preserves the previously stored number of days.
+    if (array_key_exists('deadline', $data) && $data['deadline'] === null) {
+      unset($data['deadline']);
+    }
 
     if (array_key_exists('age_group_conveners', $data)) {
       $allowedAges = app(\App\Services\AgeGroupConvenerStandingsService::class)->ages($event);

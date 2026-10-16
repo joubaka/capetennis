@@ -40,15 +40,15 @@
   }
   .registration-transactions-toggle .ti-chevron-down { transition: transform 0.2s ease; }
   .registration-transactions-toggle[aria-expanded="true"] .ti-chevron-down { transform: rotate(180deg); }
-  .registration-transactions-toggle[aria-expanded="true"] .registration-transactions-action-label::before { content: 'Hide registrations'; }
-  .registration-transactions-toggle[aria-expanded="false"] .registration-transactions-action-label::before { content: 'View registrations'; }
+  .registration-transactions-toggle[aria-expanded="true"] .registration-transactions-action-label::before { content: 'Hide transactions'; }
+  .registration-transactions-toggle[aria-expanded="false"] .registration-transactions-action-label::before { content: 'View transactions'; }
 
   @media (max-width: 575.98px) {
-    .registration-transactions-toggle { align-items: flex-start !important; gap: 0.75rem; }
-    .registration-transactions-action-label { display: none; }
+    .registration-transactions-toggle { flex-direction: column; align-items: flex-start !important; gap: 0.75rem; }
   }
 
   .finance-workspace summary { min-height:44px; cursor:pointer; align-content:center; }
+  .finance-workspace [id^="finance-"] { scroll-margin-top: 150px; }
   .finance-workspace .dropdown-item, .finance-workspace .btn { min-height:44px; }
   /* Print styles */
   @media print {
@@ -111,7 +111,8 @@
   </div>
 
   <nav class="d-flex flex-wrap gap-2 mb-4 no-print" aria-label="Finance sections">
-    <a class="btn btn-outline-secondary" href="#finance-receipts">Received transactions</a><a class="btn btn-outline-secondary" href="#finance-income">Income</a><a class="btn btn-outline-secondary" href="#finance-expenses">Expenses</a><a class="btn btn-outline-secondary" href="#finance-reconciliation">Reconciliation</a>
+    <a class="btn btn-outline-secondary" href="#finance-receipts">Received transactions</a><a class="btn btn-outline-secondary" href="#finance-income">Registration income</a>
+    <a class="btn btn-outline-secondary" href="#finance-clothing">Regional clothing</a><a class="btn btn-outline-secondary" href="#finance-expenses">Expenses</a><a class="btn btn-outline-secondary" href="#finance-reconciliation">Reconciliation</a>
   </nav>
   {{-- ── ALERTS ──────────────────────────────────────────────────────── --}}
   @if(session('success'))
@@ -149,7 +150,7 @@
     <div class="col-6 col-md-3">
       <div class="card finance-card border-start border-primary border-3 h-100">
         <div class="card-body">
-          <small class="text-muted d-block mb-1"><i class="ti ti-cash me-1 text-primary"></i>Net Income</small>
+          <small class="text-muted d-block mb-1"><i class="ti ti-cash me-1 text-primary"></i>Registration net income</small>
           <h5 class="mb-0">R {{ number_format($grandTotalIncome, 2) }}</h5>
           <small class="text-muted">Gross: R {{ number_format($totalGross, 2) }}</small>
           @if($event->target_income)
@@ -186,7 +187,7 @@
         <div class="card-body">
           <small class="text-muted d-block mb-1">
             <i class="ti ti-trending-{{ $netProfit >= 0 ? 'up text-success' : 'down text-danger' }} me-1"></i>
-            Net {{ $netProfit >= 0 ? 'Profit' : 'Loss' }}
+            Registration {{ $netProfit >= 0 ? 'Profit' : 'Loss' }}
           </small>
           <h5 class="mb-0 {{ $netProfit >= 0 ? 'text-success' : 'text-danger' }}">
             R {{ number_format(abs($netProfit), 2) }}
@@ -198,7 +199,7 @@
     <div class="col-6 col-md-3">
       <div class="card finance-card border-start border-secondary border-3 h-100">
         <div class="card-body">
-          <small class="text-muted d-block mb-1"><i class="ti ti-users me-1"></i>Entries</small>
+          <small class="text-muted d-block mb-1"><i class="ti ti-users me-1"></i>Registration entries</small>
           <h5 class="mb-0">{{ $totalEntries }}</h5>
           @if($event->target_entries)
             <div class="progress mt-2" style="height:4px">
@@ -238,7 +239,7 @@
             <th>Reference</th>
             <th class="text-end">Gross</th>
             <th class="text-end">Fees</th>
-            <th class="text-end">Net to event</th>
+            <th class="text-end">Net receipt / refund</th>
           </tr>
         </thead>
         <tbody>
@@ -248,6 +249,7 @@
               $gross = $isWithdrawal ? ($transaction->original_gross ?? 0) : ($transaction->gross ?? 0);
               $fees = ($transaction->fee ?? 0) + ($transaction->capeFee ?? 0);
               $details = collect($transaction->registrationDetails ?? []);
+              $isClothing = $transaction->type === 'clothing_payment' || ($transaction->subtype ?? null) === 'clothing_refund';
               $detailId = 'event-transaction-detail-'.$loop->index;
             @endphp
             <tr>
@@ -283,16 +285,22 @@
                       <div class="col-md-3"><span class="text-muted">Payment reference</span><div class="fw-semibold">{{ $transaction->source_pf_id ?? $transaction->pf_payment_id ?? '—' }}</div></div>
                       <div class="col-md-3"><span class="text-muted">Transaction ID</span><div class="fw-semibold">{{ $transaction->source_tx_id ? '#'.$transaction->source_tx_id : '—' }}</div></div>
                       <div class="col-md-3"><span class="text-muted">Payment method</span><div class="fw-semibold">{{ $transaction->method ?? $transaction->payment_method ?? '—' }}</div></div>
-                      <div class="col-md-3"><span class="text-muted">Entries</span><div class="fw-semibold">{{ $details->count() ?: ($transaction->entryCount ?? 1) }}</div></div>
+                      <div class="col-md-3"><span class="text-muted">{{ $isClothing ? 'Clothing items' : 'Registration entries' }}</span><div class="fw-semibold">{{ $details->count() ?: ($transaction->entryCount ?? 1) }}</div></div>
                     </div>
                     <div class="table-responsive">
                       <table class="table table-sm table-bordered bg-white mb-0">
-                        <thead><tr><th>Registered player</th><th>Category</th><th class="text-end">Entry amount</th></tr></thead>
+                        <thead>
+                          <tr>
+                          <th>{{ $isClothing ? 'Clothing item' : 'Registered player' }}</th>
+                          <th>{{ $isClothing ? 'Size' : 'Category' }}</th>
+                          <th class="text-end">{{ $isClothing ? 'Item amount' : 'Entry amount' }}</th>
+                          </tr>
+                          </thead>
                         <tbody>
                           @forelse($details as $detail)
                             <tr>
-                              <td>{{ $detail['player'] ?? '—' }}</td>
-                              <td>{{ $detail['category'] ?? '—' }}</td>
+                              <td>{{ $isClothing ? ($detail['item'] ?? $detail['category'] ?? '—') : ($detail['player'] ?? '—') }}</td>
+                              <td>{{ $isClothing ? ($detail['size'] ?? '—') : ($detail['category'] ?? '—') }}</td>
                               <td class="text-end">R {{ number_format($detail['price'] ?? 0, 2) }}</td>
                             </tr>
                           @empty
@@ -306,7 +314,7 @@
               </td>
             </tr>
           @empty
-            <tr><td colspan="8" class="text-center text-muted py-4">No registration transactions have been recorded for this event.</td></tr>
+            <tr><td colspan="8" class="text-center text-muted py-4">No transactions have been recorded for this event.</td></tr>
           @endforelse
         </tbody>
       </table>
@@ -319,7 +327,7 @@
   ══════════════════════════════════════════════════════════════════════ --}}
   <div class="card mb-4" id="finance-income">
     <div class="card-header d-flex justify-content-between align-items-center">
-      <h5 class="mb-0"><i class="ti ti-cash me-2 text-success"></i>Income</h5>
+      <h5 class="mb-0"><i class="ti ti-cash me-2 text-success"></i>Registration income</h5>
       <button class="btn btn-success btn-sm no-print" data-bs-toggle="modal" data-bs-target="#addIncomeModal">
         <i class="ti ti-plus me-1"></i>Add Income
       </button>
@@ -347,29 +355,17 @@
               </td>
               <td class="text-center">{{ $totalEntries }}</td>
               <td class="text-end">—</td>
-              <td><small class="text-muted">PayFast transactions</small></td>
+              <td><small class="text-muted">Registration payment ledger</small></td>
               <td>—</td>
               <td class="text-end fw-semibold text-success">R {{ number_format($registrationReceived, 2) }}</td>
               <td class="no-print"></td>
             </tr>
 
-            @if($clothingReceived > 0)
-              <tr>
-                <td><span class="badge bg-label-primary me-1">System</span>Clothing received</td>
-                <td class="text-center">{{ $eventTransactions->where('type', 'clothing_payment')->count() }}</td>
-                <td class="text-end">—</td>
-                <td><small class="text-muted">Paid clothing orders</small></td>
-                <td>—</td>
-                <td class="text-end fw-semibold text-success">R {{ number_format($clothingReceived, 2) }}</td>
-                <td class="no-print"></td>
-              </tr>
-            @endif
-
             {{-- ── PayFast fee deduction row ── --}}
             @if(abs($totalPayfastFees) > 0)
               <tr class="deduction-row">
                 <td class="ps-4">
-                  <i class="ti ti-minus me-1"></i>PayFast fees deducted (registrations and clothing)
+                  <i class="ti ti-minus me-1"></i>PayFast fees deducted (registrations)
                 </td>
                 <td class="text-center">&mdash;</td>
                 <td class="text-end">&mdash;</td>
@@ -396,62 +392,22 @@
               </tr>
             @endif
 
-            {{-- ── Net registration income subtotal ── --}}
-            @if(abs($totalPayfastFees) > 0 || $totalCapeTennisFees > 0)
-              <tr class="table-light fw-semibold">
-                <td colspan="5" class="text-end text-muted" style="font-size:0.85rem">Net Registration and Clothing Income</td>
-                <td class="text-end text-success">R {{ number_format($netRegistrationIncome + $clothingNet, 2) }}</td>
-                <td class="no-print"></td>
-              </tr>
-            @endif
-
-            @if($clothingReceipts['count'] > 0)
-              <tr>
-                <td colspan="7" class="p-0">
-                  <div class="px-3 py-3 border-top">
-                    <h6 class="mb-1">Clothing payable by region</h6>
-                    <p class="text-muted small mb-0">Paid clothing receipts minus the PayFast fee recorded on each order. Net amounts are shown for each region's convenor.</p>
-                  </div>
-                  <div class="table-responsive">
-                    <table class="table table-sm mb-0" aria-label="Clothing payable by region">
-                      <thead class="table-light">
-                        <tr>
-                          <th class="ps-3">Region</th>
-                          <th class="text-center">Paid orders</th>
-                          <th class="text-end">Clothing received</th>
-                          <th class="text-end">Recorded PayFast fee</th>
-                          <th class="text-end pe-3">Net payable to convenor</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        @foreach($clothingReceipts['groups'] as $region => $group)
-                          <tr>
-                            <td class="ps-3">{{ $region }}</td>
-                            <td class="text-center">{{ $group['rows']->count() }}</td>
-                            <td class="text-end text-nowrap">R {{ number_format($group['totals']['gross'], 2) }}</td>
-                            <td class="text-end text-nowrap">&minus;R {{ number_format(abs($group['totals']['fees']), 2) }}</td>
-                            <td class="text-end text-nowrap fw-semibold pe-3">R {{ number_format($group['totals']['net'], 2) }}</td>
-                          </tr>
-                        @endforeach
-                      </tbody>
-                      <tfoot class="table-light fw-semibold">
-                        <tr>
-                          <td class="ps-3">Total clothing</td>
-                          <td class="text-center">{{ $clothingReceipts['count'] }}</td>
-                          <td class="text-end text-nowrap">R {{ number_format($clothingReceipts['totals']['gross'], 2) }}</td>
-                          <td class="text-end text-nowrap">&minus;R {{ number_format(abs($clothingReceipts['totals']['fees']), 2) }}</td>
-                          <td class="text-end text-nowrap pe-3">R {{ number_format($clothingReceipts['totals']['net'], 2) }}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                  @if($clothingReceipts['groups']->has('Region not recorded'))
-                    <p class="small text-warning px-3 py-2 mb-0">Confirm the region for unassigned receipts before paying a convenor.</p>
-                  @endif
-                </td>
-              </tr>
-            @endif
-
+            <tr class="deduction-row">
+              <td colspan="5">Completed registration refunds (net paid back)</td>
+              <td class="text-end">&minus;R {{ number_format($registrationReceipts['totals']['completed_refund_net'], 2) }}</td>
+              <td class="no-print"></td>
+            </tr>
+            <tr class="table-light fw-semibold">
+              <td colspan="5">Registration net income</td>
+              <td class="text-end">R {{ number_format($netRegistrationIncome, 2) }}</td>
+              <td class="no-print"></td>
+            </tr>
+            <tr>
+              <td colspan="7" class="text-muted">Pending registration refund liability: R {{ number_format($registrationReceipts['totals']['pending_refund_net'], 2) }} (not yet deducted).</td>
+            </tr>
+            <tr class="table-light">
+              <th colspan="7">Other event income — excluded from registration profit</th>
+            </tr>
             @foreach($incomeItems as $item)
               <tr>
                 <td>{{ $item->label }}</td>
@@ -499,8 +455,8 @@
           </tbody>
           <tfoot class="table-light">
             <tr>
-              <td colspan="5" class="fw-bold">Total Net Income</td>
-              <td class="text-end fw-bold text-success">R {{ number_format($grandTotalIncome, 2) }}</td>
+              <td colspan="5" class="fw-bold">Total other event income</td>
+              <td class="text-end fw-bold text-success">R {{ number_format($totalIncomeItems, 2) }}</td>
               <td class="no-print"></td>
             </tr>
           </tfoot>
@@ -509,6 +465,7 @@
     </div>
   </div>
 
+  <div class="card mb-4" id="finance-clothing"><h5 class="card-header">Regional clothing income and reconciliation</h5>@include('backend.event._clothing_finance')</div>
   {{-- ══════════════════════════════════════════════════════════════════════
        SECTION 2 – EXPENSES (per convenor)
   ══════════════════════════════════════════════════════════════════════ --}}
@@ -823,7 +780,7 @@
   ══════════════════════════════════════════════════════════════════════ --}}
   <details class="card mb-4" id="finance-reconciliation" data-finance-details>
     <summary class="card-header">
-      <h5 class="mb-0"><i class="ti ti-arrows-exchange me-2"></i>Reconciliation</h5>
+      <h5 class="mb-0"><i class="ti ti-arrows-exchange me-2"></i>Registration reconciliation</h5>
     </summary>
     <div class="card-body p-0">
       <div class="table-responsive">
@@ -906,15 +863,18 @@
                 <td></td>
               </tr>
             @endif
-            @if($totalIncomeItems > 0)
-              <tr class="table-secondary">
-                <td colspan="2"><small class="text-muted">Other Income Items</small></td>
-                <td colspan="5" class="text-end fw-semibold text-success">R {{ number_format($totalIncomeItems, 2) }}</td>
-                <td></td>
-              </tr>
-            @endif
             <tr class="table-secondary">
-              <td colspan="2"><small class="text-muted">Total Net Income</small></td>
+              <td colspan="2">Completed registration refunds (net paid back)</td>
+              <td colspan="5" class="text-end">&minus;R {{ number_format($registrationReceipts['totals']['completed_refund_net'], 2) }}</td>
+              <td></td>
+            </tr>
+            <tr class="table-secondary">
+              <td colspan="2">Pending registration refund liability (not deducted)</td>
+              <td colspan="5" class="text-end">R {{ number_format($registrationReceipts['totals']['pending_refund_net'], 2) }}</td>
+              <td></td>
+            </tr>
+            <tr class="table-secondary">
+              <td colspan="2"><small class="text-muted">Registration net income</small></td>
               <td colspan="5" class="text-end fw-semibold text-success">R {{ number_format($grandTotalIncome, 2) }}</td>
               <td></td>
             </tr>
@@ -924,7 +884,7 @@
               <td></td>
             </tr>
             <tr class="{{ $netProfit >= 0 ? 'table-success' : 'table-danger' }}">
-              <td colspan="2" class="fw-bold">Net {{ $netProfit >= 0 ? 'Profit' : 'Loss' }}</td>
+              <td colspan="2" class="fw-bold">Registration {{ $netProfit >= 0 ? 'Profit' : 'Loss' }}</td>
               <td colspan="5" class="text-end fw-bold">R {{ number_format(abs($netProfit), 2) }}</td>
               <td></td>
             </tr>
@@ -943,7 +903,7 @@
   <details class="card mb-4 no-print" data-finance-details>
     <summary class="card-header d-flex justify-content-between align-items-center">
       <h5 class="mb-0"><i class="ti ti-cash me-2"></i>Convenor Payout Breakdown</h5>
-      <small class="text-muted">Net Profit: <strong class="{{ $netProfit >= 0 ? 'text-success' : 'text-danger' }}">R {{ number_format(abs($netProfit), 2) }}</strong></small>
+      <small class="text-muted">Registration profit: <strong class="{{ $netProfit >= 0 ? 'text-success' : 'text-danger' }}">R {{ number_format(abs($netProfit), 2) }}</strong></small>
     </summary>
     <div class="card-body">
       <div class="row g-3">

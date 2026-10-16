@@ -49,11 +49,11 @@ class EventFinanceController extends Controller
             ->sortByDesc('created_at')
             ->values();
 
-        $totalGross = $ledgerTotals['gross_payments'];
+        $totalGross = $ledgerTotals['registration_received'];
         $registrationReceived = $ledgerTotals['registration_received'];
         $clothingReceived = $ledgerTotals['clothing_received'];
         $clothingNet = $ledgerTotals['clothing_net'];
-        $totalPayfastFees = abs($ledgerTotals['pf_fees']);
+        $totalPayfastFees = abs($paymentRows->whereIn('type', ['payment', 'admin_entry_fee'])->sum('fee'));
         $totalCapeTennisFees = abs($ledgerTotals['cape_fees']);
         $netRegistrationIncome = $ledgerTotals['registration_net'];
         $entryRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee']);
@@ -61,13 +61,14 @@ class EventFinanceController extends Controller
             ? $entryRows->count()
             : $entryRows->sum(fn ($row) => $row->entryCount ?? 1);
 
-        $clothingReceipts = app(EventFinanceReceiptReport::class)
-            ->build($event, $paymentRows->where('type', 'clothing_payment'))['clothing'];
+        $receiptReport = app(EventFinanceReceiptReport::class)->build($event, $eventTransactions);
+        $clothingReceipts = $receiptReport['clothing'];
+        $registrationReceipts = $receiptReport['registrations'];
 
         $incomeItems      = $event->incomeItems()->get();
         $totalIncomeItems = $incomeItems->sum(fn($i) => $i->calculatedTotal());
-        // Each canonical net receipt section is included once, plus manual income.
-        $grandTotalIncome = $netRegistrationIncome + $clothingNet + $totalIncomeItems;
+        // Registration profit excludes regional clothing funds and other event income.
+        $grandTotalIncome = $netRegistrationIncome;
 
         // ── Convenors (Hoof first, then Hulp, then others) ───────────────
         $convenors = $event->convenors()
@@ -107,7 +108,7 @@ class EventFinanceController extends Controller
 
         // Totals use operational expenses only — system fees are income deductions, not expenses
         $totalExpenses        = $operationalExpenses->sum(fn($e) => $e->calculatedAmount());
-        $totalSystemFees      = $systemExpenseRows->sum(fn($e) => $e->calculatedAmount());
+        $totalSystemFees      = round($totalPayfastFees + $totalCapeTennisFees, 2);
         $totalBudget          = $operationalExpenses->whereNotNull('budget_amount')->sum('budget_amount');
         $pendingApproval      = $operationalExpenses->whereNull('approved_at')->count();
         $pendingReimbursement = $operationalExpenses->whereNotNull('approved_at')->whereNull('reimbursed_at')->count();
@@ -183,6 +184,7 @@ class EventFinanceController extends Controller
             'feePerEntry',
             'netRegistrationIncome',
             'clothingReceipts',
+            'registrationReceipts',
             'incomeItems',
             'totalIncomeItems',
             'grandTotalIncome',
@@ -482,7 +484,7 @@ class EventFinanceController extends Controller
         // Average PayFast fee per entry (percentage-based, so this is effective/average)
         $payfastUnitPrice = ($totalEntries > 0) ? round($payfastAmount / $totalEntries, 4) : 0.0;
 
-        if ($payfastAmount > 0) {
+        if ($payfastAmount > 0 || $payfastRow) {
             $payfastData = [
                 'description'  => 'PayFast fees (auto-synced)',
                 'amount'       => $payfastAmount,
@@ -504,7 +506,7 @@ class EventFinanceController extends Controller
             }
         }
 
-        if ($totalCapeTennisFees > 0) {
+        if ($totalCapeTennisFees > 0 || $ctRow) {
             $ctData = [
                 'description'  => 'Cape Tennis fee (auto-synced)',
                 'amount'       => $totalCapeTennisFees,

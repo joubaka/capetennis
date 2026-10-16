@@ -1018,10 +1018,11 @@ class EventAdminController extends Controller
     $totalCapeTennisFees    = abs($canonicalTotals['cape_fees'] ?? ($totalEntries * $feePerEntry));
     $netRegistrationIncome  = $canonicalTotals['registration_net'] ?? ($totalGross - abs($totalPayfastFees) - $totalCapeTennisFees);
     $registrationRefundAdjustment = round($netRegistrationIncome - ($totalGross - abs($totalPayfastFees) - $totalCapeTennisFees), 2);
+    $registrationPendingRefundNet = $canonicalTotals['registration_pending_refund_net'] ?? 0;
 
     $incomeItems      = $event->incomeItems()->get();
     $totalIncomeItems = $incomeItems->sum(fn($i) => $i->calculatedTotal());
-    $grandTotalIncome = $netRegistrationIncome + ($clothingReceipts['totals']['net'] ?? 0) + $totalIncomeItems;
+    $grandTotalIncome = $netRegistrationIncome;
 
     $convenors = $event->convenors()
       ->with('user')
@@ -1063,7 +1064,7 @@ class EventAdminController extends Controller
     $expensesByConvenor = $operationalExpenses->groupBy('paid_by_convenor_id');
     $expensesByType     = $operationalExpenses->groupBy('expense_type');
     $totalExpenses      = $operationalExpenses->sum(fn($e) => $e->calculatedAmount());
-    $totalSystemFees    = $systemExpenseRows->sum(fn($e) => $e->calculatedAmount());
+    $totalSystemFees    = abs($totalPayfastFees) + $totalCapeTennisFees;
     $totalBudget        = $operationalExpenses->whereNotNull('budget_amount')->sum('budget_amount');
     $pendingApproval    = $operationalExpenses->whereNull('approved_at')->count();
     $pendingReimbursement = $operationalExpenses->whereNotNull('approved_at')->whereNull('reimbursed_at')->count();
@@ -1116,6 +1117,7 @@ class EventAdminController extends Controller
       'feePerEntry',
       'netRegistrationIncome',
       'registrationRefundAdjustment',
+      'registrationPendingRefundNet',
       'incomeByCategory',
       'clothingReceipts',
       'incomeItems',

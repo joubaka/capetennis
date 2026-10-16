@@ -73,6 +73,8 @@ class EventController extends Controller
     $payoutRows  = $built['payoutRows'];
     $totals      = $built['totals'];
 
+    $receiptSections = app(\App\Domain\Finance\Services\EventFinanceReceiptReport::class)->build($event, $paymentRows->merge($refundRows));
+
     $isTeamEvent  = $event->isTeam();
     $entryRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee']);
     $totalEntries = $isTeamEvent
@@ -89,6 +91,7 @@ class EventController extends Controller
     $pdf = FacadePdf::loadView('backend.adminPage.pdf.transactions', [
       'event'              => $event,
       'ledger'             => $ledger,
+      'receiptSections'    => $receiptSections,
       'totalEntries'       => $totalEntries,
       'totalGross'         => $totals['gross_payments'],
       'totalPayfastFees'   => $totals['pf_fees'],

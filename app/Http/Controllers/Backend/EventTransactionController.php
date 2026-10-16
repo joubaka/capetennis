@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Backend;
 
 use App\Domain\Finance\Services\FinancialLedgerService;
+use App\Domain\Finance\Services\EventFinanceReceiptReport;
 use App\Http\Controllers\Controller;
 use App\Models\CategoryEventRegistration;
 use App\Models\Event;
@@ -22,6 +23,9 @@ class EventTransactionController extends Controller
     $payoutRows  = $built['payoutRows'];
     $totals      = $built['totals'];
 
+    $receiptSections = app(EventFinanceReceiptReport::class)->build($event, $paymentRows->merge($refundRows));
+    $registrationRows = $receiptSections['registrations']['groups']->flatMap(fn ($group) => $group['rows']);
+    $registrationAccountingRows = $registrationRows->reject(fn ($row) => $row->type === 'withdrawal' || ($row->type === 'refund' && ($row->refund_status ?? '') !== 'completed'));
     $isTeamEvent = $event->isTeam();
 
     // Merge all rows into a single chronological ledger for the table
@@ -41,7 +45,7 @@ class EventTransactionController extends Controller
     // Refund / withdrawal breakdown
     // type='refund'     → completed or pending — these affect accounting
     // type='withdrawal' → not_refunded         — operational visibility only
-    $accountingRefundRows = $refundRows->where('type', 'refund');
+    $accountingRefundRows = $registrationRows->where('type', 'refund');
     $noRefundRows         = $refundRows->where('type', 'withdrawal');
 
     $refundCount          = $accountingRefundRows->count();  // completed + pending refunds only
@@ -69,6 +73,7 @@ class EventTransactionController extends Controller
 
     return view('backend.event.transactions', [
       'event'        => $event,
+      'receiptSections' => $receiptSections,
       'transactions' => $ledger,
       'feePerEntry'  => (float) $event->cape_tennis_fee,
       'isTeamEvent'  => $isTeamEvent,
@@ -83,11 +88,11 @@ class EventTransactionController extends Controller
       'completedWithdrawalsTotal'=> $completedWithdrawalsTotal,
       'pendingWithdrawalsTotal'  => $pendingWithdrawalsTotal,
 
-      'totalGross'          => $totals['gross_payments'],
-      'totalPayfastFees'    => $totals['pf_fees'],
-      'totalCapeTennisFees' => $totals['cape_fees'],
+      'totalGross'          => $totals['registration_received'],
+      'totalPayfastFees'    => round($registrationAccountingRows->sum('fee'), 2),
+      'totalCapeTennisFees' => round($registrationAccountingRows->sum('capeFee'), 2),
       'totalPayouts'        => $totals['total_paid_out'],
-      'netTournamentIncome' => $totals['net_revenue'],
+      'netTournamentIncome' => $totals['registration_balance'],
       'registrationReceived'=> $totals['registration_received'],
       'clothingReceived'    => $totals['clothing_received'],
       'clothingNet'         => $totals['clothing_net'],

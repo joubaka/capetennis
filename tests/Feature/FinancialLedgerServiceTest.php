@@ -500,6 +500,7 @@ class FinancialLedgerServiceTest extends TestCase
 
         $html = view('backend.event.transactions', [
             'event'                     => $this->event,
+            'receiptSections'           => app(\App\Domain\Finance\Services\EventFinanceReceiptReport::class)->build($this->event, $transactions),
             'transactions'              => $transactions,
             'feePerEntry'               => 10.00,
             'isTeamEvent'               => true,
