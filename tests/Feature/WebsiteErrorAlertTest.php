@@ -9,13 +9,15 @@ use App\Models\User;
 use App\Services\MailAccountManager;
 use App\Services\WebsiteErrorAlertService;
 use Illuminate\Auth\AuthenticationException;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -23,11 +25,28 @@ use Tests\TestCase;
 
 class WebsiteErrorAlertTest extends TestCase
 {
-    use RefreshDatabase;
-
     protected function setUp(): void
     {
         parent::setUp();
+        // Isolate the alert's recipient/role schema; do not migrate a shared database.
+        config([
+            'database.default' => 'website_alert_test',
+            'database.connections.website_alert_test' => ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => ''],
+            'cache.default' => 'array',
+        ]);
+        DB::purge('website_alert_test');
+        Schema::create('users', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->string('email')->unique();
+            $table->string('password');
+            $table->timestamp('email_verified_at')->nullable();
+            $table->text('two_factor_secret')->nullable();
+            $table->text('two_factor_recovery_codes')->nullable();
+            $table->rememberToken();
+            $table->timestamps();
+        });
+        (require glob(database_path('migrations/*create_permission_tables.php'))[0])->up();
         Bus::fake();
         Mail::fake();
         Cache::flush();
@@ -52,6 +71,7 @@ class WebsiteErrorAlertTest extends TestCase
         User::factory()->create();
         $this->website();
         Log::shouldReceive('error')->once();
+        Log::shouldReceive('notice')->once();
 
         $this->app->make(Handler::class)->report(new \RuntimeException('SQL SECRET_EXCEPTION password=SECRET_PASSWORD'));
 
@@ -133,6 +153,7 @@ class WebsiteErrorAlertTest extends TestCase
             throw new \RuntimeException('SECRET_TRANSPORT');
         });
         Log::shouldReceive('warning')->once()->with('Website error alert could not be queued.', ['exception' => \RuntimeException::class]);
+        Log::shouldReceive('notice')->once();
         $this->app->make(WebsiteErrorAlertService::class)->report(new \RuntimeException('original'));
         $this->assertTrue(true);
     }

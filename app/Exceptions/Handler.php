@@ -7,15 +7,6 @@ use Throwable;
 
 class Handler extends ExceptionHandler
 {
-    public function shouldReport(Throwable $e)
-    {
-        if ($e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface && $e->getStatusCode() >= 500) {
-            return true;
-        }
-
-        return parent::shouldReport($e);
-    }
-
     /**
      * A list of the exception types that are not reported.
      *
@@ -43,6 +34,10 @@ class Handler extends ExceptionHandler
      */
     public function register()
     {
+        // Laravel ignores every HTTP exception by default, including server errors.
+        $this->stopIgnoring(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+        $this->dontReportWhen(fn (Throwable $e) => $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface && $e->getStatusCode() < 500);
+
         $this->reportable(function (Throwable $e) {
             app(\App\Services\WebsiteErrorAlertService::class)->report($e);
         });

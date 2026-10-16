@@ -1,5 +1,5 @@
 <p><strong>{{ count($mailRecipients) }} email{{ count($mailRecipients) === 1 ? '' : 's' }}</strong> ready to queue.</p>
-<p class="text-break"><strong>From:</strong> {{ $mailSender['from_name'] ?? auth()->user()->name }}<br><strong>Reply-to:</strong> {{ $mailSender['reply_to'] ?? auth()->user()->email }}</p>
+<p class="text-break"><strong>From:</strong> {{ $mailSender['from_name'] ?? auth()->user()->name }} &lt;{{ $mailSender['from_address'] ?? config('mail.from.address') }}&gt;<br><strong>Reply-to:</strong> {{ $mailSender['reply_to'] ?? auth()->user()->email }}</p>
 <details class="border rounded p-3 mb-3"><summary>Review all {{ count($mailRecipients) }} recipients</summary><div class="mt-2" style="max-height:240px;overflow:auto">
 @foreach($mailRecipients as $recipient)<div class="text-break">{{ $recipient['name'] ?? '' }} · {{ $recipient['email'] }}</div>@endforeach
 </div></details>

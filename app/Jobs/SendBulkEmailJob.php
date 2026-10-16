@@ -206,7 +206,7 @@ class SendBulkEmailJob implements ShouldQueue
             case 'tournament_announcement':
             case 'event_announcement':
                 if (! empty($payload['event_communication_batch_id']) && isset($payload['subject'], $payload['body'])) {
-                    return new \App\Mail\BulkEventMail($payload['subject'], $payload['body'], 'Cape Tennis', 'info@capetennis.co.za');
+                    return new \App\Mail\BulkEventMail($payload['subject'], $payload['body'], $payload['from_name'] ?? 'Cape Tennis', $payload['reply_to'] ?? 'info@capetennis.co.za', $payload['from_address'] ?? null);
                 }
                 return (new \App\Mail\AnnouncementMail([
                     'event' => $payload['event_name'] ?? 'Event',
@@ -227,7 +227,8 @@ class SendBulkEmailJob implements ShouldQueue
                     $payload['subject'] ?? 'Event Update',
                     $payload['body'] ?? $payload['message'] ?? '',
                     $payload['from_name'] ?? 'Cape Tennis',
-                    $payload['reply_to'] ?? 'info@capetennis.co.za'
+                    $payload['reply_to'] ?? 'info@capetennis.co.za',
+                    $payload['from_address'] ?? null
                 ));
 
             case 'bank_refund_reminder':

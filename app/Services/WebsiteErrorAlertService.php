@@ -55,6 +55,10 @@ class WebsiteErrorAlertService
                     ], array_slice($exception->getTrace(), 0, 25)),
                 ];
 
+                Log::notice('Website error alert reference.', array_intersect_key($diagnostic, array_flip([
+                    'reference', 'fingerprint', 'occurred_at', 'exception', 'file', 'line',
+                ])));
+
                 User::role('super-user', 'web')->select(['users.id'])->chunkById(100, function ($admins) use ($diagnostic): void {
                     foreach ($admins as $admin) {
                         SendWebsiteErrorAlert::dispatch($admin->id, $diagnostic);

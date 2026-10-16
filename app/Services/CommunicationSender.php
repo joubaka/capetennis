@@ -28,12 +28,18 @@ class CommunicationSender
 
     public static function resolve(array $input, User $actor): array
     {
-        return Validator::make([
+        $sender = Validator::make([
+            'from_address' => $input['from_address'] ?? config('mail.from.address'),
             'from_name' => $input['from_name'] ?? $input['fromName'] ?? $actor->name,
             'reply_to' => $input['reply_to'] ?? $input['replyTo'] ?? $actor->email,
         ], [
+            'from_address' => ['required', 'string', 'email:rfc', 'max:255', 'not_regex:/[\r\n]/'],
             'from_name' => ['required', 'string', 'max:150', 'not_regex:/[\r\n]/'],
             'reply_to' => ['required', 'string', 'email:rfc', 'max:255', 'not_regex:/[\r\n]/'],
         ])->validate();
+        $sender['from_address'] = mb_strtolower(trim($sender['from_address']));
+        app(InvitationMailSecurity::class)->assertAllowedFrom($sender['from_address']);
+
+        return $sender;
     }
 }

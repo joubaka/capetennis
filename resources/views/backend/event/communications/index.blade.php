@@ -60,7 +60,7 @@ if ($wrapUp) $composeOptions = $wrapUp['options'] ?? ['scope' => $teamAudience ?
 @endif
 <label class="form-label mt-3" for="communication-subject">Subject</label><input class="form-control" id="communication-subject" name="subject" required maxlength="200" value="{{ old('subject', $wrapUp['subject'] ?? session('compose_subject', $event->name.' — Update')) }}">
 <label class="form-label mt-3" for="communication-body">Message</label><textarea class="form-control" id="communication-body" name="body" rows="12" required maxlength="30000">{{ old('body',$wrapUp['body'] ?? session('compose_body')) }}</textarea>
-<details class="border rounded p-3 mt-3" @if($errors->has('from_name') || $errors->has('reply_to')) open @endif><summary>Sender details</summary><div class="mt-3">@include('backend.partials.email-sender-fields', ['mailSenderDefaults' => $composeOptions])</div></details>
+<details class="border rounded p-3 mt-3" @if($errors->has('from_name') || $errors->has('from_address') || $errors->has('reply_to')) open @endif><summary>Sender details</summary><div class="mt-3">@include('backend.partials.email-sender-fields', ['mailSenderDefaults' => $composeOptions, 'allowFromAddress' => true])</div></details>
 <p class="form-text">Write an update, share arrangements or send a payment or clothing reminder. Only your message is included. Review one example and approve here before sending.</p>
 <button class="btn btn-primary align-self-start">Preview email</button>
 </form>

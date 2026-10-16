@@ -21,15 +21,19 @@ class BulkEventMail extends Mailable
     public string $subjectLine,
     public string $body,
     public string $fromName,
-    public string $replyToAddress
+    public string $replyToAddress,
+    public ?string $fromAddress = null
   ) {
   }
 
   public function build()
   {
+    $fromAddress = $this->fromAddress ?? config('mail.from.address');
+    app(\App\Services\InvitationMailSecurity::class)->assertAllowedFrom($fromAddress);
+
     return $this
       // ⚠️ FROM address must stay a verified SMTP address
-      ->from(config('mail.from.address'), $this->fromName)
+      ->from($fromAddress, $this->fromName)
 
       // ✅ Reply-To can be dynamic (event email)
       ->replyTo($this->replyToAddress)

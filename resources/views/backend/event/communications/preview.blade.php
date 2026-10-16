@@ -29,7 +29,7 @@
 <h5>3. Approve</h5>
 <form method="post" action="{{ route('backend.event-communications.send',$event) }}">@csrf<input type="hidden" name="token" value="{{ $batch->token }}">
 @if($batch->issues)<label class="d-block mb-3"><input class="form-check-input me-2" type="checkbox" name="acknowledge_missing" value="1" required>I reviewed the missing contacts. These recipients will not receive an email.</label>@endif
-<label class="d-block mb-3"><input class="form-check-input me-2" type="checkbox" name="confirm_send" value="1" required>I confirm the recipients and example email are correct.</label><button id="approve-ranking-mail" class="btn btn-primary">Approve and queue {{ count($batch->recipients) }} emails</button>
+<input type="hidden" name="confirm_send" value="1"><button id="approve-ranking-mail" type="submit" class="btn btn-primary">Send {{ count($batch->recipients) === 1 ? 'email' : count($batch->recipients).' emails' }}</button>
 @if(($batch->options['source'] ?? null) === 'regional_registration_open')
 <a class="btn btn-outline-secondary" href="{{ route('backend.regional-registration-mail.compose', ['event' => $event, 'edit_batch' => $batch->id]) }}">Back to composer</a>
 @elseif(($batch->options['source'] ?? null) === 'selection_regions')

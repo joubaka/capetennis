@@ -46,6 +46,34 @@ class UniversalEventCommunicationsTest extends TestCase
         return $overrides + ['scope' => 'all', 'filter' => 'all', 'recipients' => 'players'];
     }
 
+    public function test_reviewed_sender_address_survives_dispatch_and_rejects_unverified_or_injected_headers(): void
+    {
+        config(['mail.from.address' => 'default@example.test', 'mail.allowed_from_addresses' => ['invites@example.test']]);
+        [$event, $actor] = $this->event();
+        $this->entry($event, Player::factory()->create(['email' => 'recipient@example.test', 'userId' => null]));
+        $url = route('backend.event-communications.preview', $event);
+        $data = $this->audienceOptions() + ['subject' => 'Invitation', 'body' => 'Please register', 'from_address' => 'invites@example.test', 'from_name' => 'Event organiser', 'reply_to' => 'replies@example.test'];
+        $this->actingAs($actor)->post($url, $data)->assertOk();
+        $batch = EventCommunicationBatch::sole();
+        $this->assertSame('invites@example.test', $batch->options['from_address']);
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        $this->post(route('backend.event-communications.send', $event), ['token' => $batch->token, 'confirm_send' => 1, 'from_address' => 'default@example.test'])->assertSessionHas('success');
+        $log = BulkEmailLog::sole();
+        $this->assertSame('invites@example.test', $log->payload['from_address']);
+        $method = new \ReflectionMethod(\App\Jobs\SendBulkEmailJob::class, 'buildMailable');
+        $message = $method->invoke(new \App\Jobs\SendBulkEmailJob($log->id), $log, 'default@example.test')->build();
+        $this->assertSame('invites@example.test', $message->from[0]['address']);
+        $this->assertSame('Event organiser', $message->from[0]['name']);
+        $this->assertSame('replies@example.test', $message->replyTo[0]['address']);
+        foreach (['outside@example.test', "invites@example.test\r\nBcc: outsider@example.test", 'invalid'] as $address) {
+            $this->post($url, array_replace($data, ['from_address' => $address]))->assertSessionHasErrors('from_address');
+        }
+        $this->post($url, array_replace($data, ['reply_to' => "replies@example.test\r\nBcc: outsider@example.test"]))->assertSessionHasErrors('reply_to');
+        $this->assertDatabaseCount('bulk_email_logs', 1);
+        Mail::assertNothingSent();
+        $this->assertSame('default@example.test', \App\Services\CommunicationSender::resolve([], $actor)['from_address']);
+    }
+
     public function test_wrap_up_is_editable_published_event_scoped_and_requires_fresh_approval(): void
     {
         [$event, $actor] = $this->event();
