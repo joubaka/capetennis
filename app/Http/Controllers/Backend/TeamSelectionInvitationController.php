@@ -1302,7 +1302,7 @@ class TeamSelectionInvitationController extends Controller
         ]);
         $rosters->unlink($event, $noProfileTeamPlayer, (int) $data['expected_player_id'], (int) $data['expected_rank'], $request->user());
 
-        return back()->with('success', 'The unpaid profile link was reset. Imported roster details were kept.');
+        return back()->with('success', 'The profile link was reset. Imported roster details and previous payment and refund history were kept. The new player can now link their profile from the public team page.');
     }
 
     public function relinkImportedPlayer(Request $request, Event $event, EventRegion $eventRegion, Team $team, NoProfileTeamPlayer $noProfileTeamPlayer, ImportedTeamRosterService $rosters)

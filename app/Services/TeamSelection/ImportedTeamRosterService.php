@@ -47,11 +47,20 @@ final class ImportedTeamRosterService
                 $fail('The linked roster position is inconsistent. Repair it before unlinking the profile.');
             }
             $orders = TeamPaymentOrder::query()->where('event_id', $event->id)->forBeneficiary($expectedPlayerId)->lockForUpdate()->get();
+            $payments = app(TeamPaymentService::class);
+            $refundedOrders = collect();
             foreach ($orders as $order) {
                 if ((int) $order->team_id !== (int) $team->id) {
                     $fail('This player has checkout history on another team in this event.');
                 }
-                app(TeamPaymentService::class)->assertUnpaidRosterCheckoutMayBeReset($order);
+                if ($payments->isFullyRefundedWithdrawnRosterCheckout($order)) {
+                    if ($mirror && (int) $mirror->player_id !== 0) {
+                        $fail('The withdrawn player still occupies a playing-order position. Complete the withdrawal before resetting this profile link.');
+                    }
+                    $refundedOrders->push($order);
+                    continue;
+                }
+                $payments->assertUnpaidRosterCheckoutMayBeReset($order);
             }
             if ((int) $locked->pay_status !== 0 || (int) $mirror?->pay_status !== 0
                 || ClothingOrder::query()->where('event_id', $event->id)->where('player_id', $expectedPlayerId)->lockForUpdate()->get()->isNotEmpty()
@@ -64,8 +73,9 @@ final class ImportedTeamRosterService
                 $fail('This profile has payment, registration, invitation or fixture history. Use the existing withdrawal or selection workflow.');
             }
             $before = $locked->only(['player_profile', 'claimed_by_user_id', 'claimed_at']);
-            foreach ($orders as $order) {
-                app(TeamPaymentService::class)->closeUnpaidLifecycle($order, $actor);
+            $unpaidOrders = $orders->reject(fn ($order) => $refundedOrders->contains('id', $order->id));
+            foreach ($unpaidOrders as $order) {
+                $payments->closeUnpaidLifecycle($order, $actor);
             }
             if ($mirror) {
                 app(TeamPaymentService::class)->updateTeamPlayerSlot($mirror, ['player_id' => 0]);
@@ -74,7 +84,8 @@ final class ImportedTeamRosterService
             activity('team-roster')->performedOn($team)->causedBy($actor)->withProperties([
                 'event_id' => $event->id, 'slot_id' => $locked->id, 'rank' => $locked->rank,
                 'before' => $before, 'after_player_id' => null, 'mirror_id' => $mirror?->id,
-                'closed_order_ids' => $orders->pluck('id')->all(),
+                'closed_order_ids' => $unpaidOrders->pluck('id')->all(),
+                'preserved_refunded_order_ids' => $refundedOrders->pluck('id')->all(),
             ])->log('administrator unlinked unpaid imported roster profile');
             app(\App\Services\TeamDrawAdaptationService::class)->adaptEvent($event);
         });
@@ -138,9 +149,7 @@ final class ImportedTeamRosterService
                 if (! $alignsExistingReplacement || (int) $order->player_id !== $expectedPlayerId || (int) $order->team_id !== (int) $team->id) {
                     $fail('This player has payment history in this event. Profile relinking cannot transfer that history.');
                 }
-                if ($order->withdrawn_at !== null && $order->refund_status === 'completed' && $order->refunded_at !== null
-                    && round((float) $order->refund_gross, 2) === round((float) $order->total_amount, 2)
-                    && (float) $order->wallet_reserved === 0.0) {
+                if (app(TeamPaymentService::class)->isFullyRefundedWithdrawnRosterCheckout($order)) {
                     continue;
                 }
                 app(TeamPaymentService::class)->assertUnpaidRosterCheckoutMayBeClosed($order);

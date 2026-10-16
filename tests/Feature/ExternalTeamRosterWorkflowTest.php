@@ -1426,6 +1426,87 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'rank' => 1, 'player_id' => $replacement->id, 'pay_status' => 0]);
     }
 
+    public static function refundedRosterMirrors(): array
+    {
+        return ['empty mirror' => [false], 'missing mirror' => [true]];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('refundedRosterMirrors')]
+    public function test_unlink_preserves_fully_refunded_withdrawal_and_allows_new_player_claim(bool $missingMirror): void
+    {
+        [$region, $slot, $old] = $this->relinkScenario();
+        $mirror = TeamPlayer::where('team_id', $this->team->id)->firstOrFail();
+        $mirror->update(['player_id' => 0]);
+        $order = TeamPaymentOrder::create(['team_id' => $this->team->id, 'event_id' => $this->event->id,
+            'player_id' => $old->id, 'user_id' => $this->admin->id, 'total_amount' => 350,
+            'wallet_reserved' => 0, 'payfast_amount_due' => 350, 'pay_status' => true, 'payfast_paid' => true,
+            'payfast_handed_off_at' => now()->subDays(3), 'withdrawn_at' => now()->subDay(),
+            'refund_status' => 'completed', 'refunded_at' => now(), 'refund_gross' => 350, 'refund_fee' => 35, 'refund_net' => 315]);
+        $before = $order->fresh()->getAttributes();
+        $walletRows = WalletTransaction::count();
+        $orderRows = TeamPaymentOrder::count();
+        $url = route('backend.team-selection.imported-players.profile.destroy', [$this->event, $region, $this->team, $slot]);
+        $payload = ['expected_player_id' => $old->id, 'expected_rank' => 1, 'confirm_unlink' => 1];
+        $mirror->update(['player_id' => $old->id]);
+        $this->actingAs($this->admin)->deleteJson($url, $payload)->assertUnprocessable();
+        $this->assertSame($before, $order->fresh()->getAttributes());
+        $mirror->update(['player_id' => 0]);
+        $active = TeamPaymentOrder::create(['team_id' => $this->team->id, 'event_id' => $this->event->id,
+            'player_id' => $old->id, 'user_id' => $this->admin->id, 'total_amount' => 350,
+            'wallet_reserved' => 0, 'payfast_amount_due' => 350, 'pay_status' => true, 'payfast_paid' => true]);
+        $activeBefore = $active->fresh()->getAttributes();
+        $this->actingAs($this->admin)->deleteJson($url, $payload)->assertUnprocessable();
+        $this->assertSame($before, $order->fresh()->getAttributes());
+        $this->assertSame($activeBefore, $active->fresh()->getAttributes());
+        $this->assertSame((int) $old->id, (int) $slot->fresh()->player_profile);
+        // Remove the competing fixture order to exercise the completed-refund path.
+        $active->delete();
+        if ($missingMirror) {
+            $mirror->delete();
+        }
+        $this->actingAs($this->admin)->delete($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertNull($slot->fresh()->player_profile);
+        $this->assertSame($before, $order->fresh()->getAttributes());
+        $audit = DB::table('activity_log')->where('description', 'administrator unlinked unpaid imported roster profile')->first();
+        $properties = json_decode($audit->properties, true);
+        $this->assertSame([], $properties['closed_order_ids']);
+        $this->assertSame([$order->id], $properties['preserved_refunded_order_ids']);
+        $this->actingAs($this->admin)->deleteJson($url, $payload)->assertUnprocessable();
+        $replacement = Player::factory()->create(['name' => 'Imported', 'surname' => 'Name']);
+        app(ExternalTeamRosterService::class)->claim($this->admin, $this->event, $this->team, $slot->fresh(), $replacement);
+        $this->assertSame((int) $replacement->id, (int) $slot->fresh()->player_profile);
+        $this->assertSame($before, $order->fresh()->getAttributes());
+        $this->assertSame($walletRows, WalletTransaction::count());
+        $this->assertSame($orderRows, TeamPaymentOrder::count());
+    }
+
+    public function test_unlink_rejects_incomplete_or_inconsistent_refunded_withdrawals(): void
+    {
+        [$region, $slot, $old] = $this->relinkScenario();
+        TeamPlayer::where('team_id', $this->team->id)->firstOrFail()->update(['player_id' => 0]);
+        $order = TeamPaymentOrder::create(['team_id' => $this->team->id, 'event_id' => $this->event->id,
+            'player_id' => $old->id, 'user_id' => $this->admin->id, 'total_amount' => 350,
+            'wallet_reserved' => 0, 'payfast_amount_due' => 350, 'pay_status' => true, 'payfast_paid' => true,
+            'withdrawn_at' => now(), 'refund_status' => 'completed', 'refunded_at' => now(),
+            'refund_gross' => 350, 'refund_fee' => 35, 'refund_net' => 315]);
+        $baseline = $order->getAttributes();
+        $otherTeam = Team::factory()->create(['category_event_id' => $this->team->category_event_id]);
+        foreach ([['withdrawn_at' => null], ['refund_status' => 'pending'], ['refunded_at' => null],
+            ['refund_gross' => 349.99], ['refund_net' => 314.99], ['refund_fee' => -1],
+            ['wallet_reserved' => 0.01], ['pay_status' => false], ['collection_status' => 'reconciliation_required'],
+            ['refund_waived_at' => now()], ['team_id' => $otherTeam->id]] as $invalid) {
+            $order->setRawAttributes($baseline);
+            $order->fill($invalid)->save();
+            $before = $order->fresh()->getAttributes();
+            $this->actingAs($this->admin)->deleteJson(
+                route('backend.team-selection.imported-players.profile.destroy', [$this->event, $region, $this->team, $slot]),
+                ['expected_player_id' => $old->id, 'expected_rank' => 1, 'confirm_unlink' => 1],
+            )->assertUnprocessable();
+            $this->assertSame((int) $old->id, (int) $slot->fresh()->player_profile);
+            $this->assertSame($before, $order->fresh()->getAttributes());
+        }
+    }
+
     public function test_unlink_blocks_unauthorized_stale_paid_invalid_reservation_and_handed_off_checkouts(): void
     {
         [$region, $slot, $old] = $this->relinkScenario();

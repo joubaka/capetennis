@@ -71,12 +71,12 @@
                 @if(app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(auth()->user(), $event))
                   @if($linkedProfile && !(int) $slot->pay_status)
                     <details class="mt-2">
-                      <summary class="small text-danger">Unlink unpaid profile / reset</summary>
+                      <summary class="small text-danger">Reset profile link</summary>
                       <form method="POST" action="{{ route('backend.team-selection.imported-players.profile.destroy', [$event, $eventRegion, $regionTeam, $slot]) }}" class="mt-2" style="min-width:220px">
                         @csrf @method('DELETE')
                         <input type="hidden" name="expected_player_id" value="{{ (int) $slot->player_profile }}">
                         <input type="hidden" name="expected_rank" value="{{ $slot->rank }}">
-                        <p class="small text-muted">Keeps the imported name, contact and rank and releases unpaid wallet reservations. Paid, in-flight or previously participating profiles cannot be reset here.</p>
+                        <p class="small text-muted">Keeps the imported name, contact and rank. Unpaid checkouts are closed and reservations released. A withdrawn player whose payment is fully refunded can also be unlinked; payment and refund history stay with that player. Active payments, incomplete refunds, invitations, registrations and fixtures block this action.</p>
                         <label class="small d-flex gap-2 my-2"><input type="checkbox" name="confirm_unlink" value="1" required><span>Confirm unlinking {{ $linkedProfile->full_name }}.</span></label>
                         <button class="btn btn-sm btn-outline-danger">Unlink profile and reset</button>
                       </form>

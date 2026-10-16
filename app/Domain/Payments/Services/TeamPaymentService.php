@@ -843,6 +843,21 @@ class TeamPaymentService
         });
     }
 
+    public function isFullyRefundedWithdrawnRosterCheckout(TeamPaymentOrder $order): bool
+    {
+        $total = (int) round((float) $order->total_amount * 100);
+        $gross = (int) round((float) $order->refund_gross * 100);
+        $fee = (int) round((float) $order->refund_fee * 100);
+        $net = (int) round((float) $order->refund_net * 100);
+
+        return $order->withdrawn_at !== null && $order->pay_status
+            && $order->refund_status === 'completed' && $order->refunded_at !== null
+            && $total > 0 && $gross === $total && $fee >= 0 && $net >= 0 && $fee + $net === $gross
+            && (float) $order->wallet_reserved === 0.0
+            && $order->collection_status !== 'reconciliation_required'
+            && blank($order->refund_waived_at) && blank($order->refund_waived_by) && blank($order->refund_waiver_reason);
+    }
+
     public function assertUnpaidRosterCheckoutMayBeReset(TeamPaymentOrder $order): void
     {
         $total = round((float) $order->total_amount, 2);
