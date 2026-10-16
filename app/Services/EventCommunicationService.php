@@ -14,6 +14,31 @@ class EventCommunicationService
 {
     public function __construct(private RegionManagerAccessService $access, private TeamSelectionContactService $contacts, private BulkMailDispatcher $mailer) {}
 
+    public function replacementInvitationDraft(Event $event, ?TeamSelectionInvitation $invitation = null): array
+    {
+        $lines = [
+            "A place has become available following another player's withdrawal. You are invited to participate in {$event->name}.",
+        ];
+        if ($invitation) {
+            $lines[] = 'Player: '.$invitation->player?->full_name;
+            if ($deadline = $invitation->effectiveResponseDeadline()) $lines[] = 'Please register by: '.$deadline->format('d M Y H:i');
+        }
+        if ($event->start_date) {
+            $dates = $event->start_date->format('d M Y');
+            if ($event->end_date && ! $event->end_date->isSameDay($event->start_date)) $dates .= ' – '.$event->end_date->format('d M Y');
+            $lines[] = 'Dates: '.$dates;
+        }
+        $venues = $event->venues->pluck('name')->filter()->implode(', ');
+        if ($venues !== '') $lines[] = 'Venue: '.$venues;
+        $lines[] = 'Please sign in to Cape Tennis, open the event page below, choose Register next to the selected player and complete the registration and payment. Your place is secured once Cape Tennis confirms the registration.';
+        $lines[] = $invitation
+            ? route('events.show', ['event' => $event, 'team' => $invitation->team_id, 'player' => $invitation->player_id]).'#team-registration-'.$invitation->team_id.'-'.$invitation->player_id
+            : route('events.show', $event);
+        $lines[] = 'If you are unavailable, please let us know promptly so the next reserve can be invited.';
+
+        return ['subject' => $event->name.' — Replacement invitation', 'body' => implode("\n\n", $lines)];
+    }
+
     public function regions(Event $event, User $actor): Collection
     {
         if ($event->isInterprovincialTrials()) {
@@ -356,6 +381,16 @@ class EventCommunicationService
         if (($options['scope'] ?? null) === 'rankings') return $this->rankingPlan($event, $actor, $options, $subject, $body);
         $regions = $this->regions($event, $actor);
         $rows = $this->entries($event, $actor);
+        if (! empty($options['pending_selection_import_id'])) {
+            abort_unless($event->isTeam() && ($options['scope'] ?? null) === 'all' && ($options['recipients'] ?? null) === 'players', 422);
+            $import = TeamSelectionImport::where('event_id', $event->id)->where('status', 'sent')->findOrFail($options['pending_selection_import_id']);
+            abort_unless($regions->contains('region_id', $import->region_id), 403);
+            abort_if(TeamSelectionImport::where('event_id', $event->id)->where('region_id', $import->region_id)->where('id', '>', $import->id)->exists(), 422);
+            $pending = $import->invitations()->where('status', TeamSelectionInvitation::INVITED)->whereNotNull('roster_rank')->whereNull('invited_at')
+                ->where('snapshot_json->activation->pending_manual_invitation', true)->get()
+                ->map(fn ($invitation) => $invitation->team_id.':player:'.$invitation->player_id);
+            $rows = $rows->filter(fn ($row) => $pending->contains(($row['team_id'] ?? '').':'.$row['key']));
+        }
         if (! empty($options['wrap_up']) && ! $event->isTeam()) {
             $activeRegistrations = $event->registrations()->activeAndPaid()->pluck('registration_id');
             $playerIds = DB::table('player_registrations')->whereIn('registration_id', $activeRegistrations)->pluck('player_id');

@@ -55,6 +55,36 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_pending_replacement_communications_only_include_newly_activated_players_and_use_distinct_draft(): void
+    {
+        Queue::fake();
+        [$source, $team] = $this->selectionSource();
+        $type = DB::table('eventtypes')->insertGetId(['name' => 'Replacement draft', 'type' => 2, 'code' => 'replacement-draft', 'created_at' => now(), 'updated_at' => now()]);
+        $source->event->update(['eventType' => $type]);
+        $manager = User::factory()->create();
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
+        $import = app(TeamRankingImportService::class)->import($source, $manager);
+        $selection = app(TeamSelectionInvitationService::class);
+        $selection->send($import, ['response_deadline' => now()->addDay(), 'payment_deadline' => now()->addDays(2), 'replacement_payment_deadline' => now()->addDays(3), 'email_message' => 'Original clothing announcement'], $manager);
+        $team->update(['num_team_members' => 4]);
+        $player = Player::factory()->create(['email' => 'late.replacement@example.test']);
+        $reserve = $selection->addSystemPlayerAsReserve($import->fresh(), $team, $player, $manager, 'Fill vacancy');
+        $selection->activateReserveInOpenPlace($reserve, $manager);
+        $options = ['scope' => 'all', 'filter' => 'all', 'recipients' => 'players', 'pending_selection_import_id' => $import->id];
+        $mail = app(\App\Services\EventCommunicationService::class);
+        $draft = $mail->replacementInvitationDraft($source->event);
+        $plan = $mail->plan($source->event, $manager, $options, $draft['subject'], $draft['body']);
+        $this->assertSame(['late.replacement@example.test'], array_column($plan['recipients'], 'email'));
+        $this->assertSame(['player:'.$player->id], $plan['recipients'][0]['player_keys']);
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.email.send-pending-activated', [$source->event, $import]))
+            ->assertOk()->assertSee('Replacement invitation')->assertSee('following another player')->assertDontSee('Original clothing announcement');
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.email.resend', [$source->event, $import, $reserve]))
+            ->assertOk()->assertSee('Please register by:')->assertSee('#team-registration-'.$team->id.'-'.$player->id);
+        $this->actingAs($manager)->post(route('backend.team-selection.invitations.email.resend', [$source->event, $import, $reserve]), ['custom_email' => 1])
+            ->assertOk()->assertViewHas('subject', '')->assertViewHas('body', '')
+            ->assertViewHas('options', fn ($options) => $options['scope'] === 'individual' && $options['individual_key'] === 'player:'.$player->id);
+    }
+
     public function test_expired_selected_team_checkout_keeps_response_context_and_links_paid_retry(): void
     {
         Queue::fake();

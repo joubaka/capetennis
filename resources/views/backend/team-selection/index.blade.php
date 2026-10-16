@@ -36,7 +36,7 @@
   .regional-more-options-menu { position: absolute; right: 0; top: 100%; z-index: 10; min-width: 12rem; padding: .4rem; background: #fff; border: 1px solid #dbe6f4; border-radius: .65rem; box-shadow: 0 .35rem 1rem rgba(31, 57, 104, .12); }
   .regional-more-options-menu .nav-link { width: 100%; justify-content: flex-start; }
   .region-task-panel { padding-top: 1rem; }
-  [data-region-tabs] .nav-link { flex: 0 0 auto; width: auto; }
+  .event-region-selector { width: 100%; max-width: 28rem; }
   .selection-progress { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .6rem; margin: 0; padding: 0; list-style: none; }
   .selection-progress-step { position: relative; min-width: 0; padding: .85rem; border: 1px solid #dbe6f4; border-radius: .65rem; background: #fff; }
   .selection-progress-step::before { display: inline-grid; place-items: center; width: 1.65rem; height: 1.65rem; margin-bottom: .55rem; border-radius: 50%; content: attr(data-step); background: #edf2f7; color: #68778c; font-weight: 700; }
@@ -190,15 +190,15 @@
   @endif
 
   @if($eventRegions->count() > 1)
-    <div class="d-md-none mb-3">
-      <label class="form-label" for="mobile-event-region">Region</label>
-      <select class="form-select" id="mobile-event-region" data-region-select>
+    <div class="event-region-selector mb-3">
+      <label class="form-label" for="event-region">Region</label>
+      <select class="form-select" id="event-region" data-region-select>
         @foreach($eventRegions as $eventRegion)
           <option value="{{ $eventRegion->id }}">{{ $eventRegion->region?->region_name }}</option>
         @endforeach
       </select>
     </div>
-    <div class="nav nav-tabs d-none d-md-flex flex-nowrap overflow-auto mb-3" role="tablist" aria-label="Event regions" data-region-tabs>
+    <div class="nav nav-tabs d-none" role="tablist" aria-label="Event regions" data-region-tabs>
       @foreach($eventRegions as $eventRegion)
         <button
           type="button"
@@ -550,13 +550,16 @@
                                     @php($canMarkPaidPrivately = !$isReserve && in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true))
                                     @php($canUndoPrivatePayment = auth()->user()->hasRole('super-user') && $invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED && $invitation->order?->collection_status === 'paid_privately' && !$invitation->order->wallet_debited && !$invitation->order->payfast_paid && !$invitation->order->payfast_handed_off_at && !$invitation->order->payfast_pf_payment_id && !$invitation->order->payfast_raw_data && (float) $invitation->order->wallet_reserved === 0.0 && !$invitation->order->withdrawn_at && !$invitation->order->hasRefund())
                                     @php($canManagePaidPayment = auth()->user()->hasRole('super-user') && $invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED)
-                                    @php($hasRegionalActions = (bool) $reserveActivationRank || (in_array($invitation->status, [\App\Models\TeamSelectionInvitation::DECLINED, \App\Models\TeamSelectionInvitation::WITHDRAWN], true) && $invitation->vacated_roster_rank) || ($recipientEmail && !$isReserve) || $canMarkPaidPrivately || $canUndoPrivatePayment || $canManagePaidPayment || $openVacancy)
+                                    @php($hasRegionalActions = (bool) $reserveActivationRank || (in_array($invitation->status, [\App\Models\TeamSelectionInvitation::DECLINED, \App\Models\TeamSelectionInvitation::WITHDRAWN], true) && $invitation->vacated_roster_rank) || ($recipientEmail && (!$isReserve || $event->isTeam())) || $canMarkPaidPrivately || $canUndoPrivatePayment || $canManagePaidPayment || $openVacancy)
                                     @if($hasRegionalActions)
                                     <div class="dropdown">
                                       <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" aria-label="Regional actions for {{ $invitation->player?->full_name ?: 'player' }}">
                                         Actions
                                       </button>
                                       <div class="dropdown-menu dropdown-menu-end p-1 {{ (int) old('undo_private_invitation_id') === (int) $invitation->id || (int) old('cash_refund_invitation_id') === (int) $invitation->id ? 'show' : '' }}" style="min-width:18rem;max-width:calc(100vw - 2rem);max-height:calc(100vh - 8rem);overflow-y:auto;white-space:normal;">
+                                    @if($event->isTeam() && $recipientEmail)
+                                      <form method="POST" action="{{ route('backend.team-selection.invitations.email.resend', [$event, $activeImport, $invitation]) }}" data-mail-launch>@csrf<input type="hidden" name="custom_email" value="1"><button class="dropdown-item">Custom email</button></form>
+                                    @endif
                                     @if($canManagePaidPayment)
                                       <div class="px-2 pt-1 small text-muted">Payment management · {{ $invitation->order_id ? 'Order #'.$invitation->order_id : 'No attached order' }}</div>
                                       <div class="px-2 pb-2 small">{{ $invitation->order?->collection_status === 'paid_privately' ? 'Manual / private collection' : ($invitation->order?->payfast_paid ? ($invitation->order->wallet_debited ? 'PayFast + wallet payment' : 'PayFast payment') : ($invitation->order?->wallet_debited ? 'Wallet payment' : 'Payment evidence unavailable')) }}<br>Original payer: {{ $invitation->order?->user?->name ?: 'Payer unavailable' }}</div>

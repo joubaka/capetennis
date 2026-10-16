@@ -98,6 +98,7 @@ class EventCommunicationController extends Controller
     {
         $data = $request->validate([
             'respect_status' => 'nullable|boolean',
+            'pending_selection_import_id' => 'nullable|integer|min:1',
             'scope' => 'required|in:all,registrations,invitations,nominations,region,team,individual,rankings,legacy_registered,direct',
             'ranking_region_ids' => 'nullable|array|max:500',
             'ranking_region_ids.*' => 'integer',
@@ -126,6 +127,7 @@ class EventCommunicationController extends Controller
             'results_fingerprint' => 'nullable|required_if:wrap_up,1|string|size:64',
         ]);
         $options = array_intersect_key($data, array_flip(['scope', 'region_id', 'team_id', 'team_ids', 'individual_key', 'category_event_id', 'registration_id', 'direct_email', 'filter', 'recipients', 'respect_status']));
+        if (! empty($data['pending_selection_import_id'])) $options['pending_selection_import_id'] = $data['pending_selection_import_id'];
         if ($event->isTeam() && ! $request->boolean('respect_status') && in_array($data['scope'], ['all', 'region', 'team'], true)) {
             $options['filter'] = 'all';
         }

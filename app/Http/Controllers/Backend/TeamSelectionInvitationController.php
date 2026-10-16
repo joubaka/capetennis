@@ -569,7 +569,7 @@ class TeamSelectionInvitationController extends Controller
     public function sendPendingActivatedInvitations(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitationService $service)
     {
         $this->authorizeImport($event, $selectionImport, $request->user());
-        if ($event->isTeam()) return $this->reviewInCommunications($request, $event);
+        if ($event->isTeam()) return $this->reviewInCommunications($request, $event, ['pending_selection_import_id' => $selectionImport->id], replacement: true);
         $this->authorizeImport($event, $selectionImport, $request->user());
         $data = $request->validate([
             'confirm_recipients' => ['accepted'],
@@ -787,8 +787,8 @@ class TeamSelectionInvitationController extends Controller
         abort_unless($selectionImport->status === 'sent', 404);
         $invitation->loadMissing(['selectionImport.event', 'region', 'team', 'player']);
         $campaign = $service->savedCampaign($selectionImport);
-        $kind = $invitation->promoted_from_id ? 'replacement' : 'invitation';
-        $subject = $campaign['subject'] ?? $selectionImport->email_subject;
+        $kind = $invitation->invitationMailKind();
+        $subject = (new \App\Mail\TeamSelectionInvitationMail($invitation, $kind, $campaign))->envelope()->subject;
         $previewOnly = false;
 
         return view('backend.team-selection.email-preview', compact('invitation', 'campaign', 'kind', 'subject', 'previewOnly'));
@@ -798,7 +798,14 @@ class TeamSelectionInvitationController extends Controller
     {
         abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
         $this->authorizeImport($event, $selectionImport, $request->user());
-        if ($event->isTeam()) return $this->reviewInCommunications($request, $event, ['scope' => 'individual', 'individual_key' => 'player:'.$invitation->player_id]);
+        if ($event->isTeam() && $request->boolean('custom_email')) {
+            $options = ['scope' => 'individual', 'individual_key' => 'player:'.$invitation->player_id, 'filter' => 'all', 'recipients' => 'players', 'respect_status' => 1];
+            $subject = '';
+            $body = '';
+
+            return view('backend.event.communications.compose', compact('event', 'options', 'subject', 'body'));
+        }
+        if ($event->isTeam()) return $this->reviewInCommunications($request, $event, ['scope' => 'individual', 'individual_key' => 'player:'.$invitation->player_id], replacement: $invitation->invitationMailKind() === 'replacement', replacementInvitation: $invitation);
         abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
         $this->authorizeImport($event, $selectionImport, $request->user());
         $email = $service->resendInvitation($invitation, $request->user());
@@ -960,11 +967,16 @@ class TeamSelectionInvitationController extends Controller
         ]);
     }
 
-    private function reviewInCommunications(Request $request, Event $event, array $options = [])
+    private function reviewInCommunications(Request $request, Event $event, array $options = [], bool $replacement = false, ?TeamSelectionInvitation $replacementInvitation = null)
     {
         $options += ['scope' => 'all', 'filter' => 'all', 'recipients' => 'players', 'respect_status' => 1];
         $subject = $request->input('subject', $request->input('title', $event->name.' — Update'));
         $body = $request->input('message', '');
+        if ($replacement) {
+            $draft = app(\App\Services\EventCommunicationService::class)->replacementInvitationDraft($event, $replacementInvitation);
+            $subject = $draft['subject'];
+            $body = $draft['body'];
+        }
         return view('backend.event.communications.compose', compact('event', 'options', 'subject', 'body'));
     }
 

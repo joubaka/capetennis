@@ -1559,7 +1559,7 @@ final class TeamSelectionInvitationService
                 'recipient_name' => $locked->player?->full_name,
                 'status' => 'queued',
                 'payload' => [
-                    'kind' => $locked->promoted_from_id ? 'replacement' : 'invitation',
+                    'kind' => $locked->invitationMailKind(),
                     'campaign' => $this->savedCampaignSnapshot($locked->selectionImport),
                     'manual_resend' => true,
                     'event_id' => $locked->event_id, 'region_id' => $locked->region_id, 'created_by' => $actor->id,

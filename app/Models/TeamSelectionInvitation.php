@@ -43,6 +43,13 @@ class TeamSelectionInvitation extends Model
             ->where('related_type', self::class);
     }
 
+    public function invitationMailKind(): string
+    {
+        return $this->promoted_from_id || (data_get($this->snapshot_json, 'activation.activated_at') && $this->response_deadline_override)
+            ? 'replacement'
+            : 'invitation';
+    }
+
     public function effectiveResponseDeadline(): mixed
     {
         return $this->response_deadline_override

@@ -19,13 +19,18 @@
   <td><span class="badge bg-label-warning">Reserve</span><div class="small text-muted mt-1">Read only</div></td>
   <td><div>Not sent</div></td>
   <td>
-    @if($openRosterRanks->isNotEmpty())
+    @if($openRosterRanks->isNotEmpty() || ($event->isTeam() && $recipientEmail))
       <div class="dropdown">
         <button class="btn btn-sm btn-icon btn-outline-secondary dropdown-toggle hide-arrow" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" aria-label="Regional actions for {{ $invitation->player?->full_name ?: 'player' }}">
           <i class="ti ti-dots-vertical" aria-hidden="true"></i>
         </button>
         <div class="dropdown-menu dropdown-menu-end p-1" style="min-width:15rem;">
+          @if($event->isTeam() && $recipientEmail)
+            <form method="POST" action="{{ route('backend.team-selection.invitations.email.resend', [$event, $activeImport, $invitation]) }}" data-mail-launch>@csrf<input type="hidden" name="custom_email" value="1"><button class="dropdown-item">Custom email</button></form>
+          @endif
+          @if($openRosterRanks->isNotEmpty())
           @include('backend.team-selection._open-position-action', ['restorePosition' => false])
+          @endif
         </div>
       </div>
     @else
