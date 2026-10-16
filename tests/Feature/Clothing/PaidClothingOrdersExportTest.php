@@ -341,15 +341,22 @@ class PaidClothingOrdersExportTest extends TestCase
         $item = $order->items()->firstOrFail();
         $size = ClothingSize::create(['item_type' => $item->clothing_order_item_id, 'size' => 'Large']);
         $refund = $order->refunds()->create(['event_id' => $event->id, 'payer_id' => $order->user_id,
+            'reason' => 'Regression fixture for size correction refund protection',
             'requested_by' => $admin->id, 'request_token' => (string) str()->uuid(), 'request_fingerprint' => str_repeat('a', 64),
             'refund_method' => 'wallet', 'refund_status' => 'pending', 'refund_gross' => 100, 'refund_fee' => 0, 'refund_net' => 100]);
         $refund->items()->create(['clothing_order_item_id' => $item->id, 'quantity' => 1, 'amount' => 100]);
         $before = $item->getAttributes();
-        $this->actingAs($admin)->patchJson(route('backend.region.clothing.orders.size', [$region, $event, $order, $item]),
-            ['size_id' => $size->id, 'expected_size_id' => $item->clothing_item_size, 'expected_size_name' => 'Medium'])->assertUnprocessable()->assertJsonValidationErrors('size_id');
-        $this->assertSame($before, $item->fresh()->getAttributes());
-        $this->assertDatabaseCount('clothing_refunds', 1);
-        $this->assertDatabaseCount('clothing_refund_items', 1);
+        foreach (['pending', 'completed'] as $status) {
+            $refund->update(['refund_status' => $status, 'refunded_at' => $status === 'completed' ? now() : null]);
+            $refundBefore = $refund->fresh()->getAttributes();
+            $this->actingAs($admin)->patchJson(route('backend.region.clothing.orders.size', [$region, $event, $order, $item]),
+                ['size_id' => $size->id, 'expected_size_id' => $item->clothing_item_size, 'expected_size_name' => 'Medium'])->assertUnprocessable()->assertJsonValidationErrors('size_id');
+            $this->assertSame($before, $item->fresh()->getAttributes());
+            $this->assertSame($refundBefore, $refund->fresh()->getAttributes());
+            $this->assertDatabaseCount('clothing_refunds', 1);
+            $this->assertDatabaseCount('clothing_refund_items', 1);
+            $this->assertDatabaseMissing('activity_log', ['description' => 'administrator changed clothing order item size']);
+        }
     }
 
     private function managedRegion(): array

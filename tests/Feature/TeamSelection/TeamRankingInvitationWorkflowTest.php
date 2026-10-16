@@ -70,6 +70,13 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $player = Player::factory()->create(['email' => 'late.replacement@example.test']);
         $reserve = $selection->addSystemPlayerAsReserve($import->fresh(), $team, $player, $manager, 'Fill vacancy');
         $selection->activateReserveInOpenPlace($reserve, $manager);
+        $logCount = BulkEmailLog::query()->count();
+        Queue::fake();
+        $page = $this->actingAs($manager)->get(route('backend.team-selection.index', $source->event))->assertOk();
+        preg_match('/<tr data-order-player-id="'.$reserve->id.'".*?<\/tr>/s', $page->getContent(), $pendingRow);
+        $this->assertNotEmpty($pendingRow);
+        $this->assertStringContainsString('Send invite</button>', $pendingRow[0]);
+        $this->assertStringContainsString('title="Review this player\'s invitation before sending"', $pendingRow[0]);
         $options = ['scope' => 'all', 'filter' => 'all', 'recipients' => 'players', 'pending_selection_import_id' => $import->id];
         $mail = app(\App\Services\EventCommunicationService::class);
         $draft = $mail->replacementInvitationDraft($source->event);
@@ -79,7 +86,12 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->actingAs($manager)->post(route('backend.team-selection.invitations.email.send-pending-activated', [$source->event, $import]))
             ->assertOk()->assertSee('Replacement invitation')->assertSee('following another player')->assertDontSee('Original clothing announcement');
         $this->actingAs($manager)->post(route('backend.team-selection.invitations.email.resend', [$source->event, $import, $reserve]))
-            ->assertOk()->assertSee('Please register by:')->assertSee('#team-registration-'.$team->id.'-'.$player->id);
+            ->assertOk()->assertViewIs('backend.event.communications.compose')
+            ->assertViewHas('options', fn ($options) => $options['scope'] === 'individual' && $options['individual_key'] === 'player:'.$player->id)
+            ->assertSee('Replacement invitation')->assertSee('Please register by:')->assertSee('#team-registration-'.$team->id.'-'.$player->id);
+        $this->assertSame($logCount, BulkEmailLog::query()->count());
+        $this->assertNull($reserve->fresh()->invited_at);
+        Queue::assertNothingPushed();
         $this->actingAs($manager)->post(route('backend.team-selection.invitations.email.resend', [$source->event, $import, $reserve]), ['custom_email' => 1])
             ->assertOk()->assertViewHas('subject', '')->assertViewHas('body', '')
             ->assertViewHas('options', fn ($options) => $options['scope'] === 'individual' && $options['individual_key'] === 'player:'.$player->id);

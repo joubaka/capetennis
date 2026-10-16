@@ -540,7 +540,9 @@
                                     @if($activeImport->status === 'sent' && !$isReserve)
                                       <div class="d-flex flex-wrap gap-1 mt-1">
                                         <a class="btn btn-xs btn-outline-secondary" target="_blank" href="{{ route('backend.team-selection.invitations.email.view', [$event, $activeImport, $invitation]) }}">View email</a>
-                                        @if(!$awaitingRestoredInvitation && !$awaitingActivatedInvitation && in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true))
+                                        @if($event->isTeam() && $awaitingActivatedInvitation && !$awaitingRestoredInvitation && $invitation->roster_rank && $recipientEmail)
+                                          <form method="POST" action="{{ route('backend.team-selection.invitations.email.resend', [$event, $activeImport, $invitation]) }}" data-mail-launch>@csrf<button class="btn btn-xs btn-primary" title="Review this player's invitation before sending">Send invite</button></form>
+                                        @elseif(!$awaitingRestoredInvitation && !$awaitingActivatedInvitation && in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true))
                                           <form method="POST" action="{{ route('backend.team-selection.invitations.email.resend', [$event, $activeImport, $invitation]) }}" data-mail-launch>@csrf<button class="btn btn-xs btn-outline-primary">Resend</button></form>
                                         @endif
                                       </div>
