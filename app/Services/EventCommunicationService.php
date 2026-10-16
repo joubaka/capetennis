@@ -626,7 +626,13 @@ class EventCommunicationService
         }
         abort_unless(app(InvitationMailSecurity::class)->logMatchesSignedSnapshot($log, $event->id), 422);
 
-        return ['email' => $log->recipient_email, 'name' => $log->recipient_name, 'kind' => 'invitation', 'subject' => $payload['rendered_subject'], 'html' => $payload['rendered_html']];
+        $retryPayload = $log->mail_type === 'team_selection_invitation'
+            ? app(\App\Services\TeamSelection\TeamSelectionClothingMailPolicy::class)->retryPayload($log)
+            : $payload;
+        $recipient = ['email' => $log->recipient_email, 'name' => $log->recipient_name, 'kind' => 'invitation', 'subject' => $retryPayload['rendered_subject'], 'html' => $retryPayload['rendered_html']];
+        if ($retryPayload !== $payload) $recipient['invitation_payload'] = $retryPayload;
+
+        return $recipient;
     }
 
     public function approve(EventCommunicationBatch $batch, User $actor, bool $acknowledgeMissing): array
@@ -668,7 +674,20 @@ class EventCommunicationService
                 $recipient = $this->invitationRetryRecipient($batch->event, $log);
                 abort_unless(hash_equals($batch->fingerprint, hash('sha256', json_encode($recipient, JSON_THROW_ON_ERROR)))
                     && hash_equals($batch->options['payload_fingerprint'], hash('sha256', json_encode($log->payload, JSON_THROW_ON_ERROR))), 422);
-                $log->update(['status' => 'queued', 'queued_at' => now(), 'failed_at' => null, 'error_message' => null, 'retry_actor_id' => $actor->id]);
+                if ($log->mail_type === 'team_selection_invitation' && BulkEmailLog::where('mail_type', $log->mail_type)->where('payload->retry_of_log_id', $log->id)->exists()) {
+                    throw ValidationException::withMessages(['preview' => 'This invitation already has a revised retry. Review that email in the communication history before retrying again.']);
+                }
+                if (isset($recipient['invitation_payload'])) {
+                    // A revised preview gets its own signed log; retain the failed original as history.
+                    $log = BulkEmailLog::create([
+                        'mail_type' => $log->mail_type, 'related_type' => $log->related_type, 'related_id' => $log->related_id,
+                        'recipient_email' => $log->recipient_email, 'recipient_name' => $log->recipient_name,
+                        'status' => 'queued', 'queued_at' => now(), 'retry_actor_id' => $actor->id,
+                        'payload' => $recipient['invitation_payload'],
+                    ]);
+                } else {
+                    $log->update(['status' => 'queued', 'queued_at' => now(), 'failed_at' => null, 'error_message' => null, 'retry_actor_id' => $actor->id]);
+                }
                 $batch->update(['status' => 'approved', 'approved_at' => now()]);
                 if ($log->mail_type === 'team_selection_invitation') {
                     \App\Jobs\SendTeamSelectionInvitationEmailJob::dispatch($log->id, $batch->event_id)->afterCommit();

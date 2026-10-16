@@ -62,6 +62,11 @@ class SendTeamSelectionInvitationEmailJob implements ShouldQueue
             $log->markAsSkipped('Invitation email snapshot integrity check failed.');
             return;
         }
+        $clothing = app(\App\Services\TeamSelection\TeamSelectionClothingMailPolicy::class);
+        if ($clothing->includesClothing($log->payload) && ! $clothing->available((int) ($log->payload['region_id'] ?? 0))) {
+            $log->markAsSkipped('Clothing ordering closed after this email was reviewed. Prepare a fresh invitation preview without clothing.');
+            return;
+        }
         $invitation = TeamSelectionInvitation::with(['selectionImport.event', 'region', 'team', 'player'])->find($log->related_id);
         $kind = $log->payload['kind'] ?? 'invitation';
         $isCustomEmail = str_starts_with($kind, 'custom_');

@@ -1895,7 +1895,10 @@ final class TeamSelectionInvitationService
                 return ['queued' => 0, 'skipped_missing_email' => 0];
             }
 
-            $campaign = $this->savedCampaignSnapshot($lockedImport);
+            $campaign = app(TeamSelectionClothingMailPolicy::class)->currentCampaign(
+                (int) $lockedImport->region_id,
+                $this->savedCampaignSnapshot($lockedImport),
+            );
             $recipientRows = $pending->mapWithKeys(fn (TeamSelectionInvitation $invitation) => [
                 $invitation->id => $this->contactEmail($invitation),
             ])->filter();
@@ -2091,7 +2094,10 @@ final class TeamSelectionInvitationService
 
     private function customCampaignSnapshot(TeamSelectionImport $import, string $subject, string $message, array $sender = []): array
     {
-        $campaign = array_merge($this->savedCampaignSnapshot($import), $sender);
+        $campaign = app(TeamSelectionClothingMailPolicy::class)->currentCampaign(
+            (int) $import->region_id,
+            array_merge($this->savedCampaignSnapshot($import), $sender),
+        );
         $campaign['subject'] = trim((string) preg_replace('/[\r\n]+/', ' ', $subject));
         $campaign['message'] = trim($message);
         // Custom checked-player emails deliberately carry no structured deadline.
@@ -2368,6 +2374,10 @@ final class TeamSelectionInvitationService
             if ($existing) return false;
         }
 
+        $clothing = app(TeamSelectionClothingMailPolicy::class);
+        if ($clothing->includesClothing(['kind' => $kind, 'campaign' => $campaign]) && ! $clothing->available((int) $invitation->region_id)) {
+            throw ValidationException::withMessages(['email_preview' => 'Clothing ordering changed. Prepare a fresh invitation preview without clothing.']);
+        }
         $approvedMail = new \App\Mail\TeamSelectionInvitationMail($invitation, $kind, $campaign);
         $renderedHtml = $approvedMail->render();
         $renderedSubject = $approvedMail->envelope()->subject;
@@ -2416,13 +2426,7 @@ final class TeamSelectionInvitationService
             : ($event ? $this->defaultEventInformation($event) : '');
         $replyCandidate = filled($details['reply_to'] ?? null) ? mb_strtolower(trim((string) $details['reply_to'])) : null;
         $replyTo = $replyCandidate && filter_var($replyCandidate, FILTER_VALIDATE_EMAIL) ? $replyCandidate : null;
-        $clothingAvailable = $region
-            && $region->usesOnlineClothingOrders()
-            && (bool) $region->clothing_order
-            && $region->clothingItems()
-                ->where('price', '>', 0)
-                ->whereHas('sizes')
-                ->exists();
+        $clothingAvailable = $region && app(TeamSelectionClothingMailPolicy::class)->available((int) $region->id);
         $includeClothing = (bool) ($details['include_clothing'] ?? false) && $clothingAvailable;
         $eventVenues = $event
             ? ($event->relationLoaded('venues') ? $event->getRelation('venues') : $event->venues()->get())
