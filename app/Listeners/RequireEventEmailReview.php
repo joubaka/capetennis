@@ -19,6 +19,20 @@ class RequireEventEmailReview
 
     public function handle(MessageSending $mail): ?bool
     {
+        if (isset($mail->data['team_decline_notification_log_id'])) {
+            $log = \App\Models\BulkEmailLog::find($mail->data['team_decline_notification_log_id']);
+            $message = $log ? app(\App\Services\TeamSelection\TeamSelectionDeclineNotificationService::class)->authorizedMailable($log) : null;
+            $allowed = $message && $log->status === 'sending'
+                && count($mail->message->getTo()) === 1 && $mail->message->getTo()[0]->getAddress() === $log->recipient_email
+                && ! $mail->message->getCc() && ! $mail->message->getBcc() && ! $mail->message->getAttachments()
+                && $mail->message->getTextBody() === null && $mail->message->getSubject() === $message->subjectLine
+                && $mail->message->getHtmlBody() === $this->previewHtml($message->body)
+                && count($mail->message->getFrom()) === 1 && $mail->message->getFrom()[0]->getAddress() === config('mail.from.address')
+                && $mail->message->getFrom()[0]->getName() === $message->fromName
+                && count($mail->message->getReplyTo()) === 1 && $mail->message->getReplyTo()[0]->getAddress() === $message->replyToAddress;
+            abort_unless($allowed, 409, 'Team invitation decline notification is no longer authorized.');
+            return null;
+        }
         if (isset($mail->data['team_confirmation_log_id'])) {
             $log = \App\Models\BulkEmailLog::find($mail->data['team_confirmation_log_id']);
             $message = $log ? app(\App\Services\TeamRegistrationConfirmationService::class)->authorizedMailable($log) : null;

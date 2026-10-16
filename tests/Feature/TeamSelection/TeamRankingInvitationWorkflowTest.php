@@ -116,7 +116,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertDatabaseCount('wallet_transactions', 0);
     }
 
-    public function test_decline_link_requires_player_access_and_confirms_before_recording_response(): void
+    public function test_decline_link_allows_any_signed_in_holder_and_confirms_before_recording_response(): void
     {
         Queue::fake();
         [$source] = $this->selectionSource();
@@ -129,10 +129,12 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'replacement_payment_deadline' => now()->addDays(3),
         ]);
         $invitation = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
-        $owner = User::findOrFail($invitation->player->userId);
+        $owner = User::factory()->create();
         $url = route('team-selection.invitations.show', [$invitation, 'action' => 'decline']);
-
-        $this->actingAs(User::factory()->create())->get($url)->assertForbidden();
+        $other = $selectionImport->invitations()->where('status', TeamSelectionInvitation::INVITED)->whereKeyNot($invitation->id)->firstOrFail();
+        $links = DB::table('user_players')->count();
+        $this->get($url)->assertRedirect(route('login'));
+        $this->post(route('team-selection.invitations.decline', $invitation))->assertRedirect(route('login'));
         $this->actingAs($owner)->get($url)->assertOk()
             ->assertViewIs('frontend.team-selection.decline')->assertSee('Confirm decline')
             ->assertDontSee('Order optional clothing');
@@ -142,7 +144,18 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertSame(TeamSelectionInvitation::DECLINED, $invitation->fresh()->status);
         $this->assertSame($owner->id, $invitation->fresh()->declined_by_user_id);
         $this->assertSame('Unavailable', $invitation->fresh()->decline_reason);
+        $this->assertSame(TeamSelectionInvitation::INVITED, $other->fresh()->status);
+        $this->assertSame($links, DB::table('user_players')->count());
         $this->get($url)->assertOk()->assertSee('Invitation declined')->assertDontSee('Confirm decline');
+        $invitationCount = $selectionImport->invitations()->count();
+        $mailCount = BulkEmailLog::query()->count();
+        $declineAudits = DB::table('activity_log')->where('description', 'declined regional team invitation')->count();
+        $this->postJson(route('team-selection.invitations.decline', $invitation), ['reason' => 'Retry'])
+            ->assertUnprocessable()->assertJsonValidationErrors('invitation');
+        $this->assertSame($invitationCount, $selectionImport->invitations()->count());
+        $this->assertSame($mailCount, BulkEmailLog::query()->count());
+        $this->assertSame($declineAudits, DB::table('activity_log')->where('description', 'declined regional team invitation')->count());
+        $this->assertSame('Unavailable', $invitation->fresh()->decline_reason);
     }
 
     public function test_invitation_payment_transfer_preserves_payer_ledger_and_selection_and_rejects_stale_retry(): void
@@ -1488,7 +1501,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         );
     }
 
-    public function test_unrelated_user_can_register_but_cannot_make_the_players_private_decisions(): void
+    public function test_unrelated_user_can_register_and_decline_but_cannot_make_clothing_decisions(): void
     {
         [$source] = $this->selectionSource();
         $selectionImport = app(TeamRankingImportService::class)->import($source, User::factory()->create());
@@ -1502,25 +1515,19 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $unrelated = User::factory()->create();
 
         $this->actingAs($unrelated)->get(route('team-selection.invitations.show', $invitation))->assertOk();
-        $this->actingAs($unrelated)->post(route('team-selection.invitations.decline', $invitation), [
-            'reason' => 'Not my invitation',
-        ])->assertForbidden();
         $this->actingAs($unrelated)->post(route('team-selection.invitations.clothing-decision', $invitation), [
             'decision' => 'not_required',
         ])->assertForbidden();
         $service = app(TeamSelectionInvitationService::class);
-        try {
-            $service->decline($invitation->fresh(), $unrelated, 'Not my invitation');
-            $this->fail('Expected invitation decision access to be denied.');
-        } catch (AuthorizationException) {
-            $this->assertTrue(true);
-        }
-
         $this->assertSame(TeamSelectionInvitation::INVITED, $invitation->fresh()->status);
         $this->assertSame(
             TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
             $service->beginRegistration($invitation->event_id, $invitation->team_id, $invitation->player_id, $unrelated)?->status,
         );
+        $this->actingAs($unrelated)->post(route('team-selection.invitations.decline', $invitation), ['reason' => 'Unavailable'])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame(TeamSelectionInvitation::DECLINED, $invitation->fresh()->status);
+        $this->assertSame($unrelated->id, $invitation->fresh()->declined_by_user_id);
     }
 
     public function test_send_accept_and_paid_team_order_keep_invitation_in_sync(): void
@@ -2591,7 +2598,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $order->update(['pay_status' => true, 'payfast_paid' => true]);
 
         try {
-            app(TeamSelectionInvitationService::class)->decline($invitation->fresh(), $owner, 'Too late');
+            app(TeamSelectionInvitationService::class)->decline($invitation->fresh(), User::factory()->create(), 'Too late');
             $this->fail('Expected paid-order protection to block the decline.');
         } catch (ValidationException $exception) {
             $this->assertArrayHasKey('payment', $exception->errors());
@@ -2600,6 +2607,69 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $invitation->fresh()->status);
         $this->assertSame($invitation->player_id, TeamPlayer::withoutGlobalScopes()
             ->where('team_id', $team->id)->where('rank', $invitation->roster_rank)->value('player_id'));
+    }
+
+    public function test_unrelated_link_holder_cannot_decline_an_in_flight_checkout_or_cross_event_invitation(): void
+    {
+        Queue::fake();
+        [$source, $team] = $this->selectionSource();
+        $import = app(TeamRankingImportService::class)->import($source, User::factory()->create());
+        $import->update(['status' => 'sent', 'response_deadline' => now()->addDay(), 'payment_deadline' => now()->addDays(2)]);
+        $invitation = $import->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $payer = $invitation->player->user;
+        $service = app(TeamSelectionInvitationService::class);
+        $service->accept($invitation, $payer);
+        $order = app(TeamPaymentService::class)->ensureOrder($payer, $team, $invitation->player, $source->event, 490);
+        $service->attachOrder($order);
+        $order->update(['payfast_handed_off_at' => now()]);
+        $holder = User::factory()->create();
+        $this->actingAs($holder)->postJson(route('team-selection.invitations.decline', $invitation), ['reason' => 'Unavailable'])
+            ->assertUnprocessable()->assertJsonValidationErrors('payment');
+        $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $invitation->fresh()->status);
+        $this->assertNull($order->fresh()->withdrawn_at);
+        $this->assertNotNull($order->fresh()->payfast_handed_off_at);
+        $this->assertDatabaseMissing('user_players', ['user_id' => $holder->id, 'player_id' => $invitation->player_id]);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $invitation->update(['event_id' => Event::factory()->create()->id]);
+        $this->get(route('team-selection.invitations.show', [$invitation, 'action' => 'decline']))->assertNotFound();
+        $this->postJson(route('team-selection.invitations.decline', $invitation))->assertNotFound();
+        $this->assertSame(TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, $invitation->fresh()->status);
+        $this->assertDatabaseMissing('bulk_email_logs', ['mail_type' => 'team_selection_decline_notification']);
+    }
+
+    public function test_confirmed_decline_notifies_only_its_regional_convenor_once_through_managed_mail(): void
+    {
+        Queue::fake();
+        [$source] = $this->selectionSource();
+        $convenor = User::factory()->create(['email' => 'regional.convenor@example.test']);
+        EventRegionManager::create(['event_id' => $source->event_id, 'event_region_id' => $source->event_region_id, 'region_id' => $source->region_id, 'user_id' => $convenor->id]);
+        $otherRegion = TeamRegion::create(['region_name' => 'Other region']);
+        $otherEventRegion = new EventRegion();
+        $otherEventRegion->forceFill(['event_id' => $source->event_id, 'region_id' => $otherRegion->id, 'ordering' => 2])->save();
+        EventRegionManager::create(['event_id' => $source->event_id, 'event_region_id' => $otherEventRegion->id, 'region_id' => $otherRegion->id, 'user_id' => User::factory()->create(['email' => 'other.convenor@example.test'])->id]);
+        $import = app(TeamRankingImportService::class)->import($source, User::factory()->create());
+        $import->update(['status' => 'sent', 'auto_replacement_enabled' => false, 'response_deadline' => now()->addDay(), 'payment_deadline' => now()->addDays(2)]);
+        $invitation = $import->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $holder = User::factory()->create();
+        $this->actingAs($holder)->get(route('team-selection.invitations.show', [$invitation, 'action' => 'decline']))->assertOk();
+        $this->assertDatabaseMissing('bulk_email_logs', ['mail_type' => 'team_selection_decline_notification']);
+        $this->post(route('team-selection.invitations.decline', $invitation), ['reason' => 'School commitment'])->assertRedirect()->assertSessionHasNoErrors();
+        $log = BulkEmailLog::where('mail_type', 'team_selection_decline_notification')->sole();
+        $this->assertSame('regional.convenor@example.test', $log->recipient_email);
+        $this->assertSame($invitation->id, $log->related_id);
+        $this->assertSame($holder->id, $log->payload['created_by']);
+        $this->assertStringContainsString('School commitment', $log->payload['body']);
+        $this->assertStringNotContainsString($holder->email, $log->payload['body']);
+        Queue::assertPushed(\App\Jobs\SendBulkEmailJob::class, fn ($job) => $job->logId === $log->id);
+        $notifications = app(\App\Services\TeamSelection\TeamSelectionDeclineNotificationService::class);
+        $mailable = $notifications->authorizedMailable($log);
+        $this->assertNotNull($mailable);
+        $log->update(['status' => 'sending']);
+        $this->assertNotNull(Mail::mailer('array')->to($convenor->email)->sendNow($mailable));
+        $log->recipient_email = 'other.convenor@example.test';
+        $this->assertNull($notifications->authorizedMailable($log));
+        $this->postJson(route('team-selection.invitations.decline', $invitation))->assertUnprocessable();
+        $this->assertSame(1, BulkEmailLog::where('mail_type', 'team_selection_decline_notification')->count());
     }
 
     public function test_any_authenticated_buyer_can_open_clothing_while_orders_remain_payer_scoped(): void
@@ -5824,7 +5894,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertOk()->assertSee('Review all 3 recipients')
             ->assertSee('Platteland team invitation')
             ->assertSee('Example email')
-            ->assertSee('Approve and queue 3 emails');
+            ->assertSee('Approve and send 3 emails');
         $this->assertSame(1, substr_count($mixedPreview->getContent(), '<iframe'));
         $hash = session('team_selection_custom_email_previews.'.$selectionImport->id);
         $token = session('team_selection_custom_email_preview_tokens.'.$selectionImport->id);
@@ -5881,15 +5951,9 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $invited = $active[0]->fresh();
         $unrelated = User::factory()->create();
         $ordersBefore = TeamPaymentOrder::query()->count();
-        try {
-            app(TeamSelectionInvitationService::class)->decline($invited, $unrelated, 'Unavailable');
-            $this->fail('An unrelated user must not be able to decline a selected player invitation.');
-        } catch (AuthorizationException) {
-            $this->assertSame(TeamSelectionInvitation::INVITED, $invited->fresh()->status);
-        }
-        $owner = User::findOrFail($invited->player->userId);
-        app(TeamSelectionInvitationService::class)->decline($invited, $owner, 'Unavailable');
+        app(TeamSelectionInvitationService::class)->decline($invited, $unrelated, 'Unavailable');
         $this->assertSame(TeamSelectionInvitation::DECLINED, $invited->fresh()->status);
+        $this->assertSame($unrelated->id, $invited->fresh()->declined_by_user_id);
         $this->assertSame($ordersBefore, TeamPaymentOrder::query()->count());
     }
 

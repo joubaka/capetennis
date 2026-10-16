@@ -304,6 +304,10 @@
           <div class="input-group"><span class="input-group-text">R</span><input id="entry-fee" type="number" min="0" class="form-control autosave" name="entryFee" value="{{ $event->entryFee }}"></div>
         </div>
         <div class="col-md-6">
+          <label class="form-label" for="organizer-name">Organizer name</label>
+          <input id="organizer-name" type="text" class="form-control autosave" name="organizer" maxlength="191" value="{{ $event->organizer }}">
+        </div>
+        <div class="col-md-6">
           <label class="form-label" for="organizer-email">Organizer email</label>
           <input id="organizer-email" type="email" class="form-control autosave" name="email" value="{{ $event->email }}">
         </div>

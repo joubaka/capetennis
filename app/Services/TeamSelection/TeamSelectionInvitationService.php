@@ -471,7 +471,7 @@ final class TeamSelectionInvitationService
             $selectionImport = $this->lockInvitationContext($invitation);
             $locked = TeamSelectionInvitation::query()->lockForUpdate()->with('selectionImport')->findOrFail($invitation->id);
             $locked->setRelation('selectionImport', $selectionImport);
-            $this->decisionAccess->authorizePlayerDecision($user, $locked);
+            $this->decisionAccess->authorizeDecline($user, $locked);
             if (! in_array($locked->status, [
                 TeamSelectionInvitation::INVITED,
                 TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
@@ -530,6 +530,8 @@ final class TeamSelectionInvitationService
                     'method' => 'authenticated_invitation',
                 ])
                 ->log('declined regional team invitation');
+
+            app(TeamSelectionDeclineNotificationService::class)->record($locked);
 
             return $reserve?->fresh();
         });

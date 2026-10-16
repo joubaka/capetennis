@@ -36,7 +36,7 @@ class TeamSelectionInvitationController extends Controller
     {
         $invitation->load(['selectionImport.event', 'region.clothingItems.sizes', 'team', 'player']);
         if ($request->query('action') === 'decline') {
-            $this->decisionAccess->authorizePlayerDecision($request->user(), $invitation);
+            $this->decisionAccess->authorizeDecline($request->user(), $invitation);
 
             return view('frontend.team-selection.decline', compact('invitation'));
         }
@@ -87,12 +87,12 @@ class TeamSelectionInvitationController extends Controller
 
     public function decline(Request $request, TeamSelectionInvitation $invitation, TeamSelectionInvitationService $service)
     {
-        $this->decisionAccess->authorizePlayerDecision($request->user(), $invitation);
+        $this->decisionAccess->authorizeDecline($request->user(), $invitation);
         $data = $request->validate(['reason' => ['nullable', 'string', 'max:1000']]);
         $replacement = $service->decline($invitation, $request->user(), $data['reason'] ?? null);
 
         return redirect()->route('team-selection.invitations.show', [$invitation, 'action' => 'decline'])->with('success', $replacement
-            ? 'Your unavailability was recorded and the next reserve has been invited.'
+            ? 'Your unavailability was recorded and the next reserve was selected. Their invitation will be reviewed separately.'
             : 'Your unavailability was recorded.');
     }
 
