@@ -56,6 +56,8 @@ class UniversalEventCommunicationsTest extends TestCase
         $this->actingAs($actor)->post($url, $data)->assertOk();
         $batch = EventCommunicationBatch::sole();
         $this->assertSame('invites@example.test', $batch->options['from_address']);
+        $changedSender = app(EventCommunicationService::class)->plan($event, $actor, array_replace($batch->options, ['from_address' => 'default@example.test']), $batch->subject, $batch->body);
+        $this->assertNotSame($batch->fingerprint, $changedSender['fingerprint']);
         $this->assertDatabaseCount('bulk_email_logs', 0);
         $this->post(route('backend.event-communications.send', $event), ['token' => $batch->token, 'confirm_send' => 1, 'from_address' => 'default@example.test'])->assertSessionHas('success');
         $log = BulkEmailLog::sole();
