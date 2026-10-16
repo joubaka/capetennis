@@ -1,6 +1,6 @@
 @extends('layouts.backend')
 
-@section('title', 'Team Selection & Invitations')
+@section('title', 'Teams · Invitations')
 
 @section('vendor-style')
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}">
@@ -130,6 +130,7 @@
   'eventWorkspaceShowHome' => $isEventManager,
 ])
 <div class="container-xxl flex-grow-1 container-p-y region-selection-container">
+  @include('backend.event.partials.teams-workspace-nav', ['teamsWorkspaceRoster' => false])
   @if(session('replacement_confirmation'))
     @php($replacementConfirmation = session('replacement_confirmation'))
     @php($replacementDeliveryStatus = $replacementConfirmation['delivery_status'] ?? 'queued')
@@ -282,7 +283,7 @@
           </div>
           <div class="card-body">
             <div class="nav nav-pills region-task-tabs" role="tablist" aria-label="{{ $eventRegion->region?->region_name }} workspace" data-region-task-tabs="{{ $eventRegion->id }}">
-              @foreach(['teams' => ['ti-users-group', 'Teams & players'], 'invitations' => ['ti-file-import', 'Import & invitations'], 'messages' => ['ti-message-circle', $usesRegionalClothing ? 'Messages & clothing' : 'Messages'], 'overview' => ['ti-layout-dashboard', 'Help & progress'], 'setup' => ['ti-settings', 'Setup']] as $taskKey => [$taskIcon, $taskLabel])
+              @foreach(['teams' => ['ti-users-group', $isEventManager ? 'Selection & reserves' : 'Players'], 'invitations' => ['ti-file-import', $isEventManager ? 'Import & send' : 'Invitations'], 'messages' => ['ti-message-circle', $usesRegionalClothing ? 'Messages & clothing' : 'Messages'], 'overview' => ['ti-layout-dashboard', 'Help & progress'], 'setup' => ['ti-settings', 'Ranking setup']] as $taskKey => [$taskIcon, $taskLabel])
                 @if($taskKey === 'overview')<details class="regional-more-options"><summary>More options</summary><div class="regional-more-options-menu">@endif
                 <button class="nav-link {{ $loop->first ? 'active' : '' }}" id="region-{{ $eventRegion->id }}-{{ $taskKey }}-tab" data-bs-toggle="tab" data-bs-target="#region-{{ $eventRegion->id }}-{{ $taskKey }}" type="button" role="tab" aria-controls="region-{{ $eventRegion->id }}-{{ $taskKey }}" aria-selected="{{ $loop->first ? 'true' : 'false' }}" data-region-task="{{ $taskKey }}"><i class="ti {{ $taskIcon }}"></i>{{ $taskLabel }}@if($taskKey === 'teams' && $unpublishedTeamCount)<span class="badge bg-label-warning">{{ $unpublishedTeamCount }}</span>@endif</button>
                 @if($loop->last)</div></details>@endif
@@ -1081,8 +1082,13 @@ document.addEventListener('DOMContentLoaded', function () {
     sessionStorage.setItem(workspaceStateKey, state);
     if (updateLocation) history.replaceState(null, '', `${window.location.pathname}${window.location.search}#region-${state}`);
   };
+  const regionMap = @json($eventRegions->pluck('id', 'region_id'));
+  const requestedTeamRegion = new URLSearchParams(window.location.search).get('selected_region');
+  const requestedEventRegion = regionMap[requestedTeamRegion] || regionSelect?.value || document.querySelector('[data-region-task-tabs]')?.dataset.regionTaskTabs;
   const requestedWorkspace = window.location.hash.match(/^#region-(\d+)\/(overview|teams|invitations|messages|setup)$/)?.slice(1).join('/')
-    || sessionStorage.getItem(workspaceStateKey);
+    || (new URLSearchParams(window.location.search).get('workspace') === 'invitations'
+      ? `${requestedEventRegion}/invitations`
+      : sessionStorage.getItem(workspaceStateKey));
   if (requestedWorkspace) {
     const [requestedRegion, requestedTask] = requestedWorkspace.replace(/^region-/, '').split('/');
     openWorkspace(requestedRegion, requestedTask, false);

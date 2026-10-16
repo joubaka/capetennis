@@ -81,6 +81,12 @@
     </div>
   </div>
 
+  @if(auth()->user() && app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(auth()->user(), $event))
+  <div class="col-12">
+    <a class="btn btn-outline-primary w-100" href="{{ route('backend.team-selection.index', [$event, 'workspace' => 'invitations']) }}"><i class="ti ti-mail-forward me-1"></i>Teams · Invitations</a>
+  </div>
+  @endif
+
   {{-- CONTEXTUAL MUTATION — navigation lives in the shared event header. --}}
   <div class="col-12">
     <details class="event-overview-disclosure">
@@ -88,12 +94,6 @@
 
       <div class="card-body d-grid gap-2">
         <a class="btn btn-outline-primary" href="{{ route('backend.event-communications.index', $event) }}"><i class="ti ti-mail me-1"></i>Communications &amp; send reports</a>
-
-        <a class="btn btn-primary"
-           href="{{ route('backend.team-selection.index', $event) }}">
-          <i class="ti ti-user-check me-1"></i>
-          Team Selection & Invitations
-        </a>
 
         <a class="btn btn-outline-primary" href="{{ route('backend.event.clothing.index', $event) }}">
           <i class="ti ti-shirt me-1"></i>
