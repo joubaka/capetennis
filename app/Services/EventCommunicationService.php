@@ -28,7 +28,8 @@ class EventCommunicationService
             if ($event->end_date && ! $event->end_date->isSameDay($event->start_date)) $dates .= ' – '.$event->end_date->format('d M Y');
             $lines[] = 'Dates: '.$dates;
         }
-        $venues = $event->venues->pluck('name')->filter()->implode(', ');
+        $eventVenues = $event->relationLoaded('venues') ? $event->getRelation('venues') : $event->venues()->get();
+        $venues = $eventVenues->pluck('name')->filter()->implode(', ');
         if ($venues !== '') $lines[] = 'Venue: '.$venues;
         $lines[] = 'Please sign in to Cape Tennis, open the event page below, choose Register next to the selected player and complete the registration and payment. Your place is secured once Cape Tennis confirms the registration.';
         $lines[] = $invitation

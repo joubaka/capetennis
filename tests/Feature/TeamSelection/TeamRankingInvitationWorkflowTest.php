@@ -61,6 +61,8 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         [$source, $team] = $this->selectionSource();
         $type = DB::table('eventtypes')->insertGetId(['name' => 'Replacement draft', 'type' => 2, 'code' => 'replacement-draft', 'created_at' => now(), 'updated_at' => now()]);
         $source->event->update(['eventType' => $type]);
+        $venue = Venue::forceCreate(['name' => 'Replacement invitation tennis club']);
+        $source->event->venues()->attach($venue->id, ['num_courts' => 2]);
         $manager = User::factory()->create();
         EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
         $import = app(TeamRankingImportService::class)->import($source, $manager);
@@ -79,16 +81,22 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertStringContainsString('title="Review this player\'s invitation before sending"', $pendingRow[0]);
         $options = ['scope' => 'all', 'filter' => 'all', 'recipients' => 'players', 'pending_selection_import_id' => $import->id];
         $mail = app(\App\Services\EventCommunicationService::class);
+        // Some older databases hydrate a legacy attribute with the same name as the relation.
+        $source->event->setAttribute('venues', 'Legacy venue description');
         $draft = $mail->replacementInvitationDraft($source->event);
+        $this->assertStringContainsString('Venue: Replacement invitation tennis club', $draft['body']);
+        $source->event->setRelation('venues', collect([$venue]));
+        $this->assertSame($draft, $mail->replacementInvitationDraft($source->event));
         $plan = $mail->plan($source->event, $manager, $options, $draft['subject'], $draft['body']);
         $this->assertSame(['late.replacement@example.test'], array_column($plan['recipients'], 'email'));
         $this->assertSame(['player:'.$player->id], $plan['recipients'][0]['player_keys']);
         $this->actingAs($manager)->post(route('backend.team-selection.invitations.email.send-pending-activated', [$source->event, $import]))
             ->assertOk()->assertSee('Replacement invitation')->assertSee('following another player')->assertDontSee('Original clothing announcement');
-        $this->actingAs($manager)->post(route('backend.team-selection.invitations.email.resend', [$source->event, $import, $reserve]))
+        $this->actingAs($manager)->withHeaders(['Accept' => 'application/json'])->post(route('backend.team-selection.invitations.email.resend', [$source->event, $import, $reserve]), ['confirm_recipients' => '1'])
             ->assertOk()->assertViewIs('backend.event.communications.compose')
             ->assertViewHas('options', fn ($options) => $options['scope'] === 'individual' && $options['individual_key'] === 'player:'.$player->id)
-            ->assertSee('Replacement invitation')->assertSee('Please register by:')->assertSee('#team-registration-'.$team->id.'-'.$player->id);
+            ->assertSee('Replacement invitation')->assertSee('Please register by:')->assertSee('Venue: Replacement invitation tennis club')
+            ->assertDontSee('Legacy venue description')->assertSee('#team-registration-'.$team->id.'-'.$player->id);
         $this->assertSame($logCount, BulkEmailLog::query()->count());
         $this->assertNull($reserve->fresh()->invited_at);
         Queue::assertNothingPushed();

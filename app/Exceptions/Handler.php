@@ -7,6 +7,15 @@ use Throwable;
 
 class Handler extends ExceptionHandler
 {
+    public function shouldReport(Throwable $e)
+    {
+        if ($e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface && $e->getStatusCode() >= 500) {
+            return true;
+        }
+
+        return parent::shouldReport($e);
+    }
+
     /**
      * A list of the exception types that are not reported.
      *
@@ -35,7 +44,7 @@ class Handler extends ExceptionHandler
     public function register()
     {
         $this->reportable(function (Throwable $e) {
-            //
+            app(\App\Services\WebsiteErrorAlertService::class)->report($e);
         });
     }
 }
