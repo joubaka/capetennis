@@ -498,7 +498,7 @@
                           <table class="table table-sm align-middle mb-0">
                             <thead><tr><th><span class="visually-hidden">Select</span></th><th>Rank</th><th>Player</th><th>Contact</th><th>Ranking</th><th>Selection / payment</th><th>Email</th><th>Regional action</th></tr></thead>
                             <tbody data-team-invitations>
-                              @forelse($teamInvitations as $invitation)
+                              @forelse($teamInvitations->sortBy(fn ($invitation) => $invitation->status === \App\Models\TeamSelectionInvitation::DECLINED ? 1 : 0) as $invitation)
                                 @php($recipientEmail = $recipientEmailFor($invitation))
                                 @php($rawContactEmails = $rawContactEmailsFor($invitation))
                                 @php($delivery = $invitation->emailLogs->sortByDesc('id')->first())
