@@ -1455,6 +1455,7 @@ Route::delete(
   Route::delete('region/{region}/clothing/{item}/sizes/{size}', [RegionClothingController::class, 'destroySize'])
     ->name('backend.region.clothing.sizes.destroy');
   // ✅ Region Clothing Orders view (list & export orders per region)
+  Route::patch('region/{region}/clothing/event/{event}/orders/{order}/items/{orderItem}/size', [RegionClothingController::class, 'changeOrderSize'])->name('backend.region.clothing.orders.size');
   Route::get('region/{region}/clothing/orders', [RegionClothingController::class, 'orders'])
     ->name('backend.region.clothing.orders');
 

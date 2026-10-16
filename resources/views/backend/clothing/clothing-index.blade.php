@@ -72,7 +72,26 @@
                   <td data-label="Player">@php $rosterRank = $order->team?->team_players->firstWhere('player_id', $order->player_id)?->rank; @endphp@if($rosterRank > 0)<span class="text-muted">#{{ $rosterRank }}</span> @endif{{ $order->player?->full_name }}</td>
                   <td data-label="Team">{{ optional($order->team)->name }}</td>
                   <td data-label="Item">{{ $item->item_name ?: optional($item->itemType)->item_type_name }}</td>
-                  <td data-label="Size">{{ $item->size_name ?: optional($item->size)->size }}</td>
+                  <td data-label="Size"><div><span data-size-label>{{ $item->size_name ?: optional($item->size)->size }}</span>
+                    @if($item->refundItems->isEmpty() && $item->itemType?->sizes->isNotEmpty())
+                      <details><summary class="small text-primary">Change size</summary>
+                        <form method="POST" action="{{ route('backend.region.clothing.orders.size', [$region, $order->event_id, $order, $item]) }}" data-size-change-form>
+                          @csrf @method('PATCH')
+                          <input type="hidden" name="expected_size_id" value="{{ (int) $item->clothing_item_size }}">
+                          <input type="hidden" name="expected_size_name" value="{{ $item->size_name }}">
+                          <label class="visually-hidden" for="order-item-size-{{ $item->id }}">New size</label>
+                          <select class="form-select form-select-sm" id="order-item-size-{{ $item->id }}" name="size_id" required>
+                            @foreach($item->itemType->sizes as $availableSize)<option value="{{ $availableSize->id }}" @selected((int) $item->clothing_item_size === (int) $availableSize->id)>{{ $availableSize->size }}</option>@endforeach
+                          </select>
+                          @if($qty > 1)<p class="small text-muted mb-1">Applies to all {{ $qty }} items on this line.</p>@endif
+                          <button class="btn btn-sm btn-outline-primary mt-1">Save size</button>
+                          <p class="small mb-0" data-size-feedback role="status" aria-live="polite"></p>
+                        </form>
+                      </details>
+                    @elseif($item->refundItems->isNotEmpty())
+                      <small class="text-muted d-block">Size retained for refund history</small>
+                    @endif
+                  </div></td>
                   <td data-label="Qty">{{ $qty }}</td>
                   <td data-label="Status"><span class="badge bg-label-success">Paid</span>@if($order->refunds->isNotEmpty())<a class="d-block small" href="{{ route('backend.clothing.refunds.show', [$order->event_id, $order]) }}">Refund history</a>@endif</td>
                   <td data-label="Order details"><div class="clothing-order-actions"><details><summary>Details</summary><dl class="mt-2 mb-0 text-break">
@@ -133,6 +152,33 @@
 </style>
 <script>
 (() => {
+  document.querySelectorAll('[data-size-change-form]').forEach(form => form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const button = form.querySelector('button');
+    if (button.disabled) return;
+    const feedback = form.querySelector('[data-size-feedback]');
+    const sizeSelect = form.querySelector('select');
+    button.disabled = true;
+    feedback.textContent = 'Saving…';
+    try {
+      const input = new FormData(form);
+      sizeSelect.disabled = true;
+      const response = await fetch(form.action, {method: 'POST', body: input, headers: {'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest'}});
+      const result = await response.json();
+      if (!response.ok) throw new Error(Object.values(result.errors || {}).flat()[0] || result.message || 'Size could not be saved.');
+      form.closest('td').querySelector('[data-size-label]').textContent = result.size_name;
+      form.elements.expected_size_id.value = result.size_id;
+      form.elements.expected_size_name.value = result.size_name;
+      sizeSelect.value = result.size_id;
+      feedback.textContent = result.message;
+      filter();
+    } catch (error) {
+      feedback.textContent = error.message || 'Size could not be saved. Please try again.';
+    } finally {
+      button.disabled = false;
+      sizeSelect.disabled = false;
+    }
+  }));
   const search = document.getElementById('clothing-order-search');
   const team = document.getElementById('clothing-team-filter');
   const lines = [...document.querySelectorAll('[data-clothing-order-line]')];
@@ -150,7 +196,9 @@
     });
     let shown = 0;
     lines.forEach(line => {
-      const matches = (!team.value || line.dataset.teamId === team.value) && line.textContent.toLocaleLowerCase().includes(term);
+      const searchable = line.cloneNode(true);
+      searchable.querySelectorAll('[data-size-change-form]').forEach(form => form.remove());
+      const matches = (!team.value || line.dataset.teamId === team.value) && searchable.textContent.toLocaleLowerCase().includes(term);
       line.hidden = !matches;
       if (matches) shown++;
     });

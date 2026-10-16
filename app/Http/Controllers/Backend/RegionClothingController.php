@@ -370,6 +370,21 @@ class RegionClothingController extends Controller
     return response()->json(['ok' => true]);
   }
 
+  public function changeOrderSize(Request $request, TeamRegion $region, Event $event, \App\Models\ClothingOrder $order, \App\Models\ClothingOrderItem $orderItem, \App\Services\Clothing\ClothingOrderSizeService $sizes)
+  {
+    $this->authorize('region-clothing.manage', $region);
+    $data = $request->validate([
+      'size_id' => ['required', 'integer', 'min:1'],
+      'expected_size_id' => ['required', 'integer', 'min:0'],
+      'expected_size_name' => ['present', 'nullable', 'string', 'max:255'],
+    ]);
+    $item = $sizes->change($event, $region, $order, $orderItem, (int) $data['size_id'], (int) $data['expected_size_id'], (string) ($data['expected_size_name'] ?? ''), $request->user());
+    if ($request->expectsJson()) {
+      return response()->json(['message' => 'Size updated.', 'size_id' => $item->clothing_item_size, 'size_name' => $item->size_name]);
+    }
+    return back()->with('success', 'The clothing item size was updated.');
+  }
+
   public function orders(Request $request, TeamRegion $region)
   {
     $this->authorize('region-clothing.manage', $region);
@@ -394,7 +409,7 @@ class RegionClothingController extends Controller
       'event',
       'items.refundItems.refund',
       'refunds.items.item',
-      'items.itemType',
+      'items.itemType.sizes',
       'items.size',
       'player',
       'team.team_players'

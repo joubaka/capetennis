@@ -276,6 +276,82 @@ class PaidClothingOrdersExportTest extends TestCase
         }
     }
 
+    public function test_size_correction_changes_only_size_and_preserves_paid_order_and_ledger(): void
+    {
+        [$admin, $event, $region] = $this->managedRegion();
+        $order = $this->order($event, $region, true, 'Shirt');
+        $item = $order->items()->firstOrFail();
+        $item->update(['qty' => 2, 'line_total' => 200]);
+        $size = ClothingSize::create(['item_type' => $item->clothing_order_item_id, 'size' => 'Large']);
+        $orderBefore = $order->fresh()->getAttributes();
+        $itemBefore = $item->fresh()->getAttributes();
+        $ledger = DB::table('wallet_transactions')->get()->toArray();
+        $url = route('backend.region.clothing.orders.size', [$region, $event, $order, $item]);
+        $payload = ['size_id' => $size->id, 'expected_size_id' => $item->clothing_item_size, 'expected_size_name' => 'Medium',
+            'qty' => 99, 'price' => 0, 'line_total' => 0, 'pay_status' => 0];
+        $this->actingAs($admin)->patchJson($url, $payload)->assertOk()->assertJsonPath('size_name', 'Large');
+        $this->assertSame($orderBefore, $order->fresh()->getAttributes());
+        $after = $item->fresh()->getAttributes();
+        foreach (['clothing_item_size', 'size_name', 'updated_at'] as $field) {
+            unset($itemBefore[$field], $after[$field]);
+        }
+        $this->assertSame($itemBefore, $after);
+        $this->assertEquals($ledger, DB::table('wallet_transactions')->get()->toArray());
+        $this->assertDatabaseCount('clothing_orders', 1);
+        $this->assertDatabaseCount('clothing_order_items', 1);
+        $this->assertDatabaseCount('clothing_refunds', 0);
+        $this->assertDatabaseHas('activity_log', ['causer_id' => $admin->id, 'subject_id' => $item->id, 'description' => 'administrator changed clothing order item size']);
+        $this->patchJson($url, $payload)->assertUnprocessable();
+        $this->patchJson($url, ['size_id' => $size->id, 'expected_size_id' => $size->id, 'expected_size_name' => 'Large'])->assertOk();
+        $this->assertSame(1, DB::table('activity_log')->where('description', 'administrator changed clothing order item size')->count());
+        $this->get(route('backend.region.clothing.orders', [$region, 'event_id' => $event->id]))->assertOk()->assertSee('Change size')->assertSee('Applies to all 2 items on this line.');
+    }
+
+    public function test_size_correction_rejects_unauthorized_cross_scope_wrong_catalogue_and_unpaid_orders(): void
+    {
+        [$admin, $event, $region] = $this->managedRegion();
+        $order = $this->order($event, $region, true, 'Shirt');
+        $item = $order->items()->firstOrFail();
+        $size = ClothingSize::create(['item_type' => $item->clothing_order_item_id, 'size' => 'Large']);
+        $url = route('backend.region.clothing.orders.size', [$region, $event, $order, $item]);
+        $payload = ['size_id' => $size->id, 'expected_size_id' => $item->clothing_item_size, 'expected_size_name' => 'Medium'];
+        $this->actingAs(User::factory()->create())->patchJson($url, $payload)->assertForbidden();
+        $this->actingAs($order->user)->patchJson($url, $payload)->assertForbidden();
+        $otherEvent = Event::factory()->create();
+        DB::table('event_regions')->insert(['event_id' => $otherEvent->id, 'region_id' => $region->id, 'ordering' => 2]);
+        $this->actingAs($admin)->patchJson(route('backend.region.clothing.orders.size', [$region, $otherEvent, $order, $item]), $payload)->assertForbidden();
+        $otherRegion = TeamRegion::create(['region_name' => 'Other']);
+        DB::table('event_regions')->insert(['event_id' => $event->id, 'region_id' => $otherRegion->id, 'ordering' => 2]);
+        $this->patchJson(route('backend.region.clothing.orders.size', [$otherRegion, $event, $order, $item]), $payload)->assertStatus(404);
+        $otherOrder = $this->order($event, $region, true, 'Cap');
+        $otherItem = $otherOrder->items()->firstOrFail();
+        $this->patchJson(route('backend.region.clothing.orders.size', [$region, $event, $order, $otherItem]), $payload)->assertNotFound();
+        $this->patchJson($url, array_replace($payload, ['size_id' => $otherItem->clothing_item_size]))->assertUnprocessable();
+        $this->patchJson($url, array_replace($payload, ['expected_size_name' => 'stale']))->assertUnprocessable();
+        $order->update(['pay_status' => 0, 'status' => 'pending']);
+        $this->patchJson($url, $payload)->assertUnprocessable();
+        $this->assertSame('Medium', $item->fresh()->size_name);
+        $this->assertDatabaseMissing('activity_log', ['description' => 'administrator changed clothing order item size']);
+    }
+
+    public function test_size_correction_blocks_refund_history_for_that_line(): void
+    {
+        [$admin, $event, $region] = $this->managedRegion();
+        $order = $this->order($event, $region, true, 'Shirt');
+        $item = $order->items()->firstOrFail();
+        $size = ClothingSize::create(['item_type' => $item->clothing_order_item_id, 'size' => 'Large']);
+        $refund = $order->refunds()->create(['event_id' => $event->id, 'payer_id' => $order->user_id,
+            'requested_by' => $admin->id, 'request_token' => (string) str()->uuid(), 'request_fingerprint' => str_repeat('a', 64),
+            'refund_method' => 'wallet', 'refund_status' => 'pending', 'refund_gross' => 100, 'refund_fee' => 0, 'refund_net' => 100]);
+        $refund->items()->create(['clothing_order_item_id' => $item->id, 'quantity' => 1, 'amount' => 100]);
+        $before = $item->getAttributes();
+        $this->actingAs($admin)->patchJson(route('backend.region.clothing.orders.size', [$region, $event, $order, $item]),
+            ['size_id' => $size->id, 'expected_size_id' => $item->clothing_item_size, 'expected_size_name' => 'Medium'])->assertUnprocessable()->assertJsonValidationErrors('size_id');
+        $this->assertSame($before, $item->fresh()->getAttributes());
+        $this->assertDatabaseCount('clothing_refunds', 1);
+        $this->assertDatabaseCount('clothing_refund_items', 1);
+    }
+
     private function managedRegion(): array
     {
         Role::findOrCreate('admin', 'web');
