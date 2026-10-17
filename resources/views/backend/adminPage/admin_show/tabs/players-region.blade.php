@@ -54,7 +54,7 @@
         <span class="small text-muted">Team #{{ $team->id }} · Player order is shown by rank.</span>
         <div class="d-flex flex-wrap gap-2">
           @can('team.players.manage', $team)
-            <button type="button" class="btn btn-outline-secondary emailTeamBtn" data-teamid="{{ $team->id }}" data-teamname="{{ $team->name }}">Send team email</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary emailTeamBtn" data-teamid="{{ $team->id }}" data-teamname="{{ $team->name }}">Send team email</button>
 
 @endcan
 
@@ -63,7 +63,7 @@
 
 @endunless
 
-      <div class="table-responsive"><table class="table align-middle team-player-table mb-0">
+      <div class="table-responsive roster-compact-table"><table class="table align-middle team-player-table mb-0">
         <thead><tr><th scope="col">Rank</th><th scope="col">Player</th>@unless($rosterOnly)<th scope="col">Contact</th><th scope="col">Payment</th>
 @endunless
 <th scope="col">Actions</th></tr></thead>
@@ -95,7 +95,7 @@
                 @if($email)<div class="d-flex align-items-center gap-2"><a href="mailto:{{ $email }}">{{ $email }}</a></div>
 @endif
 
-                @if($cell)<div class="d-flex flex-wrap align-items-center gap-2"><a href="tel:{{ preg_replace('/[^0-9+]/', '', $cell) }}">{{ $cell }}</a>@if($whatsAppUrl)<a href="{{ $whatsAppUrl }}" class="btn btn-outline-success" target="_blank" rel="noopener noreferrer" aria-label="Open WhatsApp for {{ $name }} (opens in a new tab)"><i class="ti ti-brand-whatsapp me-1" aria-hidden="true"></i>WhatsApp</a>
+                @if($cell)<div class="d-flex flex-wrap align-items-center gap-2"><a href="tel:{{ preg_replace('/[^0-9+]/', '', $cell) }}">{{ $cell }}</a>@if($whatsAppUrl)<a href="{{ $whatsAppUrl }}" class="btn btn-sm btn-outline-success roster-whatsapp roster-icon-control" title="WhatsApp" target="_blank" rel="noopener noreferrer" aria-label="Open WhatsApp for {{ $name }} (opens in a new tab)"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i></a>
 @endif
 </div>
 @endif
@@ -108,13 +108,13 @@
 
 @endunless
 
-              <td data-label="Actions">
-              @if($rosterCanEdit && !$rosterLocked)@include('backend.adminPage.admin_show._roster-actions')
+              <td data-label="Actions"><div class="roster-row-actions">
+              @if($rosterCanEdit && !$rosterLocked)@include('backend.adminPage.admin_show._roster-actions', ['compactRoster' => true])
 @endif
 
               @unless($rosterOnly)
               @can('team.players.manage', $team)
-                @if($player)<button type="button" class="btn btn-outline-secondary emailPlayer" data-playerid="{{ $player->id }}" data-name="{{ $name }}">Send email</button>@else<span class="small text-muted">{{ $np ? 'Manage imported player in selection' : 'No player assigned' }}</span>
+                @if($player)<button type="button" class="btn btn-sm btn-outline-secondary emailPlayer" data-playerid="{{ $player->id }}" data-name="{{ $name }}">Send email</button>@else<span class="small text-muted">{{ $np ? 'Manage imported player in selection' : 'No player assigned' }}</span>
 @endif
 
 
@@ -123,7 +123,7 @@
 
 @endunless
 
-              </td>
+              </div></td>
             </tr>
           @empty <tr><td colspan="5" class="text-muted">No roster places have been created.</td></tr> @endforelse
         </tbody>
