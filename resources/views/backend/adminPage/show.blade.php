@@ -16,7 +16,9 @@
   <link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}">
   @if((int) $event->eventType !== 3)
     <link rel="stylesheet" href="{{ asset('assets/vendor/libs/formvalidation/dist/css/formValidation.min.css') }}">
-  @endif
+
+@endif
+
   <link rel="stylesheet" href="{{ asset('assets/vendor/libs/quill/typography.css') }}">
   <link rel="stylesheet" href="{{ asset('assets/vendor/libs/quill/katex.css') }}">
   <link rel="stylesheet" href="{{ asset('assets/vendor/libs/quill/editor.css') }}">
@@ -26,9 +28,11 @@
 
 @section('page-style')
   <link rel="stylesheet" href="{{ asset('assets/vendor/css/pages/page-user-view.css') }}" />
-  @if((int) $event->eventType === 3)
+  @if((int) $event->eventType === 3 || ($rosterOnly ?? false))
     <link rel="stylesheet" href="{{ asset('css/team-workspace.css') }}?v={{ filemtime(public_path('css/team-workspace.css')) }}">
-  @endif
+
+@endif
+
 @endsection
 
 {{-- Vendor JS --}}
@@ -43,7 +47,9 @@
     <script src="{{ asset('assets/vendor/libs/formvalidation/dist/js/FormValidation.min.js') }}"></script>
     <script src="{{ asset('assets/vendor/libs/formvalidation/dist/js/plugins/Bootstrap5.min.js') }}"></script>
     <script src="{{ asset('assets/vendor/libs/formvalidation/dist/js/plugins/AutoFocus.min.js') }}"></script>
-  @endif
+
+@endif
+
   <script src="{{ asset('assets/vendor/libs/quill/katex.js') }}"></script>
   <script src="{{ asset('assets/vendor/libs/quill/quill.js') }}"></script>
   <script src="{{ asset('assets/vendor/libs/toastr/toastr.js') }}"></script>
@@ -54,13 +60,27 @@
 
 
 @section('content')
-@if((int) $event->eventType !== 3)
-<div class="mb-3"><a class="btn btn-outline-primary" href="{{ route('backend.event-mail-log.index',$event) }}">Email log</a></div>
+@if($isRegionalPreview ?? false)
+  <div class="alert alert-info d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <span><strong>Regional organizer preview · {{ $previewRegion->region?->region_name }}</strong> — read-only. You remain signed in as yourself.</span>
+    <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.team-selection.index', $event) }}" data-preview-back>Back to organizer assignments</a>
+  </div>
+  <div id="regional-preview-workspace">
+
 @endif
-  @include('backend.event.partials.header')
+
+@if((int) $event->eventType !== 3 && !($rosterOnly ?? false))
+<div class="mb-3"><a class="btn btn-outline-primary" href="{{ route('backend.event-mail-log.index',$event) }}">Email log</a></div>
+
+@endif
+
+  @include('backend.event.partials.header', ['eventWorkspaceRegionalOnly' => $rosterOnly ?? false, 'eventWorkspaceActive' => 'entries', 'eventWorkspaceShowHome' => !($rosterOnly ?? false)])
 
 
 
+  @if($rosterOnly ?? false)
+    @include('backend.adminPage.admin_show.team-workspace')
+  @else
   @switch($event->eventType)
     @case(3)  {{-- Team event --}}
       @include('backend.adminPage.admin_show.team-workspace')
@@ -92,6 +112,14 @@
       <div class="alert alert-warning">Unknown event type: {{ $event->eventType }}</div>
   @endswitch
 
+@endif
+
+
+  @if($isRegionalPreview ?? false)</div>
+@endif
+
+
+  @unless($rosterOnly ?? false)
   @include('_partials._modals.modal-add-team')
   @include('_partials._modals.modal-add-region')
   @include('_partials._modals.modal-add-send-email')
@@ -99,10 +127,17 @@
     @include('_partials._modals.modal-add-registration')
     @include('_partials._modals.modal-player-in-team')
     @include('_partials._modals.modal-edit-team-category')
-  @endif
+
+@endif
+
   @if((int) $event->eventType !== 3)
     @include('_partials._modals.add-category-modal')
-  @endif
+
+@endif
+
+
+@endunless
+
 
 @endsection
 @section('page-script')
@@ -113,9 +148,11 @@
 <script src="{{ asset(mix('js/categories.js')) }}"></script>
 <script src="{{ asset('js/players.js') }}?v={{ filemtime(public_path('js/players.js')) }}"></script>
 <script src="{{ asset(mix('js/playerOrder.js')) }}"></script>
-@if((int) $event->eventType === 3)
+@if((int) $event->eventType === 3 || ($rosterOnly ?? false))
 <script src="{{ asset('js/team-workspace.js') }}?v={{ filemtime(public_path('js/team-workspace.js')) }}"></script>
+
 @endif
+
 <script src="{{ asset('assets/js/draw.js') }}?v={{ filemtime(public_path('assets/js/draw.js')) }}"></script>
 <script src="{{ asset('assets/js/app-email.js') }}?v={{ filemtime(public_path('assets/js/app-email.js')) }}"></script>
 <script src="{{ asset('assets/js/ui-toasts.js') }}?v={{ filemtime(public_path('assets/js/ui-toasts.js')) }}"></script>
@@ -126,7 +163,9 @@
   <script>window.isAdmin = true;</script>
 @else
   <script>window.isAdmin = false;</script>
+
 @endcan
+
 <script>
 window.routes = {
     changePayStatus: "{{ route('team.change.pay.status') }}",
@@ -142,4 +181,3 @@ window.routes = {
 
 
 @endsection
-

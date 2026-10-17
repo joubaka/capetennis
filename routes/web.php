@@ -546,6 +546,7 @@ Route::prefix('backend')->middleware('auth')->group(function () {
 
   Route::prefix('team-selection')->name('backend.team-selection.')->group(function () {
     Route::get('events/{event}', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'index'])->name('index');
+    Route::get('events/{event}/regions/{eventRegion}/manager-preview', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'managerPreview'])->name('manager.preview');
     Route::get('events/{event}/users', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'searchUsers'])->name('users.search');
     Route::post('events/{event}/regions/{eventRegion}/link', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'link'])->name('link');
     Route::delete('events/{event}/sources/{source}', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'unlink'])->name('unlink');
@@ -1520,6 +1521,9 @@ Route::delete(
   Route::get('team/payment/{team}/{player}/{event}', [TeamController::class, 'team_payment_payfast'])->middleware('auth')->name('team.payment.payfast');
   Route::post('team/payment/{team}/{player}/{event}/payfast-handoff', [TeamController::class, 'team_payment_payfast'])->middleware('auth')->name('team.payment.payfast.handoff');
   Route::post('team/orderPlayerList', [TeamController::class, 'order_player_list'])->name('team.order.player.list');
+  Route::post('team/remove-player', [TeamController::class, 'removePlayer'])->name('backend.team.removePlayer');
+  Route::post('team/change-player', [TeamController::class, 'changePlayer'])->name('backend.team.changePlayer');
+  Route::post('team/edit-player-name', [TeamController::class, 'editPlayerName'])->name('backend.team.editPlayerName');
   Route::post('team/insertPlayer', [TeamController::class, 'insertPlayer'])->name('team.insert.player');
   Route::get('team/import/view', [TeamController::class, 'importView'])->name('team.import.view');
   Route::post('event/{event}/team/{team}/external-roster/import', [TeamController::class, 'importNoProfile'])->name('backend.team.import.no.profile');

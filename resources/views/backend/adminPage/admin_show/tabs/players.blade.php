@@ -1,4 +1,4 @@
-@if((int) $event->eventType !== 3)
+@if((int) $event->eventType !== 3 && !($rosterOnly ?? false))
   @include('backend.adminPage.admin_show.tabs.players-legacy')
 @else
 @php($regionsInEvent = $event->regions ?? collect())
@@ -8,9 +8,14 @@
       <div><label class="form-label" for="roster-region">Region</label><select id="roster-region" class="form-select" data-roster-region>
         @foreach($regionsInEvent as $region)<option value="{{ $region->id }}">{{ $region->region_name }}</option>@endforeach
       </select></div>
-      <div><label class="form-label" for="roster-search">Find a player or team</label><input id="roster-search" class="form-control" type="search" placeholder="Name, team, email or cell" data-roster-search></div>
+      <div><label class="form-label" for="roster-search">Find a player or team</label><input id="roster-search" class="form-control" type="search" placeholder="{{ ($rosterOnly ?? false) ? 'Name or team' : 'Name, team, email or cell' }}" data-roster-search></div>
+      @unless($rosterOnly ?? false)
       <div><label class="form-label" for="roster-payment">Payment</label><select id="roster-payment" class="form-select" data-roster-filter="payment"><option value="">All payments</option><option value="paid">Paid</option><option value="unpaid">Unpaid</option></select></div>
+
+@endunless
+
     </div>
+    @unless($rosterOnly ?? false)
     <details class="mt-3" data-roster-more-filters><summary>More filters <span data-roster-advanced-count></span></summary><div class="roster-filters roster-advanced-filters mt-2">
       <div><label class="form-label" for="roster-category">Category</label><select id="roster-category" class="form-select" data-roster-filter="category"><option value="">All categories</option>
         @foreach($event->eventCategories as $category)<option value="{{ $category->id }}">{{ $category->category?->name }}</option>@endforeach
@@ -26,12 +31,22 @@
       </div>
     </div>
     <p class="small text-muted mt-2 mb-0">Filters apply to the selected region. Exports cover the whole event; reserves stay in the selection queue.</p>
+
+@endunless
+
   </div>
   @forelse($regionsInEvent as $k => $region)
-    <section id="players-region-{{ $region->id }}" data-roster-panel="players" data-region-id="{{ $region->id }}" @if($k !== 0) hidden @endif>
-      @if((int) $event->eventType === 3)<div class="roster-panel-placeholder p-4" role="status">Select a region to load its roster.</div>
-      @else @include('backend.adminPage.admin_show.tabs.players-region') @endif
+    <section id="players-region-{{ $region->id }}" data-roster-panel="players" data-region-id="{{ $region->id }}" @if($rosterOnly ?? false)data-loaded="true"
+@endif
+ @if($k !== 0) hidden
+@endif
+>
+      @if((int) $event->eventType === 3 && !($rosterOnly ?? false))<div class="roster-panel-placeholder p-4" role="status">Select a region to load its roster.</div>
+      @else @include('backend.adminPage.admin_show.tabs.players-region')
+@endif
+
     </section>
   @empty <div class="alert alert-light border mt-3">No regions have been added to this event.</div> @endforelse
 </div>
+
 @endif

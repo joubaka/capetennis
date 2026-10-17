@@ -1,5 +1,5 @@
 @php($importedRoster = $regionTeam->team_players_no_profile->sortBy('rank')->values())
-@php($transferOrders = auth()->user()->hasRole('super-user') ? \App\Models\TeamPaymentOrder::query()->where('event_id', $event->id)->where('team_id', $regionTeam->id)->whereNull('withdrawn_at')->where('pay_status', true)->get()->keyBy('effective_player_id') : collect())
+@php($transferOrders = !($isRegionalPreview ?? false) && auth()->user()->hasRole('super-user') ? \App\Models\TeamPaymentOrder::query()->where('event_id', $event->id)->where('team_id', $regionTeam->id)->whereNull('withdrawn_at')->where('pay_status', true)->get()->keyBy('effective_player_id') : collect())
 
 <ul class="nav nav-tabs px-3 pt-3" role="tablist">
   <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#team-players-{{ $regionTeam->id }}" type="button"><i class="ti ti-users me-1"></i>Players</button></li>
@@ -37,7 +37,7 @@
                 @endif
               </td>
               <td>
-                @if($linkedProfile && auth()->user()->hasRole('super-user') && ($coverageOrder = $transferOrders->get($slot->player_profile)))
+                @if($linkedProfile && !($isRegionalPreview ?? false) && auth()->user()->hasRole('super-user') && ($coverageOrder = $transferOrders->get($slot->player_profile)))
                   <details class="mt-2">
                     <summary class="small text-primary">Move payment to another player</summary>
                     <form method="POST" action="{{ route('backend.team-selection.imported-players.payment.transfer', [$event, $eventRegion, $regionTeam, $slot]) }}" class="mt-2" style="min-width:220px">
@@ -68,7 +68,7 @@
                   <span class="badge bg-label-info">Imported · Unlinked</span>
                   <div class="small text-muted mt-1">Profile can be linked from the public team page.</div>
                 @endif
-                @if(app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(auth()->user(), $event))
+                @if(!($isRegionalPreview ?? false) && app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(auth()->user(), $event))
                   @if($linkedProfile && !(int) $slot->pay_status)
                     <details class="mt-2">
                       <summary class="small text-danger">Reset profile link</summary>

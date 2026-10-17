@@ -39,13 +39,73 @@ class TeamSelectionInvitationController extends Controller
 
     public function index(Event $event, TeamRankingImportService $service, RegionManagerAccessService $access, TeamSelectionReminderService $reminders, TeamSelectionInvitationService $invitations)
     {
+        return $this->workspace($event, $service, $access, $reminders, $invitations);
+    }
+
+    public function managerPreview(Event $event, EventRegion $eventRegion, TeamRankingImportService $service, RegionManagerAccessService $access, TeamSelectionReminderService $reminders, TeamSelectionInvitationService $invitations)
+    {
+        abort_unless(request()->user()->hasRole('super-user'), 403);
+        abort_unless($event->isTeam() && (int) $eventRegion->event_id === (int) $event->id, 404);
+
+        $view = app(EventAdminController::class)->teamWorkspace($event, $eventRegion);
+        $previous = libxml_use_internal_errors(true);
+        try {
+            $document = \Dom\HTMLDocument::createFromString($view->render(), \Dom\HTML_NO_DEFAULT_NS, 'UTF-8');
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+        }
+        $xpath = new \Dom\XPath($document);
+        abort_unless($xpath->query('//*[@id="regional-preview-workspace"]')->length === 1, 500);
+        // Keep the real controls visible without carrying live destinations or tokens.
+        foreach ($xpath->query('//script | //input[@type="hidden"] | //meta[@name="csrf-token"]') as $node) {
+            $node->parentNode->removeChild($node);
+        }
+        foreach ($xpath->query('//*') as $node) {
+            $backLink = $node->hasAttribute('data-preview-back');
+            $localTab = $node->getAttribute('data-bs-toggle') === 'tab'
+                && in_array($node->getAttribute('data-bs-target'), ['#tab-players', '#tab-order'], true);
+            $localControl = !$xpath->query('ancestor::form', $node)->length
+                && collect(['data-roster-region', 'data-order-region', 'data-roster-search', 'data-order-search', 'data-roster-clear', 'data-order-clear'])
+                    ->contains(fn ($attribute) => $node->hasAttribute($attribute));
+            foreach (iterator_to_array($node->attributes) as $attribute) {
+                $presentationAttribute = in_array($attribute->name, ['data-label', 'data-mobile-full', 'data-team-workspace-header', 'data-backend-wide', 'data-theme', 'data-template', 'data-roster-panel', 'data-region-id', 'data-roster-region', 'data-order-region', 'data-roster-search', 'data-order-search', 'data-roster-row', 'data-search', 'data-roster-team', 'data-order-team', 'data-team-name', 'data-order-team-name', 'data-roster-clear', 'data-order-clear'], true)
+                    || ($localTab && in_array($attribute->name, ['data-bs-toggle', 'data-bs-target'], true));
+                $allowedHref = $attribute->name === 'href' && ($node->nodeName === 'link' || $backLink || $localTab);
+                if (str_starts_with($attribute->name, 'on') || (str_starts_with($attribute->name, 'data-') && ! $presentationAttribute) || (!$allowedHref && in_array($attribute->name, ['href', 'action', 'formaction', 'target'], true))) {
+                    $node->removeAttribute($attribute->name);
+                }
+            }
+            if ($localTab) $node->setAttribute('href', $node->getAttribute('data-bs-target'));
+            if (!$localControl && in_array($node->nodeName, ['input', 'select', 'textarea', 'button'], true)) {
+                $node->setAttribute('disabled', 'disabled');
+            }
+        }
+        $nonce = base64_encode(random_bytes(24));
+        $navigation = $document->createElement('script');
+        $navigation->setAttribute('nonce', $nonce);
+        $navigation->appendChild($document->createTextNode(view('backend.adminPage.admin_show._preview-navigation')->render()));
+        $document->getElementsByTagName('body')->item(0)->appendChild($navigation);
+
+        return response($document->saveHTML())->header('Cache-Control', 'private, no-store')
+            ->header('Content-Security-Policy', "script-src 'nonce-{$nonce}'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'");
+    }
+
+    private function workspace(Event $event, TeamRankingImportService $service, RegionManagerAccessService $access, TeamSelectionReminderService $reminders, TeamSelectionInvitationService $invitations, ?EventRegion $previewRegion = null)
+    {
         abort_unless($event->isTeam(), 404);
-        $isEventManager = $access->isEventManager(request()->user(), $event);
+        $isRegionalPreview = $previewRegion !== null;
+        $isEventManager = ! $isRegionalPreview && $access->isEventManager(request()->user(), $event);
         $eventRegions = EventRegion::with(['events', 'managerAssignment.user', 'announcements.creator', 'announcements.emailLogs', 'region.clothingItems.sizes', 'rankingSource.series', 'rankingSource.imports.invitations.team', 'rankingSource.imports.invitations.player.user', 'rankingSource.imports.invitations.player.users', 'rankingSource.imports.invitations.emailLogs', 'rankingSource.imports.invitations.order'])
-            ->where('event_id', $event->id)->orderBy('ordering')->get();
-        if (! $isEventManager) {
-            $eventRegions = $eventRegions->filter(fn (EventRegion $item) => $access->canManage(request()->user(), $item))->values();
+            ->where('event_id', $event->id)
+            ->when($previewRegion, fn ($query) => $query->whereKey($previewRegion->id))
+            ->orderBy('ordering')->get();
+        if (! $isEventManager && ! $isRegionalPreview) {
+            $eventRegions = $eventRegions->filter(fn (EventRegion $item) => $access->canManageRoster(request()->user(), $item))->values();
             abort_if($eventRegions->isEmpty(), 403);
+        }
+        if (! $isEventManager) {
+            return redirect()->route('admin.events.teams', $event);
         }
         $regionManagers = $eventRegions->mapWithKeys(fn (EventRegion $item) => [$item->id => $access->manager($item)]);
         $defaultRegionManagers = $isEventManager
@@ -104,7 +164,7 @@ class TeamSelectionInvitationController extends Controller
             }
         }
 
-        return view('backend.team-selection.index', compact('event', 'eventRegions', 'series', 'readySeriesIds', 'teams', 'categorySetups', 'isEventManager', 'regionManagers', 'defaultRegionManagers', 'defaultRegionManagerCandidates', 'announcementRecipients', 'regionRosterRecipients', 'importedRecipientCohorts', 'teamSelectionContacts', 'reminderSummaries', 'reminderHashes', 'defaultInvitationEventInformation'));
+        return view('backend.team-selection.index', compact('isRegionalPreview', 'previewRegion', 'event', 'eventRegions', 'series', 'readySeriesIds', 'teams', 'categorySetups', 'isEventManager', 'regionManagers', 'defaultRegionManagers', 'defaultRegionManagerCandidates', 'announcementRecipients', 'regionRosterRecipients', 'importedRecipientCohorts', 'teamSelectionContacts', 'reminderSummaries', 'reminderHashes', 'defaultInvitationEventInformation'));
     }
 
     public function sendFinalReminder(Request $request, Event $event, EventRegion $eventRegion, RegionManagerAccessService $access, TeamSelectionReminderService $reminders)

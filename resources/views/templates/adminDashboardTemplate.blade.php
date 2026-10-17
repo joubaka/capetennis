@@ -135,6 +135,8 @@
                       <a class="btn btn-sm btn-outline-primary" href="{{ route($event->isTeam() ? 'backend.scoreboard.team.show' : 'admin.events.results.individual', $event) }}">Results</a>
                     @endcan
 
+                    <a class="btn btn-sm btn-outline-primary" href="{{ route('events.show', $event) }}"><i class="ti ti-world me-1" aria-hidden="true"></i>Public page</a>
+
                     <div class="dropdown">
                       <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">More</button>
                       <div class="dropdown-menu dropdown-menu-end">

@@ -16,19 +16,28 @@
   .teams-workspace-nav .teams-workspace-link:focus-visible { outline:3px solid #1f5c9d; outline-offset:2px; }
   @media(max-width:575.98px) { .teams-workspace-nav .teams-workspace-link { flex:1 1 calc(50% - .4rem); min-width:0; padding:.65rem .4rem; font-size:.875rem; } }
 </style>
-<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2"><h2 class="h5 mb-0">Teams</h2><span class="text-muted small">{{ $teamsWorkspaceManager ? 'Players, invitations and team setup' : 'Region-scoped workspace' }}</span></div>
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2"><h2 class="h5 mb-0">Teams</h2><span class="text-muted small">{{ ($rosterOnly ?? false) ? 'Players and player order' : ($teamsWorkspaceManager ? 'Players, invitations and team setup' : 'Region-scoped workspace') }}</span></div>
 @if($teamsWorkspaceManager)
 <nav class="teams-workspace-nav nav tabs-wrap" aria-label="Teams workspace" data-teams-workspace>
   @foreach($teamsWorkspaceItems as $key => [$label, $icon, $panel])
+    @continue(($rosterOnly ?? false) && !in_array($key, ['players', 'order']))
     @if(($key !== 'invitations' || $teamsWorkspaceCanInvite) && (!in_array($key, ['setup', 'results']) || auth()->user()?->can('event.manage', $event)))
       <a class="teams-workspace-link {{ $teamsWorkspaceRoster && $panel ? 'nav-link' : '' }} {{ ($teamsWorkspaceRoster ? $key === 'players' : $key === 'invitations') ? 'active' : '' }}"
          href="{{ $key === 'invitations' ? route('backend.team-selection.index', [$event, 'workspace' => 'invitations']) : route('admin.events.teams', [$event, 'roster_tab' => match($key) { 'setup' => 'regions', 'results' => 'result-rank', default => $key }]).'#'.$panel }}"
-         @if($teamsWorkspaceRoster && $panel) data-bs-toggle="tab" data-bs-target="#{{ $panel }}" data-teams-panel="{{ $panel }}" id="{{ match($key) { 'players' => 'players-tab', 'order' => 'order-tab', 'results' => 'result-rank-button', default => 'regions-tab' } }}" role="tab" aria-controls="{{ $panel }}" aria-selected="{{ $key === 'players' ? 'true' : 'false' }}" @endif
-         @if($teamsWorkspaceRoster ? $key === 'players' : $key === 'invitations') aria-current="page" @endif>
+         @if($teamsWorkspaceRoster && $panel) data-bs-toggle="tab" data-bs-target="#{{ $panel }}" data-teams-panel="{{ $panel }}" id="{{ match($key) { 'players' => 'players-tab', 'order' => 'order-tab', 'results' => 'result-rank-button', default => 'regions-tab' } }}" role="tab" aria-controls="{{ $panel }}" aria-selected="{{ $key === 'players' ? 'true' : 'false' }}"
+@endif
+
+         @if($teamsWorkspaceRoster ? $key === 'players' : $key === 'invitations') aria-current="page"
+@endif
+>
         <i class="ti {{ $icon }}" aria-hidden="true"></i>{{ $label }}
-        @if($key === 'players' && isset($playerCount))<span class="badge bg-label-success">{{ $playerCount }}</span>@endif
+        @if($key === 'players' && isset($playerCount))<span class="badge bg-label-success">{{ $playerCount }}</span>
+@endif
+
       </a>
-    @endif
+
+@endif
+
   @endforeach
 </nav>
 <script>
@@ -70,5 +79,8 @@ document.addEventListener('DOMContentLoaded', function () {
   window.addEventListener('hashchange', activateRequestedPanel);
 });
 </script>
+
 @endif
+
+
 @endif

@@ -20,13 +20,15 @@
 @endphp
 <x-backend.context-nav label="Event navigation">
   @if($eventWorkspaceRegionalOnly)
-    <a href="{{ route('backend.team-selection.index', $event) }}" @if(!in_array($eventWorkspaceActive, ['communications', 'standings', 'ratings', 'finances', 'more'])) aria-current="page" @endif><i class="ti ti-users" aria-hidden="true"></i>Teams</a>
+    <a href="{{ route('admin.events.teams', $event) }}" @if(!in_array($eventWorkspaceActive, ['communications', 'standings', 'ratings', 'finances', 'more'])) aria-current="page" @endif><i class="ti ti-users" aria-hidden="true"></i>Teams</a>
+    @unless($rosterOnly ?? false)
     @if($event->isTeam())
       @can('event-standings.view', $event)
         <a href="{{ route('admin.events.standings', $event) }}" @if($eventWorkspaceActive === 'standings') aria-current="page" @endif><i class="ti ti-trophy" aria-hidden="true"></i>Standings</a>
       @endcan
     @endif
     <a href="{{ route('backend.event-communications.index', $event) }}" @if($eventWorkspaceActive === 'communications') aria-current="page" @endif><i class="ti ti-mail" aria-hidden="true"></i>Communications</a>
+    @endunless
   @else
   @can('event-draw.view', $event)
     <a href="{{ route('admin.events.overview', $event) }}" @if($eventWorkspaceActive === 'overview') aria-current="page" @endif><i class="ti ti-layout-grid" aria-hidden="true"></i>Event overview</a>
@@ -65,7 +67,7 @@
       || auth()->user()?->can('event.manage', $event)
       || auth()->user()?->can('event-finance.view', $event)));
   @endphp
-  @if($canSeeEventTools)
+  @if($canSeeEventTools && !($rosterOnly ?? false))
     <div class="event-workspace-more dropdown">
       <button class="event-workspace-more__toggle" type="button" data-bs-toggle="dropdown"
               aria-expanded="false" @if(in_array($eventWorkspaceActive, ['more', 'ratings', 'finances'])) aria-current="page" @endif>

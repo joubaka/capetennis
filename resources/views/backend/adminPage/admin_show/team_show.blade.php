@@ -1,3 +1,4 @@
+@include('backend.adminPage.admin_show._roster-script')
 @php
   // Quick counts for badges (TEAM EVENTS)
   $regionCount   = $event->regions->count();
@@ -23,10 +24,12 @@
 {{-- ============================= --}}
 {{-- REGIONS TAB --}}
 {{-- ============================= --}}
+  @if(!($rosterOnly ?? false))
   @can('event.manage', $event)
   @include('backend.adminPage.admin_show.tabs.regions')
 
   @endcan
+  @endif
   {{-- 🧍‍♂️ PLAYERS TAB --}}
   @include('backend.adminPage.admin_show.tabs.players') {{-- ✅ use the working version you built above --}}
 
@@ -35,15 +38,18 @@
 
 
 
-        @can('event.manage', $event)
+        @if(!($rosterOnly ?? false))
+  @can('event.manage', $event)
         {{-- Result Ranks (active) --}}
         @include('backend.adminPage.admin_show._partials.result-ranks')
 
         @endcan
+  @endif
       </div> {{-- /.tab-content --}}
     </div>
   </div>
 
+@unless($rosterOnly ?? false)
 <!-- Import all no-profile teams for one region -->
 <div class="modal fade" id="import-region-teams-modal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-scrollable">
@@ -261,7 +267,7 @@
   window.importNoProfileUrl = null;
 
   // Handle import noprofile button click
- 
+
 </script>
 
 
@@ -272,3 +278,7 @@
 
 
 
+
+
+
+@endunless

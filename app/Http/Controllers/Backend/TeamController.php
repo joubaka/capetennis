@@ -39,7 +39,7 @@ class TeamController extends Controller
     public function callAction($method, $parameters)
     {
         $rosterWrites = ['store', 'addToRegion', 'destroy', 'toggleNoProfile', 'insertPlayer', 'order_player_list', 'changeCategory', 'importNoProfile',
-            'importNoProfileTeams', 'importFromRanking', 'updateNoProfile', 'addPlayers', 'updateRoster'];
+            'importNoProfileTeams', 'importFromRanking', 'updateNoProfile', 'addPlayers', 'removePlayer', 'changePlayer', 'editPlayerName', 'updateRoster'];
         if (!in_array($method, $rosterWrites, true)) return parent::callAction($method, $parameters);
         $event = collect($parameters)->first(fn ($value) => $value instanceof Event);
         $team = collect($parameters)->first(fn ($value) => $value instanceof Team);
@@ -54,6 +54,10 @@ class TeamController extends Controller
             $team = $identity?->team_id ? Team::find($identity->team_id) : null;
         }
         $eventId = $event?->id ?? $team?->category?->event_id ?? CategoryEvent::find($request->input('category_event_id'))?->event_id;
+        if (!$eventId && $team && $request->integer('event_id')) {
+            $candidate = Event::find($request->integer('event_id'));
+            if ($candidate && app(ExternalTeamRosterService::class)->teamBelongsToEvent($team, $candidate)) $eventId = $candidate->id;
+        }
         if (!$eventId) return parent::callAction($method, $parameters);
         return DB::transaction(function () use ($method, $parameters, $eventId) {
             $adaptation = app(\App\Services\TeamDrawAdaptationService::class);
@@ -329,91 +333,27 @@ class TeamController extends Controller
 
   public function order_player_list(Request $request)
   {
+    if ($request->filled('direction')) {
+      [$event, $region, $team] = $this->rosterContext($request);
+      $data = $request->validate(['direction' => ['required', 'in:up,down'], 'slot_id' => ['required', 'integer'], 'expected_rank' => ['required', 'integer', 'min:1'], 'expected_player_id' => ['required', 'integer', 'min:0']]);
+      app(\App\Services\TeamRosterService::class)->change($event, $region, $team, $request->user(), 'move', $data);
+
+      return response()->json(['message' => 'Player order updated.']);
+    }
     $teamId = (int) $request->input('team_id');
     $team = Team::findOrFail($teamId);
     $this->authorize('team.players.manage', $team);
     app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
 
-    // callAction holds the event lock through this check and the rank writes.
-    // Reordering would otherwise automatically adapt every generated team draw.
-    $eventId = $team->category->event_id;
-    $hasFixtures = \App\Models\TeamFixture::whereHas('draw', fn ($query) => $query->where('event_id', $eventId))->exists();
-    $hasTies = \App\Models\TeamTie::whereHas('draw', fn ($query) => $query->where('event_id', $eventId))->exists();
-    if ($hasFixtures || $hasTies) {
-      return response()->json([
-        'message' => 'This event already has generated matches. Use the regional team selection playing order to review the affected matches and confirm a safe move. Existing bookings and played results have been retained.',
-      ], 409);
-    }
+    [$event, $region, $team] = $this->rosterContext($request);
+    $data = $request->validate(['order' => ['required', 'array', 'min:1', 'max:100'], 'order.*.position' => ['required', 'integer', 'min:1'], 'order.*.id' => ['nullable', 'integer'], 'order.*.team_player_id' => ['nullable', 'integer'], 'order.*.no_profile_id' => ['nullable', 'integer']]);
+    $orderedIds = collect($data['order'])->sortBy('position')->map(fn ($row) => $team->noProfile
+        ? ($row['no_profile_id'] ?? $row['id'] ?? 0) : ($row['team_player_id'] ?? $row['id'] ?? 0))->all();
+    app(\App\Services\TeamRosterService::class)->reorder($event, $region, $team, $request->user(), $orderedIds);
 
-    $order = $request->input('order', []);
-    $updated = collect();
-
-    foreach ($order as $item) {
-      $position = (int) ($item['position'] ?? 0);
-      if ($position < 1 || $teamId < 1) {
-        continue;
-      }
-
-      $type = $item['type'] ?? null;
-      $legacyId = $item['id'] ?? null;
-
-      $teamPlayerId = $item['team_player_id']
-        ?? ($type === 'profile' ? $legacyId : null);
-
-      $noProfileId = $item['no_profile_id']
-        ?? (in_array($type, ['noprofile', 'no-profile'], true) ? $legacyId : null);
-
-      if ($teamPlayerId) {
-        $tp = TeamPlayer::with('player')
-          ->where('id', $teamPlayerId)
-          ->where('team_id', $teamId)
-          ->first();
-
-        if ($tp) {
-          $tp->update(['rank' => $position]);
-          $tp->setAttribute('type', 'profile');
-          $updated->push($tp);
-        }
-      }
-
-      if ($noProfileId) {
-        $np = NoProfileTeamPlayer::where('id', $noProfileId)
-          ->where('team_id', $teamId)
-          ->first();
-
-        if ($np) {
-          $np->update(['rank' => $position]);
-          $np->setAttribute('type', 'noprofile');
-          $updated->push($np);
-        }
-      }
-    }
-
-    // ✅ Always return sorted by rank and with consistent structure
-    $sorted = $updated->sortBy('rank')->values();
-
-    $players = $sorted->map(function ($p) {
-      return [
-        'id' => $p->id,
-        'type' => $p->type,
-        'rank' => $p->rank,
-        'pay_status' => $p->pay_status ?? 0,
-        'player' => $p->relationLoaded('player') ? $p->player : null,
-        'name' => $p->name ?? null,
-        'surname' => $p->surname ?? null,
-        'email' => $p->email ?? null,
-        'cellNr' => $p->cellNr ?? null,
-      ];
-    });
-
-    return response()->json([
-      'status' => 'ok',
-      'team_id' => $request->input('team_id'),
-      'players' => $players,
-    ]);
+    $players = $team->noProfile ? $team->team_players_no_profile()->orderBy('rank')->get() : $team->team_players()->with('player')->get();
+    return response()->json(['status' => 'ok', 'team_id' => $team->id, 'players' => $players->map(fn ($slot) => ['id' => $slot->id, 'type' => $team->noProfile ? 'noprofile' : 'profile', 'rank' => $slot->rank, 'pay_status' => $slot->pay_status, 'player' => $team->noProfile ? null : $slot->player, 'name' => $slot->name, 'surname' => $slot->surname])]);
   }
-
-
   public function publishTeam(Request $request, $id)
   {
     $team = Team::findOrFail($id);
@@ -541,6 +481,18 @@ class TeamController extends Controller
       }
     }
 
+    return $this->renderTeamPaymentCheckout(
+      $order, $user, $team, $player, $event, $total, $regionFee,
+      $walletBalance, $walletReserved, $payfastDue, $autoSubmitPayfast,
+      $selectionInvitation
+    );
+  }
+
+  private function renderTeamPaymentCheckout(
+    $order, $user, $team, $player, $event, $total, $regionFee,
+    $walletBalance, $walletReserved, $payfastDue, bool $autoSubmitPayfast,
+    $selectionInvitation = null
+  ) {
     // Prepare Payfast instance
     $payfast = new \App\Services\Payfast();
     // Sandbox only on non-production environments (local/staging) for user 584.
@@ -952,6 +904,16 @@ class TeamController extends Controller
   {
     $teamId = $request->team_id;
     $team = Team::findOrFail($teamId);
+    if ($request->filled('q')) {
+      $this->rosterContext($request);
+      $data = $request->validate(['q' => ['required', 'string', 'min:2', 'max:100']]);
+      $players = Player::query();
+      foreach (preg_split('/\s+/u', trim($data['q']), -1, PREG_SPLIT_NO_EMPTY) as $term) {
+        $players->where(fn ($query) => $query->where('name', 'like', '%'.$term.'%')->orWhere('surname', 'like', '%'.$term.'%'));
+      }
+
+      return response()->json(['players' => $players->orderBy('surname')->limit(20)->get(['id', 'name', 'surname'])->map(fn ($player) => ['id' => $player->id, 'name' => trim($player->name.' '.$player->surname)])]);
+    }
     $this->authorize('team.players.manage', $team);
 
     $assignedPlayerIds = TeamPlayer::where('team_id', $teamId)
@@ -964,31 +926,66 @@ class TeamController extends Controller
   }
   public function addPlayers(Request $request)
   {
-    $data = $request->validate([
-      'team_id' => 'required|integer|exists:teams,id',
-      'player_ids' => 'required|array',
-      'player_ids.*' => 'exists:players,id',
-    ]);
+    [$event, $region, $team] = $this->rosterContext($request);
+    $data = $request->validate($team->noProfile
+      ? ['name' => ['required', 'string', 'max:100'], 'surname' => ['required', 'string', 'max:100']]
+      : ['player_ids' => ['required', 'array', 'min:1', 'max:50'], 'player_ids.*' => ['required', 'integer', 'distinct', 'exists:players,id']]);
+    DB::transaction(function () use ($team, $event, $region, $request, $data) {
+      foreach ($team->noProfile ? [null] : $data['player_ids'] as $playerId) {
+        app(\App\Services\TeamRosterService::class)->change($event, $region, $team, $request->user(), 'add', $data + ['player_id' => $playerId]);
+      }
+    });
 
-    $team = Team::findOrFail($data['team_id']);
-    $this->authorize('team.players.manage', $team);
-    app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
-
-    $nextRank = TeamPlayer::where('team_id', $data['team_id'])->max('rank') ?? 0;
-
-    foreach ($data['player_ids'] as $playerId) {
-      TeamPlayer::create([
-        'team_id' => $data['team_id'],
-        'player_id' => $playerId,
-        'rank' => ++$nextRank,
-        'pay_status' => 0,
-      ]);
-    }
-
-    return response()->json(['success' => true]);
+    return response()->json(['success' => true, 'message' => 'Players added.']);
   }
 
+  public function removePlayer(Request $request)
+  {
+    [$event, $region, $team] = $this->rosterContext($request);
+    $data = $request->validate(['slot_id' => ['required', 'integer'], 'expected_rank' => ['required', 'integer', 'min:1'], 'expected_player_id' => ['required', 'integer', 'min:0']]);
+    app(\App\Services\TeamRosterService::class)->change($event, $region, $team, $request->user(), 'remove', $data);
 
+    return response()->json(['message' => 'Player removed.']);
+  }
+
+  public function editPlayerName(Request $request)
+  {
+    [$event, $region, $team] = $this->rosterContext($request);
+    $data = $request->validate([
+      'slot_id' => ['required', 'integer', 'min:1'], 'expected_rank' => ['required', 'integer', 'min:1'],
+      'expected_player_id' => ['required', 'integer', 'in:0'],
+      'expected_name' => ['required', 'string', 'max:100'], 'expected_surname' => ['required', 'string', 'max:100'],
+      'name' => ['required', 'string', 'max:100'], 'surname' => ['required', 'string', 'max:100'],
+    ]);
+    app(\App\Services\TeamRosterService::class)->editName($event, $region, $team, $request->user(), $data);
+
+    return response()->json(['message' => 'Name corrected.']);
+  }
+
+  public function changePlayer(Request $request)
+  {
+    [$event, $region, $team] = $this->rosterContext($request);
+    $data = $request->validate([
+      'slot_id' => ['required', 'integer', 'min:1'], 'expected_rank' => ['required', 'integer', 'min:1'],
+      'expected_player_id' => ['required', 'integer', 'min:0'],
+    ] + ($team->noProfile ? ['name' => ['required', 'string', 'max:100'], 'surname' => ['required', 'string', 'max:100']]
+      : ['player_id' => ['required', 'integer', 'exists:players,id']]));
+    app(\App\Services\TeamRosterService::class)->replace($event, $region, $team, $request->user(), $data);
+
+    return response()->json(['message' => 'Player changed.']);
+  }
+
+  private function rosterContext(Request $request): array
+  {
+    $data = $request->validate(['team_id' => ['required', 'integer', 'exists:teams,id'], 'event_id' => ['sometimes', 'integer']]);
+    $team = Team::findOrFail($data['team_id']);
+    $event = $team->category?->event ?? Event::findOrFail($data['event_id'] ?? 0);
+    if (isset($data['event_id'])) abort_unless((int) $event->id === (int) $data['event_id'], 404);
+    $region = \App\Models\EventRegion::where('event_id', $event->id)->where('region_id', $team->region_id)->first();
+    app(\App\Services\TeamRosterService::class)->authorize($event, $region, $team, $request->user());
+
+    return [$event, $region, $team];
+  }
 
   public function editRoster(Request $request)
   {
@@ -1244,11 +1241,16 @@ class TeamController extends Controller
       return redirect()->back()->withErrors($exception->getMessage());
     }
 
-    return view('frontend.payfast.check_out', [
-      'type' => 'team',
-      'orderId' => $order->id,
-      'order' => $order
-    ]);
+    $user = auth()->user();
+    $total = round((float) $order->total_amount, 2);
+    $walletReserved = round((float) $order->wallet_reserved, 2);
+
+    return $this->renderTeamPaymentCheckout(
+      $order, $user, $order->team, $order->effectivePlayer, $order->event,
+      $total, max(0, round($total - (float) $order->event->entryFee, 2)),
+      round((float) ($user->wallet->balance ?? 0), 2), $walletReserved,
+      max(0, round((float) $order->payfast_amount_due, 2)), false
+    );
   }
   public function teamHybridPay(Request $request)
   {

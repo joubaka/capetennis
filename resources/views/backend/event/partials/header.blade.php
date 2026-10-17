@@ -18,6 +18,7 @@
       @if($event->status_label)<span class="badge bg-label-primary">{{ $event->status_label }}</span>@endif
     </x-slot:meta>
     <x-slot:actions>
+      @unless($rosterOnly ?? false)
       @if($event->isTeam())
       @can('event.manage', $event)
       <a class="event-workspace-action" href="{{ route('backend.selection-import.index', $event) }}"><i class="ti ti-download" aria-hidden="true"></i><span>Import team + reserves</span></a>
@@ -36,6 +37,7 @@
           <span>Event home</span>
         </a>
       @endif
+      @endunless
     </x-slot:actions>
   </x-backend.page-header>
   @include('backend.event.partials.workspace-nav')

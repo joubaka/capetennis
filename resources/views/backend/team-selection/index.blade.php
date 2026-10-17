@@ -120,6 +120,7 @@
 
 @section('content')
 <div class="operational-page">
+@if(!($isRegionalPreview ?? false))
 @include('backend.partials.operational-controls')
 
 <a class="btn btn-outline-primary mb-3" href="{{ route('backend.event-mail-log.index',$event) }}">Event email log</a>
@@ -129,6 +130,7 @@
   'eventWorkspaceRegionalOnly' => ! $isEventManager,
   'eventWorkspaceShowHome' => $isEventManager,
 ])
+@endif
 <div class="container-xxl flex-grow-1 container-p-y region-selection-container">
   @include('backend.event.partials.teams-workspace-nav', ['teamsWorkspaceRoster' => false])
   @if(session('replacement_confirmation'))
@@ -365,6 +367,9 @@
                 @if($isEventManager && $eventRegion->managerAssignment)<span class="badge bg-label-primary">Custom assignment</span>@elseif($regionManager)<span class="badge bg-label-secondary">Series organizer default</span>@endif
               </div>
               @if($isEventManager)
+                @if(auth()->user()->hasRole('super-user'))
+                  <a class="btn btn-outline-secondary mt-2" href="{{ route('backend.team-selection.manager.preview', [$event, $eventRegion]) }}">Preview regional organizer view</a>
+                @endif
                 <form method="POST" action="{{ route('backend.team-selection.manager.assign', [$event, $eventRegion]) }}" class="row g-2 align-items-end mt-1">@csrf @method('PUT')
                   <div class="col-md-7"><label class="form-label" for="region-manager-{{ $eventRegion->id }}">Select a system user</label><select id="region-manager-{{ $eventRegion->id }}" name="manager_user_id" class="form-select region-manager-select" data-placeholder="Search by name or email…"><option value=""></option>@if($eventRegion->managerAssignment && $regionManager)<option value="{{ $regionManager->id }}" selected>{{ trim($regionManager->name ?: (($regionManager->userName ?? '').' '.($regionManager->userSurname ?? ''))) }} · {{ $regionManager->email }}</option>@endif</select></div>
                   <div class="col-md-3 d-grid"><button class="btn btn-outline-primary">Assign to this region</button></div>
@@ -531,7 +536,7 @@
                                     <span class="badge bg-label-{{ $statusTone }}">{{ str($invitation->status)->replace('_',' ')->title() }}</span>
                                     @if($invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED)<div class="small text-muted mt-1">{{ $invitation->order?->collection_status === 'paid_privately' ? 'Manual / private collection' : ($invitation->order?->payfast_paid ? ($invitation->order->wallet_debited ? 'PayFast + wallet payment' : 'PayFast payment') : ($invitation->order?->wallet_debited ? 'Wallet payment' : 'Payment evidence unavailable')) }}</div>@endif
                                     @if($invitation->decline_method === 'system_primary_team_promotion')<div class="small text-info mt-1">{{ $invitation->decline_reason }}</div>@else<div class="small text-muted mt-1">Read only</div>@endif
-                                    @if(auth()->user()->hasRole('super-user') && $invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED)
+                                    @if(!($isRegionalPreview ?? false) && auth()->user()->hasRole('super-user') && $invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED)
                                       @include('backend.team-selection._invitation-payment-transfer')
                                     @endif
                                   </td>
@@ -552,8 +557,8 @@
                                     @php($reserveActivationIndex = $isReserve ? $teamReserves->values()->search(fn($candidate) => (int) $candidate->id === (int) $invitation->id) : false)
                                     @php($reserveActivationRank = $isReserve ? $openRosterRanks->first() : null)
                                     @php($canMarkPaidPrivately = !$isReserve && in_array($invitation->status, [\App\Models\TeamSelectionInvitation::INVITED, \App\Models\TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT], true))
-                                    @php($canUndoPrivatePayment = auth()->user()->hasRole('super-user') && $invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED && $invitation->order?->collection_status === 'paid_privately' && !$invitation->order->wallet_debited && !$invitation->order->payfast_paid && !$invitation->order->payfast_handed_off_at && !$invitation->order->payfast_pf_payment_id && !$invitation->order->payfast_raw_data && (float) $invitation->order->wallet_reserved === 0.0 && !$invitation->order->withdrawn_at && !$invitation->order->hasRefund())
-                                    @php($canManagePaidPayment = auth()->user()->hasRole('super-user') && $invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED)
+                                    @php($canUndoPrivatePayment = !($isRegionalPreview ?? false) && auth()->user()->hasRole('super-user') && $invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED && $invitation->order?->collection_status === 'paid_privately' && !$invitation->order->wallet_debited && !$invitation->order->payfast_paid && !$invitation->order->payfast_handed_off_at && !$invitation->order->payfast_pf_payment_id && !$invitation->order->payfast_raw_data && (float) $invitation->order->wallet_reserved === 0.0 && !$invitation->order->withdrawn_at && !$invitation->order->hasRefund())
+                                    @php($canManagePaidPayment = !($isRegionalPreview ?? false) && auth()->user()->hasRole('super-user') && $invitation->status === \App\Models\TeamSelectionInvitation::PAID_CONFIRMED)
                                     @php($hasRegionalActions = (bool) $reserveActivationRank || (in_array($invitation->status, [\App\Models\TeamSelectionInvitation::DECLINED, \App\Models\TeamSelectionInvitation::WITHDRAWN], true) && $invitation->vacated_roster_rank) || ($recipientEmail && (!$isReserve || $event->isTeam())) || $canMarkPaidPrivately || $canUndoPrivatePayment || $canManagePaidPayment || $openVacancy)
                                     @if($hasRegionalActions)
                                     <div class="dropdown">

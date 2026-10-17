@@ -180,7 +180,7 @@ class EventController extends Controller
         ->with('events')
         ->where('event_id', $event->id)
         ->get()
-        ->contains(fn (EventRegion $eventRegion) => $regionManagerAccess->canManage($user, $eventRegion))
+        ->contains(fn (EventRegion $eventRegion) => $regionManagerAccess->canManageRoster($user, $eventRegion))
       : false;
     $isEventWideAdministrator = $user && (
       $user->hasRole('super-user') || $user->is_event_admin($event->id)

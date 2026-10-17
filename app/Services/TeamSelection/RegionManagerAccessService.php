@@ -23,6 +23,13 @@ final class RegionManagerAccessService
     public function canManage(User $user, EventRegion $eventRegion): bool
     {
         $event = $eventRegion->relationLoaded('events') ? $eventRegion->events : $eventRegion->events()->first();
+
+        return $event && $this->isEventManager($user, $event);
+    }
+
+    public function canManageRoster(User $user, EventRegion $eventRegion): bool
+    {
+        $event = $eventRegion->relationLoaded('events') ? $eventRegion->events : $eventRegion->events()->first();
         if (! $event) return false;
         if ($this->isEventManager($user, $event)) return true;
 

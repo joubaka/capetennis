@@ -49,6 +49,7 @@ class WebsiteErrorAlertService
                     // The route pattern contains placeholders, never signed URLs or path tokens.
                     'route' => $request->route()?->uri() ?? '(unmatched route)',
                     'user_id' => $request->user()?->getAuthIdentifier(),
+                    'exception_log' => $this->exceptionLog($exception),
                     'trace' => array_map(fn (array $frame): array => [
                         'file' => $this->relativeFile($frame['file'] ?? ''),
                         'line' => $frame['line'] ?? null,
@@ -83,5 +84,37 @@ class WebsiteErrorAlertService
         $file = str_replace('\\', '/', $file);
 
         return str_starts_with($file, $base) ? substr($file, strlen($base)) : basename($file);
+    }
+
+    private function exceptionLog(Throwable $exception): string
+    {
+        $entries = [];
+        do {
+            // Query messages contain SQL and bindings, even when trace arguments are disabled.
+            $message = $exception instanceof \Illuminate\Database\QueryException || preg_match('/\b(SQL|SQLSTATE)\b/i', $exception->getMessage())
+                ? '[Database error details redacted]'
+                : $this->redactMessage($exception->getMessage());
+            $lines = [$exception::class.': '.$message, 'at '.$this->relativeFile($exception->getFile()).':'.$exception->getLine()];
+            foreach ($exception->getTrace() as $index => $frame) {
+                $lines[] = '#'.$index.' '.$this->relativeFile($frame['file'] ?? '').':'.($frame['line'] ?? '?').' '.($frame['class'] ?? '').($frame['type'] ?? '').($frame['function'] ?? '').'()';
+            }
+            $entries[] = implode("\n", $lines);
+        } while ($exception = $exception->getPrevious());
+
+        return implode("\n\nCaused by:\n", $entries);
+    }
+
+    private function redactMessage(string $message): string
+    {
+        // Only retain known engine diagnostics with no dynamic values. Arbitrary messages
+        // can contain credentials or personal data even when request inputs are removed.
+        if (preg_match('/^Call to a member function ([A-Za-z_][A-Za-z0-9_]*)\(\) on (null|bool|int|float|string)\b/', $message, $matches)) {
+            return $matches[0];
+        }
+        if (in_array($message, ['Division by zero', 'Array to string conversion', 'Attempt to read property on null'], true)) {
+            return $message;
+        }
+
+        return '[Message redacted; full message is available in restricted application logs]';
     }
 }

@@ -106,6 +106,28 @@ class WebsiteErrorAlertTest extends TestCase
         Bus::assertDispatchedTimes(SendWebsiteErrorAlert::class, 1);
     }
 
+    public function test_email_includes_message_and_complete_exception_chain_without_arguments_or_secrets(): void
+    {
+        User::factory()->create()->assignRole('super-user');
+        $this->website();
+        config(['services.payfast.merchant_key' => 'CONFIG_CREDENTIAL']);
+        $cause = new \RuntimeException('Call to a member function sum() on null SECRET_SUFFIX');
+        $exception = new \RuntimeException('Checkout failed password=HIDDEN CONFIG_CREDENTIAL SECRET_BODY https://example.test/private?token=URL_SECRET private@example.test <script>alert(1)</script>', 0, $cause);
+        $this->app->make(WebsiteErrorAlertService::class)->report($exception);
+        $job = Bus::dispatched(SendWebsiteErrorAlert::class)->first();
+        $log = $job->diagnostic['exception_log'];
+        $this->assertStringContainsString('Call to a member function sum() on null', $log);
+        $this->assertStringContainsString('Caused by:', $log);
+        $this->assertStringContainsString('test_email_includes_message', $log);
+        foreach (['HIDDEN', 'CONFIG_CREDENTIAL', 'SECRET_BODY', 'URL_SECRET', 'SECRET_SUFFIX', 'private@example.test'] as $secret) {
+            $this->assertStringNotContainsString($secret, serialize($job));
+        }
+        $this->assertSame(count($exception->getTrace()) + count($cause->getTrace()), preg_match_all('/^#\d+ /m', $log));
+        $html = (new WebsiteErrorAlertMail($job->diagnostic))->render();
+        $this->assertStringContainsString('sum() on null', $html);
+        $this->assertStringNotContainsString('<script>', $html);
+    }
+
     public function test_local_and_console_errors_do_not_queue_alerts(): void
     {
         $service = $this->app->make(WebsiteErrorAlertService::class);

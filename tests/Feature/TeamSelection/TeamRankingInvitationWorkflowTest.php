@@ -55,6 +55,120 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_simple_regional_roster_uses_selection_services_without_promoting_reserves_or_sending_mail(): void
+    {
+        Queue::fake(); Mail::fake();
+        [$source, $team] = $this->selectionSource();
+        $manager = User::factory()->create();
+        EventRegionManager::create(['event_id' => $source->event_id, 'event_region_id' => $source->event_region_id, 'region_id' => $source->region_id, 'user_id' => $manager->id, 'assigned_by' => $manager->id]);
+        $import = app(TeamRankingImportService::class)->import($source, $manager);
+        $import->update(['auto_replacement_enabled' => true]);
+        $selected = $import->invitations()->where('team_id', $team->id)->whereNotNull('roster_rank')->orderBy('roster_rank')->firstOrFail();
+        $slot = TeamPlayer::where('team_id', $team->id)->where('player_id', $selected->player_id)->firstOrFail();
+        $reserves = $import->invitations()->where('status', TeamSelectionInvitation::RESERVE)->pluck('status', 'id')->all();
+        $this->actingAs($manager)->postCanonicalRoster($team, ['action' => 'remove', 'slot_id' => $slot->id, 'expected_player_id' => $slot->player_id, 'expected_rank' => $slot->rank])->assertOk();
+        $this->assertSame(TeamSelectionInvitation::DECLINED, $selected->fresh()->status);
+        $this->assertSame($reserves, $import->invitations()->where('status', TeamSelectionInvitation::RESERVE)->pluck('status', 'id')->all());
+        $newPlayer = Player::factory()->create();
+        $this->postCanonicalRoster($team, ['action' => 'add', 'player_id' => $newPlayer->id])->assertOk();
+        $added = $import->invitations()->where('player_id', $newPlayer->id)->firstOrFail();
+        $this->assertSame(TeamSelectionInvitation::INVITED, $added->status);
+        $this->assertSame((int) $slot->rank, (int) $added->roster_rank);
+        $this->assertNull($added->invited_at);
+        $this->assertSame(0, TeamPaymentOrder::count());
+        Queue::assertNothingPushed(); Mail::assertNothingSent();
+    }
+
+    public function test_simple_regional_move_swaps_adjacent_active_players_across_a_vacant_rank(): void
+    {
+        Queue::fake();
+        [$source, $team] = $this->selectionSource();
+        $team->update(['num_team_members' => 3]);
+        $manager = User::factory()->create();
+        EventRegionManager::create(['event_id' => $source->event_id, 'event_region_id' => $source->event_region_id, 'region_id' => $source->region_id, 'user_id' => $manager->id, 'assigned_by' => $manager->id]);
+        $import = app(TeamRankingImportService::class)->import($source, $manager);
+        $slots = TeamPlayer::where('team_id', $team->id)->orderBy('rank')->get();
+        $middle = $slots->firstWhere('rank', 2); $last = $slots->firstWhere('rank', 3);
+        $this->actingAs($manager)->postCanonicalRoster($team, ['action' => 'remove', 'slot_id' => $middle->id, 'expected_player_id' => $middle->player_id, 'expected_rank' => 2])->assertOk();
+        $this->postCanonicalRoster($team, ['action' => 'move', 'direction' => 'up', 'slot_id' => $last->id, 'expected_player_id' => $last->player_id, 'expected_rank' => 3])->assertOk();
+        $this->assertSame(1, (int) $last->fresh()->rank);
+        $this->assertSame(3, (int) $slots->firstWhere('rank', 1)->fresh()->rank);
+        $this->assertSame(0, (int) $middle->fresh()->player_id);
+        $this->assertSame(1, (int) $import->invitations()->where('player_id', $last->player_id)->value('roster_rank'));
+        Queue::assertNothingPushed();
+    }
+
+    public function test_super_user_can_preview_one_regional_workspace_without_live_actions_or_assignment(): void
+    {
+        Queue::fake();
+        [$source, $team] = $this->selectionSource();
+        $super = User::factory()->create();
+        $super->assignRole(Role::findOrCreate('super-user', 'web'));
+        $import = app(TeamRankingImportService::class)->import($source, $super);
+        $import->update(['status' => 'sent']);
+        $import->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail()
+            ->update(['status' => TeamSelectionInvitation::PAID_CONFIRMED]);
+        $otherRegion = TeamRegion::create(['region_name' => 'Other private region']);
+        $otherEventRegion = new EventRegion();
+        $otherEventRegion->forceFill(['event_id' => $source->event_id, 'region_id' => $otherRegion->id, 'ordering' => 2])->save();
+        $assignments = EventRegionManager::count();
+        $logs = DB::table('activity_log')->count();
+        $orders = TeamPaymentOrder::count();
+        $mailLogs = BulkEmailLog::count();
+
+        $this->actingAs($super)->get(route('backend.team-selection.index', $source->event))
+            ->assertOk()->assertSee('Preview regional organizer view');
+        $response = $this->get(route('backend.team-selection.manager.preview', [$source->event, $source->eventRegion]))
+            ->assertOk()->assertSee('Regional organizer preview')
+            ->assertSee($team->name)->assertDontSee('Other private region')
+            ->assertDontSee('Assign to this region')->assertDontSee('Wrap-up email')
+            ->assertDontSee('Move payment to another player')->assertDontSee('Payment management')
+            ->assertSee('Players')->assertSee('Add player')->assertSee('Move up')->assertSee('Move down')
+            ->assertSee('team-workspace.css');
+        $previousErrors = libxml_use_internal_errors(true);
+        try {
+            $document = \Dom\HTMLDocument::createFromString($response->getContent(), \Dom\HTML_NO_DEFAULT_NS, 'UTF-8');
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($previousErrors);
+        }
+        $xpath = new \Dom\XPath($document);
+        $this->assertSame(1, $xpath->query('//script')->length);
+        $nonce = $xpath->query('//script')->item(0)->getAttribute('nonce');
+        $this->assertNotEmpty($nonce);
+        $response->assertHeader('Content-Security-Policy', "script-src 'nonce-{$nonce}'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'");
+        $this->assertSame(0, $xpath->query('//script[@src] | //input[@type="hidden"] | //meta[@name="csrf-token"]')->length);
+        $this->assertSame(0, $xpath->query('//*[@id="regional-preview-workspace"]//*[@action or @formaction or @data-url]')->length);
+        $this->assertSame(0, $xpath->query('//*[@id="regional-preview-workspace"]//a[@href and not(starts-with(@href, "#"))]')->length);
+        $this->assertSame(0, $xpath->query('//*[@id="regional-preview-workspace"]//input[@type="hidden"]')->length);
+        $this->assertSame(0, $xpath->query('//form//*[self::button or self::input or self::select or self::textarea][not(@disabled)]')->length);
+        $this->assertNotNull($document->getElementById('layout-navbar'));
+        $this->assertNotNull($document->getElementById('roster-region'));
+        $this->assertNotNull($document->getElementById('tab-players'));
+        $this->assertNotNull($document->getElementById('tab-order'));
+        $this->assertSame(0, $xpath->query('//*[@id="team-workspace-content"]/ancestor::nav')->length);
+        $this->assertSame($assignments, EventRegionManager::count());
+        $this->assertSame($logs, DB::table('activity_log')->count());
+        $this->assertSame($orders, TeamPaymentOrder::count());
+        $this->assertSame($mailLogs, BulkEmailLog::count());
+        $this->assertAuthenticatedAs($super);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_regional_preview_rejects_other_roles_and_cross_event_regions(): void
+    {
+        [$source] = $this->selectionSource();
+        $admin = User::factory()->create();
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $admin->id]);
+        $url = route('backend.team-selection.manager.preview', [$source->event, $source->eventRegion]);
+        $this->actingAs($admin)->get($url)->assertForbidden();
+        $this->actingAs(User::factory()->create())->get($url)->assertForbidden();
+        $super = User::factory()->create();
+        $super->assignRole(Role::findOrCreate('super-user', 'web'));
+        $this->actingAs($super)->get(route('backend.team-selection.manager.preview', [Event::factory()->create(), $source->eventRegion]))->assertNotFound();
+        $this->actingAs($super)->post($url)->assertStatus(405);
+    }
+
     public function test_pending_replacement_communications_only_include_newly_activated_players_and_use_distinct_draft(): void
     {
         Queue::fake();
@@ -2978,6 +3092,27 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
     public function test_account_without_player_profile_can_be_assigned_and_is_limited_to_its_region(): void
     {
+        [$source, $team] = $this->selectionSource();
+        $event = $source->event;
+        $admin = User::factory()->create();
+        EventAdmin::create(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $manager = User::factory()->create();
+        $this->actingAs($admin)->put(route('backend.team-selection.manager.assign', [$event, $source->eventRegion]), ['manager_user_id' => $manager->id])->assertRedirect();
+        $this->assertSame([], $manager->ownedPlayerIds());
+        $this->actingAs($manager)->get(route('admin.events.teams', $event))->assertOk()
+            ->assertViewIs('backend.adminPage.show')->assertSee($team->name)->assertSee('Add player')->assertDontSee('Assign to this region');
+        $this->get(route('admin.events.overview', $event))->assertForbidden();
+        $this->get(route('backend.region.clothing.edit', ['region' => $source->region_id, 'event_id' => $event->id]))->assertForbidden();
+        $this->get(route('backend.event.clothing.index', $event))->assertForbidden();
+        $this->post(route('backend.team-selection.link', [$event, $source->eventRegion]), ['series_id' => $source->series_id, 'reserve_count' => 2])->assertForbidden();
+        $this->post(route('backend.team-selection.announcements.store', [$event, $source->eventRegion]), ['title' => 'Blocked', 'message' => 'Blocked'])->assertForbidden();
+        $this->patch(route('backend.team-selection.teams.update', [$event, $source->eventRegion, $team]), ['name' => 'Blocked', 'num_team_members' => 4])->assertForbidden();
+        $this->postJson(route('backend.team-selection.teams.publish-all', [$event, $source->eventRegion]))->assertForbidden();
+        $this->assertSame(0, TeamSelectionRegionAnnouncement::count());
+    }
+
+    public function test_event_manager_retains_regional_team_capacity_and_paid_history_guards(): void
+    {
         Role::findOrCreate('admin', 'web');
         $teamType = DB::table('eventtypes')->insertGetId([
             'name' => 'Regional manager test', 'type' => 2, 'code' => 'regional-manager-test',
@@ -3008,66 +3143,9 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         ]);
         $this->assertSame([], $manager->ownedPlayerIds());
 
-        $this->actingAs($manager)->get(route('backend.team-selection.index', $event))
-            ->assertOk()
-            ->assertSee('Assigned Region')
-            ->assertSee('for your assigned region')
-            ->assertSee('Tournament workspace')
-            ->assertSee('>Teams</a>', false)
-            ->assertDontSee('Back to event')
-            ->assertSee(route('events.show', $event), false)
-            ->assertDontSee('Private Other Region')
-            ->assertDontSee('aria-label="Event regions" data-region-tabs', false)
-            ->assertSee('data-region-task-tabs', false)
-            ->assertSee('More options')
-            ->assertSee('Manage your teams')
-            ->assertSee('Invitations')
-            ->assertSee('Selection progress')
-            ->assertSee('tab-pane fade show active region-task-panel" id="region-'.$first->id.'-teams"', false)
-            ->assertSee('Set up teams for import')
-            ->assertDontSee('Assign to this region');
-        $this->actingAs($manager)->get(route('events.show', $event))
-            ->assertOk()
-            ->assertSee('Regional administration')
-            ->assertSee(route('backend.team-selection.index', $event), false)
-            ->assertDontSee(route('admin.events.overview', $event), false);
-        $this->actingAs($manager)->get(route('admin.events.overview', $event))->assertForbidden();
-        $this->actingAs($manager)->getJson(route('backend.team-selection.users.search', [$event, 'q' => 'region']))
-            ->assertForbidden();
         $rankingSeries = Series::factory()->create(['year' => (int) $event->start_date->format('Y')]);
-        $this->actingAs($manager)->post(route('backend.team-selection.link', [$event, $first]), [
-            'series_id' => $rankingSeries->id, 'reserve_count' => 2,
-        ])->assertRedirect();
-        $this->assertDatabaseHas('event_region_ranking_sources', [
-            'event_region_id' => $first->id, 'series_id' => $rankingSeries->id,
-        ]);
-        $this->actingAs($manager)->post(route('backend.team-selection.link', [$event, $second]), [
-            'series_id' => $rankingSeries->id, 'reserve_count' => 2,
-        ])->assertForbidden();
-        $this->actingAs($manager)->get(route('backend.region.clothing.edit', ['region' => $firstRegion, 'event_id' => $event->id]))
-            ->assertOk()
-            ->assertSee('Back to event')
-            ->assertSee(route('backend.team-selection.index', $event), false);
-        $this->actingAs($manager)->get(route('backend.event.clothing.index', $event))
-            ->assertOk()
-            ->assertSee('Regional administration')
-            ->assertSee('Assigned Region')
-            ->assertDontSee('Private Other Region')
-            ->assertDontSee('Choose regions')
-            ->assertDontSee('Save region selection')
-            ->assertSee(route('backend.team-selection.index', $event), false);
-        $this->actingAs($manager)->get(route('backend.region.clothing.edit', $secondRegion))->assertForbidden();
-        $this->actingAs($manager)->post(route('backend.team-selection.announcements.store', [$event, $first]), [
-            'title' => 'Assigned team update', 'message' => 'Practice starts at 08:00.', 'send_email' => 0,
-        ])->assertRedirect();
-        $this->assertDatabaseHas('team_selection_region_announcements', [
-            'event_region_id' => $first->id, 'title' => 'Assigned team update',
-        ]);
-        $this->actingAs($manager)->post(route('backend.team-selection.announcements.store', [$event, $second]), [
-            'title' => 'Must be blocked', 'message' => 'Wrong region.',
-        ])->assertForbidden();
-        $this->assertDatabaseCount('team_selection_region_announcements', 1);
-
+        $this->actingAs($admin)->post(route('backend.team-selection.link', [$event, $first]), ['series_id' => $rankingSeries->id, 'reserve_count' => 2])->assertRedirect();
+        EventAdmin::create(['event_id' => $event->id, 'user_id' => $manager->id]);
         $categoryEvent = CategoryEvent::factory()->create(['event_id' => $event->id]);
         $assignedTeam = new Team();
         $assignedTeam->forceFill(['name' => 'Assigned team', 'region_id' => $firstRegion->id,
@@ -3154,21 +3232,6 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         ])->assertSessionHasErrors('num_team_members');
         $this->assertSame(4, (int) $assignedTeam->fresh()->num_team_members);
         $this->assertSame(TeamSelectionInvitation::PAID_CONFIRMED, $paidInvitation->fresh()->status);
-        $otherTeam = new Team();
-        $otherTeam->forceFill(['name' => 'Private team', 'region_id' => $secondRegion->id,
-            'category_event_id' => $categoryEvent->id, 'num_team_members' => 2, 'published' => false,
-            'user_id' => $admin->id, 'personal_team' => false])->save();
-        $this->actingAs($manager)->patch(route('backend.team-selection.teams.update', [$event, $second, $otherTeam]), [
-            'name' => 'Must stay private', 'num_team_members' => 4, 'published' => 1,
-        ])->assertForbidden();
-        $this->actingAs($manager)->patchJson(route('backend.team-selection.teams.publication.update', [$event, $second, $otherTeam]), [
-            'published' => true,
-        ])->assertForbidden();
-        $this->actingAs($manager)->postJson(route('backend.team-selection.teams.publish-all', [$event, $second]))
-            ->assertForbidden();
-        $this->assertDatabaseHas('teams', ['id' => $otherTeam->id, 'name' => 'Private team', 'published' => 0]);
-        $this->actingAs($manager)->get(route('backend.team.availablePlayers', ['team_id' => $assignedTeam->id]))
-            ->assertForbidden();
     }
 
     public function test_common_organizer_of_all_ranking_series_events_is_the_default_region_manager(): void
@@ -3195,12 +3258,12 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
         $access = app(RegionManagerAccessService::class);
         $this->assertSame($organizer->id, $access->defaultManager($eventRegion)->id);
-        $this->assertTrue($access->canManage($organizer, $eventRegion));
+        $this->assertTrue($access->canManageRoster($organizer, $eventRegion));
         $this->actingAs($organizer)->get(route('backend.team-selection.index', $event))
-            ->assertOk()->assertSee('Default Manager Region');
+            ->assertRedirect(route('admin.events.teams', $event));
     }
 
-    public function test_regional_manager_can_complete_own_region_setup_import_and_restart_without_event_wide_access(): void
+    public function test_event_manager_retains_region_setup_import_order_communications_and_restart(): void
     {
         Queue::fake();
         [$source, $team, $players] = $this->selectionSource();
@@ -3213,6 +3276,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $eventRegion = EventRegion::where('event_id', $event->id)->where('region_id', $source->region_id)->firstOrFail();
         $eventRegion->region()->update(['clothing_admin' => true, 'clothing_order' => true]);
         $manager = User::factory()->create();
+        EventAdmin::create(['event_id' => $event->id, 'user_id' => $manager->id]);
         EventRegionManager::create([
             'event_id' => $event->id,
             'event_region_id' => $eventRegion->id,
@@ -3297,75 +3361,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
                 'recipient_hash' => str_repeat('0', 64),
             ])->assertOk();
         $this->assertSame(0, BulkEmailLog::where('mail_type', 'region_email')->where('related_id', $eventRegion->id)->count());
-        $this->actingAs($manager)->get(route('backend.team-selection.index', $event))
-            ->assertOk()
-            ->assertSee('Tournament workspace')
-            ->assertSee('event-workspace-chrome', false)
-            ->assertSee(route('backend.team-selection.index', $event), false)
-            ->assertSee('>Teams</a>', false)
-            ->assertDontSee(route('admin.events.overview', $event), false)
-            ->assertDontSee('>Event overview</a>', false)
-            ->assertDontSee('>Draws</a>', false)
-            ->assertDontSee('>Results</a>', false)
-            ->assertDontSee('>Finances</a>', false)
-            ->assertDontSee('>Settings</a>', false)
-            ->assertDontSee('>More</button>', false)
-            ->assertSee('Teams · Invitations')
-            ->assertSee('Region-scoped workspace')
-            ->assertSee('How to manage teams in this region')
-            ->assertSee('Replace an unpaid player')
-            ->assertSee('Paid players cannot be replaced here')
-            ->assertSee('Fill an open place')
-            ->assertSee('Change player order')
-            ->assertSee('Manage clothing')
-            ->assertSee($team->name)
-            ->assertSee($players->first()->full_name)
-            ->assertSee('Rank 1')
-            ->assertSee('Show team')
-            ->assertSee('data-team-workspace-header', false)
-            ->assertSee('data-team-workspace-target="#team-workspace-'.$team->id.'"', false)
-            ->assertSee('data-mobile-player-cards', false)
-            ->assertSee('data-label="Rank"', false)
-            ->assertSee('data-label="Player"', false)
-            ->assertSee('data-label="Contact"', false)
-            ->assertSee('data-label="Ranking"', false)
-            ->assertSee('data-label="Selection / payment"', false)
-            ->assertSee('data-label="Email"', false)
-            ->assertSee('data-label="Regional action"', false)
-            ->assertSee('Region actions')
-            ->assertSee('class="dropdown-item team-settings-toggle"', false)
-            ->assertSee('aria-controls="team-settings-'.$team->id.'"', false)
-            ->assertSeeInOrder([
-                'id="team-settings-'.$team->id.'"',
-                'id="team-workspace-'.$team->id.'"',
-            ], false)
-            ->assertSee('name="settings_team_id" value="'.$team->id.'"', false)
-            ->assertSee('name="num_team_members"', false)
-            ->assertSee('Players in team')
-            ->assertSee('Player order')
-            ->assertSee('Email team')
-            ->assertSee('Email linked, not registered / paid')
-            ->assertSee('Email all linked players')
-            ->assertSee(route('backend.region.clothing.edit', [
-                'region' => $eventRegion->region_id,
-                'event_id' => $event->id,
-            ]), false)
-            ->assertSee('Clothing setup')
-            ->assertSee(route('backend.region.clothing.toggle', $eventRegion->region_id), false)
-            ->assertSee('dropdown-item clothing-order-toggle', false)
-            ->assertSee('Close ordering')
-            ->assertSee('Send all invitations')
-            ->assertSee('data-bs-target="#prepare-invitations-'.$selectionImport->id.'"', false)
-            ->assertSee('Change player')
-            ->assertSee('data-replacement-player-form', false)
-            ->assertSee('data-replacement-mode', false)
-            ->assertSee('Choose a Cape Tennis player profile')
-            ->assertSee('Search player name, email or cell')
-            ->assertSee('value="Player not available."', false)
-            ->assertSee('Selection / payment')
-            ->assertSee('Read only')
-            ->assertSee('Ranking snapshot:')
-            ->assertDontSee('Private Other Region');
+        $this->actingAs($manager)->get(route('backend.team-selection.index', $event))->assertOk()->assertSee($team->name)->assertSee($players->first()->full_name);
         $this->actingAs($manager)->from(route('backend.team-selection.index', $event))
             ->patch(route('backend.team-selection.teams.update', [$event, $eventRegion, $team]), [
                 'settings_team_id' => $team->id,
@@ -3379,7 +3375,23 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->actingAs($manager)->post(route('backend.team-selection.restart', [$event, $selectionImport]))
             ->assertRedirect();
         $this->assertDatabaseMissing('team_selection_imports', ['id' => $selectionImport->id]);
-        $this->actingAs($manager)->get(route('admin.events.overview', $event))->assertForbidden();
+        $this->actingAs($manager)->get(route('admin.events.overview', $event))->assertOk();
+    }
+
+    public function test_regional_manager_cannot_setup_import_restart_or_send_outside_the_player_list(): void
+    {
+        Queue::fake();
+        [$source, $team] = $this->selectionSource();
+        $manager = User::factory()->create();
+        EventRegionManager::create(['event_id' => $source->event_id, 'event_region_id' => $source->event_region_id, 'region_id' => $source->region_id, 'user_id' => $manager->id, 'assigned_by' => $manager->id]);
+        $import = app(TeamRankingImportService::class)->import($source, $manager);
+        $this->actingAs($manager)->post(route('backend.team-selection.teams.create', [$source->event, $source]))->assertForbidden();
+        $this->get(route('backend.team-selection.preview', [$source->event, $source]))->assertForbidden();
+        $this->post(route('backend.team-selection.import', [$source->event, $source]))->assertForbidden();
+        $this->post(route('backend.team-selection.roster-email.send', [$source->event, $source->eventRegion]))->assertForbidden();
+        $this->delete(route('backend.team-selection.unlink', [$source->event, $source]))->assertForbidden();
+        $this->assertSame('draft', $import->fresh()->status);
+        Queue::assertNothingPushed();
     }
 
     public function test_multiple_common_series_organizers_require_an_explicit_region_assignment(): void
@@ -6365,6 +6377,12 @@ class TeamRankingInvitationWorkflowTest extends TestCase
     }
 
     /** @return array{0: \App\Models\EventRegionRankingSource, 1: Team, 2: \Illuminate\Support\Collection<int, Player>} */
+    private function postCanonicalRoster(Team $team, array $payload)
+    {
+        $route = match ($payload['action']) { 'add' => 'backend.team.addPlayers', 'move' => 'team.order.player.list', default => 'backend.team.removePlayer' };
+        if (isset($payload['player_id'])) $payload['player_ids'] = [$payload['player_id']];
+        return $this->postJson(route($route), $payload + ['team_id' => $team->id, 'event_id' => $team->category->event_id]);
+    }
     private function selectionSource(): array
     {
         $actor = User::factory()->create();

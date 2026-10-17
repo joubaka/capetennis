@@ -73,14 +73,26 @@ class EventAdminController extends Controller
    * @param  int  $id
    * @return \Illuminate\Http\Response
    */
-  private function teamWorkspace(Event $event)
+  public function teamWorkspace(Event $event, ?\App\Models\EventRegion $previewRegion = null)
   {
+    $access = app(\App\Services\TeamSelection\RegionManagerAccessService::class);
+    $isRegionalPreview = $previewRegion !== null;
+    $rosterOnly = $isRegionalPreview || !$access->isEventManager(request()->user(), $event);
     $event->load(['event_admins', 'regions', 'eventCategories.category']);
+    $eventRegions = \App\Models\EventRegion::with(['events', 'region'])->where('event_id', $event->id)
+      ->when($previewRegion, fn ($query) => $query->whereKey($previewRegion->id))->get();
+    if ($rosterOnly && !$isRegionalPreview) {
+      $eventRegions = $eventRegions->filter(fn ($region) => $access->canManageRoster(request()->user(), $region));
+      abort_if($eventRegions->isEmpty(), 403);
+    }
+    if ($rosterOnly) $event->setRelation('regions', $event->regions->whereIn('id', $eventRegions->pluck('region_id'))->values());
     $teamSelectionInvitations = TeamSelectionInvitation::query()
       ->where('event_id', $event->id)
+      ->when($rosterOnly, fn ($query) => $query->whereIn('region_id', $eventRegions->pluck('region_id')))
       ->whereHas('selectionImport', fn ($query) => $query->whereIn('status', ['draft', 'sent']))
       ->orderBy('team_id')->orderBy('queue_position')->get()->groupBy('team_id')->toBase();
     $teams = app(\App\Services\EventTeamScope::class)->query($event, $teamSelectionInvitations->keys()->all())
+      ->when($rosterOnly, fn ($query) => $query->whereIn('region_id', $eventRegions->pluck('region_id')))
       ->with(['category.category', 'teamPlayers', 'team_players_no_profile'])
       ->orderBy('name')->get()->groupBy('region_id');
     $selectionImports = \App\Models\EventSelectionRosterImport::where('event_id', $event->id)->orderBy('id')->limit(501)->get(['groups']);
@@ -106,6 +118,15 @@ class EventAdminController extends Controller
       });
     });
 
+    if ($rosterOnly) {
+      foreach ($event->regions as $region) {
+        $region->teams->loadMissing(['teamPlayers.player', 'team_players_no_profile.profile']);
+        $region->teams->each(fn ($team) => $team->workspaceSlots->filter(fn ($slot) => !$slot->exists)
+          ->each(fn ($slot) => $slot->setRelation('player', $slot->noProfile?->profile)));
+      }
+
+    }
+
     if (request()->has('roster_region')) {
       $data = request()->validate(['roster_region' => 'required|integer', 'panel' => 'sometimes|in:players,order']);
       $region = $event->regions->firstWhere('id', (int) $data['roster_region']);
@@ -120,14 +141,14 @@ class EventAdminController extends Controller
       $orderLocked = TeamFixture::whereHas('draw', fn ($query) => $query->where('event_id', $event->id))->exists()
         || \App\Models\TeamTie::whereHas('draw', fn ($query) => $query->where('event_id', $event->id))->exists();
       return view('backend.adminPage.admin_show.tabs.'.(($data['panel'] ?? 'players') === 'order' ? 'order-region' : 'players-region'),
-        compact('event', 'region', 'teamSelectionInvitations', 'orderLocked'));
+        compact('event', 'region', 'teamSelectionInvitations', 'orderLocked', 'rosterOnly'));
     }
 
     $allCategories = Category::orderBy('name')->get();
     $regions = TeamRegion::orderBy('region_name')->get();
     $players = collect();
     $administrator = $event->event_admins->contains('user_id', Auth::id());
-    $data = compact('event', 'teamSelectionInvitations', 'allCategories', 'regions', 'players', 'administrator');
+    $data = compact('event', 'teamSelectionInvitations', 'allCategories', 'regions', 'players', 'administrator', 'eventRegions', 'rosterOnly', 'isRegionalPreview', 'previewRegion');
     if (request()->boolean('workspace')) {
       return view('backend.adminPage.admin_show.team-workspace', $data);
     }
@@ -137,6 +158,9 @@ class EventAdminController extends Controller
   public function show($id)
   {
     $workspaceEvent = Event::findOrFail($id);
+    if ($workspaceEvent->isTeam() && !app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(request()->user(), $workspaceEvent)) {
+      return $this->teamWorkspace($workspaceEvent);
+    }
     $this->authorize('event-draw.view', $workspaceEvent);
     if ((int) $workspaceEvent->eventType === 3) {
       return $this->teamWorkspace($workspaceEvent);

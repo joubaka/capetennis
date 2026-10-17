@@ -398,7 +398,7 @@ final class TeamSelectionInvitationService
             $locked = TeamSelectionInvitation::query()->lockForUpdate()->findOrFail($invitation->id);
             $region = \App\Models\EventRegion::query()->where('event_id', $locked->event_id)
                 ->where('region_id', $selectionImport->region_id)->firstOrFail();
-            abort_unless(app(RegionManagerAccessService::class)->canManage($actor, $region), 403);
+            abort_unless(app(RegionManagerAccessService::class)->canManageRoster($actor, $region), 403);
             abort_unless((int) $locked->event_id === (int) $selectionImport->event_id
                 && (int) $locked->region_id === (int) $selectionImport->region_id
                 && $locked->team()->where('region_id', $selectionImport->region_id)
