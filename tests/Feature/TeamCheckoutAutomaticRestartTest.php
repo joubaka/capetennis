@@ -33,23 +33,21 @@ class TeamCheckoutAutomaticRestartTest extends TestCase
         $this->assertSame($replacement->id, app(TeamPaymentService::class)->ensureOrder($payer, $team, $player, $event, 200)->id);
     }
 
-    public function test_same_payer_restarts_only_after_five_minutes_and_paid_order_is_protected(): void
+    public function test_same_payer_continues_recent_and_old_handoff_and_paid_order_is_protected(): void
     {
         [$order, $event, $team, $player] = $this->scenario();
         $service = app(TeamPaymentService::class);
-        $order->update(['payfast_handed_off_at' => now()]);
-        try {
-            $service->ensureOrder($order->user, $team, $player, $event, 200);
-            $this->fail('An active provider handoff was restarted.');
-        } catch (ValidationException $exception) {
-            $this->assertSame('Someone is busy processing a payment. Please wait five minutes before trying again.', $exception->errors()['payment'][0]);
+        foreach ([now(), now()->subMinutes(6), now()->subHour()] as $handoff) {
+            $order->update(['payfast_handed_off_at' => $handoff]);
+            $before = $order->fresh()->getAttributes();
+            $continued = $service->ensureOrder($order->user, $team, $player, $event, 999);
+            $this->assertSame($order->id, $continued->id);
+            $this->assertSame($before, $order->fresh()->getAttributes());
         }
-        $order->update(['payfast_handed_off_at' => now()->subMinutes(6)]);
-        $replacement = $service->ensureOrder($order->user, $team, $player, $event, 200);
-        $this->assertNotSame($order->id, $replacement->id);
-        $replacement->update(['pay_status' => true, 'payfast_paid' => true]);
-        $this->assertSame($replacement->id, $service->ensureOrder(User::factory()->create(), $team, $player, $event, 200)->id);
-        $this->assertDatabaseCount('team_payment_orders', 2);
+        $order->update(['pay_status' => true, 'payfast_paid' => true]);
+        $this->assertSame($order->id, $service->ensureOrder(User::factory()->create(), $team, $player, $event, 200)->id);
+        $this->assertDatabaseCount('team_payment_orders', 1);
+        $this->assertDatabaseCount('wallet_transactions', 0);
     }
 
     public function test_at_exactly_five_minutes_and_recent_new_payer_checkout_is_still_protected(): void

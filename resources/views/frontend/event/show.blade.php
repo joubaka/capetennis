@@ -329,6 +329,8 @@
   </div>
 </div>
 
+@include('frontend.event.partials.team-payment-recovery')
+
 {{-- ================= NAVBAR ================= --}}
 <div class="row">
   <div class="col-12">
@@ -437,6 +439,8 @@
 
 {{-- ================= PAGE JS (ONLY PLACE FOR JS) ================= --}}
 @section('page-script')
+
+@include('frontend.event.partials.team-payment-recovery-script')
 
 <script>
 'use strict';

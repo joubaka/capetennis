@@ -453,20 +453,55 @@ class TeamController extends Controller
     $total = round($entryFee + $regionFee, 2);
 
     // create or load TeamPaymentOrder (unique constraint prevents duplicates)
-    $order = app(TeamPaymentService::class)->ensureOrder($user, $team, $player, $event, $total);
+    try {
+      if ($request->isMethod('post')) {
+        $request->validate(['custom_int5' => ['required', 'integer', 'min:1']]);
+        $order = TeamPaymentOrder::findOrFail($request->integer('custom_int5'));
+        abort_unless((int) $order->user_id === (int) $user->id
+          && (int) $order->event_id === (int) $event->id
+          && (int) $order->team_id === (int) $team->id
+          && (int) $order->effective_player_id === (int) $player->id, 403);
+        if ($order->withdrawn_at) {
+          return redirect()->route('events.show', $event)->withErrors(['payment' => 'This checkout was cancelled or restarted. Start registration again from the event.']);
+        }
+      } else {
+        $order = app(TeamPaymentService::class)->ensureOrder($user, $team, $player, $event, $total);
+      }
+    } catch (\Illuminate\Validation\ValidationException $exception) {
+      $busyMessage = 'Someone is busy processing a payment. Please wait five minutes before trying again.';
+      if ($exception->errors() !== ['payment' => [$busyMessage]]) {
+        throw $exception;
+      }
+
+      $context = app(TeamPaymentService::class)->pendingRestartContext($user, $team, $player, $event);
+      return redirect()->route('events.show', $event)->with('team_payment_recovery', [
+        'event_id' => (int) $event->id,
+        'restart_url' => \Illuminate\Support\Facades\URL::temporarySignedRoute('team.payment.restart', now()->addMinutes(10), [
+          'team' => $team->id, 'player' => $player->id, 'event' => $event->id,
+          'expected_order' => $context['order'], 'expected_state' => $context['state'], 'actor' => $context['actor'],
+        ]),
+        'message' => $busyMessage,
+      ]);
+    }
     $selectionInvitation = app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->attachOrder($order);
 
     $walletBalance = round((float) ($user->wallet->balance ?? 0), 2);
     $walletReserved = round((float) ($order->wallet_reserved ?? 0), 2);
+    $continuingHandoff = (int) $order->user_id === (int) $user->id
+      && app(TeamPaymentService::class)->hasUnresolvedPayfastHandoff($order);
+    if ($continuingHandoff) {
+      $total = round((float) $order->total_amount, 2);
+      $regionFee = max(0, round($total - $entryFee, 2));
+    }
 
-    if ($walletReserved > $walletBalance) {
+    if (!$continuingHandoff && $walletReserved > $walletBalance) {
       $walletReserved = 0.00;
       $order = app(TeamPaymentService::class)->reservePayment($order, 0, round($total, 2));
     }
 
     $payfastDueStored = round((float) ($order->payfast_amount_due ?? $total), 2);
     $calculatedPayfastDue = round($total - $walletReserved, 2);
-    $payfastDue = abs($payfastDueStored - $calculatedPayfastDue) > 0.01 ? $calculatedPayfastDue : $payfastDueStored;
+    $payfastDue = $continuingHandoff ? $payfastDueStored : (abs($payfastDueStored - $calculatedPayfastDue) > 0.01 ? $calculatedPayfastDue : $payfastDueStored);
 
     if ($payfastDue < 0) {
       $payfastDue = 0.00;
@@ -486,6 +521,24 @@ class TeamController extends Controller
       $walletBalance, $walletReserved, $payfastDue, $autoSubmitPayfast,
       $selectionInvitation
     );
+  }
+
+  public function restartTeamPayment(Request $request, Team $team, Player $player, Event $event)
+  {
+    abort_unless((int) $request->query('actor') === (int) auth()->id(), 403);
+    $request->validate(['confirm_restart' => ['accepted']]);
+    try {
+      $order = app(TeamPaymentService::class)->restartPendingCheckout(
+        auth()->user(), $team, $player, $event,
+        (int) $request->query('expected_order'), (string) $request->query('expected_state')
+      );
+    } catch (\Illuminate\Validation\ValidationException $exception) {
+      return redirect()->route('events.show', $event)->withErrors($exception->errors());
+    } catch (\RuntimeException $exception) {
+      return redirect()->route('events.show', $event)->withErrors(['payment' => $exception->getMessage()]);
+    }
+
+    return redirect()->route('team.checkout', $order);
   }
 
   private function renderTeamPaymentCheckout(
@@ -1229,6 +1282,9 @@ class TeamController extends Controller
 
     if ((int) $order->user_id !== (int) auth()->id()) {
       abort(403);
+    }
+    if ($order->withdrawn_at) {
+      return redirect()->route('events.show', $order->event)->withErrors(['payment' => 'This checkout was cancelled or restarted. Start registration again from the event.']);
     }
 
     try {

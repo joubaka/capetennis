@@ -13,7 +13,7 @@ class TeamCheckoutRenderingTest extends TestCase
     public function test_checkout_renders_team_controls_and_stored_amounts_without_mutating_payment(): void
     {
         $order = $this->order();
-        $original = $order->getAttributes();
+        $original = $order->fresh()->getAttributes();
 
         foreach ([1, 2] as $visit) {
             $this->actingAs($order->user)->get(route('team.checkout', $order))
@@ -46,7 +46,7 @@ class TeamCheckoutRenderingTest extends TestCase
     {
         $order = $this->order();
         $order->update(['event_id' => Event::factory()->create()->id]);
-        $this->actingAs($order->user)->get(route('team.checkout', $order))->assertNotFound();
+        $this->actingAs($order->user)->get(route('team.checkout', $order))->assertRedirect()->assertSessionHasErrors();
     }
 
     public function test_wallet_only_checkout_uses_team_completion_controls(): void

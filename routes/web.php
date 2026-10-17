@@ -1520,6 +1520,7 @@ Route::delete(
   Route::patch('event/{event}/team/{team}/name', [TeamController::class, 'rename'])->name('backend.team.name.update');
   Route::get('team/payment/{team}/{player}/{event}', [TeamController::class, 'team_payment_payfast'])->middleware('auth')->name('team.payment.payfast');
   Route::post('team/payment/{team}/{player}/{event}/payfast-handoff', [TeamController::class, 'team_payment_payfast'])->middleware('auth')->name('team.payment.payfast.handoff');
+  Route::post('team/payment/{team}/{player}/{event}/restart', [TeamController::class, 'restartTeamPayment'])->middleware(['auth', 'signed'])->name('team.payment.restart');
   Route::post('team/orderPlayerList', [TeamController::class, 'order_player_list'])->name('team.order.player.list');
   Route::post('team/remove-player', [TeamController::class, 'removePlayer'])->name('backend.team.removePlayer');
   Route::post('team/change-player', [TeamController::class, 'changePlayer'])->name('backend.team.changePlayer');

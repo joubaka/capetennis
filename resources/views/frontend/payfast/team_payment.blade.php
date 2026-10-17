@@ -29,6 +29,7 @@
           </div>
 
           <ul class="list-group list-group-flush my-3">
+            @unless($order->payfast_handed_off_at)
             <li class="list-group-item d-flex justify-content-between">
               <span>Entry Fee</span>
               <span>R{{ number_format($event->entryFee, 2) }}</span>
@@ -39,6 +40,7 @@
                 <span>R{{ number_format($regionFee, 2) }}</span>
               </li>
             @endif
+            @endunless
             <li class="list-group-item d-flex justify-content-between fw-bold">
               <span>Total</span>
               <span>R{{ number_format($total, 2) }}</span>

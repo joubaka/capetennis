@@ -307,14 +307,14 @@ class TeamPaymentService
                 $existing = $orders->first(fn (TeamPaymentOrder $order): bool => $order->withdrawn_at === null && $order->refund_status !== 'completed'
                     && ! in_array((int) $order->id, $excludedHistoricalOrderIds, true));
 
+                if ($existing && (int) $existing->user_id === (int) $user->id && $this->hasUnresolvedPayfastHandoff($existing)) {
+                    return $existing;
+                }
                 if ($existing && $this->expireUnpaidCheckout($existing)) $existing = null;
 
                 if ($existing) {
                     if ($this->hasUnresolvedPayfastHandoff($existing)) {
                         if (\App\Models\TrialParticipation::query()->where('order_id', $existing->id)->exists()) {
-                            if ((int) $existing->user_id === (int) $user->id) {
-                                return $existing;
-                            }
                             throw ValidationException::withMessages([
                                 'payment' => 'This checkout is currently being processed by PayFast. Please try again later.',
                             ]);
@@ -533,6 +533,67 @@ class TeamPaymentService
 
             return $locked->refresh();
         });
+    }
+
+    /** A confirmation is bound to the exact unpaid provider attempt, never its successor. */
+    public function pendingRestartContext(User $actor, Team $team, Player $player, Event $event): array
+    {
+        $order = $this->currentPendingRestartOrder($team, $player, $event);
+        $this->assertRestartContextAllowed($order, $event);
+
+        return ['order' => (int) $order->id, 'state' => $this->restartState($order), 'actor' => (int) $actor->id];
+    }
+
+    public function restartPendingCheckout(User $actor, Team $team, Player $player, Event $event, int $expectedOrderId, string $expectedState): TeamPaymentOrder
+    {
+        return FinanceMutationScope::run('payment_state_write', function () use ($actor, $team, $player, $event, $expectedOrderId, $expectedState) {
+            return DB::transaction(function () use ($actor, $team, $player, $event, $expectedOrderId, $expectedState) {
+                $event = Event::query()->lockForUpdate()->findOrFail($event->id);
+                $team = Team::query()->lockForUpdate()->findOrFail($team->id);
+                $order = $this->currentPendingRestartOrder($team, $player, $event, true);
+                if ((int) $order->id !== $expectedOrderId || ! hash_equals($this->restartState($order), $expectedState)) {
+                    throw ValidationException::withMessages(['payment' => 'This checkout changed. Refresh the registration before trying again.']);
+                }
+                $this->assertRestartContextAllowed($order, $event);
+                $roster = app(\App\Domain\Teams\Services\ExternalTeamRosterService::class);
+                $roster->assertSelectedRole($event, $team, $player);
+                app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->beginRegistration($event->id, $team->id, $player->id, $actor);
+                $roster->assertCanRegister($actor, $event, $team, $player);
+                if ((int) $order->user_id === (int) $actor->id) {
+                    return $order;
+                }
+                $total = round((float) $event->entryFee + (float) $team->regions?->region_fee, 2);
+
+                return $this->restartUnresolvedCheckout($order, $actor, $total);
+            }, 3);
+        });
+    }
+
+    private function currentPendingRestartOrder(Team $team, Player $player, Event $event, bool $lock = false): TeamPaymentOrder
+    {
+        $query = TeamPaymentOrder::query()->where('event_id', $event->id)->where('team_id', $team->id)
+            ->forBeneficiary($player->id)->whereNull('withdrawn_at')
+            ->where(fn ($query) => $query->whereNull('refund_status')->orWhere('refund_status', '!=', 'completed'));
+        if ($lock) $query->lockForUpdate();
+        $orders = $query->get();
+        if ($orders->count() !== 1 || (int) $orders->first()->player_id !== (int) $player->id) {
+            throw ValidationException::withMessages(['payment' => 'This checkout changed. Refresh the registration before trying again.']);
+        }
+
+        return $orders->first();
+    }
+
+    private function assertRestartContextAllowed(TeamPaymentOrder $order, Event $event): void
+    {
+        if ($event->isInterprovincialTrials() || \App\Models\TrialParticipation::query()->where('order_id', $order->id)->exists()) {
+            throw ValidationException::withMessages(['payment' => 'Use the dedicated regional participation checkout.']);
+        }
+        $this->assertPayfastHandoffMayBeReleased($order);
+    }
+
+    private function restartState(TeamPaymentOrder $order): string
+    {
+        return hash('sha256', json_encode($order->getRawOriginal(), JSON_THROW_ON_ERROR));
     }
 
     private function restartUnresolvedCheckout(TeamPaymentOrder $order, User $payer, float $total): TeamPaymentOrder
