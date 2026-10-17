@@ -1,4 +1,7 @@
 @php($importedRoster = $regionTeam->team_players_no_profile->sortBy('rank')->values())
+@if(!($isRegionalPreview ?? false) && app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(auth()->user(), $event))
+  <div class="p-3"><a class="btn btn-sm btn-outline-primary" href="{{ route('backend.team-selection.profile-matches.index', [$event, $regionTeam]) }}">Check existing profiles</a></div>
+@endif
 @php($transferOrders = !($isRegionalPreview ?? false) && auth()->user()->hasRole('super-user') ? \App\Models\TeamPaymentOrder::query()->where('event_id', $event->id)->where('team_id', $regionTeam->id)->whereNull('withdrawn_at')->where('pay_status', true)->get()->keyBy('effective_player_id') : collect())
 
 <ul class="nav nav-tabs px-3 pt-3" role="tablist">

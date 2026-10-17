@@ -227,4 +227,60 @@ class AdminTeamWithdrawalTest extends TestCase
         $this->assertDatabaseCount('no_profile_team_players', 2);
         $this->assertNull($s['order']->fresh()->withdrawn_at);
     }
+
+    public function test_historical_imported_unpaid_mirror_with_canonical_paid_receipt_can_be_reviewed_without_repairs(): void
+    {
+        $s = $this->scenario();
+        $s['team']->update(['noProfile' => 1]);
+        $imported = \App\Models\NoProfileTeamPlayer::create(['team_id' => $s['team']->id, 'rank' => 1, 'player_profile' => $s['player']->id,
+            'name' => 'Imported', 'surname' => 'Player', 'pay_status' => 0]);
+        WalletTransaction::query()->delete();
+        $s['order']->update(['wallet_reserved' => 0, 'wallet_debited' => false, 'payfast_paid' => true,
+            'payfast_amount_due' => 285, 'payfast_pf_payment_id' => 'PF-canonical-withdrawal']);
+        app(\App\Domain\Payments\Services\PaymentTransactionService::class)->record([
+            'pf_payment_id' => 'PF-canonical-withdrawal', 'amount_gross' => 285, 'payment_status' => 'COMPLETE',
+            'custom_str5' => 'TeamOrder', 'custom_int5' => $s['order']->id, 'custom_int2' => $s['player']->id,
+            'custom_int3' => $s['event']->id, 'custom_int4' => $s['payer']->id,
+        ], $s['order']);
+        $this->get($this->url($s, 'show'))->assertOk()->assertSee('R256.50');
+        $this->assertSame(0, (int) $imported->fresh()->pay_status);
+        $this->assertNull($s['order']->fresh()->withdrawn_at);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $payload = $this->payload($s);
+        $this->post($this->url($s), $payload)->assertRedirect();
+        $this->post($this->url($s), $payload)->assertRedirect();
+        $this->assertDatabaseHas('wallet_transactions', ['wallet_id' => $s['wallet']->id, 'type' => 'credit', 'amount' => 256.5]);
+        $this->assertDatabaseCount('wallet_transactions', 1);
+        $this->assertDatabaseMissing('no_profile_team_players', ['id' => $imported->id]);
+    }
+
+    public function test_imported_unpaid_mirror_with_wrong_player_or_rank_is_rejected(): void
+    {
+        $s = $this->scenario();
+        $s['team']->update(['noProfile' => 1]);
+        $imported = \App\Models\NoProfileTeamPlayer::create(['team_id' => $s['team']->id, 'rank' => 1, 'player_profile' => $s['player']->id,
+            'name' => 'Imported', 'surname' => 'Player', 'pay_status' => 0]);
+        $payload = $this->payload($s);
+        $imported->update(['player_profile' => Player::factory()->create()->id]);
+        $this->postJson($this->url($s), $payload)->assertUnprocessable();
+        $imported->update(['player_profile' => $s['player']->id, 'rank' => 2]);
+        $this->postJson($this->url($s), $payload)->assertUnprocessable();
+        $this->assertDatabaseCount('wallet_transactions', 1);
+        $this->assertNull($s['order']->fresh()->withdrawn_at);
+        $this->assertSame((int) $s['player']->id, (int) $s['slot']->fresh()->player_id);
+    }
+
+    public function test_sandbox_payfast_receipt_cannot_fund_a_real_wallet_refund(): void
+    {
+        $s = $this->scenario();
+        WalletTransaction::query()->delete();
+        $s['order']->update(['wallet_reserved' => 0, 'wallet_debited' => false, 'payfast_paid' => true,
+            'payfast_amount_due' => 285, 'payfast_pf_payment_id' => 'PF-test-withdrawal']);
+        DB::table('transactions_pf')->insert(['custom_str5' => 'TeamOrder', 'custom_int5' => $s['order']->id,
+            'custom_int2' => $s['player']->id, 'custom_int3' => $s['event']->id, 'custom_int4' => $s['payer']->id,
+            'pf_payment_id' => 'PF-test-withdrawal', 'amount_gross' => 285, 'payment_status' => 'COMPLETE', 'is_test' => 1]);
+        $this->getJson($this->url($s, 'show'))->assertUnprocessable();
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->assertNull($s['order']->fresh()->withdrawn_at);
+    }
 }

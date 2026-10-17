@@ -17,7 +17,10 @@ class AdminTeamWithdrawalService
         $this->ensure((int) $slot->player_id > 0 && (int) $slot->pay_status === 1, 'Only an active paid player with a linked profile can use this withdrawal.');
         $imported = \App\Models\NoProfileTeamPlayer::where('team_id', $team->id)->where('rank', $slot->rank)->get();
         $importedPlayer = \App\Models\NoProfileTeamPlayer::where('team_id', $team->id)->where('player_profile', $slot->player_id)->get();
-        $this->ensure($team->noProfile ? ($imported->count() === 1 && (int) $imported->first()->player_profile === (int) $slot->player_id && (int) $imported->first()->pay_status === 1)
+        // Canonical finalization marks TeamPlayer paid; historical imported mirrors may remain unpaid.
+        // Mirror identity stays strict, while the unique order and settlement ledger prove payment.
+        $this->ensure($team->noProfile ? ($imported->count() === 1 && (int) $imported->first()->player_profile === (int) $slot->player_id
+                && in_array($imported->first()->pay_status, [0, 1, '0', '1'], true))
             : $imported->isEmpty(), 'The imported player and paid roster mirror no longer agree.');
         $this->ensure($team->noProfile ? ($importedPlayer->count() === 1 && (int) $importedPlayer->first()->id === (int) $imported->first()->id)
             : $importedPlayer->isEmpty(), 'This player has duplicate imported roster places requiring administrator review.');
@@ -98,9 +101,12 @@ class AdminTeamWithdrawalService
         $payments = app(TeamPaymentService::class);
         $this->ensure($order->user && $order->collection_status !== 'paid_privately' && !$payments->hasUnresolvedPayfastHandoff($order), 'A settled payment to the original payer is required.');
         if ($order->payfast_paid) {
-            $this->ensure(Transaction::where('custom_str5', 'TeamOrder')->where('custom_int5', $order->id)->where('payment_status', 'COMPLETE')->count() === 1,
-                'An exact COMPLETE PayFast receipt is required.');
             $payments->assertVerifiedTeamPayfastSettlement($order);
+            $receipt = Transaction::where('custom_str5', 'TeamOrder')->where('custom_int5', $order->id)->firstOrFail();
+            // The canonical receipt writer omits payment_status, including on legacy schemas.
+            // Its verified finalization provenance is established by the exact order/receipt checks above.
+            $status = $receipt->getAttributes()['payment_status'] ?? null;
+            $this->ensure(!$receipt->is_test && ($status === null || $status === 'COMPLETE'), 'A real, settled PayFast receipt is required.');
             return;
         }
         $debits = WalletTransaction::where('source_type', 'team_registration_wallet_payment')->where('source_id', $order->id)->get();

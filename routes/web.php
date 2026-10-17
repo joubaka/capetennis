@@ -545,6 +545,8 @@ Route::prefix('backend')->middleware('auth')->group(function () {
   });
 
   Route::prefix('team-selection')->name('backend.team-selection.')->group(function () {
+    Route::get('events/{event}/teams/{team}/profile-matches', [\App\Http\Controllers\Backend\ImportedRosterProfileMatchController::class, 'index'])->name('profile-matches.index');
+    Route::post('events/{event}/teams/{team}/profile-matches', [\App\Http\Controllers\Backend\ImportedRosterProfileMatchController::class, 'store'])->name('profile-matches.store');
     Route::get('events/{event}', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'index'])->name('index');
     Route::get('events/{event}/regions/{eventRegion}/manager-preview', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'managerPreview'])->name('manager.preview');
     Route::get('events/{event}/users', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'searchUsers'])->name('users.search');

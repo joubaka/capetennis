@@ -53,6 +53,9 @@
       <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <span class="small text-muted">Team #{{ $team->id }} · Player order is shown by rank.</span>
         <div class="d-flex flex-wrap gap-2">
+          @if($team->noProfile && app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(auth()->user(), $event))
+            <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.team-selection.profile-matches.index', [$event, $team]) }}">Check existing profiles</a>
+          @endif
           @can('team.players.manage', $team)
             <button type="button" class="btn btn-sm btn-outline-secondary emailTeamBtn" data-teamid="{{ $team->id }}" data-teamname="{{ $team->name }}">Send team email</button>
 
