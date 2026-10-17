@@ -111,6 +111,13 @@
               <td data-label="Actions"><div class="roster-row-actions">
               @if($rosterCanEdit && !$rosterLocked)@include('backend.adminPage.admin_show._roster-actions', ['compactRoster' => true])
 @endif
+              @if($rosterLocked && !$rosterOnly && $slot->exists && $player && $paid)
+                @role('super-user')
+                  <details class="roster-more-actions"><summary class="btn btn-sm btn-outline-secondary roster-icon-control" aria-label="More actions for {{ $name }}" title="More actions"><i class="ti ti-dots" aria-hidden="true"></i></summary>
+                    <div class="roster-more-panel"><a class="btn btn-sm btn-outline-warning" href="{{ route('backend.team.withdrawal.show', [$event, $team, $slot]) }}">Review withdrawal / refund</a></div>
+                  </details>
+                @endrole
+              @endif
 
               @unless($rosterOnly)
               @can('team.players.manage', $team)

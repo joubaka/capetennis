@@ -865,6 +865,11 @@ Route::prefix('backend')->middleware('auth')->group(function () {
       ->name('headoffice.createSingleDraw.team');
   });
 
+  Route::get('event/{event}/team/{team}/slot/{slot}/withdrawal', [\App\Http\Controllers\Backend\AdminTeamWithdrawalController::class, 'show'])
+    ->middleware('role:super-user')->name('backend.team.withdrawal.show');
+  Route::post('event/{event}/team/{team}/slot/{slot}/withdrawal', [\App\Http\Controllers\Backend\AdminTeamWithdrawalController::class, 'store'])
+    ->middleware('role:super-user')->name('backend.team.withdrawal.store');
+
   Route::get(
     'team/available-players',
     [TeamController::class, 'availablePlayers']

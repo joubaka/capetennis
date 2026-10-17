@@ -60,6 +60,12 @@
       </form>
     </details>
   @endif
-  @if($compactRoster)</div></details>@endif
+  @if($compactRoster)
+    @if(!($rosterOnly ?? false) && $slot->exists && (int) $slot->player_id > 0 && (int) $slot->pay_status === 1)
+      @role('super-user')
+        <a class="btn btn-sm btn-outline-warning mt-2" href="{{ route('backend.team.withdrawal.show', [$event, $team, $slot]) }}">Review withdrawal / refund</a>
+      @endrole
+    @endif
+  </div></details>@endif
 </div>
 @endif
