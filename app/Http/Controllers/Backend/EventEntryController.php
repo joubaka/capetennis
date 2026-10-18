@@ -118,12 +118,29 @@ class EventEntryController extends Controller
     $data = $request->validate([
       'registration_id' => ['required', 'exists:players,id'],
       'collection_status' => ['sometimes', Rule::in(['unpaid', 'paid_privately'])],
+      'existing_order_id' => ['sometimes', 'required', 'integer', 'min:1'],
+      'confirmed_amount' => ['required_with:existing_order_id', 'numeric', 'decimal:0,2', 'gt:0'],
+      'reference' => ['required_with:existing_order_id', 'string', 'min:3', 'max:120'],
     ]);
 
     $playerId = $data['registration_id'];
 
     try {
-      $entry = $this->entryService->addPlayerAsAdmin(
+      $recovery = null;
+      if ($categoryEvent->event->isInterprovincialTrials() && ($data['collection_status'] ?? '') === 'paid_privately') {
+        $recovery = app(\App\Services\InterprovincialTrials\EntriesManualPaymentService::class)
+          ->resolve($categoryEvent, (int) $playerId, $request->user(), $data);
+        if (isset($recovery['checkout'])) {
+          return response()->json([
+            'success' => false,
+            'message' => 'This player has an existing checkout. Confirm the payment received against that checkout.',
+            'existing_checkout' => $recovery['checkout'],
+          ], 409);
+        }
+      } elseif (isset($data['existing_order_id'])) {
+        return response()->json(['success' => false, 'message' => 'Checkout confirmation is only available for a Trials payment received outside the app.'], 422);
+      }
+      $entry = $recovery['entry'] ?? $this->entryService->addPlayerAsAdmin(
         $categoryEvent,
         $playerId,
         auth()->user(),
@@ -140,6 +157,8 @@ class EventEntryController extends Controller
       'success' => true,
       'count' => $categoryEvent->activeRegistrations()->count(),
       'admin_payment_status' => $entry->admin_payment_status,
+      'existing_checkout_settled' => isset($recovery['entry']),
+      'entry_id' => $entry->id,
       'row' => view('backend.event.partials.entry-row', [
         'reg' => $entry,
       ])->render(),

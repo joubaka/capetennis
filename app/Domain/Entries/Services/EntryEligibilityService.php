@@ -43,12 +43,7 @@ class EntryEligibilityService
      */
     public function assertCanAddAdmin(CategoryEvent $categoryEvent, int $playerId): void
     {
-        $this->disciplinaryEligibility->assertEligible($playerId, $categoryEvent->event_id);
-        $this->assertTrialNominationBeforeDraw($categoryEvent, $playerId);
-
-        if ($categoryEvent->isLocked()) {
-            throw new RuntimeException('Category is locked — cannot add player.');
-        }
+        $this->assertAdminCategoryEligible($categoryEvent, $playerId);
 
         if ($categoryEvent->event?->isInterprovincialTrials()
             && CategoryEventRegistration::where('category_event_id', $categoryEvent->id)
@@ -73,6 +68,16 @@ class EntryEligibilityService
 
         if ($duplicate) {
             throw new RuntimeException('Player is already registered in this category.');
+        }
+    }
+
+    public function assertAdminCategoryEligible(CategoryEvent $categoryEvent, int $playerId): void
+    {
+        $this->disciplinaryEligibility->assertEligible($playerId, $categoryEvent->event_id);
+        $this->assertTrialNominationBeforeDraw($categoryEvent, $playerId);
+
+        if ($categoryEvent->isLocked()) {
+            throw new RuntimeException('Category is locked — cannot add player.');
         }
     }
 

@@ -580,9 +580,18 @@
           @unless($paidManualEntryRequired)<option value="unpaid">Unpaid</option>@endunless
           <option value="paid_privately">Paid outside the app (cash/EFT)</option>
         </select>
-        <div class="form-text">
+        <div class="form-text" id="offlineCollectionHelp">
           @if($paidManualEntryRequired)Only use once payment has been collected outside the app.@else Choose “Paid outside the app” only if you have collected payment.@endif
           This records a collection note; no payment amount or receipt is reconciled in the app. The player is added to the event, and Cape Tennis fees still appear in Finances. No online payment or refund is created.
+        </div>
+        <div id="existingCheckoutPayment" class="alert alert-warning mt-3" hidden role="status">
+          <strong>Record payment against the existing checkout</strong>
+          <p class="mb-2">Checkout <span data-existing-checkout-number></span>: <strong>R <span data-existing-checkout-amount></span></strong>.
+            Confirm you received this full amount by cash/EFT. This confirms the existing entry and records a receipt.</p>
+          <input type="hidden" name="existing_order_id" disabled>
+          <input type="hidden" name="confirmed_amount" disabled>
+          <label class="form-label" for="existingCheckoutReference">Cash/EFT receipt or bank reference</label>
+          <input type="text" id="existingCheckoutReference" name="reference" class="form-control" minlength="3" maxlength="120" disabled>
         </div>
       </div>
 
@@ -1099,6 +1108,7 @@ document.addEventListener('click', function(e) {
     const categoryId = btn.dataset.category;
     document.getElementById('add_player_category_id').value = categoryId;
     document.getElementById('offlineCollectionStatus').value = @json($paidManualEntryRequired ? 'paid_privately' : 'unpaid');
+    resetExistingCheckoutPayment();
 
     const select = $('#addPlayerRegistration');
 
@@ -1117,6 +1127,17 @@ document.addEventListener('click', function(e) {
    ADD PLAYER SUBMIT
 ===================== */
 const addForm = document.getElementById('addPlayerForm');
+function resetExistingCheckoutPayment() {
+    const panel = document.getElementById('existingCheckoutPayment');
+    if (!panel) return;
+    panel.hidden = true;
+    panel.querySelectorAll('input').forEach(input => { input.disabled = true; input.required = false; input.value = ''; });
+    document.getElementById('offlineCollectionHelp').hidden = false;
+    const button = document.querySelector('[data-register-offline-submit]');
+    if (button) button.textContent = @json($manualPlayerSubmitLabel);
+}
+$('#addPlayerRegistration').on('change', resetExistingCheckoutPayment);
+document.getElementById('offlineCollectionStatus')?.addEventListener('change', resetExistingCheckoutPayment);
 if (addForm) {
     addForm.addEventListener('submit', function(e) {
         e.preventDefault();
@@ -1124,6 +1145,7 @@ if (addForm) {
         const categoryId = document.getElementById('add_player_category_id').value;
         const url = window.routes.addPlayer.replace(':id', categoryId);
         const submitButton = addForm.querySelector('[data-register-offline-submit]');
+        const submittedData = new FormData(addForm);
 
         if (submitButton?.disabled) return;
         if (submitButton) {
@@ -1137,10 +1159,31 @@ if (addForm) {
                 'X-CSRF-TOKEN': csrf,
                 'Accept': 'application/json'
             },
-            body: new FormData(addForm)
+            body: submittedData
         })
         .then(async response => {
             const res = await response.json();
+
+            if (document.getElementById('add_player_category_id').value !== categoryId
+                || document.getElementById('addPlayerRegistration').value !== submittedData.get('registration_id')
+                || document.getElementById('offlineCollectionStatus').value !== submittedData.get('collection_status')) {
+                if (response.ok) { location.reload(); return null; }
+                throw new Error('The selected player or payment option changed. Review the selection and try again.');
+            }
+
+            if (response.status === 409 && res.existing_checkout) {
+                const panel = document.getElementById('existingCheckoutPayment');
+                panel.querySelector('[data-existing-checkout-number]').textContent = '#' + res.existing_checkout.order_id;
+                panel.querySelector('[data-existing-checkout-amount]').textContent = res.existing_checkout.amount;
+                panel.querySelector('[name="existing_order_id"]').value = res.existing_checkout.order_id;
+                panel.querySelector('[name="confirmed_amount"]').value = res.existing_checkout.amount;
+                panel.querySelectorAll('input').forEach(input => { input.disabled = false; });
+                panel.querySelector('[name="reference"]').required = true;
+                panel.hidden = false;
+                document.getElementById('offlineCollectionHelp').hidden = true;
+                panel.querySelector('[name="reference"]').focus();
+                return null;
+            }
 
             if (!response.ok) {
                 const firstValidationError = res.errors
@@ -1153,21 +1196,24 @@ if (addForm) {
             return res;
         })
         .then(res => {
+            if (!res) return;
             if (!res.success) {
                 toastr.error(res.message || 'Add player failed.');
                 return;
             }
             addPlayerModal.hide();
-            toastr.success('Player added successfully.');
+            toastr.success(res.existing_checkout_settled ? 'Payment recorded and existing entry confirmed.' : 'Player added successfully.');
             // Find the category card
-            const categoryId = document.getElementById('add_player_category_id').value;
             const card = document.querySelector(`.category-card[data-category-id="${categoryId}"]`);
             if (card && res.row) {
                 const tbody = card.querySelector('tbody');
                 if (tbody) {
-                    tbody.insertAdjacentHTML('beforeend', res.row);
+                    const existingRow = tbody.querySelector(`[data-entry-id="${res.entry_id}"]`);
+                    if (existingRow) existingRow.outerHTML = res.row;
+                    else tbody.insertAdjacentHTML('beforeend', res.row);
                     reindexRows(card);
-                    updateEntryCount(card, +1);
+                    const countEl = card.querySelector('.entry-count');
+                    if (countEl) countEl.textContent = res.count;
                 }
             }
         })
@@ -1175,7 +1221,8 @@ if (addForm) {
         .finally(() => {
             if (submitButton) {
                 submitButton.disabled = false;
-                submitButton.textContent = @json($manualPlayerSubmitLabel);
+                submitButton.textContent = document.getElementById('existingCheckoutPayment').hidden
+                    ? @json($manualPlayerSubmitLabel) : 'Record payment & confirm entry';
             }
         });
     });

@@ -75,12 +75,13 @@ class DrawLifecycleHardeningTest extends TestCase
         $event = Event::factory()->create();
         $draw = Draw::factory()->create(['event_id' => $event->id]);
         $fixture = Fixture::factory()->create(['draw_id' => $draw->id]);
-        $schedule = OrderOfPlay::create(['draw_id' => $draw->id, 'fixture_id' => $fixture->id, 'venue_id' => Venue::factory()->create()->id]);
+        $venue = Venue::forceCreate(['name' => 'Draw deletion test court']);
+        $schedule = OrderOfPlay::create(['draw_id' => $draw->id, 'fixture_id' => $fixture->id, 'venue_id' => $venue->id]);
         DB::table('fixture_results')->insert(['fixture_id' => $fixture->id, 'set_nr' => 1]);
 
         $otherDraw = Draw::factory()->create(['event_id' => Event::factory()->create()->id]);
         $otherFixture = Fixture::factory()->create(['draw_id' => $otherDraw->id]);
-        $otherSchedule = OrderOfPlay::create(['draw_id' => $otherDraw->id, 'fixture_id' => $otherFixture->id, 'venue_id' => Venue::factory()->create()->id]);
+        $otherSchedule = OrderOfPlay::create(['draw_id' => $otherDraw->id, 'fixture_id' => $otherFixture->id, 'venue_id' => $venue->id]);
         DB::table('fixture_results')->insert(['fixture_id' => $otherFixture->id, 'set_nr' => 1]);
         $admin = $this->adminFor($event);
 
