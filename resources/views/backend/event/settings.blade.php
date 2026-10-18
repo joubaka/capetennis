@@ -1016,7 +1016,10 @@ $('#logo-existing-select').on('change', function () {
 });
 $('[name="logo_upload"], #logo-existing-select').on('change', function () {
 
-  console.log('🖼 Logo autosave triggered');
+  const logoControls = $('[name="logo_upload"], #logo-existing-select');
+  if (this.id === 'logo-existing-select') {
+    $('[name="logo_upload"]').val('');
+  }
   setSaveStatus('saving', 'Saving logo…');
 
   const formData = new FormData();
@@ -1038,6 +1041,7 @@ $('[name="logo_upload"], #logo-existing-select').on('change', function () {
     formData.append('logo_existing', existing || '');
   }
 
+  logoControls.prop('disabled', true);
   $.ajax({
     url: updateUrl,
     method: 'POST',
@@ -1045,7 +1049,14 @@ $('[name="logo_upload"], #logo-existing-select').on('change', function () {
     contentType: false,
     data: formData
   })
-  .done(() => {
+  .done((response) => {
+    $('#logo-preview').attr('src', response.logo_url);
+    const select = $('#logo-existing-select');
+    if (response.logo && !Array.from(select[0].options).some(option => option.value === response.logo)) {
+      select.append(new Option(response.logo, response.logo));
+    }
+    select.val(response.logo || '');
+    $('[name="logo_upload"]').val('');
     console.log('✅ Logo autosaved');
     setSaveStatus('saved', 'All changes saved');
     feedback.success(existing || file ? 'Event logo saved.' : 'Event logo removed.');
@@ -1054,6 +1065,9 @@ $('[name="logo_upload"], #logo-existing-select').on('change', function () {
     console.error('❌ Logo autosave failed', xhr.responseText);
     setSaveStatus('error', 'Logo not saved');
     showRequestErrors(xhr, 'The event logo could not be saved.');
+  })
+  .always(() => {
+    logoControls.prop('disabled', false);
   });
 
 });

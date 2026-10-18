@@ -180,7 +180,7 @@ class EventSettingsController extends Controller
 
       $filename = Str::slug(
         pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME)
-      ) . '.' . $file->getClientOriginalExtension();
+      ) . '-' . Str::uuid() . '.' . $file->extension();
 
       $file->move(public_path('assets/img/logos'), $filename);
       $event->logo = $filename;
@@ -365,6 +365,10 @@ class EventSettingsController extends Controller
       'success' => true,
       'message' => 'Event settings saved.',
       'saved_at' => now()->toIso8601String(),
+      'logo' => $event->logo,
+      'logo_url' => $event->logo
+        ? asset('assets/img/logos/'.$event->logo)
+        : asset('assets/img/placeholder-logo.png'),
     ]);
   }
 
