@@ -545,6 +545,8 @@ Route::prefix('backend')->middleware('auth')->group(function () {
   });
 
   Route::prefix('team-selection')->name('backend.team-selection.')->group(function () {
+    Route::get('events/{event}/regions/{region}/profile-matches', [\App\Http\Controllers\Backend\ImportedRosterProfileMatchController::class, 'regionIndex'])->name('region-profile-matches.index');
+    Route::post('events/{event}/regions/{region}/profile-matches', [\App\Http\Controllers\Backend\ImportedRosterProfileMatchController::class, 'regionStore'])->name('region-profile-matches.store');
     Route::get('events/{event}/teams/{team}/profile-matches', [\App\Http\Controllers\Backend\ImportedRosterProfileMatchController::class, 'index'])->name('profile-matches.index');
     Route::post('events/{event}/teams/{team}/profile-matches', [\App\Http\Controllers\Backend\ImportedRosterProfileMatchController::class, 'store'])->name('profile-matches.store');
     Route::get('events/{event}', [\App\Http\Controllers\Backend\TeamSelectionInvitationController::class, 'index'])->name('index');
@@ -871,6 +873,10 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     ->middleware('role:super-user')->name('backend.team.withdrawal.show');
   Route::post('event/{event}/team/{team}/slot/{slot}/withdrawal', [\App\Http\Controllers\Backend\AdminTeamWithdrawalController::class, 'store'])
     ->middleware('role:super-user')->name('backend.team.withdrawal.store');
+  Route::get('events/{event}/team-withdrawal-refunds/{order}', [\App\Http\Controllers\Backend\AdminTeamWithdrawalController::class, 'refundShow'])
+    ->middleware('role:super-user')->name('backend.team.withdrawal.refund.show');
+  Route::post('events/{event}/team-withdrawal-refunds/{order}', [\App\Http\Controllers\Backend\AdminTeamWithdrawalController::class, 'refundRecover'])
+    ->middleware('role:super-user')->name('backend.team.withdrawal.refund.recover');
 
   Route::get(
     'team/available-players',

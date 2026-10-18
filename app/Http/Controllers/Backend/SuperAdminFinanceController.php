@@ -492,6 +492,8 @@ class SuperAdminFinanceController extends Controller
             'initiated_by' => 'super_admin',
         ];
 
+        $order = $refundService->claimLegacyAdminTeamRefund($order, $event, $request->user(), $statusOverrides);
+
         if ($method === 'wallet') {
             $user = $order->user;
 
@@ -530,7 +532,6 @@ class SuperAdminFinanceController extends Controller
         }
 
         // ── Bank / PayFast path ───────────────────────────────────────────
-        $order->update(array_merge($statusOverrides, ['refund_status' => 'pending']));
 
         $pfPaymentId = $order->payfast_pf_payment_id ?? null;
 

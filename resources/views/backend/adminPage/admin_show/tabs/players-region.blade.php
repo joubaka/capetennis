@@ -9,7 +9,11 @@
 @endunless
 </p></div>
   @unless($rosterOnly)
-  <div class="d-flex flex-wrap gap-2"><div class="dropdown"><button type="button" class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">Send Emails</button><div class="dropdown-menu dropdown-menu-end">
+  <div class="d-flex flex-wrap gap-2">
+    @if(app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(auth()->user(), $event))
+      <a class="btn btn-outline-primary" href="{{ route('backend.team-selection.region-profile-matches.index', [$event, $region]) }}">Check profiles for whole region</a>
+    @endif
+    <div class="dropdown"><button type="button" class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">Send Emails</button><div class="dropdown-menu dropdown-menu-end">
     <button type="button" class="dropdown-item emailRegionBtn" data-regionid="{{ $region->id }}" data-regionname="{{ $region->region_name }}">Players in this region</button>
     <button type="button" class="dropdown-item emailUnpaidRegionBtn" data-regionid="{{ $region->id }}" data-regionname="{{ $region->region_name }}">Unpaid players in this region</button>
   </div></div>

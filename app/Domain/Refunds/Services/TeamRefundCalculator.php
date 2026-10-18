@@ -7,10 +7,10 @@ use App\Models\TeamPaymentOrder;
 
 final class TeamRefundCalculator
 {
-    public function calculate(TeamPaymentOrder $order): array
+    public function calculate(TeamPaymentOrder $order, bool $waiveFee = false): array
     {
         $gross = round((float) $order->total_amount, 2);
-        $fee = SiteSetting::calculateWithdrawalFee($gross);
+        $fee = $waiveFee ? 0.0 : SiteSetting::calculateWithdrawalFee($gross);
         $net = max(0, round($gross - $fee, 2));
 
         $recordedPayfastGross = round((float) $order->payfast_amount_due, 2);

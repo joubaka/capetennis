@@ -14,6 +14,169 @@ use Illuminate\Validation\ValidationException;
 
 class RefundExecutionService
 {
+    public function requestAdminTeamWithdrawalRefund(\App\Models\TeamPaymentOrder $order, User $actor, string $destination, string $feeMode, string $fingerprint): Model
+    {
+        abort_unless($actor->hasRole('super-user'), 403);
+        return DB::transaction(function () use ($order, $actor, $destination, $feeMode, $fingerprint) {
+            $locked = \App\Models\TeamPaymentOrder::with('event')->lockForUpdate()->findOrFail($order->id);
+            abort_unless(in_array($destination, ['wallet', 'payfast'], true) && in_array($feeMode, ['current', 'full'], true), 422);
+            if (!$locked->withdrawn_at || $locked->withdrawn_at->gt($locked->event->withdrawalCloseAt()) || !$locked->pay_status
+                || $locked->hasRefund() || $locked->refund_waived_at || $locked->refunded_at
+                || \App\Models\TrialParticipation::where('order_id', $locked->id)->exists()
+                || DB::table('trial_provider_refund_attempts')->where('order_id', $locked->id)->exists()
+                || \App\Models\TeamProviderRefundAttempt::where('order_id', $locked->id)->exists()) {
+                throw ValidationException::withMessages(['refund' => 'An eligible withdrawn order without an existing refund is required.']);
+            }
+            $amounts = app(TeamRefundCalculator::class)->calculate($locked, $feeMode === 'full');
+            app(\App\Domain\Payments\Services\TeamPaymentService::class)->assertAdminWithdrawalSettlement($locked);
+            abort_unless($amounts['net'] > 0, 422);
+            $payer = User::lockForUpdate()->findOrFail($locked->user_id);
+            $state = ['refund_method' => $destination, 'refund_gross' => $amounts['gross'], 'refund_fee' => $amounts['fee'], 'refund_net' => $amounts['net']];
+            if ($destination === 'wallet') {
+                $wallet = $payer->wallet ?? $payer->wallet()->create();
+                return $this->executeWalletRefund($locked, $wallet, $amounts['net'], 'admin_team_withdrawal_refund', $locked->id,
+                    ['actor_id' => $actor->id, 'event_id' => $locked->event_id, 'team_id' => $locked->team_id, 'fee_mode' => $feeMode], $state);
+            }
+            app(\App\Domain\Payments\Services\TeamPaymentService::class)->assertVerifiedTeamPayfastSettlement($locked);
+            abort_unless($amounts['payfastNet'] > 0, 422, 'No PayFast-funded amount remains to return to its original source.');
+            FinanceMutationScope::run('refund_state_write', fn () => $locked->forceFill($state + ['refund_status' => 'pending'])->save());
+            \App\Models\TeamProviderRefundAttempt::create([
+                'order_id' => $locked->id, 'requested_by' => $actor->id, 'payer_id' => $locked->user_id,
+                'beneficiary_player_id' => $locked->effective_player_id, 'pf_payment_id' => $locked->payfast_pf_payment_id,
+                'fee_mode' => $feeMode, 'review_fingerprint' => $fingerprint, 'gross' => $amounts['gross'], 'fee' => $amounts['fee'],
+                'authorized_withdrawn_at' => $locked->withdrawn_at, 'authorized_deadline' => $locked->event->withdrawalCloseAt(),
+                'net' => $amounts['net'], 'amount' => $amounts['payfastNet'], 'wallet_amount' => $amounts['walletNet'], 'status' => 'ready',
+            ]);
+            return $locked;
+        });
+    }
+
+    public function executeAdminTeamPayfastRefund(\App\Models\TeamPaymentOrder $order, User $actor): Model
+    {
+        if (DB::transactionLevel() !== 0) throw new \LogicException('Provider refunds require a committed withdrawal outside an enclosing transaction.');
+        $dispatch = false;
+        $attempt = DB::transaction(function () use ($order, $actor, &$dispatch) {
+            $locked = \App\Models\TeamPaymentOrder::with('event')->lockForUpdate()->findOrFail($order->id);
+            abort_unless($actor->hasRole('super-user'), 403);
+            $attempt = \App\Models\TeamProviderRefundAttempt::where('order_id', $locked->id)->lockForUpdate()->firstOrFail();
+            $this->assertAdminTeamProviderClaim($locked, $attempt);
+            if ($locked->refund_status === 'completed') return $attempt;
+            if ($attempt->status === 'ready') {
+                $attempt->update(['status' => 'dispatching']);
+                $dispatch = true;
+            } elseif ($attempt->status !== 'confirmed') {
+                throw ValidationException::withMessages(['refund' => 'The PayFast outcome requires reconciliation. No second refund or wallet fallback will be sent.']);
+            }
+            return $attempt;
+        });
+        if ($dispatch) {
+            $unavailable = false;
+            try {
+                $result = app(\App\Services\Payfast::class)->refundToOriginalSource($attempt->pf_payment_id, (float) $attempt->amount, 'Team withdrawal refund');
+                $payload = $result['data'] ?? [];
+                $unavailable = ($result['dispatched'] ?? null) === false;
+                $confirmed = ($result['success'] ?? false) === true && ($payload['status'] ?? null) === 'success'
+                    && (int) ($payload['code'] ?? 0) === 200 && ($payload['data']['response'] ?? null) === true;
+            } catch (\Throwable $exception) {
+                $confirmed = false;
+            }
+            \App\Models\TeamProviderRefundAttempt::whereKey($attempt->id)->where('status', 'dispatching')
+                ->update(['status' => $confirmed ? 'confirmed' : ($unavailable ? 'unavailable' : 'uncertain'), 'confirmed_at' => $confirmed ? now() : null, 'updated_at' => now()]);
+            if (!$confirmed) {
+                throw ValidationException::withMessages(['refund' => 'PayFast did not confirm a refund to the original payment source. The withdrawal is complete; review the pending refund and PayFast history before further action.']);
+            }
+        }
+        return DB::transaction(function () use ($order, $actor) {
+            $locked = \App\Models\TeamPaymentOrder::with('event')->lockForUpdate()->findOrFail($order->id);
+            $attempt = \App\Models\TeamProviderRefundAttempt::where('order_id', $locked->id)->lockForUpdate()->firstOrFail();
+            $this->assertAdminTeamProviderClaim($locked, $attempt);
+            abort_unless($attempt->status === 'confirmed', 422);
+            if ($locked->refund_status === 'completed') return $locked;
+            $payer = User::lockForUpdate()->findOrFail($attempt->payer_id);
+            $wallet = (float) $attempt->wallet_amount > 0 ? ($payer->wallet ?? $payer->wallet()->create()) : null;
+            $completed = FinanceMutationScope::run('admin_team_provider_refund_finalize', fn () => $this->executeSplitRefund($locked, $wallet, (float) $attempt->wallet_amount, 'admin_team_withdrawal_refund', $locked->id,
+                ['actor_id' => $actor->id, 'provider_attempt_id' => $attempt->id], [
+                    'refund_method' => 'payfast', 'refund_gross' => $attempt->gross, 'refund_fee' => $attempt->fee, 'refund_net' => $attempt->net,
+                ]));
+            activity('refund')->performedOn($completed)->causedBy($actor)->withProperties([
+                'attempt_id' => $attempt->id, 'payer_id' => $attempt->payer_id, 'provider_amount' => $attempt->amount,
+                'wallet_amount' => $attempt->wallet_amount, 'fee_mode' => $attempt->fee_mode,
+            ])->log('Team withdrawal original source refund confirmed');
+            return $completed;
+        });
+    }
+
+    public function recoverAdminTeamPayfastRefund(\App\Models\TeamPaymentOrder $order, User $actor, ?array $evidence = null): Model
+    {
+        if (DB::transactionLevel() !== 0) throw new \LogicException('Refund recovery requires a committed request.');
+        DB::transaction(function () use ($order, $actor, $evidence): void {
+            abort_unless($actor->hasRole('super-user'), 403);
+            $locked = \App\Models\TeamPaymentOrder::with('event')->lockForUpdate()->findOrFail($order->id);
+            $attempt = \App\Models\TeamProviderRefundAttempt::where('order_id', $locked->id)->lockForUpdate()->firstOrFail();
+            $this->assertAdminTeamProviderClaim($locked, $attempt);
+            if ($attempt->status === 'confirmed') return;
+            abort_unless($evidence !== null && in_array($attempt->status, ['dispatching', 'uncertain', 'unavailable'], true), 422, 'Exact independent PayFast confirmation is required.');
+            $valid = validator($evidence, [
+                'pf_payment_id' => ['required', 'string', 'max:120'], 'amount' => ['required', 'decimal:0,2', 'min:0.01'],
+                'reference' => ['required', 'regex:/^[A-Za-z0-9][A-Za-z0-9._:\/\-]{2,119}$/'],
+                'reason' => ['required', 'string', 'min:10', 'max:1000'], 'confirmed_at' => ['required', 'date', 'before_or_equal:now'],
+                'externally_confirmed' => ['accepted'],
+            ])->validate();
+            abort_unless($valid['pf_payment_id'] === $attempt->pf_payment_id && round((float) $valid['amount'], 2) === (float) $attempt->amount, 422);
+            $attempt->update(['status' => 'confirmed', 'provider_reference' => $valid['reference'], 'confirmed_at' => $valid['confirmed_at'], 'confirmed_by' => $actor->id]);
+            activity('refund')->performedOn($attempt)->causedBy($actor)->withProperties($valid)
+                ->log('Team withdrawal PayFast refund independently reconciled');
+        });
+        return $this->executeAdminTeamPayfastRefund($order, $actor);
+    }
+
+    private function assertAdminTeamProviderClaim(\App\Models\TeamPaymentOrder $order, \App\Models\TeamProviderRefundAttempt $attempt): void
+    {
+        $cents = fn ($value) => (int) round((float) $value * 100);
+        app(\App\Domain\Payments\Services\TeamPaymentService::class)->assertVerifiedTeamPayfastSettlement($order);
+        $receipt = \App\Models\Transaction::where('custom_str5', 'TeamOrder')->where('custom_int5', $order->id)->firstOrFail();
+        if (!$order->withdrawn_at || $order->withdrawn_at->format('Y-m-d H:i:s') !== $attempt->authorized_withdrawn_at?->format('Y-m-d H:i:s')
+            || $attempt->authorized_withdrawn_at->gt($attempt->authorized_deadline) || $receipt->is_test
+            || (int) $attempt->order_id !== (int) $order->id || (int) $attempt->payer_id !== (int) $order->user_id
+            || (int) $attempt->beneficiary_player_id !== $order->effective_player_id || $attempt->pf_payment_id !== $order->payfast_pf_payment_id
+            || $order->refund_method !== 'payfast' || !in_array($order->refund_status, ['pending', 'completed'], true)
+            || $order->refund_waived_at || $cents($attempt->gross) !== $cents($order->total_amount)
+            || $cents($attempt->fee) < 0 || $cents($attempt->net) <= 0 || $cents($attempt->net) > $cents($attempt->gross)
+            || $cents($attempt->gross) - $cents($attempt->fee) !== $cents($attempt->net)
+            || $cents($attempt->amount) + $cents($attempt->wallet_amount) !== $cents($attempt->net)
+            || $cents($attempt->amount) <= 0 || $cents($attempt->amount) > $cents($order->payfast_amount_due)
+            || $cents($attempt->wallet_amount) < 0 || $cents($attempt->wallet_amount) > $cents($order->wallet_reserved)
+            || $cents($order->refund_gross) !== $cents($attempt->gross) || $cents($order->refund_fee) !== $cents($attempt->fee)
+            || $cents($order->refund_net) !== $cents($attempt->net)
+            || \App\Models\TrialParticipation::where('order_id', $order->id)->exists()) {
+            throw ValidationException::withMessages(['refund' => 'The pending provider refund no longer matches its original settlement. Reconciliation is required.']);
+        }
+    }
+
+    public function claimLegacyAdminTeamRefund(\App\Models\TeamPaymentOrder $order, \App\Models\Event $event, User $actor, array $state): \App\Models\TeamPaymentOrder
+    {
+        abort_unless($actor->hasRole('super-user'), 403);
+        return DB::transaction(function () use ($order, $event, $state) {
+            $locked = \App\Models\TeamPaymentOrder::lockForUpdate()->findOrFail($order->id);
+            abort_unless((int) $locked->event_id === (int) $event->id, 404);
+            $this->assertNoTeamProviderClaim($locked);
+            if ($locked->refund_status === 'completed' || round((float) $locked->total_amount, 2) !== (float) $state['refund_gross']) {
+                throw ValidationException::withMessages(['refund' => 'The payment or refund changed. Refresh before continuing.']);
+            }
+            FinanceMutationScope::run('refund_state_write', fn () => $locked->forceFill($state + ['refund_status' => 'pending'])->save());
+            return $locked;
+        });
+    }
+
+    private function assertNoTeamProviderClaim(Model $entity): void
+    {
+        if ($entity instanceof \App\Models\TeamPaymentOrder
+            && !FinanceMutationScope::allows('admin_team_provider_refund_finalize')
+            && \App\Models\TeamProviderRefundAttempt::where('order_id', $entity->id)->exists()) {
+            throw ValidationException::withMessages(['refund' => 'This order has an original-source PayFast refund claim. Use its pending refund review; another refund or wallet fallback is blocked.']);
+        }
+    }
+
     public function claimAdminRegistrationBankRefund(\App\Models\CategoryEventRegistration $entry, \App\Models\Event $event, User $actor, array $amounts): \App\Models\CategoryEventRegistration
     {
         abort_unless($actor->hasRole('super-user'), 403);
@@ -112,6 +275,8 @@ class RefundExecutionService
             ) {
                 /** @var Model $locked */
                 $locked = $entityClass::query()->lockForUpdate()->findOrFail($refundEntity->getKey());
+
+                $this->assertNoTeamProviderClaim($locked);
 
                 if ($locked instanceof \App\Models\TeamPaymentOrder
                     && ($locked->effective_player_id !== $refundEntity->effective_player_id
@@ -310,6 +475,7 @@ class RefundExecutionService
             return DB::transaction(function () use ($refundEntity, $entityClass, $statusOverrides, &$transitioned) {
                 /** @var Model $locked */
                 $locked = $entityClass::query()->lockForUpdate()->findOrFail($refundEntity->getKey());
+                $this->assertNoTeamProviderClaim($locked);
 
                 if (($locked->refund_status ?? null) === 'completed') {
                     return $locked;
@@ -460,6 +626,7 @@ class RefundExecutionService
             ) {
                 /** @var Model $locked */
                 $locked = $entityClass::query()->lockForUpdate()->findOrFail($refundEntity->getKey());
+                $this->assertNoTeamProviderClaim($locked);
 
                 if (($locked->refund_status ?? null) === 'completed') {
                     $sameRefund = ($locked->refund_method ?? null) === 'payfast'
@@ -525,6 +692,7 @@ class RefundExecutionService
             return DB::transaction(function () use ($entityClass, $refundEntity, $waivedBy, $reason) {
                 /** @var Model $locked */
                 $locked = $entityClass::query()->lockForUpdate()->findOrFail($refundEntity->getKey());
+                $this->assertNoTeamProviderClaim($locked);
 
                 if (($locked->refund_status ?? null) !== 'pending') {
                     throw ValidationException::withMessages([
@@ -560,6 +728,7 @@ class RefundExecutionService
         return FinanceMutationScope::run('refund_state_write', function () use ($entityClass, $refundEntity, $wallet, $walletAmount, $sourceType, $sourceId, $meta, $statusOverrides) {
             return DB::transaction(function () use ($entityClass, $refundEntity, $wallet, $walletAmount, $sourceType, $sourceId, $meta, $statusOverrides) {
                 $locked = $entityClass::query()->lockForUpdate()->findOrFail($refundEntity->getKey());
+                $this->assertNoTeamProviderClaim($locked);
                 if (($locked->refund_status ?? null) === 'completed') {
                     return $locked;
                 }

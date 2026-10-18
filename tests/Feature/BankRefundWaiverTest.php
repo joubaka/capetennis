@@ -204,7 +204,7 @@ class BankRefundWaiverTest extends TestCase
             ->get(route('admin.refunds.bank.index'));
 
         $response->assertOk()
-            ->assertSee('No pending refunds require action')
+            ->assertSee('No pending bank refunds require action')
             ->assertSee('Waived Refunds')
             ->assertSee('Approved administrative waiver.');
     }

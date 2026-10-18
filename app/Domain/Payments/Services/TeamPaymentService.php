@@ -15,6 +15,29 @@ use Illuminate\Validation\ValidationException;
 
 class TeamPaymentService
 {
+    /** Establish exact real settlement before returning money to the original payer. */
+    public function assertAdminWithdrawalSettlement(TeamPaymentOrder $order): void
+    {
+        $ensure = function (bool $valid, string $message): void {
+            if (!$valid) throw ValidationException::withMessages(['withdrawal' => $message]);
+        };
+        $ensure($order->user && $order->pay_status && $order->collection_status !== 'paid_privately' && !$this->hasUnresolvedPayfastHandoff($order), 'A settled payment to the original payer is required.');
+        if ($order->payfast_paid) {
+            $this->assertVerifiedTeamPayfastSettlement($order);
+            $receipt = \App\Models\Transaction::where('custom_str5', 'TeamOrder')->where('custom_int5', $order->id)->firstOrFail();
+            $status = $receipt->getAttributes()['payment_status'] ?? null;
+            $ensure(!$receipt->is_test && ($status === null || $status === 'COMPLETE'), 'A real, settled PayFast receipt is required.');
+            return;
+        }
+        $debits = \App\Models\WalletTransaction::where('source_type', 'team_registration_wallet_payment')->where('source_id', $order->id)->lockForUpdate()->get();
+        $ensure($order->wallet_debited && (float) $order->total_amount > 0 && (float) $order->payfast_amount_due === 0.0
+            && blank($order->payfast_pf_payment_id) && blank($order->payfast_raw_data)
+            && !\App\Models\Transaction::where('custom_str5', 'TeamOrder')->where('custom_int5', $order->id)->exists()
+            && round((float) $order->wallet_reserved, 2) === round((float) $order->total_amount, 2)
+            && $debits->count() === 1 && $debits->first()->type === 'debit'
+            && round((float) $debits->first()->amount, 2) === round((float) $order->total_amount, 2)
+            && $order->user->wallet()->whereKey($debits->first()->wallet_id)->exists(), 'Exact original payment settlement evidence is required.');
+    }
     /** Read-only verified own coverage; never transfers a paid beneficiary. */
     public function assertOwnCompetitionCoverage(Event $event, Team $team, Player $player): void
     {

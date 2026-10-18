@@ -10,9 +10,10 @@ use Illuminate\Validation\ValidationException;
 
 class AdminTeamWithdrawalService
 {
-    public function review(Event $event, Team $team, TeamPlayer $slot, User $actor): array
+    public function review(Event $event, Team $team, TeamPlayer $slot, User $actor, string $destination = 'wallet', string $feeMode = 'current'): array
     {
         abort_unless($actor->hasRole('super-user'), 403);
+        $this->ensure(in_array($destination, ['wallet', 'payfast'], true) && in_array($feeMode, ['current', 'full'], true), 'Choose a valid refund destination and fee policy.');
         abort_unless((int) $slot->team_id === (int) $team->id && $team->category()->where('event_id', $event->id)->exists(), 404);
         $this->ensure((int) $slot->player_id > 0 && (int) $slot->pay_status === 1, 'Only an active paid player with a linked profile can use this withdrawal.');
         $imported = \App\Models\NoProfileTeamPlayer::where('team_id', $team->id)->where('rank', $slot->rank)->get();
@@ -38,21 +39,28 @@ class AdminTeamWithdrawalService
             'This order already has refund history. Review the existing refund.');
         $this->ensure(!$event->isInterprovincialTrials() && !\App\Models\TrialParticipation::where('order_id', $order->id)->exists(), 'Use the Trials participation workflow for this entry.');
         $this->ensure(!DB::table('trial_provider_refund_attempts')->where('order_id', $order->id)->exists(), 'A provider refund attempt requires reconciliation before withdrawal.');
+        $this->ensure(!\App\Models\TeamProviderRefundAttempt::where('order_id', $order->id)->exists(), 'A provider refund claim already exists. Review the pending refund.');
         $this->assertSettlement($order);
         $invitations = TeamSelectionInvitation::where('event_id', $event->id)->where('team_id', $team->id)->where('player_id', $slot->player_id)
             ->whereIn('status', [TeamSelectionInvitation::INVITED, TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, TeamSelectionInvitation::PAID_CONFIRMED])->get();
         $this->ensure($invitations->count() <= 1 && ($invitations->isEmpty() || ((int) $invitations->first()->order_id === (int) $order->id
             && (int) $invitations->first()->roster_rank === (int) $slot->rank)), 'The selection invitation and paid order no longer agree.');
-        $amounts = app(TeamRefundCalculator::class)->calculate($order);
+        $amounts = app(TeamRefundCalculator::class)->calculate($order, $feeMode === 'full');
+        $currentFee = app(TeamRefundCalculator::class)->calculate($order)['fee'];
         $refundAvailable = now()->lte($event->withdrawalCloseAt());
         $this->ensure(!$refundAvailable || $amounts['net'] > 0, 'No refundable amount is available under the current withdrawal policy.');
-        return compact('order', 'amounts', 'refundAvailable', 'imported') + ['fingerprint' => $this->fingerprint($event, $slot, $order, $amounts, $refundAvailable)];
+        $this->ensure(!$refundAvailable || $destination !== 'payfast' || ($order->payfast_paid && $amounts['payfastNet'] > 0), 'This payment has no refundable PayFast component. Choose the original payer wallet.');
+        return compact('order', 'amounts', 'refundAvailable', 'imported', 'destination', 'feeMode', 'currentFee')
+            + ['fingerprint' => $this->fingerprint($event, $slot, $order, $amounts, $refundAvailable, $destination, $feeMode, $currentFee)];
     }
 
-    public function confirm(Event $event, Team $team, TeamPlayer $slot, User $actor, array $data): void
+    public function confirm(Event $event, Team $team, TeamPlayer $slot, User $actor, array $data): TeamPaymentOrder
     {
         abort_unless($actor->hasRole('super-user'), 403);
-        DB::transaction(function () use ($event, $team, $slot, $actor, $data): void {
+        $destination = $data['destination'] ?? 'wallet';
+        $feeMode = $data['fee_mode'] ?? 'current';
+        if ($destination === 'payfast' && DB::transactionLevel() !== 0) throw new \LogicException('Provider withdrawal requires a committed request outside an enclosing transaction.');
+        $result = DB::transaction(function () use ($event, $team, $slot, $actor, $data, $destination, $feeMode): TeamPaymentOrder {
             $event = app(TeamDrawAdaptationService::class)->lockEvent($event->id);
             $team = Team::lockForUpdate()->findOrFail($team->id);
             $slot = TeamPlayer::withoutGlobalScopes()->lockForUpdate()->findOrFail($slot->id);
@@ -67,8 +75,9 @@ class AdminTeamWithdrawalService
                 ->where('description', 'super user confirmed team withdrawal')->latest('id')->first();
             if ($audit && (int) $audit->causer_id === (int) $actor->id && data_get($audit->properties, 'fingerprint') === $data['fingerprint']
                 && (int) data_get($audit->properties, 'slot_id') === (int) $slot->id && $order->withdrawn_at
-                && ($order->refund_status === 'completed' || data_get($audit->properties, 'refund_available') === false)) return;
-            $review = $this->review($event, $team, $slot, $actor);
+                && data_get($audit->properties, 'destination', 'wallet') === $destination && data_get($audit->properties, 'fee_mode', 'current') === $feeMode
+                && (in_array($order->refund_status, ['pending', 'completed'], true) || data_get($audit->properties, 'refund_available') === false)) return $order;
+            $review = $this->review($event, $team, $slot, $actor, $destination, $feeMode);
             $this->ensure((int) $review['order']->id === (int) $order->id && hash_equals($review['fingerprint'], $data['fingerprint']), 'This player or refund calculation changed. Open a fresh review.');
             $this->ensure(\App\Models\SiteSetting::get('withdrawal_allowed', '1') === '1', 'Withdrawals are currently disabled.');
             $this->ensure(!\App\Models\CategoryEventRegistration::withTrashed()->whereHas('categoryEvent', fn ($q) => $q->where('event_id', $event->id))
@@ -78,10 +87,7 @@ class AdminTeamWithdrawalService
             $payments = app(TeamPaymentService::class);
             $withdrawn = $payments->recordWithdrawal($order, $actor);
             if ($review['refundAvailable']) {
-                $payer = User::lockForUpdate()->findOrFail($order->user_id);
-                $wallet = $payer->wallet ?? $payer->wallet()->create();
-                app(RefundExecutionService::class)->executeWithdrawnTeamWalletRefund($withdrawn, $wallet, $review['amounts']['net'],
-                    'admin_team_withdrawal_refund', $order->id, ['event_id' => $event->id, 'team_id' => $team->id, 'player_id' => $playerId, 'actor_id' => $actor->id]);
+                app(RefundExecutionService::class)->requestAdminTeamWithdrawalRefund($withdrawn, $actor, $destination, $feeMode, $review['fingerprint']);
             }
             foreach ($fixtures as [$fixturePlayer, $changes]) $fixturePlayer->update($changes);
             $before = $slot->getAttributes();
@@ -91,39 +97,36 @@ class AdminTeamWithdrawalService
             activity('team-withdrawal')->performedOn($order)->causedBy($actor)->withProperties([
                 'event_id' => $event->id, 'team_id' => $team->id, 'player_id' => $playerId, 'slot_id' => $slot->id, 'original_slot' => $before,
                 'fingerprint' => $review['fingerprint'], 'refund_available' => $review['refundAvailable'], 'amounts' => $review['amounts'],
+                'destination' => $destination, 'fee_mode' => $feeMode, 'payer_id' => $order->user_id,
                 'reason' => $data['reason'], 'automatic_replacement' => false, 'original_imported_slots' => $review['imported']->map->getAttributes()->all(),
             ])->log('super user confirmed team withdrawal');
+            return $order->fresh();
         });
+        if ($result->refund_status === 'pending' && $result->refund_method === 'payfast') {
+            try {
+                return app(RefundExecutionService::class)->executeAdminTeamPayfastRefund($result, $actor);
+            } catch (ValidationException $exception) {
+                // The withdrawal and claim are committed. The pending review provides safe recovery.
+                return $result->fresh();
+            } catch (\Throwable $exception) {
+                \Illuminate\Support\Facades\Log::error('Team withdrawal refund needs local recovery', ['order_id' => $result->id, 'exception_type' => $exception::class]);
+                return $result->fresh();
+            }
+        }
+        return $result;
     }
 
     private function assertSettlement(TeamPaymentOrder $order): void
     {
-        $payments = app(TeamPaymentService::class);
-        $this->ensure($order->user && $order->collection_status !== 'paid_privately' && !$payments->hasUnresolvedPayfastHandoff($order), 'A settled payment to the original payer is required.');
-        if ($order->payfast_paid) {
-            $payments->assertVerifiedTeamPayfastSettlement($order);
-            $receipt = Transaction::where('custom_str5', 'TeamOrder')->where('custom_int5', $order->id)->firstOrFail();
-            // The canonical receipt writer omits payment_status, including on legacy schemas.
-            // Its verified finalization provenance is established by the exact order/receipt checks above.
-            $status = $receipt->getAttributes()['payment_status'] ?? null;
-            $this->ensure(!$receipt->is_test && ($status === null || $status === 'COMPLETE'), 'A real, settled PayFast receipt is required.');
-            return;
-        }
-        $debits = WalletTransaction::where('source_type', 'team_registration_wallet_payment')->where('source_id', $order->id)->get();
-        $this->ensure($order->wallet_debited && (float) $order->total_amount > 0 && (float) $order->payfast_amount_due === 0.0
-            && blank($order->payfast_pf_payment_id) && blank($order->payfast_raw_data)
-            && !Transaction::where('custom_str5', 'TeamOrder')->where('custom_int5', $order->id)->exists()
-            && round((float) $order->wallet_reserved, 2) === round((float) $order->total_amount, 2)
-            && $debits->count() === 1 && $debits->first()->type === 'debit'
-            && round((float) $debits->first()->amount, 2) === round((float) $order->total_amount, 2)
-            && $order->user->wallet()->whereKey($debits->first()->wallet_id)->exists(), 'Exact original payment settlement evidence is required.');
+        app(TeamPaymentService::class)->assertAdminWithdrawalSettlement($order);
     }
 
-    private function fingerprint(Event $event, TeamPlayer $slot, TeamPaymentOrder $order, array $amounts, bool $available): string
+    private function fingerprint(Event $event, TeamPlayer $slot, TeamPaymentOrder $order, array $amounts, bool $available, string $destination, string $feeMode, float $currentFee): string
     {
-        return hash('sha256', implode('|', [$event->id, $slot->id, $slot->rank, $slot->player_id, $order->id, $order->user_id,
-            TeamPaymentService::cashRefundFingerprint($order, $amounts), $available ? 'wallet' : 'no-refund', $event->withdrawalCloseAt()->toIso8601String(),
-            \App\Models\NoProfileTeamPlayer::where('team_id', $slot->team_id)->where('rank', $slot->rank)->value('id')]));
+        return hash_hmac('sha256', implode('|', [$event->id, $slot->id, $slot->rank, $slot->player_id, $order->id, $order->user_id,
+            TeamPaymentService::cashRefundFingerprint($order, $amounts), $available ? $destination : 'no-refund', $feeMode, $currentFee,
+            \App\Models\SiteSetting::get('withdrawal_allowed', '1'), $event->withdrawalCloseAt()->toIso8601String(),
+            \App\Models\NoProfileTeamPlayer::where('team_id', $slot->team_id)->where('rank', $slot->rank)->value('id')]), (string) config('app.key'));
     }
 
     private function fixtureChanges(Event $event, Team $team, int $playerId, array $importedIds): array

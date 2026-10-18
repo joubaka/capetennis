@@ -22,6 +22,10 @@ class BankRefundController extends Controller
    */
   public function index()
   {
+    $pendingOriginalSourceRefunds = TeamPaymentOrder::with(['user', 'event'])
+      ->where('refund_method', 'payfast')->where('refund_status', 'pending')
+      ->whereIn('id', \App\Models\TeamProviderRefundAttempt::query()->select('order_id'))
+      ->orderBy('updated_at')->paginate(25, ['*'], 'original_source_page');
     $refunds = CategoryEventRegistration::with([
       'categoryEvent.event',
       'players',
@@ -83,7 +87,8 @@ class BankRefundController extends Controller
       'waivedRefunds',
       'pendingTeamRefunds',
       'completedTeamRefunds',
-      'waivedTeamRefunds'
+      'waivedTeamRefunds',
+      'pendingOriginalSourceRefunds'
     ));
   }
 

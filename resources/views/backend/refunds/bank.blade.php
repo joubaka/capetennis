@@ -34,10 +34,12 @@
     </div>
   @endif
 
-  <h4 class="mb-2">Pending refunds</h4><p class="small text-muted">Registration counts cover all pages. Team lists show up to 100 records per status.</p>
+  @include('backend.refunds._pending-original-source')
+
+  <h4 class="mb-2">Pending bank refunds</h4><p class="small text-muted">Registration counts cover all pages. Team lists show up to 100 records per status.</p>
   @if((empty($refunds) || $refunds->isEmpty()) && (empty($pendingTeamRefunds) || $pendingTeamRefunds->isEmpty()))
     <div class="alert alert-success">
-      <i class="ti ti-circle-check me-1"></i>No pending refunds require action.
+      <i class="ti ti-circle-check me-1"></i>No pending bank refunds require action.
     </div>
   @else
 

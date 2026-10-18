@@ -447,6 +447,21 @@ class Payfast
     return $this->refund($pf_payment_id, $amount, $reason, $extraBody);
   }
 
+  /** Return money only to its original payment source; never substitute a bank payout. */
+  public function refundToOriginalSource(string $pfPaymentId, float $amount, string $reason): array
+  {
+    $cents = (int) round($amount * 100);
+    $query = $this->refundQuery($pfPaymentId);
+    $data = $this->refundQueryData($query['data'] ?? []);
+    $available = (int) ($data['amount_available_for_refund'] ?? 0);
+    $route = $cents === $available ? 'refund_full' : 'refund_partial';
+    if (($query['success'] ?? false) !== true || strtoupper((string) ($data['status'] ?? '')) !== 'REFUNDABLE'
+      || $cents <= 0 || $cents > $available || strtoupper((string) ($data[$route]['method'] ?? '')) !== 'PAYMENT_SOURCE') {
+      return $this->refundFailure('PayFast does not currently support this exact refund to the original payment source. No refund was submitted.') + ['dispatched' => false];
+    }
+    return $this->refund($pfPaymentId, $amount, $reason);
+  }
+
   /** @param array<string, mixed> $data */
   private function refundQueryData(array $data): array
   {

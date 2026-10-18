@@ -1350,12 +1350,10 @@ class Brackets
 
   public static function get_winner_name($fixture)
   {
-    if (count($fixture->fixtureResults) > 0) {
-      $results = $fixture->fixtureResults;
-      return $results[0]->w_registration->players[0]->name . ' ' . $results[0]->w_registration->players[0]->surname;
-    } else {
-      return '';
-    }
+    $result = $fixture->fixtureResults->first();
+    $player = $result?->w_registration?->players->first();
+
+    return $player ? trim($player->name . ' ' . $player->surname) : '';
   }
 
   public static function run_update($fixture, $loser_registration, $winner_registration)
