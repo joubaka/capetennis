@@ -57,11 +57,8 @@ class TrialEntriesManualPaymentTest extends TestCase
 
     public function test_entries_screen_previews_exact_checkout_then_settles_existing_entry_once(): void
     {
-        $page = $this->get(route('admin.events.entries.new', $this->event))->assertOk()
+        $this->get(route('admin.events.entries.new', $this->event))->assertOk()
             ->assertSee('Cash/EFT receipt or bank reference')->assertSee('Record payment against the existing checkout');
-        if (getenv('TRIAL_ENTRIES_HTML')) {
-            file_put_contents(getenv('TRIAL_ENTRIES_HTML'), $page->getContent());
-        }
         $this->postJson($this->endpoint(), $this->payload(false))->assertStatus(409)
             ->assertJsonPath('existing_checkout.order_id', $this->order->id)
             ->assertJsonPath('existing_checkout.amount', '123.45');
