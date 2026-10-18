@@ -529,6 +529,7 @@ Route::prefix('backend')->middleware('auth')->group(function () {
   Route::get('email/issues', [\App\Http\Controllers\Backend\EventMailLogController::class, 'issues'])->name('backend.email-issues');
   Route::post('email/issues/clear', [\App\Http\Controllers\Backend\EventMailLogController::class, 'clearIssues'])->name('backend.email-issues.clear');
   Route::prefix('event/{event}/email-log')->name('backend.event-mail-log.')->group(function () {
+    Route::post('/clear', [\App\Http\Controllers\Backend\EventMailLogController::class, 'clear'])->name('clear');
     Route::get('/{log}/retry-preview', [\App\Http\Controllers\Backend\EventMailLogController::class, 'retryPreview'])->name('retry-preview');
     Route::post('/{log}/retry', [\App\Http\Controllers\Backend\EventMailLogController::class, 'retry'])->name('retry');
     Route::get('/', [\App\Http\Controllers\Backend\EventMailLogController::class, 'index'])->name('index');

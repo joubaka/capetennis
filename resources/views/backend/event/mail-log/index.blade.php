@@ -252,6 +252,21 @@
 @include('backend.event.mail-log.feedback')
 <div class="d-flex flex-wrap justify-content-between gap-2 mb-3"><div><h1 class="h3 mb-1">Email log</h1><p class="mb-0 text-body">{{ $event->name }}</p></div><a class="btn btn-outline-primary align-self-start" href="{{ route('backend.email-issues') }}">My email issues</a></div>
 <p class="mail-secondary mb-3">Sent means a completed send. Neither a completed send nor server acceptance proves inbox delivery or reading. Records without a proven event association are excluded.</p>
+@role('super-user')
+@if($clearCutoff)
+<details class="border rounded p-3 mb-3">
+<summary style="min-height:44px">Clear this event’s email log</summary>
+<p class="mt-2">Clear completed, failed and skipped records, including held-for-review records, across every page of this event’s log. Current filters do not limit this action. Waiting, sending and uncertain attempts remain visible.</p>
+<p>This hides records from the list and retains delivery evidence. It does not cancel queued emails or review drafts. Use “Show cleared records” to see the saved history.</p>
+<p>New or recently updated attempts remain visible. Reload the log to review them before clearing again.</p>
+<form method="post" action="{{ route('backend.event-mail-log.clear',$event) }}">@csrf
+<input type="hidden" name="snapshot" value="{{ $clearSnapshot }}">
+<label class="d-block mb-2"><input type="checkbox" name="confirmed" value="1" required> I want to clear eligible records across all pages for {{ $event->name }}.</label>
+<button class="btn btn-outline-danger" style="min-height:44px">Clear event email log</button>
+</form>
+</details>
+@endif
+@endrole
 @php
     $facetFilters = array_filter($filters, fn($value) => $value !== null && $value !== '');
     unset($facetFilters['status'], $facetFilters['outcome']);
@@ -273,6 +288,7 @@
     $advancedActive = filled(old('mail_type',$filters['mail_type'] ?? null)) || filled(old('from',$filters['from'] ?? null)) || filled(old('until',$filters['until'] ?? null)) || old('audience',$filters['audience'] ?? 'all') !== 'all' || $errors->has('from') || $errors->has('until');
 @endphp
 <form method="get" class="mail-filter mb-3" aria-label="Filter email records">
+<label class="d-block mb-3"><input type="checkbox" name="show_cleared" value="1" @checked(!empty($filters['show_cleared']))> Show cleared records</label>
 @if(!empty($filters['campaign']))<input type="hidden" name="campaign" value="{{ $filters['campaign'] }}">@endif
 <div class="row g-3">
 <div class="col-12 col-md-6 col-xl-5"><label class="form-label" for="mail-search">Recipient name, email or subject</label><input id="mail-search" class="form-control" name="search" maxlength="200" placeholder="Search email records" value="{{ old('search',$filters['search'] ?? '') }}"></div>

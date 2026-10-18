@@ -25,8 +25,34 @@ class EventMailLogController extends Controller
             'mail_type' => 'nullable|string|max:100', 'audience' => 'nullable|in:all,recipients,copies',
             'from' => 'nullable|date_format:Y-m-d',
             'until' => array_filter(['nullable', 'date_format:Y-m-d', $request->filled('from') ? 'after_or_equal:from' : null]),
+            'show_cleared' => 'nullable|boolean',
         ]);
         $authorized = $service->query($event, $request->user());
+        $archiveAvailable = \Illuminate\Support\Facades\Schema::hasTable('event_mail_log_archives');
+        $clearCutoff = null;
+        $clearSnapshot = null;
+        $clearAsOf = now()->startOfSecond();
+        if ($request->user()->hasRole('super-user') && $archiveAvailable) {
+            $clearCutoff = (int) (clone $authorized)->whereIn('status', ['sent', 'failed', 'skipped'])
+                ->where('bulk_email_logs.updated_at', '<', $clearAsOf)
+                ->whereNotExists(function ($archive) use ($event) {
+                    $archive->selectRaw('1')->from('event_mail_log_archives')->where('event_id', $event->id)
+                        ->whereColumn('log_id', 'bulk_email_logs.id')
+                        ->whereRaw('event_mail_log_archives.attempt_number = COALESCE(bulk_email_logs.attempt_number, 1)');
+                })->max('bulk_email_logs.id');
+            if ($clearCutoff) {
+                $clearSnapshot = \Illuminate\Support\Facades\Crypt::encryptString(implode(':', [$request->user()->id, $event->id, $clearCutoff, $clearAsOf->timestamp]));
+            }
+        }
+        if ($archiveAvailable && empty($filters['show_cleared'])) {
+            $authorized->where(function ($query) use ($event) {
+                $query->whereNotIn('status', ['sent', 'failed', 'skipped'])->orWhereNotExists(function ($archive) use ($event) {
+                    $archive->selectRaw('1')->from('event_mail_log_archives')
+                        ->where('event_id', $event->id)->whereColumn('log_id', 'bulk_email_logs.id')
+                        ->whereRaw('event_mail_log_archives.attempt_number = COALESCE(bulk_email_logs.attempt_number, 1)');
+                });
+            });
+        }
         $types = (clone $authorized)->select('mail_type')->whereNotNull('mail_type')->where('mail_type', '!=', '')->distinct()->orderBy('mail_type')->limit(101)->pluck('mail_type');
         $typesLimited = $types->count() > 100;
         $types = $types->take(100)->mapWithKeys(fn ($type) => [$type => SuperAdminMailHistory::typeLabel($type)]);
@@ -62,7 +88,32 @@ class EventMailLogController extends Controller
         $logs = $query->latest('id')->paginate(25)->withQueryString();
         $logs->each(fn ($log) => $service->recordIssue($log));
         $outcomes = self::OUTCOMES;
-        return view('backend.event.mail-log.index', compact('event', 'logs', 'summary', 'copySummary', 'facets', 'filters', 'types', 'typesLimited', 'outcomes', 'outcome'));
+        return view('backend.event.mail-log.index', compact('event', 'logs', 'summary', 'copySummary', 'facets', 'filters', 'types', 'typesLimited', 'outcomes', 'outcome', 'clearCutoff', 'clearSnapshot'));
+    }
+
+    public function clear(Request $request, Event $event, EventMailLogService $service)
+    {
+        abort_unless($request->user()->hasRole('super-user'), 403);
+        abort_unless(\Illuminate\Support\Facades\Schema::hasTable('event_mail_log_archives'), 503, 'Email log clearing requires the database migration.');
+        $input = $request->validate(['confirmed' => 'required|accepted', 'snapshot' => 'required|string|max:2048']);
+        try {
+            $snapshot = \Illuminate\Support\Facades\Crypt::decryptString($input['snapshot']);
+        } catch (\Illuminate\Contracts\Encryption\DecryptException) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['snapshot' => 'Reload the event email log before clearing it.']);
+        }
+        abort_unless(preg_match('/^(\d+):(\d+):(\d+):(\d+)$/', $snapshot, $matches), 422);
+        abort_unless((int) $matches[1] === (int) $request->user()->id && (int) $matches[2] === (int) $event->id, 403);
+        // Strict seconds comparison protects attempts changed since the viewed
+        // snapshot, including a retry of an older log ID and same-second races.
+        $records = $service->query($event, $request->user())->where('bulk_email_logs.id', '<=', (int) $matches[3])
+            ->where('bulk_email_logs.updated_at', '<', \Carbon\Carbon::createFromTimestamp((int) $matches[4], config('app.timezone'))->toDateTimeString())
+            ->whereIn('status', ['sent', 'failed', 'skipped'])
+            ->selectRaw('? as event_id, bulk_email_logs.id as log_id, COALESCE(attempt_number, 1) as attempt_number, ? as user_id, ? as cleared_at', [$event->id, $request->user()->id, now()]);
+        $count = \Illuminate\Support\Facades\DB::transaction(fn () => \Illuminate\Support\Facades\DB::table('event_mail_log_archives')
+            ->insertOrIgnoreUsing(['event_id', 'log_id', 'attempt_number', 'user_id', 'cleared_at'], $records->toBase()));
+
+        return redirect()->route('backend.event-mail-log.index', $event)
+            ->with('success', $count.' email records cleared from this event’s list. Delivery evidence and review drafts are retained.');
     }
 
     private function audienceQuery(\Illuminate\Database\Eloquent\Builder $query, string $audience): \Illuminate\Database\Eloquent\Builder

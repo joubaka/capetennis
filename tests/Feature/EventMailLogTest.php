@@ -13,6 +13,69 @@ class EventMailLogTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_only_super_user_can_clear_event_log_without_deleting_delivery_evidence(): void
+    {
+        $event = Event::factory()->create();
+        $other = Event::factory()->create();
+        $manager = $this->manager($event);
+        Role::findOrCreate('super-user', 'web');
+        $super = User::factory()->create()->assignRole('super-user');
+        $sent = $this->log($event, [], 'sent');
+        $held = $this->log($event, [], 'skipped');
+        $held->update(['error_message' => 'Held for event message review. No email was sent.']);
+        $failed = $this->log($event, [], 'failed');
+        $queued = $this->log($event);
+        $uncertain = $this->log($event, [], 'acceptance_unknown');
+        $foreign = $this->log($other, [], 'failed');
+        $this->post(route('backend.event-mail-log.clear', $event), ['confirmed' => 1, 'cutoff' => $foreign->id])->assertRedirect(route('login'));
+        $this->actingAs($manager)->get(route('backend.event-mail-log.index', $event))->assertOk()->assertDontSee('Clear event email log');
+        $this->post(route('backend.event-mail-log.clear', $event), ['confirmed' => 1, 'cutoff' => $foreign->id])->assertForbidden();
+        $this->travel(2)->seconds();
+        $page = $this->actingAs($super)->get(route('backend.event-mail-log.index', $event))->assertOk()->assertSee('Clear event email log');
+        $snapshot = $page->viewData('clearSnapshot');
+        $new = $this->log($event, [], 'sent');
+        $logs = DB::table('bulk_email_logs')->orderBy('id')->get()->toArray();
+        $history = DB::table('event_mail_attempt_history')->orderBy('id')->get()->toArray();
+        $this->postJson(route('backend.event-mail-log.clear', $event), ['snapshot' => $snapshot])->assertUnprocessable();
+        $this->post(route('backend.event-mail-log.clear', $event), ['confirmed' => 1, 'snapshot' => $snapshot])->assertRedirect();
+        $this->post(route('backend.event-mail-log.clear', $event), ['confirmed' => 1, 'snapshot' => $snapshot])->assertRedirect();
+        $this->assertDatabaseCount('event_mail_log_archives', 3);
+        $this->assertDatabaseCount('jobs', 0);
+        $this->assertDatabaseCount('event_communication_batches', 0);
+        $this->assertDatabaseMissing('event_mail_log_archives', ['log_id' => $foreign->id]);
+        $this->assertEquals($logs, DB::table('bulk_email_logs')->orderBy('id')->get()->toArray());
+        $this->assertEquals($history, DB::table('event_mail_attempt_history')->orderBy('id')->get()->toArray());
+        $this->get(route('backend.event-mail-log.index', $event))->assertOk()
+            ->assertViewHas('logs', fn ($records) => $records->pluck('id')->sort()->values()->all() === collect([$queued->id, $uncertain->id, $new->id])->sort()->values()->all());
+        $this->get(route('backend.event-mail-log.index', ['event' => $event, 'show_cleared' => 1]))->assertOk()->assertViewHas('logs', fn ($records) => $records->total() === 6);
+        $this->get(route('backend.event-mail-log.show', [$event, $held]))->assertOk();
+        $failed->update(['status' => 'queued']);
+        $failed->refresh()->markAsFailed('Retry failed');
+        $this->post(route('backend.event-mail-log.clear', $event), ['confirmed' => 1, 'snapshot' => $snapshot])->assertRedirect();
+        $this->assertDatabaseCount('event_mail_log_archives', 3);
+        $this->get(route('backend.event-mail-log.index', $event))->assertOk()->assertViewHas('logs', fn ($records) => $records->contains('id', $failed->id));
+    }
+
+    public function test_clear_snapshot_preserves_attempts_changed_before_first_submission_and_rejects_tampering(): void
+    {
+        $event = Event::factory()->create();
+        $other = Event::factory()->create();
+        Role::findOrCreate('super-user', 'web');
+        $super = User::factory()->create()->assignRole('super-user');
+        $failed = $this->log($event, [], 'failed');
+        $this->travel(2)->seconds();
+        $snapshot = $this->actingAs($super)->get(route('backend.event-mail-log.index', $event))->assertOk()->viewData('clearSnapshot');
+        $failed->update(['status' => 'queued']);
+        $failed->refresh()->markAsFailed('Retry before clear');
+        $this->post(route('backend.event-mail-log.clear', $event), ['confirmed' => 1, 'snapshot' => $snapshot])->assertRedirect();
+        $this->assertDatabaseCount('event_mail_log_archives', 0);
+        $this->get(route('backend.event-mail-log.index', $event))->assertOk()->assertViewHas('logs', fn ($records) => $records->contains('id', $failed->id));
+        $this->postJson(route('backend.event-mail-log.clear', $event), ['confirmed' => 1, 'snapshot' => 'tampered'])->assertUnprocessable();
+        $this->post(route('backend.event-mail-log.clear', $other), ['confirmed' => 1, 'snapshot' => $snapshot])->assertForbidden();
+        $otherSuper = User::factory()->create()->assignRole('super-user');
+        $this->actingAs($otherSuper)->post(route('backend.event-mail-log.clear', $event), ['confirmed' => 1, 'snapshot' => $snapshot])->assertForbidden();
+    }
+
     public function test_skipped_records_show_safe_reasons_and_distinguish_review_holds(): void
     {
         $event = Event::factory()->create();
