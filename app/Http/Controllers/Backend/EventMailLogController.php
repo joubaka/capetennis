@@ -10,7 +10,7 @@ class EventMailLogController extends Controller
 {
     private const OUTCOMES = [
         'pending' => 'Waiting / sending', 'sent_complete' => 'Sent (excluding sandbox)', 'accepted' => 'Server accepted',
-        'failed' => 'Failed', 'skipped' => 'Excluded / duplicate',
+        'failed' => 'Failed', 'skipped' => 'Skipped / held for review',
         'unverified' => 'Completed, evidence unverified', 'uncertain' => 'Acceptance uncertain',
         'sandbox' => 'Sandbox accepted', 'queued' => 'Waiting in queue',
         'sending' => 'Sending', 'sent' => 'Completed transport (including sandbox)',

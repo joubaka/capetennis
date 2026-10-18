@@ -255,7 +255,7 @@
 @php
     $facetFilters = array_filter($filters, fn($value) => $value !== null && $value !== '');
     unset($facetFilters['status'], $facetFilters['outcome']);
-    $cards = [''=>'All records','pending'=>'Waiting / sending','sent_complete'=>'Sent','failed'=>'Failed','skipped'=>'Excluded','uncertain'=>'Uncertain'];
+    $cards = [''=>'All records','pending'=>'Waiting / sending','sent_complete'=>'Sent','failed'=>'Failed','skipped'=>'Skipped / held','uncertain'=>'Uncertain'];
     $cardCounts = [''=>$facets['total'],'pending'=>$facets['queued']+$facets['sending'],'sent_complete'=>$facets['sent_complete'],'failed'=>$facets['failed'],'skipped'=>$facets['skipped'],'uncertain'=>$facets['uncertain']];
     $resetFilters = !empty($filters['campaign']) ? ['campaign'=>$filters['campaign']] : [];
 @endphp
@@ -314,7 +314,7 @@
 <div class="mail-date"><time datetime="{{ $log->created_at->toIso8601String() }}">{{ $log->created_at->format('d M Y') }}</time><div class="mail-secondary">{{ $log->created_at->format('H:i') }} SAST</div></div>
 <div class="mail-recipient"><div class="fw-semibold">{{ $log->recipient_name ?: 'Name not recorded' }}</div><div class="mail-secondary">{{ $log->recipient_email ?: 'Email not recorded' }}</div></div>
 <div class="mail-subject"><h2><a href="{{ route('backend.event-mail-log.show',[$event,$log]) }}">{{ \App\Services\EventMailLogService::subject($log) }}</a></h2><div class="mail-secondary">{{ \App\Services\SuperAdminMailHistory::typeLabel($log->mail_type) }} · {{ $isCopy ? 'Sender/admin copy' : 'Recipient' }}</div></div>
-<div class="mail-outcome"><span class="mail-badge {{ $badge }}">{{ $log->delivery_status_label }}</span></div>
+<div class="mail-outcome"><span class="mail-badge {{ $badge }}">{{ $log->delivery_status_label }}</span>@if($log->status==='skipped')<div class="mail-secondary mt-1">{{ \App\Services\EventMailLogService::explanation($log) }}</div>@endif</div>
 <div class="mail-action"><a class="btn btn-sm btn-outline-primary" href="{{ route('backend.event-mail-log.show',[$event,$log]) }}" aria-label="Open email record {{ $log->id }}">Open</a></div>
 </article>
 @empty<div class="p-4 text-center"><h2 class="h6">No matching email records</h2><p class="mail-secondary">Try a wider date range or reset the filters. Results remain limited to your permitted event audience.</p><a class="btn btn-outline-secondary" href="{{ route('backend.event-mail-log.index',['event'=>$event,...$resetFilters]) }}">Reset filters</a></div>@endforelse

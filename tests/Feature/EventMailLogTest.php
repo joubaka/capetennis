@@ -13,6 +13,35 @@ class EventMailLogTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_skipped_records_show_safe_reasons_and_distinguish_review_holds(): void
+    {
+        $event = Event::factory()->create();
+        $actor = $this->manager($event);
+        $log = $this->log($event);
+        $reason = 'Held for event message review. No email was sent.';
+        $log->markAsSkipped($reason);
+        $this->assertSame('Held for review', $log->delivery_status_label);
+        $this->actingAs($actor)->get(route('backend.event-mail-log.show', [$event, $log]))
+            ->assertOk()->assertSee('Held for review')->assertSee($reason)
+            ->assertSee('This record does not confirm whether the message has since been reviewed or sent.')
+            ->assertDontSee('This recipient was excluded');
+        $this->get(route('backend.event-mail-log.index', $event))->assertOk()
+            ->assertSee('Held for review')->assertSee($reason);
+        $history = \App\Models\EventMailAttemptHistory::where('log_id', $log->id)->where('status', 'skipped')->latest('id')->firstOrFail();
+        $this->assertSame($reason, $history->snapshot['error_message']);
+        $log->update(['error_message' => 'Invitation lifecycle changed before sending.']);
+        $this->get(route('backend.event-mail-log.show', [$event, $log]))->assertOk()
+            ->assertSee('Invitation lifecycle changed before sending.')->assertDontSee('<strong>Held for review</strong>', false);
+        $log->update(['error_message' => 'Transport did not run. The message may require event review.']);
+        $this->assertSame('Skipped', $log->delivery_status_label);
+        $this->assertFalse(EventMailLogService::heldForReview($log));
+        $log->update(['error_message' => 'smtp-password=private-secret']);
+        $this->get(route('backend.event-mail-log.show', [$event, $log]))->assertOk()
+            ->assertSee('A specific reason is not available in this log.')->assertDontSee('private-secret');
+        $log->update(['status' => 'failed', 'error_message' => 'smtp-password=private-secret']);
+        $this->assertStringNotContainsString('private-secret', EventMailLogService::explanation($log));
+    }
+
     private function manager(Event $event): User
     {
         Role::findOrCreate('admin', 'web');

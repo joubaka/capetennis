@@ -17,6 +17,11 @@
 </dl>
 @if($reason=\App\Services\EventMailLogService::explanation($log))<div class="alert alert-warning" style="color:#513c06;background:#fff3cd;border-color:#ffe69c">{{ $reason }}</div>@endif
 
+@if(\App\Services\EventMailLogService::heldForReview($log))
+<p>No email was sent by this attempt. It was held for review. This record does not confirm whether the message has since been reviewed or sent.</p>
+@if($event->isTeam() || $event->isInterprovincialTrials())<a class="btn btn-outline-primary mb-3" href="{{ route('backend.event-communications.index',$event) }}">Open Communications to review</a>@endif
+@endif
+
 <h2 class="h5">Saved message text</h2>
 
 

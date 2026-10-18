@@ -99,11 +99,50 @@ class EventMailLogService
     {
         return match ($log->status) {
             'failed' => 'The email could not be sent. Review the message and recipient before retrying.',
-            'skipped' => str_starts_with($log->error_message ?? '', 'Duplicate email suppressed') ? 'This send was suppressed as a duplicate.' : 'This recipient was excluded from sending. Review the audience and contact details.',
+            'skipped' => self::skipReason($log),
             'acceptance_unknown' => 'Mail-server acceptance is uncertain. Investigate before sending again.',
             default => in_array($log->status, ['queued', 'sending'], true) && $log->updated_at?->lt(now()->subHour()) ? 'No progress for over an hour. Check the queue worker; do not resend blindly.' : null,
         };
     }
+    private const REVIEW_HOLD_REASONS = [
+        'Held for event message review. No email was sent.',
+        'Held before transport. Review the pending message in Communications before sending.',
+        'The message was held before transport. Review before sending.',
+    ];
+
+    public static function heldForReview(BulkEmailLog $log): bool
+    {
+        return $log->status === 'skipped' && in_array($log->error_message, self::REVIEW_HOLD_REASONS, true);
+    }
+
+    /** Only application-authored reasons are safe for the log and immutable snapshots. */
+    private static function skipReason(BulkEmailLog $log): string
+    {
+        $safeReasons = [
+            ...self::REVIEW_HOLD_REASONS,
+            'Duplicate email suppressed for this campaign',
+            'Missing or invalid email address',
+            'This email type is no longer available.',
+            'Masters email snapshot integrity check failed.',
+            'Invitation email snapshot integrity check failed.',
+            'This invitation needs a fresh exact content preview before it can be sent.',
+            'This email needs a fresh exact content preview before it can be sent.',
+            'Invitation is no longer eligible to send.',
+            'Invitation lifecycle changed before sending.',
+            'Clothing ordering closed after this email was reviewed. Prepare a fresh invitation preview without clothing.',
+            'Legacy Masters email could not be safely reconstructed.',
+            'Masters email does not match its invitation and event.',
+            'Unknown Masters email kind.',
+            'The player is no longer awaiting an invitation response.',
+            'The invitation response deadline is missing or has passed.',
+            'Transport did not run. The message may require event review.',
+        ];
+
+        return in_array($log->error_message, $safeReasons, true)
+            ? $log->error_message
+            : 'This email was skipped. A specific reason is not available in this log.';
+    }
+
     public static function subject(BulkEmailLog $log): string
     {
         return (string) (data_get($log->payload, 'rendered_subject') ?? data_get($log->payload, 'subject') ?? data_get($log->payload, 'title') ?? 'Email #' . $log->id);

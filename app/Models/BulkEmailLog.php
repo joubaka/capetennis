@@ -143,6 +143,7 @@ class BulkEmailLog extends Model
             $this->status === 'queued' && data_get($this->payload, 'queue_state') === 'prepared' => 'Queue submission unverified',
             $this->status === 'acceptance_unknown' => 'Acceptance unverified — check mail server',
             $this->status === 'failed' => 'Failed',
+            \App\Services\EventMailLogService::heldForReview($this) => 'Held for review',
             $this->status === 'skipped' => 'Skipped',
             default => 'Queued',
         };
