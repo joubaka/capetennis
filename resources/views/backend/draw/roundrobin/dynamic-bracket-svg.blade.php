@@ -378,7 +378,7 @@
                     <rect x="{{ $x }}" y="{{ $topLineY }}" width="{{ $w }}" height="{{ $h }}" class="match-row-bg" fill="#ffffff" />
 
                     {{-- Playoff Label --}}
-                    <text x="{{ $x + ($w / 2) }}" y="{{ $y - 14 }}" text-anchor="middle" style="font-family: 'Segoe UI', sans-serif; font-size: 10px; fill: #64748b; font-weight: 600; letter-spacing: 0.5px;">
+                    <text x="{{ $x + ($w / 2) }}" y="{{ $y - ($isEmpty && !$fx ? 28 : 14) }}" text-anchor="middle" style="font-family: 'Segoe UI', sans-serif; font-size: 10px; fill: #64748b; font-weight: 600; letter-spacing: 0.5px;">
                         {{ strtoupper($label) }}
                     </text>
 

@@ -15,6 +15,28 @@ class RoundRobinProgressTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_workspace_explains_progression_and_only_offers_confirmation_after_all_results(): void
+    {
+        [$draw, $category] = $this->draw([['name' => 'Main', 'slug' => 'main', 'enabled' => true, 'size' => 2, 'positions' => [1, 2]]]);
+        $this->completeGroup($draw, 'A', $this->entrants($category, 2));
+        $count = Fixture::count();
+        $url = route('backend.draw.roundrobin.show', $draw);
+        $page = $this->get($url)->assertOk()->assertSee('All 1 group results are complete')
+            ->assertSee('Review &amp; progress to playoffs', false)->assertSee('Qualification and progression rules')
+            ->assertSee('positions 1, 2 from each group');
+        if (getenv('DRAW_GUIDE_SNAPSHOT_DIR')) file_put_contents(getenv('DRAW_GUIDE_SNAPSHOT_DIR').'/progression-ready.html', $page->getContent());
+        $this->assertSame($count, Fixture::count());
+        $registrationIds = $draw->drawFixtures()->where('stage', 'RR')->firstOrFail();
+        Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'MAIN', 'registration1_id' => $registrationIds->registration1_id, 'registration2_id' => $registrationIds->registration2_id]);
+        $created = $this->get($url)->assertOk()->assertSee('Playoffs created')->assertSee('Review &amp; refresh playoffs', false);
+        if (getenv('DRAW_GUIDE_SNAPSHOT_DIR')) file_put_contents(getenv('DRAW_GUIDE_SNAPSHOT_DIR').'/progression-created.html', $created->getContent());
+        $draw->update(['locked' => true]);
+        $this->get($url)->assertOk()->assertSee('Unlock it before progressing')->assertDontSee('class="btn btn-primary progress-draw"', false);
+        $draw->update(['locked' => false]);
+        FixtureResult::query()->delete();
+        $this->get($url)->assertOk()->assertSee('some group results are incomplete')->assertDontSee('progress-draw"', false);
+    }
+
     private function draw(array $config, bool $published = true): array
     {
         Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);

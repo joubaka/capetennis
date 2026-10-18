@@ -1,4 +1,4 @@
-<section aria-labelledby="playoff-preview-heading">
+<section class="rr-bracket-preview" aria-labelledby="playoff-preview-heading">
   <h6 id="playoff-preview-heading">Provisional playoff preview</h6>
   @if($svgData)
     <p class="small text-muted">This shows qualifying positions from your saved groups and playoff settings. Players are confirmed after group results. No playoff matches have been created.</p>

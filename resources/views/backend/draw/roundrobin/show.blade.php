@@ -28,6 +28,7 @@
    data-draw-id="{{ $draw->id }}">
 
 @include('backend.draw.partials.workspace-header', ['workspaceSurface' => 'roundrobin'])
+@include('backend.draw.roundrobin.progression-status')
 
 @if(!$draw->isTeamDraw() && in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs'], true) && app(\App\Services\Draw\GroupAssignmentService::class)->fixturesNeedRegeneration($draw))
   <div class="alert alert-warning" role="alert">
@@ -1260,6 +1261,7 @@ function refreshVenuesUI()          { if (window.RRSchedule) RRSchedule.refreshV
 
 
 @include('backend.draw.roundrobin.print-scripts')
+<script src="{{ asset('js/draw-progression.js') }}?v={{ filemtime(public_path('js/draw-progression.js')) }}"></script>
 
 
 

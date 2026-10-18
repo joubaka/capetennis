@@ -43,7 +43,7 @@
 
   const landscapeStyles = `
     <style>
-      @page { size: landscape; margin: 5mm; }
+      @page { size: landscape; margin: 8mm; }
       html, body { margin: 0 !important; padding: 0 !important; width: 100%; height: 100%; overflow: visible; }
       .bracket-header { display: flex; gap: 12px; align-items: baseline; margin-bottom: 2px; }
       .bracket-header h1 { font-size: 13px; margin: 0; }
@@ -54,6 +54,13 @@
         width: 100% !important;
         height: 100% !important;
         object-fit: contain;
+      }
+      @media screen {
+        html, body { background: #f7f9fb; }
+        body { padding: 20px !important; }
+        .bracket-header { max-width: 1200px; margin: 0 auto 12px; }
+        .bracket-print-wrap { max-width: 1200px; height: auto; min-height: 70vh; margin-inline: auto; padding: 20px; background: #fff; border: 1px solid #edf0f4; border-radius: 10px; }
+        .bracket-print-wrap svg { height: auto !important; }
       }
       @media print {
         html, body { height: 100%; overflow: visible !important; }

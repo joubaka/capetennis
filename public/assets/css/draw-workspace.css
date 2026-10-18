@@ -256,3 +256,18 @@
   #round-robin-app .rr-group-count-controls select { width: 68px; min-width: 68px; flex: 0 0 68px; }
   #round-robin-app .rr-group-count-controls button { min-width: 0; white-space: normal; padding-inline: 10px; }
 }
+#round-robin-app #main-bracket-wrapper { padding: 20px; background: #f7f9fb; border: 1px solid #edf0f4; border-radius: 12px; }
+#round-robin-app .rr-bracket-preview { width: fit-content; margin-inline: auto; padding: 20px 24px; background: #fff; border: 1px solid #edf0f4; border-radius: 8px; }
+#round-robin-app .rr-bracket-preview > p { max-width: 44rem; }
+#round-robin-app .rr-bracket-preview > svg { display: block; }
+@media (max-width: 575.98px) {
+  #round-robin-app #main-bracket-wrapper { padding: 10px; }
+  #round-robin-app .rr-bracket-preview { padding: 16px 12px; }
+}
+@media print {
+  body:has(#main-bracket-pane.active) :is(.layout-menu, .layout-navbar, .content-footer, .layout-footer, .layout-overlay, .ct-page-actions, .rr-workspace-nav, .rr-readiness, #rrTabs, .bracket-zoom-controls, [data-full-schedule-action]) { display: none !important; }
+  #round-robin-app #main-bracket-wrapper { overflow: visible !important; padding: 0; background: #fff; border: 0; }
+  #round-robin-app #bracket-zoom-inner { zoom: 1 !important; transform: none !important; }
+  #round-robin-app .rr-bracket-preview { width: 100%; margin: 0; padding: 0; border: 0; }
+  #round-robin-app .rr-bracket-preview > svg { max-width: 100%; height: auto; }
+}

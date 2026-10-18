@@ -1652,7 +1652,9 @@ class RoundRobinController extends Controller
         }
         foreach ($bracket['rounds'] as &$matches) {
           foreach ($matches as &$match) {
-            $previewWidth = max($previewWidth, $match['x'] + $match['width'] + 80);
+            // Final winner lines extend 120px beyond the match box.
+            // Leave a further 40px gutter instead of cropping that exit line.
+            $previewWidth = max($previewWidth, $match['x'] + $match['width'] + 160);
             foreach (['feederLabel1', 'feederLabel2'] as $label) {
               if (preg_match('/^([WL])(\d+)$/', $match[$label] ?? '', $feeder)) {
                 $match[$label] = ($feeder[1] === 'W' ? 'Winner' : 'Loser').' match '.$feeder[2];
@@ -1669,7 +1671,7 @@ class RoundRobinController extends Controller
         }
         unset($matches);
         foreach ($bracket['positionPlayoffs'] as &$placement) {
-          $previewWidth = max($previewWidth, $placement['x'] + $placement['width'] + 80);
+          $previewWidth = max($previewWidth, $placement['x'] + $placement['width'] + 140);
           foreach (['feederLabel1', 'feederLabel2'] as $label) {
             if (preg_match('/^([WL])(\d+)$/', $placement[$label] ?? '', $feeder)) {
               $placement[$label] = ($feeder[1] === 'W' ? 'Winner' : 'Loser').' match '.$feeder[2];

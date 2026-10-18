@@ -37,6 +37,9 @@ class BracketPlanningPreviewTest extends TestCase
         $url = route('backend.draw.main-bracket', $draw);
         $page = $this->get($url)->assertOk()->assertSee('Provisional playoff preview')->assertSee('Winner Group A')->assertSee('Runner-up Group B');
         $page->assertSee('Winner match 1')->assertSee('Loser match 1');
+        preg_match('/viewBox="0 0 (\d+) (\d+)"/', $page->getContent(), $bounds);
+        preg_match_all('/<line[^>]+x2="([\d.]+)"/', $page->getContent(), $ends);
+        $this->assertLessThanOrEqual((int) $bounds[1] - 40, max(array_map('floatval', $ends[1])), 'Every bracket exit line needs a printable right gutter.');
         $page->assertDontSee('width="1600"', false)->assertDontSee('bracket-score-btn')->assertDontSee('data-fixture-id=', false);
         if (getenv('DRAW_GUIDE_SNAPSHOT_DIR')) file_put_contents(getenv('DRAW_GUIDE_SNAPSHOT_DIR').'/playoff-preview.html', $page->getContent());
         $this->get($url)->assertOk();
