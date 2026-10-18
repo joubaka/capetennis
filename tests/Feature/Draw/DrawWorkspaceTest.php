@@ -37,7 +37,9 @@ class DrawWorkspaceTest extends TestCase
 
     public function test_empty_workspace_renders_all_views_without_creating_groups_or_fixtures(): void
     {
-        [$draw] = $this->workspace();
+        [$draw, $category] = $this->workspace();
+        $category->category->update(['name' => 'U19 Boys']);
+        $this->entrant($category);
         $this->get(route('backend.draw.roundrobin.show', $draw))->assertRedirect(route('draw.setup.show', $draw));
         if (getenv('DRAW_GUIDE_SNAPSHOT_DIR')) file_put_contents(getenv('DRAW_GUIDE_SNAPSHOT_DIR').'/individual-format.html', $this->get(route('draw.setup.show', $draw))->assertOk()->getContent());
         $this->post(route('draw.setup.store', $draw), ['workflow' => 'round_robin_playoffs'])
@@ -49,6 +51,8 @@ class DrawWorkspaceTest extends TestCase
             ->assertSee('data-full-schedule-action', false)
             ->assertSee(route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'manual' => 1]));
         $page->assertSee('Create groups');
+        $page->assertSee('id="rr-category-name">U19 Boys', false);
+        $page->assertSee('Create groups first, then add your players.');
         $page->assertSee('<details data-individual-draw-tools>', false);
         $page->assertSee('More tools');
         $page->assertDontSee('data-individual-draw-tools open', false);

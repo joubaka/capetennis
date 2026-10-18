@@ -15,13 +15,14 @@
       <button type="button" id="rr-apply-group-count" class="btn btn-sm btn-outline-primary">{{ $groups->isEmpty() ? 'Create groups' : 'Update groups' }}</button>
     </div>
   </div>
+  <p class="mb-3" id="rr-category-scope"><strong>Player category:</strong> <span id="rr-category-name">{{ $draw->categoryEvent?->category?->name ?? 'All event categories' }}</span></p>
   <details class="alert alert-info py-2 mb-3">
     <summary class="small fw-semibold" style="cursor:pointer">How do groups and seeds work?</summary>
     <p class="small mb-1 mt-2">Each player meets everyone in their group. More players in one group create more matches.</p>
     <p class="small mb-0">The order inside a group is the seed order. Save assignments, then use <strong>Save &amp; preview fixtures</strong> to check the matches before generating them.</p>
   </details>
   <div class="alert alert-warning rr-locked-overlay {{ ($draw->locked || $draw->published) ? '' : 'd-none' }}">Assignments are read-only while the draw is published or locked.</div>
-  <div class="rr-player-layout">
+  <div class="rr-player-layout {{ $groups->isEmpty() ? 'rr-needs-groups' : '' }}">
     <aside class="rr-player-picker">
       <div class="rr-picker-heading"><h6 class="mb-1">Available players <span id="rr-available-count" class="badge bg-label-primary">0</span></h6><small class="text-muted">Paid, active entries for this draw</small></div>
       <div class="p-3 border-bottom">
@@ -46,7 +47,7 @@
         </div>
       </div>
     </aside>
-    <div><div class="rr-group-summary"><span id="rr-assigned-count">0 assigned</span><span class="text-muted">Order within each group sets the seeds</span></div><div id="rr-groups-row" class="rr-group-grid"></div></div>
+    <div><div class="rr-group-summary"><span id="rr-assigned-count">0 assigned</span><span class="text-muted" id="rr-placement-next-step">{{ $groups->isEmpty() ? 'Create groups first, then add your players.' : 'Add players to a group, then save assignments.' }}</span></div><div id="rr-groups-row" class="rr-group-grid"></div></div>
   </div>
   <div class="rr-assignment-savebar">
     <div><strong id="rr-save-status" role="status" aria-live="polite">Saved</strong><div id="rr-assignment-message" class="small text-muted">Your event registrations are kept when players leave a group.</div></div>

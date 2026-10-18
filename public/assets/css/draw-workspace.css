@@ -242,3 +242,7 @@
 .rr-group-card .rr-group:empty::after {
   content: none;
 }
+@media (max-width: 575.98px) {
+  #round-robin-app .rr-player-layout.rr-needs-groups > .rr-player-picker { order: 2; }
+  #round-robin-app .rr-player-layout.rr-needs-groups > :last-child { order: 1; }
+}
