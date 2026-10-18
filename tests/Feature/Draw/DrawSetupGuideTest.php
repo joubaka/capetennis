@@ -87,6 +87,29 @@ class DrawSetupGuideTest extends TestCase
         $this->assertStringNotContainsString('data-draw-details open', $html);
     }
 
+    public function test_category_delete_action_is_available_only_for_authorized_draft_draws(): void
+    {
+        [$event, $draw] = $this->scenario();
+        Fixture::factory()->create(['draw_id' => $draw->id]);
+        $render = fn () => view('backend.headOffice.partials.category-draw-next-action', [
+            'event' => $event, 'savedCategoryDraw' => $draw->fresh(),
+        ])->render();
+
+        $html = $render();
+        $this->assertStringContainsString('Delete draw &amp; fixtures', $html);
+        $this->assertStringContainsString('data-url="'.route('draws.destroy', $draw).'"', $html);
+        $this->assertStringContainsString('btn-delete-draw', $html);
+
+        foreach ([['locked' => true, 'published' => false], ['locked' => false, 'published' => true]] as $state) {
+            $draw->update($state);
+            $this->assertStringNotContainsString('btn-delete-draw', $render());
+        }
+
+        $draw->update(['locked' => false, 'published' => false]);
+        $this->actingAs(User::factory()->create()->assignRole('admin'));
+        $this->assertStringNotContainsString('btn-delete-draw', $render());
+    }
+
     public function test_ajax_guide_returns_private_fragment_and_category_save_returns_resume_url(): void
     {
         [$event, $draw] = $this->scenario(false);

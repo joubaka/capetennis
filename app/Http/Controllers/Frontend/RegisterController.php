@@ -987,7 +987,7 @@ class RegisterController extends Controller
           ->log("Team registration paid for {$teamEventName}");
 
         return true;
-      });
+      }, 3);
 
       Log::info($processed ? 'TEAM ITN COMPLETED' : 'TEAM ITN REPLAY IGNORED', [
         'order_id' => $orderId,
@@ -1005,6 +1005,10 @@ class RegisterController extends Controller
         ['order_id' => $orderId, 'payfast_payment_id' => $data['pf_payment_id'] ?? null],
         $e
       );
+
+      if (app(\Illuminate\Contracts\Database\ConcurrencyErrorDetector::class)->causedByConcurrencyError($e)) {
+        return response('Payment confirmation temporarily unavailable', 503);
+      }
 
       return response('Payment verification failed', 400);
     }

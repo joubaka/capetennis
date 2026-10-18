@@ -69,3 +69,9 @@ Route::middleware(['web', 'auth'])->prefix('draws/{draw}')->group(function () {
     Route::post('brackets/generate',          [\App\Http\Controllers\Api\DrawApiController::class, 'generateBrackets'])
          ->name('api.draws.brackets.generate');
 });
+
+// Private authoritative ratings require their own explicit token ability and Super User owner.
+Route::get('v1/integrations/jta/players/{player}/rating', \App\Http\Controllers\Api\V1\CapePlayerRatingController::class)
+    ->middleware(['auth:sanctum', 'throttle:jta-results'])
+    ->whereNumber('player')
+    ->name('api.v1.integrations.jta.players.rating');

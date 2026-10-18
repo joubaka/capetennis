@@ -5,6 +5,7 @@ namespace Tests\Feature\Draw;
 use App\Models\Draw;
 use App\Models\Event;
 use App\Models\Fixture;
+use App\Models\OrderOfPlay;
 use App\Models\TeamFixture;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -66,6 +67,39 @@ class DrawLifecycleHardeningTest extends TestCase
             $this->actingAs($admin)->deleteJson(route('draws.destroy', $draw->id))->assertForbidden();
             $this->assertDatabaseHas('draws', ['id' => $draw->id]);
         }
+    }
+
+    public function test_delete_removes_only_target_draw_fixtures_results_and_schedule_and_retains_audit(): void
+    {
+        $event = Event::factory()->create();
+        $draw = Draw::factory()->create(['event_id' => $event->id]);
+        $fixture = Fixture::factory()->create(['draw_id' => $draw->id]);
+        $schedule = OrderOfPlay::create(['draw_id' => $draw->id, 'fixture_id' => $fixture->id]);
+        DB::table('fixture_results')->insert(['fixture_id' => $fixture->id, 'set_nr' => 1]);
+
+        $otherDraw = Draw::factory()->create(['event_id' => Event::factory()->create()->id]);
+        $otherFixture = Fixture::factory()->create(['draw_id' => $otherDraw->id]);
+        $otherSchedule = OrderOfPlay::create(['draw_id' => $otherDraw->id, 'fixture_id' => $otherFixture->id]);
+        DB::table('fixture_results')->insert(['fixture_id' => $otherFixture->id, 'set_nr' => 1]);
+        $admin = $this->adminFor($event);
+
+        $this->actingAs($admin)->deleteJson(route('draws.destroy', $otherDraw))
+            ->assertForbidden();
+        $this->deleteJson(route('draws.destroy', $draw))->assertOk()
+            ->assertJsonPath('individual_fixtures_deleted', 1);
+        $this->deleteJson(route('draws.destroy', $draw))->assertNotFound();
+
+        $this->assertDatabaseMissing('order_of_plays', ['id' => $schedule->id]);
+        $this->assertDatabaseMissing('fixture_results', ['fixture_id' => $fixture->id]);
+        $this->assertDatabaseHas('draws', ['id' => $otherDraw->id]);
+        $this->assertDatabaseHas('fixtures', ['id' => $otherFixture->id]);
+        $this->assertDatabaseHas('order_of_plays', ['id' => $otherSchedule->id]);
+        $this->assertDatabaseHas('fixture_results', ['fixture_id' => $otherFixture->id]);
+        $this->assertDatabaseCount('draws', 1);
+        $this->assertDatabaseCount('fixtures', 1);
+        $this->assertDatabaseCount('fixture_results', 1);
+        $this->assertDatabaseCount('order_of_plays', 1);
+        $this->assertDatabaseHas('draw_audit_logs', ['draw_id' => $draw->id, 'action' => 'deleted', 'user_id' => $admin->id]);
     }
 
     public function test_empty_draw_cannot_be_locked(): void
