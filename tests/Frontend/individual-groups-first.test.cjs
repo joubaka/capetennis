@@ -46,11 +46,10 @@ test('zero groups shows explicit creation and blocks every placement action with
   assert.match(html, /rr-player-select[^>]*disabled/);
   assert.match(html, /rr-add-player[^>]*disabled/);
   assert.equal(page.sortables(), 0);
-  assert.equal(page.props.get('.rr-player-layout:class:rr-needs-groups'), true);
   assert.equal(page.props.get('#rr-assign-selected, #rr-select-visible, #rr-assign-target:disabled'), true);
-  assert.equal(page.values.get('[data-rr-create-groups]:text'), 'Create 2 groups');
+  assert.equal(page.values.get('#rr-apply-group-count:text'), 'Create groups');
   assert.equal(page.requests.length, 0);
-  await page.handlers.get('click:[data-rr-create-groups]')();
+  await page.handlers.get('click:#rr-apply-group-count')();
   assert.match(page.dialogs[0].html, /Create 2 empty groups for U19 Boys/);
   assert.equal(page.dialogs[0].confirmButtonText, 'Create groups');
   assert.equal(page.requests.length, 0, 'cancelled confirmation never creates groups');
@@ -61,9 +60,22 @@ test('saved groups enable placement, while locked groups preserve read-only cont
   assert.doesNotMatch(page.values.get('#available-players-list:html'), /rr-add-player[^>]*disabled/);
   assert.equal(page.props.get('#rr-assign-selected, #rr-select-visible, #rr-assign-target:disabled'), false);
   assert.ok(page.sortables() > 0);
-  assert.equal(page.props.get('.rr-player-layout:class:rr-needs-groups'), false);
+  assert.equal(page.values.get('#rr-apply-group-count:text'), 'Update groups');
   assert.match(page.values.get('#rr-placement-next-step:text'), /save assignments/);
   const locked = workspace([{id: 10, name: 'A', players: []}], true);
   assert.match(locked.values.get('#available-players-list:html'), /rr-add-player[^>]*disabled/);
   assert.equal(locked.sortables(), 0);
+});
+
+test('chosen group count survives searches and renders and is used by the single create action', async () => {
+  const page = workspace();
+  page.values.set('#groups-tab-boxes', '3');
+  page.handlers.get('change:#groups-tab-boxes')();
+  page.values.set('#rr-player-search', 'Test');
+  page.handlers.get('input:#rr-player-search')();
+  page.window.RRGroups.applyLockUI();
+  assert.equal(page.values.get('#groups-tab-boxes'), '3');
+  await page.handlers.get('click:#rr-apply-group-count')();
+  assert.match(page.dialogs[0].html, /Create 3 empty groups for U19 Boys/);
+  assert.equal(page.requests.length, 0);
 });

@@ -242,7 +242,17 @@
 .rr-group-card .rr-group:empty::after {
   content: none;
 }
-@media (max-width: 575.98px) {
-  #round-robin-app .rr-player-layout.rr-needs-groups > .rr-player-picker { order: 2; }
-  #round-robin-app .rr-player-layout.rr-needs-groups > :last-child { order: 1; }
+#round-robin-app .rr-group-setup { display: flex; flex-direction: row; justify-content: space-between; align-items: center; gap: 20px; }
+#round-robin-app .rr-group-count-controls { flex-shrink: 0; }
+#round-robin-app .rr-group-count-controls label { display: block; margin-bottom: 6px !important; }
+#round-robin-app .rr-group-count-controls select { width: 90px; }
+#round-robin-app .rr-group-count-controls :is(select, button) { min-height: 44px; }
+#round-robin-app .rr-group-count-controls button { white-space: nowrap; }
+@media (max-width: 767.98px) {
+  #round-robin-app .rr-group-setup { flex-direction: column; align-items: stretch; }
+  #round-robin-app .rr-group-count-controls button { flex: 1; }
+}
+@media (max-width: 360px) {
+  #round-robin-app .rr-group-count-controls select { width: 68px; min-width: 68px; flex: 0 0 68px; }
+  #round-robin-app .rr-group-count-controls button { min-width: 0; white-space: normal; padding-inline: 10px; }
 }

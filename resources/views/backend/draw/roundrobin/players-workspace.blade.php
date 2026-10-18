@@ -3,26 +3,30 @@
     <span class="small text-muted">Step 3 of 3 · Players · {{ $draw->isRoundRobinOnly() ? 'Round robin only' : 'Round robin → playoffs' }}</span>
     <a href="{{ route('draw.setup.show', $draw) }}" class="btn btn-sm btn-outline-secondary">Draw format</a>
   </div>
-  <div class="rr-assignment-heading">
-    <div><h5 class="mb-1">Build your groups</h5><p class="text-muted mb-0">Choose players, arrange their seed order, then preview your fixtures.</p></div>
-    <div class="d-flex align-items-center gap-2">
-      <label for="groups-tab-boxes" class="mb-0">Groups</label>
-      <select id="groups-tab-boxes" class="form-select form-select-sm" style="width:90px" aria-label="Number of groups">
+  <p class="mb-3" id="rr-category-scope"><strong>Player category:</strong> <span id="rr-category-name">{{ $draw->categoryEvent?->category?->name ?? 'All event categories' }}</span></p>
+  <section class="card card-body mb-3 rr-group-setup" aria-labelledby="rr-group-setup-title">
+    <div><h5 class="mb-1" id="rr-group-setup-title">{{ $groups->isEmpty() ? '1. Create groups' : '1. Groups' }}</h5><p class="text-muted mb-0">Choose how many groups you need. Each player plays everyone in their group.</p></div>
+    <div class="rr-group-count-controls">
+      <label for="groups-tab-boxes" class="mb-0">Number of groups</label>
+      <div class="d-flex gap-2">
+      <select id="groups-tab-boxes" class="form-select" aria-label="Number of groups">
         @foreach(range(1, max(8, $groups->count())) as $n)
           <option value="{{ $n }}" @selected($n === $currentBoxes)>{{ $n }}</option>
         @endforeach
       </select>
-      <button type="button" id="rr-apply-group-count" class="btn btn-sm btn-outline-primary">{{ $groups->isEmpty() ? 'Create groups' : 'Update groups' }}</button>
+      <button type="button" id="rr-apply-group-count" class="btn {{ $groups->isEmpty() ? 'btn-primary' : 'btn-outline-secondary' }}">{{ $groups->isEmpty() ? 'Create groups' : 'Update groups' }}</button>
+      </div>
     </div>
-  </div>
-  <p class="mb-3" id="rr-category-scope"><strong>Player category:</strong> <span id="rr-category-name">{{ $draw->categoryEvent?->category?->name ?? 'All event categories' }}</span></p>
+  </section>
   <details class="alert alert-info py-2 mb-3">
     <summary class="small fw-semibold" style="cursor:pointer">How do groups and seeds work?</summary>
     <p class="small mb-1 mt-2">Each player meets everyone in their group. More players in one group create more matches.</p>
     <p class="small mb-0">The order inside a group is the seed order. Save assignments, then use <strong>Save &amp; preview fixtures</strong> to check the matches before generating them.</p>
   </details>
   <div class="alert alert-warning rr-locked-overlay {{ ($draw->locked || $draw->published) ? '' : 'd-none' }}">Assignments are read-only while the draw is published or locked.</div>
-  <div class="rr-player-layout {{ $groups->isEmpty() ? 'rr-needs-groups' : '' }}">
+  <h5 class="mt-4 mb-1">2. Add players</h5>
+  <p class="text-muted mb-3" id="rr-placement-next-step">{{ $groups->isEmpty() ? 'Create your groups first. Then choose players and add them to a group.' : 'Choose players, add them to a group, then save assignments.' }}</p>
+  <div class="rr-player-layout">
     <aside class="rr-player-picker">
       <div class="rr-picker-heading"><h6 class="mb-1">Available players <span id="rr-available-count" class="badge bg-label-primary">0</span></h6><small class="text-muted">Paid, active entries for this draw</small></div>
       <div class="p-3 border-bottom">
@@ -47,10 +51,10 @@
         </div>
       </div>
     </aside>
-    <div><div class="rr-group-summary"><span id="rr-assigned-count">0 assigned</span><span class="text-muted" id="rr-placement-next-step">{{ $groups->isEmpty() ? 'Create groups first, then add your players.' : 'Add players to a group, then save assignments.' }}</span></div><div id="rr-groups-row" class="rr-group-grid"></div></div>
+    <div><div class="rr-group-summary"><span id="rr-assigned-count">0 assigned</span><span class="text-muted">Order within each group sets the seeds</span></div><div id="rr-groups-row" class="rr-group-grid"></div></div>
   </div>
   <div class="rr-assignment-savebar">
-    <div><strong id="rr-save-status" role="status" aria-live="polite">Saved</strong><div id="rr-assignment-message" class="small text-muted">Your event registrations are kept when players leave a group.</div></div>
+    <div><strong class="d-block">3. Save and preview</strong><span id="rr-save-status" role="status" aria-live="polite">Saved</span><div id="rr-assignment-message" class="small text-muted">Your event registrations are kept when players leave a group.</div></div>
     <div class="d-flex flex-wrap gap-2">
       <button type="button" id="rr-discard-groups" class="btn btn-sm btn-outline-secondary">Discard changes</button>
       <button type="button" id="btn-save-groups" class="btn btn-sm btn-outline-primary">Save assignments</button>

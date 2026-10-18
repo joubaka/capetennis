@@ -77,9 +77,9 @@
     ).prop('disabled', busy || !editable());
     $('#rr-assign-selected, #rr-select-visible, #rr-assign-target').prop('disabled', busy || !editable() || !groups.length);
     $('#rr-apply-group-count').text(groups.length ? 'Update groups' : 'Create groups');
-    $('[data-rr-create-groups]').prop('disabled', busy || !editable()).text('Create ' + $('#groups-tab-boxes').val() + ' groups');
-    $('#rr-placement-next-step').text(groups.length ? 'Add players to a group, then save assignments.' : 'Create groups first, then add your players.');
-    $('.rr-player-layout').toggleClass('rr-needs-groups', !groups.length);
+    $('#rr-apply-group-count').toggleClass('btn-primary', !groups.length).toggleClass('btn-outline-secondary', !!groups.length);
+    $('#rr-group-setup-title').text(groups.length ? '1. Groups' : '1. Create groups');
+    $('#rr-placement-next-step').text(groups.length ? 'Choose players, add them to a group, then save assignments.' : 'Create your groups first. Then choose players and add them to a group.');
     $('.rr-locked-overlay').toggleClass('d-none', editable());
   }
   function renderAvailable() {
@@ -164,7 +164,7 @@
         '</section>';
     });
     $('#rr-groups-row').html(
-      html || '<section class="card card-body text-center align-items-center gap-2"><h6 class="mb-0">Create your groups first</h6><p class="small text-muted mb-1">Choose the number of groups above, then create them. Your players will be available to add next.</p><button type="button" class="btn btn-primary" data-rr-create-groups>Create selected groups</button></section>'
+      html || '<p class="small text-muted p-3">Your groups will appear here after you create them.</p>'
     );
     renderAvailable();
     update();
@@ -471,7 +471,6 @@
       if (result.isConfirmed) assign([id], result.value);
     });
     $('#btn-save-groups').on('click', save);
-    $(document).on('click', '[data-rr-create-groups]', resize);
     $('#groups-tab-boxes').on('change', update);
     $('#btn-regenerate-fixtures').on('click', generate);
     $('#rr-apply-group-count').on('click', resize);

@@ -52,7 +52,9 @@ class DrawWorkspaceTest extends TestCase
             ->assertSee(route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'manual' => 1]));
         $page->assertSee('Create groups');
         $page->assertSee('id="rr-category-name">U19 Boys', false);
-        $page->assertSee('Create groups first, then add your players.');
+        $page->assertSee('Create your groups first. Then choose players and add them to a group.');
+        $this->assertSame(1, substr_count($page->getContent(), 'id="groups-tab-boxes"'));
+        $this->assertSame(1, substr_count($page->getContent(), 'id="rr-apply-group-count"'));
         $page->assertSee('<details data-individual-draw-tools>', false);
         $page->assertSee('More tools');
         $page->assertDontSee('data-individual-draw-tools open', false);
