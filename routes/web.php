@@ -75,6 +75,12 @@ use App\Http\Controllers\Backend\DisciplineSettingsController;
 use App\Models\ClothingOrder;
 use App\Models\Draw;
 use Illuminate\Support\Facades\Route;
+
+// Uploaded logos may live in the application public directory while shared
+// hosting serves a separate public_html copy. Resolve missing static files here.
+Route::get('/assets/img/logos/{filename}', \App\Http\Controllers\EventLogoController::class)
+    ->where('filename', '[A-Za-z0-9_.-]+')
+    ->name('event-logos.show');
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\Facades\DB;
 use App\Models\Player;
