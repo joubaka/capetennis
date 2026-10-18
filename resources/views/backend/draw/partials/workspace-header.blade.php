@@ -10,6 +10,9 @@
   </x-slot:meta>
   <x-slot:actions>
       @can('event.manage', $draw->event)<a data-draw-guide-open class="btn btn-sm btn-primary" href="{{ route('draw.guide.show', [$draw->event_id, $draw]) }}">Continue setup</a>@endcan
+      @unless($draw->isTeamDraw())
+        <details data-individual-draw-tools><summary class="btn btn-sm btn-outline-secondary">More tools</summary><div class="d-flex flex-wrap gap-2 pt-2">
+      @endunless
       @if(!empty($rankingReference))
         <div class="dropdown draw-ranking-reference">
           <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
@@ -75,6 +78,9 @@
           <button type="button" class="btn btn-sm btn-outline-secondary" data-workspace-lock="{{ route('backend.draw.toggle-lock', $draw) }}">{{ $draw->locked ? 'Unlock draw' : 'Lock draw' }}</button>
         @endcan
       @endif
+      @unless($draw->isTeamDraw())
+        </div></details>
+      @endunless
       @if($workspaceDraws->count() > 1)
         <div class="dropdown">
           <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown">Switch Draw ({{ $workspaceDraws->count() }})</button>

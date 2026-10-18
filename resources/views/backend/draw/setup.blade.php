@@ -7,7 +7,7 @@
 @include('backend.draw.partials.workspace-header', ['workspaceContext' => 'settings'])
 @include('backend.draw.partials.workspace-links', ['workspaceTab' => 'settings'])
 <div class="mx-auto" style="max-width:900px">
-  <p class="text-primary mb-1">Step 3 of 6 · Draw format</p>
+  <p class="text-primary mb-1">Step 2 of 3 · Draw format</p>
   <h3 class="mb-2">How should this draw start?</h3>
   <p class="text-muted mb-4">{{ $draw->drawName }} · Choose the format first. Player placement and format-specific settings come next.</p>
   <details class="alert alert-info mb-4">
@@ -73,7 +73,7 @@
           <span class="form-check-label"><strong>I understand this removes the current fixtures and scheduled times.</strong></span>
         </label>
       @endif
-      <button class="btn btn-primary" type="submit">{{ $resetSummary['has_format_state'] ? 'Change format and reset draw' : 'Continue to setup →' }}</button>
+      <button class="btn btn-primary" type="submit">{{ $resetSummary['has_format_state'] ? 'Change format and reset draw' : 'Continue to players →' }}</button>
     </fieldset>
   </form>
   <p class="text-muted small mt-3">Recorded results are always protected. A confirmed reset keeps the draw and eligible roster, but removes generated fixtures and timetable entries.</p>

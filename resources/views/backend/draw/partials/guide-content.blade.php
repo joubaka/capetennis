@@ -1,7 +1,7 @@
 <div class="container-xxl py-3" style="max-width:1000px" data-draw-guide data-draw-guide-url="{{ route('draw.guide.show', [$event, $draw]) }}">
   <a href="{{ route('headOffice.show', $event) }}" class="btn btn-link px-0 mb-2">← Back to event</a>
   <h1 class="h3">{{ $draw->drawName }}</h1>
-  <p class="text-muted">Set up your {{ $guide['team'] ? 'team' : 'individual' }} draw. Your progress comes from the saved draw, so you can leave and continue later.</p>
+  <p class="text-muted">{{ $guide['team'] ? 'Set up your team draw.' : 'Choose the category and format, then place your players.' }} Save each step before leaving; you can continue here later.</p>
   @if($errors->any())<div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>@endif
   @if($draw->locked)<div class="alert alert-warning">This draw is locked. Review is available; use the existing workspace controls before changing protected setup.</div>@endif
   @foreach($guide['warnings'] as $warning)<div class="alert alert-warning">{{ $warning }}</div>@endforeach
@@ -26,19 +26,35 @@
       @endif
     </section>
   @endif
+  @php
+    $visibleSteps = $guide['team'] ? $guide['steps'] : [
+      1 => array_merge($guide['steps'][1], ['label' => 'Category']),
+      2 => array_merge($guide['steps'][2], ['label' => 'Format']),
+      3 => array_merge($guide['steps'][3], ['label' => 'Players and draw']),
+    ];
+    $phaseOneReady = !$guide['team'] && $guide['steps'][3]['complete'];
+    $current = $guide['steps'][$guide['next']];
+  @endphp
   <ol class="list-unstyled d-flex flex-wrap gap-2 mb-4" aria-label="Draw setup progress">
-    @foreach($guide['steps'] as $index => $step)
+    @foreach($visibleSteps as $index => $step)
       <li class="border rounded px-3 py-2 {{ $index === $guide['next'] ? 'border-primary' : '' }}" @if($index === $guide['next']) aria-current="step" @endif>
-        <span class="small">{{ $index + 1 }}. {{ $step['label'] }}</span>
+        <span class="small">{{ $guide['team'] ? $index + 1 : $index }}. {{ $step['label'] }}</span>
         <span class="d-block small {{ $step['complete'] ? 'text-success' : 'text-muted' }}">{{ $step['complete'] ? 'Complete' : ($index === $guide['next'] ? 'Continue here' : 'Still to do') }}</span>
       </li>
     @endforeach
   </ol>
-  @php($current = $guide['steps'][$guide['next']])
+  @if($phaseOneReady)
+    <section class="card card-body mb-3">
+      <h2 class="h4">Draw and players ready</h2>
+      <p>Your generated draw is saved. Open it to review the players and matches.</p>
+      <a class="btn btn-primary align-self-start" href="{{ $guide['workspace'] }}">Open draw</a>
+      <a class="align-self-start mt-3" href="{{ route('headOffice.show', $event) }}">Back to categories</a>
+    </section>
+  @else
   <section class="card card-body mb-3">
-    <p class="small text-primary mb-1">Step {{ $guide['next'] + 1 }} of 6</p>
-    <h2 class="h4">{{ $current['label'] }}</h2>
-    <p>{{ $current['detail'] }}</p>
+    <p class="small text-primary mb-1">Step {{ $guide['team'] ? $guide['next'] + 1 : $guide['next'] }} of {{ $guide['team'] ? 6 : 3 }}</p>
+    <h2 class="h4">{{ $guide['team'] ? $current['label'] : $visibleSteps[$guide['next']]['label'] }}</h2>
+    <p>{{ !$guide['team'] && $guide['next'] === 3 ? 'Place your players, save the assignments and generate the matches.' : $current['detail'] }}</p>
     @if($guide['next'] === 1 && !$guide['team'] && !$draw->category_event_id && !$draw->locked && !$draw->published && !$draw->oop_published)
       @if($categories->isEmpty())
         <p>No player categories are configured for this event yet.</p>
@@ -66,5 +82,13 @@
     @endif
     <p class="small text-muted mt-3 mb-0">Saving setup does not publish changes. Review the current draw and schedule publication separately.</p>
   </section>
-  <details class="card card-body"><summary>Review completed steps or open another step</summary><div class="d-grid gap-2 mt-3">@foreach($guide['steps'] as $index => $step)<a class="btn btn-outline-secondary text-start" href="{{ $step['url'] }}">{{ $index + 1 }}. {{ $step['label'] }}</a>@endforeach</div></details>
+  @endif
+  <details class="card card-body"><summary>Review saved setup{{ $guide['team'] ? ' or open another step' : '' }}</summary><div class="d-grid gap-2 mt-3">@foreach($visibleSteps as $index => $step)<a class="btn btn-outline-secondary text-start" href="{{ $step['url'] }}">{{ $guide['team'] ? $index + 1 : $index }}. {{ $step['label'] }}</a>@endforeach</div></details>
+  @unless($guide['team'])
+    <details class="card card-body mt-3"><summary>Later: scheduling and publication</summary>
+      <p class="small text-muted mt-2">Prepare match times and publish the draw separately when you are ready.</p>
+      <a class="align-self-start" href="{{ $guide['steps'][4]['url'] }}">Open scheduling</a>
+      <a class="align-self-start mt-2" href="{{ $guide['steps'][5]['url'] }}">Review publication controls</a>
+    </details>
+  @endunless
 </div>

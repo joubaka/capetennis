@@ -154,3 +154,11 @@
   .draws-status-filters .draws-status-dot { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .draws-workspace * { transition: none !important; } }
+.category-draw-action { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.draws-workspace details > summary { cursor: pointer; min-height: 44px; }
+.draws-workspace details > summary:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.draws-extra-tools { position: relative; }
+@media (max-width: 575.98px) {
+  .category-draw-action { align-items: stretch; flex-direction: column; }
+  .category-draw-action .btn { min-height: 44px; white-space: normal; text-align: left; }
+}

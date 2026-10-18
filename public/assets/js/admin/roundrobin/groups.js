@@ -75,6 +75,8 @@
     $(
       '#rr-apply-group-count, #groups-tab-boxes, #btn-import-teams, #rr-assign-selected, #rr-select-visible, #rr-assign-target'
     ).prop('disabled', busy || !editable());
+    $('#rr-assign-selected, #rr-select-visible, #rr-assign-target').prop('disabled', busy || !editable() || !groups.length);
+    $('#rr-apply-group-count').text(groups.length ? 'Update groups' : 'Create groups');
     $('.rr-locked-overlay').toggleClass('d-none', editable());
   }
   function renderAvailable() {
@@ -159,7 +161,7 @@
         '</section>';
     });
     $('#rr-groups-row').html(
-      html || '<div class="alert alert-info">Choose the number of groups above and select Apply to begin.</div>'
+      html || '<div class="alert alert-info">Choose how many groups you need, then select Create groups. You can add players once the groups are ready.</div>'
     );
     renderAvailable();
     update();

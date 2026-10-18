@@ -221,6 +221,7 @@ class HeadOfficeDrawOverviewTest extends TestCase
 
     public function test_empty_event_has_creation_guidance_without_unusable_filters(): void
     {
+        Gate::before(fn (?User $user) => true);
         $event = (new Event)->forceFill(['id' => 233, 'name' => 'Empty event']);
         $event->setRelation('draws', collect());
         $html = view('backend.headOffice.partials.individual-draw-overview', compact('event'))->render();

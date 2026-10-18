@@ -588,7 +588,7 @@ $(document).ready(function () {
 <div class="modal fade" id="createDrawModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-md">
     <div class="modal-content">
-      <form id="createDrawForm" data-guided-create>
+      <form id="createDrawForm">
         @csrf
 
         <div class="modal-header">
@@ -597,21 +597,10 @@ $(document).ready(function () {
         </div>
 
         <div class="modal-body">
-          <p class="small text-primary" data-create-guide-status>Step 1 of 6 · Competition</p>
-          <p data-create-guide-intro><strong>Individual singles</strong><br>Choose your player category next, then the format, draw positions, schedule and publication.</p>
-          <div data-create-guide-details hidden>
-
-          <p class="small text-muted">Choose a name and player category. Format, draw positions, scheduling and review follow after saving this draft.</p>
-
-          <div class="mb-3">
-            <label for="drawName" class="form-label fw-bold">Draw Name</label>
-            <input type="text" id="drawName" name="drawName" class="form-control"
-                   placeholder="e.g. Boys U14 Main Draw" required>
-            <div class="form-text">Use a name parents and players will recognise when the draw is published.</div>
-          </div>
+          <div class="d-flex flex-column">
 
           @if($event->categoryEvents->isNotEmpty())
-            <div class="mb-3">
+            <div class="mb-3 order-1">
               <label for="drawCategory" class="form-label fw-bold">Player category</label>
               <select id="drawCategory" name="category_event_id" class="form-select" required>
                 <option value="">Choose a category</option>
@@ -622,19 +611,27 @@ $(document).ready(function () {
                   </option>
                 @endforeach
               </select>
-              <div class="form-text">Player placement starts with paid, active entries in this category.</div>
             </div>
-            <div class="form-check border rounded p-3 ps-5 mb-0">
+          @else
+            <div class="alert alert-warning mb-3" role="alert">
+              No player categories are configured yet. You can save a draft, then add event categories and entries before placing players.
+            </div>
+          @endif
+
+          <div class="mb-3 order-2">
+            <label for="drawName" class="form-label fw-bold">Draw Name</label>
+            <input type="text" id="drawName" name="drawName" class="form-control"
+                   placeholder="e.g. Boys U14 Main Draw" required>
+            <div class="form-text">Suggested from your category. You can change it.</div>
+          </div>
+          @if($event->categoryEvents->isNotEmpty())
+            <details class="order-3"><summary>Advanced options</summary><div class="form-check border rounded p-3 ps-5 mt-2">
               <input class="form-check-input" type="checkbox" id="eventWideDraw" name="category_scope" value="event">
               <label class="form-check-label" for="eventWideDraw">
                 <strong>Combine players from different categories</strong>
                 <span class="d-block small text-muted">Advanced: use this only when the competition intentionally mixes categories.</span>
               </label>
-            </div>
-          @else
-            <div class="alert alert-warning mb-0" role="alert">
-              No player categories are configured yet. You can create the draw now, but add event categories and entries before placing players.
-            </div>
+            </div></details>
           @endif
 
         </div>
@@ -642,7 +639,7 @@ $(document).ready(function () {
           </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="button" class="btn btn-outline-secondary" data-create-guide-back hidden>Back</button><button type="button" class="btn btn-primary" data-create-guide-continue>Continue</button><button type="submit" class="btn btn-primary" data-create-guide-submit hidden>Save draw &amp; continue</button>
+          <button type="submit" class="btn btn-primary">Save draw &amp; continue</button>
         </div>
 
       </form>

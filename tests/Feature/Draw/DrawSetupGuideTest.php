@@ -28,7 +28,7 @@ class DrawSetupGuideTest extends TestCase
     {
         [$event, $draw] = $this->scenario(false);
         $url = route('draw.guide.show', [$event, $draw]);
-        $page = $this->get($url)->assertOk()->assertSee('Step 2 of 6');
+        $page = $this->get($url)->assertOk()->assertSee('Step 1 of 3');
         if (getenv('DRAW_GUIDE_SNAPSHOT_DIR')) file_put_contents(getenv('DRAW_GUIDE_SNAPSHOT_DIR').'/individual-guide.html', $page->getContent());
         $this->assertSame(0, Fixture::count());
         $this->assertNull($draw->fresh()->settings);
@@ -37,7 +37,7 @@ class DrawSetupGuideTest extends TestCase
         $this->postJson($categoryUrl, ['category_event_id' => $foreign->id])->assertUnprocessable();
         $category = CategoryEvent::factory()->create(['event_id' => $event->id]);
         $this->post($categoryUrl, ['category_event_id' => $category->id])->assertRedirect($url);
-        $this->get($url)->assertOk()->assertSee('Step 3 of 6');
+        $this->get($url)->assertOk()->assertSee('Step 2 of 3');
         $this->assertSame($category->id, $draw->fresh()->category_event_id);
         $this->assertSame(0, Fixture::count());
         $this->assertFalse((bool) $draw->published);
@@ -61,9 +61,30 @@ class DrawSetupGuideTest extends TestCase
         $this->assertStringContainsString('Categories and saved draws', $html);
         $this->assertStringContainsString('Continue setup: '.$draw->drawName, $html);
         $this->assertStringContainsString('id="venue-print-venue"', $html);
+        $this->assertStringContainsString('data-draw-details', $html);
+        $this->assertStringNotContainsString('id="createDrawForm" data-guided-create', $html);
+        $this->assertStringContainsString('<summary>Advanced options</summary>', $html);
         $this->assertSame(1, Draw::count());
         $this->assertSame(0, Fixture::count());
         $this->assertFalse((bool) $draw->fresh()->published);
+    }
+
+    public function test_category_actions_keep_new_saved_and_unassigned_draws_visible_with_warnings(): void
+    {
+        [$event, $draw] = $this->scenario();
+        $newCategory = CategoryEvent::factory()->create(['event_id' => $event->id]);
+        $combined = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => null, 'published' => true]);
+        $event->load('categoryEvents.category', 'draws.settings');
+        foreach ($event->categoryEvents as $category) $category->eligible_draw_entries_count = 0;
+        $event->draws->each(fn ($item) => $item->setRelation('event', $event));
+        $event->draws->firstWhere('id', $draw->id)->pending_late_withdrawal_count = 1;
+        $html = view('backend.headOffice.partials.individual-draw-overview', compact('event'))->render();
+        $this->assertStringContainsString('data-create-category="'.$newCategory->id.'"', $html);
+        $this->assertStringContainsString('Review 1 late withdrawal:', $html);
+        $this->assertStringContainsString('Open draw: '.$combined->drawName, $html);
+        $this->assertStringContainsString('Combined or unassigned category', $html);
+        $this->assertStringContainsString('<details class="card mb-3" data-draw-details>', $html);
+        $this->assertStringNotContainsString('data-draw-details open', $html);
     }
 
     public function test_ajax_guide_returns_private_fragment_and_category_save_returns_resume_url(): void
@@ -79,7 +100,7 @@ class DrawSetupGuideTest extends TestCase
         $category = CategoryEvent::factory()->create(['event_id' => $event->id]);
         $this->postJson(route('draw.guide.category', [$event, $draw]), ['category_event_id' => $category->id])
             ->assertOk()->assertJsonPath('guide_url', $url);
-        $this->getJson($url)->assertOk()->assertSee('Step 3 of 6');
+        $this->getJson($url)->assertOk()->assertSee('Step 2 of 3');
         $this->assertFalse((bool) $draw->fresh()->published);
     }
 
@@ -121,10 +142,10 @@ class DrawSetupGuideTest extends TestCase
         $fixtures = Fixture::factory()->count(2)->create(['draw_id' => $draw->id, 'winner_registration' => null]);
         $service = app(DrawSetupGuide::class);
         $this->assertSame(4, $service->state($draw->fresh())['next']);
-        $savedFixtures = $fixtures->map(fn ($fixture) => $fixture->getAttributes())->all();
+        $savedFixtures = $fixtures->map(fn ($fixture) => $fixture->fresh()->getAttributes())->all();
         $resumeUrl = route('draw.guide.show', [$event, $draw]);
-        $this->get($resumeUrl)->assertOk()->assertSee('Step 4 of 6');
-        $this->get($resumeUrl)->assertOk()->assertSee('Step 4 of 6');
+        $this->get($resumeUrl)->assertOk()->assertSee('Draw and players ready');
+        $this->get($resumeUrl)->assertOk()->assertSee('Draw and players ready');
         $this->assertSame($savedFixtures, $fixtures->map(fn ($fixture) => $fixture->fresh()->getAttributes())->all());
         $this->assertSame(1, Draw::count());
         $this->assertSame(2, Fixture::count());

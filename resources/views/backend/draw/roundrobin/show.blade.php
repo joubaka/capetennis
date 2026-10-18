@@ -29,6 +29,14 @@
 
 @include('backend.draw.partials.workspace-header', ['workspaceSurface' => 'roundrobin'])
 
+@if(!$draw->isTeamDraw() && in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs'], true) && app(\App\Services\Draw\GroupAssignmentService::class)->fixturesNeedRegeneration($draw))
+  <div class="alert alert-warning" role="alert">
+    <strong>Saved groups differ from the generated matches.</strong>
+    Review the saved groups and existing matches before continuing.
+    <a href="{{ route('backend.draw.roundrobin.show', $draw) }}#groups">Open Players &amp; Groups</a>
+  </div>
+@endif
+
 <div class="rr-readiness">
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-2"><strong id="rr-next-step">{{ $draw->drawFixtures->isEmpty() ? 'Start with your players and groups' : 'Your draw workspace' }}</strong><span class="small text-muted" id="rr-fixture-summary">{{ $draw->drawFixtures->count() }} fixtures · {{ $readiness['scored_count'] ?? 0 }} scored</span></div>
   <details class="mt-2"><summary>Readiness and draw status</summary><div class="mt-2">

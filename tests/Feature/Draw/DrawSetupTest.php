@@ -80,7 +80,7 @@ class DrawSetupTest extends TestCase
         $this->assertDatabaseCount('flexible_monrad_draws', 0);
 
         $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()
-            ->assertSee('Step 2 · Round robin only')
+            ->assertSee('Step 3 of 3 · Players · Round robin only')
             ->assertDontSee('id="main-bracket-tab"', false)
             ->assertDontSee('id="btn-add-playoff"', false)
             ->assertDontSee('id="btn-print-bracket"', false)

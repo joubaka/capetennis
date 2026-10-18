@@ -12,6 +12,34 @@ use Illuminate\Validation\ValidationException;
 
 final class GroupAssignmentService
 {
+    /** Compare saved group membership with existing RR fixtures without changing either. */
+    public function fixturesNeedRegeneration(Draw $draw): bool
+    {
+        $fixtures = $draw->drawFixtures()->where('stage', 'RR')->get(['draw_group_id', 'registration1_id', 'registration2_id']);
+        if ($fixtures->isEmpty()) return false;
+
+        $groups = $draw->groups()->with('groupRegistrations')->get();
+        if ($groups->isEmpty()) return false;
+        $expected = [];
+        foreach ($groups as $group) {
+            $ids = $group->groupRegistrations->pluck('registration_id')->filter()->map(fn ($id) => (int) $id)->sort()->values();
+            foreach ($ids as $index => $first) {
+                foreach ($ids->slice($index + 1) as $second) {
+                    $expected[] = $group->id.':'.$first.':'.$second;
+                }
+            }
+        }
+        $actual = $fixtures->map(function ($fixture) {
+            $pair = [(int) $fixture->registration1_id, (int) $fixture->registration2_id];
+            sort($pair);
+            return $fixture->draw_group_id.':'.implode(':', $pair);
+        })->all();
+        sort($expected);
+        sort($actual);
+
+        return $expected !== $actual;
+    }
+
     public function eligible(Draw $draw): Builder
     {
         return CategoryEventRegistration::query()

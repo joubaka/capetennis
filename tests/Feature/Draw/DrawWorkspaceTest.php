@@ -39,16 +39,69 @@ class DrawWorkspaceTest extends TestCase
     {
         [$draw] = $this->workspace();
         $this->get(route('backend.draw.roundrobin.show', $draw))->assertRedirect(route('draw.setup.show', $draw));
+        if (getenv('DRAW_GUIDE_SNAPSHOT_DIR')) file_put_contents(getenv('DRAW_GUIDE_SNAPSHOT_DIR').'/individual-format.html', $this->get(route('draw.setup.show', $draw))->assertOk()->getContent());
         $this->post(route('draw.setup.store', $draw), ['workflow' => 'round_robin_playoffs'])
             ->assertRedirect(route('backend.draw.roundrobin.show', $draw));
-        $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()
+        $page = $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()
             ->assertSee('Players &amp; Groups', false)->assertSee('Draw &amp; Results', false)
             ->assertSee('Setup &amp; Rules', false)->assertSee('Print Draw Pack')
             ->assertSee('Manage full schedule')
             ->assertSee('data-full-schedule-action', false)
             ->assertSee(route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'manual' => 1]));
+        $page->assertSee('Create groups');
+        $page->assertSee('<details data-individual-draw-tools>', false);
+        $page->assertSee('More tools');
+        $page->assertDontSee('data-individual-draw-tools open', false);
+        $page->assertSee('href="'.route('admin.events.entries.new', $draw->event_id).'">Manage event entries', false);
+        if (getenv('DRAW_GUIDE_SNAPSHOT_DIR')) file_put_contents(getenv('DRAW_GUIDE_SNAPSHOT_DIR').'/rr-empty.html', $page->getContent());
         $this->assertSame(0, $draw->groups()->count());
         $this->assertSame(0, $draw->drawFixtures()->count());
+    }
+
+    public function test_saved_group_changes_stay_visible_after_resume_until_explicit_regeneration(): void
+    {
+        [$draw, $category] = $this->workspace();
+        $draw->settings()->create(['workflow' => 'round_robin']);
+        $group = $draw->groups()->create(['name' => 'A']);
+        $players = collect(range(1, 3))->map(fn () => $this->entrant($category));
+        $group->registrations()->sync([$players[0]->id => ['seed' => 1], $players[1]->id => ['seed' => 2]]);
+        app(\App\Services\DrawService::class)->regenerateRoundRobinFixtures($draw->fresh());
+        $service = app(GroupAssignmentService::class);
+        $this->assertFalse($service->fixturesNeedRegeneration($draw));
+        if (getenv('DRAW_GUIDE_SNAPSHOT_DIR')) file_put_contents(getenv('DRAW_GUIDE_SNAPSHOT_DIR').'/rr-populated.html', $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()->getContent());
+        $before = $draw->drawFixtures()->get()->map(fn ($fixture) => $fixture->getAttributes())->all();
+        $service->save($draw, ['groups' => [['group_id' => $group->id, 'registration_ids' => [$players[2]->id, $players[0]->id]]]]);
+        $url = route('draw.guide.show', [$draw->event_id, $draw]);
+        $this->get($url)->assertOk()->assertSee('Saved groups differ from the generated matches')->assertSee('Step 3 of 3');
+        $this->get($url)->assertOk()->assertSee('Saved groups differ from the generated matches');
+        $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()
+            ->assertSee('Saved groups differ from the generated matches')
+            ->assertSee('Open Players &amp; Groups', false);
+        $this->assertSame([$players[2]->id, $players[0]->id], $group->groupRegistrations()->orderBy('seed')->pluck('registration_id')->all());
+        $this->assertSame($before, $draw->drawFixtures()->get()->map(fn ($fixture) => $fixture->getAttributes())->all());
+        app(\App\Services\DrawService::class)->regenerateRoundRobinFixtures($draw->fresh());
+        $this->assertFalse($service->fixturesNeedRegeneration($draw));
+        $this->get($url)->assertOk()->assertSee('Draw and players ready')->assertDontSee('Saved groups differ from the generated matches');
+    }
+
+    public function test_group_fixture_comparison_handles_odd_groups_swapped_sides_and_duplicate_fixtures(): void
+    {
+        [$draw, $category] = $this->workspace();
+        $group = $draw->groups()->create(['name' => 'A']);
+        $players = collect(range(1, 3))->map(fn () => $this->entrant($category));
+        $group->registrations()->sync($players->pluck('id')->all());
+        app(\App\Services\DrawService::class)->regenerateRoundRobinFixtures($draw->fresh());
+        $service = app(GroupAssignmentService::class);
+        $this->assertSame(3, $draw->drawFixtures()->count());
+        $this->assertFalse($service->fixturesNeedRegeneration($draw));
+        $fixture = $draw->drawFixtures()->firstOrFail();
+        $fixture->update(['registration1_id' => $fixture->registration2_id, 'registration2_id' => $fixture->registration1_id]);
+        $this->assertFalse($service->fixturesNeedRegeneration($draw));
+        $fixture->replicate()->save();
+        $this->assertTrue($service->fixturesNeedRegeneration($draw));
+        $legacy = Draw::factory()->create(['event_id' => $draw->event_id]);
+        Fixture::factory()->create(['draw_id' => $legacy->id, 'stage' => 'RR']);
+        $this->assertFalse($service->fixturesNeedRegeneration($legacy));
     }
 
     public function test_grouped_workspace_does_not_generate_fixtures_on_refresh(): void

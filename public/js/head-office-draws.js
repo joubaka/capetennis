@@ -148,6 +148,14 @@ $(function () {
   });
 
   let suggestedDrawName = '';
+  $(document).on('click', '[data-create-category]', function () {
+    $('#createDrawForm')[0].reset();
+    suggestedDrawName = '';
+    $('#drawCategory').prop('disabled', false).prop('required', true).val(String($(this).data('create-category'))).trigger('change');
+  });
+  $('#createDrawModal').on('shown.bs.modal', function () {
+    document.getElementById('drawCategory')?.focus();
+  });
   $('#drawCategory').on('change', function () {
     const suggestion = this.selectedOptions[0]?.dataset.suggestedName;
     const $name = $('#drawName');

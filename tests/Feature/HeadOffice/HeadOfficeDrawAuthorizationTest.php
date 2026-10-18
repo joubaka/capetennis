@@ -214,7 +214,7 @@ class HeadOfficeDrawAuthorizationTest extends TestCase
         $this->assertSame($category->id, $draw->category_event_id);
         $this->assertSame($this->individualDrawTypeId, $draw->drawType_id);
         $this->assertFalse($draw->isTeamDraw());
-        $response->assertJsonPath('setup_url', route('draw.setup.show', $draw));
+        $response->assertJsonPath('setup_url', route('draw.guide.show', [$this->individualEvent, $draw]));
     }
 
     public function test_automatic_individual_selection_links_only_the_standard_category(): void
@@ -311,9 +311,9 @@ class HeadOfficeDrawAuthorizationTest extends TestCase
         $this->actingAs($this->admin)
             ->get(route('headOffice.show', $event))
             ->assertOk()
-            ->assertSee('Name and category')
-            ->assertSee('Choose the draw format')
-            ->assertSee('Create &amp; choose format', false)
+            ->assertSee('Categories and saved draws')
+            ->assertSee('Player category')
+            ->assertSee('Save draw &amp; continue', false)
             ->assertSee('Combine players from different categories');
     }
 

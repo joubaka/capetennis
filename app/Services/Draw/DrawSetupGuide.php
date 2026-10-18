@@ -50,6 +50,10 @@ final class DrawSetupGuide
             $scheduled = $playable->filter(fn ($fixture) => $fixture->orderOfPlay?->time && $fixture->orderOfPlay?->venue_id && trim((string) $fixture->orderOfPlay?->court) !== '')->count();
         }
         $generated = $fixtures->isNotEmpty() && $playable->isNotEmpty();
+        if (!$team && in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs'], true)
+            && app(GroupAssignmentService::class)->fixturesNeedRegeneration($draw)) {
+            $warnings[] = 'Saved groups differ from the generated matches. Review the saved groups and existing matches in player setup before continuing.';
+        }
         $format = $format || $generated || (!$team && ($draw->groups()->exists() || $draw->settings?->draw_format_id));
         $eventWide = !$team && !$draw->category_event_id && in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs'], true);
         $scheduleComplete = $generated && $scheduled === $playable->count();

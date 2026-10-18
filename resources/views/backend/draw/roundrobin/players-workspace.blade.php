@@ -1,6 +1,6 @@
 <div class="tab-pane fade" id="groups-pane" role="tabpanel" aria-labelledby="groups-tab">
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-    <span class="small text-muted">Step 2 · {{ $draw->isRoundRobinOnly() ? 'Round robin only' : 'Round robin → playoffs' }}</span>
+    <span class="small text-muted">Step 3 of 3 · Players · {{ $draw->isRoundRobinOnly() ? 'Round robin only' : 'Round robin → playoffs' }}</span>
     <a href="{{ route('draw.setup.show', $draw) }}" class="btn btn-sm btn-outline-secondary">Draw format</a>
   </div>
   <div class="rr-assignment-heading">
@@ -12,7 +12,7 @@
           <option value="{{ $n }}" @selected($n === $currentBoxes)>{{ $n }}</option>
         @endforeach
       </select>
-      <button type="button" id="rr-apply-group-count" class="btn btn-sm btn-outline-primary">Apply</button>
+      <button type="button" id="rr-apply-group-count" class="btn btn-sm btn-outline-primary">{{ $groups->isEmpty() ? 'Create groups' : 'Update groups' }}</button>
     </div>
   </div>
   <details class="alert alert-info py-2 mb-3">
@@ -37,7 +37,9 @@
         <div class="d-flex gap-2"><select id="rr-assign-target" class="form-select form-select-sm" aria-label="Destination group"></select><button type="button" id="rr-assign-selected" class="btn btn-sm btn-primary">Assign</button></div>
         <div class="mt-3 d-flex flex-wrap gap-2">
           <button type="button" id="rr-refresh-players" class="btn btn-sm btn-link p-0">Refresh players</button>
-          <a class="small" href="{{ route('headOffice.show', $draw->event_id) }}">Manage event entries</a>
+          @can('event-draw.view', $draw->event)
+            <a class="small" href="{{ route($draw->event->isTeam() ? 'admin.events.teams' : 'admin.events.entries.new', $draw->event_id) }}">Manage event entries</a>
+          @endcan
           @if(optional($draw->event)->isTeam())
             <button type="button" class="btn btn-sm btn-outline-primary" id="btn-import-teams">Import from Teams</button>
           @endif
