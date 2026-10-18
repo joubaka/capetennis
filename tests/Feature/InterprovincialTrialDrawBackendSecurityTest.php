@@ -30,7 +30,11 @@ class InterprovincialTrialDrawBackendSecurityTest extends TestCase
         Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
         Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
 
-        $eventTypeId = DB::table('eventtypes')->insertGetId([
+        // Keep this semantic-type regression independent of MySQL's
+        // auto-increment sequence and preceding tests in the same process.
+        $eventTypeId = max(14, (int) DB::table('eventtypes')->max('id') + 1);
+        DB::table('eventtypes')->insert([
+            'id' => $eventTypeId,
             'name' => 'Interprovincial Trials',
             'type' => EventType::INDIVIDUAL,
             'code' => EventType::INTERPROVINCIAL_TRIALS_CODE,
@@ -85,7 +89,7 @@ class InterprovincialTrialDrawBackendSecurityTest extends TestCase
             ->assertRedirect(route('headOffice.show', $this->event));
         $this->get(route('headOffice.show', $this->event))->assertOk()
             ->assertSee('class="ct-backend"', false)
-            ->assertSee('Create &amp; choose format', false)
+            ->assertSee('Save draw &amp; continue', false)
             ->assertDontSee('generate-fixtures-btn', false);
         $this->postJson(route('headoffice.createFixtures', $this->event))->assertUnprocessable();
         $this->assertDatabaseCount('draws', 1);

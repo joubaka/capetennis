@@ -1607,6 +1607,82 @@ class RoundRobinController extends Controller
 
     $isEmpty = request()->boolean('empty');
 
+    // A planning preview must never create fixtures or resolve real qualifiers.
+    if (!$draw->isTeamDraw() && !$draw->drawFixtures()->where('stage', '!=', 'RR')->exists()) {
+      $groups = $draw->groups()->orderBy('name')->get();
+      if ($draw->isRoundRobinOnly()) {
+        return view('backend.draw.roundrobin.bracket-planning', [
+          'draw' => $draw, 'svgData' => null,
+          'previewMessage' => 'Round robin only uses group standings. No playoff bracket is needed.',
+          'previewTarget' => 'standings', 'previewAction' => 'Open standings',
+        ]);
+      }
+      $config = collect($draw->settings?->playoff_config ?? [])->filter(fn ($item) => is_array($item) && ($item['enabled'] ?? false));
+      $configured = $config->isNotEmpty() && $config->every(function ($item) use ($groups) {
+        $size = filter_var($item['size'] ?? null, FILTER_VALIDATE_INT);
+        $positions = $item['positions'] ?? null;
+        $order = $item['group_order'] ?? [];
+        return in_array($size, [2, 4, 8, 16, 32, 64], true)
+          && is_string($item['slug'] ?? null) && is_string($item['name'] ?? null)
+          && is_array($positions) && array_is_list($positions) && count($positions) > 0
+          && count(array_unique($positions, SORT_REGULAR)) === count($positions)
+          && collect($positions)->every(fn ($position) => filter_var($position, FILTER_VALIDATE_INT) !== false && (int) $position > 0)
+          && count($positions) * $groups->count() <= $size
+          && is_array($order) && array_is_list($order) && count(array_unique($order, SORT_REGULAR)) === count($order)
+          && collect($order)->every(fn ($name) => is_string($name) && $groups->contains('name', $name));
+      });
+      if ($groups->isEmpty() || !$configured) {
+        return view('backend.draw.roundrobin.bracket-planning', [
+          'draw' => $draw, 'svgData' => null,
+          'previewMessage' => $groups->isEmpty() ? 'Create groups before previewing the playoffs.' : 'Choose and save the playoff format and qualifying positions before previewing the bracket.',
+        ]);
+      }
+      $svgData = (new \App\Services\DynamicBracketEngine($draw))->build();
+      $previewWidth = 0;
+      foreach ($svgData['brackets'] as &$bracket) {
+        $sourceLabels = [];
+        foreach ($groups as $group) {
+          foreach ($bracket['positions'] as $position) {
+            $sourceLabels[$group->name.$position][] = match ((int) $position) {
+              1 => 'Winner Group '.$group->name,
+              2 => 'Runner-up Group '.$group->name,
+              default => 'Group '.$group->name.' position '.$position,
+            };
+          }
+        }
+        foreach ($bracket['rounds'] as &$matches) {
+          foreach ($matches as &$match) {
+            $previewWidth = max($previewWidth, $match['x'] + $match['width'] + 80);
+            foreach (['feederLabel1', 'feederLabel2'] as $label) {
+              if (preg_match('/^([WL])(\d+)$/', $match[$label] ?? '', $feeder)) {
+                $match[$label] = ($feeder[1] === 'W' ? 'Winner' : 'Loser').' match '.$feeder[2];
+              }
+            }
+            foreach (['seedLabel1', 'seedLabel2'] as $label) {
+              if ($match[$label] !== null) {
+                $sources = $sourceLabels[$match[$label]] ?? [];
+                $match[$label] = count($sources) === 1 ? $sources[0] : 'Qualifier to confirm';
+              }
+            }
+          }
+          unset($match);
+        }
+        unset($matches);
+        foreach ($bracket['positionPlayoffs'] as &$placement) {
+          $previewWidth = max($previewWidth, $placement['x'] + $placement['width'] + 80);
+          foreach (['feederLabel1', 'feederLabel2'] as $label) {
+            if (preg_match('/^([WL])(\d+)$/', $placement[$label] ?? '', $feeder)) {
+              $placement[$label] = ($feeder[1] === 'W' ? 'Winner' : 'Loser').' match '.$feeder[2];
+            }
+          }
+        }
+        unset($placement);
+      }
+      unset($bracket);
+      $svgData['totalWidth'] = max(330, $previewWidth);
+      return view('backend.draw.roundrobin.bracket-planning', compact('draw', 'svgData'));
+    }
+
     // Use original BracketEngine for Interprovincial Trials.
     if ($draw->event?->isInterprovincialTrials()) {
       $engine = new \App\Services\BracketEngine($draw);

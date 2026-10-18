@@ -30,7 +30,7 @@ class DynamicBracketEngine
         $playoffConfig = optional($draw->settings)->playoff_config ?? [];
         $stages = ['MAIN', 'PLATE', 'CONS', 'BOWL', 'SHIELD', 'SPOON'];
         foreach ($playoffConfig as $cfg) {
-            $s = strtoupper($cfg['slug'] ?? '');
+            $s = is_array($cfg) && is_string($cfg['slug'] ?? null) ? strtoupper($cfg['slug']) : '';
             if ($s && !in_array($s, $stages)) {
                 $stages[] = $s;
             }
@@ -128,8 +128,12 @@ class DynamicBracketEngine
             $groupNames = $allGroupNames;
         }
         $seedLabels = [];
-        foreach ($positions as $pos) {
-            foreach ($groupNames as $gn) {
+        foreach ($positions as $positionIndex => $pos) {
+            // Match the canonical generation order for odd group counts.
+            $groupCount = count($groupNames);
+            $offset = $groupCount >= 3 && $groupCount % 2 !== 0 ? ($positionIndex * (int) floor($groupCount / 2)) % $groupCount : 0;
+            for ($groupIndex = 0; $groupIndex < $groupCount; $groupIndex++) {
+                $gn = $groupNames[($groupIndex + $offset) % $groupCount];
                 $seedLabels[] = $gn . $pos;
             }
         }

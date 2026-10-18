@@ -28,7 +28,11 @@
   function loadMainBracket(force) {
     $('#bracket-zoom-inner')
       .html(SPINNER_SMALL)
-      .load(AdminRoutes.appUrl() + '/backend/draw/' + DRAW_ID + '/main-bracket?force=' + (force ? 1 : 0));
+      .load(AdminRoutes.appUrl() + '/backend/draw/' + DRAW_ID + '/main-bracket?force=' + (force ? 1 : 0), function (_, status) {
+        if (status === 'error') {
+          $(this).html('<div class="alert alert-warning" role="alert">Could not load the playoffs. <button type="button" class="btn btn-sm btn-outline-primary" id="rr-retry-bracket">Try again</button></div>');
+        }
+      });
   }
 
   function loadPlateBracket(force) {
@@ -130,6 +134,7 @@
   // ─── Bind ─────────────────────────────────────────────────────────
   function bind() {
     $(document).on('click', '#btn-generate-main-bracket', generateMainBracket);
+    $(document).on('click', '#rr-retry-bracket', function () { loadMainBracket(); });
 
     // Load on tab activation (lazy-load)
     $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function (e) {

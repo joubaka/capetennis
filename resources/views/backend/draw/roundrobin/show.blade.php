@@ -57,12 +57,12 @@
   {{-- View tabs --}}
   <li class="nav-item" role="presentation">
     <button class="nav-link active" id="matrix-tab" data-bs-toggle="tab" data-bs-target="#matrix-pane" type="button" role="tab">
-      <i class="ti ti-grid-dots me-1"></i> Matrix
+      <i class="ti ti-grid-dots me-1"></i> Round robin
     </button>
   </li>
   <li class="nav-item" role="presentation">
     <button class="nav-link" id="oop-tab" data-bs-toggle="tab" data-bs-target="#oop-pane" type="button" role="tab">
-      <i class="ti ti-list-details me-1"></i> Order of Play
+      <i class="ti ti-list-details me-1"></i> Match list
     </button>
   </li>
   <li class="nav-item" role="presentation">
@@ -73,7 +73,7 @@
   @unless($roundRobinOnly)
   <li class="nav-item" role="presentation">
     <button class="nav-link" id="main-bracket-tab" data-bs-toggle="tab" data-bs-target="#main-bracket-pane" type="button" role="tab">
-      <i class="ti ti-tournament me-1"></i> Brackets
+      <i class="ti ti-tournament me-1"></i> Playoffs
     </button>
   </li>
   @endunless
@@ -125,7 +125,7 @@
       @endif
       
       {{-- DRAW OVERVIEW --}}
-      <div class="card mb-3 border-info">
+      <details class="card mb-3 border-info"><summary class="p-3">Draw overview and group totals</summary><div>
         <div class="card-header bg-info text-white">
           <h5 class="mb-0"><i class="ti ti-info-circle me-1"></i> Draw Overview</h5>
         </div>
@@ -206,10 +206,11 @@
         </div>
       </div>
 
+      </details>
       {{-- BASIC SETTINGS --}}
       <div class="card mb-3">
         <div class="card-header bg-light">
-          <h5 class="mb-0"><i class="ti ti-settings me-1"></i> Basic Settings</h5>
+          <h5 class="mb-0"><i class="ti ti-settings me-1"></i> Match scoring</h5>
         </div>
         <div class="card-body">
           <form id="drawSettingsForm">
@@ -217,7 +218,7 @@
 
             <div class="row g-3">
               <input type="hidden" id="settings-boxes" value="{{ $currentBoxes }}">
-              <div class="col-md-4"><label class="form-label fw-bold">Groups</label><p class="mb-0">Manage group sizes and players in <button type="button" class="btn btn-link p-0" data-open-workspace="players">Players &amp; Groups</button>.</p></div>
+              <div class="col-md-4"><label class="form-label fw-bold">Groups</label><p class="mb-0"><button type="button" class="btn btn-link p-0" data-open-workspace="players">Change groups and players</button></p></div>
               @php
                 $scoreFormats = \App\Domain\Draws\Services\TennisScoreFormat::catalog();
                 $currentScoreFormat = optional($draw->settings)->score_format;
@@ -537,8 +538,7 @@
       <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
           <div>
-            <h5 class="card-title mb-0"><i class="ti ti-broadcast me-1 text-primary"></i> Live Operations</h5>
-            <small class="text-muted">Find the next match, monitor courts, and enter results quickly.</small>
+            <h5 class="card-title mb-0"><i class="ti ti-broadcast me-1 text-primary"></i> Match list</h5>
           </div>
           <div class="d-flex gap-2">
             <button class="btn btn-sm btn-outline-primary" id="rr-refresh-ops-btn"><i class="ti ti-refresh me-1"></i>Refresh</button>
