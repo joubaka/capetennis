@@ -221,15 +221,28 @@
   .entries-workspace [hidden] { display:none!important; }
   .entries-workspace :is(.btn, .dropdown-item, summary, input, select) { min-height:44px; }
   .entries-workspace summary { cursor:pointer; align-content:center; }
-  .entries-workspace .category-card table { table-layout:auto; min-width:0; }
-  .entries-workspace .category-card td { white-space:normal; overflow-wrap:anywhere; }
-  .entries-workspace .col-contact { width:170px; }
+  .entries-workspace .category-card table { table-layout:fixed; min-width:900px; }
+  .entries-workspace .category-card :is(th, td) { padding-inline:.75rem; text-align:left; }
+  .entries-workspace .category-card td { white-space:normal; overflow-wrap:break-word; }
+  .entries-workspace .col-idx { width:4%; white-space:nowrap!important; overflow-wrap:normal!important; }
+  .entries-workspace .col-player { width:22%; }
+  .entries-workspace .col-status { width:10%; }
+  .entries-workspace .col-payment { width:23%; }
+  .entries-workspace .col-contact { width:20%; }
+  .entries-workspace .col-poc { width:7%; }
+  .entries-workspace .col-actions { width:14%; }
+  .entries-workspace [data-admin-payment-note] { align-items:flex-start!important; }
+  .entries-workspace .col-payment .badge { max-width:100%; white-space:normal; line-height:1.4; text-align:left; }
   @media(max-width:767px) {
+    .entries-workspace .category-card table { min-width:0; }
     .entries-workspace .category-card thead { display:none; }
     .entries-workspace .category-card tbody, .entries-workspace .category-card tr { display:block; }
     .entries-workspace .category-card tr { padding:.75rem; border-bottom:1px solid #ddd; }
-    .entries-workspace .category-card td { display:grid; grid-template-columns:75px minmax(0,1fr); gap:.5rem; width:100%; text-align:left; border:0; }
+    .entries-workspace .category-card td { display:grid; grid-template-columns:75px minmax(0,1fr); gap:.5rem; width:100%; text-align:left!important; border:0; padding:.375rem 0; }
     .entries-workspace .category-card td::before { content:attr(data-label); font-weight:600; }
+    .entries-workspace .category-card td > * { min-width:0; }
+    .entries-workspace .col-contact a { overflow-wrap:anywhere; }
+    .entries-workspace .col-actions .dropdown { justify-self:start; }
     .entries-workspace .table-scroll-wrapper { overflow:visible; }
   }
 </style>
@@ -404,9 +417,10 @@
 
               @php $player = optional($reg->registration?->players)->first(); @endphp
               <tr class="{{ $reg->status === 'withdrawn' ? 'table-danger text-muted' : '' }}" data-entry-id="{{ $reg->id }}">
-                <td data-label="#">{{ $reg->status !== 'withdrawn' ? $loop->iteration : '—' }}</td>
-                <td data-label="Player">{{ $player?->name }} {{ $player?->surname }}</td>
+                <td class="col-idx" data-label="#">{{ $reg->status !== 'withdrawn' ? $loop->iteration : '—' }}</td>
+                <td class="col-player" data-label="Player"><span>{{ $player?->name }} {{ $player?->surname }}</span></td>
                 <td class="col-status" data-label="Status">
+                  <div>
                   <span class="badge {{ $reg->status === 'withdrawn' ? 'bg-danger' : 'bg-success' }}">
                     {{ ucfirst($reg->status ?? 'active') }}
                   </span>
@@ -424,8 +438,9 @@
                       {{ str_replace('_', ' ', ucfirst($reg->refund_status)) }}
                     </span>
                   @endif
+                  </div>
                 </td>
-                <td data-label="Payment">
+                <td class="col-payment" data-label="Payment">
                   @if($isMasters)
                     <span class="badge bg-success">Paid</span>
                   @else
