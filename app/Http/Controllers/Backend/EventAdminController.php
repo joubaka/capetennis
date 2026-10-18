@@ -670,7 +670,6 @@ class EventAdminController extends Controller
 
     \Log::debug('[createIndividualDraw] Incoming request', [
       'event_id' => $event->id,
-      'request' => $request->all(),
     ]);
 
     // Only requirement for individual

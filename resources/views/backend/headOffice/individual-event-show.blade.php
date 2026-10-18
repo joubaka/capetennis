@@ -742,7 +742,7 @@ $(document).ready(function () {
           <label class="form-label" for="venue-print-venue">Venue</label>
           <select class="form-select mb-2" id="venue-print-venue">
             <option value="">All venues</option>
-            @foreach($event->venues as $printVenue)<option value="{{ $printVenue->id }}">{{ $printVenue->name }}</option>@endforeach
+            @foreach($eventVenues as $printVenue)<option value="{{ $printVenue->id }}">{{ $printVenue->name }}</option>@endforeach
           </select>
           <label class="form-label" for="venue-print-source">Schedule</label>
           <select class="form-select" id="venue-print-source">

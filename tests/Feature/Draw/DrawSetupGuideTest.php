@@ -46,6 +46,26 @@ class DrawSetupGuideTest extends TestCase
         $this->post($categoryUrl, ['category_event_id' => $category->id])->assertForbidden();
     }
 
+    public function test_event_overview_handles_legacy_venue_text_and_keeps_saved_category_draws_visible(): void
+    {
+        [$event, $draw] = $this->scenario();
+        // A legacy attribute must not replace the event_venues relationship.
+        $event->setAttribute('venues', 'Legacy venue directions');
+        $event->load('venues', 'categoryEvents.category', 'draws.settings');
+        foreach ($event->categoryEvents as $category) $category->eligible_draw_entries_count = 0;
+        $event->draws->each(fn ($item) => $item->setRelation('event', $event));
+        $html = view('backend.headOffice.individual-event-show', [
+            'event' => $event, 'eventVenues' => $event->getRelation('venues'),
+        ])->render();
+        if (getenv('DRAW_GUIDE_SNAPSHOT_DIR')) file_put_contents(getenv('DRAW_GUIDE_SNAPSHOT_DIR').'/individual-overview.html', $html);
+        $this->assertStringContainsString('Categories and saved draws', $html);
+        $this->assertStringContainsString('Continue setup: '.$draw->drawName, $html);
+        $this->assertStringContainsString('id="venue-print-venue"', $html);
+        $this->assertSame(1, Draw::count());
+        $this->assertSame(0, Fixture::count());
+        $this->assertFalse((bool) $draw->fresh()->published);
+    }
+
     public function test_ajax_guide_returns_private_fragment_and_category_save_returns_resume_url(): void
     {
         [$event, $draw] = $this->scenario(false);
@@ -101,6 +121,13 @@ class DrawSetupGuideTest extends TestCase
         $fixtures = Fixture::factory()->count(2)->create(['draw_id' => $draw->id, 'winner_registration' => null]);
         $service = app(DrawSetupGuide::class);
         $this->assertSame(4, $service->state($draw->fresh())['next']);
+        $savedFixtures = $fixtures->map(fn ($fixture) => $fixture->getAttributes())->all();
+        $resumeUrl = route('draw.guide.show', [$event, $draw]);
+        $this->get($resumeUrl)->assertOk()->assertSee('Step 4 of 6');
+        $this->get($resumeUrl)->assertOk()->assertSee('Step 4 of 6');
+        $this->assertSame($savedFixtures, $fixtures->map(fn ($fixture) => $fixture->fresh()->getAttributes())->all());
+        $this->assertSame(1, Draw::count());
+        $this->assertSame(2, Fixture::count());
         $venue = Venue::forceCreate(['name' => 'Synthetic court']);
         foreach ($fixtures as $index => $fixture) {
             OrderOfPlay::create(['fixture_id' => $fixture->id, 'draw_id' => $draw->id, 'time' => '2026-10-30 09:00:00', 'venue_id' => $venue->id, 'court' => (string) ($index + 1)]);

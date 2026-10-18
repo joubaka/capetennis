@@ -41,7 +41,12 @@
     <p>{{ $current['detail'] }}</p>
     @if($guide['next'] === 1 && !$guide['team'] && !$draw->category_event_id && !$draw->locked && !$draw->published && !$draw->oop_published)
       @if($categories->isEmpty())
-        <p>No player categories are configured for this event yet.</p><a class="btn btn-primary align-self-start" href="{{ route('headOffice.show', $event) }}">Open event categories &amp; entries</a>
+        <p>No player categories are configured for this event yet.</p>
+        @can('event-category.manage', $event)
+          <a class="btn btn-primary align-self-start" href="{{ route('admin.events.categories', $event) }}">Open event categories &amp; entries</a>
+        @else
+          <p class="mb-0">Ask an event administrator to add the player categories, then return to this saved draw.</p>
+        @endcan
       @else
       <form data-draw-guide-form method="POST" action="{{ route('draw.guide.category', [$event, $draw]) }}">@csrf
         <label for="guide-category" class="form-label">Player category</label>

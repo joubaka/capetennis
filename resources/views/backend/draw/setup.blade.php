@@ -7,7 +7,7 @@
 @include('backend.draw.partials.workspace-header', ['workspaceContext' => 'settings'])
 @include('backend.draw.partials.workspace-links', ['workspaceTab' => 'settings'])
 <div class="mx-auto" style="max-width:900px">
-  <p class="text-primary mb-1">Step 1 · Draw format</p>
+  <p class="text-primary mb-1">Step 3 of 6 · Draw format</p>
   <h3 class="mb-2">How should this draw start?</h3>
   <p class="text-muted mb-4">{{ $draw->drawName }} · Choose the format first. Player placement and format-specific settings come next.</p>
   <details class="alert alert-info mb-4">

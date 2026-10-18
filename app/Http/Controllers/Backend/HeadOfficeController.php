@@ -62,6 +62,7 @@ class HeadOfficeController extends Controller
     // The individual draw overview needs neither team fixtures nor team formats.
     if ($event->isIndividual() || (int) $event->eventType === 6 || $event->isInterprovincialTrials()) {
       $event->load([
+        'venues',
         'draws' => fn ($query) => $query
           ->with(['venues', 'settings', 'flexibleMonrad:id,draw_id,revision,graph'])
           ->withCount([
@@ -122,6 +123,9 @@ class HeadOfficeController extends Controller
 
       return view('backend.headOffice.individual-event-show', [
         'event' => $event,
+        // Legacy events also have a string `venues` column, which shadows
+        // Eloquent's relation when accessed as a dynamic property.
+        'eventVenues' => $event->getRelation('venues'),
       ]);
     }
 

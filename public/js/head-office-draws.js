@@ -121,25 +121,40 @@ $(function () {
       .always(() => $submit.prop('disabled', false).removeAttr('aria-busy'));
   });
 
+  let creatingDraw = false;
   $('#createDrawForm').on('submit', function (event) {
     event.preventDefault();
+    if (creatingDraw) return;
     if (!$('#drawName').val().trim()) { toastr.error('Please enter a draw name.'); return; }
     if ($('#drawCategory').length && !$('#eventWideDraw').is(':checked') && !$('#drawCategory').val()) {
       toastr.error('Choose a player category, or confirm that this draw combines categories.');
       $('#drawCategory').trigger('focus');
       return;
     }
+    creatingDraw = true;
     const $submit = $(this).find('[type="submit"]').prop('disabled', true);
     $.post(config.createUrl, $(this).serialize())
-      .done(response => { if (window.DrawSetupGuide && response.guide_url) { window.DrawSetupGuide.created([{name:response.draw?.drawName || 'Saved draw',url:response.guide_url}]); window.DrawSetupGuide.open(response.guide_url); } else location.assign(response.setup_url || location.href); })
+      .done(response => {
+        this.reset();
+        suggestedDrawName = '';
+        $('#drawCategory').prop('disabled', false).prop('required', true);
+        if (window.DrawSetupGuide && response.guide_url) {
+          window.DrawSetupGuide.created([{name:response.draw?.drawName || 'Saved draw',url:response.guide_url}]);
+          window.DrawSetupGuide.open(response.guide_url);
+        } else location.assign(response.setup_url || location.href);
+      })
       .fail(xhr => error(xhr, 'Could not create draw.'))
-      .always(() => $submit.prop('disabled', false));
+      .always(() => { creatingDraw = false; $submit.prop('disabled', false); });
   });
 
+  let suggestedDrawName = '';
   $('#drawCategory').on('change', function () {
     const suggestion = this.selectedOptions[0]?.dataset.suggestedName;
     const $name = $('#drawName');
-    if (suggestion && !$name.val().trim()) $name.val(suggestion);
+    if (!$name.val().trim() || $name.val() === suggestedDrawName) {
+      $name.val(suggestion || '');
+    }
+    suggestedDrawName = suggestion || '';
   });
   $('#eventWideDraw').on('change', function () {
     const combined = this.checked;

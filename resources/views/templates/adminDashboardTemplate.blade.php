@@ -79,6 +79,11 @@
           </button>
         </li>
       @endif
+      <li class="nav-item" role="presentation">
+        <a class="nav-link" href="{{ route('home') }}">
+          <i class="ti ti-world me-1"></i> Public page
+        </a>
+      </li>
     </ul>
 
     {{-- ================= TAB CONTENT ================= --}}

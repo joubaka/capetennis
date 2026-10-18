@@ -20,6 +20,27 @@
     </div>
   </div>
 
+  @if($event->relationLoaded('categoryEvents'))
+    <section class="card card-body mb-3" aria-labelledby="category-draw-progress">
+      <h2 class="h5" id="category-draw-progress">Categories and saved draws</h2>
+      <p class="text-muted small">Start with your categories, then create a draw, choose its format, place players and prepare the schedule. You can leave after saving any step and use Continue setup to return. Publication is a separate final step.</p>
+      @can('event-category.manage', $event)<a class="align-self-start mb-3" href="{{ route('admin.events.categories', $event) }}">Manage event categories</a>@endcan
+      @forelse($event->categoryEvents as $progressCategory)
+        @php($categoryDraws = $event->draws->where('category_event_id', $progressCategory->id))
+        <div class="border-top py-2">
+          <strong>{{ $progressCategory->category?->name ?? 'Category #'.$progressCategory->id }}</strong>
+          <span class="text-muted small"> · {{ $progressCategory->eligible_draw_entries_count }} paid active players · {{ $categoryDraws->count() }} saved {{ Str::plural('draw', $categoryDraws->count()) }}</span>
+          @foreach($categoryDraws as $savedCategoryDraw)
+            @can('event.manage', $event)<a data-draw-guide-open class="d-block" href="{{ route('draw.guide.show', [$event, $savedCategoryDraw]) }}">Continue setup: {{ $savedCategoryDraw->drawName }}</a>@endcan
+          @endforeach
+          @if($categoryDraws->isEmpty())<span class="d-block small text-muted">No draw created yet. Use New draw and select this category.</span>@endif
+        </div>
+      @empty
+        <p class="mb-0">No categories created yet. Add event categories before placing players.</p>
+      @endforelse
+    </section>
+  @endif
+
   @if(session('success'))
     <div class="alert alert-success alert-dismissible fade show" role="alert">
       {{ session('success') }}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
