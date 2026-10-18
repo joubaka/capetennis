@@ -265,6 +265,48 @@
     return request;
   }
 
+  // Reconcile one region from the existing authorized fragment endpoint. Keep the
+  // controls, selected filters and Result Ranks draft outside this list intact.
+  const rosterRefreshes = new Map();
+  window.refreshTeamRoster = function (source) {
+    const panel = source?.closest('[data-roster-panel]') || document.querySelector('[data-roster-panel]:not([hidden])');
+    if (!panel) return Promise.reject(new Error('The player list is unavailable.'));
+    const regionId = panel.dataset.regionId;
+    const panelName = panel.dataset.rosterPanel;
+    const key = panelName + ':' + regionId;
+    if (rosterRefreshes.has(key)) return rosterRefreshes.get(key).catch(() => {}).then(() => window.refreshTeamRoster(panel));
+    requests.get(key)?.abort();
+    const opened = new Map([...panel.querySelectorAll('[data-roster-team], [data-order-team]')].map(team => [team.dataset.rosterTeam || team.dataset.orderTeam, team.open]));
+    panel.setAttribute('aria-busy', 'true');
+    const refresh = (async () => {
+      const response = await fetch(workspaceUrl({ roster_region: regionId, panel: panelName }), { headers: { Accept: 'text/html', 'X-Requested-With': 'XMLHttpRequest' } });
+      if (!response.ok || response.redirected) throw new Error('The change was saved, but the player list could not be updated. Retry refreshing the list.');
+      const html = await response.text();
+      if (!panel.isConnected) return;
+      const scroll = window.scrollY;
+      const template = document.createElement('template'); template.innerHTML = html;
+      if (!template.content.querySelector('.roster-region-header, [data-order-match-count]')) throw new Error('The change was saved, but the player list could not be updated. Retry refreshing the list.');
+      const before = panel.querySelectorAll('[data-roster-row][data-occupied="true"]').length;
+      panel.replaceChildren(template.content);
+      const after = panel.querySelectorAll('[data-roster-row][data-occupied="true"]').length;
+      const badge = document.querySelector('#players-tab .badge');
+      if (panelName === 'players' && badge) badge.textContent = Number(badge.textContent) + after - before;
+      panel.dataset.loaded = 'true';
+      panel.querySelectorAll('[data-roster-team], [data-order-team]').forEach(team => {
+        const id = team.dataset.rosterTeam || team.dataset.orderTeam;
+        if (opened.has(id)) team.open = opened.get(id);
+      });
+      document.querySelectorAll('[data-roster-panel][data-region-id="' + regionId + '"]').forEach(other => {
+        if (other !== panel) { requests.get(other.dataset.rosterPanel + ':' + regionId)?.abort(); delete other.dataset.loaded; }
+      });
+      applyFilters();
+      if (!panel.hidden) window.scrollTo(0, scroll);
+      document.dispatchEvent(new Event('roster:loaded'));
+    })().finally(() => { panel.removeAttribute('aria-busy'); rosterRefreshes.delete(key); });
+    rosterRefreshes.set(key, refresh);
+    return refresh;
+  };
+
   function selectRegion(regionId) {
     const select = document.querySelector('[data-roster-region]');
     if (!select) return;
@@ -529,7 +571,9 @@
     clearTimeout(refreshTimer);
     refreshTimer = setTimeout(() => {
       if ($('#team-workspace-content .modal.show').length) { queueRefresh(); return; }
-      refreshWorkspace();
+      const panel = document.querySelector('#tab-players.active [data-roster-panel]:not([hidden]), #tab-order.active [data-roster-panel]:not([hidden])');
+      if (panel) window.refreshTeamRoster(panel).catch(error => feedback(error.message, true));
+      else refreshWorkspace();
     }, 400);
   }
   window.refreshTeamWorkspace = queueRefresh;

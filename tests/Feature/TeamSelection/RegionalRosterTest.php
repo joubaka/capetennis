@@ -12,6 +12,24 @@ class RegionalRosterTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_ajax_roster_fragment_reconciles_saved_players_and_counts_without_a_document_reload(): void
+    {
+        [$event, $region, $team, $manager] = $this->roster();
+        $this->actingAs($manager);
+        $player = Player::factory()->create(['name' => 'Ajax', 'surname' => 'Roster']);
+        $url = route('admin.events.teams', $event).'?roster_region='.$region->id.'&panel=players';
+        $this->rosterChange($team, ['action' => 'add', 'player_id' => $player->id])->assertOk();
+        $this->get($url, ['X-Requested-With' => 'XMLHttpRequest'])->assertOk()
+            ->assertSee('Ajax Roster')->assertSee('1 occupied places')->assertDontSee('<!DOCTYPE', false);
+        $slot = TeamPlayer::where('team_id', $team->id)->where('player_id', $player->id)->firstOrFail();
+        $this->rosterChange($team, ['action' => 'remove', 'slot_id' => $slot->id, 'expected_player_id' => $player->id, 'expected_rank' => $slot->rank])->assertOk();
+        $this->get($url, ['X-Requested-With' => 'XMLHttpRequest'])->assertOk()
+            ->assertDontSee('Ajax Roster')->assertSee('0 occupied places')->assertDontSee('<!DOCTYPE', false);
+        $this->assertDatabaseCount('team_players', 1);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->assertDatabaseCount('team_payment_orders', 0);
+    }
+
     public function test_regional_player_list_only_has_three_jobs_and_event_admin_keeps_existing_workspace(): void
     {
         [$event, $region, $team, $manager] = $this->roster();

@@ -32,24 +32,46 @@ if (!window.teamRosterControls) {
   document.addEventListener('submit', async event => {
     const form = event.target.closest('[data-team-roster-change]'); if (!form) return;
     event.preventDefault(); if (form.dataset.busy) return;
+    const panel = form.closest('[data-roster-panel]');
+    if (panel?.dataset.rosterSaving) return;
     if (form.elements.remove) {
       const confirmation = form.querySelector('[data-team-roster-remove-confirm]');
       if (confirmation.hidden) { form.querySelector('[data-team-roster-remove-toggle]').click(); return; }
     }
-    form.dataset.busy = '1'; const payload = new FormData(form), buttons = form.querySelectorAll('button');
+    form.dataset.busy = '1';
+    if (panel) panel.dataset.rosterSaving = '1';
+    const payload = new FormData(form), buttons = [...(panel || form).querySelectorAll('button')].filter(button => !button.disabled);
     buttons.forEach(button => button.disabled = true);
     let feedback = form.parentElement.querySelector('[data-team-roster-feedback]');
     if (!feedback) { feedback = document.createElement('p'); feedback.dataset.teamRosterFeedback = ''; feedback.setAttribute('role','status'); form.after(feedback); }
     feedback.className = 'alert alert-info'; feedback.textContent = 'Saving…';
     try {
-      const response = await fetch(form.getAttribute('action'), {method:'POST', body:payload, headers:{Accept:'application/json'}});
-      if (response.status === 404) throw new Error('This player list changed. Refresh the page and try again.');
-      const data = await response.json();
-      if (!response.ok) throw new Error(Object.values(data.errors || {}).flat()[0] || data.message || 'The change could not be saved.');
-      location.reload();
+      if (!form.dataset.saved) {
+        const response = await fetch(form.getAttribute('action'), {method:'POST', body:payload, headers:{Accept:'application/json'}});
+        if (response.status === 404) throw new Error('This player list changed. Use Refresh roster to load its current players and try again.');
+        const data = await response.json();
+        if (!response.ok) throw new Error(Object.values(data.errors || {}).flat()[0] || data.message || 'The change could not be saved.');
+        form.dataset.saved = '1';
+      }
+      if (window.refreshTeamRoster && panel) await window.refreshTeamRoster(form);
+      else if (window.refreshTeamWorkspace) window.refreshTeamWorkspace();
+      else throw new Error('The change was saved. Reopen this player list to see the updated roster.');
+      window.toastr?.success('Player list updated.');
     } catch (error) {
       feedback.className = 'alert alert-danger'; feedback.textContent = error.message;
-      delete form.dataset.busy; buttons.forEach(button => button.disabled = false);
+      if (form.dataset.saved) {
+        const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'btn btn-outline-secondary ms-2'; retry.textContent = 'Refresh player list';
+        retry.addEventListener('click', async () => {
+          retry.disabled = true;
+          try { await window.refreshTeamRoster(form); window.toastr?.success('Player list updated.'); }
+          catch (refreshError) { feedback.firstChild.textContent = refreshError.message; retry.disabled = false; }
+        });
+        feedback.append(retry);
+      }
+    } finally {
+      delete form.dataset.busy;
+      if (panel) delete panel.dataset.rosterSaving;
+      buttons.forEach(button => { if (!form.dataset.saved || !form.contains(button)) button.disabled = false; });
     }
   });
 }

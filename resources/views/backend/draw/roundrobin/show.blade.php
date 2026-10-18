@@ -24,7 +24,7 @@
 @endphp
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/sweetalert2/sweetalert2.css') }}">
 <link rel="stylesheet" href="{{ asset('assets/css/draw-workspace.css') }}?v={{ filemtime(public_path('assets/css/draw-workspace.css')) }}">
-<div id="round-robin-app" 
+<div id="round-robin-app"
    data-draw-id="{{ $draw->id }}">
 
 @include('backend.draw.partials.workspace-header', ['workspaceSurface' => 'roundrobin'])
@@ -125,7 +125,7 @@
       @elseif($draw->published)
         <div class="alert alert-info" role="status">This draw is published. Match format and playoff rules remain editable until the first result is recorded.</div>
       @endif
-      
+
       {{-- DRAW OVERVIEW --}}
       <details class="card mb-3 border-info"><summary class="p-3">Draw overview and group totals</summary><div>
         <div class="card-header bg-info text-white">
@@ -147,7 +147,7 @@
                 <small class="text-muted fw-bold">Total Players</small>
               </div>
             </div>
-            
+
             {{-- Groups --}}
             <div class="col-md-3">
               <div class="text-center p-3 border rounded">
@@ -155,7 +155,7 @@
                 <small class="text-muted fw-bold">Groups</small>
               </div>
             </div>
-            
+
             {{-- Draw Type --}}
             <div class="col-md-3">
               <div class="text-center p-3 border rounded">
@@ -165,7 +165,7 @@
                 <small class="text-muted fw-bold">Round Robin</small>
               </div>
             </div>
-            
+
             {{-- Total Matches --}}
             <div class="col-md-3">
               <div class="text-center p-3 border rounded">
@@ -185,14 +185,14 @@
               </div>
             </div>
           </div>
-          
+
           {{-- Group Breakdown --}}
           <div class="mt-3">
             <h6 class="fw-bold mb-2">Group Distribution:</h6>
             <div class="row g-2">
               @foreach($groups as $group)
                 <div class="col-auto">
-                  <span class="badge 
+                  <span class="badge
                     @if($group->name == 'A') bg-primary
                     @elseif($group->name == 'B') bg-success
                     @elseif($group->name == 'C') bg-warning
@@ -209,67 +209,6 @@
       </div>
 
       </details>
-      {{-- BASIC SETTINGS --}}
-      <div class="card mb-3">
-        <div class="card-header bg-light">
-          <h5 class="mb-0"><i class="ti ti-settings me-1"></i> Match scoring</h5>
-        </div>
-        <div class="card-body">
-          <form id="drawSettingsForm">
-            @csrf
-
-            <div class="row g-3">
-              <input type="hidden" id="settings-boxes" value="{{ $currentBoxes }}">
-              <div class="col-md-4"><label class="form-label fw-bold">Groups</label><p class="mb-0"><button type="button" class="btn btn-link p-0" data-open-workspace="players">Change groups and players</button></p></div>
-              @php
-                $scoreFormats = \App\Domain\Draws\Services\TennisScoreFormat::catalog();
-                $currentScoreFormat = optional($draw->settings)->score_format;
-                $legacySets = max(1, min(5, (int) (optional($draw->settings)->num_sets ?: 3)));
-              @endphp
-              <div class="col-md-5">
-                <label class="form-label fw-bold" for="score-format">Match Scoring Format</label>
-                <select name="score_format" id="score-format" class="form-select" required>
-                  @if(!$currentScoreFormat)
-                    <option value="" selected disabled>Legacy: maximum {{ $legacySets }} sets — choose a format</option>
-                  @endif
-                  @foreach(\App\Domain\Draws\Services\TennisScoreFormat::groupedCatalog() as $groupLabel => $formats)
-                    <optgroup label="{{ $groupLabel }}">
-                      @foreach($formats as $key => $format)
-                        <option value="{{ $key }}" data-description="{{ $format['description'] }}" data-max-sets="{{ $format['max_sets'] }}"
-                          @selected($currentScoreFormat === $key)>{{ $format['label'] }}</option>
-                      @endforeach
-                    </optgroup>
-                  @endforeach
-                </select>
-                <div class="form-text" id="score-format-help">
-                  {{ $currentScoreFormat ? $scoreFormats[$currentScoreFormat]['description'] : 'Choose a preset so score entry and validation use the same rules.' }}
-                </div>
-              </div>
-
-              {{-- Save Button --}}
-              <div class="col-md-3 d-flex align-items-end">
-                <button type="submit" class="btn btn-primary" id="btn-save-settings">
-                  <i class="ti ti-device-floppy me-1"></i> Save Settings
-                </button>
-              </div>
-            </div>
-
-
-
-          </form>
-        </div>
-      </div>
-
-      @unless($roundRobinOnly)
-      {{-- PLAYOFF CONFIGURATION --}}
-      <div class="card mb-3">
-        <div class="card-header bg-light d-flex justify-content-between align-items-center">
-          <h5 class="mb-0"><i class="ti ti-tournament me-1"></i> Playoff Configuration</h5>
-          <button type="button" class="btn btn-sm btn-outline-primary" id="btn-add-playoff">
-            <i class="ti ti-plus"></i> Add Playoff
-          </button>
-        </div>
-        <div class="card-body">
           @php
             $playoffConfig = optional($draw->settings)->playoff_config ?? \App\Models\DrawSetting::defaultPlayoffConfig($currentBoxes);
             $presetTemplates = \App\Models\DrawSetting::getPresetTemplates();
@@ -288,7 +227,7 @@
                     return $entry;
                 }, $playoffConfig);
             }
-            
+
             // Group templates by number of groups BUT keep original keys
             $groupedTemplates = [];
             foreach ($presetTemplates as $key => $template) {
@@ -301,7 +240,75 @@
             ksort($groupedTemplates); // Sort by number of groups
           @endphp
 
-          {{-- PRESET SELECTOR --}}
+
+      @php
+        $scoreFormats = \App\Domain\Draws\Services\TennisScoreFormat::catalog();
+        $currentScoreFormat = $draw->settings?->score_format;
+        $legacySets = max(1, min(5, (int) ($draw->settings?->num_sets ?: 3)));
+      @endphp
+      <div class="card mb-3" id="saved-draw-settings">
+        <div class="card-header"><h5 class="mb-0">Current setup</h5></div>
+        <div class="card-body">
+          <p><strong>Groups:</strong> {{ $currentBoxes }} · <strong>Match scoring:</strong> {{ $scoreFormats[$currentScoreFormat]['label'] ?? "Legacy: maximum {$legacySets} sets" }}</p>
+          @unless($roundRobinOnly)
+            <ul class="mb-0">
+              @foreach($playoffConfig as $playoff)
+                <li>{{ $playoff['name'] }} — {{ ($playoff['enabled'] ?? false) ? 'Enabled' : 'Disabled' }}, {{ $playoff['size'] }} places, group positions {{ implode(', ', $playoff['positions'] ?? []) ?: 'none' }}</li>
+              @endforeach
+            </ul>
+          @endunless
+        </div>
+      </div>
+      <form id="drawSettingsForm">
+      @csrf
+      {{-- BASIC SETTINGS --}}
+      <div class="card mb-3">
+        <div class="card-header bg-light">
+          <h5 class="mb-0">Change settings</h5>
+        </div>
+        <div class="card-body">
+          <p class="text-muted">Start with your saved setup. Review the changes below, then save once.</p>
+
+            <div class="row g-3">
+              <input type="hidden" id="settings-boxes" value="{{ $currentBoxes }}">
+              <div class="col-md-4"><label class="form-label fw-bold">Groups</label><p class="mb-0"><button type="button" class="btn btn-link p-0" data-open-workspace="players">Change groups and players</button></p></div>
+              @php
+                $scoreFormats = \App\Domain\Draws\Services\TennisScoreFormat::catalog();
+                $currentScoreFormat = optional($draw->settings)->score_format;
+                $legacySets = max(1, min(5, (int) (optional($draw->settings)->num_sets ?: 3)));
+              @endphp
+              <div class="col-md-5">
+                <label class="form-label fw-bold" for="score-format">Match Scoring Format</label>
+                <select name="score_format" id="score-format" class="form-select">
+                  @if(!$currentScoreFormat)
+                    <option value="" selected>Legacy: maximum {{ $legacySets }} sets (keep current)</option>
+                  @endif
+                  @foreach(\App\Domain\Draws\Services\TennisScoreFormat::groupedCatalog() as $groupLabel => $formats)
+                    <optgroup label="{{ $groupLabel }}">
+                      @foreach($formats as $key => $format)
+                        <option value="{{ $key }}" data-description="{{ $format['description'] }}" data-max-sets="{{ $format['max_sets'] }}"
+                          @selected($currentScoreFormat === $key)>{{ $format['label'] }}</option>
+                      @endforeach
+                    </optgroup>
+                  @endforeach
+                </select>
+                <div class="form-text" id="score-format-help">
+                  {{ $currentScoreFormat ? $scoreFormats[$currentScoreFormat]['description'] : 'Choose a preset so score entry and validation use the same rules.' }}
+                </div>
+              </div>
+
+            </div>
+          @unless($roundRobinOnly)
+          <hr class="my-4">
+
+      {{-- PLAYOFF CONFIGURATION --}}
+        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+          <h5 class="mb-0"><i class="ti ti-tournament me-1"></i> Playoff Configuration</h5>
+          <button type="button" class="btn btn-sm btn-outline-primary" id="btn-add-playoff">
+            <i class="ti ti-plus"></i> Add Playoff
+          </button>
+        </div>
+         {{-- PRESET SELECTOR --}}
           <div class="row mb-4">
             <div class="col-md-8">
               <label class="form-label fw-bold"><i class="ti ti-template me-1"></i> Quick Setup - Load Preset Template</label>
@@ -315,7 +322,7 @@
                   @if(count($currentGroupTemplates) > 0)
                     <optgroup label="{{ $currentBoxes }} Group{{ $currentBoxes > 1 ? 's' : '' }}">
                       @foreach($currentGroupTemplates as $key => $preset)
-                        <option value="{{ $key }}" 
+                        <option value="{{ $key }}"
                                 data-config='@json($preset['config'])'
                                 data-groups="{{ $preset['groups'] ?? 4 }}"
                                 data-max-positions="{{ $preset['max_positions'] ?? 10 }}"
@@ -367,13 +374,13 @@
                         $hasPositions = !empty($playoff['positions']);
                         $isEnabled = ($playoff['enabled'] ?? false) && $hasPositions;
                       @endphp
-                      <input class="form-check-input playoff-enabled" type="checkbox" 
+                      <input class="form-check-input playoff-enabled" type="checkbox"
                              {{ $isEnabled ? 'checked' : '' }}
                              data-idx="{{ $idx }}">
                     </div>
                   </td>
                   <td>
-                    <input type="text" class="form-control form-control-sm playoff-name" 
+                    <input type="text" class="form-control form-control-sm playoff-name"
                            value="{{ $playoff['name'] }}" data-idx="{{ $idx }}" style="min-width: 150px;">
                   </td>
                   <td>
@@ -389,9 +396,9 @@
                     <div class="d-flex flex-wrap gap-1">
                       @php $positions = $playoff['positions'] ?? []; @endphp
                       @foreach(range(1, 10) as $pos)
-                        <button type="button" 
+                        <button type="button"
                                 class="btn btn-sm position-btn {{ in_array($pos, $positions) ? 'btn-primary' : 'btn-outline-secondary' }}"
-                                data-idx="{{ $idx }}" 
+                                data-idx="{{ $idx }}"
                                 data-pos="{{ $pos }}"
                                 title="Position #{{ $pos }} from each group">
                           #{{ $pos }}
@@ -428,17 +435,25 @@
                 Example: If #1 and #2 are selected with 4 groups, 8 players will enter that playoff.
               </small>
             </div>
-            <button type="button" class="btn btn-success" id="btn-save-playoff-config">
-              <i class="ti ti-device-floppy me-1"></i> Save Playoff Config
-            </button>
           </div>
-
+          @endunless
         </div>
       </div>
-
+      <div class="card mb-3">
+        <div class="card-header"><h5 class="mb-0">Changes preview</h5></div>
+        <div class="card-body">
+          <div id="draw-settings-changes" role="status" aria-live="polite"><p class="text-muted mb-0">No changes.</p></div>
+          <p class="small text-muted mt-3">Changes apply to match scoring and playoff rules. Existing matches are not regenerated here.</p>
+          <div id="draw-settings-error" class="text-danger mb-2" role="alert"></div>
+          <button type="submit" class="btn btn-primary" id="btn-save-settings" disabled>Save changes</button>
+        </div>
+      </div>
+      </form>
+      @unless($roundRobinOnly)
+      <details class="mb-3"><summary class="p-3">View full setup</summary>
       {{-- PLAYER ACCOUNTING --}}
       <div class="card mb-3 border-info">
-        <details class="rr-advanced"><summary>Advanced previews · player accounting and seeding</summary>
+
       <div class="card-header bg-info text-white">
           <h5 class="mb-0"><i class="ti ti-users me-1"></i> Player Accounting & Validation</h5>
           <small>Verify all players are accommodated in playoff draws</small>
@@ -624,7 +639,7 @@
         </div>
       </div>
     </div>
-   
+
 
 </div>
 @endunless

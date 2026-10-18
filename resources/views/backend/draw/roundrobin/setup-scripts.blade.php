@@ -5,47 +5,70 @@ $('#score-format').on('change', function() {
     $('#score-format-help').text(option.dataset.description || '');
 });
 
-// Save Draw Settings (AJAX)
-$('#drawSettingsForm').on('submit', function(e) {
-    e.preventDefault();
-    
-    const $btn = $('#btn-save-settings');
-    const oldText = $btn.html();
-    $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Saving...');
-    
+// Compare the editable draft against the saved setup; nothing is persisted until save.
+const savedScoreFormat = $('#score-format').val() || '';
+const savedScoreLabel = $('#score-format option:selected').text();
+let draftPlayoffs = () => null;
+let savedPlayoffs = null;
+let isSavingSettings = false;
+const rulesEditable = @json($competitionRulesEditable);
+const escapeSettingsText = value => $('<span>').text(String(value)).html().replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+function updateSettingsChanges() {
+    const changes = [];
+    if (($('#score-format').val() || '') !== savedScoreFormat) {
+        changes.push('Match scoring: ' + savedScoreLabel + ' → ' + $('#score-format option:selected').text());
+    }
+    const draft = draftPlayoffs();
+    if (draft !== null && JSON.stringify(draft) !== JSON.stringify(savedPlayoffs)) {
+        const describe = item => item ? item.name + ': ' + (item.enabled ? 'Enabled' : 'Disabled') + ', ' + item.size + ' places, positions ' + (item.positions || []).join(', ') + (item.group_order ? ', group order ' + item.group_order.join(', ') : '') : 'Removed';
+        const original = new Map(savedPlayoffs.map(item => [item.slug, item]));
+        draft.forEach(item => {
+            const before = original.get(item.slug);
+            if (JSON.stringify(before) !== JSON.stringify(item)) changes.push((before ? describe(before) : 'New playoff') + ' → ' + describe(item));
+            original.delete(item.slug);
+        });
+        original.forEach(item => changes.push(describe(item) + ' → Removed'));
+    }
+    $('#draw-settings-changes').html(changes.length ? '<ul class="mb-0">' + changes.map(change => '<li>' + escapeSettingsText(change) + '</li>').join('') + '</ul>' : '<p class="text-muted mb-0">No changes.</p>');
+    $('#btn-save-settings').prop('disabled', isSavingSettings || !rulesEditable || !changes.length);
+}
+$('#score-format').on('change', updateSettingsChanges);
+$('#drawSettingsForm').on('submit', function(event) {
+    event.preventDefault();
+    const $button = $('#btn-save-settings');
+    if (isSavingSettings || $button.prop('disabled')) return;
+
+    const payload = {_token: @json(csrf_token())};
+    const score = $('#score-format').val() || '';
+    if (score !== savedScoreFormat) payload.score_format = score;
+    const draft = draftPlayoffs();
+    if (draft !== null && JSON.stringify(draft) !== JSON.stringify(savedPlayoffs)) {
+        payload.playoff_config = draft;
+        payload.preset_key = window.currentPresetKey || null;
+    }
+    if (payload.playoff_config) {
+        const groupCounts = @json($groups->map(fn ($group) => $group->registrations->count())->values());
+        const maxPosition = Math.max(0, ...groupCounts);
+        if (draft.some(item => item.enabled && (item.positions || []).some(position => position > maxPosition))) {
+            $('#draw-settings-error').text('Choose only group positions that currently contain players before saving playoff changes.');
+            return;
+        }
+    }
+    isSavingSettings = true;
+    $('#draw-settings-error').text('');
+    $button.prop('disabled', true).text('Saving…');
     $.ajax({
-        url: `${APP_URL}/backend/draw/${DRAW_ID}/settings`,
-        method: 'POST',
-        data: $(this).serialize(),
+        url: APP_URL + '/backend/draw/' + DRAW_ID + '/settings',
+        method: 'POST', contentType: 'application/json', data: JSON.stringify(payload),
         success: function(response) {
-            if (response.success) {
-                toastr.success(response.message || 'Settings saved successfully!');
-
-                if (response.settings && response.settings.score_format) {
-                    window.location.reload();
-                    return;
-                }
-
-                // Update group count label
-                const newBoxes = response.settings ? response.settings.boxes : null;
-                if (newBoxes) {
-                    numGroups = newBoxes;
-                    $('#groups-tab-boxes').val(newBoxes);
-                    $('#groups-count-label').text('| ' + newBoxes + ' Groups');
-                }
-
-                // Refresh groups DOM via AJAX (no reload)
-                refreshGroupsAndPlayers();
-            } else {
-                toastr.error(response.message || 'Failed to save settings.');
-            }
+            if (response.success) window.location.reload();
+            else $('#draw-settings-error').text(response.message || 'Unable to save changes.');
         },
         error: function(xhr) {
-            toastr.error(xhr.responseJSON?.message || 'Error saving settings.');
+            const errors = xhr.responseJSON?.errors;
+            $('#draw-settings-error').text(errors ? Object.values(errors).flat().join(' ') : (xhr.responseJSON?.message || 'Unable to save changes. Your draft is still here.'));
         },
-        complete: function() {
-            $btn.prop('disabled', false).html(oldText);
-        }
+        complete: function() { isSavingSettings = false; $button.text('Save changes'); updateSettingsChanges(); }
     });
 });
 
@@ -56,6 +79,8 @@ $('#drawSettingsForm').on('submit', function(e) {
 
 // Store playoff config in memory
 let playoffConfig = @json($playoffConfig ?? []);
+savedPlayoffs = JSON.parse(JSON.stringify(playoffConfig));
+draftPlayoffs = () => playoffConfig;
 let numGroups = {{ $currentBoxes ?? 4 }};
 let maxPositions = 10; // Default, will be updated when template is loaded
 
@@ -163,7 +188,7 @@ function togglePositionSelection($btn, idx, pos) {
 }
 
 // Update playoff name
-$(document).on('change', '.playoff-name', function() {
+$(document).on('input', '.playoff-name', function() {
     const idx = $(this).data('idx');
     playoffConfig[idx].name = $(this).val();
     updateFlowPreview();
@@ -207,7 +232,7 @@ $('#btn-add-playoff').on('click', function() {
     const newIdx = playoffConfig.length;
     playoffConfig.push({
         name: 'New Playoff Draw',
-        slug: 'new-' + newIdx,
+        slug: 'new-' + Date.now() + '-' + newIdx,
         size: 4,
         positions: [],
         enabled: true
@@ -260,14 +285,14 @@ $('#btn-load-preset').on('click', function() {
                 // Track what was cleaned
                 if (validPositions.length !== positions.length) {
                     const removed = positions.filter(pos => pos > maxPlayersInGroup);
-                    console.log(`🧹 [PRESET] Cleaned ${playoff.name}: removed positions`, removed);
+                    console.log(`🧹 [PRESET] Cleaned ${escapeSettingsText(playoff.name)}: removed positions`, removed);
                     cleanedCount += removed.length;
                     playoffConfig[idx].positions = validPositions;
                 }
                 
                 // Uncheck playoffs with no valid positions
                 if (validPositions.length === 0 && playoff.enabled) {
-                    console.log(`❌ [PRESET] Unchecked ${playoff.name}: no valid positions`);
+                    console.log(`❌ [PRESET] Unchecked ${escapeSettingsText(playoff.name)}: no valid positions`);
                     playoffConfig[idx].enabled = false;
                     uncheckedCount++;
                 }
@@ -290,116 +315,6 @@ $('#btn-load-preset').on('click', function() {
             
             renderPlayoffTable();
             updateFlowPreview();
-        }
-    });
-});
-
-// Save playoff config
-$('#btn-save-playoff-config').on('click', function() {
-    const $btn = $(this);
-    const oldText = $btn.html();
-    
-    // Validate before saving - check for invalid positions
-    const groupPlayerCounts = @json($groups->map(function($g) { return $g->registrations->count(); })->toArray());
-    const maxPlayersInGroup = groupPlayerCounts.length > 0 ? Math.max(...groupPlayerCounts) : 0;
-    
-    let hasInvalidPositions = false;
-    let invalidDetails = [];
-    
-    playoffConfig.forEach((playoff, idx) => {
-        const positions = playoff.positions || [];
-        positions.forEach(pos => {
-            if (pos > maxPlayersInGroup) {
-                hasInvalidPositions = true;
-                invalidDetails.push({
-                    playoff: playoff.name,
-                    position: pos
-                });
-            }
-        });
-    });
-    
-    // Block save if invalid positions exist
-    if (hasInvalidPositions) {
-        Swal.fire({
-            title: 'Cannot Save - Invalid Positions!',
-            html: `<p class="text-danger"><strong>You have selected positions that don't exist in any group:</strong></p>
-                   <ul class="text-start">
-                   ${invalidDetails.map(d => `<li>${d.playoff}: Position <strong>#${d.position}</strong></li>`).join('')}
-                   </ul>
-                   <p class="text-muted">Maximum valid position: <strong>#${maxPlayersInGroup}</strong></p>
-                   <p>Please remove these positions before saving.</p>`,
-            icon: 'error',
-            confirmButtonText: 'OK',
-            confirmButtonColor: '#dc3545'
-        });
-        return;
-    }
-    
-    // IMPORTANT: Filter out playoff draws with empty positions
-    // Backend validation requires positions array to be non-empty
-    const validPlayoffConfig = playoffConfig.filter(playoff => {
-        const positions = playoff.positions || [];
-        return positions.length > 0; // Only include playoffs with at least 1 position
-    });
-    
-    if (validPlayoffConfig.length === 0) {
-        Swal.fire({
-            title: 'No Valid Playoffs!',
-            html: `<p>All playoff draws have 0 positions selected.</p>
-                   <p>Please select at least one position for at least one playoff draw before saving.</p>`,
-            icon: 'warning',
-            confirmButtonText: 'OK',
-            confirmButtonColor: '#ffc107'
-        });
-        return;
-    }
-    
-    console.log('💾 [SAVE] Saving playoff config:', {
-        total: playoffConfig.length,
-        valid: validPlayoffConfig.length,
-        filtered: playoffConfig.length - validPlayoffConfig.length
-    });
-    
-    $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Saving...');
-    
-    // Get current preset key (from dropdown or stored when loaded)
-    const presetKey = $('#preset-selector').val() || window.currentPresetKey || null;
-    
-    $.ajax({
-        url: `${APP_URL}/backend/draw/${DRAW_ID}/playoff-config`,
-        method: 'POST',
-        contentType: 'application/json',
-        data: JSON.stringify({
-            _token: '{{ csrf_token() }}',
-            playoff_config: validPlayoffConfig,  // Send only valid playoffs
-            preset_key: presetKey
-        }),
-        success: function(response) {
-            if (response.success) {
-                // Update local config to match what was saved
-                playoffConfig = validPlayoffConfig;
-                
-                toastr.success('Playoff configuration saved!');
-                
-                // Store the saved preset key
-                if (presetKey) {
-                    window.currentPresetKey = presetKey;
-                    console.log('✅ [SAVE] Preset key saved:', presetKey);
-                }
-                
-                // Re-render to show updated config
-                renderPlayoffTable();
-                updateFlowPreview();
-            } else {
-                toastr.error(response.message || 'Failed to save.');
-            }
-        },
-        error: function(xhr) {
-            toastr.error(xhr.responseJSON?.message || 'Error saving configuration.');
-        },
-        complete: function() {
-            $btn.prop('disabled', false).html(oldText);
         }
     });
 });
@@ -430,7 +345,7 @@ function updatePlayoffPreview(idx) {
 function renderPlayoffTable() {
     let html = '';
     // Use dynamic maxPositions (set when loading preset, default 10)
-    const positionsToShow = maxPositions || 10;
+    const positionsToShow = Math.max(maxPositions || 10, ...playoffConfig.flatMap(item => item.positions || []));
     
     // Get actual player counts for validation
     const groupPlayerCounts = @json($groups->map(function($g) { return $g->registrations->count(); })->toArray());
@@ -464,7 +379,7 @@ function renderPlayoffTable() {
           </td>
           <td>
             <input type="text" class="form-control form-control-sm playoff-name" 
-                   value="${playoff.name}" data-idx="${idx}" style="min-width: 150px;">
+                   value="${escapeSettingsText(playoff.name)}" data-idx="${idx}" style="min-width: 150px;">
           </td>
           <td>
             <select class="form-select form-select-sm playoff-size" data-idx="${idx}" style="width: 80px;">
@@ -504,7 +419,7 @@ function renderPlayoffTable() {
                         class="btn btn-sm position-btn ${btnClass}"
                         data-idx="${idx}" 
                         data-pos="${pos}"
-                        title="${tooltip}"
+                        title="${escapeSettingsText(tooltip)}"
                         ${style ? `style="${style}"` : ''}>
                   #${pos}${isFullyInvalid ? '✗' : isPartial ? '⚠' : ''}
                 </button>`;
@@ -534,6 +449,7 @@ function renderPlayoffTable() {
 
 // Update flow preview - MASTER SYNC FUNCTION
 function updateFlowPreview() {
+    updateSettingsChanges();
     console.log('🔄 [SYNC] updateFlowPreview called - numGroups:', numGroups, 'maxPositions:', maxPositions);
     
     // Update player accounting first
@@ -568,7 +484,7 @@ function updateFlowPreview() {
         
         html += `
         <div class="border rounded p-3 ${totalPlayers > playoff.size ? 'border-danger' : 'border-success'}">
-          <h6 class="fw-bold mb-2">${playoff.name}</h6>
+          <h6 class="fw-bold mb-2">${escapeSettingsText(playoff.name)}</h6>
           <div class="small">
             <div><strong>Size:</strong> ${playoff.size} players</div>
             <div><strong>From:</strong> ${posText}</div>
@@ -773,7 +689,7 @@ function updatePlayerAccounting() {
                              `${playoff.size - playoff.players} slots empty`;
             
             html += `<tr class="${statusClass}">`;
-            html += `<td><strong>${playoff.name}</strong>`;
+            html += `<td><strong>${escapeSettingsText(playoff.name)}</strong>`;
             if (playoff.partialDetails.length > 0) {
                 html += ` <span class="badge bg-warning text-dark">⚠ ${playoff.partialDetails.length} partial</span>`;
             }
@@ -907,20 +823,20 @@ function updateSeedingChart() {
         
         // Now show each seed and where it goes in the bracket
         if (seeds.length > 0) {
-            html += `<tr class="table-primary"><td colspan="3"><strong>${playoff.name}</strong> (${playoff.size}-player draw)</td></tr>`;
+            html += `<tr class="table-primary"><td colspan="3"><strong>${escapeSettingsText(playoff.name)}</strong> (${playoff.size}-player draw)</td></tr>`;
             
             seeds.forEach((seed, idx) => {
                 const bracketPosition = idx + 1;
                 const statusClass = bracketPosition > playoff.size ? 'table-danger' : '';
                 
                 html += `<tr class="${statusClass}">`;
-                html += `<td>${playoff.name}</td>`;
+                html += `<td>${escapeSettingsText(playoff.name)}</td>`;
                 html += `<td class="text-center"><strong>Seed ${bracketPosition}</strong></td>`;
                 html += `<td class="text-center">Group <strong>${seed.group}</strong> position <strong>#${seed.position}</strong></td>`;
                 html += `</tr>`;
             });
         } else {
-            html += `<tr><td colspan="3" class="text-muted text-center"><em>${playoff.name} - No positions selected</em></td></tr>`;
+            html += `<tr><td colspan="3" class="text-muted text-center"><em>${escapeSettingsText(playoff.name)} - No positions selected</em></td></tr>`;
         }
     });
     
@@ -1004,7 +920,7 @@ function updateCompleteSeedingMatrix() {
             const cellClass = isUsed ? 'table-success' : '';
             const tooltip = usedIn.length > 0 ? `Used in: ${usedIn.join(', ')}` : 'Not used in any playoff';
             
-            html += `<td class="text-center ${cellClass}" title="${tooltip}">`;
+            html += `<td class="text-center ${cellClass}" title="${escapeSettingsText(tooltip)}">`;
             html += `<strong>Seed ${seedNum}</strong>`;
             if (isUsed) {
                 html += ` <span class="badge bg-success" style="font-size: 8px;">✓</span>`;
@@ -1074,7 +990,7 @@ function updateBracketVisualization() {
         const matchups = generateBracketMatchups(size);
         
         html += '<div class="bracket-container">';
-        html += `<h6 class="fw-bold mb-3 text-center">${playoff.name}</h6>`;
+        html += `<h6 class="fw-bold mb-3 text-center">${escapeSettingsText(playoff.name)}</h6>`;
         html += `<div class="text-center mb-3"><span class="badge bg-primary">${size}-Player Draw</span></div>`;
         
         if (seeds.length === 0) {

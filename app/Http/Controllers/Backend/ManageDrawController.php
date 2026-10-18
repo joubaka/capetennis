@@ -74,6 +74,16 @@ class ManageDrawController extends Controller
             'num_sets' => ['nullable', 'integer', Rule::in([1, 2, 3, 5])],
             'score_format' => ['nullable', 'string', Rule::in(TennisScoreFormat::keys())],
             'move_to_group_id' => 'nullable|integer',
+            'playoff_config' => 'sometimes|required|array|min:1',
+            'playoff_config.*.name' => 'required|string|max:255',
+            'playoff_config.*.slug' => 'required|string|max:255|distinct',
+            'playoff_config.*.size' => ['required', 'integer', Rule::in([2, 4, 8, 16, 32])],
+            'playoff_config.*.positions' => 'present|array',
+            'playoff_config.*.positions.*' => 'integer|min:1',
+            'playoff_config.*.enabled' => 'required|boolean',
+            'playoff_config.*.group_order' => 'sometimes|array',
+            'playoff_config.*.group_order.*' => 'string|regex:/^[A-Z]$/',
+            'preset_key' => 'nullable|string|max:255',
         ]);
 
         // The manage form uses draw-level names, while the engine API uses the
@@ -93,6 +103,19 @@ class ManageDrawController extends Controller
             'score_format' => $data['score_format'] ?? null,
         ], fn($v) => !is_null($v) && $v !== '');
 
+        if (array_key_exists('playoff_config', $data)) {
+            abort_if($draw->isRoundRobinOnly(), 422, 'Playoff settings are not available for a round-robin-only draw.');
+            foreach ($data['playoff_config'] as $index => $playoff) {
+                if ($playoff['enabled'] && empty($playoff['positions'])) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        "playoff_config.$index.positions" => 'Choose at least one group position for each enabled playoff.',
+                    ]);
+                }
+            }
+            $updateData['playoff_config'] = $data['playoff_config'];
+            $updateData['preset_key'] = $data['preset_key'] ?? null;
+        }
+
         if (empty($drawData) && empty($updateData)) {
             return response()->json([ 'success' => false, 'message' => 'No settings provided' ], 422);
         }
@@ -110,6 +133,11 @@ class ManageDrawController extends Controller
                 ! $competitionRulesOnly && $lockedDraw->published,
                 403,
                 'Structural draw settings cannot be changed while the draw is published.'
+            );
+            abort_if(
+                array_key_exists('playoff_config', $updateData) && $lockedDraw->isRoundRobinOnly(),
+                422,
+                'Playoff settings are not available for a round-robin-only draw.'
             );
             if (isset($updateData['boxes'])) {
                 $this->resizeGroups($draw, (int) $updateData['boxes'], $data['move_to_group_id'] ?? null);
