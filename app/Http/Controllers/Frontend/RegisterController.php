@@ -915,6 +915,9 @@ class RegisterController extends Controller
           throw new \RuntimeException('PayFast receipt already belongs to another payment.');
         }
 
+        if (app(\App\Domain\Payments\Services\ExpiredPayfastHandoffService::class)->recordReceipt($order, $data)) {
+          return true;
+        }
         if (app(\App\Domain\Payments\Services\TeamPaymentService::class)
           ->recordSupersededPayfastReceipt($order, $data)) {
           return true;

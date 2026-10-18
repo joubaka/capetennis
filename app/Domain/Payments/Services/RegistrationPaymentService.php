@@ -182,7 +182,7 @@ class RegistrationPaymentService
     {
         return DB::transaction(function () use ($order, $cutoff): bool {
             $locked = RegistrationOrder::with('items')->lockForUpdate()->findOrFail($order->id);
-            if (!CheckoutExpiryPolicy::isExpired($locked, $cutoff) || $locked->payfast_handed_off_at
+            if (!CheckoutExpiryPolicy::isExpired($locked, $cutoff)
                 || $this->hasSettlementEvidence($locked)
                 || $locked->items->isEmpty()
                 || (int) round((float) $locked->items->sum('item_price') * 100) !== (int) round((float) $locked->total_fee * 100)
@@ -217,6 +217,11 @@ class RegistrationPaymentService
             }
             $payer = User::find($locked->user_id);
             if (!$payer) return false;
+            if ($locked->payfast_handed_off_at) {
+                try { $this->assertPayfastHandoffMayBeReleased($locked); }
+                catch (ValidationException $exception) { return false; }
+                app(ExpiredPayfastHandoffService::class)->retain($locked);
+            }
             $cancelled = $this->cancelPayment($locked);
             app(\App\Services\Masters\MastersInvitationService::class)->resetCancelledPayment($cancelled, $payer);
             app(\App\Services\InterprovincialTrials\InvitationService::class)->resetCancelledPayment($cancelled, $payer);

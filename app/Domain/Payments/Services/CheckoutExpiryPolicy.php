@@ -16,6 +16,7 @@ class CheckoutExpiryPolicy
 
     public static function isExpired(Model $order, ?Carbon $cutoff = null): bool
     {
-        return $order->created_at !== null && $order->created_at->lte($cutoff ?? self::cutoff());
+        $startedAt = $order->payfast_handed_off_at ?? $order->created_at;
+        return $startedAt !== null && $startedAt->lte($cutoff ?? self::cutoff());
     }
 }

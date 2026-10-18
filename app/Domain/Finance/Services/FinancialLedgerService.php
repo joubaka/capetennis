@@ -548,7 +548,8 @@ class FinancialLedgerService
                 ->where('event_id', $tx->event_id)->where('user_id', $tx->custom_int4)
                 ->where('collection_status', 'reconciliation_required')->first()
             : null;
-        $requiresReconciliation = $reconciliationOrder !== null;
+        $requiresReconciliation = $reconciliationOrder !== null
+            || app(\App\Domain\Payments\Services\ExpiredPayfastHandoffService::class)->registrationReceiptRequiresReconciliation($tx);
         $participation = $tx->custom_str5 === 'TeamOrder' ? \App\Models\TrialParticipation::where('order_id', $tx->custom_int5)->first() : null;
         $resolvedOrder = $reconciliationOrder ?? ($participation ? $participation->order : $tx->order);
         $items        = collect(($participation || $requiresReconciliation) ? [] : (optional($resolvedOrder)->items ?? []));

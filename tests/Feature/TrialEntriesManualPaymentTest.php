@@ -55,6 +55,41 @@ class TrialEntriesManualPaymentTest extends TestCase
         return route('admin.category.addPlayer', $category ?? $this->category);
     }
 
+    public function test_entries_add_paid_player_resets_abandoned_450_rand_interpro_handoff(): void
+    {
+        $this->order->forceFill(['total_fee' => 450, 'payfast_amount_due' => 450,
+            'created_at' => now()->subDays(10), 'payfast_handed_off_at' => now()->subDays(10)])->save();
+        $this->order->items()->sole()->forceFill(['item_price' => 450])->save();
+        $this->postJson($this->endpoint(), $this->payload(false))->assertOk();
+        $this->assertSame('cancelled', $this->order->fresh()->status);
+        $this->assertSame(0.0, $this->order->fresh()->wallet_reserved);
+        $this->assertFalse($this->order->fresh()->pay_status);
+        $this->assertSame(1, CategoryEventRegistration::count());
+        $this->assertTrue(CategoryEventRegistration::sole()->is_paid);
+        $this->assertNotSame($this->entry->id, CategoryEventRegistration::sole()->id);
+        $this->assertSame('sent', $this->invitation->fresh()->status);
+        $this->assertNull($this->invitation->fresh()->order_id);
+        $this->assertDatabaseCount('registration_orders', 1);
+        $this->assertDatabaseCount('registration_order_items', 1);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->assertDatabaseCount('registration_manual_receipts', 0);
+        config(['services.payfast.sandbox' => false, 'services.payfast.merchant_id' => 'test-merchant',
+            'services.payfast.passphrase_live' => 'test-passphrase']);
+        $payload = ['merchant_id' => 'test-merchant', 'payment_status' => 'COMPLETE', 'pf_payment_id' => 'INTERPRO-EXPIRED-450',
+            'amount_gross' => '450.00', 'custom_int5' => $this->order->id, 'custom_int4' => $this->payer->id,
+            'custom_int3' => $this->event->id, 'custom_int2' => $this->player->id, 'custom_int1' => $this->category->id];
+        $payload['signature'] = md5(http_build_query($payload).'&passphrase=test-passphrase');
+        foreach ([1, 2] as $attempt) {
+            $this->call('POST', route('notify'), $payload, [], [], ['CONTENT_TYPE' => 'application/x-www-form-urlencoded'], http_build_query($payload))->assertOk();
+        }
+        $this->assertFalse($this->order->fresh()->pay_status);
+        $this->assertTrue(CategoryEventRegistration::sole()->is_paid);
+        $this->assertSame(1, CategoryEventRegistration::count());
+        $this->assertDatabaseCount('transactions_pf', 2); // Admin entry audit plus the original payer's late provider receipt.
+        $this->assertDatabaseHas('transactions_pf', ['pf_payment_id' => 'INTERPRO-EXPIRED-450', 'custom_int4' => $this->payer->id, 'custom_int5' => $this->order->id, 'amount_gross' => '450.00']);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
     public function test_entries_screen_previews_exact_checkout_then_settles_existing_entry_once(): void
     {
         $this->get(route('admin.events.entries.new', $this->event))->assertOk()

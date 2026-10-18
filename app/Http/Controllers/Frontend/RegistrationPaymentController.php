@@ -441,8 +441,11 @@ class RegistrationPaymentController extends Controller
     }
 
     try {
+      if (app(\App\Domain\Payments\Services\ExpiredPayfastHandoffService::class)->recordReceipt($order, $payfastData)) {
+        return true;
+      }
       $this->assertInvitationOnlyOrderIsLinked($order);
-    } catch (ValidationException $exception) {
+    } catch (\Throwable $exception) {
       app(PaymentFailureReporter::class)->report('registration.payfast_itn', ['reason' => 'Invitation linkage failed', 'order_id' => $orderId]);
       return false;
     }

@@ -75,7 +75,8 @@ class UnpaidCheckoutExpiryService
             ->where(fn ($query) => $query->whereNull('pay_status')->orWhere('pay_status', 0))
             ->where(fn ($query) => $query->whereNull('payfast_paid')->orWhere('payfast_paid', 0))
             ->where(fn ($query) => $query->whereNull('wallet_debited')->orWhere('wallet_debited', 0))
-            ->whereNull('payfast_handed_off_at')->whereNull('payfast_pf_payment_id');
+            ->where(fn ($query) => $query->whereNull('payfast_handed_off_at')->orWhere('payfast_handed_off_at', '<=', CheckoutExpiryPolicy::cutoff()))
+            ->whereNull('payfast_pf_payment_id');
         if ($kind === 'registration') {
             $query->where(fn ($query) => $query->whereNull('status')->orWhere('status', '!=', 'cancelled'))
                 ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('trial_payment_proofs')->whereColumn('trial_payment_proofs.order_id', 'registration_orders.id')->whereIn('status', ['pending', 'verified']))

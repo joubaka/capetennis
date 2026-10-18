@@ -14,12 +14,12 @@ class TeamCheckoutExplicitRestartTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_same_payer_reopens_recent_and_old_checkout_without_popup_cancellation_or_repricing(): void
+    public function test_same_payer_reopens_recent_checkout_without_popup_cancellation_or_repricing(): void
     {
         [$order] = $this->scenario();
         $payer = $order->user;
         $order->event->update(['entryFee' => 999]);
-        foreach ([now(), now()->subMinutes(6), now()->subHour()] as $handoff) {
+        foreach ([now(), now()->subMinutes(4)] as $handoff) {
             $order->update(['payfast_handed_off_at' => $handoff]);
             $before = $order->fresh()->getAttributes();
             $this->actingAs($payer)->get(route('team.payment.payfast', [$order->team_id, $order->player_id, $order->event_id]))
@@ -36,6 +36,27 @@ class TeamCheckoutExplicitRestartTest extends TestCase
             $this->assertDatabaseCount('team_payment_orders', 1);
             $this->assertDatabaseCount('wallet_transactions', 0);
         }
+    }
+
+    public function test_same_payer_reopening_at_five_minutes_gets_fresh_checkout_and_stale_form_cannot_pay(): void
+    {
+        $this->freezeTime();
+        [$order] = $this->scenario();
+        $order->forceFill(['payfast_handed_off_at' => now()->subMinutes(5)])->save();
+        $this->actingAs($order->user)
+            ->get(route('team.payment.payfast', [$order->team_id, $order->player_id, $order->event_id]))
+            ->assertOk()->assertViewHas('total', 490.0)
+            ->assertViewHas('walletReserved', 0.0)->assertViewHas('payfastDue', 490.0)
+            ->assertSessionMissing('team_payment_recovery');
+        $replacement = TeamPaymentOrder::latest('id')->firstOrFail();
+        $this->assertNotSame($order->id, $replacement->id);
+        $this->assertSame((int) $order->user_id, (int) $replacement->user_id);
+        $this->assertNotNull($order->fresh()->withdrawn_at);
+        $this->post(route('team.payment.payfast.handoff', [$order->team_id, $order->player_id, $order->event_id]), ['custom_int5' => $order->id])
+            ->assertRedirect(route('events.show', $order->event));
+        $this->assertNull($replacement->fresh()->payfast_handed_off_at);
+        $this->assertDatabaseCount('team_payment_orders', 2);
+        $this->assertDatabaseCount('wallet_transactions', 0);
     }
 
     public function test_same_payer_signed_restart_resumes_exact_existing_order_without_cancellation(): void

@@ -33,30 +33,37 @@ class TeamCheckoutAutomaticRestartTest extends TestCase
         $this->assertSame($replacement->id, app(TeamPaymentService::class)->ensureOrder($payer, $team, $player, $event, 200)->id);
     }
 
-    public function test_same_payer_continues_recent_and_old_handoff_and_paid_order_is_protected(): void
+    public function test_same_payer_continues_recent_handoff_then_restarts_at_five_minutes_and_paid_order_is_protected(): void
     {
         [$order, $event, $team, $player] = $this->scenario();
         $service = app(TeamPaymentService::class);
-        foreach ([now(), now()->subMinutes(6), now()->subHour()] as $handoff) {
+        $this->freezeTime();
+        foreach ([now(), now()->subMinutes(4)->subSeconds(59)] as $handoff) {
             $order->update(['payfast_handed_off_at' => $handoff]);
             $before = $order->fresh()->getAttributes();
             $continued = $service->ensureOrder($order->user, $team, $player, $event, 999);
             $this->assertSame($order->id, $continued->id);
             $this->assertSame($before, $order->fresh()->getAttributes());
         }
-        $order->update(['pay_status' => true, 'payfast_paid' => true]);
-        $this->assertSame($order->id, $service->ensureOrder(User::factory()->create(), $team, $player, $event, 200)->id);
-        $this->assertDatabaseCount('team_payment_orders', 1);
+        $this->travel(1)->seconds();
+        $replacement = $service->ensureOrder($order->user, $team, $player, $event, 200);
+        $this->assertNotSame($order->id, $replacement->id);
+        $this->assertSame((int) $order->user_id, (int) $replacement->user_id);
+        $this->assertNotNull($order->fresh()->withdrawn_at);
+        $this->assertSame(0.0, $order->fresh()->wallet_reserved);
+        $replacement->update(['pay_status' => true, 'payfast_paid' => true]);
+        $this->assertSame($replacement->id, $service->ensureOrder(User::factory()->create(), $team, $player, $event, 200)->id);
+        $this->assertDatabaseCount('team_payment_orders', 2);
         $this->assertDatabaseCount('wallet_transactions', 0);
     }
 
-    public function test_at_exactly_five_minutes_and_recent_new_payer_checkout_is_still_protected(): void
+    public function test_recent_new_payer_checkout_is_protected_then_restarts_at_exactly_five_minutes(): void
     {
         $this->freezeTime();
         [$order, $event, $team, $player] = $this->scenario();
         $service = app(TeamPaymentService::class);
         $newPayer = User::factory()->create();
-        foreach ([now()->subMinutes(5), now()->subMinutes(4)] as $handoff) {
+        foreach ([now()->subMinutes(4)->subSeconds(59), now()->subMinutes(4)] as $handoff) {
             $order->update(['payfast_handed_off_at' => $handoff]);
             try {
                 $service->ensureOrder($newPayer, $team, $player, $event, 200);
@@ -66,6 +73,11 @@ class TeamCheckoutAutomaticRestartTest extends TestCase
             }
         }
         $this->assertDatabaseCount('team_payment_orders', 1);
+        $order->update(['payfast_handed_off_at' => now()->subMinutes(5)]);
+        $replacement = $service->ensureOrder($newPayer, $team, $player, $event, 200);
+        $this->assertNotSame($order->id, $replacement->id);
+        $this->assertSame($newPayer->id, (int) $replacement->user_id);
+        $this->assertDatabaseCount('team_payment_orders', 2);
     }
 
     public function test_provider_receipt_is_immutable_and_cannot_be_rebound_to_registration_checkout(): void
@@ -74,7 +86,7 @@ class TeamCheckoutAutomaticRestartTest extends TestCase
         $service = app(TeamPaymentService::class);
         $service->ensureOrder(User::factory()->create(), $team, $player, $event, 200);
         $data = $this->receipt($order);
-        $service->recordSupersededPayfastReceipt($order, $data);
+        app(\App\Domain\Payments\Services\ExpiredPayfastHandoffService::class)->recordReceipt($order, $data);
         $recorder = app(\App\Domain\Payments\Services\PaymentTransactionService::class);
         $receipt = \App\Models\Transaction::where('pf_payment_id', 'PF-LATE')->firstOrFail();
         $this->assertSame($receipt->id, $recorder->record($data + ['item_name' => 'Changed label'], $order)->id);
@@ -101,11 +113,13 @@ class TeamCheckoutAutomaticRestartTest extends TestCase
             app(TeamPaymentService::class)->ensureOrder(User::factory()->create(), $team, $player, $event, 200);
             $this->fail('An order with an existing provider receipt was restarted.');
         } catch (ValidationException $exception) {
-            $this->assertStringContainsString('payment evidence', $exception->errors()['payment'][0]);
+            $this->assertSame('This checkout has payment or settlement evidence and cannot be reset.', $exception->errors()['player_id'][0]);
         }
         $this->assertDatabaseCount('team_payment_orders', 1);
         $this->assertSame(40.0, $order->fresh()->wallet_reserved);
         $this->assertNotNull($order->fresh()->payfast_handed_off_at);
+        $this->assertDatabaseMissing('activity_log', ['subject_type' => $order->getMorphClass(),
+            'subject_id' => $order->id, 'description' => 'Expired unresolved PayFast handoff retained for reconciliation']);
     }
 
     public function test_signed_late_callback_is_recorded_once_and_invalid_signature_cannot_record_receipt(): void
@@ -135,8 +149,8 @@ class TeamCheckoutAutomaticRestartTest extends TestCase
         $service = app(TeamPaymentService::class);
         $replacement = $service->ensureOrder(User::factory()->create(), $team, $player, $event, 200);
         $data = $this->receipt($order);
-        $this->assertTrue($service->recordSupersededPayfastReceipt($order, $data));
-        $this->assertTrue($service->recordSupersededPayfastReceipt($order, $data));
+        $this->assertTrue(app(\App\Domain\Payments\Services\ExpiredPayfastHandoffService::class)->recordReceipt($order, $data));
+        $this->assertTrue(app(\App\Domain\Payments\Services\ExpiredPayfastHandoffService::class)->recordReceipt($order, $data));
         $this->assertDatabaseCount('transactions_pf', 1);
         $this->assertDatabaseCount('wallet_transactions', 0);
         $this->assertFalse($replacement->fresh()->pay_status);
@@ -160,7 +174,7 @@ class TeamCheckoutAutomaticRestartTest extends TestCase
         $this->assertSame(160.0, $row->gross);
         $this->assertSame('Late payment — reconciliation required', $row->status_label);
         // A second genuine provider charge is also retained for reconciliation.
-        $service->recordSupersededPayfastReceipt($order, array_replace($data, ['pf_payment_id' => 'PF-LATE-SECOND']));
+        app(\App\Domain\Payments\Services\ExpiredPayfastHandoffService::class)->recordReceipt($order, array_replace($data, ['pf_payment_id' => 'PF-LATE-SECOND']));
         $this->assertDatabaseCount('transactions_pf', 2);
         \Illuminate\Support\Facades\Event::fake([\App\Events\PaymentCompleted::class]);
         $service->finalizePayment($replacement, ['payfast_amount_received' => 200, 'payfast_amount_due' => 200,
@@ -181,7 +195,7 @@ class TeamCheckoutAutomaticRestartTest extends TestCase
         $replacement = $service->ensureOrder(User::factory()->create(), $team, $player, $event, 200);
         foreach ([['amount_gross' => '200.00'], ['custom_int4' => $replacement->user_id], ['custom_int3' => $event->id + 1]] as $override) {
             try {
-                $service->recordSupersededPayfastReceipt($order, array_replace($this->receipt($order), $override));
+                app(\App\Domain\Payments\Services\ExpiredPayfastHandoffService::class)->recordReceipt($order, array_replace($this->receipt($order), $override));
                 $this->fail('A mismatched provider receipt was accepted.');
             } catch (\RuntimeException $exception) {
                 $this->assertStringContainsString('original handoff', $exception->getMessage());
@@ -190,7 +204,7 @@ class TeamCheckoutAutomaticRestartTest extends TestCase
         DB::table('transactions_pf')->insert(['pf_payment_id' => 'PF-LATE', 'custom_str5' => 'TeamOrder',
             'custom_int5' => $replacement->id, 'amount_gross' => 160]);
         $this->expectException(\RuntimeException::class);
-        $service->recordSupersededPayfastReceipt($order, $this->receipt($order));
+        app(\App\Domain\Payments\Services\ExpiredPayfastHandoffService::class)->recordReceipt($order, $this->receipt($order));
     }
 
     private function receipt(TeamPaymentOrder $order): array

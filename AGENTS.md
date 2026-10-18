@@ -7,6 +7,7 @@
 - Wallet balances are derived from `wallet_transactions`; never introduce or mutate a cached balance column.
 - PayFast ITNs must verify signatures, require `COMPLETE`, validate server-calculated amounts, lock orders, and remain idempotent.
 - Applying wallet funds reserves them but does not debit the wallet. Debit only during verified finalization. Cancellation releases or resets reservations through a payment service.
+- Registration and team checkouts share a five-minute expiry window, measured from the PayFast handoff when present and otherwise from checkout creation. Expire only otherwise unpaid, consistent attempts without settlement evidence or pending/verified EFT proof. Close through canonical services, release reservations, and retain immutable original handoff evidence; delayed verified payments for expired attempts belong to the original payer for reconciliation and must not activate entries or debit released wallet reservations.
 
 ## Registration and withdrawal invariants
 
@@ -19,7 +20,7 @@
 - A confirmed team-selection decline notifies its event's regional convenor through the canonical regional-manager resolver and managed mail after commit. Do not notify on preview, rejected/repeated declines, or guess a recipient when the regional contact is missing or ambiguous.
 - Preserve original paid state as an audit record after refunds; refund status records the reversal.
 - Withdrawals must remove active draw, fixture, or roster participation. A late team withdrawal with no refund path must free its roster slot immediately.
-- Interprovincial Trials registration is payer-sponsored: sponsorship authorization must never depend on owning or linking to the nominee. While registration is open, any otherwise eligible authenticated user, including the normal agreement and profile gates, may register an exact currently published nominee without an email invitation; that actor becomes the payer without gaining player ownership or creating a `user_players` link. Any otherwise eligible authenticated user may restart an unpaid checkout before payment handoff through the canonical cancellation and reservation-release services, becoming the new payer without gaining player ownership. Only the current payer may access or cancel their order; paid or in-flight checkouts cannot be taken over; declining remains restricted to an account already linked to the nominated player.
+- Interprovincial Trials registration is payer-sponsored: sponsorship authorization must never depend on owning or linking to the nominee. While registration is open, any otherwise eligible authenticated user, including the normal agreement and profile gates, may register an exact currently published nominee without an email invitation; that actor becomes the payer without gaining player ownership or creating a `user_players` link. Any otherwise eligible authenticated user may restart an unpaid checkout before payment handoff through the canonical cancellation and reservation-release services, becoming the new payer without gaining player ownership. Only the current payer may access or cancel their order; paid checkouts and PayFast attempts inside the shared five-minute window cannot be taken over; declining remains restricted to an account already linked to the nominated player.
 
 ## Mail, secrets, and dashboards
 

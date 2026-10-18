@@ -73,6 +73,11 @@ class EntriesManualPaymentService
             app(TrialProgrammeService::class)->authorize($category->event, $actor);
             app(EntryEligibilityService::class)->assertAdminCategoryEligible($category, $playerId);
 
+            if (!isset($confirmation['existing_order_id'])
+                && app(\App\Domain\Payments\Services\RegistrationPaymentService::class)->expireUnpaidCheckout($order)) {
+                return null;
+            }
+
             $amount = number_format((float) $order->total_fee, 2, '.', '');
             if ((float) $amount <= 0 || number_format((float) $item->item_price, 2, '.', '') !== $amount) {
                 $this->conflict();

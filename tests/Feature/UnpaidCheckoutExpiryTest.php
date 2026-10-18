@@ -38,9 +38,9 @@ class UnpaidCheckoutExpiryTest extends TestCase
     {
         foreach (['pay_status', 'payfast_paid', 'wallet_debited', 'handoff', 'provider_id', 'entry_paid', 'proof', 'receipt'] as $evidence) {
             [$order, $entry, $event] = $this->registration();
-            $order->forceFill(['created_at' => now()->subMinutes(10)])->save();
+            $order->forceFill(['created_at' => now()->subMinutes(10), 'payfast_handed_off_at' => now()->subMinutes(9)])->save();
             if (in_array($evidence, ['pay_status', 'payfast_paid', 'wallet_debited'], true)) $order->forceFill([$evidence => true])->save();
-            if ($evidence === 'handoff') $order->forceFill(['payfast_handed_off_at' => now()->subMinutes(9)])->save();
+            if ($evidence === 'handoff') $order->forceFill(['payfast_handed_off_at' => now()->subMinutes(4)])->save();
             if ($evidence === 'provider_id') $order->forceFill(['payfast_pf_payment_id' => 'PF-EXACT'])->save();
             if ($evidence === 'entry_paid') $entry->forceFill(['payment_status_id' => 1])->save();
             if ($evidence === 'proof') \App\Models\TrialPaymentProof::create(['order_id' => $order->id, 'event_id' => $event->id, 'payer_id' => $order->user_id, 'path' => 'private-proof.pdf', 'mime_type' => 'application/pdf', 'size' => 10]);
@@ -173,21 +173,94 @@ class UnpaidCheckoutExpiryTest extends TestCase
         $payer = User::factory()->create();
         $records = array_fill(0, 501, ['user_id' => $payer->id, 'created_at' => now()->subHour(), 'updated_at' => now()->subHour(), 'pay_status' => 0, 'payfast_paid' => 0, 'wallet_debited' => 0, 'wallet_reserved' => 0, 'payfast_amount_due' => 0, 'total_fee' => 0, 'status' => 'pending']);
         RegistrationOrder::insert($records);
+        $firstBacklogId = (int) RegistrationOrder::min('id');
+        \Illuminate\Support\Facades\Cache::forget('checkout-expiry:registration:backlog-cursor');
         [$recent] = $this->registration();
         $recent->forceFill(['created_at' => now()->subMinutes(5)])->save();
         $service = app(UnpaidCheckoutExpiryService::class);
         $first = $service->expireAll();
         $this->assertSame(1, $first['registration']);
         $this->assertSame(250, $first['skipped']);
-        $this->assertSame(250, \Illuminate\Support\Facades\Cache::get('checkout-expiry:registration:backlog-cursor'));
+        $this->assertSame($firstBacklogId + 249, \Illuminate\Support\Facades\Cache::get('checkout-expiry:registration:backlog-cursor'));
         $second = $service->expireAll();
         $this->assertSame(250, $second['skipped']);
-        $this->assertSame(500, \Illuminate\Support\Facades\Cache::get('checkout-expiry:registration:backlog-cursor'));
+        $this->assertSame($firstBacklogId + 499, \Illuminate\Support\Facades\Cache::get('checkout-expiry:registration:backlog-cursor'));
         $third = $service->expireAll();
         $this->assertSame(1, $third['skipped']);
-        $this->assertSame(501, \Illuminate\Support\Facades\Cache::get('checkout-expiry:registration:backlog-cursor'));
+        $this->assertSame($firstBacklogId + 500, \Illuminate\Support\Facades\Cache::get('checkout-expiry:registration:backlog-cursor'));
         $this->assertDatabaseCount('registration_orders', 502);
         $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
+    public function test_expired_handoff_releases_entry_and_quarantines_exact_delayed_receipt_idempotently(): void
+    {
+        [$order, $entry, $event, $category, $player] = $this->registration();
+        $order->forceFill(['created_at' => now()->subDay(), 'payfast_handed_off_at' => now()->subMinutes(4)])->save();
+        $service = app(UnpaidCheckoutExpiryService::class);
+        $this->assertFalse($service->expire($order));
+        $this->travel(1)->minutes();
+        $this->assertSame(1, $service->candidateCounts()['registration']);
+        $this->assertSame(1, $service->expireAll()['registration']);
+        $this->assertFalse($service->expire($order));
+        $this->assertSoftDeleted('category_event_registrations', ['id' => $entry->id]);
+        $data = ['payment_status' => 'COMPLETE', 'pf_payment_id' => 'EXPIRED-PF-123',
+            'amount_gross' => '75.00', 'custom_int5' => $order->id, 'custom_int4' => $order->user_id,
+            'custom_int1' => $category->id, 'custom_int2' => $player->id, 'custom_int3' => $event->id];
+        $receipts = app(\App\Domain\Payments\Services\ExpiredPayfastHandoffService::class);
+        foreach ([['amount_gross' => '100.00'], ['custom_int4' => User::factory()->create()->id],
+            ['custom_int3' => Event::factory()->create()->id], ['payment_status' => 'PENDING']] as $tamper) {
+            try { $receipts->recordReceipt($order, array_replace($data, $tamper)); $this->fail('Invalid delayed receipt accepted.'); }
+            catch (\RuntimeException $exception) { $this->assertStringContainsString('original handoff', $exception->getMessage()); }
+        }
+        $this->sendExpiredCallback('notify', $data)->assertOk();
+        $this->sendExpiredCallback('notify', $data)->assertOk();
+        $this->post(route('notify'), $data + ['signature' => 'invalid'])->assertStatus(400);
+        $this->assertFalse($order->fresh()->pay_status);
+        $this->assertSame(0.0, $order->fresh()->wallet_reserved);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->assertDatabaseCount('transactions_pf', 1);
+        $this->assertDatabaseCount('registration_orders', 1);
+        $this->assertSame(0, CategoryEventRegistration::count());
+        $row = app(\App\Domain\Finance\Services\FinancialLedgerService::class)->buildPaymentRows($event, 10)->sole();
+        $this->assertSame('Late payment — reconciliation required', $row->status_label);
+        $this->assertSame(0, $row->entryCount);
+        $this->assertSame(0.0, $row->walletUsed);
+        $this->assertSame(0.0, $row->capeFee);
+    }
+
+    public function test_team_handoff_expiry_releases_reservation_and_retains_roster_without_settling_late_charge(): void
+    {
+        $event = Event::factory()->create();
+        $team = Team::factory()->create(['category_event_id' => CategoryEvent::factory()->create(['event_id' => $event->id])->id]);
+        $player = Player::factory()->create();
+        $payer = User::factory()->create();
+        $slot = TeamPlayer::create(['team_id' => $team->id, 'player_id' => $player->id, 'rank' => 1, 'pay_status' => 0]);
+        $order = TeamPaymentOrder::create(['user_id' => $payer->id, 'team_id' => $team->id, 'event_id' => $event->id,
+            'player_id' => $player->id, 'total_amount' => 450, 'wallet_reserved' => 50, 'payfast_amount_due' => 400,
+            'pay_status' => false, 'wallet_debited' => false, 'payfast_paid' => false]);
+        $order->forceFill(['created_at' => now()->subDay(), 'payfast_handed_off_at' => now()->subMinutes(5)])->save();
+        $this->assertSame(1, app(UnpaidCheckoutExpiryService::class)->expireAll()['team']);
+        $data = ['payment_status' => 'COMPLETE', 'pf_payment_id' => 'EXPIRED-TEAM-123', 'amount_gross' => '400.00',
+            'custom_str5' => 'TeamOrder', 'custom_int5' => $order->id, 'custom_int4' => $payer->id,
+            'custom_int3' => $event->id, 'custom_int2' => $player->id];
+        $this->sendExpiredCallback('notify.team', $data)->assertOk();
+        $this->sendExpiredCallback('notify.team', $data)->assertOk();
+        $this->assertFalse($order->fresh()->pay_status);
+        $this->assertFalse((bool) $slot->fresh()->pay_status);
+        $this->assertSame('reconciliation_required', $order->fresh()->collection_status);
+        $this->assertSame(0.0, $order->fresh()->wallet_reserved);
+        $this->assertDatabaseCount('transactions_pf', 1);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
+    private function sendExpiredCallback(string $route, array $payload): \Illuminate\Testing\TestResponse
+    {
+        config(['services.payfast.sandbox' => false, 'services.payfast.merchant_id' => 'test-merchant',
+            'services.payfast.passphrase_live' => 'test-passphrase']);
+        $payload['merchant_id'] = 'test-merchant';
+        $payload['signature'] = md5(http_build_query($payload).'&passphrase=test-passphrase');
+        return $this->call('POST', route($route), $payload, [], [],
+            ['CONTENT_TYPE' => 'application/x-www-form-urlencoded'], http_build_query($payload));
     }
 
     private function registration(): array
