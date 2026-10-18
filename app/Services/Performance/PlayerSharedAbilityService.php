@@ -102,7 +102,7 @@ class PlayerSharedAbilityService
     /** Private hypothetical review only; deliberately bypasses all snapshot/cache writers. */
     public function identityReviewSnapshot(CarbonImmutable $asOf, ?HistoricalIdentityPreviewContext $preview = null, array $cohorts = []): array
     {
-        return $this->build($asOf, identityPreview: $preview, selectedCohorts: $cohorts);
+        return ['preview_only' => true] + $this->build($asOf, identityPreview: $preview, selectedCohorts: $cohorts);
     }
 
     /** Retrospective validation only: excludes all held-out/overlapping event evidence and bypasses caches. */

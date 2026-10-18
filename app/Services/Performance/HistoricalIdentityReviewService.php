@@ -21,16 +21,18 @@ class HistoricalIdentityReviewService
         $rows = TeamFixturePlayer::query()->with(['fixture.draw', 'fixture.teamResults', 'noProfile1', 'noProfile2'])
             ->whereHas('fixture.draw', fn ($q) => $q->where('event_id', $event->id))
             ->whereHas('fixture.teamResults')
+            ->whereHas('fixture', fn ($q) => $q->where(fn ($q) => $q->whereIn('fixture_type', [0, 1, 4])->orWhereNull('fixture_type')->orWhereIn('rubber_code', ['singles', 'reverse_singles'])))
             ->where(fn ($q) => $q->whereNotNull('team1_no_profile_id')->orWhereNotNull('team2_no_profile_id'))
             ->orderBy('id')->paginate(20, ['*'], 'matches_page');
         $items = [];
         foreach ($rows as $row) {
+            if ($row->fixture->isDoubles() || $row->fixture->fixturePlayers()->count() !== 1) { continue; }
             foreach ([1, 2] as $side) {
                 $imported = $row->{'noProfile'.$side};
                 if (!$imported) { continue; }
                 $team = Team::find($imported->team_id);
                 if ($team && app(ImportedMatchIdentityResolver::class)->resolve($row, $side, $team, (int) $event->id)) { continue; }
-                $items[] = ['row' => $row, 'side' => $side, 'imported' => $imported, 'team' => $team,
+                $items[] = ['row' => $row, 'side' => $side, 'imported' => $imported, 'team' => $team, 'linked' => $imported->player_profile ? Player::find($imported->player_profile) : null,
                     'fingerprint' => $this->sourceFingerprint($row, $team),
                     'blocker' => 'Missing or inconsistent historical identity evidence. A current profile link is not an original attestation.'];
             }
@@ -156,6 +158,13 @@ class HistoricalIdentityReviewService
             $fingerprint = $service->fingerprint();
             $baseline = $service->identityReviewSnapshot($asOf, cohorts: array_unique($cohorts));
             $candidate = $service->identityReviewSnapshot($asOf, new HistoricalIdentityPreviewContext($identities), array_unique($cohorts));
+            foreach ([$baseline, $candidate] as $snapshot) {
+                foreach ($snapshot['cohorts'] as $data) {
+                    foreach ($data['components'] as $component) {
+                        $this->require((bool) ($component['converged'] ?? false), 'An affected comparison group did not converge. Rating changes are withheld.');
+                    }
+                }
+            }
             $fixtureIds = $proposals->map(fn ($proposal) => TeamFixturePlayer::findOrFail($proposal->fixture_player_id)->team_fixture_id)->unique()->all();
             $sourceChecks = collect(iterator_to_array(app(PlayerPerformanceHistoryService::class)->teamMatches($event, null, $asOf, new HistoricalIdentityPreviewContext($identities))))
                 ->filter(fn ($match) => in_array($match['fixture_id'], $fixtureIds, true))->map(fn ($match) => ['fixture_id' => $match['fixture_id'], 'reason' => $match['reason']])->values()->all();
