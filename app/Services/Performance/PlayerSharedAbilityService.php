@@ -99,6 +99,12 @@ class PlayerSharedAbilityService
         return $snapshot;
     }
 
+    /** Private hypothetical review only; deliberately bypasses all snapshot/cache writers. */
+    public function identityReviewSnapshot(CarbonImmutable $asOf, ?HistoricalIdentityPreviewContext $preview = null, array $cohorts = []): array
+    {
+        return $this->build($asOf, identityPreview: $preview, selectedCohorts: $cohorts);
+    }
+
     /** Retrospective validation only: excludes all held-out/overlapping event evidence and bypasses caches. */
     public function validationSnapshot(CarbonImmutable $eventStart, ?int $excludedEventId = null, array $experiment = []): array
     {
@@ -173,7 +179,7 @@ class PlayerSharedAbilityService
         return trim($label, " -–");
     }
 
-    private function build(CarbonImmutable $asOf, ?CarbonImmutable $completedBefore = null, ?int $excludedEventId = null, array $experiment = []): array
+    private function build(CarbonImmutable $asOf, ?CarbonImmutable $completedBefore = null, ?int $excludedEventId = null, array $experiment = [], ?HistoricalIdentityPreviewContext $identityPreview = null, array $selectedCohorts = []): array
     {
         $builtAt = CarbonImmutable::now('Africa/Johannesburg')->format('Y-m-d H:i:s').' SAST';
         $graphs = []; $ordinalFields = []; $trialBaselines = []; $names = []; $eventsSeen = 0; $edgeCount = 0; $scannedMatches = 0; $seenSources = [];
@@ -234,7 +240,7 @@ class PlayerSharedAbilityService
                 }
             }
             try {
-                foreach ($this->playedSources($history, $event, $pilot, $asOf) as $match) {
+                foreach ($this->playedSources($history, $event, $pilot, $asOf, $identityPreview) as $match) {
                     if (++$scannedMatches > self::EDGE_CAP) { return $this->withheld($builtAt); }
                     if ($match['reason'] !== null || $match['discipline'] !== 'singles') { continue; }
                     $source = ($match['source'] === 'Team match' ? 'team-match:' : 'match:').$match['fixture_id'];
@@ -275,6 +281,7 @@ class PlayerSharedAbilityService
         }
         $cohorts = [];
         foreach ($graphs as $cohort => $graph) {
+            if ($selectedCohorts && !in_array($cohort, $selectedCohorts, true)) { continue; }
             $baseline = $trialBaselines[$cohort] ?? ['anchors' => [], 'metadata' => null];
             $edges = array_map(function ($edge) use ($baseline) {
                 if ($edge['kind'] === 'played' && ($edge['event_id'] ?? null) === ($baseline['metadata']['event_id'] ?? null)
@@ -302,10 +309,10 @@ class PlayerSharedAbilityService
         return max(PHP_FLOAT_MIN, pow(0.5, max(0, CarbonImmutable::parse($date)->diffInDays($asOf, false)) / 180));
     }
 
-    private function playedSources(PlayerPerformanceHistoryService $history, Event $event, PlayerPerformancePilotService $pilot, CarbonImmutable $asOf): \Generator
+    private function playedSources(PlayerPerformanceHistoryService $history, Event $event, PlayerPerformancePilotService $pilot, CarbonImmutable $asOf, ?HistoricalIdentityPreviewContext $identityPreview = null): \Generator
     {
         yield from $history->individualMatches($event, null, $pilot, $asOf, true);
-        yield from $history->teamMatches($event, null, $asOf);
+        yield from $history->teamMatches($event, null, $asOf, $identityPreview);
     }
 
     private function coveredByPlayed(array $ids, array $adjacency): bool

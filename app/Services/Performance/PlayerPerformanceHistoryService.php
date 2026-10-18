@@ -237,7 +237,7 @@ class PlayerPerformanceHistoryService
         return $wins[1] > $wins[2] ? 1 : 2;
     }
 
-    public function teamMatches(Event $event, ?Player $player, ?CarbonImmutable $asOf = null): \Generator
+    public function teamMatches(Event $event, ?Player $player, ?CarbonImmutable $asOf = null, ?HistoricalIdentityPreviewContext $identityPreview = null): \Generator
     {
         if (!$event->published) { return; }
         $network = $player === null; $asOf ??= CarbonImmutable::today();
@@ -263,6 +263,13 @@ class PlayerPerformanceHistoryService
             if ($rows->count() !== $needed) { $reason = 'Team match has missing or ambiguous player identities'; }
             foreach ($rows as $row) {
                 foreach ([1,2] as $side) {
+                    $hypothesis = $identityPreview?->identity((int) $event->id, (int) $row->id, $side);
+                    if ($hypothesis) {
+                        // Already strictly source-validated by the review service in this consistent read.
+                        $sourceBySide[$side] = $hypothesis['team'];
+                        $resolved[$row->id][$side] = $hypothesis['player'];
+                        continue;
+                    }
                     $snapshot = $row->participant_snapshot[$side] ?? null;
                     $source = $fixture->teamTie?->{($side === 1 ? 'homeTeam' : 'awayTeam')};
                     if (!$fixture->teamTie && $fixture->{'region'.$side}) {

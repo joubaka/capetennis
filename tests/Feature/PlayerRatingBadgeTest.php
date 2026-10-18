@@ -252,6 +252,28 @@ class PlayerRatingBadgeTest extends TestCase
         $this->assertStringContainsString('CTPlayerRatingConfig', $html);
     }
 
+    public function test_results_page_renders_missing_registration_with_fallback_and_preserves_other_results(): void
+    {
+        $draw = $this->draw();
+        $player = Player::factory()->create();
+        $registration = Registration::factory()->create();
+        $registration->players()->attach($player);
+        $missing = (new CategoryResult(['position' => 1]))->setRelation('registration', null);
+        $valid = (new CategoryResult(['position' => 2]))->setRelation('registration', $registration);
+
+        $html = view('frontend.event.results.show', [
+            'event' => $draw->event,
+            'categories' => collect([$draw->categoryEvent]),
+            'categoryResults' => collect([
+                $draw->categoryEvent->category_id => collect([$missing, $valid]),
+            ]),
+        ])->render();
+
+        $this->assertStringContainsString('TBD', $html);
+        $this->assertStringContainsString(e($player->full_name), $html);
+        $this->assertSame(2, substr_count($html, 'list-group-item d-flex align-items-center gap-2 py-2'));
+    }
+
     public function test_team_presenter_keeps_public_payload_shape_and_adds_profile_identity_only_for_super_admin(): void
     {
         $draw = $this->draw();
