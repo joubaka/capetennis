@@ -7,11 +7,13 @@
     players: ['groups'],
     results: ['matrix', 'standings'],
     schedule: ['oop', 'schedule'],
-    setup: ['settings', 'notes']
+    setup: ['settings'],
+    rules: ['notes']
   };
   if (document.getElementById('main-bracket-tab')) areas.results.push('main-bracket');
   let active = 'players';
   function open(area, view, replace) {
+    if (area === 'setup' && view === 'notes') area = 'rules';
     if (!areas[area]) return;
     active = area;
     document.querySelectorAll('[data-workspace]').forEach(button => {
@@ -113,7 +115,7 @@
       stored = sessionStorage.getItem('rr-view-' + DRAW_ID);
     } catch (e) {}
     const defaultView = (root.RR_OOP || []).length ? 'matrix' : 'groups';
-    const view = location.hash ? location.hash.slice(1).replace(/-(tab|pane)$/, '') : stored || defaultView;
+    const view = String(location.hash || stored || defaultView).replace(/^#/, '').replace(/-(tab|pane)$/, '');
     const area = Object.keys(areas).find(key => areas[key].includes(view)) || 'players';
     if (view === 'print') print();
     else open(area, view, true);

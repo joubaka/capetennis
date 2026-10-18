@@ -50,7 +50,8 @@
   <button type="button" data-workspace="players">Players &amp; Groups</button>
   <button type="button" data-workspace="results">Draw &amp; Results</button>
   <button type="button" data-workspace="schedule">Schedule</button>
-  <button type="button" data-workspace="setup">Setup &amp; Rules</button>
+  <button type="button" data-workspace="setup">Draw settings</button>
+  <button type="button" data-workspace="rules">Rules &amp; notes</button>
 </nav>
 <div class="d-flex flex-wrap align-items-start gap-2 mb-3">
 <ul class="nav nav-tabs mb-0 flex-grow-1" id="rrTabs" role="tablist">

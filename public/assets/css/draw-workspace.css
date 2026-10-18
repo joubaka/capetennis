@@ -208,7 +208,10 @@
   #round-robin-app .rr-workspace-nav button {
     font-size: 13px;
     padding: 10px 6px;
+    min-height: 44px;
+    white-space: normal;
   }
+  #round-robin-app .rr-workspace-nav button[data-workspace="rules"] { grid-column: 1 / -1; }
   #round-robin-app .rr-player-layout {
     grid-template-columns: 1fr;
   }
