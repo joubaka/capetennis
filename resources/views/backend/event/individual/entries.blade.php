@@ -213,9 +213,27 @@
   }
 
   .entry-actions-menu {
+    min-width: 210px;
+    max-width: calc(100vw - 16px);
     max-height: min(60vh, 360px);
     overflow-y: auto;
+    padding: .375rem;
+    border: 1px solid #dce4ed;
+    border-radius: .625rem;
+    box-shadow: 0 8px 24px rgba(32, 48, 68, .12);
   }
+  /* Menus move under body while open, so these styles must be self-contained. */
+  .entry-actions-menu .dropdown-item {
+    display:flex; align-items:center; gap:.625rem;
+    min-height:44px; padding:.625rem .75rem;
+    border-radius:.375rem; color:#334155;
+    font-size:.875rem; line-height:1.4; white-space:normal;
+  }
+  .entry-actions-menu .dropdown-item i { width:20px; flex:0 0 20px; margin:0!important; font-size:1.125rem; }
+  .entry-actions-menu .dropdown-item:is(:hover, :focus-visible) { background:#eef3f8; color:#172b42; }
+  .entry-actions-menu .withdraw-player-btn { color:#b42318; }
+  .entry-actions-menu .withdraw-player-btn:is(:hover, :focus-visible) { background:#fff1f0; color:#912018; }
+  .entry-actions-menu .dropdown-divider { margin:.375rem 0; }
 
 
   .entries-workspace [hidden] { display:none!important; }
@@ -472,7 +490,7 @@
             aria-expanded="false">
       Actions
     </button>
-    <ul class="dropdown-menu dropdown-menu-end">
+    <ul class="dropdown-menu dropdown-menu-end entry-actions-menu">
 
       <li>
         <button type="button"
@@ -490,33 +508,35 @@
                 data-entry="{{ $reg->id }}"
                 data-player="{{ $player?->name }} {{ $player?->surname }}"
                 data-from-category="{{ $categoryEvent->category?->name }}">
-          <i class="ti ti-arrows-transfer-up me-1"></i>Move
+          <i class="ti ti-arrows-exchange me-1"></i>Move category
         </button>
       </li>
       @endunless
 
-      @if($reg->status !== 'withdrawn' && (!$isMasters || $canManageMasters))
+
+
+      @if(auth()->user()->hasRole('super-user'))
+
         <li>
           <button type="button"
-                  class="dropdown-item text-warning withdraw-player-btn"
+                  class="dropdown-item view-entry-details-btn"
+                  data-url="{{ route('admin.entry.details', $reg) }}">
+            <i class="ti ti-info-circle me-1"></i>View details
+          </button>
+        </li>
+      @endif
+
+      @if($reg->status !== 'withdrawn' && (!$isMasters || $canManageMasters))
+        <li><hr class="dropdown-divider"></li>
+        <li>
+          <button type="button"
+                  class="dropdown-item withdraw-player-btn"
                   data-url="{{ route('admin.category.registration.withdraw', $reg) }}"
                   data-player="{{ trim(($player?->name ?? '') . ' ' . ($player?->surname ?? '')) }}">
             <i class="ti ti-user-minus me-1"></i>Remove player
           </button>
         </li>
       @endif
-
-      @if(auth()->user()->hasRole('super-user'))
-        <li><hr class="dropdown-divider"></li>
-        <li>
-          <button type="button"
-                  class="dropdown-item text-info view-entry-details-btn"
-                  data-url="{{ route('admin.entry.details', $reg) }}">
-            <i class="ti ti-info-circle me-1"></i>View Details
-          </button>
-        </li>
-      @endif
-
     </ul>
   </div>
 </td>
