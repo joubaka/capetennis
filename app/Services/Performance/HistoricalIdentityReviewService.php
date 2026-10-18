@@ -96,7 +96,7 @@ class HistoricalIdentityReviewService
         $this->require((bool) preg_match('/^u(\d{1,2}) (boys|girls)$/', $cohort, $parts), 'Source category must have an exact age and gender.');
         $drawLabel = $fixture->draw->categoryEvent?->category?->name ?? $fixture->draw->drawName;
         $drawCohort = app(PlayerSharedAbilityService::class)->cohort(app(PlayerPerformancePilotService::class)->division($drawLabel)['cohort']);
-        $this->require(str_starts_with($drawCohort, $cohort) || preg_match('/\bsingles\b/i', $drawLabel) && !preg_match('/\bu\d|boys|girls/i', $drawLabel), 'Draw and source category disagree.');
+        $this->require($drawCohort === $cohort || preg_replace('/ (?:reverse )?singles$/', '', $drawCohort) === $cohort, 'Draw and source category disagree.');
         $player = Player::findOrFail($playerId);
         $this->require(!$imported->player_profile || (int) $imported->player_profile === $playerId, 'The current imported profile link conflicts with this suggestion; resolve that conflict separately before preview.');
         $mirrors = $team->team_players()->where('rank', $rank)->get();
@@ -107,10 +107,11 @@ class HistoricalIdentityReviewService
         try { $birth = CarbonImmutable::createFromFormat('!Y-m-d', substr((string) $player->dateOfBirth, 0, 10)); }
         catch (\Throwable) { throw ValidationException::withMessages(['proposal' => 'Suggested player birth date is invalid.']); }
         $year = CarbonImmutable::parse($event->start_date)->year;
+        $this->require($birth->format('Y-m-d') === substr((string) $player->dateOfBirth, 0, 10), 'Suggested player birth date is invalid.');
         $age = $year - $birth->year;
         $this->require($age >= 5 && $age <= (int) $parts[1], 'Suggested profile is over-age or has an implausible age for this historical category.');
         $gender = strtolower(trim((string) $player->gender));
-        $this->require(in_array($gender, $parts[2] === 'girls' ? ['female', 'girl', 'girls', 'f'] : ['male', 'boy', 'boys', 'm'], true), 'Suggested profile gender conflicts with the category.');
+        $this->require(in_array($gender, $parts[2] === 'girls' ? ['2', 'female', 'girl', 'girls', 'f'] : ['1', 'male', 'boy', 'boys', 'm'], true), 'Suggested profile gender conflicts with the category.');
         $opponent = $row->{'team'.($side === 1 ? 2 : 1).'_id'};
         $this->require((int) $opponent !== $playerId, 'A player cannot be both sides of this match.');
         if ($event->frontend_type_view === 'masters') { $cohort = 'masters · '.$cohort; }
@@ -122,8 +123,8 @@ class HistoricalIdentityReviewService
         $fixture = $row->fixture()->with(['draw.categoryEvent.category', 'teamTie', 'teamResults'])->first();
         $imports = NoProfileTeamPlayer::whereIn('id', array_filter([$row->team1_no_profile_id, $row->team2_no_profile_id]))->orderBy('id')->get()->map->getRawOriginal()->all();
         return hash('sha256', json_encode([$row->getRawOriginal(), $fixture?->getRawOriginal(), $fixture?->draw?->getRawOriginal(),
-            $fixture?->draw?->categoryEvent?->toArray(), $fixture?->teamTie?->getRawOriginal(), $fixture?->teamResults->map->getRawOriginal()->all(),
-            $team?->getRawOriginal(), $team?->category?->toArray(), $team?->regions?->getRawOriginal(), $imports,
+            $fixture?->draw?->categoryEvent?->getRawOriginal(), $fixture?->draw?->categoryEvent?->category?->getRawOriginal(), $fixture?->teamTie?->getRawOriginal(), $fixture?->teamResults->map->getRawOriginal()->all(),
+            $team?->getRawOriginal(), $team?->category?->getRawOriginal(), $team?->category?->category?->getRawOriginal(), $team?->regions?->getRawOriginal(), $imports,
             $team?->team_players()->orderBy('id')->get()->map->getRawOriginal()->all(),
             Event::find($fixture?->draw?->event_id)?->getRawOriginal(),
             DB::table('event_regions')->where('event_id', $fixture?->draw?->event_id)->orderBy('id')->get()->all()], JSON_THROW_ON_ERROR));
@@ -155,8 +156,11 @@ class HistoricalIdentityReviewService
             $fingerprint = $service->fingerprint();
             $baseline = $service->identityReviewSnapshot($asOf, cohorts: array_unique($cohorts));
             $candidate = $service->identityReviewSnapshot($asOf, new HistoricalIdentityPreviewContext($identities), array_unique($cohorts));
+            $fixtureIds = $proposals->map(fn ($proposal) => TeamFixturePlayer::findOrFail($proposal->fixture_player_id)->team_fixture_id)->unique()->all();
+            $sourceChecks = collect(iterator_to_array(app(PlayerPerformanceHistoryService::class)->teamMatches($event, null, $asOf, new HistoricalIdentityPreviewContext($identities))))
+                ->filter(fn ($match) => in_array($match['fixture_id'], $fixtureIds, true))->map(fn ($match) => ['fixture_id' => $match['fixture_id'], 'reason' => $match['reason']])->values()->all();
             $this->require(!$baseline['reason'] && !$candidate['reason'] && hash_equals($fingerprint, $service->fingerprint()), 'Source data changed or the calculation exceeded its safe limits. No preview is available.');
-            return ['as_of' => $asOf->toDateString(), 'fingerprint' => $fingerprint, 'proposals' => $proposals,
+            return ['preview_only' => true, 'as_of' => $asOf->toDateString(), 'fingerprint' => $fingerprint, 'proposals' => $proposals, 'source_checks' => $sourceChecks,
                 'cohorts' => $this->comparison($baseline, $candidate),
                 'added_matches' => array_values(array_diff($candidate['source_matches'], $baseline['source_matches']))];
         });

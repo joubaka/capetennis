@@ -1,0 +1,5 @@
+<div class="table-responsive"><table class="table table-sm"><thead><tr><th>Player</th><th>Current group / position</th><th>Proposed group / position</th><th>Current rating</th><th>Proposed rating</th><th>Review</th></tr></thead><tbody>
+@forelse($reviewRows as $row)
+<tr><td>{{ $row['name'] }} (#{{ $row['id'] }})</td><td>{{ $row['before']['component'] ?? 'Unrated' }} / {{ $row['old_position'] ?? '—' }}</td><td>{{ $row['after']['component'] ?? 'Unrated' }} / {{ $row['new_position'] ?? '—' }}</td><td>{{ isset($row['before']['score']) ? number_format($row['before']['score'], 2) : '—' }}</td><td>{{ isset($row['after']['score']) ? number_format($row['after']['score'], 2) : '—' }}</td><td>@if($row['new_node'])New cohort identity. @endif @if($row['topology_changed'])Comparison membership changed; positions are not directly comparable. @elseif($row['top10_changed'])Top 10 membership changed within this group. @endif</td></tr>
+@empty<tr><td colspan="6">No players in this review band.</td></tr>@endforelse
+</tbody></table></div>
