@@ -282,8 +282,8 @@ class ManageDrawController extends Controller
       $lockedDraw->settings()->updateOrCreate(
         ['draw_id' => $lockedDraw->id],
         [
-          'notes' => $validated['notes'],
-          'notes_print' => $validated['notes_print'] ?? $lockedDraw->settings?->notes_print,
+          'notes' => array_replace($lockedDraw->settings?->notes ?? [], $validated['notes']),
+          'notes_print' => array_replace($lockedDraw->settings?->notes_print ?? [], $validated['notes_print'] ?? []),
           'schedule_visibility' => $validated['schedule_visibility']
             ?? $lockedDraw->settings?->schedule_visibility
             ?? DrawSetting::SCHEDULE_VISIBILITY_FULL,
@@ -294,6 +294,7 @@ class ManageDrawController extends Controller
     return response()->json([
       'success' => true,
       'message' => 'Notes saved successfully.',
+      'printable_rules' => app(\App\Domain\Draws\Services\DrawRulesService::class)->printable($draw->fresh()),
     ]);
   }
 

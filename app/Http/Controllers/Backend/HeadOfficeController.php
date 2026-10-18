@@ -1684,35 +1684,7 @@ class HeadOfficeController extends Controller
       })->values()->toArray();
 
     $standings = app(StandingsService::class)->forDraw($draw);
-    $notesPrint = $draw->settings?->notes_print ?? [];
-    $notes = collect($draw->settings?->notes ?? [])
-      ->filter(fn ($note, $key) => (bool) ($notesPrint[(string) $key] ?? true))
-      ->filter(fn ($note) => is_string($note) && trim($note) !== '')
-      ->mapWithKeys(function (string $note, $key) use ($draw) {
-        $key = (string) $key;
-        $label = match ($key) {
-          'general' => 'General rules',
-          'round_robin' => 'Round Robin scoring rules',
-          'playoffs' => 'Playoff rules',
-          default => str($key)->startsWith('bracket_')
-            ? str($key)->after('bracket_')->replace('_', ' ')->headline().' rules'
-            : str($key)->replace('_', ' ')->headline(),
-        };
-
-        $bracket = collect($draw->settings?->playoff_config ?? [])
-          ->firstWhere('slug', str($key)->after('bracket_')->toString());
-        if (str($key)->startsWith('bracket_') && $bracket) {
-          $label = ($bracket['name'] ?? $label).' rules';
-        }
-
-        return [$label => trim($note)];
-      })
-      ->all();
-
-    if ($draw->settings?->score_format) {
-      $format = \App\Domain\Draws\Services\TennisScoreFormat::get($draw->settings->score_format);
-      $notes = ['Configured match format' => $format['label']."\n\n".$format['rules']] + $notes;
-    }
+    $notes = app(\App\Domain\Draws\Services\DrawRulesService::class)->printable($draw);
 
     return [
       'id'         => $draw->id,

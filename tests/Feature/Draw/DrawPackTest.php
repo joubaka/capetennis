@@ -310,6 +310,41 @@ class DrawPackTest extends TestCase
             ->assertSee('Winner to M3');
     }
 
+    public function test_pack_uses_generated_applicable_rules_and_saved_event_notes(): void
+    {
+        $draw = Draw::factory()->create(['event_id' => $this->event->id]);
+        $draw->settings()->create([
+            'workflow' => 'round_robin',
+            'score_format' => \App\Domain\Draws\Services\TennisScoreFormat::SHORT_SET_4,
+            'notes' => ['general' => 'Check in at the clubhouse.', 'playoffs' => 'Obsolete playoff note'],
+        ]);
+        $this->actingAs($this->admin)
+            ->get(route('headoffice.drawPack', ['event' => $this->event, 'draw_ids' => [$draw->id]]))
+            ->assertOk()->assertSee('Check in at the clubhouse.')
+            ->assertSee('The set ends when a player reaches 4 games.')
+            ->assertSee('percentage of sets won')
+            ->assertDontSee('Obsolete playoff note');
+    }
+
+    public function test_save_notes_returns_the_print_projection_and_preserves_inactive_notes(): void
+    {
+        $draw = Draw::factory()->create(['event_id' => $this->event->id]);
+        $draw->settings()->create([
+            'workflow' => 'round_robin',
+            'score_format' => \App\Domain\Draws\Services\TennisScoreFormat::ONE_FULL_SET,
+            'notes' => ['bracket_main' => 'Keep for future playoffs'],
+        ]);
+        $response = $this->actingAs($this->admin)->postJson(route('backend.draw.update-notes', $draw), [
+            'notes' => ['general' => 'Saved check-in note', 'round_robin' => 'Do not print this note'],
+            'notes_print' => ['round_robin' => false],
+        ])->assertOk();
+        $this->assertSame('Keep for future playoffs', $draw->fresh()->settings->notes['bracket_main']);
+        $expected = app(\App\Domain\Draws\Services\DrawRulesService::class)->printable($draw->fresh());
+        $this->assertSame($expected, $response->json('printable_rules'));
+        $this->assertStringContainsString('percentage of sets won', $expected['Round Robin scoring rules']);
+        $this->assertStringNotContainsString('Do not print this note', implode('', $expected));
+    }
+
     public function test_pack_names_unresolved_feeders_and_orders_fixture_rows_by_time(): void
     {
         $draw = Draw::factory()->create([

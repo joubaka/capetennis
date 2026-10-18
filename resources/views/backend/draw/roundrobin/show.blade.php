@@ -853,18 +853,10 @@
    ============================ --}}
 <div class="tab-pane fade" id="notes-pane" role="tabpanel">
   @php
-    $drawNotes = optional($draw->settings)->notes ?? [];
-    $notesPrint = optional($draw->settings)->notes_print ?? [];
-    $playoffConfig = optional($draw->settings)->playoff_config ?? [];
-    $enabledBrackets = collect($playoffConfig)->where('enabled', true)->values();
-    $defaultGeneralNotes = "General Rules\n\nPlayers must be ready to play at their scheduled time.\nA 5-minute warm-up is allowed before the match starts.\nStandard ITF tennis rules apply unless otherwise specified by the tournament organizer.\nThe tournament referee's decision is final in all disputes.";
+    $rulesService = app(\App\Domain\Draws\Services\DrawRulesService::class);
+    $ruleSections = $rulesService->sections($draw);
+    $printableRules = $rulesService->printable($draw);
     $selectedScoreFormat = optional($draw->settings)->score_format;
-    $formatRules = $selectedScoreFormat
-      ? \App\Domain\Draws\Services\TennisScoreFormat::rules($selectedScoreFormat)
-      : 'Legacy scoring is active. Select an enforceable Match Scoring Format in Settings before publishing these rules.';
-    $defaultRRNotes = "Round Robin Match Format\n\n{$formatRules}";
-    $defaultPlayoffNotes = "Playoff Match Format\n\n{$formatRules}";
-    $defaultBracketNotes = "Bracket Match Format\n\n{$formatRules}";
   @endphp
   @if(!$competitionRulesEditable)
     <div class="alert alert-warning" role="status">Tournament rules are locked because this draw is locked or its first result has been recorded.</div>
@@ -872,26 +864,20 @@
     <div class="alert alert-info" role="status">This draw is published. Rules remain editable until the first result is recorded.</div>
   @endif
   <div class="card">
-    <div class="card-header d-flex justify-content-between align-items-center">
+    <div class="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center">
       <div>
         <h5 class="card-title mb-0"><i class="ti ti-notes me-1"></i> Rules & Notes</h5>
-        <small class="text-muted">Edit rules for each section. These will appear on printed draw packs.</small>
+        <small class="text-muted">Rules follow the saved draw settings. Add event-specific notes below; save before printing. Print switches apply only to notes.</small>
       </div>
       <button class="btn btn-success btn-sm" id="btn-save-notes">
         <i class="ti ti-device-floppy me-1"></i> Save All Notes
       </button>
     </div>
     <div class="card-body">
-      <div class="alert alert-primary d-flex align-items-start gap-2" role="status">
-        <i class="ti ti-scoreboard fs-5 mt-1" aria-hidden="true"></i>
-        <div>
-          <strong>Enforced match format:</strong>
-          {{ $selectedScoreFormat
-            ? \App\Domain\Draws\Services\TennisScoreFormat::get($selectedScoreFormat)['label']
-            : 'Legacy scoring — choose a preset in Settings' }}
-          <div class="small mt-1">{{ $formatRules }}</div>
-        </div>
-      </div>
+      @unless($selectedScoreFormat)
+        <div class="alert alert-warning" role="status">Choose a Match Scoring Format in Settings before publishing scoring rules. No scoring format has been selected.</div>
+      @endunless
+      <script>window.RR_PRINTABLE_RULES = @json($printableRules);</script>
       <div class="row g-4">
 
         <div class="col-12">
@@ -929,78 +915,30 @@
           </fieldset>
         </div>
 
-        {{-- General Rules --}}
-        <div class="col-md-6">
-          <div class="card border h-100">
-            <div class="card-header py-2 bg-light d-flex justify-content-between align-items-center">
-              <h6 class="mb-0"><i class="ti ti-info-circle me-1 text-primary"></i> General Rules</h6>
-              <div class="form-check form-switch mb-0">
-                <input class="form-check-input notes-enabled" type="checkbox" id="print-note-general" data-key="general" @checked($notesPrint['general'] ?? true)>
-                <label class="form-check-label small text-muted" for="print-note-general">Print</label>
-              </div>
-            </div>
-            <div class="card-body p-2">
-              <textarea class="form-control notes-field" data-key="general" rows="6" placeholder="Enter general event rules...">{{ $drawNotes['general'] ?? $defaultGeneralNotes }}</textarea>
-            </div>
-          </div>
-        </div>
-
-        {{-- Round Robin Scoring --}}
-        <div class="col-md-6">
-          <div class="card border h-100">
-            <div class="card-header py-2 bg-light d-flex justify-content-between align-items-center">
-              <h6 class="mb-0"><i class="ti ti-tournament me-1 text-success"></i> Round Robin Scoring Rules</h6>
-              <div class="form-check form-switch mb-0">
-                <input class="form-check-input notes-enabled" type="checkbox" id="print-note-round-robin" data-key="round_robin" @checked($notesPrint['round_robin'] ?? true)>
-                <label class="form-check-label small text-muted" for="print-note-round-robin">Print</label>
-              </div>
-            </div>
-            <div class="card-body p-2">
-              <textarea class="form-control notes-field" data-key="round_robin" rows="6" placeholder="e.g. Best of 3 sets, tiebreak at 6-all, 10-point match tiebreak in 3rd...">{{ $drawNotes['round_robin'] ?? $defaultRRNotes }}</textarea>
-            </div>
-          </div>
-        </div>
-
-        @unless($roundRobinOnly)
-        {{-- Playoff Rules --}}
-        <div class="col-md-6">
-          <div class="card border h-100">
-            <div class="card-header py-2 bg-light d-flex justify-content-between align-items-center">
-              <h6 class="mb-0"><i class="ti ti-trophy me-1 text-warning"></i> Playoff Rules</h6>
-              <div class="form-check form-switch mb-0">
-                <input class="form-check-input notes-enabled" type="checkbox" id="print-note-playoffs" data-key="playoffs" @checked($notesPrint['playoffs'] ?? true)>
-                <label class="form-check-label small text-muted" for="print-note-playoffs">Print</label>
-              </div>
-            </div>
-            <div class="card-body p-2">
-              <textarea class="form-control notes-field" data-key="playoffs" rows="6" placeholder="e.g. Single elimination, 3rd/4th playoff for losers of semis...">{{ $drawNotes['playoffs'] ?? $defaultPlayoffNotes }}</textarea>
-            </div>
-          </div>
-        </div>
-
-        {{-- Per-bracket rules for each enabled bracket --}}
-        @foreach($enabledBrackets as $bracket)
+        @foreach($ruleSections as $section)
           <div class="col-md-6">
             <div class="card border h-100">
-              <div class="card-header py-2 bg-light d-flex justify-content-between align-items-center">
-                <h6 class="mb-0">
-                  <i class="ti ti-brackets me-1 text-info"></i>
-                  {{ $bracket['name'] ?? 'Bracket' }} Rules
-                  <span class="badge bg-secondary ms-1" style="font-size: 10px;">{{ $bracket['slug'] }}</span>
-                </h6>
-                <div class="form-check form-switch mb-0">
-                  <input class="form-check-input notes-enabled" type="checkbox" id="print-note-bracket-{{ $bracket['slug'] }}" data-key="bracket_{{ $bracket['slug'] }}" @checked($notesPrint['bracket_' . $bracket['slug']] ?? true)>
-                  <label class="form-check-label small text-muted" for="print-note-bracket-{{ $bracket['slug'] }}">Print</label>
-                </div>
+              <div class="card-header py-2 bg-light d-flex flex-wrap gap-2 justify-content-between align-items-center">
+                <h6 class="mb-0">{{ $section['label'] }}</h6>
+                @unless($section['key'] === 'match_format')
+                  <div class="form-check form-switch mb-0">
+                    <input class="form-check-input notes-enabled" type="checkbox" id="print-note-{{ $section['key'] }}" data-key="{{ $section['key'] }}" @checked($section['print_notes'])>
+                    <label class="form-check-label small text-muted" for="print-note-{{ $section['key'] }}">Print notes</label>
+                  </div>
+                @endunless
               </div>
-              <div class="card-body p-2">
-                <textarea class="form-control notes-field" data-key="bracket_{{ $bracket['slug'] }}" rows="5"
-                  placeholder="Rules specific to {{ $bracket['name'] ?? 'this bracket' }}...">{{ $drawNotes['bracket_' . $bracket['slug']] ?? (($bracket['slug'] ?? '') === 'main' ? $defaultPlayoffNotes : $defaultBracketNotes) }}</textarea>
+              <div class="card-body p-3">
+                @if($section['rules'] !== '')
+                  <div class="mb-3" style="white-space:pre-line">{{ $section['rules'] }}</div>
+                @endif
+                @unless($section['key'] === 'match_format')
+                  <label class="form-label small" for="event-note-{{ $section['key'] }}">Event-specific notes</label>
+                  <textarea id="event-note-{{ $section['key'] }}" class="form-control notes-field" data-key="{{ $section['key'] }}" rows="4" placeholder="Add event-specific instructions...">{{ $section['notes'] }}</textarea>
+                @endunless
               </div>
             </div>
           </div>
         @endforeach
-        @endunless
 
       </div>
     </div>
@@ -1301,6 +1239,7 @@ function refreshVenuesUI()          { if (window.RRSchedule) RRSchedule.refreshV
         schedule_visibility: $('.schedule-visibility:checked').val()
       })
         .done(function(res) {
+          window.RR_PRINTABLE_RULES = res.printable_rules;
           toastr.success(res.message || 'Notes saved');
         })
         .fail(function(xhr) {

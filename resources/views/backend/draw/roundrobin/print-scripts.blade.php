@@ -463,17 +463,10 @@
     return svgHtml && (svgHtml.indexOf('<line') !== -1 || svgHtml.indexOf('<text x=') !== -1);
   }
 
-  // Helper: build printable notes HTML from the notes textarea fields
+  // Print the saved canonical rules, matching server-generated draw packs.
   function buildNotesHtml() {
-    var sections = [];
-    $('#notes-pane .notes-field').each(function() {
-      var val = $(this).val().trim();
-      if (!val) return;
-      var $card = $(this).closest('.card');
-      var isEnabled = $card.find('.notes-enabled').prop('checked');
-      if (!isEnabled) return;
-      var label = $card.find('.card-header h6').text().trim();
-      sections.push({ label: label, text: val });
+    var sections = Object.entries(window.RR_PRINTABLE_RULES || {}).map(function(entry) {
+      return {label: entry[0], text: entry[1]};
     });
     if (!sections.length) return '';
     var html = '';

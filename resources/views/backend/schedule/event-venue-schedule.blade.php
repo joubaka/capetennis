@@ -185,9 +185,9 @@
 <div class="container-xxl pt-3"><a class="btn btn-primary me-2" style="min-height:44px" href="{{ route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'group' => 'draw', 'date' => 'all']) }}">View matches by draw</a><a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar',$event) }}">Saved schedule · all days</a></div>
 @php
   $unapplyRouteAvailable = \Illuminate\Support\Facades\Route::has('backend.event-venue-schedule.unapply');
+  $guideSelection = $event->draws->whereIn('id', collect($draws)->where('selected', true)->pluck('id'));
 @endphp
 <div class="container-xxl flex-grow-1 container-p-y schedule-workspace">
-  @php($guideSelection = $event->draws->whereIn('id', collect($draws)->where('selected', true)->pluck('id')))
   @if($guideSelection->isNotEmpty())
     <section class="card card-body mb-3">
       <h2 class="h5">Step 5 of 6 · Programme &amp; schedule</h2>
