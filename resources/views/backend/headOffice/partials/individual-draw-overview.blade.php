@@ -26,7 +26,9 @@
       <p class="text-muted small">Start with your categories, then create a draw, choose its format, place players and prepare the schedule. You can leave after saving any step and use Continue setup to return. Publication is a separate final step.</p>
       @can('event-category.manage', $event)<a class="align-self-start mb-3" href="{{ route('admin.events.categories', $event) }}">Manage event categories</a>@endcan
       @forelse($event->categoryEvents as $progressCategory)
-        @php($categoryDraws = $event->draws->where('category_event_id', $progressCategory->id))
+        @php
+          $categoryDraws = $event->draws->where('category_event_id', $progressCategory->id);
+        @endphp
         <div class="border-top py-2">
           <strong>{{ $progressCategory->category?->name ?? 'Category #'.$progressCategory->id }}</strong>
           <span class="text-muted small"> · {{ $progressCategory->eligible_draw_entries_count }} paid active players · {{ $categoryDraws->count() }} saved {{ Str::plural('draw', $categoryDraws->count()) }}</span>
