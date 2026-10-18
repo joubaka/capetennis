@@ -4,7 +4,6 @@ namespace App\Providers;
 
 use App\Events\AnnouncementPost;
 use App\Events\PaymentCompleted;
-use App\Domain\Entries\Events\EntryCreated;
 use App\Domain\Entries\Events\EntryWithdrawn;
 
 use App\Events\UserRegistered;
@@ -20,7 +19,6 @@ use App\Listeners\LogSuccessfulLogin;
 use App\Listeners\LogFailedLogin;
 use App\Listeners\LogLogoutAudit;
 use App\Listeners\SendTeamRegistrationConfirmation;
-use App\Listeners\SendAdminEntryCreatedConfirmation;
 use App\Listeners\SyncMastersInvitationWithdrawal;
 use App\Listeners\SyncInterprovincialTrialInvitationWithdrawal;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
@@ -60,9 +58,6 @@ class EventServiceProvider extends ServiceProvider
         ],
         PaymentCompleted::class => [
             SendTeamRegistrationConfirmation::class,
-        ],
-        EntryCreated::class => [
-            SendAdminEntryCreatedConfirmation::class,
         ],
         EntryWithdrawn::class => [
             SyncMastersInvitationWithdrawal::class,

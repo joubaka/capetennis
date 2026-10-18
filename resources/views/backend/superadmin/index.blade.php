@@ -1139,7 +1139,6 @@
               <div class="card-body">
                 @php
                   $automatedEmailToggles = [
-                    'player_email_on_admin_entry' => ['Admin-created registration', 'Player', 'Sent when an administrator adds a player without payment.'],
                     'player_email_on_reinstatement' => ['Registration reinstated', 'Player', 'Sent after an administrator cancels a withdrawal.'],
                     'player_email_on_team_registration' => ['Team registration confirmed', 'Payer', 'Sent when a team-player payment is confirmed.'],
                     'player_email_on_team_withdrawal' => ['Team withdrawal confirmation', 'Payer', 'Sent when a player is removed from a team entry.'],
