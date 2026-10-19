@@ -3,15 +3,52 @@
 namespace Tests\Feature\TeamDraw;
 
 use App\Models\Draw;
+use App\Models\Event;
 use App\Models\TeamFixture;
+use App\Models\User;
 use App\Services\Scheduling\TeamFixtureOrder;
 use App\Services\Scheduling\VenueMatchOrder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class TeamFixtureOrderTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_fixture_list_defaults_to_numeric_round_tie_then_rank_without_splitting_ties(): void
+    {
+        $event = Event::factory()->create(['eventType' => 3]);
+        $draw = Draw::factory()->create(['event_id' => $event->id]);
+        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $this->actingAs($admin);
+        $rows = collect([
+            ['round_nr' => '10', 'tie_nr' => '1', 'home_rank_nr' => 1, 'scheduled_at' => '2026-10-09 08:00:00'],
+            ['round_nr' => '2', 'tie_nr' => '10', 'home_rank_nr' => 1, 'scheduled_at' => '2026-10-09 09:00:00'],
+            ['round_nr' => '2', 'tie_nr' => '2', 'home_rank_nr' => 10, 'scheduled_at' => '2026-10-09 07:00:00'],
+            ['round_nr' => '1', 'tie_nr' => '1', 'home_rank_nr' => 2, 'scheduled_at' => '2026-10-09 08:00:00'],
+            ['round_nr' => '2', 'tie_nr' => '2', 'home_rank_nr' => 0, 'rank_nr' => 2, 'scheduled_at' => '2026-10-09 12:00:00'],
+            ['round_nr' => '2', 'tie_nr' => '2', 'away_rank_nr' => 1, 'scheduled_at' => '2026-10-09 13:00:00'],
+            ['round_nr' => '1', 'tie_nr' => '1', 'home_rank_nr' => 1, 'scheduled_at' => '2026-10-09 09:00:00'],
+            ['round_nr' => '1', 'tie_nr' => '2', 'match_nr' => '10', 'scheduled_at' => null],
+            ['round_nr' => '1', 'tie_nr' => '2', 'match_nr' => '2', 'scheduled_at' => null],
+            ['round_nr' => '2', 'tie_nr' => '2', 'rubber_sequence' => 3, 'scheduled_at' => '2026-10-09 06:00:00'],
+        ])->map(fn ($row) => TeamFixture::create($row + ['draw_id' => $draw->id, 'fixture_type' => 1, 'numSets' => 3, 'match_nr' => '1']));
+        TeamFixture::create(['draw_id' => Draw::factory()->create()->id, 'fixture_type' => 1, 'round_nr' => 1, 'tie_nr' => 1, 'match_nr' => '1', 'numSets' => 3]);
+        $expected = collect([6, 3, 8, 7, 5, 4, 9, 2, 1, 0])->map(fn ($index) => $rows[$index]->id)->all();
+        $url = route('backend.team-fixtures.index', ['draw_id' => $draw->id]);
+        $response = $this->get($url)->assertOk()->assertViewHas('sort', 'round_tie');
+        $this->assertSame($expected, $response->viewData('fixtures')->getCollection()->modelKeys());
+        $response->assertSeeInOrder(array_map(fn ($id) => 'id="row-'.$id.'"', $expected), false);
+        $this->assertSame(5, substr_count($response->getContent(), 'class="fixture-group"'));
+        $this->assertSame($expected, $this->get($url.'&sort=round_tie')->assertOk()->viewData('fixtures')->getCollection()->modelKeys());
+        $playOrder = $this->get($url.'&sort=play_order')->assertOk()->viewData('fixtures')->getCollection()->modelKeys();
+        $this->assertSame(TeamFixture::where('draw_id', $draw->id)->inPlayOrder()->get()->modelKeys(), $playOrder);
+        $this->assertNotSame($expected, $playOrder);
+    }
 
     public function test_query_collection_and_scoring_order_agree_for_times_numeric_ties_and_legacy_rows(): void
     {

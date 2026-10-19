@@ -41,6 +41,27 @@ class TeamFixtureOrder
             ->orderBy("{$table}.id");
     }
 
+    /** Keep a fixture list together by round and tie, independently of match times. */
+    public function applyRoundTieRankQuery(Builder $query, string $direction = 'asc'): Builder
+    {
+        $table = $query->getModel()->getTable();
+        $direction = $direction === 'desc' ? 'desc' : 'asc';
+        $query->reorder();
+        foreach (['round_nr', 'tie_nr'] as $column) {
+            $query->orderByRaw("COALESCE(CAST(NULLIF({$table}.{$column}, '') AS SIGNED), 2147483647) {$direction}");
+        }
+        // Draw and tie identities keep otherwise identical round/tie numbers together.
+        $query->orderBy("{$table}.draw_id")->orderBy("{$table}.team_tie_id");
+        $rankParts = [];
+        foreach (['home_rank_nr', 'rank_nr', 'away_rank_nr', 'rubber_sequence'] as $column) {
+            $rankParts[] = "CASE WHEN {$table}.{$column} > 0 THEN {$table}.{$column} END";
+        }
+        return $query->orderByRaw('COALESCE('.implode(', ', $rankParts).', 2147483647)')
+            ->orderByRaw("COALESCE(NULLIF({$table}.rubber_sequence, 0), CAST(NULLIF({$table}.match_nr, '') AS SIGNED), 2147483647)")
+            ->orderByRaw("COALESCE(CAST(NULLIF({$table}.match_nr, '') AS SIGNED), 2147483647)")
+            ->orderBy("{$table}.id");
+    }
+
     private function key(TeamFixture $fixture): array
     {
         return [

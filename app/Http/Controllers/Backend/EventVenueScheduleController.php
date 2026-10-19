@@ -1149,7 +1149,7 @@ final class EventVenueScheduleController extends Controller
         return $request->validate([
             'start' => ['required', 'date'], 'end' => ['nullable', 'date', 'after:start'],
             'programme' => ['sometimes', 'array:days,rounds'],
-            'programme.days' => ['required_with:programme', 'array', 'size:3'],
+            'programme.days' => ['required_with:programme', 'array', 'min:1'],
             'programme.days.*.start' => ['required', 'date'],
             'programme.days.*.end' => ['required', 'date'],
             'programme.days.*.break_start' => ['nullable', 'date'],
@@ -1157,7 +1157,7 @@ final class EventVenueScheduleController extends Controller
             'programme.rounds' => ['required_with:programme', 'array', 'min:1', 'max:2000'],
             'programme.rounds.*.draw_id' => ['required', 'integer'],
             'programme.rounds.*.round' => ['required', 'integer', 'min:1'],
-            'programme.rounds.*.day' => ['required', 'integer', 'between:1,3'],
+            'programme.rounds.*.day' => ['required', 'integer', 'min:1'],
             'programme.rounds.*.sequence' => ['required', 'integer', 'between:1,100'],
             'duration' => ['required', 'integer', 'min:15', 'max:480'],
             'wave_minutes' => ['required', 'integer', 'min:15', 'max:480'],

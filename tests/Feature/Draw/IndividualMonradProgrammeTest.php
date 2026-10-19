@@ -13,9 +13,17 @@ class IndividualMonradProgrammeTest extends TestCase
 {
     use RefreshDatabase;
 
+    private function canonicalJson(array $value): array
+    {
+        foreach ($value as &$item) if (is_array($item)) $item = $this->canonicalJson($item);
+        unset($item);
+        if (! array_is_list($value)) ksort($value);
+        return $value;
+    }
+
     private function scenario(int $size = 8, bool $bye = false): array
     {
-        $event = Event::factory()->create();
+        $event = Event::factory()->create(['start_date' => '2026-10-09', 'end_date' => '2026-10-11']);
         $category = CategoryEvent::factory()->create(['event_id' => $event->id, 'category_id' => Category::factory()->create(['name' => 'Under 19 Girls'])->id]);
         $draw = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => $category->id, 'drawName' => 'Selection trial', 'gender' => null]);
         $draw->settings()->create(['workflow' => 'monrad']);
@@ -59,7 +67,7 @@ class IndividualMonradProgrammeTest extends TestCase
             $this->assertSame(0, OrderOfPlay::whereIn('fixture_id', $matches->keys())->count());
             $this->assertSame($count, $service->apply($event, $options, $preview['revision'])['count']);
             $saved = json_decode(DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true);
-            $this->assertSame($preview['input']['programme'], $saved['programme_settings']['monrad:19']['programme']);
+            $this->assertSame($this->canonicalJson($preview['input']['programme']), $this->canonicalJson($saved['programme_settings']['monrad:19']['programme']));
             $this->assertFalse((bool) $draw->fresh()->oop_published);
             $this->assertSame([], $service->preview($event, $options)['matches']);
         }

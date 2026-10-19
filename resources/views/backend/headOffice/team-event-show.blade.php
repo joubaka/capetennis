@@ -19,6 +19,19 @@
 <link rel="stylesheet" href="{{asset('assets/vendor/css/pages/page-user-view.css')}}" />
 <style>
   .event-draw-list { display: grid; gap: 1rem; }
+  .event-draw-toolbar { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .event-draw-toolbar .btn { min-height: 44px; }
+  .event-publication-panel > summary { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem 1rem; padding: 1.25rem; cursor: pointer; }
+  .event-publication-panel > summary::after { content: '+'; font-size: 1.25rem; }
+  .event-publication-panel[open] > summary::after { content: '−'; }
+  .event-publication-panel > summary:focus-visible { outline: 2px solid var(--ct-ink, #172e45); outline-offset: 2px; }
+  .event-publication-panel > .card-body { padding-top: 0; }
+  .event-publication-panel > summary::-webkit-details-marker { display: none; }
+  .event-draw-tools { margin-top: 1rem; padding-top: .75rem; border-top: 1px solid var(--ct-border, #e4eaf0); }
+  .event-draw-tools > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+  .event-draw-schedule { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--ct-border, #e4eaf0); }
+  .event-draw-schedule .draw-card-publication { margin-top: .5rem !important; padding-block: 0; border: 0; }
+  .event-draw-scoring-actions:has([data-enable-scoring]:not([hidden])) { margin-top: .75rem; }
   .ct-backend .event-draw-tabs { display: flex; flex-direction: row; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.25rem; padding-bottom: 1rem; border-bottom: 1px solid var(--ct-border, #e4eaf0); }
   .ct-backend .event-draw-tabs .nav-link { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; flex: 0 0 auto; width: auto; min-height: 44px; padding: .625rem .875rem; border: 1px solid var(--ct-border, #e4eaf0); white-space: normal; text-align: left; }
   .ct-backend .nav-pills.event-draw-tabs .nav-link.active { background: var(--ct-ink, #172e45); color: #fff; border-color: var(--ct-ink, #172e45); }
@@ -32,7 +45,7 @@
   .event-draw-card-summary { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 44px; cursor: pointer; list-style: none; }
   .event-draw-card-summary::-webkit-details-marker { display: none; }
   .event-draw-card-summary-info { min-width: 0; }
-  .event-draw-card-summary-status { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
+  .event-draw-card-summary-status { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .5rem; }
   .event-draw-card-summary-status .badge { white-space: normal; text-align: left; }
   .event-draw-card-summary-status a.event-oop-summary { display: inline-flex; align-items: center; min-height: 44px; text-decoration: underline; text-underline-offset: .2em; }
   .event-draw-card-summary-status a.event-oop-summary:focus-visible { outline: 2px solid var(--ct-ink, #172e45); outline-offset: 3px; }
@@ -43,6 +56,8 @@
   .event-draw-card[open] .event-draw-card-expand, .event-draw-card:not([open]) .event-draw-card-collapse { display: none; }
   .event-draw-card[open] .event-draw-card-toggle i { transform: rotate(180deg); }
   .event-draw-card-content { padding-top: .75rem; }
+  .event-draw-card-content [data-scoring-status] { display: none; }
+  .event-draw-card [data-quick-draw-status-retry][hidden] { display: none !important; }
   .event-draw-card .draw-venues .badge { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
   .event-draw-card .draw-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; width: 100%; margin-top: .75rem; }
   .event-draw-card .draw-card-actions .btn { min-height: 44px; margin: 0; white-space: normal; }
@@ -52,6 +67,9 @@
   .event-draw-links { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
   .event-draw-links .btn { min-height: 44px; white-space: normal; }
   @media (max-width: 575.98px) {
+    .event-draw-toolbar { width: 100%; }
+    .event-draw-toolbar .btn { flex: 1 1 auto; }
+    .event-draw-toolbar .btn-primary { flex-basis: 100%; }
     .event-draw-header { flex-direction: column; align-items: flex-start !important; gap: .25rem; }
     .event-draw-body { padding-inline: 1rem; }
     .event-draw-card { padding: .875rem; }
@@ -118,19 +136,19 @@
   'eventWorkspaceActive' => 'draws',
   'eventWorkspaceIcon' => 'ti-tournament',
   'eventWorkspaceSubtitle' => 'Team and individual draws, fixtures and venues',
+  'eventWorkspaceShowHome' => false,
 ])
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 no-print">
   <div><h2 class="h4 mb-1">Tournament draws</h2><p class="text-muted mb-0">Create team ties or individual singles draws, allocate venues and manage fixtures.</p></div>
-  <a class="btn btn-outline-primary" style="min-height:44px" href="{{ route('headoffice.printOptions', $event) }}"><i class="ti ti-printer me-1" aria-hidden="true"></i> Print options</a>
-  @can('event.manage', $event)
-    <a class="btn btn-primary" href="{{ route('backend.event-venue-schedule.index', $event) }}"><i class="ti ti-calendar-event me-1"></i>Schedule all draws & matches</a>
-  @endcan
-  @can('team-draw.createFormat', $event)
-  <a class="btn btn-outline-primary" href="{{ route('backend.team-rules.edit', $event) }}">Event scoring rules</a>
-  @endcan
+  <div class="event-draw-toolbar">
   <button class="btn btn-primary" id="createNewDrawBtn" data-bs-toggle="modal" data-bs-target="#createDrawModal">
-      <i class="ti ti-plus me-1"></i> Create New Draw
+      <i class="ti ti-plus me-1"></i> Create new draw
   </button>
+  @can('team-draw.createFormat', $event)
+    <a class="btn btn-outline-secondary" href="{{ route('backend.team-rules.edit', $event) }}">Event scoring rules</a>
+  @endcan
+  <a class="btn btn-outline-secondary" href="{{ route('headoffice.printOptions', $event) }}"><i class="ti ti-printer me-1" aria-hidden="true"></i> Print options</a>
+  </div>
 </div>
 
         @php
@@ -155,116 +173,13 @@
             return [$typeOrder, mb_strtolower($draw->drawName), $draw->id];
           })->values());
         @endphp
-<div class="card mb-4 no-print" data-event-draw-publication data-event-id="{{ $event->id }}" data-status-url="{{ route('backend.event-draws.publication-status', $event) }}" data-url="{{ route('backend.event-draws.bulk-publication', $event) }}" data-draw-ids="{{ json_encode($event->draws->pluck('id')->values()->all()) }}">
-  <div class="card-body">
-    <h5>Publish specific draws or batches</h5>
-    <p class="mb-2" data-draw-publication-summary><strong>{{ $drawPublicationSummary['status'] }}</strong> · {{ $drawPublicationSummary['published'] }} published · {{ $drawPublicationSummary['unpublished'] }} unpublished</p>
-    <p class="text-muted">{{ $event->draws->count() }} draws across every age-group tab. Draw publication and match-time publication are separate actions.</p>
-    <div class="mb-3" data-publication-groups>
-      @forelse($drawGroups as $groupLabel => $groupDraws)
-        <details class="border rounded p-3 mb-2" data-publication-group>
-          <summary class="d-flex flex-wrap gap-2 align-items-center" style="min-height:44px">
-            <strong>{{ $groupLabel }}</strong>
-            <span data-publication-group-counts>{{ $groupDraws->where('published', true)->count() }} published · {{ $groupDraws->where('published', false)->count() }} unpublished · {{ $groupDraws->count() }} total</span>
-          </summary>
-          @if($canPublishAllDraws ?? false)
-            <button type="button" class="btn btn-sm btn-outline-primary mt-2" data-select-publication-group>Select this age group</button>
-          @endif
-          <ul class="list-unstyled mb-0 mt-3">
-            @foreach($groupDraws as $draw)
-              <li class="d-flex flex-wrap align-items-center gap-2 py-2 border-top" data-publication-draw-row data-draw-id="{{ $draw->id }}">
-                @if($canPublishAllDraws ?? false)
-                  <input type="checkbox" class="form-check-input" data-publication-draw-select value="{{ $draw->id }}" aria-label="Select {{ $draw->drawName }}" style="min-width:24px;min-height:24px">
-                @endif
-                <a href="#publication-draw-{{ $draw->id }}" data-publication-draw-link data-panel-id="event-draw-panel-{{ $loop->parent->index }}">{{ $draw->drawName }}</a>
-                <span class="text-muted small">{{ $draw->draw_types?->drawTypeName }}</span>
-                <span class="badge bg-label-{{ $draw->published ? 'success' : 'warning' }}" data-publication-draw-state>{{ $draw->published ? 'Published' : 'Unpublished' }}</span>
-                <span class="badge bg-label-secondary" data-publication-draw-lock @if(!$draw->locked) hidden @endif>Locked</span>
-              </li>
-            @endforeach
-          </ul>
-        </details>
-      @empty
-        <p class="text-muted mb-0">No draws to review.</p>
-      @endforelse
-    </div>
-    @if($canPublishAllDraws ?? false)
-    <p data-publication-selected-count role="status" aria-live="polite">0 draws selected</p>
-    <div class="d-flex flex-wrap gap-2 mb-3">
-      <button type="button" class="btn btn-outline-primary" data-select-publication-all>Select all draws</button>
-      <button type="button" class="btn btn-outline-secondary" data-clear-publication-selection>Clear selection</button>
-      <button type="button" class="btn btn-success" data-bulk-draw-action="publish" data-bulk-draw-scope="selected">Publish selected draws</button>
-      <button type="button" class="btn btn-outline-danger" data-bulk-draw-action="unpublish" data-bulk-draw-scope="selected">Unpublish selected draws</button>
-    </div>
-    <details class="mb-3"><summary>Whole-event options</summary>
-    <div class="d-flex flex-wrap gap-2 mt-2">
-      <button type="button" class="btn btn-success" data-bulk-draw-action="publish">Publish all {{ $event->draws->count() }} draws</button>
-      <button type="button" class="btn btn-outline-danger" data-bulk-draw-action="unpublish">Unpublish all {{ $event->draws->count() }} draws</button>
-    </div>
-    </details>
-    <div class="mt-3 d-none" role="status" aria-live="polite" data-bulk-draw-feedback></div>
-    <a class="btn btn-sm btn-outline-primary mt-2 d-none" href="{{ route('headOffice.show', $event) }}" data-bulk-draw-refresh>Refresh draw statuses</a>
-    @endif
-  </div>
-</div>
-
-@can('event.manage', $event)
-<div class="card mb-4 no-print" data-whole-day-publication data-initial-unconfirmed="{{ ($schedulePublicationUnconfirmed ?? false) ? 'true' : 'false' }}" data-event-id="{{ $event->id }}" data-status-url="{{ route('backend.event-venue-schedule.calendar.publication-status', $event) }}" data-publish-url="{{ route('backend.event-venue-schedule.calendar.publish', $event) }}" data-hide-url="{{ route('backend.event-venue-schedule.calendar.hide', $event) }}" data-calendar-url="{{ route('backend.event-venue-schedule.calendar', $event) }}">
-  <div class="card-body">
-    <h5>Whole-day schedule publication</h5>
-    <p class="text-muted">Review, publish or hide one whole day's match times across all venues and draws. Publishing times does not publish hidden draws; existing public visibility rules still apply.</p>
-    <div class="alert {{ ($schedulePublicationUnconfirmed ?? false) ? 'alert-warning' : 'd-none' }}" data-day-feedback role="status" aria-live="polite">@if($schedulePublicationUnconfirmed ?? false)Publication status unconfirmed. Actions are paused; retry the status check before changing a day.@endif</div>
-    <button type="button" class="btn btn-outline-primary mb-3" data-day-status-retry @if(!($schedulePublicationUnconfirmed ?? false)) hidden @endif>Retry status check</button>
-    <div class="row g-3" data-day-cards>
-      @forelse($wholeDaySchedule ?? collect() as $day => $counts)
-        @include('backend.headOffice.partials.day-publication-card')
-      @empty
-        @unless($schedulePublicationUnconfirmed ?? false)<p class="text-muted mb-0"><strong>Not scheduled</strong> · No saved or published match times yet. Save a schedule before publishing a day.</p>@endunless
-      @endforelse
-    </div>
-    <template data-day-card-template>
-      @include('backend.headOffice.partials.day-publication-card', ['day' => '', 'counts' => ['saved' => 0, 'published' => 0, 'matched' => 0, 'pending' => 0, 'status' => 'Not scheduled']])
-    </template>
-  </div>
-</div>
-@endcan
-
-<div class="row mb-4">
-  <div class="col-sm-6 col-lg-3">
-    <div class="card card-border-shadow-primary h-100">
-      <div class="card-body">
-        <div class="d-flex align-items-center mb-2 pb-1">
-          <div class="avatar me-2">
-            <span class="avatar-initial rounded bg-label-primary"><i class="ti ti-tournament ti-md"></i></span>
-          </div>
-          <h4 class="ms-1 mb-0">{{ $event->draws->count() }}</h4>
-        </div>
-        <p class="mb-1">Total Draws</p>
-      </div>
-    </div>
-  </div>
-  <div class="col-sm-6 col-lg-3">
-    <div class="card card-border-shadow-info h-100">
-      <div class="card-body">
-        <div class="d-flex align-items-center mb-2 pb-1">
-          <div class="avatar me-2">
-            <span class="avatar-initial rounded bg-label-info"><i class="ti ti-map-pin ti-md"></i></span>
-          </div>
-          <h4 class="ms-1 mb-0">{{ $scheduledVenues->count() }}</h4>
-        </div>
-        <p class="mb-1">Active Venues</p>
-      </div>
-    </div>
-  </div>
-</div>
-
 <div class="row event-draw-layout">
 
   <div class="col-xl-9 col-lg-8">
     <div class="card mb-4">
       <div class="card-header event-draw-header d-flex justify-content-between align-items-center">
         <h5 class="mb-0">Manage Draws</h5>
-        <small class="text-muted">Open fixtures or manage a draw below</small>
+        <small class="text-muted">{{ $event->draws->count() }} {{ \Illuminate\Support\Str::plural('draw', $event->draws->count()) }} · {{ $scheduledVenues->count() }} active {{ \Illuminate\Support\Str::plural('venue', $scheduledVenues->count()) }}</small>
       </div>
 
       <div class="card-body event-draw-body pt-0">
@@ -310,7 +225,6 @@
                     <a href="{{ route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'draw_id' => $draw->id, 'date' => 'all']) }}" aria-label="View order of play for {{ $draw->drawName }}" class="event-oop-summary badge bg-label-{{ $draw->oop_published ? 'success' : ($hasOrderOfPlay ? 'info' : 'secondary') }}" data-created="{{ $hasOrderOfPlay ? 1 : 0 }}">Order of play: {{ $draw->oop_published ? ($draw->published ? 'Published' : 'Preview only') : ($hasOrderOfPlay ? 'Created' : 'Not done') }}</a>
                     @if($draw->locked)<span class="badge bg-label-secondary">Locked</span>@endif
                     @if($draw->is_done)<span class="badge bg-label-success">Completed</span>@endif
-                    @if($draw->is_scheduled)<span class="badge bg-label-info">Scheduled</span>@endif
                   </div>
                   <div class="event-draw-card-summary-status event-draw-venue-summary">
                     @forelse($draw->venues as $venue)
@@ -332,25 +246,7 @@
               <div class="small mt-2 d-none" data-quick-draw-feedback role="status" aria-live="polite"></div>
               <button type="button" class="btn btn-sm btn-outline-primary mt-2" data-quick-draw-status-retry hidden>Retry publication status check</button>
               <div class="event-draw-card-content">
-                @include('backend.draw._includes.draw_tab_team', ['hideDrawHeading' => true])
-                <div class="event-draw-meta text-muted small">
-                  @if($draw->is_done)
-                    <span class="badge bg-label-success">Completed</span>
-                  @endif
-                   <span class="me-2"><i class="ti ti-calendar-event ti-xs"></i> {{ $draw->created_at->format('d M, Y') }}</span>
-                   @if($draw->is_scheduled) <span class="text-info">Scheduled</span> @endif
-                </div>
-              @if($draw->isTeamDraw())
-              @can('team-fixture.view', $draw)
-              <div class="event-draw-links">
-              @if($draw->team_format_snapshot !== null)
-              <a data-draw-guide-open class="btn btn-sm btn-primary me-2" href="{{ route('draw.guide.show', [$event, $draw]) }}">Continue setup</a>
-              <a class="btn btn-sm btn-outline-primary me-2" href="{{ route('backend.team-draw.operations', $draw) }}">Team ties</a>
-              @endif
-              <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.team-draw.standings', $draw) }}">Standings</a>
-              </div>
-              @endcan
-              @endif
+                @include('backend.draw._includes.draw_tab_team', ['hideDrawHeading' => true, 'compactOverview' => true])
               </div>
             </details>
             @endforeach
@@ -411,6 +307,80 @@
   </div>
 
 </div>
+
+<details class="card mb-4 no-print event-publication-panel" data-event-draw-publication data-event-id="{{ $event->id }}" data-status-url="{{ route('backend.event-draws.publication-status', $event) }}" data-url="{{ route('backend.event-draws.bulk-publication', $event) }}" data-draw-ids="{{ json_encode($event->draws->pluck('id')->values()->all()) }}">
+  <summary><span class="fw-semibold">Publish specific draws or batches</span><span class="small text-muted" data-draw-publication-summary><strong>{{ $drawPublicationSummary['status'] }}</strong> · {{ $drawPublicationSummary['published'] }} published · {{ $drawPublicationSummary['unpublished'] }} unpublished</span></summary>
+  <div class="card-body">
+    <p class="text-muted">{{ $event->draws->count() }} draws across every age-group tab. Draw publication and match-time publication are separate actions.</p>
+    <div class="mb-3" data-publication-groups>
+      @forelse($drawGroups as $groupLabel => $groupDraws)
+        <details class="border rounded p-3 mb-2" data-publication-group>
+          <summary class="d-flex flex-wrap gap-2 align-items-center" style="min-height:44px">
+            <strong>{{ $groupLabel }}</strong>
+            <span data-publication-group-counts>{{ $groupDraws->where('published', true)->count() }} published · {{ $groupDraws->where('published', false)->count() }} unpublished · {{ $groupDraws->count() }} total</span>
+          </summary>
+          @if($canPublishAllDraws ?? false)
+            <button type="button" class="btn btn-sm btn-outline-primary mt-2" data-select-publication-group>Select this age group</button>
+          @endif
+          <ul class="list-unstyled mb-0 mt-3">
+            @foreach($groupDraws as $draw)
+              <li class="d-flex flex-wrap align-items-center gap-2 py-2 border-top" data-publication-draw-row data-draw-id="{{ $draw->id }}">
+                @if($canPublishAllDraws ?? false)
+                  <input type="checkbox" class="form-check-input" data-publication-draw-select value="{{ $draw->id }}" aria-label="Select {{ $draw->drawName }}" style="min-width:24px;min-height:24px">
+                @endif
+                <a href="#publication-draw-{{ $draw->id }}" data-publication-draw-link data-panel-id="event-draw-panel-{{ $loop->parent->index }}">{{ $draw->drawName }}</a>
+                <span class="text-muted small">{{ $draw->draw_types?->drawTypeName }}</span>
+                <span class="badge bg-label-{{ $draw->published ? 'success' : 'warning' }}" data-publication-draw-state>{{ $draw->published ? 'Published' : 'Unpublished' }}</span>
+                <span class="badge bg-label-secondary" data-publication-draw-lock @if(!$draw->locked) hidden @endif>Locked</span>
+              </li>
+            @endforeach
+          </ul>
+        </details>
+      @empty
+        <p class="text-muted mb-0">No draws to review.</p>
+      @endforelse
+    </div>
+    @if($canPublishAllDraws ?? false)
+    <p data-publication-selected-count role="status" aria-live="polite">0 draws selected</p>
+    <div class="d-flex flex-wrap gap-2 mb-3">
+      <button type="button" class="btn btn-outline-primary" data-select-publication-all>Select all draws</button>
+      <button type="button" class="btn btn-outline-secondary" data-clear-publication-selection>Clear selection</button>
+      <button type="button" class="btn btn-success" data-bulk-draw-action="publish" data-bulk-draw-scope="selected">Publish selected draws</button>
+      <button type="button" class="btn btn-outline-danger" data-bulk-draw-action="unpublish" data-bulk-draw-scope="selected">Unpublish selected draws</button>
+    </div>
+    <details class="mb-3"><summary>Whole-event options</summary>
+    <div class="d-flex flex-wrap gap-2 mt-2">
+      <button type="button" class="btn btn-success" data-bulk-draw-action="publish">Publish all {{ $event->draws->count() }} draws</button>
+      <button type="button" class="btn btn-outline-danger" data-bulk-draw-action="unpublish">Unpublish all {{ $event->draws->count() }} draws</button>
+    </div>
+    </details>
+    <div class="mt-3 d-none" role="status" aria-live="polite" data-bulk-draw-feedback></div>
+    <a class="btn btn-sm btn-outline-primary mt-2 d-none" href="{{ route('headOffice.show', $event) }}" data-bulk-draw-refresh>Refresh draw statuses</a>
+    @endif
+  </div>
+</details>
+
+@can('event.manage', $event)
+<details class="card mb-4 no-print event-publication-panel" @if($schedulePublicationUnconfirmed ?? false) open @endif data-whole-day-publication data-initial-unconfirmed="{{ ($schedulePublicationUnconfirmed ?? false) ? 'true' : 'false' }}" data-event-id="{{ $event->id }}" data-status-url="{{ route('backend.event-venue-schedule.calendar.publication-status', $event) }}" data-publish-url="{{ route('backend.event-venue-schedule.calendar.publish', $event) }}" data-hide-url="{{ route('backend.event-venue-schedule.calendar.hide', $event) }}" data-calendar-url="{{ route('backend.event-venue-schedule.calendar', $event) }}">
+  <summary><span class="fw-semibold">Whole-day schedule publication</span><span class="small text-muted">Review and publish match times</span></summary>
+  <div class="card-body">
+    <p class="text-muted">Review, publish or hide one whole day's match times across all venues and draws. Publishing times does not publish hidden draws; existing public visibility rules still apply.</p>
+    <div class="alert {{ ($schedulePublicationUnconfirmed ?? false) ? 'alert-warning' : 'd-none' }}" data-day-feedback role="status" aria-live="polite">@if($schedulePublicationUnconfirmed ?? false)Publication status unconfirmed. Actions are paused; retry the status check before changing a day.@endif</div>
+    <button type="button" class="btn btn-outline-primary mb-3" data-day-status-retry @if(!($schedulePublicationUnconfirmed ?? false)) hidden @endif>Retry status check</button>
+    <div class="row g-3" data-day-cards>
+      @forelse($wholeDaySchedule ?? collect() as $day => $counts)
+        @include('backend.headOffice.partials.day-publication-card')
+      @empty
+        @unless($schedulePublicationUnconfirmed ?? false)<p class="text-muted mb-0"><strong>Not scheduled</strong> · No saved or published match times yet. Save a schedule before publishing a day.</p>@endunless
+      @endforelse
+    </div>
+    <template data-day-card-template>
+      @include('backend.headOffice.partials.day-publication-card', ['day' => '', 'counts' => ['saved' => 0, 'published' => 0, 'matched' => 0, 'pending' => 0, 'status' => 'Not scheduled']])
+    </template>
+  </div>
+</details>
+@endcan
+
 
 <!-- Modal: Create New Draw (Team Event) -->
 @include('backend.draw.partials.guide-visibility')

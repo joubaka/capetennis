@@ -78,6 +78,38 @@ class BackendWorkspacePresentationTest extends TestCase
         $this->assertStringNotContainsString('<a ', $otherHtml);
     }
 
+    public function test_common_event_tools_are_unique_tabs_with_the_existing_role_and_regional_gates(): void
+    {
+        [, $event] = $this->eventAdmin();
+        $render = fn (array $data = []) => view('backend.event.partials.workspace-nav', array_merge([
+            'event' => $event, 'eventWorkspaceActive' => 'categories',
+        ], $data))->render();
+        $html = $render();
+        $document = new \DOMDocument;
+        @$document->loadHTML($html);
+        $xpath = new \DOMXPath($document);
+        foreach (['admin.events.categories', 'admin.events.finances'] as $route) {
+            $url = route($route, $event);
+            $this->assertSame(1, $xpath->query('//nav/a[@href="'.$url.'"]')->length);
+            $this->assertSame(1, substr_count($html, 'href="'.$url.'"'));
+        }
+        $this->assertSame(1, $xpath->query('//nav/a[@href="'.route('admin.events.categories', $event).'" and @aria-current="page"]')->length);
+        $this->assertStringNotContainsString('Player ratings', $html);
+        foreach ([['eventWorkspaceRegionalOnly' => true], ['rosterOnly' => true]] as $context) {
+            $restricted = $render($context);
+            $this->assertStringNotContainsString(route('admin.events.categories', $event), $restricted);
+            $this->assertStringNotContainsString(route('admin.events.finances', $event), $restricted);
+        }
+        Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        $this->actingAs(User::factory()->create()->assignRole('super-user'));
+        $regional = $render(['eventWorkspaceRegionalOnly' => true, 'eventWorkspaceActive' => 'ratings']);
+        $this->assertSame(1, substr_count($regional, 'href="'.route('backend.player-performance.event-ratings', $event).'"'));
+        $this->assertSame(1, substr_count($regional, 'aria-current="page"'));
+        $this->assertStringNotContainsString('event-workspace-more__toggle', $regional);
+        $this->actingAs(User::factory()->create());
+        $this->assertStringNotContainsString('<a ', $render());
+    }
+
     public function test_event_overview_renders_the_operational_workspace_hierarchy(): void
     {
         [, $event] = $this->eventAdmin();

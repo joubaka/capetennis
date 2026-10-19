@@ -27,15 +27,27 @@ final class ScheduleProgramme
         return $ages->count() === 1 ? $ages->first() : null;
     }
 
-    public function normalize(array $programme, Collection $draws, array $availableRounds): array
+    public function eventDates(\App\Models\Event $event): array
+    {
+        if (! $event->start_date) return [];
+        $start = Carbon::parse($event->start_date)->startOfDay();
+        $end = $event->end_date ? Carbon::parse($event->end_date)->startOfDay() : $start->copy();
+        if ($end->lt($start)) return [];
+        return array_map(fn ($day) => $start->copy()->addDays($day)->toDateString(), range(0, (int) $start->diffInDays($end)));
+    }
+
+    public function normalize(array $programme, Collection $draws, array $availableRounds, ?\App\Models\Event $event = null): array
     {
         if (! $programme) return [];
+        $eventDates = $event ? $this->eventDates($event) : [];
+        if ($event && ! $eventDates) throw new \InvalidArgumentException('Set valid event start and end dates before scheduling.');
         $days = [];
         foreach (array_values($programme['days'] ?? []) as $index => $day) {
             $start = Carbon::parse($day['start']);
             $end = Carbon::parse($day['end']);
             if (! $start->isSameDay($end) || ! $end->gt($start)) throw new \InvalidArgumentException('Each programme day must finish after it starts on the same date.');
-            if ($index && $start->copy()->startOfDay()->lte(Carbon::parse($days[$index - 1]['start'])->startOfDay())) throw new \InvalidArgumentException('Choose three distinct programme dates in chronological order.');
+            if ($index && $start->copy()->startOfDay()->lte(Carbon::parse($days[$index - 1]['start'])->startOfDay())) throw new \InvalidArgumentException('Choose distinct programme dates in chronological order.');
+            if ($event && ($eventDates[$index] ?? null) !== $start->toDateString()) throw new \InvalidArgumentException('Programme days must match the event start and end dates.');
             $normalized = ['start' => $start->format('Y-m-d H:i:s'), 'end' => $end->format('Y-m-d H:i:s')];
             if (isset($day['gender_waves'])) {
                 if (! in_array($day['gender_waves'], ['combined', 'boys_then_girls', 'girls_then_boys'], true)) throw new \InvalidArgumentException('Choose a valid boys/girls order for each programme day.');
@@ -50,7 +62,7 @@ final class ScheduleProgramme
             }
             $days[] = $normalized;
         }
-        if (count($days) !== 3) throw new \InvalidArgumentException('Choose three programme days.');
+        if (! $days || ($event && count($days) !== count($eventDates))) throw new \InvalidArgumentException('Choose a programme window for every event day.');
         $rounds = [];
         foreach ($programme['rounds'] ?? [] as $row) {
             $drawId = (int) $row['draw_id'];
@@ -59,7 +71,7 @@ final class ScheduleProgramme
             $sequence = (int) $row['sequence'];
             $key = $drawId.'|'.$round;
             if (! $draws->contains('id', $drawId) || ! in_array($round, $availableRounds[$drawId] ?? [], true)) throw new \InvalidArgumentException('Programme rounds must belong to the selected event draws.');
-            if (isset($rounds[$key]) || $day < 1 || $day > 3 || $sequence < 1 || $sequence > 100) throw new \InvalidArgumentException('Choose one valid day and order for each programme round.');
+            if (isset($rounds[$key]) || $day < 1 || $day > count($days) || $sequence < 1 || $sequence > 100) throw new \InvalidArgumentException('Choose one valid day and order for each programme round.');
             $rounds[$key] = compact('drawId', 'round', 'day', 'sequence');
         }
         foreach ($draws as $draw) {

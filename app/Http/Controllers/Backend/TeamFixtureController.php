@@ -84,39 +84,26 @@ class TeamFixtureController extends Controller
     });
 
     // ============================================================
-    // 🔽 Sorting logic (add home_rank_nr as last level)
+    // Display rounds and ties together; chronological play order remains optional.
     // ============================================================
     $allowedSorts = collect(['scheduled_at', 'date', 'id', 'round', 'tie', 'round_nr', 'tie_nr'])
       ->filter(fn($c) => Schema::hasColumn('team_fixtures', $c))
       ->values()
       ->all();
 
-    $defaultSort = 'play_order';
+    $defaultSort = 'round_tie';
     $sort = $request->get('sort', $defaultSort);
-    $dir = $request->get('dir', 'asc');
+    $dir = $request->get('dir') === 'desc' ? 'desc' : 'asc';
+    if (!in_array($sort, [...$allowedSorts, 'play_order', 'round_tie'], true)) {
+      $sort = $defaultSort;
+    }
 
     if ($sort === 'play_order') {
       $query->inPlayOrder();
     } elseif ($sort === 'round_tie') {
-      if (Schema::hasColumn('team_fixtures', 'round') && Schema::hasColumn('team_fixtures', 'tie')) {
-        $query->orderBy('round', $dir)->orderBy('tie', $dir);
-      } else {
-        $query->orderBy('round_nr', $dir)->orderBy('tie_nr', $dir);
-      }
-
-      // 🟢 Add home_rank_nr as final sort level
-      if (Schema::hasColumn('team_fixtures', 'home_rank_nr')) {
-        $query->orderBy('home_rank_nr', 'asc');
-      }
+      app(TeamFixtureOrder::class)->applyRoundTieRankQuery($query, $dir);
     } elseif (in_array($sort, $allowedSorts, true)) {
-      $query->orderBy($sort, $dir);
-    } else {
-      $sort = $defaultSort;
-      $query->inPlayOrder();
-    }
-
-    if ($sort !== 'play_order') {
-      $query->inPlayOrder();
+      $query->orderBy($sort, $dir)->orderBy('id');
     }
 
     // ============================================================

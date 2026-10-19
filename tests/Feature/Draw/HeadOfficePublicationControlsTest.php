@@ -69,6 +69,25 @@ class HeadOfficePublicationControlsTest extends TestCase
         $this->assertSame(['2026-10-09' => ['saved' => 2, 'published' => 3, 'matched' => 2, 'pending' => 1, 'status' => 'Updates not published'],
             '2026-10-10' => ['saved' => 1, 'published' => 0, 'matched' => 0, 'pending' => 1, 'status' => 'Updates not published']], $response->viewData('wholeDaySchedule')->all());
         $html = $response->getContent();
+        $document = new \DOMDocument;
+        @$document->loadHTML($html);
+        $xpath = new \DOMXPath($document);
+        $this->assertSame(1, $xpath->query('//details[@data-event-draw-publication and not(@open)]')->length);
+        $this->assertSame(1, $xpath->query('//details[@data-whole-day-publication and not(@open)]')->length);
+        $this->assertSame(1, $xpath->query('//details[@data-event-draw-publication]/summary//*[@data-draw-publication-summary]')->length);
+        $this->assertLessThan(strpos($html, 'data-event-draw-publication'), strpos($html, '>Manage Draws</h5>'));
+        $this->assertSame(1, substr_count($html, 'href="'.route('backend.event-venue-schedule.index', $event).'"'));
+        $this->assertSame(0, $xpath->query('//a[contains(@class, "event-workspace-action") and @href="'.route('admin.events.overview', $event).'"]')->length);
+        foreach ($draws as $draw) {
+            $this->assertSame(1, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//a[@data-draw-guide-open]')->length);
+            $this->assertSame(1, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//button[contains(concat(" ", normalize-space(@class), " "), " toggle-publish ") and contains(@class, "d-none")]')->length);
+            $this->assertSame(1, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//section[@aria-label="Draw settings"]')->length);
+            $this->assertSame(1, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//section[@aria-label="Match schedule"]')->length);
+            $this->assertSame(0, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//section[@aria-label="Draw settings"]//section[@aria-label="Match schedule"]')->length);
+            $this->assertSame(1, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//div[@aria-label="Draw workspace"]//a[@data-draw-guide-open]')->length);
+            $this->assertSame(1, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//section[@aria-label="Draw settings"]//button[contains(@class, "btn-add-venues")]')->length);
+            $this->assertSame(0, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//*[@data-bs-toggle="dropdown"]')->length);
+        }
         preg_match('/data-draw-ids="([^"]+)"/', $html, $ids);
         $this->assertSame($draws->pluck('id')->all(), json_decode(html_entity_decode($ids[1]), true));
         $cardsHtml = strstr($html, '<template data-day-card-template>', true);

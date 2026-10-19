@@ -57,7 +57,7 @@ final class EventVenueScheduleService
 
         $foreignDraws = array_diff($selectedDraws, $draws->pluck('id')->map(fn ($id) => (int) $id)->all());
         if ($foreignDraws) throw new \InvalidArgumentException('One or more selected draws do not belong to this event.');
-        $programme = app(ScheduleProgramme::class)->normalize($options['programme'] ?? [], $draws, $this->availableDrawRounds($draws, true));
+        $programme = app(ScheduleProgramme::class)->normalize($options['programme'] ?? [], $draws, $this->availableDrawRounds($draws, true), $event);
         if ($programme) {
             $options['allow_partial'] = false;
             $programmeService = app(ScheduleProgramme::class);
@@ -67,9 +67,9 @@ final class EventVenueScheduleService
             if ($expected->diff($draws->pluck('id'))->isNotEmpty()) throw new \InvalidArgumentException('Include every discipline of the selected age group.');
             if ($draws->contains('locked', true)) throw new \InvalidArgumentException('Unlock all age-group draws before creating a complete programme.');
             if ($options['draw_rounds'] ?? []) throw new \InvalidArgumentException('A complete programme cannot also filter rounds.');
-            if ($draws->contains(fn ($draw) => ! $programmeService->supports($draw))) throw new \InvalidArgumentException('The three-day programme requires team or individual Monrad draws.');
+            if ($draws->contains(fn ($draw) => ! $programmeService->supports($draw))) throw new \InvalidArgumentException('The event programme requires team or individual Monrad draws.');
             $start = Carbon::parse($programme['days'][0]['start']);
-            $end = Carbon::parse($programme['days'][2]['end']);
+            $end = Carbon::parse($programme['days'][array_key_last($programme['days'])]['end']);
         }
         $drawRounds = $this->normalizeDrawRounds($draws, $options['draw_rounds'] ?? []);
         $roundSelection = collect($drawRounds)->mapWithKeys(fn ($row) => [$row['draw_id'] => $row['rounds']]);
@@ -600,7 +600,7 @@ final class EventVenueScheduleService
         return DB::transaction(function () use ($event, $options, $expectedRevision) {
             $applyVenueIds = array_values(array_unique(array_map('intval', $options['apply_venue_ids'] ?? [])));
             if (! empty($options['programme'])) {
-                if ($applyVenueIds) throw new \InvalidArgumentException('Save the complete three-day programme together after every match fits.');
+                if ($applyVenueIds) throw new \InvalidArgumentException('Save the complete event programme together after every match fits.');
                 $options['allow_partial'] = false;
             }
             unset($options['apply_venue_ids']);

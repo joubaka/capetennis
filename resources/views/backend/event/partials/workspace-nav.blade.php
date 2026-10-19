@@ -10,9 +10,10 @@
     request()->routeIs('admin.events.standings') => 'standings',
     request()->routeIs('admin.events.finances*') => 'finances',
     request()->routeIs('admin.events.settings*') => 'settings',
+    request()->routeIs('admin.events.categories') => 'categories',
     request()->routeIs('admin.events.entries*', 'admin.events.teams') => 'entries',
     request()->routeIs(
-      'convenor.*', 'admin.events.categories', 'admin.events.announcements*',
+      'convenor.*', 'admin.events.announcements*',
       'backend.events.disciplinary.*', 'admin.events.transactions', 'transactions.pdf'
     ) => 'more',
     default => 'overview',
@@ -60,32 +61,35 @@
     <a href="{{ route('admin.events.settings', $event) }}" @if($eventWorkspaceActive === 'settings') aria-current="page" @endif><i class="ti ti-settings" aria-hidden="true"></i>Settings</a>
   @endcan
   @endif
+  @unless($rosterOnly ?? false)
+    @if(!$eventWorkspaceRegionalOnly)
+      @can('event-category.manage', $event)
+        <a href="{{ route('admin.events.categories', $event) }}" @if($eventWorkspaceActive === 'categories') aria-current="page" @endif><i class="ti ti-list-details" aria-hidden="true"></i>Categories</a>
+      @endcan
+      @can('event-finance.view', $event)
+        <a href="{{ route('admin.events.finances', $event) }}" @if($eventWorkspaceActive === 'finances') aria-current="page" @endif><i class="ti ti-report-money" aria-hidden="true"></i>Finances</a>
+      @endcan
+    @endif
+    @role('super-user')
+      <a href="{{ route('backend.player-performance.event-ratings', $event) }}" @if($eventWorkspaceActive === 'ratings') aria-current="page" @endif><i class="ti ti-chart-bar" aria-hidden="true"></i>Player ratings</a>
+    @endrole
+  @endunless
   @php
-    $canSeeEventTools = auth()->user()?->hasRole('super-user')
-      || (!$eventWorkspaceRegionalOnly && (auth()->user()?->can('event-draw.view', $event)
-      || auth()->user()?->can('event-category.manage', $event)
-      || auth()->user()?->can('event.manage', $event)
-      || auth()->user()?->can('event-finance.view', $event)));
+    $canSeeEventTools = !$eventWorkspaceRegionalOnly
+      && (auth()->user()?->can('event-draw.view', $event)
+        || auth()->user()?->can('event.manage', $event)
+        || ($event->series && auth()->user()?->can('event-category.manage', $event)));
   @endphp
   @if($canSeeEventTools && !($rosterOnly ?? false))
     <div class="event-workspace-more dropdown">
       <button class="event-workspace-more__toggle" type="button" data-bs-toggle="dropdown"
-              aria-expanded="false" @if(in_array($eventWorkspaceActive, ['more', 'ratings', 'finances'])) aria-current="page" @endif>
+              aria-expanded="false" @if($eventWorkspaceActive === 'more') aria-current="page" @endif>
         <i class="ti ti-dots" aria-hidden="true"></i>More
       </button>
       <div class="dropdown-menu dropdown-menu-end">
-        @role('super-user')
-          <a class="dropdown-item" href="{{ route('backend.player-performance.event-ratings', $event) }}"><i class="ti ti-chart-bar" aria-hidden="true"></i>Player ratings</a>
-        @endrole
         @if(!$eventWorkspaceRegionalOnly)
-        @can('event-finance.view', $event)
-          <a class="dropdown-item" href="{{ route('admin.events.finances', $event) }}"><i class="ti ti-report-money" aria-hidden="true"></i>Finances</a>
-        @endcan
         @can('event-draw.view', $event)
           <a class="dropdown-item" href="{{ route('admin.events.transactions', $event) }}"><i class="ti ti-credit-card" aria-hidden="true"></i>Transactions</a>
-        @endcan
-        @can('event-category.manage', $event)
-          <a class="dropdown-item" href="{{ route('admin.events.categories', $event) }}"><i class="ti ti-list-details" aria-hidden="true"></i>Categories</a>
         @endcan
         @can('event.manage', $event)
           <a class="dropdown-item" href="{{ route('convenor.show', $event->id) }}"><i class="ti ti-users" aria-hidden="true"></i>Event directors</a>

@@ -33,7 +33,7 @@
 @section('content')
 <div class="container-xl">
   @include('backend.event.partials.header', [
-    'eventWorkspaceActive' => 'more',
+    'eventWorkspaceActive' => 'categories',
     'eventWorkspaceIcon' => 'ti-list-details',
     'eventWorkspaceSubtitle' => 'Category setup',
   ])

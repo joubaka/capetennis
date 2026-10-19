@@ -11,9 +11,17 @@ class ScheduleProgrammeTest extends TestCase
 {
     use RefreshDatabase;
 
+    private function canonicalJson(array $value): array
+    {
+        foreach ($value as &$item) if (is_array($item)) $item = $this->canonicalJson($item);
+        unset($item);
+        if (! array_is_list($value)) ksort($value);
+        return $value;
+    }
+
     private function scenario(int $rubbers = 1, int $courts = 1): array
     {
-        $event = Event::factory()->create();
+        $event = Event::factory()->create(['start_date' => '2026-10-09', 'end_date' => '2026-10-11']);
         $venue = new Venue();
         $venue->forceFill(['name' => 'Programme courts'])->save();
         $players = Player::factory()->count($rubbers * 2)->create();
@@ -53,6 +61,38 @@ class ScheduleProgrammeTest extends TestCase
         $this->assertSame(12, TeamFixture::whereNotNull('scheduled_at')->count());
     }
 
+    public function test_two_day_event_uses_daily_windows_and_preserves_saved_programme(): void
+    {
+        [$event, $options] = $this->scenario();
+        $event->update(['end_date' => '2026-10-10']);
+        array_pop($options['programme']['days']);
+        $options['programme']['days'][0]['start'] = '2026-10-09 09:00:00';
+        $options['programme']['days'][1]['end'] = '2026-10-10 16:30:00';
+        $options['start'] = $options['programme']['days'][0]['start'];
+        $options['end'] = $options['programme']['days'][1]['end'];
+        foreach ($options['programme']['rounds'] as &$round) {
+            if ($round['day'] === 3) { $round['day'] = 2; $round['sequence'] += 10; }
+        }
+        unset($round);
+        $service = app(EventVenueScheduleService::class);
+        $preview = $service->preview($event, $options);
+        $this->assertCount(12, $preview['matches']);
+        $this->assertSame([], $preview['unscheduled']);
+        $this->assertSame(['2026-10-09', '2026-10-10'], collect($preview['matches'])->pluck('scheduled_at')->map(fn ($date) => substr($date, 0, 10))->unique()->values()->all());
+        $service->apply($event, $options, $preview['revision']);
+        $saved = json_decode(\Illuminate\Support\Facades\DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true);
+        $this->assertSame('2026-10-09 09:00:00', $saved['programme_settings']['10']['programme']['days'][0]['start']);
+        $this->assertSame('2026-10-10 16:30:00', $saved['programme_settings']['10']['programme']['days'][1]['end']);
+        $this->assertSame([], $service->preview($event, $options)['matches']);
+
+        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        $admin = \App\Models\User::factory()->create()->assignRole('admin');
+        \Illuminate\Support\Facades\DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $response = $this->actingAs($admin)->get(route('backend.event-venue-schedule.index', $event))->assertOk();
+        $response->assertSee('id="programme-start-0"', false)->assertSee('id="programme-start-1"', false)->assertDontSee('id="programme-start-2"', false);
+        $response->assertSee('2026-10-09T08:00', false)->assertSee('2026-10-10T18:00', false)->assertDontSee('three-day');
+    }
+
     public function test_apply_retains_other_age_settings_and_round_venues_and_persists_programme_options(): void
     {
         [$event, $options] = $this->scenario();
@@ -66,13 +106,13 @@ class ScheduleProgrammeTest extends TestCase
         $options['programme']['days'][0]['break_end'] = '2026-10-09 13:00:00';
         $service = app(EventVenueScheduleService::class);
         $preview = $service->preview($event, $options);
-        $this->assertSame($retained, json_decode(\Illuminate\Support\Facades\DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true));
+        $this->assertSame($this->canonicalJson($retained), $this->canonicalJson(json_decode(\Illuminate\Support\Facades\DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true)));
         $service->apply($event, $options, $preview['revision']);
         $saved = json_decode(\Illuminate\Support\Facades\DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true);
         $this->assertSame($retained['programme_settings']['13'], $saved['programme_settings']['13']);
-        $this->assertSame($retained['programme'], $saved['programme_settings']['15']['programme']);
-        $this->assertSame($retained['round_venue_setups'], $saved['round_venue_setups']);
-        $this->assertSame($preview['input']['programme'], $saved['programme_settings']['10']['programme']);
+        $this->assertSame($this->canonicalJson($retained['programme']), $this->canonicalJson($saved['programme_settings']['15']['programme']));
+        $this->assertSame($this->canonicalJson($retained['round_venue_setups']), $this->canonicalJson($saved['round_venue_setups']));
+        $this->assertSame($this->canonicalJson($preview['input']['programme']), $this->canonicalJson($saved['programme_settings']['10']['programme']));
         $this->assertSame('court_ready', $saved['programme_settings']['10']['gender_wave_release']);
         $this->assertSame(30, $saved['programme_settings']['10']['duration']);
     }
@@ -335,7 +375,7 @@ class ScheduleProgrammeTest extends TestCase
 
     public function test_each_day_uses_its_own_gender_order(): void
     {
-        $event = Event::factory()->create();
+        $event = Event::factory()->create(['start_date' => '2026-10-09', 'end_date' => '2026-10-11']);
         $venue = new Venue();
         $venue->forceFill(['name' => 'Daily order courts'])->save();
         $source = Draw::factory()->create(['event_id' => $event->id, 'drawName' => 'u/10 Boys – Singles', 'gender' => 'Boys']);
