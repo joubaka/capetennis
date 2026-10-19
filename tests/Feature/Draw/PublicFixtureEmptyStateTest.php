@@ -148,7 +148,7 @@ class PublicFixtureEmptyStateTest extends TestCase
         $this->get(route('frontend.fixtures.index', 999999))->assertNotFound();
     }
 
-    public function test_mobile_pairing_labels_use_region_and_category_without_changing_desktop_team_names(): void
+    public function test_pairing_headers_use_compact_labels_and_preserve_full_team_names(): void
     {
         $draw = $this->draw(true);
         $fixture = $this->tie($draw, false);
@@ -163,6 +163,8 @@ class PublicFixtureEmptyStateTest extends TestCase
         $response = $this->get(route('frontend.fixtures.index', $draw))->assertOk()
             ->assertSee('Overberg Primary Schools 2026 u/10 Boys')
             ->assertSee('Over u/10 Boys')->assertSee('CW u/10 Boys')
+            ->assertSee('class="fixture-pairing"', false)
+            ->assertSee('aria-label="Full team names"', false)
             ->assertSee('--region-color: #1e40af', false)
             ->assertSee('--region-color: #b45309', false)
             ->assertSee('Click to show ties')->assertSee('Click to show matches');

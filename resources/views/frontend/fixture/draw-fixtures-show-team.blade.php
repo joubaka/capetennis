@@ -22,6 +22,18 @@
   .public-fixture-page summary:focus-visible { outline: 3px solid #173f7a; outline-offset: 3px; }
   .public-fixture-page .fixture-round > summary { border-left: 5px solid #173f7a; background: #eef3fa; }
   .fixture-team-chip { display: inline-block; background: #fff; color: #26394d; border: 1px solid var(--region-color, #475569); padding: .3rem .55rem; border-radius: .35rem; line-height: 1.5; overflow-wrap: anywhere; }
+  .public-fixture-page .fixture-tie > summary { display: block; padding: 1rem; list-style: none; }
+  .public-fixture-page .fixture-tie > summary::-webkit-details-marker { display: none; }
+  .public-fixture-page .fixture-tie-meta { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; margin-bottom: .65rem; font-size: .85rem; }
+  .public-fixture-page .fixture-pairing { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: .75rem; }
+  .public-fixture-page .fixture-pairing .fixture-team-chip { display: block; min-width: 0; padding: .65rem .8rem; border: 1px solid #dce4ed; border-left: 4px solid var(--region-color, #475569); font-size: 1rem; font-weight: 600; }
+  .public-fixture-page .fixture-versus { font-size: .8rem; color: #64748b; }
+  .public-fixture-page .fixture-team-names { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; padding: .25rem .5rem .75rem; color: #526277; overflow-wrap: anywhere; }
+  @media (max-width: 575.98px) {
+    .public-fixture-page .fixture-pairing, .public-fixture-page .fixture-team-names { grid-template-columns: minmax(0, 1fr); gap: .4rem; }
+    .public-fixture-page .fixture-versus { padding-left: .8rem; }
+    .public-fixture-page .fixture-tie > summary { padding: .75rem; }
+  }
 </style>
 @if($draw->published)
   @if($event->standings_published)
@@ -66,20 +78,24 @@
         @foreach($ties as $tieKey => $tieFixtures)
           @php $firstFixture = $tieFixtures->first(); [$tieHomeClass, $tieAwayClass] = \App\Support\ResultPresentation::tieClasses($tieFixtures); @endphp
           <details class="fixture-tie mb-3" data-live-key="tie-{{ $round }}-{{ $tieKey }}">
-            <summary class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2" style="cursor: pointer;">
-            <h5 class="mb-0" id="fixture-tie-{{ $round }}-{{ $tieKey }}">
+            <summary class="mb-2" id="fixture-tie-{{ $round }}-{{ $tieKey }}">
+              <div class="fixture-tie-meta">
+                <span class="text-muted">Tie {{ $firstFixture->tie_nr ?: $loop->iteration }} · {{ $tieFixtures->count() }} matches</span>
+                <span class="fixture-toggle"><span class="when-closed">▸ Click to show matches</span><span class="when-open">▾ Click to hide matches</span></span>
+              </div>
               @if($fixtures->pluck('draw_id')->unique()->count() > 1)<span class="badge bg-label-secondary">{{ $firstFixture->draw->drawName }}</span> @endif
-              <span class="text-muted">Tie {{ $firstFixture->tie_nr ?: $loop->iteration }} ·</span>
+              <div class="fixture-pairing">
               @foreach(['home', 'away'] as $side)
-                @if(!$loop->first)<span class="text-muted">vs</span>@endif
-                <span class="fixture-team-chip {{ $side === 'home' ? $tieHomeClass : $tieAwayClass }}" style="--region-color: {{ $firstFixture->lineup_display[$side]['region_color'] ?? '#475569' }}">
-                  <span class="d-none d-md-inline">{{ $firstFixture->tie_display[$side] }}</span>
-                  <span class="d-md-none">{{ $firstFixture->tie_mobile_display[$side] }}</span><x-result-label :outcome="$side === 'home' ? $tieHomeClass : $tieAwayClass" />
+                @if(!$loop->first)<span class="fixture-versus">vs</span>@endif
+                <span class="fixture-team-chip {{ $side === 'home' ? $tieHomeClass : $tieAwayClass }}" title="{{ $firstFixture->tie_display[$side] }}" style="--region-color: {{ $firstFixture->lineup_display[$side]['region_color'] ?? '#475569' }}">
+                  {{ $firstFixture->tie_mobile_display[$side] }}<x-result-label :outcome="$side === 'home' ? $tieHomeClass : $tieAwayClass" />
                 </span>
               @endforeach
-            </h5>
-              <span class="text-muted small">{{ $tieFixtures->count() }} matches <span class="fixture-toggle"><span class="when-closed">▸ Click to show matches</span><span class="when-open">▾ Click to hide matches</span></span></span>
+              </div>
             </summary>
+            <div class="fixture-team-names small" aria-label="Full team names">
+              @foreach(['home', 'away'] as $side)<div><strong>{{ ucfirst($side) }}</strong> · {{ $firstFixture->tie_display[$side] }}</div>@endforeach
+            </div>
             @include('frontend.fixture.fixture-table', ['fixtures' => $tieFixtures,
               'hideFixtureHeader' => true, 'fixtureTableId' => 'fixturesTable-'.$round.'-'.$tieKey])
           </details>

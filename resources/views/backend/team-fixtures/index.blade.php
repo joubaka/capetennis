@@ -46,6 +46,7 @@
 
 
 <div class="container-xxl team-fixtures-view">
+<a href="{{ url()->previous() }}" class="btn btn-outline-secondary mb-3">&larr; Back</a>
 <div class="card">
 <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
   <div><h4 class="mb-1">Team fixtures</h4><p class="text-muted mb-0">{{ $event?->name ?? 'Manage match lineups and scores' }}</p></div>

@@ -265,6 +265,7 @@ final class EventVenueScheduleController extends Controller
         $rows = $publication->workingRows($event)->filter(fn ($row) => (int) $row['draw_id'] === $draw->id
             && substr($row['scheduled_at'], 0, 10) === $data['date'])->values();
         $venues = $event->venues()->get()->concat($draw->venues()->get())->unique('id')->sortBy('name');
+        $allVenues = Venue::whereNotIn('id', $venues->pluck('id'))->orderBy('name')->get(['id', 'name']);
         $stored = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true) ?: [];
         $age = app(\App\Services\Scheduling\ScheduleProgramme::class)->key($draw);
         $settings = $stored['programme_settings'][(string) $age] ?? $stored;
@@ -347,7 +348,7 @@ final class EventVenueScheduleController extends Controller
                     ->withInput()->withErrors(['schedule' => $exception->getMessage()]);
             }
         }
-        return response()->view('backend.schedule.edit-draw-day', compact('event', 'draw', 'data', 'rows', 'venues', 'values', 'preview', 'courtOptions', 'bandNotice'))
+        return response()->view('backend.schedule.edit-draw-day', compact('event', 'draw', 'data', 'rows', 'venues', 'allVenues', 'values', 'preview', 'courtOptions', 'bandNotice'))
             ->header('Cache-Control', 'no-store, private');
     }
 
@@ -453,8 +454,9 @@ final class EventVenueScheduleController extends Controller
                 'ball_type' => $data['ball_type'] ?: null, 'active' => true, 'created_at' => now(), 'updated_at' => now(),
             ]);
         }
-        $courtCount = DB::table('event_venue_courts')->where('event_id', $event->id)
-            ->where('venue_id', $venue->id)->where('active', true)->count();
+        $courtLabels = DB::table('event_venue_courts')->where('event_id', $event->id)
+            ->where('venue_id', $venue->id)->where('active', true)->orderBy('id')->pluck('label')->map(fn ($label) => (string) $label)->all();
+        $courtCount = count($courtLabels);
         $event->venues()->syncWithoutDetaching([$venue->id => ['num_courts' => $courtCount]]);
         return response()->json([
             'message' => "{$venue->name} added with {$courtCount} courts.",
@@ -462,6 +464,7 @@ final class EventVenueScheduleController extends Controller
                 'id' => $venue->id,
                 'name' => $venue->name,
                 'num_courts' => $courtCount,
+                'court_labels' => $courtLabels,
                 'ball_type' => $data['ball_type'] ?: 'standard',
             ],
         ]);

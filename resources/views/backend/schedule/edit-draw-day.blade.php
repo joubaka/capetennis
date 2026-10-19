@@ -9,12 +9,28 @@
   @if($errors->any())<div class="alert alert-danger">{{ $errors->first() }}</div>@endif
   @if($rows->isEmpty())<div class="alert alert-info">This draw has no saved times on this day. Use <a href="{{ route('backend.event-venue-schedule.index', ['event'=>$event->id, 'draw_ids'=>[$draw->id], 'date'=>$data['date']]) }}">Add matches to this day</a> to schedule a new batch.</div>@endif
   <div class="card card-body mb-3">
+    <details class="mb-3" id="day-add-venues">
+      <summary class="btn btn-outline-primary">Add venues</summary>
+      <form id="day-add-venue-form" class="border rounded p-3 mt-2" action="{{ route('backend.event-venue-schedule.venues', $event) }}" method="post">
+        @csrf
+        <p class="small text-muted">Add a venue and courts to this event, then select it below. Your current day settings stay in place.</p>
+        <div class="row g-3">
+          <div class="col-12 col-md-4"><label class="form-label" for="day-venue-mode">Venue</label><select id="day-venue-mode" class="form-select"><option value="existing">Existing venue</option><option value="new">Create new venue</option></select></div>
+          <div class="col-12 col-md-4" id="day-existing-venue-panel"><label class="form-label" for="day-existing-venue">Choose venue</label><select id="day-existing-venue" name="venue_id" class="form-select" required><option value="">Choose existing venue</option>@foreach($allVenues as $venue)<option value="{{ $venue->id }}">{{ $venue->name }}</option>@endforeach</select></div>
+          <div class="col-12 col-md-4" id="day-new-venue-panel" hidden><label class="form-label" for="day-new-venue">New venue name</label><input id="day-new-venue" name="name" class="form-control" maxlength="191" disabled required></div>
+          <div class="col-6 col-md-2"><label class="form-label" for="day-new-courts">Courts</label><input id="day-new-courts" name="courts" class="form-control" type="number" min="1" max="100" value="1" required></div>
+          <div class="col-6 col-md-2"><label class="form-label" for="day-new-ball">Ball type</label><select id="day-new-ball" name="ball_type" class="form-select">@foreach(['standard','yellow','green','orange','red'] as $type)<option value="{{ $type }}">{{ ucfirst($type) }}</option>@endforeach</select></div>
+        </div>
+        <button class="btn btn-primary mt-3" id="day-add-venue-submit">Add venue</button>
+        <div id="day-add-venue-status" class="mt-2" role="status" aria-live="polite"></div>
+      </form>
+    </details>
     <form method="post" id="draw-day-form">
       @csrf
       <input type="hidden" name="draw_id" value="{{ $draw->id }}"><input type="hidden" name="date" value="{{ $data['date'] }}">
       <input type="hidden" name="court_labels_present" value="1">
       <fieldset class="mb-3"><legend class="h5">Venues for this draw and day</legend><p class="small text-muted">Choose destination venues. This does not change venue assignments for other days or age groups.</p>
-        <div class="row g-3">
+        <div class="row g-3" id="day-venue-list">
         @foreach($venues as $venue)
           @php($chosenCourts = old('court_labels', $values['court_labels'])[$venue->id] ?? [])
           <div class="col-12 col-md-6"><div class="border rounded p-3" data-day-venue="{{ $venue->id }}">
@@ -80,6 +96,62 @@
 (() => {
   const form = document.getElementById('draw-day-form');
   const invalidate = () => { const save=document.getElementById('save-day-preview'); if(save) { save.disabled=true; save.textContent='Preview again to save changes'; } };
+  const venueForm = document.getElementById('day-add-venue-form');
+  const venueMode = document.getElementById('day-venue-mode');
+  venueMode.addEventListener('change', () => {
+    const creating = venueMode.value === 'new';
+    document.getElementById('day-existing-venue-panel').hidden = creating;
+    document.getElementById('day-new-venue-panel').hidden = !creating;
+    document.getElementById('day-existing-venue').disabled = creating;
+    document.getElementById('day-new-venue').disabled = !creating;
+  });
+  let addingVenue = false;
+  venueForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (addingVenue || !venueForm.reportValidity()) return;
+    addingVenue = true;
+    const button = document.getElementById('day-add-venue-submit');
+    const status = document.getElementById('day-add-venue-status');
+    button.disabled = true;
+    status.textContent = 'Adding venue…';
+    status.className = 'mt-2';
+    try {
+      const response = await fetch(venueForm.action, {method:'POST', headers:{Accept:'application/json'}, body:new FormData(venueForm)});
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(Object.values(result.errors || {}).flat().join(' ') || result.message || 'Unable to add venue. Please try again.');
+      const venue = result.venue;
+      if (!document.querySelector(`[data-day-venue="${Number(venue.id)}"]`)) {
+        const column = document.createElement('div');
+        column.className = 'col-12 col-md-6';
+        // Names and court labels are inserted as text, never as HTML.
+        const card = document.createElement('div');
+        card.className = 'border rounded p-3'; card.dataset.dayVenue = venue.id;
+        const choiceLabel = document.createElement('label'); choiceLabel.className = 'form-check';
+        const choice = document.createElement('input'); choice.type = 'checkbox'; choice.className = 'form-check-input day-venue-choice'; choice.name = 'venue_ids[]'; choice.value = venue.id; choice.checked = true;
+        const name = document.createElement('span'); name.className = 'form-check-label'; name.textContent = venue.name;
+        choiceLabel.append(choice, name); card.append(choiceLabel);
+        const countLabel = document.createElement('label'); countLabel.className = 'form-label'; countLabel.htmlFor = `court-count-${venue.id}`; countLabel.textContent = 'Number of courts for this day';
+        const count = document.createElement('input'); count.type = 'number'; count.className = 'form-control day-court-count mb-2'; count.id = countLabel.htmlFor; count.min = 1; count.max = venue.court_labels.length; count.value = venue.court_labels.length;
+        card.append(countLabel, count);
+        const courts = document.createElement('div'); courts.className = 'd-flex flex-wrap gap-2';
+        venue.court_labels.forEach(label => {
+          const wrapper = document.createElement('label'); wrapper.className = 'form-check';
+          const input = document.createElement('input'); input.type = 'checkbox'; input.className = 'form-check-input day-court-label'; input.name = `court_labels[${venue.id}][]`; input.value = label; input.checked = true;
+          const text = document.createElement('span'); text.className = 'form-check-label'; text.textContent = `Court ${label}`;
+          wrapper.append(input, text); courts.append(wrapper);
+        });
+        card.append(courts); column.append(card); document.getElementById('day-venue-list').append(column);
+        const selects = [...form.querySelectorAll('.day-band-venue'), ...document.getElementById('day-band-template')?.content.querySelectorAll('.day-band-venue') || []];
+        selects.forEach(select => { const option = document.createElement('option'); option.value = venue.id; option.textContent = venue.name; select.append(option); });
+      }
+      document.getElementById('day-existing-venue').querySelector(`option[value="${Number(venue.id)}"]`)?.remove();
+      document.getElementById('day-new-venue').value = '';
+      syncVenues(); invalidate();
+      status.className = 'mt-2 text-success'; status.textContent = result.message + ' Selected below. Add another venue or close Add venues.';
+    } catch (error) {
+      status.className = 'mt-2 text-danger'; status.textContent = error.message;
+    } finally { addingVenue = false; button.disabled = false; }
+  });
   const syncVenues = () => {
     const selected = [...form.querySelectorAll('.day-venue-choice:checked')].map(input=>input.value);
     form.querySelectorAll('[data-day-venue]').forEach(card => {

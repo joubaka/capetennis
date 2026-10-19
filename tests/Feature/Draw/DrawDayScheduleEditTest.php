@@ -230,5 +230,30 @@ class DrawDayScheduleEditTest extends TestCase
         $this->post($url,array_replace($payload,['action'=>'save','revision'=>$revision]))->assertRedirect()->assertSessionHasNoErrors();
         $this->assertSame($target->id,(int)$fixture->orderOfPlay()->first()->venue_id);
     }
+
+    public function test_day_editor_can_add_venues_without_changing_saved_matches_and_returns_actual_active_courts(): void
+    {
+        [$event, $draw, $source, $target, $fixture] = $this->context();
+        Role::firstOrCreate(['name'=>'admin', 'guard_name'=>'web']);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id'=>$event->id, 'user_id'=>$admin->id]);
+        $venue = Venue::forceCreate(['name'=>'New destination']);
+        $url = route('backend.event-venue-schedule.calendar.edit-day', ['event'=>$event, 'draw_id'=>$draw->id, 'date'=>'2026-10-11']);
+        $this->actingAs($admin)->get($url)->assertOk()
+            ->assertSee('id="day-add-venue-form"', false)->assertSee('Create new venue')
+            ->assertSee('New destination')->assertSee('id="day-venue-list"', false);
+        DB::table('event_venue_courts')->insert([
+            ['event_id'=>$event->id, 'venue_id'=>$venue->id, 'label'=>'Show court', 'active'=>true],
+            ['event_id'=>$event->id, 'venue_id'=>$venue->id, 'label'=>'Closed court', 'active'=>false],
+        ]);
+        $this->postJson(route('backend.event-venue-schedule.venues', $event), ['venue_id'=>$venue->id, 'courts'=>1, 'ball_type'=>'yellow'])
+            ->assertOk()->assertJsonPath('venue.court_labels', ['Show court', '1'])->assertJsonPath('venue.num_courts', 2);
+        $this->assertSame($source->id, (int) $fixture->orderOfPlay()->first()->venue_id);
+        $this->assertDatabaseCount('order_of_plays', 1);
+        $this->assertDatabaseMissing('draw_venues', ['draw_id'=>$draw->id, 'venue_id'=>$venue->id]);
+        $otherEvent = Event::factory()->create();
+        $this->postJson(route('backend.event-venue-schedule.venues', $otherEvent), ['name'=>'Forbidden venue', 'courts'=>1])->assertForbidden();
+        $this->assertDatabaseMissing('venues', ['name'=>'Forbidden venue']);
+    }
 }
 
