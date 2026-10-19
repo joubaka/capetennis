@@ -24,6 +24,119 @@ class RegistrationPaymentRecoveryTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_first_open_starts_write_once_clock_without_rewriting_history_and_expires_at_five_minutes(): void
+    {
+        $this->freezeTime();
+        [$order, $owner] = $this->erroneousFreeOrder(300);
+        $createdAt = $order->created_at->toDateTimeString();
+        $service = app(RegistrationPaymentRecoveryService::class);
+        $recovery = $service->prepare($order, $owner->id);
+        $before = $recovery->before_state;
+        $snapshot = $recovery->mail_snapshot;
+        $this->assertNull($recovery->checkout_started_at);
+        $this->assertFalse(app(\App\Domain\Payments\Services\UnpaidCheckoutExpiryService::class)->expire($order));
+        $this->travel(2)->days();
+        $url = URL::temporarySignedRoute('registration.recovery.show', now()->addHour(), ['recovery' => $recovery->id]);
+        $this->actingAs($owner)->get($url)->assertOk();
+        $startedAt = $recovery->fresh()->checkout_started_at;
+        $this->assertSame(now()->toDateTimeString(), $startedAt->toDateTimeString());
+        $this->travel(299)->seconds();
+        $this->get($url)->assertOk();
+        $this->assertTrue($recovery->fresh()->checkout_started_at->equalTo($startedAt));
+        $this->travel(1)->seconds();
+        $this->get($url)->assertSessionHasErrors('payment');
+        $this->assertSame('cancelled', $order->fresh()->status);
+        $this->get($url)->assertStatus(409);
+        $this->assertSame($createdAt, $order->fresh()->created_at->toDateTimeString());
+        $this->assertSame($before, $recovery->fresh()->before_state);
+        $this->assertSame($snapshot, $recovery->fresh()->mail_snapshot);
+        $this->assertDatabaseCount('registration_orders', 1);
+        $this->assertDatabaseCount('registration_order_items', 1);
+        $this->assertDatabaseCount('category_event_registrations', 1);
+        $this->assertSoftDeleted('category_event_registrations', ['registration_id' => $order->items()->first()->registration_id]);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->assertDatabaseCount('transactions_pf', 0);
+    }
+
+    public function test_dormant_recovery_expires_at_link_deadline_and_corrupt_seals_never_exempt_an_old_order(): void
+    {
+        $this->freezeTime();
+        [$order, $owner] = $this->erroneousFreeOrder(300);
+        $recovery = app(RegistrationPaymentRecoveryService::class)->prepare($order, $owner->id);
+        $expiry = app(\App\Domain\Payments\Services\UnpaidCheckoutExpiryService::class);
+        $this->assertFalse($expiry->expire($order));
+        DB::table('registration_payment_recoveries')->whereKey($recovery->id)->update(['before_state_checksum' => str_repeat('1', 64)]);
+        $this->assertTrue(\App\Domain\Payments\Services\CheckoutExpiryPolicy::isExpired($order));
+        DB::table('registration_payment_recoveries')->whereKey($recovery->id)->update(['before_state_checksum' => $recovery->before_state_checksum]);
+        $this->travelTo($recovery->link_expires_at);
+        $this->assertTrue($expiry->expire($order));
+        $this->assertSame('cancelled', $order->fresh()->status);
+        $this->assertNull($recovery->fresh()->checkout_started_at);
+    }
+
+    public function test_direct_payfast_starts_checkout_and_late_verified_receipt_preserves_original_history(): void
+    {
+        $this->freezeTime();
+        [$order, $owner] = $this->erroneousFreeOrder(300);
+        $recovery = app(RegistrationPaymentRecoveryService::class)->prepare($order, $owner->id);
+        $before = $recovery->before_state;
+        $createdAt = $order->created_at->toDateTimeString();
+        $url = URL::temporarySignedRoute('registration.recovery.payfast', now()->addHour(), ['recovery' => $recovery->id]);
+        $this->actingAs($owner)->get($url)->assertOk();
+        $handoff = $order->fresh()->payfast_handed_off_at->toIso8601String();
+        $this->assertNotNull($recovery->fresh()->checkout_started_at);
+        $this->travel(5)->minutes();
+        $this->assertTrue(app(\App\Domain\Payments\Services\UnpaidCheckoutExpiryService::class)->expire($order));
+        $payload = ['custom_int5' => $order->id, 'custom_int4' => $owner->id, 'pf_payment_id' => 'PF-RECOVERY-EXPIRED',
+            'payment_status' => 'COMPLETE', 'amount_gross' => '300.00', 'amount_fee' => '-10.00', 'amount_net' => '290.00'];
+        $controller = app(RegistrationPaymentController::class);
+        $this->assertTrue($controller->handlePayfastSuccess($payload));
+        $this->assertTrue($controller->handlePayfastSuccess($payload));
+        $this->assertSame('cancelled', $order->fresh()->status);
+        $this->assertSame(0, (int) $order->fresh()->pay_status);
+        $this->assertSame($createdAt, $order->fresh()->created_at->toDateTimeString());
+        $this->assertSame($before, $recovery->fresh()->before_state);
+        $this->assertDatabaseCount('transactions_pf', 1);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->assertSoftDeleted('category_event_registrations', ['registration_id' => $order->items()->first()->registration_id]);
+        $audit = \Spatie\Activitylog\Models\Activity::where('subject_id', $order->id)->where('description', 'Expired unresolved PayFast handoff retained for reconciliation')->firstOrFail();
+        $this->assertSame($handoff, $audit->properties['handed_off_at']);
+        $this->assertSame($owner->id, $audit->properties['payer_id']);
+    }
+
+    public function test_handoff_uses_its_own_five_minutes_and_refresh_does_not_reserve_again(): void
+    {
+        $this->freezeTime();
+        [$order, $owner] = $this->erroneousFreeOrder(300);
+        $recovery = app(RegistrationPaymentRecoveryService::class)->prepare($order, $owner->id);
+        $url = URL::temporarySignedRoute('registration.recovery.show', now()->addHour(), ['recovery' => $recovery->id]);
+        $response = $this->actingAs($owner)->get($url)->assertOk();
+        $this->travel(4)->minutes();
+        $this->get($response->viewData('paymentUrl'))->assertOk()->assertViewHas('amount', 300.0);
+        $handoff = $order->fresh()->payfast_handed_off_at;
+        $this->travel(4)->minutes();
+        $this->get($url)->assertOk()->assertSee('awaiting confirmation')->assertDontSee('Continue to PayFast');
+        $this->assertTrue($handoff->equalTo($order->fresh()->payfast_handed_off_at));
+        $this->travel(1)->minutes();
+        $this->get($url)->assertSessionHasErrors('payment');
+        $this->assertSame('cancelled', $order->fresh()->status);
+        $this->assertDatabaseHas('activity_log', ['subject_id' => $order->id, 'description' => 'Expired unresolved PayFast handoff retained for reconciliation']);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->assertDatabaseCount('transactions_pf', 0);
+    }
+
+    public function test_recovery_start_is_immutable_and_unauthorized_open_cannot_start_it(): void
+    {
+        [$order, $owner] = $this->erroneousFreeOrder(300);
+        $recovery = app(RegistrationPaymentRecoveryService::class)->prepare($order, $owner->id);
+        $url = URL::temporarySignedRoute('registration.recovery.show', now()->addHour(), ['recovery' => $recovery->id]);
+        $this->actingAs(User::factory()->create())->get($url)->assertForbidden();
+        $this->assertNull($recovery->fresh()->checkout_started_at);
+        $this->actingAs($owner)->get($url)->assertOk();
+        $this->expectException(\LogicException::class);
+        $recovery->refresh()->update(['checkout_started_at' => now()->addMinute()]);
+    }
+
     public function test_preparation_derives_exact_amount_and_is_idempotent(): void
     {
         [$order, $user] = $this->erroneousFreeOrder(300);
@@ -479,7 +592,7 @@ class RegistrationPaymentRecoveryTest extends TestCase
         ]);
         $order->forceFill(['created_at' => $createdAt, 'updated_at' => $createdAt])->save();
         $item = new RegistrationOrderItems();
-        $item->forceFill(['order_id' => $order->id, 'registration_id' => $registration->id, 'player_id' => $player->id, 'category_event_id' => $categoryEvent->id, 'item_price' => 0])->save();
+        $item->forceFill(['order_id' => $order->id, 'user_id' => $user->id, 'registration_id' => $registration->id, 'player_id' => $player->id, 'category_event_id' => $categoryEvent->id, 'item_price' => 0])->save();
 
         return [$order, $user];
     }

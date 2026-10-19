@@ -19,11 +19,15 @@ class RegistrationPaymentRecovery extends Model
         'mail_sent_at' => 'datetime',
         'paid_at' => 'datetime',
         'link_expires_at' => 'datetime',
+        'checkout_started_at' => 'datetime',
     ];
 
     protected static function booted(): void
     {
         static::updating(function (self $recovery): void {
+            if ($recovery->getOriginal('checkout_started_at') !== null && $recovery->isDirty('checkout_started_at')) {
+                throw new \LogicException('A recovery checkout start is immutable.');
+            }
             $sealed = (string) $recovery->getOriginal('before_state_checksum');
             if ($sealed !== '' && $sealed !== str_repeat('0', 64) && $recovery->isDirty([
                 'registration_order_id', 'user_id', 'amount_due', 'before_state', 'before_state_checksum',

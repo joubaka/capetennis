@@ -221,7 +221,16 @@ class RegistrationPaymentRecoveryService
         abort_unless(! $order->wallet_debited && (float) $order->wallet_reserved === 0.0 && ! $order->payfast_pf_payment_id && ! $order->wallet_transaction_id, 409, 'Recovery order contains payment evidence.');
         abort_unless(! Transaction::query()->where('custom_int5', $order->id)->exists(), 409, 'Recovery order has PayFast evidence.');
         abort_unless(! WalletTransaction::query()->where('source_id', $order->id)->where('source_type', 'like', '%registration%')->exists(), 409, 'Recovery order has wallet evidence.');
+        $originalState = $this->previewState($order, (float) $recovery->amount_due);
+        $originalPrices = collect($recovery->before_state['items'])->keyBy('id');
+        foreach ($originalState['items'] as &$originalItem) {
+            abort_unless($originalPrices->has($originalItem[0]), 409, 'Recovery order items changed.');
+            $originalItem[4] = number_format((float) $originalPrices[$originalItem[0]]['item_price'], 2, '.', '');
+        }
+        unset($originalItem);
+        abort_unless(hash_equals($recovery->preview_state_hash, $this->checksum($originalState)), 409, 'Recovery order relationships changed.');
         foreach ($order->items as $item) {
+            abort_unless(isset(self::INCIDENTS[(int) $item->category_event?->event_id]), 409, 'Recovery event relationship mismatch.');
             $entry = CategoryEventRegistration::query()->where('registration_id', $item->registration_id)->where('category_event_id', $item->category_event_id)->where('user_id', $order->user_id)->lockForUpdate()->first();
             abort_unless($entry && $entry->status === 'active' && ! $entry->withdrawn_at && (int) $entry->payment_status_id === 0, 409, 'Recovery entry relationship mismatch.');
             abort_unless($entry->payment_method === 'payfast' && in_array($entry->admin_payment_status, [null, '', 'unpaid'], true) && ! $entry->pf_transaction_id && ! $entry->wallet_transaction_id && in_array($entry->refund_status, [null, '', 'not_refunded'], true) && ! $entry->refund_method && (float) $entry->refund_gross === 0.0 && ! $entry->refunded_at, 409, 'Recovery entry contains payment or refund evidence.');
@@ -230,6 +239,30 @@ class RegistrationPaymentRecoveryService
             abort_unless(DB::table('player_registrations')->where('registration_id', $item->registration_id)->where('player_id', $item->player_id)->exists(), 409, 'Recovery player relationship mismatch.');
         }
         return $order;
+    }
+
+    public function hasValidCheckoutClock(RegistrationPaymentRecovery $recovery, RegistrationOrder $order): bool
+    {
+        return in_array($recovery->status, ['prepared', 'notified', 'sending', 'mail_failed'], true)
+            && (int) $recovery->user_id === (int) $order->user_id
+            && $recovery->link_expires_at !== null
+            && hash_equals($recovery->before_state_checksum, $this->checksum($recovery->before_state))
+            && hash_equals($recovery->mail_snapshot_checksum, $this->checksum($recovery->mail_snapshot));
+    }
+
+    public function startCheckout(RegistrationPaymentRecovery $recovery, User $payer): RegistrationOrder
+    {
+        return DB::transaction(function () use ($recovery, $payer): RegistrationOrder {
+            $locked = RegistrationPaymentRecovery::whereKey($recovery->id)->lockForUpdate()->firstOrFail();
+            abort_unless((int) $locked->user_id === (int) $payer->id, 403);
+            $this->assertRecoveryLinkActive($locked);
+            abort_unless(in_array($locked->status, ['prepared', 'notified'], true), 409);
+            $order = $this->validatePrepared($locked);
+            if (!$locked->checkout_started_at) {
+                $locked->update(['checkout_started_at' => now()]);
+            }
+            return $order;
+        }, 3);
     }
 
     public function assertMailSnapshotCurrent(RegistrationPaymentRecovery $recovery): void

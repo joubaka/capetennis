@@ -401,4 +401,115 @@ class FullDayVenueScheduleTest extends TestCase
         $this->assertEquals($choices, $response->viewData('values')['tie_destinations']);
         $this->assertDatabaseCount('venues', 3);
     }
+
+    private function agePoolContext(): array
+    {
+        [$event, $draws, $venues, $options] = $this->context();
+        $draws[0]->update(['drawName'=>'U/15 Boys']);
+        $draws[1]->update(['drawName'=>'U/15 Girls']);
+        $draws[2]->update(['drawName'=>'U/19 round robin']);
+        $venues[0]->forceFill(['name'=>'Sports Club'])->save();
+        $venues[1]->forceFill(['name'=>'High School'])->save();
+        $venues[2]->forceFill(['name'=>'Primary School'])->save();
+        $event->venues()->updateExistingPivot($venues[0]->id, ['num_courts'=>2]);
+        $options['day_court_labels'][$venues[0]->id] = ['1', '2'];
+        $options['day_venue_groups'] = [$venues[0]->id=>['A'=>['1'], 'B'=>['2']]];
+        $options['full_day_destination_pools'] = ['age:15'=>[(string) $venues[1]->id, (string) $venues[2]->id],
+            'age:19'=>[$venues[0]->id.':A', $venues[0]->id.':B']];
+        return [$event, $draws, $venues, $options];
+    }
+
+    public function test_age_group_pools_share_across_disciplines_and_restrict_automatic_ties_to_the_chosen_venues(): void
+    {
+        [$event, $draws, $venues, $options] = $this->agePoolContext();
+        $scheduler = app(EventVenueScheduleService::class);
+        $definitions = collect($scheduler->fullDayDestinationPools($event))->keyBy('key');
+        $this->assertSame([$draws[0]->id, $draws[1]->id], $definitions['age:15']['draw_ids']);
+        $this->assertSame([$draws[2]->id], $definitions['age:19']['draw_ids']);
+        $preview = $scheduler->preview($event, $options);
+        $this->assertEmpty($preview['unscheduled']);
+        $this->assertCount(6, $preview['matches']);
+        foreach ($preview['matches'] as $row) {
+            if ($row['draw_id']===$draws[2]->id) {
+                $this->assertSame($venues[0]->id, $row['venue_id']);
+                $this->assertContains($row['venue_group'], ['A', 'B']);
+            } else $this->assertContains($row['venue_id'], [$venues[1]->id, $venues[2]->id]);
+        }
+        $this->assertNotSame($preview['revision'], $scheduler->preview($event, array_replace($options, ['full_day_destination_pools'=>[]]))['revision']);
+        $reordered = $options;
+        $reordered['full_day_destination_pools']['age:15'] = array_reverse($reordered['full_day_destination_pools']['age:15']);
+        $this->assertSame($preview['matches'], $scheduler->preview($event, $reordered)['matches']);
+        $this->assertSame($preview['revision'], $scheduler->preview($event, $reordered)['revision']);
+        $scheduler->apply($event, $options, $preview['revision']);
+        $audit = \App\Models\DrawAuditLog::where('draw_id', $draws[0]->id)->latest('id')->first()->payload;
+        $this->assertEquals($options['full_day_destination_pools'], $audit['full_day_options']['full_day_destination_pools']);
+    }
+
+    public function test_age_group_pools_reject_empty_foreign_unselected_destinations_and_manual_overrides_outside_the_pool(): void
+    {
+        [$event, $draws, $venues, $options] = $this->agePoolContext();
+        $scheduler = app(EventVenueScheduleService::class);
+        foreach ([['age:15'=>[]], ['age:99'=>[(string) $venues[1]->id]], ['age:15'=>['999999']],
+            ['age:15'=>[(string) $venues[0]->id]], ['age:15'=>[$venues[0]->id.':C']],
+            ['age:15'=>[(string) $venues[1]->id, (string) $venues[1]->id]]] as $pools) {
+            try { $scheduler->preview($event, array_replace($options, ['full_day_destination_pools'=>$pools])); $this->fail('Expected invalid pool rejection'); }
+            catch (\InvalidArgumentException $exception) { $this->assertNotEmpty($exception->getMessage()); }
+        }
+        $tie = collect($scheduler->fullDayTies($event))->firstWhere('draw_id', $draws[0]->id);
+        $options['full_day_tie_destinations'] = [$tie['key']=>['venue_id'=>$venues[0]->id, 'group'=>'A']];
+        try { $scheduler->preview($event, $options); $this->fail('Expected manual pool conflict'); }
+        catch (\InvalidArgumentException $exception) { $this->assertStringContainsString('outside its age group', $exception->getMessage()); }
+        $options['full_day_tie_destinations'][$tie['key']] = ['venue_id'=>$venues[2]->id, 'group'=>null];
+        $this->assertEmpty($scheduler->preview($event, $options)['unscheduled']);
+        $this->assertSame(0, TeamFixture::whereNotNull('scheduled_at')->count());
+    }
+
+    public function test_age_group_pool_cannot_exclude_the_venue_of_a_played_rubber_in_its_tie(): void
+    {
+        [$event, $draws, $venues, $options] = $this->agePoolContext();
+        $played = TeamFixture::where('draw_id', $draws[0]->id)->first();
+        $played->update(['match_status'=>1, 'scheduled_at'=>'2026-10-23 08:00', 'venue_id'=>$venues[1]->id, 'court_label'=>'1', 'duration_min'=>60]);
+        $options['full_day_destination_pools']['age:15'] = [(string) $venues[2]->id];
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('pool conflicts with a fixed rubber');
+        app(EventVenueScheduleService::class)->preview($event, $options);
+    }
+
+    public function test_unknown_age_falls_back_to_its_draw_pool_and_unselected_age_pools_are_rejected(): void
+    {
+        [$event, $draws, $venues, $options] = $this->agePoolContext();
+        $draws[2]->update(['drawName'=>'Open mixed teams']);
+        $scheduler = app(EventVenueScheduleService::class);
+        $definitions = collect($scheduler->fullDayDestinationPools($event))->keyBy('key');
+        $this->assertSame('Open mixed teams', $definitions['draw:'.$draws[2]->id]['label']);
+        $options['draw_ids'] = [$draws[0]->id];
+        $options['draw_rounds'] = [['draw_id'=>$draws[0]->id, 'rounds'=>[1]]];
+        $options['full_day_destination_pools'] = ['draw:'.$draws[2]->id=>[(string) $venues[1]->id]];
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('selected age groups or draws');
+        $scheduler->preview($event, $options);
+    }
+
+    public function test_http_age_group_pools_preview_save_reload_and_reject_an_explicit_empty_pool(): void
+    {
+        [$event, $draws, $venues, $options] = $this->agePoolContext();
+        Role::firstOrCreate(['name'=>'admin', 'guard_name'=>'web']);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id'=>$event->id, 'user_id'=>$admin->id]);
+        $this->actingAs($admin);
+        $url = route('backend.event-venue-schedule.calendar.full-day', ['event'=>$event->id, 'date'=>'2026-10-23']);
+        $payload = ['date'=>'2026-10-23', 'draw_ids'=>$options['draw_ids'],
+            'rounds'=>collect($options['draw_rounds'])->mapWithKeys(fn ($row) => [$row['draw_id']=>$row['rounds']])->all(),
+            'venue_ids'=>$options['venue_ids'], 'court_labels'=>$options['day_court_labels'], 'venue_groups'=>$options['day_venue_groups'],
+            'destination_pools'=>$options['full_day_destination_pools'], 'start_time'=>'08:00', 'end_time'=>'10:00', 'duration'=>60, 'player_rest'=>0, 'court_gap'=>0, 'action'=>'preview'];
+        $response = $this->post($url, $payload)->assertOk()->assertSee('Assign venues to age groups')->assertSee('Venues for U/15')->assertSee('Venues for U/19')->assertSee('All selected venues');
+        if (getenv('CT_DAY_EDIT_BROWSER_FIXTURE') === '1') file_put_contents(storage_path('framework/testing/full-day-age-pools.html'), $response->getContent());
+        $this->post($url, array_replace($payload, ['action'=>'save', 'revision'=>$response->viewData('preview')['revision']]))->assertRedirect();
+        $response = $this->get($url)->assertOk();
+        $this->assertEquals($options['full_day_destination_pools'], $response->viewData('values')['destination_pools']);
+        $payload['destination_pools']['age:15'] = [''];
+        $this->post($url, $payload)->assertRedirect()->assertSessionHasErrors('schedule');
+        $this->assertDatabaseCount('team_fixtures', 6);
+        $this->assertSame(6, TeamFixture::whereNotNull('scheduled_at')->count());
+    }
 }

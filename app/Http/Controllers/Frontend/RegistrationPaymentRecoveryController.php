@@ -28,13 +28,17 @@ class RegistrationPaymentRecoveryController extends Controller
         }
         abort_unless(in_array($recovery->status, ['prepared', 'notified'], true), 409);
 
-        $order = DB::transaction(fn () => $recoveryService->validatePrepared($recovery));
+        $order = $recoveryService->startCheckout($recovery, $request->user());
         abort_unless($order && (int) $order->user_id === (int) $recovery->user_id, 404);
 
         abort_unless(($order->status ?? null) === 'pending', 409);
         abort_unless(round((float) $recovery->amount_due, 2) === round((float) $order->items->sum('item_price'), 2), 409);
 
-        app(RegistrationPaymentService::class)->reservePayment($order, 0, (float) $recovery->amount_due);
+        if ($order->payfast_handed_off_at) {
+            app(\App\Domain\Payments\Services\UnpaidCheckoutExpiryService::class)->assertAvailable($order);
+        } else {
+            app(RegistrationPaymentService::class)->reservePayment($order, 0, (float) $recovery->amount_due);
+        }
         $payfast = new Payfast();
         $payfast->setMode(config('services.payfast.sandbox') ? 0 : 1);
 
@@ -53,7 +57,7 @@ class RegistrationPaymentRecoveryController extends Controller
         $recoveryService = app(RegistrationPaymentRecoveryService::class);
         $recoveryService->assertRecoveryLinkActive($recovery);
         abort_unless(in_array($recovery->status, ['prepared', 'notified'], true), 409);
-        $order = DB::transaction(fn () => $recoveryService->validatePrepared($recovery));
+        $order = $recoveryService->startCheckout($recovery, $request->user());
         abort_if((int) $order->pay_status === 1 || $order->payfast_paid, 409);
         $order = app(RegistrationPaymentService::class)->preparePayfastHandoff(
             $order,

@@ -9,7 +9,11 @@
       <h3>Complete your registration payment</h3>
       <p class="text-muted">Your registration remains reserved. Pay the exact outstanding amount securely through PayFast.</p>
       <div class="alert alert-info"><strong>Amount due:</strong> R {{ number_format((float) $recovery->amount_due, 2) }}</div>
-      <a class="btn btn-danger btn-lg w-100" href="{{ $paymentUrl }}">Continue to PayFast</a>
+      @if($order->payfast_handed_off_at)
+        <div class="alert alert-info">Your payment has been sent to PayFast and is awaiting confirmation.</div>
+      @else
+        <a class="btn btn-danger btn-lg w-100" href="{{ $paymentUrl }}">Continue to PayFast</a>
+      @endif
     </div>
   </div>
 </div>

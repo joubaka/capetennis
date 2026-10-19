@@ -158,6 +158,36 @@ final class EventVenueScheduleService
             $fullDayVenueWindows[$venueId] = ['start'=>$opens->format('Y-m-d H:i:s'), 'end'=>$closes->format('Y-m-d H:i:s')];
         }
         ksort($fullDayVenueWindows);
+        $destinationPools = [];
+        $drawPoolKeys = [];
+        $poolCourtLabels = [];
+        $poolDefinitions = $fullDay ? $this->destinationPoolDefinitions($draws) : [];
+        foreach ($poolDefinitions as $definition) foreach ($definition['draw_ids'] as $drawId) $drawPoolKeys[$drawId] = $definition['key'];
+        $allowedPoolKeys = array_column($poolDefinitions, 'key');
+        foreach ($options['full_day_destination_pools'] ?? [] as $key => $destinations) {
+            if (! $fullDay || ! in_array($key, $allowedPoolKeys, true) || ! is_array($destinations) || ! $destinations) {
+                throw new \InvalidArgumentException('Choose at least one venue or court group for each custom pool in the selected age groups or draws.');
+            }
+            foreach ($destinations as $destination) {
+                if (! is_string($destination) || ! preg_match('/^(\d+)(?::([AB]))?$/', $destination, $parts)) throw new \InvalidArgumentException('Choose valid venue or court group destinations for each age group.');
+                $venueId = (int) $parts[1];
+                $group = $parts[2] ?? null;
+                if (empty($courtLabels[$venueId]) || (isset($dayVenueGroups[$venueId]) ? $group === null || ! isset($dayVenueGroups[$venueId][$group]) : $group !== null)) {
+                    throw new \InvalidArgumentException('Age-group pools can use selected venues and their active court groups only.');
+                }
+                $token = (string) $venueId.($group ? ':'.$group : '');
+                if (in_array($token, $destinationPools[$key] ?? [], true)) throw new \InvalidArgumentException('Choose each destination once per age-group pool.');
+                $destinationPools[$key][] = $token;
+                $poolCourtLabels[$key][$venueId] = array_values(array_unique(array_merge($poolCourtLabels[$key][$venueId] ?? [], $group ? $dayVenueGroups[$venueId][$group] : $courtLabels[$venueId])));
+            }
+            sort($destinationPools[$key]);
+            $orderedCourts = [];
+            foreach ($courtLabels as $venueId => $labels) {
+                if (isset($poolCourtLabels[$key][$venueId])) $orderedCourts[$venueId] = array_values(array_intersect($labels, $poolCourtLabels[$key][$venueId]));
+            }
+            $poolCourtLabels[$key] = $orderedCourts;
+        }
+        ksort($destinationPools);
 
         $allocations = DB::table('draw_venue_court_allocations')->whereIn('draw_id', $draws->pluck('id'))
             ->get()->groupBy(fn ($row) => $row->draw_id.'|'.$row->venue_id);
@@ -216,7 +246,7 @@ final class EventVenueScheduleService
                 $slot = $this->nodeSlot($node);
                 if ($fullDay) {
                     $node['selected_round'] = $node['selected_round'] && (! $slot?->time || Carbon::parse($slot->time)->toDateString() === $fullDay);
-                    if ($node['selected_round']) $node['venue_courts'] = array_filter($courtLabels);
+                    if ($node['selected_round']) $node['venue_courts'] = $poolCourtLabels[$drawPoolKeys[$draw->id]] ?? array_filter($courtLabels);
                 }
                 if ($dayScope) {
                     $node['selected_round'] = $slot?->time && Carbon::parse($slot->time)->toDateString() === $dayScope;
@@ -341,6 +371,7 @@ final class EventVenueScheduleService
         $tieVenues = [];
         $tieGroups = [];
         $plannedTieKeys = collect($pending)->pluck('tie_allocation_key')->filter()->flip();
+        $plannedTieNodes = collect($pending)->groupBy('tie_allocation_key');
         $tieDestinations = [];
         foreach ($options['full_day_tie_destinations'] ?? [] as $key => $destination) {
             if (! $fullDay || ! $plannedTieKeys->has($key) || ! is_array($destination)) throw new \InvalidArgumentException('Choose destinations only for ties in the selected draws, rounds and day.');
@@ -349,6 +380,10 @@ final class EventVenueScheduleService
             if (empty($courtLabels[$venueId]) || (isset($dayVenueGroups[$venueId])
                 ? ! is_string($group) || ! isset($dayVenueGroups[$venueId][$group]) : $group !== null)) {
                 throw new \InvalidArgumentException('Choose a selected venue or one of its active court groups for each tie.');
+            }
+            $destinationCourts = $group ? $dayVenueGroups[$venueId][$group] : $courtLabels[$venueId];
+            foreach ($plannedTieNodes[$key] as $node) {
+                if (! array_intersect($node['venue_courts'][$venueId] ?? [], $destinationCourts)) throw new \InvalidArgumentException('The chosen tie destination is outside its age group\'s allowed venues. Change the age-group pool or choose another tie destination.');
             }
             $tieDestinations[$key] = ['venue_id'=>$venueId, 'group'=>$group];
             $tieVenues[$key] = $venueId;
@@ -364,6 +399,10 @@ final class EventVenueScheduleService
                 $group = $courtGroups[$venueId][ScheduleAvailability::courtKey((string) $slot->court)] ?? null;
                 if (isset($dayVenueGroups[$venueId]) && $group === null) throw new \InvalidArgumentException('A fixed rubber uses a court outside the selected groups. Include that court before planning the rest of its tie.');
                 if (array_key_exists($key, $tieGroups) && $tieGroups[$key] !== $group) throw new \InvalidArgumentException('The chosen tie group conflicts with a fixed rubber, or the fixed tie is already split between court groups. Review its saved matches or change the court groups.');
+                foreach ($plannedTieNodes[$key] as $pendingNode) {
+                    $anchorCourts = $group ? $dayVenueGroups[$venueId][$group] : ($courtLabels[$venueId] ?? []);
+                    if (! array_intersect($pendingNode['venue_courts'][$venueId] ?? [], $anchorCourts)) throw new \InvalidArgumentException('The age-group venue pool conflicts with a fixed rubber in this tie. Include its venue and court group before planning the remaining rubbers.');
+                }
                 $tieVenues[$key] = (int) $slot->venue_id;
                 $tieGroups[$key] = $group;
             }
@@ -683,6 +722,7 @@ final class EventVenueScheduleService
             'day_venue_groups' => $dayVenueGroups,
             'full_day_venue_windows' => $fullDayVenueWindows,
             'full_day_tie_destinations' => $tieDestinations,
+            'full_day_destination_pools' => $destinationPools,
             'tie_allocation' => $tieAllocation,
             'draw_starts' => $drawStarts->map(fn ($time, $drawId) => ['draw_id' => (int) $drawId,
                 'start' => $time->format('Y-m-d H:i:s')])->values()->all(),
@@ -1246,6 +1286,25 @@ final class EventVenueScheduleService
                 'matchup'=>($fixture->teamTie?->home_side_name ?: $fixture->region1Name?->name ?: 'Home team').' vs '.($fixture->teamTie?->away_side_name ?: $fixture->region2Name?->name ?: 'Away team')];
         }
         return array_values($ties);
+    }
+
+    public function fullDayDestinationPools(Event $event): array
+    {
+        return $this->destinationPoolDefinitions($event->draws()->with('categoryEvent.category')->get());
+    }
+
+    private function destinationPoolDefinitions(Collection $draws): array
+    {
+        $pools = [];
+        $programme = app(ScheduleProgramme::class);
+        foreach ($draws as $draw) {
+            $age = $programme->age($draw);
+            $key = $age === null ? 'draw:'.$draw->id : 'age:'.$age;
+            $pools[$key] ??= ['key'=>$key, 'label'=>$age === null ? $draw->drawName : 'U/'.$age, 'draw_ids'=>[], 'draw_names'=>[]];
+            $pools[$key]['draw_ids'][] = (int) $draw->id;
+            $pools[$key]['draw_names'][] = $draw->drawName;
+        }
+        return array_values($pools);
     }
 
     private function courtLabels(Event $event, Collection $draws, Collection $venues): array

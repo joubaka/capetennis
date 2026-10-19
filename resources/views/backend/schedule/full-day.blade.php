@@ -50,7 +50,21 @@
         @endif
       </div></div>@endforeach
     </div></fieldset>
-    <fieldset class="mb-3"><legend class="h5">Place ties at venues</legend>
+    <fieldset class="mb-4"><legend class="h4">Assign venues to age groups</legend>
+      <p>Choose which venues each age group may use. For example, give U/15 the two school venues and U/19 the two Sports Club court groups. Age groups may share destinations if you select the same ones.</p>
+      <div class="row g-3">@foreach($poolOptions as $pool)
+        @php($savedPools = old('destination_pools',$values['destination_pools']))
+        @php($customPool = array_key_exists($pool['key'],$savedPools))
+        <div class="col-12 col-md-6" data-destination-pool="{{ $pool['key'] }}" data-draw-ids="{{ json_encode($pool['draw_ids']) }}" data-initial-choices="{{ json_encode(array_values(array_filter($savedPools[$pool['key']] ?? [], fn($value)=>$value!==null && $value!==''))) }}">
+          <div class="border rounded p-3 h-100"><h5>Venues for {{ $pool['label'] }}</h5><p class="small text-muted">{{ implode(' · ',$pool['draw_names']) }}</p>
+            <label class="form-label w-100">Allowed venues<select class="form-select day-pool-mode"><option value="all" @selected(!$customPool)>All selected venues</option><option value="choose" @selected($customPool)>Choose venues for {{ $pool['label'] }}</option></select></label>
+            <div class="day-pool-choices mt-2"><input class="day-pool-present" type="hidden" name="destination_pools[{{ $pool['key'] }}][]" value=""><div class="day-pool-destinations d-grid gap-2"></div></div>
+          </div>
+        </div>
+      @endforeach</div>
+    </fieldset>
+    <details class="mb-3" @if(array_filter(old('tie_destinations',$values['tie_destinations']))) open @endif><summary class="h5" style="min-height:44px">Optional: place individual ties at venues</summary>
+    <fieldset class="mt-3"><legend class="h5">Place ties at venues</legend>
       <p class="small text-muted">Select draws and rounds above, then drag each tie into a venue or court group. You can also use each tie's destination menu. Automatic lets the planner choose. Times are calculated when you preview.</p>
       <p class="small text-muted" id="tie-board-empty">Select draws and rounds to show their available ties.</p>
       <div id="tie-board" class="d-flex gap-3 overflow-auto pb-3" aria-label="Tie destination board">
@@ -67,7 +81,9 @@
         </div></section>
       </div>
       <div id="inactive-ties" hidden></div>
+      <p class="small text-danger mt-2" id="tie-board-status" role="status" aria-live="polite"></p>
     </fieldset>
+    </details>
     <div class="row g-3 mb-3">@foreach(['start_time'=>'Start time','end_time'=>'Finish by','duration'=>'Match minutes','player_rest'=>'Player rest minutes','court_gap'=>'Court gap minutes'] as $key=>$label)<div class="col-6 col-lg-2"><label for="full-day-{{ $key }}" class="form-label">{{ $label }}</label><input class="form-control" id="full-day-{{ $key }}" name="{{ $key }}" type="{{ str_ends_with($key,'time') ? 'time' : 'number' }}" @if(!str_ends_with($key,'time')) min="{{ $key==='duration'?1:0 }}" max="{{ $key==='court_gap'?120:480 }}" @endif value="{{ old($key,$values[$key]) }}" required></div>@endforeach</div>
     <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary" name="action" value="preview">Preview full day</button>
     @if($preview)<input type="hidden" name="revision" value="{{ $preview['revision'] }}"><button class="btn btn-success" id="save-full-day" name="action" value="save" @disabled(count($preview['unscheduled'])>0 || count($preview['matches'])===0)>Save full day preview</button>@endif</div>
@@ -89,6 +105,7 @@
   const board=document.getElementById('tie-board');
   const tieCards=[...form.querySelectorAll('[data-tie-key]')];
   const renderTieBoard=()=>{
+    const selectedDraws=[...form.querySelectorAll('.day-draw:checked:not(:disabled)')].map(input=>input.value);
     const destinations=[{value:'',label:'Automatic / unassigned'}];
     form.querySelectorAll('[data-day-venue]').forEach(card=>{
       const venue=card.querySelector('.day-venue');
@@ -103,6 +120,27 @@
         });
       } else destinations.push({value:venue.value,label:`${name} (courts ${courts.join(', ')})`});
     });
+    const drawPools=new Map();
+    form.querySelectorAll('[data-destination-pool]').forEach(pool=>{
+      const drawIds=JSON.parse(pool.dataset.drawIds).map(String);
+      const active=drawIds.some(id=>selectedDraws.includes(id));pool.hidden=!active;
+      const mode=pool.querySelector('.day-pool-mode');const custom=mode.value==='choose';mode.disabled=!active;
+      const container=pool.querySelector('.day-pool-destinations');
+      let chosen=pool.dataset.initialized ? [...container.querySelectorAll('input:checked')].map(input=>input.value) : JSON.parse(pool.dataset.initialChoices);
+      if(!custom) chosen=destinations.filter(destination=>destination.value).map(destination=>destination.value);
+      pool.dataset.initialized='1';container.replaceChildren();
+      const available=destinations.filter(destination=>destination.value);
+      const stale=chosen.filter(value=>!available.some(destination=>destination.value===value));
+      [...available,...stale.map(value=>({value,label:'Unavailable destination — remove this choice'}))].forEach(destination=>{
+        const label=document.createElement('label');label.className='d-flex gap-2 align-items-center';label.style.minHeight='44px';
+        const input=document.createElement('input');input.type='checkbox';input.className='form-check-input';input.name=`destination_pools[${pool.dataset.destinationPool}][]`;input.value=destination.value;input.checked=chosen.includes(destination.value);input.disabled=!active || !custom;
+        const text=document.createElement('span');text.textContent=destination.label;label.append(input,text);container.append(label);
+      });
+      pool.querySelector('.day-pool-choices').hidden=!custom;
+      pool.querySelector('.day-pool-present').disabled=!active || !custom;
+      mode.setCustomValidity(active && custom && (chosen.length===0 || stale.length>0) ? 'Choose at least one available venue or court group for this age group; remove unavailable destinations.' : '');
+      drawIds.forEach(id=>drawPools.set(id,custom ? new Set(chosen) : null));
+    });
     board.replaceChildren();
     const lanes=new Map();
     destinations.forEach(destination=>{
@@ -112,7 +150,6 @@
       const lane=document.createElement('div');lane.className='tie-drop-lane';lane.dataset.tieDestination=destination.value;
       column.dataset.tieDestination=destination.value;column.append(title,hint,lane);board.append(column);lanes.set(destination.value,lane);
     });
-    const selectedDraws=[...form.querySelectorAll('.day-draw:checked:not(:disabled)')].map(input=>input.value);
     const selectedRounds=[...form.querySelectorAll('.day-round:checked:not(:disabled)')];
     let activeCount=0;
     tieCards.forEach(card=>{
@@ -121,11 +158,14 @@
       const active=selectedDraws.includes(card.dataset.drawId) && selectedRounds.some(input=>input.name===`rounds[${card.dataset.drawId}][]` && input.value===card.dataset.round)
         && (dates.includes('unscheduled') || dates.includes(document.getElementById('full-day-date').value));
       select.disabled=!active;select.replaceChildren();
-      destinations.forEach(destination=>{const option=document.createElement('option');option.value=destination.value;option.textContent=destination.value ? destination.label : 'Automatic';select.append(option);});
-      const valid=lanes.has(value);
+      const pool=drawPools.get(card.dataset.drawId);
+      const allowed=destinations.filter(destination=>!destination.value || !pool || pool.has(destination.value));
+      card.allowedTieDestinations=new Set(allowed.map(destination=>destination.value));
+      allowed.forEach(destination=>{const option=document.createElement('option');option.value=destination.value;option.textContent=destination.value ? destination.label : 'Automatic';select.append(option);});
+      const valid=card.allowedTieDestinations.has(value);
       if(!valid) {const option=document.createElement('option');option.value=value;option.textContent='Unavailable destination — choose again';select.append(option);}
       select.value=value;select.classList.toggle('is-invalid',active && !valid);select.setCustomValidity(active && !valid ? 'Choose an available venue or court group for this tie.' : '');
-      if(active) {activeCount++;(lanes.get(value)||lanes.get('')).append(card);} else document.getElementById('inactive-ties').append(card);
+      if(active) {activeCount++;(valid ? lanes.get(value) : lanes.get('')).append(card);} else document.getElementById('inactive-ties').append(card);
     });
     document.getElementById('tie-board-empty').hidden=activeCount>0;
   };
@@ -161,6 +201,8 @@
     const column=event.target.closest('.tie-board-column');if(!column) return;event.preventDefault();
     const key=event.dataTransfer.getData('text/plain');const card=tieCards.find(item=>item.dataset.tieKey===key);
     if(!card || card.querySelector('.day-tie-destination').disabled) return;
+    if(!card.allowedTieDestinations.has(column.dataset.tieDestination)) {document.getElementById('tie-board-status').textContent='That destination is outside this age group\'s allowed venues. Change its venue choices first.';column.classList.remove('tie-drop-active');return;}
+    document.getElementById('tie-board-status').textContent='';
     card.querySelector('.day-tie-destination').value=column.dataset.tieDestination;sync();invalidate();
   });
   form.addEventListener('change',event=>{
