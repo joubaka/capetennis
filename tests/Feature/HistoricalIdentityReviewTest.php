@@ -3,7 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\{Category, CategoryEvent, Draw, Event, HistoricalIdentityProposal, NoProfileTeamPlayer, Player, Team, TeamFixture, TeamPlayer, TeamRegion, TeamTie, User};
-use App\Services\Performance\{HistoricalIdentityReviewService, PlayerAbilityRefreshState, PlayerPerformanceHistoryService, PlayerSharedAbilityService};
+use App\Services\Performance\{HistoricalIdentityReviewService, PlayerPerformanceHistoryService, PlayerSharedAbilityService};
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +14,17 @@ use Tests\TestCase;
 class HistoricalIdentityReviewTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_review_table_indexes_have_mysql_compatible_names_and_expected_lookup_columns(): void
+    {
+        $indexes = \Illuminate\Support\Facades\Schema::getIndexes('historical_identity_proposals');
+        foreach ($indexes as $index) {
+            $this->assertLessThanOrEqual(64, strlen($index['name']));
+        }
+        $lookup = collect($indexes)->firstWhere('name', 'historical_identity_event_fixture_side_idx');
+        $this->assertNotNull($lookup);
+        $this->assertSame(['event_id', 'fixture_player_id', 'side'], $lookup['columns']);
+    }
 
     public function scenario(): array
     {
@@ -152,5 +163,77 @@ class HistoricalIdentityReviewTest extends TestCase
         $this->assertSame([], $preview['added_matches']);
         $this->assertFalse((bool) $s['event']->fresh()->published);
         $this->assertFalse((bool) $s['event']->fresh()->results_published);
+    }
+
+    public function test_conflicting_captured_history_cannot_be_overridden_by_a_proposal(): void
+    {
+        $s = $this->scenario(); $url = route('backend.player-performance.identity-proposals', $s['event']);
+        foreach (['event_id' => 99999, 'source_team_id' => $s['away']->id, 'category_event_id' => 99999,
+            'region_id' => 99999, 'imported_id' => 99999, 'rank' => 99, 'anchor_id' => 99999,
+            'profile_id' => $s['first']->id, 'linked_profile_id' => $s['second']->id, 'anchor_type' => 'profile'] as $key => $value) {
+            $s['row']->forceFill(['participant_snapshot' => [1 => [$key => $value]]])->save();
+            $this->postJson($url, $this->input($s))->assertUnprocessable()->assertJsonValidationErrors('proposal');
+        }
+        $this->assertDatabaseCount('historical_identity_proposals', 0);
+    }
+
+    public function test_legacy_singles_reverse_labels_preserve_exact_age_and_gender_context(): void
+    {
+        $s = $this->scenario();
+        // Legacy team draws may omit their category relation and encode it in the title.
+        $s['draw']->update(['category_event_id' => null]);
+        $service = app(HistoricalIdentityReviewService::class);
+        foreach (['U/12 Girls Singles', 'U/12 Girls Singles reverse', 'U/12 Girls reverse Singles'] as $label) {
+            $s['draw']->update(['drawName' => $label]);
+            $proposal = $service->propose($s['event'], $this->input($s));
+            $this->assertSame('u12 girls', $proposal->cohort);
+        }
+        foreach (['U/13 Girls Singles reverse', 'U/12 Boys Singles reverse', 'U/12 Girls Singles reverse other', 'U/12 Girls Doubles reverse'] as $label) {
+            $s['draw']->update(['drawName' => $label]);
+            $this->postJson(route('backend.player-performance.identity-proposals', $s['event']), $this->input($s))
+                ->assertUnprocessable()->assertJsonValidationErrors('proposal');
+        }
+        $this->assertDatabaseCount('historical_identity_proposals', 3);
+    }
+
+    public function test_nonconverged_preview_is_withheld_and_preview_payload_cannot_be_saved(): void
+    {
+        $s = $this->scenario(); $service = app(HistoricalIdentityReviewService::class);
+        $proposal = $service->propose($s['event'], $this->input($s));
+        $this->partialMock(\App\Services\Performance\SharedAbilityModel::class)->shouldReceive('fit')->andReturn(['ratings' => [], 'components' => ['bad' => ['converged' => false]]]);
+        $this->postJson(route('backend.player-performance.identity-preview', $s['event']), ['proposals' => [$proposal->id]])->assertUnprocessable()->assertJsonValidationErrors('proposal');
+        $this->expectException(\LogicException::class);
+        app(\App\Services\Performance\PlayerAbilitySnapshotStore::class)->replace(['preview_only' => true], CarbonImmutable::today(), '', []);
+    }
+
+    public function test_cutoff_preview_retains_full_cohorts_and_does_not_mix_disconnected_groups(): void
+    {
+        $s = $this->scenario();
+        // Eleven other directly verified players give an existing 12-player comparison group.
+        for ($rank = 2; $rank <= 12; $rank++) {
+            $player = Player::factory()->female()->create(['dateOfBirth' => '2014-01-01']);
+            TeamPlayer::create(['team_id' => $s['home']->id, 'player_id' => $player->id, 'rank' => $rank]);
+            $fixture = TeamFixture::create(['draw_id' => $s['draw']->id, 'team_tie_id' => $s['fixture']->team_tie_id, 'fixture_type' => 1, 'numSets' => 3, 'match_status' => 1, 'round_nr' => 1, 'match_nr' => $rank]);
+            $fixture->fixturePlayers()->create(['slot_no' => 1, 'team1_id' => $player->id, 'team2_id' => $s['second']->id]);
+            foreach ([1, 2] as $set) { $fixture->teamResults()->create(['set_nr' => $set, 'team1_score' => 6, 'team2_score' => min(4, $rank % 5)]); }
+        }
+        $a = Player::factory()->female()->create(['dateOfBirth' => '2014-01-01']); $b = Player::factory()->female()->create(['dateOfBirth' => '2014-01-01']);
+        TeamPlayer::create(['team_id' => $s['home']->id, 'player_id' => $a->id, 'rank' => 13]);
+        TeamPlayer::create(['team_id' => $s['away']->id, 'player_id' => $b->id, 'rank' => 2]);
+        $fixture = TeamFixture::create(['draw_id' => $s['draw']->id, 'team_tie_id' => $s['fixture']->team_tie_id, 'fixture_type' => 1, 'numSets' => 3, 'match_status' => 1, 'round_nr' => 1, 'match_nr' => 20]);
+        $fixture->fixturePlayers()->create(['slot_no' => 1, 'team1_id' => $a->id, 'team2_id' => $b->id]);
+        foreach ([1, 2] as $set) { $fixture->teamResults()->create(['set_nr' => $set, 'team1_score' => 6, 'team2_score' => 2]); }
+        $service = app(HistoricalIdentityReviewService::class);
+        $proposal = $service->propose($s['event'], $this->input($s));
+        $preview = $service->preview($s['event'], [$proposal->id]);
+        $data = $preview['cohorts']['u12 girls']; $rows = collect($data['rows'])->keyBy('id');
+        $this->assertCount(15, $rows);
+        $this->assertSame(2, $data['before_components']); $this->assertSame(2, $data['after_components']);
+        $this->assertTrue($rows[$s['first']->id]['new_node']);
+        $this->assertTrue($rows[$s['second']->id]['topology_changed']);
+        $this->assertFalse($rows[$a->id]['topology_changed']);
+        $this->assertSame($rows[$a->id]['before'], $rows[$a->id]['after']);
+        $this->assertTrue($rows->contains(fn ($row) => $row['cutoff']));
+        $this->assertTrue($rows->contains(fn ($row) => $row['top10_changed']));
     }
 }

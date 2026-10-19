@@ -114,7 +114,8 @@ final class TeamPlacementCompetitionService
             if ($plan['errors'] || count($plan['selection']['mixed_sides']) * 2 !== count($group['teams'])) $this->fail('Every region needs exactly one boys team and one girls team in this age group, with at least two regions.');
             $draw = new Draw;
             $draw->event_id = $event->id; $draw->category_event_id = $ids[0]; $draw->drawType_id = $type->id;
-            $draw->drawName = $group['label'].' round robin'; $draw->gender = 'mixed';
+            // Legacy draws.gender is an integer; mixed source rosters live in the selection snapshot.
+            $draw->drawName = $group['label'].' round robin'; $draw->gender = 0;
             $draw->team_draw_selection = $plan['selection'] + ['competition' => ['phase' => 'round_robin', 'fingerprint' => $fingerprint, 'group' => $group['label'], 'size' => $group['size'], 'playoff_format' => $playoff]];
             $draw->team_format_snapshot = $rr;
             $draw->team_scoring_rules = app(TeamEventRulesService::class)->defaults() + ['undecided' => true];
@@ -157,7 +158,7 @@ final class TeamPlacementCompetitionService
             if (count($rows) !== $teams->count() || count(array_unique(array_column($rows, 'rank'))) !== count($rows)) $this->fail('Resolve tied standings using the agreed scoring criteria before creating playoffs.');
             $draw = new Draw;
             $draw->event_id = $source->event_id; $draw->drawType_id = $source->drawType_id; $draw->category_event_id = $source->category_event_id;
-            $draw->drawName = $config['group'].' placement playoffs'; $draw->gender = 'mixed';
+            $draw->drawName = $config['group'].' placement playoffs'; $draw->gender = 0;
             $selection['competition'] = ['phase' => 'playoff', 'group' => $config['group'], 'size' => $config['size'], 'source_draw_id' => $source->id, 'qualification' => $rows];
             $draw->team_draw_selection = $selection; $draw->team_format_snapshot = $config['playoff_format'];
             $draw->team_scoring_rules = $source->team_scoring_rules; $draw->save();

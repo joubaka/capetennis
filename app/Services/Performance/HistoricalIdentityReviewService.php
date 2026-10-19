@@ -32,9 +32,15 @@ class HistoricalIdentityReviewService
                 if (!$imported) { continue; }
                 $team = Team::find($imported->team_id);
                 if ($team && app(ImportedMatchIdentityResolver::class)->resolve($row, $side, $team, (int) $event->id)) { continue; }
-                $items[] = ['row' => $row, 'side' => $side, 'imported' => $imported, 'team' => $team, 'linked' => $imported->player_profile ? Player::find($imported->player_profile) : null,
+                $linked = $imported->player_profile ? Player::find($imported->player_profile) : null;
+                $blocker = 'Missing or inconsistent historical identity evidence. A current profile link is not an original attestation.';
+                if ($team && $linked) {
+                    try { $this->validateIdentity($event, (int) $row->id, $side, (int) $team->id, (int) $linked->id); }
+                    catch (ValidationException $error) { $blocker .= ' Current suggestion blocked: '.implode(' ', array_merge(...array_values($error->errors()))); }
+                }
+                $items[] = ['row' => $row, 'side' => $side, 'imported' => $imported, 'team' => $team, 'linked' => $linked,
                     'fingerprint' => $this->sourceFingerprint($row, $team),
-                    'blocker' => 'Missing or inconsistent historical identity evidence. A current profile link is not an original attestation.'];
+                    'blocker' => $blocker];
             }
         }
         $proposals = HistoricalIdentityProposal::where('event_id', $event->id)->orderByDesc('id')->paginate(30, ['*'], 'proposals_page');
@@ -91,14 +97,18 @@ class HistoricalIdentityReviewService
         $rank = (int) $imported->rank;
         $this->require($rank > 0 && NoProfileTeamPlayer::where('team_id', $teamId)->where('rank', $rank)->count() === 1, 'Imported roster rank is missing or ambiguous.');
         $snapshot = $row->participant_snapshot[$side] ?? [];
-        $this->require(!$snapshot || ((!isset($snapshot['source_team_id']) || (int) $snapshot['source_team_id'] === $teamId)
-            && (!isset($snapshot['rank']) || (int) $snapshot['rank'] === $rank)), 'Existing historical evidence conflicts with the proposed source.');
+        foreach (['event_id' => (int) $event->id, 'source_team_id' => $teamId, 'category_event_id' => (int) $team->category_event_id,
+            'region_id' => (int) $team->region_id, 'imported_id' => (int) $importedId, 'rank' => $rank, 'anchor_id' => (int) $importedId] as $key => $expected) {
+            $this->require(!array_key_exists($key, $snapshot) || (int) $snapshot[$key] === $expected, 'Existing historical '.$key.' evidence conflicts with the proposed source.');
+        }
+        $this->require(empty($snapshot['profile_id']) && (!isset($snapshot['anchor_type']) || $snapshot['anchor_type'] === 'imported')
+            && (empty($snapshot['linked_profile_id']) || (int) $snapshot['linked_profile_id'] === $playerId), 'Existing historical profile or anchor evidence conflicts with the proposal.');
         $label = $team->category->category->name;
         $cohort = app(PlayerSharedAbilityService::class)->cohort(app(PlayerPerformancePilotService::class)->division($label)['cohort']);
         $this->require((bool) preg_match('/^u(\d{1,2}) (boys|girls)$/', $cohort, $parts), 'Source category must have an exact age and gender.');
         $drawLabel = $fixture->draw->categoryEvent?->category?->name ?? $fixture->draw->drawName;
         $drawCohort = app(PlayerSharedAbilityService::class)->cohort(app(PlayerPerformancePilotService::class)->division($drawLabel)['cohort']);
-        $this->require($drawCohort === $cohort || preg_replace('/ (?:reverse )?singles$/', '', $drawCohort) === $cohort, 'Draw and source category disagree.');
+        $this->require($drawCohort === $cohort || preg_replace('/ (?:reverse singles|singles(?: reverse)?)$/', '', $drawCohort) === $cohort, 'Draw and source category disagree.');
         $player = Player::findOrFail($playerId);
         $this->require(!$imported->player_profile || (int) $imported->player_profile === $playerId, 'The current imported profile link conflicts with this suggestion; resolve that conflict separately before preview.');
         $mirrors = $team->team_players()->where('rank', $rank)->get();
@@ -168,6 +178,9 @@ class HistoricalIdentityReviewService
             $fixtureIds = $proposals->map(fn ($proposal) => TeamFixturePlayer::findOrFail($proposal->fixture_player_id)->team_fixture_id)->unique()->all();
             $sourceChecks = collect(iterator_to_array(app(PlayerPerformanceHistoryService::class)->teamMatches($event, null, $asOf, new HistoricalIdentityPreviewContext($identities))))
                 ->filter(fn ($match) => in_array($match['fixture_id'], $fixtureIds, true))->map(fn ($match) => ['fixture_id' => $match['fixture_id'], 'reason' => $match['reason']])->values()->all();
+            foreach (array_diff($fixtureIds, array_column($sourceChecks, 'fixture_id')) as $missing) {
+                $sourceChecks[] = ['fixture_id' => $missing, 'reason' => 'The canonical source reader excludes this fixture (publication, tie, date or discipline gate). Identity evidence alone cannot make it count.'];
+            }
             $this->require(!$baseline['reason'] && !$candidate['reason'] && hash_equals($fingerprint, $service->fingerprint()), 'Source data changed or the calculation exceeded its safe limits. No preview is available.');
             return ['preview_only' => true, 'as_of' => $asOf->toDateString(), 'fingerprint' => $fingerprint, 'proposals' => $proposals, 'source_checks' => $sourceChecks,
                 'cohorts' => $this->comparison($baseline, $candidate),
@@ -181,27 +194,36 @@ class HistoricalIdentityReviewService
         foreach (array_unique([...array_keys($before['cohorts']), ...array_keys($after['cohorts'])]) as $label) {
             $old = $before['cohorts'][$label] ?? ['ratings' => [], 'components' => []];
             $new = $after['cohorts'][$label] ?? ['ratings' => [], 'components' => []];
-            $positions = function (array $data): array {
+            $positions = function (array $data, array $names): array {
                 $out = [];
                 foreach ($data['components'] as $component => $group) {
                     $members = $group['members'];
-                    usort($members, fn ($a, $b) => ($data['ratings'][$b]['strength'] <=> $data['ratings'][$a]['strength']) ?: ($a <=> $b));
+                    usort($members, fn ($a, $b) => ($data['ratings'][$b]['score'] <=> $data['ratings'][$a]['score'])
+                        ?: strnatcasecmp($names[$a] ?? '', $names[$b] ?? '') ?: ($a <=> $b));
                     foreach ($members as $index => $id) { $out[$id] = $index + 1; }
                 }
                 return $out;
             };
-            $oldPositions = $positions($old); $newPositions = $positions($new); $rows = [];
+            $oldPositions = $positions($old, $before['names']); $newPositions = $positions($new, $after['names']); $rows = [];
             foreach (array_unique([...array_keys($old['ratings']), ...array_keys($new['ratings'])]) as $id) {
                 $a = $old['ratings'][$id] ?? null; $b = $new['ratings'][$id] ?? null;
                 $oldMembers = $a ? $old['components'][$a['component']]['members'] : [];
                 $newMembers = $b ? $new['components'][$b['component']]['members'] : [];
                 sort($oldMembers); sort($newMembers);
+                $boundaryTie = function (array $members, array $positions, array $data) use ($id): bool {
+                    $tenth = collect($members)->first(fn ($member) => ($positions[$member] ?? 0) === 10);
+                    return $tenth !== null && count(array_filter($members, fn ($member) => $data['ratings'][$member]['score'] === $data['ratings'][$tenth]['score'])) > 1
+                        && $data['ratings'][$id]['score'] === $data['ratings'][$tenth]['score'];
+                };
                 $rows[] = ['id' => $id, 'name' => $after['names'][$id] ?? $before['names'][$id] ?? 'Player #'.$id,
                     'before' => $a, 'after' => $b, 'old_position' => $oldPositions[$id] ?? null, 'new_position' => $newPositions[$id] ?? null,
                     'topology_changed' => $oldMembers !== $newMembers, 'new_node' => !$a,
+                    'boundary_tie' => ($a && $boundaryTie($oldMembers, $oldPositions, $old)) || ($b && $boundaryTie($newMembers, $newPositions, $new)),
                     'cutoff' => (($oldPositions[$id] ?? 0) >= 8 && ($oldPositions[$id] ?? 99) <= 12) || (($newPositions[$id] ?? 0) >= 8 && ($newPositions[$id] ?? 99) <= 12),
                     'top10_changed' => (($oldPositions[$id] ?? 999) <= 10) !== (($newPositions[$id] ?? 999) <= 10)];
             }
+            usort($rows, fn ($a, $b) => strcmp($a['after']['component'] ?? $a['before']['component'] ?? '', $b['after']['component'] ?? $b['before']['component'] ?? '')
+                ?: (($a['new_position'] ?? $a['old_position'] ?? PHP_INT_MAX) <=> ($b['new_position'] ?? $b['old_position'] ?? PHP_INT_MAX)));
             $result[$label] = ['rows' => $rows, 'before_components' => count($old['components']), 'after_components' => count($new['components'])];
         }
         return $result;

@@ -23,7 +23,7 @@ return new class extends Migration
             $table->text('reference');
             $table->text('reason');
             $table->timestamp('created_at');
-            $table->index(['event_id', 'fixture_player_id', 'side']);
+            $table->index(['event_id', 'fixture_player_id', 'side'], 'historical_identity_event_fixture_side_idx');
         });
     }
 

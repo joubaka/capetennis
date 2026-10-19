@@ -664,6 +664,7 @@ Route::prefix('backend')->middleware('auth')->group(function () {
 
   Route::get('player-performance/name-ratings', \App\Http\Controllers\Backend\PlayerRatingBadgeController::class)->middleware('role:super-user')->name('backend.player-performance.badges');
   Route::get('player-performance/ratings', [\App\Http\Controllers\Backend\PlayerRatingLeaderboardController::class, 'site'])->middleware('role:super-user')->name('backend.player-performance.ratings');
+  Route::get('player-performance/masters-review', [\App\Http\Controllers\Backend\MastersQualificationReviewController::class, 'index'])->middleware('role:super-user')->name('backend.player-performance.masters-review');
   Route::post('player-performance/ratings/refresh', [\App\Http\Controllers\Backend\PlayerRatingLeaderboardController::class, 'refresh'])->middleware('role:super-user')->name('backend.player-performance.ratings.refresh');
   Route::get('player-performance/ratings/status', [\App\Http\Controllers\Backend\PlayerRatingLeaderboardController::class, 'status'])->middleware('role:super-user')->name('backend.player-performance.ratings.status');
   Route::get('events/{event}/player-ratings', [\App\Http\Controllers\Backend\PlayerRatingLeaderboardController::class, 'event'])->middleware('role:super-user')->name('backend.player-performance.event-ratings');

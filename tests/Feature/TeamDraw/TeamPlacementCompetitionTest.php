@@ -60,6 +60,8 @@ class TeamPlacementCompetitionTest extends TestCase
         }
         $response = $this->actingAs($this->admin)->postJson(route('team-draw.competition.store', $this->event), $input)->assertOk();
         $draw = Draw::firstOrFail();
+        $this->assertSame('0', (string) $draw->gender, 'The legacy integer gender column must receive its mixed code.');
+        $this->assertSame('mixed', app(TeamStandingsService::class)->drawGender($draw));
         $response->assertJsonPath('url', route('draw.guide.show', [$this->event, $draw]));
         $guide = app(\App\Services\Draw\DrawSetupGuide::class)->state($draw->fresh());
         $this->assertSame(4, $guide['next'], 'Undecided scoring must allow programme scheduling before publication.');
@@ -117,6 +119,8 @@ class TeamPlacementCompetitionTest extends TestCase
         $draw->update(['published' => 1]);
         $this->actingAs($this->admin)->post(route('team-draw.competition.playoffs', $draw))->assertRedirect();
         $playoff = Draw::findOrFail($draw->fresh()->team_draw_selection['competition']['playoff_draw_id']);
+        $this->assertSame('0', (string) $playoff->gender);
+        $this->assertSame('mixed', app(TeamStandingsService::class)->drawGender($playoff));
         $this->assertSame(2, $playoff->teamTies()->count());
         $this->assertSame(48, $playoff->fixtures()->count());
         $pairs = $playoff->teamTies()->orderBy('tie_nr')->get()->map(fn ($tie) => [$tie->home_team_id, $tie->away_team_id])->all();

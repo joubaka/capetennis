@@ -2,8 +2,6 @@
 
 namespace App\Services\Performance;
 
-use App\Models\{Player, Team};
-
 /** Explicit, request-local counterfactual. Never an original participant attestation. */
 final readonly class HistoricalIdentityPreviewContext
 {

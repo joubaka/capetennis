@@ -18,22 +18,26 @@
 <h2 class="h5 mt-4">2. Record evidence for an excluded imported identity</h2>
 <p>Use the original scorecard, team sheet or other independently checked record to identify the exact participant, team and fixture side. References are plain text and are never fetched automatically. Save a new proposal to revise evidence.</p>
 @forelse($items as $item)
+@php($isOld = old('fixture_player_id') == $item['row']->id && old('side') == $item['side'])
 <details class="border rounded p-3 mb-3" @if(old('fixture_player_id') == $item['row']->id && old('side') == $item['side']) open @endif>
 <summary><strong>Fixture #{{ $item['row']->team_fixture_id }}, side {{ $item['side'] }}: {{ $item['imported']->name }} {{ $item['imported']->surname }}</strong></summary>
 <p>{{ $item['row']->fixture->draw->drawName }} · {{ $item['team']?->name ?? 'Missing source team' }} · rank {{ $item['imported']->rank }}</p>
 <p>Score: {{ $item['row']->fixture->teamResults->sortBy('set_nr')->map(fn($set) => $set->team1_score.'–'.$set->team2_score)->implode(', ') }}. Current linked profile: {{ $item['imported']->player_profile ?: 'none' }}.</p>
+@if($item['linked'])<p>Current link (verify against evidence): {{ $item['linked']->name }} {{ $item['linked']->surname }} · born {{ $item['linked']->dateOfBirth }}.</p>@endif
 <p class="text-warning">{{ $item['blocker'] }}</p>
 <form method="post" action="{{ route('backend.player-performance.identity-proposals', $event) }}">@csrf
 <input type="hidden" name="fixture_player_id" value="{{ $item['row']->id }}"><input type="hidden" name="side" value="{{ $item['side'] }}">
 <input type="hidden" name="source_team_id" value="{{ $item['team']?->id }}"><input type="hidden" name="source_fingerprint" value="{{ $item['fingerprint'] }}">
-<div class="review-grid"><div><label>Suggested player profile ID<input class="form-control" name="suggested_player_id" type="number" min="1" required></label></div>
-<div><label>Source reference (document and page / fixture)<input class="form-control" name="reference" minlength="5" maxlength="2000" required></label></div></div>
-<label class="d-block mt-2">What evidence confirms this player, team and side?<textarea class="form-control" name="evidence" minlength="30" maxlength="10000" rows="3" required></textarea></label>
-<label class="d-block mt-2">Why is this later identity resolution justified?<textarea class="form-control" name="reason" minlength="15" maxlength="3000" rows="2" required></textarea></label>
+<div class="review-grid"><div><label>Suggested player (search above to add candidates)<select class="form-select" name="suggested_player_id" required><option value="">Choose the evidence-backed player</option>
+@foreach($candidates->merge($item['linked'] ? [$item['linked']] : [])->unique('id') as $candidate)<option value="{{ $candidate->id }}" @selected($isOld && old('suggested_player_id') == $candidate->id)>{{ $candidate->name }} {{ $candidate->surname }} · born {{ $candidate->dateOfBirth }}{{ $item['linked']?->id === $candidate->id ? ' · current link (verify)' : '' }}</option>@endforeach
+</select></label></div>
+<div><label>Source reference (document and page / fixture)<input class="form-control" name="reference" minlength="5" maxlength="2000" value="{{ $isOld ? old('reference') : '' }}" required></label></div></div>
+<label class="d-block mt-2">What evidence confirms this player, team and side?<textarea class="form-control" name="evidence" minlength="30" maxlength="10000" rows="3" required>{{ $isOld ? old('evidence') : '' }}</textarea></label>
+<label class="d-block mt-2">Why is this later identity resolution justified?<textarea class="form-control" name="reason" minlength="15" maxlength="3000" rows="2" required>{{ $isOld ? old('reason') : '' }}</textarea></label>
 <button class="btn btn-primary mt-2">Save evidence proposal</button>
 </form></details>
 @empty<p>No unsupported imported participants found on this page.</p>@endforelse
-{{ $rows->withQueryString()->links() }}
+{{ $rows->withQueryString()->links('pagination::bootstrap-5') }}
 <h2 class="h5 mt-4">3. Review proposals and preview ratings</h2>
 <p>Select one revision per match side. Preview uses complete affected cohorts, with positions kept within each connected comparison group. It can take a little time.</p>
 <form method="post" action="{{ route('backend.player-performance.identity-preview', $event) }}">@csrf
@@ -44,6 +48,6 @@
 @empty<p>No proposals saved.</p>@endforelse
 @if($proposals->count())<button class="btn btn-primary">Preview selected proposals</button>@endif
 </form>
-{{ $proposals->withQueryString()->links() }}
+{{ $proposals->withQueryString()->links('pagination::bootstrap-5') }}
 </div></div>
 @endsection

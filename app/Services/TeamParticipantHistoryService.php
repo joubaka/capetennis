@@ -85,7 +85,8 @@ class TeamParticipantHistoryService
     public function matches(TeamFixturePlayer $row, int $side, Team $source, int $eventId): bool
     {
         $snapshot = $row->participant_snapshot[$side] ?? null;
-        return $snapshot && (int) $snapshot['event_id'] === $eventId
+        return $snapshot && isset($snapshot['event_id'], $snapshot['source_team_id'], $snapshot['category_event_id'], $snapshot['region_id'])
+            && (int) $snapshot['event_id'] === $eventId
             && (int) $snapshot['source_team_id'] === (int) $source->id
             && (int) $snapshot['category_event_id'] === (int) $source->category_event_id
             && (int) $snapshot['region_id'] === (int) $source->region_id

@@ -26,6 +26,7 @@
 <div class="card ratings-page"><div class="card-body">
     @if($event)<h2 class="h3">Player ratings</h2>@else<h1 class="h3">Site-wide player ratings</h1>@endif
     @if($event)<p><a class="btn btn-outline-primary" href="{{ route('backend.player-performance.identity-review', $event) }}">Review historical identity evidence</a></p>@endif
+    <p><a class="btn btn-outline-primary" href="{{ route('backend.player-performance.masters-review') }}">Review Masters qualification</a></p>
     <p class="mb-1">Private provisional singles ratings. Compare players only within the same exact cohort and comparison group.</p>
     <details class="ratings-explanation small text-muted mb-2">
         <summary>How to read these ratings</summary>

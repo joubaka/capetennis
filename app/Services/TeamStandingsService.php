@@ -11,6 +11,8 @@ final class TeamStandingsService
 {
     public function drawGender(Draw $draw): string
     {
+        // Composite sides carry both source rosters; legacy draws.gender is numeric.
+        if (!empty($draw->team_draw_selection['mixed_sides'])) { return 'mixed'; }
         $explicit = $this->genderBucket((string) $draw->gender);
         if ($explicit !== 'other') { return $explicit; }
         $category = (int) $draw->categoryEvent?->event_id === (int) $draw->event_id ? $draw->categoryEvent->category?->name : null;

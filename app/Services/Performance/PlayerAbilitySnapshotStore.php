@@ -182,6 +182,7 @@ class PlayerAbilitySnapshotStore
 
     public function replace(array $payload, CarbonImmutable $asOf, string $fingerprint, array $manifest): void
     {
+        if ($payload['preview_only'] ?? false) { throw new \LogicException('Hypothetical review snapshots cannot replace saved ratings.'); }
         foreach ($payload['cohorts'] as $cohort) {
             foreach ($cohort['components'] as $component) {
                 if (!$component['converged']) { throw new \RuntimeException('Incomplete model cannot replace the saved snapshot.'); }

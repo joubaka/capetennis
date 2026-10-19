@@ -3,10 +3,12 @@
 @section('title', 'Historical identity rating preview')
 @section('content')
 <div class="card"><div class="card-body" style="overflow-wrap:anywhere">
+<style>.identity-preview-table{min-width:900px;table-layout:auto;overflow-wrap:normal;word-break:normal}.identity-preview-table th{white-space:normal;min-width:95px}.identity-preview-table td:first-child{min-width:160px}.identity-preview-table td:nth-child(2),.identity-preview-table td:nth-child(3){white-space:nowrap}.identity-preview-table td:last-child{min-width:240px}.table-responsive:focus-visible{outline:2px solid currentColor;outline-offset:2px}</style>
 <h1 class="h3">Historical identity rating preview</h1>
 <p>{{ $event->name }} · evidence as of {{ $preview['as_of'] }} · <a href="{{ route('backend.player-performance.identity-review', $event) }}">Back to evidence review</a></p>
 <div class="alert alert-warning">Hypothetical review only. No records, publication or saved ratings changed. Positions are within each comparison group, not Masters eligibility. When group membership changes, before/after positions are not directly comparable. Primary-school status and age eligibility still require review.</div>
 <p>Proposals: {{ $preview['proposals']->pluck('id')->implode(', ') }}. Newly included scored sources: {{ count($preview['added_matches']) }}.</p>
+<p class="small">Tables keep comparison groups separate and follow proposed positions within each group. Positions use rating, then player name. Equal displayed ratings do not resolve a qualification tie.</p>
 @foreach($preview['source_checks'] as $check)<p class="{{ $check['reason'] ? 'text-danger' : 'text-success' }}">Fixture #{{ $check['fixture_id'] }}: {{ $check['reason'] ?? 'Canonical source checks pass in this hypothetical preview.' }}</p>@endforeach
 @foreach($preview['cohorts'] as $label => $data)
 <h2 class="h4 mt-4">{{ $label }}</h2><p>Comparison groups: {{ $data['before_components'] }} before → {{ $data['after_components'] }} proposed.</p>
