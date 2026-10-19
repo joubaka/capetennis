@@ -352,6 +352,50 @@ final class EventVenueScheduleController extends Controller
             ->header('Cache-Control', 'no-store, private');
     }
 
+    public function fullDay(Request $request, Event $event, EventVenueScheduleService $scheduler)
+    {
+        $this->authorize('event.manage', $event);
+        $data = $request->validate([
+            'date' => ['required', 'date_format:Y-m-d'],
+            'draw_ids' => ['sometimes', 'required', 'array', 'min:1', 'max:200'], 'draw_ids.*' => ['integer', 'distinct'],
+            'rounds' => ['sometimes', 'array', 'max:200'], 'rounds.*' => ['array', 'min:1', 'max:100'], 'rounds.*.*' => ['integer'],
+            'venue_ids' => ['sometimes', 'required', 'array', 'min:1', 'max:100'], 'venue_ids.*' => ['integer', 'distinct'],
+            'court_labels' => ['sometimes', 'array', 'max:100'], 'court_labels.*' => ['array', 'min:1', 'max:100'], 'court_labels.*.*' => ['string', 'max:50'],
+            'start_time' => ['sometimes', 'required', 'date_format:H:i'], 'end_time' => ['sometimes', 'required', 'date_format:H:i'],
+            'duration' => ['sometimes', 'required', 'integer', 'min:1', 'max:480'],
+            'player_rest' => ['sometimes', 'required', 'integer', 'min:0', 'max:480'], 'court_gap' => ['sometimes', 'required', 'integer', 'min:0', 'max:120'],
+            'action' => ['sometimes', 'in:preview,save'], 'revision' => ['nullable', 'string', 'size:64'],
+        ]);
+        $draws = $event->draws()->with('venues')->orderBy('drawName')->get();
+        $venues = $event->venues()->orderBy('name')->get();
+        $roundOptions = $scheduler->availableDrawRounds($draws);
+        $courtOptions = $scheduler->fullDayCourtLabels($event);
+        $values = array_replace(['draw_ids' => [], 'rounds' => [], 'venue_ids' => $venues->pluck('id')->all(),
+            'court_labels' => $courtOptions, 'start_time' => '08:00', 'end_time' => '18:00', 'duration' => 75, 'player_rest' => 60, 'court_gap' => 5], $data);
+        $preview = null;
+        if ($request->isMethod('post')) {
+            $request->validate(['draw_ids' => ['required'], 'rounds' => ['required'], 'venue_ids' => ['required'], 'court_labels' => ['required'],
+                'start_time' => ['required'], 'end_time' => ['required'], 'duration' => ['required'], 'player_rest' => ['required'], 'court_gap' => ['required'], 'action' => ['required']]);
+            $options = ['full_day_scope' => $data['date'], 'draw_ids' => $data['draw_ids'], 'venue_ids' => $data['venue_ids'],
+                'draw_rounds' => collect($data['rounds'])->map(fn ($rounds, $drawId) => ['draw_id' => (int) $drawId, 'rounds' => $rounds])->values()->all(),
+                'day_court_labels' => $data['court_labels'], 'start' => $data['date'].' '.$data['start_time'], 'end' => $data['date'].' '.$data['end_time'],
+                'duration' => $data['duration'], 'player_rest' => $data['player_rest'], 'court_gap' => $data['court_gap'], 'wave_minutes' => 0, 'allow_partial' => false];
+            try {
+                if ($data['action'] === 'save') {
+                    $request->validate(['revision' => ['required', 'string', 'size:64']]);
+                    $result = $scheduler->apply($event, $options, $data['revision']);
+                    return redirect()->route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $data['date']])
+                        ->with('success', $result['count'].' match times saved for this day. Publish updates separately when ready.');
+                }
+                $preview = $scheduler->preview($event, $options);
+            } catch (\InvalidArgumentException $exception) {
+                return back()->withInput()->withErrors(['schedule' => $exception->getMessage()]);
+            }
+        }
+        return response()->view('backend.schedule.full-day', compact('event', 'data', 'draws', 'venues', 'roundOptions', 'courtOptions', 'values', 'preview'))
+            ->header('Cache-Control', 'no-store, private');
+    }
+
     public function clearDay(Request $request, Event $event, EventVenueScheduleService $scheduler)
     {
         $this->authorize('event.manage', $event);

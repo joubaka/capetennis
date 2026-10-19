@@ -5,6 +5,7 @@
 <div class="container-xxl py-3" data-draw-day-editor>
   <a class="btn btn-outline-primary mb-3" href="{{ route('backend.event-venue-schedule.calendar', ['event'=>$event->id, 'draw_id'=>$draw->id, 'date'=>$data['date']]) }}">Back to current schedule</a>
   <h3>{{ $draw->drawName }} · {{ \Carbon\Carbon::parse($data['date'])->format('D j M Y') }}</h3>
+  <nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Scheduling method"><span class="align-self-center">Schedule by:</span><span class="btn btn-primary" aria-current="page">Position band / draw</span><a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar.full-day', ['event'=>$event->id, 'date'=>$data['date']]) }}">Whole tie · full day across venues</a></nav>
   <p>Change venues and times for this draw's already scheduled matches on this day. Other draws and days keep their times. Played matches stay fixed. Preview first, then save. Published times change only when you publish updates.</p>
   @if($errors->any())<div class="alert alert-danger">{{ $errors->first() }}</div>@endif
   @if($rows->isEmpty())<div class="alert alert-info">This draw has no saved times on this day. Use <a href="{{ route('backend.event-venue-schedule.index', ['event'=>$event->id, 'draw_ids'=>[$draw->id], 'date'=>$data['date']]) }}">Add matches to this day</a> to schedule a new batch.</div>@endif

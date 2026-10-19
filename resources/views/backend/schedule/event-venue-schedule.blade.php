@@ -190,6 +190,7 @@
   $guideSelection = $event->draws->whereIn('id', collect($draws)->where('selected', true)->pluck('id'));
 @endphp
 <div class="container-xxl flex-grow-1 container-p-y schedule-workspace">
+  <nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Scheduling method"><span class="align-self-center">Schedule by:</span><span class="btn btn-primary" aria-current="page">Position band / draw</span><a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar.full-day', ['event'=>$event->id, 'date'=>$planningDate ?? ($event->start_date ? \Carbon\Carbon::parse($event->start_date)->toDateString() : now()->toDateString())]) }}">Whole tie · full day across venues</a></nav>
   @if($guideSelection->isNotEmpty())
     <section class="card card-body mb-3">
       <h2 class="h5">Step 5 of 6 · Programme &amp; schedule</h2>
