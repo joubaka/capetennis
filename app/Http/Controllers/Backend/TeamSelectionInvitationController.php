@@ -903,6 +903,9 @@ class TeamSelectionInvitationController extends Controller
                 throw ValidationException::withMessages(['message' => 'Enter an announcement message.']);
             }
             $announcement = TeamSelectionRegionAnnouncement::create(['event_id' => $event->id, 'event_region_id' => $eventRegion->id, 'region_id' => $eventRegion->region_id, 'created_by' => $request->user()->id, 'title' => $request->title, 'message' => $request->message]);
+            $copyService = app(\App\Services\EventAnnouncementService::class);
+            $copies = $copyService->dispatchCopies($announcement, $request->user());
+            $request->session()->flash($copies['failed'] || $copies['skipped'] ? 'warning' : 'success', 'Regional announcement published.'.$copyService->copyFeedback($copies));
             $batch = app(\App\Services\EventCommunicationService::class)->preview($event, $request->user(), ['scope' => 'region', 'region_id' => $eventRegion->region_id, 'filter' => 'all', 'recipients' => 'players', 'regional_announcement_id' => $announcement->id], $announcement->title, trim(html_entity_decode(strip_tags($announcement->message), ENT_QUOTES | ENT_HTML5, 'UTF-8')));
             $rankingReview = null;
             return view('backend.event.communications.preview', compact('event', 'batch', 'rankingReview'));
@@ -944,7 +947,9 @@ class TeamSelectionInvitationController extends Controller
         activity('team-selection')->performedOn($announcement)->causedBy($request->user())
             ->withProperties(['queued' => $queued, 'region_id' => $eventRegion->region_id])->log('published regional team announcement');
 
-        return back()->with('success', "Regional announcement published; {$queued} email(s) queued.");
+        $copyService = app(\App\Services\EventAnnouncementService::class);
+        $copies = $copyService->dispatchCopies($announcement, $request->user());
+        return back()->with($copies['failed'] || $copies['skipped'] ? 'warning' : 'success', "Regional announcement published; {$queued} participant email(s) queued.".$copyService->copyFeedback($copies));
     }
 
     public function retryAnnouncement(Request $request, Event $event, EventRegion $eventRegion, TeamSelectionRegionAnnouncement $announcement, BulkMailDispatcher $mailer)

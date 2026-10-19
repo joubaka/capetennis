@@ -111,7 +111,7 @@
           <label class="form-check-label" for="announcement_send_email">
             {{ $event->isTeam() ? 'Email all team roster players and linked parents' : 'Email all nominated and active paid registered players' }}
           </label>
-          <div class="form-text">Publishing starts email delivery after you confirm the recipients. Leaving this clear only publishes the announcement online.</div>
+          <div class="form-text">Confirm the recipients to email participants. Every new announcement also emails a copy to you, this event's admins and super users, even when participant email is unchecked.</div>
         </div>
 
         <div id="announcementRecipientReview" class="border rounded p-3 mt-3 d-none">

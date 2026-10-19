@@ -16,6 +16,7 @@ class EventAnnouncementFeedbackTest extends TestCase
 
     public function test_create_without_email_explains_where_the_announcement_was_published(): void
     {
+        \Illuminate\Support\Facades\Queue::fake();
         [$admin, $event] = $this->eventAdmin();
 
         $this->actingAs($admin)
@@ -26,7 +27,7 @@ class EventAnnouncementFeedbackTest extends TestCase
             ])
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('message', 'Announcement published on the event page. No email was sent.');
+            ->assertJsonPath('message', 'Announcement published on the event page. No participant emails requested. Staff copies: 1 queued.');
 
         $this->assertDatabaseHas('announcements', [
             'event_id' => $event->id,

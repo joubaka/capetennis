@@ -51,30 +51,29 @@ class AnnouncementController extends Controller
       $announcement->message = $request->data;
       $announcement->event_id = $communicationEvent->id;
       $announcement->save();
+      $copyService = app(\App\Services\EventAnnouncementService::class);
+      $copyStats = $copyService->dispatchCopies($announcement, $request->user());
       return redirect()->route($communicationEvent->isTeam() ? 'backend.event-communications.index' : 'backend.interprovincial-trials.communications.index', $communicationEvent)
         ->withInput(['scope' => 'nominations', 'audience' => 'nominations', 'filter' => 'all', 'recipients' => 'both', 'subject' => $communicationEvent->name.' — Announcement', 'body' => trim(strip_tags((string) $request->data))])
-        ->with('success', 'Choose all nominees or another audience, then review and approve the announcement email. No email has been sent.');
+        ->with('success', 'Choose all nominees or another audience, then review and approve the participant email.'.$copyService->copyFeedback($copyStats));
     }
     $request->validate(['data' => 'required|string|max:30000']);
     $announcement = Announcement::create(['event_id' => $communicationEvent->id, 'message' => $request->data]);
     if (! $request->boolean('send_email')) {
-      return response()->json(['success' => true, 'message' => 'Announcement created successfully (no emails sent).']);
+      $service = app(\App\Services\EventAnnouncementService::class);
+      $copies = $service->dispatchCopies($announcement, $request->user());
+      return response()->json(['success' => true, 'copies' => $copies, 'mail_level' => $copies['failed'] || $copies['skipped'] ? 'warning' : 'success', 'message' => 'Announcement created. No participant emails requested.'.$service->copyFeedback($copies)]);
     }
     $service = app(\App\Services\EventAnnouncementService::class);
     $snapshot = $service->audienceSnapshot($communicationEvent);
     $stats = $service->dispatch($announcement, $snapshot['recipients'], $request->user(), $snapshot['excluded']);
-    // Administrative copies are tracked separately from recipient results.
-    $adminEmail = \App\Models\SiteSetting::get('admin_notification_email', 'support@capetennis.co.za');
-    if ($adminEmail) app(\App\Services\BulkMailDispatcher::class)->dispatch('event_announcement', $announcement, [$adminEmail], [
-      'event_id' => $communicationEvent->id, 'created_by' => $request->user()->id, 'recipient_kind' => 'admin_copy',
-      'event_name' => $communicationEvent->name, 'title' => $announcement->title, 'message' => $announcement->message,
-    ]);
-    $severity = $stats['queued'] === 0 ? 'error' : (($stats['skipped'] || $stats['failed']) ? 'warning' : 'success');
+    $copies = $service->dispatchCopies($announcement, $request->user());
+    $severity = $stats['queued'] === 0 ? 'error' : (($stats['skipped'] || $stats['failed'] || $copies['skipped'] || $copies['failed']) ? 'warning' : 'success');
     return response()->json([
-      'success' => true, 'mail' => $stats, 'mail_level' => $severity,
+      'success' => true, 'mail' => $stats, 'copies' => $copies, 'mail_level' => $severity,
       'emails_count' => $stats['queued'],
       'report_url' => route('backend.event-mail-log.index', $communicationEvent),
-      'message' => "Announcement created; {$stats['queued']} recipient emails queued; {$stats['skipped']} skipped; {$stats['failed']} could not be queued. Check the event Email Log.",
+      'message' => "Announcement created; {$stats['queued']} recipient emails queued; {$stats['skipped']} skipped; {$stats['failed']} could not be queued. Check the event Email Log.".$service->copyFeedback($copies),
     ]);
   }
 

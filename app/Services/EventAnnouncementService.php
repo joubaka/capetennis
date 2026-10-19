@@ -11,6 +11,64 @@ use Illuminate\Support\Facades\DB;
 
 class EventAnnouncementService
 {
+    /** Queue staff copies separately so participant counts remain unchanged. */
+    public function dispatchCopies(\App\Models\Announcement|\App\Models\TeamSelectionRegionAnnouncement $announcement, \App\Models\User $actor): array
+    {
+        $event = $announcement->event;
+        $recipients = collect();
+        try {
+            $users = $event->admins()->get()->push($actor)->merge(
+                \App\Models\User::whereHas('roles', fn ($query) => $query->where('name', 'super-user')->where('guard_name', 'web'))->get()
+            );
+            $recipients = $users->map(fn ($user) => ['email' => strtolower(trim((string) $user->email)), 'name' => $user->name])->unique('email')->values();
+            // A participant email already contains the same announcement. Do not send it twice.
+            $alreadyQueued = \App\Models\BulkEmailLog::where('mail_type', 'event_announcement')
+                ->where('related_type', get_class($announcement))->where('related_id', $announcement->id)
+                ->whereIn('status', ['queued', 'sending', 'sent', 'acceptance_unknown'])->pluck('recipient_email');
+            $recipients = $recipients->reject(fn ($recipient) => $alreadyQueued->contains($recipient['email']))->values();
+
+            if ($recipients->isEmpty()) {
+                return ['total' => 0, 'queued' => 0, 'skipped' => 0, 'invalid' => 0, 'duplicate' => 0, 'failed' => 0];
+            }
+            $regionContext = $announcement instanceof \App\Models\TeamSelectionRegionAnnouncement
+                ? ['region_id' => $announcement->region_id, 'event_region_id' => $announcement->event_region_id]
+                : [];
+            $subject = ($announcement->title ?: 'Announcement').' – '.$event->name;
+            $html = (new \App\Mail\AnnouncementMail([
+                'event' => $event->name, 'title' => $announcement->title,
+                'message' => '<h2>'.e($announcement->title ?: 'Announcement').'</h2>'.$announcement->message,
+            ]))->render();
+            $batch = \App\Models\EventCommunicationBatch::create([
+                'event_id' => $event->id, 'created_by' => $actor->id, 'token' => (string) \Illuminate\Support\Str::uuid(),
+                'subject' => $subject, 'body' => $announcement->message,
+                'options' => ['source' => 'announcement_staff_copy', 'announcement_id' => $announcement->id, 'announcement_type' => get_class($announcement), ...$regionContext],
+                'recipients' => $recipients->map(fn ($recipient) => [...$recipient, 'kind' => 'admin_copy', 'subject' => $subject, 'html' => $html])->all(),
+                'issues' => [], 'fingerprint' => hash('sha256', $recipients->toJson()),
+                'status' => 'approved', 'approved_at' => now(),
+            ]);
+            return app(BulkMailDispatcher::class)->dispatch('event_announcement', $announcement, $recipients, [
+                ...$regionContext,
+                'event_id' => $event->id, 'created_by' => $actor->id, 'recipient_kind' => 'admin_copy',
+                'event_communication_batch_id' => $batch->id, 'subject' => $subject, 'body' => $html,
+                'manual_retry_only' => true, 'event_name' => $event->name,
+                'title' => $announcement->title,
+                'message' => '<h2>'.e($announcement->title ?: 'Announcement').'</h2>'.$announcement->message,
+            ]);
+        } catch (\Throwable $exception) {
+            \Illuminate\Support\Facades\Log::warning('Announcement staff copies could not be queued.', ['event_id' => $event->id, 'announcement_id' => $announcement->id]);
+            return ['total' => $recipients->count(), 'queued' => 0, 'skipped' => 0, 'invalid' => 0, 'duplicate' => 0, 'failed' => max(1, $recipients->count())];
+        }
+    }
+
+    public function copyFeedback(array $stats): string
+    {
+        $message = ' Staff copies: '.($stats['queued'] ?? 0).' queued.';
+        if (($stats['failed'] ?? 0) || ($stats['skipped'] ?? 0)) {
+            $message .= ' '.($stats['skipped'] ?? 0).' skipped; '.($stats['failed'] ?? 0).' failed. Review the event Email Log.';
+        }
+        return $message;
+    }
+
     public function __construct(private readonly TeamSelectionContactService $contacts)
     {
     }

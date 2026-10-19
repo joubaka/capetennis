@@ -52,13 +52,13 @@ class EventAnnouncementAudienceTest extends TestCase
 
         $this->publishWithCurrentAudience($admin, $event)->assertOk()
             ->assertJsonPath('mail.queued', 2)
-            ->assertJsonPath('message', 'Announcement published and 2 emails queued.');
+            ->assertJsonPath('message', 'Announcement published and 2 emails queued. Staff copies: 1 queued.');
 
         $this->assertEqualsCanonicalizing(
             [$nominated->email, $registered->email],
-            BulkEmailLog::query()->pluck('recipient_email')->all(),
+            BulkEmailLog::query()->where('payload->recipient_kind', 'players')->pluck('recipient_email')->all(),
         );
-        Queue::assertPushed(SendBulkEmailJob::class, 2);
+        Queue::assertPushed(SendBulkEmailJob::class, 3);
     }
 
     public function test_announcement_log_preserves_event_and_initiating_actor(): void
@@ -66,7 +66,7 @@ class EventAnnouncementAudienceTest extends TestCase
         [$admin, $event, $category] = $this->eventAdmin();
         $this->nominate($event, $category, 'announce@example.test');
         $this->publishWithCurrentAudience($admin, $event)->assertOk()->assertJsonPath('mail_level', 'success');
-        $payload = BulkEmailLog::sole()->payload;
+        $payload = BulkEmailLog::where('payload->recipient_kind', 'players')->sole()->payload;
         $this->assertSame($event->id, $payload['event_id']);
         $this->assertSame($admin->id, $payload['created_by']);
     }
@@ -75,7 +75,7 @@ class EventAnnouncementAudienceTest extends TestCase
     {
         [$admin, $event, $category] = $this->eventAdmin();
         $this->nominate($event, $category, 'announce@example.test');
-        $this->mock(\App\Services\BulkMailDispatcher::class)->shouldReceive('dispatch')->once()
+        $this->mock(\App\Services\BulkMailDispatcher::class)->shouldReceive('dispatch')->twice()
             ->andReturn(['total' => 1, 'queued' => 0, 'skipped' => 0, 'failed' => 1, 'invalid' => 0, 'duplicate' => 0]);
         $this->publishWithCurrentAudience($admin, $event)->assertOk()->assertJsonPath('success', true)
             ->assertJsonPath('mail_level', 'error')->assertJsonPath('mail.queued', 0)->assertJsonPath('mail.failed', 1);
@@ -95,11 +95,11 @@ class EventAnnouncementAudienceTest extends TestCase
         $this->publishWithCurrentAudience($admin, $event)->assertOk()
             ->assertJsonPath('mail.queued', 1);
 
-        $this->assertDatabaseCount('bulk_email_logs', 1);
+        $this->assertDatabaseCount('bulk_email_logs', 2);
         $this->assertDatabaseHas('bulk_email_logs', ['recipient_email' => 'overlap@example.com']);
         $this->assertDatabaseMissing('bulk_email_logs', ['recipient_email' => 'direct-contact@example.com']);
         $this->assertDatabaseMissing('bulk_email_logs', ['recipient_email' => 'linked-contact@example.com']);
-        Queue::assertPushed(SendBulkEmailJob::class, 1);
+        Queue::assertPushed(SendBulkEmailJob::class, 2);
     }
 
     public function test_registration_branch_only_includes_active_paid_players(): void
@@ -202,7 +202,7 @@ class EventAnnouncementAudienceTest extends TestCase
         $this->publishWithCurrentAudience($admin, $event)->assertOk()
             ->assertJsonPath('mail.queued', 1);
 
-        $this->assertDatabaseCount('bulk_email_logs', 1);
+        $this->assertDatabaseCount('bulk_email_logs', 2);
         $this->assertDatabaseHas('bulk_email_logs', ['recipient_email' => 'linked@example.com']);
     }
 
@@ -290,10 +290,10 @@ class EventAnnouncementAudienceTest extends TestCase
             'message' => '<p>Published without mail.</p>',
             'sendMail' => 0,
         ])->assertOk()
-            ->assertJsonPath('message', 'Announcement published on the event page. No email was sent.');
+            ->assertJsonPath('message', 'Announcement published on the event page. No participant emails requested. Staff copies: 1 queued.');
 
         $this->assertDatabaseCount('announcements', 1);
-        $this->assertDatabaseCount('bulk_email_logs', 0);
+        $this->assertDatabaseCount('bulk_email_logs', 1);
     }
 
     private function publishWithCurrentAudience(User $admin, Event $event)

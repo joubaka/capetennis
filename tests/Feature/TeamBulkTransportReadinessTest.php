@@ -40,10 +40,10 @@ class TeamBulkTransportReadinessTest extends TestCase
             'title' => 'Team arrangements', 'message' => '<p>Every roster player receives this announcement.</p>',
             'sendMail' => 1, 'confirm_recipients' => 1, 'recipient_hash' => $service->recipientHash($event),
         ])->assertOk()->assertJsonPath('mail.queued', 9);
-        $snapshot = EventCommunicationBatch::whereNotNull('approved_at')->sole();
+        $snapshot = EventCommunicationBatch::where('options->source', 'announcement')->whereNotNull('approved_at')->sole();
         $response->assertJsonPath('report_url', route('backend.event-communications.index', ['event' => $event->id, 'batch' => $snapshot->id, 'report_scope' => 'batch']));
         $this->assertSame(8, collect($snapshot->recipients)->flatMap(fn ($recipient) => $recipient['player_keys'])->unique()->count());
-        $this->mock(MailAccountManager::class)->shouldReceive('getMailer')->times(9)->andReturn('array');
+        $this->mock(MailAccountManager::class)->shouldReceive('getMailer')->times(10)->andReturn('array');
         foreach (BulkEmailLog::all() as $log) {
             $job = new SendBulkEmailJob($log->id);
             $job->handle();
@@ -51,11 +51,11 @@ class TeamBulkTransportReadinessTest extends TestCase
             $this->assertSame('sent', $log->fresh()->status);
         }
 
-        $this->assertCount(9, Mail::mailer('array')->getSymfonyTransport()->messages());
+        $this->assertCount(10, Mail::mailer('array')->getSymfonyTransport()->messages());
         $message = Mail::mailer('array')->getSymfonyTransport()->messages()->first()->getOriginalMessage();
         $this->assertSame($snapshot->recipients[0]['html'], $message->getHtmlBody());
         $this->assertSame(0, EventCommunicationBatch::where('status', 'draft')->count());
-        $this->assertDatabaseCount('bulk_email_logs', 9);
+        $this->assertDatabaseCount('bulk_email_logs', 10);
         $this->assertSame(0, BulkEmailLog::where('recipient_email', 'like', 'discard-imported%')->count());
         $this->assertSame(1, BulkEmailLog::where('recipient_email', $parent->email)->count());
         $this->assertSame(0, $snapshot->serverAcceptedPlayerCount());

@@ -120,7 +120,7 @@ class AllEventEmailSetupTest extends TestCase
             'title' => 'Announcement regression', 'message' => '<p>Exact announcement content</p>',
             'sendMail' => 1, 'confirm_recipients' => 1, 'recipient_hash' => $service->recipientHash($event),
         ])->assertOk()->assertJsonPath('mail.queued', 1);
-        $batch = EventCommunicationBatch::sole();
+        $batch = EventCommunicationBatch::where('options->source', 'announcement')->sole();
         $this->assertNotNull($batch->approved_at);
         $this->assertSame($event->id, $batch->event_id);
         $reportUrl = $event->isTeam()
@@ -134,7 +134,7 @@ class AllEventEmailSetupTest extends TestCase
         $this->assertSame('event_announcement', $log->mail_type);
         $this->assertSame($event->id, $log->payload['event_id']);
         $this->assertStringContainsString('Exact announcement content', $log->payload['body']);
-        $this->assertDatabaseCount('bulk_email_logs', 2);
+        $this->assertDatabaseCount('bulk_email_logs', 3);
         $this->assertSame(1, $batch->logs()->where('status', 'skipped')->count());
         $this->sendExactlyOnce($log);
         $this->get(route('backend.event-communications.index', $event))->assertOk()->assertSee('Announcement regression');

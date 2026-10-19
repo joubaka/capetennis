@@ -99,16 +99,19 @@ class EventAnnouncementController extends Controller
       Log::info('[EventAnnouncement] ⏭️ sendMail not checked, skipping emails');
     }
 
-    $message = !empty($data['sendMail'])
+    $copyStats = $announcements->dispatchCopies($announcement, $request->user());
+    $message = (!empty($data['sendMail'])
       ? $this->mailFeedbackMessage($mailStats ?? [])
-      : 'Announcement published on the event page. No email was sent.';
+      : 'Announcement published on the event page. No participant emails requested.')
+      .$announcements->copyFeedback($copyStats);
 
     return response()->json([
       'success' => true,
       'id' => $announcement->id,
       'mail' => $mailStats,
-      'mail_level' => $mailStats !== null && $mailStats['queued'] === 0 ? 'error' : (($mailStats['skipped'] ?? 0) || ($mailStats['failed'] ?? 0) ? 'warning' : 'success'),
-      'report_url' => $mailStats !== null ? ($event->isTeam() ? route('backend.event-communications.index', ['event' => $event->id, 'batch' => \App\Models\EventCommunicationBatch::where('event_id', $event->id)->where('options->announcement_id', $announcement->id)->latest('id')->value('id'), 'report_scope' => 'batch']) : route('backend.event-mail-log.index', $event)) : null,
+      'copies' => $copyStats,
+      'mail_level' => $mailStats !== null && $mailStats['queued'] === 0 ? 'error' : (($mailStats['skipped'] ?? 0) || ($mailStats['failed'] ?? 0) || $copyStats['skipped'] || $copyStats['failed'] ? 'warning' : 'success'),
+      'report_url' => $mailStats !== null && $event->isTeam() ? route('backend.event-communications.index', ['event' => $event->id, 'batch' => \App\Models\EventCommunicationBatch::where('event_id', $event->id)->where('options->source', 'announcement')->where('options->announcement_id', $announcement->id)->latest('id')->value('id'), 'report_scope' => 'batch']) : route('backend.event-mail-log.index', $event),
       'message' => $message,
     ]);
   }
