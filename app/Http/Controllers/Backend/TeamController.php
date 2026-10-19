@@ -234,8 +234,7 @@ class TeamController extends Controller
     $this->authorize('team.players.manage', $team);
     app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
 
-    $teamplayer->player_id = $request->player;
-    $teamplayer->save();
+    $teamplayer = app(TeamPaymentService::class)->updateTeamPlayerSlot($teamplayer, ['player_id' => $request->player]);
 
     $player = $teamplayer->player; // eager load relation
 

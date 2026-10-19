@@ -20,6 +20,7 @@ use App\Models\WalletTransaction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -463,6 +464,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
 
     public function test_linked_no_profile_player_can_open_payment_when_zero_mirror_is_repaired(): void
     {
+        $this->event->update(['entryFee' => 490]);
         $payer = User::factory()->create();
         $player = Player::factory()->create();
         NoProfileTeamPlayer::create([
@@ -480,6 +482,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'pay_status' => 0,
         ]);
 
+        Log::spy();
         $this->actingAs($payer)->get(route('team.payment.payfast', [$this->team, $player, $this->event]))
             ->assertOk()
             ->assertViewIs('frontend.payfast.team_payment');
@@ -491,6 +494,17 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'player_id' => $player->id,
             'event_id' => $this->event->id,
         ]);
+        $order = TeamPaymentOrder::sole();
+        $this->assertSame(490.0, (float) $order->total_amount);
+        $this->assertSame(490.0, (float) $order->payfast_amount_due);
+        $amounts = $order->only(['total_amount', 'wallet_reserved', 'wallet_debited', 'payfast_amount_due', 'payfast_paid', 'pay_status']);
+        $this->actingAs($payer)->get(route('team.payment.payfast', [$this->team, $player, $this->event]))->assertOk();
+        $this->assertSame($amounts, $order->fresh()->only(array_keys($amounts)));
+        $this->assertDatabaseCount('team_players', 1);
+        $this->assertDatabaseCount('team_payment_orders', 1);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->assertSame(0, (int) $mirror->fresh()->pay_status);
+        Log::shouldNotHaveReceived('warning', fn ($message) => $message === 'FINANCE LOCKDOWN: direct financial state mutation detected');
     }
 
     public function test_linked_no_profile_player_can_open_payment_when_mirror_is_missing(): void
@@ -506,6 +520,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'pay_status' => 0,
         ]);
 
+        Log::spy();
         $this->actingAs($payer)->get(route('team.payment.payfast', [$this->team, $player, $this->event]))
             ->assertOk();
 
@@ -516,6 +531,61 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'pay_status' => 0,
         ]);
         $this->assertDatabaseCount('team_payment_orders', 1);
+        $this->actingAs($payer)->get(route('team.payment.payfast', [$this->team, $player, $this->event]))->assertOk();
+        $this->assertDatabaseCount('team_players', 1);
+        $this->assertDatabaseCount('team_payment_orders', 1);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        Log::shouldNotHaveReceived('warning', fn ($message) => $message === 'FINANCE LOCKDOWN: direct financial state mutation detected');
+    }
+
+    public function test_claim_uses_scoped_financial_service_for_existing_and_missing_mirrors(): void
+    {
+        $user = User::factory()->create();
+        $service = app(ExternalTeamRosterService::class);
+        foreach ([1, 2] as $rank) {
+            $player = Player::factory()->create();
+            $slot = NoProfileTeamPlayer::create([
+                'team_id' => $this->team->id, 'rank' => $rank,
+                'name' => $player->name, 'surname' => $player->surname, 'pay_status' => 0,
+            ]);
+            if ($rank === 1) {
+                TeamPlayer::create(['team_id' => $this->team->id, 'rank' => $rank, 'player_id' => 0, 'pay_status' => 0]);
+            }
+            Log::spy();
+            $service->claim($user, $this->event, $this->team, $slot, $player);
+            $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'rank' => $rank, 'player_id' => $player->id, 'pay_status' => 0]);
+            $this->assertSame($user->id, (int) $slot->fresh()->claimed_by_user_id);
+            $this->assertTrue($user->players()->whereKey($player->id)->exists());
+            Log::shouldNotHaveReceived('warning', fn ($message) => $message === 'FINANCE LOCKDOWN: direct financial state mutation detected');
+        }
+        $this->assertDatabaseCount('team_players', 2);
+        $this->assertDatabaseCount('team_payment_orders', 0);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+
+        $mirror = TeamPlayer::where('team_id', $this->team->id)->firstOrFail();
+        $mirror->update(['player_id' => 0]);
+        Log::shouldHaveReceived('warning')->once()->withArgs(fn ($message, $context) =>
+            $message === 'FINANCE LOCKDOWN: direct financial state mutation detected'
+            && $context['id'] === $mirror->id && $context['dirty'] === ['player_id']);
+    }
+
+    public function test_admin_player_insert_uses_financial_service_and_preserves_response_and_payment_state(): void
+    {
+        $old = Player::factory()->create();
+        $replacement = Player::factory()->create();
+        $mirror = TeamPlayer::create(['team_id' => $this->team->id, 'rank' => 1, 'player_id' => $old->id, 'pay_status' => 1]);
+        Log::spy();
+        $this->actingAs(User::factory()->create())->postJson(route('team.insert.player'), ['pivot' => $mirror->id, 'player' => $replacement->id])->assertForbidden();
+        $this->assertSame($old->id, (int) $mirror->fresh()->player_id);
+        $this->actingAs($this->admin)->postJson(route('team.insert.player'), ['pivot' => $mirror->id, 'player' => $replacement->id])
+            ->assertOk()->assertJsonPath('success', true)->assertJsonPath('id', $mirror->id)
+            ->assertJsonPath('player.id', $replacement->id)->assertJsonPath('player.name', $replacement->name);
+        $this->assertSame($replacement->id, (int) $mirror->fresh()->player_id);
+        $this->assertSame(1, (int) $mirror->fresh()->pay_status);
+        $this->assertDatabaseCount('team_players', 1);
+        $this->assertDatabaseCount('team_payment_orders', 0);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        Log::shouldNotHaveReceived('warning', fn ($message) => $message === 'FINANCE LOCKDOWN: direct financial state mutation detected');
     }
 
     public function test_no_profile_payment_rejects_conflicting_or_duplicate_mirrors_without_order_or_repairs(): void

@@ -199,7 +199,12 @@ PREFLIGHT_DIR="$LOCKED_PREFLIGHT_DIR"
 REMOTE_HEAD="$(git -C "$APP_PATH" rev-parse HEAD)"
 [ "$REMOTE_HEAD" = "$FETCHED_MAIN" ] || fail "Deployed commit $REMOTE_HEAD does not match preflighted commit $FETCHED_MAIN"
 [ "$SKIP_DEPS" = true ] || composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction --working-dir="$APP_PATH"
-run_php "$APP_PATH/artisan" optimize:clear
+# optimize:clear unlinks the route cache and races with requests that observed it.
+if [ "$LIVE_DEPLOY" = true ]; then
+    run_php "$APP_PATH/artisan" optimize:clear --except=routes
+else
+    run_php "$APP_PATH/artisan" optimize:clear
+fi
 if [ "$SKIP_MIGRATIONS" = false ] && [ "$RUN_MIGRATIONS" = true ]; then
     while IFS= read -r migration; do
         [ -n "$migration" ] || continue
@@ -219,7 +224,13 @@ if [ "$RECONCILE_MASTERS_PAYMENTS" = true ]; then
     run_php "$APP_PATH/artisan" masters:reconcile-payments --apply
 fi
 run_php "$APP_PATH/artisan" storage:link 2>&1 | grep -v 'already exists' || true
-run_php "$APP_PATH/artisan" config:cache; run_php "$APP_PATH/artisan" route:cache; run_php "$APP_PATH/artisan" view:cache
+run_php "$APP_PATH/artisan" config:cache
+if [ "$LIVE_DEPLOY" = true ]; then
+    run_php "$APP_PATH/scripts/deployment-route-cache.php" "$APP_PATH"
+else
+    run_php "$APP_PATH/artisan" route:cache
+fi
+run_php "$APP_PATH/artisan" view:cache
 sync_public_html; run_php "$APP_PATH/artisan" queue:restart
 if [ "$LIVE_DEPLOY" = false ]; then run_php "$APP_PATH/artisan" up; APP_IS_DOWN=0; fi
 cleanup_preflight; PREFLIGHT_DIR=""; trap - EXIT

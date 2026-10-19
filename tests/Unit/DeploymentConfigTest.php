@@ -6,6 +6,150 @@ use PHPUnit\Framework\TestCase;
 
 class DeploymentConfigTest extends TestCase
 {
+    public function test_live_deployment_never_clears_the_canonical_route_cache(): void
+    {
+        $script = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.sh');
+
+        $this->assertStringContainsString("if [ \"\$LIVE_DEPLOY\" = true ]; then\n    run_php \"\$APP_PATH/artisan\" optimize:clear --except=routes\nelse\n    run_php \"\$APP_PATH/artisan\" optimize:clear\nfi", str_replace("\r\n", "\n", $script));
+        $this->assertStringContainsString("if [ \"\$LIVE_DEPLOY\" = true ]; then\n    run_php \"\$APP_PATH/scripts/deployment-route-cache.php\" \"\$APP_PATH\"\nelse\n    run_php \"\$APP_PATH/artisan\" route:cache\nfi", str_replace("\r\n", "\n", $script));
+    }
+
+    public function test_live_route_cache_build_keeps_old_cache_readable_until_publication(): void
+    {
+        $result = $this->runRouteCacheBuild('success');
+
+        $this->assertSame(0, $result['exitCode'], $result['stderr']);
+        $this->assertSame('<?php return "new routes";', $result['cache']);
+        $this->assertSame("old routes\nold routes\n", $result['observed']);
+        $this->assertSame([], $result['staged']);
+    }
+
+    public function test_live_route_cache_uses_custom_environment_cache_path(): void
+    {
+        $result = $this->runRouteCacheBuild('success', true);
+
+        $this->assertSame(0, $result['exitCode'], $result['stderr']);
+        $this->assertSame('<?php return "new routes";', $result['cache']);
+        $this->assertSame("old routes\nold routes\n", $result['observed']);
+        $this->assertSame([], $result['staged']);
+    }
+
+    public function test_live_route_cache_preserves_old_cache_and_cleans_up_failed_builds(): void
+    {
+        foreach (['failure', 'empty', 'malformed'] as $mode) {
+            $result = $this->runRouteCacheBuild($mode);
+
+            $this->assertSame(1, $result['exitCode'], $mode.': '.$result['stderr']);
+            $this->assertSame('old routes', $result['cache'], $mode);
+            $this->assertSame([], $result['staged'], $mode);
+        }
+    }
+
+    public function test_live_route_cache_builds_current_routes_using_real_laravel_command(): void
+    {
+        $result = $this->runRouteCacheBuild('framework');
+
+        $this->assertSame(0, $result['exitCode'], $result['stderr']);
+        $this->assertStringContainsString('deployment-fixture-current', $result['cache']);
+        $this->assertSame("old routes\nold routes\n", $result['observed']);
+        $this->assertSame([], $result['staged']);
+    }
+
+    public function test_live_route_cache_honors_external_custom_path_with_cached_config(): void
+    {
+        $result = $this->runRouteCacheBuild('success', true, true);
+
+        $this->assertSame(0, $result['exitCode'], $result['stderr']);
+        $this->assertSame('<?php return "new routes";', $result['cache']);
+        $this->assertSame("old routes\nold routes\n", $result['observed']);
+        $this->assertSame([], $result['staged']);
+    }
+
+    /** @return array{exitCode: int, stderr: string, cache: string, observed: string, staged: array} */
+    private function runRouteCacheBuild(string $mode, bool $customPath = false, bool $cachedConfig = false): array
+    {
+        $root = sys_get_temp_dir().DIRECTORY_SEPARATOR.'ct-route-deploy-'.bin2hex(random_bytes(8));
+        mkdir($root.'/vendor', 0777, true);
+        mkdir($root.'/bootstrap/cache', 0777, true);
+        $cache = $root.'/bootstrap/cache/'.($customPath ? 'custom.php' : 'routes-v7.php');
+        file_put_contents($cache, 'old routes');
+        file_put_contents($root.'/.env', $customPath ? "APP_ROUTES_CACHE=bootstrap/cache/custom.php\n" : '');
+        file_put_contents($root.'/vendor/autoload.php', '<?php require '.var_export(dirname(__DIR__, 2).'/vendor/autoload.php', true).';');
+        mkdir($root.'/storage/framework/views', 0777, true);
+        file_put_contents($root.'/bootstrap/providers.php', '<?php return [];');
+        if ($cachedConfig) {
+            file_put_contents($root.'/bootstrap/cache/config.php', '<?php return [];');
+        }
+        file_put_contents($root.'/routes.php', '<?php Illuminate\\Support\\Facades\\Route::get("/deployment-fixture-current", fn () => "current")->name("deployment-fixture-current");');
+        file_put_contents($root.'/bootstrap/app.php', '<?php $app = Illuminate\\Foundation\\Application::configure(basePath: dirname(__DIR__))->withRouting(web: dirname(__DIR__)."/routes.php")->create(); if (PHP_OS_FAMILY === "Windows") { $app->addAbsoluteCachePathPrefix(substr(__DIR__, 0, 2)); } return $app;');
+        file_put_contents($root.'/artisan', <<<'PHP'
+<?php
+require __DIR__.'/vendor/autoload.php';
+$app = require __DIR__.'/bootstrap/app.php';
+(new Illuminate\Foundation\Bootstrap\LoadEnvironmentVariables)->bootstrap($app);
+$staged = $app->getCachedRoutesPath();
+$canonical = getenv('CT_FIXTURE_CANONICAL');
+if ($staged === $canonical || ! str_starts_with(basename($staged), '.routes-deploy-')) {
+    fwrite(STDERR, 'Unexpected route build path: '.$staged."\n");
+    exit(9);
+}
+file_put_contents(__DIR__.'/observed', file_get_contents($canonical)."\n", FILE_APPEND);
+if (getenv('CT_FIXTURE_BUILD') === 'framework') {
+    $status = $app->handleCommand(new Symfony\Component\Console\Input\ArgvInput);
+    file_put_contents(__DIR__.'/observed', file_get_contents($canonical)."\n", FILE_APPEND);
+    exit($status);
+}
+// Model route:cache's route:clear, then its write of the freshly compiled routes.
+if (is_file($staged)) {
+    unlink($staged);
+}
+$mode = getenv('CT_FIXTURE_BUILD');
+file_put_contents($staged, match ($mode) {
+    'empty' => '',
+    'malformed' => '<?php syntax invalid !!!',
+    default => '<?php return "new routes";',
+});
+file_put_contents(__DIR__.'/observed', file_get_contents($canonical)."\n", FILE_APPEND);
+exit($mode === 'failure' ? 1 : 0);
+PHP);
+        $environment = getenv();
+        unset($environment['APP_ROUTES_CACHE'], $environment['APP_CONFIG_CACHE']);
+        if ($cachedConfig) {
+            $environment['APP_ROUTES_CACHE'] = $cache;
+        }
+        $environment['CT_FIXTURE_CANONICAL'] = $cache;
+        $environment['CT_FIXTURE_BUILD'] = $mode;
+        try {
+            $process = proc_open(
+                [PHP_BINARY, dirname(__DIR__, 2).'/scripts/deployment-route-cache.php', $root],
+                [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+                $pipes,
+                null,
+                $environment
+            );
+            $this->assertIsResource($process);
+            $stdout = (string) stream_get_contents($pipes[1]);
+            $stderr = (string) stream_get_contents($pipes[2]);
+            fclose($pipes[1]);
+            fclose($pipes[2]);
+            $exitCode = proc_close($process);
+            if ($exitCode !== 0) {
+                $stderr .= $stdout;
+            }
+            $observed = is_file($root.'/observed') ? (string) file_get_contents($root.'/observed') : '';
+            $staged = glob($root.'/bootstrap/cache/.routes-deploy-*');
+            $cache = (string) file_get_contents($cache);
+
+            return compact('exitCode', 'stderr', 'cache', 'observed', 'staged');
+        } finally {
+            $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
+            foreach ($iterator as $file) {
+                $file->isDir() ? rmdir($file->getPathname()) : unlink($file->getPathname());
+            }
+            rmdir($root);
+        }
+    }
+
     public function test_fast_ci_quality_gate_checks_deployment_configuration_after_dependencies(): void
     {
         $workflow = (string) file_get_contents(dirname(__DIR__, 2).'/.github/workflows/ci.yml');

@@ -2,6 +2,7 @@
 
 namespace App\Domain\Teams\Services;
 
+use App\Domain\Payments\Services\TeamPaymentService;
 use App\Models\Event;
 use App\Models\NoProfileTeamPlayer;
 use App\Models\Player;
@@ -162,20 +163,18 @@ class ExternalTeamRosterService
                 ]);
             }
             $teamPlayer = $teamPlayers->first();
-            $teamPlayer ??= new TeamPlayer([
-                'team_id' => $team->id,
-                'rank' => $lockedSlot->rank,
-                'player_id' => 0,
-                'pay_status' => 0,
-            ]);
-
-            if ((int) $teamPlayer->player_id > 0 && (int) $teamPlayer->player_id !== (int) $player->id) {
+            if ($teamPlayer && (int) $teamPlayer->player_id > 0 && (int) $teamPlayer->player_id !== (int) $player->id) {
                 throw ValidationException::withMessages(['player' => 'This roster position has already been assigned to another player.']);
             }
 
-            $teamPlayer->player_id = $player->id;
-            $teamPlayer->pay_status ??= 0;
-            $teamPlayer->save();
+            if ($teamPlayer) {
+                app(TeamPaymentService::class)->updateTeamPlayerSlot($teamPlayer, [
+                    'player_id' => $player->id,
+                    'pay_status' => $teamPlayer->pay_status ?? 0,
+                ]);
+            } else {
+                app(TeamPaymentService::class)->createUnpaidTeamPlayerSlot($team, $player, $lockedSlot->rank);
+            }
 
             $lockedSlot->forceFill([
                 'player_profile' => $player->id,
@@ -273,24 +272,15 @@ class ExternalTeamRosterService
                 ]);
             }
 
-            if (! $teamPlayer) {
-                $teamPlayer = new TeamPlayer([
-                    'team_id' => $team->id,
-                    'rank' => $canonicalSlot->rank,
-                    'player_id' => $player->id,
-                    'pay_status' => 0,
-                ]);
-            } elseif ((int) $teamPlayer->player_id === 0) {
-                $teamPlayer->player_id = $player->id;
-            }
-
-            if ((int) $teamPlayer->pay_status === 1) {
+            if ($teamPlayer && (int) $teamPlayer->pay_status === 1) {
                 throw ValidationException::withMessages(['player' => 'This player is already registered.']);
             }
 
             $this->playerEligibility->assertEligible($player, $event);
-            if ($teamPlayer->isDirty() || ! $teamPlayer->exists) {
-                $teamPlayer->save();
+            if (! $teamPlayer || (int) $teamPlayer->player_id === 0) {
+                $teamPlayer = $teamPlayer
+                    ? app(TeamPaymentService::class)->updateTeamPlayerSlot($teamPlayer, ['player_id' => $player->id])
+                    : app(TeamPaymentService::class)->createUnpaidTeamPlayerSlot($team, $player, $canonicalSlot->rank);
                 app(\App\Services\TeamDrawAdaptationService::class)->adaptEvent($event);
             }
 

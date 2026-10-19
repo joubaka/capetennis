@@ -123,6 +123,41 @@ final class EventVenueScheduleService
                 $courtLabels[$venueId] = array_values(array_intersect($active, $labels));
             }
         }
+        $dayVenueGroups = [];
+        $courtGroups = [];
+        foreach ($options['day_venue_groups'] ?? [] as $venueId => $groups) {
+            if (! $fullDay || ! isset($courtLabels[$venueId]) || ! is_array($groups)
+                || count($groups) !== 2 || ! isset($groups['A'], $groups['B']) || ! is_array($groups['A']) || ! is_array($groups['B'])) {
+                throw new \InvalidArgumentException('Split only selected day venues into Group A and Group B.');
+            }
+            $all = [];
+            foreach (['A', 'B'] as $group) {
+                $labels = array_map('strval', $groups[$group]);
+                if (! $labels || array_diff($labels, $courtLabels[$venueId])) throw new \InvalidArgumentException('Each court group needs at least one selected active court at its own venue.');
+                $all = array_merge($all, $labels);
+                $dayVenueGroups[$venueId][$group] = array_values(array_intersect($courtLabels[$venueId], $labels));
+                foreach ($labels as $label) $courtGroups[$venueId][ScheduleAvailability::courtKey($label)] = $group;
+            }
+            if (count($all) !== count(array_unique(array_map([ScheduleAvailability::class, 'courtKey'], $all))) || array_diff($courtLabels[$venueId], $all)) {
+                throw new \InvalidArgumentException('Assign every selected court to exactly one group. Court groups cannot overlap.');
+            }
+        }
+        ksort($dayVenueGroups);
+        $fullDayVenueWindows = [];
+        foreach ($options['full_day_venue_windows'] ?? [] as $venueId => $window) {
+            if (! $fullDay || ! isset($courtLabels[$venueId]) || ! is_array($window)
+                || ! isset($window['start'], $window['end'])
+                || ! preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/', $window['start'])
+                || ! preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/', $window['end'])) {
+                throw new \InvalidArgumentException('Choose valid opening and finishing times for selected day venues only.');
+            }
+            $opens = Carbon::parse($window['start']);
+            $closes = Carbon::parse($window['end']);
+            if ($opens->toDateString() !== $fullDay || $closes->toDateString() !== $fullDay || $closes->lte($opens)
+                || $opens->lt($start) || $closes->gt($end)) throw new \InvalidArgumentException('Venue hours must finish after they start and fit within the overall playing day.');
+            $fullDayVenueWindows[$venueId] = ['start'=>$opens->format('Y-m-d H:i:s'), 'end'=>$closes->format('Y-m-d H:i:s')];
+        }
+        ksort($fullDayVenueWindows);
 
         $allocations = DB::table('draw_venue_court_allocations')->whereIn('draw_id', $draws->pluck('id'))
             ->get()->groupBy(fn ($row) => $row->draw_id.'|'.$row->venue_id);
@@ -304,13 +339,19 @@ final class EventVenueScheduleService
         }
         $blocked = [];
         $tieVenues = [];
+        $tieGroups = [];
         $plannedTieKeys = collect($pending)->pluck('tie_allocation_key')->filter()->flip();
         if ($fullDay) foreach ($nodes as $node) {
             $slot = $this->nodeSlot($node);
             $key = $node['tie_allocation_key'];
             if ($key && $plannedTieKeys->has($key) && ($node['fixed'] || $node['played']) && $slot?->time) {
                 if (isset($tieVenues[$key]) && $tieVenues[$key] !== (int) $slot->venue_id) throw new \InvalidArgumentException('A fixed tie is already split between venues. Review its saved matches before planning this day.');
+                $venueId = (int) $slot->venue_id;
+                $group = $courtGroups[$venueId][ScheduleAvailability::courtKey((string) $slot->court)] ?? null;
+                if (isset($dayVenueGroups[$venueId]) && $group === null) throw new \InvalidArgumentException('A fixed rubber uses a court outside the selected groups. Include that court before planning the rest of its tie.');
+                if (array_key_exists($key, $tieGroups) && $tieGroups[$key] !== $group) throw new \InvalidArgumentException('A fixed tie is already split between court groups. Review its saved matches or change the court groups.');
                 $tieVenues[$key] = (int) $slot->venue_id;
+                $tieGroups[$key] = $group;
             }
         }
         while ($pending) {
@@ -361,6 +402,7 @@ final class EventVenueScheduleService
                         continue;
                     }
                     $venueRelease = isset($venueStarts[$venueId]) ? $release->max($venueStarts[$venueId])->copy() : $release;
+                    if (isset($fullDayVenueWindows[$venueId])) $venueRelease = $venueRelease->max(Carbon::parse($fullDayVenueWindows[$venueId]['start']))->copy();
                     if (isset($sharedGenderVenues[$venueId]) && $node['gender'] && ($node['programme_gender_waves'] ?? $genderWaves) !== 'combined') {
                         $phase = $this->genderPhase($node, $genderWaves);
                         $phaseStarts = [];
@@ -388,6 +430,11 @@ final class EventVenueScheduleService
                     }
                     $venuePassedGenderOrder = true;
                     foreach ($courts as $court) {
+                        $venueGroup = $courtGroups[$venueId][ScheduleAvailability::courtKey((string) $court)] ?? null;
+                        if ($fullDay && array_key_exists($node['tie_allocation_key'] ?? '', $tieGroups) && $tieGroups[$node['tie_allocation_key']] !== $venueGroup) {
+                            $blocked[$id] = 'This tie must stay in its allocated court group. Extend the day or add courts to that group to fit every rubber.';
+                            continue;
+                        }
                         $at = $calendar->nextAvailableForMatch($venueRelease, $duration + $courtGap,
                             $duration + $playerRest, $venueId, (string) $court, $node['participants'],
                             $node['participant_group']);
@@ -396,6 +443,10 @@ final class EventVenueScheduleService
                                 $duration + $playerRest, $venueId, (string) $court, $node['participants'], $node['participant_group']);
                         }
                         if ($end && $at->copy()->addMinutes($duration)->gt($end)) continue;
+                        if (isset($fullDayVenueWindows[$venueId]) && $at->copy()->addMinutes($duration)->gt(Carbon::parse($fullDayVenueWindows[$venueId]['end']))) {
+                            $blocked[$id] = 'No court time fits within this venue\'s opening and finishing times. Extend its hours or choose another venue.';
+                            continue;
+                        }
                         if (isset($node['programme_end']) && $at->copy()->addMinutes($duration)->gt($node['programme_end'])) continue;
                         if ($dayScope || $fullDay || ($node['fixture_kind'] ?? 'individual') === 'team') {
                             foreach ($nodes as $later) {
@@ -412,6 +463,7 @@ final class EventVenueScheduleService
                             }
                         }
                         $choice = ['id' => $id, 'time' => $at, 'venue_id' => $venueId, 'court' => (string) $court,
+                            'venue_group' => $venueGroup,
                             'tie_priority' => $activeTie && $node['tie_allocation_key'] === $activeTie ? 0 : 1,
                             'fairness' => $scheduledPerDraw[$node['draw_id']] ?? 0,
                             'rank_penalty' => ($node['rank_preference']['venue_id'] ?? null) && (int) $node['rank_preference']['venue_id'] !== (int) $venueId ? 1 : 0,
@@ -431,7 +483,10 @@ final class EventVenueScheduleService
             }
             $id = $best['id'];
             $node = $nodes[$id];
-            if ($fullDay && $node['tie_allocation_key']) $tieVenues[$node['tie_allocation_key']] = (int) $best['venue_id'];
+            if ($fullDay && $node['tie_allocation_key']) {
+                $tieVenues[$node['tie_allocation_key']] = (int) $best['venue_id'];
+                $tieGroups[$node['tie_allocation_key']] = $best['venue_group'];
+            }
             if ($tieAllocation === 'complete_tie') {
                 if ($activeTie && $node['tie_allocation_key'] !== $activeTie && ! isset($incompleteTies[$activeTie])) {
                     $warnings[] = $activeTieLabel.' could not be completely allocated before switching ties because its remaining rubbers are blocked. Other matches use available courts; any unallocated rubbers remain for review.';
@@ -461,6 +516,7 @@ final class EventVenueScheduleService
                 'not_before' => $node['not_before']->format('Y-m-d H:i:s'),
                 'scheduled_at' => $best['time']->format('Y-m-d H:i:s'), 'venue_id' => $best['venue_id'],
                 'venue_name' => $venues[$best['venue_id']]->name, 'court' => $best['court'],
+                'venue_group' => $best['venue_group'],
                 'duration' => $duration, 'participants' => $node['participant_names'],
                 'tie_nr' => ($node['fixture_kind'] ?? '') === 'team' ? ($node['fixture']->teamTie?->tie_nr ?: $node['fixture']->tie_nr) : null,
                 'lineup' => ($node['fixture_kind'] ?? '') === 'team' ? $node['fixture']->lineup_display : [],
@@ -610,6 +666,8 @@ final class EventVenueScheduleService
             'gender_wave_release' => $genderRelease,
             'draw_rounds' => $drawRounds,
             'programme' => $programme, 'day_scope' => $dayScope, 'full_day_scope' => $fullDay, 'day_court_labels' => ($dayScope || $fullDay) ? $courtLabels : null,
+            'day_venue_groups' => $dayVenueGroups,
+            'full_day_venue_windows' => $fullDayVenueWindows,
             'tie_allocation' => $tieAllocation,
             'draw_starts' => $drawStarts->map(fn ($time, $drawId) => ['draw_id' => (int) $drawId,
                 'start' => $time->format('Y-m-d H:i:s')])->values()->all(),
@@ -717,7 +775,7 @@ final class EventVenueScheduleService
                     $fixture = TeamFixture::whereKey($row['fixture_id'])->where('draw_id', $row['draw_id'])->firstOrFail();
                     $auditAssignments[$row['draw_id']][] = ['fixture_kind' => 'team', 'fixture_id' => $fixture->id,
                         'before' => $fixture->only(['scheduled_at', 'venue_id', 'court_label', 'duration_min', 'gap_minutes']),
-                        'after' => array_intersect_key($row, array_flip(['scheduled_at', 'venue_id', 'court', 'duration']))];
+                        'after' => array_intersect_key($row, array_flip(['scheduled_at', 'venue_id', 'venue_group', 'court', 'duration']))];
                     $fixture->forceFill(['scheduled_at' => $row['scheduled_at'], 'venue_id' => $row['venue_id'],
                         'court_label' => $row['court'], 'duration_min' => $row['duration'],
                         'gap_minutes' => (int) ($preview['input']['courtGap'] ?? 0), 'scheduled' => 1, 'clash_flag' => false])->save();
@@ -726,7 +784,7 @@ final class EventVenueScheduleService
                 $fixture = Fixture::whereKey($row['fixture_id'])->where('draw_id', $row['draw_id'])->firstOrFail();
                 $auditAssignments[$row['draw_id']][] = ['fixture_kind' => 'individual', 'fixture_id' => $fixture->id,
                     'before' => $fixture->orderOfPlay?->only(['time', 'venue_id', 'court', 'duration_minutes']),
-                    'after' => array_intersect_key($row, array_flip(['scheduled_at', 'venue_id', 'court', 'duration']))];
+                    'after' => array_intersect_key($row, array_flip(['scheduled_at', 'venue_id', 'venue_group', 'court', 'duration']))];
                 OrderOfPlay::updateOrCreate(['fixture_id' => $fixture->id], [
                     'draw_id' => $row['draw_id'], 'venue_id' => $row['venue_id'], 'court' => $row['court'],
                     'time' => $row['scheduled_at'], 'duration_minutes' => $row['duration'],
@@ -739,6 +797,7 @@ final class EventVenueScheduleService
                     'event_id' => $event->id, 'matches' => $rows->count(), 'revision' => $expectedRevision,
                     'venue_ids' => $rows->pluck('venue_id')->unique()->values()->all(),
                     'partial' => (bool) $applyVenueIds, 'day_scope' => $options['day_scope'] ?? $options['full_day_scope'] ?? null, 'full_day_scope' => $options['full_day_scope'] ?? null, 'assignments' => $auditAssignments[$drawId] ?? [],
+                    'full_day_options' => ! empty($options['full_day_scope']) ? $preview['input'] : null,
                     'day_options' => ! empty($options['day_scope']) ? array_intersect_key($preview['input'], array_flip([
                         'venue_ids', 'day_court_labels', 'rank_venue_preferences', 'cross_band_policy',
                     ])) : null,
