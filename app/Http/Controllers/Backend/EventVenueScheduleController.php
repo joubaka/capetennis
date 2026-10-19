@@ -355,7 +355,7 @@ final class EventVenueScheduleController extends Controller
     public function fullDay(Request $request, Event $event, EventVenueScheduleService $scheduler)
     {
         $this->authorize('event.manage', $event);
-        if ($request->isMethod('post')) $request->merge(['venue_groups' => $request->input('venue_groups', []), 'venue_windows' => $request->input('venue_windows', [])]);
+        if ($request->isMethod('post')) $request->merge(['venue_groups' => $request->input('venue_groups', []), 'venue_windows' => $request->input('venue_windows', []), 'tie_destinations' => $request->input('tie_destinations', [])]);
         $data = $request->validate([
             'date' => ['required', 'date_format:Y-m-d'],
             'draw_ids' => ['sometimes', 'required', 'array', 'min:1', 'max:200'], 'draw_ids.*' => ['integer', 'distinct'],
@@ -366,6 +366,7 @@ final class EventVenueScheduleController extends Controller
             'venue_groups.*.*' => ['array', 'min:1', 'max:100'], 'venue_groups.*.*.*' => ['required', 'string', 'max:50'],
             'venue_windows' => ['sometimes', 'array', 'max:100'], 'venue_windows.*' => ['array:start_time,end_time'],
             'venue_windows.*.start_time' => ['nullable', 'date_format:H:i'], 'venue_windows.*.end_time' => ['nullable', 'date_format:H:i'],
+            'tie_destinations' => ['sometimes', 'array', 'max:2000'], 'tie_destinations.*' => ['nullable', 'string', 'regex:/^\d+(?::[AB])?$/'],
             'start_time' => ['sometimes', 'required', 'date_format:H:i'], 'end_time' => ['sometimes', 'required', 'date_format:H:i'],
             'duration' => ['sometimes', 'required', 'integer', 'min:1', 'max:480'],
             'player_rest' => ['sometimes', 'required', 'integer', 'min:0', 'max:480'], 'court_gap' => ['sometimes', 'required', 'integer', 'min:0', 'max:120'],
@@ -375,6 +376,7 @@ final class EventVenueScheduleController extends Controller
         $venues = $event->venues()->orderBy('name')->get();
         $roundOptions = $scheduler->availableDrawRounds($draws);
         $courtOptions = $scheduler->fullDayCourtLabels($event);
+        $tieOptions = $scheduler->fullDayTies($event);
         $savedNotice = null;
         $saved = DrawAuditLog::whereIn('draw_id', $draws->pluck('id'))->where('action', 'event_venue_schedule_applied')
             ->where('payload->event_id', $event->id)->where('payload->full_day_scope', $data['date'])->latest('id')->first()?->payload['full_day_options'] ?? null;
@@ -388,19 +390,22 @@ final class EventVenueScheduleController extends Controller
             foreach ($saved['draw_rounds'] ?? [] as $row) {
                 if (array_diff($row['rounds'], $roundOptions[$row['draw_id']] ?? [])) $valid = false;
             }
+            $currentTies = collect($tieOptions)->filter(fn ($tie) => in_array('unscheduled', $tie['dates'], true) || in_array($data['date'], $tie['dates'], true))->pluck('key')->all();
+            if (array_diff(array_keys($saved['full_day_tie_destinations'] ?? []), $currentTies)) $valid = false;
             if ($valid) {
                 $defaults = ['draw_ids'=>$saved['draw_ids'], 'rounds'=>collect($saved['draw_rounds'])->mapWithKeys(fn ($row) => [$row['draw_id']=>$row['rounds']])->all(),
                     'venue_ids'=>$saved['venue_ids'], 'court_labels'=>$saved['day_court_labels'], 'venue_groups'=>$saved['day_venue_groups'] ?? [],
                     'venue_windows'=>collect($saved['full_day_venue_windows'] ?? [])->map(fn ($window) => ['start_time'=>substr($window['start'], 11, 5), 'end_time'=>substr($window['end'], 11, 5)])->all(),
+                    'tie_destinations'=>collect($saved['full_day_tie_destinations'] ?? [])->map(fn ($destination) => $destination['venue_id'].($destination['group'] ? ':'.$destination['group'] : ''))->all(),
                     'start_time'=>substr($saved['start'], 11, 5), 'end_time'=>substr($saved['end'], 11, 5),
                     'duration'=>$saved['duration'], 'player_rest'=>$saved['playerRest'], 'court_gap'=>$saved['courtGap']];
-                $savedNotice = 'Loaded the last saved full-day choices, including court groups and venue hours. Review them before previewing.';
+                $savedNotice = 'Loaded the last saved full-day choices, including court groups and venue hours. Review tie destinations before previewing.';
             } else {
-                $savedNotice = 'The last saved full-day choices include draws, rounds or courts that are no longer available. Court groups have not been restored; select venues, courts and groups again before previewing.';
+                $savedNotice = 'The last saved full-day choices include draws, rounds, ties or courts that are no longer available. Court groups have not been restored; select venues, courts, groups and tie destinations again before previewing.';
             }
         }
         $values = array_replace(['draw_ids' => [], 'rounds' => [], 'venue_ids' => $venues->pluck('id')->all(),
-            'court_labels' => $courtOptions, 'venue_groups' => [], 'venue_windows' => [], 'start_time' => '08:00', 'end_time' => '18:00', 'duration' => 75, 'player_rest' => 60, 'court_gap' => 5], $defaults, $data);
+            'court_labels' => $courtOptions, 'venue_groups' => [], 'venue_windows' => [], 'tie_destinations'=>[], 'start_time' => '08:00', 'end_time' => '18:00', 'duration' => 75, 'player_rest' => 60, 'court_gap' => 5], $defaults, $data);
         $preview = null;
         if ($request->isMethod('post')) {
             $request->validate(['draw_ids' => ['required'], 'rounds' => ['required'], 'venue_ids' => ['required'], 'court_labels' => ['required'],
@@ -409,6 +414,8 @@ final class EventVenueScheduleController extends Controller
                 'draw_rounds' => collect($data['rounds'])->map(fn ($rounds, $drawId) => ['draw_id' => (int) $drawId, 'rounds' => $rounds])->values()->all(),
                 'day_court_labels' => $data['court_labels'], 'start' => $data['date'].' '.$data['start_time'], 'end' => $data['date'].' '.$data['end_time'],
                 'day_venue_groups' => $data['venue_groups'] ?? [],
+                'full_day_tie_destinations' => collect($data['tie_destinations'] ?? [])->filter(fn ($value) => $value !== null && $value !== '')
+                    ->map(function ($value) { $parts = explode(':', $value); return ['venue_id'=>(int) $parts[0], 'group'=>$parts[1] ?? null]; })->all(),
                 'duration' => $data['duration'], 'player_rest' => $data['player_rest'], 'court_gap' => $data['court_gap'], 'wave_minutes' => 0, 'allow_partial' => false];
             $options['full_day_venue_windows'] = collect($data['venue_windows'] ?? [])
                 ->filter(fn ($window) => ! empty($window['start_time']) || ! empty($window['end_time']))
@@ -426,7 +433,7 @@ final class EventVenueScheduleController extends Controller
                 return back()->withInput()->withErrors(['schedule' => $exception->getMessage()]);
             }
         }
-        return response()->view('backend.schedule.full-day', compact('event', 'data', 'draws', 'venues', 'roundOptions', 'courtOptions', 'values', 'preview', 'savedNotice'))
+        return response()->view('backend.schedule.full-day', compact('event', 'data', 'draws', 'venues', 'roundOptions', 'courtOptions', 'tieOptions', 'values', 'preview', 'savedNotice'))
             ->header('Cache-Control', 'no-store, private');
     }
 

@@ -1,5 +1,15 @@
 @extends('layouts.backend')
 @section('title', 'Schedule a full day')
+@section('page-style')
+<style>
+  .tie-board-column {flex:0 0 280px;max-width:85vw;background:var(--bs-light,#f5f6f8);border:1px solid var(--bs-border-color,#ddd);border-radius:.5rem;padding:.75rem;}
+  .tie-drop-lane {min-height:120px;display:grid;align-content:start;gap:.75rem;}
+  .tie-board-column.tie-drop-active {outline:2px solid var(--bs-primary,#12358f);outline-offset:-2px;}
+  .day-tie-card {background:var(--bs-body-bg,#fff);border:1px solid var(--bs-border-color,#ddd);border-radius:.5rem;padding:.75rem;overflow-wrap:anywhere;}
+  .tie-drag-handle {cursor:grab;min-height:44px;}
+  .day-tie-destination {min-height:44px;}
+</style>
+@endsection
 @section('content')
 <div class="container-xxl py-3">
   <a class="btn btn-outline-primary mb-3" href="{{ route('backend.event-venue-schedule.calendar', ['event'=>$event->id, 'date'=>$data['date']]) }}">Back to saved schedule</a>
@@ -40,6 +50,24 @@
         @endif
       </div></div>@endforeach
     </div></fieldset>
+    <fieldset class="mb-3"><legend class="h5">Place ties at venues</legend>
+      <p class="small text-muted">Select draws and rounds above, then drag each tie into a venue or court group. You can also use each tie's destination menu. Automatic lets the planner choose. Times are calculated when you preview.</p>
+      <p class="small text-muted" id="tie-board-empty">Select draws and rounds to show their available ties.</p>
+      <div id="tie-board" class="d-flex gap-3 overflow-auto pb-3" aria-label="Tie destination board">
+        <section class="tie-board-column"><h6>Automatic / unassigned</h6><div class="tie-drop-lane" data-tie-destination="">
+        @foreach($tieOptions as $tie)
+          @php($chosenDestination = old('tie_destinations',$values['tie_destinations'])[$tie['key']] ?? '')
+          <article class="day-tie-card" data-tie-key="{{ $tie['key'] }}" data-draw-id="{{ $tie['draw_id'] }}" data-round="{{ $tie['round'] }}" data-dates="{{ json_encode($tie['dates']) }}">
+            <button type="button" class="btn btn-sm btn-outline-secondary tie-drag-handle mb-2" draggable="true" aria-label="Drag round {{ $tie['round'] }} tie {{ $tie['tie_nr'] ?: 'matchup' }} to a venue">Move tie</button>
+            <div class="small text-muted">{{ $tie['draw_name'] }}</div><strong>Round {{ $tie['round'] }} · {{ $tie['tie_nr'] ? 'Tie '.$tie['tie_nr'] : 'Matchup' }}</strong>
+            <p class="small my-2">{{ $tie['matchup'] }}</p>
+            <label class="form-label w-100">Tie destination<select class="form-select day-tie-destination" name="tie_destinations[{{ $tie['key'] }}]"><option value="">Automatic</option>@if($chosenDestination)<option value="{{ $chosenDestination }}" selected>Saved destination (review below)</option>@endif</select></label>
+          </article>
+        @endforeach
+        </div></section>
+      </div>
+      <div id="inactive-ties" hidden></div>
+    </fieldset>
     <div class="row g-3 mb-3">@foreach(['start_time'=>'Start time','end_time'=>'Finish by','duration'=>'Match minutes','player_rest'=>'Player rest minutes','court_gap'=>'Court gap minutes'] as $key=>$label)<div class="col-6 col-lg-2"><label for="full-day-{{ $key }}" class="form-label">{{ $label }}</label><input class="form-control" id="full-day-{{ $key }}" name="{{ $key }}" type="{{ str_ends_with($key,'time') ? 'time' : 'number' }}" @if(!str_ends_with($key,'time')) min="{{ $key==='duration'?1:0 }}" max="{{ $key==='court_gap'?120:480 }}" @endif value="{{ old($key,$values[$key]) }}" required></div>@endforeach</div>
     <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary" name="action" value="preview">Preview full day</button>
     @if($preview)<input type="hidden" name="revision" value="{{ $preview['revision'] }}"><button class="btn btn-success" id="save-full-day" name="action" value="save" @disabled(count($preview['unscheduled'])>0 || count($preview['matches'])===0)>Save full day preview</button>@endif</div>
@@ -58,8 +86,51 @@
 <script>
 (() => {
   const form=document.getElementById('full-day-form');
+  const board=document.getElementById('tie-board');
+  const tieCards=[...form.querySelectorAll('[data-tie-key]')];
+  const renderTieBoard=()=>{
+    const destinations=[{value:'',label:'Automatic / unassigned'}];
+    form.querySelectorAll('[data-day-venue]').forEach(card=>{
+      const venue=card.querySelector('.day-venue');
+      if(!venue.checked) return;
+      const name=venue.parentElement.querySelector('strong').textContent;
+      const courts=[...card.querySelectorAll('.day-court:checked')].map(input=>input.value);
+      if(!courts.length) return;
+      if(card.querySelector('.day-split-venue')?.checked) {
+        ['A','B'].forEach(group=>{
+          const labels=[...card.querySelectorAll('[data-group-court]')].filter(row=>courts.includes(row.dataset.groupCourt) && row.querySelector('.day-group-select').value===group).map(row=>row.dataset.groupCourt);
+          if(labels.length) destinations.push({value:`${venue.value}:${group}`,label:`${name} · Group ${group} (courts ${labels.join(', ')})`});
+        });
+      } else destinations.push({value:venue.value,label:`${name} (courts ${courts.join(', ')})`});
+    });
+    board.replaceChildren();
+    const lanes=new Map();
+    destinations.forEach(destination=>{
+      const column=document.createElement('section');column.className='tie-board-column';
+      const title=document.createElement('h6');title.textContent=destination.label;
+      const hint=document.createElement('p');hint.className='small text-muted';hint.textContent='Drop ties here or choose a destination from their menu.';
+      const lane=document.createElement('div');lane.className='tie-drop-lane';lane.dataset.tieDestination=destination.value;
+      column.dataset.tieDestination=destination.value;column.append(title,hint,lane);board.append(column);lanes.set(destination.value,lane);
+    });
+    const selectedDraws=[...form.querySelectorAll('.day-draw:checked:not(:disabled)')].map(input=>input.value);
+    const selectedRounds=[...form.querySelectorAll('.day-round:checked:not(:disabled)')];
+    let activeCount=0;
+    tieCards.forEach(card=>{
+      const select=card.querySelector('.day-tie-destination');const value=select.value;
+      const dates=JSON.parse(card.dataset.dates);
+      const active=selectedDraws.includes(card.dataset.drawId) && selectedRounds.some(input=>input.name===`rounds[${card.dataset.drawId}][]` && input.value===card.dataset.round)
+        && (dates.includes('unscheduled') || dates.includes(document.getElementById('full-day-date').value));
+      select.disabled=!active;select.replaceChildren();
+      destinations.forEach(destination=>{const option=document.createElement('option');option.value=destination.value;option.textContent=destination.value ? destination.label : 'Automatic';select.append(option);});
+      const valid=lanes.has(value);
+      if(!valid) {const option=document.createElement('option');option.value=value;option.textContent='Unavailable destination — choose again';select.append(option);}
+      select.value=value;select.classList.toggle('is-invalid',active && !valid);select.setCustomValidity(active && !valid ? 'Choose an available venue or court group for this tie.' : '');
+      if(active) {activeCount++;(lanes.get(value)||lanes.get('')).append(card);} else document.getElementById('inactive-ties').append(card);
+    });
+    document.getElementById('tie-board-empty').hidden=activeCount>0;
+  };
   const sync=()=>{
-    form.querySelectorAll('[data-day-draw]').forEach(card=>card.querySelectorAll('.day-round').forEach(input=>input.disabled=!card.querySelector('.day-draw').checked));
+    form.querySelectorAll('[data-day-draw]').forEach(card=>card.querySelectorAll('.day-round').forEach(input=>input.disabled=!card.querySelector('.day-draw').checked || card.querySelector('.day-draw').disabled));
     form.querySelectorAll('[data-day-venue]').forEach(card=>{
       const enabled=card.querySelector('.day-venue').checked;
       card.querySelectorAll('.day-court, .day-venue-hour').forEach(input=>input.disabled=!enabled);
@@ -76,8 +147,22 @@
         input.name=`venue_groups[${input.dataset.venueId}][${select.value}][]`;
       });
     });
+    renderTieBoard();
   };
   const invalidate=()=>{const save=document.getElementById('save-full-day');if(save){save.disabled=true;save.textContent='Preview again to save changes';}};
+  board.addEventListener('dragstart',event=>{
+    if(!event.target.closest('.tie-drag-handle')) return;
+    const card=event.target.closest('[data-tie-key]');event.dataTransfer.setData('text/plain',card.dataset.tieKey);event.dataTransfer.effectAllowed='move';
+  });
+  board.addEventListener('dragover',event=>{const column=event.target.closest('.tie-board-column');if(column){event.preventDefault();event.dataTransfer.dropEffect='move';column.classList.add('tie-drop-active');}});
+  board.addEventListener('dragleave',event=>event.target.closest('.tie-board-column')?.classList.remove('tie-drop-active'));
+  board.addEventListener('dragend',()=>board.querySelectorAll('.tie-drop-active').forEach(column=>column.classList.remove('tie-drop-active')));
+  board.addEventListener('drop',event=>{
+    const column=event.target.closest('.tie-board-column');if(!column) return;event.preventDefault();
+    const key=event.dataTransfer.getData('text/plain');const card=tieCards.find(item=>item.dataset.tieKey===key);
+    if(!card || card.querySelector('.day-tie-destination').disabled) return;
+    card.querySelector('.day-tie-destination').value=column.dataset.tieDestination;sync();invalidate();
+  });
   form.addEventListener('change',event=>{
     if(event.target.matches('.day-split-venue') && event.target.checked) {
       const card=event.target.closest('[data-day-venue]');

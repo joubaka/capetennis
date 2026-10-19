@@ -298,4 +298,107 @@ class FullDayVenueScheduleTest extends TestCase
         $this->post($url, $payload)->assertRedirect()->assertSessionHasErrors('schedule');
         $this->assertSame(4, TeamFixture::whereNotNull('scheduled_at')->count());
     }
+
+    public function test_manual_tie_destinations_use_chosen_venues_and_groups_and_are_revision_bound(): void
+    {
+        [$event, $draws, $venue, $options] = $this->splitContext();
+        $scheduler = app(EventVenueScheduleService::class);
+        $category = \App\Models\CategoryEvent::factory()->create(['event_id'=>$event->id]);
+        $home = \App\Models\Team::factory()->create(['category_event_id'=>$category->id]);
+        $away = \App\Models\Team::factory()->create(['category_event_id'=>$category->id]);
+        $realTie = \App\Models\TeamTie::factory()->create(['draw_id'=>$draws[0]->id, 'home_team_id'=>$home->id, 'away_team_id'=>$away->id]);
+        TeamFixture::where('draw_id', $draws[0]->id)->update(['team_tie_id'=>$realTie->id]);
+        $ties = collect($scheduler->fullDayTies($event))->keyBy('draw_id');
+        $this->assertSame('draw:'.$draws[0]->id.':tie:'.$realTie->id, $ties[$draws[0]->id]['key']);
+        $options['full_day_tie_destinations'] = [
+            $ties[$draws[0]->id]['key']=>['venue_id'=>$venue->id, 'group'=>'B'],
+            $ties[$draws[1]->id]['key']=>['venue_id'=>$venue->id, 'group'=>'A'],
+        ];
+        $preview = $scheduler->preview($event, $options);
+        $this->assertEmpty($preview['unscheduled']);
+        foreach ($preview['matches'] as $row) $this->assertSame($row['draw_id']===$draws[0]->id ? 'B' : 'A', $row['venue_group']);
+        $automatic = array_replace($options, ['full_day_tie_destinations'=>[]]);
+        $this->assertNotSame($preview['revision'], $scheduler->preview($event, $automatic)['revision']);
+        try { $scheduler->apply($event, $automatic, $preview['revision']); $this->fail('Expected changed destination rejection'); }
+        catch (\InvalidArgumentException $exception) { $this->assertStringContainsString('fresh preview', $exception->getMessage()); }
+        $scheduler->apply($event, $options, $preview['revision']);
+        $audit = \App\Models\DrawAuditLog::where('draw_id', $draws[0]->id)->latest('id')->first()->payload;
+        $this->assertEquals($options['full_day_tie_destinations'], $audit['full_day_options']['full_day_tie_destinations']);
+    }
+
+    public function test_manual_ties_can_use_primary_venue_while_other_ties_remain_automatic(): void
+    {
+        [$event, $draws, $venues, $options] = $this->context();
+        $scheduler = app(EventVenueScheduleService::class);
+        $ties = collect($scheduler->fullDayTies($event))->keyBy('draw_id');
+        $options['full_day_tie_destinations'] = [$ties[$draws[0]->id]['key']=>['venue_id'=>$venues[2]->id, 'group'=>null]];
+        $preview = $scheduler->preview($event, $options);
+        $this->assertEmpty($preview['unscheduled']);
+        $this->assertCount(6, $preview['matches']);
+        foreach (collect($preview['matches'])->where('draw_id', $draws[0]->id) as $row) $this->assertSame($venues[2]->id, $row['venue_id']);
+    }
+
+    public function test_manual_destinations_reject_foreign_unselected_round_day_keys_and_invalid_groups(): void
+    {
+        [$event, $draws, $venue, $options] = $this->splitContext();
+        $scheduler = app(EventVenueScheduleService::class);
+        $ties = collect($scheduler->fullDayTies($event))->keyBy('draw_id');
+        $key = $ties[$draws[0]->id]['key'];
+        $round = TeamFixture::create(['draw_id'=>$draws[0]->id, 'round_nr'=>2, 'tie_nr'=>2, 'match_nr'=>3, 'match_status'=>0]);
+        $otherDay = TeamFixture::create(['draw_id'=>$draws[0]->id, 'round_nr'=>1, 'tie_nr'=>3, 'match_nr'=>4, 'match_status'=>0,
+            'scheduled_at'=>'2026-10-24 08:00', 'venue_id'=>$venue->id, 'court_label'=>'1']);
+        $newKeys = collect($scheduler->fullDayTies($event))->pluck('key');
+        $invalidKeys = ['draw:999999:tie:999999', $ties[$draws[2]->id]['key'],
+            $newKeys->first(fn ($value) => str_contains($value, ':round:2:')), $newKeys->first(fn ($value) => str_contains($value, ':legacy:3:'))];
+        foreach ($invalidKeys as $invalidKey) {
+            try { $scheduler->preview($event, array_replace($options, ['full_day_tie_destinations'=>[$invalidKey=>['venue_id'=>$venue->id, 'group'=>'A']]])); $this->fail('Expected invalid tie scope'); }
+            catch (\InvalidArgumentException $exception) { $this->assertStringContainsString('selected draws, rounds and day', $exception->getMessage()); }
+        }
+        foreach ([['venue_id'=>999999, 'group'=>null], ['venue_id'=>$venue->id, 'group'=>null], ['venue_id'=>$venue->id, 'group'=>'C']] as $destination) {
+            try { $scheduler->preview($event, array_replace($options, ['full_day_tie_destinations'=>[$key=>$destination]])); $this->fail('Expected invalid destination'); }
+            catch (\InvalidArgumentException $exception) { $this->assertStringContainsString('selected venue', $exception->getMessage()); }
+        }
+        $this->assertNull($round->fresh()->scheduled_at);
+        $this->assertSame('2026-10-24', $otherDay->fresh()->scheduled_at->toDateString());
+    }
+
+    public function test_manual_destination_cannot_override_a_played_rubbers_group_or_venue(): void
+    {
+        [$event, $draws, $venue, $options] = $this->splitContext();
+        $scheduler = app(EventVenueScheduleService::class);
+        $tie = collect($scheduler->fullDayTies($event))->firstWhere('draw_id', $draws[0]->id);
+        $played = TeamFixture::where('draw_id', $draws[0]->id)->first();
+        $played->update(['match_status'=>1, 'scheduled_at'=>'2026-10-23 08:00', 'venue_id'=>$venue->id, 'court_label'=>'1', 'duration_min'=>60]);
+        $options['full_day_tie_destinations'] = [$tie['key']=>['venue_id'=>$venue->id, 'group'=>'B']];
+        try { $scheduler->preview($event, $options); $this->fail('Expected fixed group conflict'); }
+        catch (\InvalidArgumentException $exception) { $this->assertStringContainsString('conflicts with a fixed rubber', $exception->getMessage()); }
+        $options['full_day_tie_destinations'][$tie['key']]['group'] = 'A';
+        $this->assertEmpty($scheduler->preview($event, $options)['unscheduled']);
+        $this->assertSame('1', $played->fresh()->court_label);
+    }
+
+    public function test_http_tie_board_saves_manual_destinations_and_reloads_them(): void
+    {
+        [$event, $draws, $venue, $options] = $this->splitContext();
+        Role::firstOrCreate(['name'=>'admin', 'guard_name'=>'web']);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id'=>$event->id, 'user_id'=>$admin->id]);
+        $this->actingAs($admin);
+        $ties = collect(app(EventVenueScheduleService::class)->fullDayTies($event))->keyBy('draw_id');
+        $choices = [$ties[$draws[0]->id]['key']=>$venue->id.':B', $ties[$draws[1]->id]['key']=>$venue->id.':A'];
+        $selectedVenues = $event->venues()->get();
+        $selectedCourts = $selectedVenues->mapWithKeys(fn ($destination) => [$destination->id=>$destination->id===$venue->id ? ['1', '2'] : ['1']])->all();
+        $url = route('backend.event-venue-schedule.calendar.full-day', ['event'=>$event->id, 'date'=>'2026-10-23']);
+        $payload = ['date'=>'2026-10-23', 'draw_ids'=>$options['draw_ids'],
+            'rounds'=>collect($options['draw_rounds'])->mapWithKeys(fn ($row) => [$row['draw_id']=>$row['rounds']])->all(),
+            'venue_ids'=>$selectedVenues->pluck('id')->all(), 'court_labels'=>$selectedCourts, 'venue_groups'=>$options['day_venue_groups'],
+            'tie_destinations'=>$choices, 'start_time'=>'08:00', 'end_time'=>'10:00', 'duration'=>60, 'player_rest'=>0, 'court_gap'=>0, 'action'=>'preview'];
+        $response = $this->post($url, $payload)->assertOk()->assertSee('Place ties at venues')->assertSee('Automatic / unassigned')->assertSee('draggable="true"', false);
+        $this->assertCount(3, $response->viewData('tieOptions'));
+        if (getenv('CT_DAY_EDIT_BROWSER_FIXTURE') === '1') file_put_contents(storage_path('framework/testing/full-day-tie-board.html'), $response->getContent());
+        $this->post($url, array_replace($payload, ['action'=>'save', 'revision'=>$response->viewData('preview')['revision']]))->assertRedirect();
+        $response = $this->get($url)->assertOk();
+        $this->assertEquals($choices, $response->viewData('values')['tie_destinations']);
+        $this->assertDatabaseCount('venues', 3);
+    }
 }

@@ -341,15 +341,29 @@ final class EventVenueScheduleService
         $tieVenues = [];
         $tieGroups = [];
         $plannedTieKeys = collect($pending)->pluck('tie_allocation_key')->filter()->flip();
+        $tieDestinations = [];
+        foreach ($options['full_day_tie_destinations'] ?? [] as $key => $destination) {
+            if (! $fullDay || ! $plannedTieKeys->has($key) || ! is_array($destination)) throw new \InvalidArgumentException('Choose destinations only for ties in the selected draws, rounds and day.');
+            $venueId = (int) ($destination['venue_id'] ?? 0);
+            $group = $destination['group'] ?? null;
+            if (empty($courtLabels[$venueId]) || (isset($dayVenueGroups[$venueId])
+                ? ! is_string($group) || ! isset($dayVenueGroups[$venueId][$group]) : $group !== null)) {
+                throw new \InvalidArgumentException('Choose a selected venue or one of its active court groups for each tie.');
+            }
+            $tieDestinations[$key] = ['venue_id'=>$venueId, 'group'=>$group];
+            $tieVenues[$key] = $venueId;
+            $tieGroups[$key] = $group;
+        }
+        ksort($tieDestinations);
         if ($fullDay) foreach ($nodes as $node) {
             $slot = $this->nodeSlot($node);
             $key = $node['tie_allocation_key'];
             if ($key && $plannedTieKeys->has($key) && ($node['fixed'] || $node['played']) && $slot?->time) {
-                if (isset($tieVenues[$key]) && $tieVenues[$key] !== (int) $slot->venue_id) throw new \InvalidArgumentException('A fixed tie is already split between venues. Review its saved matches before planning this day.');
+                if (isset($tieVenues[$key]) && $tieVenues[$key] !== (int) $slot->venue_id) throw new \InvalidArgumentException('The chosen tie venue conflicts with a fixed rubber, or the fixed tie is already split between venues. Review its saved matches before planning this day.');
                 $venueId = (int) $slot->venue_id;
                 $group = $courtGroups[$venueId][ScheduleAvailability::courtKey((string) $slot->court)] ?? null;
                 if (isset($dayVenueGroups[$venueId]) && $group === null) throw new \InvalidArgumentException('A fixed rubber uses a court outside the selected groups. Include that court before planning the rest of its tie.');
-                if (array_key_exists($key, $tieGroups) && $tieGroups[$key] !== $group) throw new \InvalidArgumentException('A fixed tie is already split between court groups. Review its saved matches or change the court groups.');
+                if (array_key_exists($key, $tieGroups) && $tieGroups[$key] !== $group) throw new \InvalidArgumentException('The chosen tie group conflicts with a fixed rubber, or the fixed tie is already split between court groups. Review its saved matches or change the court groups.');
                 $tieVenues[$key] = (int) $slot->venue_id;
                 $tieGroups[$key] = $group;
             }
@@ -668,6 +682,7 @@ final class EventVenueScheduleService
             'programme' => $programme, 'day_scope' => $dayScope, 'full_day_scope' => $fullDay, 'day_court_labels' => ($dayScope || $fullDay) ? $courtLabels : null,
             'day_venue_groups' => $dayVenueGroups,
             'full_day_venue_windows' => $fullDayVenueWindows,
+            'full_day_tie_destinations' => $tieDestinations,
             'tie_allocation' => $tieAllocation,
             'draw_starts' => $drawStarts->map(fn ($time, $drawId) => ['draw_id' => (int) $drawId,
                 'start' => $time->format('Y-m-d H:i:s')])->values()->all(),
@@ -1207,6 +1222,30 @@ final class EventVenueScheduleService
     public function fullDayCourtLabels(Event $event): array
     {
         return $this->courtLabels($event, $event->draws()->with('venues')->get(), $event->venues()->get()->keyBy('id'));
+    }
+
+    public function fullDayTies(Event $event): array
+    {
+        $draws = $event->draws()->get()->filter(fn ($draw) => $draw->isTeamDraw())->keyBy('id');
+        $fixtures = TeamFixture::without(['teamResults', 'fixturePlayers', 'draw'])
+            ->with(['teamTie.homeTeam', 'teamTie.awayTeam', 'fixtureResults', 'region1Name', 'region2Name'])
+            ->whereIn('draw_id', $draws->keys())->orderBy('draw_id')->orderBy('round_nr')->orderBy('tie_nr')->orderBy('id')->get();
+        $adapter = app(UnifiedTeamScheduleService::class);
+        $ties = [];
+        foreach ($fixtures as $fixture) {
+            if ($adapter->protected($fixture)) continue;
+            $node = ['fixture_kind'=>'team', 'fixture'=>$fixture, 'draw_id'=>(int) $fixture->draw_id, 'round'=>max(1, (int) $fixture->round_nr)];
+            $key = $this->tieAllocationKey($node);
+            $date = $fixture->scheduled_at?->toDateString() ?? 'unscheduled';
+            if (isset($ties[$key])) {
+                $ties[$key]['dates'] = array_values(array_unique([...$ties[$key]['dates'], $date]));
+                continue;
+            }
+            $ties[$key] = ['key'=>$key, 'draw_id'=>(int) $fixture->draw_id, 'draw_name'=>$draws[$fixture->draw_id]->drawName,
+                'round'=>$node['round'], 'tie_nr'=>$fixture->teamTie?->tie_nr ?: $fixture->tie_nr, 'dates'=>[$date],
+                'matchup'=>($fixture->teamTie?->home_side_name ?: $fixture->region1Name?->name ?: 'Home team').' vs '.($fixture->teamTie?->away_side_name ?: $fixture->region2Name?->name ?: 'Away team')];
+        }
+        return array_values($ties);
     }
 
     private function courtLabels(Event $event, Collection $draws, Collection $venues): array
