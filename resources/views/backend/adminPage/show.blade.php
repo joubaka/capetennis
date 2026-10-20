@@ -150,6 +150,7 @@
 <script src="{{ asset(mix('js/playerOrder.js')) }}"></script>
 @if((int) $event->eventType === 3 || ($rosterOnly ?? false) || ($centralTeamWorkspace ?? false))
 <script src="{{ asset('js/team-workspace.js') }}?v={{ filemtime(public_path('js/team-workspace.js')) }}"></script>
+<script src="{{ asset('js/team-email.js') }}?v={{ filemtime(public_path('js/team-email.js')) }}"></script>
 @if(isset($embeddedTeamSelection))
   @include('backend.team-selection._workspace-script', $embeddedTeamSelection)
 @endif

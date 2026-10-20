@@ -77,6 +77,8 @@
     return selectionRequest;
   }
 
+  window.prepareTeamSelectionMail = loadSelection;
+
   function syncTeamOptions() {
     const select = document.querySelector('[data-workspace-team]'); if (!select) return;
     const region = String($('[data-roster-region]').val());

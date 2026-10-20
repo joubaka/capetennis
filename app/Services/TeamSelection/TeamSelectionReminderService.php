@@ -35,14 +35,26 @@ final class TeamSelectionReminderService
         return $result;
     }
 
-    public function recipientHash(Event $event, EventRegion $eventRegion, string $kind, string $audience): string
+    public function recipientHash(Event $event, EventRegion $eventRegion, string $kind, string $audience, ?int $teamId = null, ?int $playerId = null, bool $locking = false): string
     {
-        return hash('sha256', $this->recipients($event, $eventRegion, $kind, $audience)
+        return hash('sha256', $this->recipients($event, $eventRegion, $kind, $audience, $teamId, $playerId, $locking)
             ->map(fn (array $recipient) => [$recipient['email'], collect($recipient['players'])->pluck('invitation_id')->all()])
             ->values()->toJson());
     }
 
-    public function send(Event $event, EventRegion $eventRegion, string $kind, string $audience, string $token, string $expectedHash, $actor): array
+    /** Read-only content used by the common exact-recipient approval screen. */
+    public function previewMessages(Event $event, EventRegion $eventRegion, string $kind, string $audience, ?int $teamId = null, ?int $playerId = null, bool $locking = false): Collection
+    {
+        return $this->recipients($event, $eventRegion, $kind, $audience, $teamId, $playerId, $locking)->map(function (array $recipient) use ($event, $eventRegion, $kind): array {
+            $content = $this->content($event, $kind, $recipient['players'], (bool) $eventRegion->region?->usesOnlineClothingOrders());
+
+            return ['email' => $recipient['email'], 'name' => $recipient['name'], 'kind' => 'players',
+                'player_keys' => collect($recipient['players'])->pluck('invitation_id')->map(fn ($id) => 'invitation:'.$id)->all(),
+                'subject' => $content['subject'], 'html' => $content['html']];
+        });
+    }
+
+    public function send(Event $event, EventRegion $eventRegion, string $kind, string $audience, string $token, string $expectedHash, $actor, ?int $communicationBatchId = null, ?int $teamId = null, ?int $playerId = null, array $approvedMessages = []): array
     {
         $usesRegionalClothing = (bool) $eventRegion->region?->usesOnlineClothingOrders();
         if ($kind === 'incomplete_clothing' && ! $usesRegionalClothing) {
@@ -51,8 +63,8 @@ final class TeamSelectionReminderService
             ]);
         }
 
-        $recipients = $this->recipients($event, $eventRegion, $kind, $audience);
-        if (! hash_equals($this->recipientHash($event, $eventRegion, $kind, $audience), $expectedHash)) {
+        $recipients = $this->recipients($event, $eventRegion, $kind, $audience, $teamId, $playerId, $communicationBatchId !== null);
+        if (! hash_equals($this->recipientHash($event, $eventRegion, $kind, $audience, $teamId, $playerId, $communicationBatchId !== null), $expectedHash)) {
             throw \Illuminate\Validation\ValidationException::withMessages([
                 'confirm_recipients' => 'The reminder recipient list changed. Review the current counts and confirm again.',
             ]);
@@ -65,6 +77,12 @@ final class TeamSelectionReminderService
         $stats = ['total' => 0, 'queued' => 0, 'skipped' => 0, 'invalid' => 0, 'duplicate' => 0, 'failed' => 0, 'players' => 0];
         foreach ($recipients as $recipient) {
             $content = $this->content($event, $kind, $recipient['players'], $usesRegionalClothing);
+            if ($communicationBatchId !== null) {
+                $approved = collect($approvedMessages)->firstWhere('email', $recipient['email']);
+                if (! $approved || $approved['subject'] !== $content['subject'] || $approved['html'] !== $content['html']) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['preview' => 'Reminder details changed. Review a fresh exact preview.']);
+                }
+            }
             $sent = $this->mailer->dispatch($mailType, $event, [[
                 'email' => $recipient['email'], 'name' => $recipient['name'],
             ]], [
@@ -74,6 +92,8 @@ final class TeamSelectionReminderService
                 'campaign_key' => $token, 'send_token' => $token, 'kind' => $kind, 'audience' => $audience,
                 'event_region_id' => $eventRegion->id, 'region_id' => $eventRegion->region_id,
                 'event_id' => $event->id, 'created_by' => $actor->id,
+                'event_communication_batch_id' => $communicationBatchId, 'recipient_kind' => 'players',
+                'player_keys' => collect($recipient['players'])->pluck('invitation_id')->map(fn ($id) => 'invitation:'.$id)->all(),
             ], false);
             foreach (['total', 'queued', 'skipped', 'invalid', 'duplicate', 'failed'] as $key) $stats[$key] += (int) $sent[$key];
             if ($sent['queued'] > 0) $stats['players'] += count($recipient['players']);
@@ -89,7 +109,7 @@ final class TeamSelectionReminderService
     }
 
     /** @return Collection<int, array{email:string,name:?string,players:array}> */
-    public function recipients(Event $event, EventRegion $eventRegion, string $kind, string $audience): Collection
+    public function recipients(Event $event, EventRegion $eventRegion, string $kind, string $audience, ?int $teamId = null, ?int $playerId = null, bool $locking = false): Collection
     {
         $usesRegionalClothing = (bool) $eventRegion->region?->usesOnlineClothingOrders();
         if ($kind === 'incomplete_clothing' && ! $usesRegionalClothing) {
@@ -105,19 +125,22 @@ final class TeamSelectionReminderService
             }
         }
 
-        $invitations = TeamSelectionInvitation::query()
-            ->with(['player.user', 'player.users', 'team', 'region', 'selectionImport'])
+        $current = fn ($query) => $locking ? $query->lockForUpdate() : $query;
+        $invitations = $current(TeamSelectionInvitation::query())
+            ->with(['player' => $current, 'player.user' => $current, 'player.users' => $current, 'team' => $current, 'region' => $current, 'selectionImport' => $current])
             ->where('event_id', $event->id)
             ->where('region_id', $eventRegion->region_id)
+            ->when($teamId, fn ($query) => $query->where('team_id', $teamId))
+            ->when($playerId, fn ($query) => $query->where('player_id', $playerId))
             ->whereHas('selectionImport', fn ($query) => $query->where('status', 'sent'))
             ->whereIn('status', $this->statuses($audience))
             ->orderBy('id')->get();
 
         $regionTeamIds = $invitations->pluck('team_id')->filter()->unique();
-        $paidKeys = ClothingOrder::query()->where('event_id', $event->id)->whereIn('team_id', $regionTeamIds)
+        $paidKeys = $current(ClothingOrder::query())->where('event_id', $event->id)->whereIn('team_id', $regionTeamIds)
             ->where(fn ($query) => $query->where('pay_status', 1)->orWhere('payfast_paid', true))
             ->get(['team_id', 'player_id'])->map(fn ($order) => $order->team_id.'-'.$order->player_id)->flip();
-        $pendingKeys = ClothingOrder::query()->where('event_id', $event->id)->whereIn('team_id', $regionTeamIds)
+        $pendingKeys = $current(ClothingOrder::query())->where('event_id', $event->id)->whereIn('team_id', $regionTeamIds)
             ->where(fn ($query) => $query->where('pay_status', '!=', 1)->where(fn ($q) => $q->whereNull('payfast_paid')->orWhere('payfast_paid', false)))
             ->get(['team_id', 'player_id'])->map(fn ($order) => $order->team_id.'-'.$order->player_id)->flip();
 

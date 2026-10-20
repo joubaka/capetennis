@@ -10,7 +10,7 @@
 <div class="card card-body mb-3"><h5>Extra BCC addresses</h5><p class="text-break">{{ implode(', ', $batch->options['bcc_emails']) }}</p><p class="mb-0">Each extra address receives one hidden copy. Addresses already receiving a player or parent email are not copied again. BCC addresses are hidden from recipients.</p></div>
 @endif
 @php($coveredPlayers = collect($batch->recipients)->flatMap(fn ($recipient) => $recipient['player_keys'] ?? [])->unique()->count())
-@if($coveredPlayers)<p>{{ $coveredPlayers }} distinct players covered; {{ count($batch->issues ?? []) }} missing contacts. Shared addresses receive one email.</p>@endif
+@if($coveredPlayers)<p>{{ $coveredPlayers }} distinct players covered; {{ count($batch->issues ?? []) }} missing contacts. @if(($batch->options['source'] ?? null) === 'team_selection_lifecycle' && ($batch->options['lifecycle_action'] ?? '') !== 'reminder')Invitation emails retain each player’s personal links.@else Shared addresses receive one email.@endif</p>@endif
 @if(($batch->options['scope'] ?? null)==='rankings')
 
 <div class="card card-body mb-3"><h5>Review ranked players</h5>
@@ -34,6 +34,8 @@
 <a class="btn btn-outline-secondary" href="{{ route('backend.regional-registration-mail.compose', ['event' => $event, 'edit_batch' => $batch->id]) }}">Back to composer</a>
 @elseif(($batch->options['source'] ?? null) === 'selection_regions')
 <a class="btn btn-outline-secondary" href="{{ route('backend.selection-region-mail.compose', ['event' => $event, 'edit_batch' => $batch->id]) }}">Back to composer</a>
+@elseif(($batch->options['source'] ?? null) === 'team_selection_lifecycle')
+<a class="btn btn-outline-secondary" href="{{ route('backend.team-selection.index', ['event' => $event]) }}">Back to team workspace</a>
 @else
 <a class="btn btn-outline-secondary" href="{{ route('backend.event-communications.index', !empty($batch->options['wrap_up']) ? ['event' => $event, 'wrap_up' => 1, 'edit_batch' => $batch->id] : ['event' => $event]) }}">Back to composer</a>
 @endif

@@ -189,11 +189,12 @@
   });
   document.addEventListener('submit', event => {
     const form = event.target;
-    if (!form.matches('form[data-mail-launch]:not([data-mail-bound])')) return;
+    if (!form.matches('form[data-mail-launch]:not([data-mail-bound]), form[data-mail-compose]:not([data-mail-bound])')) return;
     event.preventDefault();
-    const modal = modalFor();
-    modal.querySelector('.modal-dialog').innerHTML = '<div class="modal-content"><div class="modal-body">Preparing email…</div></div>';
+    const modal = modalFor(form);
+    const compose = form.closest('.modal') ? form : null;
+    if (!compose) modal.querySelector('.modal-dialog').innerHTML = '<div class="modal-content"><div class="modal-body">Preparing email…</div></div>';
     bootstrap.Modal.getOrCreateInstance(modal).show();
-    prepare(form, modal, null);
+    prepare(form, modal, compose);
   });
 })();

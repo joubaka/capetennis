@@ -163,7 +163,9 @@ class EventCommunicationController extends Controller
 
         $pending = 0;
         $submissionLogs = $batch->logs();
-        if (! $stats['duplicate'] && (clone $submissionLogs)->exists()) {
+        $usesSelectionQueue = ($batch->options['source'] ?? null) === 'team_selection_lifecycle'
+            && ($batch->options['lifecycle_action'] ?? null) !== 'reminder';
+        if (! $stats['duplicate'] && ! $usesSelectionQueue && (clone $submissionLogs)->exists()) {
             $stats['queued'] = (clone $submissionLogs)->where('payload->queue_state','enqueued')->count();
             $stats['failed'] = (clone $submissionLogs)->where('payload->queue_state','submission_failed')->count();
             $stats['skipped'] = (clone $submissionLogs)->where('status','skipped')->count();

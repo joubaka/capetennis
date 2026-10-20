@@ -283,8 +283,23 @@ class EventCommunicationService
         return ['key' => $key, 'name' => $name, 'emails' => $emails, 'status' => $status, 'gender' => null, 'category_event_id' => $team->category_event_id, 'team_id' => $team->id, 'region_id' => $team->region_id, 'category' => $team->category?->category?->name ?? '', 'team' => $team->name, 'nominated' => false];
     }
 
-    public function plan(Event $event, User $actor, array $options, string $subject, string $body): array
+    public function plan(Event $event, User $actor, array $options, string $subject, string $body, bool $lockLifecycle = false): array
     {
+        if (($options['source'] ?? null) === 'team_selection_lifecycle') {
+            $plan = app(\App\Services\TeamSelection\TeamSelectionMailReview::class)->plan($event, $actor, $options, $lockLifecycle);
+            $plan['fingerprint'] = $this->planFingerprint([$event->id, $options, $plan]);
+
+            return $plan;
+        }
+        if (($options['source'] ?? null) === 'team_selection_custom') {
+            abort_unless($event->isTeam() && $this->managesWholeEvent($event, $actor), 403);
+            $import = TeamSelectionImport::where('event_id', $event->id)->findOrFail($options['selection_import_id']);
+            $invitations = app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->customMessageRecipients($import, $options['invitation_ids']);
+            $rows = $invitations->map(fn ($invitation) => ['key' => 'player:'.$invitation->player_id,
+                'name' => $invitation->player?->full_name, 'emails' => [$this->contacts->primaryEmail($invitation->player)]]);
+
+            return $this->legacyPlan($event, $options, $rows, $subject, $body);
+        }
         if (($options['source'] ?? null) === 'regional_registration_open') {
             $rows = app(RegionalRegistrationMessage::class)->audience($event, $actor, $options);
             return $this->legacyPlan($event, $options, collect($rows), $subject, $body);
@@ -544,6 +559,7 @@ class EventCommunicationService
         $options = array_merge($options, CommunicationSender::resolve($options, $actor));
         $plan = $this->plan($event, $actor, $options, $subject, $body);
 
+        unset($plan['lifecycle_state']);
         return EventCommunicationBatch::create(['event_id' => $event->id, 'created_by' => $actor->id, 'token' => (string) Str::uuid(), 'subject' => $subject, 'body' => $body, 'options' => $options, ...$plan]);
     }
 
@@ -716,13 +732,18 @@ class EventCommunicationService
                 if (! $draft) throw ValidationException::withMessages(['preview' => 'This draft was already approved. No email was queued again.']);
                 $plan = ['fingerprint' => $draft->fingerprint];
             } else {
-                $plan = $this->plan($batch->event, $actor, $batch->options, $batch->subject, $batch->body);
+                $plan = $this->plan($batch->event, $actor, $batch->options, $batch->subject, $batch->body, lockLifecycle: true);
             }
             if (! hash_equals($batch->fingerprint, $plan['fingerprint'])) throw ValidationException::withMessages(['preview' => 'Recipients or player details changed. Review a fresh preview before sending.']);
             if ($batch->issues && ! $acknowledgeMissing) throw ValidationException::withMessages(['acknowledge_missing' => 'Acknowledge the missing contacts shown in the preview.']);
             $batch->update(['status' => 'approved', 'approved_at' => now()]);
             $draft?->update(['status' => 'approved', 'approved_at' => now()]);
             $stats = ['queued' => 0, 'failed' => 0, 'skipped' => 0, 'duplicate' => false];
+            if (($batch->options['source'] ?? null) === 'team_selection_lifecycle') {
+                return array_replace($stats, app(\App\Services\TeamSelection\TeamSelectionMailReview::class)->send(
+                    $batch->event, $actor, $batch->options, $plan['lifecycle_state'], $batch->token, $batch->id,
+                ));
+            }
             $related = $batch;
             if (! empty($batch->options['regional_announcement_id'])) {
                 $related = \App\Models\TeamSelectionRegionAnnouncement::where('event_id', $batch->event_id)->where('region_id', $batch->options['region_id'])->findOrFail($batch->options['regional_announcement_id']);

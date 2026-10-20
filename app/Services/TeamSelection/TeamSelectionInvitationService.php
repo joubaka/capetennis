@@ -1093,11 +1093,12 @@ final class TeamSelectionInvitationService
         });
     }
 
-    public function sendRestoredInvitation(TeamSelectionInvitation $invitation, User $actor): string
+    public function sendRestoredInvitation(TeamSelectionInvitation $invitation, User $actor, ?int $communicationBatchId = null, ?array $approvedMessage = null): string
     {
-        return DB::transaction(function () use ($invitation, $actor): string {
+        return DB::transaction(function () use ($invitation, $actor, $communicationBatchId, $approvedMessage): string {
+            $current = fn ($query) => $communicationBatchId !== null ? $query->lockForUpdate() : $query;
             $locked = TeamSelectionInvitation::query()->lockForUpdate()
-                ->with(['selectionImport', 'player'])
+                ->with(['selectionImport' => $current, 'player' => $current, 'player.user' => $current, 'player.users' => $current])
                 ->findOrFail($invitation->id);
             if ($locked->selectionImport?->status !== 'sent'
                 || $locked->status !== TeamSelectionInvitation::INVITED
@@ -1126,23 +1127,11 @@ final class TeamSelectionInvitationService
                 throw ValidationException::withMessages(['email' => 'This player does not have a valid profile, parent, or linked-account email address.']);
             }
 
-            $log = BulkEmailLog::create([
-                'mail_type' => 'team_selection_invitation',
-                'related_type' => TeamSelectionInvitation::class,
-                'related_id' => $locked->id,
-                'recipient_email' => $email,
-                'recipient_name' => $locked->player?->full_name,
-                'status' => 'queued',
-                'payload' => [
-                    'kind' => 'invitation',
-                    'campaign' => $this->savedCampaignSnapshot($locked->selectionImport),
-                    'manual_restored_send' => true,
-                    'event_id' => $locked->event_id, 'region_id' => $locked->region_id, 'created_by' => $actor->id,
-                ],
-                'queued_at' => now(),
-            ]);
+            $this->queueMail($locked, $email, 'invitation', $this->savedCampaignSnapshot($locked->selectionImport),
+                allowHistoricalRepeat: true, communicationBatchId: $communicationBatchId,
+                reviewMetadata: ['manual_restored_send' => true, 'created_by' => $actor->id], approvedMessage: $approvedMessage);
+            $log = BulkEmailLog::where('related_type', TeamSelectionInvitation::class)->where('related_id', $locked->id)->latest('id')->firstOrFail();
             $locked->update(['invited_at' => now()]);
-            SendTeamSelectionInvitationEmailJob::dispatch($log->id, $locked->event_id);
             activity('team-selection')->performedOn($locked)->causedBy($actor)
                 ->withProperties(['recipient_email' => $email, 'email_log_id' => $log->id])
                 ->log('regional manager manually sent restored team selection invitation');
@@ -1523,7 +1512,7 @@ final class TeamSelectionInvitationService
                     'failed_at' => null,
                     'error_message' => null,
                 ]);
-                SendTeamSelectionInvitationEmailJob::dispatch($log->id, $locked->event_id);
+                SendTeamSelectionInvitationEmailJob::dispatch($log->id, $locked->event_id)->afterCommit();
                 $queued++;
             }
             activity('team-selection')->performedOn($locked)->causedBy($actor)
@@ -1533,11 +1522,12 @@ final class TeamSelectionInvitationService
         });
     }
 
-    public function resendInvitation(TeamSelectionInvitation $invitation, User $actor): string
+    public function resendInvitation(TeamSelectionInvitation $invitation, User $actor, ?int $communicationBatchId = null, ?array $approvedMessage = null): string
     {
-        return DB::transaction(function () use ($invitation, $actor): string {
+        return DB::transaction(function () use ($invitation, $actor, $communicationBatchId, $approvedMessage): string {
+            $current = fn ($query) => $communicationBatchId !== null ? $query->lockForUpdate() : $query;
             $locked = TeamSelectionInvitation::query()->lockForUpdate()
-                ->with(['selectionImport', 'player'])->findOrFail($invitation->id);
+                ->with(['selectionImport' => $current, 'player' => $current, 'player.user' => $current, 'player.users' => $current])->findOrFail($invitation->id);
             if ($locked->selectionImport?->status !== 'sent' || ! in_array($locked->status, [
                 TeamSelectionInvitation::INVITED,
                 TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT,
@@ -1553,22 +1543,10 @@ final class TeamSelectionInvitationService
                 throw ValidationException::withMessages(['email' => 'This player does not have a valid profile, parent, or linked-account email address.']);
             }
 
-            $log = BulkEmailLog::create([
-                'mail_type' => 'team_selection_invitation',
-                'related_type' => TeamSelectionInvitation::class,
-                'related_id' => $locked->id,
-                'recipient_email' => $email,
-                'recipient_name' => $locked->player?->full_name,
-                'status' => 'queued',
-                'payload' => [
-                    'kind' => $locked->invitationMailKind(),
-                    'campaign' => $this->savedCampaignSnapshot($locked->selectionImport),
-                    'manual_resend' => true,
-                    'event_id' => $locked->event_id, 'region_id' => $locked->region_id, 'created_by' => $actor->id,
-                ],
-                'queued_at' => now(),
-            ]);
-            SendTeamSelectionInvitationEmailJob::dispatch($log->id, $locked->event_id);
+            $this->queueMail($locked, $email, $locked->invitationMailKind(), $this->savedCampaignSnapshot($locked->selectionImport),
+                allowHistoricalRepeat: true, communicationBatchId: $communicationBatchId,
+                reviewMetadata: ['manual_resend' => true, 'created_by' => $actor->id], approvedMessage: $approvedMessage);
+            $log = BulkEmailLog::where('related_type', TeamSelectionInvitation::class)->where('related_id', $locked->id)->latest('id')->firstOrFail();
             activity('team-selection')->performedOn($locked)->causedBy($actor)
                 ->withProperties(['recipient_email' => $email, 'email_log_id' => $log->id])
                 ->log('regional manager resent team selection invitation');
@@ -1865,9 +1843,12 @@ final class TeamSelectionInvitationService
         User $actor,
         string $expectedRecipientHash,
         int $expectedRecipientCount,
+        ?int $communicationBatchId = null,
+        array $approvedMessages = [],
+        array $invitationIds = [],
     ): array
     {
-        return DB::transaction(function () use ($import, $actor, $expectedRecipientHash, $expectedRecipientCount): array {
+        return DB::transaction(function () use ($import, $actor, $expectedRecipientHash, $expectedRecipientCount, $communicationBatchId, $approvedMessages, $invitationIds): array {
             Event::query()->lockForUpdate()->findOrFail($import->event_id);
             $lockedImport = TeamSelectionImport::query()->lockForUpdate()->findOrFail($import->id);
             if ($lockedImport->status !== 'sent') {
@@ -1881,14 +1862,16 @@ final class TeamSelectionInvitationService
                 ]);
             }
 
+            $current = fn ($query) => $communicationBatchId !== null ? $query->lockForUpdate() : $query;
             $pending = TeamSelectionInvitation::query()->lockForUpdate()
-                ->with('player')
+                ->with(['player' => $current, 'player.user' => $current, 'player.users' => $current])
                 ->where('import_id', $lockedImport->id)
                 ->where('event_id', $lockedImport->event_id)
                 ->where('status', TeamSelectionInvitation::INVITED)
                 ->whereNotNull('roster_rank')
                 ->whereNull('invited_at')
                 ->where('snapshot_json->activation->pending_manual_invitation', true)
+                ->when($invitationIds, fn ($query) => $query->whereIn('id', $invitationIds))
                 ->orderBy('team_id')->orderBy('roster_rank')->orderBy('id')
                 ->get();
             if ($pending->isEmpty()) {
@@ -1933,6 +1916,8 @@ final class TeamSelectionInvitationService
                     'replacement',
                     $campaign,
                     allowHistoricalRepeat: true,
+                    communicationBatchId: $communicationBatchId,
+                    approvedMessage: $approvedMessages[$invitation->id] ?? null,
                 );
                 if (! $queuedForThisActivation) {
                     continue;
@@ -2108,6 +2093,11 @@ final class TeamSelectionInvitationService
         $campaign['hash'] = hash('sha256', json_encode($withoutHash, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
         return $campaign;
+    }
+
+    public function customMessageRecipients(TeamSelectionImport $import, array $invitationIds): \Illuminate\Support\Collection
+    {
+        return $this->resolveCustomPendingActivatedInvitations($import, $invitationIds, false);
     }
 
     public function customEmailKind(TeamSelectionInvitation $invitation): string
@@ -2355,6 +2345,9 @@ final class TeamSelectionInvitationService
         array $campaign = [],
         bool $allowHistoricalRepeat = false,
         ?string $customPreviewHash = null,
+        ?int $communicationBatchId = null,
+        array $reviewMetadata = [],
+        ?array $approvedMessage = null,
     ): bool
     {
         if ($customPreviewHash && BulkEmailLog::query()->where([
@@ -2381,9 +2374,15 @@ final class TeamSelectionInvitationService
         $approvedMail = new \App\Mail\TeamSelectionInvitationMail($invitation, $kind, $campaign);
         $renderedHtml = $approvedMail->render();
         $renderedSubject = $approvedMail->envelope()->subject;
+        if ($approvedMessage !== null && (($approvedMessage['email'] ?? null) !== $email
+            || ($approvedMessage['subject'] ?? null) !== $renderedSubject || ($approvedMessage['html'] ?? null) !== $renderedHtml)) {
+            throw ValidationException::withMessages(['preview' => 'Invitation details changed after review. Prepare a fresh exact preview.']);
+        }
         $payload = ['kind' => $kind, 'campaign' => $campaign, 'rendered_html' => $renderedHtml, 'rendered_subject' => $renderedSubject,
+            'event_communication_batch_id' => $communicationBatchId, 'recipient_kind' => 'players', 'player_keys' => ['player:'.$invitation->player_id],
             'event_id' => $invitation->event_id, 'region_id' => $invitation->region_id, 'created_by' => $invitation->selectionImport?->prepared_by ?? $invitation->selectionImport?->imported_by, 'recipient_email' => $email, 'recipient_name' => $invitation->player?->full_name,
             'related_type' => TeamSelectionInvitation::class, 'related_id' => $invitation->id];
+        $payload = array_replace($payload, $reviewMetadata);
         $payload['payload_integrity'] = app(\App\Services\InvitationMailSecurity::class)->payloadIntegrity($payload);
         $log = BulkEmailLog::create([
             'mail_type' => 'team_selection_invitation',
@@ -2395,7 +2394,7 @@ final class TeamSelectionInvitationService
             'payload' => $payload,
             'queued_at' => now(),
         ]);
-        SendTeamSelectionInvitationEmailJob::dispatch($log->id, $invitation->event_id);
+        SendTeamSelectionInvitationEmailJob::dispatch($log->id, $invitation->event_id)->afterCommit();
 
         return true;
     }

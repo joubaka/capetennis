@@ -74,7 +74,9 @@ class SendTeamSelectionInvitationEmailJob implements ShouldQueue
             'custom_payment_update' => [TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT],
             'custom_status_update' => [TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT],
             'custom_paid_update' => [TeamSelectionInvitation::PAID_CONFIRMED],
-            default => [TeamSelectionInvitation::INVITED],
+            default => ! empty($log->payload['manual_resend'])
+                ? [TeamSelectionInvitation::INVITED, TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT]
+                : [TeamSelectionInvitation::INVITED],
         };
         $customRegistrationEmail = $kind === 'custom_invitation';
         $deadline = $kind === 'custom_payment_update'
@@ -110,7 +112,9 @@ class SendTeamSelectionInvitationEmailJob implements ShouldQueue
             $transportStarted = true;
             $sent = $mailTransport->to($log->recipient_email)
                 ->sendNow((new \App\Mail\BulkEventMail(
-                    $log->payload['rendered_subject'], $log->payload['rendered_html'], 'Cape Tennis', 'info@capetennis.co.za',
+                    $log->payload['rendered_subject'], $log->payload['rendered_html'],
+                    $log->payload['campaign']['from_name'] ?? config('mail.from.name'),
+                    $log->payload['campaign']['reply_to'] ?? config('mail.from.address'),
                 ))->with('event_mail_reviewed', true)->with('outbound_mail_log_id', $log->id));
         } catch (Throwable $exception) {
             app(\App\Services\MailFailureOutcome::class)->record($log, $exception, $transportStarted);

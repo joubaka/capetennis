@@ -196,9 +196,29 @@ class TeamSelectionInvitationController extends Controller
     {
         $this->authorizeRegion($event, $eventRegion, $request->user());
         if ($event->isTeam()) {
-            $data = $request->validate(['kind' => 'required|in:registration_clothing,incomplete_clothing', 'audience' => 'required|in:all,registered,unregistered']);
-            $request->merge(['subject' => $event->name.' — '.($data['kind'] === 'incomplete_clothing' ? 'Clothing reminder' : 'Registration and clothing reminder'), 'message' => $data['kind'] === 'incomplete_clothing' ? 'Please review your clothing order and complete any outstanding arrangements for '.$event->name.'.' : 'Please review your registration and clothing arrangements for '.$event->name.'.']);
-            return $this->reviewInCommunications($request, $event, ['scope' => 'region', 'region_id' => $eventRegion->region_id, 'filter' => match ($data['audience']) { 'registered' => 'paid', 'unregistered' => 'not_registered', default => 'all' }]);
+            $data = $request->validate(['kind' => 'required|in:registration_clothing,incomplete_clothing', 'audience' => 'required|in:all,registered,unregistered', 'team_id' => 'nullable|integer|min:1', 'player_id' => 'nullable|integer|min:1']);
+            $hasSelection = TeamSelectionInvitation::where('event_id', $event->id)->where('region_id', $eventRegion->region_id)
+                ->when($data['team_id'] ?? null, fn ($q, $id) => $q->where('team_id', $id))
+                ->when($data['player_id'] ?? null, fn ($q, $id) => $q->where('player_id', $id))
+                ->whereHas('selectionImport', fn ($q) => $q->where('status', 'sent'))->exists();
+            if ($data['kind'] === 'registration_clothing' && ! $hasSelection) {
+                $filter = match ($data['audience']) { 'registered' => 'paid', 'unregistered' => 'not_registered', default => 'all' };
+                $options = ['scope' => 'region', 'region_id' => $eventRegion->region_id, 'filter' => $filter];
+                if (! empty($data['team_id'])) {
+                    abort_unless(Team::withoutGlobalScopes()->whereKey($data['team_id'])->where('region_id', $eventRegion->region_id)->whereHas('category', fn ($q) => $q->where('event_id', $event->id))->exists(), 404);
+                    $options = ['scope' => 'team', 'team_id' => $data['team_id'], 'filter' => $filter];
+                }
+                if (! empty($data['player_id'])) {
+                    $rows = app(\App\Services\EventCommunicationService::class)->rosterEntries($event, [(int) $eventRegion->region_id]);
+                    abort_unless($rows->contains(fn ($row) => $row['key'] === 'player:'.$data['player_id'] && (empty($data['team_id']) || (int) $row['team_id'] === (int) $data['team_id'])), 404);
+                    $options = ['scope' => 'individual', 'individual_key' => 'player:'.$data['player_id'], 'filter' => $filter];
+                }
+                $request->merge(['subject' => $event->name.' — Registration reminder', 'message' => 'Please complete registration and payment for '.$event->name.'.'."\n\n".route('events.show', $event)]);
+
+                return $this->reviewInCommunications($request, $event, $options);
+            }
+            return $this->reviewLifecycle($request, $event, ['lifecycle_action' => 'reminder', 'event_region_id' => $eventRegion->id,
+                'reminder_kind' => $data['kind'], 'reminder_audience' => $data['audience'], 'team_id' => $data['team_id'] ?? null, 'player_id' => $data['player_id'] ?? null]);
         }
         abort_unless($event->isTeam(), 404);
         abort_unless((int) $eventRegion->event_id === (int) $event->id, 404);
@@ -569,7 +589,7 @@ class TeamSelectionInvitationController extends Controller
     {
         abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
         $this->authorizeImport($event, $selectionImport, $request->user());
-        if ($event->isTeam()) return $this->reviewInCommunications($request, $event, ['scope' => 'individual', 'individual_key' => 'player:'.$invitation->player_id]);
+        if ($event->isTeam()) return $this->reviewLifecycle($request, $event, ['lifecycle_action' => 'restored', 'selection_import_id' => $selectionImport->id, 'invitation_id' => $invitation->id]);
         abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
         $this->authorizeImport($event, $selectionImport, $request->user());
         $email = $service->sendRestoredInvitation($invitation, $request->user());
@@ -654,7 +674,7 @@ class TeamSelectionInvitationController extends Controller
     public function sendPendingActivatedInvitations(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamSelectionInvitationService $service)
     {
         $this->authorizeImport($event, $selectionImport, $request->user());
-        if ($event->isTeam()) return $this->reviewInCommunications($request, $event, ['pending_selection_import_id' => $selectionImport->id], replacement: true);
+        if ($event->isTeam()) return $this->reviewLifecycle($request, $event, ['lifecycle_action' => 'pending', 'selection_import_id' => $selectionImport->id]);
         $this->authorizeImport($event, $selectionImport, $request->user());
         $data = $request->validate([
             'confirm_recipients' => ['accepted'],
@@ -680,6 +700,15 @@ class TeamSelectionInvitationController extends Controller
     {
         $this->authorizeImport($event, $selectionImport, $request->user());
         $data = $this->customPendingInvitationData($request);
+        if ($event->isTeam()) {
+            $batch = app(\App\Services\EventCommunicationService::class)->preview($event, $request->user(),
+                ['source' => 'team_selection_custom', 'selection_import_id' => $selectionImport->id, 'invitation_ids' => $data['invitation_ids']]
+                    + \App\Services\CommunicationSender::resolve($request->all(), $request->user()),
+                $data['email_subject'], trim(html_entity_decode(strip_tags($data['email_message']), ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+            $rankingReview = null;
+
+            return view('backend.event.communications.preview', compact('event', 'batch', 'rankingReview'));
+        }
         $preview = $service->previewCustomPendingActivatedInvitations(
             $selectionImport,
             $data['invitation_ids'],
@@ -890,7 +919,9 @@ class TeamSelectionInvitationController extends Controller
 
             return view('backend.event.communications.compose', compact('event', 'options', 'subject', 'body'));
         }
-        if ($event->isTeam()) return $this->reviewInCommunications($request, $event, ['scope' => 'individual', 'individual_key' => 'player:'.$invitation->player_id], replacement: $invitation->invitationMailKind() === 'replacement', replacementInvitation: $invitation);
+        if ($event->isTeam()) return $this->reviewLifecycle($request, $event, [
+            'lifecycle_action' => ! $invitation->invited_at && data_get($invitation->snapshot_json, 'activation.pending_manual_invitation') ? 'pending' : 'resend',
+            'selection_import_id' => $selectionImport->id, 'invitation_id' => $invitation->id]);
         abort_unless((int) $invitation->import_id === (int) $selectionImport->id, 404);
         $this->authorizeImport($event, $selectionImport, $request->user());
         $email = $service->resendInvitation($invitation, $request->user());
@@ -1055,6 +1086,23 @@ class TeamSelectionInvitationController extends Controller
             'recipient_hash' => hash('sha256', $recipients->pluck('email')->toJson()),
             'recipients' => $recipients,
         ]);
+    }
+
+    private function reviewLifecycle(Request $request, Event $event, array $options)
+    {
+        if (isset($options['selection_import_id'])) {
+            $import = TeamSelectionImport::where('event_id', $event->id)->findOrFail($options['selection_import_id']);
+            $campaign = app(TeamSelectionInvitationService::class)->savedCampaign($import);
+            $options += ['from_address' => config('mail.from.address'), 'from_name' => $campaign['from_name'] ?? config('mail.from.name'),
+                'reply_to' => $campaign['reply_to'] ?? config('mail.from.address')];
+        }
+        $batch = app(\App\Services\EventCommunicationService::class)->preview($event, $request->user(),
+            ['source' => 'team_selection_lifecycle'] + $options, $event->name.' — '.match ($options['lifecycle_action']) {
+                'reminder' => 'Reminder', 'pending' => 'Newly added invitations', default => 'Invitation',
+            }, '');
+        $rankingReview = null;
+
+        return view('backend.event.communications.preview', compact('event', 'batch', 'rankingReview'));
     }
 
     private function reviewInCommunications(Request $request, Event $event, array $options = [], bool $replacement = false, ?TeamSelectionInvitation $replacementInvitation = null)

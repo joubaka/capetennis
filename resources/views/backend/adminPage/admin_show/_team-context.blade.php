@@ -11,4 +11,8 @@
     </select></div>
   </div>
   <p class="small text-muted mb-0 mt-2">{{ ($rosterOnly ?? false) ? 'Keep this region and team while viewing players and setting order.' : 'Keep this region and team while viewing players, setting order or managing invitations.' }}</p>
+  @unless($rosterOnly ?? false)
+    <div class="d-flex flex-wrap align-items-center gap-2 mt-3"><button class="btn btn-primary" type="button" data-team-email-open><i class="ti ti-mail me-1"></i>Email</button><span class="small text-muted">Choose the message and recipients, then review before sending.</span><a class="btn btn-sm btn-outline-secondary" href="{{ route('backend.event-communications.index', $event) }}">Email history</a></div>
+    @include('backend.adminPage.admin_show._team-email')
+  @endunless
 </div>
