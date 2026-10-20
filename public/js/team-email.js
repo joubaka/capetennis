@@ -4,6 +4,7 @@
   let source;
   let context;
   let bypass = false;
+  let closing = false;
   let generation = 0;
   const selector = '.emailPlayer, .emailTeamBtn, .emailRegionBtn, .emailUnpaidRegionBtn, .roster-email-button';
   function purposeModal() { return document.getElementById('team-email-purpose'); }
@@ -40,6 +41,7 @@
     const error = purposeModal().querySelector('[data-team-email-error]'); error.textContent = message; error.hidden = false;
   }
   async function open(button) {
+    if (closing) return;
     const modal = purposeModal(); if (!modal) return;
     source = button || null; context = currentContext(button);
     modal.querySelector('[data-team-email-context]').textContent = context.label;
@@ -66,8 +68,10 @@
     modal.querySelector('[data-pending-purpose-copy]').textContent = count ? count + ' newly added player(s) ready in this region. Review the saved campaign and deadlines.' : 'No newly added invitations are ready in this region.';
   }
   function afterClose(action) {
+    if (closing) return;
+    closing = true;
     const modal = purposeModal();
-    modal.addEventListener('hidden.bs.modal', action, {once: true});
+    modal.addEventListener('hidden.bs.modal', () => { closing = false; action(); }, {once: true});
     bootstrap.Modal.getOrCreateInstance(modal).hide();
   }
   function clickOriginal(button) { bypass = true; try { button.click(); } finally { bypass = false; } }
@@ -101,7 +105,9 @@
     const trigger = regionPanel()?.querySelector('[data-bs-target="#' + CSS.escape(modal.id) + '"]');
     if (trigger) trigger.click(); else bootstrap.Modal.getOrCreateInstance(modal).show();
   }
-  document.addEventListener('click', event => {
+  // Bootstrap delegates modal triggers in document capture. Intercept on the
+  // earlier window path so its data API cannot open the composer first.
+  window.addEventListener('click', event => {
     if (bypass || !purposeModal()) return;
     const button = event.target.closest(selector + ', [data-team-email-open]');
     if (!button) return;

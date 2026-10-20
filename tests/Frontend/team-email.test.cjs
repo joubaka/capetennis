@@ -27,7 +27,7 @@ function harness({ loaded = true, pending = 1, individual = false, hasInvitation
     if (id === 'prepare-invitations-5') return draft ? { id } : null;
     return null;
   }, querySelector(selector) { return selector === '[data-roster-region]' ? region : selector === '[data-workspace-team]' ? team : null; } };
-  const window = { prepareTeamSelectionMail: async () => {} };
+  const window = { addEventListener() {}, prepareTeamSelectionMail: async () => {} };
   const context = vm.createContext({ window, document, CSS: { escape: value => value }, bootstrap: { Modal: { getOrCreateInstance: () => ({ show() {}, hide() {} }) } }, Set });
   vm.runInContext(source.replace(/\}\)\(\);\s*$/, 'window.testMail = { currentContext, open, custom, invitationForm };})();'), context);
   const button = individual ? { dataset: { playerid: '44', name: 'Synthetic Child' }, matches: () => false, classList: { contains: () => false }, closest: () => null } : null;
@@ -76,3 +76,75 @@ test('unlinked imported player cannot silently remind the entire selected team',
   assert.equal(h.control('[data-team-email-purpose="invitation"]').disabled, true);
   assert.equal(h.control('[data-team-email-purpose="pending"]').disabled, true);
 });
+
+for (const targetType of ['imported_player', 'team', 'region']) {
+  test(`${targetType} click intercepts an earlier Bootstrap document-capture listener and replays once after the close transition`, async () => {
+    const listeners = { window: [], document: [] };
+    const hidden = [];
+    const controls = new Map();
+    let loaded = false;
+    let resolveLoad;
+    let composerOpens = 0;
+    let chooserOpens = 0;
+    let hideCalls = 0;
+    let recipient;
+    const control = selector => {
+      if (!controls.has(selector)) controls.set(selector, { hidden: false, disabled: false, textContent: '' });
+      return controls.get(selector);
+    };
+    const fields = [{ value: 'Old invitation subject' }, { value: 'Old invitation body' }];
+    const composer = { querySelectorAll: () => fields };
+    const modal = { querySelector: control,
+      querySelectorAll: () => ['custom', 'invitation', 'reminder', 'pending'].map(purpose => Object.assign(control(`[data-team-email-purpose="${purpose}"]`), { dataset: { teamEmailPurpose: purpose } })),
+      addEventListener(name, callback) { if (name === 'hidden.bs.modal') hidden.push(callback); } };
+    const panel = { querySelector: () => null, querySelectorAll: () => [] };
+    const region = { value: '127', selectedOptions: [{ textContent: 'North', dataset: { eventRegionId: '9' } }] };
+    const team = { value: '841', selectedOptions: [{ textContent: 'Primary' }] };
+    const button = { dataset: { bsTarget: '#roster-email-9', targetType, teamId: targetType === 'region' ? '' : '841', slotId: targetType === 'imported_player' ? '99' : '', recipient: 'Synthetic recipient' },
+      matches: () => false, classList: { contains: value => value === 'roster-email-button' },
+      closest(selector) { return selector.includes('.roster-email-button') || selector === '[data-bs-toggle="modal"]' ? button : null; },
+      click() { click(button); } };
+    function click(target) {
+      const event = { target, stopped: false, preventDefault() {}, stopImmediatePropagation() { this.stopped = true; } };
+      for (const [surface, capture] of [['window', true], ['document', true], ['document', false], ['window', false]]) {
+        for (const listener of listeners[surface]) {
+          if (event.stopped) return;
+          if (listener.capture === capture) listener.callback(event);
+        }
+      }
+    }
+    // Bootstrap's real modal data API registers a delegated document capture
+    // listener before application scripts. A later document listener is too late.
+    listeners.document.push({ capture: true, callback(event) {
+      const trigger = event.target.closest('[data-bs-toggle="modal"]'); if (!trigger) return;
+      composerOpens++; recipient = { ...trigger.dataset };
+    } });
+    const document = {
+      addEventListener(name, callback, capture = false) { if (name === 'click') listeners.document.push({ callback, capture: !!capture }); },
+      getElementById(id) { return id === 'team-email-purpose' ? modal : id === 'region-panel-9' && loaded ? panel : id === 'final-team-reminders-9' ? {} : null; },
+      querySelector(selector) { return selector === '[data-roster-region]' ? region : selector === '[data-workspace-team]' ? team : selector === '#roster-email-9' ? composer : null; },
+    };
+    const window = {
+      addEventListener(name, callback, capture = false) { if (name === 'click') listeners.window.push({ callback, capture: !!capture }); },
+      prepareTeamSelectionMail: () => new Promise(resolve => { resolveLoad = () => { loaded = true; resolve(); }; }),
+    };
+    const bootstrap = { Modal: { getOrCreateInstance: () => ({ show() { chooserOpens++; }, hide() { hideCalls++; } }) } };
+    vm.runInNewContext(source, { window, document, bootstrap, CSS: { escape: value => value }, Set });
+    click(button);
+    assert.equal(chooserOpens, 1);
+    assert.equal(composerOpens, 0, 'Bootstrap must not open a composer under the chooser');
+    resolveLoad(); await Promise.resolve(); await Promise.resolve();
+    const choice = control('[data-team-email-purpose="custom"]');
+    choice.closest = selector => selector === '[data-team-email-purpose]' ? choice : null;
+    click(choice); click(choice);
+    assert.equal(hideCalls, 1, 'Repeated purpose clicks must share one close transition');
+    assert.equal(composerOpens, 0, 'Composer waits for hidden.bs.modal, not hide()');
+    hidden.splice(0).forEach(callback => callback());
+    assert.equal(composerOpens, 1);
+    assert.equal(chooserOpens, 1, 'Replay bypasses the chooser without adding another listener');
+    assert.equal(recipient.targetType, targetType);
+    assert.equal(recipient.teamId, targetType === 'region' ? '' : '841');
+    assert.equal(recipient.slotId, targetType === 'imported_player' ? '99' : '');
+    assert.deepEqual(fields.map(field => field.value), ['', '']);
+  });
+}
