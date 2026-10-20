@@ -204,22 +204,21 @@
           </select>
           <noscript><button type="submit" class="btn btn-outline-primary">Apply</button></noscript>
         </form>
-        <div class="nav nav-pills event-draw-tabs" role="tablist" aria-label="Draw age groups">
+        <nav class="nav nav-pills event-draw-tabs" aria-label="Draw age groups">
           @foreach($drawGroups as $groupLabel => $groupDraws)
-            <div class="nav-item" role="presentation">
-            <button class="nav-link {{ $loop->first ? 'active' : '' }}" id="event-draw-tab-{{ $loop->index }}"
-                    type="button" role="tab" data-bs-toggle="tab" data-bs-target="#event-draw-panel-{{ $loop->index }}"
-                    aria-controls="event-draw-panel-{{ $loop->index }}" aria-selected="{{ $loop->first ? 'true' : 'false' }}">
+            <div class="nav-item">
+            <a class="nav-link" id="event-draw-tab-{{ $loop->index }}"
+               href="#event-draw-panel-{{ $loop->index }}">
               {{ $groupLabel }} <span class="badge bg-label-secondary ms-1">{{ $groupDraws->count() }}</span>
-            </button>
+            </a>
             </div>
           @endforeach
-        </div>
+        </nav>
         @endif
-        <div class="tab-content p-0">
+        <div class="event-draw-groups p-0">
           @forelse($drawGroups as $groupLabel => $groupDraws)
-            <div class="tab-pane fade {{ $loop->first ? 'show active' : '' }}" id="event-draw-panel-{{ $loop->index }}"
-                 role="tabpanel" aria-labelledby="event-draw-tab-{{ $loop->index }}" tabindex="0">
+            <div class="event-draw-group mb-4" id="event-draw-panel-{{ $loop->index }}"
+                 role="region" aria-labelledby="event-draw-tab-{{ $loop->index }}" tabindex="0" style="scroll-margin-top: 10rem">
             <div class="event-draw-heading"><h6 class="mb-0">{{ $groupLabel }}</h6><span class="text-muted small">{{ $groupDraws->count() }} {{ \Illuminate\Support\Str::plural('draw', $groupDraws->count()) }}</span></div>
             <div class="event-draw-list">
             @foreach($groupDraws as $draw)

@@ -101,11 +101,11 @@
     link.addEventListener('click', function (event) {
       var card = document.getElementById(link.hash.slice(1));
       var tab = document.querySelector('[data-bs-target="#' + link.dataset.panelId + '"]');
-      if (!card || !tab || !window.bootstrap) return;
+      if (!card) return;
       event.preventDefault();
       card.open = true;
       var reveal = function () { card.scrollIntoView({ block: 'start' }); };
-      if (tab.classList.contains('active')) reveal();
+      if (!tab || !window.bootstrap || tab.classList.contains('active')) reveal();
       else {
         tab.addEventListener('shown.bs.tab', reveal, { once: true });
         window.bootstrap.Tab.getOrCreateInstance(tab).show();
