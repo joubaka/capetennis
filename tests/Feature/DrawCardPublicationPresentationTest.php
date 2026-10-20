@@ -31,11 +31,12 @@ class DrawCardPublicationPresentationTest extends TestCase
         $html = view('backend.draw._includes.draw_tab_team', ['draw' => $draw, 'compactOverview' => true])->render();
         $this->assertStringContainsString(route('team-draw.competition.scoring', $draw), $html);
         $this->assertStringContainsString('>Confirm scoring</a>', $html);
-        foreach (['Continue setup', 'Open team fixtures', 'Team ties', 'Draw standings', 'Schedule matches', 'Public schedule preview', 'Publish schedule', 'Assign venues', 'Advanced actions'] as $label) {
+        foreach (['Continue setup', 'Open team fixtures', 'Team ties', 'Draw standings', 'Schedule matches', 'Public schedule preview', 'Assign venues', 'Advanced actions'] as $label) {
             $this->assertStringContainsString($label, $html);
         }
         $this->assertStringContainsString('<details class="event-draw-schedule"', $html);
         $this->assertStringContainsString('<details class="event-draw-tools"', $html);
+        $this->assertStringNotContainsString('toggle-publish-schedule', $html);
 
         $draw->team_draw_selection = null;
         $html = view('backend.draw._includes.draw_tab_team', ['draw' => $draw, 'compactOverview' => true])->render();

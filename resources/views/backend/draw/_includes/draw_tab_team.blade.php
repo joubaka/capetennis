@@ -62,7 +62,9 @@
     @can('publish', $draw)
     <div class="draw-card-actions draw-card-publication d-flex flex-wrap gap-2 mt-3" role="group" aria-label="Publication controls">
       <button type="button" class="btn btn-sm btn-outline-secondary toggle-publish {{ ($compactOverview ?? false) ? 'd-none' : '' }}" data-url="{{ route('draw.toggle.publish', $draw->id) }}" data-status="{{ $isPublished ? 1 : 0 }}"><i class="ti ti-{{ $isPublished ? 'eye-off' : 'eye' }} me-1"></i>{{ $isPublished ? 'Hide draw' : 'Publish draw' }}</button>
+      @unless($compactOverview ?? false)
       <button type="button" class="btn btn-sm btn-outline-secondary toggle-publish-schedule" data-url="{{ route('draw.toggle.publish.schedule', $draw->id) }}" data-status="{{ $isSchedulePublished ? 1 : 0 }}"><i class="ti ti-{{ $isSchedulePublished ? 'eye-off' : 'eye' }} me-1"></i>{{ $isSchedulePublished ? 'Hide schedule' : 'Publish schedule' }}</button>
+      @endunless
     </div>
     @endcan
     @if($compactOverview ?? false)

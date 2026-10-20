@@ -55,7 +55,7 @@ test('quick header uses one draw ID, keeps details closed and refreshes expanded
   assert.equal(ui.cards[0].open, false);
   assert.equal(ui.prevented, 1); assert.equal(ui.stopped, 1);
   assert.equal(ui.cards[0].quick['aria-pressed'], 'true');
-  assert.equal(ui.cards[0].quick.textContent, 'Unpublish');
+  assert.equal(ui.cards[0].quick.textContent, 'Unpublish draw');
   assert.equal(ui.cards[0].expanded.dataset.status, '1');
   assert.equal(ui.cards[0].badges[0].textContent, 'Draw published');
   assert.match(ui.summary.textContent, /Partly published · 1 published · 1 unpublished/);
@@ -92,7 +92,7 @@ test('uncertain quick outcome reconciles by read only and failed reconciliation 
   await ui.retry();
   assert.equal(ui.requests[2].url, '/status');
   assert.equal(ui.requests[2].options.method, undefined);
-  assert.equal(ui.cards[0].quick.textContent, 'Unpublish');
+  assert.equal(ui.cards[0].quick.textContent, 'Unpublish draw');
   assert.equal(ui.cards[0].quick.disabled, false);
 });
 
@@ -100,7 +100,7 @@ test('partial bulk result reconciles all quick states before another single draw
   const partial = state(true); partial.success = false; partial.failed = [{ id: 2, name: 'Draw2', message: 'Locked' }];
   const ui = harness([partial, state(true), state(false)], true);
   await ui.bulk[0].click();
-  assert.equal(ui.cards[0].quick.textContent, 'Unpublish');
+  assert.equal(ui.cards[0].quick.textContent, 'Unpublish draw');
   assert.equal(ui.requests[1].url, '/status');
   await ui.click();
   assert.deepEqual(ui.requests[2].payload.draw_ids, [1]);
@@ -116,7 +116,7 @@ test('unknown bulk outcome disables stale quick actions and readonly retry recon
   await ui.click();
   assert.equal(ui.requests.length, 2);
   await ui.retry();
-  assert.equal(ui.cards[0].quick.textContent, 'Unpublish');
+  assert.equal(ui.cards[0].quick.textContent, 'Unpublish draw');
   assert.equal(ui.cards[0].quick.disabled, false);
   assert.equal(ui.window.HeadOfficeDrawPublicationUnconfirmed, false);
 });

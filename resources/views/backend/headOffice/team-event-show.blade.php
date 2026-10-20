@@ -18,7 +18,7 @@
 @section('page-style')
 <link rel="stylesheet" href="{{asset('assets/vendor/css/pages/page-user-view.css')}}" />
 <style>
-  .event-draw-list { display: grid; gap: 1rem; }
+  .event-draw-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
   .event-draw-toolbar { display: flex; flex-wrap: wrap; gap: .5rem; }
   .event-draw-toolbar .btn { min-height: 44px; }
   .event-publication-panel > summary { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem 1rem; padding: 1.25rem; cursor: pointer; }
@@ -58,6 +58,7 @@
   .event-draw-card-summary:focus-visible { outline: 2px solid var(--ct-ink, #172e45); outline-offset: 4px; border-radius: .25rem; }
   .event-draw-card-toggle { display: inline-flex; align-items: center; gap: .25rem; flex-shrink: 0; }
   .event-draw-card-summary-actions { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
+  .event-draw-card-summary-actions .btn { min-height: 44px; white-space: normal; }
   .event-draw-quick-publication { min-height: 44px; white-space: normal; }
   .event-draw-card[open] .event-draw-card-expand, .event-draw-card:not([open]) .event-draw-card-collapse { display: none; }
   .event-draw-card[open] .event-draw-card-toggle i { transform: rotate(180deg); }
@@ -79,6 +80,10 @@
     .event-draw-header { flex-direction: column; align-items: flex-start !important; gap: .25rem; }
     .event-draw-body { padding-inline: 1rem; }
     .event-draw-card { padding: .875rem; }
+    .event-draw-card-summary { flex-direction: column; align-items: stretch; }
+    .event-draw-card-summary-actions { width: 100%; }
+    .event-draw-card-summary-actions > .btn { flex: 1 1 calc(50% - .5rem); }
+    .event-draw-card-toggle { width: 100%; justify-content: flex-end; min-height: 44px; }
     .event-draw-card .draw-card-actions > .btn { flex: 1 1 calc(50% - .5rem); padding-inline: .5rem; }
     .event-draw-card .draw-card-primary > .btn:first-child { flex-basis: 100%; }
     .event-draw-links .btn { flex: 1 1 0; }
@@ -248,9 +253,13 @@
                 <div class="event-draw-card-summary-actions">
                   @can('event.manage', $event)
                   @can('publish', $draw)
-                    <button type="button" class="btn btn-sm {{ $draw->published ? 'btn-outline-danger' : 'btn-success' }} event-draw-quick-publication" data-quick-draw-publication data-published="{{ $draw->published ? 'true' : 'false' }}" aria-pressed="{{ $draw->published ? 'true' : 'false' }}" aria-label="{{ $draw->published ? 'Unpublish' : 'Publish' }} {{ $draw->drawName }}" @disabled($draw->published && $draw->locked) @if($draw->published && $draw->locked) title="Locked draws cannot be unpublished." @endif>{{ $draw->published ? 'Unpublish' : 'Publish' }}</button>
+                    <button type="button" class="btn btn-sm {{ $draw->published ? 'btn-outline-danger' : 'btn-success' }} event-draw-quick-publication" data-quick-draw-publication data-published="{{ $draw->published ? 'true' : 'false' }}" aria-pressed="{{ $draw->published ? 'true' : 'false' }}" aria-label="{{ $draw->published ? 'Unpublish' : 'Publish' }} {{ $draw->drawName }}" @disabled($draw->published && $draw->locked) @if($draw->published && $draw->locked) title="Locked draws cannot be unpublished." @endif>{{ $draw->published ? 'Unpublish draw' : 'Publish draw' }}</button>
                   @endcan
                   @endcan
+                  @can('publish', $draw)
+                    <button type="button" class="btn btn-sm btn-outline-secondary toggle-publish-schedule" data-url="{{ route('draw.toggle.publish.schedule', $draw->id) }}" data-status="{{ $draw->oop_published ? 1 : 0 }}"><i class="ti ti-{{ $draw->oop_published ? 'eye-off' : 'eye' }} me-1"></i>{{ $draw->oop_published ? 'Hide schedule' : 'Publish schedule' }}</button>
+                  @endcan
+                  <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]) }}"><i class="ti ti-calendar me-1"></i>Schedule</a>
                   <span class="event-draw-card-toggle small text-primary"><span class="event-draw-card-expand">Open workspace</span><span class="event-draw-card-collapse">Close workspace</span><i class="ti ti-chevron-down" aria-hidden="true"></i></span>
                 </div>
               </summary>

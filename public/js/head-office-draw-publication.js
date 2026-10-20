@@ -36,7 +36,7 @@
       if (quick) {
         quick.dataset.published = state.published ? 'true' : 'false';
         quick.dataset.lockedPublished = state.published && state.locked ? 'true' : 'false';
-        quick.textContent = state.published ? 'Unpublish' : 'Publish';
+        quick.textContent = state.published ? 'Unpublish draw' : 'Publish draw';
         quick.setAttribute('aria-pressed', state.published ? 'true' : 'false');
         quick.setAttribute('aria-label', (state.published ? 'Unpublish' : 'Publish') + ' ' + card.querySelector('h6').textContent.trim());
         quick.title = state.published && state.locked ? 'Locked draws cannot be unpublished.' : '';

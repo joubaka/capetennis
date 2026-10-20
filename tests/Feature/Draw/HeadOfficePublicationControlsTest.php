@@ -326,6 +326,13 @@ class HeadOfficePublicationControlsTest extends TestCase
         Fixture::factory()->create(['draw_id' => $notReady->id]);
         $response = $this->get(route('headOffice.show', $event))->assertOk()->assertSee('data-quick-draw-publication', false)->assertSee('aria-label="Publish u/10 Girls"', false);
         $this->assertStringContainsString('data-quick-draw-publication', $response->getContent());
+        preg_match('/<details id="publication-draw-'.$ready->id.'"[^>]*>\s*<summary[^>]*>(.*?)<\/summary>/s', $response->getContent(), $header);
+        $this->assertNotEmpty($header, 'Draw actions must be available in the collapsed card header.');
+        $this->assertStringContainsString('Publish draw', $header[1]);
+        $this->assertStringContainsString('Publish schedule', $header[1]);
+        $this->assertStringContainsString('toggle-publish-schedule', $header[1]);
+        $this->assertStringContainsString(e(route('backend.event-venue-schedule.index', ['event' => $event->id, 'draw_ids' => [$ready->id]])), $header[1]);
+        $this->assertSame(1, substr_count($response->getContent(), 'data-url="'.route('draw.toggle.publish.schedule', $ready->id).'"'));
         $this->postJson(route('backend.event-draws.bulk-publication', $event), ['operation' => 'draws', 'action' => 'publish', 'draw_ids' => [$ready->id]])
             ->assertOk()->assertJsonPath('success', true)->assertJsonPath('draw_states.0.published', true)->assertJsonPath('draw_summary.published', 1)->assertJsonPath('draw_summary.status', 'Partly published');
         $this->postJson(route('backend.event-draws.bulk-publication', $event), ['operation' => 'draws', 'action' => 'publish', 'draw_ids' => [$notReady->id]])
