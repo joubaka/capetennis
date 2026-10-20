@@ -62,7 +62,6 @@
             <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.team-selection.profile-matches.index', [$event, $team]) }}">Check existing profiles</a>
           @endif
           @can('team.players.manage', $team)
-            <button type="button" class="btn btn-sm btn-outline-primary" data-team-invitations-open="{{ $team->id }}">Invitations &amp; actions</button>
             <button type="button" class="btn btn-sm btn-outline-secondary emailTeamBtn" data-teamid="{{ $team->id }}" data-teamname="{{ $team->name }}">Send team email</button>
 
 @endcan
@@ -92,7 +91,7 @@
               $paid = (int) $slot->pay_status === 1;
             @endphp
             @continue($rosterOnly && !$player && !$np)
-            <tr data-roster-row="{{ $slot->id ?? 'imported-'.$np?->id }}" data-occupied="{{ ($player || $np) ? 'true' : 'false' }}" data-search="{{ $rosterOnly ? $name : $name.' '.$email.' '.$cell }}" @unless($rosterOnly)data-payment="{{ ($player || $np) ? ($paid ? 'paid' : 'unpaid') : 'vacant' }}" data-profile="{{ $player ? 'linked' : ($np ? 'imported' : 'vacant') }}"
+            <tr data-roster-row="{{ $slot->id ?? 'imported-'.$np?->id }}" data-roster-player-id="{{ $player?->id }}" data-roster-imported-id="{{ $slot->noProfile?->id }}" data-occupied="{{ ($player || $np) ? 'true' : 'false' }}" data-search="{{ $rosterOnly ? $name : $name.' '.$email.' '.$cell }}" @unless($rosterOnly)data-payment="{{ ($player || $np) ? ($paid ? 'paid' : 'unpaid') : 'vacant' }}" data-profile="{{ $player ? 'linked' : ($np ? 'imported' : 'vacant') }}"
 @endunless
 >
               <td data-label="Rank"><span class="badge bg-label-primary">{{ $slot->rank }}</span>@if(!$rosterOnly && $slot->selected_team_reserve)<span class="badge bg-label-warning ms-1">Reserve</span>

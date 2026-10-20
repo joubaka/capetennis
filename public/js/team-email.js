@@ -22,9 +22,11 @@
     };
   }
   function regionPanel() { return document.getElementById('region-panel-' + context.eventRegion); }
+  function contextRoots() { return [regionPanel(), document.querySelector('[data-roster-panel="players"][data-region-id="' + CSS.escape(context.region) + '"]')].filter(Boolean); }
+  function contextFind(selector) { return contextRoots().map(root => root.querySelector(selector)).find(Boolean); }
   function invitationForm() {
-    if (context.player) return regionPanel()?.querySelector('[data-email-invitation-player="' + CSS.escape(context.player) + '"]');
-    if (context.invitation) return regionPanel()?.querySelector('form[data-email-invitation-player][action*="/' + CSS.escape(context.invitation) + '/"]');
+    if (context.player) return contextFind('[data-email-invitation-player="' + CSS.escape(context.player) + '"]');
+    if (context.invitation) return contextFind('form[data-email-invitation-player][action*="/' + CSS.escape(context.invitation) + '/"]');
     return null;
   }
   function pendingForm() { return regionPanel()?.querySelector('form[action$="/send-pending-activated"]'); }
@@ -34,7 +36,7 @@
     return target?.startsWith('#prepare-invitations-') ? document.getElementById(target.slice(1)) : null;
   }
   function activeInvitationForms() {
-    return [...(regionPanel()?.querySelectorAll('form[data-email-invitation-player]') || [])]
+    return [...new Set(contextRoots().flatMap(root => [...root.querySelectorAll('form[data-email-invitation-player]')]))]
       .filter(form => !context.team || form.dataset.emailTeam === context.team);
   }
   function showError(message) {
@@ -88,7 +90,7 @@
     }
     if (source) { blank(source); return; }
     const panel = document.querySelector('[data-central-selection-host]');
-    const imported = context.team && regionPanel()?.querySelector('.roster-email-button[data-target-type="team"][data-team-id="' + CSS.escape(context.team) + '"]');
+    const imported = context.team && contextFind('.roster-email-button[data-target-type="team"][data-team-id="' + CSS.escape(context.team) + '"]');
     if (imported) { showSelection(); blank(imported); return; }
     const button = document.createElement('button'); button.type = 'button'; button.hidden = true;
     button.className = context.team ? 'emailTeamBtn' : 'emailRegionBtn';
@@ -97,7 +99,7 @@
     (panel || document.body).append(button); clickOriginal(button); button.remove();
   }
   function showSelection() {
-    const tab = document.querySelector('[data-bs-target="#tab-invitations"]');
+    const tab = document.querySelector('[data-bs-target="#tab-players"]');
     if (tab) bootstrap.Tab.getOrCreateInstance(tab).show();
   }
   function openModal(modal) {

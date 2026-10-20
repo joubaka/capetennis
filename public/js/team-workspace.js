@@ -44,10 +44,13 @@
     const endpoint = document.querySelector('[data-team-context]')?.dataset.selectionUrl;
     if (!host || !endpoint) return Promise.resolve();
     const useOrder = selectionUsesOrder();
-    document.getElementById(useOrder ? 'tab-order' : 'tab-invitations')?.append(host);
+    if (useOrder) window.restoreMergedTeamRoster?.();
+    const tools = document.querySelector('[data-merged-selection-tools]');
+    if (!useOrder && tools) { document.getElementById('tab-players')?.append(tools); tools.append(host); }
+    else document.getElementById(useOrder ? 'tab-order' : 'tab-players')?.append(host);
     host.hidden = false;
     document.querySelectorAll('#tab-order [data-roster-panel]').forEach(panel => { if (useOrder) panel.hidden = true; });
-    if (host.querySelector('[data-embedded-teams-selection]')) { syncSelectionContext(); return Promise.resolve(); }
+    if (host.querySelector('[data-embedded-teams-selection]')) { syncSelectionContext(); window.mergeTeamRoster?.(); return Promise.resolve(); }
     if (selectionRequest) return selectionRequest;
     host.setAttribute('aria-busy', 'true');
     host.innerHTML = '<p class="p-3" role="status">Loading invitations and team actions…</p>';
@@ -69,6 +72,7 @@
           const script = document.createElement('script'); script.textContent = source.textContent; document.head.append(script); script.remove();
         }
         syncSelectionContext();
+        window.mergeTeamRoster?.();
       }).catch(error => {
         host.replaceChildren(); const message = document.createElement('p'); message.className = 'alert alert-warning'; message.setAttribute('role','alert'); message.textContent = error.message;
         const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'btn btn-outline-secondary ms-2'; retry.textContent = 'Retry'; retry.addEventListener('click', loadSelection);
@@ -289,6 +293,7 @@
     if (count) count.textContent = matches + ' roster places shown in ' + teams + ' teams';
     const empty = panel.querySelector('[data-roster-empty]');
     if (empty) empty.hidden = teams > 0;
+    document.dispatchEvent(new Event('roster:filtered'));
   }
 
   function loadPanel(panelName, regionId) {
@@ -329,6 +334,7 @@
   // controls, selected filters and Result Ranks draft outside this list intact.
   const rosterRefreshes = new Map();
   window.refreshTeamRoster = function (source) {
+    window.restoreMergedTeamRoster?.();
     const panel = source?.closest('[data-roster-panel]') || document.querySelector('[data-roster-panel]:not([hidden])');
     if (!panel) return Promise.reject(new Error('The player list is unavailable.'));
     const regionId = panel.dataset.regionId;
@@ -374,10 +380,14 @@
     $('[data-roster-region], [data-order-region]').val(regionId);
     syncTeamOptions();
     const host = document.querySelector('[data-central-selection-host]');
-    if (host) host.hidden = activeMode() !== 'invitations' && !selectionUsesOrder();
-    if ($('#tab-invitations').hasClass('active') || selectionUsesOrder()) loadSelection();
+    if (activeMode() !== 'players') window.restoreMergedTeamRoster?.();
+    if (host) host.hidden = activeMode() !== 'players' && !selectionUsesOrder();
+    if (selectionUsesOrder()) loadSelection();
     else if ($('#tab-order').hasClass('active')) loadPanel('order', regionId);
-    else if ($('#tab-players').hasClass('active')) loadPanel('players', regionId);
+    else if ($('#tab-players').hasClass('active')) {
+      const roster = loadPanel('players', regionId);
+      if (document.querySelector('[data-team-context]')?.dataset.selectionUrl) Promise.all([Promise.resolve(roster), loadSelection()]).then(() => { window.mergeTeamRoster?.(); applyFilters(); });
+    }
     syncSelectionContext();
   }
 
@@ -406,7 +416,8 @@
     const regionId = [...(regionSelect?.options || [])].some(option => option.value === String(requestedRegion)) ? requestedRegion : regionSelect?.options[0]?.value;
     $('[data-roster-region]').val(regionId);
     $('[data-workspace-team]').val(url.searchParams.get('selected_team') || '');
-    const tab = url.searchParams.get('roster_tab') || (legacySelection ? 'invitations' : document.querySelector('[data-team-context]')?.dataset.defaultMode);
+    const requestedTab = url.searchParams.get('roster_tab') || (legacySelection ? 'invitations' : document.querySelector('[data-team-context]')?.dataset.defaultMode);
+    const tab = requestedTab === 'invitations' ? 'players' : requestedTab;
     const button = document.querySelector('.team-admin-workspace [data-bs-target="#tab-' + (['regions', 'order', 'invitations', 'result-rank'].includes(tab) ? tab : 'players') + '"]');
     if (button) bootstrap.Tab.getOrCreateInstance(button).show();
     selectRegion(regionId);
@@ -609,6 +620,7 @@
   });
 
   function refreshWorkspace() {
+    window.restoreMergedTeamRoster?.();
     if (draftDirty || saveRequestBusy) { feedback('Save or load your Result Ranks draft before refreshing the team workspace.', true); return; }
     const refreshRevision = editRevision;
     if (refreshing) { refreshAgain = true; return; }
@@ -674,7 +686,7 @@
   });
   $(document).on('click', '[data-team-invitations-open]', function () {
     $('[data-workspace-team]').val(this.dataset.teamInvitationsOpen);
-    const tab = document.getElementById('invitations-tab');
+    const tab = document.getElementById('players-tab');
     if (tab) bootstrap.Tab.getOrCreateInstance(tab).show();
     selectRegion($('[data-roster-region]').val()); saveUrl(true);
   });

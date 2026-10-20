@@ -44,14 +44,17 @@ class CentralTeamWorkspaceTest extends TestCase
     public function test_default_shell_has_one_region_team_context_and_lazy_invitations_without_roster_contacts(): void
     {
         $page = $this->get(route('admin.events.teams', $this->event))->assertOk();
-        $page->assertSee('data-team-context', false)->assertSee('data-workspace-team', false)->assertSee('id="tab-invitations"', false)
-            ->assertSee('data-bs-target="#tab-invitations"', false)->assertSee('Setup &amp; history', false)
+        $page->assertSee('data-team-context', false)->assertSee('data-workspace-team', false)->assertSee('Players &amp; invitations', false)
+            ->assertDontSee('data-bs-target="#tab-invitations"', false)->assertSee('Setup &amp; history', false)
             ->assertDontSee('confidential-roster@example.test')->assertDontSee('data-embedded-teams-selection', false)->assertDontSee('<iframe', false);
         $this->assertSame(1, substr_count($page->getContent(), 'id="roster-region"'));
         $this->assertSame(1, preg_match_all('/<select[^>]+data-workspace-team/', $page->getContent()));
         $this->assertSame(0, substr_count($page->getContent(), 'data-order-region'));
         $page->assertSee('value="'.$this->eventRegion->region_id.'" data-event-region-id="'.$this->eventRegion->id.'"', false);
         $this->assertDatabaseCount('team_payment_orders', 0);
+        $linkedRaw = NoProfileTeamPlayer::where('team_id', $this->team->id)->whereNotNull('player_profile')->firstOrFail();
+        $this->get(route('admin.events.teams', [$this->event, 'roster_region' => $this->eventRegion->region_id]))->assertOk()
+            ->assertSee('data-roster-player-id="'.$linkedRaw->player_profile.'" data-roster-imported-id="'.$linkedRaw->id.'"', false);
     }
 
     public function test_legacy_invitation_url_renders_same_shell_and_preserves_all_real_tools_without_duplicate_ids(): void
@@ -112,7 +115,7 @@ class CentralTeamWorkspaceTest extends TestCase
         $this->event->update(['eventType' => $type->id]);
         $this->withSession(['_old_input' => ['settings_team_id' => $this->team->id, 'num_team_members' => 7]])
             ->get(route('admin.events.teams', [$this->event, 'roster_tab' => 'invitations', 'selected_region' => $this->eventRegion->region_id, 'selected_team' => $this->team->id]))
-            ->assertOk()->assertSee('id="tab-invitations"', false)->assertSee('data-embedded-teams-selection', false)->assertSee('name="num_team_members" value="7"', false);
+            ->assertOk()->assertDontSee('id="tab-invitations"', false)->assertSee('data-embedded-teams-selection', false)->assertSee('name="num_team_members" value="7"', false);
     }
 
     public function test_managed_team_preserves_real_invitation_and_selection_order_handlers_in_shared_context(): void

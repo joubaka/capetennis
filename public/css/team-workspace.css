@@ -260,3 +260,14 @@
   .team-admin-workspace [data-embedded-teams-selection] .table-responsive { max-width: 100%; overflow-x: auto; }
   .team-admin-workspace [data-embedded-teams-selection] .card-body { min-width: 0; }
 }
+/* Invitation controls belong to the canonical player identity, not a second list. */
+.roster-identity-details { margin:.25rem 0 .75rem; }
+.roster-identity-details > summary { color:#315982; font-size:.875rem; cursor:pointer; }
+.roster-identity-controls > tbody > tr { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:.75rem; }
+.roster-identity-controls > tbody > tr > td { display:block; border:0; min-width:0; }
+.roster-identity-controls > tbody > tr > td[hidden] { display:none; }
+.roster-identity-controls > tbody > tr > td::before { content:attr(data-label); display:block; margin-bottom:.3rem; font-weight:600; color:#62718a; font-size:.75rem; }
+.team-admin-workspace .roster-identity-details .table-responsive { overflow-x:auto; max-width:100%; }
+.roster-team-body > .regional-team-card { border:0; box-shadow:none; }
+@media(max-width:767.98px) { .team-admin-workspace [data-team-card-id] .table-responsive { overflow-x:auto; max-width:100%; } }
+[data-canonical-roster] + .nav-tabs { display:none; }

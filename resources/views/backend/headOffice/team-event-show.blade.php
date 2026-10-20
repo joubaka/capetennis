@@ -233,6 +233,8 @@
                       <span class="badge bg-label-secondary">No venues assigned</span>
                     @endforelse
                   </div>
+                  <div class="small mt-2 d-none" data-quick-draw-feedback role="status" aria-live="polite"></div>
+                  <button type="button" class="btn btn-sm btn-outline-primary mt-2" data-quick-draw-status-retry hidden>Retry publication status check</button>
                 </div>
                 <div class="event-draw-card-summary-actions">
                   @can('event.manage', $event)
@@ -243,8 +245,6 @@
                   <span class="event-draw-card-toggle small text-primary"><span class="event-draw-card-expand">Click to open</span><span class="event-draw-card-collapse">Click to close</span><i class="ti ti-chevron-down" aria-hidden="true"></i></span>
                 </div>
               </summary>
-              <div class="small mt-2 d-none" data-quick-draw-feedback role="status" aria-live="polite"></div>
-              <button type="button" class="btn btn-sm btn-outline-primary mt-2" data-quick-draw-status-retry hidden>Retry publication status check</button>
               <div class="event-draw-card-content">
                 @include('backend.draw._includes.draw_tab_team', ['hideDrawHeading' => true, 'compactOverview' => true])
               </div>

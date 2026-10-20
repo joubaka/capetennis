@@ -149,6 +149,7 @@
 <script src="{{ asset('js/players.js') }}?v={{ filemtime(public_path('js/players.js')) }}"></script>
 <script src="{{ asset(mix('js/playerOrder.js')) }}"></script>
 @if((int) $event->eventType === 3 || ($rosterOnly ?? false) || ($centralTeamWorkspace ?? false))
+<script src="{{ asset('js/team-roster-merge.js') }}?v={{ filemtime(public_path('js/team-roster-merge.js')) }}"></script>
 <script src="{{ asset('js/team-workspace.js') }}?v={{ filemtime(public_path('js/team-workspace.js')) }}"></script>
 <script src="{{ asset('js/team-email.js') }}?v={{ filemtime(public_path('js/team-email.js')) }}"></script>
 @if(isset($embeddedTeamSelection))

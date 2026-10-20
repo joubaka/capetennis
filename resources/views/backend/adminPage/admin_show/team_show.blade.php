@@ -38,16 +38,16 @@
   @include('backend.adminPage.admin_show.tabs.player-order') {{-- ✅ use your working version --}}
 
   @unless($rosterOnly ?? false)
-    <div class="tab-pane fade" id="tab-invitations" role="tabpanel" aria-labelledby="invitations-tab">
+    <details class="mt-4 border rounded p-3" data-merged-selection-tools><summary class="fw-semibold">Campaigns, messages &amp; settings</summary>
       <div data-central-selection-host>
         @if(isset($embeddedTeamSelection))
           @include('backend.team-selection._workspace-style', $embeddedTeamSelection)
           @include('backend.team-selection._workspace-content', $embeddedTeamSelection)
         @else
-          <p class="text-muted" role="status">Open Invitations to load this event’s player status, selection actions and campaign tools.</p>
+          <p class="text-muted" role="status">Loading invitation actions and campaign tools…</p>
         @endif
       </div>
-    </div>
+    </details>
   @endunless
 
 

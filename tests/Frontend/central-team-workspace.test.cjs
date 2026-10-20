@@ -69,7 +69,7 @@ test('failed invitation authorization shows retry without running scripts and a 
   await h.loadSelection();
   assert.equal(h.state.requests, 2);
   assert.equal(h.state.initialized, 1);
-  assert.equal(h.host.parent, 'invitations');
+  assert.equal(h.host.parent, 'players');
 });
 
 test('team context disables other region options and clears an incompatible team selection', () => {

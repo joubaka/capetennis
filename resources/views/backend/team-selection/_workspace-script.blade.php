@@ -34,7 +34,7 @@
       if (!eventRegionId) return;
       const activeTask = task || document.querySelector(`#region-panel-${eventRegionId} [data-region-task].active`)?.dataset.regionTask || 'teams';
       openWorkspace(eventRegionId, mode === 'order' ? 'teams' : activeTask, false);
-      document.querySelectorAll('[data-embedded-teams-selection] [data-team-card-id]').forEach(card => {
+      document.querySelectorAll('.team-admin-workspace [data-team-card-id]').forEach(card => {
         card.parentElement.hidden = !!teamId && card.dataset.teamCardId !== String(teamId);
         if (!card.parentElement.hidden && teamId) {
           const collapse = card.querySelector(`#team-workspace-${teamId}`);
@@ -155,6 +155,10 @@
 
       tbody.querySelector('[data-empty-team-invitations]')?.remove();
       tbody.appendChild(row);
+      const queueTable = tbody.closest('.table-responsive');
+      if (queueTable) queueTable.hidden = false;
+      const mergedQueue = card.querySelector('[data-canonical-roster] .roster-reserves');
+      if (mergedQueue) mergedQueue.hidden = true;
       const summary = card.querySelector('[data-team-roster-summary]');
       if (summary) summary.textContent = `${data.summary.selected} selected · ${data.summary.reserves} reserves · ${data.summary.configured_places} configured places`;
       const openPlaces = card.querySelector('[data-team-open-places]');
@@ -274,6 +278,7 @@
     const label = toggle?.querySelector('span');
     const icon = toggle?.querySelector('i');
     header?.addEventListener('click', function (event) {
+      if (workspace.querySelector('[data-canonical-roster]')) return;
       if (event.target.closest('a, button, input, select, textarea, summary, details, form, label')) return;
       toggle?.click();
     });

@@ -2,8 +2,7 @@
   $teamsWorkspaceManager = $teamsWorkspaceRoster || ($isEventManager ?? false);
   $teamsWorkspaceCanInvite = auth()->user() && app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(auth()->user(), $event);
   $teamsWorkspaceItems = [
-    'players' => ['Players', 'ti-users', 'tab-players'],
-    'invitations' => ['Invitations', 'ti-mail-forward', 'tab-invitations'],
+    'players' => [($rosterOnly ?? false) ? 'Players' : 'Players & invitations', 'ti-users', 'tab-players'],
     'order' => ['Player order', 'ti-list-numbers', 'tab-order'],
     'setup' => ['Setup', 'ti-settings', 'tab-regions'],
     'results' => ['Result ranks', 'ti-award', 'tab-result-rank'],

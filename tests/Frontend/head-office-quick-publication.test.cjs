@@ -23,14 +23,14 @@ function harness(replies, useBulk = false) {
     const retry = { hidden: true, addEventListener(event, handler) { this.click = handler; } };
     const fields = { '[data-quick-draw-publication]': quick, '[data-quick-draw-feedback]': feedback, '[data-quick-draw-status-retry]': retry, h6: { textContent: 'u/10 Draw ' + id }, '.event-oop-summary': oop };
     Object.assign(card, { quick, expanded, scheduleButton, badges, oop, feedback, retry,
-      querySelector(selector) { return fields[selector]; }, querySelectorAll(selector) { return selector === '.toggle-publish' ? [expanded] : selector === '.toggle-publish-schedule' ? [scheduleButton] : selector === '.event-schedule-status' ? [schedule] : badges; } });
+      querySelector(selector) { return fields[selector]; }, querySelectorAll(selector) { return selector === '.toggle-publish' ? [expanded] : selector === '.toggle-publish-schedule' ? [scheduleButton] : selector === '.event-schedule-status' ? [schedule] : selector === '.event-draw-status' ? badges : []; } });
     return card;
   }
   const cards = [makeCard(1), makeCard(2)];
   const summary = { textContent: 'Unpublished · 0 published · 2 unpublished' };
   const feedback = { textContent: '', classList: classes() }, refresh = { classList: classes() };
   const bulk = ['publish', 'unpublish'].map(action => ({ dataset: { bulkDrawAction: action }, disabled: false, addEventListener(event, handler) { this.click = handler; } }));
-  const panel = { dataset: { eventId: '123', drawIds: '[1,2]', url: '/bulk', statusUrl: '/status' }, querySelectorAll() { return bulk; },
+  const panel = { dataset: { eventId: '123', drawIds: '[1,2]', url: '/bulk', statusUrl: '/status' }, querySelectorAll(selector) { return selector === '[data-bulk-draw-action]' ? bulk : []; },
     querySelector(selector) { return selector.includes('feedback') ? feedback : selector.includes('refresh') ? refresh : summary; } };
   const document = { querySelector(selector) { return selector.includes('csrf-token') ? { content: 'csrf' } : panel; }, querySelectorAll() { return cards; },
     addEventListener(event, handler, capture) { assert.equal(capture, true); click = handler; } };
