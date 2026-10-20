@@ -231,6 +231,7 @@ class RegistrationPaymentRecoveryService
         abort_unless(hash_equals($recovery->preview_state_hash, $this->checksum($originalState)), 409, 'Recovery order relationships changed.');
         foreach ($order->items as $item) {
             abort_unless(isset(self::INCIDENTS[(int) $item->category_event?->event_id]), 409, 'Recovery event relationship mismatch.');
+            abort_unless($item->user_id === null || (int) $item->user_id === (int) $order->user_id, 409, 'Recovery item ownership mismatch.');
             $entry = CategoryEventRegistration::query()->where('registration_id', $item->registration_id)->where('category_event_id', $item->category_event_id)->where('user_id', $order->user_id)->lockForUpdate()->first();
             abort_unless($entry && $entry->status === 'active' && ! $entry->withdrawn_at && (int) $entry->payment_status_id === 0, 409, 'Recovery entry relationship mismatch.');
             abort_unless($entry->payment_method === 'payfast' && in_array($entry->admin_payment_status, [null, '', 'unpaid'], true) && ! $entry->pf_transaction_id && ! $entry->wallet_transaction_id && in_array($entry->refund_status, [null, '', 'not_refunded'], true) && ! $entry->refund_method && (float) $entry->refund_gross === 0.0 && ! $entry->refunded_at, 409, 'Recovery entry contains payment or refund evidence.');
@@ -258,6 +259,14 @@ class RegistrationPaymentRecoveryService
             $this->assertRecoveryLinkActive($locked);
             abort_unless(in_array($locked->status, ['prepared', 'notified'], true), 409);
             $order = $this->validatePrepared($locked);
+            foreach ($order->items as $item) {
+                if ($item->user_id === null) {
+                    $item->forceFill(['user_id' => $order->user_id])->save();
+                    activity('registration-payment')->performedOn($order)->causedBy($payer)
+                        ->withProperties(['item_id' => $item->id, 'original_user_id' => null, 'user_id' => (int) $order->user_id])
+                        ->log('Recovery legacy item ownership resolved from verified order and entry');
+                }
+            }
             if (!$locked->checkout_started_at) {
                 $locked->update(['checkout_started_at' => now()]);
             }
