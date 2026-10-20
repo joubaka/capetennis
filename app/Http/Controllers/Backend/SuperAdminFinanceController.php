@@ -118,9 +118,7 @@ class SuperAdminFinanceController extends Controller
         $pendingRefunds      = $totals['pending_refunds'];
 
         $entryRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee']);
-        $totalEntries = $isTeamEvent
-            ? $entryRows->count()
-            : $entryRows->sum(fn($t) => $t->entryCount ?? 1);
+        $totalEntries = $entryRows->sum(fn($t) => $t->entryCount ?? 1);
 
         $accountingRefundRows = $refundRows->where('type', 'refund');
         $noRefundRows        = $refundRows->where('type', 'withdrawal');

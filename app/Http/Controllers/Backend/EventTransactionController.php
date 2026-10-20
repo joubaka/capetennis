@@ -38,9 +38,7 @@ class EventTransactionController extends Controller
 
     // Entry count
     $entryRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee']);
-    $totalEntries = $isTeamEvent
-      ? $entryRows->count()
-      : $entryRows->sum(fn($r) => $r->entryCount ?? 1);
+    $totalEntries = $entryRows->sum(fn($r) => $r->entryCount ?? 1);
 
     // Refund / withdrawal breakdown
     // type='refund'     → completed or pending — these affect accounting
@@ -66,9 +64,7 @@ class EventTransactionController extends Controller
 
     // Received-payment breakdown
     $payfastPaymentRows  = $paymentRows->where('type', 'payment');
-    $payfastEntriesCount = $isTeamEvent
-      ? $payfastPaymentRows->count()
-      : $payfastPaymentRows->sum(fn($r) => $r->entryCount ?? 1);
+    $payfastEntriesCount = $payfastPaymentRows->sum(fn($r) => $r->entryCount ?? 1);
     $payfastGrossTotal   = $payfastPaymentRows->sum('gross');
 
     return view('backend.event.transactions', [

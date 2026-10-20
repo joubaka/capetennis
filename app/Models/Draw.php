@@ -131,7 +131,7 @@ class Draw extends Model
 public function registrations()
 {
     return $this->belongsToMany(Registration::class, 'draw_registrations', 'draw_id', 'registration_id')->withPivot('seed', 'box_number')
-      ->orderBy('pivot_seed');   // *** IMPORTANT ***;
+      ->orderByPivot('seed');
         
 }
 

@@ -74,12 +74,9 @@ class FinancialLedgerService
         $payoutRows      = $this->buildPayoutRows($event);
         $totals          = $this->buildTotals($paymentRows, $refundRows, $payoutRows);
 
-        $isTeamEvent  = $event->isTeam();
         $entryRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee']);
         $recognizedRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee', 'clothing_payment']);
-        $totalEntries = $isTeamEvent
-            ? $entryRows->count()
-            : $entryRows->sum(fn($r) => $r->entryCount ?? 1);
+        $totalEntries = $entryRows->sum(fn($r) => $r->entryCount ?? 1);
 
         return [
             'event'            => $event,
@@ -106,8 +103,6 @@ class FinancialLedgerService
             'user',
             'player',
             'category_event.category',
-            'order.items.player',
-            'order.items.category_event.category',
         ])
             ->where('event_id', $event->id)
             ->where('transaction_type', 'Registration')
@@ -543,19 +538,31 @@ class FinancialLedgerService
 
     private function mapPayfastRow(Transaction $tx, float $feePerEntry): object
     {
-        $reconciliationOrder = $tx->custom_str5 === 'TeamOrder'
-            ? \App\Models\TeamPaymentOrder::query()->whereKey($tx->custom_int5)
-                ->where('event_id', $tx->event_id)->where('user_id', $tx->custom_int4)
-                ->where('collection_status', 'reconciliation_required')->first()
+        // PayFast's order number is shared by independent order tables. Resolve
+        // its type, payer and event before using any wallet or entry metadata.
+        $teamOrder = $tx->custom_str5 === 'TeamOrder'
+            ? TeamPaymentOrder::with(['player', 'beneficiary', 'team.category.category'])
+                ->whereKey($tx->custom_int5)->where('event_id', $tx->event_id)
+                ->where('user_id', $tx->custom_int4)->first()
             : null;
+        $individualOrder = blank($tx->custom_str5)
+            ? RegistrationOrder::with(['items.player', 'items.category_event.category'])
+                ->whereKey($tx->custom_int5)->where('user_id', $tx->custom_int4)
+                ->whereHas('items.category_event', fn ($query) => $query->where('event_id', $tx->event_id))
+                ->whereDoesntHave('items.category_event', fn ($query) => $query->where('event_id', '!=', $tx->event_id))
+                ->whereDoesntHave('items', fn ($query) => $query->whereDoesntHave('category_event'))
+                ->first()
+            : null;
+        $reconciliationOrder = $teamOrder?->collection_status === 'reconciliation_required' ? $teamOrder : null;
         $requiresReconciliation = $reconciliationOrder !== null
             || app(\App\Domain\Payments\Services\ExpiredPayfastHandoffService::class)->registrationReceiptRequiresReconciliation($tx);
-        $participation = $tx->custom_str5 === 'TeamOrder' ? \App\Models\TrialParticipation::where('order_id', $tx->custom_int5)->first() : null;
-        $resolvedOrder = $reconciliationOrder ?? ($participation ? $participation->order : $tx->order);
+        $participation = $teamOrder ? \App\Models\TrialParticipation::where('order_id', $teamOrder->id)->where('event_id', $tx->event_id)->first() : null;
+        $resolvedOrder = $teamOrder ?? $individualOrder;
         $items        = collect(($participation || $requiresReconciliation) ? [] : (optional($resolvedOrder)->items ?? []));
-        $entryCount   = $requiresReconciliation ? 0 : max(1, $items->count());
+        $entryCount   = ($requiresReconciliation || ($tx->custom_int5 && ! $resolvedOrder)) ? 0 : max(1, $items->count());
         $payfastGross = round((float) $tx->amount_gross, 2);
-        $walletUsed   = $requiresReconciliation ? 0.0 : round((float) optional($resolvedOrder)->wallet_reserved, 2);
+        $walletUsed   = (! $requiresReconciliation && $resolvedOrder?->wallet_debited)
+            ? round((float) $resolvedOrder->wallet_reserved, 2) : 0.0;
         $grossTx      = $payfastGross + $walletUsed;
 
         $isAdminEntry = $tx->item_name === 'Admin Entry'
@@ -604,7 +611,18 @@ class FinancialLedgerService
             'price' => (float) ($item->item_price ?? 0),
         ])->values();
 
-        if ($registrationDetails->isEmpty() && $tx->player) {
+        if ($teamOrder && ! $requiresReconciliation) {
+            $entryPlayer = $teamOrder->beneficiary ?? $teamOrder->player;
+            $registrationDetails = collect([[
+                'player' => trim(($entryPlayer?->name ?? '').' '.($entryPlayer?->surname ?? '')) ?: '—',
+                'category' => (int) $teamOrder->team?->category?->event_id === (int) $tx->event_id
+                    ? ($teamOrder->team?->category?->category?->name ?? '—') : '—',
+                'price' => round($grossTx, 2),
+            ]]);
+        }
+
+        if ($registrationDetails->isEmpty() && $tx->player && ! $tx->custom_int5 && blank($tx->custom_str5)
+            && (int) $tx->category_event?->event_id === (int) $tx->event_id) {
             $registrationDetails = collect([[
                 'player' => trim($tx->player->name . ' ' . $tx->player->surname),
                 'category' => $tx->category_event?->category?->name ?? '—',
@@ -647,6 +665,7 @@ class FinancialLedgerService
             'tx_id'         => $tx->id,
             'paid_at'       => ($isAdminEntry || $isUnmarkedZeroValue) ? null : $tx->created_at,
             'order'         => $resolvedOrder,
+            'team_order_id' => $teamOrder?->id,
             'entryCount'    => $entryCount,
             'payfastGross'  => $payfastGross,
             'walletUsed'    => $walletUsed,
@@ -739,14 +758,14 @@ class FinancialLedgerService
             ->where('type', 'debit')
             ->get()
             ->map(function ($wt) use ($feePerEntry) {
-                $order = TeamPaymentOrder::with(['player', 'team.category'])->find($wt->source_id);
+                $order = TeamPaymentOrder::with(['player', 'beneficiary', 'team.category.category'])->find($wt->source_id);
                 $gross = round((float) $wt->amount, 2);
                 $capeFeeTx = -1 * round($feePerEntry, 2);
                 $user = $wt->wallet?->payable;
                 $playerName = null;
 
-                if ($order && $order->player_id) {
-                    $player = \App\Models\Player::find($order->player_id);
+                if ($order && $order->effective_player_id) {
+                    $player = $order->beneficiary ?? $order->player;
                     $playerName = $player ? trim($player->name . ' ' . $player->surname) : null;
                 }
 
@@ -784,7 +803,8 @@ class FinancialLedgerService
                     'walletUsed'    => $gross,
                     'registrationDetails' => collect([[
                         'player' => $playerName ?: '—',
-                        'category' => $order?->team?->category?->name ?? 'Team entry',
+                        'category' => (int) $order?->team?->category?->event_id === (int) $order?->event_id
+                            ? ($order?->team?->category?->category?->name ?? 'Team entry') : '—',
                         'price' => $gross,
                     ]]),
                 ];

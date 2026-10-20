@@ -46,6 +46,41 @@ class EventFinanceControllerAuthorizationTest extends TestCase
 
     public function test_view_admin_success() { $this->actingAs($this->admin)->get(route('admin.events.finances', $this->eventA->id))->assertSuccessful(); }
 
+    public function test_team_payment_breakdown_uses_correct_event_order_and_totals_despite_id_collision(): void
+    {
+        $this->eventA->forceFill(['cape_tennis_fee' => 15])->save();
+        $player = \App\Models\Player::factory()->create(['name' => 'Correct', 'surname' => 'Receipt Player']);
+        $category = \App\Models\CategoryEvent::factory()->create([
+            'event_id' => $this->eventA->id,
+            'category_id' => \App\Models\Category::factory()->create(['name' => 'Correct receipt category'])->id,
+        ]);
+        $team = \App\Models\Team::factory()->create(['category_event_id' => $category->id]);
+        $order = \App\Models\TeamPaymentOrder::create([
+            'event_id' => $this->eventA->id, 'user_id' => $this->user->id, 'player_id' => $player->id,
+            'team_id' => $team->id, 'total_amount' => 350,
+        ]);
+        $foreignPlayer = \App\Models\Player::factory()->create(['name' => 'Foreign', 'surname' => 'Receipt Player']);
+        $foreignCategory = \App\Models\CategoryEvent::factory()->create(['event_id' => $this->eventB->id]);
+        DB::table('registration_orders')->insert(['id' => $order->id, 'user_id' => $this->user->id]);
+        DB::table('registration_order_items')->insert([
+            'order_id' => $order->id, 'category_event_id' => $foreignCategory->id,
+            'player_id' => $foreignPlayer->id, 'item_price' => 240,
+        ]);
+        DB::table('transactions_pf')->insert([
+            'pf_payment_id' => 'PF-COLLIDING-ORDER', 'event_id' => $this->eventA->id,
+            'transaction_type' => 'Registration', 'custom_str5' => 'TeamOrder',
+            'custom_int5' => $order->id, 'custom_int4' => $this->user->id,
+            'amount_gross' => 350, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $fee = \App\Models\SiteSetting::calculatePayfastFee(350);
+        $response = $this->actingAs($this->admin)->get(route('admin.events.finances', $this->eventA->id));
+        $response->assertSuccessful()->assertSee('Correct Receipt Player')->assertSee('Correct receipt category')
+            ->assertDontSee('Foreign Receipt Player')->assertViewHas('totalGross', 350.0)
+            ->assertViewHas('totalEntries', 1)->assertViewHas('netRegistrationIncome', round(350 - $fee - 15, 2))
+            ->assertViewHas('eventTransactions', fn ($rows) => $rows->count() === 1
+                && $rows->first()->registrationDetails->sole()['price'] === 350.0);
+    }
+
     public function test_view_uses_canonical_ledger_and_lists_user_transactions(): void
     {
         $payer = User::factory()->create(['name' => 'Finance Payer']);

@@ -98,7 +98,7 @@ class AuthServiceProvider extends ServiceProvider
 
             $access = app(\App\Services\TeamSelection\RegionManagerAccessService::class);
             return \App\Models\EventRegion::query()->where('event_id', $event->id)->with('events')->get()
-                ->contains(fn ($region) => $access->canManage($user, $region));
+                ->contains(fn ($region) => $access->canManageRoster($user, $region));
         });
 
         Gate::define('region-clothing.manage', function ($user, \App\Models\TeamRegion $region) {

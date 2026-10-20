@@ -260,9 +260,15 @@ class FinancialLedgerServiceTest extends TestCase
             'updated_at'           => now(),
         ]);
 
+        $category = \App\Models\CategoryEvent::factory()->create(['event_id' => $this->event->id]);
+        DB::table('registration_order_items')->insert([
+            'order_id' => $orderId, 'category_event_id' => $category->id, 'item_price' => 300,
+        ]);
+
         // PayFast transaction for the hybrid order
         DB::table('transactions_pf')->insert([
             'pf_payment_id'    => 'PF_HYBRID',
+            'custom_int4'      => $user->id,
             'event_id'         => $this->event->id,
             'transaction_type' => 'Registration',
             'amount_gross'     => 200.00,

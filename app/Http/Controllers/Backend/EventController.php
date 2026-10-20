@@ -75,11 +75,8 @@ class EventController extends Controller
 
     $receiptSections = app(\App\Domain\Finance\Services\EventFinanceReceiptReport::class)->build($event, $paymentRows->merge($refundRows));
 
-    $isTeamEvent  = $event->isTeam();
     $entryRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee']);
-    $totalEntries = $isTeamEvent
-      ? $entryRows->count()
-      : $entryRows->sum(fn($r) => $r->entryCount ?? 1);
+    $totalEntries = $entryRows->sum(fn($r) => $r->entryCount ?? 1);
 
     $ledger = collect()
       ->merge($paymentRows)

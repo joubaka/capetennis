@@ -57,9 +57,7 @@ class EventFinanceController extends Controller
         $totalCapeTennisFees = abs($ledgerTotals['cape_fees']);
         $netRegistrationIncome = $ledgerTotals['registration_net'];
         $entryRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee']);
-        $totalEntries = $isTeamEvent
-            ? $entryRows->count()
-            : $entryRows->sum(fn ($row) => $row->entryCount ?? 1);
+        $totalEntries = $entryRows->sum(fn ($row) => $row->entryCount ?? 1);
 
         $receiptReport = app(EventFinanceReceiptReport::class)->build($event, $eventTransactions);
         $clothingReceipts = $receiptReport['clothing'];

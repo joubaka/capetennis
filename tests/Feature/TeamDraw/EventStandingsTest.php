@@ -6,6 +6,7 @@ use App\Models\{Category, CategoryEvent, Draw, Event, EventType, Team, TeamFixtu
 use App\Services\{EventStandingsService, TeamEventRulesService, TeamFixtureScoreService};
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -81,16 +82,54 @@ class EventStandingsTest extends TestCase
         $this->assertSame(1, $response->viewData('stats')['rubbers']);
         $this->assertMatchesRegularExpression('/href="'.preg_quote(route('admin.events.standings', $event), '/').'"\s+aria-current="page"/', $response->getContent());
         $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
-        $this->get(route('backend.team-selection.index', $event))->assertOk()
-            ->assertSee('href="'.route('admin.events.standings', $event).'"', false);
+        $this->get(route('backend.team-selection.index', $event))->assertRedirect(route('admin.events.teams', $event));
+        $this->get(route('admin.events.teams', $event))->assertOk();
         $this->get(route('admin.events.standings', $other))->assertForbidden();
-        $this->get(route('admin.events.teams', $event))->assertForbidden();
+        foreach (['event-draw.view', 'event.manage', 'event.settings.manage', 'event-finance.view', 'event-finance.manage',
+            'event-email.view', 'event-email.send', 'team-draw.createFormat', 'team-schedule.manage'] as $ability) {
+            $this->assertFalse(Gate::forUser($actor)->allows($ability, $event), $ability);
+        }
+        foreach (['team-draw.updateTeamDraw', 'team-draw.generateTies', 'team-draw.generateRubbers'] as $ability) {
+            $this->assertFalse(Gate::forUser($actor)->allows($ability, $published['draw']), $ability);
+        }
+        $this->get(route('admin.events.standings.preview', $event))->assertForbidden();
         $this->patchJson(route('admin.events.standings.publication', $event), ['standings_published' => true])->assertForbidden();
         $this->get(route('frontend.events.standings', $event))->assertNotFound();
         $this->assertFalse($event->fresh()->standings_published);
         $this->actingAs(User::factory()->create())->get(route('admin.events.standings', $event))->assertForbidden();
         \App\Models\EventRegionManager::where('user_id', $actor->id)->delete();
         $this->actingAs($actor)->get(route('admin.events.standings', $event))->assertForbidden();
+    }
+
+    public function test_standings_access_follows_current_regional_assignment_without_granting_event_management(): void
+    {
+        $event = $this->event();
+        $fixture = $this->draw($event, 'U10 Boys');
+        $region = \App\Models\EventRegion::where('event_id', $event->id)
+            ->where('region_id', $fixture['regions'][0]->id)->firstOrFail();
+        $former = User::factory()->create();
+        $current = User::factory()->create();
+        $assignment = \App\Models\EventRegionManager::create(['event_id' => $event->id, 'event_region_id' => $region->id,
+            'region_id' => $region->region_id, 'user_id' => $former->id]);
+        $this->assertTrue(Gate::forUser($former)->allows('event-standings.view', $event));
+        $this->assertFalse(Gate::forUser($current)->allows('event-standings.view', $event));
+
+        $assignment->update(['user_id' => $current->id]);
+
+        $this->actingAs($former)->get(route('admin.events.standings', $event))->assertForbidden();
+        $this->actingAs($current)->get(route('admin.events.standings', $event))->assertOk();
+        $this->assertFalse(Gate::forUser($current)->allows('event.manage', $event));
+        $this->patchJson(route('admin.events.standings.publication', $event), ['standings_published' => true])->assertForbidden();
+        $this->assertFalse($event->fresh()->standings_published);
+
+        $admin = User::factory()->create();
+        $admin->assignRole(Role::findOrCreate('admin', 'web'));
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $this->assertTrue(Gate::forUser($admin)->allows('event-standings.view', $event));
+        $this->assertTrue(Gate::forUser($admin)->allows('event.manage', $event));
+        $this->actingAs($admin)->patchJson(route('admin.events.standings.publication', $event), ['standings_published' => true])
+            ->assertOk()->assertJson(['success' => true, 'standings_published' => true]);
+        $this->assertTrue($event->fresh()->standings_published);
     }
 
     public function test_filters_and_foreign_team_ties_are_excluded(): void
