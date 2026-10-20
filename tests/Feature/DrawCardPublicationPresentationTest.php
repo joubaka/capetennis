@@ -7,12 +7,41 @@ use App\Models\Event;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class DrawCardPublicationPresentationTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_compact_team_card_prioritises_confirmation_and_retains_workspace_tools(): void
+    {
+        Gate::before(fn () => true);
+        $this->actingAs(User::factory()->create());
+        $draw = Draw::factory()->create([
+            'event_id' => Event::factory()->create()->id,
+            'published' => false, 'locked' => false,
+            'team_scoring_rules' => ['undecided' => true],
+            'team_draw_selection' => ['competition' => ['phase' => 'round_robin']],
+            'team_format_snapshot' => ['rubbers' => []],
+        ]);
+        $draw->setRelation('draw_types', (new \App\Models\DrawType)->forceFill(['type' => 'team']));
+
+        $html = view('backend.draw._includes.draw_tab_team', ['draw' => $draw, 'compactOverview' => true])->render();
+        $this->assertStringContainsString(route('team-draw.competition.scoring', $draw), $html);
+        $this->assertStringContainsString('>Confirm scoring</a>', $html);
+        foreach (['Continue setup', 'Open team fixtures', 'Team ties', 'Draw standings', 'Schedule matches', 'Public schedule preview', 'Publish schedule', 'Assign venues', 'Advanced actions'] as $label) {
+            $this->assertStringContainsString($label, $html);
+        }
+        $this->assertStringContainsString('<details class="event-draw-schedule"', $html);
+        $this->assertStringContainsString('<details class="event-draw-tools"', $html);
+
+        $draw->team_draw_selection = null;
+        $html = view('backend.draw._includes.draw_tab_team', ['draw' => $draw, 'compactOverview' => true])->render();
+        $this->assertStringNotContainsString(route('team-draw.competition.scoring', $draw), $html);
+        $this->assertStringContainsString('>Continue setup</a>', $html);
+    }
 
     public function test_draw_card_exposes_separate_scoped_publication_controls_and_preview(): void
     {

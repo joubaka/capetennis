@@ -30,6 +30,12 @@
   .event-draw-tools { margin-top: 1rem; padding-top: .75rem; border-top: 1px solid var(--ct-border, #e4eaf0); }
   .event-draw-tools > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
   .event-draw-schedule { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--ct-border, #e4eaf0); }
+  .event-draw-schedule > summary, .event-draw-tools > summary { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .25rem .75rem; min-height: 44px; cursor: pointer; list-style: none; }
+  .event-draw-schedule > summary::after, .event-draw-tools > summary::after { content: '+'; margin-left: auto; }
+  .event-draw-schedule[open] > summary::after, .event-draw-tools[open] > summary::after { content: '−'; }
+  .event-draw-schedule > summary::-webkit-details-marker, .event-draw-tools > summary::-webkit-details-marker { display: none; }
+  .event-draw-next-step { margin-top: .625rem; color: var(--ct-ink, #172e45); }
+  .event-draw-card[data-scoring-undecided] .event-draw-quick-publication:not(.btn-outline-danger) { background: transparent; color: var(--ct-ink, #172e45); border-color: var(--ct-border, #e4eaf0); box-shadow: none; }
   .event-draw-schedule .draw-card-publication { margin-top: .5rem !important; padding-block: 0; border: 0; }
   .event-draw-scoring-actions:has([data-enable-scoring]:not([hidden])) { margin-top: .75rem; }
   .ct-backend .event-draw-tabs { display: flex; flex-direction: row; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.25rem; padding-bottom: 1rem; border-bottom: 1px solid var(--ct-border, #e4eaf0); }
@@ -175,7 +181,7 @@
         @endphp
 <div class="row event-draw-layout">
 
-  <div class="col-xl-9 col-lg-8">
+  <div class="col-12">
     <div class="card mb-4">
       <div class="card-header event-draw-header d-flex justify-content-between align-items-center">
         <h5 class="mb-0">Manage Draws</h5>
@@ -212,7 +218,7 @@
             <div class="event-draw-heading"><h6 class="mb-0">{{ $groupLabel }}</h6><span class="text-muted small">{{ $groupDraws->count() }} {{ \Illuminate\Support\Str::plural('draw', $groupDraws->count()) }}</span></div>
             <div class="event-draw-list">
             @foreach($groupDraws as $draw)
-            <details id="publication-draw-{{ $draw->id }}" class="event-draw-card event-draw-publication-card" data-quick-publication-card data-draw-id="{{ $draw->id }}">
+            <details id="publication-draw-{{ $draw->id }}" class="event-draw-card event-draw-publication-card" data-quick-publication-card data-draw-id="{{ $draw->id }}" @if($draw->isTeamDraw() && ($draw->team_scoring_rules['undecided'] ?? false)) data-scoring-undecided @endif>
               <summary class="event-draw-card-summary">
                 <div class="event-draw-card-summary-info">
                 <h6 class="mb-0">{{ $draw->drawName }} <span class="text-muted">— {{ optional($draw->draw_types)->drawTypeName ?? 'Type' }}</span></h6>
@@ -233,6 +239,9 @@
                       <span class="badge bg-label-secondary">No venues assigned</span>
                     @endforelse
                   </div>
+                  @if($draw->isTeamDraw() && ($draw->team_scoring_rules['undecided'] ?? false))
+                    <p class="event-draw-next-step small mb-0"><strong>Next: confirm scoring.</strong> Review the phase scoring rules before publishing.</p>
+                  @endif
                   <div class="small mt-2 d-none" data-quick-draw-feedback role="status" aria-live="polite"></div>
                   <button type="button" class="btn btn-sm btn-outline-primary mt-2" data-quick-draw-status-retry hidden>Retry publication status check</button>
                 </div>
@@ -242,7 +251,7 @@
                     <button type="button" class="btn btn-sm {{ $draw->published ? 'btn-outline-danger' : 'btn-success' }} event-draw-quick-publication" data-quick-draw-publication data-published="{{ $draw->published ? 'true' : 'false' }}" aria-pressed="{{ $draw->published ? 'true' : 'false' }}" aria-label="{{ $draw->published ? 'Unpublish' : 'Publish' }} {{ $draw->drawName }}" @disabled($draw->published && $draw->locked) @if($draw->published && $draw->locked) title="Locked draws cannot be unpublished." @endif>{{ $draw->published ? 'Unpublish' : 'Publish' }}</button>
                   @endcan
                   @endcan
-                  <span class="event-draw-card-toggle small text-primary"><span class="event-draw-card-expand">Click to open</span><span class="event-draw-card-collapse">Click to close</span><i class="ti ti-chevron-down" aria-hidden="true"></i></span>
+                  <span class="event-draw-card-toggle small text-primary"><span class="event-draw-card-expand">Open workspace</span><span class="event-draw-card-collapse">Close workspace</span><i class="ti ti-chevron-down" aria-hidden="true"></i></span>
                 </div>
               </summary>
               <div class="event-draw-card-content">
@@ -263,11 +272,9 @@
     </div>
   </div>
 
-  <div class="col-xl-3 col-lg-4">
-    <div class="card mb-4">
-      <div class="card-header">
-        <h5 class="mb-0">Venue Fixture Lists</h5>
-      </div>
+  <div class="col-12">
+    <details class="card mb-4 event-publication-panel">
+      <summary><span class="fw-semibold">Venue Fixture Lists</span><span class="small text-muted">{{ $scheduledVenues->count() }} active {{ \Illuminate\Support\Str::plural('venue', $scheduledVenues->count()) }}</span></summary>
       <div class="card-body">
         <div class="list-group">
           @forelse($scheduledVenues as $venue)
@@ -303,7 +310,7 @@
           @endforelse
         </div>
       </div>
-    </div>
+    </details>
   </div>
 
 </div>

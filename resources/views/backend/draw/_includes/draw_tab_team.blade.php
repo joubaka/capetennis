@@ -3,6 +3,10 @@
   $isLocked = (bool) $draw->locked;
   $isPublished = (bool) $draw->published;
   $isSchedulePublished = (bool) $draw->oop_published;
+  $canConfirmScoring = $isTeamDraw && ($draw->team_scoring_rules['undecided'] ?? false)
+    && isset($draw->team_draw_selection['competition']) && !$isPublished && !$isLocked
+    && auth()->user()?->can('team-draw.updateTeamDraw', $draw)
+    && !$draw->teamTies()->whereNotNull('published_at')->exists();
   $individualWorkspaceUrl = $draw->needsWorkflowChoice() ? route('draw.setup.show', $draw) : route('backend.draw.roundrobin.show', $draw);
   $individualSettingsUrl = $draw->needsWorkflowChoice() ? $individualWorkspaceUrl : $individualWorkspaceUrl.'#settings';
 @endphp
@@ -29,7 +33,12 @@
       @endforelse
     </div>
     <div class="draw-card-actions draw-card-primary d-flex flex-wrap gap-2 mt-3" role="group" aria-label="Draw workspace">
-      @can('event.manage', $draw->event)<a data-draw-guide-open class="btn btn-sm btn-primary" href="{{ route('draw.guide.show', [$draw->event_id, $draw]) }}">Continue setup</a>@endcan
+      @if(($compactOverview ?? false) && $canConfirmScoring)
+        <a class="btn btn-sm btn-primary" href="{{ route('team-draw.competition.scoring', $draw) }}">Confirm scoring</a>
+        @can('event.manage', $draw->event)<a data-draw-guide-open class="btn btn-sm btn-outline-secondary" href="{{ route('draw.guide.show', [$draw->event_id, $draw]) }}">Continue setup</a>@endcan
+      @else
+        @can('event.manage', $draw->event)<a data-draw-guide-open class="btn btn-sm btn-primary" href="{{ route('draw.guide.show', [$draw->event_id, $draw]) }}">Continue setup</a>@endcan
+      @endif
       <a class="btn btn-sm {{ ($compactOverview ?? false) ? 'btn-outline-primary' : 'btn-primary' }}" href="{{ $isTeamDraw ? route('backend.team-fixtures.index', ['draw_id' => $draw->id]) : $individualWorkspaceUrl }}">{{ $isTeamDraw ? 'Open team fixtures' : 'Open singles draw' }}</a>
       @if(($compactOverview ?? false) && $isTeamDraw)
         @can('team-fixture.view', $draw)
@@ -42,8 +51,8 @@
     </div>
     @if($compactOverview ?? false)
       <div class="event-draw-scoring-actions">@include('backend.draw.partials.scoring-readiness')</div>
-      <section class="event-draw-schedule" aria-label="Match schedule">
-        <h6 class="mb-0">Match schedule</h6>
+      <details class="event-draw-schedule" aria-label="Match schedule">
+        <summary><span class="fw-semibold">Match schedule</span><span class="small text-muted">Plan, preview and publish times</span></summary>
     @endif
     <div class="draw-card-actions d-flex flex-wrap gap-2 mt-3" role="group" aria-label="Schedule tools">
       <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]) }}"><i class="ti ti-calendar me-1"></i>Schedule matches</a>
@@ -57,8 +66,8 @@
     </div>
     @endcan
     @if($compactOverview ?? false)
-      </section>
-      <section class="event-draw-tools" aria-label="Draw settings"><h6 class="mb-0">Draw settings</h6>
+      </details>
+      <details class="event-draw-tools" aria-label="Draw settings"><summary><span class="fw-semibold">Draw settings</span><span class="small text-muted">Venues and advanced actions</span></summary>
     @endif
     <div class="draw-card-actions d-flex flex-wrap gap-2 mt-3" role="group" aria-label="Draw configuration">
       @can('update', $draw)
@@ -99,7 +108,7 @@
     @if($compactOverview ?? false)
       <p class="small text-muted mt-3 mb-0">Created {{ $draw->created_at->format('d M, Y') }}</p>
     @endif
-    @if($compactOverview ?? false)</section>@endif
+    @if($compactOverview ?? false)</details>@endif
   </div>
 </div>
 
