@@ -979,6 +979,17 @@ class TeamController extends Controller
   public function addPlayers(Request $request)
   {
     [$event, $region, $team] = $this->rosterContext($request);
+    if ($request->has('target_rank')) {
+      $data = $request->validate([
+        'target_rank' => ['required', 'integer', 'min:1'],
+        'reserve_slot_id' => ['nullable', 'integer', 'min:1', 'required_without:player_id', 'prohibits:player_id'],
+        'expected_reserve_rank' => ['required_with:reserve_slot_id', 'integer', 'min:1'],
+        'player_id' => ['nullable', 'integer', 'min:1', 'required_without:reserve_slot_id', 'prohibits:reserve_slot_id'],
+      ]);
+      app(\App\Services\TeamRosterService::class)->fillEmptyPlace($event, $region, $team, $request->user(), $data);
+
+      return response()->json(['success' => true, 'message' => 'Player added to Rank '.$data['target_rank'].'.']);
+    }
     $data = $request->validate($team->noProfile
       ? ['name' => ['required', 'string', 'max:100'], 'surname' => ['required', 'string', 'max:100']]
       : ['player_ids' => ['required', 'array', 'min:1', 'max:50'], 'player_ids.*' => ['required', 'integer', 'distinct', 'exists:players,id']]);

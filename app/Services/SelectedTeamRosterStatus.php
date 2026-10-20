@@ -37,6 +37,8 @@ final class SelectedTeamRosterStatus
             : collect();
         $reserves = [];
         $profileReserves = [];
+        $promotions = \App\Models\TeamRosterPromotion::where('event_id', $event->id)->whereIn('team_id', $teams->pluck('id'))->orderByDesc('id')->limit(5001)->get();
+        abort_if($promotions->count() > 5000, 422, 'This event supports up to 5000 roster promotions.');
         foreach ($teams as $team) {
             if ($team->category_event_id ? (int) $team->category?->event_id !== (int) $event->id : !$legacyRegionIds->contains($team->region_id)) continue;
             $team->loadMissing(['team_players_no_profile', 'team_players']);
@@ -55,9 +57,15 @@ final class SelectedTeamRosterStatus
                     || (!$frozenStatus && !$current && $team->num_team_members > 0 && $slot->rank > $team->num_team_members);
                 if (!$reserve) continue;
                 $promoted = $invitations->contains(fn ($invitation) => $this->hasPromotion($invitation, $event, $team, (int) $slot->player_profile, (int) $slot->rank));
-                if (!$promoted) $reserves[(int) $team->id][(int) $slot->id] = true;
+                $manualPromotion = $promotions->contains(fn ($promotion) => (int) $promotion->team_id === (int) $team->id
+                    && (int) $promotion->no_profile_slot_id === (int) $slot->id
+                    && (!(int) $promotion->player_id || (int) $promotion->player_id === (int) $slot->player_profile)
+                    && (int) $promotion->target_rank === (int) $slot->rank && $slot->rank > 0 && $slot->rank <= $team->num_team_members
+                    && $promotion->actor_id > 0 && $promotion->created_at);
+                if (!$promoted && !$manualPromotion) $reserves[(int) $team->id][(int) $slot->id] = true;
             }
             foreach ($team->team_players as $slot) {
+                if ((int) $slot->player_id < 1) continue;
                 $importedSlots = $team->team_players_no_profile->filter(fn ($member) => (int) $member->player_profile === (int) $slot->player_id);
                 if ($importedSlots->isNotEmpty()) {
                     if ($importedSlots->contains(fn ($member) => isset($reserves[$team->id][$member->id]))) $profileReserves[$team->id][$slot->player_id] = true;
@@ -69,7 +77,11 @@ final class SelectedTeamRosterStatus
                     && (int) $candidate->selectionImport?->region_id === (int) $team->region_id);
                 $frozenRole = $frozen->first(fn ($record) => (int) ($record['profile_id'] ?? 0) === (int) $slot->player_id)['status'] ?? null;
                 $frozenReserve = $frozenRole === 'reserve';
-                if ($frozenReserve && !($invitation && $this->hasPromotion($invitation, $event, $team, (int) $slot->player_id, (int) $slot->rank))) {
+                $manualPromotion = $promotions->contains(fn ($promotion) => (int) $promotion->team_id === (int) $team->id
+                    && (int) $promotion->profile_slot_id === (int) $slot->id && (int) $promotion->player_id === (int) $slot->player_id
+                    && (int) $promotion->target_rank === (int) $slot->rank && $slot->rank > 0 && $slot->rank <= $team->num_team_members
+                    && $promotion->actor_id > 0 && $promotion->created_at);
+                if ($frozenReserve && !$manualPromotion && !($invitation && $this->hasPromotion($invitation, $event, $team, (int) $slot->player_id, (int) $slot->rank))) {
                     $profileReserves[$team->id][$slot->player_id] = true;
                     continue;
                 }

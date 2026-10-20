@@ -61,9 +61,6 @@
           @if($team->noProfile && app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(auth()->user(), $event))
             <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.team-selection.profile-matches.index', [$event, $team]) }}">Check existing profiles</a>
           @endif
-          @if(!$rosterLocked && !$rankingManaged && $event->isTeam() && !$event->isInterprovincialTrials() && $team->num_team_members > 0 && $rosterCanEdit)
-            @include('backend.adminPage.admin_show._roster-add', ['reserveAdd' => true])
-          @endif
           @can('team.players.manage', $team)
             <button type="button" class="btn btn-sm btn-outline-secondary emailTeamBtn" data-teamid="{{ $team->id }}" data-teamname="{{ $team->name }}">Send team email</button>
 
@@ -73,6 +70,10 @@
       </div>
 
 @endunless
+
+      @if(!$rosterOnly && !$rosterLocked && !$rankingManaged && $event->isTeam() && !$event->isInterprovincialTrials() && $team->num_team_members > 0 && $rosterCanEdit)
+        <div class="mb-3">@include('backend.adminPage.admin_show._roster-add', ['reserveAdd' => true])</div>
+      @endif
 
       <div class="table-responsive roster-compact-table"><table class="table align-middle team-player-table mb-0">
         <thead><tr><th scope="col">Rank</th><th scope="col">Player</th>@unless($rosterOnly)<th scope="col">Contact</th><th scope="col">Payment</th>
@@ -122,6 +123,9 @@
               <td data-label="Actions"><div class="roster-row-actions">
               @if($rosterCanEdit && !$rosterLocked)@include('backend.adminPage.admin_show._roster-actions', ['compactRoster' => true])
 @endif
+              @if(!$player && !$np && !$rosterLocked && !$rankingManaged && $event->isTeam() && !$event->isInterprovincialTrials() && $slot->rank <= $team->num_team_members && auth()->user()->can('team.players.manage', $team))
+                @include('backend.adminPage.admin_show._roster-fill')
+              @endif
               @if($rosterLocked && !$rosterOnly && $slot->exists && $player && $paid)
                 @role('super-user')
                   <details class="roster-more-actions"><summary class="btn btn-sm btn-outline-secondary roster-icon-control" aria-label="More actions for {{ $name }}" title="More actions"><i class="ti ti-dots" aria-hidden="true"></i></summary>

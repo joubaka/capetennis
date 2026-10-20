@@ -47,7 +47,7 @@
     </details>
   @elseif($team->noProfile)
     <details>
-      <summary class="btn btn-sm btn-outline-secondary">Edit name</summary>
+      <summary class="btn btn-sm btn-outline-secondary">Change name</summary>
     <form method="POST" action="{{ route('backend.team.editPlayerName') }}" class="mt-2" data-team-roster-change>
         @csrf
         <input type="hidden" name="team_id" value="{{ $team->id }}"><input type="hidden" name="event_id" value="{{ $event->id }}">

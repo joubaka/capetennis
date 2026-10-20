@@ -113,6 +113,11 @@ class EventAdminController extends Controller
             ]))->setRelation('noProfile', $imported));
           }
         }
+        if ((int) $team->num_team_members > 0) {
+          foreach (range(1, (int) $team->num_team_members) as $rank) {
+            if (!$slots->has($rank)) $slots->put($rank, (new \App\Models\TeamPlayer(['team_id' => $team->id, 'rank' => $rank, 'player_id' => 0, 'pay_status' => 0]))->setRelation('noProfile', null));
+          }
+        }
         $team->setRelation('workspaceSlots', $slots->sortKeys()->values());
         $team->workspaceSlots->each(fn ($slot) => $slot->setRelation('selected_team_reserve', $slot->noProfile && in_array((int) $slot->noProfile->id, $reserveSlots, true)));
       });
