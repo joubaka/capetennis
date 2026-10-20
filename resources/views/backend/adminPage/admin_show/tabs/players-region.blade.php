@@ -2,7 +2,7 @@
   $rosterOnly = $rosterOnly ?? false;
   $occupied = $region->teams->sum(fn ($team) => $team->workspaceSlots->filter(fn ($slot) => (int) $slot->player_id > 0 || $slot->noProfile)->count());
   $unpaid = $region->teams->sum(fn ($team) => $team->workspaceSlots->filter(fn ($slot) => ((int) $slot->player_id > 0 || $slot->noProfile) && (int) $slot->pay_status !== 1)->count());
-  $reserves = ($teamSelectionInvitations ?? collect())->only($region->teams->modelKeys())->flatten(1)->where('status', \App\Models\TeamSelectionInvitation::RESERVE)->count();
+  $reserves = $region->teams->sum(fn ($team) => $team->workspaceSlots->where('selected_team_reserve', true)->count() + ($teamSelectionInvitations ?? collect())->get($team->id, collect())->where('status', \App\Models\TeamSelectionInvitation::RESERVE)->whereNotIn('player_id', $team->workspaceSlots->where('selected_team_reserve', true)->pluck('player_id'))->count());
 @endphp
 <div class="roster-region-header">
   <div><h2 class="h5 mb-1">{{ $region->region_name }}</h2><p class="text-muted mb-0">{{ $region->teams->count() }} teams · {{ $occupied }} occupied places @unless($rosterOnly)· {{ $unpaid }} unpaid · {{ $reserves }} reserves
@@ -29,6 +29,7 @@
     $invitations = ($teamSelectionInvitations ?? collect())->get($team->id, collect());
     $rankingManaged = $invitations->isNotEmpty();
     $teamReserves = $invitations->where('status', \App\Models\TeamSelectionInvitation::RESERVE)->sortBy('queue_position');
+    $reserveCount = $team->workspaceSlots->where('selected_team_reserve', true)->count() + $teamReserves->whereNotIn('player_id', $team->workspaceSlots->where('selected_team_reserve', true)->pluck('player_id'))->count();
     $slots = $team->workspaceSlots;
     $occupiedSlots = $slots->filter(fn ($slot) => (int) $slot->player_id > 0 || $slot->noProfile);
     $rosterLocked = app(\App\Services\TeamRosterService::class)->isLocked($event, $team);
@@ -38,7 +39,7 @@
 @endif
 >
     <summary class="roster-team-summary">
-      <span class="roster-team-title"><strong>{{ $team->name }}</strong><span class="small text-muted">{{ $team->category?->category?->name ?? 'Category not set' }} · {{ $occupiedSlots->count() }}/{{ $team->num_team_members }} places @unless($rosterOnly)· {{ $occupiedSlots->where('pay_status', '!=', 1)->count() }} unpaid · {{ $teamReserves->count() }} reserves
+      <span class="roster-team-title"><strong>{{ $team->name }}</strong><span class="small text-muted">{{ $team->category?->category?->name ?? 'Category not set' }} · {{ $occupiedSlots->count() }}/{{ $team->num_team_members }} places @unless($rosterOnly)· {{ $occupiedSlots->where('pay_status', '!=', 1)->count() }} unpaid · {{ $reserveCount }} reserves
 @endunless
 </span></span>
       @unless($rosterOnly)
@@ -59,6 +60,9 @@
         <div class="d-flex flex-wrap gap-2">
           @if($team->noProfile && app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(auth()->user(), $event))
             <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.team-selection.profile-matches.index', [$event, $team]) }}">Check existing profiles</a>
+          @endif
+          @if(!$rosterLocked && !$rankingManaged && $event->isTeam() && !$event->isInterprovincialTrials() && $team->num_team_members > 0 && $rosterCanEdit)
+            @include('backend.adminPage.admin_show._roster-add', ['reserveAdd' => true])
           @endif
           @can('team.players.manage', $team)
             <button type="button" class="btn btn-sm btn-outline-secondary emailTeamBtn" data-teamid="{{ $team->id }}" data-teamname="{{ $team->name }}">Send team email</button>

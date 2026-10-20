@@ -36,6 +36,12 @@ class TeamRosterService
             $before = null;
 
             if ($action === 'add') {
+                $reserve = (bool) ($data['reserve'] ?? false);
+                if ($reserve) {
+                    abort_unless($fullManager, 403);
+                    if (!$event->isTeam() || $event->isInterprovincialTrials() || $managed || (int) $team->num_team_members < 1) $this->fail('Use the selection workflow to manage reserves for this team.');
+                    $this->assertBeforeCompetition($event, $team);
+                }
                 $slots = $team->noProfile ? $team->team_players_no_profile()->lockForUpdate()->get()
                     : TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->lockForUpdate()->get();
                 if ($slots->count() !== $slots->pluck('rank')->unique()->count()) $this->fail('This roster needs administrator review.');
@@ -46,6 +52,7 @@ class TeamRosterService
                     $rank = (int) $data['_replacement_rank'];
                     if ($rank < 1 || in_array($rank, $used)) $this->fail('The replacement place changed. Refresh and try again.');
                 }
+                if ($reserve) $rank = max((int) $team->num_team_members, (int) $slots->max('rank')) + 1;
                 if (((int) $team->num_team_members < 1 || ! $rank) && $fullManager && !$managed && !isset($data['_replacement_rank'])) $rank = max(0, (int) $slots->max('rank')) + 1;
                 if (! $rank || ((int) $team->num_team_members < 1 && !$fullManager && !isset($data['_replacement_rank']))) $this->fail('This team is full. Ask the event administrator to change its size.');
                 if ($team->noProfile) {

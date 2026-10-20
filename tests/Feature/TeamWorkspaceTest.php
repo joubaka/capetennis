@@ -23,7 +23,7 @@ class TeamWorkspaceTest extends TestCase
         Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
         $this->actor = User::factory()->create()->assignRole('super-user');
         $this->actingAs($this->actor);
-        DB::table('eventtypes')->insertOrIgnore(['id' => 3, 'name' => 'Team', 'type' => 'team']);
+        DB::table('eventtypes')->insertOrIgnore(['id' => 3, 'name' => 'Team', 'type' => \App\Models\EventType::TEAM]);
         $this->event = Event::factory()->create(['eventType' => 3]);
         $this->region = TeamRegion::create(['region_name' => 'Test region', 'short_name' => 'TR']);
         $this->event->regions()->attach($this->region->id);
@@ -39,6 +39,66 @@ class TeamWorkspaceTest extends TestCase
             ->assertOk()->assertSee('Find a player or team')->assertSee('data-roster-panel', false)
             ->assertDontSee('private-roster@example.test')->assertDontSee('Preserve payment status');
         $this->assertDatabaseCount('team_players', 1);
+    }
+
+    public function test_add_reserve_from_players_keeps_open_main_places_and_marks_unpaid_reserve(): void
+    {
+        $this->team->update(['noProfile' => true]);
+        $url = route('admin.events.teams', $this->event).'?roster_region='.$this->region->id;
+        $this->get($url)->assertOk()->assertSee('Add reserve player');
+        $payload = ['event_id' => $this->event->id, 'team_id' => $this->team->id, 'name' => 'Reserve', 'surname' => 'Example', 'reserve' => 1];
+        $this->postJson(route('backend.team.addPlayers'), $payload)->assertOk();
+        $this->assertDatabaseHas('no_profile_team_players', ['team_id' => $this->team->id, 'rank' => 3, 'name' => 'Reserve', 'pay_status' => 0]);
+        $this->assertSame(2, (int) $this->team->fresh()->num_team_members);
+        $this->postJson(route('backend.team.addPlayers'), $payload)->assertUnprocessable();
+        $this->assertDatabaseCount('no_profile_team_players', 1);
+        $this->get($url)->assertOk()->assertSee('1 reserves')->assertSee('>Reserve</span>', false);
+        $slot = NoProfileTeamPlayer::where('team_id', $this->team->id)->firstOrFail();
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        app(\App\Services\SelectedTeamRosterStatus::class)->assertMainSlot($this->event, $this->team, $slot);
+    }
+
+    public function test_profile_reserve_uses_canonical_unpaid_slot_and_event_scope(): void
+    {
+        $player = Player::factory()->create();
+        $payload = ['event_id' => $this->event->id, 'team_id' => $this->team->id, 'player_ids' => [$player->id], 'reserve' => 1];
+        $this->postJson(route('backend.team.addPlayers'), $payload)->assertOk();
+        $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'player_id' => $player->id, 'rank' => 3, 'pay_status' => 0]);
+        $this->assertDatabaseCount('team_payment_orders', 0);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->postJson(route('backend.team.addPlayers'), $payload)->assertUnprocessable();
+        $this->postJson(route('backend.team.addPlayers'), array_replace($payload, ['event_id' => Event::factory()->create()->id]))->assertNotFound();
+        $this->actingAs(User::factory()->create())->postJson(route('backend.team.addPlayers'), $payload)->assertForbidden();
+        $this->assertDatabaseCount('team_players', 1);
+        try {
+            app(\App\Services\SelectedTeamRosterStatus::class)->assertMainPlayer($this->event, $this->team, $player->id);
+            $this->fail('A reserve must not register as a main player.');
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            $this->assertStringContainsString('reserve', $exception->getMessage());
+        }
+    }
+
+    public function test_reserve_add_rejects_regional_only_manager_managed_selection_and_fixture_history(): void
+    {
+        $this->team->update(['noProfile' => true]);
+        $payload = ['event_id' => $this->event->id, 'team_id' => $this->team->id, 'name' => 'Reserve', 'surname' => 'Example', 'reserve' => 1];
+        $manager = User::factory()->create();
+        $eventRegion = \App\Models\EventRegion::where('event_id', $this->event->id)->where('region_id', $this->region->id)->firstOrFail();
+        \App\Models\EventRegionManager::create(['event_id' => $this->event->id, 'event_region_id' => $eventRegion->id, 'region_id' => $this->region->id, 'user_id' => $manager->id]);
+        $this->actingAs($manager)->postJson(route('backend.team.addPlayers'), $payload)->assertForbidden();
+        $this->actingAs($this->actor);
+        $import = \App\Models\TeamSelectionImport::create(['event_id' => $this->event->id, 'region_id' => $this->region->id, 'source_id' => 1, 'series_id' => 1, 'ranking_run_id' => 'reserve-restriction', 'status' => 'draft']);
+        \App\Models\TeamSelectionInvitation::create(['import_id' => $import->id, 'event_id' => $this->event->id, 'region_id' => $this->region->id, 'team_id' => $this->team->id, 'player_id' => Player::factory()->create()->id, 'ranking_list_id' => 1, 'ranking_position' => 1, 'queue_position' => 1]);
+        $this->postJson(route('backend.team.addPlayers'), $payload)->assertUnprocessable();
+        $import->update(['status' => 'cancelled']);
+        $draw = \App\Models\Draw::factory()->create(['event_id' => $this->event->id]);
+        $fixture = \App\Models\TeamFixture::create(['draw_id' => $draw->id, 'fixture_type' => 1, 'match_nr' => 1, 'round_nr' => 1, 'numSets' => 3]);
+        \App\Models\TeamFixturePlayer::create(['team_fixture_id' => $fixture->id, 'team1_id' => 0, 'team2_id' => 0]);
+        $this->postJson(route('backend.team.addPlayers'), $payload)->assertUnprocessable();
+        $this->get(route('admin.events.teams', $this->event).'?roster_region='.$this->region->id)->assertOk()->assertDontSee('Add reserve player');
+        $this->assertDatabaseCount('no_profile_team_players', 0);
+        $this->assertDatabaseCount('team_players', 0);
+        $this->assertDatabaseCount('wallet_transactions', 0);
     }
 
     public function test_players_page_keeps_communication_and_one_regional_clothing_menu(): void

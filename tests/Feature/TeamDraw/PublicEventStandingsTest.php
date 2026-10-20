@@ -56,7 +56,7 @@ class PublicEventStandingsTest extends TestCase
         $url = route('admin.events.standings.publication', $event);
         $before = $event->fresh()->only(['published', 'results_published', 'result_notifications_enabled', 'result_auto_refresh_enabled']);
         $drawBefore = $data['draw']->fresh()->only(['published', 'oop_published', 'results_published']);
-        $this->get(route('events.show', $event))->assertOk()->assertDontSee('Team standings and match totals');
+        $this->get(route('events.show', $event))->assertOk()->assertDontSee('data-event-standings-card', false);
         $this->get(route('frontend.events.standings', $event))->assertNotFound();
         $this->get(route('frontend.team-draw.standings', $data['draw']))->assertNotFound();
         $this->actingAs($admin)->get(route('frontend.events.standings', $event))->assertNotFound();
@@ -69,7 +69,8 @@ class PublicEventStandingsTest extends TestCase
         $this->assertSame(1, $auditCount);
         $this->patchJson($url, ['standings_published' => true])->assertOk();
         $this->assertSame($auditCount, DB::table('audit_events')->where('action', 'event.standings.publication.changed')->count());
-        $this->get(route('events.show', $event))->assertOk()->assertSee('Team standings and match totals');
+        $this->get(route('events.show', $event))->assertOk()->assertSee('data-event-standings-card', false)
+            ->assertSee('href="'.route('frontend.events.standings', $event).'"', false);
         $this->get(route('frontend.events.standings', $event))->assertOk();
         $this->get(route('frontend.team-draw.standings', $data['draw']))->assertOk();
         $this->assertSame($before, $event->fresh()->only(array_keys($before)));
@@ -77,7 +78,7 @@ class PublicEventStandingsTest extends TestCase
         $this->assertFalse($foreign->fresh()->standings_published);
         $this->patchJson($url, ['standings_published' => false])->assertOk();
         $this->assertSame(2, DB::table('audit_events')->where('action', 'event.standings.publication.changed')->count());
-        $this->get(route('events.show', $event))->assertOk()->assertDontSee('Team standings and match totals');
+        $this->get(route('events.show', $event))->assertOk()->assertDontSee('data-event-standings-card', false);
         $this->get(route('frontend.events.standings', $event))->assertNotFound();
         $this->get(route('frontend.team-draw.standings', $data['draw']))->assertNotFound();
         $this->actingAs(\App\Models\User::factory()->create())->patchJson($url, ['standings_published' => true])->assertForbidden();
@@ -155,8 +156,12 @@ class PublicEventStandingsTest extends TestCase
         $data = $this->draw($event);
         $event->update(['result_auto_refresh_enabled' => false]);
         $this->score($data['rubber']);
-        $this->get(route('frontend.events.standings', $event))->assertOk()
-            ->assertSee('data-auto-refresh="0"', false)->assertSee('Reload this page')->assertSee('data-points="3"', false)->assertDontSee('12–5');
+        $response = $this->get(route('frontend.events.standings', $event))->assertOk()
+            ->assertSee('data-auto-refresh="0"', false)->assertSee('Reload this page')->assertSee('data-points="3"', false)
+            ->assertSee('<details class="points-details">', false)->assertDontSee('<details class="points-details" open', false)
+            ->assertSee('12–5');
+        $this->assertSame([12, 5], array_column($response->viewData('overall'), 'games_for'));
+        $this->assertSame([2, 0], array_column($response->viewData('overall'), 'sets_for'));
         $this->get(route('frontend.team-draw.standings', $data['draw']))->assertOk()
             ->assertSee('data-auto-refresh="0"', false)->assertSee('12–5');
         $event->update(['result_auto_refresh_enabled' => true]);
@@ -182,14 +187,20 @@ class PublicEventStandingsTest extends TestCase
         $foreign = $this->draw($this->event(), 'U9 Foreign');
         $this->score($foreign['rubber']);
         $url = route('frontend.events.standings', $event);
-        $response = $this->get($url)->assertOk()->assertSee('Running points totals by age group')
-            ->assertSee('data-points="6"', false)->assertDontSee('Standings by draw')->assertDontSee('12–5');
+        $response = $this->get($url)->assertOk()->assertSee('Team standings')
+            ->assertSee('data-points="6"', false)->assertDontSee('Standings by draw')->assertSee('12–5')
+            ->assertSee('<details class="points-details">', false);
         $groups = $response->viewData('ageGroups');
         $this->assertSame(['U9', 'U10'], array_keys($groups));
         $this->assertSame(['Audit Oak', 'Audit Pine'], array_column($groups['U9'], 'name'));
         $this->assertSame([6, 0], array_column($groups['U9'], 'points'));
         $this->assertSame(['boys' => 3, 'girls' => 3, 'mixed' => 0, 'other' => 0], $groups['U9'][0]['gender_points']);
-        $response->assertSeeInOrder(['>Boys<', '>Girls<', '>Mixed<', '>Total<'], false)->assertDontSee('>Other<', false);
+        $response->assertSeeInOrder(['>Pos.<', '>Region / school<', '>Points<', '>Boys<', '>Girls<', '>Mixed<', '>Sets W–L<', '>Games W–L<'], false)
+            ->assertDontSee('>Other<', false);
+        $ranked = $response->viewData('ageStandings')['U9'];
+        $this->assertSame(['Audit Oak', 'Audit Pine'], array_column($ranked, 'name'));
+        $this->assertSame([1, 2], array_column($ranked, 'rank'));
+        $this->assertSame([24, 10], array_column($ranked, 'games_for'));
         $this->assertSame(['Audit Pine', 'Audit Oak'], array_column($groups['U10'], 'name'));
         $this->assertSame([3, 0], array_column($groups['U10'], 'points'));
         $this->assertSame(['U9'], array_keys($this->get($url.'?age=U9')->assertOk()->viewData('ageGroups')));
@@ -204,6 +215,19 @@ class PublicEventStandingsTest extends TestCase
         $this->assertSame([3, 5], array_column($mixed->viewData('ageGroups')['U9'], 'points'));
         $this->assertSame(['boys' => 3, 'girls' => 0, 'mixed' => 0, 'other' => 0], $mixed->viewData('ageGroups')['U9'][0]['gender_points']);
         $this->assertSame(['boys' => 0, 'girls' => 5, 'mixed' => 0, 'other' => 0], $mixed->viewData('ageGroups')['U9'][1]['gender_points']);
+        $mixedRanked = $mixed->viewData('ageStandings')['U9'];
+        $this->assertSame(['Audit Oak', 'Audit Pine'], array_column($mixedRanked, 'name'));
+        $this->assertSame([3, 5], array_column($mixedRanked, 'points'));
+        $this->assertSame([null, null], array_column($mixedRanked, 'rank'));
+        $girls['draw']->update(['team_scoring_rules' => app(TeamEventRulesService::class)->defaults()]);
+        $this->score($girls['rubber'], away: true);
+        $tied = $this->get($url)->assertOk();
+        $this->assertFalse($tied->viewData('ageMixedRules')['U9']);
+        $tiedRows = $tied->viewData('ageStandings')['U9'];
+        $this->assertSame(['Audit Oak', 'Audit Pine'], array_column($tiedRows, 'name'));
+        $this->assertSame([3, 3], array_column($tiedRows, 'points'));
+        $this->assertSame([1, 1], array_column($tiedRows, 'rank'));
+        $this->assertSame([17, 17], array_column($tiedRows, 'games_for'));
     }
 
     public function test_gender_points_use_rubber_gender_and_include_draw_bonuses_without_losing_points(): void
@@ -261,7 +285,9 @@ class PublicEventStandingsTest extends TestCase
         $second->fill(['rubber_sequence' => 2, 'match_nr' => 2])->save();
         $this->score($data['rubber']);
         $response = $this->get(route('frontend.events.standings', $event))->assertOk()
-            ->assertSee('data-live-results="event-standings"', false)->assertSee('js/live-results.js')->assertSee('data-points="3"', false)->assertDontSee('12–5');
+            ->assertSee('data-live-results="event-standings"', false)->assertSee('js/live-results.js')->assertSee('data-points="3"', false)
+            ->assertSee('<details class="points-details">', false)->assertDontSee('<details class="points-details" open', false)
+            ->assertSee('12–5');
         $rows = $response->viewData('overall');
         $this->assertSame([0, 0], array_column($rows, 'played'));
         $this->assertSame([1, 0], array_column($rows, 'rubber_wins'));

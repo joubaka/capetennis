@@ -982,6 +982,7 @@ class TeamController extends Controller
     $data = $request->validate($team->noProfile
       ? ['name' => ['required', 'string', 'max:100'], 'surname' => ['required', 'string', 'max:100']]
       : ['player_ids' => ['required', 'array', 'min:1', 'max:50'], 'player_ids.*' => ['required', 'integer', 'distinct', 'exists:players,id']]);
+    $data += $request->validate(['reserve' => ['sometimes', 'boolean']]);
     DB::transaction(function () use ($team, $event, $region, $request, $data) {
       foreach ($team->noProfile ? [null] : $data['player_ids'] as $playerId) {
         app(\App\Services\TeamRosterService::class)->change($event, $region, $team, $request->user(), 'add', $data + ['player_id' => $playerId]);

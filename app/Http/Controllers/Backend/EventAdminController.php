@@ -138,6 +138,14 @@ class EventAdminController extends Controller
       });
       $invitations = $teamSelectionInvitations->toBase()->only($region->teams->modelKeys())->flatten(1);
       (new Collection($invitations->all()))->load('player');
+      $rosterStatus = app(\App\Services\SelectedTeamRosterStatus::class)->classify($event, $region->teams);
+      foreach ($region->teams as $team) {
+        foreach ($team->workspaceSlots as $slot) {
+          $slot->setRelation('selected_team_reserve', $slot->noProfile
+            ? isset($rosterStatus['imported'][$team->id][$slot->noProfile->id])
+            : isset($rosterStatus['profile'][$team->id][$slot->player_id]));
+        }
+      }
       $orderLocked = TeamFixture::whereHas('draw', fn ($query) => $query->where('event_id', $event->id))->exists()
         || \App\Models\TeamTie::whereHas('draw', fn ($query) => $query->where('event_id', $event->id))->exists();
       return view('backend.adminPage.admin_show.tabs.'.(($data['panel'] ?? 'players') === 'order' ? 'order-region' : 'players-region'),
