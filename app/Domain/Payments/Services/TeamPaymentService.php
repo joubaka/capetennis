@@ -296,6 +296,7 @@ class TeamPaymentService
         return FinanceMutationScope::run('payment_state_write', function () use ($user, $team, $player, $event, $total) {
             return DB::transaction(function () use ($user, $team, $player, $event, $total) {
                 $lockedTeam = Team::query()->whereKey($team->id)->lockForUpdate()->firstOrFail();
+                $this->assertNoReceivedPaymentAwaitingReview((int) $event->id, (int) $team->id, (int) $player->id);
                 if ($lockedTeam->noProfile) {
                     $slot = \App\Models\NoProfileTeamPlayer::query()->where('team_id', $lockedTeam->id)
                         ->where('player_profile', $player->id)->lockForUpdate()->get();
@@ -427,6 +428,10 @@ class TeamPaymentService
             throw ValidationException::withMessages(['payment' => 'Use the dedicated regional participation checkout.']);
         }
         return DB::transaction(function () use ($order, $walletApplied, $remainingAmount): TeamPaymentOrder {
+            if ($order->team_id) {
+                Team::withoutGlobalScopes()->lockForUpdate()->findOrFail($order->team_id);
+                $this->assertNoReceivedPaymentAwaitingReview((int) $order->event_id, (int) $order->team_id, $order->effective_player_id);
+            }
             $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
             app(UnpaidCheckoutExpiryService::class)->assertAvailable($locked);
             if ($locked->withdrawn_at !== null) {
@@ -513,6 +518,10 @@ class TeamPaymentService
         app(UnpaidCheckoutExpiryService::class)->assertAvailable($order);
         return DB::transaction(function () use ($order, $payer, $amount): TeamPaymentOrder {
             app(\App\Services\InterprovincialTrials\TrialParticipationService::class)->lockForOrder((int)$order->id);
+            if ($order->team_id) {
+                Team::withoutGlobalScopes()->lockForUpdate()->findOrFail($order->team_id);
+                $this->assertNoReceivedPaymentAwaitingReview((int) $order->event_id, (int) $order->team_id, $order->effective_player_id);
+            }
             $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
             $expected = round((float) $locked->payfast_amount_due, 2);
             if ((int) $locked->user_id !== (int) $payer->id) {
@@ -708,6 +717,40 @@ class TeamPaymentService
         });
     }
 
+    private function assertNoReceivedPaymentAwaitingReview(int $eventId, int $teamId, int $playerId): void
+    {
+        if (TeamPaymentOrder::where('event_id', $eventId)->where('team_id', $teamId)->forBeneficiary($playerId)
+            ->where('collection_status', 'reconciliation_required')->lockForUpdate()->exists()) {
+            throw ValidationException::withMessages(['payment' => 'Payment received and awaiting review. Do not pay again.']);
+        }
+    }
+
+    /** Called inside the locked, fully validated operator reconciliation transaction. */
+    public function completeReconciledExpiredPayment(TeamPaymentOrder $order, \App\Models\Transaction $receipt, User $actor, string $reason): TeamPaymentOrder
+    {
+        abort_unless($actor->hasRole('super-user') && FinanceMutationScope::allows('late_team_reconciliation') && DB::transactionLevel() > 0, 403);
+        return FinanceMutationScope::run(['payment_state_write', 'team_payment_state_write'], function () use ($order, $receipt, $actor, $reason) {
+            $originalWithdrawal = $order->withdrawn_at?->toIso8601String();
+            $order->forceFill(['withdrawn_at' => null, 'withdrawn_by' => null, 'payfast_amount_due' => (float) $receipt->amount_gross, 'collection_status' => 'paid'])->save();
+            $finalized = $this->finalizePayment($order, ['payment_method' => 'payfast', 'pf_payment_id' => (string) $receipt->pf_payment_id,
+                'payfast_amount_received' => (float) $receipt->amount_gross, 'suppress_registration_confirmation' => true]);
+            foreach (\App\Models\NoProfileTeamPlayer::where('team_id', $order->team_id)->where('player_profile', $order->player_id)->lockForUpdate()->get() as $slot) {
+                $slot->update(['pay_status' => 1]);
+            }
+            $originalCapeFee = $receipt->cape_tennis_fee;
+            app(PaymentTransactionService::class)->classifyReconciledTeamReceipt($receipt, $finalized);
+            activity('team-payment')->performedOn($finalized)->causedBy($actor)->withProperties([
+                'pf_payment_id' => (string) $receipt->pf_payment_id, 'receipt_id' => $receipt->id,
+                'amount' => (float) $receipt->amount_gross, 'payer_id' => (int) $order->user_id,
+                'event_id' => (int) $order->event_id, 'team_id' => (int) $order->team_id, 'player_id' => (int) $order->player_id,
+                'original_expiry_withdrawn_at' => $originalWithdrawal, 'reason' => trim($reason),
+                'original_cape_tennis_fee' => $originalCapeFee, 'reconciled_cape_tennis_fee' => $receipt->cape_tennis_fee,
+                'new_charge' => false, 'wallet_debit' => false, 'confirmation_sent' => false,
+            ])->log(TeamLatePaymentReconciliationService::AUDIT);
+            return $finalized;
+        });
+    }
+
     public function finalizePayment(TeamPaymentOrder $order, array $context = []): TeamPaymentOrder
     {
         if (strtolower((string) ($context['payment_method'] ?? '')) === 'wallet') app(UnpaidCheckoutExpiryService::class)->assertAvailable($order);
@@ -740,6 +783,10 @@ class TeamPaymentService
     {
         app(UnpaidCheckoutExpiryService::class)->assertAvailable($order);
         return DB::transaction(function () use ($order, $context) {
+            if ($order->team_id) {
+                Team::withoutGlobalScopes()->lockForUpdate()->findOrFail($order->team_id);
+                $this->assertNoReceivedPaymentAwaitingReview((int) $order->event_id, (int) $order->team_id, $order->effective_player_id);
+            }
             $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
             app(UnpaidCheckoutExpiryService::class)->assertAvailable($locked);
             $total = round((float) $locked->total_amount, 2);

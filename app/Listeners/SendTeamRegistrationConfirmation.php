@@ -14,7 +14,7 @@ class SendTeamRegistrationConfirmation
 
     public function handle(PaymentCompleted $event): void
     {
-        if (! $event->payment instanceof TeamPaymentOrder) {
+        if (! $event->payment instanceof TeamPaymentOrder || ($event->context['suppress_registration_confirmation'] ?? false)) {
             return;
         }
 

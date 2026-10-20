@@ -89,6 +89,11 @@
                     </button>
                   @endif
 
+                @elseif($hasLinkedProfile && ($teamPaymentsUnderReview ?? collect())->has($teamModel->id.'-'.$play->player_profile))
+                  <span class="badge bg-warning-subtle text-dark text-wrap" title="A payment has been received and needs review. Please do not pay again.">
+                    <i class="ti ti-clock me-1"></i>Payment being checked
+                  </span>
+
                 @elseif($hasLinkedProfile && $registrationOpen)
                   <a href="{{ route('team.payment.payfast', [$teamModel->id, $play->player_profile, $event->id]) }}"
                      class="btn btn-sm btn-warning team-registration-button">

@@ -259,11 +259,26 @@
                     <button type="button" class="btn btn-sm btn-outline-secondary toggle-publish-schedule" data-url="{{ route('draw.toggle.publish.schedule', $draw->id) }}" data-status="{{ $draw->oop_published ? 1 : 0 }}"><i class="ti ti-{{ $draw->oop_published ? 'eye-off' : 'eye' }} me-1"></i>{{ $draw->oop_published ? 'Hide schedule' : 'Publish schedule' }}</button>
                   @endcan
                   <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]) }}"><i class="ti ti-calendar me-1"></i>Schedule</a>
+                  @can('event.manage', $event)
+                    <a class="btn btn-sm btn-outline-secondary" href="#draw-day-publication-{{ $draw->id }}" onclick="document.getElementById('publication-draw-{{ $draw->id }}').open = true; document.getElementById('draw-day-publication-{{ $draw->id }}').open = true">Publish by day</a>
+                  @endcan
                   <span class="event-draw-card-toggle small text-primary"><span class="event-draw-card-expand">Open workspace</span><span class="event-draw-card-collapse">Close workspace</span><i class="ti ti-chevron-down" aria-hidden="true"></i></span>
                 </div>
               </summary>
               <div class="event-draw-card-content">
                 @include('backend.draw._includes.draw_tab_team', ['hideDrawHeading' => true, 'compactOverview' => true])
+                @can('event.manage', $event)
+                  <details id="draw-day-publication-{{ $draw->id }}" class="event-draw-tools" data-draw-day-publication data-draw-id="{{ $draw->id }}" data-initial-unconfirmed="true" data-event-id="{{ $event->id }}" data-status-url="{{ route('backend.event-venue-schedule.calendar.publication-status', ['event' => $event->id, 'draw_id' => $draw->id]) }}" data-publish-url="{{ route('backend.event-venue-schedule.calendar.publish', $event) }}" data-hide-url="{{ route('backend.event-venue-schedule.calendar.hide', $event) }}" data-calendar-url="{{ route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'draw_id' => $draw->id]) }}">
+                    <summary><span class="fw-semibold">Publish schedule by day</span><span class="small text-muted">This draw only</span></summary>
+                    <p class="small text-muted mt-2">Choose a saved day to publish or hide this draw's match times across all venues. Draw publication is separate.</p>
+                    <div class="small mb-3" data-day-feedback role="status" aria-live="polite">Open to check saved and published days.</div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mb-3" data-day-status-retry hidden>Retry day status check</button>
+                    <div class="row g-3" data-day-cards></div>
+                    <template data-day-card-template>
+                      @include('backend.headOffice.partials.day-publication-card', ['day' => '', 'dayDrawId' => $draw->id, 'counts' => ['saved' => 0, 'published' => 0, 'matched' => 0, 'pending' => 0, 'status' => 'Not scheduled']])
+                    </template>
+                  </details>
+                @endcan
               </div>
             </details>
             @endforeach

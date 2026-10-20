@@ -71,7 +71,7 @@
     <details class="fixture-round card mb-3" data-live-key="round-{{ $round }}">
       <summary class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap" style="cursor: pointer;">
         <h4 class="mb-0">Round {{ $round ?: '—' }}</h4>
-        <span class="fixture-toggle"><span class="when-closed">▸ Click to show ties</span><span class="when-open">▾ Click to hide ties</span></span>
+        <span class="fixture-toggle"><span class="when-closed">▸ Click to show schedule and fixtures</span><span class="when-open">▾ Click to hide schedule and fixtures</span></span>
         <span class="text-muted">{{ $ties->count() }} {{ $ties->count() === 1 ? 'tie' : 'ties' }} · {{ $roundFixtures->count() }} matches</span>
       </summary>
       <div class="card-body">

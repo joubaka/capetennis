@@ -31,6 +31,50 @@ class HeadOfficePublicationControlsTest extends TestCase
             'fixture_type' => 1, 'scheduled_at' => $date.' 09:00:00', 'venue_id' => $venue->id, 'court_label' => '1', 'duration_min' => 60]);
     }
 
+    public function test_draw_day_status_and_publication_keep_other_draws_and_dates_unchanged(): void
+    {
+        [$event, $venue] = $this->setupEvent();
+        $first = Draw::factory()->create(['event_id' => $event->id]);
+        $second = Draw::factory()->create(['event_id' => $event->id]);
+        $dayOne = $this->saved($first, $venue, '2026-10-09');
+        $dayTwo = $this->saved($first, $venue, '2026-10-10');
+        $other = $this->saved($second, $venue, '2026-10-11');
+        $sameDayOther = $this->saved($second, $venue, '2026-10-09');
+        $service = app(SchedulePublicationService::class);
+        $service->publish($event, ['draw_id' => $second->id]);
+        $status = $this->getJson(route('backend.event-venue-schedule.calendar.publication-status', ['event' => $event->id, 'draw_id' => $first->id]))
+            ->assertOk()->assertJsonPath('draw_id', $first->id)->assertJsonCount(2, 'days')
+            ->assertJsonPath('days.0.date', '2026-10-09')->assertJsonPath('days.1.date', '2026-10-10');
+        $published = $this->postJson(route('backend.event-venue-schedule.calendar.publish', $event), ['draw_id' => $first->id, 'date' => '2026-10-09', 'revision' => $status->json('revision')])
+            ->assertOk()->assertJsonPath('draw_id', $first->id)->assertJsonCount(2, 'days')->assertJsonPath('days.0.status', 'Published')->assertJsonPath('days.1.status', 'Unpublished');
+        $this->assertDatabaseHas('published_schedule_assignments', ['fixture_id' => $dayOne->id]);
+        $this->assertDatabaseMissing('published_schedule_assignments', ['fixture_id' => $dayTwo->id]);
+        $this->assertDatabaseHas('published_schedule_assignments', ['fixture_id' => $other->id, 'scheduled_at' => '2026-10-11 09:00:00']);
+        $this->assertDatabaseHas('published_schedule_assignments', ['fixture_id' => $sameDayOther->id, 'scheduled_at' => '2026-10-09 09:00:00']);
+        $this->postJson(route('backend.event-venue-schedule.calendar.hide', $event), ['draw_id' => $first->id, 'date' => '2026-10-09', 'revision' => $published->json('revision')])
+            ->assertOk()->assertJsonPath('draw_id', $first->id)->assertJsonPath('days.0.status', 'Unpublished');
+        $this->assertDatabaseCount('published_schedule_assignments', 2);
+        $this->assertDatabaseHas('published_schedule_assignments', ['fixture_id' => $other->id]);
+        $this->assertDatabaseHas('published_schedule_assignments', ['fixture_id' => $sameDayOther->id]);
+        $this->assertDatabaseCount('team_fixtures', 4);
+        $this->assertFalse((bool) $first->fresh()->published);
+    }
+
+    public function test_draw_day_status_rejects_invalid_or_foreign_scope_without_widening(): void
+    {
+        [$event, $venue] = $this->setupEvent();
+        $draw = Draw::factory()->create(['event_id' => $event->id]);
+        $this->saved($draw, $venue, '2026-10-09');
+        $foreignDraw = Draw::factory()->create(['event_id' => Event::factory()->create()->id]);
+        foreach ([0, -1, $foreignDraw->id] as $drawId) {
+            $this->getJson(route('backend.event-venue-schedule.calendar.publication-status', ['event' => $event->id, 'draw_id' => $drawId]))->assertUnprocessable();
+            $this->postJson(route('backend.event-venue-schedule.calendar.publish', $event), ['draw_id' => $drawId, 'date' => '2026-10-09', 'revision' => app(SchedulePublicationService::class)->revision($event)])->assertUnprocessable();
+        }
+        $this->assertDatabaseCount('published_schedule_assignments', 0);
+        $this->actingAs(User::factory()->create());
+        $this->getJson(route('backend.event-venue-schedule.calendar.publication-status', ['event' => $event->id, 'draw_id' => $draw->id]))->assertForbidden();
+    }
+
     public function test_collapsed_order_of_play_badges_link_to_their_authorized_draw_schedule(): void
     {
         [$event, $venue] = $this->setupEvent();
@@ -81,16 +125,17 @@ class HeadOfficePublicationControlsTest extends TestCase
         foreach ($draws as $draw) {
             $this->assertSame(1, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//a[@data-draw-guide-open]')->length);
             $this->assertSame(1, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//button[contains(concat(" ", normalize-space(@class), " "), " toggle-publish ") and contains(@class, "d-none")]')->length);
-            $this->assertSame(1, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//section[@aria-label="Draw settings"]')->length);
-            $this->assertSame(1, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//section[@aria-label="Match schedule"]')->length);
-            $this->assertSame(0, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//section[@aria-label="Draw settings"]//section[@aria-label="Match schedule"]')->length);
+            $this->assertSame(1, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//details[@aria-label="Draw settings"]')->length);
+            $this->assertSame(1, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//details[@aria-label="Match schedule"]')->length);
+            $this->assertSame(0, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//details[@aria-label="Draw settings"]//details[@aria-label="Match schedule"]')->length);
             $this->assertSame(1, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//div[@aria-label="Draw workspace"]//a[@data-draw-guide-open]')->length);
-            $this->assertSame(1, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//section[@aria-label="Draw settings"]//button[contains(@class, "btn-add-venues")]')->length);
+            $this->assertSame(1, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//details[@aria-label="Draw settings"]//button[contains(@class, "btn-add-venues")]')->length);
             $this->assertSame(0, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//*[@data-bs-toggle="dropdown"]')->length);
         }
         preg_match('/data-draw-ids="([^"]+)"/', $html, $ids);
         $this->assertSame($draws->pluck('id')->all(), json_decode(html_entity_decode($ids[1]), true));
-        $cardsHtml = strstr($html, '<template data-day-card-template>', true);
+        $wholeDayPanel = $xpath->query('//details[@data-whole-day-publication]')->item(0);
+        $cardsHtml = strstr($document->saveHTML($wholeDayPanel), '<template data-day-card-template', true);
         preg_match_all('/<form[^>]*method="post"[^>]*action="[^"]+\/venue-schedule\/calendar\/(?:publish|hide)"[^>]*>(.*?)<\/form>/s', $cardsHtml, $forms);
         $this->assertCount(4, $forms[1]);
         foreach ($forms[1] as $form) {

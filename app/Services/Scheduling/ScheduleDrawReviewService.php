@@ -5,6 +5,7 @@ namespace App\Services\Scheduling;
 use App\Models\{Event, Fixture, TeamFixture};
 use App\Services\TeamFixtureLineupPresenter;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 
 /** Private, read-only inspection of saved matches; never changes publication. */
 class ScheduleDrawReviewService
@@ -19,13 +20,21 @@ class ScheduleDrawReviewService
         $rows = $rows->filter(fn ($row) => empty($scope['draw_id']) || (int) $row['draw_id'] === (int) $scope['draw_id']);
         // Keep the canonical time-then-rank order inside each draw.
         $ordered = $draws->flatMap(fn ($draw) => $rows->where('draw_id', $draw->id))->values();
-        $pageRows = $ordered->forPage($page, 100)->values();
+        $pageRows = $this->decorateRows($event, $ordered->forPage($page, 100)->values(), $draws);
+        $matches = new LengthAwarePaginator($pageRows, $ordered->count(), 100, $page,
+            ['path' => request()->url(), 'query' => request()->query()]);
+        return compact('draws', 'counts', 'matches');
+    }
+
+    /** Display-only names and rubber labels, outside the timing revision. */
+    public function decorateRows(Event $event, Collection $pageRows, Collection $draws): Collection
+    {
         $teams = TeamFixture::whereIn('draw_id', $draws->pluck('id'))
             ->whereIn('id', $pageRows->where('fixture_kind', 'team')->pluck('fixture_id'))->get()->keyBy('id');
         if ($teams->isNotEmpty()) app(TeamFixtureLineupPresenter::class)->prepare($teams, publicDraw: true);
         $individuals = Fixture::with(['registration1.categoryEvents', 'registration2.categoryEvents'])->whereIn('draw_id', $draws->pluck('id'))
             ->whereIn('id', $pageRows->where('fixture_kind', 'individual')->pluck('fixture_id'))->get()->keyBy('id');
-        $pageRows = $pageRows->map(function ($row) use ($teams, $individuals, $event) {
+        return $pageRows->map(function ($row) use ($teams, $individuals, $event) {
             $fixture = $row['fixture_kind'] === 'team' ? $teams->get($row['fixture_id']) : $individuals->get($row['fixture_id']);
             if ($fixture instanceof TeamFixture) {
                 $template = collect(($fixture->teamTie?->format_snapshot ?? $fixture->draw?->team_format_snapshot)['rubbers'] ?? [])
@@ -45,8 +54,5 @@ class ScheduleDrawReviewService
             return $row + ['lineup' => [], 'teams' => [], 'match_type' => 'Individual', 'stage' => $fixture?->stage,
                 'round_label' => $fixture?->round];
         });
-        $matches = new LengthAwarePaginator($pageRows, $ordered->count(), 100, $page,
-            ['path' => request()->url(), 'query' => request()->query()]);
-        return compact('draws', 'counts', 'matches');
     }
 }

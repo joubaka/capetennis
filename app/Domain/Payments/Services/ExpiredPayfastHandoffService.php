@@ -54,7 +54,11 @@ class ExpiredPayfastHandoffService
             $snapshot = $audit->properties;
             $team = $locked instanceof TeamPaymentOrder;
             $providerId = trim((string) ($data['pf_payment_id'] ?? ''));
-            if (($team ? !$locked->withdrawn_at : $locked->status !== 'cancelled')
+            $reconciled = $team && ! $locked->withdrawn_at && $locked->pay_status && $locked->payfast_paid
+                && $locked->collection_status === 'paid' && (string) $locked->payfast_pf_payment_id === $providerId
+                && Activity::where('subject_type', $locked->getMorphClass())->where('subject_id', $locked->id)
+                    ->where('description', TeamLatePaymentReconciliationService::AUDIT)->where('properties->pf_payment_id', $providerId)->exists();
+            if (($team ? (!$locked->withdrawn_at && ! $reconciled) : $locked->status !== 'cancelled')
                 || ($data['payment_status'] ?? '') !== 'COMPLETE' || $providerId === ''
                 || (string) ($data['custom_int5'] ?? '') !== (string) $locked->id
                 || (string) ($data['custom_int4'] ?? '') !== (string) $snapshot['payer_id']
@@ -76,6 +80,15 @@ class ExpiredPayfastHandoffService
                 || (int) $existing->custom_int4 !== (int) $snapshot['payer_id']
                 || round((float) $existing->amount_gross, 2) !== round((float) $snapshot['expected_provider_amount'], 2))) {
                 throw new \RuntimeException('PayFast receipt already belongs to another payment.');
+            }
+            if ($reconciled) {
+                if (! $existing || (int) $existing->event_id !== (int) $snapshot['event_id']
+                    || (int) $existing->player_id !== (int) $snapshot['player_id']
+                    || (int) $existing->custom_int2 !== (int) $snapshot['player_id']
+                    || (int) $existing->custom_int3 !== (int) $snapshot['event_id']) {
+                    throw new \RuntimeException('Reconciled PayFast receipt is inconsistent.');
+                }
+                return true;
             }
             if (!$existing) {
                 app(PaymentTransactionService::class)->record(array_replace($data, [

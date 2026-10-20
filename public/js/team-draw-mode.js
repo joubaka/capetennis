@@ -658,13 +658,16 @@
 
 (function (window, document) {
   'use strict';
-  var panel = document.querySelector('[data-whole-day-publication]');
-  if (!panel) return;
+  var peers = [];
+  function initialize(panel) {
+  var drawId = panel.dataset.drawId;
+  var scoped = panel.hasAttribute('data-draw-day-publication');
+  if (scoped && !/^[1-9][0-9]*$/.test(drawId || '')) return;
   var cards = panel.querySelector('[data-day-cards]');
   var template = panel.querySelector('[data-day-card-template]');
   var feedback = panel.querySelector('[data-day-feedback]');
   var retry = panel.querySelector('[data-day-status-retry]');
-  var pending = false, unconfirmed = panel.dataset.initialUnconfirmed === 'true', activeDate = null;
+  var pending = false, unconfirmed = panel.dataset.initialUnconfirmed === 'true', activeDate = null, loaded = !scoped;
   function controls(busy) {
     panel.querySelectorAll('[data-day-action-form] button').forEach(function (button) {
       button.disabled = busy || unconfirmed || button.dataset.disabled === 'true';
@@ -684,6 +687,8 @@
   }
   function render(result) {
     if (result.success !== true || Number(result.event_id) !== Number(panel.dataset.eventId) || !/^[a-f0-9]{64}$/.test(result.revision) || !Array.isArray(result.days)) throw new Error('Could not confirm the schedule status.');
+    if (!scoped && result.draw_id !== undefined) throw new Error('Could not confirm the whole-event scope.');
+    if (scoped && Number(result.draw_id) !== Number(drawId)) throw new Error('Could not confirm this draw scope.');
     var dates = new Set();
     result.days.forEach(function (day) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(day.date) || dates.has(day.date) || typeof day.label !== 'string'
@@ -699,7 +704,7 @@
       card.querySelector('[data-day-status]').textContent = day.status;
       card.querySelector('[data-day-counts]').textContent = day.saved + ' saved match times · ' + day.published + ' published snapshot times';
       card.querySelector('[data-day-pending]').textContent = day.matched + ' saved times match the published snapshots · ' + day.pending + ' matches with pending changes';
-      card.querySelector('[data-day-review]').href = panel.dataset.calendarUrl + '?date=' + encodeURIComponent(day.date);
+      card.querySelector('[data-day-review]').href = panel.dataset.calendarUrl + (panel.dataset.calendarUrl.indexOf('?') === -1 ? '?' : '&') + 'date=' + encodeURIComponent(day.date);
       var main = card.querySelector('[data-main-day-action]');
       main.action = published ? panel.dataset.hideUrl : panel.dataset.publishUrl;
       var button = card.querySelector('[data-day-toggle]');
@@ -723,6 +728,7 @@
       cards.appendChild(empty);
     }
     unconfirmed = false;
+    loaded = true;
     retry.hidden = true;
   }
   async function readStatus() {
@@ -739,15 +745,16 @@
     activeDate = form.querySelector('[name="date"]').value;
     pending = true;
     controls(true);
-    show('Updating this whole day’s schedule publication…');
+    show(scoped ? 'Updating this draw’s day publication…' : 'Updating this whole day’s schedule publication…');
     try {
       var response = await window.fetch(form.action, { method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
-        body: JSON.stringify({ date: form.querySelector('[name="date"]').value, revision: form.querySelector('[name="revision"]').value }) });
+        body: JSON.stringify(Object.assign({ date: form.querySelector('[name="date"]').value, revision: form.querySelector('[name="revision"]').value }, scoped ? { draw_id: Number(drawId) } : {})) });
       var result = await response.json();
       if (!response.ok || result.success !== true) throw new Error(result.message || 'The publication request could not be confirmed.');
       render(result);
-      show(result.action === 'hide' ? 'Whole-day times hidden. All day statuses are current.' : 'Whole-day times published. All day statuses are current.');
+      await Promise.all(peers.filter(function (peer) { return peer !== refreshPeer; }).map(function (peer) { return peer(); }));
+      show(scoped ? (result.action === 'hide' ? 'This draw’s day times hidden.' : 'This draw’s day times published.') : (result.action === 'hide' ? 'Whole-day times hidden. All day statuses are current.' : 'Whole-day times published. All day statuses are current.'));
     } catch (error) {
       unconfirmed = true;
       show(error.message + ' Checking the current saved publication status…');
@@ -772,5 +779,28 @@
     catch (_) { unconfirmed = true; show('Publication status unconfirmed. Retry the status check when the connection is available.'); }
     finally { pending = false; controls(false); restoreFocus(); }
   });
+  async function refreshPeer() {
+    if (!loaded || pending) return;
+    pending = true;
+    unconfirmed = true;
+    controls(true);
+    show('Refreshing day statuses after another schedule publication change…');
+    try { await readStatus(); show('Current day statuses refreshed.'); }
+    catch (_) { unconfirmed = true; retry.hidden = false; show('Publication status unconfirmed. Retry the day status check.'); }
+    finally { pending = false; controls(false); }
+  }
+  peers.push(refreshPeer);
   controls(false);
+  if (scoped) panel.addEventListener('toggle', async function () {
+    if (!panel.open || pending) return;
+    pending = true;
+    unconfirmed = true;
+    controls(true);
+    show('Checking this draw’s saved and published days…');
+    try { await readStatus(); show('Current day statuses refreshed.'); }
+    catch (_) { unconfirmed = true; retry.hidden = false; show('Publication status unconfirmed. Retry the day status check.'); }
+    finally { pending = false; controls(false); }
+  });
+  }
+  document.querySelectorAll('[data-whole-day-publication], [data-draw-day-publication]').forEach(initialize);
 })(window, document);

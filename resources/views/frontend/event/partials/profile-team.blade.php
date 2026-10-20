@@ -87,6 +87,11 @@
                         </button>
                       @endif
 
+                    @elseif(($teamPaymentsUnderReview ?? collect())->has($team->id.'-'.$player->id))
+                      <span class="badge bg-warning-subtle text-dark text-wrap" title="A payment has been received and needs review. Please do not pay again.">
+                        <i class="ti ti-clock me-1"></i>Payment being checked
+                      </span>
+
                     {{-- UNPAID + SIGNUPS OPEN --}}
                     @elseif($signupOpen)
                       <a href="{{ route('team.payment.payfast', [$team->id, $player->id, $event->id]) }}"

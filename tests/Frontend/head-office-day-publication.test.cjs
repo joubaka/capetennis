@@ -19,8 +19,8 @@ function card(date = '2026-10-09') {
   return { dataset: { date }, main, hide, fields, cloneNode() { return card(''); },
     querySelector(selector) { return fields[selector]; }, querySelectorAll() { return [main, hide]; } };
 }
-function harness(replies, initialUnconfirmed = false) {
-  let current = [card('2026-10-09'), card('2026-10-10')], submit;
+function harness(replies, initialUnconfirmed = false, drawId = null) {
+  let current = [card('2026-10-09'), card('2026-10-10')], submit, toggle;
   const requests = [];
   const feedback = { textContent: '', classList: classes(), setAttribute() {}, focus() {} };
   const retry = { hidden: !initialUnconfirmed, disabled: false, addEventListener(event, fn) { this.click = fn; } };
@@ -28,10 +28,16 @@ function harness(replies, initialUnconfirmed = false) {
   const template = { content: { firstElementChild: card('') } };
   const fields = { '[data-day-cards]': cards, '[data-day-card-template]': template, '[data-day-feedback]': feedback, '[data-day-status-retry]': retry };
   const panel = { dataset: { initialUnconfirmed: initialUnconfirmed ? 'true' : 'false', eventId: '123', statusUrl: '/status', publishUrl: '/publish', hideUrl: '/hide', calendarUrl: '/calendar' },
+    hasAttribute() { return drawId !== null; },
     setAttribute() {}, querySelector(selector) { const date = selector.match(/data-date="([^"]+)"/); return date ? current.find(row => row.dataset.date === date[1])?.fields['[data-day-toggle]'] : fields[selector]; },
     querySelectorAll() { return current.flatMap(row => [row.main.querySelector('button'), row.hide.querySelector('button')]); },
-    addEventListener(event, fn) { submit = fn; } };
-  const document = { querySelector(selector) { return selector.includes('csrf-token') ? { content: 'local-csrf' } : panel; }, createElement() { return {}; } };
+    addEventListener(event, fn) { if (event === 'submit') submit = fn; else toggle = fn; } };
+  if (drawId !== null) {
+    panel.dataset.drawId = String(drawId);
+    panel.dataset.statusUrl += '?draw_id=' + drawId;
+    panel.dataset.calendarUrl += '?draw_id=' + drawId;
+  }
+  const document = { querySelector(selector) { return selector.includes('csrf-token') ? { content: 'local-csrf' } : panel; }, querySelectorAll() { return [panel]; }, createElement() { return {}; } };
   const window = { async fetch(url, options) {
     requests.push({ url, options, payload: options.body ? JSON.parse(options.body) : null });
     const reply = await replies.shift();
@@ -39,8 +45,31 @@ function harness(replies, initialUnconfirmed = false) {
     return { ok: !reply.error, async json() { return reply; } };
   } };
   new Function('window', 'document', script)(window, document);
-  return { requests, feedback, retry, get current() { return current; }, async submit(form) { return submit({ target: form, preventDefault() {} }); } };
+  return { requests, feedback, retry, get current() { return current; }, async open() { panel.open = true; return toggle(); }, async submit(form) { return submit({ target: form, preventDefault() {} }); } };
 }
+
+test('draw day panel loads only its scope and preserves draw ID through publish and hide', async () => {
+  const scoped = (status, token, action) => ({ ...snapshot([day('2026-10-09', status)], token, action), draw_id: 42 });
+  const ui = harness([scoped('Unpublished', 'b'), scoped('Published', 'c'), scoped('Unpublished', 'd', 'hide')], true, 42);
+  assert.equal(ui.requests.length, 0);
+  await ui.open();
+  assert.equal(ui.requests[0].url, '/status?draw_id=42');
+  assert.equal(ui.current[0].fields['[data-day-review]'].href, '/calendar?draw_id=42&date=2026-10-09');
+  await ui.submit(ui.current[0].main);
+  assert.deepEqual(ui.requests[1].payload, { date: '2026-10-09', revision: revision('b'), draw_id: 42 });
+  await ui.submit(ui.current[0].main);
+  assert.equal(ui.requests[2].url, '/hide');
+  assert.deepEqual(ui.requests[2].payload, { date: '2026-10-09', revision: revision('c'), draw_id: 42 });
+});
+
+test('draw day panel rejects a mismatched scope and never mutates while status is unconfirmed', async () => {
+  const ui = harness([{ ...snapshot([day('2026-10-09')]), draw_id: 99 }], true, 42);
+  await ui.open();
+  assert.equal(ui.retry.hidden, false);
+  await ui.submit(ui.current[0].main);
+  assert.equal(ui.requests.length, 1);
+  assert.equal(ui.current[0].main.querySelector('button').disabled, true);
+});
 
 test('one day toggles publish then hide using refreshed revisions and updates every card without reload', async () => {
   const ui = harness([snapshot([day('2026-10-09', 'Published'), day('2026-10-10')], 'b'), snapshot([day('2026-10-09'), day('2026-10-10')], 'c', 'hide')]);

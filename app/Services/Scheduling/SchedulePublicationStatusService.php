@@ -10,16 +10,19 @@ use Illuminate\Support\Facades\DB;
 /** Timing-only status; published snapshots do not imply public draw visibility. */
 final class SchedulePublicationStatusService
 {
-    public function days(Event $event): Collection
+    public function days(Event $event, ?int $drawId = null): Collection
     {
       $teamTimes = DB::table('team_fixtures')->join('draws', 'draws.id', '=', 'team_fixtures.draw_id')
         ->where('draws.event_id', $event->id)->whereNotNull('team_fixtures.scheduled_at')
+        ->when($drawId !== null, fn ($query) => $query->where('draws.id', $drawId))
         ->selectRaw("'team' as fixture_kind, team_fixtures.id as fixture_id, team_fixtures.scheduled_at, team_fixtures.venue_id, team_fixtures.court_label as court, team_fixtures.duration_min as duration")->get();
       $individualTimes = DB::table('order_of_plays')->join('fixtures', 'fixtures.id', '=', 'order_of_plays.fixture_id')
         ->join('draws', 'draws.id', '=', 'fixtures.draw_id')->where('draws.event_id', $event->id)->whereNotNull('order_of_plays.time')
+        ->when($drawId !== null, fn ($query) => $query->where('draws.id', $drawId))
         ->selectRaw("'individual' as fixture_kind, fixtures.id as fixture_id, order_of_plays.time as scheduled_at, order_of_plays.venue_id, order_of_plays.court, order_of_plays.duration_minutes as duration")->get();
       $publishedTimes = DB::table('published_schedule_assignments')->join('draws', 'draws.id', '=', 'published_schedule_assignments.draw_id')
         ->where('published_schedule_assignments.event_id', $event->id)->where('draws.event_id', $event->id)
+        ->when($drawId !== null, fn ($query) => $query->where('draws.id', $drawId))
         ->get(['fixture_kind', 'fixture_id', 'scheduled_at', 'published_schedule_assignments.venue_id', 'court', 'duration']);
       $normalize = fn ($row) => ['key' => $row->fixture_kind.':'.$row->fixture_id, 'scheduled_at' => Carbon::parse($row->scheduled_at)->format('Y-m-d H:i:s'),
         'venue_id' => (string) (int) $row->venue_id, 'court' => (string) $row->court, 'duration' => (string) (int) ($row->duration ?: ($row->fixture_kind === 'team' ? 120 : 75))];
@@ -42,16 +45,17 @@ final class SchedulePublicationStatusService
       });
     }
 
-    public function snapshot(Event $event): array
+    public function snapshot(Event $event, ?int $drawId = null): array
     {
         $publication = app(SchedulePublicationService::class);
         // Also protects READ COMMITTED connections without adding write locks.
         for ($attempt = 0; $attempt < 2; $attempt++) {
-            $snapshot = DB::transaction(function () use ($event, $publication) {
+            $snapshot = DB::transaction(function () use ($event, $publication, $drawId) {
                 $before = $publication->revision($event);
-                $days = $this->days($event)->map(fn ($counts, $day) => $counts + ['date' => $day, 'label' => Carbon::parse($day)->format('l j M Y')])->values()->all();
+                $days = $this->days($event, $drawId)->map(fn ($counts, $day) => $counts + ['date' => $day, 'label' => Carbon::parse($day)->format('l j M Y')])->values()->all();
                 $after = $publication->revision($event);
-                return hash_equals($before, $after) ? ['event_id' => (int) $event->id, 'days' => $days, 'revision' => $after] : null;
+                return hash_equals($before, $after) ? ['event_id' => (int) $event->id, 'days' => $days, 'revision' => $after]
+                    + ($drawId !== null ? ['draw_id' => $drawId] : []) : null;
             });
             if ($snapshot !== null) return $snapshot;
         }

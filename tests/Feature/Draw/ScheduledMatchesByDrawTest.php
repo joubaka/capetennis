@@ -67,6 +67,12 @@ class ScheduledMatchesByDrawTest extends TestCase
             ->assertSee('Round 2')->assertSee('Tie 3')->assertSee('Doubles')->assertSee('Court 2')->assertSee('3 scheduled matches')
             ->assertSee('Other scheduled draw · 1 scheduled')->assertSee('Empty draw · 0 scheduled');
         $this->assertSame([$lower->id, $first->id, $later->id], $response->viewData('matches')->pluck('fixture_id')->all());
+        $revision = app(\App\Services\Scheduling\SchedulePublicationService::class)->revision($event);
+        $calendar = $this->get(route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'draw_id' => $draw->id, 'date' => 'all']))
+            ->assertOk()->assertSee('Assigned long first name 1 Actual partner')->assertSee('Assigned long first name 2 Actual partner')
+            ->assertSee('Imported Partner 1')->assertSee('Imported Partner 2')->assertSee('Doubles');
+        $this->assertSame('Assigned long first name 1 Actual partner', $calendar->viewData('rows')->firstWhere('fixture_id', $first->id)['lineup']['home']['players'][0]['name']);
+        $this->assertSame($revision, app(\App\Services\Scheduling\SchedulePublicationService::class)->revision($event));
         $this->assertDatabaseCount('published_schedule_assignments', 0);
         $this->assertFalse((bool) $draw->fresh()->published);
         $this->get($this->url($event, ['draw_id' => $other->id, 'date' => '2026-10-09']))->assertOk();

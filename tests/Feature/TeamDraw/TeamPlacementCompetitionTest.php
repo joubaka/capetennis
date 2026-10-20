@@ -49,6 +49,29 @@ class TeamPlacementCompetitionTest extends TestCase
         return ['category_ids' => $this->categories, 'round_robin' => $this->service->defaults(6, false), 'playoff' => $this->service->defaults(6, true)];
     }
 
+    public function test_readiness_blocks_empty_sources_and_does_not_resolve_foreign_playoffs(): void
+    {
+        $draw = $this->service->create($this->event, $this->input());
+        $foreign = Draw::factory()->create();
+        $selection = $draw->team_draw_selection;
+        $selection['competition']['playoff_draw_id'] = $foreign->id;
+        $draw->team_draw_selection = $selection;
+        $readiness = app(\App\Services\TeamPlayoffReadinessService::class)->forDraw($draw);
+        $this->assertNull($readiness['playoff']);
+        $this->assertFalse($readiness['can_create']);
+        $this->assertContains('Linked playoff is unavailable; review competition setup.', $readiness['blockers']);
+        $selection['competition']['playoff_draw_id'] = 999999999;
+        $draw->team_draw_selection = $selection;
+        $this->assertContains('Linked playoff is unavailable; review competition setup.', app(\App\Services\TeamPlayoffReadinessService::class)->forDraw($draw)['blockers']);
+        $draw->team_draw_selection = ['competition' => $selection['competition']];
+        $draw->setRelation('teams_in_draw', collect());
+        $readiness = app(\App\Services\TeamPlayoffReadinessService::class)->forDraw($draw);
+        $this->assertFalse($readiness['can_create']);
+        $this->assertFalse($readiness['ranks_resolved']);
+        $this->assertContains('At least two valid selected sides are required.', $readiness['blockers']);
+        $this->assertDatabaseCount('draws', 2);
+    }
+
     public function test_custom_formats_create_one_composite_group_and_replay_without_duplicates(): void
     {
         $input = $this->input();
@@ -78,6 +101,15 @@ class TeamPlacementCompetitionTest extends TestCase
         $operations = $this->actingAs($this->admin)->get(route('backend.team-draw.operations', $draw))->assertOk()->assertSee('To be decided');
         if ($directory = getenv('CT_PLACEMENT_QA_OUTPUT')) file_put_contents($directory.'/operations.html', str_replace(['http://localhost/', 'https://localhost/'], 'http://localhost/ct/public/', $operations->getContent()));
         $this->assertTrue($draw->team_scoring_rules['undecided']);
+        $readiness = app(\App\Services\TeamPlayoffReadinessService::class)->forDraw($draw);
+        $this->assertFalse($readiness['can_create']);
+        $this->assertSame(6, $readiness['expected_encounters']);
+        $this->assertSame(0, $readiness['completed_encounters']);
+        $this->assertSame(72, $readiness['total_rubbers']);
+        $this->assertSame(['singles' => 12, 'doubles' => 6, 'mixed_doubles' => 6], $readiness['format_counts']);
+        $guidePage->assertSee('Playoff readiness')->assertSee('24 matches per encounter')->assertSee('Creation and scheduling pending.');
+        $operations->assertSee('data-playoff-readiness="'.$draw->id.'"', false);
+        $this->assertNull($draw->fresh()->team_draw_selection['competition']['playoff_draw_id'] ?? null);
         $this->assertSame([], app(TeamStandingsService::class)->forDraw($draw));
         $this->service->create($this->event, $input);
         $this->assertDatabaseCount('draws', 1);
@@ -116,6 +148,13 @@ class TeamPlacementCompetitionTest extends TestCase
             }
         }
         $before = app(TeamStandingsService::class)->forDraw($draw);
+        $readiness = app(\App\Services\TeamPlayoffReadinessService::class)->forDraw($draw->fresh());
+        $this->assertTrue($readiness['can_create']);
+        $this->assertSame(6, $readiness['completed_encounters']);
+        $this->assertSame(72, $readiness['completed_rubbers']);
+        $draw->update(['locked' => true]);
+        $this->assertFalse(app(\App\Services\TeamPlayoffReadinessService::class)->forDraw($draw->fresh())['can_create']);
+        $draw->update(['locked' => false]);
         $draw->update(['published' => 1]);
         $this->actingAs($this->admin)->post(route('team-draw.competition.playoffs', $draw))->assertRedirect();
         $playoff = Draw::findOrFail($draw->fresh()->team_draw_selection['competition']['playoff_draw_id']);
@@ -127,6 +166,10 @@ class TeamPlacementCompetitionTest extends TestCase
         $this->assertSame([[$before[0]['team_id'], $before[1]['team_id']], [$before[2]['team_id'], $before[3]['team_id']]], $pairs);
         foreach ($playoff->teamTies as $tie) app(TeamTieValidationService::class)->assertTieComplete($tie);
         $this->assertSame($playoff->id, $this->service->playoffs($draw)->id);
+        $readiness = app(\App\Services\TeamPlayoffReadinessService::class)->forDraw($draw->fresh());
+        $this->assertFalse($readiness['can_create']);
+        $this->assertSame($playoff->id, $readiness['playoff']->id);
+        $this->assertNull(app(\App\Services\TeamPlayoffReadinessService::class)->forDraw($playoff));
         app(TeamDrawAdaptationService::class)->adaptDraw($playoff);
         $this->assertSame(2, $playoff->teamTies()->count());
         $this->assertSame($before, app(TeamStandingsService::class)->forDraw($draw->fresh()));
@@ -194,6 +237,10 @@ class TeamPlacementCompetitionTest extends TestCase
             foreach ($tie->rubbers as $rubber) app(TeamFixtureScoreService::class)->save($rubber, ['set1_home' => 6, 'set1_away' => 0]);
         }
         $this->actingAs($this->admin)->postJson(route('team-draw.competition.playoffs', $draw))->assertUnprocessable()->assertSee('Resolve tied standings');
+        $readiness = app(\App\Services\TeamPlayoffReadinessService::class)->forDraw($draw->fresh());
+        $this->assertFalse($readiness['can_create']);
+        $this->assertFalse($readiness['ranks_resolved']);
+        $this->assertContains('Resolve tied standings using the agreed scoring criteria.', $readiness['blockers']);
         $this->assertDatabaseCount('draws', 1);
         $this->assertDatabaseCount('team_ties', 6);
     }

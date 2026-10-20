@@ -6,6 +6,10 @@
   @if($draw->locked)<div class="alert alert-warning">This draw is locked. Review is available; use the existing workspace controls before changing protected setup.</div>@endif
   @foreach($guide['warnings'] as $warning)<div class="alert alert-warning">{{ $warning }}</div>@endforeach
   @if($guide['competition'])
+    @php
+      $playoffReadiness = app(\App\Services\TeamPlayoffReadinessService::class)->forDraw($draw);
+    @endphp
+    @include('backend.team-draw.partials.playoff-readiness')
     <section class="card card-body mb-3">
       <h2 class="h5">Competition phases</h2>
       @if($guide['sourceDraw'])
@@ -18,7 +22,7 @@
         <p>Current phase: round robin. Playoff pairings and times remain pending until every group encounter is complete and standings are resolved. Completing this phase's setup does not complete playoff setup.</p>
         @can('team-draw.createFormat', $event)
           <a class="btn btn-outline-primary align-self-start mb-2" href="{{ route('backend.team-draw.standings', $draw) }}">Review qualifiers</a>
-          <form method="POST" action="{{ route('team-draw.competition.playoffs', $draw) }}">@csrf<button class="btn btn-outline-primary" @disabled($draw->locked || ($draw->team_scoring_rules['undecided'] ?? false))>Confirm qualifiers &amp; create playoffs</button></form>
+          <form method="POST" action="{{ route('team-draw.competition.playoffs', $draw) }}">@csrf<button class="btn btn-outline-primary" @disabled(!($playoffReadiness['can_create'] ?? false))>Confirm qualifiers &amp; create playoffs</button></form>
         @endcan
       @endif
       @if($draw->team_scoring_rules['undecided'] ?? false)

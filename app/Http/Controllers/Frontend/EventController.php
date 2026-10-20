@@ -410,6 +410,14 @@ class EventController extends Controller
     $myClothingOrders = collect();
     $myPaidClothingOrdersByPlayer = collect();
     $myPaidTeamOrdersByPlayer = collect();
+    // Publish only a neutral roster state, never payer or receipt details.
+    $teamPaymentsUnderReview = TeamPaymentOrder::query()
+      ->where('event_id', $event->id)
+      ->where('collection_status', 'reconciliation_required')
+      ->where('pay_status', false)
+      ->selectRaw('DISTINCT team_id, COALESCE(beneficiary_player_id, player_id) AS review_player_id')
+      ->get()
+      ->mapWithKeys(fn ($order) => [$order->team_id.'-'.$order->review_player_id => true]);
 
     if (Auth::check()) {
       $regionIds = $regions->pluck('id');
@@ -522,6 +530,7 @@ return view('frontend.event.show', compact(
       'myClothingOrders',
       'myPaidClothingOrdersByPlayer',
       'myPaidTeamOrdersByPlayer',
+      'teamPaymentsUnderReview',
       'nomRegisteredLookup',
       'canEnter',
       'canWithdraw',

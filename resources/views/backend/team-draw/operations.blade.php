@@ -13,7 +13,11 @@
     </div>
   </div>
   @if(isset($draw->team_draw_selection['competition']))
-    @php($competition = $draw->team_draw_selection['competition'])
+    @php
+      $competition = $draw->team_draw_selection['competition'];
+      $playoffReadiness = app(\App\Services\TeamPlayoffReadinessService::class)->forDraw($draw);
+    @endphp
+    @include('backend.team-draw.partials.playoff-readiness')
     <div class="card card-body mb-3">
       <h2 class="h5">{{ ($competition['phase'] ?? '') === 'playoff' ? 'Placement playoffs' : 'One round-robin group' }}</h2>
       @if($draw->team_scoring_rules['undecided'] ?? false)
@@ -30,7 +34,7 @@
           <a href="{{ route('backend.team-draw.operations', $competition['playoff_draw_id']) }}">Open placement playoffs</a>
         @else
           @can('team-draw.createFormat', $draw->event)
-            <form method="POST" action="{{ route('team-draw.competition.playoffs', $draw) }}">@csrf<button class="btn btn-primary" @disabled($draw->team_scoring_rules['undecided'] ?? false)>Create 1st/2nd and 3rd/4th playoffs</button></form>
+            <form method="POST" action="{{ route('team-draw.competition.playoffs', $draw) }}">@csrf<button class="btn btn-primary" @disabled(!($playoffReadiness['can_create'] ?? false))>Create 1st/2nd and 3rd/4th playoffs</button></form>
           @endcan
         @endif
       @else

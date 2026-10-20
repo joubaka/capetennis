@@ -14,6 +14,17 @@ class PaymentTransactionService
     public const WITHDRAWAL_BEFORE_DEADLINE_CONTEXT = 'withdrawel_before_deadline';
     private const CAPE_TENNIS_FEE = 10;
 
+    public function classifyReconciledTeamReceipt(Transaction $receipt, \App\Models\TeamPaymentOrder $order): void
+    {
+        abort_unless(FinanceMutationScope::allows('late_team_reconciliation') && DB::transactionLevel() > 0
+            && $order->pay_status && $order->payfast_paid && $receipt->custom_str5 === 'TeamOrder'
+            && (int) $receipt->custom_int5 === (int) $order->id, 403);
+        FinanceMutationScope::run('payment_transaction_write', function () use ($receipt, $order): void {
+            $receipt->cape_tennis_fee = round((float) $order->event->cape_tennis_fee, 2);
+            $receipt->save();
+        });
+    }
+
     public function record(array $data, mixed $order): ?Transaction
     {
         return FinanceMutationScope::run('payment_transaction_write', function () use ($data, $order) {

@@ -228,6 +228,7 @@ final class EventVenueScheduleController extends Controller
         $venues = $event->venues()->get()->concat($event->draws()->with('venues')->get()->flatMap(fn ($draw) => $draw->venues))->unique('id')->sortBy('name');
         $draws = $event->draws()->orderBy('drawName')->get();
         $rows = $rows->take(1000)->values(); $retained = $retained->take(1000)->values();
+        $rows = app(\App\Services\Scheduling\ScheduleDrawReviewService::class)->decorateRows($event, $rows, $draws);
         $drawIds = $draws->pluck('id');
         $unscheduledCount = Fixture::whereIn('draw_id', $drawIds)->when(! empty($scope['draw_id']), fn ($q) => $q->where('draw_id', $scope['draw_id']))
             ->where('match_status', 0)->whereDoesntHave('fixtureResults')->whereDoesntHave('orderOfPlay', fn ($q) => $q->whereNotNull('time'))->count()
@@ -474,11 +475,12 @@ final class EventVenueScheduleController extends Controller
         return $this->changePublication($request, $event, $publication, false);
     }
 
-    public function publicationStatus(Event $event, \App\Services\Scheduling\SchedulePublicationStatusService $status)
+    public function publicationStatus(Request $request, Event $event, \App\Services\Scheduling\SchedulePublicationStatusService $status)
     {
         $this->authorize('event.manage', $event);
+        $scope = $this->calendarScope($request, $event);
         try {
-            return response()->json(['success' => true] + $status->snapshot($event));
+            return response()->json(['success' => true] + $status->snapshot($event, isset($scope['draw_id']) ? (int) $scope['draw_id'] : null));
         } catch (\InvalidArgumentException $exception) {
             return response()->json(['success' => false, 'message' => $exception->getMessage()], 503);
         }
@@ -509,7 +511,7 @@ final class EventVenueScheduleController extends Controller
             $count = $hide ? $publication->hide($event, $scope) : $publication->publish($event, $scope);
             unset($scope['revision']);
             if ($request->expectsJson()) return response()->json(['success' => true, 'action' => $hide ? 'hide' : 'publish', 'changed' => $count]
-                + app(\App\Services\Scheduling\SchedulePublicationStatusService::class)->snapshot($event));
+                + app(\App\Services\Scheduling\SchedulePublicationStatusService::class)->snapshot($event, isset($scope['draw_id']) ? (int) $scope['draw_id'] : null));
             return redirect()->route('backend.event-venue-schedule.calendar', ['event' => $event->id] + $scope)
                 ->with('success', $hide ? "Hidden {$count} public match times." : "Published {$count} saved match times. Other saved changes remain private.");
         } catch (\InvalidArgumentException $exception) {
@@ -520,7 +522,7 @@ final class EventVenueScheduleController extends Controller
 
     private function calendarScope(Request $request, Event $event): array
     {
-        $scope = $request->validate(['date' => ['nullable', \Illuminate\Validation\Rule::when($request->input('date') !== 'all', ['date_format:Y-m-d'])], 'venue_id' => ['nullable', 'integer'], 'draw_id' => ['nullable', 'integer']]);
+        $scope = $request->validate(['date' => ['nullable', \Illuminate\Validation\Rule::when($request->input('date') !== 'all', ['date_format:Y-m-d'])], 'venue_id' => ['nullable', 'integer'], 'draw_id' => ['nullable', 'integer', 'min:1']]);
         if (! empty($scope['draw_id'])) abort_unless($event->draws()->whereKey($scope['draw_id'])->exists(), 422, 'Choose a draw in this event.');
         if (! empty($scope['venue_id'])) abort_unless($event->venues()->whereKey($scope['venue_id'])->exists()
             || DB::table('draw_venues')->whereIn('draw_id', $event->draws()->pluck('id'))->where('venue_id', $scope['venue_id'])->exists(), 422, 'Choose a venue in this event.');
