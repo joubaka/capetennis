@@ -113,6 +113,58 @@ final class SelectedTeamRosterStatus
         return $proof && $team->team_players->contains(fn ($mirror) => (int) $mirror->player_id === $playerId && (int) $mirror->rank === $rank);
     }
 
+    /** Capture role and identity before an authorized order save changes ranks. */
+    public function captureMainPromotions(Event $event, Team $team): array
+    {
+        $promotions = \App\Models\TeamRosterPromotion::where('event_id', $event->id)->where('team_id', $team->id)->orderByDesc('id')->limit(5001)->get();
+        abort_if($promotions->count() > 5000, 422, 'This team supports up to 5000 roster promotions.');
+        $team = $team->fresh(['team_players_no_profile', 'team_players']);
+        $status = $this->classify($event, collect([$team]));
+        $captured = [];
+        foreach ($promotions as $promotion) {
+            $slotId = (int) ($team->noProfile ? $promotion->no_profile_slot_id : $promotion->profile_slot_id);
+            if (!$slotId || isset($captured[$slotId])) continue;
+            $slot = ($team->noProfile ? $team->team_players_no_profile : $team->team_players)->firstWhere('id', $slotId);
+            $playerId = (int) ($team->noProfile ? $slot?->player_profile : $slot?->player_id);
+            if (!$slot || (int) $promotion->target_rank !== (int) $slot->rank || $slot->rank < 1 || $slot->rank > $team->num_team_members
+                || ((int) $promotion->player_id > 0 && (int) $promotion->player_id !== $playerId)
+                || !$promotion->actor_id || !$promotion->created_at
+                || ($team->noProfile ? isset($status['imported'][$team->id][$slotId]) : isset($status['profile'][$team->id][$playerId]))) continue;
+            $captured[$slotId] = ['promotion' => $promotion, 'source_rank' => (int) $slot->rank];
+        }
+        foreach ($team->noProfile ? $team->team_players_no_profile : $team->team_players as $slot) {
+            $playerId = (int) ($team->noProfile ? $slot->player_profile : $slot->player_id);
+            $reserve = $team->noProfile ? isset($status['imported'][$team->id][$slot->id]) : isset($status['profile'][$team->id][$playerId]);
+            if ($reserve) $captured[$slot->id] = ['promotion' => null, 'source_rank' => (int) $slot->rank, 'player_id' => $playerId];
+            elseif (((int) $slot->pay_status === 1 || ($team->noProfile && $team->team_players->contains(fn ($mirror) => (int) $mirror->rank === (int) $slot->rank && (int) $mirror->pay_status === 1))) && $slot->rank > 0 && $slot->rank <= $team->num_team_members) {
+                $captured[$slot->id] = ($captured[$slot->id] ?? ['promotion' => null, 'source_rank' => (int) $slot->rank]) + ['protected_main' => true];
+            }
+        }
+
+        return $captured;
+    }
+
+    public function continueMainPromotions(Event $event, Team $team, \App\Models\User $actor, array $captured): void
+    {
+        foreach ($captured as $slotId => $before) {
+            $slot = $team->noProfile ? NoProfileTeamPlayer::where('team_id', $team->id)->find($slotId)
+                : \App\Models\TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->find($slotId);
+            if (!$slot) continue;
+            if (!empty($before['protected_main']) && $slot->rank > $team->num_team_members) throw ValidationException::withMessages(['order' => 'A paid main player cannot be moved into the reserve places.']);
+            if ($slot->rank < 1 || $slot->rank > $team->num_team_members) continue;
+            $promotion = $before['promotion'];
+            if ($promotion && (int) $slot->rank === $before['source_rank']) continue;
+            if (!$promotion && !array_key_exists('player_id', $before)) continue;
+            if (!$promotion) app(TeamRosterService::class)->assertReservePromotionAllowed($event, $team, $slot, $actor);
+            $mirror = $team->noProfile ? \App\Models\TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('rank', $slot->rank)->first() : $slot;
+            \App\Models\TeamRosterPromotion::create([
+                'event_id' => $event->id, 'team_id' => $team->id, 'no_profile_slot_id' => $promotion?->no_profile_slot_id ?? ($team->noProfile ? $slot->id : null),
+                'profile_slot_id' => $promotion?->profile_slot_id ?? $mirror?->id, 'player_id' => $promotion?->player_id ?? $before['player_id'],
+                'source_rank' => $before['source_rank'], 'target_rank' => $slot->rank, 'actor_id' => $actor->id, 'created_at' => now(),
+            ]);
+        }
+    }
+
     public function assertMainPlayer(Event $event, Team $team, int $playerId): void
     {
         $team = $team->fresh();

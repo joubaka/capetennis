@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="{{ asset('assets/vendor/libs/animate-css/animate.css') }}">
   <link rel="stylesheet" href="{{ asset('assets/vendor/libs/sweetalert2/sweetalert2.css') }}">
   <link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}">
-  @if((int) $event->eventType !== 3)
+  @if((int) $event->eventType !== 3 && !($centralTeamWorkspace ?? false))
     <link rel="stylesheet" href="{{ asset('assets/vendor/libs/formvalidation/dist/css/formValidation.min.css') }}">
 
 @endif
@@ -28,7 +28,7 @@
 
 @section('page-style')
   <link rel="stylesheet" href="{{ asset('assets/vendor/css/pages/page-user-view.css') }}" />
-  @if((int) $event->eventType === 3 || ($rosterOnly ?? false))
+  @if((int) $event->eventType === 3 || ($rosterOnly ?? false) || ($centralTeamWorkspace ?? false))
     <link rel="stylesheet" href="{{ asset('css/team-workspace.css') }}?v={{ filemtime(public_path('css/team-workspace.css')) }}">
 
 @endif
@@ -43,7 +43,7 @@
   <script src="{{ asset('assets/vendor/libs/cleavejs/cleave.js') }}"></script>
   <script src="{{ asset('assets/vendor/libs/cleavejs/cleave-phone.js') }}"></script>
   <script src="{{ asset('assets/vendor/libs/select2/select2.js') }}"></script>
-  @if((int) $event->eventType !== 3)
+  @if((int) $event->eventType !== 3 && !($centralTeamWorkspace ?? false))
     <script src="{{ asset('assets/vendor/libs/formvalidation/dist/js/FormValidation.min.js') }}"></script>
     <script src="{{ asset('assets/vendor/libs/formvalidation/dist/js/plugins/Bootstrap5.min.js') }}"></script>
     <script src="{{ asset('assets/vendor/libs/formvalidation/dist/js/plugins/AutoFocus.min.js') }}"></script>
@@ -78,7 +78,7 @@
 
 
 
-  @if($rosterOnly ?? false)
+  @if(($rosterOnly ?? false) || ($centralTeamWorkspace ?? false))
     @include('backend.adminPage.admin_show.team-workspace')
   @else
   @switch($event->eventType)
@@ -123,14 +123,14 @@
   @include('_partials._modals.modal-add-team')
   @include('_partials._modals.modal-add-region')
   @include('_partials._modals.modal-add-send-email')
-  @if((int) $event->eventType !== 3)
+  @if((int) $event->eventType !== 3 && !($centralTeamWorkspace ?? false))
     @include('_partials._modals.modal-add-registration')
     @include('_partials._modals.modal-player-in-team')
     @include('_partials._modals.modal-edit-team-category')
 
 @endif
 
-  @if((int) $event->eventType !== 3)
+  @if((int) $event->eventType !== 3 && !($centralTeamWorkspace ?? false))
     @include('_partials._modals.add-category-modal')
 
 @endif
@@ -148,8 +148,11 @@
 <script src="{{ asset(mix('js/categories.js')) }}"></script>
 <script src="{{ asset('js/players.js') }}?v={{ filemtime(public_path('js/players.js')) }}"></script>
 <script src="{{ asset(mix('js/playerOrder.js')) }}"></script>
-@if((int) $event->eventType === 3 || ($rosterOnly ?? false))
+@if((int) $event->eventType === 3 || ($rosterOnly ?? false) || ($centralTeamWorkspace ?? false))
 <script src="{{ asset('js/team-workspace.js') }}?v={{ filemtime(public_path('js/team-workspace.js')) }}"></script>
+@if(isset($embeddedTeamSelection))
+  @include('backend.team-selection._workspace-script', $embeddedTeamSelection)
+@endif
 
 @endif
 

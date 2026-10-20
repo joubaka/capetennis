@@ -17,6 +17,7 @@
   <div class="nav-tabs-shadow mb-4">
 
       @include('backend.event.partials.teams-workspace-nav', ['teamsWorkspaceRoster' => true])
+      @include('backend.adminPage.admin_show._team-context')
 
       <div class="tab-content p-3">
 
@@ -35,6 +36,19 @@
 
   {{-- 🔢 PLAYER ORDER TAB --}}
   @include('backend.adminPage.admin_show.tabs.player-order') {{-- ✅ use your working version --}}
+
+  @unless($rosterOnly ?? false)
+    <div class="tab-pane fade" id="tab-invitations" role="tabpanel" aria-labelledby="invitations-tab">
+      <div data-central-selection-host>
+        @if(isset($embeddedTeamSelection))
+          @include('backend.team-selection._workspace-style', $embeddedTeamSelection)
+          @include('backend.team-selection._workspace-content', $embeddedTeamSelection)
+        @else
+          <p class="text-muted" role="status">Open Invitations to load this event’s player status, selection actions and campaign tools.</p>
+        @endif
+      </div>
+    </div>
+  @endunless
 
 
 

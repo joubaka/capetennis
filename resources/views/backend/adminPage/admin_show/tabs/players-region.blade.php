@@ -62,6 +62,7 @@
             <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.team-selection.profile-matches.index', [$event, $team]) }}">Check existing profiles</a>
           @endif
           @can('team.players.manage', $team)
+            <button type="button" class="btn btn-sm btn-outline-primary" data-team-invitations-open="{{ $team->id }}">Invitations &amp; actions</button>
             <button type="button" class="btn btn-sm btn-outline-secondary emailTeamBtn" data-teamid="{{ $team->id }}" data-teamname="{{ $team->name }}">Send team email</button>
 
 @endcan
@@ -97,7 +98,7 @@
               <td data-label="Rank"><span class="badge bg-label-primary">{{ $slot->rank }}</span>@if(!$rosterOnly && $slot->selected_team_reserve)<span class="badge bg-label-warning ms-1">Reserve</span>
 @endif
 </td>
-              <td data-label="Player"><strong>{{ $name }}</strong>@unless($rosterOnly)@if($player)<x-player-rating :player-id="$player->id" :context="$team->category" />@else<span class="badge bg-label-warning ms-1">{{ $np ? 'Unlinked profile' : 'Vacant' }}</span>
+              <td data-label="Player"><strong>{{ $name }}</strong>@unless($rosterOnly)@if($player)<x-player-rating :player-id="$player->id" :context="$team->category" />@if($selectionInvitation = $invitations->firstWhere('player_id', $player->id))<span class="badge bg-label-info ms-1">{{ \Illuminate\Support\Str::headline($selectionInvitation->status) }}</span>@endif @else<span class="badge bg-label-warning ms-1">{{ $np ? 'Unlinked profile' : 'Vacant' }}</span>
 @endif
 
 @endunless
@@ -123,6 +124,12 @@
               <td data-label="Actions"><div class="roster-row-actions">
               @if($rosterCanEdit && !$rosterLocked)@include('backend.adminPage.admin_show._roster-actions', ['compactRoster' => true])
 @endif
+              @if(!$rosterLocked && !$rankingManaged && $slot->selected_team_reserve && $slot->rank > 0 && $slot->rank <= $team->num_team_members && auth()->user()->can('team.players.manage', $team))
+                <form method="POST" action="{{ route('backend.team.addPlayers') }}" data-team-roster-change>
+                  @csrf<input type="hidden" name="team_id" value="{{ $team->id }}"><input type="hidden" name="event_id" value="{{ $event->id }}"><input type="hidden" name="confirm_main_slot_id" value="{{ $team->noProfile ? $np?->id ?? $slot->noProfile?->id : $slot->id }}"><input type="hidden" name="expected_rank" value="{{ $slot->rank }}">
+                  <button class="btn btn-sm btn-outline-primary">Confirm main place</button>
+                </form>
+              @endif
               @if(!$player && !$np && !$rosterLocked && !$rankingManaged && $event->isTeam() && !$event->isInterprovincialTrials() && $slot->rank <= $team->num_team_members && auth()->user()->can('team.players.manage', $team))
                 @include('backend.adminPage.admin_show._roster-fill')
               @endif

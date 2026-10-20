@@ -36,13 +36,15 @@
               if ($team->noProfile && (int) $np?->player_profile > 0) $player = $np->profile;
               $type = $np ? 'noprofile' : 'profile';
               $id = $np ? $np->id : $slot?->id;
+              $orderable = $team->noProfile ? (bool) $np : (bool) $slot;
               $name = $player ? trim($player->name.' '.$player->surname) : ($np ? trim($np->name.' '.$np->surname) : 'Empty place');
             @endphp
-            <tr class="drag-item" data-playerteamid="{{ $id }}" data-teamplayerid="{{ $slot?->id }}" data-noprofileid="{{ $np?->id }}" data-type="{{ $type }}">
+            @continue(!$player && !$np && $rank > $team->num_team_members)
+            <tr class="{{ $orderable ? 'drag-item' : 'order-vacancy' }}" data-playerteamid="{{ $orderable ? $id : '' }}" data-teamplayerid="{{ $slot?->id }}" data-noprofileid="{{ $np?->id }}" data-type="{{ $type }}">
               <td data-label="{{ $editable ? 'Move' : 'Order status' }}">
                 @if($rosterOnly && $editable && $slot)
                   @include('backend.adminPage.admin_show._roster-actions')
-                @elseif($editable && $id)<span class="drag-handle" title="Drag to reorder" aria-hidden="true"><i class="ti ti-grip-vertical"></i></span><button type="button" class="btn btn-outline-secondary" data-order-move="up" aria-label="Move {{ $name }} up">↑</button><button type="button" class="btn btn-outline-secondary" data-order-move="down" aria-label="Move {{ $name }} down">↓</button>@else<span class="text-muted">{{ $editable ? 'No roster place' : $orderStatus }}</span>
+                @elseif($editable && $id && $orderable)<span class="drag-handle" title="Drag to reorder" aria-hidden="true"><i class="ti ti-grip-vertical"></i></span><button type="button" class="btn btn-outline-secondary" data-order-move="up" aria-label="Move {{ $name }} up">↑</button><button type="button" class="btn btn-outline-secondary" data-order-move="down" aria-label="Move {{ $name }} down">↓</button>@else<span class="text-muted">{{ $editable ? 'No roster place' : $orderStatus }}</span>
 @endif
 
               </td>
@@ -57,7 +59,7 @@
           @endforeach
         </tbody>
       </table></div>
-      @if($rankingManaged && !$rosterOnly)<a class="btn btn-outline-primary" href="{{ route('backend.team-selection.index', $event) }}">Manage selection order</a>
+      @if($rankingManaged && !$rosterOnly)<button type="button" class="btn btn-outline-primary" data-open-selection-order="{{ $team->id }}">Manage selection order</button>
 @endif
 
       <p class="small text-muted mb-0" role="status" data-order-status aria-live="polite"></p>

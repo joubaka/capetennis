@@ -256,3 +256,7 @@
   .roster-compact-table .roster-icon-control { width: 44px; }
   .roster-compact-table .team-roster-actions:has(.roster-more-actions[open]) { flex-basis: 100%; }
 }
+@media (max-width: 767.98px) {
+  .team-admin-workspace [data-embedded-teams-selection] .table-responsive { max-width: 100%; overflow-x: auto; }
+  .team-admin-workspace [data-embedded-teams-selection] .card-body { min-width: 0; }
+}

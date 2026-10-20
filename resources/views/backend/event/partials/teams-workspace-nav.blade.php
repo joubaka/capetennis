@@ -3,7 +3,7 @@
   $teamsWorkspaceCanInvite = auth()->user() && app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(auth()->user(), $event);
   $teamsWorkspaceItems = [
     'players' => ['Players', 'ti-users', 'tab-players'],
-    'invitations' => ['Invitations', 'ti-mail-forward', null],
+    'invitations' => ['Invitations', 'ti-mail-forward', 'tab-invitations'],
     'order' => ['Player order', 'ti-list-numbers', 'tab-order'],
     'setup' => ['Setup', 'ti-settings', 'tab-regions'],
     'results' => ['Result ranks', 'ti-award', 'tab-result-rank'],
@@ -22,9 +22,10 @@
   @foreach($teamsWorkspaceItems as $key => [$label, $icon, $panel])
     @continue(($rosterOnly ?? false) && !in_array($key, ['players', 'order']))
     @if(($key !== 'invitations' || $teamsWorkspaceCanInvite) && (!in_array($key, ['setup', 'results']) || auth()->user()?->can('event.manage', $event)))
+      @if($key === 'setup')<details class="teams-workspace-more"><summary class="teams-workspace-link">Setup &amp; history</summary><div class="d-flex flex-wrap">@endif
       <a class="teams-workspace-link {{ $teamsWorkspaceRoster && $panel ? 'nav-link' : '' }} {{ ($teamsWorkspaceRoster ? $key === 'players' : $key === 'invitations') ? 'active' : '' }}"
-         href="{{ $key === 'invitations' ? route('backend.team-selection.index', [$event, 'workspace' => 'invitations']) : route('admin.events.teams', [$event, 'roster_tab' => match($key) { 'setup' => 'regions', 'results' => 'result-rank', default => $key }]).'#'.$panel }}"
-         @if($teamsWorkspaceRoster && $panel) data-bs-toggle="tab" data-bs-target="#{{ $panel }}" data-teams-panel="{{ $panel }}" id="{{ match($key) { 'players' => 'players-tab', 'order' => 'order-tab', 'results' => 'result-rank-button', default => 'regions-tab' } }}" role="tab" aria-controls="{{ $panel }}" aria-selected="{{ $key === 'players' ? 'true' : 'false' }}"
+         href="{{ route('admin.events.teams', [$event, 'roster_tab' => match($key) { 'setup' => 'regions', 'results' => 'result-rank', default => $key }]).'#'.$panel }}"
+         @if($teamsWorkspaceRoster && $panel) data-bs-toggle="tab" data-bs-target="#{{ $panel }}" data-teams-panel="{{ $panel }}" id="{{ match($key) { 'players' => 'players-tab', 'invitations' => 'invitations-tab', 'order' => 'order-tab', 'results' => 'result-rank-button', default => 'regions-tab' } }}" role="tab" aria-controls="{{ $panel }}" aria-selected="{{ $key === 'players' ? 'true' : 'false' }}"
 @endif
 
          @if($teamsWorkspaceRoster ? $key === 'players' : $key === 'invitations') aria-current="page"
@@ -35,6 +36,7 @@
 @endif
 
       </a>
+      @if($key === 'results')</div></details>@endif
 
 @endif
 
@@ -72,7 +74,14 @@ document.addEventListener('DOMContentLoaded', function () {
     link.addEventListener('shown.bs.tab', function () {
       nav.querySelectorAll('[aria-current]').forEach(item => item.removeAttribute('aria-current'));
       link.setAttribute('aria-current', 'page');
-      history.replaceState(null, '', link.href);
+      const url = new URL(link.href);
+      const current = new URL(window.location.href);
+      ['selected_team', 'selection_task'].forEach(key => { if (current.searchParams.has(key)) url.searchParams.set(key, current.searchParams.get(key)); });
+      const region = document.querySelector('[data-roster-region]')?.value;
+      const team = document.querySelector('[data-workspace-team]')?.value;
+      if (region) url.searchParams.set('selected_region', region);
+      if (team) url.searchParams.set('selected_team', team); else url.searchParams.delete('selected_team');
+      history.replaceState(null, '', url);
     });
   });
   activateRequestedPanel();

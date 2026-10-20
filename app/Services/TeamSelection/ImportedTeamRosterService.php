@@ -223,10 +223,12 @@ final class ImportedTeamRosterService
         NoProfileTeamPlayer $slot,
         string $direction,
         User $actor,
+        bool $continuePromotions = true,
     ): void {
-        DB::transaction(function () use ($event, $slot, $direction, $actor): void {
+        DB::transaction(function () use ($event, $slot, $direction, $actor, $continuePromotions): void {
             app(\App\Services\TeamDrawAdaptationService::class)->lockEvent($event->id);
             $locked = NoProfileTeamPlayer::query()->lockForUpdate()->findOrFail($slot->id);
+            $promotionHistory = $continuePromotions ? app(\App\Services\SelectedTeamRosterStatus::class)->captureMainPromotions($event, $locked->team) : [];
             $target = NoProfileTeamPlayer::query()
                 ->where('team_id', $locked->team_id)
                 ->where('rank', $direction === 'up' ? '<' : '>', $locked->rank)
@@ -273,6 +275,7 @@ final class ImportedTeamRosterService
                 $targetTeamSlot->update(['rank' => $currentRank]);
             }
 
+            app(\App\Services\SelectedTeamRosterStatus::class)->continueMainPromotions($event, $locked->team, $actor, $promotionHistory);
             activity('team-roster')->performedOn($locked->team)->causedBy($actor)
                 ->withProperties([
                     'event_id' => $event->id,
@@ -320,7 +323,12 @@ final class ImportedTeamRosterService
                 || collect($requestedIds)->sort()->values()->all() !== collect($currentIds)->sort()->values()->all()) {
                 throw ValidationException::withMessages(['order' => 'The roster changed. Refresh the page and try the order again.']);
             }
-            if ($requestedIds === $currentIds) return;
+            $team = Team::findOrFail($teamId);
+            $promotionHistory = app(\App\Services\SelectedTeamRosterStatus::class)->captureMainPromotions($event, $team);
+            if ($requestedIds === $currentIds) {
+                app(\App\Services\SelectedTeamRosterStatus::class)->continueMainPromotions($event, $team, $actor, $promotionHistory);
+                return;
+            }
 
             $temporaryBase = min((int) $slots->min('rank'), (int) (TeamPlayer::query()->withoutGlobalScopes()
                 ->where('team_id', $teamId)->min('rank') ?? 1)) - count($slots) - 1;
@@ -346,6 +354,8 @@ final class ImportedTeamRosterService
                 NoProfileTeamPlayer::query()->whereKey($slotId)->update(['rank' => $destinationRanks[$index]]);
                 $teamSlots->get($originalRanks->get($slotId))->update(['rank' => $destinationRanks[$index]]);
             }
+
+            app(\App\Services\SelectedTeamRosterStatus::class)->continueMainPromotions($event, $team, $actor, $promotionHistory);
 
             activity('team-roster')->performedOn($slots->first()->team)->causedBy($actor)
                 ->withProperties(['event_id' => $event->id, 'team_id' => $teamId,

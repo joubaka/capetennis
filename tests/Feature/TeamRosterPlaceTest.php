@@ -35,6 +35,82 @@ class TeamRosterPlaceTest extends TestCase
         return $this->postJson(route('backend.team.addPlayers'), $source + ['event_id' => $this->event->id, 'team_id' => $this->team->id, 'target_rank' => $rank]);
     }
 
+    private function freezeReserve(NoProfileTeamPlayer $reserve): void
+    {
+        $final = EventSelectionFinalization::create(['event_id' => $this->event->id, 'finalized_by' => $this->actor->id, 'draft_versions' => [], 'groups' => [], 'fingerprint' => str_repeat('c', 64), 'team_size' => 3, 'reserve_count' => 1, 'finalized_at' => now()]);
+        EventSelectionRosterImport::create(['event_id' => $this->event->id, 'finalization_id' => $final->id, 'region_id' => $this->team->region_id, 'imported_by' => $this->actor->id, 'groups' => ['group' => ['team_id' => $this->team->id, 'players' => [['slot_id' => $reserve->id, 'status' => 'reserve', 'profile_id' => (int) $reserve->player_profile]]]], 'imported_at' => now()]);
+    }
+
+    public function test_promoted_reserve_can_reorder_with_hidden_overflow_empty_mirror_and_preserve_main_status(): void
+    {
+        $main = NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 1, 'name' => 'Main', 'surname' => 'Player', 'pay_status' => 0]);
+        $reserve = NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 4, 'name' => 'Promoted', 'surname' => 'Reserve', 'pay_status' => 0]);
+        $queued = NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 5, 'name' => 'Queued', 'surname' => 'Reserve', 'pay_status' => 0]);
+        TeamPlayer::create(['team_id' => $this->team->id, 'rank' => 1, 'player_id' => 0, 'pay_status' => 0]);
+        $empty = TeamPlayer::create(['team_id' => $this->team->id, 'rank' => 2, 'player_id' => 0, 'pay_status' => 0]);
+        TeamPlayer::create(['team_id' => $this->team->id, 'rank' => 4, 'player_id' => 0, 'pay_status' => 0]);
+        $this->freezeReserve($reserve);
+        $this->fill(['reserve_slot_id' => $reserve->id, 'expected_reserve_rank' => 4])->assertOk();
+        $original = TeamRosterPromotion::firstOrFail()->getAttributes();
+        $order = collect([$reserve, $main, $queued])->map(fn ($slot, $index) => ['id' => $slot->id, 'no_profile_id' => $slot->id, 'position' => [1, 2, 5][$index]])->all();
+        $this->postJson(route('team.order.player.list'), ['event_id' => $this->event->id, 'team_id' => $this->team->id, 'order' => $order])->assertOk();
+        $this->assertSame(1, (int) $reserve->fresh()->rank);
+        $this->assertSame(4, (int) $empty->fresh()->rank);
+        $this->assertSame($original, TeamRosterPromotion::findOrFail($original['id'])->getAttributes());
+        app(SelectedTeamRosterStatus::class)->assertMainSlot($this->event, $this->team, $reserve->fresh());
+        $this->assertDatabaseCount('team_roster_promotions', 2);
+        $this->postJson(route('team.order.player.list'), ['event_id' => $this->event->id, 'team_id' => $this->team->id, 'direction' => 'down', 'slot_id' => $reserve->id, 'expected_rank' => 1, 'expected_player_id' => 0])->assertOk();
+        app(SelectedTeamRosterStatus::class)->assertMainSlot($this->event, $this->team, $reserve->fresh());
+        $this->assertSame(2, (int) $reserve->fresh()->rank);
+        $this->assertDatabaseCount('team_roster_promotions', 3);
+        foreach (['players', 'order'] as $panel) {
+            $this->get(route('admin.events.teams', $this->event).'?roster_region='.$this->team->region_id.'&panel='.$panel)->assertOk()->assertDontSee('data-teamplayerid="'.$empty->id.'"', false);
+        }
+        $this->assertDatabaseHas('team_players', ['id' => $empty->id, 'rank' => 4, 'player_id' => 0]);
+    }
+
+    public function test_stale_frozen_reserve_inside_main_places_requires_explicit_confirmation_and_is_idempotent(): void
+    {
+        $reserve = NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 2, 'name' => 'Already', 'surname' => 'Reordered', 'pay_status' => 0]);
+        $this->freezeReserve($reserve);
+        $this->get(route('admin.events.teams', $this->event).'?roster_region='.$this->team->region_id)->assertOk()->assertSee('Confirm main place');
+        $this->assertDatabaseCount('team_roster_promotions', 0);
+        $payload = ['event_id' => $this->event->id, 'team_id' => $this->team->id, 'confirm_main_slot_id' => $reserve->id, 'expected_rank' => 2];
+        $this->postJson(route('backend.team.addPlayers'), $payload)->assertOk();
+        $this->postJson(route('backend.team.addPlayers'), $payload)->assertOk();
+        app(SelectedTeamRosterStatus::class)->assertMainSlot($this->event, $this->team, $reserve->fresh());
+        $this->assertDatabaseCount('team_roster_promotions', 1);
+        $this->get(route('admin.events.teams', $this->event).'?roster_region='.$this->team->region_id)->assertOk()->assertDontSee('Confirm main place');
+    }
+
+    public function test_confirmation_rejects_ambiguous_imported_rank_without_creating_promotion(): void
+    {
+        if (DB::connection()->getDriverName() !== 'sqlite') $this->markTestSkipped('Legacy duplicate-rank corruption is exercised only in isolated SQLite.');
+        $reserve = NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 2, 'name' => 'Ambiguous', 'surname' => 'Reserve', 'pay_status' => 0]);
+        $this->freezeReserve($reserve);
+        // Simulate a legacy database predating the roster rank uniqueness repair.
+        DB::statement('DROP INDEX no_profile_team_players_team_rank_unique');
+        NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 2, 'name' => 'Conflicting', 'surname' => 'Player', 'pay_status' => 0]);
+        $this->postJson(route('backend.team.addPlayers'), ['event_id' => $this->event->id, 'team_id' => $this->team->id, 'confirm_main_slot_id' => $reserve->id, 'expected_rank' => 2])->assertUnprocessable();
+        $this->assertDatabaseCount('team_roster_promotions', 0);
+    }
+
+    public function test_order_can_promote_frozen_reserve_but_cannot_displace_a_paid_main_player(): void
+    {
+        $main = NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 3, 'name' => 'Paid', 'surname' => 'Main', 'pay_status' => 1]);
+        $reserve = NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 4, 'name' => 'Incoming', 'surname' => 'Reserve', 'pay_status' => 0]);
+        $this->freezeReserve($reserve);
+        $payload = ['event_id' => $this->event->id, 'team_id' => $this->team->id, 'order' => [['id' => $reserve->id, 'no_profile_id' => $reserve->id, 'position' => 3], ['id' => $main->id, 'no_profile_id' => $main->id, 'position' => 4]]];
+        $this->postJson(route('team.order.player.list'), $payload)->assertUnprocessable();
+        $this->assertSame(3, (int) $main->fresh()->rank);
+        $this->assertSame(4, (int) $reserve->fresh()->rank);
+        $this->assertDatabaseCount('team_roster_promotions', 0);
+        $main->update(['pay_status' => 0]);
+        $this->postJson(route('team.order.player.list'), $payload)->assertOk();
+        app(SelectedTeamRosterStatus::class)->assertMainSlot($this->event, $this->team, $reserve->fresh());
+        $this->assertDatabaseCount('team_roster_promotions', 1);
+    }
+
     public function test_empty_numbered_places_show_team_reserves_before_database_search_and_change_name_for_unlinked_player(): void
     {
         NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 1, 'name' => 'Current', 'surname' => 'Player', 'pay_status' => 0]);

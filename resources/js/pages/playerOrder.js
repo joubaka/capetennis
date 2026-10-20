@@ -24,6 +24,7 @@
 
       let savedRows = [];
       let savedRanks = [];
+      let orderedRanks = [];
       let saving = false;
       function restoreRows() {
         savedRows.forEach((row, index) => {
@@ -38,8 +39,9 @@
         draggable: 'tr.drag-item',
         onMove() { return !saving; },
         onStart() {
-          savedRows = $tbody.find('tr.drag-item').toArray();
+          savedRows = $tbody.find('tr').toArray();
           savedRanks = savedRows.map(row => $(row).find('td').eq(1).find('.badge').first().text());
+          orderedRanks = $tbody.find('tr.drag-item').toArray().map(row => Number($(row).find('td').eq(1).find('.badge').first().text()));
         },
         onEnd() {
           if (saving) { restoreRows(); return; }
@@ -52,7 +54,7 @@
 
           $tbody.find('tr.drag-item').each(function (i) {
             const $row = $(this);
-            const position = i + 1;
+            const position = orderedRanks[i];
 
             const id = $row.data('playerteamid');
             const teamPlayerId = $row.data('teamplayerid');
@@ -119,6 +121,13 @@
               const responseMap = new Map(
                 responsePlayers.map(p => [`${p.type}:${Number(p.id)}`, Number(p.rank)])
               );
+              $tbody.find('tr.drag-item').each(function () {
+                const $row = $(this);
+                const key = `${$row.data('type')}:${Number($row.data('playerteamid'))}`;
+                const rank = responseMap.get(key);
+                if (rank) $row.find('td').eq(1).find('.badge').first().text(rank);
+              });
+              $tbody.find('tr').toArray().sort((a, b) => Number($(a).find('td').eq(1).find('.badge').first().text()) - Number($(b).find('td').eq(1).find('.badge').first().text())).forEach(row => $tbody.append(row));
 
               const compare = order.map(o => {
                 const entityId = o.type === 'noprofile'
@@ -205,7 +214,7 @@
     const $tbody = $row.closest('tbody');
     const sortable = $tbody.data('sortable');
     if (!sortable || $tbody.data('order-busy')) return;
-    const $next = this.dataset.orderMove === 'up' ? $row.prev('tr') : $row.next('tr');
+    const $next = this.dataset.orderMove === 'up' ? $row.prevAll('tr.drag-item').first() : $row.nextAll('tr.drag-item').first();
     if (!$next.length) return;
     sortable.option('onStart')();
     if (this.dataset.orderMove === 'up') $row.insertBefore($next); else $row.insertAfter($next);

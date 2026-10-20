@@ -979,6 +979,12 @@ class TeamController extends Controller
   public function addPlayers(Request $request)
   {
     [$event, $region, $team] = $this->rosterContext($request);
+    if ($request->has('confirm_main_slot_id')) {
+      $data = $request->validate(['confirm_main_slot_id' => ['required', 'integer', 'min:1'], 'expected_rank' => ['required', 'integer', 'min:1']]);
+      app(\App\Services\TeamRosterService::class)->confirmMainPlace($event, $region, $team, $request->user(), $data['confirm_main_slot_id'], $data['expected_rank']);
+
+      return response()->json(['success' => true, 'message' => 'Main place confirmed.']);
+    }
     if ($request->has('target_rank')) {
       $data = $request->validate([
         'target_rank' => ['required', 'integer', 'min:1'],

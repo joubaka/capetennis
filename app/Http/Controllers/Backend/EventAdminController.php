@@ -118,7 +118,7 @@ class EventAdminController extends Controller
             if (!$slots->has($rank)) $slots->put($rank, (new \App\Models\TeamPlayer(['team_id' => $team->id, 'rank' => $rank, 'player_id' => 0, 'pay_status' => 0]))->setRelation('noProfile', null));
           }
         }
-        $team->setRelation('workspaceSlots', $slots->sortKeys()->values());
+        $team->setRelation('workspaceSlots', $slots->sortKeys()->filter(fn ($slot) => $slot->rank <= $team->num_team_members || (int) $slot->player_id > 0 || $slot->noProfile)->values());
         $team->workspaceSlots->each(fn ($slot) => $slot->setRelation('selected_team_reserve', $slot->noProfile && in_array((int) $slot->noProfile->id, $reserveSlots, true)));
       });
     });
@@ -162,6 +162,11 @@ class EventAdminController extends Controller
     $players = collect();
     $administrator = $event->event_admins->contains('user_id', Auth::id());
     $data = compact('event', 'teamSelectionInvitations', 'allCategories', 'regions', 'players', 'administrator', 'eventRegions', 'rosterOnly', 'isRegionalPreview', 'previewRegion');
+    $data['centralTeamWorkspace'] = true;
+    if (!$rosterOnly && !request()->boolean('workspace') && (request()->routeIs('backend.team-selection.index') || request('roster_tab') === 'invitations' || session()->hasOldInput()
+      || (request('roster_tab') === 'order' && $teamSelectionInvitations->has((int) request('selected_team'))))) {
+      $data['embeddedTeamSelection'] = app()->call([app(TeamSelectionInvitationController::class), 'embeddedWorkspaceData'], ['event' => $event]);
+    }
     if (request()->boolean('workspace')) {
       return view('backend.adminPage.admin_show.team-workspace', $data);
     }
@@ -175,7 +180,7 @@ class EventAdminController extends Controller
       return $this->teamWorkspace($workspaceEvent);
     }
     $this->authorize('event-draw.view', $workspaceEvent);
-    if ((int) $workspaceEvent->eventType === 3) {
+    if ((int) $workspaceEvent->eventType === 3 || ($workspaceEvent->isTeam() && !$workspaceEvent->isInterprovincialTrials())) {
       return $this->teamWorkspace($workspaceEvent);
     }
     $event = Event::with([

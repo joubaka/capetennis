@@ -213,20 +213,8 @@ class TeamRosterService
                 if (!$isReserve || (int) $source->pay_status !== 0) $this->fail('Choose an unpaid reserve from this team.');
                 $sourceRank = (int) $source->rank;
                 $mirror = $team->noProfile ? $mirrors->firstWhere('rank', $sourceRank) : $source;
-                if ($mirror && ((int) $mirror->pay_status !== 0 || (int) $mirror->player_id !== $playerId)) $this->fail('The reserve profile and roster place are inconsistent.');
-                if ($playerId > 0) {
-                    $player = Player::query()->lockForUpdate()->findOrFail($playerId);
-                    try { app(PlayerEligibilityService::class)->assertEligible($player, $event); }
-                    catch (\RuntimeException $exception) { $this->fail($exception->getMessage()); }
-                    if (TeamPaymentOrder::where('event_id', $event->id)->forPlayerHistory([$playerId])->lockForUpdate()->exists()
-                        || \App\Models\ClothingOrder::where('event_id', $event->id)->where('player_id', $playerId)->lockForUpdate()->exists()
-                        || \App\Models\CategoryEventRegistration::withTrashed()->whereHas('categoryEvent', fn ($query) => $query->where('event_id', $event->id))
-                            ->whereHas('registration.players', fn ($query) => $query->where('players.id', $playerId))->lockForUpdate()->exists()) $this->fail('This reserve has checkout or registration history. Use the selection workflow.');
-                    $eventTeamIds = app(EventTeamScope::class)->query($event)->select('teams.id');
-                    if (TeamPlayer::withoutGlobalScopes()->whereIn('team_id', $eventTeamIds)->where('player_id', $playerId)->when($mirror, fn ($query) => $query->where('id', '!=', $mirror->id))->exists()
-                        || NoProfileTeamPlayer::whereIn('team_id', app(EventTeamScope::class)->query($event)->select('teams.id'))->where('player_profile', $playerId)
-                            ->when($team->noProfile, fn ($query) => $query->where('id', '!=', $source->id))->exists()) $this->fail('This reserve is also assigned to another place in this event.');
-                }
+                $this->assertReservePromotionAllowed($event, $team, $source, $actor);
+                if ($playerId > 0) $player = Player::findOrFail($playerId);
                 if ($mirror) {
                     if ($target) {
                         $payments->updateTeamPlayerSlot($mirror, ['rank' => min(0, (int) $mirrors->min('rank')) - 1]);
@@ -260,6 +248,51 @@ class TeamRosterService
         });
     }
 
+    public function assertReservePromotionAllowed(Event $event, Team $team, NoProfileTeamPlayer|TeamPlayer $source, User $actor): void
+    {
+        abort_unless($actor->hasRole('super-user') || \Illuminate\Support\Facades\Gate::forUser($actor)->allows('team.players.manage', $team), 403);
+        if (!$event->isTeam() || $event->isInterprovincialTrials()) $this->fail('Use the selection workflow for this event.');
+        abort_unless(app(EventTeamScope::class)->query($event)->whereKey($team->id)->exists(), 404);
+        abort_unless((int) $source->team_id === (int) $team->id, 404);
+        if ($team->noProfile) {
+            $identities = NoProfileTeamPlayer::where('team_id', $team->id)->where('rank', $source->rank)->lockForUpdate()->get();
+            if ($identities->count() !== 1 || (int) $identities->first()->id !== (int) $source->id) $this->fail('This roster has duplicate or inconsistent imported positions.');
+        }
+        if ($team->category) app(TeamSelectionInvitationService::class)->assertRosterEditable($team);
+        $this->assertBeforeCompetition($event, $team);
+        if (TeamSelectionInvitation::where('team_id', $team->id)->whereHas('selectionImport', fn ($query) => $query->whereIn('status', ['draft', 'sent']))->exists()) $this->fail('Use the selection workflow for this team.');
+        $playerId = (int) ($team->noProfile ? $source->player_profile : $source->player_id);
+        $mirrors = TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('rank', $source->rank)->lockForUpdate()->get();
+        $mirror = $mirrors->first();
+        if ((int) $source->pay_status !== 0 || $mirrors->count() > 1 || ($mirror && ((int) $mirror->pay_status !== 0 || (int) $mirror->player_id !== $playerId))) $this->fail('The reserve profile and roster place are inconsistent or paid.');
+        if ($playerId < 1) return;
+        $player = Player::query()->lockForUpdate()->findOrFail($playerId);
+        try { app(PlayerEligibilityService::class)->assertEligible($player, $event); }
+        catch (\RuntimeException $exception) { $this->fail($exception->getMessage()); }
+        if (TeamPaymentOrder::where('event_id', $event->id)->forPlayerHistory([$playerId])->lockForUpdate()->exists()
+            || \App\Models\ClothingOrder::where('event_id', $event->id)->where('player_id', $playerId)->lockForUpdate()->exists()
+            || \App\Models\CategoryEventRegistration::withTrashed()->whereHas('categoryEvent', fn ($query) => $query->where('event_id', $event->id))
+                ->whereHas('registration.players', fn ($query) => $query->where('players.id', $playerId))->lockForUpdate()->exists()) $this->fail('This reserve has checkout or registration history. Use the selection workflow.');
+        if (TeamPlayer::withoutGlobalScopes()->whereIn('team_id', app(EventTeamScope::class)->query($event)->select('teams.id'))->where('player_id', $playerId)->when($mirror, fn ($query) => $query->where('id', '!=', $mirror->id))->exists()
+            || NoProfileTeamPlayer::whereIn('team_id', app(EventTeamScope::class)->query($event)->select('teams.id'))->where('player_profile', $playerId)
+                ->when($team->noProfile, fn ($query) => $query->where('id', '!=', $source->id))->exists()) $this->fail('This reserve is also assigned to another place in this event.');
+    }
+
+    public function confirmMainPlace(Event $event, ?EventRegion $region, Team $team, User $actor, int $slotId, int $expectedRank): void
+    {
+        DB::transaction(function () use ($event, $region, $team, $actor, $slotId, $expectedRank): void {
+            app(TeamDrawAdaptationService::class)->lockEvent($event->id);
+            $team = Team::query()->lockForUpdate()->findOrFail($team->id);
+            $this->authorize($event, $region?->fresh(), $team, $actor);
+            $source = $team->noProfile ? NoProfileTeamPlayer::where('team_id', $team->id)->lockForUpdate()->findOrFail($slotId)
+                : TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->lockForUpdate()->findOrFail($slotId);
+            if ((int) $source->rank !== $expectedRank || $expectedRank < 1 || $expectedRank > $team->num_team_members) $this->fail('This main place changed. Refresh the player list.');
+            $this->assertReservePromotionAllowed($event, $team, $source, $actor);
+            $captured = app(SelectedTeamRosterStatus::class)->captureMainPromotions($event, $team);
+            app(SelectedTeamRosterStatus::class)->continueMainPromotions($event, $team, $actor, array_intersect_key($captured, [$slotId => true]));
+        });
+    }
+
     public function reorder(Event $event, ?EventRegion $region, Team $team, User $actor, array $orderedIds): void
     {
         DB::transaction(function () use ($event, $region, $team, $actor, $orderedIds): void {
@@ -267,12 +300,16 @@ class TeamRosterService
             $this->authorize($event, $region, $team, $actor);
             $this->assertBeforeCompetition($event, $team);
             $slots = $team->noProfile ? $team->team_players_no_profile()->orderBy('rank')->lockForUpdate()->get()
-                : TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->orderBy('rank')->lockForUpdate()->get();
+                : TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->orderBy('rank')->lockForUpdate()->get()->filter(fn ($slot) => (int) $slot->player_id > 0 || $slot->rank <= $team->num_team_members)->values();
             $ids = $slots->pluck('id')->map('intval')->all();
             $orderedIds = array_map('intval', $orderedIds);
             if (count(array_unique($orderedIds)) !== count($orderedIds) || collect($ids)->sort()->values()->all() !== collect($orderedIds)->sort()->values()->all()) $this->fail('The player list changed. Refresh and try again.');
-            if ($ids === $orderedIds) return;
             if ($slots->pluck('rank')->unique()->count() !== $slots->count()) $this->fail('This roster needs administrator review.');
+            $promotionHistory = app(SelectedTeamRosterStatus::class)->captureMainPromotions($event, $team);
+            if ($ids === $orderedIds) {
+                app(SelectedTeamRosterStatus::class)->continueMainPromotions($event, $team, $actor, $promotionHistory);
+                return;
+            }
             $import = TeamSelectionImport::where('event_id', $event->id)->where('region_id', $team->region_id)->latest('id')->first();
             $invitations = $import && in_array($import->status, ['draft', 'sent'], true) ? $import->invitations()->where('team_id', $team->id)
                 ->whereNotNull('roster_rank')->whereIn('status', [TeamSelectionInvitation::INVITED, TeamSelectionInvitation::ACCEPTED_PENDING_PAYMENT, TeamSelectionInvitation::PAID_CONFIRMED])->orderBy('roster_rank')->get() : collect();
@@ -286,7 +323,7 @@ class TeamRosterService
                 foreach ($orderedIds as $position => $id) {
                     $index = array_search($id, $current, true);
                     while ($index > $position) {
-                        app(ImportedTeamRosterService::class)->move($event, NoProfileTeamPlayer::findOrFail($id), 'up', $actor);
+                        app(ImportedTeamRosterService::class)->move($event, NoProfileTeamPlayer::findOrFail($id), 'up', $actor, false);
                         [$current[$index - 1], $current[$index]] = [$current[$index], $current[$index - 1]];
                         $index--;
                     }
@@ -299,6 +336,7 @@ class TeamRosterService
                 foreach ($slots as $offset => $slot) $payments->updateTeamPlayerSlot($slot, ['rank' => $base + $offset]);
                 foreach ($orderedIds as $position => $id) $payments->updateTeamPlayerSlot($slots->firstWhere('id', $id), ['rank' => $ranks[$position]]);
             }
+            app(SelectedTeamRosterStatus::class)->continueMainPromotions($event, $team, $actor, $promotionHistory);
             activity('team-roster')->performedOn($team)->causedBy($actor)->withProperties(['event_id' => $event->id, 'before_ids' => $ids, 'after_ids' => $orderedIds])->log('reordered team roster');
         });
     }

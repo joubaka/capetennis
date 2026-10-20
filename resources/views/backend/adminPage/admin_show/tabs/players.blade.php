@@ -1,13 +1,10 @@
-@if((int) $event->eventType !== 3 && !($rosterOnly ?? false))
+@if((int) $event->eventType !== 3 && !($rosterOnly ?? false) && !($centralTeamWorkspace ?? false))
   @include('backend.adminPage.admin_show.tabs.players-legacy')
 @else
 @php($regionsInEvent = $event->regions ?? collect())
 <div class="tab-pane fade show active" id="tab-players" role="tabpanel" aria-labelledby="players-tab">
   <div class="roster-toolbar">
     <div class="roster-filters">
-      <div><label class="form-label" for="roster-region">Region</label><select id="roster-region" class="form-select" data-roster-region>
-        @foreach($regionsInEvent as $region)<option value="{{ $region->id }}">{{ $region->region_name }}</option>@endforeach
-      </select></div>
       <div><label class="form-label" for="roster-search">Find a player or team</label><input id="roster-search" class="form-control" type="search" placeholder="{{ ($rosterOnly ?? false) ? 'Name or team' : 'Name, team, email or cell' }}" data-roster-search></div>
       @unless($rosterOnly ?? false)
       <div><label class="form-label" for="roster-payment">Payment</label><select id="roster-payment" class="form-select" data-roster-filter="payment"><option value="">All payments</option><option value="paid">Paid</option><option value="unpaid">Unpaid</option></select></div>
@@ -41,7 +38,7 @@
  @if($k !== 0) hidden
 @endif
 >
-      @if((int) $event->eventType === 3 && !($rosterOnly ?? false))<div class="roster-panel-placeholder p-4" role="status">Select a region to load its roster.</div>
+      @if(((int) $event->eventType === 3 || ($centralTeamWorkspace ?? false)) && !($rosterOnly ?? false))<div class="roster-panel-placeholder p-4" role="status">Select a region to load its roster.</div>
       @else @include('backend.adminPage.admin_show.tabs.players-region')
 @endif
 

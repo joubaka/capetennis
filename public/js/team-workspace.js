@@ -28,6 +28,61 @@
   let autosavePending = false;
   let autosavePaused = false;
   let previewPendingUrl;
+  let selectionRequest;
+
+  function selectedTeam() { return document.querySelector('[data-workspace-team]')?.value || ''; }
+  function activeMode() { return ['players', 'order', 'invitations', 'regions', 'result-rank'].find(mode => document.getElementById('tab-' + mode)?.classList.contains('active')) || 'players'; }
+  function syncSelectionContext() {
+    window.syncTeamSelectionContext?.({regionId: $('[data-roster-region]').val(), teamId: selectedTeam(), mode: activeMode(), task: new URL(window.location.href).searchParams.get('selection_task')});
+  }
+  function selectionUsesOrder() {
+    const select = document.querySelector('[data-workspace-team]');
+    return !!document.querySelector('[data-team-context]')?.dataset.selectionUrl && activeMode() === 'order' && select?.selectedOptions[0]?.dataset.managed === '1';
+  }
+  function loadSelection() {
+    const host = document.querySelector('[data-central-selection-host]');
+    const endpoint = document.querySelector('[data-team-context]')?.dataset.selectionUrl;
+    if (!host || !endpoint) return Promise.resolve();
+    const useOrder = selectionUsesOrder();
+    document.getElementById(useOrder ? 'tab-order' : 'tab-invitations')?.append(host);
+    host.hidden = false;
+    document.querySelectorAll('#tab-order [data-roster-panel]').forEach(panel => { if (useOrder) panel.hidden = true; });
+    if (host.querySelector('[data-embedded-teams-selection]')) { syncSelectionContext(); return Promise.resolve(); }
+    if (selectionRequest) return selectionRequest;
+    host.setAttribute('aria-busy', 'true');
+    host.innerHTML = '<p class="p-3" role="status">Loading invitations and team actions…</p>';
+    selectionRequest = fetch(endpoint, {headers:{Accept:'application/json', 'X-Requested-With':'XMLHttpRequest'}, credentials:'same-origin'})
+      .then(async response => {
+        if (!response.ok) throw new Error(response.status === 403 || response.status === 401 ? 'You no longer have access to invitation management.' : 'Invitations could not be loaded. Try again.');
+        const data = await response.json();
+        if (typeof data.html !== 'string' || typeof data.script !== 'string') throw new Error('Invitations could not be loaded. Try again.');
+        host.innerHTML = data.html;
+        if (!document.getElementById('central-selection-style')) {
+          const styles = document.createElement('template'); styles.innerHTML = data.style || '';
+          const style = styles.content.querySelector('style');
+          if (style) { style.id = 'central-selection-style'; document.head.append(style); }
+        }
+        if (!window.teamSelectionWorkspaceInitialized) {
+          const scripts = document.createElement('template'); scripts.innerHTML = data.script;
+          const source = scripts.content.querySelector('script');
+          if (!source || source.src) throw new Error('Invitation controls could not be initialized. Reload the page.');
+          const script = document.createElement('script'); script.textContent = source.textContent; document.head.append(script); script.remove();
+        }
+        syncSelectionContext();
+      }).catch(error => {
+        host.replaceChildren(); const message = document.createElement('p'); message.className = 'alert alert-warning'; message.setAttribute('role','alert'); message.textContent = error.message;
+        const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'btn btn-outline-secondary ms-2'; retry.textContent = 'Retry'; retry.addEventListener('click', loadSelection);
+        message.append(retry); host.append(message);
+      }).finally(() => { host.removeAttribute('aria-busy'); selectionRequest = null; });
+    return selectionRequest;
+  }
+
+  function syncTeamOptions() {
+    const select = document.querySelector('[data-workspace-team]'); if (!select) return;
+    const region = String($('[data-roster-region]').val());
+    [...select.options].forEach(option => { option.hidden = !!option.value && option.dataset.region !== region; option.disabled = option.hidden; });
+    if (select.selectedOptions[0]?.disabled) select.value = '';
+  }
 
   function continueSelectionPreview() {
     if (!previewPendingUrl || saveRequestBusy) return;
@@ -137,6 +192,8 @@
 
   function workspaceUrl(parameters) {
     const url = new URL(window.location.href);
+    const endpoint = document.querySelector('[data-team-context]')?.dataset.rosterUrl;
+    if (endpoint) url.pathname = new URL(endpoint, window.location.href).pathname;
     ['workspace', 'roster_region', 'panel'].forEach(key => url.searchParams.delete(key));
     Object.entries(parameters).forEach(([key, value]) => url.searchParams.set(key, value));
     return url.href;
@@ -165,7 +222,8 @@
     const url = new URL(window.location.href);
     const values = { region: $('[data-roster-region]').val(), search: $('[data-roster-search]').val(), order_search: $('[data-order-search]').val() };
     filterNames.forEach(name => { values[name] = $('[data-roster-filter="' + name + '"]').val(); });
-    values.tab = $('.team-admin-workspace .tabs-wrap .nav-link.active').attr('data-bs-target')?.replace('#tab-', '');
+    values.tab = activeMode();
+    if (selectedTeam()) url.searchParams.set('selected_team', selectedTeam()); else url.searchParams.delete('selected_team');
     values.result_category = $('.category-radio:checked').val();
     values.result_regions = $('[data-result-region]:checked').map(function () { return this.value; }).get().join(',') || 'none';
     values.result_formats = $('[data-result-format]:checked').map(function () { return this.value; }).get().join(',') || 'none';
@@ -194,7 +252,7 @@
     const terms = String($('[data-order-search]').val() || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
     let matches = 0;
     panel.querySelectorAll('[data-order-team]').forEach(team => {
-      team.hidden = !terms.every(term => (team.dataset.orderTeamName || '').toLowerCase().includes(term));
+      team.hidden = (!!selectedTeam() && team.dataset.orderTeam !== selectedTeam()) || !terms.every(term => (team.dataset.orderTeamName || '').toLowerCase().includes(term));
       if (!team.hidden) { matches++; if (terms.length) team.open = true; }
     });
     const count = panel.querySelector('[data-order-match-count]');
@@ -212,7 +270,7 @@
     const filters = Object.fromEntries(filterNames.map(name => [name, $('[data-roster-filter="' + name + '"]').val()]));
     let matches = 0; let teams = 0;
     panel.querySelectorAll('[data-roster-team]').forEach(team => {
-      const teamVisible = (!filters.category || team.dataset.category === filters.category) && (!filters.publication || team.dataset.publication === filters.publication);
+      const teamVisible = (!selectedTeam() || team.dataset.rosterTeam === selectedTeam()) && (!filters.category || team.dataset.category === filters.category) && (!filters.publication || team.dataset.publication === filters.publication);
       let rowMatches = 0;
       team.querySelectorAll('[data-roster-row]').forEach(row => {
         const haystack = (team.dataset.teamName + ' ' + row.dataset.search).toLowerCase();
@@ -312,8 +370,13 @@
     if (!select) return;
     if (![...select.options].some(option => option.value === String(regionId))) regionId = select.value;
     $('[data-roster-region], [data-order-region]').val(regionId);
-    if ($('#tab-order').hasClass('active')) loadPanel('order', regionId);
+    syncTeamOptions();
+    const host = document.querySelector('[data-central-selection-host]');
+    if (host) host.hidden = activeMode() !== 'invitations' && !selectionUsesOrder();
+    if ($('#tab-invitations').hasClass('active') || selectionUsesOrder()) loadSelection();
+    else if ($('#tab-order').hasClass('active')) loadPanel('order', regionId);
     else if ($('#tab-players').hasClass('active')) loadPanel('players', regionId);
+    syncSelectionContext();
   }
 
   function restoreState() {
@@ -333,10 +396,18 @@
     const excludedRegions = url.searchParams.get('roster_result_excluded_regions');
     document.querySelectorAll('[data-result-excluded-region]').forEach(input => { input.checked = excludedRegions === null ? input.defaultChecked : excludedRegions.split(',').includes(input.value); });
     updateEventSettingsStatus();
-    const tab = url.searchParams.get('roster_tab');
-    const button = document.querySelector('.team-admin-workspace [data-bs-target="#tab-' + (['regions', 'order', 'result-rank'].includes(tab) ? tab : 'players') + '"]');
+    const legacySelection = /^#region-(\d+)\/(overview|teams|invitations|messages|setup)$/.exec(url.hash);
+    const legacyRegion = legacySelection && [...(document.querySelector('[data-roster-region]')?.options || [])].find(option => option.dataset.eventRegionId === legacySelection[1])?.value;
+    if (legacySelection) { url.searchParams.set('selection_task', legacySelection[2]); if (legacyRegion) url.searchParams.set('selected_region', legacyRegion); window.history.replaceState({}, '', url); }
+    const requestedRegion = url.searchParams.get('selected_region') || $('[data-roster-region]').val();
+    const regionSelect = document.querySelector('[data-roster-region]');
+    const regionId = [...(regionSelect?.options || [])].some(option => option.value === String(requestedRegion)) ? requestedRegion : regionSelect?.options[0]?.value;
+    $('[data-roster-region]').val(regionId);
+    $('[data-workspace-team]').val(url.searchParams.get('selected_team') || '');
+    const tab = url.searchParams.get('roster_tab') || (legacySelection ? 'invitations' : document.querySelector('[data-team-context]')?.dataset.defaultMode);
+    const button = document.querySelector('.team-admin-workspace [data-bs-target="#tab-' + (['regions', 'order', 'invitations', 'result-rank'].includes(tab) ? tab : 'players') + '"]');
     if (button) bootstrap.Tab.getOrCreateInstance(button).show();
-    selectRegion(url.searchParams.get('selected_region') || $('[data-roster-region]').val());
+    selectRegion(regionId);
     initCategorySelect();
     if ($('#tab-result-rank').hasClass('active')) loadResults();
     restoring = false;
@@ -554,7 +625,10 @@
         current.querySelectorAll('.modal').forEach(modal => bootstrap.Modal.getInstance(modal)?.dispose());
         const parsed = $($.parseHTML(html, document, true)).filter('#team-workspace-content');
         if (!parsed.length) { feedback('Changes were saved, but the view could not be refreshed.', true); return; }
+        const selectionHost = current.querySelector('[data-central-selection-host]');
+        if (selectionHost?.querySelector('[data-embedded-teams-selection]')) selectionHost.remove();
         $(current).replaceWith(parsed);
+        if (selectionHost?.querySelector('[data-embedded-teams-selection]')) document.querySelector('[data-central-selection-host]')?.replaceWith(selectionHost);
         editingGroup = null; draftReady = false; selectionVersion = 0; savedDraft = null;
         restoreState();
         openRegions.forEach(id => { const region = document.getElementById(id); if (region) bootstrap.Collapse.getOrCreateInstance(region, { toggle: false }).show(); });
@@ -589,6 +663,19 @@
   });
 
   $(document).on('change', '[data-roster-region], [data-order-region]', function () { selectRegion(this.value); saveUrl(true); });
+  $(document).on('change', '[data-workspace-team]', function () { selectRegion($('[data-roster-region]').val()); applyFilters(); saveUrl(true); });
+  document.addEventListener('teams:selection-ready', syncSelectionContext);
+  $(document).on('click', '[data-open-selection-order]', function () {
+    $('[data-workspace-team]').val(this.dataset.openSelectionOrder);
+    bootstrap.Tab.getOrCreateInstance(document.getElementById('order-tab')).show();
+    selectRegion($('[data-roster-region]').val()); saveUrl(true);
+  });
+  $(document).on('click', '[data-team-invitations-open]', function () {
+    $('[data-workspace-team]').val(this.dataset.teamInvitationsOpen);
+    const tab = document.getElementById('invitations-tab');
+    if (tab) bootstrap.Tab.getOrCreateInstance(tab).show();
+    selectRegion($('[data-roster-region]').val()); saveUrl(true);
+  });
   $(document).on('input change', '[data-roster-search], [data-roster-filter]', function () { applyFilters(); saveUrl(); });
   $(document).on('click', '[data-roster-clear]', function () { $('[data-roster-search], [data-roster-filter]').val(''); applyFilters(); saveUrl(); });
   $(document).on('input change', '[data-order-search]', function () { applyOrderSearch(); saveUrl(); });

@@ -1,13 +1,10 @@
-@if((int) $event->eventType !== 3 && !($rosterOnly ?? false))
+@if((int) $event->eventType !== 3 && !($rosterOnly ?? false) && !($centralTeamWorkspace ?? false))
   @include('backend.adminPage.admin_show.tabs.player-order-legacy')
 @else
 <div class="tab-pane fade" id="tab-order" role="tabpanel" aria-labelledby="order-tab">
   <p class="alert alert-info">{{ ($rosterOnly ?? false) ? 'Use Move up and Move down to review the player order.' : 'Set player order before generating fixtures. Ranking-managed teams use selection order. Generated fixtures lock reordering to preserve match lineups, times and results.' }}</p>
   <div class="roster-toolbar mb-3">
     <div class="row g-3">
-      <div class="col-md-5"><label for="order-region" class="form-label">Region</label><select id="order-region" class="form-select" data-order-region>
-        @foreach($event->regions as $region)<option value="{{ $region->id }}">{{ $region->region_name }}</option>@endforeach
-      </select></div>
       <div class="col-md-7"><label for="order-team-search" class="form-label">Find a team</label><input type="search" id="order-team-search" class="form-control" placeholder="Team name" data-order-search></div>
     </div>
     <button type="button" class="btn btn-outline-secondary mt-3" data-order-clear>Clear search</button>

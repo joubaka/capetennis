@@ -39,7 +39,32 @@ class TeamSelectionInvitationController extends Controller
 
     public function index(Event $event, TeamRankingImportService $service, RegionManagerAccessService $access, TeamSelectionReminderService $reminders, TeamSelectionInvitationService $invitations)
     {
-        return $this->workspace($event, $service, $access, $reminders, $invitations);
+        abort_unless($event->isTeam(), 404);
+        if (request()->boolean('workspace_fragment')) abort_unless($access->isEventManager(request()->user(), $event), 403);
+        if (request()->filled('selected_region')) abort_unless(EventRegion::where('event_id', $event->id)->where('region_id', request('selected_region'))->exists(), 404);
+        if (request()->filled('selected_team')) abort_unless(app(\App\Services\EventTeamScope::class)->query($event)->whereKey(request('selected_team'))->when(request()->filled('selected_region'), fn ($query) => $query->where('region_id', request('selected_region')))->exists(), 404);
+        if (!$access->isEventManager(request()->user(), $event)) {
+            return $this->workspace($event, $service, $access, $reminders, $invitations);
+        }
+        if (request()->boolean('workspace_fragment')) {
+            $data = $this->embeddedWorkspaceData($event, $service, $access, $reminders, $invitations);
+
+            return response()->json([
+                'html' => view('backend.team-selection._workspace-content', $data)->render(),
+                'style' => view('backend.team-selection._workspace-style', $data)->render(),
+                'script' => view('backend.team-selection._workspace-script', $data)->render(),
+            ])->header('Cache-Control', 'private, no-store');
+        }
+
+        return app(EventAdminController::class)->teamWorkspace($event)
+            ->with('centralTeamMode', 'invitations');
+    }
+
+    public function embeddedWorkspaceData(Event $event, TeamRankingImportService $service, RegionManagerAccessService $access, TeamSelectionReminderService $reminders, TeamSelectionInvitationService $invitations): array
+    {
+        abort_unless($access->isEventManager(request()->user(), $event), 403);
+
+        return $this->workspace($event, $service, $access, $reminders, $invitations)->with('embeddedTeamsWorkspace', true)->getData();
     }
 
     public function managerPreview(Event $event, EventRegion $eventRegion, TeamRankingImportService $service, RegionManagerAccessService $access, TeamSelectionReminderService $reminders, TeamSelectionInvitationService $invitations)
