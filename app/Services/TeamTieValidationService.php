@@ -269,12 +269,15 @@ class TeamTieValidationService
                     $definition = collect($snapshot['rubbers'] ?? [])->firstWhere('sequence', $rubber->rubber_sequence);
                     $genderRule = $definition['gender_rule'] ?? $rubber->gender_rule;
                     if ($genderRule) {
+                        $teamLabel = app(TeamDrawSideResolver::class)->label($tie->draw, $team);
+                        $sideLabel = $side === 1 ? 'home' : 'away';
+                        $context = "Match #{$rubber->rubber_sequence} (\"{$rubber->rubber_name}\"), team \"{$teamLabel}\" ({$sideLabel})";
                         // Imported players have no recorded gender. Validate only known facts.
                         $genders = Player::whereIn('id', $profileIds)->pluck('gender')->filter()->map(fn ($gender) => in_array($gender, [1, '1'], true) ? 'male' : (in_array($gender, [2, '2'], true) ? 'female' : strtolower((string) $gender)));
                         if (in_array($genderRule, ['male', 'female'], true)) {
-                            $this->assertAllGender($genders, $genderRule, $rubber->rubber_code);
+                            $this->assertAllGender($genders, $genderRule, $rubber->rubber_code, $context);
                         } elseif ($genderRule === 'mixed' && $genders->count() === $expected) {
-                            $this->assertMixed($genders, $rubber->rubber_code);
+                            $this->assertMixed($genders, $rubber->rubber_code, $context);
                         }
                     }
                 }
@@ -329,26 +332,28 @@ class TeamTieValidationService
         return $count;
     }
 
-    private function assertAllGender(Collection $genders, string $expected, string $rubberCode): void
+    private function assertAllGender(Collection $genders, string $expected, string $rubberCode, ?string $context = null): void
     {
         $invalid = $genders->reject(fn($g) => $g === $expected);
 
         if ($invalid->isNotEmpty()) {
+            $context ??= "Rubber \"{$rubberCode}\"";
             throw new \InvalidArgumentException(
-                "Rubber \"{$rubberCode}\" requires all players to be {$expected}. " .
+                "{$context} requires all players to be {$expected}. " .
                 "Found: " . $invalid->implode(', ') . '.'
             );
         }
     }
 
-    private function assertMixed(Collection $genders, string $rubberCode): void
+    private function assertMixed(Collection $genders, string $rubberCode, ?string $context = null): void
     {
         $hasMale   = $genders->contains('male');
         $hasFemale = $genders->contains('female');
 
         if (!$hasMale || !$hasFemale) {
+            $context ??= "Rubber \"{$rubberCode}\"";
             throw new \InvalidArgumentException(
-                "Rubber \"{$rubberCode}\" is mixed doubles and requires at least one male and one female player. " .
+                "{$context} is mixed doubles and requires at least one male and one female player. " .
                 "Found genders: " . $genders->implode(', ') . '.'
             );
         }

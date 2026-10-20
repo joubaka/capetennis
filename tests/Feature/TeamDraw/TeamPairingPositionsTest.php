@@ -250,6 +250,51 @@ class TeamPairingPositionsTest extends TestCase
         app(\App\Services\TeamTieValidationService::class)->assertTieComplete($tie->fresh());
     }
 
+    public static function invalidGenderSides(): array
+    {
+        return [
+            'girls doubles home' => ['female', 1],
+            'girls doubles away' => ['female', 2],
+            'mixed doubles home' => ['mixed', 1],
+            'mixed doubles away' => ['mixed', 2],
+        ];
+    }
+
+    #[DataProvider('invalidGenderSides')]
+    public function test_gender_failure_identifies_match_and_team_without_changing_assignments(string $rule, int $invalidSide): void
+    {
+        $tie = TeamTie::factory()->create();
+        $template = $this->template($rule === 'mixed' ? 'mixed_doubles' : 'doubles', [1, 2], [1, 2]);
+        $template->update(['gender_rule' => $rule, 'name' => $rule === 'mixed' ? 'Mixed doubles 3' : 'Girls doubles 3']);
+        $tie->draw->update(['team_format_snapshot' => ['allow_player_reuse' => true, 'rubbers' => [$template->toArray()]]]);
+        foreach ([$tie->home_team_id, $tie->away_team_id] as $teamId) {
+            foreach ([1, 2] as $rank) {
+                $gender = $rule === 'mixed' && $rank === 1 ? 1 : 2;
+                TeamPlayer::create(['team_id' => $teamId, 'player_id' => Player::factory()->create(['gender' => $gender])->id, 'rank' => $rank]);
+            }
+        }
+        $fixture = app(TeamTieGenerationService::class)->generateFromFormat($tie->fresh(), $template->format)->first();
+        $validation = app(\App\Services\TeamTieValidationService::class);
+        $validation->assertTieComplete($tie->fresh());
+
+        // Reproduce a single incorrect profile gender in an otherwise valid pairing.
+        $slot = $fixture->fixturePlayers()->orderBy('slot_no')->get()->last();
+        Player::findOrFail($slot->{"team{$invalidSide}_id"})->update(['gender' => 1]);
+        $assignments = $fixture->fixturePlayers()->get()->toArray();
+        try {
+            $validation->assertTieComplete($tie->fresh());
+            $this->fail('The incorrect gender must still block readiness.');
+        } catch (\InvalidArgumentException $exception) {
+            $team = $invalidSide === 1 ? $tie->homeTeam : $tie->awayTeam;
+            $side = $invalidSide === 1 ? 'home' : 'away';
+            $this->assertStringContainsString('Match #1 ("'.$template->name.'")', $exception->getMessage());
+            $this->assertStringContainsString('team "'.$team->name.'" ('.$side.')', $exception->getMessage());
+            $this->assertStringContainsString($rule === 'mixed' ? 'requires at least one male and one female' : 'requires all players to be female', $exception->getMessage());
+        }
+        $this->assertSame($assignments, $fixture->fixturePlayers()->get()->toArray());
+        $this->assertSame(2, $fixture->fixturePlayers()->count());
+    }
+
     public function test_null_positions_preserve_legacy_rank_selection(): void
     {
         $tie = TeamTie::factory()->create();
