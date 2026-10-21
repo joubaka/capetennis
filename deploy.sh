@@ -13,25 +13,6 @@ readonly CANONICAL_APP_PATH
 log() { echo "==> [$1] $2"; }
 fail() { log ERROR "$1" >&2; exit 1; }
 run_php() { php -d display_errors=Off "$@"; }
-cache_views_with_progress() (
-    local started=$SECONDS heartbeat_pid status command=view:cache
-    if [ "$LIVE_DEPLOY" = true ]; then command=deployment:cache-views; fi
-    log INFO "Compiling Blade views ($command -vv); filenames show compilation progress"
-    (
-        while sleep 10 </dev/null >/dev/null 2>&1; do
-            log INFO "Blade view cache is still running ($((SECONDS - started))s elapsed)"
-        done
-    ) &
-    heartbeat_pid=$!
-    trap 'kill "$heartbeat_pid" 2>/dev/null || true; wait "$heartbeat_pid" 2>/dev/null || true' EXIT
-    if run_php "$APP_PATH/artisan" "$command" -vv; then
-        log INFO "Blade view cache completed in $((SECONDS - started))s"
-    else
-        status=$?
-        log ERROR "Blade view cache failed after $((SECONDS - started))s (exit $status)" >&2
-        exit "$status"
-    fi
-)
 [ -d "$APP_PATH/.git" ] || fail "$APP_PATH is not a Git checkout"
 [ -z "$(git -C "$APP_PATH" status --porcelain)" ] || fail 'Production working tree is not clean'
 [ "$(git -C "$APP_PATH" branch --show-current)" = main ] || fail 'Production must be on main'
@@ -249,7 +230,7 @@ if [ "$LIVE_DEPLOY" = true ]; then
 else
     run_php "$APP_PATH/artisan" route:cache
 fi
-cache_views_with_progress
+# Blade templates compile on demand; do not precompile every view during deployment.
 sync_public_html; run_php "$APP_PATH/artisan" queue:restart
 if [ "$LIVE_DEPLOY" = false ]; then run_php "$APP_PATH/artisan" up; APP_IS_DOWN=0; fi
 cleanup_preflight; PREFLIGHT_DIR=""; trap - EXIT

@@ -6,42 +6,14 @@ use PHPUnit\Framework\TestCase;
 
 class DeploymentConfigTest extends TestCase
 {
-    public function test_view_cache_progress_preserves_success_failure_and_heartbeat(): void
+    public function test_deployment_leaves_blade_compilation_to_requests(): void
     {
-        $script = str_replace("\r\n", "\n", (string) file_get_contents(dirname(__DIR__, 2).'/deploy.sh'));
-        preg_match('/cache_views_with_progress\(\) \(\n.*?\n\)/s', $script, $match);
-        $this->assertNotEmpty($match);
-        $bash = PHP_OS_FAMILY === 'Windows' ? 'C:/Program Files/Git/bin/bash.exe' : '/bin/bash';
+        $script = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.sh');
 
-        foreach ([[false, 0], [true, 0], [true, 7]] as [$live, $status]) {
-            $file = tempnam(sys_get_temp_dir(), 'ct-view-progress-');
-            $output = $file.'.out';
-            $error = $file.'.err';
-            file_put_contents($file, "set -euo pipefail\nAPP_PATH=/fixture\nLIVE_DEPLOY=".($live ? 'true' : 'false')."\nlog() { echo \"==> [\$1] \$2\"; }\n".$match[0]."\nrun_php() { printf 'ARGS:%s|%s|%s\\n' \"\$1\" \"\$2\" \"\$3\"; ".(!$live ? 'sleep 11; ' : '')."return $status; }\ncache_views_with_progress\necho FOLLOWING_STAGE\n");
-            try {
-                $process = proc_open([$bash, $file], [1 => ['file', $output, 'w'], 2 => ['file', $error, 'w']], $pipes);
-                $this->assertIsResource($process);
-                $exitCode = proc_close($process);
-                $stdout = (string) file_get_contents($output);
-                $stderr = (string) file_get_contents($error);
-                $this->assertSame($status, $exitCode, $stderr);
-                $this->assertStringContainsString('Compiling Blade views', $stdout);
-                $this->assertStringContainsString('ARGS:/fixture/artisan|'.($live ? 'deployment:cache-views' : 'view:cache').'|-vv', $stdout);
-                if ($status === 0) {
-                    if (!$live) $this->assertStringContainsString('still running (', $stdout);
-                    $this->assertStringContainsString('Blade view cache completed in', $stdout);
-                    $this->assertStringContainsString('FOLLOWING_STAGE', $stdout);
-                } else {
-                    $this->assertStringContainsString('Blade view cache failed after', $stderr);
-                    $this->assertStringContainsString('(exit 7)', $stderr);
-                    $this->assertStringNotContainsString('FOLLOWING_STAGE', $stdout);
-                }
-            } finally {
-                foreach ([$file, $output, $error] as $path) {
-                    if (is_file($path)) unlink($path);
-                }
-            }
-        }
+        $this->assertStringNotContainsString('cache_views_with_progress', $script);
+        $this->assertStringNotContainsString('view:cache', $script);
+        $this->assertStringNotContainsString('deployment:cache-views', $script);
+        $this->assertStringContainsString('sync_public_html; run_php "$APP_PATH/artisan" queue:restart', $script);
     }
 
     public function test_live_deployment_never_clears_the_canonical_route_cache(): void
