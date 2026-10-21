@@ -1,7 +1,7 @@
 @extends('layouts/layoutMaster')
 @section('title', 'Public schedule preview – '.$event->name)
 @section('content')
-<div class="container-xxl py-3">
+<div class="container-xxl py-3" data-schedule-preview-page>
     <h3>Public schedule preview</h3>
     <p class="text-muted">
         @if($hideTimes)
@@ -23,15 +23,16 @@
     </p>
     <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
         <a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar',['event'=>$event->id]+$scope) }}">Back to saved schedule</a>
-        <a class="btn {{ !$afterPublish && !$hideTimes ? 'btn-primary' : 'btn-outline-primary' }}" role="button" aria-pressed="{{ !$afterPublish && !$hideTimes ? 'true' : 'false' }}"
-           href="{{ route('backend.event-venue-schedule.calendar.preview', ['event' => $event->id] + $scope + ['after_publish' => 0]) }}">Currently public</a>
-        <a class="btn {{ $afterPublish && !$hideTimes ? 'btn-primary' : 'btn-outline-primary' }}" role="button" aria-pressed="{{ $afterPublish && !$hideTimes ? 'true' : 'false' }}"
-           href="{{ route('backend.event-venue-schedule.calendar.preview', ['event' => $event->id] + $scope + ['after_publish' => 1]) }}">With times published</a>
-        <a class="btn {{ $hideTimes ? 'btn-primary' : 'btn-outline-primary' }}" role="button" aria-pressed="{{ $hideTimes ? 'true' : 'false' }}"
-           href="{{ route('backend.event-venue-schedule.calendar.preview', ['event' => $event->id] + $scope + ['hide_times' => 1]) }}">With times hidden</a>
+        <button type="button" class="btn {{ !$afterPublish && !$hideTimes ? 'btn-primary' : 'btn-outline-primary' }}" aria-pressed="{{ !$afterPublish && !$hideTimes ? 'true' : 'false' }}" aria-controls="schedule-preview-content"
+           data-preview-url="{{ route('backend.event-venue-schedule.calendar.preview', ['event' => $event->id] + $scope + ['after_publish' => 0]) }}">Currently public</button>
+        <button type="button" class="btn {{ $afterPublish && !$hideTimes ? 'btn-primary' : 'btn-outline-primary' }}" aria-pressed="{{ $afterPublish && !$hideTimes ? 'true' : 'false' }}" aria-controls="schedule-preview-content"
+           data-preview-url="{{ route('backend.event-venue-schedule.calendar.preview', ['event' => $event->id] + $scope + ['after_publish' => 1]) }}">With times published</button>
+        <button type="button" class="btn {{ $hideTimes ? 'btn-primary' : 'btn-outline-primary' }}" aria-pressed="{{ $hideTimes ? 'true' : 'false' }}" aria-controls="schedule-preview-content"
+           data-preview-url="{{ route('backend.event-venue-schedule.calendar.preview', ['event' => $event->id] + $scope + ['hide_times' => 1]) }}">With times hidden</button>
         <span class="badge bg-label-secondary">{{ $hideTimes ? 'Times hidden' : ($afterPublish ? 'After publishing' : 'Currently public') }}</span>
     </div>
-    <div data-public-schedule-preview>
+    <p class="small text-muted mb-2" data-preview-status role="status" aria-live="polite"></p>
+    <div data-public-schedule-preview id="schedule-preview-content" aria-busy="false">
         @forelse($previewDraws as $preview)
             <section class="mb-4" aria-label="{{ $preview['draw']->drawName }}">
                 @if($preview['fixtures']->first() instanceof \App\Models\TeamFixture)
@@ -45,4 +46,8 @@
         @endforelse
     </div>
 </div>
+@endsection
+
+@section('page-script')
+<script src="{{ asset('js/schedule-public-preview.js') }}?v={{ filemtime(public_path('js/schedule-public-preview.js')) }}"></script>
 @endsection

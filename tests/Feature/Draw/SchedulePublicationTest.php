@@ -229,7 +229,11 @@ class SchedulePublicationTest extends TestCase
         $response = $this->get(route('backend.event-venue-schedule.calendar.preview', $scope + ['after_publish' => 1]))
             ->assertOk()->assertSee('After publishing')->assertSee('11:30')->assertDontSee('08:00')
             ->assertSee('aria-pressed="true"', false)
+            ->assertSee('data-preview-url=', false)
+            ->assertSee('aria-controls="schedule-preview-content"', false)
+            ->assertSee('schedule-public-preview.js', false)
             ->assertSee(e(route('backend.event-venue-schedule.calendar.preview', $scope + ['after_publish' => 0])), false);
+        $this->assertSame(3, substr_count($response->getContent(), 'data-preview-url='));
         $hiddenResponse = $this->get(route('backend.event-venue-schedule.calendar.preview', $scope + ['hide_times' => 1]))
             ->assertOk()->assertSee('With times published')->assertSee('With times hidden')
             ->assertSee('Match times to follow')->assertSee('Match time to follow')
