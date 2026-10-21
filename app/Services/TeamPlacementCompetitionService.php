@@ -153,17 +153,23 @@ final class TeamPlacementCompetitionService
             if ($source->team_scoring_rules['undecided'] ?? false) $this->fail('Confirm scoring before qualifying teams.');
             $teams = app(TeamDrawSideResolver::class)->teams($source);
             $ties = $source->teamTies()->with('rubbers.teamResults', 'rubbers.draw')->lockForUpdate()->get();
-            if ($ties->count() !== $teams->count() * ($teams->count() - 1) / 2 || $ties->contains(fn ($tie) => !app(TeamStandingsService::class)->tieOutcome($tie)['complete'])) $this->fail('Complete every round-robin tie before creating playoffs.');
+            $decision = app(TeamCompetitionDecisionService::class)->standingsDecision($source);
+            if ($decision && !$decision['valid']) $this->fail('The organiser standings decision needs review after changed results or teams.');
+            if (!($decision['valid'] ?? false) && ($ties->count() !== $teams->count() * ($teams->count() - 1) / 2 || $ties->contains(fn ($tie) => !app(TeamStandingsService::class)->tieOutcome($tie)['complete']))) $this->fail('Complete every round-robin tie before creating playoffs.');
             $rows = app(TeamStandingsService::class)->forDraw($source);
             if (count($rows) !== $teams->count() || count(array_unique(array_column($rows, 'rank'))) !== count($rows)) $this->fail('Resolve tied standings using the agreed scoring criteria before creating playoffs.');
             $draw = new Draw;
             $draw->event_id = $source->event_id; $draw->drawType_id = $source->drawType_id; $draw->category_event_id = $source->category_event_id;
             $draw->drawName = $config['group'].' placement playoffs'; $draw->gender = 0;
+            unset($selection['decisions']);
             $selection['competition'] = ['phase' => 'playoff', 'group' => $config['group'], 'size' => $config['size'], 'source_draw_id' => $source->id, 'qualification' => $rows];
             $draw->team_draw_selection = $selection; $draw->team_format_snapshot = $config['playoff_format'];
             $draw->team_scoring_rules = $source->team_scoring_rules; $draw->save();
-            $qualifiers = array_slice(array_column($rows, 'team_id'), 0, 4);
+            $qualifiers = array_slice(array_column(array_values(array_filter($rows, fn ($row) => !($row['qualification_excluded'] ?? false))), 'team_id'), 0, 4);
+            if (count($qualifiers) < 2) $this->fail('At least two eligible sides are required.');
             $draw->teams_in_draw()->sync($qualifiers);
+            $selection['competition']['qualified_team_ids'] = $qualifiers;
+            if (count($qualifiers) === 3) $selection['competition']['automatic_third_team_id'] = $qualifiers[2];
             // Restrict composite resolver to qualified sides only.
             $selection['mixed_sides'] = array_intersect_key($selection['mixed_sides'], array_flip($qualifiers));
             $draw->team_draw_selection = $selection; $draw->save();

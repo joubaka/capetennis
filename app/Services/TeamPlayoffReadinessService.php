@@ -37,11 +37,13 @@ final class TeamPlayoffReadinessService
         if (!$scoringConfirmed) {
             $blockers[] = 'Confirm scoring before qualifying teams.';
         }
-        if ($ties->count() !== $expected || $completed !== $ties->count()) {
+        $decision = app(TeamCompetitionDecisionService::class)->standingsDecision($draw);
+        if ($decision && !$decision['valid']) $blockers[] = 'Review the organiser standings decision after changed results or teams.';
+        if (!($decision['valid'] ?? false) && ($ties->count() !== $expected || $completed !== $ties->count())) {
             $blockers[] = 'Complete every expected round-robin encounter.';
         }
         $ranksResolved = false;
-        if ($scoringConfirmed && $completed === $expected && $ties->count() === $expected) {
+        if ($scoringConfirmed && (($decision['valid'] ?? false) || ($completed === $expected && $ties->count() === $expected))) {
             $rows = $standings->forDraw($draw);
             $ranksResolved = $teamCount >= 2 && count($rows) === $teamCount && count(array_unique(array_column($rows, 'rank'))) === count($rows);
             if (!$ranksResolved) {

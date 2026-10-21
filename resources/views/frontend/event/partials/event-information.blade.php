@@ -22,5 +22,36 @@
         The organiser has not added further event information yet.
       </div>
     @endif
+
+    @php($publishedDrawCount = ($eventDraws ?? collect())->where('published', true)->count())
+    @if($publishedDrawCount > 0)
+      <div class="mt-3 pt-3 border-top">
+        <a href="#event-draws-match-times" class="btn btn-outline-primary" data-event-draw-jump style="min-height:44px;white-space:normal">
+          <i class="ti ti-tournament me-1" aria-hidden="true"></i>
+          {{ $publishedDrawCount === 1 ? 'View published draw' : 'View published draws' }}
+          <i class="ti ti-arrow-down ms-1" aria-hidden="true"></i>
+        </a>
+      </div>
+    @endif
   </div>
 </div>
+
+@once
+  <style>
+    [data-event-draw-section] { scroll-margin-top: 8rem; }
+    [data-event-draw-section]:focus { outline: 3px solid #173f7a; outline-offset: 3px; }
+  </style>
+  <script>
+    document.addEventListener('click', function (event) {
+      const link = event.target.closest('[data-event-draw-jump]');
+      if (!link) return;
+      const target = Array.from(document.querySelectorAll('[data-event-draw-section]'))
+        .find(section => section.getClientRects().length > 0);
+      if (!target) return;
+      event.preventDefault();
+      target.focus({ preventScroll: true });
+      target.scrollIntoView({ block: 'start', behavior: 'instant' });
+      history.replaceState(null, '', '#' + target.id);
+    });
+  </script>
+@endonce

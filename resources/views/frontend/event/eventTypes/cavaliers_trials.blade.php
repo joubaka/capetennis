@@ -213,7 +213,7 @@ $nominations = EventNomination::all();
             </div>
         </div>
         @endif
-        <div class="card mb-4">
+        <div id="event-draws-match-times" class="card mb-4" tabindex="-1" data-event-draw-section aria-label="Published draws">
             <div class="card-header"> <small class="card-text text-uppercase">Draws</small></div>
             <div class="card-body">
            

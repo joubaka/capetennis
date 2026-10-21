@@ -36,7 +36,7 @@ final class TeamStandingsService
         return 'other';
     }
 
-    public function tieOutcome(TeamTie $tie): array
+    public function tieOutcome(TeamTie $tie, bool $includeDecision = true): array
     {
         $result = ['complete' => $tie->rubbers->isNotEmpty() && app(TeamTieValidationService::class)->requiredRubbersPresent($tie), 'home' => 0, 'away' => 0, 'winner_team_id' => null];
         foreach ($tie->rubbers as $rubber) {
@@ -46,6 +46,14 @@ final class TeamStandingsService
         }
         if ($result['complete'] && $result['home'] !== $result['away']) {
             $result['winner_team_id'] = $result['home'] > $result['away'] ? $tie->home_team_id : $tie->away_team_id;
+        }
+        if ($includeDecision && $result['complete'] && !$result['winner_team_id']) {
+            $decision = app(TeamCompetitionDecisionService::class)->playoffDecision($tie);
+            if ($decision) {
+                $result['winner_team_id'] = $decision['winner_team_id'];
+                $result['decision_method'] = $decision['method'];
+                $result['deciding_score'] = $decision['method'] === 'mixed_tiebreak' ? array_intersect_key($decision['score'], array_flip(['home', 'away'])) : null;
+            }
         }
         return $result;
     }
@@ -121,6 +129,6 @@ final class TeamStandingsService
             $previous = $current;
         }
         unset($row);
-        return $rows;
+        return app(TeamCompetitionDecisionService::class)->applyStandings($draw, $rows);
     }
 }

@@ -15,3 +15,9 @@
     </div>
   </div>
 @endif
+
+{{-- Some registration-focused event layouts do not include a draws section. --}}
+@if(($eventDraws ?? collect())->where('published', true)->isNotEmpty()
+    && ($event->isInterprovincialTrials() || !in_array($typeView, ['individual', 'team', 'interpro', 'cavaliers_trials'], true)))
+  @include('frontend.event.partials.event-draws')
+@endif

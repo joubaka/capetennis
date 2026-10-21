@@ -95,7 +95,7 @@ final class EventStandingsService
                 $previousPoints = $criteria($legacyRow);
             }
             unset($legacyRow);
-            $rows = $legacyRows;
+            $rows = app(TeamCompetitionDecisionService::class)->applyStandings($draw, $legacyRows);
             $sections[] = compact('draw', 'category', 'gender', 'age', 'rows');
         }
         $options = [];
@@ -128,6 +128,9 @@ final class EventStandingsService
                 foreach ($row['gender_points'] as $bucket => $points) { $ageGroups[$section['age']][$key]['gender_points'][$bucket] += $points; }
                 $ageStandings[$section['age']][$key] ??= ['name' => $overall[$key]['name'], 'rank' => null,
                     'gender_points' => array_fill_keys(['boys', 'girls', 'mixed', 'other'], 0)] + array_fill_keys(self::METRICS, 0);
+                if (count(array_filter($sections, fn ($candidate) => $candidate['age'] === $section['age'])) === 1 && (app(TeamCompetitionDecisionService::class)->standingsDecision($section['draw'])['valid'] ?? false)) {
+                    $ageStandings[$section['age']][$key]['organiser_rank'] = $row['rank'];
+                }
                 foreach ($row['gender_points'] as $bucket => $points) { $ageStandings[$section['age']][$key]['gender_points'][$bucket] += $points; }
                 foreach (self::METRICS as $metric) { $ageStandings[$section['age']][$key][$metric] += $row[$metric]; }
                 if ($team) { $overall[$key]['teams'][$team->id] = true; }
@@ -148,6 +151,12 @@ final class EventStandingsService
             $ageRows = array_values($ageRows);
             if ($ageMixedRules[$age]) {
                 usort($ageRows, fn ($a, $b) => strnatcasecmp($a['name'], $b['name']));
+                continue;
+            }
+            if ($ageRows && isset($ageRows[0]['organiser_rank'])) {
+                usort($ageRows, fn ($a, $b) => $a['organiser_rank'] <=> $b['organiser_rank']);
+                foreach ($ageRows as &$finalRow) $finalRow['rank'] = $finalRow['organiser_rank'];
+                unset($finalRow);
                 continue;
             }
             $criteria = fn ($row) => $this->criteria($row, $ageRules[$age]);

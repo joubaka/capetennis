@@ -3,6 +3,7 @@
 @section('content')
 <div class="container-xxl">
   <h1 class="h4">{{ $draw->drawName }}: team standings</h1>
+  @include('backend.team-draw.partials.organiser-decisions')
   @include('frontend.fixtures.partials.live-results-status')
   <div data-live-results="admin-draw-standings">
   @if(($draw->team_draw_selection['competition']['phase'] ?? null) === 'playoff')

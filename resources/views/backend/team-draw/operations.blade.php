@@ -12,6 +12,7 @@
       <a class="btn btn-outline-primary" href="{{ route('backend.team-draw.standings', $draw) }}">Standings</a>
     </div>
   </div>
+  @include('backend.team-draw.partials.organiser-decisions')
   @if(isset($draw->team_draw_selection['competition']))
     @php
       $competition = $draw->team_draw_selection['competition'];

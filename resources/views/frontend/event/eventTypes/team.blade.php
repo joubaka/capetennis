@@ -119,7 +119,7 @@
       @include('frontend.event.partials.event-announcements')
 
       {{-- 🔹 Draws and Order of Play (Mobile / Tablet only) --}}
-      <div class="card d-block d-md-none mb-4">
+      <div id="event-draws-mobile" class="card d-block d-md-none mb-4" tabindex="-1" data-event-draw-section aria-label="Published draws">
         <div class="card-body">
           @include('frontend.event.partials._draws_and_order_of_play')
         </div>
@@ -192,7 +192,7 @@
       </div>
 
       {{-- 🔹 Draws and Order of Play (Desktop only) --}}
-      <div class="d-none d-md-block">
+      <div id="event-draws-match-times" class="d-none d-md-block" tabindex="-1" data-event-draw-section aria-label="Published draws">
         @include('frontend.event.partials._draws_and_order_of_play')
       </div>
 

@@ -1,6 +1,6 @@
 {{-- DRAWS & ORDER OF PLAY --}}
 @if(($drawPublicationSummary['total'] ?? 0) > 0)
-  <div id="event-draws-match-times" class="card event-draws-card mb-4" tabindex="-1">
+  <div id="event-draws-match-times" class="card event-draws-card mb-4" tabindex="-1" data-event-draw-section aria-label="Draws and match times">
     <div class="card-header event-draws-header">
       <span class="event-draws-header-icon" aria-hidden="true"><i class="ti ti-tournament"></i></span>
       <div>

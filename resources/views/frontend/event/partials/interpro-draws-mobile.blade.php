@@ -2,7 +2,7 @@
   $publishedDayLabels = app(\App\Services\Scheduling\SchedulePublicationService::class)->publicDrawDayLabels($event);
 @endphp
       {{-- 🔹 Draws and Order of Play (Mobile / Tablet only) --}}
-      <div class="card d-block d-md-none mb-4">
+      <div id="event-draws-mobile" class="card d-block d-md-none mb-4" tabindex="-1" data-event-draw-section aria-label="Published draws">
         <div class="card-body">
 
           @php

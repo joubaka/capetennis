@@ -1673,6 +1673,8 @@ Route::delete(
     Route::post('{event}/competition', [\App\Http\Controllers\Backend\TeamPlacementCompetitionController::class, 'store'])->name('competition.store');
     Route::match(['get', 'post'], '{draw}/competition-scoring', [\App\Http\Controllers\Backend\TeamPlacementCompetitionController::class, 'scoring'])->name('competition.scoring');
     Route::post('{draw}/placement-playoffs', [\App\Http\Controllers\Backend\TeamPlacementCompetitionController::class, 'playoffs'])->name('competition.playoffs');
+    Route::post('{draw}/standings-decision', [\App\Http\Controllers\Backend\TeamCompetitionDecisionController::class, 'standings'])->name('decision.standings');
+    Route::post('{draw}/ties/{tie}/deciding-result', [\App\Http\Controllers\Backend\TeamCompetitionDecisionController::class, 'playoff'])->name('decision.playoff');
     // Format management
     Route::get('{event}/formats',    [TeamDrawController::class, 'listFormats'])->name('formats.index');
     Route::post('{event}/formats',   [TeamDrawController::class, 'storeFormat'])->name('formats.store');
