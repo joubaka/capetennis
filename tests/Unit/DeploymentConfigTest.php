@@ -10,13 +10,7 @@ class DeploymentConfigTest extends TestCase
     {
         $script = str_replace("\r\n", "\n", (string) file_get_contents(dirname(__DIR__, 2).'/deploy.sh'));
 
-        $this->assertStringContainsString(<<<'BASH'
-    for file in $SYNC_ROOT_FILES; do
-        if [ -f "$APP_PATH/public/$file" ]; then
-            cp "$APP_PATH/public/$file" "$PUBLIC_HTML/$file"
-        fi
-    done
-BASH, $script);
+        $this->assertStringContainsString('run_php "$APP_PATH/scripts/deployment-assets.php" "$APP_PATH/public" "$PUBLIC_HTML" "$SYNC_FOLDERS" "$SYNC_ROOT_FILES"', $script);
         $this->assertStringNotContainsString('[ -f "$APP_PATH/public/$file" ] && cp', $script);
     }
 

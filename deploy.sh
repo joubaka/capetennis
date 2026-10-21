@@ -76,13 +76,7 @@ deployment_exit() {
 }
 sync_public_html() {
     [ -z "$PUBLIC_HTML" ] || [ "$PUBLIC_HTML" = "$APP_PATH/public" ] && { log INFO 'Skipping separate public asset sync'; return; }
-    mkdir -p "$PUBLIC_HTML"
-    for folder in $SYNC_FOLDERS; do [ -d "$APP_PATH/public/$folder" ] || continue; mkdir -p "$PUBLIC_HTML/$folder"; if command -v rsync >/dev/null 2>&1; then rsync -a --delete "$APP_PATH/public/$folder/" "$PUBLIC_HTML/$folder/"; else cp -rf "$APP_PATH/public/$folder/." "$PUBLIC_HTML/$folder/"; fi; done
-    for file in $SYNC_ROOT_FILES; do
-        if [ -f "$APP_PATH/public/$file" ]; then
-            cp "$APP_PATH/public/$file" "$PUBLIC_HTML/$file"
-        fi
-    done
+    run_php "$APP_PATH/scripts/deployment-assets.php" "$APP_PATH/public" "$PUBLIC_HTML" "$SYNC_FOLDERS" "$SYNC_ROOT_FILES"
 }
 git -C "$APP_PATH" fetch origin main
 FETCHED_MAIN="$(git -C "$APP_PATH" rev-parse origin/main)"
