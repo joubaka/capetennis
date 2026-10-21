@@ -78,7 +78,7 @@
         @foreach(['home', 'away'] as $side)
           @unless($loop->first)<div class="small text-muted my-1">vs</div>@endunless
           <div>@forelse($row['lineup'][$side]['players'] ?? [] as $player)@unless($loop->first) / @endunless<strong>{{ $player['name'] }}</strong>@empty<span class="text-muted">Players not assigned yet</span>@endforelse</div>
-          <div class="small text-muted">{{ $row['teams'][$side] ?? 'Team to be confirmed' }}</div>
+          <div class="small text-muted">{{ ($row['lineup'][$side]['region'] ?? '') ?: (($row['lineup'][$side]['region_name'] ?? '') ?: ($row['teams'][$side] ?? 'Team to be confirmed')) }}</div>
         @endforeach
       @else
         <x-scheduled-participants :row="$row" />
