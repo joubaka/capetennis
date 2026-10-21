@@ -698,15 +698,15 @@
     <div><p class="text-muted mb-1">Et esse atque.</p><h5 class="mb-0 text-uppercase">Clothing Orders — Clothing refund region</h5></div>
     <div class="btn-group mt-2 mt-md-0">
       <a href="/backend/region/21/clothing?event_id=24" class="btn btn-sm btn-outline-secondary">Back to clothing</a>
-      <a href="/backend/clothingOrder/exportClothingOrdersPdf/21?event_id=24" target="_blank" class="btn btn-sm btn-outline-danger">
+      <a href="/backend/clothingOrder/exportClothingOrdersPdf/21?event_id=24" download="clothing_orders.pdf" data-clothing-download="PDF" class="btn btn-sm btn-outline-danger">
         <i class="ti ti-file-text"></i> Print / PDF
       </a>
-      <a href="/backend/export-clothing-orders-excel/21?event_id=24" target="_blank" class="btn btn-sm btn-outline-success">
+      <a href="/backend/export-clothing-orders-excel/21?event_id=24" download="clothing_orders.xlsx" data-clothing-download="Excel" class="btn btn-sm btn-outline-success">
         <i class="ti ti-file-spreadsheet"></i> Excel
       </a>
     </div>
   </div>
-  <div class="card-body">
+  <div class="card-body"><div class="alert alert-info d-flex align-items-center gap-2" id="clothing-download-status" role="status" aria-live="polite" hidden><span class="spinner-border spinner-border-sm" aria-hidden="true" hidden></span><span data-download-message></span></div>
             <p class="text-muted">3 paid orders · 3 item lines. Downloads include all paid orders in the current region and event scope.</p>
     <div class="row g-2 mb-3">
       <div class="col-md-8"><label class="form-label" for="clothing-order-search">Find a player, team, item or size</label><input type="search" class="form-control" id="clothing-order-search" placeholder="Search these orders"></div>
@@ -751,7 +751,7 @@
                   <td data-label="Player"><span class="text-muted">#1</span> Alpha Sort Player</td>
                   <td data-label="Team">Zulu team</td>
                   <td data-label="Age group">U9 Boys</td>
-                  <td data-label="Order date"><span class="text-nowrap">03 Oct 2026</span><small class="d-block text-muted">12:30 SAST</small></td>
+                  <td data-label="Order date"><div><span class="text-nowrap">03 Oct 2026</span><small class="d-block text-muted">12:30 SAST</small></div></td>
                   <td data-label="Item">Refund shirt</td>
                   <td data-label="Size"><div><span data-size-label>Medium</span>
                                           <details><summary class="small text-primary">Change size</summary>
@@ -781,7 +781,7 @@
                   <td data-label="Player"><span class="text-muted">#1</span> Bravo Sort Player</td>
                   <td data-label="Team">Bravo team</td>
                   <td data-label="Age group">U11 Boys</td>
-                  <td data-label="Order date"><span class="text-nowrap">02 Oct 2026</span><small class="d-block text-muted">08:00 SAST</small></td>
+                  <td data-label="Order date"><div><span class="text-nowrap">02 Oct 2026</span><small class="d-block text-muted">08:00 SAST</small></div></td>
                   <td data-label="Item">Refund shirt</td>
                   <td data-label="Size"><div><span data-size-label>Medium</span>
                                           <details><summary class="small text-primary">Change size</summary>
@@ -811,7 +811,7 @@
                   <td data-label="Player"><span class="text-muted">#1</span> Zulu Sort Player</td>
                   <td data-label="Team">Alpha team</td>
                   <td data-label="Age group">U13 Boys</td>
-                  <td data-label="Order date"><span class="text-nowrap">01 Oct 2026</span><small class="d-block text-muted">07:00 SAST</small></td>
+                  <td data-label="Order date"><div><span class="text-nowrap">01 Oct 2026</span><small class="d-block text-muted">07:00 SAST</small></div></td>
                   <td data-label="Item">Refund shirt</td>
                   <td data-label="Size"><div><span data-size-label>Medium</span>
                                           <details><summary class="small text-primary">Change size</summary>
@@ -872,6 +872,60 @@
 </style>
 <script>
 (() => {
+  const downloadStatus = document.getElementById('clothing-download-status');
+  const downloadSpinner = downloadStatus.querySelector('.spinner-border');
+  const downloadMessage = downloadStatus.querySelector('[data-download-message]');
+  const downloadLinks = [...document.querySelectorAll('[data-clothing-download]')];
+  let downloadInProgress = false;
+  downloadLinks.forEach(link => link.addEventListener('click', async event => {
+    event.preventDefault();
+    if (downloadInProgress) return;
+    downloadInProgress = true;
+    downloadLinks.forEach(button => {
+      button.setAttribute('aria-disabled', 'true');
+      button.setAttribute('aria-busy', 'true');
+      button.classList.add('disabled');
+    });
+    downloadStatus.hidden = false;
+    downloadStatus.classList.remove('alert-danger');
+    downloadStatus.classList.add('alert-info');
+    downloadSpinner.hidden = false;
+    downloadMessage.textContent = `Preparing ${link.dataset.clothingDownload} download…`;
+    try {
+      const response = await fetch(link.href, {credentials: 'same-origin'});
+      const type = response.headers.get('Content-Type') || '';
+      const expectedType = link.dataset.clothingDownload === 'PDF' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      if (response.redirected || response.status === 401 || response.status === 419) {
+        throw new Error('Your session may have expired. Refresh this page, sign in if needed, and try again.');
+      }
+      if (!response.ok || !type.toLowerCase().includes(expectedType) || !/attachment/i.test(response.headers.get('Content-Disposition') || '')) {
+        throw new Error('The download could not be prepared. Please try again.');
+      }
+      const file = await response.blob();
+      if (!file.size) throw new Error('The download was empty. Please try again.');
+      const objectUrl = URL.createObjectURL(file);
+      const download = document.createElement('a');
+      download.href = objectUrl;
+      download.download = link.download;
+      document.body.appendChild(download);
+      download.click();
+      download.remove();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+      downloadMessage.textContent = `${link.dataset.clothingDownload} is ready. Check your browser’s Downloads for the file.`;
+    } catch (error) {
+      downloadStatus.classList.remove('alert-info');
+      downloadStatus.classList.add('alert-danger');
+      downloadMessage.textContent = error.message || 'The download failed. Please try again.';
+    } finally {
+      downloadSpinner.hidden = true;
+      downloadInProgress = false;
+      downloadLinks.forEach(button => {
+        button.removeAttribute('aria-disabled');
+        button.removeAttribute('aria-busy');
+        button.classList.remove('disabled');
+      });
+    }
+  }));
   document.querySelectorAll('[data-size-change-form]').forEach(form => form.addEventListener('submit', async event => {
     event.preventDefault();
     const button = form.querySelector('button');

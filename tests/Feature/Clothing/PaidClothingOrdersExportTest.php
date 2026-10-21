@@ -33,6 +33,9 @@ class PaidClothingOrdersExportTest extends TestCase
             ->assertSee('Financial summary')->assertSee('Payfast ID')->assertSee('Customer payments received')
             ->assertSee('Net clothing proceeds before supplier costs')->assertSee('R100.00');
         $response->assertSee('clothing-order-search')->assertSee('clothing-team-filter')->assertSee('Print / PDF')->assertSee('Downloads include all paid orders');
+        $response->assertSee('download="clothing_orders.pdf" data-clothing-download="PDF"', false)
+            ->assertSee('download="clothing_orders.xlsx" data-clothing-download="Excel"', false)
+            ->assertSee('id="clothing-download-status"', false);
         $this->assertDatabaseCount('clothing_orders', 1);
         $setup = $this->get(route('backend.region.clothing.edit', ['region' => $region, 'event_id' => $event->id]))->assertOk();
         $setup->assertSee('Items & sizes', false)->assertSee('Pricing details')->assertSee('item-pricing-source')->assertSee('Regional clothing catalog shared across events');
@@ -74,6 +77,19 @@ class PaidClothingOrdersExportTest extends TestCase
                 && $rows->every(fn (array $row) => (int) $row['order']->pay_status === 1)
                 && $rows->pluck('item.item_name')->sort()->values()->all() === ['Paid cap', 'Paid shirt'];
         });
+    }
+
+    public function test_export_responses_are_download_attachments_with_the_expected_file_types(): void
+    {
+        [$admin, $event, $region] = $this->managedRegion();
+        $this->order($event, $region, true, 'Download shirt');
+        $scope = ['id' => $region->id, 'event_id' => $event->id];
+        $this->actingAs($admin)->get(route('export.pdf.clothing.order', $scope))
+            ->assertOk()->assertDownload('clothing_orders.pdf')->assertHeader('content-type', 'application/pdf');
+        $this->get(route('export.excel.clothing', $scope))
+            ->assertOk()->assertDownload('clothing_orders.xlsx')
+            ->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $this->assertDatabaseCount('clothing_orders', 1);
     }
 
     public function test_paid_orders_page_and_export_are_isolated_by_region_and_event(): void

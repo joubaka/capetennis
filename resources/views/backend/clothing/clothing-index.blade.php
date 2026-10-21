@@ -13,15 +13,16 @@
     <div>@if($clothingEvent ?? null)<p class="text-muted mb-1">{{ $clothingEvent->name }}</p>@else<p class="text-muted mb-1">All events in this region</p>@endif<h5 class="mb-0 text-uppercase">Clothing Orders — {{ $region->region_name ?? '' }}</h5></div>
     <div class="btn-group mt-2 mt-md-0">
       <a href="{{ route('backend.region.clothing.edit', array_filter(['region' => $region, 'event_id' => request()->integer('event_id') ?: null])) }}" class="btn btn-sm btn-outline-secondary">Back to clothing</a>
-      <a href="{{ route('export.pdf.clothing.order', array_filter(['id' => $region->id, 'event_id' => request()->integer('event_id') ?: null])) }}" target="_blank" class="btn btn-sm btn-outline-danger">
+      <a href="{{ route('export.pdf.clothing.order', array_filter(['id' => $region->id, 'event_id' => request()->integer('event_id') ?: null])) }}" download="clothing_orders.pdf" data-clothing-download="PDF" class="btn btn-sm btn-outline-danger">
         <i class="ti ti-file-text"></i> Print / PDF
       </a>
-      <a href="{{ route('export.excel.clothing', array_filter(['id' => $region->id, 'event_id' => request()->integer('event_id') ?: null])) }}" target="_blank" class="btn btn-sm btn-outline-success">
+      <a href="{{ route('export.excel.clothing', array_filter(['id' => $region->id, 'event_id' => request()->integer('event_id') ?: null])) }}" download="clothing_orders.xlsx" data-clothing-download="Excel" class="btn btn-sm btn-outline-success">
         <i class="ti ti-file-spreadsheet"></i> Excel
       </a>
     </div>
   </div>
   <div class="card-body">
+    <div class="alert alert-info d-flex align-items-center gap-2" id="clothing-download-status" role="status" aria-live="polite" hidden><span class="spinner-border spinner-border-sm" aria-hidden="true" hidden></span><span data-download-message></span></div>
     @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
     @if($errors->any())<div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>@endif
     <p class="text-muted">{{ $clothings->count() }} paid orders · {{ $clothings->sum(fn ($order) => $order->items->count()) }} item lines. Downloads include all paid orders in the current region and event scope.</p>
@@ -88,7 +89,7 @@
                   <td data-label="Player">@php $rosterRank = $order->team?->team_players->firstWhere('player_id', $order->player_id)?->rank; @endphp@if($rosterRank > 0)<span class="text-muted">#{{ $rosterRank }}</span> @endif{{ $order->player?->full_name }}</td>
                   <td data-label="Team">{{ optional($order->team)->name }}</td>
                   <td data-label="Age group">{{ $order->team?->category?->category?->name ?? 'Not set' }}</td>
-                  <td data-label="Order date"><span class="text-nowrap">{{ $order->created_at?->timezone('Africa/Johannesburg')->format('d M Y') ?? 'Not recorded' }}</span>@if($order->created_at)<small class="d-block text-muted">{{ $order->created_at->timezone('Africa/Johannesburg')->format('H:i') }} SAST</small>@endif</td>
+                  <td data-label="Order date"><div><span class="text-nowrap">{{ $order->created_at?->timezone('Africa/Johannesburg')->format('d M Y') ?? 'Not recorded' }}</span>@if($order->created_at)<small class="d-block text-muted">{{ $order->created_at->timezone('Africa/Johannesburg')->format('H:i') }} SAST</small>@endif</div></td>
                   <td data-label="Item">{{ $item->item_name ?: optional($item->itemType)->item_type_name }}</td>
                   <td data-label="Size"><div><span data-size-label>{{ $item->size_name ?: optional($item->size)->size }}</span>
                     @if($item->refundItems->isEmpty() && $item->itemType?->sizes->isNotEmpty())
@@ -169,6 +170,60 @@
 </style>
 <script>
 (() => {
+  const downloadStatus = document.getElementById('clothing-download-status');
+  const downloadSpinner = downloadStatus.querySelector('.spinner-border');
+  const downloadMessage = downloadStatus.querySelector('[data-download-message]');
+  const downloadLinks = [...document.querySelectorAll('[data-clothing-download]')];
+  let downloadInProgress = false;
+  downloadLinks.forEach(link => link.addEventListener('click', async event => {
+    event.preventDefault();
+    if (downloadInProgress) return;
+    downloadInProgress = true;
+    downloadLinks.forEach(button => {
+      button.setAttribute('aria-disabled', 'true');
+      button.setAttribute('aria-busy', 'true');
+      button.classList.add('disabled');
+    });
+    downloadStatus.hidden = false;
+    downloadStatus.classList.remove('alert-danger');
+    downloadStatus.classList.add('alert-info');
+    downloadSpinner.hidden = false;
+    downloadMessage.textContent = `Preparing ${link.dataset.clothingDownload} download…`;
+    try {
+      const response = await fetch(link.href, {credentials: 'same-origin'});
+      const type = response.headers.get('Content-Type') || '';
+      const expectedType = link.dataset.clothingDownload === 'PDF' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      if (response.redirected || response.status === 401 || response.status === 419) {
+        throw new Error('Your session may have expired. Refresh this page, sign in if needed, and try again.');
+      }
+      if (!response.ok || !type.toLowerCase().includes(expectedType) || !/attachment/i.test(response.headers.get('Content-Disposition') || '')) {
+        throw new Error('The download could not be prepared. Please try again.');
+      }
+      const file = await response.blob();
+      if (!file.size) throw new Error('The download was empty. Please try again.');
+      const objectUrl = URL.createObjectURL(file);
+      const download = document.createElement('a');
+      download.href = objectUrl;
+      download.download = link.download;
+      document.body.appendChild(download);
+      download.click();
+      download.remove();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+      downloadMessage.textContent = `${link.dataset.clothingDownload} is ready. Check your browser’s Downloads for the file.`;
+    } catch (error) {
+      downloadStatus.classList.remove('alert-info');
+      downloadStatus.classList.add('alert-danger');
+      downloadMessage.textContent = error.message || 'The download failed. Please try again.';
+    } finally {
+      downloadSpinner.hidden = true;
+      downloadInProgress = false;
+      downloadLinks.forEach(button => {
+        button.removeAttribute('aria-disabled');
+        button.removeAttribute('aria-busy');
+        button.classList.remove('disabled');
+      });
+    }
+  }));
   document.querySelectorAll('[data-size-change-form]').forEach(form => form.addEventListener('submit', async event => {
     event.preventDefault();
     const button = form.querySelector('button');
