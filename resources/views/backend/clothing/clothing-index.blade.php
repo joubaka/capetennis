@@ -39,16 +39,32 @@
       </form></details>
       @endif
     @endif
-    <form method="GET" class="mb-3">@if(request('event_id'))<input type="hidden" name="event_id" value="{{ request('event_id') }}">@endif<label for="clothing-order-sort" class="form-label">Player order within each team</label><select class="form-select" id="clothing-order-sort" name="sort" onchange="this.form.submit()"><option value="rank" @selected(($orderSort ?? 'rank') === 'rank')>Team ranking / position</option><option value="name" @selected(($orderSort ?? 'rank') === 'name')>Player name</option></select><noscript><button class="btn btn-outline-primary">Sort players</button></noscript></form>
+    <form method="GET" class="mb-3" id="clothing-order-sort-form">
+      @if(request('event_id'))<input type="hidden" name="event_id" value="{{ request('event_id') }}">@endif
+      <input type="hidden" name="search" value="{{ request('search', '') }}"><input type="hidden" name="team" value="{{ request('team', '') }}">
+      <label for="clothing-order-sort" class="form-label">Sort orders</label>
+      <select class="form-select" id="clothing-order-sort" name="sort">
+        @foreach(['rank' => 'Team ranking / position', 'date_desc' => 'Order date — newest first', 'date_asc' => 'Order date — oldest first', 'team' => 'Team', 'age_group' => 'Age group', 'name' => 'Player name'] as $sortValue => $sortLabel)
+          <option value="{{ $sortValue }}" @selected(($orderSort ?? 'rank') === $sortValue)>{{ $sortLabel }}</option>
+        @endforeach
+      </select>
+      <noscript><button class="btn btn-outline-primary">Sort orders</button></noscript>
+    </form>
     @php $grandTotal = 0; @endphp
-    @foreach($clothings->groupBy('team_id') as $teamOrders)
-    <details class="border rounded p-2 mb-3" data-clothing-team-group open><summary class="fw-semibold">{{ $teamOrders->first()->team?->name }} · {{ $teamOrders->count() }} orders</summary>
+    @php
+      $groupByTeam = in_array($orderSort ?? 'rank', ['rank', 'team'], true);
+      $orderGroups = $groupByTeam ? $clothings->groupBy('team_id') : ($clothings->isEmpty() ? collect() : collect([$clothings]));
+    @endphp
+    @foreach($orderGroups as $teamOrders)
+    <details class="border rounded p-2 mb-3" data-clothing-team-group open><summary class="fw-semibold">{{ $groupByTeam ? $teamOrders->first()->team?->name : 'All paid orders' }} · {{ $teamOrders->count() }} orders</summary>
     <div class="table-responsive">
       <table class="table table-striped align-middle clothing-fulfillment-table">
         <thead class="table-light">
           <tr>
             <th>Player</th>
             <th>Team</th>
+            <th>Age group</th>
+            <th>Order date</th>
             <th>Item</th>
             <th>Size</th>
             <th>Qty</th>
@@ -71,6 +87,8 @@
                 <tr data-clothing-order-line data-team-id="{{ $order->team_id }}">
                   <td data-label="Player">@php $rosterRank = $order->team?->team_players->firstWhere('player_id', $order->player_id)?->rank; @endphp@if($rosterRank > 0)<span class="text-muted">#{{ $rosterRank }}</span> @endif{{ $order->player?->full_name }}</td>
                   <td data-label="Team">{{ optional($order->team)->name }}</td>
+                  <td data-label="Age group">{{ $order->team?->category?->category?->name ?? 'Not set' }}</td>
+                  <td data-label="Order date"><span class="text-nowrap">{{ $order->created_at?->timezone('Africa/Johannesburg')->format('d M Y') ?? 'Not recorded' }}</span>@if($order->created_at)<small class="d-block text-muted">{{ $order->created_at->timezone('Africa/Johannesburg')->format('H:i') }} SAST</small>@endif</td>
                   <td data-label="Item">{{ $item->item_name ?: optional($item->itemType)->item_type_name }}</td>
                   <td data-label="Size"><div><span data-size-label>{{ $item->size_name ?: optional($item->size)->size }}</span>
                     @if($item->refundItems->isEmpty() && $item->itemType?->sizes->isNotEmpty())
@@ -96,7 +114,6 @@
                   <td data-label="Status"><span class="badge bg-label-success">Paid</span>@if($order->refunds->isNotEmpty())<a class="d-block small" href="{{ route('backend.clothing.refunds.show', [$order->event_id, $order]) }}">Refund history</a>@endif</td>
                   <td data-label="Order details"><div class="clothing-order-actions"><details><summary>Details</summary><dl class="mt-2 mb-0 text-break">
                     <dt>Order</dt><dd>#{{ $order->id }}</dd>
-                    <dt>Date</dt><dd>{{ $order->created_at->format('d-m-Y') }}</dd>
                     <dt>Payfast ID</dt><dd>{{ $order->pf_id }}</dd>
                     <dt>Unit Price</dt><dd>R{{ number_format($price, 2) }}</dd>
                     <dt>Line Total</dt><dd>R{{ number_format($lineTotal, 2) }}</dd>
@@ -112,7 +129,7 @@
             @endforeach
           @empty
             <tr>
-              <td colspan="7" class="text-center text-muted py-3">No clothing orders found for this region</td>
+              <td colspan="9" class="text-center text-muted py-3">No clothing orders found for this region</td>
             </tr>
           @endforelse
         </tbody>
@@ -185,6 +202,16 @@
   const context = new URLSearchParams(window.location.search);
   search.value = context.get('search') || '';
   team.value = context.get('team') || '';
+  const sortForm = document.getElementById('clothing-order-sort-form');
+  const preserveFilters = () => {
+    sortForm.elements.search.value = search.value.slice(0, 120);
+    sortForm.elements.team.value = team.value;
+  };
+  sortForm.addEventListener('submit', preserveFilters);
+  document.getElementById('clothing-order-sort').addEventListener('change', () => {
+    preserveFilters();
+    sortForm.requestSubmit();
+  });
 
   const filter = () => {
     const term = search.value.trim().toLocaleLowerCase();

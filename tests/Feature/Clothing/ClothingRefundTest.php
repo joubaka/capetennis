@@ -377,6 +377,65 @@ class ClothingRefundTest extends TestCase
         $this->assertDatabaseCount('wallet_transactions', 0);
     }
 
+    public function test_orders_sort_globally_by_date_player_and_natural_age_group_with_dates_visible(): void
+    {
+        [$super, , $event, $first, $region] = $this->fixture();
+        $orders = collect([$first]);
+        for ($i = 1; $i < 3; $i++) {
+            $copy = $first->replicate();
+            $copy->request_token = (string) str()->uuid();
+            $copy->payfast_pf_payment_id = 'sort-payment-'.$i;
+            $copy->player_id = Player::factory()->create()->id;
+            $copy->save();
+            $item = $first->items->first()->replicate();
+            $item->clothing_order_id = $copy->id;
+            $item->save();
+            $orders->push($copy);
+        }
+        foreach ($orders as $index => $order) {
+            $category = \App\Models\Category::create(['name' => ['U13 Boys', 'U9 Boys', 'U11 Boys'][$index]]);
+            $categoryEvent = CategoryEvent::factory()->create(['event_id' => $event->id, 'category_id' => $category->id]);
+            $team = Team::factory()->create(['name' => ['Alpha team', 'Zulu team', 'Bravo team'][$index], 'region_id' => $region->id, 'category_event_id' => $categoryEvent->id]);
+            $order->player->update(['name' => ['Zulu', 'Alpha', 'Bravo'][$index], 'surname' => 'Sort Player']);
+            $order->forceFill(['team_id' => $team->id, 'created_at' => ['2026-10-01 07:00:00', '2026-10-03 12:30:00', '2026-10-02 08:00:00'][$index]])->save();
+            \App\Models\TeamPlayer::create(['team_id' => $team->id, 'player_id' => $order->player_id, 'rank' => 1]);
+        }
+        $url = route('backend.region.clothing.orders', ['region' => $region, 'event_id' => $event->id]);
+        foreach ([
+            'date_desc' => [1, 2, 0], 'date_asc' => [0, 2, 1],
+            'team' => [0, 2, 1], 'age_group' => [1, 2, 0], 'name' => [1, 2, 0], 'rank' => [0, 2, 1],
+        ] as $sort => $indexes) {
+            $response = $this->actingAs($super)->get($url.'&sort='.$sort.'&search=Sort&team='.$orders[1]->team_id)
+                ->assertOk()->assertViewHas('orderSort', $sort)
+                ->assertViewHas('clothings', fn ($rows) => $rows->pluck('id')->all() === array_map(fn ($i) => $orders[$i]->id, $indexes))
+                ->assertSee('Order date')->assertSee('03 Oct 2026')->assertSee('14:30 SAST')
+                ->assertSee('name="search" value="Sort"', false);
+            if (in_array($sort, ['date_desc', 'date_asc', 'name', 'age_group'], true)) {
+                $response->assertSee('All paid orders')->assertSeeInOrder(array_map(fn ($i) => ['Zulu', 'Alpha', 'Bravo'][$i].' Sort Player', $indexes));
+            }
+            if ($sort === 'date_desc') $this->exportRefundQa('orders-date', $response->getContent());
+        }
+        $this->get($url.'&sort=invalid')->assertSessionHasErrors('sort');
+        $this->actingAs(User::factory()->create())->get($url.'&sort=date_desc')->assertForbidden();
+        $this->assertDatabaseCount('clothing_orders', 3);
+        $this->assertDatabaseCount('clothing_refunds', 0);
+    }
+
+    public function test_new_order_sorts_survive_refund_selection_and_review_without_mutating_payments(): void
+    {
+        [$super, , $event, $order, $region] = $this->fixture();
+        foreach (['team', 'age_group', 'date_desc', 'date_asc'] as $sort) {
+            $this->actingAs($super)->get(route('backend.clothing.refunds.show', [$event, $order, 'sort' => $sort, 'search' => 'QA', 'team' => $order->team_id]))
+                ->assertOk()->assertSee('name="return_sort" value="'.$sort.'"', false)
+                ->assertSee(route('backend.region.clothing.orders', ['region' => $region->id, 'event_id' => $event->id, 'sort' => $sort, 'search' => 'QA', 'team' => $order->team_id]));
+            $this->reviewSelection($event, $order, $this->request($order) + ['return_sort' => $sort])
+                ->assertViewHas('validated', fn ($data) => $data['return_sort'] === $sort);
+        }
+        $this->assertDatabaseCount('clothing_refunds', 0);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->assertSame(1, $order->fresh()->pay_status);
+    }
+
     private function request(ClothingOrder $order, string $method = 'wallet', int $quantity = 1): array
     {
         return ['request_token' => (string) str()->uuid(), 'method' => $method, 'reason' => 'Returned clothing', 'items' => [$order->items->first()->id => $quantity]];

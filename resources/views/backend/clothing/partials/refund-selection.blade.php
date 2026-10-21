@@ -1,7 +1,7 @@
 <form method="POST" action="{{ route('backend.clothing.refunds.review', [$event, $order]) }}" data-clothing-refund-selection>
   @csrf
   <input type="hidden" name="request_token" value="{{ old('request_token', (string) str()->uuid()) }}">
-  <input type="hidden" name="return_sort" value="{{ request('sort', 'rank') === 'name' ? 'name' : 'rank' }}">
+  <input type="hidden" name="return_sort" value="{{ in_array(request('sort'), ['rank', 'name', 'team', 'age_group', 'date_desc', 'date_asc'], true) ? request('sort') : 'rank' }}">
   <input type="hidden" name="return_search" value="{{ request('search', '') }}">
   <input type="hidden" name="return_team" value="{{ request('team', '') }}">
   <input type="hidden" name="return_all_events" value="{{ request()->boolean('all_events') ? '1' : '0' }}">

@@ -8,7 +8,7 @@
 <div class="card clothing-refund-workspace"><div class="card-body">
 <h4>Clothing refunds — {{ $order->player?->full_name }}</h4>
 <p>Order #{{ $order->id }} · {{ $event->name }} · Original payer: {{ $order->user?->name }}</p>
-<a class="btn btn-outline-secondary mb-3" href="{{ route('backend.region.clothing.orders', array_filter(['region' => $order->team->region_id, 'event_id' => request()->boolean('all_events') && auth()->user()->hasRole('super-user') ? null : $event->id, 'sort' => request('sort') === 'name' ? 'name' : 'rank', 'search' => request('search', ''), 'team' => request('team', '')], fn ($value) => $value !== null)) }}">Back to clothing orders</a>
+<a class="btn btn-outline-secondary mb-3" href="{{ route('backend.region.clothing.orders', array_filter(['region' => $order->team->region_id, 'event_id' => request()->boolean('all_events') && auth()->user()->hasRole('super-user') ? null : $event->id, 'sort' => in_array(request('sort'), ['rank', 'name', 'team', 'age_group', 'date_desc', 'date_asc'], true) ? request('sort') : 'rank', 'search' => request('search', ''), 'team' => request('team', '')], fn ($value) => $value !== null)) }}">Back to clothing orders</a>
 @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
 @if($errors->any())<div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>@endif
 @if($refundAllowed)

@@ -92,7 +92,7 @@ class ClothingRefundController extends Controller
         if ($request->isJson()) $request->json()->remove('bank_details');
         $validated = $request->validate([
             'request_token' => ['required', 'uuid'],
-            'return_sort' => ['nullable', 'in:rank,name'],
+            'return_sort' => ['nullable', 'in:rank,name,team,age_group,date_desc,date_asc'],
             'return_search' => ['nullable', 'string', 'max:120'],
             'return_team' => ['nullable', 'integer'],
             'return_all_events' => ['nullable', 'boolean'],

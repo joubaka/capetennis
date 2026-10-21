@@ -94,7 +94,11 @@
               <td>{{ $rubber->scheduled_at?->format('d M H:i') ?? 'Unscheduled' }} @if($rubber->court_label)<span class="text-muted">{{ $rubber->court_label }}</span>@endif</td>
               <td><div class="d-flex flex-wrap gap-2">
                 @can('team-fixture.view', $rubber)<a class="btn btn-sm btn-outline-secondary" href="{{ route('backend.team-fixtures.show', $rubber) }}">Review players</a>@endcan
-                @unless($draw->isPlacementDraft())@can('team-fixture.saveScore', $rubber)<a class="btn btn-sm btn-primary" href="{{ route('frontend.fixtures.enter-scores', $draw) }}">Enter scores</a>@endcan@endunless
+                @unless($draw->isPlacementDraft())
+                  @can('team-fixture.saveScore', $rubber)
+                    <a class="btn btn-sm btn-primary" href="{{ route('frontend.fixtures.enter-scores', $draw) }}">Enter scores</a>
+                  @endcan
+                @endunless
                 @can('team-fixture.update', $rubber)<a class="btn btn-sm btn-outline-primary" href="{{ route('backend.team-fixtures.edit', $rubber) }}">Edit schedule</a>@endcan
               </div></td>
             </tr>

@@ -433,7 +433,8 @@ class RegionClothingController extends Controller
       'items.itemType.sizes',
       'items.size',
       'player',
-      'team.team_players'
+      'team.team_players',
+      'team.category.category',
     ])
       ->whereHas('team', fn($q) => $q->where('region_id', $region->id))
       ->where('pay_status', 1)
@@ -450,12 +451,26 @@ class RegionClothingController extends Controller
 
     $clothingEvent = $eventId ? $eventRegion->events : null;
     $clothingDeadline = $eventId ? $eventRegion->clothing_deadline_at : null;
-    $orderSort = $request->validate(['sort' => ['nullable', 'in:rank,name']])['sort'] ?? 'rank';
-    $clothings = $clothings->sortBy(fn ($order) => [
-      $order->team?->name ?? '',
-      $orderSort === 'rank' ? (($order->team?->team_players->firstWhere('player_id', $order->player_id)?->rank ?: PHP_INT_MAX)) : 0,
-      mb_strtolower($order->player?->full_name ?? ''), $order->id,
-    ])->values();
+    $orderSort = $request->validate(['sort' => ['nullable', 'in:rank,name,team,age_group,date_desc,date_asc']])['sort'] ?? 'rank';
+    $sortKeys = static function ($order) use ($orderSort): array {
+      $name = $order->player?->full_name ?? '';
+      $team = $order->team?->name ?? '';
+      return match ($orderSort) {
+        'date_desc' => [$order->created_at ? -$order->created_at->timestamp : PHP_INT_MAX, -$order->id],
+        'date_asc' => [$order->created_at?->timestamp ?? PHP_INT_MAX, $order->id],
+        'name' => [$name, $team, $order->id],
+        'age_group' => [$order->team?->category?->category?->name ?? 'zzzz', $team, $name, $order->id],
+        'team' => [$team, $name, $order->id],
+        default => [$team, $order->team?->team_players->firstWhere('player_id', $order->player_id)?->rank ?: PHP_INT_MAX, $name, $order->id],
+      };
+    };
+    $clothings = $clothings->sort(static function ($left, $right) use ($sortKeys): int {
+      foreach (array_map(null, $sortKeys($left), $sortKeys($right)) as [$a, $b]) {
+        $comparison = is_numeric($a) && is_numeric($b) ? $a <=> $b : strnatcasecmp((string) $a, (string) $b);
+        if ($comparison !== 0) return $comparison;
+      }
+      return 0;
+    })->values();
 
     return view('backend.clothing.clothing-index', compact('region', 'clothings', 'clothingFinancials', 'clothingEvent', 'clothingDeadline', 'orderSort'));
   }
