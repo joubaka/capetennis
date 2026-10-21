@@ -51,13 +51,38 @@ final class SchedulePublicationService
     /** Snapshot timing; optional names always come from current event records. */
     public function publishedRows(Event $event, bool $includeParticipants = true): Collection
     {
+        return $this->visibleRows($event, $includeParticipants);
+    }
+
+    /** Project the scoped publication in memory; never change public snapshots or flags. */
+    public function previewAfterPublishingRows(Event $event, array $scope): Collection
+    {
+        $inScope = fn ($row) => (empty($scope['date']) || $scope['date'] === 'all' || substr($row['scheduled_at'], 0, 10) === $scope['date'])
+            && (empty($scope['venue_id']) || (int) $row['venue_id'] === (int) $scope['venue_id'])
+            && (empty($scope['draw_id']) || (int) $row['draw_id'] === (int) $scope['draw_id']);
+        $working = $this->workingRows($event)->filter($inScope)->keyBy('fixture_key');
+        $existing = $this->publishedAssignments($event);
+        $affectedDrawIds = $working->pluck('draw_id')->concat($existing->filter($inScope)->pluck('draw_id'))->unique();
+        $snapshots = $existing->reject($inScope)
+            ->reject(fn ($row) => $working->has($row['fixture_key']))->concat($working)
+            ->map(fn ($row) => (object) array_intersect_key($row, array_flip([
+                'event_id', 'fixture_kind', 'fixture_id', 'draw_id', 'scheduled_at', 'venue_id', 'court', 'duration',
+            ])))->values();
+
+        return $this->visibleRows($event, true, $snapshots, $affectedDrawIds);
+    }
+
+    private function visibleRows(Event $event, bool $includeParticipants, ?Collection $projectedSnapshots = null, ?Collection $affectedDrawIds = null): Collection
+    {
         if (! app(\App\Services\PublicTournamentVisibility::class)->eventIsVisible($event)) return collect();
         // Metadata-only reads must never replace the default participant cache.
         $cacheKey = 'published_schedule_rows_'.$event->id.($includeParticipants ? '' : '_timing');
-        if (request()->attributes->has($cacheKey)) return request()->attributes->get($cacheKey);
-        $draws = $event->draws()->with('settings')->where('published', true)->where('oop_published', true)->get()->keyBy('id');
-        $snapshots = DB::table('published_schedule_assignments')->where('event_id', $event->id)
-            ->whereIn('draw_id', $draws->keys())->get();
+        if ($projectedSnapshots === null && request()->attributes->has($cacheKey)) return request()->attributes->get($cacheKey);
+        $draws = $event->draws()->with('settings')->where('published', true)
+            ->where(fn ($query) => $query->where('oop_published', true)
+                ->when($affectedDrawIds !== null, fn ($query) => $query->orWhereIn('id', $affectedDrawIds)))->get()->keyBy('id');
+        $snapshots = $projectedSnapshots?->whereIn('draw_id', $draws->keys())
+            ?? DB::table('published_schedule_assignments')->where('event_id', $event->id)->whereIn('draw_id', $draws->keys())->get();
         $individualIds = $snapshots->where('fixture_kind', 'individual')->pluck('fixture_id');
         $teamIds = $snapshots->where('fixture_kind', 'team')->pluck('fixture_id');
         $individual = Fixture::with($includeParticipants ? ['fixtureResults', 'registration1.players', 'registration2.players'] : ['fixtureResults'])
@@ -110,7 +135,7 @@ final class SchedulePublicationService
             return $visible;
         })->sort(fn ($left, $right) => app(VenueMatchOrder::class)->compare($left['_fixture'], $right['_fixture']))
             ->map(fn ($row) => array_diff_key($row, ['_fixture' => true]))->values();
-        request()->attributes->set($cacheKey, $publicRows);
+        if ($projectedSnapshots === null) request()->attributes->set($cacheKey, $publicRows);
         return $publicRows;
     }
 

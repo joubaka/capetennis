@@ -212,6 +212,76 @@ class SchedulePublicationTest extends TestCase
         $this->get(route('backend.event-venue-schedule.calendar',['event'=>$event->id,'draw_id'=>Draw::factory()->create()->id]))->assertUnprocessable();
     }
 
+    public function test_public_preview_toggle_uses_saved_times_without_publishing_and_preserves_scope(): void
+    {
+        [$event, $draw, $venue, $fixture] = $this->context();
+        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $publication = app(SchedulePublicationService::class);
+        $publication->publish($event, ['date' => '2026-10-10']);
+        $before = DB::table('published_schedule_assignments')->get()->toJson();
+        $auditCount = DrawAuditLog::count();
+        $fixture->orderOfPlay()->update(['time' => '2026-10-10 11:30:00']);
+        $scope = ['event' => $event->id, 'date' => '2026-10-10', 'venue_id' => $venue->id, 'draw_id' => $draw->id];
+        $url = route('backend.event-venue-schedule.calendar.preview', $scope);
+        $this->actingAs($admin)->get($url)->assertOk()->assertSee('Currently public')->assertSee('08:00')->assertDontSee('11:30');
+        $response = $this->get(route('backend.event-venue-schedule.calendar.preview', $scope + ['after_publish' => 1]))
+            ->assertOk()->assertSee('After publishing')->assertSee('11:30')->assertDontSee('08:00')
+            ->assertSee('aria-pressed="true"', false)
+            ->assertSee(e(route('backend.event-venue-schedule.calendar.preview', $scope + ['after_publish' => 0])), false);
+        if (getenv('CT_WEEKEND_BROWSER_FIXTURE') === '1') {
+            file_put_contents(storage_path('framework/testing/weekend-public-preview.html'), $this->get($url)->getContent());
+            file_put_contents(storage_path('framework/testing/weekend-after-publish-preview.html'), $response->getContent());
+        }
+        $this->get($url)->assertOk()->assertSee('08:00')->assertDontSee('11:30');
+        $this->assertSame($before, DB::table('published_schedule_assignments')->get()->toJson());
+        $this->assertSame($auditCount, DrawAuditLog::count());
+        $this->assertTrue((bool) $draw->fresh()->oop_published);
+        $this->get(route('backend.event-venue-schedule.calendar.preview', ['event' => Event::factory()->create()->id, 'after_publish' => 1]))->assertForbidden();
+        $this->get(route('backend.event-venue-schedule.calendar.preview', array_replace($scope, ['draw_id' => Draw::factory()->create()->id, 'after_publish' => 1])))->assertUnprocessable();
+    }
+
+    public function test_after_publish_preview_projects_new_cleared_and_moved_times_but_respects_draw_visibility(): void
+    {
+        [$event, $draw, $venue, $fixture] = $this->context();
+        $publication = app(SchedulePublicationService::class);
+        $this->assertCount(0, $publication->publishedRows($event));
+        $this->assertCount(1, $publication->previewAfterPublishingRows($event, ['date' => '2026-10-10']));
+        $this->assertFalse((bool) $draw->fresh()->oop_published);
+        $publication->publish($event, ['date' => '2026-10-10']);
+        $fixture->orderOfPlay()->update(['time' => '2026-10-11 11:30:00']);
+        $rows = $publication->previewAfterPublishingRows($event, ['date' => '2026-10-11']);
+        $this->assertCount(1, $rows);
+        $this->assertSame('2026-10-11 11:30:00', $rows->first()['scheduled_at']);
+        $fixture->orderOfPlay()->delete();
+        $this->assertCount(0, $publication->previewAfterPublishingRows($event, ['date' => '2026-10-10']));
+        $this->assertCount(1, $publication->previewAfterPublishingRows($event, ['date' => '2026-10-11']));
+        $draw->update(['published' => false]);
+        $this->assertCount(0, $publication->previewAfterPublishingRows($event, ['date' => 'all']));
+        $this->assertDatabaseCount('published_schedule_assignments', 1);
+    }
+
+    public function test_after_publish_preview_retains_other_days_before_first_match_filtering(): void
+    {
+        [$event, $draw, $venue, $fixture] = $this->context();
+        $draw->settings()->create(['schedule_visibility' => \App\Models\DrawSetting::SCHEDULE_VISIBILITY_FIRST_MATCH]);
+        $publication = app(SchedulePublicationService::class);
+        $publication->publish($event, ['date' => '2026-10-10']);
+        $later = Fixture::factory()->create(['draw_id' => $draw->id, 'registration1_id' => $fixture->registration1_id,
+            'registration2_id' => $fixture->registration2_id, 'round' => 2, 'match_nr' => 2, 'match_status' => 0]);
+        OrderOfPlay::create(['fixture_id' => $later->id, 'draw_id' => $draw->id, 'venue_id' => $venue->id,
+            'court' => '1', 'time' => '2026-10-11 10:00:00']);
+        $rows = $publication->previewAfterPublishingRows($event, ['date' => '2026-10-11']);
+        $this->assertSame([$fixture->id], $rows->pluck('fixture_id')->all());
+        $otherDraw = Draw::factory()->create(['event_id' => $event->id, 'published' => true, 'oop_published' => false]);
+        $otherFixture = Fixture::factory()->create(['draw_id' => $otherDraw->id]);
+        DB::table('published_schedule_assignments')->insert(['event_id' => $event->id, 'draw_id' => $otherDraw->id,
+            'fixture_kind' => 'individual', 'fixture_id' => $otherFixture->id, 'scheduled_at' => '2026-10-10 14:00:00',
+            'venue_id' => $venue->id, 'court' => '2', 'duration' => 60, 'published_at' => now()]);
+        $this->assertSame([$fixture->id], $publication->previewAfterPublishingRows($event, ['date' => '2026-10-11'])->pluck('fixture_id')->all());
+    }
+
     public function test_migration_retry_preserves_snapshot_and_captures_unpublished_draw_preview(): void
     {
         [$event,$draw,$venue,$fixture]=$this->context();

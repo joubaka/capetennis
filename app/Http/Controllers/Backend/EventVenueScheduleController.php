@@ -495,10 +495,12 @@ final class EventVenueScheduleController extends Controller
     {
         $this->authorize('event.manage', $event);
         $scope = $this->calendarScope($request, $event);
-        $rows = $publication->publishedRows($event)->filter(fn ($row) => (empty($scope['date']) || $scope['date'] === 'all' || substr($row['scheduled_at'], 0, 10) === $scope['date'])
+        $request->validate(['after_publish' => ['nullable', 'boolean']]);
+        $afterPublish = $request->boolean('after_publish');
+        $rows = ($afterPublish ? $publication->previewAfterPublishingRows($event, $scope) : $publication->publishedRows($event))->filter(fn ($row) => (empty($scope['date']) || $scope['date'] === 'all' || substr($row['scheduled_at'], 0, 10) === $scope['date'])
             && (empty($scope['venue_id']) || (int) $row['venue_id'] === (int) $scope['venue_id'])
             && (empty($scope['draw_id']) || (int) $row['draw_id'] === (int) $scope['draw_id']))->take(1000)->values();
-        return view('backend.schedule.public-schedule-preview', compact('event', 'rows', 'scope'));
+        return view('backend.schedule.public-schedule-preview', compact('event', 'rows', 'scope', 'afterPublish'));
     }
 
     private function changePublication(Request $request, Event $event, \App\Services\Scheduling\SchedulePublicationService $publication, bool $hide)
