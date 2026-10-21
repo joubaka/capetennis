@@ -6,6 +6,20 @@ use PHPUnit\Framework\TestCase;
 
 class DeploymentConfigTest extends TestCase
 {
+    public function test_optional_public_assets_do_not_make_sync_return_failure(): void
+    {
+        $script = str_replace("\r\n", "\n", (string) file_get_contents(dirname(__DIR__, 2).'/deploy.sh'));
+
+        $this->assertStringContainsString(<<<'BASH'
+    for file in $SYNC_ROOT_FILES; do
+        if [ -f "$APP_PATH/public/$file" ]; then
+            cp "$APP_PATH/public/$file" "$PUBLIC_HTML/$file"
+        fi
+    done
+BASH, $script);
+        $this->assertStringNotContainsString('[ -f "$APP_PATH/public/$file" ] && cp', $script);
+    }
+
     public function test_deployment_leaves_blade_compilation_to_requests(): void
     {
         $script = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.sh');
