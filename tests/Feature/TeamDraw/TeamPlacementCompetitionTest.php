@@ -91,7 +91,8 @@ class TeamPlacementCompetitionTest extends TestCase
         $this->assertFalse($guide['steps'][5]['complete']);
         $this->assertNull($guide['linkedPlayoff']);
         $guidePage = $this->get(route('draw.guide.show', [$this->event, $draw]))->assertOk()
-            ->assertSee('Programme &amp; schedule', false)->assertSee('Playoff pairings and times remain pending');
+            ->assertSee('Programme &amp; schedule', false)->assertSee('Prepare the draft placement fixtures now')
+            ->assertSee('Prepare draft playoff fixtures')->assertSee(route('team-draw.competition.draft-playoffs', $draw), false);
         if ($directory = getenv('CT_PLACEMENT_QA_OUTPUT')) file_put_contents($directory.'/guide.html', str_replace(['http://localhost/', 'https://localhost/'], 'http://localhost/ct/public/', $guidePage->getContent()));
         $this->assertSame(6, $draw->teamTies()->count());
         $this->assertSame(72, $draw->fixtures()->count());
@@ -107,7 +108,7 @@ class TeamPlacementCompetitionTest extends TestCase
         $this->assertSame(0, $readiness['completed_encounters']);
         $this->assertSame(72, $readiness['total_rubbers']);
         $this->assertSame(['singles' => 12, 'doubles' => 6, 'mixed_doubles' => 6], $readiness['format_counts']);
-        $guidePage->assertSee('Playoff readiness')->assertSee('24 matches per encounter')->assertSee('Creation and scheduling pending.');
+        $guidePage->assertSee('Playoff readiness')->assertSee('24 matches per encounter')->assertSee('Prepare draft fixtures to plan placement times before qualification.');
         $operations->assertSee('data-playoff-readiness="'.$draw->id.'"', false);
         $this->assertNull($draw->fresh()->team_draw_selection['competition']['playoff_draw_id'] ?? null);
         $this->assertSame([], app(TeamStandingsService::class)->forDraw($draw));
