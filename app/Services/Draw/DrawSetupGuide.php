@@ -27,7 +27,7 @@ final class DrawSetupGuide
             $playable = $fixtures;
             if ($draw->team_format_snapshot !== null && $fixtures->contains(fn ($fixture) => !$fixture->team_tie_id)) $warnings[] = 'Review team matches that are missing their tie.';
             $scheduled = $playable->filter(fn ($fixture) => $fixture->scheduled_at && $fixture->venue_id && trim((string) $fixture->court_label) !== '')->count();
-            foreach ($draw->teamTies()->with('draw')->get() as $tie) {
+            foreach ($draw->isPlacementDraft() ? [] : $draw->teamTies()->with('draw')->get() as $tie) {
                 try { app(\App\Services\TeamTieValidationService::class)->assertTieComplete($tie); }
                 catch (\InvalidArgumentException $exception) { $warnings[] = 'Review team lineups: '.$exception->getMessage(); break; }
             }
@@ -70,7 +70,14 @@ final class DrawSetupGuide
             $steps[1]['detail'] = $competition['group'].' · combined boys and girls regional sides.';
             $steps[2]['detail'] = ($competition['phase'] ?? null) === 'playoff' ? 'Placement playoffs from confirmed group standings.' : 'One round-robin group followed by 1st/2nd and 3rd/4th playoffs.';
             $steps[3]['detail'] .= ' Group and playoff match formats are saved separately.';
-            $steps[4]['detail'] .= ($competition['phase'] ?? null) === 'round_robin' && !$linkedPlayoff ? ' This schedules the group phase. Playoff matches become available after confirmed qualification.' : '';
+            $steps[4]['detail'] .= ($competition['phase'] ?? null) === 'round_robin' && !$linkedPlayoff ? ' Prepare a draft playoff programme to plan the placement matches before qualification.' : '';
+        }
+        if ($draw->isPlacementDraft()) {
+            $steps[1]['complete'] = true;
+            $steps[1]['detail'] = 'Round-robin positions are reserved; teams are filled after confirmed qualification.';
+            $steps[3]['complete'] = $generated;
+            $steps[5]['complete'] = false;
+            $steps[5]['detail'] = 'Confirm qualifiers from the round-robin phase, then review lineups and publish separately.';
         }
         if ($draw->team_scoring_rules['undecided'] ?? false) {
             $warnings[] = 'Confirm the team scoring rules before publication. You can set up the programme and schedule first.';

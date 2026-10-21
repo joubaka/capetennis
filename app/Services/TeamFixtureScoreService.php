@@ -23,7 +23,7 @@ class TeamFixtureScoreService
             $current = TeamFixture::whereKey($fixture->id)->lockForUpdate()->firstOrFail();
             abort_if($current->draw_id !== $draw->id || $current->team_tie_id !== $tie?->id || ($tie && $tie->draw_id !== $draw->id), 409, 'Fixture relationships changed.');
             app(TeamParticipantHistoryService::class)->assertRevision($current, (int) $draw->event_id, $scores['participant_revision'] ?? null);
-            abort_if(($draw->team_scoring_rules['undecided'] ?? false) || !empty($draw->team_draw_selection['competition']['playoff_draw_id']), 409, 'Confirm scoring before play; round-robin results are frozen after playoff qualification.');
+            abort_if($draw->isPlacementDraft() || ($draw->team_scoring_rules['undecided'] ?? false) || !empty($draw->team_draw_selection['competition']['playoff_draw_id']), 409, 'Confirm scoring and playoff qualifiers before play; round-robin results are frozen after playoff qualification.');
             $canonical = $draw->team_scoring_rules !== null && $tie !== null;
             abort_if($draw->locked || (!$canonical && $tie?->isCompleted()), 409, 'Scores are locked for this fixture.');
 
@@ -83,7 +83,7 @@ class TeamFixtureScoreService
             $tie = $fixture->team_tie_id ? \App\Models\TeamTie::whereKey($fixture->team_tie_id)->lockForUpdate()->firstOrFail() : null;
             $current = TeamFixture::whereKey($fixture->id)->lockForUpdate()->firstOrFail();
             abort_if($current->draw_id !== $draw->id || $current->team_tie_id !== $tie?->id || ($tie && $tie->draw_id !== $draw->id), 409, 'Fixture relationships changed.');
-            abort_if(($draw->team_scoring_rules['undecided'] ?? false) || !empty($draw->team_draw_selection['competition']['playoff_draw_id']), 409, 'Confirm scoring before play; round-robin results are frozen after playoff qualification.');
+            abort_if($draw->isPlacementDraft() || ($draw->team_scoring_rules['undecided'] ?? false) || !empty($draw->team_draw_selection['competition']['playoff_draw_id']), 409, 'Confirm scoring and qualifiers before play; qualified round-robin results are frozen.');
             $canonical = $draw->team_scoring_rules !== null && $tie !== null;
             abort_if($draw->locked || (!$canonical && $tie?->isCompleted()), 409, 'Scores are locked for this fixture.');
             TeamFixtureResult::where('team_fixture_id', $fixture->id)->delete();

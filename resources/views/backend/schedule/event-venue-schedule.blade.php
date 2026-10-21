@@ -2442,7 +2442,7 @@
       const draw = draws.get(Number(row.dataset.programmeDraw));
       if (!draw) return;
       const day = Number(row.querySelector('.programme-day').value), sequence = Number(row.querySelector('.programme-sequence').value);
-      const label = `${programmeDiscipline(draw)} · Round ${row.dataset.programmeRound}`;
+      const label = draw.competition_phase === 'playoff' ? 'Placement playoffs · 1st/2nd and 3rd/4th' : `${programmeDiscipline(draw)} · Round ${row.dataset.programmeRound}`;
       const key = `${label}|${day}|${sequence}`;
       if (!stages.has(key)) stages.set(key, {label, day, sequence, members:[]});
       stages.get(key).members.push(`${row.dataset.programmeDraw}:${row.dataset.programmeRound}`);

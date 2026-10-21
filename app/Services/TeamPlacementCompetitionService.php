@@ -140,6 +140,52 @@ final class TeamPlacementCompetitionService
         });
     }
 
+    /** Allocate stable identities before qualification, without pretending that teams are known. */
+    public function prepareDraft(Draw $source): Draw
+    {
+        return DB::transaction(function () use ($source) {
+            app(TeamDrawAdaptationService::class)->lockEvent($source->event_id);
+            $source = Draw::whereKey($source->id)->lockForUpdate()->firstOrFail();
+            $config = $source->team_draw_selection['competition'] ?? [];
+            if ($source->locked || ($config['phase'] ?? null) !== 'round_robin') $this->fail('Choose an unlocked competition round robin.');
+            if (!empty($config['playoff_draw_id'])) return $this->linkedPlayoff($source, $config['playoff_draw_id']);
+            if (!empty($config['draft_playoff_draw_id'])) return $this->linkedPlayoff($source, $config['draft_playoff_draw_id']);
+            $format = $config['playoff_format'] ?? null;
+            if (empty($format['rubbers'])) $this->fail('Save the playoff match format first.');
+            $count = app(TeamDrawSideResolver::class)->teams($source)->count();
+            if ($count < 2) $this->fail('At least two selected regional sides are required.');
+            $draw = new Draw;
+            $draw->event_id = $source->event_id; $draw->drawType_id = $source->drawType_id; $draw->category_event_id = $source->category_event_id;
+            $draw->drawName = $config['group'].' placement playoffs'; $draw->gender = 0;
+            $selection = $source->team_draw_selection;
+            unset($selection['decisions']);
+            $selection['mixed_sides'] = [];
+            $selection['competition'] = ['phase' => 'playoff', 'group' => $config['group'], 'size' => $config['size'],
+                'source_draw_id' => $source->id, 'qualification_pending' => true];
+            $draw->team_draw_selection = $selection; $draw->team_format_snapshot = $format;
+            $draw->team_scoring_rules = $source->team_scoring_rules; $draw->save();
+            $draw->venues()->sync($source->venues()->get()->mapWithKeys(fn ($venue) => [$venue->id => ['num_courts' => $venue->pivot->num_courts]])->all());
+            foreach (range(1, $count >= 4 ? 2 : 1) as $number) {
+                $tie = TeamTie::create(['draw_id' => $draw->id, 'round_nr' => 1, 'tie_nr' => $number,
+                    'home_team_id' => null, 'away_team_id' => null, 'status' => TeamTie::STATUS_DRAFT]);
+                app(TeamTieGenerationService::class)->generateForTie($tie);
+            }
+            $selection = $source->team_draw_selection;
+            $selection['competition']['draft_playoff_draw_id'] = $draw->id;
+            $source->team_draw_selection = $selection; $source->save();
+            DrawAuditLog::record($source->id, 'team_playoff_draft_prepared', null, ['playoff_draw_id' => $draw->id, 'fixture_ids' => $draw->fixtures()->pluck('id')->all()]);
+            return $draw;
+        });
+    }
+
+    private function linkedPlayoff(Draw $source, int $id): Draw
+    {
+        $draw = Draw::where('event_id', $source->event_id)->whereKey($id)->lockForUpdate()->firstOrFail();
+        if (($draw->team_draw_selection['competition']['phase'] ?? null) !== 'playoff'
+            || (int) ($draw->team_draw_selection['competition']['source_draw_id'] ?? 0) !== (int) $source->id) $this->fail('The linked playoff does not belong to this round robin.');
+        return $draw;
+    }
+
     public function playoffs(Draw $source): Draw
     {
         return DB::transaction(function () use ($source) {
@@ -149,7 +195,7 @@ final class TeamPlacementCompetitionService
             $config = $selection['competition'] ?? [];
             if ($source->locked) $this->fail('Unlock this competition before qualifying teams.');
             if (($config['phase'] ?? null) !== 'round_robin') $this->fail('Choose a competition round-robin group.');
-            if (!empty($config['playoff_draw_id'])) return Draw::where('event_id', $source->event_id)->findOrFail($config['playoff_draw_id']);
+            if (!empty($config['playoff_draw_id'])) return $this->linkedPlayoff($source, $config['playoff_draw_id']);
             if ($source->team_scoring_rules['undecided'] ?? false) $this->fail('Confirm scoring before qualifying teams.');
             $teams = app(TeamDrawSideResolver::class)->teams($source);
             $ties = $source->teamTies()->with('rubbers.teamResults', 'rubbers.draw')->lockForUpdate()->get();
@@ -158,11 +204,15 @@ final class TeamPlacementCompetitionService
             if (!($decision['valid'] ?? false) && ($ties->count() !== $teams->count() * ($teams->count() - 1) / 2 || $ties->contains(fn ($tie) => !app(TeamStandingsService::class)->tieOutcome($tie)['complete']))) $this->fail('Complete every round-robin tie before creating playoffs.');
             $rows = app(TeamStandingsService::class)->forDraw($source);
             if (count($rows) !== $teams->count() || count(array_unique(array_column($rows, 'rank'))) !== count($rows)) $this->fail('Resolve tied standings using the agreed scoring criteria before creating playoffs.');
-            $draw = new Draw;
-            $draw->event_id = $source->event_id; $draw->drawType_id = $source->drawType_id; $draw->category_event_id = $source->category_event_id;
-            $draw->drawName = $config['group'].' placement playoffs'; $draw->gender = 0;
+            $draw = !empty($config['draft_playoff_draw_id']) ? $this->linkedPlayoff($source, $config['draft_playoff_draw_id']) : $this->prepareDraft($source);
+            if (!$draw->isPlacementDraft() || $draw->locked || $draw->published || $draw->oop_published
+                || $draw->teamTies()->whereNotNull('published_at')->exists()
+                || $draw->fixtures()->where(fn ($q) => $q->where('match_status', '!=', 0)->orWhereHas('fixtureResults'))->exists()) $this->fail('The draft playoff is protected or already played; review it before qualification.');
+            if ($draw->team_format_snapshot !== $config['playoff_format']) $this->fail('The saved draft match format changed. Review the draft before qualification.');
+            $expectedTies = $teams->count() >= 4 ? 2 : 1;
+            if ($draw->teamTies()->count() !== $expectedTies || $draw->fixtures()->count() !== $expectedTies * count($config['playoff_format']['rubbers'])) $this->fail('The draft playoff fixtures are incomplete. Review the draft before qualification.');
             unset($selection['decisions']);
-            $selection['competition'] = ['phase' => 'playoff', 'group' => $config['group'], 'size' => $config['size'], 'source_draw_id' => $source->id, 'qualification' => $rows];
+            $selection['competition'] = ['phase' => 'playoff', 'group' => $config['group'], 'size' => $config['size'], 'source_draw_id' => $source->id, 'qualification' => $rows, 'qualification_pending' => false];
             $draw->team_draw_selection = $selection; $draw->team_format_snapshot = $config['playoff_format'];
             $draw->team_scoring_rules = $source->team_scoring_rules; $draw->save();
             $qualifiers = array_slice(array_column(array_values(array_filter($rows, fn ($row) => !($row['qualification_excluded'] ?? false))), 'team_id'), 0, 4);
@@ -175,13 +225,35 @@ final class TeamPlacementCompetitionService
             $draw->team_draw_selection = $selection; $draw->save();
             foreach ([0, 2] as $offset) {
                 if (!isset($qualifiers[$offset + 1])) continue;
-                $tie = TeamTie::create(['draw_id' => $draw->id, 'round_nr' => 1, 'tie_nr' => $offset / 2 + 1,
-                    'home_team_id' => $qualifiers[$offset], 'away_team_id' => $qualifiers[$offset + 1], 'status' => TeamTie::STATUS_DRAFT]);
-                app(TeamTieGenerationService::class)->generateForTie($tie);
+                $tie = $draw->teamTies()->where('tie_nr', $offset / 2 + 1)->lockForUpdate()->firstOrFail();
+                $tie->update(['home_team_id' => $qualifiers[$offset], 'away_team_id' => $qualifiers[$offset + 1], 'status' => TeamTie::STATUS_DRAFT]);
+                foreach ($tie->rubbers()->orderBy('rubber_sequence')->get() as $rubber) {
+                    $definition = collect($draw->team_format_snapshot['rubbers'])->firstWhere('sequence', $rubber->rubber_sequence);
+                    if (!$definition) $this->fail('Draft playoff matches differ from the saved format.');
+                    app(TeamPlayerAutoAssignService::class)->assignForRubber($rubber, $tie->fresh(), new \App\Models\TeamEventFormatRubber($definition));
+                }
+            }
+            if (count($qualifiers) < 4) {
+                foreach ($draw->teamTies()->where('tie_nr', 2)->with('rubbers')->get() as $unused) {
+                    $removed = $unused->rubbers->map(fn ($rubber) => ['fixture_id' => $rubber->id] + $rubber->only(['scheduled_at', 'venue_id', 'court_label', 'duration_min', 'gap_minutes']))->all();
+                    $ids = $unused->rubbers->pluck('id')->all();
+                    DB::table('published_schedule_assignments')->where('event_id', $source->event_id)->where('draw_id', $draw->id)->where('fixture_kind', 'team')->whereIn('fixture_id', $ids)->delete();
+                    $unused->rubbers()->delete(); $unused->delete();
+                    DrawAuditLog::record($draw->id, 'unused_placement_bookings_released', null, ['bookings' => $removed]);
+                }
             }
             $sourceSelection = $source->team_draw_selection;
             $sourceSelection['competition']['playoff_draw_id'] = $draw->id;
+            unset($sourceSelection['competition']['draft_playoff_draw_id']);
             $source->team_draw_selection = $sourceSelection; $source->save();
+            $scheduleOptions = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $source->event_id)->value('options'), true) ?: [];
+            $playerRest = max(0, (int) ($scheduleOptions['player_rest'] ?? 60));
+            foreach ($draw->fixtures()->whereNotNull('scheduled_at')->get() as $fixture) {
+                $error = app(\App\Services\Scheduling\UnifiedTeamScheduleService::class)->manualError($draw->event, $fixture, [
+                    'venue_id' => $fixture->venue_id, 'court' => $fixture->court_label, 'scheduled_at' => $fixture->scheduled_at,
+                    'duration' => $fixture->duration_min ?: 120, 'court_gap' => $fixture->gap_minutes ?? 0, 'player_rest' => $playerRest]);
+                if ($error) $fixture->forceFill(['clash_flag' => true])->save();
+            }
             DrawAuditLog::record($source->id, 'team_playoffs_created', null, ['playoff_draw_id' => $draw->id, 'qualification' => $rows]);
             return $draw;
         });

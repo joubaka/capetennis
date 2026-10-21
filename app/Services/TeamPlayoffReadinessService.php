@@ -61,6 +61,8 @@ final class TeamPlayoffReadinessService
         if (!empty($competition['playoff_draw_id']) && !$playoff) {
             $blockers[] = 'Linked playoff is unavailable; review competition setup.';
         }
+        $draftPlayoff = !empty($competition['draft_playoff_draw_id'])
+            ? Draw::where('event_id', $draw->event_id)->find($competition['draft_playoff_draw_id']) : null;
 
         return [
             'expected_encounters' => $expected, 'saved_encounters' => $ties->count(),
@@ -70,6 +72,8 @@ final class TeamPlayoffReadinessService
             'format_total' => $format->count(), 'blockers' => $blockers,
             'can_create' => !$playoff && empty($competition['playoff_draw_id']) && $blockers === [],
             'playoff' => $playoff,
+            'draft_playoff' => $draftPlayoff,
+            'can_prepare' => !$draw->locked && !$playoff && !$draftPlayoff && $teamCount >= 2 && $format->isNotEmpty(),
         ];
     }
 }

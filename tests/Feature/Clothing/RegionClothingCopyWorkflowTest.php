@@ -196,6 +196,61 @@ class RegionClothingCopyWorkflowTest extends TestCase
         ])->assertForbidden();
     }
 
+    public function test_overview_shows_event_scoped_paid_pending_cancelled_and_refunded_orders_without_requiring_a_save(): void
+    {
+        $region = TeamRegion::create(['region_name' => 'Overview Open Region', 'clothing_admin' => true, 'clothing_order' => true]);
+        $admin = $this->authorizedAdminForRegion($region, 2026);
+        $event = $region->events()->firstOrFail();
+        $otherEvent = Event::factory()->create(['eventType' => $event->eventType]);
+        DB::table('event_regions')->insert(['event_id' => $otherEvent->id, 'region_id' => $region->id]);
+        $closed = TeamRegion::create(['region_name' => 'Overview Closed Region', 'clothing_admin' => true, 'clothing_order' => false]);
+        $unselected = TeamRegion::create(['region_name' => 'Overview Unselected Region', 'clothing_admin' => false]);
+        foreach ([$closed, $unselected] as $extraRegion) {
+            DB::table('event_regions')->insert(['event_id' => $event->id, 'region_id' => $extraRegion->id]);
+        }
+        $teamId = DB::table('teams')->insertGetId(['name' => 'Overview team', 'region_id' => $region->id]);
+        $unselectedTeamId = DB::table('teams')->insertGetId(['name' => 'Historic team', 'region_id' => $unselected->id]);
+        $paidId = DB::table('clothing_orders')->insertGetId([
+            'event_id' => $event->id, 'team_id' => $teamId, 'pay_status' => 1,
+            'status' => 'completed', 'total' => 999, 'amount_paid' => 410.25,
+        ]);
+        DB::table('clothing_orders')->insert([
+            ['event_id' => $event->id, 'team_id' => $teamId, 'pay_status' => 1, 'status' => 'completed', 'total' => 125.50],
+            ['event_id' => $event->id, 'team_id' => $teamId, 'pay_status' => 0, 'status' => 'pending', 'total' => 200],
+            ['event_id' => $event->id, 'team_id' => $teamId, 'pay_status' => 0, 'status' => 'cancelled', 'total' => 200],
+            ['event_id' => $otherEvent->id, 'team_id' => $teamId, 'pay_status' => 1, 'status' => 'completed', 'total' => 9000],
+            ['event_id' => $event->id, 'team_id' => $unselectedTeamId, 'pay_status' => 1, 'status' => 'completed', 'total' => 75],
+            ['event_id' => $event->id, 'team_id' => $teamId, 'pay_status' => 1, 'status' => 'pending', 'total' => 8000],
+        ]);
+        foreach ([['completed', 50.25], ['completed', 10], ['pending', 70]] as [$status, $amount]) {
+            DB::table('clothing_refunds')->insert([
+                'clothing_order_id' => $paidId, 'event_id' => $event->id, 'payer_id' => $admin->id,
+                'requested_by' => $admin->id, 'request_token' => (string) str()->uuid(),
+                'request_fingerprint' => str_repeat('a', 64), 'refund_method' => 'wallet',
+                'refund_status' => $status, 'refund_gross' => $amount, 'refund_net' => $amount, 'reason' => 'Overview test',
+            ]);
+        }
+
+        $this->actingAs($admin)->get(route('backend.event.clothing.index', $event))
+            ->assertOk()->assertSee('Edit regions')->assertSee('Orders by region')
+            ->assertSee('R535.75')->assertSee('R60.25')->assertDontSee('R9,000.00')
+            ->assertSee('Ordering open')->assertSee('Ordering closed')->assertSee('Awaiting payment')
+            ->assertSee('Not selected · ordering closed')
+            ->assertSee('class="collapse " id="clothing-region-editor"', false)
+            ->assertViewHas('regionalOrders', function ($orders) use ($region, $closed, $unselected) {
+                $this->assertSame(2, (int) $orders->get($region->id)->paid_count);
+                $this->assertSame(1, (int) $orders->get($region->id)->pending_count);
+                $this->assertSame(1, (int) $orders->get($region->id)->cancelled_count);
+                $this->assertSame(1, (int) $orders->get($unselected->id)->paid_count);
+                $this->assertNull($orders->get($closed->id));
+                return true;
+            });
+        $this->assertDatabaseCount('clothing_orders', 7);
+        $this->assertDatabaseCount('clothing_refunds', 3);
+        $this->assertTrue((bool) $region->fresh()->clothing_order);
+        $this->actingAs(User::factory()->create())->get(route('backend.event.clothing.index', $event))->assertForbidden();
+    }
+
     public function test_admin_copy_route_requires_price_confirmation_and_keeps_ordering_closed(): void
     {
         Role::findOrCreate('admin', 'web');

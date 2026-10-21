@@ -43,4 +43,12 @@ final class TeamPlacementCompetitionController extends Controller
         $playoff = $service->playoffs($draw);
         return redirect()->route('draw.guide.show', [$playoff->event_id, $playoff]);
     }
+
+    public function draft(Draw $draw, TeamPlacementCompetitionService $service)
+    {
+        $this->authorize('team-draw.createFormat', $draw->event);
+        abort_unless($draw->event->isTeam(), 404);
+        $playoff = $service->prepareDraft($draw);
+        return redirect()->route('draw.guide.show', [$playoff->event_id, $playoff]);
+    }
 }

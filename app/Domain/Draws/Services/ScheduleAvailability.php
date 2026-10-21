@@ -94,7 +94,11 @@ final class ScheduleAvailability
             ->whereNotNull('scheduled_at')->whereNotIn('id', $excludeTeamFixtures)
             ->when($windowEnd, fn ($query) => $query->where('scheduled_at', '<', $windowEnd))
             ->where(function ($query) use ($venues, $players, $registrations, $profileIds) {
-                $query->whereIn('venue_id', $venues)->orWhereHas('fixturePlayers', function ($slots) use ($players, $registrations, $profileIds) {
+                $draftIds = collect($registrations)->filter(fn ($id) => is_string($id) && str_starts_with($id, 'placement:'))
+                    ->map(fn ($id) => (int) explode(':', $id)[1])->unique()->all();
+                $query->whereIn('venue_id', $venues);
+                if ($draftIds) $query->orWhereIn('draw_id', $draftIds);
+                $query->orWhereHas('fixturePlayers', function ($slots) use ($players, $registrations, $profileIds) {
                     $profiles = array_unique(array_merge($profileIds, $players->pluck('player_id')->all()));
                     $noProfiles = collect($registrations)->filter(fn ($id) => is_string($id) && str_starts_with($id, 'no-profile:'))
                         ->map(fn ($id) => (int) substr($id, 11))->all();

@@ -208,6 +208,11 @@ final class SchedulePublicationService
                 && (empty($scope['date']) || substr($row['scheduled_at'], 0, 10) === $scope['date'])
                 && (empty($scope['venue_id']) || $row['venue_id'] === (int) $scope['venue_id'])
                 && (! isset($scope['fixture_keys']) || in_array($row['fixture_kind'].':'.$row['fixture_id'], $scope['fixture_keys'], true)))->values();
+            if (!$hide && $event->draws()->whereIn('id', $working->pluck('draw_id')->when($drawId, fn ($ids) => $ids->push($drawId)))->get()->contains(fn ($draw) => $draw->isPlacementDraft())) {
+                throw new \InvalidArgumentException('This is a proposed playoff schedule. Confirm qualified teams before publishing it.');
+            }
+            if (!$hide && TeamFixture::whereIn('id', $working->where('fixture_kind', 'team')->pluck('fixture_id'))->where('clash_flag', true)
+                ->whereHas('draw', fn ($q) => $q->where('team_draw_selection->competition->phase', 'playoff'))->exists()) throw new \InvalidArgumentException('Review the retained playoff schedule conflicts before publishing these times.');
             $old = DB::table('published_schedule_assignments')->where('event_id', $event->id)
                 ->when($drawId, fn ($q) => $q->where('draw_id', $drawId))
                 ->when(! empty($scope['date']), fn ($q) => $q->whereDate('scheduled_at', $scope['date']))

@@ -198,6 +198,7 @@ class TeamTieValidationService
      */
     public function assertTieComplete(TeamTie $tie): void
     {
+        if ($tie->draw?->isPlacementDraft() || !$tie->home_team_id || !$tie->away_team_id) throw new \InvalidArgumentException('Confirm the qualified teams before validating playoff lineups.');
         $rubbers = $tie->rubbers()->with('fixturePlayers')->get();
         if ($rubbers->isEmpty()) {
             throw new \InvalidArgumentException("Tie #{$tie->id} has no rubbers.");

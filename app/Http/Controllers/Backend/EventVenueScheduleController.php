@@ -71,6 +71,7 @@ final class EventVenueScheduleController extends Controller
             return ['id' => $draw->id, 'name' => $draw->drawName,
                 'programme_age' => app(\App\Services\Scheduling\ScheduleProgramme::class)->key($draw),
                 'rubber_code' => $draw->team_draw_selection['rubber_code'] ?? null,
+                'competition_phase' => $draw->team_draw_selection['competition']['phase'] ?? null,
                 'doubles_pair_count' => $this->standardPairCount($draw, 'doubles'),
                 'mixed_pair_count' => $this->standardPairCount($draw, 'mixed_doubles'),
                 'venues' => $draw->venues->pluck('id')->map(fn ($id) => (int) $id)->all(),

@@ -60,11 +60,13 @@ class TeamTie extends Model
 
     public function getHomeSideNameAttribute(): ?string
     {
+        if (!$this->home_team_id && $this->draw?->isPlacementDraft()) return $this->draw->team_draw_selection['competition']['group'].' round-robin '.($this->tie_nr === 1 ? '1st' : '3rd');
         return app(\App\Services\TeamDrawSideResolver::class)->label($this->draw, $this->homeTeam);
     }
 
     public function getAwaySideNameAttribute(): ?string
     {
+        if (!$this->away_team_id && $this->draw?->isPlacementDraft()) return $this->draw->team_draw_selection['competition']['group'].' round-robin '.($this->tie_nr === 1 ? '2nd' : '4th');
         return app(\App\Services\TeamDrawSideResolver::class)->label($this->draw, $this->awayTeam);
     }
 

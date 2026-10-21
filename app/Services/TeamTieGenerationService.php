@@ -138,7 +138,7 @@ class TeamTieGenerationService
                 );
 
                 // Repeating generation must preserve existing lineup decisions and results.
-                if ($rubber->wasRecentlyCreated) {
+                if ($rubber->wasRecentlyCreated && $tie->home_team_id && $tie->away_team_id) {
                     $this->playerAssigner->assignForRubber($rubber, $tie, $template);
                 }
 

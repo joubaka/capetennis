@@ -15,6 +15,7 @@ final class TeamCompetitionDecisionService
         $selection = $draw->team_draw_selection ?? [];
         unset($selection['decisions']);
         unset($selection['competition']['playoff_draw_id']);
+        unset($selection['competition']['draft_playoff_draw_id']);
         $relevantIds = $tieId ? $ties->flatMap(fn ($tie) => [$tie->home_team_id, $tie->away_team_id])->all() : null;
         $rosterDraw = clone $draw;
         if ($relevantIds && !empty($selection['mixed_sides'])) {

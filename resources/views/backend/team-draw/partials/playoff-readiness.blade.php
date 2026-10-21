@@ -7,7 +7,7 @@
     <dt class="col-sm-5">Scoring</dt><dd class="col-sm-7">{{ $playoffReadiness['scoring_confirmed'] ? 'Confirmed' : 'To be decided' }}</dd>
     <dt class="col-sm-5">Standings</dt><dd class="col-sm-7">{{ $playoffReadiness['ranks_resolved'] ? 'Ranks resolved' : ($playoffReadiness['scoring_confirmed'] && $playoffReadiness['completed_encounters'] === $playoffReadiness['expected_encounters'] && $playoffReadiness['saved_encounters'] === $playoffReadiness['expected_encounters'] ? 'Tied ranks require review' : 'Review after all encounter results are complete') }}</dd>
     <dt class="col-sm-5">Saved playoff format</dt><dd class="col-sm-7">{{ $playoffReadiness['format_counts']['singles'] ?? 0 }} singles · {{ $playoffReadiness['format_counts']['doubles'] ?? 0 }} doubles · {{ $playoffReadiness['format_counts']['mixed_doubles'] ?? 0 }} mixed doubles — {{ $playoffReadiness['format_total'] }} matches per encounter</dd>
-    <dt class="col-sm-5">Playoff programme</dt><dd class="col-sm-7">{{ $playoffReadiness['playoff'] ? 'Created; review its schedule and publication separately.' : 'Creation and scheduling pending.' }}</dd>
+    <dt class="col-sm-5">Playoff programme</dt><dd class="col-sm-7">{{ $playoffReadiness['playoff'] ? 'Qualified; saved schedule retained. Review publication separately.' : (($playoffReadiness['draft_playoff'] ?? null) ? 'Draft fixtures ready to schedule; qualified teams pending.' : 'Prepare draft fixtures to plan placement times before qualification.') }}</dd>
   </dl>
   @if(!$playoffReadiness['playoff'])
     @if($playoffReadiness['blockers'])

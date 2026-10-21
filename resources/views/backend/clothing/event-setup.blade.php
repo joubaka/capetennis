@@ -27,14 +27,16 @@
     <div class="card-body py-3">
       <div class="row g-3 align-items-center">
         <div class="col-12 col-lg">
-          <h5 class="mb-1">Setup overview</h5>
-          <p class="text-muted small mb-0">{{ $isEventManager ? 'Choose participating regions, prepare each catalogue, then open ordering when it is ready.' : 'Prepare your assigned catalogue, then open ordering when it is ready.' }}</p>
+          <h5 class="mb-1">Orders overview</h5>
+          <p class="text-muted small mb-0">Track paid orders and ordering status by region. Your saved setup stays in place until you edit it.</p>
         </div>
         <div class="col-12 col-lg-auto">
           <div class="d-flex flex-wrap gap-2 clothing-summary" aria-label="Clothing setup summary">
             @if($isEventManager)<span class="badge bg-label-primary"><strong>{{ $selectedRegions->count() }}</strong> of {{ $visibleRegions->count() }} regions selected</span>@endif
             <span class="badge bg-label-info"><strong>{{ $readyRegions->count() }}</strong> catalogues prepared</span>
             <span class="badge bg-label-success"><strong>{{ $openRegions->count() }}</strong> ordering open</span>
+            <span class="badge bg-label-secondary"><strong>{{ $selectedRegions->count() - $openRegions->count() }}</strong> ordering closed</span>
+            <span class="badge bg-label-primary"><strong>{{ $regionalOrders->sum('paid_count') }}</strong> paid orders</span>
           </div>
         </div>
       </div>
@@ -42,10 +44,19 @@
   </div>
 
   @if($isEventManager)
+  <div class="card mb-4">
+    <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-3">
+      <div>
+        <h5 class="mb-1">Participating regions</h5>
+        <p class="text-muted mb-0">{{ $selectedRegions->isEmpty() ? 'No regions selected yet.' : $selectedRegions->pluck('region_name')->join(', ') }}</p>
+      </div>
+      <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#clothing-region-editor" aria-expanded="{{ $errors->any() ? 'true' : 'false' }}" aria-controls="clothing-region-editor"><i class="ti ti-edit me-1"></i>Edit regions</button>
+    </div>
+  </div>
+  <div class="collapse {{ $errors->any() ? 'show' : '' }}" id="clothing-region-editor">
   <form method="POST" action="{{ route('backend.event.clothing.regions.update', $event) }}" class="card mb-4">
     @csrf @method('PATCH')
     <div class="card-header d-flex gap-3 align-items-start">
-      <span class="setup-step">1</span>
       <div><h5 class="mb-1">Choose regions</h5><p class="text-muted small mb-0">Select the player areas that should offer online clothing orders.</p></div>
     </div>
     <div class="card-body">
@@ -53,7 +64,7 @@
         @foreach($visibleRegions as $region)
           <div class="col-12 col-md-6 col-xl-4">
             <label class="region-choice d-flex align-items-start gap-2 border rounded p-3 h-100" for="online-clothing-region-{{ $region->id }}">
-              <input class="form-check-input flex-shrink-0 mt-0" type="checkbox" name="region_ids[]" value="{{ $region->id }}" id="online-clothing-region-{{ $region->id }}" @checked($region->usesOnlineClothingOrders())>
+              <input class="form-check-input flex-shrink-0 mt-0" type="checkbox" name="region_ids[]" value="{{ $region->id }}" id="online-clothing-region-{{ $region->id }}" @checked($errors->any() ? in_array($region->id, old('region_ids', [])) : $region->usesOnlineClothingOrders())>
               <span class="fw-semibold">{{ $region->region_name }}</span>
             </label>
           </div>
@@ -62,15 +73,16 @@
       <p class="text-muted small mt-3 mb-0"><i class="ti ti-info-circle me-1"></i>Deselecting a region hides ordering from its player area. Existing catalogues and paid orders are kept.</p>
     </div>
     <div class="card-footer d-flex justify-content-end">
+      <a href="{{ route('backend.event.clothing.index', $event) }}" class="btn btn-outline-secondary me-2">Cancel</a>
       <button class="btn btn-primary"><i class="ti ti-device-floppy me-1"></i>Save region selection</button>
     </div>
   </form>
+  </div>
   @endif
 
   <section aria-labelledby="catalogue-heading">
     <div class="d-flex gap-3 align-items-start mb-3 px-1">
-      <span class="setup-step">{{ $isEventManager ? 2 : 1 }}</span>
-      <div><h5 class="mb-1" id="catalogue-heading">Prepare catalogues</h5><p class="text-muted small mb-0">Open a region to review its items, prices, sizes, orders, and ordering status.</p></div>
+      <div><h5 class="mb-1" id="catalogue-heading">Orders by region</h5><p class="text-muted small mb-0">Paid amounts show original receipts, including payment fees, before refunds. Pending orders are awaiting payment.</p></div>
     </div>
 
     <div class="accordion clothing-regions" id="clothing-regions">
@@ -81,22 +93,37 @@
         @php($sizeCount = $items->sum(fn($item) => $item->sizes->count()))
         @php($notReady = $items->filter(fn($item) => (float)$item->price <= 0 || $item->sizes->isEmpty()))
         @php($statusType = !$usesOnlineClothing ? 'secondary' : ($region->clothing_order ? 'success' : ($items->isNotEmpty() ? 'warning' : 'secondary')))
-        @php($statusLabel = !$usesOnlineClothing ? 'Not selected' : ($region->clothing_order ? 'Ordering open' : ($items->isNotEmpty() ? 'Ready · closed' : 'Needs setup')))
+        @php($statusLabel = !$usesOnlineClothing ? 'Not selected · ordering closed' : ($region->clothing_order ? 'Ordering open' : 'Ordering closed'))
+        @php($orders = $regionalOrders->get($region->id))
 
         <div class="accordion-item border rounded mb-3 overflow-hidden">
+          <div class="p-3 border-bottom">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+              <div><h5 class="mb-1">{{ $region->region_name }}</h5><span class="badge bg-label-{{ $statusType }}">{{ $statusLabel }}</span></div>
+              <a class="btn btn-outline-primary btn-sm" href="{{ route('backend.region.clothing.orders', ['region' => $region, 'event_id' => $event->id]) }}">View paid orders<i class="ti ti-arrow-right ms-1"></i></a>
+            </div>
+            <dl class="row g-3 mb-0 regional-order-metrics">
+              <div class="col-6 col-lg-3"><dt class="small text-muted fw-normal">Paid orders</dt><dd class="fs-5 fw-semibold mb-0">{{ (int) ($orders?->paid_count ?? 0) }}</dd></div>
+              <div class="col-6 col-lg-3"><dt class="small text-muted fw-normal">Original paid amount</dt><dd class="fs-5 fw-semibold mb-0">R{{ number_format((float) ($orders?->paid_amount ?? 0), 2) }}</dd></div>
+              <div class="col-6 col-lg-3"><dt class="small text-muted fw-normal">Awaiting payment</dt><dd class="fs-5 fw-semibold mb-0">{{ (int) ($orders?->pending_count ?? 0) }}</dd></div>
+              <div class="col-6 col-lg-3"><dt class="small text-muted fw-normal">Cancelled orders</dt><dd class="fs-5 fw-semibold mb-0">{{ (int) ($orders?->cancelled_count ?? 0) }}</dd></div>
+            </dl>
+            @if((float) ($regionalRefunds->get($region->id)?->refunded_amount ?? 0) > 0)
+              <p class="small text-muted mb-0 mt-3">Completed refunds paid back: R{{ number_format((float) $regionalRefunds->get($region->id)->refunded_amount, 2) }}. Original paid orders remain in the history.</p>
+            @endif
+          </div>
           <h2 class="accordion-header" id="clothing-region-heading-{{ $region->id }}">
             <button class="accordion-button collapsed gap-3" type="button" data-bs-toggle="collapse" data-bs-target="#clothing-region-{{ $region->id }}" aria-expanded="false" aria-controls="clothing-region-{{ $region->id }}">
               <span class="flex-grow-1 text-start">
-                <span class="d-block fw-semibold text-body mb-1">{{ $region->region_name }}</span>
-                <span class="d-block text-muted fw-normal small">{{ $items->count() }} {{ Str::plural('item', $items->count()) }} · {{ $sizeCount }} size {{ Str::plural('option', $sizeCount) }}</span>
+                <span class="d-block fw-semibold text-body mb-1">{{ $usesOnlineClothing ? 'Edit catalogue & ordering' : 'Catalogue details' }}</span>
+                <span class="d-block text-muted fw-normal small">{{ $items->count() }} {{ Str::plural('item', $items->count()) }} · {{ $sizeCount }} size {{ Str::plural('option', $sizeCount) }}{{ $usesOnlineClothing && $items->isEmpty() ? ' · Needs setup' : '' }}</span>
               </span>
-              <span class="badge bg-label-{{ $statusType }} flex-shrink-0">{{ $statusLabel }}</span>
             </button>
           </h2>
           <div id="clothing-region-{{ $region->id }}" class="accordion-collapse collapse" aria-labelledby="clothing-region-heading-{{ $region->id }}" data-bs-parent="#clothing-regions">
             <div class="accordion-body border-top">
               @if(!$usesOnlineClothing)
-                <div class="alert alert-light border mb-3"><i class="ti ti-info-circle me-1"></i>Select this region in step 1 and save before setting up or opening its catalogue.</div>
+                <div class="alert alert-light border mb-3"><i class="ti ti-info-circle me-1"></i>{{ $isEventManager ? 'Use Edit regions to select this region before setting up or opening its catalogue.' : 'Ask the event administrator to select this region before setting up or opening its catalogue.' }}</div>
               @elseif($items->isNotEmpty())
                 <div class="table-responsive mb-3">
                   <table class="table table-sm align-middle mb-0">

@@ -46,7 +46,28 @@ class RegionClothingController extends Controller
       return [$region->id => $recommended];
     });
 
-    return view('backend.clothing.event-setup', compact('event', 'visibleRegions', 'recommendedSources', 'isEventManager'));
+    // Aggregate only this event and the actor's visible regions; never load order histories here.
+    $regionalOrders = DB::table('clothing_orders as orders')
+      ->join('teams', 'teams.id', '=', 'orders.team_id')
+      ->where('orders.event_id', $event->id)
+      ->whereIn('teams.region_id', $visibleRegions->pluck('id'))
+      ->select('teams.region_id')
+      ->selectRaw("SUM(CASE WHEN orders.pay_status = 1 AND orders.status = 'completed' THEN 1 ELSE 0 END) as paid_count")
+      ->selectRaw("SUM(CASE WHEN orders.pay_status = 1 AND orders.status = 'completed' THEN COALESCE(orders.amount_paid, orders.total) ELSE 0 END) as paid_amount")
+      ->selectRaw("SUM(CASE WHEN orders.pay_status = 0 AND orders.status = 'pending' THEN 1 ELSE 0 END) as pending_count")
+      ->selectRaw("SUM(CASE WHEN orders.pay_status = 0 AND orders.status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_count")
+      ->groupBy('teams.region_id')->get()->keyBy('region_id');
+    $regionalRefunds = DB::table('clothing_refunds as refunds')
+      ->join('clothing_orders as orders', 'orders.id', '=', 'refunds.clothing_order_id')
+      ->join('teams', 'teams.id', '=', 'orders.team_id')
+      ->where('orders.event_id', $event->id)->where('refunds.event_id', $event->id)
+      ->where('orders.pay_status', 1)->where('orders.status', 'completed')
+      ->where('refunds.refund_status', 'completed')
+      ->whereIn('teams.region_id', $visibleRegions->pluck('id'))
+      ->select('teams.region_id')->selectRaw('SUM(refunds.refund_net) as refunded_amount')
+      ->groupBy('teams.region_id')->get()->keyBy('region_id');
+
+    return view('backend.clothing.event-setup', compact('event', 'visibleRegions', 'recommendedSources', 'isEventManager', 'regionalOrders', 'regionalRefunds'));
   }
 
   public function updateEventRegions(Request $request, Event $event)

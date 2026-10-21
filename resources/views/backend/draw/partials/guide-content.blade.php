@@ -13,16 +13,21 @@
     <section class="card card-body mb-3">
       <h2 class="h5">Competition phases</h2>
       @if($guide['sourceDraw'])
-        <p>The round-robin results determined these playoff pairings.</p>
+        <p>{{ $draw->isPlacementDraft() ? 'Proposed playoff programme: schedule the position placeholders now. Confirm qualifiers from the round robin to fill these same fixtures without losing times or courts. Scoring and publication remain unavailable until qualification.' : 'The round-robin results determined these playoff pairings.' }}</p>
         <a class="btn btn-outline-primary align-self-start" href="{{ route('draw.guide.show', [$event, $guide['sourceDraw']]) }}">Review round-robin phase</a>
       @elseif($guide['linkedPlayoff'])
         <p>Round-robin and playoff setup have separate schedules and publication reviews.</p>
         <a class="btn btn-primary align-self-start" href="{{ route('draw.guide.show', [$event, $guide['linkedPlayoff']]) }}">Continue playoff programme &amp; schedule</a>
       @else
-        <p>Current phase: round robin. Playoff pairings and times remain pending until every group encounter is complete and standings are resolved. Completing this phase's setup does not complete playoff setup.</p>
+        <p>Current phase: round robin. Prepare the draft placement fixtures now to plan the programme through Saturday. Confirmed qualifiers fill those same fixtures and retain their times and courts.</p>
         @can('team-draw.createFormat', $event)
+          @if($playoffReadiness['draft_playoff'] ?? null)
+            <a class="btn btn-primary align-self-start mb-2" href="{{ route('draw.guide.show', [$event, $playoffReadiness['draft_playoff']]) }}">Open draft playoff programme</a>
+          @else
+            <form method="POST" action="{{ route('team-draw.competition.draft-playoffs', $draw) }}" class="mb-3">@csrf<button class="btn btn-primary" @disabled(!($playoffReadiness['can_prepare'] ?? false))>Prepare draft playoff fixtures</button></form>
+          @endif
           <a class="btn btn-outline-primary align-self-start mb-2" href="{{ route('backend.team-draw.standings', $draw) }}">Review qualifiers</a>
-          <form method="POST" action="{{ route('team-draw.competition.playoffs', $draw) }}">@csrf<button class="btn btn-outline-primary" @disabled(!($playoffReadiness['can_create'] ?? false))>Confirm qualifiers &amp; create playoffs</button></form>
+          <form method="POST" action="{{ route('team-draw.competition.playoffs', $draw) }}">@csrf<button class="btn btn-outline-primary" @disabled(!($playoffReadiness['can_create'] ?? false))>{{ ($playoffReadiness['draft_playoff'] ?? null) ? 'Confirm qualifiers & fill draft fixtures' : 'Confirm qualifiers & create playoffs' }}</button></form>
         @endcan
       @endif
       @if($draw->team_scoring_rules['undecided'] ?? false)

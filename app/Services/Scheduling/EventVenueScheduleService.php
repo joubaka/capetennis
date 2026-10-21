@@ -323,6 +323,14 @@ final class EventVenueScheduleService
         }
         unset($node);
 
+        // A playoff-only preview still honours already scheduled group feeders.
+        foreach ($nodes as $node) foreach ($node['dependencies'] as $dependency) {
+            if (isset($nodes[$dependency]) || isset($finished[$dependency]) || !str_starts_with((string) $dependency, 'team:')) continue;
+            $feeder = \App\Models\TeamFixture::whereKey((int) substr($dependency, 5))
+                ->whereHas('draw', fn ($q) => $q->where('event_id', $event->id))->first();
+            if ($feeder?->scheduled_at) $finished[$dependency] = Carbon::parse($feeder->scheduled_at)->addMinutes((int) ($feeder->duration_min ?: 120) + $playerRest);
+        }
+
         if ($programme) {
             foreach ($nodes as $node) {
                 if (! $node['fixed'] && ! $node['played']) continue;
@@ -828,6 +836,7 @@ final class EventVenueScheduleService
             foreach ($matches as $row) {
                 if ($row['fixture_kind'] === 'team') {
                     $fixture = TeamFixture::whereKey($row['fixture_id'])->where('draw_id', $row['draw_id'])->firstOrFail();
+                    if ($error = app(UnifiedTeamScheduleService::class)->successorError($fixture->draw, Carbon::parse($row['scheduled_at']), (int) $row['duration'] + (int) ($preview['input']['playerRest'] ?? 60))) throw new \InvalidArgumentException($error);
                     $auditAssignments[$row['draw_id']][] = ['fixture_kind' => 'team', 'fixture_id' => $fixture->id,
                         'before' => $fixture->only(['scheduled_at', 'venue_id', 'court_label', 'duration_min', 'gap_minutes']),
                         'after' => array_intersect_key($row, array_flip(['scheduled_at', 'venue_id', 'venue_group', 'court', 'duration']))];

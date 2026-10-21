@@ -399,10 +399,14 @@ public function getStructureType(): string
         return config('capetennis_engine.mode', 'hybrid');
     }
 
-    /**
-     * Whether canonical mode is allowed for this draw.
-     * Canonical is blocked when unresolved HIGH or MEDIUM mismatches exist.
-     */
+    /** A proposed placement programme reserves positions until qualification. */
+    public function isPlacementDraft(): bool
+    {
+        return ($this->team_draw_selection['competition']['phase'] ?? null) === 'playoff'
+            && ($this->team_draw_selection['competition']['qualification_pending'] ?? false);
+    }
+
+    /** Canonical mode requires no unresolved high or medium mismatches. */
     public function canonicalAllowed(): bool
     {
         $blocked = \App\Models\EngineMismatch::forDraw($this->id)

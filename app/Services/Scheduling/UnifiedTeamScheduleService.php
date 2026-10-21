@@ -12,6 +12,14 @@ final class UnifiedTeamScheduleService
 {
     public function participants(TeamFixture $fixture): array
     {
+        if ($fixture->draw?->isPlacementDraft()) {
+            $definition = collect($fixture->draw->team_format_snapshot['rubbers'] ?? [])->firstWhere('sequence', $fixture->rubber_sequence);
+            $ids = [];
+            foreach (['home', 'away'] as $side) foreach (($definition[$side.'_positions'] ?? []) as $position) {
+                $ids[] = 'placement:'.$fixture->draw_id.':'.$fixture->team_tie_id.':'.$side.':'.$position;
+            }
+            return $ids;
+        }
         $ids = [];
         foreach ($fixture->fixturePlayers as $slot) {
             foreach ([1, 2] as $side) {
@@ -44,6 +52,12 @@ final class UnifiedTeamScheduleService
         $fixtures = TeamFixture::with(['fixturePlayers.noProfile1', 'fixturePlayers.noProfile2',
             'teamTie.homeTeam', 'teamTie.awayTeam', 'region1Name', 'region2Name', 'fixtureResults'])
             ->where('draw_id', $draw->id)->orderBy('round_nr')->orderBy('tie_nr')->orderBy('rubber_sequence')->orderBy('id')->get();
+        $sourceDependencies = [];
+        $sourceId = $draw->team_draw_selection['competition']['source_draw_id'] ?? null;
+        if ($sourceId) {
+            $source = Draw::where('event_id', $draw->event_id)->whereKey($sourceId)->first();
+            if ($source) $sourceDependencies = $source->fixtures()->pluck('team_fixtures.id')->map(fn ($id) => 'team:'.$id)->all();
+        }
         $nodes = [];
         foreach ($fixtures as $fixture) {
             $teams = array_filter([$fixture->teamTie?->home_team_id, $fixture->teamTie?->away_team_id]);
@@ -54,6 +68,7 @@ final class UnifiedTeamScheduleService
                 return (bool) array_intersect($teams, array_filter([$earlier->teamTie?->home_team_id, $earlier->teamTie?->away_team_id]))
                     || (bool) array_intersect($regions, array_filter([$earlier->region1, $earlier->region2]));
             })->map(fn ($earlier) => 'team:'.$earlier->id)->values()->all();
+            $dependencies = array_merge($dependencies, $sourceDependencies);
             $home = $fixture->teamTie?->home_side_name ?: $fixture->region1Name?->name ?: 'Home team';
             $away = $fixture->teamTie?->away_side_name ?: $fixture->region2Name?->name ?: 'Away team';
             $nodes['team:'.$fixture->id] = [
@@ -116,6 +131,7 @@ final class UnifiedTeamScheduleService
                 return 'This rubber and required rest finish after a saved later team tie starts.';
             }
         }
+        if (!($data['adaptation'] ?? false) && ($error = $this->successorError($fixture->draw, $start, $duration + $rest))) return $error;
         $ids = $this->participants($fixture);
         $calendar = ScheduleAvailability::load([$venueId], $ids, [], null, $rest, [$fixture->id]);
         if ($calendar->nextAvailableForMatch($start, $duration + $gap, $duration + $rest, $venueId, $court, $ids)->gt($start)) {
@@ -131,8 +147,8 @@ final class UnifiedTeamScheduleService
         $calendar = ScheduleAvailability::load([(int) $data['venue_id']], $ids, [], null, 0, [$fixture->id], $fixture->draw?->event, $at);
         return array_merge(app(RankVenuePreferences::class)->manualWarnings($fixture, (int) $data['venue_id']), array_map(function ($change) {
             [$kind, $id] = explode(':', $change['participant_id'], 2);
-            $player = $kind === 'profile' ? \App\Models\Player::find($id) : \App\Models\NoProfileTeamPlayer::find($id);
-            $name = $player ? trim($player->name.' '.$player->surname) : 'Player '.$id;
+            $player = $kind === 'profile' ? \App\Models\Player::find($id) : ($kind === 'no-profile' ? \App\Models\NoProfileTeamPlayer::find($id) : null);
+            $name = $kind === 'placement' ? 'A qualified roster position' : ($player ? trim($player->name.' '.$player->surname) : 'Player '.$id);
             $from = Venue::find($change['from_venue_id'])?->name ?: 'another venue';
             $to = Venue::find($change['to_venue_id'])?->name ?: 'another venue';
             return $name.' changes venue from '.$from.' to '.$to.'.';
@@ -148,7 +164,8 @@ final class UnifiedTeamScheduleService
             Draw::where('event_id', $event->id)->orderBy('id')->lockForUpdate()->get();
             Venue::whereKey($data['venue_id'])->lockForUpdate()->get();
             $fixture = TeamFixture::whereKey($data['fixture_id'])
-                ->whereHas('draw', fn ($q) => $q->where('event_id', $event->id))->lockForUpdate()->firstOrFail();
+                ->whereHas('draw', fn ($q) => $q->where('event_id', $event->id))
+                ->when(isset($data['expected_draw_id']), fn ($q) => $q->where('draw_id', $data['expected_draw_id']))->lockForUpdate()->firstOrFail();
             if ($error = $this->manualError($event, $fixture, $data)) throw new \InvalidArgumentException($error);
             $before = $fixture->only(['scheduled_at', 'venue_id', 'court_label', 'duration_min', 'gap_minutes']);
             $fixture->forceFill(['scheduled_at' => $data['scheduled_at'] ?? $data['start'], 'venue_id' => $data['venue_id'],
@@ -168,10 +185,27 @@ final class UnifiedTeamScheduleService
         $drawIds = TeamFixture::whereIn('id', $fixtureIds)->whereHas('draw', fn ($q) => $q->where('event_id', $event->id))->pluck('draw_id')->unique();
         $keys = array_map(fn ($id) => 'team:'.$id, $fixtureIds);
         foreach (Draw::whereIn('id', $drawIds)->get() as $draw) {
+            foreach ($this->dependentPlayoffs($draw) as $playoff) if ($playoff->fixtures()->whereNotNull('scheduled_at')->exists()) return 'A saved playoff programme depends on these round-robin times. Return the playoff bookings to planning first.';
             foreach ($this->nodes($draw, $progression) as $key => $node) {
                 if (in_array($key, $keys, true) || ! $node['fixture']->scheduled_at) continue;
                 if (array_intersect($keys, $node['dependencies'])) return 'A saved later team tie depends on this assignment. Return the dependent tie to planning too.';
             }
+        }
+        return null;
+    }
+
+    private function dependentPlayoffs(Draw $draw): \Illuminate\Support\Collection
+    {
+        $config = $draw->team_draw_selection['competition'] ?? [];
+        $ids = array_filter([$config['draft_playoff_draw_id'] ?? null, $config['playoff_draw_id'] ?? null]);
+        return Draw::where('event_id', $draw->event_id)->whereIn('id', $ids)->get()->filter(fn ($playoff) => (int) ($playoff->team_draw_selection['competition']['source_draw_id'] ?? 0) === (int) $draw->id);
+    }
+
+    public function successorError(Draw $draw, Carbon $start, int $duration): ?string
+    {
+        foreach ($this->dependentPlayoffs($draw) as $playoff) {
+            $later = $playoff->fixtures()->whereNotNull('scheduled_at')->reorder()->orderBy('scheduled_at')->first();
+            if ($later && $start->copy()->addMinutes($duration)->gt($later->scheduled_at)) return 'This round-robin match would finish after its saved playoff programme starts. Move the playoff booking first.';
         }
         return null;
     }

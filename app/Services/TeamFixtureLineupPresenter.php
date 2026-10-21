@@ -130,6 +130,7 @@ class TeamFixtureLineupPresenter
 
     private function teamLabel(TeamFixture $fixture, string $side, Collection $teams): string
     {
+        if ($fixture->draw?->isPlacementDraft()) return $this->tie($fixture)?->{$side.'_side_name'} ?? 'Qualifier pending';
         $teamId = $this->tie($fixture)?->{$side.'_team_id'};
         $team = $teams->get($teamId);
         if ($team && (int) $team->category?->event_id === (int) $fixture->draw?->event_id) {

@@ -218,6 +218,9 @@ class DrawController extends Controller
     }
 
     $this->authorize('delete', $draw);
+    $competition = $draw->team_draw_selection['competition'] ?? [];
+    abort_if(!empty($competition['source_draw_id']) || !empty($competition['draft_playoff_draw_id']) || !empty($competition['playoff_draw_id']),
+      409, 'This draw is linked to a placement programme. Preserve its qualification and schedule history.');
 
     try {
       $counts = DB::transaction(function () use ($draw) {

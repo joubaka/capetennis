@@ -8,7 +8,7 @@
     <h1 class="h4 mb-0">{{ $draw->drawName }}: team ties</h1>
     <div class="d-flex flex-wrap gap-2">
       @can('event.manage', $draw->event)<a data-draw-guide-open class="btn btn-primary" href="{{ route('draw.guide.show', [$draw->event_id, $draw]) }}">Continue setup</a>@endcan
-      @can('team-fixture.schedule', $draw)<a class="btn btn-outline-primary" href="{{ route('backend.team-schedule.page', $draw) }}">Schedule rubbers</a>@endcan
+      @can('team-fixture.schedule', $draw)<a class="btn btn-outline-primary" href="{{ isset($draw->team_draw_selection['competition']) ? route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]) : route('backend.team-schedule.page', $draw) }}">Schedule rubbers</a>@endcan
       <a class="btn btn-outline-primary" href="{{ route('backend.team-draw.standings', $draw) }}">Standings</a>
     </div>
   </div>
@@ -35,10 +35,18 @@
           <a href="{{ route('backend.team-draw.operations', $competition['playoff_draw_id']) }}">Open placement playoffs</a>
         @else
           @can('team-draw.createFormat', $draw->event)
-            <form method="POST" action="{{ route('team-draw.competition.playoffs', $draw) }}">@csrf<button class="btn btn-primary" @disabled(!($playoffReadiness['can_create'] ?? false))>Create 1st/2nd and 3rd/4th playoffs</button></form>
+            @if($playoffReadiness['draft_playoff'] ?? null)
+              <a class="btn btn-outline-primary mb-3" href="{{ route('draw.guide.show', [$draw->event_id, $playoffReadiness['draft_playoff']]) }}">Open draft playoff programme</a>
+            @else
+              <form method="POST" action="{{ route('team-draw.competition.draft-playoffs', $draw) }}" class="mb-3">@csrf<button class="btn btn-outline-primary" @disabled(!($playoffReadiness['can_prepare'] ?? false))>Prepare draft playoff fixtures</button></form>
+            @endif
+            <form method="POST" action="{{ route('team-draw.competition.playoffs', $draw) }}">@csrf<button class="btn btn-primary" @disabled(!($playoffReadiness['can_create'] ?? false))>{{ ($playoffReadiness['draft_playoff'] ?? null) ? 'Confirm qualifiers & fill draft fixtures' : 'Create 1st/2nd and 3rd/4th playoffs' }}</button></form>
           @endcan
         @endif
       @else
+        @if($draw->isPlacementDraft())<div class="alert alert-info mt-3">Proposed playoff programme: schedule the round-robin position placeholders. Confirm qualifiers in the round-robin phase to fill these fixtures, retaining saved times and courts. Scoring and publication require confirmed teams.</div>
+          <a class="btn btn-primary" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]) }}">Plan proposed playoff schedule</a>
+        @endif
         <a href="{{ route('backend.team-draw.standings', $competition['source_draw_id']) }}">Round-robin standings</a>
         <p class="mt-2">Tie 1 decides places 1 and 2. Tie 2 decides places 3 and 4. A level match total remains unresolved and must be reviewed by the organiser.</p>
         @foreach($ties as $placementTie)
@@ -64,7 +72,7 @@
   @forelse($ties->groupBy('round_nr') as $roundNumber => $roundTies)
 <section data-tie-round-group><h2 class="h5 mt-4">Round {{ $roundNumber }}</h2>
     @foreach($roundTies as $tie)
-      @php($protected = $draw->locked || $draw->published || $tie->isLocked() || $tie->published_at || $tie->winner_team_id)
+      @php($protected = $draw->isPlacementDraft() || $draw->locked || $draw->published || $tie->isLocked() || $tie->published_at || $tie->winner_team_id)
       <details class="card mb-3" data-tie-card data-round="{{ $roundNumber }}" data-status="{{ $tie->status }}">
         <summary class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2" style="min-height:44px">
           <div><h3 class="h6 mb-1">{{ $tie->home_side_name ?? 'Home' }} vs {{ $tie->away_side_name ?? 'Away' }}</h3>
@@ -86,7 +94,7 @@
               <td>{{ $rubber->scheduled_at?->format('d M H:i') ?? 'Unscheduled' }} @if($rubber->court_label)<span class="text-muted">{{ $rubber->court_label }}</span>@endif</td>
               <td><div class="d-flex flex-wrap gap-2">
                 @can('team-fixture.view', $rubber)<a class="btn btn-sm btn-outline-secondary" href="{{ route('backend.team-fixtures.show', $rubber) }}">Review players</a>@endcan
-                @can('team-fixture.saveScore', $rubber)<a class="btn btn-sm btn-primary" href="{{ route('frontend.fixtures.enter-scores', $draw) }}">Enter scores</a>@endcan
+                @unless($draw->isPlacementDraft())@can('team-fixture.saveScore', $rubber)<a class="btn btn-sm btn-primary" href="{{ route('frontend.fixtures.enter-scores', $draw) }}">Enter scores</a>@endcan@endunless
                 @can('team-fixture.update', $rubber)<a class="btn btn-sm btn-outline-primary" href="{{ route('backend.team-fixtures.edit', $rubber) }}">Edit schedule</a>@endcan
               </div></td>
             </tr>

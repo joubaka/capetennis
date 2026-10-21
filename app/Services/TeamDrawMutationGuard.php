@@ -17,6 +17,7 @@ final class TeamDrawMutationGuard
 
     public function fixture(TeamFixture $fixture): void
     {
+        abort_if($fixture->draw->isPlacementDraft(), 409, 'Confirm playoff qualifiers before changing player assignments.');
         abort_if(\App\Models\TeamSubstitution::where('event_id', $fixture->draw->event_id)->exists(), 409,
             'This event has audited replacements. Use the replacement wizard for lineup changes; scheduling existing fixtures remains available.');
         $this->schedule($fixture->draw);

@@ -22,7 +22,7 @@ final class TeamDrawScoringPublicationService
 
         return [
             'canonical' => $canonical,
-            'ready' => !($draw->team_scoring_rules['undecided'] ?? false) && ($canonical ? $total > 0 && $pending === 0 && ! $orphaned : $draw->fixtures()->exists()),
+            'ready' => !$draw->isPlacementDraft() && !($draw->team_scoring_rules['undecided'] ?? false) && ($canonical ? $total > 0 && $pending === 0 && ! $orphaned : $draw->fixtures()->exists()),
             'pending' => $pending,
             'total' => $total,
         ];
@@ -30,6 +30,7 @@ final class TeamDrawScoringPublicationService
 
     public function enableLocked(Draw $draw): array
     {
+        if ($draw->isPlacementDraft()) throw new \RuntimeException('Confirm playoff qualifiers before enabling scoring.');
         if ($draw->team_scoring_rules['undecided'] ?? false) throw new \RuntimeException('Scoring is to be decided. Confirm the phase scoring rules first.');
         $ties = $draw->teamTies()->orderBy('id')->lockForUpdate()->get();
         if ($ties->isEmpty()) {

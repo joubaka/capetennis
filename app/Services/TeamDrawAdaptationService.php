@@ -37,7 +37,7 @@ class TeamDrawAdaptationService
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
             $report = ['added_fixture_ids' => [], 'cleared_fixture_ids' => [], 'removed_fixture_ids' => [],
                 'removed_bookings' => [], 'updated_lineups' => 0, 'retained_protected_ids' => [], 'review_required' => false, 'review_tie_ids' => [], 'warnings' => []];
-            if ($draw->locked || !$draw->isTeamDraw()) return $report;
+            if ($draw->locked || !$draw->isTeamDraw() || $draw->isPlacementDraft()) return $report;
             if (isset($draw->team_draw_selection['competition'])) {
                 $calendar = app(UnifiedTeamScheduleService::class);
                 foreach ($draw->teamTies()->with('rubbers', 'homeTeam', 'awayTeam')->lockForUpdate()->get() as $tie) {

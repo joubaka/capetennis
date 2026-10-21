@@ -16,6 +16,15 @@ final class TeamScheduleService
 {
     public function save(Draw $draw, array $data): void
     {
+        if (isset($draw->team_draw_selection['competition'])) {
+            TeamFixture::where('draw_id', $draw->id)->whereKey($data['fixture_id'])->firstOrFail();
+            try {
+                app(\App\Services\Scheduling\UnifiedTeamScheduleService::class)->assign($draw->event, array_replace($data, ['expected_draw_id' => $draw->id]));
+            } catch (\InvalidArgumentException $exception) {
+                throw ValidationException::withMessages(['scheduled_at' => $exception->getMessage()]);
+            }
+            return;
+        }
         DB::transaction(function () use ($draw, $data) {
             DB::table('venues')->orderBy('id')->limit(1)->lockForUpdate()->get();
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
@@ -97,6 +106,7 @@ final class TeamScheduleService
             DB::table('venues')->orderBy('id')->limit(1)->lockForUpdate()->get();
             $guard = app(TeamDrawMutationGuard::class);
             $lockedDraws = Draw::whereIn('id', $draws->pluck('id'))->orderBy('id')->lockForUpdate()->get();
+            if ($lockedDraws->contains(fn ($draw) => isset($draw->team_draw_selection['competition']))) throw ValidationException::withMessages(['draw' => 'Use the event venue planner to schedule placement competitions with qualification dependencies.']);
             $this->lockScheduler();
             TeamFixture::whereIn('draw_id', $lockedDraws->pluck('id'))->orderBy('id')->lockForUpdate()->get();
             $venuesByDraw = [];
