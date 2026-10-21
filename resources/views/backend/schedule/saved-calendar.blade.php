@@ -9,6 +9,10 @@
 [data-saved-calendar] .calendar-table td { vertical-align:middle; }
 [data-saved-calendar] .calendar-table th { white-space:nowrap; }
 [data-saved-calendar] .calendar-publication { border-left:3px solid #287d74; }
+[data-saved-calendar] .publication-toggle { display:flex; flex-wrap:wrap; gap:4px; padding:4px; border:1px solid #dbe2eb; border-radius:10px; background:#f5f7fa; }
+[data-saved-calendar] .publication-toggle form { display:flex; margin:0; flex:1; }
+[data-saved-calendar] .publication-toggle .btn { width:100%; border-radius:7px; min-width:120px; }
+[data-saved-calendar] .publication-toggle .btn[aria-pressed="true"] { opacity:1; box-shadow:0 1px 3px #172b4d20; }
 @media (max-width:767.98px) {
   [data-saved-calendar] .calendar-table thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
   [data-saved-calendar] .calendar-table, [data-saved-calendar] .calendar-table tbody { display:block; }
@@ -34,14 +38,25 @@
     <a class="btn btn-primary" href="{{ route('backend.event-venue-schedule.index', ['event'=>$event->id] + ($date !== 'all' ? ['date'=>$date] : []) + (!empty($scope['venue_id']) ? ['venue_id'=>$scope['venue_id']] : []) + (!empty($scope['draw_id']) ? ['draw_ids'=>[$scope['draw_id']]] : [])) }}">{{ $date === 'all' ? 'Schedule more matches' : 'Add matches to this day' }}</a>
     <a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar.full-day', ['event'=>$event->id, 'date'=>$date !== 'all' ? $date : ($event->start_date ? \Carbon\Carbon::parse($event->start_date)->toDateString() : now()->toDateString())]) }}">Schedule a full day across venues</a>
     @if($date !== 'all' && !empty($scope['draw_id']))<a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar.edit-day', ['event'=>$event->id, 'date'=>$date, 'draw_id'=>$scope['draw_id']]) }}">Change venues / reschedule this draw</a>@endif
-    <a class="btn btn-outline-secondary" href="#calendar-publication">Publish / hide times</a>
   </div>
-  <section class="card calendar-publication mb-3" id="calendar-publication" aria-label="Schedule publication"><div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-3"><div><strong>Public schedule</strong><div class="small text-muted">{{ $rows->where('publication_state','Published')->count() }} published times · {{ $rows->where('publication_state','Private')->count() }} private · {{ $rows->where('publication_state','Updates private')->count() }} with private updates · {{ $rows->where('publication_state','Not publicly visible')->count() }} not publicly visible</div><div class="small text-muted">Draws and team ties must also be published before players can see their times.</div></div><div class="d-flex flex-wrap gap-2">
+  @php
+    $publishedCount = $rows->where('publication_state', 'Published')->count();
+    $privateCount = $rows->where('publication_state', 'Private')->count();
+    $updatedCount = $rows->where('publication_state', 'Updates private')->count();
+    $blockedCount = $rows->where('publication_state', 'Not publicly visible')->count();
+    $hasPublishedTimes = $publishedCount + $updatedCount + $blockedCount + $retained->count() > 0;
+    $fullyPrivate = !$hasPublishedTimes;
+    $fullyPublished = $hasPublishedTimes && $privateCount === 0 && $updatedCount === 0 && $retained->isEmpty();
+    $publicationLabel = $rows->isEmpty() && $retained->isEmpty() ? 'No saved times' : ($fullyPrivate ? 'Private' : ($privateCount > 0 ? 'Partly published' : ($updatedCount > 0 || $retained->isNotEmpty() ? 'Published · updates private' : ($blockedCount > 0 ? 'Published · visibility blocked' : 'Published'))));
+  @endphp
+  <section class="card calendar-publication mb-3" id="calendar-publication" aria-label="Schedule publication"><div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-3"><div><div class="d-flex flex-wrap align-items-center gap-2"><strong>Public schedule</strong><span class="badge {{ $fullyPrivate ? 'bg-label-secondary' : ($fullyPublished && $blockedCount === 0 ? 'bg-label-success' : 'bg-label-warning') }}">{{ $publicationLabel }}</span></div><div class="small text-muted mt-2">{{ $publishedCount }} published times · {{ $privateCount }} private @if($updatedCount) · {{ $updatedCount }} with private updates @endif @if($blockedCount) · {{ $blockedCount }} not publicly visible @endif @if($retained->isNotEmpty()) · {{ $retained->count() }} previous public times retained @endif</div><div class="small text-muted">Draws and team ties must also be published before players can see their times.</div></div><div class="d-flex flex-wrap gap-2">
     <a class="btn btn-outline-secondary" href="{{ route('backend.event-venue-schedule.calendar.preview',['event'=>$event->id]+$scope) }}">Preview public schedule</a>
     @if($date !== 'all')
       <span class="small text-muted w-100">Publication scope: {{ \Carbon\Carbon::parse($date)->format('D j M Y') }} · {{ !empty($scope['venue_id']) ? ($venues->firstWhere('id', (int) $scope['venue_id'])?->name ?? 'Selected venue') : 'all venues' }} · {{ !empty($scope['draw_id']) ? ($draws->firstWhere('id', (int) $scope['draw_id'])?->drawName ?? 'Selected draw') : 'all draws' }}. Only this scope changes.</span>
-      <form method="post" action="{{ route('backend.event-venue-schedule.calendar.publish',$event) }}">@csrf<input type="hidden" name="revision" value="{{ $revision }}">@foreach($scope as $key=>$value)<input type="hidden" name="{{ $key }}" value="{{ $value }}">@endforeach<button class="btn btn-success">{{ !empty($scope['venue_id']) || !empty($scope['draw_id']) ? 'Publish selected schedule' : ($rows->where('publication_state','Updates private')->isNotEmpty() ? 'Publish updates for this day' : 'Publish this day') }}</button></form>
-      <form method="post" action="{{ route('backend.event-venue-schedule.calendar.hide',$event) }}">@csrf<input type="hidden" name="revision" value="{{ $revision }}">@foreach($scope as $key=>$value)<input type="hidden" name="{{ $key }}" value="{{ $value }}">@endforeach<button class="btn btn-outline-danger">{{ !empty($scope['venue_id']) || !empty($scope['draw_id']) ? 'Hide selected public times' : 'Hide public times' }}</button></form>
+      <div class="publication-toggle" role="group" aria-label="Public match time visibility">
+        <form method="post" action="{{ route('backend.event-venue-schedule.calendar.hide',$event) }}">@csrf<input type="hidden" name="revision" value="{{ $revision }}">@foreach($scope as $key=>$value)<input type="hidden" name="{{ $key }}" value="{{ $value }}">@endforeach<button type="submit" class="btn {{ $fullyPrivate ? 'btn-primary' : 'btn-outline-secondary' }}" aria-pressed="{{ $fullyPrivate ? 'true' : 'false' }}" @disabled($fullyPrivate)><i class="ti ti-eye-off me-1" aria-hidden="true"></i>Private</button></form>
+        <form method="post" action="{{ route('backend.event-venue-schedule.calendar.publish',$event) }}">@csrf<input type="hidden" name="revision" value="{{ $revision }}">@foreach($scope as $key=>$value)<input type="hidden" name="{{ $key }}" value="{{ $value }}">@endforeach<button type="submit" class="btn {{ $fullyPublished ? 'btn-success' : 'btn-outline-success' }}" aria-pressed="{{ $fullyPublished ? 'true' : 'false' }}" @disabled($fullyPublished || ($rows->isEmpty() && $retained->isEmpty()))><i class="ti ti-world me-1" aria-hidden="true"></i>{{ $updatedCount || $retained->isNotEmpty() ? 'Publish updates' : ($fullyPublished ? 'Published' : 'Publish') }}</button></form>
+      </div>
     @else<span class="small text-muted align-self-center">Choose a day to publish all venues or filter to a venue and draw.</span>@endif
   </div></div></section>
   <p class="small text-muted mb-3">Saved changes stay private until published. Existing public times stay visible until you publish updates or hide them.</p>
