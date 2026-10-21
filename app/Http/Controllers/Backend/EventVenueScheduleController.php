@@ -495,12 +495,39 @@ final class EventVenueScheduleController extends Controller
     {
         $this->authorize('event.manage', $event);
         $scope = $this->calendarScope($request, $event);
-        $request->validate(['after_publish' => ['nullable', 'boolean']]);
+        $request->validate(['after_publish' => ['nullable', 'boolean'], 'hide_times' => ['nullable', 'boolean']]);
         $afterPublish = $request->boolean('after_publish');
-        $rows = ($afterPublish ? $publication->previewAfterPublishingRows($event, $scope) : $publication->publishedRows($event))->filter(fn ($row) => (empty($scope['date']) || $scope['date'] === 'all' || substr($row['scheduled_at'], 0, 10) === $scope['date'])
+        $hideTimes = $request->boolean('hide_times');
+        $request->attributes->set('public_schedule_preview', true);
+        $allRows = ($afterPublish || $hideTimes) ? $publication->previewAfterPublishingRows($event, $scope) : $publication->publishedRows($event);
+        $rows = $allRows->filter(fn ($row) => (empty($scope['date']) || $scope['date'] === 'all' || substr($row['scheduled_at'], 0, 10) === $scope['date'])
             && (empty($scope['venue_id']) || (int) $row['venue_id'] === (int) $scope['venue_id'])
             && (empty($scope['draw_id']) || (int) $row['draw_id'] === (int) $scope['draw_id']))->take(1000)->values();
-        return view('backend.schedule.public-schedule-preview', compact('event', 'rows', 'scope', 'afterPublish'));
+        // Use the same fixture presentation and public lineup rules as the player pages.
+        $drawIds = app(\App\Services\PublicTournamentVisibility::class)->eventIsVisible($event)
+            ? $event->draws()->where('published', true)
+                ->when(! empty($scope['draw_id']), fn ($query) => $query->whereKey($scope['draw_id']))
+                ->when(empty($scope['draw_id']) && $rows->isNotEmpty(), fn ($query) => $query->whereIn('id', $rows->pluck('draw_id')))->pluck('id')
+            : collect();
+        $individualFixtures = \App\Models\Fixture::with(['draw.settings', 'registration1.players', 'registration2.players', 'fixtureResults'])
+            ->whereIn('draw_id', $drawIds)->orderByRaw('CAST(match_nr AS UNSIGNED)')->limit(1000)->get();
+        $teamFixtures = \App\Models\TeamFixture::with(['draw.settings', 'fixtureResults'])
+            ->whereIn('draw_id', $drawIds)->publicDrawFixtures()->inPlayOrder()->limit(1000)->get();
+        $fixtures = $individualFixtures->concat($teamFixtures);
+        $publication->projectFixtures($fixtures, $hideTimes ? collect() : $allRows);
+        app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($teamFixtures, publicDraw: true);
+        $previewDraws = $fixtures->groupBy('draw_id')->map(function ($drawFixtures) use ($afterPublish, $hideTimes, $request, $allRows) {
+            $draw = $drawFixtures->first()->draw;
+            $hasPublicTimes = ! $hideTimes && $allRows->contains('draw_id', $draw->id);
+            if ($afterPublish || $hideTimes) $draw->setAttribute('oop_published', $hasPublicTimes);
+            if ($afterPublish) $request->attributes->set('draw_schedule_exists_'.$draw->event_id.'_'.$draw->id, $hasPublicTimes);
+            if ($drawFixtures->first() instanceof \App\Models\TeamFixture) {
+                $drawFixtures = app(\App\Services\Scheduling\TeamFixtureOrder::class)->sort($drawFixtures);
+            }
+            return ['draw' => $draw, 'fixtures' => $drawFixtures];
+        });
+
+        return view('backend.schedule.public-schedule-preview', compact('event', 'scope', 'afterPublish', 'hideTimes', 'previewDraws'));
     }
 
     private function changePublication(Request $request, Event $event, \App\Services\Scheduling\SchedulePublicationService $publication, bool $hide)

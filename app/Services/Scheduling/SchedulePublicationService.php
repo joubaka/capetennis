@@ -139,10 +139,10 @@ final class SchedulePublicationService
         return $publicRows;
     }
 
-    public function projectFixtures(Collection $fixtures): Collection
+    public function projectFixtures(Collection $fixtures, ?Collection $scheduleRows = null): Collection
     {
         $events = $fixtures->map(fn ($fixture) => $fixture->draw?->event_id ?? $fixture->draws?->event_id)->filter()->unique();
-        $rows = $events->flatMap(fn ($id) => $this->publishedRows(Event::findOrFail($id), includeParticipants: false))->keyBy('fixture_key');
+        $rows = ($scheduleRows ?? $events->flatMap(fn ($id) => $this->publishedRows(Event::findOrFail($id), includeParticipants: false)))->keyBy('fixture_key');
         $venues = Venue::whereIn('id', $rows->pluck('venue_id')->filter()->unique())->get()->keyBy('id');
         foreach ($fixtures as $fixture) {
             $team = $fixture instanceof TeamFixture;

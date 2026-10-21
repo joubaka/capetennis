@@ -230,9 +230,16 @@ class SchedulePublicationTest extends TestCase
             ->assertOk()->assertSee('After publishing')->assertSee('11:30')->assertDontSee('08:00')
             ->assertSee('aria-pressed="true"', false)
             ->assertSee(e(route('backend.event-venue-schedule.calendar.preview', $scope + ['after_publish' => 0])), false);
+        $hiddenResponse = $this->get(route('backend.event-venue-schedule.calendar.preview', $scope + ['hide_times' => 1]))
+            ->assertOk()->assertSee('With times published')->assertSee('With times hidden')
+            ->assertSee('Match times to follow')->assertSee('Match time to follow')
+            ->assertSee('public-match-cards', false)->assertSee('fixtures-table', false)
+            ->assertDontSee('11:30')->assertDontSee('08:00')->assertDontSee($venue->name)
+            ->assertDontSee('data-live-results=', false);
         if (getenv('CT_WEEKEND_BROWSER_FIXTURE') === '1') {
             file_put_contents(storage_path('framework/testing/weekend-public-preview.html'), $this->get($url)->getContent());
             file_put_contents(storage_path('framework/testing/weekend-after-publish-preview.html'), $response->getContent());
+            file_put_contents(storage_path('framework/testing/weekend-hidden-preview.html'), $hiddenResponse->getContent());
         }
         $this->get($url)->assertOk()->assertSee('08:00')->assertDontSee('11:30');
         $this->assertSame($before, DB::table('published_schedule_assignments')->get()->toJson());
@@ -240,6 +247,66 @@ class SchedulePublicationTest extends TestCase
         $this->assertTrue((bool) $draw->fresh()->oop_published);
         $this->get(route('backend.event-venue-schedule.calendar.preview', ['event' => Event::factory()->create()->id, 'after_publish' => 1]))->assertForbidden();
         $this->get(route('backend.event-venue-schedule.calendar.preview', array_replace($scope, ['draw_id' => Draw::factory()->create()->id, 'after_publish' => 1])))->assertUnprocessable();
+        $this->get(route('backend.event-venue-schedule.calendar.preview', ['event' => Event::factory()->create()->id, 'hide_times' => 1]))->assertForbidden();
+        $this->get(route('backend.event-venue-schedule.calendar.preview', array_replace($scope, ['draw_id' => Draw::factory()->create()->id, 'hide_times' => 1])))->assertUnprocessable();
+    }
+
+    public function test_public_preview_without_published_times_keeps_public_matchups_and_hides_private_assignments(): void
+    {
+        [$event, $draw, $venue, $fixture] = $this->context();
+        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $scope = ['event' => $event->id, 'date' => '2026-10-10', 'draw_id' => $draw->id];
+        $this->actingAs($admin)->get(route('backend.event-venue-schedule.calendar.preview', $scope))
+            ->assertOk()->assertSee($draw->drawName)->assertSee('Draw published')
+            ->assertSee('Match times to follow')->assertSee('Match time to follow')->assertDontSee('08:00')->assertDontSee($venue->name);
+        $fixture->orderOfPlay()->delete();
+        $this->get(route('backend.event-venue-schedule.calendar.preview', $scope + ['hide_times' => 1]))
+            ->assertOk()->assertSee($draw->drawName)->assertSee('Match times to follow')->assertDontSee('No public fixtures');
+        $this->get(route('backend.event-venue-schedule.calendar.preview', $scope + ['after_publish' => 1]))
+            ->assertOk()->assertSee('Match times to follow')->assertDontSee('Match times published');
+        $this->assertDatabaseCount('published_schedule_assignments', 0);
+        $this->assertFalse((bool) $draw->fresh()->oop_published);
+        $draw->update(['published' => false]);
+        $this->get(route('backend.event-venue-schedule.calendar.preview', $scope + ['hide_times' => 1]))
+            ->assertOk()->assertDontSee($draw->drawName)->assertSee('No public fixtures');
+        $draw->update(['published' => true]);
+        $event->update(['published' => false]);
+        $this->get(route('backend.event-venue-schedule.calendar.preview', $scope + ['hide_times' => 1]))
+            ->assertOk()->assertDontSee($draw->drawName)->assertSee('No public fixtures');
+    }
+
+    public function test_team_public_preview_reuses_public_round_tie_and_lineup_presentation_in_both_modes(): void
+    {
+        [$event, $draw, $venue, $individual] = $this->context();
+        $individual->orderOfPlay()->delete();
+        $individual->delete();
+        $event->update(['eventType' => 3]);
+        $tie = \App\Models\TeamTie::factory()->create(['draw_id' => $draw->id]);
+        \App\Models\TeamFixture::forceCreate(['match_nr' => 1, 'draw_id' => $draw->id,
+            'round_nr' => 1, 'tie_nr' => 1, 'team_tie_id' => $tie->id, 'scheduled_at' => '2026-10-10 13:45:00',
+            'venue_id' => $venue->id, 'court_label' => '2', 'match_status' => 0]);
+        \App\Models\TeamFixture::forceCreate(['match_nr' => 2, 'draw_id' => $draw->id,
+            'round_nr' => 1, 'tie_nr' => 1, 'team_tie_id' => $tie->id, 'match_status' => 0]);
+        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $scope = ['event' => $event->id, 'date' => '2026-10-10', 'draw_id' => $draw->id];
+        $response = $this->actingAs($admin)->get(route('backend.event-venue-schedule.calendar.preview', $scope + ['after_publish' => 1]))
+            ->assertOk()->assertSee('fixture-round', false)->assertSee('fixture-tie', false)
+            ->assertSee('fixture-team-chip', false)->assertSee('Click to show schedule and fixtures')->assertSee('13:45')
+            ->assertSee('Match time to follow')
+            ->assertSee('Match times published')->assertDontSee('data-live-results=', false);
+        $hidden = $this->get(route('backend.event-venue-schedule.calendar.preview', $scope + ['hide_times' => 1]))
+            ->assertOk()->assertSee('fixture-round', false)->assertSee('Match times to follow')
+            ->assertDontSee('13:45')->assertDontSee($venue->name)->assertDontSee('data-live-results=', false);
+        if (getenv('CT_WEEKEND_BROWSER_FIXTURE') === '1') {
+            file_put_contents(storage_path('framework/testing/weekend-team-published-preview.html'), $response->getContent());
+            file_put_contents(storage_path('framework/testing/weekend-team-hidden-preview.html'), $hidden->getContent());
+        }
+        $this->assertDatabaseCount('published_schedule_assignments', 0);
+        $this->assertFalse((bool) $draw->fresh()->oop_published);
     }
 
     public function test_after_publish_preview_projects_new_cleared_and_moved_times_but_respects_draw_visibility(): void

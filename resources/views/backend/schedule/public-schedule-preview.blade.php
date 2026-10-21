@@ -1,31 +1,48 @@
-@extends('layouts.backend')
+@extends('layouts/layoutMaster')
 @section('title', 'Public schedule preview – '.$event->name)
 @section('content')
 <div class="container-xxl py-3">
     <h3>Public schedule preview</h3>
     <p class="text-muted">
-        @if($afterPublish)
+        @if($hideTimes)
+            Preview with match times and venues hidden. The published draw remains available. Nothing has been changed.
+        @elseif($afterPublish)
             Preview after publishing the saved schedule in this selection. Hidden events and draws remain hidden. Nothing has been published.
         @else
             What people currently see: published match times and currently public draws. Private saved changes are excluded.
         @endif
     </p>
+    <p class="small text-muted">
+        @if($hideTimes)
+            Showing the full public draw with times and venues hidden.
+        @elseif($afterPublish)
+            Showing the full public draw. The date and venue selection determines which saved times are published in this preview.
+        @else
+            Showing the full public draw with currently published times.
+        @endif
+    </p>
     <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
         <a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar',['event'=>$event->id]+$scope) }}">Back to saved schedule</a>
-        <a class="btn {{ $afterPublish ? 'btn-primary' : 'btn-outline-primary' }}" role="button" aria-pressed="{{ $afterPublish ? 'true' : 'false' }}"
-           href="{{ route('backend.event-venue-schedule.calendar.preview', ['event' => $event->id] + $scope + ['after_publish' => $afterPublish ? 0 : 1]) }}">Preview after publishing</a>
-        <span class="badge {{ $afterPublish ? 'bg-label-primary' : 'bg-label-secondary' }}">{{ $afterPublish ? 'After publishing' : 'Currently public' }}</span>
+        <a class="btn {{ !$afterPublish && !$hideTimes ? 'btn-primary' : 'btn-outline-primary' }}" role="button" aria-pressed="{{ !$afterPublish && !$hideTimes ? 'true' : 'false' }}"
+           href="{{ route('backend.event-venue-schedule.calendar.preview', ['event' => $event->id] + $scope + ['after_publish' => 0]) }}">Currently public</a>
+        <a class="btn {{ $afterPublish && !$hideTimes ? 'btn-primary' : 'btn-outline-primary' }}" role="button" aria-pressed="{{ $afterPublish && !$hideTimes ? 'true' : 'false' }}"
+           href="{{ route('backend.event-venue-schedule.calendar.preview', ['event' => $event->id] + $scope + ['after_publish' => 1]) }}">With times published</a>
+        <a class="btn {{ $hideTimes ? 'btn-primary' : 'btn-outline-primary' }}" role="button" aria-pressed="{{ $hideTimes ? 'true' : 'false' }}"
+           href="{{ route('backend.event-venue-schedule.calendar.preview', ['event' => $event->id] + $scope + ['hide_times' => 1]) }}">With times hidden</a>
+        <span class="badge bg-label-secondary">{{ $hideTimes ? 'Times hidden' : ($afterPublish ? 'After publishing' : 'Currently public') }}</span>
     </div>
-    <p class="small text-muted d-md-none">Swipe the match table sideways to see every column.</p>
-    <div class="card"><div class="table-responsive"><table class="table mb-0">
-        <thead><tr><th>Day / time</th><th>Venue / court</th><th>Draw</th><th>Participants</th></tr></thead>
-        <tbody>
-        @forelse($rows as $row)
-            <tr><td class="text-nowrap">{{ substr($row['scheduled_at'],0,16) }}</td><td>{{ $row['venue_name'] }} / {{ $row['court'] }}</td><td>{{ $row['draw_name'] }}</td><td><x-scheduled-participants :row="$row" /></td></tr>
+    <div data-public-schedule-preview>
+        @forelse($previewDraws as $preview)
+            <section class="mb-4" aria-label="{{ $preview['draw']->drawName }}">
+                @if($preview['fixtures']->first() instanceof \App\Models\TeamFixture)
+                    @include('frontend.fixture.partials.team-schedule', ['draw' => $preview['draw'], 'fixtures' => $preview['fixtures'], 'enableLiveResults' => false])
+                @else
+                    @include('frontend.fixture.fixture-table', ['draw' => $preview['draw'], 'fixtures' => $preview['fixtures'], 'hideFixtureHeader' => false, 'fixtureTableId' => 'preview-fixtures-'.$preview['draw']->id])
+                @endif
+            </section>
         @empty
-            <tr><td colspan="4" class="text-muted py-4">{{ $afterPublish ? 'No public match times after publishing this selection.' : 'No public match times in this view.' }}</td></tr>
+            <div class="card"><div class="card-body text-muted">{{ $hideTimes ? 'No public fixtures in this selection.' : ($afterPublish ? 'No public match times after publishing this selection.' : 'No public match times in this view.') }}</div></div>
         @endforelse
-        </tbody>
-    </table></div></div>
+    </div>
 </div>
 @endsection

@@ -1,5 +1,5 @@
 @props(['playerId', 'context' => null, 'svg' => false])
-@if(\App\Services\Performance\PlayerRatingBadgeService::visible())
+@if(!request()->attributes->get('public_schedule_preview') && \App\Services\Performance\PlayerRatingBadgeService::visible())
     @php($rating = app(\App\Services\Performance\PlayerRatingBadgeService::class)->forPlayer((int) $playerId, $context))
     @php($markerContext = ['draw' => $context instanceof \App\Models\Draw ? $context->id : 0,
         'field' => $context instanceof \App\Models\CategoryEvent ? $context->id : 0,
