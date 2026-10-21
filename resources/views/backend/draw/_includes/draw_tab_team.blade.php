@@ -13,7 +13,7 @@
 <div class="list-group-item {{ ($hideDrawHeading ?? false) ? '' : 'event-draw-publication-card' }}">
   <div class="user-info">
     @unless($hideDrawHeading ?? false)
-    <h6 class="mb-2">{{ $draw->drawName }} <span class="text-muted">— {{ optional($draw->draw_types)->drawTypeName ?? 'Type' }}</span></h6>
+    <h6 class="mb-2">{{ $draw->drawName }} <span class="text-muted">— {{ $draw->formatDisplayLabel() }}</span></h6>
     @endunless
     <div class="event-draw-publication d-flex flex-wrap gap-2 {{ ($compactOverview ?? false) ? 'd-none' : 'mb-3' }}" aria-live="polite">
       <span class="event-draw-status badge bg-label-{{ $isPublished ? 'success' : 'warning' }} {{ ($compactOverview ?? false) ? 'd-none' : '' }}">{{ $isPublished ? 'Draw published' : 'Draw hidden' }}</span>

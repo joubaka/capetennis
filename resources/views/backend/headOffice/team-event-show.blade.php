@@ -225,7 +225,7 @@
             <details id="publication-draw-{{ $draw->id }}" class="event-draw-card event-draw-publication-card" data-quick-publication-card data-draw-id="{{ $draw->id }}" @if($draw->isTeamDraw() && ($draw->team_scoring_rules['undecided'] ?? false)) data-scoring-undecided @endif>
               <summary class="event-draw-card-summary">
                 <div class="event-draw-card-summary-info">
-                <h6 class="mb-0">{{ $draw->drawName }} <span class="text-muted">— {{ optional($draw->draw_types)->drawTypeName ?? 'Type' }}</span></h6>
+                <h6 class="mb-0">{{ $draw->drawName }} <span class="text-muted">— {{ $draw->formatDisplayLabel() }}</span></h6>
                   <div class="event-draw-card-summary-status" aria-live="polite">
                     <span class="event-draw-status badge bg-label-{{ $draw->published ? 'success' : 'warning' }}">{{ $draw->published ? 'Draw published' : 'Draw hidden' }}</span>
                     @include('backend.draw.partials.scoring-readiness', ['statusOnly' => true])

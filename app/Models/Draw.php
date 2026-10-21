@@ -33,6 +33,23 @@ class Draw extends Model
         'team_format_snapshot',
     ];
     protected $casts = ['team_scoring_rules' => 'array', 'team_format_snapshot' => 'array', 'team_draw_selection' => 'array'];
+
+    public function formatDisplayLabel(): string
+    {
+        if (($this->team_draw_selection['competition']['phase'] ?? null) === 'playoff') {
+            $codes = collect($this->team_format_snapshot['rubbers'] ?? [])->pluck('rubber_code')
+                ->map(fn ($code) => str_starts_with((string) $code, 'reverse_') ? substr($code, 8) : $code);
+            $disciplines = collect([
+                \App\Domain\TeamDraw\RubberType::SINGLES => 'singles',
+                \App\Domain\TeamDraw\RubberType::DOUBLES => 'doubles',
+                \App\Domain\TeamDraw\RubberType::MIXED_DOUBLES => 'mixed doubles',
+            ])->filter(fn ($label, $code) => $codes->contains($code))->values();
+
+            return 'Team event'.($disciplines->isNotEmpty() ? ' — '.$disciplines->join(', ', ' and ') : '');
+        }
+
+        return $this->draw_types?->drawTypeName ?? 'Type';
+    }
     protected static function booted(): void
     {
         static::created(fn (Draw $draw) => app(\App\Services\Scheduling\AgeGroupVenueDefaultService::class)->inherit($draw));

@@ -1,6 +1,9 @@
 <div class="container-xxl py-3" style="max-width:1000px" data-draw-guide data-draw-guide-url="{{ route('draw.guide.show', [$event, $draw]) }}">
   <a href="{{ route('headOffice.show', $event) }}" class="btn btn-link px-0 mb-2">← Back to event</a>
   <h1 class="h3">{{ $draw->drawName }}</h1>
+  @if(($draw->team_draw_selection['competition']['phase'] ?? null) === 'playoff')
+    <p class="text-muted">{{ $draw->formatDisplayLabel() }}</p>
+  @endif
   <p class="text-muted">{{ $guide['team'] ? 'Set up your team draw.' : 'Choose the category and format, then place your players.' }} Save each step before leaving; you can continue here later.</p>
   @if($errors->any())<div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>@endif
   @if($draw->locked)<div class="alert alert-warning">This draw is locked. Review is available; use the existing workspace controls before changing protected setup.</div>@endif

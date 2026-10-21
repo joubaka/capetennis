@@ -6,6 +6,9 @@
 <div class="container-xxl">
   <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
     <h1 class="h4 mb-0">{{ $draw->drawName }}: team ties</h1>
+    @if(($draw->team_draw_selection['competition']['phase'] ?? null) === 'playoff')
+      <p class="text-muted mb-0">{{ $draw->formatDisplayLabel() }}</p>
+    @endif
     <div class="d-flex flex-wrap gap-2">
       @can('event.manage', $draw->event)<a data-draw-guide-open class="btn btn-primary" href="{{ route('draw.guide.show', [$draw->event_id, $draw]) }}">Continue setup</a>@endcan
       @can('team-fixture.schedule', $draw)<a class="btn btn-outline-primary" href="{{ isset($draw->team_draw_selection['competition']) ? route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]) : route('backend.team-schedule.page', $draw) }}">Schedule rubbers</a>@endcan
