@@ -1,0 +1,1482 @@
+<!DOCTYPE html>
+
+<html lang="en"
+      class="light-style  layout-menu-fixed   "
+      dir="ltr"
+      data-theme="theme-default"
+      data-assets-path="/assets/"
+      data-base-url="http://localhost"
+      data-framework="laravel"
+      data-template="horizontal-menu-theme-default-light">
+
+<head>
+
+  <meta charset="utf-8" />
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0" />
+
+  <title>
+    Clothing Orders — Clothing refund region |
+    Cape Tennis -
+     Cape Tennis
+  </title>
+
+  <meta name="description" content="" />
+  <meta name="keywords" content="">
+
+  <!-- CSRF -->
+  <meta name="csrf-token" content="OERmusfH6WIpFDfDtrxUTX6nuUpGAHPgWsKGkuBB">
+
+  <!-- Canonical SEO -->
+  <link rel="canonical" href="https://capetennis.co.za">
+
+  <!-- Favicon -->
+      <link rel="icon" type="image/png" sizes="192x192" href="/assets/img/pwa/cape-tennis-app-192.png" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" sizes="192x192" href="/assets/img/pwa/cape-tennis-app-192.png" />
+  <meta name="theme-color" content="#12358f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Cape Tennis" />
+
+  <!-- Styles -->
+  <!-- BEGIN: Theme CSS-->
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap" rel="stylesheet">
+
+
+<link rel="stylesheet" href="/assets/vendor/fonts/fontawesome.css?id=67b86ddfdbff16af8d3e7d4ab7587161" />
+<link rel="stylesheet" href="/assets/vendor/fonts/tabler-icons.css?id=2453a120e527a28a5332ba0632c09bb3" />
+<link rel="stylesheet" href="/assets/vendor/fonts/flag-icons.css?id=a09f79d31e1c94c4f7c77f77774ffa08" />
+
+
+<style>
+  @font-face {
+    font-family: "tabler-icons";
+    font-style: normal;
+    font-weight: 400;
+    font-display: block;
+    src: url("/assets/vendor/fonts/tabler/tabler-icons.woff2?v=20260910") format("woff2"),
+         url("/assets/vendor/fonts/tabler/tabler-icons.woff?v=20260910") format("woff");
+  }
+</style>
+
+
+<style>
+  .ti-users-group::before { content: "\ebf2"; }
+  .ti-user-edit::before, .ti-user-cog::before { content: "\ea98"; }
+  .ti-check-circle::before { content: "\ea67"; }
+  .ti-credit-card-refund::before, .ti-pay::before { content: "\ea84"; }
+  .ti-calendar-meet::before, .ti-calendar-event::before { content: "\ea53"; }
+  .ti-megaphone::before { content: "\ed61"; }
+  .ti-sliders::before { content: "\ea03"; }
+  .ti-list-ordered::before, .ti-insert::before { content: "\eb6b"; }
+  .ti-currency-rand::before { content: "\eb84"; }
+  .ti-file-type-pdf::before { content: "\eb67"; }
+  .ti-reload::before { content: "\eb56"; }
+  .ti-shield-search::before { content: "\eb22"; }
+  .ti-user-heart::before { content: "\eb4d"; }
+  .ti-target-arrow::before { content: "\eb35"; }
+  .ti-device-mobile-down::before { content: "\ea8a"; }
+  .ti-users-minus::before { content: "\ebf2"; }
+  .ti-plus-circle::before { content: "\eb4b"; }
+  .ti-trending-::before { content: "\eb43"; }
+
+  /* DataTables must not inherit an icon font for its sort indicators. */
+  table.dataTable thead th.sorting::after,
+  table.dataTable thead th.sorting_asc::after,
+  table.dataTable thead th.sorting_desc::after { font-family: Arial, sans-serif; }
+</style>
+
+<!-- Core CSS -->
+<link rel="stylesheet" href="/assets/vendor/css/rtl/core.css?id=f77da395e19c80ff3fdf75ca7bfe7db8" class="" />
+<link rel="stylesheet" href="/assets/vendor/css/rtl/theme-default.css?id=b022079154a42c9e711dc3f18411b0ec" class="" />
+
+<link rel="stylesheet" href="/assets/css/demo.css" />
+
+
+<link rel="stylesheet" href="/assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.css?id=0515f570433c3c071d76a93a194d8966" />
+<link rel="stylesheet" href="/assets/vendor/libs/node-waves/node-waves.css?id=aa72fb97dfa8e932ba88c8a3c04641bc" />
+<link rel="stylesheet" href="/assets/vendor/libs/typeahead-js/typeahead.css?id=16a78ddefa148df10b78cf41a4fa0629" />
+<link rel="stylesheet" href="/assets/vendor/libs/toastr/toastr.css" />
+
+<!-- Vendor Styles -->
+
+
+<!-- Page Styles -->
+
+
+
+
+
+<link rel="stylesheet" href="/assets/css/result-outcomes.css?v=20261009">
+  <link rel="stylesheet" href="/css/tennis-bracket.css?v=1791531879">
+  <script defer src="/js/tennis-bracket.js?v=1788444383"></script>
+      <link rel="stylesheet" href="/css/backend-workspace.css?v=1789550680">
+  
+  <style>
+    /* Keep the circular brand mark fully visible in navbar, menu and auth headers. */
+    .app-brand-logo {
+      align-items: center;
+      background: transparent !important;
+      display: inline-flex;
+      flex: 0 0 40px;
+      height: 40px;
+      justify-content: center;
+      overflow: visible;
+      width: 40px;
+    }
+    .app-brand-logo img {
+      background: transparent !important;
+      display: block;
+      height: 40px;
+      max-height: 40px;
+      max-width: 40px;
+      object-fit: contain;
+      width: 40px;
+    }
+
+    /* Vuexy clips the desktop brand to its line-height by default. */
+    @media (min-width: 1200px) {
+      #layout-navbar .navbar-brand.app-brand {
+        align-self: stretch;
+        min-height: 56px;
+        overflow: visible;
+      }
+      #layout-navbar .navbar-brand .app-brand-link {
+        min-height: 56px;
+        overflow: visible;
+      }
+      #layout-navbar .navbar-brand .app-brand-logo {
+        flex-basis: 44px;
+        height: 44px;
+        overflow: visible;
+        width: 44px;
+      }
+      #layout-navbar .navbar-brand .app-brand-logo img {
+        height: 44px;
+        max-height: 44px;
+        max-width: 44px;
+        object-fit: contain;
+        width: 44px;
+      }
+    }
+
+    @media (max-width: 575.98px) {
+      .app-brand-logo {
+        flex-basis: 36px;
+        height: 36px;
+        width: 36px;
+      }
+      .app-brand-logo img {
+        height: 36px;
+        max-height: 36px;
+        max-width: 36px;
+        width: 36px;
+      }
+
+      #layout-menu .app-brand-logo {
+        flex-basis: 44px;
+        height: 44px;
+        width: 44px;
+      }
+      #layout-menu .app-brand-logo img {
+        height: 42px;
+        max-height: 42px;
+        max-width: 42px;
+        object-fit: contain;
+        width: 42px;
+      }
+    }
+  </style>
+
+  <!-- Vuexy core helpers / config -->
+  <!-- laravel style -->
+<script src="/assets/vendor/js/helpers.js"></script>
+<!-- beautify ignore:start -->
+
+  <!--? Config:  Mandatory theme config file contain global vars & default theme options, Set your preferred theme option in this file.  -->
+  <script src="/assets/js/config.js"></script>
+
+</head>
+
+<body class="ct-backend">
+
+  <!-- Layout Content -->
+  <div class="layout-wrapper layout-navbar-full layout-horizontal layout-without-menu">
+  <div class="layout-container">
+
+    <!-- BEGIN: Navbar-->
+        <style>
+@media (max-width: 1199.98px) {
+  .mobile-horizontal-menu-toggle {
+    align-items: center;
+    background: #fff;
+    border: 1px solid rgba(75, 70, 92, .18);
+    border-radius: .5rem;
+    color: #5d596c;
+    display: inline-flex !important;
+    flex: 0 0 2.5rem;
+    font-size: 1.35rem;
+    height: 2.5rem;
+    justify-content: center;
+    margin-right: .75rem;
+    order: -1;
+    padding: .35rem;
+    position: relative;
+    width: 2.5rem;
+    z-index: 1101;
+  }
+
+  .mobile-horizontal-menu-toggle svg {
+    display: block;
+    height: 1.35rem;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-width: 2;
+    width: 1.35rem;
+  }
+
+  .mobile-menu-refund-badge {
+    align-items: center;
+    background: #28c76f;
+    border: 2px solid #fff;
+    border-radius: 999px;
+    color: #fff;
+    display: flex;
+    font-size: .65rem;
+    font-weight: 700;
+    height: 1.25rem;
+    justify-content: center;
+    min-width: 1.25rem;
+    padding: 0 .2rem;
+    position: absolute;
+    right: -.45rem;
+    top: -.45rem;
+  }
+
+  .mobile-navbar-action {
+    display: none !important;
+  }
+
+  .layout-horizontal .layout-menu-toggle {
+    display: none !important;
+  }
+
+  .layout-horizontal #layout-menu {
+    background: var(--bs-body-bg, #fff);
+    box-shadow: 0 .5rem 1rem rgba(75, 70, 92, .14);
+    display: none;
+    left: 0;
+    position: fixed;
+    bottom: 0;
+    max-width: calc(100vw - 3rem);
+    right: auto;
+    top: 0;
+    transform: translate3d(-100%, 0, 0) !important;
+    transition: transform .25s ease;
+    visibility: hidden;
+    width: 17rem;
+    z-index: 1095;
+  }
+
+  .layout-horizontal.mobile-menu-open #layout-menu {
+    display: block;
+    transform: translate3d(0, 0, 0) !important;
+    visibility: visible;
+  }
+
+  .layout-horizontal.mobile-menu-open::before {
+    background: rgba(47, 43, 61, .38);
+    content: '';
+    inset: 0;
+    position: fixed;
+    z-index: 1090;
+  }
+
+  .layout-horizontal #layout-menu .menu-inner {
+    display: flex;
+    flex-direction: column;
+    max-height: 100vh;
+    overflow-y: auto;
+    padding: .5rem 0;
+  }
+
+  .layout-horizontal #layout-menu .menu-item,
+  .layout-horizontal #layout-menu .menu-link {
+    width: 100%;
+  }
+
+  .layout-horizontal #layout-menu .menu-link {
+    align-items: center;
+    display: flex;
+    min-height: 2.75rem;
+    padding: .65rem 1rem;
+  }
+}
+
+@media (max-width: 1199px) {
+
+  /* 🔴 REAL CLICK BLOCKER FIX */
+  .navbar-nav-right {
+    position: static !important;
+  }
+
+  .navbar-nav-right > ul.navbar-nav {
+    pointer-events: none;
+  }
+
+  .navbar-nav-right > ul.navbar-nav > li,
+  .navbar-nav-right > ul.navbar-nav > li * {
+    pointer-events: auto;
+  }
+
+  /* Ensure menu toggle always wins */
+  .layout-menu-toggle {
+    position: relative;
+    z-index: 1100;
+  }
+}
+</style>
+
+
+<!-- Navbar -->
+<nav class="layout-navbar navbar navbar-expand-xl align-items-center bg-navbar-theme" id="layout-navbar">
+  <div class="container-xxl ct-backend-nav-container">
+
+    <button type="button" class="mobile-horizontal-menu-toggle d-xl-none" aria-controls="layout-menu" aria-expanded="false" aria-label="Open navigation menu">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+        <path d="M4 6h16M4 12h16M4 18h16"></path>
+      </svg>
+          </button>
+
+  <!-- Brand -->
+    <div class="navbar-brand app-brand demo d-none d-xl-flex py-0 me-4">
+    <a href="http://localhost" class="app-brand-link gap-2">
+      <span class="app-brand-logo demo">
+        <img src="/assets/img/logos/cape-tennis-logo-transparent.png?v=1787744047" height="40" width="40" alt="Cape Tennis logo">
+      </span>
+      <span class="app-brand-text demo menu-text fw-bold">
+        Cape Tennis
+      </span>
+    </a>
+  </div>
+  
+  <!-- Menu toggle -->
+    <div class="layout-menu-toggle navbar-nav align-items-xl-center me-3 me-xl-0
+       d-xl-none 
+      "
+      style="z-index:1051;">
+    <a class="nav-item nav-link px-0 me-xl-4" href="javascript:void(0)">
+      <i class="ti ti-menu-2 ti-sm"></i>
+    </a>
+  </div>
+  
+  <div class="navbar-nav-right d-flex align-items-center" id="navbar-collapse">
+                    
+    <!-- Style Switcher -->
+    
+    <ul class="navbar-nav flex-row align-items-center ms-auto">
+
+      
+      
+      
+              <li class="nav-item me-2 mobile-navbar-action">
+          <a href="/backend/backend/events/create" class="btn btn-success btn-sm">
+            <i class="ti ti-plus me-1"></i> New Event
+          </a>
+        </li>
+      
+      
+              <li class="nav-item me-2 mobile-navbar-action">
+          <a href="/my-tennis" class="btn btn-outline-success btn-sm">
+            <i class="ti ti-ball-tennis me-1"></i> My Tennis
+          </a>
+        </li>
+        <li class="nav-item me-2 mobile-navbar-action">
+          <a href="/backend/dashboard" class="btn btn-warning btn-sm">
+            My Profile
+          </a>
+        </li>
+      
+      <!-- User dropdown -->
+      <li class="nav-item navbar-dropdown dropdown-user dropdown">
+        <a class="nav-link dropdown-toggle hide-arrow" href="javascript:void(0);" data-bs-toggle="dropdown">
+          <div class="avatar avatar-online">
+                          <img src="/assets/img/avatars/default.svg"
+                   class="w-px-40 h-auto rounded-circle">
+                      </div>
+        </a>
+
+        <ul class="dropdown-menu dropdown-menu-end">
+
+          <li>
+            <a class="dropdown-item" href="/backend/dashboard">
+              <div class="d-flex">
+                <div class="flex-shrink-0 me-3">
+                  <div class="avatar avatar-online">
+                    <img src="/assets/img/avatars/default.svg"
+                         class="w-px-40 h-auto rounded-circle">
+                  </div>
+                </div>
+                <div class="flex-grow-1">
+                  <span class="fw-semibold d-block">
+                    Ms. Elinor Kunze
+                  </span>
+                </div>
+              </div>
+            </a>
+          </li>
+
+          <li><div class="dropdown-divider"></div></li>
+
+          
+                              <li><a class="dropdown-item" href="/backend/email/issues">Email issues <span class="badge bg-danger">0</span></a></li>
+                    <li>
+            <a class="dropdown-item" href="/my-tennis">
+              <i class="ti ti-ball-tennis me-2"></i>
+              My Tennis
+            </a>
+          </li>
+          
+          <li>
+            <a class="dropdown-item" href="/backend/dashboard">
+              <i class="ti ti-user-check me-2"></i>
+              My Profile
+            </a>
+          </li>
+
+                    <li>
+            <a class="dropdown-item" href="/player/profile/create">
+              <i class="ti ti-user-plus me-2"></i>
+              Add Player Profile
+            </a>
+          </li>
+          
+          
+                    <li>
+            <a class="dropdown-item" href="/backend/wallet/65">
+              <i class="fa-solid fa-wallet me-2"></i>
+              My Wallet
+            </a>
+          </li>
+          
+          
+          <li><div class="dropdown-divider"></div></li>
+
+                    <li>
+            <a class="dropdown-item"
+               href="/logout"
+               onclick="event.preventDefault(); document.getElementById('logout-form').submit();">
+              <i class="ti ti-logout me-2"></i>
+              Logout
+            </a>
+          </li>
+
+          <form method="POST" id="logout-form" action="/logout">
+            <input type="hidden" name="_token" value="" autocomplete="off">          </form>
+          
+        </ul>
+      </li>
+      <!--/ User -->
+    </ul>
+  </div>
+
+
+</nav>
+<!-- / Navbar -->
+        <!-- END: Navbar-->
+
+
+    <!-- Layout page -->
+    <div class="layout-page">
+
+      <!-- Content wrapper -->
+      <div class="content-wrapper">
+
+                <style>
+  #layout-menu > .horizontal-menu-shell {
+    max-width: 1180px;
+    margin-inline: auto;
+    width: 100%;
+  }
+
+  @media (max-width: 1199.98px) {
+    #layout-menu > .horizontal-menu-shell {
+      max-width: none;
+    }
+  }
+</style>
+<!-- Horizontal Menu -->
+<aside id="layout-menu" class="layout-menu-horizontal menu-horizontal menu bg-menu-theme flex-grow-0" aria-label="Primary navigation">
+  <div class="horizontal-menu-shell container-xxl ct-backend-nav-container d-flex h-100">
+    <ul class="menu-inner">
+                  <li class="menu-item ">
+        <a href="/backend/dashboard" class="menu-link" >
+          <i class="menu-icon ti ti-layout-dashboard"></i>
+          <div>Admin home</div>
+        </a>
+      </li>
+            
+      
+      
+      
+
+                  <li class="menu-item ">
+        <a href="http://localhost" class="menu-link"  >
+                    <i class="menu-icon tf-icons ti ti-smart-home"></i>
+                    <div>Home</div>
+        </a>
+
+        
+              </li>
+                  
+      
+      
+      
+
+                  <li class="menu-item ">
+        <a href="/rankings" class="menu-link"  >
+                    <i class="menu-icon tf-icons ti ti-trophy"></i>
+                    <div>Rankings</div>
+        </a>
+
+        
+              </li>
+                  
+      
+      
+      
+
+                  <li class="menu-item ">
+        <a href="javascript:void(0);" class="menu-link menu-toggle"  >
+                    <i class="menu-icon tf-icons ti ti-shield-check"></i>
+                    <div>Super Admin</div>
+        </a>
+
+        
+                <ul class="menu-sub">
+      
+    
+    
+      <li class="menu-item ">
+        <a href="/backend/superadmin/payfast-handoffs" class="menu-link"  >
+                    <i class="circle"></i>
+                    <div>PayFast checkout recovery</div>
+        </a>
+
+        
+              </li>
+    
+    
+    
+      <li class="menu-item ">
+        <a href="/backend/player-performance/ratings" class="menu-link"  >
+                    <i class="circle"></i>
+                    <div>Player ratings</div>
+        </a>
+
+        
+              </li>
+    
+    
+    
+      <li class="menu-item ">
+        <a href="/backend/superadmin" class="menu-link"  >
+                    <i class="circle"></i>
+                    <div>Dashboard</div>
+        </a>
+
+        
+              </li>
+    
+    
+    
+      <li class="menu-item ">
+        <a href="/backend/user" class="menu-link"  >
+                    <i class="circle"></i>
+                    <div>Users</div>
+        </a>
+
+        
+              </li>
+    
+    
+    
+      <li class="menu-item ">
+        <a href="/backend/player" class="menu-link"  >
+                    <i class="circle"></i>
+                    <div>Players</div>
+        </a>
+
+        
+              </li>
+    
+    
+    
+      <li class="menu-item ">
+        <a href="/backend/agreements" class="menu-link"  >
+                    <i class="circle"></i>
+                    <div>Agreements</div>
+        </a>
+
+        
+              </li>
+    
+    
+    
+      <li class="menu-item ">
+        <a href="/backend/settings" class="menu-link"  >
+                    <i class="circle"></i>
+                    <div>Site Settings</div>
+        </a>
+
+        
+              </li>
+    
+    
+    
+      <li class="menu-item ">
+        <a href="/backend/superadmin/api-integrations" class="menu-link"  >
+                    <i class="circle"></i>
+                    <div>API Connections</div>
+        </a>
+
+        
+              </li>
+    
+    
+    
+      <li class="menu-item ">
+        <a href="/backend/series" class="menu-link"  >
+                    <i class="circle"></i>
+                    <div>Series</div>
+        </a>
+
+        
+              </li>
+    
+    
+    
+      <li class="menu-item ">
+        <a href="/backend/league" class="menu-link"  >
+                    <i class="circle"></i>
+                    <div>League</div>
+        </a>
+
+        
+              </li>
+    
+    
+    
+      <li class="menu-item ">
+        <a href="/backend/eventPhoto" class="menu-link"  >
+                    <i class="circle"></i>
+                    <div>Photos</div>
+        </a>
+
+        
+              </li>
+      </ul>
+              </li>
+                  
+
+    </ul>
+  </div>
+</aside>
+<!--/ Horizontal Menu -->
+
+        
+        <!-- Content -->
+        
+          <div class="container-xxl ct-backend-container flex-grow-1 container-p-y">
+            
+            <div class="card mb-4 clothing-orders-admin">
+  <div class="card-header d-flex justify-content-between align-items-center flex-wrap">
+    <div><p class="text-muted mb-1">Et esse atque.</p><h5 class="mb-0 text-uppercase">Clothing Orders — Clothing refund region</h5></div>
+    <div class="btn-group mt-2 mt-md-0">
+      <a href="/backend/region/21/clothing?event_id=24" class="btn btn-sm btn-outline-secondary">Back to clothing</a>
+      <a href="/backend/clothingOrder/exportClothingOrdersPdf/21?event_id=24" target="_blank" class="btn btn-sm btn-outline-danger">
+        <i class="ti ti-file-text"></i> Print / PDF
+      </a>
+      <a href="/backend/export-clothing-orders-excel/21?event_id=24" target="_blank" class="btn btn-sm btn-outline-success">
+        <i class="ti ti-file-spreadsheet"></i> Excel
+      </a>
+    </div>
+  </div>
+  <div class="card-body">
+            <p class="text-muted">3 paid orders · 3 item lines. Downloads include all paid orders in the current region and event scope.</p>
+    <div class="row g-2 mb-3">
+      <div class="col-md-8"><label class="form-label" for="clothing-order-search">Find a player, team, item or size</label><input type="search" class="form-control" id="clothing-order-search" placeholder="Search these orders"></div>
+      <div class="col-md-4"><label class="form-label" for="clothing-team-filter">Team</label><select class="form-select" id="clothing-team-filter"><option value="">All teams in Clothing refund region</option><option value="22">Alpha team</option><option value="24">Bravo team</option><option value="23">Zulu team</option></select></div>
+    </div>
+    <p class="small text-muted" id="clothing-order-count" role="status" aria-live="polite"></p>
+    <div class="alert alert-light border" id="clothing-order-empty" hidden>No item lines match these filters.</div>
+          <p class="small">Clothing deadline: Not set — only a super-user can refund (South Africa). Scoped administrators can refund before this deadline; afterward only a super-user can refund.</p>
+            <details class="mb-3"><summary>Set clothing deadline</summary><form method="POST" action="/backend/event/24/clothing/regions/21/deadline"><input type="hidden" name="_token" value="" autocomplete="off">        <label for="clothing-deadline" class="form-label">Clothing deadline (South Africa)</label><input type="datetime-local" class="form-control mb-2" id="clothing-deadline" name="clothing_deadline_at" value=""><button class="btn btn-outline-primary">Save deadline</button>
+      </form></details>
+              <form method="GET" class="mb-3" id="clothing-order-sort-form">
+      <input type="hidden" name="event_id" value="24">      <input type="hidden" name="search" value="Sort"><input type="hidden" name="team" value="23">
+      <label for="clothing-order-sort" class="form-label">Sort orders</label>
+      <select class="form-select" id="clothing-order-sort" name="sort">
+                  <option value="rank" >Team ranking / position</option>
+                  <option value="date_desc" selected>Order date — newest first</option>
+                  <option value="date_asc" >Order date — oldest first</option>
+                  <option value="team" >Team</option>
+                  <option value="age_group" >Age group</option>
+                  <option value="name" >Player name</option>
+              </select>
+      <noscript><button class="btn btn-outline-primary">Sort orders</button></noscript>
+    </form>
+                <details class="border rounded p-2 mb-3" data-clothing-team-group open><summary class="fw-semibold">All paid orders · 3 orders</summary>
+    <div class="table-responsive">
+      <table class="table table-striped align-middle clothing-fulfillment-table">
+        <thead class="table-light">
+          <tr>
+            <th>Player</th>
+            <th>Team</th>
+            <th>Age group</th>
+            <th>Order date</th>
+            <th>Item</th>
+            <th>Size</th>
+            <th>Qty</th>
+            <th>Status</th>
+            <th>Order details</th>
+          </tr>
+        </thead>
+        <tbody>
+                                                                  <tr data-clothing-order-line data-team-id="23">
+                  <td data-label="Player"><span class="text-muted">#1</span> Alpha Sort Player</td>
+                  <td data-label="Team">Zulu team</td>
+                  <td data-label="Age group">U9 Boys</td>
+                  <td data-label="Order date"><span class="text-nowrap">03 Oct 2026</span><small class="d-block text-muted">12:30 SAST</small></td>
+                  <td data-label="Item">Refund shirt</td>
+                  <td data-label="Size"><div><span data-size-label>Medium</span>
+                                          <details><summary class="small text-primary">Change size</summary>
+                        <form method="POST" action="/backend/region/21/clothing/event/24/orders/23/items/29/size" data-size-change-form>
+                          <input type="hidden" name="_token" value="" autocomplete="off"> <input type="hidden" name="_method" value="PATCH">                          <input type="hidden" name="expected_size_id" value="21">
+                          <input type="hidden" name="expected_size_name" value="Medium">
+                          <label class="visually-hidden" for="order-item-size-29">New size</label>
+                          <select class="form-select form-select-sm" id="order-item-size-29" name="size_id" required>
+                            <option value="21" selected>Medium</option>                          </select>
+                          <p class="small text-muted mb-1">Applies to all 3 items on this line.</p>                          <button class="btn btn-sm btn-outline-primary mt-1">Save size</button>
+                          <p class="small mb-0" data-size-feedback role="status" aria-live="polite"></p>
+                        </form>
+                      </details>
+                                      </div></td>
+                  <td data-label="Qty">3</td>
+                  <td data-label="Status"><span class="badge bg-label-success">Paid</span></td>
+                  <td data-label="Order details"><div class="clothing-order-actions"><details><summary>Details</summary><dl class="mt-2 mb-0 text-break">
+                    <dt>Order</dt><dd>#23</dd>
+                    <dt>Payfast ID</dt><dd></dd>
+                    <dt>Unit Price</dt><dd>R110.00</dd>
+                    <dt>Line Total</dt><dd>R330.00</dd>
+                  </dl></details>
+                                          <a class="btn btn-sm btn-outline-danger" data-order-refund-link href="/backend/event/24/clothing/orders/23/refunds?sort=date_desc&amp;search=Sort&amp;team=23&amp;all_events=0">Select items to refund</a>
+                                      </div></td>
+                </tr>
+                                                                                              <tr data-clothing-order-line data-team-id="24">
+                  <td data-label="Player"><span class="text-muted">#1</span> Bravo Sort Player</td>
+                  <td data-label="Team">Bravo team</td>
+                  <td data-label="Age group">U11 Boys</td>
+                  <td data-label="Order date"><span class="text-nowrap">02 Oct 2026</span><small class="d-block text-muted">08:00 SAST</small></td>
+                  <td data-label="Item">Refund shirt</td>
+                  <td data-label="Size"><div><span data-size-label>Medium</span>
+                                          <details><summary class="small text-primary">Change size</summary>
+                        <form method="POST" action="/backend/region/21/clothing/event/24/orders/24/items/30/size" data-size-change-form>
+                          <input type="hidden" name="_token" value="" autocomplete="off"> <input type="hidden" name="_method" value="PATCH">                          <input type="hidden" name="expected_size_id" value="21">
+                          <input type="hidden" name="expected_size_name" value="Medium">
+                          <label class="visually-hidden" for="order-item-size-30">New size</label>
+                          <select class="form-select form-select-sm" id="order-item-size-30" name="size_id" required>
+                            <option value="21" selected>Medium</option>                          </select>
+                          <p class="small text-muted mb-1">Applies to all 3 items on this line.</p>                          <button class="btn btn-sm btn-outline-primary mt-1">Save size</button>
+                          <p class="small mb-0" data-size-feedback role="status" aria-live="polite"></p>
+                        </form>
+                      </details>
+                                      </div></td>
+                  <td data-label="Qty">3</td>
+                  <td data-label="Status"><span class="badge bg-label-success">Paid</span></td>
+                  <td data-label="Order details"><div class="clothing-order-actions"><details><summary>Details</summary><dl class="mt-2 mb-0 text-break">
+                    <dt>Order</dt><dd>#24</dd>
+                    <dt>Payfast ID</dt><dd></dd>
+                    <dt>Unit Price</dt><dd>R110.00</dd>
+                    <dt>Line Total</dt><dd>R330.00</dd>
+                  </dl></details>
+                                          <a class="btn btn-sm btn-outline-danger" data-order-refund-link href="/backend/event/24/clothing/orders/24/refunds?sort=date_desc&amp;search=Sort&amp;team=23&amp;all_events=0">Select items to refund</a>
+                                      </div></td>
+                </tr>
+                                                                                              <tr data-clothing-order-line data-team-id="22">
+                  <td data-label="Player"><span class="text-muted">#1</span> Zulu Sort Player</td>
+                  <td data-label="Team">Alpha team</td>
+                  <td data-label="Age group">U13 Boys</td>
+                  <td data-label="Order date"><span class="text-nowrap">01 Oct 2026</span><small class="d-block text-muted">07:00 SAST</small></td>
+                  <td data-label="Item">Refund shirt</td>
+                  <td data-label="Size"><div><span data-size-label>Medium</span>
+                                          <details><summary class="small text-primary">Change size</summary>
+                        <form method="POST" action="/backend/region/21/clothing/event/24/orders/22/items/28/size" data-size-change-form>
+                          <input type="hidden" name="_token" value="" autocomplete="off"> <input type="hidden" name="_method" value="PATCH">                          <input type="hidden" name="expected_size_id" value="21">
+                          <input type="hidden" name="expected_size_name" value="Medium">
+                          <label class="visually-hidden" for="order-item-size-28">New size</label>
+                          <select class="form-select form-select-sm" id="order-item-size-28" name="size_id" required>
+                            <option value="21" selected>Medium</option>                          </select>
+                          <p class="small text-muted mb-1">Applies to all 3 items on this line.</p>                          <button class="btn btn-sm btn-outline-primary mt-1">Save size</button>
+                          <p class="small mb-0" data-size-feedback role="status" aria-live="polite"></p>
+                        </form>
+                      </details>
+                                      </div></td>
+                  <td data-label="Qty">3</td>
+                  <td data-label="Status"><span class="badge bg-label-success">Paid</span></td>
+                  <td data-label="Order details"><div class="clothing-order-actions"><details><summary>Details</summary><dl class="mt-2 mb-0 text-break">
+                    <dt>Order</dt><dd>#22</dd>
+                    <dt>Payfast ID</dt><dd></dd>
+                    <dt>Unit Price</dt><dd>R110.00</dd>
+                    <dt>Line Total</dt><dd>R330.00</dd>
+                  </dl></details>
+                                          <a class="btn btn-sm btn-outline-danger" data-order-refund-link href="/backend/event/24/clothing/orders/22/refunds?sort=date_desc&amp;search=Sort&amp;team=23&amp;all_events=0">Select items to refund</a>
+                                      </div></td>
+                </tr>
+                                              </tbody>
+
+      </table>
+    </div></details>
+            <details class="border rounded p-3 mt-3"><summary>Financial summary</summary><div class="row g-3 mt-1">
+      <div class="col-md-4"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Customer payments received</small><strong class="fs-5 text-success">R990.00</strong></div></div>
+      <div class="col-md-4"><div class="border rounded p-3 h-100"><small class="text-muted d-block">PayFast fees</small><strong class="fs-5 text-warning">− R90.00</strong></div></div>
+      <div class="col-md-4"><div class="border rounded p-3 h-100"><small class="text-muted d-block">Net clothing proceeds before supplier costs</small><strong class="fs-5">R900.00</strong></div></div>
+    </div>
+    <p class="mt-3 mb-0"><strong>Totals: R990.00</strong></p>
+    </details>
+  </div>
+</div>
+<style>
+.clothing-order-actions { display:flex; flex-wrap:wrap; gap:.75rem; align-items:start; }
+.clothing-refund-panel { width:100%; max-width:40rem; min-width:0; }
+.clothing-refund-panel form { min-width:0; }
+.clothing-orders-admin summary { min-height:44px !important; cursor:pointer; align-content:center; }
+.clothing-orders-admin .btn { min-height:44px !important; }
+.clothing-orders-admin :is(input,select) { min-height:44px !important; }
+.clothing-orders-admin [hidden] { display:none !important; }
+.clothing-orders-admin .btn-group { display:flex; flex-wrap:wrap; gap:.4rem; }
+.clothing-fulfillment-table td { white-space:normal; overflow-wrap:anywhere; }
+@media(max-width:767px) {
+ .clothing-fulfillment-table thead { display:none; }
+ .clothing-fulfillment-table tbody, .clothing-fulfillment-table tr { display:block; }
+ .clothing-fulfillment-table tr { border-bottom:1px solid #d9e1eb; padding:.75rem; }
+ .clothing-fulfillment-table td { display:grid; grid-template-columns:80px minmax(0,1fr); gap:.5rem; border:0; padding:.35rem 0; }
+ .clothing-fulfillment-table td::before { content:attr(data-label); font-weight:600; }
+ .clothing-fulfillment-table td[colspan] { display:block; }
+ .clothing-fulfillment-table td[colspan]::before { display:none; }
+}
+</style>
+<script>
+(() => {
+  document.querySelectorAll('[data-size-change-form]').forEach(form => form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const button = form.querySelector('button');
+    if (button.disabled) return;
+    const feedback = form.querySelector('[data-size-feedback]');
+    const sizeSelect = form.querySelector('select');
+    button.disabled = true;
+    feedback.textContent = 'Saving…';
+    try {
+      const input = new FormData(form);
+      sizeSelect.disabled = true;
+      const response = await fetch(form.action, {method: 'POST', body: input, headers: {'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest'}});
+      const result = await response.json();
+      if (!response.ok) throw new Error(Object.values(result.errors || {}).flat()[0] || result.message || 'Size could not be saved.');
+      form.closest('td').querySelector('[data-size-label]').textContent = result.size_name;
+      form.elements.expected_size_id.value = result.size_id;
+      form.elements.expected_size_name.value = result.size_name;
+      sizeSelect.value = result.size_id;
+      feedback.textContent = result.message;
+      filter();
+    } catch (error) {
+      feedback.textContent = error.message || 'Size could not be saved. Please try again.';
+    } finally {
+      button.disabled = false;
+      sizeSelect.disabled = false;
+    }
+  }));
+  const search = document.getElementById('clothing-order-search');
+  const team = document.getElementById('clothing-team-filter');
+  const lines = [...document.querySelectorAll('[data-clothing-order-line]')];
+  const context = new URLSearchParams(window.location.search);
+  search.value = context.get('search') || '';
+  team.value = context.get('team') || '';
+  const sortForm = document.getElementById('clothing-order-sort-form');
+  const preserveFilters = () => {
+    sortForm.elements.search.value = search.value.slice(0, 120);
+    sortForm.elements.team.value = team.value;
+  };
+  sortForm.addEventListener('submit', preserveFilters);
+  document.getElementById('clothing-order-sort').addEventListener('change', () => {
+    preserveFilters();
+    sortForm.requestSubmit();
+  });
+
+  const filter = () => {
+    const term = search.value.trim().toLocaleLowerCase();
+    document.querySelectorAll('[data-order-refund-link]').forEach(link => {
+      const url = new URL(link.href);
+      url.searchParams.set('search', search.value.slice(0, 120));
+      url.searchParams.set('team', team.value);
+      link.href = url.toString();
+    });
+    let shown = 0;
+    lines.forEach(line => {
+      const searchable = line.cloneNode(true);
+      searchable.querySelectorAll('[data-size-change-form]').forEach(form => form.remove());
+      const matches = (!team.value || line.dataset.teamId === team.value) && searchable.textContent.toLocaleLowerCase().includes(term);
+      line.hidden = !matches;
+      if (matches) shown++;
+    });
+    document.querySelectorAll('[data-clothing-team-group]').forEach(group => {
+      group.hidden = ![...group.querySelectorAll('[data-clothing-order-line]')].some(line => !line.hidden);
+      if (term) group.open = !group.hidden;
+    });
+    document.getElementById('clothing-order-count').textContent = `${shown} of ${lines.length} item lines shown`;
+    document.getElementById('clothing-order-empty').hidden = shown > 0 || lines.length === 0;
+  };
+  search.addEventListener('input', filter);
+  team.addEventListener('change', filter);
+  filter();
+})();
+</script>
+
+            <!-- pricingModal -->
+                        <!--/ pricingModal -->
+
+          </div>
+          <!-- / Content -->
+
+          
+                  <script>
+          (function () {
+            const toggle = document.querySelector('.mobile-horizontal-menu-toggle');
+            const layout = document.querySelector('.layout-horizontal');
+            const menu = document.getElementById('layout-menu');
+
+            if (!toggle || !layout || !menu || toggle.dataset.menuReady === 'true') return;
+            toggle.dataset.menuReady = 'true';
+
+            const closeMenu = function () {
+              layout.classList.remove('mobile-menu-open');
+              document.documentElement.classList.remove('layout-menu-expanded');
+              toggle.setAttribute('aria-expanded', 'false');
+              toggle.setAttribute('aria-label', 'Open navigation menu');
+            };
+
+            toggle.addEventListener('click', function (event) {
+              event.preventDefault();
+              event.stopPropagation();
+              const open = layout.classList.toggle('mobile-menu-open');
+              document.documentElement.classList.toggle('layout-menu-expanded', open);
+              toggle.setAttribute('aria-expanded', String(open));
+              toggle.setAttribute('aria-label', open ? 'Close navigation menu' : 'Open navigation menu');
+              if (open) {
+                window.requestAnimationFrame(() => menu.querySelector('a, button')?.focus());
+              }
+            });
+
+            document.addEventListener('click', function (event) {
+              if (layout.classList.contains('mobile-menu-open') && !menu.contains(event.target) && !toggle.contains(event.target)) {
+                closeMenu();
+              }
+            });
+
+            menu.addEventListener('click', function (event) {
+              if (event.target.closest('a:not(.menu-toggle)')) closeMenu();
+            });
+
+            document.addEventListener('keydown', function (event) {
+              if (event.key === 'Escape' && layout.classList.contains('mobile-menu-open')) {
+                closeMenu();
+                toggle.focus();
+              }
+              if (event.key === 'Tab' && layout.classList.contains('mobile-menu-open')) {
+                const focusable = [...menu.querySelectorAll('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+                  .filter(element => element.offsetParent !== null);
+                if (!focusable.length) return;
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                if (event.shiftKey && document.activeElement === first) {
+                  event.preventDefault();
+                  last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                  event.preventDefault();
+                  first.focus();
+                }
+              }
+            });
+
+            window.addEventListener('resize', function () {
+              if (window.innerWidth >= 1200) closeMenu();
+            });
+          })();
+        </script>
+          
+          <!-- Footer -->
+                    <!-- Footer-->
+<footer class="content-footer footer bg-footer-theme">
+  <div class="container-xxl ct-backend-nav-container">
+    <div class="footer-container d-flex align-items-center justify-content-between py-2 flex-md-row flex-column">
+      <div>
+        &copy; 2026 Cape Tennis. All rights reserved.
+        <span class="d-block d-md-inline">Developed by SportStack Technologies.</span>
+      </div>
+      <div>
+   
+      </div>
+    </div>
+  </div>
+</footer>
+<!--/ Footer-->
+<script>
+var APP_URL = "http:\/\/localhost"
+</script>
+                    <!-- / Footer -->
+          <div class="content-backdrop fade"></div>
+        </div>
+        <!--/ Content wrapper -->
+      </div>
+      <!-- / Layout page -->
+    </div>
+    <!-- / Layout Container -->
+
+        <!-- Overlay -->
+    <div class="layout-overlay layout-menu-toggle"></div>
+        <!-- Drag Target Area To SlideIn Menu On Small Screens -->
+    <div class="drag-target"></div>
+  </div>
+  <!-- / Layout wrapper -->
+    <!-- / Layout Content -->
+
+  <!-- Vuexy scripts -->
+  <!-- BEGIN: Vendor JS -->
+<script>console.log('🎾 Cape Tennis v1.0.2');</script>
+
+
+<script src="/assets/vendor/libs/jquery/jquery.js"></script>
+
+
+<script src="https://code.jquery.com/ui/1.14.1/jquery-ui.js"></script>
+
+
+<script src="/assets/vendor/libs/popper/popper.js"></script>
+<script src="/assets/vendor/js/bootstrap.js"></script>
+
+
+<script src="/assets/vendor/js/helpers.js"></script>
+
+
+<script src="/assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.js"></script>
+<script src="/assets/vendor/libs/node-waves/node-waves.js"></script>
+<script src="/assets/vendor/libs/hammer/hammer.js"></script>
+<script src="/assets/vendor/libs/i18n/i18n.js"></script>
+<script src="/assets/vendor/libs/typeahead-js/typeahead.js"></script>
+
+
+<script src="/assets/vendor/js/menu.js"></script>
+<script src="/assets/js/main.js"></script>
+
+
+<script src="/js/app.js?id=5208c2e7a94d9035b6678e8083dfe9c9"></script>
+
+
+
+<!-- END: Vendor JS -->
+
+
+
+<script src="/assets/vendor/libs/toastr/toastr.js"></script>
+<script>
+toastr.options = { positionClass: 'toast-top-right', timeOut: 5000, closeButton: true, progressBar: true };
+
+(function (root) {
+  const storageKey = 'ct.feedback.afterReload';
+
+  function liveRegion() {
+    let region = document.getElementById('app-feedback-live-region');
+    if (region) return region;
+
+    region = document.createElement('div');
+    region.id = 'app-feedback-live-region';
+    region.className = 'visually-hidden';
+    region.setAttribute('role', 'status');
+    region.setAttribute('aria-live', 'polite');
+    region.setAttribute('aria-atomic', 'true');
+    document.body.appendChild(region);
+    return region;
+  }
+
+  function show(message, type = 'success', title = null) {
+    if (!message) return;
+
+    const normalizedType = type === 'danger' ? 'error' : type;
+    const region = liveRegion();
+    region.setAttribute('role', normalizedType === 'error' ? 'alert' : 'status');
+    region.textContent = '';
+    window.setTimeout(() => { region.textContent = String(message); }, 10);
+
+    if (root.toastr && typeof root.toastr[normalizedType] === 'function') {
+      root.toastr[normalizedType](String(message), title || undefined);
+      return;
+    }
+
+    console[normalizedType === 'error' ? 'error' : 'log'](`[${normalizedType}] ${message}`);
+  }
+
+  function messagesFrom(data, fallback) {
+    if (data?.errors) {
+      const messages = Object.values(data.errors).flat().filter(Boolean);
+      if (messages.length) return messages;
+    }
+
+    return [data?.message || fallback || 'Something went wrong.'];
+  }
+
+  async function responseError(response, fallback) {
+    const data = await response.json().catch(() => ({}));
+    const error = new Error(messagesFrom(data, fallback)[0]);
+    error.messages = messagesFrom(data, fallback);
+    error.status = response.status;
+    return error;
+  }
+
+  function fromError(error, fallback) {
+    const messages = error?.messages?.length ? error.messages : [error?.message || fallback || 'Something went wrong.'];
+    messages.forEach(message => show(message, 'error'));
+  }
+
+  function afterReload(message, type = 'success') {
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify({ message, type }));
+    } catch (error) {
+      show(message, type);
+    }
+  }
+
+  root.AppFeedback = {
+    show,
+    success: message => show(message, 'success'),
+    error: message => show(message, 'error'),
+    warning: message => show(message, 'warning'),
+    info: message => show(message, 'info'),
+    fromError,
+    responseError,
+    afterReload,
+  };
+
+  // Compatibility for older pages that already call a global helper.
+  root.showToast = function (message, type = 'success') { show(message, type); };
+
+  try {
+    const pending = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+    sessionStorage.removeItem(storageKey);
+    if (pending?.message) show(pending.message, pending.type || 'success');
+  } catch (error) {
+    sessionStorage.removeItem(storageKey);
+  }
+}(window));
+</script>
+
+
+<script src="/js/manual-email.js?v=1792503359"></script>
+<style>@media print { .player-rating-badge { display:none !important; } }</style>
+<script>
+window.CTPlayerRatingConfig = {
+  endpoint: "http:\/\/localhost\/backend\/player-performance\/name-ratings",
+  drawId: null};
+</script>
+<script src="/assets/js/player-rating-badges.js?v=1791530379"></script>
+
+
+  <style>
+  .ct-install-app {
+    position: fixed;
+    right: 1rem;
+    bottom: 1rem;
+    z-index: 1080;
+    display: none;
+    align-items: center;
+    gap: .5rem;
+    border: 0;
+    border-radius: 999px;
+    padding: .7rem 1rem;
+    color: #fff;
+    background: #12358f;
+    box-shadow: 0 .4rem 1.2rem rgba(18, 53, 143, .3);
+    font-weight: 600;
+  }
+  .ct-install-app:hover,
+  .ct-install-app:focus { background: #0b276f; color: #fff; }
+  .ct-install-app.is-visible { display: inline-flex; }
+  @media (max-width: 575.98px) {
+    .ct-install-app { right: .75rem; bottom: .75rem; }
+  }
+</style>
+
+<button type="button" class="ct-install-app" id="ct-install-app" aria-haspopup="dialog">
+  <i class="ti ti-device-mobile-down" aria-hidden="true"></i>
+  <span>Install Cape Tennis</span>
+</button>
+
+<div class="modal fade" id="ct-install-help" tabindex="-1" aria-labelledby="ct-install-help-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="ct-install-help-title">Install Cape Tennis</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">Add Cape Tennis to your home screen so it opens like an app.</p>
+        <ol class="mb-0 ps-3" id="ct-install-steps"></ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (() => {
+    const installButton = document.getElementById('ct-install-app');
+    const installSteps = document.getElementById('ct-install-steps');
+    let installPrompt = null;
+    const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js').catch(() => {});
+      });
+    }
+
+    if (standalone) return;
+
+    const showHelp = () => {
+      const steps = isIos
+        ? ['Tap the Share button in Safari.', 'Choose Add to Home Screen.', 'Tap Add.']
+        : ['Open your browser menu.', 'Choose Install app or Add to home screen.', 'Confirm Install.'];
+      installSteps.replaceChildren(...steps.map(step => {
+        const item = document.createElement('li');
+        item.textContent = step;
+        return item;
+      }));
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('ct-install-help')).show();
+    };
+
+    window.addEventListener('beforeinstallprompt', event => {
+      event.preventDefault();
+      installPrompt = event;
+      installButton.classList.add('is-visible');
+    });
+
+    if (isIos) installButton.classList.add('is-visible');
+
+    installButton.addEventListener('click', async () => {
+      if (!installPrompt) return showHelp();
+      installPrompt.prompt();
+      await installPrompt.userChoice;
+      installPrompt = null;
+      installButton.classList.remove('is-visible');
+    });
+
+    window.addEventListener('appinstalled', () => installButton.classList.remove('is-visible'));
+  })();
+</script>
+  <script>
+(() => {
+  const endpoint = "http:\/\/localhost\/audit\/interactions";
+  const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+  if (!endpoint || !csrf || !navigator.sendBeacon) return;
+
+  const clean = value => String(value || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+  const stableAction = element => {
+    if (element.dataset.auditAction) return clean(element.dataset.auditAction).replace(/[^A-Za-z0-9._-]/g, '-');
+    if (element.id) return `clicked.${clean(element.id).replace(/[^A-Za-z0-9._-]/g, '-')}`;
+    if (element.name) return `clicked.${clean(element.name).replace(/[^A-Za-z0-9._-]/g, '-')}`;
+    const href = element.getAttribute('href');
+    if (href && !href.startsWith('javascript:') && href !== '#') {
+      try {
+        const url = new URL(href, window.location.href);
+        return `navigate.${clean(url.pathname).replace(/[^A-Za-z0-9._/-]/g, '-')}`;
+      } catch (_) {}
+    }
+    return `clicked.${element.tagName.toLowerCase()}`;
+  };
+
+  document.addEventListener('click', event => {
+    const element = event.target.closest('button, a, [role="button"], input[type="submit"], input[type="button"]');
+    if (!element || element.dataset.auditIgnore === 'true') return;
+
+    let targetPath = null;
+    const href = element.getAttribute('href');
+    if (href && !href.startsWith('javascript:')) {
+      try {
+        const url = new URL(href, window.location.href);
+        targetPath = url.origin === window.location.origin ? url.pathname : `[external] ${url.hostname}`;
+      } catch (_) {}
+    }
+
+    const payload = new FormData();
+    payload.append('_token', csrf);
+    payload.append('action', stableAction(element).slice(0, 120));
+    payload.append('label', clean(element.getAttribute('aria-label') || element.title || element.innerText || element.value));
+    payload.append('element', element.tagName.toLowerCase());
+    payload.append('page_path', window.location.pathname);
+    payload.append('client_at', new Date().toISOString());
+    payload.append('viewport_width', String(window.innerWidth));
+    payload.append('viewport_height', String(window.innerHeight));
+    if (targetPath) payload.append('target_path', targetPath);
+    const orderId = element.dataset.auditOrderId || element.closest('[data-audit-order-id]')?.dataset.auditOrderId;
+    if (orderId) payload.append('order_id', orderId);
+    navigator.sendBeacon(endpoint, payload);
+    if (element.form && (element.matches('button[type="submit"], input[type="submit"]') || element.tagName === 'BUTTON')) {
+      element.form.dataset.auditClickRecorded = 'true';
+    }
+  }, {capture: true});
+
+  const record = (action, element, extra = {}) => {
+    if (!navigator.sendBeacon || !element || element.dataset.auditIgnore === 'true') return;
+    const payload = new FormData();
+    payload.append('_token', csrf);
+    payload.append('action', action.slice(0, 120));
+    payload.append('label', clean(element.getAttribute('aria-label') || element.title || element.innerText || element.name || element.id));
+    payload.append('element', element.tagName.toLowerCase());
+    payload.append('page_path', window.location.pathname);
+    payload.append('client_at', new Date().toISOString());
+    payload.append('viewport_width', String(window.innerWidth));
+    payload.append('viewport_height', String(window.innerHeight));
+    Object.entries(extra).forEach(([key, value]) => {
+      if (value !== null && value !== undefined && value !== '') payload.append(key, String(value));
+    });
+    navigator.sendBeacon(endpoint, payload);
+  };
+
+  document.addEventListener('submit', event => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement) || form.dataset.auditIgnore === 'true') return;
+    if (form.dataset.auditClickRecorded === 'true') return;
+    const action = form.dataset.auditAction || 'form.submitted';
+    const orderId = form.dataset.auditOrderId || form.querySelector('[name="order_id"], [name="custom_int5"]')?.value;
+    record(action, form, {target_path: form.action ? new URL(form.action, window.location.href).pathname : null, order_id: orderId});
+  }, {capture: true});
+
+  document.addEventListener('change', event => {
+    const element = event.target;
+    if (!(element instanceof HTMLSelectElement) && !(element instanceof HTMLInputElement)) return;
+    if (!['select-one', 'select-multiple', 'checkbox', 'radio'].includes(element.type)) return;
+    // Record that a choice changed, never the selected value or typed content.
+    record(element.dataset.auditAction || `field.changed.${clean(element.name || element.id || element.tagName).replace(/[^A-Za-z0-9._-]/g, '-')}`, element, {
+      order_id: element.dataset.auditOrderId || element.closest('[data-audit-order-id]')?.dataset.auditOrderId
+    });
+  }, {capture: true});
+})();
+</script>
+      <style>
+  #match-reminder { color: #3e4c48; }
+  #match-reminder .modal-dialog { width: calc(100% - 2rem); max-width: 960px; margin-left: auto; margin-right: auto; }
+  #match-reminder .modal-content { background: #fcfcfa; border: 1px solid #e1e6e0; border-radius: 18px; box-shadow: 0 18px 60px rgba(34, 48, 42, .14); }
+  #match-reminder .modal-header { gap: .5rem; padding: 1.35rem 1.5rem .75rem; border: 0; }
+  #match-reminder .modal-title { flex: 1; color: #35463f; font-size: 1.25rem; font-weight: 600; white-space: normal; overflow: visible; text-overflow: clip; min-width: 0; overflow-wrap: anywhere; }
+  #match-reminder .modal-header .btn-close { position: static; flex: 0 0 auto; margin: 0; opacity: .55; }
+  #match-reminder .modal-body { padding: .25rem 1.5rem 1rem; }
+  #match-reminder-description { color: #68756e; font-size: .9rem; line-height: 1.55; margin-bottom: 1.35rem; }
+  #match-reminder .reminder-player { margin-bottom: 1.25rem; }
+  #match-reminder .reminder-player:last-child { margin-bottom: 0; }
+  #match-reminder .reminder-player-name { color: #56645c; font-size: .9rem; font-weight: 600; margin-bottom: .5rem; }
+  #match-reminder article { overflow-wrap: anywhere; padding: .9rem 1rem; background: #f2f5f0; border-radius: 10px; margin-bottom: .5rem; }
+  #match-reminder .reminder-time { color: #586e5d; font-size: .85rem; font-weight: 600; margin-bottom: .35rem; }
+  #match-reminder .reminder-participants { color: #35463f; font-weight: 600; line-height: 1.5; }
+  #match-reminder .reminder-event { color: #657168; font-size: .8rem; margin-top: .2rem; }
+  #match-reminder .reminder-venue { color: #58665e; font-size: .9rem; margin-top: .4rem; }
+  #match-reminder .reminder-fixtures { display: inline-flex; align-items: center; min-height: 44px; color: #526b58; font-size: .85rem; text-decoration: underline; text-underline-offset: 3px; }
+  #match-reminder .reminder-fixtures:hover { color: #304b38; }
+  #match-reminder .modal-footer { display: block; padding: 1rem 1.5rem 1.25rem; background: #f7f8f5; border-top: 1px solid #e6eae3; border-radius: 0 0 18px 18px; }
+  #match-reminder .reminder-settings { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .5rem .75rem; align-items: end; margin: 0; }
+  #match-reminder .reminder-settings label { display: block; margin-bottom: .35rem; color: #68756e; font-size: .8rem; }
+  #match-reminder .reminder-preference { min-width: 0; }
+  #match-reminder .form-select { width: 100%; min-height: 44px; border-color: #dce3d9; background-color: #fcfcfa; color: #56645c; font-size: .875rem; }
+  #match-reminder .select2-container { max-width: 100%; }
+  #match-reminder .select2-selection { background: #fcfcfa; border-color: #dce3d9; }
+  #match-reminder .reminder-help { margin: .65rem 0 .9rem; color: #657168; font-size: .8rem; }
+  #match-reminder .reminder-help summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; text-decoration: underline; text-underline-offset: 3px; }
+  #match-reminder .reminder-help p { line-height: 1.5; margin-bottom: .5rem; }
+  #match-reminder .reminder-actions { display: flex; justify-content: space-between; align-items: center; gap: .75rem; margin: 0; }
+  #match-reminder .btn { min-height: 44px; font-size: .875rem; box-shadow: none; }
+  #match-reminder .reminder-apply { background: #e5ece2; color: #435c47; border: 1px solid #d7e1d2; }
+  #match-reminder .reminder-apply:hover { background: #d9e4d5; }
+  #match-reminder .reminder-all { display: inline-flex; align-items: center; min-height: 44px; color: #526b58; font-size: .875rem; text-decoration: underline; text-underline-offset: 3px; }
+  #match-reminder .reminder-close { color: #647067; background: transparent; border: 1px solid #dce3d9; }
+  #match-reminder a:focus-visible, #match-reminder summary:focus-visible, #match-reminder button:focus-visible { outline: 2px solid #697f6d; outline-offset: 3px; }
+  @media (min-width: 576px) {
+    #match-reminder .modal-header { padding: .85rem 1.25rem .35rem; }
+    #match-reminder .modal-body { padding: .25rem 1.25rem .75rem; }
+    #match-reminder-description { margin-bottom: .75rem; }
+    #match-reminder .reminder-player { margin-bottom: .85rem; }
+    #match-reminder article { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 1rem; padding: .75rem 1rem; }
+    #match-reminder .reminder-time, #match-reminder .reminder-participants, #match-reminder .reminder-event, #match-reminder .reminder-venue { grid-column: 1; }
+    #match-reminder .reminder-fixtures { grid-column: 2; grid-row: 1 / span 4; align-self: center; }
+    #match-reminder .modal-footer { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .25rem 1rem; padding: .65rem 1.25rem .75rem; }
+    #match-reminder .reminder-settings { grid-column: 1 / -1; }
+    #match-reminder .reminder-preference { display: flex; align-items: center; gap: .75rem; }
+    #match-reminder .reminder-settings label { flex-shrink: 0; margin: 0; }
+    #match-reminder .reminder-help { margin: 0; }
+    #match-reminder .reminder-help[open] { grid-column: 1 / -1; }
+    #match-reminder .reminder-actions { justify-content: flex-end; }
+  }
+  @media (max-width: 575.98px) {
+    #match-reminder .modal-dialog { width: auto; margin: .5rem; }
+    #match-reminder .modal-body, #match-reminder .modal-header, #match-reminder .modal-footer { padding-left: 1rem; padding-right: 1rem; }
+    #match-reminder .reminder-settings { grid-template-columns: minmax(0, 1fr); }
+    #match-reminder .reminder-apply { width: 100%; }
+  }
+  @media (max-width: 575.98px), (max-height: 600px) {
+    #match-reminder .modal-content { max-height: calc(100vh - 1rem); max-height: calc(100dvh - 1rem); overflow-y: auto; }
+    #match-reminder .modal-body { overflow-y: visible; flex: 0 0 auto; }
+    #match-reminder .modal-header, #match-reminder .modal-footer { flex-shrink: 0; }
+  }
+</style>
+<div class="modal fade" id="match-reminder" tabindex="-1" aria-labelledby="match-reminder-title" aria-describedby="match-reminder-description" aria-hidden="true"
+     data-endpoint="/my-tennis/match-reminder" data-account="65" data-login="existing-session" data-auto-open="0" data-day="2026-10-21">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title" id="match-reminder-title">Your week in tennis</h2>
+        <button type="button" class="btn-close p-3" data-bs-dismiss="modal" aria-label="Close reminder"></button>
+      </div>
+      <div class="modal-body">
+        <p id="match-reminder-description">Published matches for your players over the next 7 days. Check fixtures for the latest details.</p>
+        <div data-reminder-players></div>
+      </div>
+      <div class="modal-footer">
+        <div class="reminder-settings">
+          <div class="reminder-preference">
+            <label for="match-reminder-preference">Remind me</label>
+            <select id="match-reminder-preference" class="form-select" data-reminder-preference data-select2-script="/assets/vendor/libs/select2/select2.js" data-select2-style="/assets/vendor/libs/select2/select2.css" aria-describedby="match-reminder-timing-help">
+              <option value="login">Close for this login</option>
+              <option value="hour">Snooze for 1 hour</option>
+              <option value="week">Hide for 7 days</option>
+              <option value="match-day" data-reminder-next-day disabled>On the next match day</option>
+            </select>
+          </div>
+          <button type="button" class="btn reminder-apply" data-reminder-apply>Apply and close</button>
+        </div>
+        <details class="reminder-help">
+          <summary>About reminders</summary>
+          <p id="match-reminder-timing-help">After a snooze ends, the automatic reminder can appear at your next login. Next match day uses midnight in South Africa, or the next match time if only today’s matches remain. Reopen anytime using Upcoming matches in My Tennis.</p>
+        </details>
+        <div class="reminder-actions">
+          <a href="/my-tennis" class="reminder-all">View all in My Tennis</a>
+          <button type="button" class="btn reminder-close" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="/js/match-reminder.js?v=1791401602" defer></script>
+  
+
+</body>
+</html>

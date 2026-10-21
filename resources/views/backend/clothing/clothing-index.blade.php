@@ -111,7 +111,7 @@
                     @endif
                   </div></td>
                   <td data-label="Qty">{{ $qty }}</td>
-                  <td data-label="Status"><span class="badge bg-label-success">Paid</span>@if($order->refunds->isNotEmpty())<a class="d-block small" href="{{ route('backend.clothing.refunds.show', [$order->event_id, $order]) }}">Refund history</a>@endif</td>
+                  <td data-label="Status"><span class="badge bg-label-success">Paid</span>@if($order->refunds->isNotEmpty())<a class="d-block small" data-order-refund-link href="{{ route('backend.clothing.refunds.show', [$order->event_id, $order, 'sort' => $orderSort ?? 'rank', 'search' => request('search', ''), 'team' => request('team', ''), 'all_events' => $clothingEvent ? 0 : 1]) }}">Refund history</a>@endif</td>
                   <td data-label="Order details"><div class="clothing-order-actions"><details><summary>Details</summary><dl class="mt-2 mb-0 text-break">
                     <dt>Order</dt><dd>#{{ $order->id }}</dd>
                     <dt>Payfast ID</dt><dd>{{ $order->pf_id }}</dd>

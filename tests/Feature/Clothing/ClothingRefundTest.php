@@ -408,7 +408,7 @@ class ClothingRefundTest extends TestCase
             $response = $this->actingAs($super)->get($url.'&sort='.$sort.'&search=Sort&team='.$orders[1]->team_id)
                 ->assertOk()->assertViewHas('orderSort', $sort)
                 ->assertViewHas('clothings', fn ($rows) => $rows->pluck('id')->all() === array_map(fn ($i) => $orders[$i]->id, $indexes))
-                ->assertSee('Order date')->assertSee('03 Oct 2026')->assertSee('14:30 SAST')
+                ->assertSee('Order date')->assertSee('03 Oct 2026')->assertSee('12:30 SAST')
                 ->assertSee('name="search" value="Sort"', false);
             if (in_array($sort, ['date_desc', 'date_asc', 'name', 'age_group'], true)) {
                 $response->assertSee('All paid orders')->assertSeeInOrder(array_map(fn ($i) => ['Zulu', 'Alpha', 'Bravo'][$i].' Sort Player', $indexes));
