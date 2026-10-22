@@ -702,6 +702,10 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     ->middleware('role:super-user')
     ->name('backend.superadmin.index');
 
+  Route::get('superadmin/balance', [\App\Http\Controllers\Backend\SuperAdminController::class, 'balance'])
+    ->middleware('role:super-user')
+    ->name('backend.superadmin.balance');
+
   Route::get('superadmin/workspace', [\App\Http\Controllers\Backend\SuperAdminController::class, 'workspace'])
     ->middleware('role:super-user')
     ->name('backend.superadmin.workspace');

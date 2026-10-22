@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\CategoryEventRegistration;
+use App\Models\Event;
+use App\Domain\Finance\Services\FinancialLedgerService;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Role;
@@ -68,6 +70,44 @@ class SuperAdminDashboardRefundsTest extends TestCase
         $response->assertOk()
             ->assertSee('href="'.route('backend.dashboard').'#tab-events"', false)
             ->assertDontSee('href="'.url('backend/event').'"', false);
+    }
+
+    public function test_landing_page_does_not_build_event_ledgers(): void
+    {
+        Event::factory()->create(['start_date' => now()->startOfYear()->toDateString()]);
+        $this->mock(FinancialLedgerService::class)->shouldNotReceive('buildFySummaryRow');
+
+        $this->actingAs($this->superUser())->get(route('backend.superadmin.index'))
+            ->assertOk()
+            ->assertSee('data-balance-value', false)
+            ->assertSee('Retry balance')
+            ->assertSee('View balance in Finance');
+    }
+
+    public function test_balance_endpoint_requires_super_user(): void
+    {
+        $this->getJson(route('backend.superadmin.balance'))->assertUnauthorized();
+        $this->actingAs(User::factory()->create())
+            ->getJson(route('backend.superadmin.balance'))->assertForbidden();
+    }
+
+    public function test_balance_uses_canonical_current_year_summaries_and_is_not_cached(): void
+    {
+        $this->travelTo(now()->setDate(2026, 6, 15));
+        $first = Event::factory()->create(['start_date' => '2026-01-01']);
+        $last = Event::factory()->create(['start_date' => '2026-12-31']);
+        $otherEvents = Event::factory()->count(24)->create(['start_date' => '2026-06-01']);
+        Event::factory()->create(['start_date' => '2025-12-31']);
+        Event::factory()->create(['start_date' => '2027-01-01']);
+        $ledger = $this->mock(FinancialLedgerService::class);
+        $ledger->shouldReceive('buildFySummaryRow')->once()->withArgs(fn (Event $event) => $event->is($first))->andReturn(['balance' => 123.45]);
+        $ledger->shouldReceive('buildFySummaryRow')->once()->withArgs(fn (Event $event) => $event->is($last))->andReturn(['balance' => -200.55]);
+        $ledger->shouldReceive('buildFySummaryRow')->times(24)->withArgs(fn (Event $event) => $otherEvents->contains('id', $event->id))->andReturn(['balance' => 0]);
+
+        $response = $this->actingAs($this->superUser())->getJson(route('backend.superadmin.balance'));
+        $response->assertOk()->assertExactJson(['year' => 2026, 'balance' => '-77.10', 'formatted' => 'R -77.10']);
+        $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
+        $this->assertStringContainsString('private', $response->headers->get('Cache-Control'));
     }
 
     public function test_ordinary_user_cannot_change_platform_settings(): void

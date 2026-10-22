@@ -45,7 +45,21 @@ class SuperAdminController extends Controller
             ->where('end_date', '>=', $today)
             ->count();
 
-        $recentRegistrations = Registration::where('created_at', '>=', Carbon::now()->subDays(30))->count();
+        $now = Carbon::now();
+        $monthStart = $now->copy()->startOfMonth();
+        $lastMonthStart = $monthStart->copy()->subMonth();
+        // Count each registration once, even when it has multiple paid category entries.
+        $paidRegistrations = Registration::whereHas('categoryEventRegistrations',
+            fn ($query) => $query->where('payment_status_id', 1));
+        $paidRegistrationsThisYear = (clone $paidRegistrations)
+            ->where('created_at', '>=', $now->copy()->startOfYear())
+            ->where('created_at', '<=', $now)
+            ->count();
+        $paidRegistrationsLastMonth = (clone $paidRegistrations)
+            ->where('created_at', '>=', $lastMonthStart)
+            ->where('created_at', '<', $monthStart)
+            ->count();
+        $lastMonthLabel = $lastMonthStart->format('F Y');
         $newUsersThisWeek = User::where('created_at', '>=', Carbon::now()->startOfWeek())->count();
 
         $pendingIndividualRefunds = CategoryEventRegistration::where('status', 'withdrawn')
@@ -69,26 +83,42 @@ class SuperAdminController extends Controller
                 ->orWhereNull('profile_complete');
         })->count();
 
-        $eventsForYear = Event::with('incomeItems')
-            ->whereYear('start_date', $currentYear)
-            ->get();
-        $currentBalance = round($eventsForYear->sum(
-            fn (Event $event) => $this->ledger->buildFySummaryRow($event)['balance']
-        ), 2);
-
         $recentActivity = Activity::with('causer')->latest()->limit(5)->get();
 
         return view('backend.superadmin.home', compact(
             'activeEvents',
-            'recentRegistrations',
+            'paidRegistrationsThisYear',
+            'paidRegistrationsLastMonth',
+            'lastMonthLabel',
             'newUsersThisWeek',
             'pendingRefunds',
             'activeSuspensions',
             'playersNeedingAttention',
-            'currentBalance',
             'currentYear',
             'recentActivity',
         ));
+    }
+
+    /** Load ledger work separately so navigation and attention queues render first. */
+    public function balance()
+    {
+        $year = (int) Carbon::today()->year;
+        $balance = 0;
+
+        Event::with('incomeItems')
+            ->where('start_date', '>=', Carbon::create($year, 1, 1)->toDateString())
+            ->where('start_date', '<', Carbon::create($year + 1, 1, 1)->toDateString())
+            ->chunkById(25, function ($events) use (&$balance) {
+                foreach ($events as $event) {
+                    $balance += $this->ledger->buildFySummaryRow($event)['balance'];
+                }
+            });
+
+        return response()->json([
+            'year' => $year,
+            'balance' => number_format(round($balance, 2), 2, '.', ''),
+            'formatted' => 'R '.number_format(round($balance, 2), 2),
+        ])->header('Cache-Control', 'no-store, private');
     }
 
     /**
