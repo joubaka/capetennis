@@ -289,6 +289,8 @@ class PayfastServiceTest extends TestCase
 
         $this->assertFalse($result['success']);
         $this->assertStringContainsString('complete bank details', $result['error']);
+        $this->assertSame(false, $result['dispatched']);
+        $this->assertSame('bank_details_required', $result['failure_code']);
         Http::assertSentCount(1);
     }
 
@@ -307,6 +309,8 @@ class PayfastServiceTest extends TestCase
 
         $this->assertFalse($result['success']);
         $this->assertStringContainsString('exceeds', $result['error']);
+        $this->assertSame(false, $result['dispatched']);
+        $this->assertSame('insufficient_refundable_amount', $result['failure_code']);
         Http::assertSentCount(1);
     }
 }
