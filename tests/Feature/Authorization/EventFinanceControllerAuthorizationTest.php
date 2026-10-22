@@ -46,7 +46,7 @@ class EventFinanceControllerAuthorizationTest extends TestCase
 
     public function test_view_admin_success() { $this->actingAs($this->admin)->get(route('admin.events.finances', $this->eventA->id))->assertSuccessful(); }
 
-    public function test_convenor_payout_breakdown_is_visible_after_summary_before_received_transactions(): void
+    public function test_convenor_payout_breakdown_is_visible_in_the_default_breakdown_tab(): void
     {
         $convenor = EventConvenor::create(['event_id' => $this->eventA->id, 'user_id' => $this->admin->id, 'role' => 'hoof', 'profit_share_pct' => 50]);
         $this->expenseA->update(['paid_by_convenor_id' => $convenor->id]);
@@ -65,6 +65,7 @@ class EventFinanceControllerAuthorizationTest extends TestCase
             $this->assertStringContainsString(number_format($row['final_payout'], 2), $section->textContent);
             $this->assertStringContainsString(number_format($row['total_paid'], 2), $section->textContent);
             $this->assertSame(0, $xpath->query('//*[@id="finance-convenor-payouts"]/ancestor::*[self::details or contains(concat(" ", normalize-space(@class), " "), " collapse ") or contains(concat(" ", normalize-space(@class), " "), " tab-pane ")]')->length);
+            $this->assertSame(1, $xpath->query('//*[@id="finance-convenor-payouts"]/ancestor::section[@role="tabpanel" and @id="finance-panel-breakdown" and not(@hidden)]')->length);
         } finally {
             libxml_clear_errors();
             libxml_use_internal_errors($previous);
@@ -141,12 +142,49 @@ class EventFinanceControllerAuthorizationTest extends TestCase
             ->assertSee('Setup tools', false)
             ->assertSee('finance-reconciliation', false)
             ->assertSee('data-finance-details', false)
-            ->assertSee('beforeprint', false)
-            ->assertSee('afterprint', false);
+            ->assertSee('assets/js/event-finance-tabs.js', false);
         if (getenv('CT_BATCHES91011_QA')) {
             $directory = storage_path('app/batches91011-qa');
             if (!is_dir($directory)) { mkdir($directory, 0755, true); }
             file_put_contents($directory.'/finances.html', $response->getContent());
+        }
+    }
+
+    public function test_finance_tabs_return_only_the_requested_authorized_event_fragment(): void
+    {
+        $this->eventA->update(['name' => 'Synthetic finance tab event']);
+        $this->admin->update(['name' => 'Synthetic Finance Admin']);
+        $tabs = ['breakdown', 'transactions', 'income', 'clothing', 'expenses', 'reconciliation'];
+        $directory = storage_path('app/finance-tabs-qa');
+        if (getenv('CT_FINANCE_TABS_QA') && !is_dir($directory)) mkdir($directory, 0755, true);
+        $initial = $this->actingAs($this->admin)->get(route('admin.events.finances', $this->eventA));
+        $initial->assertOk()->assertSee('role="tablist"', false)->assertSee('aria-selected="true"', false);
+        if (getenv('CT_FINANCE_TABS_QA')) file_put_contents($directory.'/index.html', $initial->getContent());
+        $expenseCount = EventExpense::count();
+        foreach ($tabs as $tab) {
+            $response = $this->get(route('admin.events.finances', ['event' => $this->eventA, 'tab' => $tab]), ['X-Requested-With' => 'XMLHttpRequest']);
+            $response->assertOk()->assertSee('id="finance-panel-'.$tab.'"', false)
+                ->assertDontSee('<!DOCTYPE', false)->assertDontSee('data-finance-tabs', false);
+            $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
+            foreach (array_diff($tabs, [$tab]) as $other) $response->assertDontSee('id="finance-panel-'.$other.'"', false);
+            if ($tab === 'income') $response->assertSee('Sponsorship')->assertSee('500.00');
+            if ($tab === 'expenses') $response->assertSee('100.00');
+            if (getenv('CT_FINANCE_TABS_QA')) file_put_contents($directory.'/'.$tab.'.html', $response->getContent());
+        }
+        $this->assertSame($expenseCount, EventExpense::count());
+        $this->get(route('admin.events.finances', ['event' => $this->eventA, 'tab' => 'clothing']))
+            ->assertSee('id="finance-tab-clothing" role="tab" data-finance-tab="clothing"', false);
+    }
+
+    public function test_ajax_finance_tabs_preserve_authorization_and_reject_unknown_sections(): void
+    {
+        $url = route('admin.events.finances', ['event' => $this->eventA, 'tab' => 'expenses']);
+        $headers = ['X-Requested-With' => 'XMLHttpRequest'];
+        $this->get($url, $headers)->assertRedirect('login');
+        $this->actingAs($this->user)->get($url, $headers)->assertForbidden();
+        $this->actingAs($this->adminB)->get($url, $headers)->assertForbidden();
+        foreach (['unknown', '../finances', ['clothing']] as $tab) {
+            $this->actingAs($this->admin)->get(route('admin.events.finances', ['event' => $this->eventA, 'tab' => $tab]), $headers)->assertNotFound();
         }
     }
 

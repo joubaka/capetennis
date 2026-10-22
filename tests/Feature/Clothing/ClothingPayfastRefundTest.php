@@ -37,6 +37,72 @@ class ClothingPayfastRefundTest extends TestCase
         parent::tearDown();
     }
 
+    private function undispatchedRefund(): array
+    {
+        [$admin, $payer, $event, $order] = $this->fixture(4);
+        Http::preventStrayRequests();
+        Http::fake(['api.payfast.co.za/refunds/query/*' => Http::response([
+            'status' => 'REFUNDABLE', 'amount_available_for_refund' => 44000,
+            'refund_full' => ['method' => 'PAYMENT_SOURCE'], 'refund_partial' => ['method' => 'BANK_PAYOUT'],
+            'bank_names' => [['bank_name' => 'FNB', 'label' => 'FNB']],
+        ])]);
+        $this->actingAs($admin)->postRefund(route('backend.clothing.refunds.store', [$event, $order]), [
+            'request_token' => (string) str()->uuid(), 'mode' => 'amount', 'item_id' => $order->items->first()->id,
+            'amount' => '395.00', 'method' => 'payfast', 'reason' => 'Returned clothing',
+        ])->assertSessionHasErrors('refund');
+        return [$admin, $payer, $event, $order, ClothingRefund::firstOrFail()];
+    }
+
+    public function test_saved_undispatched_refund_reviews_then_credits_original_wallet_once_and_blocks_retry(): void
+    {
+        [$admin, $payer, $event, $order, $refund] = $this->undispatchedRefund();
+        $attempt = (array) DB::table('clothing_provider_refund_attempts')->first();
+        $lines = $refund->items()->get()->toArray();
+        $this->get(route('backend.clothing.refunds.show', [$event, $order]))->assertOk()->assertSee('Refund to wallet instead');
+        $review = $this->post(route('backend.clothing.refunds.wallet.review', [$event, $order, $refund]))
+            ->assertOk()->assertSee('395.00')->assertSee($payer->name)->assertSee($order->items->first()->item_name);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->assertSame('payfast', $refund->fresh()->refund_method);
+        $token = $review->viewData('reviewToken');
+        $url = route('backend.clothing.refunds.wallet.confirm', [$event, $order, $refund]);
+        $this->post($url, ['review_token' => $token, 'confirmed' => 1, 'amount' => '999.99', 'payer_id' => $admin->id])->assertSessionHasNoErrors();
+        $this->post($url, ['review_token' => $token, 'confirmed' => 1])->assertSessionHasNoErrors();
+        $this->assertDatabaseCount('clothing_refunds', 1);
+        $this->assertDatabaseCount('wallet_transactions', 1);
+        $this->assertDatabaseHas('wallet_transactions', ['wallet_id' => $payer->fresh()->wallet->id, 'amount' => '395.00', 'source_type' => 'clothing_refund', 'source_id' => $refund->id]);
+        $this->assertSame($attempt, (array) DB::table('clothing_provider_refund_attempts')->first());
+        $this->assertSame($lines, $refund->items()->get()->toArray());
+        $this->assertSame('wallet', $refund->fresh()->refund_method);
+        $this->assertSame('completed', $refund->fresh()->refund_status);
+        $this->assertSame($admin->id, $refund->fresh()->completed_by);
+        $this->post(route('backend.clothing.refunds.retry', [$event, $order, $refund]))->assertStatus(422);
+        Http::assertNotSent(fn ($request) => $request->method() === 'POST');
+    }
+
+    public function test_wallet_fallback_rejects_unauthorized_cross_event_stale_and_unsafe_provider_states(): void
+    {
+        [$admin, $payer, $event, $order, $refund] = $this->undispatchedRefund();
+        $reviewUrl = route('backend.clothing.refunds.wallet.review', [$event, $order, $refund]);
+        $this->actingAs($payer)->post($reviewUrl)->assertForbidden();
+        $foreign = Event::factory()->create();
+        $this->actingAs($admin)->post(route('backend.clothing.refunds.wallet.review', [$foreign, $order, $refund]))->assertNotFound();
+        $token = $this->post($reviewUrl)->assertOk()->viewData('reviewToken');
+        $confirmUrl = route('backend.clothing.refunds.wallet.confirm', [$event, $order, $refund]);
+        $this->post($confirmUrl, ['review_token' => $token.'broken', 'confirmed' => 1])->assertSessionHasErrors('refund');
+        foreach (['dispatching', 'uncertain', 'confirmed', 'reconciled_ready'] as $status) {
+            DB::table('clothing_provider_refund_attempts')->update(['status' => $status]);
+            $this->post($reviewUrl)->assertSessionHasErrors('refund');
+            $this->post($confirmUrl, ['review_token' => $token, 'confirmed' => 1])->assertSessionHasErrors('refund');
+            $this->get(route('backend.clothing.refunds.show', [$event, $order]))->assertDontSee('Refund to wallet instead');
+        }
+        DB::table('clothing_provider_refund_attempts')->update(['status' => 'not_dispatched']);
+        $this->travel(11)->minutes();
+        $this->post($confirmUrl, ['review_token' => $token, 'confirmed' => 1])->assertSessionHasErrors('refund');
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->assertSame('pending', $refund->fresh()->refund_status);
+        Http::assertNotSent(fn ($request) => $request->method() === 'POST');
+    }
+
     public function test_bank_preflight_failure_can_retry_the_same_saved_refund_once_with_ephemeral_validated_details(): void
     {
         [$admin, $payer, $event, $order] = $this->fixture(4);

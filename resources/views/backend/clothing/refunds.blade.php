@@ -49,6 +49,12 @@ Completed by {{ $refund->completed_by_name ?? $refund->completedBy?->name ?? 'No
       @include('backend.clothing.partials.late-note', ['noteKey' => 'retry-late-'.$refund->id])
       <button class="btn btn-outline-danger">Retry saved PayFast refund of R{{ $refund->refund_net }}</button>
     </form>
+    @if($providerAttempts->get($refund->id)->status === 'not_dispatched' && $providerAttempts->get($refund->id)->confirmed_at === null && $refund->refund_method === 'payfast')
+    <form class="mt-2" method="POST" action="{{ route('backend.clothing.refunds.wallet.review', [$event, $order, $refund]) }}">@csrf
+      @include('backend.clothing.partials.late-note', ['noteKey' => 'wallet-late-'.$refund->id])
+      <button class="btn btn-outline-primary">Refund to wallet instead</button>
+    </form>
+    @endif
     @endif
   @else
     <p class="text-warning">PayFast submission needs reconciliation. This amount stays reserved. Do not submit another payment or refund for it.</p>

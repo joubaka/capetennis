@@ -55,7 +55,11 @@
     .finance-toolbar-actions { align-items: center; }
     .finance-section-nav { padding: .5rem; background: #fff; border: 1px solid #e4eaf0; border-radius: .75rem; }
     .finance-section-nav a { display: inline-flex; align-items: center; gap: .5rem; padding: .65rem .85rem; min-height: 44px; border-radius: .5rem; color: #44586b; font-weight: 600; text-decoration: none; }
-    .finance-section-nav a:hover, .finance-section-nav a[aria-current="location"] { background: #eaf4f2; color: #105f57; }
+    .finance-section-nav a:hover, .finance-section-nav a[aria-selected="true"] { background: #eaf4f2; color: #105f57; }
+    .finance-section-nav a[aria-selected="true"] { box-shadow: inset 0 -3px #14877b; }
+    .finance-section-nav a:focus-visible { outline: 3px solid #14877b; outline-offset: 2px; }
+    .finance-tab-panel[hidden] { display: none !important; }
+    .finance-tab-panel[aria-busy="true"] { opacity: .6; }
     .finance-workspace .finance-card { border: 1px solid #e4eaf0 !important; border-top: 3px solid #b7d6d0 !important; box-shadow: none; }
     .finance-card .card-body { padding: 1.25rem; }
     .finance-card h5 { font-size: 1.5rem; font-variant-numeric: tabular-nums; margin-block: .35rem !important; }
@@ -86,6 +90,7 @@
   }
   /* Print styles */
   @media print {
+    .finance-tab-panel[hidden] { display: block !important; }
     .no-print, .btn, .modal, .card-header .btn, nav, .navbar,
     .layout-menu, .layout-overlay, .layout-navbar { display: none !important; }
     .card { border: 1px solid #dee2e6 !important; box-shadow: none !important; page-break-inside: avoid; }
@@ -145,13 +150,15 @@
     </div>
   </div>
 
-  <nav class="finance-section-nav d-flex flex-wrap gap-2 mb-4 no-print" aria-label="Finance sections">
-    <a href="#finance-receipts"><i class="ti ti-receipt" aria-hidden="true"></i>Received transactions</a>
-    <a href="#finance-income"><i class="ti ti-cash" aria-hidden="true"></i>Registration income</a>
-    <a href="#finance-clothing"><i class="ti ti-shirt" aria-hidden="true"></i>Regional clothing</a>
-    <a href="#finance-expenses"><i class="ti ti-list" aria-hidden="true"></i>Expenses</a>
-    <a href="#finance-reconciliation"><i class="ti ti-arrows-exchange" aria-hidden="true"></i>Reconciliation</a>
+  <nav class="finance-section-nav d-flex flex-wrap gap-2 mb-3 no-print" role="tablist" aria-label="Finance sections" data-finance-tabs>
+    @foreach($financeTabs as $key => $tab)
+      <a href="{{ route('admin.events.finances', ['event' => $event, 'tab' => $key]) }}"
+         id="finance-tab-{{ $key }}" role="tab" data-finance-tab="{{ $key }}"
+         aria-controls="finance-panel-{{ $key }}" aria-selected="{{ $activeFinanceTab === $key ? 'true' : 'false' }}"
+         tabindex="{{ $activeFinanceTab === $key ? '0' : '-1' }}"><i class="ti {{ $tab['icon'] }}" aria-hidden="true"></i>{{ $tab['label'] }}</a>
+    @endforeach
   </nav>
+  <div class="no-print" data-finance-tab-feedback role="status" aria-live="polite"></div>
 
   {{-- ── ALERTS ──────────────────────────────────────────────────────── --}}
   @if(session('success'))
@@ -184,6 +191,8 @@
     </div>
   @endif
 
+  @fragment('finance-breakdown')
+  <section class="finance-tab-panel" id="finance-panel-breakdown" role="tabpanel" aria-labelledby="finance-tab-breakdown" tabindex="0" @if($activeFinanceTab !== 'breakdown') hidden @endif>
   {{-- ── SUMMARY CARDS ───────────────────────────────────────────────── --}}
   <div class="row g-3 mb-4">
     <div class="col-6 col-md-3">
@@ -254,10 +263,45 @@
   {{-- ── REGISTRATION TRANSACTIONS ────────────────────────────────────── --}}
   @include('backend.event.partials.convenor-payout-breakdown')
 
+  {{-- ══════════════════════════════════════════════════════════════════════
+       SECTION 5 – VENUE ENTRY SUMMARY
+  ══════════════════════════════════════════════════════════════════════ --}}
+  @if($venueEntrySummary->count())
+  <details class="card mb-4 no-print" data-finance-details>
+    <summary class="card-header">
+      <h5 class="mb-0"><i class="ti ti-map-pin me-2"></i>Venue Entry Summary</h5>
+    </summary>
+    <div class="card-body">
+      <div class="row g-3">
+        @foreach($venueEntrySummary as $vs)
+          <div class="col-md-4 col-sm-6">
+            <div class="border rounded p-3 bg-light">
+              <div class="fw-bold mb-1"><i class="ti ti-map-pin text-primary me-1"></i>{{ $vs->name }}</div>
+              <div class="text-muted small">
+                <span class="fw-semibold text-body fs-5">{{ number_format($vs->entry_count) }}</span>
+                entr{{ $vs->entry_count === 1 ? 'y' : 'ies' }}
+              </div>
+            </div>
+          </div>
+        @endforeach
+      </div>
+      <p class="text-muted small mt-3 mb-0">
+        <i class="ti ti-info-circle me-1"></i>Entry counts are based on registrations in draw categories assigned to each venue.
+      </p>
+    </div>
+  </details>
+  @endif
+
+
+  </section>
+  @endfragment
+
+  @fragment('finance-transactions')
+  <section class="finance-tab-panel" id="finance-panel-transactions" role="tabpanel" aria-labelledby="finance-tab-transactions" tabindex="0" @if($activeFinanceTab !== 'transactions') hidden @endif>
   <div class="card mb-4" id="finance-receipts">
     <button class="card-header registration-transactions-toggle d-flex justify-content-between align-items-center border-0 bg-transparent text-start w-100"
             type="button" data-bs-toggle="collapse" data-bs-target="#registrationTransactionsCollapse"
-            aria-expanded="false" aria-controls="registrationTransactionsCollapse">
+            aria-expanded="true" aria-controls="registrationTransactionsCollapse">
       <div class="pe-2">
         <h5 class="mb-1"><i class="ti ti-receipt me-2 text-primary"></i>Received Transactions</h5>
         <small class="text-muted">Open to see registration and clothing receipts, payment method, fees and refunds.</small>
@@ -268,7 +312,7 @@
         <i class="ti ti-chevron-down" aria-hidden="true"></i>
       </span>
     </button>
-    <div class="collapse" id="registrationTransactionsCollapse">
+    <div class="collapse show" id="registrationTransactionsCollapse">
     <div class="table-responsive border-top">
       <table class="table table-hover mb-0">
         <thead class="table-light">
@@ -363,6 +407,12 @@
     </div>
   </div>
 
+
+  </section>
+  @endfragment
+
+  @fragment('finance-income')
+  <section class="finance-tab-panel" id="finance-panel-income" role="tabpanel" aria-labelledby="finance-tab-income" tabindex="0" @if($activeFinanceTab !== 'income') hidden @endif>
   {{-- ══════════════════════════════════════════════════════════════════════
        SECTION 1 – INCOME
   ══════════════════════════════════════════════════════════════════════ --}}
@@ -507,6 +557,12 @@
     </div>
   </div>
 
+
+  </section>
+  @endfragment
+
+  @fragment('finance-clothing')
+  <section class="finance-tab-panel" id="finance-panel-clothing" role="tabpanel" aria-labelledby="finance-tab-clothing" tabindex="0" @if($activeFinanceTab !== 'clothing') hidden @endif>
   <div class="card mb-4" id="finance-clothing">
     <div class="card-header">
       <h5 class="mb-1"><i class="ti ti-shirt me-2 text-primary" aria-hidden="true"></i>Regional clothing income and reconciliation</h5>
@@ -515,6 +571,12 @@
     @include('backend.event._clothing_finance')
     @include('backend.event.partials.clothing-settlements')
   </div>
+
+  </section>
+  @endfragment
+
+  @fragment('finance-expenses')
+  <section class="finance-tab-panel" id="finance-panel-expenses" role="tabpanel" aria-labelledby="finance-tab-expenses" tabindex="0" @if($activeFinanceTab !== 'expenses') hidden @endif>
   {{-- ══════════════════════════════════════════════════════════════════════
        SECTION 2 – EXPENSES (per convenor)
   ══════════════════════════════════════════════════════════════════════ --}}
@@ -830,11 +892,17 @@
     </div>
   @endif
 
+
+  </section>
+  @endfragment
+
+  @fragment('finance-reconciliation')
+  <section class="finance-tab-panel" id="finance-panel-reconciliation" role="tabpanel" aria-labelledby="finance-tab-reconciliation" tabindex="0" @if($activeFinanceTab !== 'reconciliation') hidden @endif>
   {{-- ══════════════════════════════════════════════════════════════════════
        SECTION 3 – RECONCILIATION / RECON
   ══════════════════════════════════════════════════════════════════════ --}}
   @include('backend.event.partials.expense-reimbursements')
-  <details class="card mb-4" id="finance-reconciliation" data-finance-details>
+  <details class="card mb-4" id="finance-reconciliation" data-finance-details open>
     <summary class="card-header">
       <h5 class="mb-0"><i class="ti ti-arrows-exchange me-2"></i>Registration reconciliation</h5>
     </summary>
@@ -949,37 +1017,13 @@
       </div>
     </div>
   </details>
+
+  </section>
+  @endfragment
+
 {{-- Toast notification container (fixed, bottom-right) --}}
 <div class="toast-container position-fixed bottom-0 end-0 p-3" id="financeToastContainer" style="z-index:1200"></div>
 
-  {{-- ══════════════════════════════════════════════════════════════════════
-       SECTION 5 – VENUE ENTRY SUMMARY
-  ══════════════════════════════════════════════════════════════════════ --}}
-  @if($venueEntrySummary->count())
-  <details class="card mb-4 no-print" data-finance-details>
-    <summary class="card-header">
-      <h5 class="mb-0"><i class="ti ti-map-pin me-2"></i>Venue Entry Summary</h5>
-    </summary>
-    <div class="card-body">
-      <div class="row g-3">
-        @foreach($venueEntrySummary as $vs)
-          <div class="col-md-4 col-sm-6">
-            <div class="border rounded p-3 bg-light">
-              <div class="fw-bold mb-1"><i class="ti ti-map-pin text-primary me-1"></i>{{ $vs->name }}</div>
-              <div class="text-muted small">
-                <span class="fw-semibold text-body fs-5">{{ number_format($vs->entry_count) }}</span>
-                entr{{ $vs->entry_count === 1 ? 'y' : 'ies' }}
-              </div>
-            </div>
-          </div>
-        @endforeach
-      </div>
-      <p class="text-muted small mt-3 mb-0">
-        <i class="ti ti-info-circle me-1"></i>Entry counts are based on registrations in draw categories assigned to each venue.
-      </p>
-    </div>
-  </details>
-  @endif
 
 </div>{{-- /container --}}
 
@@ -1414,32 +1458,7 @@
 
 @section('page-script')
 @include('backend.event.partials.clothing-settlement-script')
-<script>
-(function () {
-  const root = document.querySelector('.finance-workspace');
-  const sectionLinks = root?.querySelectorAll('.finance-section-nav a') ?? [];
-  sectionLinks.forEach(link => link.addEventListener('click', () => {
-    sectionLinks.forEach(item => item.removeAttribute('aria-current'));
-    link.setAttribute('aria-current', 'location');
-    const section = root.querySelector(link.getAttribute('href'));
-    if (section?.matches('details')) section.open = true;
-    if (section?.id === 'finance-receipts') {
-      const receipts = document.getElementById('registrationTransactionsCollapse');
-      if (receipts && window.bootstrap?.Collapse) bootstrap.Collapse.getOrCreateInstance(receipts, {toggle: false}).show();
-    }
-  }));
-  let printState;
-  window.addEventListener('beforeprint', () => {
-    if (printState || !root) return;
-    printState = [...root.querySelectorAll('[data-finance-details], .collapse')].map(element => ({element, open:element.open, shown:element.classList.contains('show')}));
-    printState.forEach(({element}) => { if (element.matches('details')) element.open = true; else element.classList.add('show'); });
-  });
-  window.addEventListener('afterprint', () => {
-    printState?.forEach(({element, open, shown}) => { if (element.matches('details')) element.open = open; else element.classList.toggle('show', shown); });
-    printState = undefined;
-  });
-})();
-</script>
+<script src="{{ asset('assets/js/event-finance-tabs.js') }}"></script>
 
 <script>
 'use strict';
@@ -1534,14 +1553,15 @@ function submitFinanceForm(form) {
 }
 
 /* ─── Auto-calc amount from quantity × unit_price ─── */
-document.querySelectorAll('input[name="quantity"], input[name="unit_price"]').forEach(el => {
-  el.addEventListener('input', () => {
-    const form    = el.closest('form');
-    const qty     = parseFloat(form.querySelector('input[name="quantity"]')?.value)   || 0;
-    const up      = parseFloat(form.querySelector('input[name="unit_price"]')?.value) || 0;
-    const amtInput = form.querySelector('input[name="amount"]');
-    if (amtInput && qty > 0 && up > 0) amtInput.value = (qty * up).toFixed(2);
-  });
+document.addEventListener('input', event => {
+  const el = event.target;
+  if (!el.matches('.finance-tab-panel input[name="quantity"], .finance-tab-panel input[name="unit_price"], .modal input[name="quantity"], .modal input[name="unit_price"]')) return;
+  const form = el.closest('form');
+  if (!form) return;
+  const qty = parseFloat(form.querySelector('input[name="quantity"]')?.value) || 0;
+  const up = parseFloat(form.querySelector('input[name="unit_price"]')?.value) || 0;
+  const amount = form.querySelector('input[name="amount"]');
+  if (amount && qty > 0 && up > 0) amount.value = (qty * up).toFixed(2);
 });
 
 /* ─── Wire all [data-ajax] forms via event delegation ─── */

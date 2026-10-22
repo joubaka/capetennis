@@ -31,9 +31,20 @@ class EventFinanceController extends Controller
     /*  INDEX                                                              */
     /* ------------------------------------------------------------------ */
 
-    public function index(Event $event)
+    public function index(Request $request, Event $event)
     {
         $this->authorize('event-finance.view', $event);
+
+        $financeTabs = [
+            'breakdown' => ['label' => 'Breakdown', 'icon' => 'ti-chart-pie'],
+            'transactions' => ['label' => 'Transactions', 'icon' => 'ti-receipt'],
+            'income' => ['label' => 'Registration income', 'icon' => 'ti-cash'],
+            'clothing' => ['label' => 'Clothing', 'icon' => 'ti-shirt'],
+            'expenses' => ['label' => 'Expenses', 'icon' => 'ti-list'],
+            'reconciliation' => ['label' => 'Reconciliation', 'icon' => 'ti-arrows-exchange'],
+        ];
+        $activeFinanceTab = $request->query('tab', 'breakdown');
+        abort_unless(is_string($activeFinanceTab) && array_key_exists($activeFinanceTab, $financeTabs), 404);
 
         // Registration income and transaction rows come from the same canonical
         // event ledger used by the super-admin finance and transaction pages.
@@ -177,7 +188,9 @@ class EventFinanceController extends Controller
             ->orderBy('venues.name')
             ->get();
 
-        return view('backend.event.finances', compact(
+        $view = view('backend.event.finances', compact(
+            'financeTabs',
+            'activeFinanceTab',
             'event',
             'eventTransactions',
             'totalGross',
@@ -214,6 +227,11 @@ class EventFinanceController extends Controller
             'venueEntrySummary',
             'venueConvenors'
         ));
+
+        // Fragments use this same authorized, event-scoped report and never accept a view path.
+        return $request->ajax()
+            ? response($view->fragment('finance-'.$activeFinanceTab))->header('Cache-Control', 'private, no-store')
+            : $view;
     }
 
     /* ------------------------------------------------------------------ */

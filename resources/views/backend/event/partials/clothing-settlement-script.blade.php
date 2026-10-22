@@ -1,7 +1,10 @@
 <script>
 (function () {
-  const forms = document.querySelectorAll('[data-clothing-settlement-form]');
+  function initializeClothingForms(root) {
+  const forms = root.querySelectorAll('[data-clothing-settlement-form]');
   forms.forEach(form => {
+    if (form.dataset.clothingInitialized) return;
+    form.dataset.clothingInitialized = '1';
     const kind = form.querySelector('[name="kind"]');
     const recipient = form.querySelector('[name="recipient_user_id"]');
     if (window.jQuery && jQuery.fn.select2) {
@@ -37,11 +40,17 @@
       form.dataset.submitting = '1';
       form.querySelector('[type="submit"]').disabled = true;
     });
-    window.addEventListener('pageshow', () => {
+    form.addEventListener('finance:reset', () => {
       delete form.dataset.submitting;
       form.querySelector('[type="submit"]').disabled = false;
       syncFields();
     });
+  });
+  }
+  initializeClothingForms(document);
+  document.addEventListener('finance:panel-loaded', event => initializeClothingForms(event.detail.panel));
+  window.addEventListener('pageshow', () => {
+    document.querySelectorAll('[data-clothing-settlement-form]').forEach(form => form.dispatchEvent(new Event('finance:reset')));
   });
 })();
 </script>

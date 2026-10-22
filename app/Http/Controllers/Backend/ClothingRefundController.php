@@ -139,6 +139,22 @@ class ClothingRefundController extends Controller
         return redirect()->route('backend.clothing.refunds.show', [$event, $order]);
     }
 
+    public function walletReview(Request $request, Event $event, ClothingOrder $order, ClothingRefund $refund, \App\Services\Clothing\ClothingRefundWalletFallbackService $fallback)
+    {
+        $data = $request->validate(['late_refund_note' => ['nullable', 'string', 'max:1000']]);
+        $reviewToken = $fallback->review($event, $order, $refund, $request->user(), $data['late_refund_note'] ?? null);
+        $refund->refresh()->load(['payer', 'items.item']);
+        return response()->view('backend.clothing.refund-wallet-review', compact('event', 'order', 'refund', 'reviewToken'))
+            ->header('Cache-Control', 'private, no-store');
+    }
+
+    public function walletConfirm(Request $request, Event $event, ClothingOrder $order, ClothingRefund $refund, \App\Services\Clothing\ClothingRefundWalletFallbackService $fallback)
+    {
+        $data = $request->validate(['review_token' => ['required', 'string', 'max:30000'], 'confirmed' => ['required', 'accepted']]);
+        $refund = $fallback->confirm($event, $order, $refund, $request->user(), $data['review_token']);
+        return $this->completedResponse($request, $event, $order, $refund);
+    }
+
     public function retry(Request $request, Event $event, ClothingOrder $order, ClothingRefund $refund, ClothingRefundService $refunds)
     {
         $refunds->authorizeOrder($event, $order, $request->user());
