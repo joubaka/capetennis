@@ -413,4 +413,71 @@ class RegionalClothingSettlementTest extends TestCase
         $this->assertDatabaseCount('regional_clothing_settlements', 1);
         $this->assertDatabaseCount('wallet_transactions', 0);
     }
+    public function test_finance_overview_separates_categories_and_applies_recorded_settlements(): void
+    {
+        $this->event->update(['start_date' => '2026-10-01', 'cape_tennis_fee' => 0]);
+        $this->refund();
+        $this->refund('pending', '5.00');
+        $data = $this->data();
+        $this->postRecord($data)->assertSessionHasNoErrors();
+        $this->postRecord($data)->assertSessionHasNoErrors();
+        $this->postRecord($this->data(['kind' => 'recovery', 'amount' => '95.00', 'occurred_at' => '2026-10-20 12:00:00']))->assertSessionHasNoErrors();
+        [$source] = $this->region($this->event, 'QA Offset Source');
+        $this->postRecord($this->data(['kind' => 'offset', 'amount' => '100.00', 'occurred_at' => '2026-10-20 13:00:00',
+            'source_event_region_id' => $source->id, 'offset_agreement_confirmed' => 1]))->assertSessionHasNoErrors();
+        $other = Event::factory()->create(['name' => 'Excluded historical event', 'start_date' => '2025-01-01']);
+        [$otherScope] = $this->region($other, 'QA Other Event');
+        $this->actingAs($this->admin)->post(route('admin.events.clothing-settlements.store', $other),
+            $this->data(['event_region_id' => $otherScope->id, 'amount' => '200.00']))->assertSessionHasNoErrors();
+        DB::table('transactions_pf')->insert(['event_id' => $this->event->id, 'pf_payment_id' => 'QA-OVERVIEW-REGISTRATION',
+            'transaction_type' => 'Registration', 'amount_gross' => '1000.00', 'is_test' => false, 'created_at' => now(), 'updated_at' => now()]);
+        \App\Models\EventPayout::create(['event_id' => $this->event->id, 'amount' => '25.00',
+            'description' => 'QA registration payout', 'payment_method' => 'bank_transfer', 'paid_by' => $this->admin->id, 'paid_at' => now()]);
+        $summary = app(FinancialLedgerService::class)->buildFySummaryRow($this->event->fresh());
+        $this->assertSame(33059.98, $summary['clothing_received']);
+        $this->assertSame(31317.66, $summary['clothing_net']);
+        $this->assertSame(31312.66, $summary['clothing_paid_out']);
+        $this->assertSame(95.0, $summary['clothing_recoveries']);
+        $this->assertSame(0.0, $summary['clothing_offsets']);
+        $this->assertSame(100.0, $summary['clothing_balance']);
+        $this->assertSame(1000.0, $summary['registration_received']);
+        $this->assertSame(25.0, $summary['registration_paid_out']);
+        $this->assertSame(round($summary['registration_net'] - 25, 2), $summary['registration_balance']);
+        $this->assertSame(5.0, $summary['pending_refunds']);
+        $this->assertDatabaseCount('regional_clothing_settlements', 5);
+        $this->assertDatabaseCount('event_payouts', 1);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+
+        $smaller = Event::factory()->create(['name' => 'QA Smaller Receipts', 'start_date' => '2026-09-01', 'cape_tennis_fee' => 0]);
+        DB::table('transactions_pf')->insert(['event_id' => $smaller->id, 'pf_payment_id' => 'QA-OVERVIEW-SMALLER',
+            'transaction_type' => 'Registration', 'amount_gross' => '99.00', 'is_test' => false, 'created_at' => now(), 'updated_at' => now()]);
+
+        foreach (['registration', 'clothing'] as $category) {
+            $response = $this->get(route('superadmin.finances', ['fy' => '2026', 'category' => $category]))
+                ->assertOk()->assertDontSee('Excluded historical event')
+                ->assertDontSee('Receipt balance before clothing settlements')
+                ->assertSee('finance-amount')->assertSee('data-order=', false)
+                ->assertViewHas('financeByEvent', fn ($rows) => $rows->count() === 2)
+                ->assertViewHas('financeSummary', fn ($totals) => $totals['clothing_balance'] === 100.0
+                    && $totals['registration_received'] === 1099.0);
+            if ($category === 'clothing') $response->assertSee('Recoveries')->assertSee('31,312.66');
+            if ($directory = getenv('FINANCE_OVERVIEW_HTML_DIR')) {
+                if (! is_dir($directory)) mkdir($directory, 0777, true);
+                file_put_contents($directory.'/'.$category.'.html', $response->getContent());
+            }
+        }
+        $this->get(route('superadmin.finances', ['fy' => '2025']))->assertOk()
+            ->assertViewHas('financeByEvent', fn ($rows) => $rows->count() === 1 && $rows->first()['event']->is($other));
+        $this->get(route('superadmin.finances', ['fy' => 'invalid']))->assertOk()->assertViewHas('currentFY', '2026');
+    }
+
+    public function test_finance_overview_remains_super_user_only_and_handles_an_empty_year(): void
+    {
+        $this->actingAs(User::factory()->create())->get(route('superadmin.finances'))->assertForbidden();
+        Event::query()->update(['start_date' => null]);
+        $this->actingAs($this->admin)->get(route('superadmin.finances'))->assertOk()
+            ->assertViewHas('financeByEvent', fn ($rows) => $rows->isEmpty())
+            ->assertViewHas('financeSummary', fn ($totals) => $totals['clothing_balance'] === 0.0 && $totals['registration_balance'] === 0.0);
+    }
+
 }

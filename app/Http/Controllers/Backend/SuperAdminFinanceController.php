@@ -35,8 +35,8 @@ class SuperAdminFinanceController extends Controller
     public function index()
     {
         $availableFYs = Event::whereNotNull('start_date')
-            ->selectRaw('YEAR(start_date) as financial_year')->distinct()->orderBy('financial_year')
-            ->pluck('financial_year')->map(fn ($year) => (string) $year);
+            ->select('start_date')->distinct()->pluck('start_date')
+            ->map(fn ($date) => (string) \Carbon\Carbon::parse($date)->year)->unique()->sort()->values();
         $currentFY = request('fy');
         if (! $availableFYs->contains($currentFY)) {
             $currentFY = $availableFYs->last() ?? (string) now()->year;
