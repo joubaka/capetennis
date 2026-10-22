@@ -124,7 +124,7 @@
 <script>
 $(function () {
   $('#financeTable').DataTable({
-    order: [[3, 'desc']],  // Net Income DESC — events with actual transactions appear first
+    order: [[1, 'desc']],  // Latest event dates first.
     columnDefs: [{ orderable: false, targets: [-1] }, { type: 'num', targets: [2, 3, 4, 5, 6] }],
     autoWidth: false,
     language: { emptyTable: 'No events found for this financial year.' },
