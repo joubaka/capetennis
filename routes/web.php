@@ -994,6 +994,9 @@ Route::get(
 
 /////////////////////////event finances (convenor)
 
+Route::get('event/{event}/finances/report.pdf', [\App\Http\Controllers\Backend\EventFinanceController::class, 'downloadReport'])->name('admin.events.finances.report.pdf');
+Route::post('event/{event}/finances/report/email', [\App\Http\Controllers\Backend\EventFinanceController::class, 'emailReport'])->middleware('throttle:10,1')->name('admin.events.finances.report.email');
+
 Route::get('event/{event}/expenses/edit', [\App\Http\Controllers\Backend\EventExpenseBatchController::class, 'index'])->name('admin.events.expenses.edit');
 Route::put('event/{event}/expenses', [\App\Http\Controllers\Backend\EventExpenseBatchController::class, 'update'])->name('admin.events.expenses.update');
 Route::post('event/{event}/expense-reimbursements', [\App\Http\Controllers\Backend\EventExpenseReimbursementController::class, 'store'])->name('admin.events.expense-reimbursements.store');

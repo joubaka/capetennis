@@ -197,6 +197,27 @@
 
   @fragment('finance-breakdown')
   <section class="finance-tab-panel" id="finance-panel-breakdown" role="tabpanel" aria-labelledby="finance-tab-breakdown" tabindex="0" @if($activeFinanceTab !== 'breakdown') hidden @endif>
+  <div class="card mb-3 no-print">
+    <div class="card-body">
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        <a class="btn btn-outline-primary" href="{{ route('admin.events.finances.report.pdf', $event) }}"><i class="ti ti-download me-1" aria-hidden="true"></i>Download PDF</a>
+        <button class="btn btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#finance-report-email" aria-expanded="false" aria-controls="finance-report-email"><i class="ti ti-mail me-1" aria-hidden="true"></i>Email report</button>
+      </div>
+      <div class="collapse mt-3" id="finance-report-email">
+        <p class="small text-muted">Send the income and expense breakdown as a PDF. It includes private financial figures, convenor payouts and separate clothing adjustments. Check the recipient before sending.</p>
+        <form action="{{ route('admin.events.finances.report.email', $event) }}" method="post" data-finance-report-email>
+          @csrf
+          <input type="hidden" name="request_key" value="{{ (string) \Illuminate\Support\Str::uuid() }}">
+          <label for="finance-report-recipient" class="form-label">Recipient email address</label>
+          <div class="d-flex flex-wrap gap-2">
+            <input class="form-control" style="flex:1 1 240px; min-width:0" id="finance-report-recipient" name="recipient" type="email" maxlength="254" required autocomplete="email">
+            <button class="btn btn-primary" type="submit">Send PDF</button>
+          </div>
+          <div class="mt-2 small" role="status" aria-live="polite" data-report-email-feedback></div>
+        </form>
+      </div>
+    </div>
+  </div>
   {{-- ── SUMMARY CARDS ───────────────────────────────────────────────── --}}
   <div class="row g-3 mb-4">
     <div class="col-6 col-md-3">
@@ -1451,6 +1472,33 @@
 <script src="{{ asset('assets/js/event-finance-tabs.js') }}?v={{ filemtime(public_path('assets/js/event-finance-tabs.js')) }}"></script>
 
 <script>
+document.addEventListener('submit', async function(event) {
+  const form = event.target.closest('[data-finance-report-email]');
+  if (!form) return;
+  event.preventDefault();
+  if (form.dataset.sending === 'true') return;
+  form.dataset.sending = 'true';
+  const button = form.querySelector('button[type="submit"]');
+  const feedback = form.querySelector('[data-report-email-feedback]');
+  button.disabled = true;
+  button.textContent = 'Sending…';
+  feedback.textContent = '';
+  try {
+    const response = await fetch(form.action, {method: 'POST', body: new FormData(form), headers: {'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest'}});
+    const data = await response.json();
+    if (!response.ok) throw new Error(Object.values(data.errors || {}).flat().join(' ') || data.message || 'Unable to send the report. Please try again.');
+    feedback.className = 'mt-2 small text-success';
+    feedback.textContent = data.message;
+    form.elements.request_key.value = data.next_request_key;
+  } catch (error) {
+    feedback.className = 'mt-2 small text-danger';
+    feedback.textContent = error.message || 'Unable to send the report. Please try again.';
+  } finally {
+    form.dataset.sending = 'false';
+    button.disabled = false;
+    button.textContent = 'Send PDF';
+  }
+});
 'use strict';
 
 /* ── CSRF token ─────────────────────────────────────────────────────────── */

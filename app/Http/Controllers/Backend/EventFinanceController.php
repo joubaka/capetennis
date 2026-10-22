@@ -46,6 +46,16 @@ class EventFinanceController extends Controller
         $activeFinanceTab = $request->query('tab', 'breakdown');
         abort_unless(is_string($activeFinanceTab) && array_key_exists($activeFinanceTab, $financeTabs), 404);
 
+        $view = view('backend.event.finances', array_merge($this->reportData($event, true), compact('financeTabs', 'activeFinanceTab')));
+
+        // Fragments use this same authorized, event-scoped report and never accept a view path.
+        return $request->ajax()
+            ? response($view->fragment('finance-'.$activeFinanceTab))->header('Cache-Control', 'private, no-store')
+            : $view;
+    }
+
+    protected function reportData(Event $event, bool $syncSystemExpenses = false): array
+    {
         // Registration income and transaction rows come from the same canonical
         // event ledger used by the super-admin finance and transaction pages.
         $feePerEntry = (float) $event->cape_tennis_fee;
@@ -67,6 +77,7 @@ class EventFinanceController extends Controller
         $totalPayfastFees = abs($paymentRows->whereIn('type', ['payment', 'admin_entry_fee'])->sum('fee'));
         $totalCapeTennisFees = abs($ledgerTotals['cape_fees']);
         $netRegistrationIncome = $ledgerTotals['registration_net'];
+        $registrationRefundImpact = round($netRegistrationIncome - ($totalGross - $totalPayfastFees - $totalCapeTennisFees), 2);
         $entryRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee']);
         $totalEntries = $entryRows->sum(fn ($row) => $row->entryCount ?? 1);
 
@@ -93,7 +104,9 @@ class EventFinanceController extends Controller
             ->get();
 
         // Auto-sync (create or update) PayFast and Cape Tennis Fee rows
-        $this->autoSyncSystemExpenses($event, $totalPayfastFees, $totalCapeTennisFees, $expenses, $totalEntries, $feePerEntry);
+        if ($syncSystemExpenses) {
+            $this->autoSyncSystemExpenses($event, $totalPayfastFees, $totalCapeTennisFees, $expenses, $totalEntries, $feePerEntry);
+        }
 
         // Refresh after potential sync
         $expenses = EventExpense::where('event_id', $event->id)
@@ -187,9 +200,7 @@ class EventFinanceController extends Controller
             ->orderBy('venues.name')
             ->get();
 
-        $view = view('backend.event.finances', compact(
-            'financeTabs',
-            'activeFinanceTab',
+        return compact(
             'event',
             'eventTransactions',
             'totalGross',
@@ -201,6 +212,7 @@ class EventFinanceController extends Controller
             'totalEntries',
             'feePerEntry',
             'netRegistrationIncome',
+            'registrationRefundImpact',
             'clothingReceipts',
             'registrationReceipts',
             'clothingReconciliation',
@@ -224,12 +236,37 @@ class EventFinanceController extends Controller
             'netProfit',
             'venueEntrySummary',
             'venueConvenors'
-        ));
+        );
 
-        // Fragments use this same authorized, event-scoped report and never accept a view path.
-        return $request->ajax()
-            ? response($view->fragment('finance-'.$activeFinanceTab))->header('Cache-Control', 'private, no-store')
-            : $view;
+    }
+
+    public function downloadReport(Event $event)
+    {
+        $this->authorize('event-finance.view', $event);
+        return $this->reportPdf($event)->download($this->reportFilename($event))
+            ->header('Cache-Control', 'private, no-store');
+    }
+
+    public function emailReport(Request $request, Event $event)
+    {
+        $this->authorize('event-finance.view', $event);
+        $input = $request->validate(['recipient' => ['required', 'email:rfc', 'max:254'], 'request_key' => ['required', 'uuid']]);
+        $result = app(\App\Services\EventFinanceReportDelivery::class)->queue(
+            $event, $request->user(), strtolower(trim($input['recipient'])), $input['request_key'],
+            fn () => $this->reportPdf($event)->output(), $this->reportFilename($event)
+        );
+        return response()->json($result + ['next_request_key' => (string) \Illuminate\Support\Str::uuid()], $result['failed'] ? 503 : 200);
+    }
+
+    private function reportPdf(Event $event): \Barryvdh\DomPDF\PDF
+    {
+        return \Barryvdh\DomPDF\Facade\Pdf::loadView('backend.event.pdf.finance-breakdown', $this->reportData($event))
+            ->setPaper('a4')->setOptions(['isRemoteEnabled' => false, 'defaultFont' => 'DejaVu Sans']);
+    }
+
+    private function reportFilename(Event $event): string
+    {
+        return 'income-expense-breakdown-'.$event->id.'.pdf';
     }
 
     /* ------------------------------------------------------------------ */

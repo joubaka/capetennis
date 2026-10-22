@@ -463,7 +463,7 @@ class RegionalClothingSettlementTest extends TestCase
             if ($category === 'clothing') $response->assertSee('Recoveries')->assertSee('31,312.66');
             if ($directory = getenv('FINANCE_OVERVIEW_HTML_DIR')) {
                 if (! is_dir($directory)) mkdir($directory, 0777, true);
-                file_put_contents($directory.'/'.$category.'.html', $response->getContent());
+                file_put_contents($directory.'/'.$category.'.html', str_replace('http://localhost/', 'http://localhost/ct/public/', $response->getContent()));
             }
         }
         $this->get(route('superadmin.finances', ['fy' => '2025']))->assertOk()
