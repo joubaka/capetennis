@@ -266,7 +266,14 @@ final class ClothingPayfastRefundRecoveryService
 
     private function hash(array $value): string
     {
-        return hash('sha256', json_encode($value, JSON_THROW_ON_ERROR));
+        $normalize = function (array $data) use (&$normalize): array {
+            if (! array_is_list($data)) ksort($data);
+            foreach ($data as &$item) {
+                if (is_array($item)) $item = $normalize($item);
+            }
+            return $data;
+        };
+        return hash('sha256', json_encode($normalize($value), JSON_THROW_ON_ERROR));
     }
 
     private function invalid(string $message): never
