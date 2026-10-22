@@ -16,6 +16,9 @@
     </div>
   </div>
   @include('backend.team-draw.partials.organiser-decisions')
+  @if(app(\App\Services\TeamRoundRobinMatrixService::class)->supports($draw))
+    @include('backend.team-draw.partials.round-robin-matrix', ['matrix' => app(\App\Services\TeamRoundRobinMatrixService::class)->forDraw($draw)])
+  @endif
   @if(isset($draw->team_draw_selection['competition']))
     @php
       $competition = $draw->team_draw_selection['competition'];

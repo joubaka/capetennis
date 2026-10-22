@@ -100,7 +100,21 @@ class TeamFixtureFrontendController extends Controller
 
     $fixtures = $this->authorizedScoringFixtures($fixtures, $drawModel);
 
-    return view('frontend.fixtures.enter-score', compact('fixtures'));
+    $matrixService = app(\App\Services\TeamRoundRobinMatrixService::class);
+    $restrictedScorer = auth()->user()->is_event_score_keeper($drawModel->event_id)
+        && !auth()->user()->hasRole('super-user');
+    $matrixDraw = !$restrictedScorer && $matrixService->supports($drawModel) ? $drawModel : null;
+    $selectedTie = null;
+    if ($matrixDraw && request()->filled('tie')) {
+        $selectedTie = $drawModel->teamTies()->findOrFail(request()->integer('tie'));
+        $fixtures = $fixtures->where('team_tie_id', $selectedTie->id)->values();
+        abort_if($fixtures->isEmpty(), 403);
+    } elseif ($matrixDraw && request('view') !== 'matches') {
+        return view('frontend.fixtures.team-round-robin-scoring', ['draw' => $drawModel,
+            'matrix' => $matrixService->forDraw($drawModel, allowedFixtures: $fixtures)]);
+    }
+
+    return view('frontend.fixtures.enter-score', compact('fixtures', 'matrixDraw', 'selectedTie'));
   }
 
   public function storeScore(Request $request, $fixtureId)

@@ -83,7 +83,7 @@ class FinancialLedgerService
         $refundRows  = $this->buildRefundRows($event, $feePerEntry);
         $payoutRows  = $this->buildPayoutRows($event);
 
-        $totals = $this->buildTotals($paymentRows, $refundRows, $payoutRows);
+        $totals = $this->buildTotals($paymentRows, $refundRows, $payoutRows, $this->clothingSettlements($event));
 
         return compact('paymentRows', 'refundRows', 'payoutRows', 'totals');
     }
@@ -98,15 +98,7 @@ class FinancialLedgerService
         $refundRows      = $this->buildRefundRows($event, $feePerEntry);
         $payoutRows      = EventPayout::where('event_id', $event->id)->get(['amount'])
             ->map(fn ($payout) => (object) ['net' => -(float) $payout->amount]);
-        $totals          = $this->buildTotals($paymentRows, $refundRows, $payoutRows);
-
-        // Preserve recorded settlements even if a region is removed from event setup.
-        // Recoveries restore funds, rather than creating clothing sales or revenue.
-        $settlements = \App\Models\RegionalClothingSettlement::where('event_id', $event->id)
-            ->selectRaw('kind, SUM(amount) as amount')->groupBy('kind')->pluck('amount', 'kind');
-        $clothingPaidOut = round((float) $settlements->get('payout', 0), 2);
-        $clothingRecoveries = round((float) $settlements->get('recovery', 0), 2);
-        $clothingOffsets = round((float) $settlements->get('offset_in', 0) - (float) $settlements->get('offset_out', 0), 2);
+        $totals          = $this->buildTotals($paymentRows, $refundRows, $payoutRows, $this->clothingSettlements($event));
 
         $entryRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee']);
         $recognizedRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee', 'clothing_payment']);
@@ -120,10 +112,10 @@ class FinancialLedgerService
             'registration_balance' => $totals['registration_balance'],
             'clothing_received' => $totals['clothing_received'],
             'clothing_net' => $totals['clothing_net'],
-            'clothing_paid_out' => $clothingPaidOut,
-            'clothing_recoveries' => $clothingRecoveries,
-            'clothing_offsets' => $clothingOffsets,
-            'clothing_balance' => round($totals['clothing_net'] - $clothingPaidOut + $clothingRecoveries + $clothingOffsets, 2),
+            'clothing_paid_out' => $totals['clothing_paid_out'],
+            'clothing_recoveries' => $totals['clothing_recoveries'],
+            'clothing_offsets' => $totals['clothing_offsets'],
+            'clothing_balance' => $totals['clothing_balance'],
             'gross_payments'   => $totals['gross_payments'],
             'completed_refunds' => $totals['completed_refunds'],
             'pending_refunds'  => $totals['pending_refunds'],
@@ -132,6 +124,7 @@ class FinancialLedgerService
             'total_entries'    => $totalEntries,
             'total_paid_out'   => $totals['total_paid_out'],
             'balance'          => $totals['balance'],
+            'combined_paid_out' => $totals['combined_paid_out'],
             'has_transactions' => $recognizedRows->isNotEmpty(),
         ];
     }
@@ -265,7 +258,7 @@ class FinancialLedgerService
                 'not_refunded',
             ])
             ->get()
-            ->map(function ($reg) use ($feePerEntry, $event) {
+            ->map(function ($reg) use ($event) {
                 $payment = $reg->paymentInfo();
 
                 $refundStatus = $reg->refund_status ?? 'not_refunded';
@@ -283,7 +276,9 @@ class FinancialLedgerService
 
                 $displayGross = $isNoRefund ? $originalPaymentGross : $grossRefund;
 
-                $payfastFee   = abs((float) ($payment['fee'] ?? 0));
+                // Use execution snapshots, including an explicit zero; never reconstruct refunds from current fees.
+                $refundFee = round((float) ($reg->refund_fee ?? 0), 2);
+                $refundNet = round((float) ($reg->refund_net ?? 0), 2);
                 $refundMethod = strtolower($reg->refund_method ?? '');
 
                 // Row type: 'refund' affects accounting; 'withdrawal' is operational only
@@ -307,8 +302,8 @@ class FinancialLedgerService
                     'type'              => $rowType,
                     'subtype'           => $subtype,
                     'amount_gross'      => $displayGross,
-                    'amount_fee'        => $isNoRefund ? 0 : $payfastFee,
-                    'amount_net'        => $isNoRefund ? 0 : round(-$grossRefund + $payfastFee + $feePerEntry, 2),
+                    'amount_fee'        => $isNoRefund ? 0 : $refundFee,
+                    'amount_net'        => $isNoRefund ? 0 : -$refundNet,
                     'payment_method'    => $refundMethod ?: null,
                     'refund_status'     => $refundStatus,
                     'withdrawal_status' => $reg->status,
@@ -329,13 +324,13 @@ class FinancialLedgerService
                     'tx_id'         => $payment['transaction_id'] ?? null,
                     'paid_at'       => $payment['paid_at'] ?? null,
                     'refund_gross'  => $isNoRefund ? 0 : $grossRefund,
-                    'refund_fee'    => $isNoRefund ? 0 : $payfastFee,
-                    'refund_net'    => $isNoRefund ? 0 : round(-$grossRefund + $payfastFee + $feePerEntry, 2),
+                    'refund_fee'    => $isNoRefund ? 0 : $refundFee,
+                    'refund_net'    => $isNoRefund ? 0 : $refundNet,
                     // gross/fee/net for display arithmetic — withdrawal rows are informational (0 impact)
                     'gross'         => $isNoRefund ? 0 : -$grossRefund,
-                    'fee'           => $isNoRefund ? 0 : +$payfastFee,
-                    'capeFee'       => $isNoRefund ? 0 : +$feePerEntry,
-                    'net'           => $isNoRefund ? 0 : round(-$grossRefund + $payfastFee + $feePerEntry, 2),
+                    'fee'           => $isNoRefund ? 0 : $refundFee,
+                    'capeFee'       => 0.0,
+                    'net'           => $isNoRefund ? 0 : -$refundNet,
                     // For display: original amount paid (shown on withdrawal rows)
                     'original_gross' => $originalPaymentGross,
                     'registrationDetails' => $reg->players->map(fn ($player) => [
@@ -435,10 +430,11 @@ class FinancialLedgerService
      * Gross Payments  = total money received (PayFast + wallet, all methods).
      * Completed Refunds = only refunds whose refund_status = 'completed'.
      * Pending Refunds   = only refunds whose refund_status = 'pending' (liability).
-     * Net Revenue       = Gross Payments − Completed Refund gross − all fees.
-     * Balance           = Net Revenue − Total Paid Out.
+     * Net Revenue       = payments net − saved completed refund net amounts.
+     * Balance           = registration balance + clothing balance after settlements.
+     * total_paid_out remains registration-only; combined_paid_out includes clothing payouts.
      */
-    public function buildTotals(Collection $paymentRows, Collection $refundRows, Collection $payoutRows): array
+    public function buildTotals(Collection $paymentRows, Collection $refundRows, Collection $payoutRows, array $clothingSettlements = []): array
     {
         $grossPayments    = round($paymentRows->sum('gross'), 2);
         $pfFees           = round($paymentRows->sum('fee'), 2);
@@ -465,7 +461,12 @@ class FinancialLedgerService
         $clothingPayments = $paymentRows->where('type', 'clothing_payment');
         $registrationPayments = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee']);
         $registrationReceived = round($registrationPayments->sum('gross'), 2);
-        $registrationNet = round($registrationPayments->sum(
+        // Late/superseded receipts remain payer funds awaiting reconciliation,
+        // not money payable to the convenor. Retain them in received/cash totals.
+        $registrationPayablePayments = $registrationPayments->reject(
+            fn ($row) => ($row->subtype ?? null) === 'superseded_payfast_receipt'
+        );
+        $registrationNet = round($registrationPayablePayments->sum(
             fn ($row) => (float) ($row->gross ?? 0) + (float) ($row->fee ?? 0) + (float) ($row->capeFee ?? 0)
         ) + $completedRefunds->where('subtype', '!=', 'clothing_refund')->sum('net'), 2);
         $clothingReceived = round($clothingPayments->sum('gross'), 2);
@@ -474,8 +475,12 @@ class FinancialLedgerService
         ) + $completedRefunds->where('subtype', 'clothing_refund')->sum('net'), 2);
 
         $totalPaidOut = round($payoutRows->sum(fn($r) => abs($r->net ?? 0)), 2);
-        $balance      = round($netRevenue - $totalPaidOut, 2);
         $registrationBalance = round($registrationNet - $totalPaidOut, 2);
+        $clothingPaidOut = round((float) ($clothingSettlements['payout'] ?? 0), 2);
+        $clothingRecoveries = round((float) ($clothingSettlements['recovery'] ?? 0), 2);
+        $clothingOffsets = round((float) ($clothingSettlements['offset_in'] ?? 0) - (float) ($clothingSettlements['offset_out'] ?? 0), 2);
+        $clothingBalance = round($clothingNet - $clothingPaidOut + $clothingRecoveries + $clothingOffsets, 2);
+        $balance = round($registrationBalance + $clothingBalance, 2);
 
         return [
             'gross_payments'         => $grossPayments,
@@ -492,6 +497,11 @@ class FinancialLedgerService
             'registration_balance'   => $registrationBalance,
             'clothing_received'      => $clothingReceived,
             'clothing_net'           => $clothingNet,
+            'clothing_paid_out'      => $clothingPaidOut,
+            'clothing_recoveries'    => $clothingRecoveries,
+            'clothing_offsets'      => $clothingOffsets,
+            'clothing_balance'      => $clothingBalance,
+            'combined_paid_out'     => round($totalPaidOut + $clothingPaidOut, 2),
             'total_paid_out'         => $totalPaidOut,
             'balance'                => $balance,
             // Legacy aliases for view compatibility
@@ -508,6 +518,13 @@ class FinancialLedgerService
     // ─────────────────────────────────────────────────────────────────────────
     // Internals
     // ─────────────────────────────────────────────────────────────────────────
+
+    private function clothingSettlements(Event $event): array
+    {
+        // Preserve settlement evidence even if a region is removed from event setup.
+        return \App\Models\RegionalClothingSettlement::where('event_id', $event->id)
+            ->selectRaw('kind, SUM(amount) as amount')->groupBy('kind')->pluck('amount', 'kind')->all();
+    }
 
     private function buildClothingRows(Event $event, bool $summaryOnly = false): Collection
     {

@@ -10,6 +10,10 @@
 @section('content')
 <div class="container-xxl py-4">
     <h2 class="mb-3">Enter Scores</h2>
+    @if($matrixDraw ?? null)
+      <a class="btn btn-outline-primary mb-3" href="{{ route('frontend.fixtures.enter-scores', $matrixDraw) }}">Back to round-robin matrix</a>
+      @if($selectedTie ?? null)<h3 class="h5">{{ $selectedTie->home_side_name }} vs {{ $selectedTie->away_side_name }}</h3>@endif
+    @endif
     <div class="card shadow-sm">
         <div class="card-body p-0">
             <div class="table-responsive">

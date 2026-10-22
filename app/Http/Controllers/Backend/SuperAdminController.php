@@ -337,7 +337,7 @@ class SuperAdminController extends Controller
             'total_gross'    => round($financeByEvent->sum('total_gross'), 2),
             'total_income'   => round($financeByEvent->sum('total_income'), 2),
             'total_entries'  => $financeByEvent->sum('total_entries'),
-            'total_paid_out' => round($financeByEvent->sum('total_paid_out'), 2),
+            'total_paid_out' => round($financeByEvent->sum('combined_paid_out'), 2),
             'balance'        => round($financeByEvent->sum('balance'), 2),
         ];
 

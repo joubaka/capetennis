@@ -117,7 +117,7 @@ class TeamFixtureLineupPresenter
                 $players[] = $display;
             }
         }
-        return ['region' => $label, 'region_name' => $regionName, 'region_logo' => RegionLogo::path($regionName),
+        return ['region' => $label, 'region_short_name' => trim((string) $region?->short_name), 'region_name' => $regionName, 'region_logo' => RegionLogo::path($regionName),
             'region_color' => RegionBadge::color($region), 'players' => $players]
             + ($selectedPlayerId ? ['selected_player_assigned' => $selectedPlayerAssigned] : []);
     }

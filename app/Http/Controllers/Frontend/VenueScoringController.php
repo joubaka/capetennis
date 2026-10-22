@@ -193,7 +193,18 @@ class VenueScoringController extends Controller
             ->limit(12)
             ->get();
 
+        $roundRobinMatrices = [];
+        if ($restrictedVenueId === null) {
+            $matrixService = app(\App\Services\TeamRoundRobinMatrixService::class);
+            foreach ($draws as $matrixDraw) {
+                if (($selectedDraw && $selectedDraw->id !== $matrixDraw->id)
+                    || !$teamFixtures->contains('draw_id', $matrixDraw->id) || !$matrixService->supports($matrixDraw)) { continue; }
+                $roundRobinMatrices[] = $matrixService->forDraw($matrixDraw, allowedFixtures: $teamFixtures);
+            }
+        }
+
         return view('frontend.scoring.workspace', [
+            'roundRobinMatrices' => $roundRobinMatrices,
             'event' => $event,
             'draws' => $draws,
             'venues' => $venues,

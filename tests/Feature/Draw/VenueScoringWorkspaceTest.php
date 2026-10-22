@@ -830,6 +830,50 @@ class VenueScoringWorkspaceTest extends TestCase
         $this->travelBack();
     }
 
+    public function test_team_cards_show_database_short_names_for_each_singles_and_doubles_player_in_every_queue_state(): void
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-09-10 09:00:00'));
+        [$event, $draw, $venue] = $this->scheduledFixture('Short names');
+        $homeRegion = \App\Models\TeamRegion::create(['region_name' => 'Western Province', 'short_name' => ' WP ']);
+        $awayRegion = \App\Models\TeamRegion::create(['region_name' => 'No abbreviation', 'short_name' => null]);
+        $expected = [];
+        foreach (['playing', 'upcoming', 'outstanding'] as $state) {
+            foreach ([1, 2] as $playerCount) {
+                $fixture = TeamFixture::create([
+                    'draw_id' => $draw->id, 'round_nr' => 1, 'match_nr' => count($expected) + 1,
+                    'region1' => $homeRegion->id, 'region2' => $awayRegion->id,
+                    'venue_id' => $venue->id,
+                    'scheduled_at' => $state === 'upcoming' ? '2026-09-10 10:00:00' : '2026-09-10 08:00:00',
+                    'match_status' => $state === 'playing' ? FixtureState::STATUS_PARTIAL : FixtureState::STATUS_PENDING,
+                ]);
+                $homeNames = $awayNames = [];
+                for ($slot = 1; $slot <= $playerCount; $slot++) {
+                    $home = \App\Models\Player::factory()->create(['name' => 'Home'.$fixture->id.'Slot'.$slot, 'surname' => 'Player']);
+                    $away = \App\Models\Player::factory()->create(['name' => 'Away'.$fixture->id.'Slot'.$slot, 'surname' => 'Player']);
+                    \App\Models\TeamFixturePlayer::create([
+                        'team_fixture_id' => $fixture->id, 'slot_no' => $slot,
+                        'team1_id' => $home->id, 'team2_id' => $away->id,
+                    ]);
+                    $homeNames[] = $home->full_name.' (WP)';
+                    $awayNames[] = $away->full_name;
+                }
+                $expected[] = [implode(' + ', $homeNames), implode(' + ', $awayNames)];
+            }
+        }
+        $response = $this->actingAs($this->scorerFor($event))->get(route('frontend.scoring.workspace', [
+            'event' => $event, 'venue' => $venue->id,
+        ]))->assertOk();
+        foreach ($expected as [$home, $away]) {
+            $response->assertSee('>'.$home.'</div>', false)
+                ->assertSee('>'.$away.'</div>', false)
+                ->assertDontSee($away.' ()');
+        }
+        $response->assertSee('data-score-state="playing"', false)
+            ->assertSee('data-score-state="outstanding"', false)
+            ->assertSee('data-score-timing="upcoming"', false);
+        $this->travelBack();
+    }
+
     private function scorerFor(Event $event): User
     {
         $user = User::factory()->create()->assignRole('score-keeper');

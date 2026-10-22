@@ -82,7 +82,7 @@ class TeamDrawGenerationService
                 && !$draw->teamTies()->exists() && !\App\Models\TeamFixture::where('draw_id', $draw->id)->exists()) {
                 $event = \App\Models\Event::whereKey($draw->event_id)->lockForUpdate()->firstOrFail();
                 $draw->team_scoring_rules = app(TeamEventRulesService::class)->forEvent($event);
-                $draw->team_format_snapshot = $format->loadMissing('rubbers')->toArray();
+                $draw->team_format_snapshot = $format->loadMissing('rubbers')->toArray() + ['pairing_format' => 'round_robin'];
             }
             // Attach format if provided
             if ($format) {

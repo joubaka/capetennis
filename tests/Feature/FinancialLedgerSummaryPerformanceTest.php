@@ -81,10 +81,12 @@ class FinancialLedgerSummaryPerformanceTest extends TestCase
             $row->walletUsed, $row->registrationDetails->all(),
         ])->values()->all();
         $this->assertEquals($metadata($baseline['paymentRows']), $metadata($optimized));
-        $this->assertEquals($baseline['totals'], $ledger->buildTotals($optimized, $baseline['refundRows'], $baseline['payoutRows']));
+        $settlements = RegionalClothingSettlement::where('event_id', $event->id)
+            ->selectRaw('kind, SUM(amount) as amount')->groupBy('kind')->pluck('amount', 'kind')->all();
+        $this->assertEquals($baseline['totals'], $ledger->buildTotals($optimized, $baseline['refundRows'], $baseline['payoutRows'], $settlements));
         $summary = $ledger->buildFySummaryRow($event);
         foreach (['registration_received', 'registration_net', 'registration_balance', 'clothing_received', 'clothing_net',
-            'gross_payments', 'completed_refunds', 'pending_refunds', 'total_paid_out', 'balance'] as $key) {
+            'gross_payments', 'completed_refunds', 'pending_refunds', 'total_paid_out', 'balance', 'clothing_balance', 'combined_paid_out'] as $key) {
             $this->assertEquals($baseline['totals'][$key], $summary[$key], $key);
         }
         $this->assertEquals($baseline['totals']['net_revenue'], $summary['total_income']);

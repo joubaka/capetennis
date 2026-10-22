@@ -50,6 +50,11 @@
   </form>
   @include('frontend.fixtures.partials.live-results-status')
   <div data-live-results="admin-event-standings">
+  @foreach($sections as $matrixSection)
+    @if(app(\App\Services\TeamRoundRobinMatrixService::class)->supports($matrixSection['draw']))
+      @include('backend.team-draw.partials.round-robin-matrix', ['matrix' => app(\App\Services\TeamRoundRobinMatrixService::class)->forDraw($matrixSection['draw'], $matrixSection['rows'], $regionalOnly ?? false), 'matrixScoring' => !($regionalOnly ?? false)])
+    @endif
+  @endforeach
   @include('frontend.fixtures.partials.team-placement-results')
   <section class="card mb-4"><div class="card-header"><h2 class="h5 mb-2">{{ array_filter($filters) ? 'Filtered' : 'Full event' }} standings by region / school</h2>
     <p class="mb-0">Totals combine team ties across the selected draws. Completed rubbers earn points; ties count as played once all required rubbers are complete. These are running standings, not final tournament placings.</p>

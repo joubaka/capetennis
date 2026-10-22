@@ -338,6 +338,18 @@
       </details>
     </details>
 
+    @foreach($roundRobinMatrices ?? [] as $matrix)
+      @include('backend.team-draw.partials.round-robin-matrix', ['matrix' => $matrix])
+    @endforeach
+    @php
+      $matrixDrawIds = collect($roundRobinMatrices ?? [])->pluck('draw.id');
+      $matrixOnlyQueue = $matrixDrawIds->isNotEmpty() && $matches->every(fn ($match) =>
+        $match instanceof \App\Models\TeamFixture && $matrixDrawIds->contains($match->draw_id));
+    @endphp
+    @if($matrixOnlyQueue)
+      <details class="mb-4" data-round-robin-match-list>
+        <summary class="btn btn-outline-secondary mb-3" style="min-height:44px">View individual match queue</summary>
+    @endif
     <section aria-labelledby="match-queue-title">
     <div class="scoring-section-heading mb-3 px-1">
       <div>
@@ -370,8 +382,12 @@
           $isFlexible = !$isTeamFixture && $draw->usesFlexibleMonrad();
 
           if ($isTeamFixture) {
-            $homePlayers = collect($match->lineup_display['home']['players'])->pluck('name');
-            $awayPlayers = collect($match->lineup_display['away']['players'])->pluck('name');
+            $playerNames = function (array $side) {
+              $shortName = $side['region_short_name'] ?? '';
+              return collect($side['players'])->map(fn ($player) => $player['name'].($shortName !== '' ? ' ('.$shortName.')' : ''));
+            };
+            $homePlayers = $playerNames($match->lineup_display['home']);
+            $awayPlayers = $playerNames($match->lineup_display['away']);
             $home = $homePlayers->isNotEmpty() ? $homePlayers->implode(' + ') : ($match->homeTeam?->name ?? $match->region1Name?->name ?? 'To be decided');
             $away = $awayPlayers->isNotEmpty() ? $awayPlayers->implode(' + ') : ($match->awayTeam?->name ?? $match->region2Name?->name ?? 'To be decided');
             $hasPlayers = $match->fixturePlayers->isNotEmpty() || ($match->homeTeam && $match->awayTeam);
@@ -493,6 +509,8 @@
       <p class="small text-muted mb-0">Try another queue filter, venue, or draw.</p>
     </div>
     </section>
+
+    @if($matrixOnlyQueue)</details>@endif
 
     @if($recentActivity->isNotEmpty())
       <details class="card scoring-activity mt-4">

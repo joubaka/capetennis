@@ -6,6 +6,9 @@
   @include('backend.team-draw.partials.organiser-decisions')
   @include('frontend.fixtures.partials.live-results-status')
   <div data-live-results="admin-draw-standings">
+  @if(app(\App\Services\TeamRoundRobinMatrixService::class)->supports($draw))
+    @include('backend.team-draw.partials.round-robin-matrix', ['matrix' => app(\App\Services\TeamRoundRobinMatrixService::class)->forDraw($draw, $rows)])
+  @endif
   @if(($draw->team_draw_selection['competition']['phase'] ?? null) === 'playoff')
     @include('frontend.fixtures.partials.team-placement-results', ['placementSections' => [['draw' => $draw, 'category' => $draw->team_draw_selection['competition']['group'], 'age' => $draw->team_draw_selection['competition']['group'], 'gender' => 'mixed', 'results' => app(\App\Services\TeamPlacementResultsService::class)->forDraw($draw, false)]]])
   @elseif($draw->team_scoring_rules['undecided'] ?? false)

@@ -152,17 +152,13 @@
     <div class="col-md-2">
       <div class="card border-start border-warning h-100">
         <div class="card-body">
-          <small class="text-muted d-block mb-1">Registration PayFast fees (net)</small>
+          <small class="text-muted d-block mb-1">Registration PayFast fees</small>
           <h4 class="text-warning mb-1">− R {{ number_format(abs($totalPayfastFees), 2) }}</h4>
-          @php $activePayfastEntries = $totalEntries - $completedRefundCount - $adminEntriesCount; @endphp
           @if($adminEntriesCount > 0)
-            <small class="text-muted d-block">{{ $activePayfastEntries }} active PayFast {{ $activePayfastEntries === 1 ? 'entry' : 'entries' }}</small>
             <small class="text-muted d-block">{{ $adminEntriesCount }} admin = R 0.00 fee</small>
-          @else
-            <small class="text-muted d-block">{{ $totalEntries - $completedRefundCount }} active {{ ($totalEntries - $completedRefundCount) === 1 ? 'entry' : 'entries' }}</small>
           @endif
           @if($completedRefundCount > 0)
-            <small class="text-muted d-block">{{ $completedRefundCount }} refunded — no PF fee</small>
+            <small class="text-muted d-block">Completed refunds use their saved amounts.</small>
           @endif
         </div>
       </div>
@@ -172,13 +168,10 @@
     <div class="col-md-2">
       <div class="card border-start border-danger h-100">
         <div class="card-body">
-          <small class="text-muted d-block mb-1">Registration Cape Tennis fees (net)</small>
+          <small class="text-muted d-block mb-1">Registration Cape Tennis fees</small>
           <h4 class="text-danger mb-1">− R {{ number_format(abs($totalCapeTennisFees), 2) }}</h4>
-          @php
-            $chargedEntries = max(0, $totalEntries - ($completedRefundCount ?? 0));
-          @endphp
           <small class="text-muted d-block">
-            {{ $chargedEntries }} fee-bearing {{ $chargedEntries === 1 ? 'entry' : 'entries' }} × R {{ number_format($feePerEntry, 2) }}
+            Recorded registration fees
           </small>
           @if(($noRefundCount ?? 0) > 0)
             <small class="text-muted d-block">Includes {{ $noRefundCount }} withdrawn (not refunded)</small>

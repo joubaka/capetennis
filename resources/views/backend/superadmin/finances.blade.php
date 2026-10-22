@@ -44,9 +44,11 @@
   @php
     $category = request('category') === 'clothing' ? 'clothing' : 'registration';
     $isClothing = $category === 'clothing';
-    $columns = ['received' => 'Received', 'net' => 'Net income', 'paid_out' => 'Paid out'];
+    $summaryColumns = ['received' => 'Received', 'net' => $isClothing ? 'Net income' : 'Available to convenors', 'paid_out' => $isClothing ? 'Paid out' : 'Paid to convenors', 'balance' => $isClothing ? 'Balance' : 'Owed to convenors'];
+    $columns = $summaryColumns;
+    unset($columns['balance']);
     if ($isClothing) $columns['recoveries'] = 'Recoveries';
-    $columns['balance'] = 'Balance';
+    $columns['balance'] = $summaryColumns['balance'];
   @endphp
   <nav class="nav nav-pills gap-2 mb-3" aria-label="Finance category">
     @foreach(['registration' => 'Registrations', 'clothing' => 'Clothing'] as $key => $label)
@@ -55,7 +57,7 @@
     @endforeach
   </nav>
   <div class="row g-3 mb-3">
-    @foreach(['received' => 'Received', 'net' => 'Net income', 'paid_out' => 'Paid out', 'balance' => 'Balance'] as $key => $label)
+    @foreach($summaryColumns as $key => $label)
       <div class="col-12 col-sm-6 col-lg-3">
         <div class="card h-100"><div class="card-body">
           <small class="text-muted">{{ $isClothing ? 'Clothing' : 'Registration' }} {{ strtolower($label) }}</small>
@@ -66,15 +68,18 @@
     @endforeach
   </div>
   <p class="small text-muted mb-3">
-    Net income includes fees and completed refunds. Pending refunds remain liabilities.
     @if($isClothing)
+      Net income includes fees and completed refunds. Pending refunds remain liabilities.
       Balance includes recorded clothing payouts and recoveries. Recoveries: <span class="finance-amount">R {{ number_format($financeSummary['clothing_recoveries'], 2) }}</span>.
       @if($financeSummary['clothing_offsets'] != 0)
         Net regional offsets: <span class="finance-amount">R {{ number_format($financeSummary['clothing_offsets'], 2) }}</span>.
       @endif
       Open an event for the regional breakdown.
     @else
-      Balance deducts registration payouts.
+      Owed to convenors = registration receipts less PayFast fees, Cape Tennis fees, completed refunds and recorded payouts.
+      Zero means fully paid; a negative amount means payouts exceed available funds.
+      Payments awaiting payer reconciliation are excluded.
+      Pending refunds remain separate liabilities.
     @endif
   </p>
   <div class="card">

@@ -44,7 +44,11 @@ class EventOverviewClothingIncomeTest extends TestCase
         $this->assertSame($clothing, $data['clothingReceipts']);
         $this->assertDatabaseCount('event_expenses', 2);
 
-        $html = view('backend.event.partials.finances', ['event' => $event] + $data)->render();
+        // Direct view rendering bypasses the web middleware that shares validation errors.
+        $html = view('backend.event.partials.finances', [
+            'event' => $event,
+            'errors' => new \Illuminate\Support\ViewErrorBag,
+        ] + $data)->render();
         $this->assertStringContainsString('Registration reconciliation', $html);
         $this->assertStringContainsString('Regional clothing income and reconciliation', $html);
         $this->assertStringContainsString('Pending registration refund liability: R 25.00', $html);

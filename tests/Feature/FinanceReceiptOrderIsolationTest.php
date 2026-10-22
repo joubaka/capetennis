@@ -109,6 +109,15 @@ class FinanceReceiptOrderIsolationTest extends TestCase
         $this->assertSame(350.0, $row->gross);
         $this->assertEmpty($row->registrationDetails);
         $this->assertEquals(0, $ledger->buildFySummaryRow($event)['total_entries']);
+        $summary = $ledger->buildFySummaryRow($event);
+        $this->assertSame(350.0, $summary['registration_received']);
+        $this->assertSame(0.0, $summary['registration_net']);
+        $this->assertSame(0.0, $summary['registration_balance']);
+        $this->assertGreaterThan(0, $summary['total_income']);
+        $this->assertSame(350.0, $ledger->buildForEvent($event)['totals']['gross_payments']);
+        $this->assertSame(0.0, $ledger->buildForEvent($event)['totals']['registration_balance']);
+        $this->assertDatabaseCount('transactions_pf', 1);
+        $this->assertDatabaseCount('event_payouts', 0);
     }
 
     private function receipt(Event $event, User $payer, int $orderId, ?string $type, float $gross): void

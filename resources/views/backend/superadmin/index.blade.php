@@ -344,7 +344,7 @@
                   <td class="text-end text-success">R {{ number_format($row['total_gross'], 2) }}</td>
                   <td class="text-end">R {{ number_format($row['total_income'], 2) }}</td>
                   <td class="text-end text-danger">
-                    {{ ($row['total_paid_out'] ?? 0) > 0 ? 'R ' . number_format($row['total_paid_out'], 2) : '—' }}
+                    {{ ($row['combined_paid_out'] ?? 0) > 0 ? 'R ' . number_format($row['combined_paid_out'], 2) : '—' }}
                   </td>
                   <td class="text-end {{ ($row['balance'] ?? 0) < 0 ? 'balance-negative' : 'balance-positive' }}">
                     R {{ number_format($row['balance'] ?? 0, 2) }}
