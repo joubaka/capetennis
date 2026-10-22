@@ -122,7 +122,19 @@ class TeamDrawSideResolver
     {
         if (!$team) return null;
         $entry = $draw->team_draw_selection['mixed_sides'][$team->id] ?? null;
-        return $entry ? $entry['name'] : $team->name;
+        if (!$entry) return $team->name;
+
+        $region = $team->regions;
+        $regionName = trim((string) $region?->short_name) ?: trim((string) $region?->region_name);
+        if ($regionName === '') return $entry['name'];
+
+        $category = $team->category?->category?->name ?? '';
+        $group = $this->categoryKey($category)['group'];
+        if (preg_match('/\bu\s*\/?\s*(\d+)\b/i', $group ?: $entry['name'], $age)) {
+            return $regionName.' U/'.$age[1];
+        }
+
+        return trim($regionName.' '.$group);
     }
 
     public function assertMixedSources(Draw $draw, int $teamId, array $profiles, array $imported, string $gender = 'mixed'): void

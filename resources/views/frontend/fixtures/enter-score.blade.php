@@ -7,12 +7,39 @@
 @endsection
 @section('title', 'Enter Fixture Scores')
 
+@section('page-style')
+<style>
+  .score-tie-heading{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:.75rem}
+  .score-tie-side{padding:1rem;border-radius:.5rem;overflow-wrap:anywhere;font-size:clamp(1.15rem,3vw,1.6rem);font-weight:700;line-height:1.3}
+  .score-tie-home{background:#e4f3ef;color:#125b50;border-left:4px solid #16796b}
+  .score-tie-away{background:#eaf0fc;color:#244a87;border-left:4px solid #3569b8}
+  .score-tie-versus{color:#566477;font-size:.85rem;font-weight:700}
+  @media(max-width:575px){.score-tie-heading{gap:.4rem}.score-tie-side{padding:.75rem .5rem}}
+</style>
+@endsection
+
 @section('content')
 <div class="container-xxl py-4">
     <h2 class="mb-3">Enter Scores</h2>
     @if($matrixDraw ?? null)
       <a class="btn btn-outline-primary mb-3" href="{{ route('frontend.fixtures.enter-scores', $matrixDraw) }}">Back to round-robin matrix</a>
-      @if($selectedTie ?? null)<h3 class="h5">{{ $selectedTie->home_side_name }} vs {{ $selectedTie->away_side_name }}</h3>@endif
+      @if($selectedTie ?? null)
+        @php
+          $homeRegion = $selectedTie->homeTeam?->regions;
+          $awayRegion = $selectedTie->awayTeam?->regions;
+          $combinedSides = !empty($matrixDraw->team_draw_selection['mixed_sides']);
+          $homeHeading = $combinedSides ? $selectedTie->home_side_name : (trim((string) $homeRegion?->short_name) ?: ($homeRegion?->region_name ?: $selectedTie->home_side_name));
+          $awayHeading = $combinedSides ? $selectedTie->away_side_name : (trim((string) $awayRegion?->short_name) ?: ($awayRegion?->region_name ?: $selectedTie->away_side_name));
+        @endphp
+        <section class="mb-4" aria-label="Region matchup">
+          <h3 class="score-tie-heading mb-2">
+            <span class="score-tie-side score-tie-home" title="{{ $selectedTie->home_side_name }}">{{ $homeHeading }}</span>
+            <span class="score-tie-versus">VS</span>
+            <span class="score-tie-side score-tie-away" title="{{ $selectedTie->away_side_name }}">{{ $awayHeading }}</span>
+          </h3>
+          <p class="small text-muted mb-0">{{ $matrixDraw->drawName }} · Round {{ $selectedTie->round_nr }}</p>
+        </section>
+      @endif
     @endif
     <div class="card shadow-sm">
         <div class="card-body p-0">
