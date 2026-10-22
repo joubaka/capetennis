@@ -30,6 +30,20 @@
   @if($providerAttempts->get($refund->id)->status === 'confirmed' && $refundAllowed)
     <p>PayFast confirmed this refund. Finish recording the confirmed result locally.</p>
     <form method="POST" action="{{ route('backend.clothing.refunds.retry', [$event, $order, $refund]) }}">@csrf @include('backend.clothing.partials.late-note', ['noteKey' => 'retry-late-'.$refund->id])<button class="btn btn-outline-primary">Finish recording confirmed refund</button></form>
+  @elseif(in_array($providerAttempts->get($refund->id)->status, ['not_dispatched', 'reconciled_ready'], true))
+    @if($providerAttempts->get($refund->id)->status === 'reconciled_ready')
+    <p>PayFast history was reconciled and showed no refund. This saved refund is ready to retry.</p>
+    @else
+    <p>No refund was submitted to PayFast. This amount remains reserved for the saved refund.</p>
+    @endif
+    @if($refundAllowed)
+    <form method="POST" action="{{ route('backend.clothing.refunds.retry', [$event, $order, $refund]) }}">
+      @csrf
+      @include('backend.clothing.partials.refund-bank-details', ['bankFieldPrefix' => 'retry-bank-'.$refund->id])
+      @include('backend.clothing.partials.late-note', ['noteKey' => 'retry-late-'.$refund->id])
+      <button class="btn btn-outline-danger">Retry saved PayFast refund of R{{ $refund->refund_net }}</button>
+    </form>
+    @endif
   @else
     <p class="text-warning">PayFast submission needs reconciliation. This amount stays reserved. Do not submit another payment or refund for it.</p>
   @endif

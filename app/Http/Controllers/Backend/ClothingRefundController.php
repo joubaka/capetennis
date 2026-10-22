@@ -26,6 +26,24 @@ class ClothingRefundController extends Controller
     {
         app(ClothingRefundService::class)->authorizeOrder($event, $order, $request->user());
         $request->headers->set('referer', route('backend.clothing.refunds.show', [$event, $order]));
+        $bankDetails = $this->bankDetails($request);
+        $request->validate(['review_token' => ['required', 'string', 'max:30000']]);
+        $validated = app(\App\Services\Clothing\ClothingRefundReviewService::class)->resolve($request->input('review_token'), $event, $order, $request->user());
+        // Only the reviewed values determine the financial mutation.
+        foreach (['method', 'items', 'mode', 'amount', 'item_id', 'request_token', 'reason', 'late_refund_note'] as $field) {
+            if ($request->exists($field)) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['refund' => 'Confirm the reviewed refund without changing its selection. Review again to make changes.']);
+            }
+        }
+        $refund = $refunds->requestClothingRefund($event, $order, $request->user(), $validated);
+        if ($validated['method'] === 'payfast') {
+            app(\App\Services\Clothing\ClothingPayfastRefundService::class)->dispatch($refund, $request->user(), $bankDetails, $validated['late_refund_note'] ?? null);
+        }
+        return $this->completedResponse($request, $event, $order, $refund, $validated);
+    }
+
+    private function bankDetails(Request $request): array
+    {
         // Bank details are used only for this provider call, never stored or flashed back.
         $bankInput = $request->input('bank_details', []);
         $request->request->remove('bank_details');
@@ -45,19 +63,7 @@ class ClothingRefundController extends Controller
             ])->validate();
             unset($bankDetails['original_payer']);
         }
-        $request->validate(['review_token' => ['required', 'string', 'max:30000']]);
-        $validated = app(\App\Services\Clothing\ClothingRefundReviewService::class)->resolve($request->input('review_token'), $event, $order, $request->user());
-        // Only the reviewed values determine the financial mutation.
-        foreach (['method', 'items', 'mode', 'amount', 'item_id', 'request_token', 'reason', 'late_refund_note'] as $field) {
-            if ($request->exists($field)) {
-                throw \Illuminate\Validation\ValidationException::withMessages(['refund' => 'Confirm the reviewed refund without changing its selection. Review again to make changes.']);
-            }
-        }
-        $refund = $refunds->requestClothingRefund($event, $order, $request->user(), $validated);
-        if ($validated['method'] === 'payfast') {
-            app(\App\Services\Clothing\ClothingPayfastRefundService::class)->dispatch($refund, $request->user(), $bankDetails, $validated['late_refund_note'] ?? null);
-        }
-        return $this->completedResponse($request, $event, $order, $refund, $validated);
+        return $bankDetails;
     }
 
     private function completedResponse(Request $request, Event $event, ClothingOrder $order, ClothingRefund $refund, array $validated = [])
@@ -133,7 +139,9 @@ class ClothingRefundController extends Controller
     {
         $refunds->authorizeOrder($event, $order, $request->user());
         abort_unless((int) $refund->clothing_order_id === (int) $order->id && (int) $refund->event_id === (int) $event->id, 404);
-        $refund = app(\App\Services\Clothing\ClothingPayfastRefundService::class)->dispatch($refund, $request->user(), [], $request->validate(['late_refund_note' => ['nullable', 'string', 'max:1000']])['late_refund_note'] ?? null);
+        $request->headers->set('referer', route('backend.clothing.refunds.show', [$event, $order]));
+        $bankDetails = $this->bankDetails($request);
+        $refund = app(\App\Services\Clothing\ClothingPayfastRefundService::class)->dispatch($refund, $request->user(), $bankDetails, $request->validate(['late_refund_note' => ['nullable', 'string', 'max:1000']])['late_refund_note'] ?? null);
 
         return $this->completedResponse($request, $event, $order, $refund);
     }

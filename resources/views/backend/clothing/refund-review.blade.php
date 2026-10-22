@@ -25,15 +25,7 @@
   <form method="POST" action="{{ route('backend.clothing.refunds.store', [$event, $order]) }}">
     @csrf<input type="hidden" name="review_token" value="{{ $reviewToken }}">
     @if($validated['method'] === 'payfast')
-      <details class="mb-3"><summary>Original payer’s bank details (only if PayFast requires them)</summary>
-        <p>Use the original paying account. These details are sent only for this refund; they are not stored or restored after an error.</p>
-        <label class="form-label" for="refund-holder">Account holder</label><input id="refund-holder" name="bank_details[account_holder]" maxlength="100" autocomplete="off" class="form-control mb-2">
-        <label class="form-label" for="refund-bank">Bank name</label><input id="refund-bank" name="bank_details[bank_name]" maxlength="100" autocomplete="off" class="form-control mb-2">
-        <label class="form-label" for="refund-branch">Branch code</label><input id="refund-branch" name="bank_details[branch_code]" inputmode="numeric" pattern="[0-9]{4,6}" autocomplete="off" class="form-control mb-2">
-        <label class="form-label" for="refund-account">Account number</label><input id="refund-account" name="bank_details[account_number]" inputmode="numeric" pattern="[0-9]{5,12}" autocomplete="off" class="form-control mb-2">
-        <label class="form-label" for="refund-type">Account type</label><select id="refund-type" name="bank_details[account_type]" class="form-select mb-2"><option value="">Choose account type</option><option value="current">Current / cheque</option><option value="savings">Savings</option></select>
-        <label><input type="checkbox" name="bank_details[original_payer]" value="1"> These details belong to the original payer.</label>
-      </details>
+      @include('backend.clothing.partials.refund-bank-details', ['bankFieldPrefix' => 'refund'])
     @endif
     <button class="btn btn-danger" type="submit">Confirm refund of R{{ number_format($quote['total_cents'] / 100, 2) }}</button>
     <a class="btn btn-outline-secondary" href="{{ route('backend.clothing.refunds.show', [$event, $order, 'sort' => $validated['return_sort'] ?? 'rank', 'search' => $validated['return_search'] ?? '', 'team' => $validated['return_team'] ?? '', 'all_events' => $validated['return_all_events'] ?? 0]) }}">Change selection</a>

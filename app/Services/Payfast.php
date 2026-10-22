@@ -384,6 +384,20 @@ class Payfast
     }
   }
 
+  /** Read the provider's refund ledger. This never creates or retries a refund. */
+  public function refundHistory(string $pfPaymentId): array
+  {
+    $url = 'https://api.payfast.co.za/refunds/' . urlencode($pfPaymentId)
+      . ($this->mode === 'sandbox' ? '?testing=true' : '');
+    try {
+      $response = Http::timeout(15)->withHeaders($this->buildApiHeaders())->get($url);
+      return ['success' => $response->successful(), 'data' => $response->json(), 'http_status' => $response->status()];
+    } catch (\Throwable) {
+      // Do not persist response bodies or exception text containing credentials.
+      return ['success' => false, 'data' => null, 'http_status' => null];
+    }
+  }
+
   /**
    * Query PayFast for the refund route and issue the refund using that route.
    *
@@ -399,17 +413,18 @@ class Payfast
     string $pf_payment_id,
     $amount,
     string $reason = 'Event withdrawal refund',
-    array $bankDetails = []
+    array $bankDetails = [],
+    ?int $expectedAvailableCents = null
   ): array {
     $amountCents = (int) round((float) $amount * 100);
 
     if ($amountCents <= 0) {
-      return $this->refundFailure('Refund amount must be greater than zero.');
+      return $this->refundFailure('Refund amount must be greater than zero.', failureCode: 'invalid_amount');
     }
 
     $query = $this->refundQuery($pf_payment_id);
     if (!$query['success']) {
-      return $this->refundFailure('PayFast refund query failed: ' . ($query['error'] ?? 'Unknown error.'), $query['data']);
+      return $this->refundFailure('PayFast refund query failed: ' . ($query['error'] ?? 'Unknown error.'), $query['data'], 'query_failed');
     }
 
     $queryData = $this->refundQueryData($query['data'] ?? []);
@@ -419,29 +434,33 @@ class Payfast
       $errors = array_filter((array) ($queryData['errors'] ?? []), 'is_string');
       $detail = $errors !== [] ? ' ' . implode(' ', $errors) : '';
 
-      return $this->refundFailure("PayFast refund status is {$status}.{$detail}", $query['data']);
+      return $this->refundFailure("PayFast refund status is {$status}.{$detail}", $query['data'], 'not_refundable');
     }
 
     $availableCents = (int) ($queryData['amount_available_for_refund'] ?? 0);
+    if ($expectedAvailableCents !== null && ($availableCents !== $expectedAvailableCents
+      || (int) ($queryData['amount_original'] ?? 0) !== $expectedAvailableCents)) {
+      return $this->refundFailure('PayFast refund evidence changed after reconciliation. No refund was submitted.', $query['data'], 'provider_evidence_changed');
+    }
     if ($availableCents <= 0 || $amountCents > $availableCents) {
-      return $this->refundFailure('The requested refund exceeds the amount PayFast reports as available.', $query['data']);
+      return $this->refundFailure('The requested refund exceeds the amount PayFast reports as available.', $query['data'], 'insufficient_refundable_amount');
     }
 
     $methodKey = $amountCents === $availableCents ? 'refund_full' : 'refund_partial';
     $method = strtoupper((string) ($queryData[$methodKey]['method'] ?? 'NOT_AVAILABLE'));
 
     if ($method === 'NOT_AVAILABLE') {
-      return $this->refundFailure('PayFast does not offer a refund method for the requested amount.', $query['data']);
+      return $this->refundFailure('PayFast does not offer a refund method for the requested amount.', $query['data'], 'method_unavailable');
     }
 
     $extraBody = [];
     if ($method === 'BANK_PAYOUT') {
       $extraBody = $this->payfastBankBody($bankDetails, (array) ($queryData['bank_names'] ?? []));
       if (isset($extraBody['error'])) {
-        return $this->refundFailure((string) $extraBody['error'], $query['data']);
+        return $this->refundFailure((string) $extraBody['error'], $query['data'], 'bank_details_required');
       }
     } elseif ($method !== 'PAYMENT_SOURCE') {
-      return $this->refundFailure("Unsupported PayFast refund method: {$method}.", $query['data']);
+      return $this->refundFailure("Unsupported PayFast refund method: {$method}.", $query['data'], 'method_unavailable');
     }
 
     return $this->refund($pf_payment_id, $amount, $reason, $extraBody);
@@ -553,9 +572,11 @@ class Payfast
   }
 
   /** @param array<string, mixed>|null $data */
-  private function refundFailure(string $error, ?array $data = null): array
+  private function refundFailure(string $error, ?array $data = null, string $failureCode = 'method_unavailable'): array
   {
-    return ['success' => false, 'data' => $data, 'error' => $error];
+    // This helper is used only before POST /refunds/:id. A failure after that
+    // boundary must never claim that money could not have moved.
+    return ['success' => false, 'data' => $data, 'error' => $error, 'dispatched' => false, 'failure_code' => $failureCode];
   }
 
   /**
