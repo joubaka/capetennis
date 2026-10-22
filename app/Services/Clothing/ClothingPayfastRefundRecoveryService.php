@@ -117,6 +117,7 @@ final class ClothingPayfastRefundRecoveryService
                 $this->invalid('The saved refund changed after reconciliation.');
             }
         }
+        $this->assertWalletCreditsUnrelated($refund);
         if ($this->hash($this->providerEvidence($original)) !== $this->hash($properties['provider_evidence'])) {
             $this->invalid('PayFast history changed after reconciliation. No refund was submitted.');
         }
@@ -138,8 +139,10 @@ final class ClothingPayfastRefundRecoveryService
         $refund = ClothingRefund::whereKey($refundId)->lockForUpdate()->firstOrFail();
         $attempt = DB::table('clothing_provider_refund_attempts')->where('clothing_refund_id', $refundId)->lockForUpdate()->first();
         $original = ClothingRefundService::cents($order->payfast_amount_due);
+        if ($attempt?->status === 'uncertain' && CarbonImmutable::parse($attempt->updated_at)->gt(now()->subMinutes(30))) {
+            $this->invalid('The PayFast result may still be settling. Wait 30 minutes after the last attempt before checking again.');
+        }
         if (! $attempt || $attempt->status !== 'uncertain' || $attempt->confirmed_at !== null
-            || CarbonImmutable::parse($attempt->updated_at)->gt(now()->subMinutes(30))
             || (int) $attempt->clothing_order_id !== (int) $order->id || (int) $refund->clothing_order_id !== (int) $order->id
             || (int) $refund->event_id !== (int) $order->event_id || (int) $refund->payer_id !== (int) $order->user_id
             || $refund->refund_method !== 'payfast' || $refund->refund_status !== 'pending'
@@ -171,12 +174,7 @@ final class ClothingPayfastRefundRecoveryService
                 $this->invalid('Another payment workflow claims this PayFast payment.');
             }
         }
-        $walletIds = User::findOrFail($order->user_id)->wallet()->pluck('id');
-        // Any payer credit requires manual review; do not guess its provenance.
-        if (DB::table('wallet_transactions')->whereIn('wallet_id', $walletIds)->where('type', 'credit')->exists()
-            || DB::table('wallet_transactions')->where('source_type', 'clothing_refund')->where('source_id', $refundId)->exists()) {
-            $this->invalid('A wallet credit or linked wallet transaction exists; reconcile it before recovery.');
-        }
+        $this->assertWalletCreditsUnrelated($refund);
         return [
             'order' => $order->only(['id', 'event_id', 'user_id', 'pay_status', 'status', 'payfast_paid', 'payfast_pf_payment_id',
                 'payfast_amount_due', 'total', 'amount_paid', 'wallet_reserved', 'wallet_debited', 'updated_at']),
@@ -184,6 +182,31 @@ final class ClothingPayfastRefundRecoveryService
                 'refund_gross', 'refund_fee', 'refund_net', 'created_at', 'updated_at']),
             'attempt' => (array) $attempt,
         ];
+    }
+
+    /** Known completed refunds of other orders cannot be this refund's duplicate credit. */
+    public function assertWalletCreditsUnrelated(ClothingRefund $refund): void
+    {
+        $walletIds = User::findOrFail($refund->payer_id)->wallet()->pluck('id');
+        if (DB::table('wallet_transactions')->where('source_type', 'clothing_refund')->where('source_id', $refund->id)->exists()) {
+            $this->invalid('This saved refund already has a wallet transaction. Reconcile it first.');
+        }
+        foreach (DB::table('wallet_transactions')->whereIn('wallet_id', $walletIds)->where('type', 'credit')->get() as $credit) {
+            $other = $credit->source_type === 'clothing_refund' ? ClothingRefund::find($credit->source_id) : null;
+            $meta = json_decode($credit->meta ?? 'null', true) ?: [];
+            $sourceCount = DB::table('wallet_transactions')->where('source_type', 'clothing_refund')->where('source_id', $credit->source_id)->count();
+            if (! $other || $sourceCount !== 1
+                || (isset($meta['order_id']) && (int) $meta['order_id'] !== (int) $other->clothing_order_id)
+                || (isset($meta['event_id']) && (int) $meta['event_id'] !== (int) $other->event_id)
+                || (int) $other->id === (int) $refund->id
+                || (int) $other->clothing_order_id === (int) $refund->clothing_order_id
+                || (int) $other->payer_id !== (int) $refund->payer_id
+                || (int) $other->order?->user_id !== (int) $refund->payer_id
+                || $other->refund_status !== 'completed' || $other->refund_method !== 'wallet'
+                || ! $other->refunded_at || ClothingRefundService::cents($credit->amount) !== ClothingRefundService::cents($other->refund_net)) {
+                $this->invalid('An unverified wallet credit exists; reconcile its provenance before this refund.');
+            }
+        }
     }
 
     private function providerEvidence(array $snapshot): array

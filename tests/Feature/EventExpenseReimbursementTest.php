@@ -49,6 +49,22 @@ class EventExpenseReimbursementTest extends TestCase
         return $this->actingAs($this->admin)->post(route('admin.events.expense-reimbursements.store', $this->event), $data);
     }
 
+    public function test_submitted_expense_can_be_reimbursed_without_approval_and_retries_are_harmless(): void
+    {
+        $url = route('admin.events.finances.expense.reimburse', $this->expense);
+        $this->post($url)->assertRedirect('login');
+        $this->actingAs(User::factory()->create())->post($url)->assertForbidden();
+        $this->actingAs($this->admin)->post($url)->assertRedirect();
+        $completedAt = $this->expense->fresh()->reimbursed_at;
+        $this->assertNotNull($completedAt);
+        $this->assertNull($this->expense->fresh()->approved_at);
+        $this->assertSame($this->admin->id, $this->expense->fresh()->reimbursed_by);
+        $this->post($url)->assertRedirect();
+        $this->assertTrue($completedAt->equalTo($this->expense->fresh()->reimbursed_at));
+        $this->assertDatabaseCount('event_expenses', 1);
+        $this->assertDatabaseCount('event_payouts', 0);
+    }
+
     public function test_partial_reimbursement_exact_amount_is_audited_and_idempotent(): void
     {
         $data = $this->data();

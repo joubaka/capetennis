@@ -22,8 +22,8 @@ class EventExpenseBatchService
                 $query = EventExpense::where('event_id', $event->id)->lockForUpdate();
                 $expense = ! empty($line['id']) ? $query->findOrFail($line['id'])
                     : $query->where('batch_key', $line['batch_key'])->first();
-                if ($expense && ($expense->approved_at || $expense->reimbursed_at || in_array($expense->expense_type, ['payfast', 'cape_tennis_fee'], true))) {
-                    throw ValidationException::withMessages(["lines.$index.description" => 'This expense is approved, reimbursed or managed automatically. Reload the list to continue.']);
+                if ($expense && ($expense->reimbursed_at || in_array($expense->expense_type, ['payfast', 'cape_tennis_fee'], true))) {
+                    throw ValidationException::withMessages(["lines.$index.description" => 'This expense is reimbursed or managed automatically. Reload the list to continue.']);
                 }
                 $quantity = $line['quantity'] ?? null;
                 $price = $line['unit_price'] ?? null;

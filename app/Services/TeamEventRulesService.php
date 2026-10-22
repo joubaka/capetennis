@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Domain\TeamDraw\RubberType;
 use App\Models\Draw;
 use App\Models\Event;
+use App\Models\TeamEventFormatRubber;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -34,6 +35,28 @@ final class TeamEventRulesService
     {
         // Historical draws never inherit a later event configuration.
         return $draw->team_scoring_rules ?? $this->defaults();
+    }
+
+    public function availableRubberTypes(Event $event): array
+    {
+        $types = TeamEventFormatRubber::query()->whereHas('format', function ($query) use ($event) {
+            $query->where('event_id', $event->id)->orWhere(function ($query) use ($event) {
+                $query->whereNull('event_id')->whereHas('draws', fn ($draws) => $draws->where('event_id', $event->id));
+            });
+        })->distinct()->pluck('rubber_code')->all();
+
+        Draw::where('event_id', $event->id)->whereNotNull('team_format_snapshot')
+            ->select(['id', 'team_format_snapshot'])->each(function (Draw $draw) use (&$types) {
+                $types = array_merge($types, $this->availableRubberTypesForDraw($draw));
+            });
+
+        return array_values(array_intersect(RubberType::ALL, $types));
+    }
+
+    public function availableRubberTypesForDraw(Draw $draw): array
+    {
+        return array_values(array_intersect(RubberType::ALL,
+            array_column($draw->team_format_snapshot['rubbers'] ?? [], 'rubber_code')));
     }
 
     public function validate(Request $request): array

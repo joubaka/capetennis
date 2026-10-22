@@ -28,12 +28,6 @@
   </div>
 @endif
 
-@if($pendingApproval > 0)
-  <div class="alert alert-info d-flex align-items-center no-print" role="alert">
-    <i class="ti ti-clock me-2"></i>
-    {{ $pendingApproval }} expense(s) awaiting approval.
-  </div>
-@endif
 
 {{-- ── SUMMARY CARDS ───────────────────────────────────────────────── --}}
 <div class="row g-3 mb-4">
@@ -473,13 +467,7 @@
                       @endif
                     </td>
                     <td>
-                      @if($expense->approved_at)
-                        <span class="badge bg-success approved-badge" title="Approved by {{ $expense->approvedByUser?->name }}">
-                          <i class="ti ti-check"></i> Approved
-                        </span>
-                      @else
-                        <span class="badge bg-label-warning approved-badge">Pending</span>
-                      @endif
+                      <span class="badge bg-label-secondary approved-badge">Submitted</span>
                       @if($expense->reimbursed_at)
                         <span class="badge bg-label-success approved-badge mt-1 d-block" title="Reimbursed to {{ $convenor->user->name }}">
                           <i class="ti ti-coin"></i> Reimbursed
@@ -493,15 +481,7 @@
                       @endif
                     </td>
                     <td class="text-center no-print">
-                      @if(!$expense->approved_at)
-                        <form action="{{ route('admin.events.finances.expense.approve', $expense) }}" method="POST" class="d-inline">
-                          @csrf
-                          <button type="submit" class="btn btn-icon btn-sm btn-outline-success" title="Approve">
-                            <i class="ti ti-check"></i>
-                          </button>
-                        </form>
-                      @endif
-                      @if($expense->approved_at && !$expense->reimbursed_at)
+                      @if(!$expense->reimbursed_at && $expense->paid_by_convenor_id)
                         <form action="{{ route('admin.events.finances.expense.reimburse', $expense) }}" method="POST" class="d-inline">
                           @csrf
                           <button type="submit" class="btn btn-icon btn-sm btn-outline-info" title="Mark as reimbursed">

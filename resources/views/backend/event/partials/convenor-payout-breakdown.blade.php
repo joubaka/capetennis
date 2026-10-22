@@ -92,8 +92,13 @@
                     @endif
                   </ul>
                   @foreach($clothing['refunds'] as $clothingRefund)
-                    <div class="text-muted mt-2">
-                      <span>
+                    <div class="border rounded bg-body p-2 mt-2 text-break">
+                      <div class="d-flex align-items-baseline gap-2 fw-semibold text-body">
+                        <span aria-hidden="true">&bull;</span>
+                        <span>{{ $clothingRefund['player_name'] }}</span>
+                      </div>
+                      <div class="ps-3">
+                      <small class="d-block text-muted mt-1">
                         {{ $clothingRefund['refunded_at']?->format('d M Y') }}
                         @if($clothingRefund['after_payout'])
                           · After recorded payout
@@ -101,10 +106,11 @@
                         @if($clothingRefund['after_deadline'])
                           · After recorded deadline
                         @endif
-                      </span>
+                      </small>
                       @foreach($clothingRefund['items'] as $refundedItem)
-                        <small class="d-block">{{ $refundedItem['quantity'] > 0 ? $refundedItem['quantity'].' × ' : 'Partial amount: ' }}{{ $refundedItem['name'] }}{{ $refundedItem['size'] ? ' · '.$refundedItem['size'] : '' }} — R {{ number_format($refundedItem['amount_cents'] / 100, 2) }}</small>
+                        <small class="d-block mt-1">{{ $refundedItem['quantity'] > 0 ? $refundedItem['quantity'].' × ' : 'Partial amount: ' }}{{ $refundedItem['name'] }}{{ $refundedItem['size'] ? ' · '.$refundedItem['size'] : '' }} — <span class="fw-semibold text-nowrap">R {{ number_format($refundedItem['amount_cents'] / 100, 2) }}</span></small>
                       @endforeach
+                      </div>
                     </div>
                   @endforeach
                 </div>

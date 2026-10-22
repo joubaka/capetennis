@@ -10,16 +10,18 @@ use App\Support\FinanceMutationScope;
 use Illuminate\Support\Facades\{Crypt, DB};
 use Illuminate\Validation\ValidationException;
 
-/** Converts only an explicitly undispatched saved refund; never contacts PayFast. */
+/** Completes a proven unpaid provider refund to the original payer wallet. */
 final class ClothingRefundWalletFallbackService
 {
     private const AUDIT = 'Saved clothing PayFast refund completed to original payer wallet';
 
     public function review(Event $event, ClothingOrder $order, ClothingRefund $refund, User $actor, ?string $lateNote): string
     {
-        return DB::transaction(function () use ($event, $order, $refund, $actor, $lateNote) {
+        $verified = $this->verifiedState($event, $order, $refund, $actor);
+        return DB::transaction(function () use ($event, $order, $refund, $actor, $lateNote, $verified) {
             [$lockedOrder, $locked, $attempt] = $this->lock($event, $order, $refund, $actor);
             $this->eligible($lockedOrder, $locked, $attempt);
+            $this->assertVerified($verified, $lockedOrder, $locked, $attempt);
             $deadline = app(ClothingRefundService::class)->deadline($event, $lockedOrder);
             if ($deadline && now()->gte($deadline) && ! $locked->late_refund_note && trim((string) $lateNote) === '') {
                 $this->invalid('Explain the late refund and clothing payout adjustment before reviewing.');
@@ -42,7 +44,8 @@ final class ClothingRefundWalletFallbackService
             || $token['issued_at'] < now()->subMinutes(10)->timestamp) {
             $this->invalid('This review expired or belongs to another refund or user.');
         }
-        return DB::transaction(function () use ($event, $order, $refund, $actor, $reviewToken, $token) {
+        $verified = $this->verifiedState($event, $order, $refund, $actor, true);
+        return DB::transaction(function () use ($event, $order, $refund, $actor, $reviewToken, $token, $verified) {
             [$lockedOrder, $locked, $attempt] = $this->lock($event, $order, $refund, $actor);
             $tokenHash = hash('sha256', $reviewToken);
             if ($locked->refund_status === 'completed' && $locked->refund_method === 'wallet'
@@ -52,13 +55,18 @@ final class ClothingRefundWalletFallbackService
                 return $locked;
             }
             $this->eligible($lockedOrder, $locked, $attempt);
+            $this->assertVerified($verified, $lockedOrder, $locked, $attempt);
             if (! hash_equals($token['snapshot'], $this->hash($lockedOrder, $locked, $attempt))) {
                 $this->invalid('The saved refund changed after review. Review it again.');
             }
             FinanceMutationScope::run('refund_state_write', fn () => app(ClothingRefundService::class)
                 ->recordLateNote($locked, $lockedOrder, $actor, $token['late_note'] ?? null));
             $payer = User::lockForUpdate()->findOrFail($locked->payer_id);
-            $wallet = $payer->wallet ?? $payer->wallet()->create([]);
+            $wallet = $payer->wallet()->lockForUpdate()->first() ?? $payer->wallet()->create([]);
+            if ($attempt->status === 'reconciled_ready' || DB::table('activity_log')->where('subject_type', $locked->getMorphClass())
+                ->where('subject_id', $locked->id)->where('description', 'Clothing PayFast uncertain attempt reconciled for retry')->exists()) {
+                app(ClothingPayfastRefundRecoveryService::class)->assertWalletCreditsUnrelated($locked);
+            }
             $completed = app(RefundExecutionService::class)->executeWalletRefund($locked, $wallet,
                 ClothingRefundService::cents($locked->refund_net) / 100, 'clothing_refund', $locked->id,
                 ['event_id' => $event->id, 'order_id' => $order->id],
@@ -69,6 +77,33 @@ final class ClothingRefundWalletFallbackService
             ])->log(self::AUDIT);
             return $completed;
         });
+    }
+
+    /** Release all locks before signed provider GETs, then compare under locks. */
+    private function verifiedState(Event $event, ClothingOrder $order, ClothingRefund $refund, User $actor, bool $allowCompleted = false): string
+    {
+        if (DB::transactionLevel() !== 0) {
+            $this->invalid('Provider verification must run outside a database transaction.');
+        }
+        [$snapshot, $pending, $requiresProof] = DB::transaction(function () use ($event, $order, $refund, $actor, $allowCompleted) {
+            [$lockedOrder, $locked, $attempt] = $this->lock($event, $order, $refund, $actor);
+            if ($allowCompleted && $locked->refund_status === 'completed' && $locked->refund_method === 'wallet') {
+                return ['', false, false];
+            }
+            $this->eligible($lockedOrder, $locked, $attempt);
+            return [$this->hash($lockedOrder, $locked, $attempt), true, $attempt->status === 'reconciled_ready'];
+        });
+        if ($pending) {
+            app(ClothingPayfastRefundRecoveryService::class)->assertRetryEvidence($refund->fresh(), $requiresProof);
+        }
+        return $snapshot;
+    }
+
+    private function assertVerified(string $snapshot, ClothingOrder $order, ClothingRefund $refund, object $attempt): void
+    {
+        if (! hash_equals($snapshot, $this->hash($order, $refund, $attempt))) {
+            $this->invalid('The order or saved refund changed during PayFast verification. Review again.');
+        }
     }
 
     private function lock(Event $event, ClothingOrder $order, ClothingRefund $refund, User $actor): array
@@ -84,7 +119,7 @@ final class ClothingRefundWalletFallbackService
 
     private function eligible(ClothingOrder $order, ClothingRefund $refund, ?object $attempt): void
     {
-        if (! $attempt || $attempt->status !== 'not_dispatched' || $attempt->confirmed_at !== null
+        if (! $attempt || ! in_array($attempt->status, ['not_dispatched', 'reconciled_ready'], true) || $attempt->confirmed_at !== null
             || (int) $attempt->clothing_order_id !== (int) $order->id || $attempt->pf_payment_id !== $order->payfast_pf_payment_id
             || ClothingRefundService::cents($attempt->amount) !== ClothingRefundService::cents($refund->refund_net)
             || $refund->refund_status !== 'pending' || $refund->refund_method !== 'payfast'
@@ -128,7 +163,9 @@ final class ClothingRefundWalletFallbackService
             $refund->items()->orderBy('id')->get()->toArray(),
             $order->items()->orderBy('id')->get()->toArray(),
             $order->refunds()->with('items')->orderBy('id')->get()->toArray(),
-            app(ClothingRefundService::class)->deadline($order->event, $order)?->toIso8601String()], JSON_THROW_ON_ERROR));
+            app(ClothingRefundService::class)->deadline($order->event, $order)?->toIso8601String(),
+            DB::table('wallet_transactions')->whereIn('wallet_id', User::findOrFail($refund->payer_id)->wallet()->pluck('id'))
+                ->where('type', 'credit')->orderBy('id')->get()->all()], JSON_THROW_ON_ERROR));
     }
 
     private function invalid(string $message): never

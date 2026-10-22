@@ -7,8 +7,8 @@
   <div class="d-flex flex-wrap justify-content-between gap-2 mb-3"><div><h2 class="h4 mb-1">Edit expenses</h2><p class="text-muted mb-0">Update costs across all expense categories and save them together.</p></div><a class="btn btn-outline-secondary" href="{{ route('admin.events.finances', $event) }}">Back to finances</a></div>
   @if(session('success'))<div class="alert alert-success" role="status">{{ session('success') }}</div>@endif
   @if($errors->any())<div class="alert alert-danger" role="alert"><strong>Check the expense details. No changes from this save were recorded.</strong><ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
-  <p class="text-muted">Enter an amount, or use quantity × unit cost. Payee is who receives the money; paid by is the director who needs reimbursement. Use individual expenses in Finances for receipts, approvals and reimbursements.</p>
-  @php($editable = $expenses->filter(fn($expense) => !$expense->approved_at && !$expense->reimbursed_at)->map(fn($expense) => $expense->toArray() + ['version' => \App\Domain\Finance\Services\EventExpenseBatchService::version($expense)])->values()->all())
+  <p class="text-muted">Enter an amount, or use quantity × unit cost. Payee is who receives the money; paid by is the director who needs reimbursement. Use individual expenses in Finances for receipts and reimbursements.</p>
+  @php($editable = $expenses->filter(fn($expense) => !$expense->reimbursed_at)->map(fn($expense) => $expense->toArray() + ['version' => \App\Domain\Finance\Services\EventExpenseBatchService::version($expense)])->values()->all())
   <form method="POST" action="{{ route('admin.events.expenses.update', $event) }}" id="expense-batch-form">
     @csrf @method('PUT')
     <input type="hidden" name="page" value="{{ $expenses->currentPage() }}"><input type="hidden" name="lines" value="">
@@ -20,8 +20,8 @@
     <div class="cost-editor-save"><span>List total: <strong id="expense-batch-total" aria-live="polite">R 0.00</strong></span><button class="btn btn-primary" type="submit">Save expenses</button></div>
     <input type="hidden" name="form_complete" value="1">
   </form>
-  @if($expenses->contains(fn($expense) => $expense->approved_at || $expense->reimbursed_at))
-    <details class="card mt-3"><summary class="card-header">Approved or reimbursed expenses</summary><div class="card-body"><p class="text-muted">These entries are protected in this editor. Open Finances to review their status.</p>@foreach($expenses->filter(fn($expense) => $expense->approved_at || $expense->reimbursed_at) as $expense)<div class="d-flex flex-wrap justify-content-between gap-2 py-2 border-bottom"><span>{{ $expense->description ?: ($expenseTypes[$expense->expense_type] ?? $expense->expense_type) }} <small class="text-muted">{{ $expense->reimbursed_at ? 'Reimbursed' : 'Approved' }}</small></span><strong>R {{ number_format($expense->calculatedAmount(),2) }}</strong></div>@endforeach</div></details>
+  @if($expenses->contains(fn($expense) => $expense->reimbursed_at))
+    <details class="card mt-3"><summary class="card-header">Reimbursed expenses</summary><div class="card-body"><p class="text-muted">These entries are protected in this editor. Open Finances to review their status.</p>@foreach($expenses->filter(fn($expense) => $expense->reimbursed_at) as $expense)<div class="d-flex flex-wrap justify-content-between gap-2 py-2 border-bottom"><span>{{ $expense->description ?: ($expenseTypes[$expense->expense_type] ?? $expense->expense_type) }} <small class="text-muted">Reimbursed</small></span><strong>R {{ number_format($expense->calculatedAmount(),2) }}</strong></div>@endforeach</div></details>
   @endif
   <div class="mt-3">{{ $expenses->links() }}</div><p class="text-muted small">Save before changing pages. Saving updates only the submitted expenses; other entries remain as they are.</p>
 </div>

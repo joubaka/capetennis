@@ -109,6 +109,8 @@ class ConvenorPayoutProjectionTest extends TestCase
     public function test_exact_user_match_deducts_current_clothing_recovery_and_keeps_different_regional_account_separate(): void
     {
         [$west, $order] = $this->region('QA West');
+        $player = \App\Models\Player::factory()->create(['name' => 'Refund', 'surname' => 'Player']);
+        $order->update(['player_id' => $player->id]);
         $this->settlement($west, '1000.32', changes: ['overpayment_confirmed' => 1, 'overpayment_reason' => 'Verified original payout exceeded funds by 32 cents']);
         $this->refund($order);
         $otherDirector = EventConvenor::create(['event_id' => $this->event->id, 'user_id' => $this->actor->id, 'role' => 'hulp']);
@@ -128,9 +130,11 @@ class ConvenorPayoutProjectionTest extends TestCase
         $this->assertSame(1, $line['refunded_line_count']);
         $this->assertSame(1, $line['recorded_quantity']);
         $this->assertTrue($line['refunds']->first()['after_payout']);
+        $this->assertSame('Refund Player', $line['refunds']->first()['player_name']);
         $html = $this->html($result, $recon);
         $this->assertStringContainsString('28,202.55', $html);
         $this->assertStringContainsString('QA West Shirt', $html);
+        $this->assertStringContainsString('Refund Player', $html);
         $this->assertStringContainsString('After recorded payout', $html);
         $this->assertStringContainsString('Original payout difference: R 0.32', $html);
         $this->assertStringContainsString('Regional clothing kept separate', $html);

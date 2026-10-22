@@ -100,12 +100,22 @@ class EventExpenseBatchTest extends TestCase
         }
     }
 
-    public function test_approved_reimbursed_and_system_expenses_are_protected_with_atomic_rollback(): void
+    public function test_historical_approval_does_not_block_editing_submitted_expenses(): void
+    {
+        $this->save([$this->row()])->assertRedirect();
+        $expense = EventExpense::first();
+        $expense->update(['approved_at' => now()]);
+        $this->save([$this->existing($expense->fresh(), ['description' => 'Updated submitted expense'])])->assertRedirect();
+        $this->assertDatabaseHas('event_expenses', ['id' => $expense->id, 'description' => 'Updated submitted expense']);
+        $this->assertNotNull($expense->fresh()->approved_at);
+    }
+
+    public function test_reimbursed_and_system_expenses_are_protected_with_atomic_rollback(): void
     {
         $this->save([$this->row(), $this->row()])->assertRedirect();
         $first = EventExpense::first();
         $second = EventExpense::orderByDesc('id')->first();
-        foreach ([['approved_at' => now()], ['approved_at' => null, 'reimbursed_at' => now()], ['reimbursed_at' => null, 'expense_type' => 'payfast']] as $state) {
+        foreach ([['reimbursed_at' => now()], ['reimbursed_at' => null, 'expense_type' => 'payfast']] as $state) {
             $second->forceFill($state)->save();
             $this->save([$this->existing($first, ['unit_price' => '9']), $this->existing($second, ['expense_type' => 'balls'])])->assertSessionHasErrors();
             $this->assertDatabaseHas('event_expenses', ['id' => $first->id, 'amount' => '1.01']);

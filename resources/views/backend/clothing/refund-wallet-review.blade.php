@@ -5,7 +5,7 @@
 <h4>Review refund to wallet</h4>
 <p>Order #{{ $order->id }} · {{ $event->name }}</p>
 <p>Credit <strong>R{{ $refund->refund_net }}</strong> to <strong>{{ $refund->payer?->name }}</strong>, the original payer’s wallet.</p>
-<p>This uses the same saved refund and items. No refund was submitted to PayFast. Confirming credits the wallet and closes the PayFast retry.</p>
+<p>This uses the same saved refund and items. PayFast has not paid this refund. For reconciled attempts, PayFast is checked again when you confirm. Confirming credits the wallet and closes the PayFast retry.</p>
 <ul>@foreach($refund->items as $line)<li>{{ $line->item?->item_name }} · {{ $line->quantity }} units · R{{ $line->amount }}</li>@endforeach</ul>
 <form method="POST" action="{{ route('backend.clothing.refunds.wallet.confirm', [$event, $order, $refund]) }}">@csrf
 <input type="hidden" name="review_token" value="{{ $reviewToken }}">

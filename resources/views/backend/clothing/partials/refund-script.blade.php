@@ -28,3 +28,26 @@ document.querySelectorAll('[data-clothing-refund-selection]').forEach(form => {
   update();
 });
 </script>
+
+<script>
+document.querySelectorAll('[data-check-payfast]').forEach(form => {
+  const button = form.querySelector('button');
+  const original = button.textContent;
+  form.addEventListener('submit', event => {
+    if (form.dataset.submitting) { event.preventDefault(); return; }
+    form.dataset.submitting = '1';
+    button.disabled = true;
+    const spinner = document.createElement('span');
+    spinner.className = 'spinner-border spinner-border-sm me-2';
+    spinner.setAttribute('aria-hidden', 'true');
+    button.replaceChildren(spinner, document.createTextNode('Checking PayFast…'));
+    button.setAttribute('aria-busy', 'true');
+  });
+  window.addEventListener('pageshow', () => {
+    delete form.dataset.submitting;
+    button.disabled = false;
+    button.removeAttribute('aria-busy');
+    button.textContent = original;
+  });
+});
+</script>

@@ -21,7 +21,7 @@ class RegionalClothingSettlementService
     public function report(Event $event, Collection $rows): Collection
     {
         $entries = RegionalClothingSettlement::where('event_id', $event->id)->orderByDesc('occurred_at')->orderByDesc('id')->get();
-        $refundQuery = ClothingRefund::with(['order.team.category', 'requestedBy', 'completedBy', 'items.item'])
+        $refundQuery = ClothingRefund::with(['order.team.category', 'order.player', 'requestedBy', 'completedBy', 'items.item'])
             ->where('event_id', $event->id)->whereIn('refund_status', ['pending', 'completed']);
         if (\Illuminate\Support\Facades\Schema::hasTable('clothing_refund_historical_imports')) {
             $refundQuery->with('historicalImport');

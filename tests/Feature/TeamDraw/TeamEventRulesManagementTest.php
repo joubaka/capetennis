@@ -51,6 +51,63 @@ class TeamEventRulesManagementTest extends TestCase
         $this->assertEquals($rules, app(TeamEventRulesService::class)->forEvent($event));
     }
 
+    public function test_only_configured_event_rubber_types_are_editable_and_unused_values_survive_save(): void
+    {
+        $event = $this->event();
+        Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        $this->actingAs(User::factory()->create()->assignRole('super-user'));
+        foreach ([$event->id => 'singles', $this->event()->id => 'mixed_doubles'] as $eventId => $code) {
+            $format = TeamEventFormat::factory()->create(['event_id' => $eventId]);
+            TeamEventFormatRubber::create(['format_id' => $format->id, 'sequence' => 1,
+                'rubber_code' => $code, 'name' => $code, 'player_count_per_team' => 1, 'is_required' => true]);
+        }
+        $global = TeamEventFormat::factory()->create(['event_id' => null]);
+        TeamEventFormatRubber::create(['format_id' => $global->id, 'sequence' => 1,
+            'rubber_code' => 'reverse_doubles', 'name' => 'Global', 'player_count_per_team' => 2, 'is_required' => true]);
+        $service = app(TeamEventRulesService::class);
+        $rules = $service->defaults();
+        $rules['rubbers']['mixed_doubles']['close_loss'] = 7;
+        $service->save($event, $rules);
+        $response = $this->get(route('backend.team-rules.edit', $event))->assertOk()->assertSee('Not used in this event');
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($document);
+        $this->assertSame(7, $xpath->query('//tr[@data-rubber-type="singles"]//input[not(@disabled)]')->length);
+        $this->assertSame(7, $xpath->query('//tr[@data-rubber-type="mixed_doubles"]//input[@disabled]')->length);
+        $this->assertSame(7, $xpath->query('//tr[@data-rubber-type="reverse_doubles"]//input[@disabled]')->length);
+        $submitted = [];
+        foreach ($xpath->query('//form[@id="team-event-rules-form"]//input[@name and not(@disabled)]') as $input) {
+            $name = $input->getAttribute('name');
+            if (str_starts_with($name, 'rules[rubbers]')) $submitted[] = urlencode($name).'='.urlencode($input->getAttribute('value'));
+        }
+        parse_str(implode('&', $submitted), $payload);
+        $payload['rules'] += array_diff_key($rules, ['rubbers' => true]);
+        $payload['rules']['rubbers']['singles']['straight_win'] = 8;
+        $this->putJson(route('backend.team-rules.update', $event), $payload)->assertOk();
+        $saved = $service->forEvent($event);
+        $this->assertEquals(8, $saved['rubbers']['singles']['straight_win']);
+        $this->assertEquals($rules['rubbers']['mixed_doubles'], $saved['rubbers']['mixed_doubles']);
+    }
+
+    public function test_availability_includes_event_draw_snapshots_and_selected_global_formats_only(): void
+    {
+        $event = $this->event();
+        $service = app(TeamEventRulesService::class);
+        $this->assertSame([], $service->availableRubberTypes($event));
+        $draw = Draw::factory()->create(['event_id' => $event->id,
+            'team_format_snapshot' => ['rubbers' => [['rubber_code' => 'doubles']]]]);
+        Draw::factory()->create(['event_id' => $this->event()->id,
+            'team_format_snapshot' => ['rubbers' => [['rubber_code' => 'mixed_doubles']]]]);
+        $this->assertSame(['doubles'], $service->availableRubberTypes($event));
+        $this->assertSame(['doubles'], $service->availableRubberTypesForDraw($draw));
+        $global = TeamEventFormat::factory()->create(['event_id' => null]);
+        TeamEventFormatRubber::create(['format_id' => $global->id, 'sequence' => 1,
+            'rubber_code' => 'reverse_singles', 'name' => 'Reverse', 'player_count_per_team' => 1, 'is_required' => true]);
+        Draw::factory()->create(['event_id' => $event->id, 'team_event_format_id' => $global->id]);
+        $this->assertSame(['reverse_singles', 'doubles'], $service->availableRubberTypes($event));
+        $this->assertSame(['doubles'], $service->availableRubberTypesForDraw($draw));
+    }
+
     public function test_event_rule_changes_only_apply_to_later_draw_snapshots(): void
     {
         $event = $this->event();

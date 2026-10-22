@@ -13,6 +13,35 @@
   let pending;
   let generation = 0;
 
+  function clearLoading() {
+    root.querySelectorAll('[aria-busy="true"]').forEach(element => element.removeAttribute('aria-busy'));
+    nav.querySelectorAll('[data-finance-loading-icon]').forEach(icon => icon.remove());
+  }
+  function showLoading(tab) {
+    const name = tab.textContent.trim();
+    tab.setAttribute('aria-busy', 'true');
+    const tabSpinner = document.createElement('span');
+    tabSpinner.className = 'spinner-border spinner-border-sm finance-loading-spinner';
+    tabSpinner.dataset.financeLoadingIcon = '';
+    tabSpinner.setAttribute('aria-hidden', 'true');
+    tab.append(tabSpinner);
+
+    const status = document.createElement('div');
+    status.className = 'finance-loading-status d-flex align-items-center gap-3 mb-3';
+    const spinner = document.createElement('span');
+    spinner.className = 'spinner-border finance-loading-spinner flex-shrink-0';
+    spinner.setAttribute('aria-hidden', 'true');
+    const copy = document.createElement('div');
+    const title = document.createElement('strong');
+    title.className = 'd-block';
+    title.textContent = 'Loading ' + name.toLowerCase() + '…';
+    const helper = document.createElement('small');
+    helper.className = 'd-block text-muted mt-1';
+    helper.textContent = 'Your current section stays available while we load this one.';
+    copy.append(title, helper);
+    status.append(spinner, copy);
+    feedback.replaceChildren(status);
+  }
   function panel(key) { return document.getElementById('finance-panel-' + key); }
   function tabFor(key) { return tabs.find(tab => tab.dataset.financeTab === key); }
   function select(key) {
@@ -43,7 +72,7 @@
     if (!tab) return;
     const current = ++generation;
     pending?.abort();
-    root.querySelectorAll('[aria-busy="true"]').forEach(element => element.removeAttribute('aria-busy'));
+    clearLoading();
     feedback.replaceChildren();
     if (loaded.has(key)) {
       select(key);
@@ -54,7 +83,7 @@
     const controller = new AbortController();
     pending = controller;
     panel(active).setAttribute('aria-busy', 'true');
-    feedback.textContent = 'Loading ' + tab.textContent.trim().toLowerCase() + '…';
+    showLoading(tab);
     try {
       const response = await fetch(tab.href, {
         headers: {'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html'},
@@ -90,7 +119,7 @@
       feedback.replaceChildren(message);
     } finally {
       if (current === generation) {
-        root.querySelectorAll('[aria-busy="true"]').forEach(element => element.removeAttribute('aria-busy'));
+        clearLoading();
         pending = undefined;
       }
     }

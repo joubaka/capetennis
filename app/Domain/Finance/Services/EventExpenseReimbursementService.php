@@ -73,8 +73,8 @@ class EventExpenseReimbursementService
             if ($expense->reimbursed_at) {
                 return;
             }
-            if (in_array($expense->expense_type, ['payfast', 'cape_tennis_fee'], true) || ! $expense->approved_at || ! $expense->paid_by_convenor_id) {
-                throw ValidationException::withMessages(['expense' => 'Only approved operational expenses with a paying director can be reimbursed.']);
+            if (in_array($expense->expense_type, ['payfast', 'cape_tennis_fee'], true) || ! $expense->paid_by_convenor_id) {
+                throw ValidationException::withMessages(['expense' => 'Only submitted operational expenses with a paying director can be reimbursed.']);
             }
             if (self::recordedCents($expense->event_id, $expense->paid_by_convenor_id) > 0) {
                 throw ValidationException::withMessages(['expense' => 'Record reimbursements for this director in Registration reconciliation to avoid counting the same payment twice.']);

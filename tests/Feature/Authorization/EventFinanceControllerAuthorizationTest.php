@@ -44,7 +44,7 @@ class EventFinanceControllerAuthorizationTest extends TestCase
 
     public function test_view_guest_redirect() { $this->get(route('admin.events.finances', $this->eventA->id))->assertRedirect('login'); }
 
-    public function test_view_admin_success() { $this->actingAs($this->admin)->get(route('admin.events.finances', $this->eventA->id))->assertSuccessful(); }
+    public function test_view_admin_success() { $this->actingAs($this->admin)->get(route('admin.events.finances', $this->eventA->id))->assertSuccessful()->assertDontSee('expense(s) awaiting approval.')->assertDontSee('Approve expense'); }
 
     public function test_convenor_payout_breakdown_is_visible_in_the_default_breakdown_tab(): void
     {
@@ -301,9 +301,7 @@ class EventFinanceControllerAuthorizationTest extends TestCase
 
     public function test_expense_destroy_cross_event() { $expenseB = EventExpense::create(['event_id' => $this->eventB->id, 'expense_type' => 'Equipment', 'amount' => 100]); $this->actingAs($this->admin)->delete(route('admin.events.finances.expense.destroy', $expenseB->id))->assertStatus(403); $this->assertNotNull(EventExpense::find($expenseB->id)); }
 
-    public function test_expense_approve_admin() { $this->actingAs($this->admin)->post(route('admin.events.finances.expense.approve', $this->expenseA->id))->assertRedirect(); }
-
-    public function test_expense_approve_cross_event() { $expenseB = EventExpense::create(['event_id' => $this->eventB->id, 'expense_type' => 'Equipment', 'amount' => 100]); $this->actingAs($this->admin)->post(route('admin.events.finances.expense.approve', $expenseB->id))->assertStatus(403); }
+    public function test_expense_approval_route_is_removed() { $this->assertFalse(\Illuminate\Support\Facades\Route::has('admin.events.finances.expense.approve')); }
 
     public function test_expense_reimburse_admin() { $this->actingAs($this->admin)->post(route('admin.events.finances.expense.reimburse', $this->expenseA->id))->assertRedirect(); }
 

@@ -139,6 +139,18 @@ class ClothingRefundController extends Controller
         return redirect()->route('backend.clothing.refunds.show', [$event, $order]);
     }
 
+    public function checkPayfast(Request $request, Event $event, ClothingOrder $order, ClothingRefund $refund, \App\Services\Clothing\ClothingPayfastRefundRecoveryService $recovery)
+    {
+        abort_unless($request->user()->hasRole('super-user'), 403);
+        app(ClothingRefundService::class)->authorizeOrder($event, $order, $request->user());
+        abort_unless((int) $refund->clothing_order_id === (int) $order->id && (int) $refund->event_id === (int) $event->id, 404);
+        $request->headers->set('referer', route('backend.clothing.refunds.show', [$event, $order]));
+        $preview = $recovery->preview($refund, $request->user());
+        $recovery->apply($refund, $request->user(), $preview['confirmation_token']);
+        return redirect()->route('backend.clothing.refunds.show', [$event, $order])
+            ->with('success', 'PayFast confirms no refund was paid or is pending. No money moved. You can now review a wallet refund or retry PayFast.');
+    }
+
     public function walletReview(Request $request, Event $event, ClothingOrder $order, ClothingRefund $refund, \App\Services\Clothing\ClothingRefundWalletFallbackService $fallback)
     {
         $data = $request->validate(['late_refund_note' => ['nullable', 'string', 'max:1000']]);

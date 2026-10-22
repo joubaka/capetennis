@@ -120,8 +120,7 @@ class EventFinanceController extends Controller
         $totalExpenses        = $operationalExpenses->sum(fn($e) => $e->calculatedAmount());
         $totalSystemFees      = round($totalPayfastFees + $totalCapeTennisFees, 2);
         $totalBudget          = $operationalExpenses->whereNotNull('budget_amount')->sum('budget_amount');
-        $pendingApproval      = $operationalExpenses->whereNull('approved_at')->count();
-        $pendingReimbursement = $operationalExpenses->whereNotNull('approved_at')->whereNull('reimbursed_at')->count();
+        $pendingReimbursement = $operationalExpenses->whereNotNull('paid_by_convenor_id')->whereNull('reimbursed_at')->count();
 
         // Net profit: grandTotalIncome is already net of system fees;
         // subtract only operational expenses to avoid double-counting.
@@ -217,7 +216,6 @@ class EventFinanceController extends Controller
             'totalExpenses',
             'totalSystemFees',
             'totalBudget',
-            'pendingApproval',
             'pendingReimbursement',
             'recon',
             'convenorPayoutProjection',
@@ -362,22 +360,8 @@ class EventFinanceController extends Controller
     }
 
     /* ------------------------------------------------------------------ */
-    /*  EXPENSES – APPROVAL & REIMBURSEMENT                               */
+    /*  EXPENSES – REIMBURSEMENT                               */
     /* ------------------------------------------------------------------ */
-
-    public function approveExpense(EventExpense $expense)
-    {
-        $this->authorize('event-finance.expense', $expense);
-
-        $expense->update([
-            'approved_at' => now(),
-            'approved_by' => Auth::id(),
-        ]);
-
-        return request()->wantsJson()
-            ? response()->json(['message' => 'Expense approved.'])
-            : back()->with('success', 'Expense approved.');
-    }
 
     public function reimburseExpense(EventExpense $expense)
     {

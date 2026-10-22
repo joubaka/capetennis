@@ -16,6 +16,7 @@ class TeamEventRulesController extends Controller
         $this->authorize('team-draw.createFormat', $event);
         abort_unless($event->isTeam(), 404);
         return view('backend.team-draw.rules', ['event' => $event, 'rules' => $service->forEvent($event),
+            'availableRubberTypes' => $service->availableRubberTypes($event),
             'orderOptions' => TeamEventRulesService::STANDINGS_ORDER,
             'presets' => app(\App\Services\TeamEventFormatPresets::class)->all()]);
     }

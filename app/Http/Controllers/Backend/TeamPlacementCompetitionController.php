@@ -31,6 +31,7 @@ final class TeamPlacementCompetitionController extends Controller
         $this->authorize('team-draw.updateTeamDraw', $draw);
         abort_unless($draw->event->isTeam() && isset($draw->team_draw_selection['competition']), 404);
         if ($request->isMethod('get')) return view('backend.team-draw.competition-scoring', ['draw' => $draw,
+            'availableRubberTypes' => $rules->availableRubberTypesForDraw($draw),
             'rules' => $rules->forDraw($draw), 'orderOptions' => TeamEventRulesService::STANDINGS_ORDER]);
         $service->configureScoring($draw, $rules->validate($request));
         return redirect()->route('draw.guide.show', [$draw->event_id, $draw])->with('success', 'Scoring confirmed for this phase.');

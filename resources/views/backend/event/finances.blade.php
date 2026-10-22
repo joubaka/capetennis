@@ -60,6 +60,12 @@
     .finance-section-nav a:focus-visible { outline: 3px solid #14877b; outline-offset: 2px; }
     .finance-tab-panel[hidden] { display: none !important; }
     .finance-tab-panel[aria-busy="true"] { opacity: .6; }
+    .finance-loading-status { padding: 1rem 1.25rem; border: 1px solid #cfe4df; border-radius: .75rem; background: #f2f8f6; color: #105f57; }
+    .finance-loading-status > .spinner-border { width: 1.75rem; height: 1.75rem; border-width: .2rem; }
+    .finance-section-nav a[aria-busy="true"] { background: #f2f8f6; color: #105f57; }
+    @media (prefers-reduced-motion: reduce) {
+      .finance-loading-spinner { animation: none !important; }
+    }
     .finance-workspace .finance-card { border: 1px solid #e4eaf0 !important; border-top: 3px solid #b7d6d0 !important; box-shadow: none; }
     .finance-card .card-body { padding: 1.25rem; }
     .finance-card h5 { font-size: 1.5rem; font-variant-numeric: tabular-nums; margin-block: .35rem !important; }
@@ -184,12 +190,6 @@
     </div>
   @endif
 
-  @if($pendingApproval > 0)
-    <div class="alert alert-info d-flex align-items-center no-print" role="alert">
-      <i class="ti ti-clock me-2"></i>
-      {{ $pendingApproval }} expense(s) awaiting approval.
-    </div>
-  @endif
 
   @fragment('finance-breakdown')
   <section class="finance-tab-panel" id="finance-panel-breakdown" role="tabpanel" aria-labelledby="finance-tab-breakdown" tabindex="0" @if($activeFinanceTab !== 'breakdown') hidden @endif>
@@ -583,7 +583,7 @@
   <div class="finance-expenses-heading d-flex justify-content-between align-items-center mb-3" id="finance-expenses">
     <div>
       <h5 class="mb-1"><i class="ti ti-list me-2"></i>Expenses by payee</h5>
-      <small class="text-muted">Review costs, approvals and receipts. Select a payee heading to collapse its expenses.</small>
+      <small class="text-muted">Review costs and receipts. Select a payee heading to collapse its expenses.</small>
     </div>
     <button class="btn btn-primary btn-sm no-print" data-bs-toggle="modal" data-bs-target="#addExpenseModal">
       <i class="ti ti-plus me-1"></i>Add Expense
@@ -747,13 +747,7 @@
                         @endif
                       </td>
                       <td>
-                        @if($expense->approved_at)
-                          <span class="badge bg-success approved-badge" title="Approved by {{ $expense->approvedByUser?->name }}">
-                            <i class="ti ti-check"></i> Approved
-                          </span>
-                        @else
-                          <span class="badge bg-label-warning approved-badge">Pending</span>
-                        @endif
+                        <span class="badge bg-label-secondary approved-badge">Submitted</span>
                         @if($expense->reimbursed_at)
                           <span class="badge bg-label-success approved-badge mt-1 d-block" title="Reimbursed to {{ $convenor->user->name }}">
                             <i class="ti ti-coin"></i> Reimbursed
@@ -767,15 +761,7 @@
                         @endif
                       </td>
                       <td class="text-center no-print">
-                        @if(!$expense->approved_at)
-                          <form action="{{ route('admin.events.finances.expense.approve', $expense) }}" method="POST" class="d-inline" data-ajax="1">
-                            @csrf
-                            <button type="submit" class="btn btn-icon btn-sm btn-outline-success" title="Approve" aria-label="Approve expense">
-                              <i class="ti ti-check"></i>
-                            </button>
-                          </form>
-                        @endif
-                        @if($expense->approved_at && !$expense->reimbursed_at)
+                        @if(!$expense->reimbursed_at && $expense->paid_by_convenor_id)
                           <form action="{{ route('admin.events.finances.expense.reimburse', $expense) }}" method="POST" class="d-inline" data-ajax="1">
                             @csrf
                             <button type="submit" class="btn btn-icon btn-sm btn-outline-info" title="Mark as reimbursed" aria-label="Mark expense as reimbursed">

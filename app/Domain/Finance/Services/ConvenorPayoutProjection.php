@@ -119,6 +119,7 @@ class ConvenorPayoutProjection
                 'partial_amount_lines' => $refundLines->where('quantity', 0)->count(),
                 'refunds' => $completed->map(fn ($refund) => [
                     'id' => $refund->id, 'amount_cents' => $this->cents($refund->refund_net),
+                    'player_name' => trim($refund->order?->player?->full_name ?? '') ?: 'Player not recorded',
                     'after_payout' => (bool) $refund->after_recorded_payout, 'after_deadline' => (bool) $refund->after_recorded_deadline,
                     'refunded_at' => $refund->refunded_at,
                     'items' => $refund->items->map(fn ($line) => [

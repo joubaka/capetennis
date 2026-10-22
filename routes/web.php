@@ -1021,11 +1021,6 @@ Route::delete(
 )->name('admin.events.finances.expense.destroy');
 
 Route::post(
-  'event/finances/expense/{expense}/approve',
-  [\App\Http\Controllers\Backend\EventFinanceController::class, 'approveExpense']
-)->name('admin.events.finances.expense.approve');
-
-Route::post(
   'event/finances/expense/{expense}/reimburse',
   [\App\Http\Controllers\Backend\EventFinanceController::class, 'reimburseExpense']
 )->name('admin.events.finances.expense.reimburse');
@@ -1497,6 +1492,7 @@ Route::delete(
   Route::post('event/{event}/clothing/orders/{order}/refunds/review', [\App\Http\Controllers\Backend\ClothingRefundController::class, 'review'])->name('backend.clothing.refunds.review');
   Route::get('event/{event}/clothing/orders/{order}/refunds/review', [\App\Http\Controllers\Backend\ClothingRefundController::class, 'reviewPage'])->name('backend.clothing.refunds.review.show');
   Route::post('event/{event}/clothing/orders/{order}/refunds', [\App\Http\Controllers\Backend\ClothingRefundController::class, 'store'])->name('backend.clothing.refunds.store');
+  Route::post('event/{event}/clothing/orders/{order}/refunds/{refund}/check-payfast', [\App\Http\Controllers\Backend\ClothingRefundController::class, 'checkPayfast'])->name('backend.clothing.refunds.check-payfast');
   Route::post('event/{event}/clothing/orders/{order}/refunds/{refund}/wallet/review', [\App\Http\Controllers\Backend\ClothingRefundController::class, 'walletReview'])->name('backend.clothing.refunds.wallet.review');
   Route::post('event/{event}/clothing/orders/{order}/refunds/{refund}/wallet', [\App\Http\Controllers\Backend\ClothingRefundController::class, 'walletConfirm'])->name('backend.clothing.refunds.wallet.confirm');
   Route::post('event/{event}/clothing/orders/{order}/refunds/{refund}/retry', [\App\Http\Controllers\Backend\ClothingRefundController::class, 'retry'])->name('backend.clothing.refunds.retry');

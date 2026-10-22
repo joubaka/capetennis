@@ -49,7 +49,7 @@ Completed by {{ $refund->completed_by_name ?? $refund->completedBy?->name ?? 'No
       @include('backend.clothing.partials.late-note', ['noteKey' => 'retry-late-'.$refund->id])
       <button class="btn btn-outline-danger">Retry saved PayFast refund of R{{ $refund->refund_net }}</button>
     </form>
-    @if($providerAttempts->get($refund->id)->status === 'not_dispatched' && $providerAttempts->get($refund->id)->confirmed_at === null && $refund->refund_method === 'payfast')
+    @if(in_array($providerAttempts->get($refund->id)->status, ['not_dispatched', 'reconciled_ready'], true) && $providerAttempts->get($refund->id)->confirmed_at === null && $refund->refund_method === 'payfast')
     <form class="mt-2" method="POST" action="{{ route('backend.clothing.refunds.wallet.review', [$event, $order, $refund]) }}">@csrf
       @include('backend.clothing.partials.late-note', ['noteKey' => 'wallet-late-'.$refund->id])
       <button class="btn btn-outline-primary">Refund to wallet instead</button>
@@ -58,6 +58,12 @@ Completed by {{ $refund->completed_by_name ?? $refund->completedBy?->name ?? 'No
     @endif
   @else
     <p class="text-warning">PayFast submission needs reconciliation. This amount stays reserved. Do not submit another payment or refund for it.</p>
+    @if($providerAttempts->get($refund->id)->status === 'uncertain' && $refundAllowed && auth()->user()->hasRole('super-user'))
+    <form method="POST" action="{{ route('backend.clothing.refunds.check-payfast', [$event, $order, $refund]) }}" data-check-payfast>@csrf
+      <p class="small text-muted">Check PayFast's current refund history. This check does not pay a refund or credit a wallet.</p>
+      <button class="btn btn-outline-primary">Check PayFast</button>
+    </form>
+    @endif
   @endif
 @endif
 @if($refund->external_reference)<p>Payment reference: {{ $refund->external_reference }}</p>@endif

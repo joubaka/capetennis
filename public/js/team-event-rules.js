@@ -149,7 +149,21 @@
       const response = await fetch(form.action, {method: 'POST', headers: {'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content}, body: JSON.stringify(payload)});
       const result = await response.json();
       message.textContent = response.ok ? 'Format created. Select it when creating a new draw.' : Object.values(result.errors || {}).flat().join(' ') || result.message || 'Could not create format.';
-      if (response.ok) modified = false;
+      if (response.ok) {
+        modified = false;
+        const addedTypes = new Set(payload.rubbers.map(rubber => rubber.rubber_code));
+        if (rulesForm) rulesForm.querySelectorAll('tr[data-rubber-type]').forEach(row => {
+          if (!addedTypes.has(row.dataset.rubberType)) return;
+          row.classList.remove('text-muted', 'table-light');
+          row.querySelector('th small')?.remove();
+          row.querySelectorAll('input[data-rule-name]').forEach(input => {
+            const hidden = Array.from(rulesForm.querySelectorAll('input[type="hidden"]')).find(field => field.name === input.dataset.ruleName);
+            hidden?.remove();
+            input.name = input.dataset.ruleName;
+            input.disabled = false;
+          });
+        });
+      }
     } catch (error) { message.textContent = 'Could not create format. Please retry.'; }
     finally { button.disabled = false; }
   });
