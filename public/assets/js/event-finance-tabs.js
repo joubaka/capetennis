@@ -104,6 +104,11 @@
   nav.addEventListener('keydown', event => {
     const index = tabs.indexOf(event.target.closest('[data-finance-tab]'));
     if (index < 0) return;
+    if (event.key === ' ') {
+      event.preventDefault();
+      openTab(tabs[index].dataset.financeTab);
+      return;
+    }
     let next;
     if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
     if (event.key === 'ArrowLeft') next = (index + tabs.length - 1) % tabs.length;

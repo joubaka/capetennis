@@ -150,6 +150,7 @@ class ClothingRefundController extends Controller
 
     public function walletConfirm(Request $request, Event $event, ClothingOrder $order, ClothingRefund $refund, \App\Services\Clothing\ClothingRefundWalletFallbackService $fallback)
     {
+        $request->headers->set('referer', route('backend.clothing.refunds.show', [$event, $order]));
         $data = $request->validate(['review_token' => ['required', 'string', 'max:30000'], 'confirmed' => ['required', 'accepted']]);
         $refund = $fallback->confirm($event, $order, $refund, $request->user(), $data['review_token']);
         return $this->completedResponse($request, $event, $order, $refund);

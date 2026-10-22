@@ -98,6 +98,23 @@ final class ClothingRefundWalletFallbackService
             || DB::table('wallet_transactions')->where('source_type', 'clothing_refund')->where('source_id', $refund->id)->exists()) {
             $this->invalid('Only a pending saved refund proven not submitted to PayFast can be refunded to the wallet.');
         }
+        $paid = ClothingRefundService::cents($order->amount_paid ?? 0);
+        $orderLines = $order->items()->with('refundItems.refund')->lockForUpdate()->orderBy('id')->get();
+        $active = $order->refunds()->whereIn('refund_status', ['pending', 'completed'])->orderBy('id')->get();
+        if (! $order->paid_at || $paid <= 0 || $paid !== ClothingRefundService::cents($order->total)
+            || $orderLines->sum(fn ($line) => ClothingRefundService::cents($line->line_total)) !== $paid
+            || $active->sum(fn ($entry) => ClothingRefundService::cents($entry->refund_gross)) > $paid
+            || $active->where('refund_method', 'payfast')->sum(fn ($entry) => ClothingRefundService::cents($entry->refund_net)) > ClothingRefundService::cents($order->payfast_amount_due)) {
+            $this->invalid('The saved refund exceeds the verified clothing payment. Reconcile it first.');
+        }
+        foreach ($orderLines as $line) {
+            $allocated = $line->refundItems->filter(fn ($entry) => in_array($entry->refund?->refund_status, ['pending', 'completed'], true));
+            if ($line->qty <= 0 || $allocated->contains(fn ($entry) => $entry->quantity < 0)
+                || $allocated->sum('quantity') > $line->qty
+                || $allocated->sum(fn ($entry) => ClothingRefundService::cents($entry->amount)) > ClothingRefundService::cents($line->line_total)) {
+                $this->invalid('Saved refunds exceed a purchased clothing item. Reconcile the allocation first.');
+            }
+        }
         $lines = $refund->items()->with('item')->get();
         if ($lines->isEmpty() || $lines->contains(fn ($line) => ! $line->item || (int) $line->item->clothing_order_id !== (int) $order->id)
             || $lines->sum(fn ($line) => ClothingRefundService::cents($line->amount)) !== ClothingRefundService::cents($refund->refund_gross)) {
@@ -108,7 +125,10 @@ final class ClothingRefundWalletFallbackService
     private function hash(ClothingOrder $order, ClothingRefund $refund, object $attempt): string
     {
         return hash('sha256', json_encode([$order->getAttributes(), $refund->getAttributes(), (array) $attempt,
-            $refund->items()->orderBy('id')->get()->toArray()], JSON_THROW_ON_ERROR));
+            $refund->items()->orderBy('id')->get()->toArray(),
+            $order->items()->orderBy('id')->get()->toArray(),
+            $order->refunds()->with('items')->orderBy('id')->get()->toArray(),
+            app(ClothingRefundService::class)->deadline($order->event, $order)?->toIso8601String()], JSON_THROW_ON_ERROR));
     }
 
     private function invalid(string $message): never

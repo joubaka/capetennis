@@ -96,6 +96,16 @@ class ClothingPayfastRefundTest extends TestCase
             $this->get(route('backend.clothing.refunds.show', [$event, $order]))->assertDontSee('Refund to wallet instead');
         }
         DB::table('clothing_provider_refund_attempts')->update(['status' => 'not_dispatched']);
+        $otherAdmin = User::factory()->create()->assignRole('super-user');
+        $this->actingAs($otherAdmin)->post($confirmUrl, ['review_token' => $token, 'confirmed' => 1])->assertSessionHasErrors('refund');
+        $this->actingAs($admin);
+        $originalItem = $order->items->first();
+        $originalItem->update(['size_name' => 'Changed after review']);
+        $this->post($confirmUrl, ['review_token' => $token, 'confirmed' => 1])->assertSessionHasErrors('refund')
+            ->assertRedirect(route('backend.clothing.refunds.show', [$event, $order]));
+        $originalItem->update(['line_total' => '10.00']);
+        $this->post($reviewUrl)->assertSessionHasErrors('refund');
+        $originalItem->update(['line_total' => '440.00']);
         $this->travel(11)->minutes();
         $this->post($confirmUrl, ['review_token' => $token, 'confirmed' => 1])->assertSessionHasErrors('refund');
         $this->assertDatabaseCount('wallet_transactions', 0);
