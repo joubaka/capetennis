@@ -997,6 +997,7 @@ Route::get(
 Route::get('event/{event}/expenses/edit', [\App\Http\Controllers\Backend\EventExpenseBatchController::class, 'index'])->name('admin.events.expenses.edit');
 Route::put('event/{event}/expenses', [\App\Http\Controllers\Backend\EventExpenseBatchController::class, 'update'])->name('admin.events.expenses.update');
 Route::post('event/{event}/expense-reimbursements', [\App\Http\Controllers\Backend\EventExpenseReimbursementController::class, 'store'])->name('admin.events.expense-reimbursements.store');
+Route::get('event/{event}/clothing-settlement-users', [\App\Http\Controllers\Backend\RegionalClothingSettlementController::class, 'users'])->name('admin.events.clothing-settlements.users');
 Route::post('event/{event}/clothing-settlements', [\App\Http\Controllers\Backend\RegionalClothingSettlementController::class, 'store'])->name('admin.events.clothing-settlements.store');
 
 Route::get(

@@ -90,6 +90,42 @@ class RegionalClothingSettlementTest extends TestCase
         return app(RegionalClothingSettlementService::class)->report($this->event, $ledger['paymentRows']->merge($ledger['refundRows']))->keyBy(fn ($row) => $row['scope']->id);
     }
 
+    public function test_payment_can_select_a_system_user_without_notes_and_replay_once(): void
+    {
+        $recipient = User::factory()->create(['name' => 'QA Selected Recipient']);
+        $data = $this->data(['recipient_user_id' => $recipient->id, 'recipient_name' => 'Spoofed name', 'evidence' => null]);
+        $this->postRecord($data)->assertSessionHasNoErrors();
+        $this->postRecord($data)->assertSessionHasNoErrors();
+        $this->assertDatabaseCount('regional_clothing_settlements', 1);
+        $this->assertDatabaseHas('regional_clothing_settlements', [
+            'recipient_name' => $recipient->name, 'amount' => '31312.66',
+            'evidence' => RegionalClothingSettlement::DATE_TIME_EVIDENCE,
+        ]);
+        $activity = DB::table('activity_log')->where('log_name', 'clothing-finance')->first();
+        $this->assertSame($recipient->id, json_decode($activity->properties, true)['recipient_user_id']);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->assertDatabaseCount('event_payouts', 0);
+        $this->postRecord($this->data(['amount' => '0.01', 'evidence' => 'Paid', 'overpayment_confirmed' => 1, 'overpayment_reason' => 'Synthetic confirmed additional payment']))->assertSessionHasNoErrors();
+    }
+
+    public function test_selected_user_must_exist_and_recovery_still_requires_notes(): void
+    {
+        $this->postRecord($this->data(['recipient_user_id' => 999999999]))->assertSessionHasErrors('recipient_user_id');
+        $this->postRecord($this->data(['kind' => 'recovery', 'evidence' => null]))->assertSessionHasErrors('evidence');
+        $this->postRecord($this->data(['kind' => 'offset', 'evidence' => null]))->assertSessionHasErrors('evidence');
+        $this->assertDatabaseCount('regional_clothing_settlements', 0);
+    }
+
+    public function test_clothing_user_search_is_bounded_and_super_user_only(): void
+    {
+        User::factory()->count(25)->create(['name' => 'QA Search Recipient']);
+        $url = route('admin.events.clothing-settlements.users', $this->event);
+        $this->actingAs($this->admin)->getJson($url.'?q=QA%20Search')->assertOk()->assertJsonCount(20);
+        $this->getJson($url.'?q=Q')->assertOk()->assertExactJson([]);
+        $this->actingAs(User::factory()->create())->getJson($url.'?q=QA')->assertForbidden();
+        $this->assertDatabaseCount('regional_clothing_settlements', 0);
+    }
+
     public function test_historical_full_payout_and_later_refund_without_deadline_show_exact_recovery_and_original_actor(): void
     {
         $this->refund();

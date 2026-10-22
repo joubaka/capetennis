@@ -72,10 +72,11 @@ class RegionalClothingSettlementService
             'event_region_id' => ['required', 'integer'],
             'kind' => ['required', Rule::in(['payout', 'recovery', 'offset'])],
             'amount' => ['required', 'regex:/^\d{1,8}(?:\.\d{1,2})?$/', 'numeric', 'min:0.01', 'max:99999999.99'],
-            'recipient_name' => ['required', 'string', 'max:150'],
+            'recipient_user_id' => ['nullable', 'integer', Rule::exists('users', 'id')],
+            'recipient_name' => ['required_without:recipient_user_id', 'nullable', 'string', 'max:150'],
             'occurred_at' => ['required', 'date', 'before_or_equal:now'],
             'reference' => ['required', 'string', 'max:150'],
-            'evidence' => ['required', 'string', 'min:10', 'max:2000'],
+            'evidence' => ['required_unless:kind,payout', 'nullable', 'string', 'min:'.(($input['kind'] ?? null) === 'payout' ? '1' : '10'), 'max:2000'],
             'request_token' => ['required', 'uuid'],
             'source_event_region_id' => ['nullable', 'required_if:kind,offset', 'integer'],
             'offset_agreement_confirmed' => ['required_if:kind,offset', 'accepted_if:kind,offset'],
@@ -86,6 +87,12 @@ class RegionalClothingSettlementService
         if ($data['kind'] !== 'payout' && (! empty($data['overpayment_confirmed']) || filled($data['overpayment_reason'] ?? null))) {
             throw ValidationException::withMessages(['overpayment_confirmed' => 'Only an actual already-paid payout may record an overpayment discrepancy.']);
         }
+        $recipient = ! empty($data['recipient_user_id']) ? User::findOrFail($data['recipient_user_id']) : null;
+        $data['recipient_name'] = $recipient?->name ?? $data['recipient_name'];
+        Validator::make(['recipient_name' => $data['recipient_name']], [
+            'recipient_name' => ['required', 'string', 'max:150'],
+        ])->validate();
+        $data['evidence'] = $data['evidence'] ?? '';
         $occurredAt = CarbonImmutable::parse($data['occurred_at'])->setTimezone(config('app.timezone'))->format('Y-m-d H:i:s');
         $dateOnly = preg_match('/^\d{4}-\d{2}-\d{2}$/', $data['occurred_at']) === 1;
         $amount = self::signedCents($data['amount']);
@@ -101,6 +108,9 @@ class RegionalClothingSettlementService
             'overpayment_confirmed' => ! empty($data['overpayment_confirmed']),
             'overpayment_reason' => trim($data['overpayment_reason'] ?? ''),
         ];
+        if ($recipient) {
+            $normalized['recipient_user_id'] = $recipient->id;
+        }
         $fingerprint = hash('sha256', json_encode($normalized, JSON_THROW_ON_ERROR));
 
         return DB::transaction(function () use ($event, $actor, $data, $normalized, $fingerprint, $amount, $occurredAt, $dateOnly) {
