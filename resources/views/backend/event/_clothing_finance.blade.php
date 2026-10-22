@@ -1,7 +1,7 @@
 @if($clothingReceipts['count'] > 0)
       <div class="px-3 py-3 border-top">
-        <h6 class="mb-1">Clothing payable by region</h6>
-        <p class="text-muted small mb-0">Regional funds only; excluded from registration income and profit. Net payable deducts recorded fees and completed refunds. Pending refunds remain a liability, not a completed payment. Payable does not confirm a transfer to the convenor.</p>
+        <h6 class="mb-1">Clothing funds by region</h6>
+        <p class="text-muted small mb-0">Regional funds only; excluded from registration income and profit. Net clothing funds deduct recorded fees and completed refunds, before payouts or recoveries. Pending refunds remain a separate liability. See Clothing payouts and recovery for the amount still payable or to recover.</p>
       </div>
       <div class="table-responsive">
         <table class="table table-sm mb-0" aria-label="Clothing payable by region">
@@ -13,7 +13,7 @@
               <th class="text-end">Recorded PayFast fee</th>
               <th class="text-end">Completed refunds (net)</th>
                 <th class="text-end">Pending refunds (net)</th>
-                <th class="text-end pe-3">Net payable to convenor</th>
+                <th class="text-end pe-3">Net clothing funds before payouts</th>
             </tr>
           </thead>
           <tbody>

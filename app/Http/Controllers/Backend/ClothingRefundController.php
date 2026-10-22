@@ -15,7 +15,11 @@ class ClothingRefundController extends Controller
     public function show(Request $request, Event $event, ClothingOrder $order, ClothingRefundService $refunds)
     {
         $refunds->authorizeOrder($event, $order, $request->user(), false);
-        $order->load(['user', 'player', 'team', 'items.refundItems.refund', 'refunds.items.item']);
+        $relations = ['user', 'player', 'team', 'items.refundItems.refund', 'refunds.items.item', 'refunds.requestedBy', 'refunds.completedBy'];
+        if (\Illuminate\Support\Facades\Schema::hasTable('clothing_refund_historical_imports')) {
+            $relations[] = 'refunds.historicalImport';
+        }
+        $order->load($relations);
 
         $providerAttempts = \Illuminate\Support\Facades\DB::table('clothing_provider_refund_attempts')->whereIn('clothing_refund_id', $order->refunds->modelKeys())->get()->keyBy('clothing_refund_id');
 

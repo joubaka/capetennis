@@ -295,6 +295,10 @@ class RefundExecutionService
                 if ($this->supportsAttribute($locked, 'refund_method')) {
                     $locked->refund_method = $statusOverrides['refund_method'] ?? ($locked->refund_method ?? 'wallet');
                 }
+                if ($locked instanceof \App\Models\ClothingRefund && isset($statusOverrides['completed_by'])) {
+                    $locked->completed_by = $statusOverrides['completed_by'];
+                    $locked->completed_by_name = $statusOverrides['completed_by_name'] ?? null;
+                }
                 if ($this->supportsAttribute($locked, 'refund_status')) {
                     $locked->refund_status = 'completed';
                 }
@@ -484,6 +488,10 @@ class RefundExecutionService
                 $transitioned = true;
                 if ($this->supportsAttribute($locked, 'refund_method')) {
                     $locked->refund_method = $statusOverrides['refund_method'] ?? ($locked->refund_method ?? 'bank');
+                }
+                if ($locked instanceof \App\Models\ClothingRefund && isset($statusOverrides['completed_by'])) {
+                    $locked->completed_by = $statusOverrides['completed_by'];
+                    $locked->completed_by_name = $statusOverrides['completed_by_name'] ?? null;
                 }
                 if ($this->supportsAttribute($locked, 'refund_status')) {
                     $locked->refund_status = 'completed';

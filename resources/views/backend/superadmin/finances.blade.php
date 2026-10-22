@@ -70,7 +70,7 @@
     <div class="col-6 col-md-3">
       <div class="card border-start border-info border-3">
         <div class="card-body">
-          <small class="text-muted">Balance (unpaid)</small>
+          <small class="text-muted">Receipt balance before clothing settlements</small>
           <h5 class="{{ $financeSummary['balance'] < 0 ? 'text-danger' : 'text-success' }}">
             R {{ number_format($financeSummary['balance'], 2) }}
           </h5>
@@ -94,7 +94,7 @@
             <th class="text-end">Received</th>
             <th class="text-end">Net Income</th>
             <th class="text-end">Paid Out</th>
-            <th class="text-end">Balance</th>
+            <th class="text-end">Receipt balance before clothing settlements</th>
             <th class="text-center">Entries</th>
             <th></th>
           </tr>

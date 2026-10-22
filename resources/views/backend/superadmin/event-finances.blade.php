@@ -73,22 +73,20 @@
       <div class="card border-start border-primary">
         <div class="card-body">
           <small class="text-muted">
-            Total Received ({{ $totalEntries }} entries
-            @if(isset($refundCount) && $refundCount > 0), {{ $refundCount }} refund{{ $refundCount !== 1 ? 's' : '' }}@endif
+            Registration received ({{ $totalEntries }} entries
+            @if($registrationRefundCount > 0), {{ $registrationRefundCount }} refund{{ $registrationRefundCount !== 1 ? 's' : '' }}@endif
             @if(isset($noRefundCount) && $noRefundCount > 0), {{ $noRefundCount }} withdrawn (no refund)@endif
             )
           </small>
           <h4>R {{ number_format($totalGross, 2) }}</h4>
-          @if(($clothingReceived ?? 0) > 0)
-            <small class="text-muted d-block">Registration R {{ number_format($registrationReceived ?? $totalGross, 2) }} · Clothing R {{ number_format($clothingReceived, 2) }}</small>
-          @endif
+          <small class="text-muted d-block">Clothing is reconciled separately in Payouts.</small>
         </div>
       </div>
     </div>
     <div class="col-md-3">
       <div class="card border-start border-warning">
         <div class="card-body">
-          <small class="text-muted">PayFast Fees (net)</small>
+          <small class="text-muted">Registration PayFast fees</small>
           <h4 class="text-warning">− R {{ number_format(abs($totalPayfastFees), 2) }}</h4>
         </div>
       </div>
@@ -104,7 +102,7 @@
     <div class="col-md-3">
       <div class="card border-start border-success">
         <div class="card-body">
-          <small class="text-muted">Net Tournament Income</small>
+          <small class="text-muted">Net registration income</small>
           <h4 class="text-success">R {{ number_format($netTournamentIncome, 2) }}</h4>
         </div>
       </div>
@@ -120,7 +118,7 @@
     <div class="col-md-3">
       <div class="card border-start border-info">
         <div class="card-body">
-          <small class="text-muted">Unpaid Balance</small>
+          <small class="text-muted">Registration balance</small>
           <h4 class="{{ $balance < 0 ? 'text-danger' : 'text-info' }}">R {{ number_format($balance, 2) }}</h4>
         </div>
       </div>
@@ -431,7 +429,7 @@
         </tbody>
         <tfoot class="table-light fw-bold">
           <tr>
-            <td colspan="5" class="text-end">All Received Totals</td>
+            <td colspan="5" class="text-end">Registration totals (clothing reconciled separately)</td>
             <td class="text-end">R {{ number_format($totalGross, 2) }}</td>
             <td class="text-end text-warning">− R {{ number_format(abs($totalPayfastFees), 2) }}</td>
             <td class="text-end text-danger">− R {{ number_format(abs($totalCapeTennisFees), 2) }}</td>
@@ -446,7 +444,7 @@
             <td></td>
           </tr>
           <tr>
-            <td colspan="5" class="text-end fw-bold">Balance</td>
+            <td colspan="5" class="text-end fw-bold">Registration balance</td>
             <td colspan="4" class="text-end fw-bold {{ $balance < 0 ? 'text-danger' : 'text-success' }}">R {{ number_format($balance, 2) }}</td>
             <td></td>
           </tr>
@@ -459,9 +457,10 @@
 
     {{-- PAYOUTS PANE --}}
     <div class="tab-pane fade" id="pane-payouts" role="tabpanel">
+      @include('backend.event.partials.clothing-settlements')
       <div class="card border-0 mb-0 rounded-0">
         <div class="card-header d-flex justify-content-between align-items-center">
-          <h5 class="mb-0"><i class="ti ti-cash-banknote me-2 text-info"></i>Convenor Payouts</h5>
+          <h5 class="mb-0"><i class="ti ti-cash-banknote me-2 text-info"></i>Registration convenor payouts</h5>
           <button class="btn btn-success btn-sm" data-bs-toggle="collapse" data-bs-target="#payoutFormCollapse" aria-controls="payoutFormCollapse" aria-expanded="{{ old('payment_method') ? 'true' : 'false' }}">
             <i class="ti ti-plus me-1"></i>Add Payout
           </button>
@@ -820,6 +819,7 @@
 @endsection
 
 @section('page-script')
+@include('backend.event.partials.clothing-settlement-script')
 <script>
 $(function () {
   const table = $('#txTable').DataTable({

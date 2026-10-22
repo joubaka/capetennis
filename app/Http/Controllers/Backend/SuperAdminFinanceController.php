@@ -104,15 +104,17 @@ class SuperAdminFinanceController extends Controller
             ->values();
 
         // ── Totals (aliased for view compatibility) ───────────────────────
-        $totalGross          = $totals['gross_payments'];
-        $totalPayfastFees    = $totals['pf_fees'];
+        $totalGross          = $totals['registration_received'];
+        $totalPayfastFees    = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee'])->sum('fee');
         $totalCapeTennisFees = $totals['cape_fees'];
-        $netTournamentIncome = $totals['net_revenue'];
+        $netTournamentIncome = $totals['registration_net'];
         $registrationReceived = $totals['registration_received'];
         $clothingReceived     = $totals['clothing_received'];
         $clothingNet          = $totals['clothing_net'];
         $totalPaidOut        = $totals['total_paid_out'];
-        $balance             = $totals['balance'];
+        $balance             = $totals['registration_balance'];
+        $clothingReconciliation = app(\App\Domain\Finance\Services\RegionalClothingSettlementService::class)
+            ->report($event, $paymentRows->merge($refundRows));
         $grossPayments       = $totals['gross_payments'];
         $completedRefunds    = $totals['completed_refunds'];
         $pendingRefunds      = $totals['pending_refunds'];
@@ -123,6 +125,7 @@ class SuperAdminFinanceController extends Controller
         $accountingRefundRows = $refundRows->where('type', 'refund');
         $noRefundRows        = $refundRows->where('type', 'withdrawal');
         $refundCount         = $accountingRefundRows->count();
+        $registrationRefundCount = $accountingRefundRows->where('subtype', '!=', 'clothing_refund')->count();
         $noRefundCount       = $noRefundRows->count();
 
         // ── Withdrawal / refund policy for the info card ──────────────────
@@ -179,6 +182,8 @@ class SuperAdminFinanceController extends Controller
 
         return view('backend.superadmin.event-finances', compact(
             'event',
+            'clothingReconciliation',
+            'registrationRefundCount',
             'transactions',
             'payoutModels',
             'convenors',

@@ -28,6 +28,15 @@ class ClothingPayfastRefundTest extends TestCase
         $this->artisan('migrate:fresh', ['--force' => true])->assertExitCode(0);
     }
 
+    protected function tearDown(): void
+    {
+        // Provider dispatch requires transaction level zero. These tests rebuild
+        // without a wrapping transaction, so the next RefreshDatabase class
+        // must rebuild rather than inherit this test's committed fixture rows.
+        \Illuminate\Foundation\Testing\RefreshDatabaseState::$migrated = false;
+        parent::tearDown();
+    }
+
     public function test_bank_preflight_failure_can_retry_the_same_saved_refund_once_with_ephemeral_validated_details(): void
     {
         [$admin, $payer, $event, $order] = $this->fixture(4);
@@ -167,6 +176,9 @@ class ClothingPayfastRefundTest extends TestCase
         $this->postRefund($url, $input)->assertSessionHasNoErrors();
         $refund = ClothingRefund::firstOrFail();
         $this->assertSame('completed', $refund->refund_status);
+        $this->assertSame($admin->id, $refund->completed_by);
+        $this->assertSame($admin->name, $refund->completed_by_name);
+        $this->assertSame($admin->name, $refund->requested_by_name);
         $this->assertDatabaseCount('clothing_provider_refund_attempts', 1);
         $this->assertDatabaseCount('clothing_refunds', 1);
         $this->assertDatabaseCount('wallet_transactions', 0);

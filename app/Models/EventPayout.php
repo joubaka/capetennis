@@ -18,16 +18,35 @@ class EventPayout extends Model
         'reference',
         'paid_by',
         'paid_at',
+        'purpose',
+        'funding_source',
+        'idempotency_key',
+        'recipient_user_id',
+        'recorded_by_name',
     ];
 
     protected $casts = [
-        'amount'  => 'float',
+        'amount'  => 'decimal:2',
         'paid_at' => 'datetime',
     ];
 
     public function event()
     {
         return $this->belongsTo(Event::class);
+    }
+
+    protected static function booted(): void
+    {
+        static::updating(function (self $payout) {
+            if ($payout->getRawOriginal('purpose') === 'expense_reimbursement') {
+                throw \Illuminate\Validation\ValidationException::withMessages(['payout' => 'Recorded expense reimbursements are immutable.']);
+            }
+        });
+        static::deleting(function (self $payout) {
+            if ($payout->purpose === 'expense_reimbursement') {
+                throw \Illuminate\Validation\ValidationException::withMessages(['payout' => 'Recorded expense reimbursements cannot be deleted.']);
+            }
+        });
     }
 
     public function convenor()

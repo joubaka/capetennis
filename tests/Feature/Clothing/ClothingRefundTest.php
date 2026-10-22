@@ -92,6 +92,10 @@ class ClothingRefundTest extends TestCase
         $this->assertCount(2, $receipt['items']);
         $this->assertDatabaseCount('clothing_refunds', 1);
         $this->assertDatabaseCount('clothing_refund_items', 2);
+        $this->assertDatabaseHas('clothing_refunds', [
+            'requested_by' => $admin->id, 'requested_by_name' => $admin->name,
+            'completed_by' => $admin->id, 'completed_by_name' => $admin->name,
+        ]);
         $this->assertDatabaseCount('wallet_transactions', 1);
         $this->assertEquals(1040.50, $payer->fresh()->wallet->balance);
         $list = $this->get($response->headers->get('Location'))->assertOk()->assertSee('Refund completed')->assertSee('1,040.50')->assertSee('QA Cap');

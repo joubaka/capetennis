@@ -33,6 +33,31 @@ use Illuminate\Support\Collection;
  */
 class FinancialLedgerService
 {
+    /** Confirm an event-only financial recipient identity; moves no money. */
+    public function recordRegionalFinancialRecipientLink(Event $event, \App\Models\User $actor, array $data, bool $apply = false): array
+    {
+        return app(EventRegionFinancialRecipientLinkService::class)->record($event, $actor, $data, $apply);
+    }
+
+
+    /** Local archival evidence only; does not execute or notify a refund. */
+    public function importHistoricalClothingRefund(Event $event, \App\Models\User $actor, array $snapshot, bool $apply = false): array
+    {
+        return app(HistoricalClothingRefundImportService::class)->import($event, $actor, $snapshot, $apply);
+    }
+
+    /** Record clothing evidence separately from registration payouts and totals. */
+    public function recordClothingSettlement(Event $event, \App\Models\User $actor, array $data): \App\Models\RegionalClothingSettlement
+    {
+        return app(RegionalClothingSettlementService::class)->record($event, $actor, $data);
+    }
+
+    /** Record an already-paid expense reimbursement; does not initiate a transfer. */
+    public function recordExpenseReimbursement(Event $event, \App\Models\User $actor, array $data): EventPayout
+    {
+        return app(EventExpenseReimbursementService::class)->record($event, $actor, $data);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Public API
     // ─────────────────────────────────────────────────────────────────────────

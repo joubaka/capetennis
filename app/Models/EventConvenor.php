@@ -10,6 +10,21 @@ class EventConvenor extends Model
 {
     use HasFactory;
 
+    protected static function booted(): void
+    {
+        $guard = function (self $director) {
+            if (EventPayout::where('convenor_id', $director->id)->where('purpose', 'expense_reimbursement')->exists()) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['convenor' => 'This director has recorded reimbursements and must remain attached to the event.']);
+            }
+        };
+        static::deleting($guard);
+        static::updating(function (self $director) use ($guard) {
+            if ($director->isDirty(['user_id', 'event_id'])) {
+                $guard($director);
+            }
+        });
+    }
+
     protected $fillable = [
         'event_id',
         'user_id',

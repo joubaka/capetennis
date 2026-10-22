@@ -62,6 +62,7 @@ class EventFinanceController extends Controller
         $receiptReport = app(EventFinanceReceiptReport::class)->build($event, $eventTransactions);
         $clothingReceipts = $receiptReport['clothing'];
         $registrationReceipts = $receiptReport['registrations'];
+        $clothingReconciliation = app(\App\Domain\Finance\Services\RegionalClothingSettlementService::class)->report($event, $eventTransactions);
 
         $incomeItems      = $event->incomeItems()->get();
         $totalIncomeItems = $incomeItems->sum(fn($i) => $i->calculatedTotal());
@@ -116,18 +117,23 @@ class EventFinanceController extends Controller
         $netProfit = $grandTotalIncome - $totalExpenses;
 
         // ── Per-convenor totals for reconciliation (operational only) ─────
-        $recon = $convenors->map(function ($convenor) use ($operationalExpenses, $netProfit) {
+        $reimbursementPayments = \App\Models\EventPayout::with('paidByUser')->where('event_id', $event->id)
+            ->where('purpose', 'expense_reimbursement')->orderByDesc('id')->get();
+        $profitAllocations = \App\Domain\Finance\Services\EventProfitAllocation::cents($convenors, $netProfit);
+        $recon = $convenors->map(function ($convenor) use ($operationalExpenses, $netProfit, $reimbursementPayments, $profitAllocations) {
             $paid = $operationalExpenses
                 ->where('paid_by_convenor_id', $convenor->id)
                 ->sum(fn($e) => $e->calculatedAmount());
 
             $profitSharePct    = (float) ($convenor->profit_share_pct ?? 0);
-            $profitShareAmount = $netProfit > 0 ? round($netProfit * $profitSharePct / 100, 2) : 0.0;
+            $profitShareAmount = ($profitAllocations[$convenor->id] ?? 0) / 100;
 
             $reimbursed = $operationalExpenses
                 ->where('paid_by_convenor_id', $convenor->id)
                 ->whereNotNull('reimbursed_at')
                 ->sum(fn($e) => $e->calculatedAmount());
+
+            $reimbursed += $reimbursementPayments->where('convenor_id', $convenor->id)->sum(fn ($payout) => (float) $payout->amount);
 
             return [
                 'convenor'           => $convenor,
@@ -140,6 +146,8 @@ class EventFinanceController extends Controller
                 'final_payout'       => ($paid - $reimbursed) + $profitShareAmount,
             ];
         });
+        $convenorPayoutProjection = app(\App\Domain\Finance\Services\ConvenorPayoutProjection::class)
+            ->build($event, $recon, $clothingReconciliation);
 
         // Budget cap warning threshold (90%) — based on operational expenses only
         $budgetCapWarning = $event->budget_cap
@@ -183,6 +191,7 @@ class EventFinanceController extends Controller
             'netRegistrationIncome',
             'clothingReceipts',
             'registrationReceipts',
+            'clothingReconciliation',
             'incomeItems',
             'totalIncomeItems',
             'grandTotalIncome',
@@ -198,6 +207,8 @@ class EventFinanceController extends Controller
             'pendingApproval',
             'pendingReimbursement',
             'recon',
+            'convenorPayoutProjection',
+            'reimbursementPayments',
             'budgetCapWarning',
             'netProfit',
             'venueEntrySummary',
@@ -278,7 +289,7 @@ class EventFinanceController extends Controller
 
         $validated = $request->validate([
             'expense_type'          => 'required|string|max:50',
-            'paid_by_convenor_id'   => 'nullable|exists:event_convenors,id',
+            'paid_by_convenor_id'   => ['nullable', \Illuminate\Validation\Rule::exists('event_convenors', 'id')->where('event_id', $expense->event_id)],
             'convenor_name'         => 'nullable|string|max:100',
             'description'           => 'nullable|string|max:255',
             'recipient_name'        => 'nullable|string|max:150',
@@ -296,15 +307,17 @@ class EventFinanceController extends Controller
         unset($updates['receipt']);
 
         if ($request->hasFile('receipt')) {
-            // Delete old receipt if exists
-            if ($expense->receipt_path) {
-                Storage::disk('public')->delete($expense->receipt_path);
-            }
             $updates['receipt_path'] = $request->file('receipt')
                 ->store("event_receipts/{$expense->event_id}", 'public');
         }
 
-        $expense->update($updates);
+        DB::transaction(function () use ($expense, $updates) {
+            Event::whereKey($expense->event_id)->lockForUpdate()->firstOrFail();
+            EventExpense::whereKey($expense->id)->lockForUpdate()->firstOrFail()->update($updates);
+        });
+        if ($request->hasFile('receipt') && $expense->receipt_path) {
+            Storage::disk('public')->delete($expense->receipt_path);
+        }
 
         return $request->wantsJson()
             ? response()->json(['message' => 'Expense updated successfully.'])
@@ -315,11 +328,13 @@ class EventFinanceController extends Controller
     {
         $this->authorize('event-finance.expense', $expense);
 
+        DB::transaction(function () use ($expense) {
+            Event::whereKey($expense->event_id)->lockForUpdate()->firstOrFail();
+            EventExpense::whereKey($expense->id)->lockForUpdate()->firstOrFail()->delete();
+        });
         if ($expense->receipt_path) {
             Storage::disk('public')->delete($expense->receipt_path);
         }
-
-        $expense->delete();
 
         if (request()->wantsJson()) {
             return response()->json(['message' => 'Expense deleted.']);
@@ -350,10 +365,7 @@ class EventFinanceController extends Controller
     {
         $this->authorize('event-finance.expense', $expense);
 
-        $expense->update([
-            'reimbursed_at' => now(),
-            'reimbursed_by' => Auth::id(),
-        ]);
+        app(\App\Domain\Finance\Services\EventExpenseReimbursementService::class)->reimburseWholeExpense($expense, Auth::user());
 
         return request()->wantsJson()
             ? response()->json(['message' => 'Reimbursement marked.'])
@@ -631,7 +643,10 @@ class EventFinanceController extends Controller
         $this->authorize('event-finance.convenor', $convenor->event);
 
         $id = $convenor->id;
-        $convenor->delete();
+        DB::transaction(function () use ($convenor) {
+            Event::whereKey($convenor->event_id)->lockForUpdate()->firstOrFail();
+            EventConvenor::whereKey($convenor->id)->lockForUpdate()->firstOrFail()->delete();
+        });
 
         return request()->wantsJson()
             ? response()->json(['message' => 'Convenor removed.', 'id' => $id])
@@ -645,37 +660,59 @@ class EventFinanceController extends Controller
     public function storeVenueConvenor(Request $request, Event $event)
     {
         $this->authorize('event-finance.convenor', $event);
+        $batch = $request->exists('names');
+        $normalize = static fn ($name) => is_string($name) ? trim(preg_replace('/\s+/u', ' ', $name)) : $name;
+        if ($batch && is_array($request->input('names'))) {
+            $request->merge(['names' => array_map($normalize, $request->input('names'))]);
+        } elseif (! $batch) {
+            $request->merge(['name' => $normalize($request->input('name'))]);
+        }
+        $validated = $request->validate($batch ? [
+            'names' => ['required', 'array', 'min:1', 'max:50'],
+            'names.*' => ['required', 'string', 'max:150'],
+        ] : ['name' => ['required', 'string', 'max:150']], [], ['names' => 'convenor names', 'names.*' => 'convenor name']);
+        $names = $batch ? $validated['names'] : [$validated['name']];
+        $result = DB::transaction(function () use ($event, $names, $normalize) {
+            Event::whereKey($event->id)->lockForUpdate()->firstOrFail();
+            $existing = EventVenueConvenor::where('event_id', $event->id)->get()
+                ->keyBy(fn ($convenor) => mb_strtolower($normalize($convenor->name)));
+            $rows = collect();
+            $added = 0;
+            foreach ($names as $name) {
+                $key = mb_strtolower($name);
+                $convenor = $existing->get($key);
+                if (! $convenor) {
+                    $convenor = EventVenueConvenor::create(['event_id' => $event->id, 'name' => $name]);
+                    $existing->put($key, $convenor);
+                    $added++;
+                }
+                $rows->put($convenor->id, $convenor);
+            }
 
-        $validated = $request->validate([
-            'name' => 'required|string|max:150',
-        ]);
+            return ['added' => $added, 'rows' => $rows->values(), 'skipped' => count($names) - $added];
+        });
 
-        $exists = EventVenueConvenor::where('event_id', $event->id)
-            ->where('name', $validated['name'])
-            ->exists();
-
-        if ($exists) {
+        if (! $batch && ! $result['added']) {
             $message = 'A venue convenor with that name already exists for this event.';
             return $request->wantsJson()
                 ? response()->json(['message' => $message], 422)
                 : back()->with('error', $message);
         }
-
-        $vc = EventVenueConvenor::create([
-            'event_id' => $event->id,
-            'name'     => $validated['name'],
-        ]);
-
-        $message = "Venue convenor \"{$vc->name}\" added.";
+        $rows = $result['rows']->map(fn ($convenor) => [
+            'id' => $convenor->id, 'name' => $convenor->name,
+            'destroy_url' => route('admin.events.finances.venue-convenor.destroy', $convenor),
+        ])->all();
+        $message = $batch ? $result['added'].' venue convenor'.($result['added'] === 1 ? '' : 's').' added.' : 'Venue convenor added.';
+        if ($batch && $result['skipped']) {
+            $message .= ' '.$result['skipped'].' already listed.';
+        }
 
         return $request->wantsJson()
             ? response()->json([
                 'message'       => $message,
-                'venueConvenor' => [
-                    'id'          => $vc->id,
-                    'name'        => $vc->name,
-                    'destroy_url' => route('admin.events.finances.venue-convenor.destroy', $vc),
-                ],
+                'venueConvenor' => $rows[0],
+                'venueConvenors' => $rows,
+                'added' => $result['added'], 'skipped' => $result['skipped'],
             ])
             : back()->with('success', $message);
     }

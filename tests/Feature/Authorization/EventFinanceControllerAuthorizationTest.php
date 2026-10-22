@@ -46,6 +46,31 @@ class EventFinanceControllerAuthorizationTest extends TestCase
 
     public function test_view_admin_success() { $this->actingAs($this->admin)->get(route('admin.events.finances', $this->eventA->id))->assertSuccessful(); }
 
+    public function test_convenor_payout_breakdown_is_visible_after_summary_before_received_transactions(): void
+    {
+        $convenor = EventConvenor::create(['event_id' => $this->eventA->id, 'user_id' => $this->admin->id, 'role' => 'hoof', 'profit_share_pct' => 50]);
+        $this->expenseA->update(['paid_by_convenor_id' => $convenor->id]);
+        $response = $this->actingAs($this->admin)->get(route('admin.events.finances', $this->eventA));
+        $response->assertSuccessful()->assertSeeInOrder(['Registration net income', 'id="finance-convenor-payouts"', 'id="finance-receipts"'], false);
+        $row = $response->viewData('recon')->first();
+        $this->assertSame(100.0, $row['total_paid']);
+        $document = new \DOMDocument;
+        $previous = libxml_use_internal_errors(true);
+        try {
+            $document->loadHTML($response->getContent());
+            $xpath = new \DOMXPath($document);
+            $section = $xpath->query('//*[@id="finance-convenor-payouts"]')->item(0);
+            $this->assertNotNull($section);
+            $this->assertStringContainsString('Convenor Payout Breakdown', $section->textContent);
+            $this->assertStringContainsString(number_format($row['final_payout'], 2), $section->textContent);
+            $this->assertStringContainsString(number_format($row['total_paid'], 2), $section->textContent);
+            $this->assertSame(0, $xpath->query('//*[@id="finance-convenor-payouts"]/ancestor::*[self::details or contains(concat(" ", normalize-space(@class), " "), " collapse ") or contains(concat(" ", normalize-space(@class), " "), " tab-pane ")]')->length);
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+        }
+    }
+
     public function test_team_payment_breakdown_uses_correct_event_order_and_totals_despite_id_collision(): void
     {
         $this->eventA->forceFill(['cape_tennis_fee' => 15])->save();
@@ -154,7 +179,7 @@ class EventFinanceControllerAuthorizationTest extends TestCase
             'amount_fee' => -4, 'is_test' => false, 'created_at' => now(), 'updated_at' => now(),
         ]);
         $response = $this->actingAs($this->admin)->get(route('admin.events.finances', $this->eventA));
-        $response->assertOk()->assertDontSee('Show income by')->assertSee('Clothing payable by region')
+        $response->assertOk()->assertDontSee('Show income by')->assertSee('Clothing funds by region')
             ->assertSee('Recorded PayFast fee')->assertSee('Region not recorded')
             ->assertViewHas('netRegistrationIncome', 96.00)->assertViewHas('clothingNet', 365.98)
             ->assertViewHas('grandTotalIncome', 96.00)

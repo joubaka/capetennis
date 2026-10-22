@@ -114,7 +114,7 @@ final class ClothingRefundService
                     throw ValidationException::withMessages(['refund' => 'Only an eligible pending external refund can be recorded.']);
                 }
                 $this->recordLateNote($locked, $lockedOrder, $actor, $lateNote);
-                $locked->fill(['external_reference' => $reference, 'completed_by' => $actor->id])->save();
+                $locked->fill(['external_reference' => $reference, 'completed_by' => $actor->id, 'completed_by_name' => $actor->name])->save();
                 $completed = app(RefundExecutionService::class)->executeBankRefund($locked, ['refund_method' => $locked->refund_method]);
                 activity('refund')->performedOn($completed)->causedBy($actor)->withProperties([
                     'payer_id' => $locked->payer_id, 'order_id' => $lockedOrder->id, 'event_id' => $event->id,

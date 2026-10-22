@@ -18,6 +18,15 @@ use Rappasoft\LaravelAuthenticationLog\Traits\AuthenticationLoggable;
 
 class User extends Authenticatable
 {
+    protected static function booted(): void
+    {
+        static::deleting(function (self $user) {
+            if (EventPayout::where('recipient_user_id', $user->id)->where('purpose', 'expense_reimbursement')->exists()) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['user' => 'This account has recorded event expense reimbursements and must be retained for reconciliation.']);
+            }
+        });
+    }
+
     use HasApiTokens;
     use HasFactory;
     use HasProfilePhoto;

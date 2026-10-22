@@ -1110,7 +1110,9 @@ class EventAdminController extends Controller
     $pendingApproval    = $operationalExpenses->whereNull('approved_at')->count();
     $pendingReimbursement = $operationalExpenses->whereNotNull('approved_at')->whereNull('reimbursed_at')->count();
 
-    $recon = $convenors->map(function ($convenor) use ($operationalExpenses) {
+    $reimbursementPayments = \App\Models\EventPayout::with('paidByUser')->where('event_id', $event->id)
+      ->where('purpose', 'expense_reimbursement')->orderByDesc('id')->get();
+    $recon = $convenors->map(function ($convenor) use ($operationalExpenses, $reimbursementPayments) {
       $paid = $operationalExpenses
         ->where('paid_by_convenor_id', $convenor->id)
         ->sum(fn($e) => $e->calculatedAmount());
@@ -1122,7 +1124,8 @@ class EventAdminController extends Controller
         'reimbursed' => $operationalExpenses
           ->where('paid_by_convenor_id', $convenor->id)
           ->whereNotNull('reimbursed_at')
-          ->sum(fn($e) => $e->calculatedAmount()),
+          ->sum(fn($e) => $e->calculatedAmount())
+          + $reimbursementPayments->where('convenor_id', $convenor->id)->sum(fn ($payout) => (float) $payout->amount),
       ];
     });
 
@@ -1175,6 +1178,7 @@ class EventAdminController extends Controller
       'pendingApproval',
       'pendingReimbursement',
       'recon',
+      'reimbursementPayments',
       'budgetCapWarning',
       'netProfit'
     );

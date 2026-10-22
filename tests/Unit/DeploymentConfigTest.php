@@ -6,6 +6,16 @@ use PHPUnit\Framework\TestCase;
 
 class DeploymentConfigTest extends TestCase
 {
+    public function test_regional_clothing_settlement_migration_is_explicitly_allowlisted(): void
+    {
+        $config = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.config');
+        preg_match('/^MIGRATION_PATHS="([^"]*)"/ms', $config, $match);
+        $paths = preg_split('/\s+/', trim($match[1] ?? ''));
+        $this->assertContains('database/migrations/2026_10_21_210000_create_regional_clothing_settlements.php', $paths);
+        $this->assertContains('database/migrations/2026_10_22_010000_create_clothing_refund_historical_imports.php', $paths);
+        $this->assertContains('database/migrations/2026_10_22_020000_create_event_region_financial_recipient_links.php', $paths);
+    }
+
     public function test_optional_public_assets_do_not_make_sync_return_failure(): void
     {
         $script = str_replace("\r\n", "\n", (string) file_get_contents(dirname(__DIR__, 2).'/deploy.sh'));

@@ -14,7 +14,8 @@
     request()->routeIs('admin.events.entries*', 'admin.events.teams') => 'entries',
     request()->routeIs(
       'convenor.*', 'admin.events.announcements*',
-      'backend.events.disciplinary.*', 'admin.events.transactions', 'transactions.pdf'
+      'backend.events.disciplinary.*', 'admin.events.transactions', 'transactions.pdf',
+      'backend.event.clothing.*'
     ) => 'more',
     default => 'overview',
   };
@@ -88,6 +89,9 @@
       </button>
       <div class="dropdown-menu dropdown-menu-end">
         @if(!$eventWorkspaceRegionalOnly)
+        @if($event->isTeam() && auth()->user() && app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(auth()->user(), $event))
+          <a class="dropdown-item" href="{{ route('backend.event.clothing.index', $event) }}"><i class="ti ti-shirt" aria-hidden="true"></i>Clothing setup</a>
+        @endif
         @can('event-draw.view', $event)
           <a class="dropdown-item" href="{{ route('admin.events.transactions', $event) }}"><i class="ti ti-credit-card" aria-hidden="true"></i>Transactions</a>
         @endcan

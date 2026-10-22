@@ -50,6 +50,40 @@
   .finance-workspace summary { min-height:44px; cursor:pointer; align-content:center; }
   .finance-workspace [id^="finance-"] { scroll-margin-top: 150px; }
   .finance-workspace .dropdown-item, .finance-workspace .btn { min-height:44px; }
+  @media screen {
+    .finance-toolbar { padding-block: .5rem; }
+    .finance-toolbar-actions { align-items: center; }
+    .finance-section-nav { padding: .5rem; background: #fff; border: 1px solid #e4eaf0; border-radius: .75rem; }
+    .finance-section-nav a { display: inline-flex; align-items: center; gap: .5rem; padding: .65rem .85rem; min-height: 44px; border-radius: .5rem; color: #44586b; font-weight: 600; text-decoration: none; }
+    .finance-section-nav a:hover, .finance-section-nav a[aria-current="location"] { background: #eaf4f2; color: #105f57; }
+    .finance-workspace .finance-card { border: 1px solid #e4eaf0 !important; border-top: 3px solid #b7d6d0 !important; box-shadow: none; }
+    .finance-card .card-body { padding: 1.25rem; }
+    .finance-card h5 { font-size: 1.5rem; font-variant-numeric: tabular-nums; margin-block: .35rem !important; }
+    .finance-workspace > .card > .card-header { padding: 1.1rem 1.25rem; }
+    .finance-workspace .table th { font-size: .72rem; line-height: 1.5; white-space: nowrap; }
+    .finance-workspace .table td { vertical-align: middle; }
+    .finance-workspace .table .text-end { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .finance-workspace .table td.no-print { min-width: 156px; white-space: nowrap; }
+    .finance-workspace .table td.no-print .btn { margin: 2px; }
+    .finance-workspace .table-responsive { border-radius: 0 0 .65rem .65rem; }
+    .finance-expenses-heading { padding-top: .75rem; gap: 1rem; flex-wrap: wrap; }
+    .finance-payee summary { list-style: none; gap: 1rem; padding: 1rem 1.25rem; background: #f2f6f8; border-left: 3px solid #b7c9d5; }
+    .finance-payee summary::-webkit-details-marker { display: none; }
+    .finance-payee summary .ti-chevron-down { transition: transform .15s ease; }
+    .finance-payee:not([open]) summary .ti-chevron-down { transform: rotate(-90deg); }
+    .finance-payee .finance-payee-total { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    @media (max-width: 767.98px) {
+      .finance-toolbar-actions { width: 100%; }
+      .finance-toolbar-actions > .btn:first-child { flex: 1; }
+      .finance-section-nav { gap: .25rem !important; }
+      .finance-section-nav a { flex: 1 1 calc(50% - .25rem); font-size: .85rem; padding: .6rem; }
+      .finance-card .card-body { padding: 1rem; }
+      .finance-card h5 { font-size: 1.2rem; overflow-wrap: anywhere; }
+      .finance-workspace .card-header { flex-wrap: wrap; gap: .75rem; }
+      .finance-workspace .table { min-width: 760px; }
+      .finance-payee summary { padding: 1rem; }
+    }
+  }
   /* Print styles */
   @media print {
     .no-print, .btn, .modal, .card-header .btn, nav, .navbar,
@@ -73,7 +107,7 @@
 
   {{-- ── PRINT-ONLY HEADER ────────────────────────────────────────────── --}}
   <div class="print-header mb-4 pb-3 border-bottom">
-    <h3 class="mb-1">{{ $event->name }} – Budget / Expense Statement</h3>
+    <h3 class="mb-1">{{ $event->name }} – Income and Expense Statement</h3>
     <div class="d-flex gap-4 text-muted" style="font-size:0.85rem">
       @if($event->start_date)
         <span><strong>Date:</strong> {{ $event->start_date->format('d M Y') }}{{ $event->end_date && $event->end_date->ne($event->start_date) ? ' – '.$event->end_date->format('d M Y') : '' }}</span>
@@ -90,9 +124,10 @@
     'eventWorkspaceIcon' => 'ti-report-money',
     'eventWorkspaceSubtitle' => 'Event finances',
   ])
-  <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 no-print">
-    <div><h2 class="h4 mb-1">Budget and expenses</h2><p class="text-muted mb-0">Income, costs, reimbursements and event payees.</p></div>
-    <div class="d-flex gap-2 flex-wrap">
+  <div class="finance-toolbar d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3 no-print">
+    <div><h2 class="h4 mb-1">Event income and expenses</h2><p class="text-muted mb-0">Income, costs, reimbursements and event payees.</p></div>
+    <div class="finance-toolbar-actions d-flex gap-2 flex-wrap">
+        @can('event-finance.manage', $event)<a class="btn btn-primary" href="{{ route('admin.events.expenses.edit', $event) }}"><i class="ti ti-edit me-1" aria-hidden="true"></i>Edit expenses</a>@endcan
         <div class="dropdown"><button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Setup tools</button><div class="dropdown-menu dropdown-menu-end">
         <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#manageConvenorsModal">
           <i class="ti ti-users me-1"></i>Finance Payees
@@ -110,10 +145,14 @@
     </div>
   </div>
 
-  <nav class="d-flex flex-wrap gap-2 mb-4 no-print" aria-label="Finance sections">
-    <a class="btn btn-outline-secondary" href="#finance-receipts">Received transactions</a><a class="btn btn-outline-secondary" href="#finance-income">Registration income</a>
-    <a class="btn btn-outline-secondary" href="#finance-clothing">Regional clothing</a><a class="btn btn-outline-secondary" href="#finance-expenses">Expenses</a><a class="btn btn-outline-secondary" href="#finance-reconciliation">Reconciliation</a>
+  <nav class="finance-section-nav d-flex flex-wrap gap-2 mb-4 no-print" aria-label="Finance sections">
+    <a href="#finance-receipts"><i class="ti ti-receipt" aria-hidden="true"></i>Received transactions</a>
+    <a href="#finance-income"><i class="ti ti-cash" aria-hidden="true"></i>Registration income</a>
+    <a href="#finance-clothing"><i class="ti ti-shirt" aria-hidden="true"></i>Regional clothing</a>
+    <a href="#finance-expenses"><i class="ti ti-list" aria-hidden="true"></i>Expenses</a>
+    <a href="#finance-reconciliation"><i class="ti ti-arrows-exchange" aria-hidden="true"></i>Reconciliation</a>
   </nav>
+
   {{-- ── ALERTS ──────────────────────────────────────────────────────── --}}
   @if(session('success'))
     <div class="alert alert-success alert-dismissible fade show no-print" role="alert">
@@ -213,6 +252,8 @@
   </div>
 
   {{-- ── REGISTRATION TRANSACTIONS ────────────────────────────────────── --}}
+  @include('backend.event.partials.convenor-payout-breakdown')
+
   <div class="card mb-4" id="finance-receipts">
     <button class="card-header registration-transactions-toggle d-flex justify-content-between align-items-center border-0 bg-transparent text-start w-100"
             type="button" data-bs-toggle="collapse" data-bs-target="#registrationTransactionsCollapse"
@@ -418,13 +459,14 @@
                 <td class="text-end fw-semibold text-success">R {{ number_format($item->calculatedTotal(), 2) }}</td>
                 <td class="text-center no-print">
                   <button class="btn btn-icon btn-sm btn-outline-primary"
+                          aria-label="Edit income item"
                           data-bs-toggle="modal" data-bs-target="#editIncomeModal{{ $item->id }}">
                     <i class="ti ti-edit"></i>
                   </button>
                   <form action="{{ route('admin.events.finances.income.destroy', $item) }}" method="POST" class="d-inline"
                         data-ajax="1" data-confirm="Delete this income item?">
                     @csrf @method('DELETE')
-                    <button class="btn btn-icon btn-sm btn-outline-danger"><i class="ti ti-trash"></i></button>
+                    <button class="btn btn-icon btn-sm btn-outline-danger" aria-label="Delete income item" title="Delete income item"><i class="ti ti-trash"></i></button>
                   </form>
                 </td>
               </tr>
@@ -465,12 +507,22 @@
     </div>
   </div>
 
-  <div class="card mb-4" id="finance-clothing"><h5 class="card-header">Regional clothing income and reconciliation</h5>@include('backend.event._clothing_finance')</div>
+  <div class="card mb-4" id="finance-clothing">
+    <div class="card-header">
+      <h5 class="mb-1"><i class="ti ti-shirt me-2 text-primary" aria-hidden="true"></i>Regional clothing income and reconciliation</h5>
+      <small class="text-muted">Clothing receipts and regional payables are separate from registration income.</small>
+    </div>
+    @include('backend.event._clothing_finance')
+    @include('backend.event.partials.clothing-settlements')
+  </div>
   {{-- ══════════════════════════════════════════════════════════════════════
        SECTION 2 – EXPENSES (per convenor)
   ══════════════════════════════════════════════════════════════════════ --}}
-  <div class="d-flex justify-content-between align-items-center mb-2" id="finance-expenses">
-    <h5 class="mb-0"><i class="ti ti-list me-2"></i>Expenses per Convenor</h5>
+  <div class="finance-expenses-heading d-flex justify-content-between align-items-center mb-3" id="finance-expenses">
+    <div>
+      <h5 class="mb-1"><i class="ti ti-list me-2"></i>Expenses by payee</h5>
+      <small class="text-muted">Review costs, approvals and receipts. Select a payee heading to collapse its expenses.</small>
+    </div>
     <button class="btn btn-primary btn-sm no-print" data-bs-toggle="modal" data-bs-target="#addExpenseModal">
       <i class="ti ti-plus me-1"></i>Add Expense
     </button>
@@ -569,14 +621,15 @@
           default => ucfirst($convenor->role),
         };
       @endphp
-      <div class="card mb-3">
-        <div class="card-header convenor-header d-flex justify-content-between align-items-center">
+      <details class="card finance-payee mb-3" open data-finance-details>
+        <summary class="card-header convenor-header d-flex justify-content-between align-items-center">
           <div>
-            <strong>Paid by {{ $convenor->user->name ?? 'Unknown' }}</strong>
-            <span class="badge bg-warning text-dark ms-2">{{ $roleLabel }}</span>
+            <strong><i class="ti ti-chevron-down me-2" aria-hidden="true"></i>Paid by {{ $convenor->user->name ?? 'Unknown' }}</strong>
+            <span class="badge bg-label-secondary ms-2">{{ $roleLabel }}</span>
+            <small class="text-muted d-block mt-1">{{ $cExpenses->count() }} {{ $cExpenses->count() === 1 ? 'expense' : 'expenses' }}</small>
           </div>
-          <span class="fw-bold">R {{ number_format($cTotal, 2) }}</span>
-        </div>
+          <span class="fw-bold finance-payee-total">R {{ number_format($cTotal, 2) }}</span>
+        </summary>
         <div class="card-body p-0">
           @if($cExpenses->count() > 0)
             <div class="table-responsive">
@@ -655,7 +708,7 @@
                         @if(!$expense->approved_at)
                           <form action="{{ route('admin.events.finances.expense.approve', $expense) }}" method="POST" class="d-inline" data-ajax="1">
                             @csrf
-                            <button type="submit" class="btn btn-icon btn-sm btn-outline-success" title="Approve">
+                            <button type="submit" class="btn btn-icon btn-sm btn-outline-success" title="Approve" aria-label="Approve expense">
                               <i class="ti ti-check"></i>
                             </button>
                           </form>
@@ -663,13 +716,14 @@
                         @if($expense->approved_at && !$expense->reimbursed_at)
                           <form action="{{ route('admin.events.finances.expense.reimburse', $expense) }}" method="POST" class="d-inline" data-ajax="1">
                             @csrf
-                            <button type="submit" class="btn btn-icon btn-sm btn-outline-info" title="Mark as reimbursed">
+                            <button type="submit" class="btn btn-icon btn-sm btn-outline-info" title="Mark as reimbursed" aria-label="Mark expense as reimbursed">
                               <i class="ti ti-coin"></i>
                             </button>
                           </form>
                         @endif
                         <button type="button"
                                 class="btn btn-icon btn-sm btn-outline-primary"
+                                aria-label="Edit expense" title="Edit expense"
                                 data-bs-toggle="modal"
                                 data-bs-target="#editExpenseModal{{ $expense->id }}">
                           <i class="ti ti-edit"></i>
@@ -678,7 +732,7 @@
                               method="POST" class="d-inline"
                               data-ajax="1" data-confirm="Delete this expense?">
                           @csrf @method('DELETE')
-                          <button class="btn btn-icon btn-sm btn-outline-danger"><i class="ti ti-trash"></i></button>
+                          <button class="btn btn-icon btn-sm btn-outline-danger" aria-label="Delete expense" title="Delete expense"><i class="ti ti-trash"></i></button>
                         </form>
                       </td>
                     </tr>
@@ -699,7 +753,7 @@
             </div>
           @endif
         </div>
-      </div>
+      </details>
     @endforeach
   @endif
 
@@ -757,13 +811,14 @@
                   </td>
                   <td class="text-center no-print">
                     <button class="btn btn-icon btn-sm btn-outline-primary"
+                            aria-label="Edit expense" title="Edit expense"
                             data-bs-toggle="modal" data-bs-target="#editExpenseModal{{ $expense->id }}">
                       <i class="ti ti-edit"></i>
                     </button>
                     <form action="{{ route('admin.events.finances.expense.destroy', $expense) }}" method="POST" class="d-inline"
                           data-ajax="1" data-confirm="Delete this expense?">
                       @csrf @method('DELETE')
-                      <button class="btn btn-icon btn-sm btn-outline-danger"><i class="ti ti-trash"></i></button>
+                      <button class="btn btn-icon btn-sm btn-outline-danger" aria-label="Delete expense" title="Delete expense"><i class="ti ti-trash"></i></button>
                     </form>
                   </td>
                 </tr>
@@ -778,6 +833,7 @@
   {{-- ══════════════════════════════════════════════════════════════════════
        SECTION 3 – RECONCILIATION / RECON
   ══════════════════════════════════════════════════════════════════════ --}}
+  @include('backend.event.partials.expense-reimbursements')
   <details class="card mb-4" id="finance-reconciliation" data-finance-details>
     <summary class="card-header">
       <h5 class="mb-0"><i class="ti ti-arrows-exchange me-2"></i>Registration reconciliation</h5>
@@ -895,70 +951,6 @@
   </details>
 {{-- Toast notification container (fixed, bottom-right) --}}
 <div class="toast-container position-fixed bottom-0 end-0 p-3" id="financeToastContainer" style="z-index:1200"></div>
-
-  {{-- ══════════════════════════════════════════════════════════════════════
-       SECTION 4 – CONVENOR PAYOUT BREAKDOWN
-  ══════════════════════════════════════════════════════════════════════ --}}
-  @if($recon->count())
-  <details class="card mb-4 no-print" data-finance-details>
-    <summary class="card-header d-flex justify-content-between align-items-center">
-      <h5 class="mb-0"><i class="ti ti-cash me-2"></i>Convenor Payout Breakdown</h5>
-      <small class="text-muted">Registration profit: <strong class="{{ $netProfit >= 0 ? 'text-success' : 'text-danger' }}">R {{ number_format(abs($netProfit), 2) }}</strong></small>
-    </summary>
-    <div class="card-body">
-      <div class="row g-3">
-        @foreach($recon as $row)
-          @php
-            $outstanding = $row['owed_back'] - $row['reimbursed'];
-          @endphp
-          <div class="col-md-6 col-xl-4">
-            <div class="border rounded p-3 h-100 bg-light">
-              <div class="d-flex justify-content-between align-items-start mb-2">
-                <div>
-                  <div class="fw-bold">{{ $row['convenor']->user->name ?? 'Unknown' }}</div>
-                  <span class="badge {{ $row['convenor']->isHoof() ? 'bg-warning text-dark' : 'bg-label-secondary' }} mt-1">
-                    {{ $row['convenor']->isHoof() ? 'Head Director' : ($row['convenor']->isHulp() ? 'Assist Director' : ucfirst($row['convenor']->role)) }}
-                  </span>
-                </div>
-                <span class="badge {{ $row['final_payout'] > 0 ? 'bg-primary' : 'bg-success' }} fs-6">
-                  R {{ number_format($row['final_payout'], 2) }}
-                </span>
-              </div>
-              <ul class="list-unstyled mb-0 small text-muted">
-                <li class="d-flex justify-content-between">
-                  <span>Expenses paid out:</span>
-                  <span class="fw-semibold text-body">R {{ number_format($row['total_paid'], 2) }}</span>
-                </li>
-                @if($row['reimbursed'] > 0)
-                <li class="d-flex justify-content-between">
-                  <span>Already reimbursed:</span>
-                  <span class="text-success">−R {{ number_format($row['reimbursed'], 2) }}</span>
-                </li>
-                @endif
-                @if($outstanding > 0)
-                <li class="d-flex justify-content-between">
-                  <span>Expenses still owed:</span>
-                  <span class="text-danger fw-semibold">R {{ number_format($outstanding, 2) }}</span>
-                </li>
-                @endif
-                @if($row['profit_share_pct'] > 0)
-                <li class="d-flex justify-content-between mt-1 pt-1 border-top">
-                  <span>Profit share ({{ number_format($row['profit_share_pct'], 1) }}% of R {{ number_format($netProfit, 2) }}):</span>
-                  <span class="text-info fw-semibold">R {{ number_format($row['profit_share_amount'], 2) }}</span>
-                </li>
-                @endif
-                <li class="d-flex justify-content-between mt-1 pt-1 border-top fw-bold text-body">
-                  <span>Total to pay:</span>
-                  <span class="text-primary">R {{ number_format($row['final_payout'], 2) }}</span>
-                </li>
-              </ul>
-            </div>
-          </div>
-        @endforeach
-      </div>
-    </div>
-  </details>
-  @endif
 
   {{-- ══════════════════════════════════════════════════════════════════════
        SECTION 5 – VENUE ENTRY SUMMARY
@@ -1251,7 +1243,7 @@
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="ti ti-map-pin me-2"></i>Venue Convenors – {{ $event->name }}</h5>
+        <h5 class="modal-title"><i class="ti ti-map-pin me-2"></i>Venue Convenors <span class="badge bg-label-secondary" id="vcCount">{{ $venueConvenors->count() }}</span></h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body p-0">
@@ -1293,22 +1285,22 @@
 
         {{-- Add new venue convenor --}}
         <div class="p-3">
-          <h6 class="mb-3"><i class="ti ti-plus me-1"></i>Add Venue Convenor</h6>
+          <h6 class="mb-3"><i class="ti ti-plus me-1"></i>Add venue convenors</h6>
           <form action="{{ route('admin.events.finances.venue-convenor.store', $event) }}" method="POST"
-                data-ajax="1" data-modal="manageVenueConvenorsModal" id="addVenueConvenorForm">
+                id="addVenueConvenorForm">
             @csrf
-            <div class="row g-2 align-items-end">
-              <div class="col">
-                <label class="form-label">Name <span class="text-danger">*</span></label>
-                <input type="text" name="name" class="form-control"
-                       placeholder="e.g. Ingrid Le Roux" required maxlength="150">
-                <small class="text-muted">The person hired to convene a venue on behalf of the directors.</small>
+            <div id="vcBatchErrors" class="alert alert-danger" role="alert" hidden></div>
+            <div id="vcBatchStatus" class="text-success mb-2" role="status" aria-live="polite"></div>
+            <div id="vcNameRows">
+              <div class="d-flex align-items-end gap-2 mb-2" data-vc-name-row>
+                <div class="flex-grow-1"><label class="form-label" for="vc-name-0">Name</label><input id="vc-name-0" type="text" name="names[]" class="form-control" placeholder="e.g. Ingrid Le Roux" required maxlength="150"></div>
+                <button type="button" class="btn btn-outline-secondary" data-vc-remove-name aria-label="Remove name" disabled>Remove</button>
               </div>
-              <div class="col-auto">
-                <button type="submit" class="btn btn-primary btn-sm">
-                  <i class="ti ti-plus me-1"></i>Add
-                </button>
-              </div>
+            </div>
+            <small class="text-muted d-block mb-3">Add the people hired to convene venues. Existing names will be kept once.</small>
+            <div class="d-flex flex-wrap gap-2">
+              <button type="button" id="vcAddAnother" class="btn btn-outline-primary">Add another</button>
+              <button type="submit" class="btn btn-primary">Add convenors</button>
             </div>
           </form>
         </div>
@@ -1421,9 +1413,21 @@
 @endsection
 
 @section('page-script')
+@include('backend.event.partials.clothing-settlement-script')
 <script>
 (function () {
   const root = document.querySelector('.finance-workspace');
+  const sectionLinks = root?.querySelectorAll('.finance-section-nav a') ?? [];
+  sectionLinks.forEach(link => link.addEventListener('click', () => {
+    sectionLinks.forEach(item => item.removeAttribute('aria-current'));
+    link.setAttribute('aria-current', 'location');
+    const section = root.querySelector(link.getAttribute('href'));
+    if (section?.matches('details')) section.open = true;
+    if (section?.id === 'finance-receipts') {
+      const receipts = document.getElementById('registrationTransactionsCollapse');
+      if (receipts && window.bootstrap?.Collapse) bootstrap.Collapse.getOrCreateInstance(receipts, {toggle: false}).show();
+    }
+  }));
   let printState;
   window.addEventListener('beforeprint', () => {
     if (printState || !root) return;
@@ -1453,10 +1457,12 @@ function showFinanceToast(message, type = 'success') {
   const icons   = { success: 'ti-circle-check', danger: 'ti-alert-circle', warning: 'ti-alert-triangle', info: 'ti-info-circle' };
   const icon    = icons[type] || 'ti-info-circle';
   const textCls = type === 'warning' ? 'text-dark' : 'text-white';
+  const safeMessage = document.createElement('span');
+  safeMessage.textContent = message;
   container.insertAdjacentHTML('beforeend',
     `<div id="${id}" class="toast align-items-center ${textCls} bg-${type} border-0" role="alert" aria-live="assertive">
        <div class="d-flex">
-         <div class="toast-body"><i class="ti ${icon} me-2"></i>${message}</div>
+         <div class="toast-body"><i class="ti ${icon} me-2"></i>${safeMessage.innerHTML}</div>
          <button type="button" class="btn-close ${textCls === 'text-white' ? 'btn-close-white' : ''} me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
        </div>
      </div>`);
@@ -1673,15 +1679,8 @@ $(document).on('click', '.vc-add-save-btn', function() {
   })
   .then(function(d) {
     var vc = d.venueConvenor;
-    var safeHtml = $('<span>').text(vc.name).html();
-
-    // Add option to every .vc-select on the page and select in the current one
-    $('.vc-select').each(function() {
-      $(this).append('<option value="' + safeHtml + '" data-vc-id="' + vc.id + '">' + safeHtml + '</option>');
-    });
-    $select.val(vc.name);
-
-    // Sync manage-modal table if open
+    vcSyncRecipientOptions(vc);
+    $select.val(vc.name).trigger('change');
     vcAddRowToModal(vc);
 
     showFinanceToast(d.message, 'success');
@@ -1731,74 +1730,82 @@ $(document).on('click', '.vc-remove-btn', function() {
 });
 
 /* ── Helper: add a new VC row to the manage-modal table ── */
+function vcSyncRecipientOptions(vc) {
+  document.querySelectorAll('.vc-select').forEach(select => {
+    let option = Array.from(select.options).find(item => item.dataset.vcId === String(vc.id) || item.value === vc.name);
+    if (!option) { option = new Option(vc.name, vc.name); select.add(option); }
+    option.dataset.vcId = String(vc.id);
+  });
+}
 function vcAddRowToModal(vc) {
-  var $emptyMsg = $('#vcEmptyMsg');
-  if ($emptyMsg.length) {
-    $emptyMsg.replaceWith(
-      '<table class="table table-sm mb-0" id="vcTable">' +
-        '<thead class="table-light"><tr><th>Name</th><th style="width:80px"></th></tr></thead>' +
-        '<tbody></tbody>' +
-      '</table>'
-    );
+  if (document.getElementById('vc-row-' + vc.id)) return;
+  const list = document.getElementById('venueConvenorList');
+  if (!list) return;
+  if (!document.getElementById('vcTable')) {
+    list.innerHTML = '<table class="table table-sm mb-0" id="vcTable"><thead class="table-light"><tr><th>Name</th><th style="width:80px"></th></tr></thead><tbody></tbody></table>';
   }
-  if (!$('#vcTable').length) return;
-  var destroyForm =
-    '<form method="POST" action="' + vc.destroy_url + '" class="d-inline" data-ajax="1"' +
-    ' data-confirm="Remove ' + $('<span>').text(vc.name).html() + ' from this event?">' +
-      '<input type="hidden" name="_token" value="{{ csrf_token() }}">' +
-      '<input type="hidden" name="_method" value="DELETE">' +
-      '<button class="btn btn-icon btn-sm btn-outline-danger" title="Remove"><i class="ti ti-trash"></i></button>' +
-    '</form>';
-  $('#vcTable tbody').append(
-    '<tr id="vc-row-' + vc.id + '">' +
-      '<td class="align-middle">' + $('<span>').text(vc.name).html() + '</td>' +
-      '<td class="text-end align-middle">' + destroyForm + '</td>' +
-    '</tr>'
-  );
+  const row = document.createElement('tr'); row.id = 'vc-row-' + vc.id;
+  const nameCell = document.createElement('td'); nameCell.className = 'align-middle'; nameCell.textContent = vc.name;
+  const actionCell = document.createElement('td'); actionCell.className = 'text-end align-middle';
+  const form = document.createElement('form'); form.method = 'POST'; form.action = vc.destroy_url; form.className = 'd-inline';
+  form.dataset.ajax = '1'; form.dataset.confirm = 'Remove ' + vc.name + ' from this event?';
+  const token = document.createElement('input'); token.type = 'hidden'; token.name = '_token'; token.value = _csrf;
+  const method = document.createElement('input'); method.type = 'hidden'; method.name = '_method'; method.value = 'DELETE';
+  const button = document.createElement('button'); button.type = 'submit'; button.className = 'btn btn-icon btn-sm btn-outline-danger'; button.title = 'Remove';
+  button.innerHTML = '<i class="ti ti-trash"></i>';
+  form.append(token, method, button); actionCell.append(form); row.append(nameCell, actionCell);
+  document.querySelector('#vcTable tbody').append(row);
+  document.getElementById('vcCount').textContent = document.querySelectorAll('#vcTable tbody tr').length;
 }
 
-/* ── Add via manage-modal form ── */
-$('#addVenueConvenorForm').on('submit', function(e) {
-  e.preventDefault();
-  var form = this;
-  var $btn = $(form).find('[type=submit]');
-  var $nameInput = $(form).find('[name=name]');
-  var name = $nameInput.val().trim();
-  if (!name) return;
-
-  $btn.prop('disabled', true);
-
-  var fd = new FormData(form);
-
-  fetch(form.action, {
-    method:  'POST',
-    body:    fd,
-    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
-  })
-  .then(function(r) {
-    return r.json().then(function(d) {
-      if (!r.ok) throw new Error(d.message || 'Error adding venue convenor.');
-      return d;
-    });
-  })
-  .then(function(d) {
-    var vc = d.venueConvenor;
-    var safeHtml = $('<span>').text(vc.name).html();
-
-    // Sync modal table
-    vcAddRowToModal(vc);
-
-    // Add option to every .vc-select on the page
-    $('.vc-select').each(function() {
-      $(this).append('<option value="' + safeHtml + '" data-vc-id="' + vc.id + '">' + safeHtml + '</option>');
-    });
-
-    showFinanceToast(d.message, 'success');
-    $nameInput.val('');
-  })
-  .catch(function(e) { showFinanceToast(e.message, 'danger'); })
-  .finally(function() { $btn.prop('disabled', false); });
-});
+(function () {
+  const form = document.getElementById('addVenueConvenorForm');
+  const list = document.getElementById('vcNameRows');
+  const add = document.getElementById('vcAddAnother');
+  const errors = document.getElementById('vcBatchErrors');
+  const status = document.getElementById('vcBatchStatus');
+  let next = 1;
+  let busy = false;
+  const refresh = () => {
+    list.querySelectorAll('[data-vc-remove-name]').forEach(button => button.disabled = busy || list.children.length === 1);
+    add.disabled = busy || list.children.length >= 50;
+  };
+  add.addEventListener('click', () => {
+    const row = list.firstElementChild.cloneNode(true);
+    const input = row.querySelector('input'); input.value = ''; input.id = 'vc-name-' + next++;
+    row.querySelector('label').htmlFor = input.id;
+    list.append(row); refresh(); input.focus();
+  });
+  list.addEventListener('click', event => {
+    const button = event.target.closest('[data-vc-remove-name]');
+    if(button && !busy && list.children.length > 1) { button.closest('[data-vc-name-row]').remove(); refresh(); }
+  });
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    event.stopPropagation();
+    if(busy) return;
+    busy = true; errors.hidden = true; errors.textContent = ''; status.textContent = '';
+    const body = new FormData(form);
+    const submit = form.querySelector('[type="submit"]'); submit.disabled = true;
+    list.querySelectorAll('input').forEach(input => input.readOnly = true); refresh();
+    try {
+      const response = await fetch(form.action, {method:'POST', body, headers:{'X-Requested-With':'XMLHttpRequest','Accept':'application/json'}});
+      const data = await response.json();
+      if(!response.ok) {
+        const messages = data.errors ? Object.values(data.errors).flat() : [data.message || 'Could not add convenors. Try again.'];
+        errors.textContent = messages.join(' '); errors.hidden = false; return;
+      }
+      (data.venueConvenors || [data.venueConvenor]).forEach(vc => { vcAddRowToModal(vc); vcSyncRecipientOptions(vc); });
+      status.textContent = data.message; showFinanceToast(data.message, 'success');
+      while(list.children.length > 1) list.lastElementChild.remove();
+      list.querySelector('input').value = '';
+    } catch (error) {
+      errors.textContent = 'Could not add convenors. Your names are still here; please try again.'; errors.hidden = false;
+    } finally {
+      busy = false; submit.disabled = false; list.querySelectorAll('input').forEach(input => input.readOnly = false); refresh();
+    }
+  });
+})();
 
 /* ═══════════════════════════════════════════════════════════════════════════
    EXPENSE TYPES CRUD (fully AJAX, no page reload)

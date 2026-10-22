@@ -19,6 +19,12 @@
 <div class="border rounded p-3 mb-3">
 <p><strong>R{{ $refund->refund_net }} · {{ ucfirst($refund->refund_method) }} · {{ ucfirst($refund->refund_status) }}</strong></p>
 <p>{{ $refund->reason }}</p>
+<p class="text-muted">Requested by {{ $refund->requested_by_name ?? $refund->requestedBy?->name ?? 'Not recorded' }} · {{ $refund->created_at?->format('d M Y H:i') }}<br>
+Completed by {{ $refund->completed_by_name ?? $refund->completedBy?->name ?? 'Not recorded' }}{{ $refund->refunded_at ? ' · '.$refund->refunded_at->format('d M Y H:i') : '' }}</p>
+@if($refund->refund_method === 'payfast' && $refund->refund_status === 'completed' && ! $refund->completed_by)
+<p class="small text-muted">PayFast completion is recorded; the person who completed it was not recorded. The requester above is the recorded initiator.</p>
+@endif
+@include('backend.clothing.partials.historical-refund-source')
 @if($refund->late_refund_note)
 <div class="alert alert-warning"><strong>Late refund — clothing payout requires reconciliation</strong><p class="mb-1">Potential payout adjustment: R{{ $refund->refund_net }}. If already paid to the region or supplier, reconcile that payout separately.</p><p class="mb-1">{{ $refund->late_refund_note }}</p><p class="mb-0">Status: {{ $refund->reconciliation_status }}</p></div>
 @if($refund->reconciliation_status === 'resolved')<p>Reconciled: {{ $refund->reconciliation_note }} · {{ $refund->reconciled_at?->format('d M Y H:i') }}</p>@elseif(auth()->user()->hasRole('super-user') && $refund->refund_status === 'completed')

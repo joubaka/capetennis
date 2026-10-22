@@ -9,6 +9,24 @@ class EventExpense extends Model
 {
     use HasFactory;
 
+    protected static function booted(): void
+    {
+        static::updating(function (self $expense) {
+            if ($expense->isDirty(['event_id', 'paid_by_convenor_id', 'expense_type', 'amount', 'quantity', 'unit_price', 'reimbursed_at', 'reimbursed_by'])) {
+                $expense->guardReimbursementHistory();
+            }
+        });
+        static::deleting(fn (self $expense) => $expense->guardReimbursementHistory());
+    }
+
+    private function guardReimbursementHistory(): void
+    {
+        $directorId = $this->getRawOriginal('paid_by_convenor_id');
+        if ($directorId && \App\Domain\Finance\Services\EventExpenseReimbursementService::recordedCents((int) $this->getRawOriginal('event_id'), (int) $directorId) > 0) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['expense' => 'This director has recorded reimbursements. Expense amounts, category and paying director cannot be changed or deleted.']);
+        }
+    }
+
     protected $fillable = [
         'event_id',
         'expense_type',
@@ -72,7 +90,7 @@ class EventExpense extends Model
     public function calculatedAmount(): float
     {
         if ($this->quantity !== null && $this->unit_price !== null) {
-            return (float) $this->quantity * (float) $this->unit_price;
+            return \App\Domain\Finance\Services\EventExpenseAmounts::lineTotal($this->quantity, $this->unit_price) / 100;
         }
 
         return (float) $this->amount;

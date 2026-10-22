@@ -42,7 +42,7 @@ class RefundRequestService
                 $deadline = $service->deadline($event, $locked);
                 $refund = $locked->refunds()->create([
                     'clothing_deadline_at' => $deadline,
-                    'event_id' => $event->id, 'payer_id' => $locked->user_id, 'requested_by' => $actor->id,
+                    'event_id' => $event->id, 'payer_id' => $locked->user_id, 'requested_by' => $actor->id, 'requested_by_name' => $actor->name,
                     'request_token' => $input['request_token'], 'request_fingerprint' => $fingerprint,
                     'refund_method' => $input['method'], 'refund_status' => 'pending',
                     'refund_gross' => sprintf('%.2f', $total / 100), 'refund_fee' => '0.00', 'refund_net' => sprintf('%.2f', $total / 100), 'reason' => trim($input['reason']),
@@ -55,7 +55,7 @@ class RefundRequestService
                 if ($input['method'] === 'wallet') {
                     $payer = User::lockForUpdate()->findOrFail($locked->user_id);
                     $wallet = $payer->wallet ?? $payer->wallet()->create([]);
-                    return app(\App\Domain\Refunds\Services\RefundExecutionService::class)->executeWalletRefund($refund, $wallet, $total / 100, 'clothing_refund', $refund->id, ['event_id' => $event->id, 'order_id' => $locked->id]);
+                    return app(\App\Domain\Refunds\Services\RefundExecutionService::class)->executeWalletRefund($refund, $wallet, $total / 100, 'clothing_refund', $refund->id, ['event_id' => $event->id, 'order_id' => $locked->id], ['completed_by' => $actor->id, 'completed_by_name' => $actor->name]);
                 }
                 return $refund;
             });

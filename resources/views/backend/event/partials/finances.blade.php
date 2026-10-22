@@ -2,11 +2,12 @@
 
 <hr class="my-4">
 
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
   <h4 class="mb-0">
-    <i class="ti ti-report-money me-2 text-warning"></i>Finances
+    <i class="ti ti-report-money me-2 text-warning"></i>Event income and expenses
   </h4>
-  <div class="d-flex gap-2 no-print">
+  <div class="d-flex flex-wrap gap-2 no-print">
+    @can('event-finance.manage', $event)<a class="btn btn-outline-primary btn-sm" href="{{ route('admin.events.expenses.edit', $event) }}">Edit expenses</a>@endcan
     <button onclick="window.print()" class="btn btn-outline-secondary btn-sm">
       <i class="ti ti-printer me-1"></i>Print / PDF
     </button>
@@ -618,6 +619,7 @@
 {{-- ══════════════════════════════════════════════════════════════════════
      SECTION 3 – RECONCILIATION
 ══════════════════════════════════════════════════════════════════════ --}}
+@include('backend.event.partials.expense-reimbursements')
 <div class="card mb-4">
   <div class="card-header">
     <h5 class="mb-0"><i class="ti ti-arrows-exchange me-2"></i>Registration reconciliation</h5>

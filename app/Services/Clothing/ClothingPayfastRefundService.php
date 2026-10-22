@@ -132,7 +132,9 @@ final class ClothingPayfastRefundService
                 return $locked;
             }
             app(ClothingRefundService::class)->recordLateNote($locked, $order, $actor, $lateNote);
-            $completed = app(RefundExecutionService::class)->executeBankRefund($locked, ['refund_method' => 'payfast']);
+            $completed = app(RefundExecutionService::class)->executeBankRefund($locked, [
+                'refund_method' => 'payfast', 'completed_by' => $actor->id, 'completed_by_name' => $actor->name,
+            ]);
             activity('refund')->performedOn($completed)->causedBy($actor)->withProperties([
                 'attempt_id' => $attempt->id, 'payer_id' => $locked->payer_id, 'order_id' => $order->id,
                 'amount' => $locked->refund_net, 'provider_dispatched' => true,
