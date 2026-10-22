@@ -62,6 +62,7 @@
                     <span class="text-nowrap flex-shrink-0 {{ $clothing['contribution_cents'] < 0 ? 'text-danger' : 'text-primary' }}">{{ $clothing['contribution_cents'] < 0 ? '−' : '+' }}R {{ number_format(abs($clothing['contribution_cents']) / 100, 2) }}</span>
                   </div>
                   <small class="d-block {{ $clothing['contribution_cents'] < 0 ? 'text-danger' : 'text-muted' }}">{{ $clothing['contribution_cents'] < 0 ? 'Proposed recovery against this payout' : ($clothing['contribution_cents'] > 0 ? 'Clothing still payable, after pending refund reserve' : 'No clothing amount added or recovered') }}</small>
+                  <a class="d-inline-block mt-1" href="{{ route('admin.events.finances', ['event' => $event->id, 'tab' => 'clothing']) }}#finance-clothing-region-{{ $clothing['region_id'] }}">View clothing breakdown<span class="visually-hidden"> for {{ $clothing['region_name'] }}</span></a>
                   @if($clothing['confirmed_recipient_link'])
                     <small class="d-block text-muted">Confirmed same-person account link · {{ $clothing['confirmed_recipient_link']->source_name }} · {{ $clothing['confirmed_recipient_link']->confirmed_at->format('d M Y') }}</small>
                   @endif

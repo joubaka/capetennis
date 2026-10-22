@@ -12,8 +12,44 @@
   const loaded = new Set([active]);
   let pending;
   let generation = 0;
+  let loadingTimer;
+  const loadingDialog = document.createElement('dialog');
+  loadingDialog.className = 'finance-loading-dialog no-print';
+  loadingDialog.setAttribute('aria-labelledby', 'finance-loading-title');
+  loadingDialog.setAttribute('aria-describedby', 'finance-loading-help');
+  const loadingSpinner = document.createElement('span');
+  loadingSpinner.className = 'spinner-border finance-loading-spinner';
+  loadingSpinner.setAttribute('aria-hidden', 'true');
+  const loadingTitle = document.createElement('h2');
+  loadingTitle.id = 'finance-loading-title';
+  const loadingHelp = document.createElement('p');
+  loadingHelp.id = 'finance-loading-help';
+  loadingHelp.textContent = 'Please wait while we load this section. Your current work is kept.';
+  const loadingCancel = document.createElement('button');
+  loadingCancel.type = 'button';
+  loadingCancel.className = 'btn btn-outline-secondary';
+  loadingCancel.textContent = 'Cancel loading';
+  loadingCancel.autofocus = true;
+  loadingDialog.append(loadingSpinner, loadingTitle, loadingHelp, loadingCancel);
+  root.append(loadingDialog);
+  function cancelLoading(message = 'Loading cancelled. Your current section is still here.') {
+    ++generation;
+    pending?.abort();
+    pending = undefined;
+    clearLoading(tabFor(active));
+    address(active, false);
+    feedback.textContent = message;
+  }
+  loadingCancel.addEventListener('click', () => cancelLoading());
+  loadingDialog.addEventListener('cancel', event => {
+    event.preventDefault();
+    cancelLoading();
+  });
 
-  function clearLoading() {
+  function clearLoading(focusTarget) {
+    clearTimeout(loadingTimer);
+    if (loadingDialog.open) loadingDialog.close();
+    if (focusTarget?.isConnected) focusTarget.focus({preventScroll: true});
     root.querySelectorAll('[aria-busy="true"]').forEach(element => element.removeAttribute('aria-busy'));
     nav.querySelectorAll('[data-finance-loading-icon]').forEach(icon => icon.remove());
   }
@@ -26,22 +62,11 @@
     tabSpinner.setAttribute('aria-hidden', 'true');
     tab.append(tabSpinner);
 
-    const status = document.createElement('div');
-    status.className = 'finance-loading-status d-flex align-items-center gap-3 mb-3';
-    const spinner = document.createElement('span');
-    spinner.className = 'spinner-border finance-loading-spinner flex-shrink-0';
-    spinner.setAttribute('aria-hidden', 'true');
-    const copy = document.createElement('div');
-    const title = document.createElement('strong');
-    title.className = 'd-block';
-    title.textContent = 'Loading ' + name.toLowerCase() + '…';
-    const helper = document.createElement('small');
-    helper.className = 'd-block text-muted mt-1';
-    helper.textContent = 'Your current section stays available while we load this one.';
-    copy.append(title, helper);
-    status.append(spinner, copy);
-    feedback.replaceChildren(status);
+    loadingTitle.textContent = 'Loading ' + name.toLowerCase() + '…';
+    loadingDialog.showModal();
+    loadingTimer = setTimeout(() => cancelLoading('Loading timed out. Your current section is still here. Select the tab to try again.'), 45000);
   }
+
   function panel(key) { return document.getElementById('finance-panel-' + key); }
   function tabFor(key) { return tabs.find(tab => tab.dataset.financeTab === key); }
   function select(key) {
@@ -119,7 +144,7 @@
       feedback.replaceChildren(message);
     } finally {
       if (current === generation) {
-        clearLoading();
+        clearLoading(tabFor(active));
         pending = undefined;
       }
     }

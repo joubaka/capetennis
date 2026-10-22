@@ -34,42 +34,26 @@ class SuperAdminFinanceController extends Controller
 
     public function index()
     {
-        $allEvents = Event::with(['incomeItems', 'convenors.user'])
-            ->orderByDesc('start_date')
-            ->get();
-
-        // ── Financial Year helpers ────────────────────────────────────────────
-        $availableFYs = $allEvents
-            ->filter(fn($e) => $e->start_date)
-            ->map(fn($e) => (string) $e->start_date->year)
-            ->unique()
-            ->sort()
-            ->values();
-
+        $availableFYs = Event::whereNotNull('start_date')
+            ->selectRaw('YEAR(start_date) as financial_year')->distinct()->orderBy('financial_year')
+            ->pluck('financial_year')->map(fn ($year) => (string) $year);
         $currentFY = request('fy');
         if (! $availableFYs->contains($currentFY)) {
             $currentFY = $availableFYs->last() ?? (string) now()->year;
         }
+        $eventsForFY = Event::whereYear('start_date', $currentFY)
+            ->orderByDesc('start_date')->get();
 
-        $eventsForFY = $allEvents->filter(
-            fn($e) => $e->start_date && (string) $e->start_date->year === $currentFY
-        );
-
-        // ── Build per-event ledger summaries via shared service ───────────────
         $financeByEvent = $eventsForFY->map(
             fn($event) => $this->ledger->buildFySummaryRow($event)
         );
 
-        $financeSummary = [
-            'gross_payments'   => round($financeByEvent->sum('gross_payments'), 2),
-            'completed_refunds' => round($financeByEvent->sum('completed_refunds'), 2),
-            'pending_refunds'  => round($financeByEvent->sum('pending_refunds'), 2),
-            'total_gross'      => round($financeByEvent->sum('gross_payments'), 2),
-            'total_income'     => round($financeByEvent->sum('total_income'), 2),
-            'total_entries'    => $financeByEvent->sum('total_entries'),
-            'total_paid_out'   => round($financeByEvent->sum('total_paid_out'), 2),
-            'balance'          => round($financeByEvent->sum('balance'), 2),
-        ];
+        $financeSummary = [];
+        foreach (['registration_received', 'registration_net', 'registration_paid_out', 'registration_balance',
+            'clothing_received', 'clothing_net', 'clothing_paid_out', 'clothing_recoveries', 'clothing_offsets', 'clothing_balance',
+            'total_entries'] as $key) {
+            $financeSummary[$key] = round($financeByEvent->sum($key), 2);
+        }
 
         return view('backend.superadmin.finances', compact(
             'financeByEvent',

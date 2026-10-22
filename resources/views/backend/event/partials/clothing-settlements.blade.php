@@ -56,6 +56,47 @@
     </table>
   </div>
 
+  @php($projectedClothingRegions = ($convenorPayoutProjection['cards'] ?? collect())->flatMap(fn ($card) => $card['regions'])->keyBy('region_id'))
+  <div class="px-3 py-3">
+    @foreach($visibleClothingRegions as $region)
+      @php($regionProjection = $projectedClothingRegions->get($region['scope']->region_id))
+      <details class="border rounded mb-2" id="finance-clothing-region-{{ $region['scope']->region_id }}" data-finance-details>
+        <summary class="p-3 fw-semibold">{{ $region['scope']->region?->region_name ?? 'Region not recorded' }} — clothing breakdown</summary>
+        <div class="px-3 pb-3">
+          <dl class="row mb-2 small">
+            <dt class="col-8">Net clothing receipts after completed refunds</dt><dd class="col-4 text-end">R {{ number_format($region['net_cents'] / 100, 2) }}</dd>
+            <dt class="col-8">Less payments already made</dt><dd class="col-4 text-end">−R {{ number_format($region['payout_cents'] / 100, 2) }}</dd>
+            <dt class="col-8">Plus money recovered</dt><dd class="col-4 text-end">+R {{ number_format($region['recovery_cents'] / 100, 2) }}</dd>
+            <dt class="col-8">Recorded agreed offsets</dt><dd class="col-4 text-end">{{ $region['offset_cents'] < 0 ? '−' : '+' }}R {{ number_format(abs($region['offset_cents']) / 100, 2) }}</dd>
+            <dt class="col-8 border-top pt-2">{{ $region['balance_cents'] < 0 ? 'Clothing balance to recover' : 'Clothing balance still payable' }}</dt><dd class="col-4 border-top pt-2 text-end fw-semibold">R {{ number_format(abs($region['balance_cents']) / 100, 2) }}</dd>
+            <dt class="col-8">Pending refunds reserved</dt><dd class="col-4 text-end">R {{ number_format($region['pending_cents'] / 100, 2) }}</dd>
+          </dl>
+          @if($regionProjection)
+            <div class="border-top pt-2 fw-semibold d-flex justify-content-between gap-2 {{ $regionProjection['contribution_cents'] < 0 ? 'text-danger' : 'text-primary' }}">
+              <span>{{ $regionProjection['contribution_cents'] < 0 ? 'Proposed deduction from convenor payout' : 'Proposed addition to convenor payout' }}</span>
+              <span class="text-nowrap">{{ $regionProjection['contribution_cents'] < 0 ? '−' : '+' }}R {{ number_format(abs($regionProjection['contribution_cents']) / 100, 2) }}</span>
+            </div>
+            <p class="small text-muted mt-1">This is the same clothing adjustment shown in the Convenor Payout Breakdown. Pending refunds reduce available payments; completed refunds are already included in net receipts above.</p>
+          @elseif(isset($convenorPayoutProjection))
+            <p class="small text-muted">This regional balance has no adjustment assigned to a director payout.</p>
+          @endif
+          <h6 class="mt-3">Recorded payments and adjustments</h6>
+          <ul class="list-unstyled small">
+            @forelse($region['entries']->sortBy('occurred_at') as $entry)
+              <li class="mb-2">{{ $entry->occurred_at->format('d M Y') }} · {{ match($entry->kind) { 'payout' => 'Payment', 'recovery' => 'Recovery', 'offset_in' => 'Offset received', 'offset_out' => 'Offset deducted' } }} · <strong>R {{ $entry->amount }}</strong> · {{ $entry->recipient_name }}<span class="d-block text-muted">{{ $entry->reference }}</span></li>
+            @empty<li class="text-muted">No payments or adjustments recorded for this region.</li>@endforelse
+          </ul>
+          <h6 class="mt-3">Clothing refunds</h6>
+          <ul class="list-unstyled small mb-0">
+            @forelse($region['refunds'] as $refund)
+              <li class="mb-2"><a href="{{ route('backend.clothing.refunds.show', [$event, $refund->order]) }}">Order #{{ $refund->clothing_order_id }}</a> · <strong>R {{ $refund->refund_net }}</strong> · {{ ucfirst($refund->refund_status) }}<span class="d-block text-muted">{{ $refund->reason }}{{ $refund->refunded_at ? ' · '.$refund->refunded_at->format('d M Y') : '' }}</span></li>
+            @empty<li class="text-muted">No refunds recorded for this region.</li>@endforelse
+          </ul>
+        </div>
+      </details>
+    @endforeach
+  </div>
+
   @if(auth()->user()->hasRole('super-user') && $recordableClothingRegions->isNotEmpty())
     <details class="p-3 border-top no-print" data-finance-details @if($errors->any()) open @endif>
       <summary class="fw-semibold">Record clothing payment</summary>

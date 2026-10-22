@@ -1,8 +1,15 @@
 {{-- Shared expense form fields for add/edit expense modals --}}
+@php
+  $expenseDetailsOpen = filled(old('quantity', $expense?->quantity))
+    || filled(old('unit_price', $expense?->unit_price))
+    || filled(old('budget_amount', $expense?->budget_amount))
+    || filled($expense?->receipt_path)
+    || $errors->hasAny(['quantity', 'unit_price', 'budget_amount', 'receipt']);
+@endphp
 <div class="row g-3">
 
   <div class="col-md-6">
-    <label class="form-label">Expense Type <span class="text-danger">*</span></label>
+    <label class="form-label">Type <span class="text-danger">*</span></label>
     <select name="expense_type" class="form-select" required>
       <option value="">Select type...</option>
       @foreach($expenseTypes as $key => $label)
@@ -14,11 +21,20 @@
   </div>
 
   <div class="col-md-6">
+    <label class="form-label">Amount (R) <span class="text-danger">*</span></label>
+    <input type="number" name="amount" class="form-control"
+           step="0.01" min="0" required
+           value="{{ old('amount', $expense?->amount) }}"
+           placeholder="0.00">
+    <small class="text-muted">Enter the total, or calculate it using Optional details.</small>
+  </div>
+
+  <div class="col-md-6">
     @if(!empty($multiPaidBy))
-      <label class="form-label">Paid by (Event Director(s))</label>
+      <label class="form-label">Paid by</label>
       <select name="paid_by_convenor_ids[]" id="expensePaidBySelect" class="form-select" multiple>
         @foreach($convenors as $c)
-          <option value="{{ $c->id }}">
+          <option value="{{ $c->id }}" @selected(in_array((string) $c->id, array_map('strval', (array) old('paid_by_convenor_ids', [])), true))>
             {{ $c->user->name ?? 'Unknown' }}
             ({{ $c->isHoof() ? 'Head' : ($c->isHulp() ? 'Assist' : ucfirst($c->role)) }})
           </option>
@@ -26,7 +42,7 @@
       </select>
       <small class="text-muted">Select one or more directors. One expense record will be created per person.</small>
     @else
-      <label class="form-label">Paid by (Event Director)</label>
+      <label class="form-label">Paid by</label>
       <select name="paid_by_convenor_id" class="form-select">
         <option value="">— No event director assigned —</option>
         @foreach($convenors as $c)
@@ -38,6 +54,12 @@
         @endforeach
       </select>
     @endif
+  </div>
+
+  <div class="col-md-6">
+    <label class="form-label">Date</label>
+    <input type="date" name="date" class="form-control"
+           value="{{ old('date', $expense?->date?->format('Y-m-d') ?? now()->format('Y-m-d')) }}">
   </div>
 
   <div class="col-md-6 vc-col-wrapper{{ old('recipient_name', $expense?->recipient_name) ? '' : ' d-none' }}">
@@ -78,7 +100,7 @@
     </small>
   </div>
 
-  <div class="col-md-6">
+  <div class="col-12">
     <label class="form-label">Description</label>
     <input type="text" name="description" class="form-control"
            value="{{ old('description', $expense?->description) }}"
@@ -88,55 +110,47 @@
     @endif
   </div>
 
-  <div class="col-md-4">
-    <label class="form-label">Quantity</label>
-    <input type="number" name="quantity" class="form-control"
-           step="0.01" min="0"
-           value="{{ old('quantity', $expense?->quantity) }}"
-           placeholder="e.g. 96">
-  </div>
-
-  <div class="col-md-4">
-    <label class="form-label">Unit Price (R)</label>
-    <input type="number" name="unit_price" class="form-control"
-           step="0.01" min="0"
-           value="{{ old('unit_price', $expense?->unit_price) }}"
-           placeholder="e.g. 100.00">
-  </div>
-
-  <div class="col-md-4">
-    <label class="form-label">Amount (R) <span class="text-danger">*</span></label>
-    <input type="number" name="amount" class="form-control"
-           step="0.01" min="0" required
-           value="{{ old('amount', $expense?->amount) }}"
-           placeholder="0.00">
-    <small class="text-muted">Auto-calculated when Quantity × Price is filled in.</small>
-  </div>
-
-  <div class="col-md-6">
-    <label class="form-label">Budget Amount (R)</label>
-    <input type="number" name="budget_amount" class="form-control"
-           step="0.01" min="0"
-           value="{{ old('budget_amount', $expense?->budget_amount) }}"
-           placeholder="Estimated budget">
-  </div>
-
-  <div class="col-md-6">
-    <label class="form-label">Date</label>
-    <input type="date" name="date" class="form-control"
-           value="{{ old('date', $expense?->date?->format('Y-m-d') ?? now()->format('Y-m-d')) }}">
-  </div>
-
   <div class="col-12">
-    <label class="form-label">Receipt / Voucher</label>
-    <input type="file" name="receipt" class="form-control" accept=".jpg,.jpeg,.png,.pdf">
-    @if($expense?->receipt_path)
-      <small class="text-muted">
-        Current: <a href="{{ asset('storage/'.$expense->receipt_path) }}" target="_blank">
-          <i class="ti ti-paperclip"></i> View receipt
-        </a>
-      </small>
-    @endif
+    <details class="border rounded" data-expense-optional @if($expenseDetailsOpen) open @endif>
+      <summary class="p-3 fw-semibold">Optional details <small class="fw-normal text-muted">— quantity, unit price, budget or receipt</small></summary>
+      <div class="row g-3 px-3 pb-3">
+        <div class="col-md-4">
+          <label class="form-label">Quantity</label>
+          <input type="number" name="quantity" class="form-control"
+                 step="0.01" min="0"
+                 value="{{ old('quantity', $expense?->quantity) }}"
+                 placeholder="e.g. 96">
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Unit Price (R)</label>
+          <input type="number" name="unit_price" class="form-control"
+                 step="0.01" min="0"
+                 value="{{ old('unit_price', $expense?->unit_price) }}"
+                 placeholder="e.g. 100.00">
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Budget Amount (R)</label>
+          <input type="number" name="budget_amount" class="form-control"
+                 step="0.01" min="0"
+                 value="{{ old('budget_amount', $expense?->budget_amount) }}"
+                 placeholder="Estimated budget">
+        </div>
+
+        <div class="col-12">
+          <label class="form-label">Receipt / Voucher</label>
+          <input type="file" name="receipt" class="form-control" accept=".jpg,.jpeg,.png,.pdf">
+          @if($expense?->receipt_path)
+            <small class="text-muted">
+              Current: <a href="{{ asset('storage/'.$expense->receipt_path) }}" target="_blank">
+                <i class="ti ti-paperclip"></i> View receipt
+              </a>
+            </small>
+          @endif
+        </div>
+      </div>
+    </details>
   </div>
 
 </div>

@@ -103,7 +103,7 @@ class ConvenorPayoutProjectionTest extends TestCase
 
     private function html(array $projection, Collection $recon, float $profit = 50065.93): string
     {
-        return view('backend.event.partials.convenor-payout-breakdown', ['recon' => $recon, 'netProfit' => $profit, 'convenorPayoutProjection' => $projection])->render();
+        return view('backend.event.partials.convenor-payout-breakdown', ['event' => $this->event, 'recon' => $recon, 'netProfit' => $profit, 'convenorPayoutProjection' => $projection])->render();
     }
 
     public function test_exact_user_match_deducts_current_clothing_recovery_and_keeps_different_regional_account_separate(): void
@@ -138,6 +138,20 @@ class ConvenorPayoutProjectionTest extends TestCase
         $this->assertStringContainsString('After recorded payout', $html);
         $this->assertStringContainsString('Original payout difference: R 0.32', $html);
         $this->assertStringContainsString('Regional clothing kept separate', $html);
+        $url = route('admin.events.finances', ['event' => $this->event->id, 'tab' => 'clothing']).'#finance-clothing-region-'.$west->region_id;
+        $this->assertStringContainsString(e($url), $html);
+        $this->assertStringContainsString('View clothing breakdown', $html);
+        $detail = $this->actingAs($this->actor)->get(route('admin.events.finances', ['event' => $this->event->id, 'tab' => 'clothing']))
+            ->assertOk()->assertSee('finance-clothing-region-'.$west->region_id)->assertSee('Proposed deduction from convenor payout')->assertSee('395.32');
+        $regionDetail = (new \DOMDocument);
+        @$regionDetail->loadHTML($detail->getContent());
+        $target = $regionDetail->getElementById('finance-clothing-region-'.$west->region_id);
+        $this->assertNotNull($target);
+        $this->assertStringContainsString('395.32', $target->textContent);
+        $this->assertStringContainsString('1,000.32', $target->textContent);
+        $this->assertStringContainsString('605.00', $target->textContent);
+        $this->assertStringNotContainsString('QA Other Region', $target->textContent);
+
     }
 
     public function test_multiple_regions_net_current_balances_and_reserve_pending_without_treating_it_as_completed_debt(): void

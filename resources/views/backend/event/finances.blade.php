@@ -60,8 +60,12 @@
     .finance-section-nav a:focus-visible { outline: 3px solid #14877b; outline-offset: 2px; }
     .finance-tab-panel[hidden] { display: none !important; }
     .finance-tab-panel[aria-busy="true"] { opacity: .6; }
-    .finance-loading-status { padding: 1rem 1.25rem; border: 1px solid #cfe4df; border-radius: .75rem; background: #f2f8f6; color: #105f57; }
-    .finance-loading-status > .spinner-border { width: 1.75rem; height: 1.75rem; border-width: .2rem; }
+    .finance-loading-dialog { width: min(32rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); padding: clamp(1.5rem, 5vw, 3rem); border: 0; border-radius: 1.25rem; background: #fff; color: #183b37; text-align: center; box-shadow: 0 1.5rem 5rem #102c3d55; }
+    .finance-loading-dialog::backdrop { background: #102c3db3; backdrop-filter: blur(3px); }
+    .finance-loading-dialog > .spinner-border { display: block; width: 4.5rem; height: 4.5rem; border-width: .4rem; margin: 0 auto 1.5rem; color: #14877b; }
+    .finance-loading-dialog h2 { margin-bottom: .75rem; font-size: clamp(1.5rem, 4vw, 2rem); font-weight: 700; color: inherit; }
+    .finance-loading-dialog p { margin-bottom: 1.5rem; color: #526b67; }
+    .finance-loading-dialog .btn { min-height: 44px; }
     .finance-section-nav a[aria-busy="true"] { background: #f2f8f6; color: #105f57; }
     @media (prefers-reduced-motion: reduce) {
       .finance-loading-spinner { animation: none !important; }
@@ -1444,7 +1448,7 @@
 
 @section('page-script')
 @include('backend.event.partials.clothing-settlement-script')
-<script src="{{ asset('assets/js/event-finance-tabs.js') }}"></script>
+<script src="{{ asset('assets/js/event-finance-tabs.js') }}?v={{ filemtime(public_path('assets/js/event-finance-tabs.js')) }}"></script>
 
 <script>
 'use strict';
@@ -1530,6 +1534,10 @@ function submitFinanceForm(form) {
       if (btn.dataset.origHtml) btn.innerHTML = btn.dataset.origHtml;
     });
     if (err.errors) {
+      if (['quantity', 'unit_price', 'budget_amount', 'receipt'].some(field => Object.hasOwn(err.errors, field))) {
+        const optional = form.querySelector('[data-expense-optional]');
+        if (optional) optional.open = true;
+      }
       const msgs = Object.values(err.errors).flat().join(' | ');
       showFinanceToast(msgs, 'danger');
     } else {
@@ -1537,6 +1545,12 @@ function submitFinanceForm(form) {
     }
   });
 }
+
+// Reveal optional expense fields before the browser focuses an invalid input.
+document.addEventListener('invalid', event => {
+  const optional = event.target.closest('[data-expense-optional]');
+  if (optional) optional.open = true;
+}, true);
 
 /* ─── Auto-calc amount from quantity × unit_price ─── */
 document.addEventListener('input', event => {

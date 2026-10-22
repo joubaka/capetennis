@@ -99,12 +99,30 @@ class FinancialLedgerService
         $payoutRows      = $this->buildPayoutRows($event);
         $totals          = $this->buildTotals($paymentRows, $refundRows, $payoutRows);
 
+        // Preserve recorded settlements even if a region is removed from event setup.
+        // Recoveries restore funds, rather than creating clothing sales or revenue.
+        $settlements = \App\Models\RegionalClothingSettlement::where('event_id', $event->id)
+            ->selectRaw('kind, SUM(amount) as amount')->groupBy('kind')->pluck('amount', 'kind');
+        $clothingPaidOut = round((float) $settlements->get('payout', 0), 2);
+        $clothingRecoveries = round((float) $settlements->get('recovery', 0), 2);
+        $clothingOffsets = round((float) $settlements->get('offset_in', 0) - (float) $settlements->get('offset_out', 0), 2);
+
         $entryRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee']);
         $recognizedRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee', 'clothing_payment']);
         $totalEntries = $entryRows->sum(fn($r) => $r->entryCount ?? 1);
 
         return [
             'event'            => $event,
+            'registration_received' => $totals['registration_received'],
+            'registration_net' => $totals['registration_net'],
+            'registration_paid_out' => $totals['total_paid_out'],
+            'registration_balance' => $totals['registration_balance'],
+            'clothing_received' => $totals['clothing_received'],
+            'clothing_net' => $totals['clothing_net'],
+            'clothing_paid_out' => $clothingPaidOut,
+            'clothing_recoveries' => $clothingRecoveries,
+            'clothing_offsets' => $clothingOffsets,
+            'clothing_balance' => round($totals['clothing_net'] - $clothingPaidOut + $clothingRecoveries + $clothingOffsets, 2),
             'gross_payments'   => $totals['gross_payments'],
             'completed_refunds' => $totals['completed_refunds'],
             'pending_refunds'  => $totals['pending_refunds'],
