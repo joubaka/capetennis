@@ -122,6 +122,12 @@ class SiteSetting extends Model
         $flatFee    = (float) static::get('payfast_fee_flat', 2.00);
         $vatRate    = (float) static::get('payfast_vat_rate', 14);
 
+        return static::calculatePayfastFeeWithRates($amount, $percentage, $flatFee, $vatRate);
+    }
+
+    /** Shared per-receipt rounding for fresh, request-local reporting snapshots. */
+    public static function calculatePayfastFeeWithRates(float $amount, float $percentage, float $flatFee, float $vatRate): float
+    {
         return round((($amount * $percentage / 100) + $flatFee) * (1 + $vatRate / 100), 2);
     }
 

@@ -94,9 +94,10 @@ class FinancialLedgerService
     public function buildFySummaryRow(Event $event): array
     {
         $feePerEntry     = (float) $event->cape_tennis_fee;
-        $paymentRows     = $this->buildPaymentRows($event, $feePerEntry);
+        $paymentRows     = $this->buildPaymentRows($event, $feePerEntry, summaryOnly: true);
         $refundRows      = $this->buildRefundRows($event, $feePerEntry);
-        $payoutRows      = $this->buildPayoutRows($event);
+        $payoutRows      = EventPayout::where('event_id', $event->id)->get(['amount'])
+            ->map(fn ($payout) => (object) ['net' => -(float) $payout->amount]);
         $totals          = $this->buildTotals($paymentRows, $refundRows, $payoutRows);
 
         // Preserve recorded settlements even if a region is removed from event setup.
@@ -139,7 +140,7 @@ class FinancialLedgerService
     // Payment rows
     // ─────────────────────────────────────────────────────────────────────────
 
-    public function buildPaymentRows(Event $event, float $feePerEntry): Collection
+    public function buildPaymentRows(Event $event, float $feePerEntry, bool $summaryOnly = false): Collection
     {
         // ── PayFast + Hybrid transactions ─────────────────────────────────
         $rawTransactions = Transaction::with([
@@ -155,17 +156,19 @@ class FinancialLedgerService
             ->orderByDesc('created_at')
             ->get();
 
-        $pfRows = $rawTransactions->map(fn($tx) => $this->mapPayfastRow($tx, $feePerEntry));
+        $context = $summaryOnly && $rawTransactions->isNotEmpty()
+            ? $this->summaryReceiptContext($event, $rawTransactions) : null;
+        $pfRows = $rawTransactions->map(fn ($tx) => $this->mapPayfastRow($tx, $feePerEntry, $context));
 
         // ── Wallet-only individual orders (no PayFast tx at all) ──────────
-        $walletOnlyRows = $this->buildWalletOnlyRows($event, $feePerEntry);
+        $walletOnlyRows = $this->buildWalletOnlyRows($event, $feePerEntry, $summaryOnly);
 
         // ── Wallet-only team orders (no PayFast tx at all) ─────────────────
-        $teamWalletOnlyRows = $this->buildTeamWalletOnlyRows($event, $feePerEntry);
+        $teamWalletOnlyRows = $this->buildTeamWalletOnlyRows($event, $feePerEntry, $summaryOnly);
 
         // Clothing receipts belong to the event ledger, but they are not
         // registration entries and carry no Cape Tennis entry fee.
-        $clothingRows = $this->buildClothingRows($event);
+        $clothingRows = $this->buildClothingRows($event, $summaryOnly);
 
         return collect()
             ->merge($pfRows)
@@ -506,9 +509,9 @@ class FinancialLedgerService
     // Internals
     // ─────────────────────────────────────────────────────────────────────────
 
-    private function buildClothingRows(Event $event): Collection
+    private function buildClothingRows(Event $event, bool $summaryOnly = false): Collection
     {
-        return ClothingOrder::with([
+        return ClothingOrder::with($summaryOnly ? [] : [
             'user',
             'player',
             'team.regions',
@@ -521,12 +524,16 @@ class FinancialLedgerService
             ->where('status', 'completed')
             ->orderByDesc('paid_at')
             ->get()
-            ->map(function (ClothingOrder $order) {
+            ->map(function (ClothingOrder $order) use ($summaryOnly) {
                 // amount_paid was introduced after legacy paid orders existed.
                 // Their snapshotted total is the defensible received fallback.
                 $gross = round((float) ($order->amount_paid ?? $order->total), 2);
                 $fee = -abs(round((float) $order->payfast_fee, 2));
                 $net = round($gross + $fee, 2);
+                if ($summaryOnly) {
+                    return (object) ['type' => 'clothing_payment', 'gross' => $gross, 'fee' => $fee,
+                        'capeFee' => 0.0, 'net' => $net, 'entryCount' => 0];
+                }
                 $playerName = trim(($order->player?->name ?? '') . ' ' . ($order->player?->surname ?? '')) ?: '—';
                 $teamName = $order->team?->name ?? '—';
                 $regionName = $order->team?->regions?->region_name ?? '—';
@@ -579,27 +586,72 @@ class FinancialLedgerService
             });
     }
 
-    private function mapPayfastRow(Transaction $tx, float $feePerEntry): object
+    /** Fresh lookups for this event build only; no persistent financial cache. */
+    private function summaryReceiptContext(Event $event, Collection $transactions): array
+    {
+        $individualIds = $transactions->filter(fn ($tx) => blank($tx->custom_str5))->pluck('custom_int5')->filter()->unique();
+        $teamIds = $transactions->where('custom_str5', 'TeamOrder')->pluck('custom_int5')->filter()->unique();
+        $individualOrders = RegistrationOrder::with(['items.player', 'items.category_event.category'])
+            ->whereIn('id', $individualIds)
+            ->whereHas('items.category_event', fn ($query) => $query->where('event_id', $event->id))
+            ->whereDoesntHave('items.category_event', fn ($query) => $query->where('event_id', '!=', $event->id))
+            ->whereDoesntHave('items', fn ($query) => $query->whereDoesntHave('category_event'))
+            ->get()->keyBy('id');
+        $teamOrders = TeamPaymentOrder::with(['player', 'beneficiary', 'team.category.category'])
+            ->whereIn('id', $teamIds)->where('event_id', $event->id)->get()->keyBy('id');
+        // Reconciliation intentionally has broader eligibility than order metadata:
+        // keep the original service's audit checks for cancelled unpaid candidates.
+        $reconciliationCandidates = RegistrationOrder::whereIn('id', $individualIds)
+            ->where('status', 'cancelled')->where('pay_status', false)
+            ->whereHas('items.category_event', fn ($query) => $query->where('event_id', $event->id))
+            ->get(['id'])->keyBy('id');
+
+        return [
+            'individual_orders' => $individualOrders,
+            'team_orders' => $teamOrders,
+            'participations' => \App\Models\TrialParticipation::where('event_id', $event->id)
+                ->whereIn('order_id', $teamIds)->get()->keyBy('order_id'),
+            'reconciliation_candidates' => $reconciliationCandidates,
+            'fee_rates' => [SiteSetting::getPayfastFeePercentage(), (float) SiteSetting::get('payfast_fee_flat', 2.00),
+                (float) SiteSetting::get('payfast_vat_rate', 14)],
+        ];
+    }
+
+    private function mapPayfastRow(Transaction $tx, float $feePerEntry, ?array $context = null): object
     {
         // PayFast's order number is shared by independent order tables. Resolve
         // its type, payer and event before using any wallet or entry metadata.
-        $teamOrder = $tx->custom_str5 === 'TeamOrder'
-            ? TeamPaymentOrder::with(['player', 'beneficiary', 'team.category.category'])
-                ->whereKey($tx->custom_int5)->where('event_id', $tx->event_id)
-                ->where('user_id', $tx->custom_int4)->first()
-            : null;
-        $individualOrder = blank($tx->custom_str5)
-            ? RegistrationOrder::with(['items.player', 'items.category_event.category'])
-                ->whereKey($tx->custom_int5)->where('user_id', $tx->custom_int4)
-                ->whereHas('items.category_event', fn ($query) => $query->where('event_id', $tx->event_id))
-                ->whereDoesntHave('items.category_event', fn ($query) => $query->where('event_id', '!=', $tx->event_id))
-                ->whereDoesntHave('items', fn ($query) => $query->whereDoesntHave('category_event'))
-                ->first()
-            : null;
+        if ($context !== null) {
+            $teamOrder = $tx->custom_str5 === 'TeamOrder' ? $context['team_orders']->get($tx->custom_int5) : null;
+            if ($teamOrder && (string) $teamOrder->user_id !== (string) $tx->custom_int4) {
+                $teamOrder = null;
+            }
+            $individualOrder = blank($tx->custom_str5) ? $context['individual_orders']->get($tx->custom_int5) : null;
+            if ($individualOrder && (string) $individualOrder->user_id !== (string) $tx->custom_int4) {
+                $individualOrder = null;
+            }
+        } else {
+            $teamOrder = $tx->custom_str5 === 'TeamOrder'
+                ? TeamPaymentOrder::with(['player', 'beneficiary', 'team.category.category'])
+                    ->whereKey($tx->custom_int5)->where('event_id', $tx->event_id)
+                    ->where('user_id', $tx->custom_int4)->first()
+                : null;
+            $individualOrder = blank($tx->custom_str5)
+                ? RegistrationOrder::with(['items.player', 'items.category_event.category'])
+                    ->whereKey($tx->custom_int5)->where('user_id', $tx->custom_int4)
+                    ->whereHas('items.category_event', fn ($query) => $query->where('event_id', $tx->event_id))
+                    ->whereDoesntHave('items.category_event', fn ($query) => $query->where('event_id', '!=', $tx->event_id))
+                    ->whereDoesntHave('items', fn ($query) => $query->whereDoesntHave('category_event'))
+                    ->first()
+                : null;
+        }
         $reconciliationOrder = $teamOrder?->collection_status === 'reconciliation_required' ? $teamOrder : null;
         $requiresReconciliation = $reconciliationOrder !== null
-            || app(\App\Domain\Payments\Services\ExpiredPayfastHandoffService::class)->registrationReceiptRequiresReconciliation($tx);
-        $participation = $teamOrder ? \App\Models\TrialParticipation::where('order_id', $teamOrder->id)->where('event_id', $tx->event_id)->first() : null;
+            || (($context === null || $context['reconciliation_candidates']->has($tx->custom_int5))
+                && app(\App\Domain\Payments\Services\ExpiredPayfastHandoffService::class)->registrationReceiptRequiresReconciliation($tx));
+        $participation = $teamOrder ? ($context !== null
+            ? $context['participations']->get($teamOrder->id)
+            : \App\Models\TrialParticipation::where('order_id', $teamOrder->id)->where('event_id', $tx->event_id)->first()) : null;
         $resolvedOrder = $teamOrder ?? $individualOrder;
         $items        = collect(($participation || $requiresReconciliation) ? [] : (optional($resolvedOrder)->items ?? []));
         $entryCount   = ($requiresReconciliation || ($tx->custom_int5 && ! $resolvedOrder)) ? 0 : max(1, $items->count());
@@ -624,10 +676,14 @@ class FinancialLedgerService
             $pfFeeTx = 0;
             $method  = 'Unreconciled';
         } elseif ($walletUsed > 0 && $payfastGross > 0) {
-            $pfFeeTx = -1 * SiteSetting::calculatePayfastFee($payfastGross);
+            $pfFeeTx = -1 * ($context !== null
+                ? SiteSetting::calculatePayfastFeeWithRates($payfastGross, ...$context['fee_rates'])
+                : SiteSetting::calculatePayfastFee($payfastGross));
             $method  = 'PayFast + Wallet';
         } else {
-            $pfFeeTx = -1 * SiteSetting::calculatePayfastFee($payfastGross);
+            $pfFeeTx = -1 * ($context !== null
+                ? SiteSetting::calculatePayfastFeeWithRates($payfastGross, ...$context['fee_rates'])
+                : SiteSetting::calculatePayfastFee($payfastGross));
             $method  = 'PayFast';
         }
 
@@ -716,7 +772,7 @@ class FinancialLedgerService
         ];
     }
 
-    private function buildWalletOnlyRows(Event $event, float $feePerEntry): Collection
+    private function buildWalletOnlyRows(Event $event, float $feePerEntry, bool $summaryOnly = false): Collection
     {
         $walletOnlyOrderIds = RegistrationOrder::whereHas('items', function ($q) use ($event) {
                 $q->whereHas('category_event', fn($q2) => $q2->where('event_id', $event->id));
@@ -727,13 +783,17 @@ class FinancialLedgerService
             })
             ->pluck('id');
 
+        $orders = $summaryOnly ? RegistrationOrder::with(['items.player', 'items.category_event.category'])
+            ->whereIn('id', $walletOnlyOrderIds)->get()->keyBy('id') : null;
+
         return WalletTransaction::with(['wallet.payable'])
             ->whereIn('source_id', $walletOnlyOrderIds)
             ->where('source_type', 'event_registration_wallet_payment')
             ->where('type', 'debit')
             ->get()
-            ->map(function ($wt) use ($feePerEntry) {
-                $order      = RegistrationOrder::with(['items.player', 'items.category_event.category'])->find($wt->source_id);
+            ->map(function ($wt) use ($feePerEntry, $orders) {
+                $order      = $orders !== null ? $orders->get($wt->source_id)
+                    : RegistrationOrder::with(['items.player', 'items.category_event.category'])->find($wt->source_id);
                 $entryCount = max(1, $order?->items?->count() ?? 1);
                 $gross      = round((float) $wt->amount, 2);
                 $capeFeeTx  = -1 * round($feePerEntry * $entryCount, 2);
@@ -780,7 +840,7 @@ class FinancialLedgerService
             });
     }
 
-    private function buildTeamWalletOnlyRows(Event $event, float $feePerEntry): Collection
+    private function buildTeamWalletOnlyRows(Event $event, float $feePerEntry, bool $summaryOnly = false): Collection
     {
         $teamOrderIds = TeamPaymentOrder::where('event_id', $event->id)
             ->where('wallet_reserved', '>', 0)
@@ -795,13 +855,17 @@ class FinancialLedgerService
             return collect();
         }
 
+        $orders = $summaryOnly ? TeamPaymentOrder::with(['player', 'beneficiary', 'team.category.category'])
+            ->whereIn('id', $teamOrderIds)->get()->keyBy('id') : null;
+
         return WalletTransaction::with('wallet.payable')
             ->whereIn('source_id', $teamOrderIds)
             ->where('source_type', 'team_registration_wallet_payment')
             ->where('type', 'debit')
             ->get()
-            ->map(function ($wt) use ($feePerEntry) {
-                $order = TeamPaymentOrder::with(['player', 'beneficiary', 'team.category.category'])->find($wt->source_id);
+            ->map(function ($wt) use ($feePerEntry, $orders) {
+                $order = $orders !== null ? $orders->get($wt->source_id)
+                    : TeamPaymentOrder::with(['player', 'beneficiary', 'team.category.category'])->find($wt->source_id);
                 $gross = round((float) $wt->amount, 2);
                 $capeFeeTx = -1 * round($feePerEntry, 2);
                 $user = $wt->wallet?->payable;
