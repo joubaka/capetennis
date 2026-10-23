@@ -711,12 +711,24 @@ final class EventVenueScheduleController extends Controller
             'venue_id' => ['required', 'integer', 'exists:venues,id'],
             'label' => ['required', 'string', 'max:50', 'regex:/\S/'],
             'ball_type' => ['nullable', 'in:orange,green,yellow,red,standard'],
+            'append_only' => ['sometimes', 'boolean'],
         ]);
         return DB::transaction(function () use ($event, $data) {
             Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
             DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
             $venue = Venue::findOrFail($data['venue_id']);
             $courts = $this->editableCourts($event, $venue);
+            $definitions = DB::table('event_venue_courts')->where('event_id', $event->id)->where('venue_id', $venue->id)->get();
+            if ($definitions->isNotEmpty()) $courts = $definitions->where('active', true)->values();
+            if ($data['append_only'] ?? false) {
+                $inactive = $definitions->where('active', false)->first(fn ($court) => \App\Domain\Draws\Services\ScheduleAvailability::courtKey((string) $court->label)
+                    === \App\Domain\Draws\Services\ScheduleAvailability::courtKey(trim($data['label'])));
+                if ($inactive) return response()->json(['message'=>'This court is inactive. Review it in venue setup before adding it to the day.'], 422);
+                $existing = $courts->first(fn ($court) => \App\Domain\Draws\Services\ScheduleAvailability::courtKey((string) $court->label)
+                    === \App\Domain\Draws\Services\ScheduleAvailability::courtKey(trim($data['label'])));
+                if ($existing) return response()->json(['message'=>'This court is already available at this venue.', 'court'=>['label'=>(string) $existing->label], 'created'=>false]);
+                if ($courts->count() >= 100) return response()->json(['message'=>'A venue can have at most 100 active courts in the day editor.'], 422);
+            }
             $this->materializeCourts($event, $venue, $courts);
             $identity = ['event_id' => $event->id, 'venue_id' => $venue->id, 'label' => trim($data['label'])];
             DB::table('event_venue_courts')->insertOrIgnore($identity + [
@@ -726,7 +738,7 @@ final class EventVenueScheduleController extends Controller
                 'ball_type' => $data['ball_type'] ?? null, 'active' => true, 'updated_at' => now(),
             ]);
             $this->syncCourtCount($event, $venue);
-            return response()->json(['message' => 'Court saved.']);
+            return response()->json(['message' => 'Court saved.', 'court'=>['label'=>$identity['label']], 'created'=>true]);
         });
     }
 

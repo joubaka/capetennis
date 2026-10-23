@@ -201,6 +201,85 @@ class FullDayVenueScheduleTest extends TestCase
         $this->assertSame(0, TeamFixture::whereNotNull('scheduled_at')->count());
     }
 
+    public function test_inline_add_seventh_court_preserves_bookings_allocations_and_supports_grouped_window_preview(): void
+    {
+        [$event, $draws, $venues, $options] = $this->context();
+        $venue = $venues[0];
+        $event->venues()->updateExistingPivot($venue->id, ['num_courts'=>6]);
+        $draws[0]->venues()->updateExistingPivot($venue->id, ['num_courts'=>6]);
+        DB::table('draw_venue_court_allocations')->insert(['draw_id'=>$draws[0]->id,'venue_id'=>$venue->id,'court_label'=>'1','created_at'=>now(),'updated_at'=>now()]);
+        $played = TeamFixture::where('draw_id',$draws[2]->id)->first();
+        $played->update(['match_status'=>1,'venue_id'=>$venue->id,'court_label'=>'1','scheduled_at'=>'2026-10-23 08:00','duration_min'=>60]);
+        $before = $played->fresh()->getAttributes();
+        Role::firstOrCreate(['name'=>'admin','guard_name'=>'web']);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id'=>$event->id,'user_id'=>$admin->id]);
+        $this->actingAs($admin);
+        $url = route('backend.event-venue-schedule.courts',['event'=>$event->id]);
+        if (getenv('CT_DAY_EDIT_BROWSER_FIXTURE') === '1') {
+            $response = $this->get(route('backend.event-venue-schedule.calendar.full-day',['event'=>$event->id,'date'=>'2026-10-23']))->assertOk()->assertSee('Add court');
+            file_put_contents(storage_path('framework/testing/full-day-add-court.html'),$response->getContent());
+        }
+        $this->postJson($url,['venue_id'=>$venue->id,'label'=>'7','ball_type'=>'green','append_only'=>true])->assertOk()->assertJsonPath('court.label','7')->assertJsonPath('created',true);
+        $this->postJson($url,['venue_id'=>$venue->id,'label'=>' 7 ','ball_type'=>'red','append_only'=>true])->assertOk()->assertJsonPath('created',false);
+        $this->assertDatabaseCount('event_venue_courts',7);
+        $this->assertDatabaseHas('event_venue_courts',['event_id'=>$event->id,'venue_id'=>$venue->id,'label'=>'7','ball_type'=>'green','active'=>true]);
+        $this->assertDatabaseHas('event_venues',['event_id'=>$event->id,'venue_id'=>$venue->id,'num_courts'=>7]);
+        $this->assertDatabaseHas('draw_venues',['draw_id'=>$draws[0]->id,'venue_id'=>$venue->id,'num_courts'=>7]);
+        $this->assertDatabaseCount('draw_venue_court_allocations',1);
+        $scheduler = app(EventVenueScheduleService::class);
+        $this->assertSame(['1','2','3','4','5','6','7'],$scheduler->fullDayCourtLabels($event)[$venue->id]);
+        $options['draw_ids'] = $draws->take(2)->pluck('id')->all();
+        $options['draw_rounds'] = $draws->take(2)->map(fn ($draw) => ['draw_id'=>$draw->id,'rounds'=>[1]])->all();
+        $options['venue_ids'] = [$venue->id];
+        $options['day_court_labels'] = [$venue->id=>['1','2','3','4','5','6','7']];
+        $options['day_venue_groups'] = [$venue->id=>['A'=>['1','2','3','4','5','6'],'B'=>['7']]];
+        $options['full_day_court_starts'] = [$venue->id=>[['court'=>'7','start'=>'2026-10-23 10:00','end'=>'2026-10-23 12:00']]];
+        $options['end'] = '2026-10-23 12:00';
+        $ties = collect($scheduler->fullDayTies($event))->keyBy('draw_id');
+        $options['full_day_tie_destinations'] = [$ties[$draws[0]->id]['key']=>['venue_id'=>$venue->id,'group'=>'B']];
+        $preview = $scheduler->preview($event,$options);
+        $this->assertEmpty($preview['unscheduled']);
+        $added = collect($preview['matches'])->where('court','7');
+        $this->assertCount(2,$added);
+        foreach ($added as $match) { $this->assertSame('B',$match['venue_group']); $this->assertGreaterThanOrEqual('2026-10-23 10:00:00',$match['scheduled_at']); }
+        $this->assertSame(1,TeamFixture::whereNotNull('scheduled_at')->count());
+        $scheduler->apply($event,$options,$preview['revision']);
+        $this->assertEquals($before,$played->fresh()->getAttributes());
+        $this->assertDatabaseCount('published_schedule_assignments',0);
+    }
+
+    public function test_inline_add_court_requires_event_access_and_own_event_venue(): void
+    {
+        [$event, $draws, $venues] = $this->context();
+        Role::firstOrCreate(['name'=>'admin','guard_name'=>'web']);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id'=>$event->id,'user_id'=>$admin->id]);
+        $this->actingAs($admin);
+        $url = route('backend.event-venue-schedule.courts',['event'=>$event->id]);
+        $foreign = Venue::forceCreate(['name'=>'Other event venue']);
+        $this->postJson($url,['venue_id'=>$foreign->id,'label'=>'7','append_only'=>true])->assertNotFound();
+        $this->postJson(route('backend.event-venue-schedule.courts',['event'=>Event::factory()->create()->id]),['venue_id'=>$venues[0]->id,'label'=>'7','append_only'=>true])->assertForbidden();
+        $this->postJson($url,['venue_id'=>$venues[0]->id,'label'=>' ','append_only'=>true])->assertUnprocessable();
+        $this->assertDatabaseCount('event_venue_courts',0);
+    }
+
+    public function test_inline_add_court_preserves_inactive_definitions_without_inventing_fallback_courts(): void
+    {
+        [$event, $draws, $venues] = $this->context();
+        Role::firstOrCreate(['name'=>'admin','guard_name'=>'web']);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id'=>$event->id,'user_id'=>$admin->id]);
+        $venue = $venues[0];
+        DB::table('event_venue_courts')->insert(['event_id'=>$event->id,'venue_id'=>$venue->id,'label'=>'1','ball_type'=>'yellow','active'=>false]);
+        $this->actingAs($admin)->postJson(route('backend.event-venue-schedule.courts',['event'=>$event->id]),['venue_id'=>$venue->id,'label'=>'7','append_only'=>true])->assertOk();
+        $this->postJson(route('backend.event-venue-schedule.courts',['event'=>$event->id]),['venue_id'=>$venue->id,'label'=>'1','append_only'=>true])->assertUnprocessable()->assertJsonPath('message','This court is inactive. Review it in venue setup before adding it to the day.');
+        $this->assertDatabaseCount('event_venue_courts',2);
+        $this->assertDatabaseHas('event_venue_courts',['event_id'=>$event->id,'venue_id'=>$venue->id,'label'=>'1','active'=>false,'ball_type'=>'yellow']);
+        $this->assertSame(['7'],app(EventVenueScheduleService::class)->fullDayCourtLabels($event)[$venue->id]);
+        $this->assertDatabaseHas('event_venues',['event_id'=>$event->id,'venue_id'=>$venue->id,'num_courts'=>1]);
+    }
+
     private function splitContext(): array
     {
         [$event, $draws, $venues, $options] = $this->context();

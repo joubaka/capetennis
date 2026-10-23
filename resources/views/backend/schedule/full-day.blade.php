@@ -38,22 +38,27 @@
         <div class="row g-2 mb-2">@foreach(['start_time'=>'Venue starts','end_time'=>'Venue finishes by'] as $key=>$label)<div class="col-6"><label class="form-label" for="venue-{{ $venue->id }}-{{ $key }}">{{ $label }}</label><input class="form-control day-venue-hour" id="venue-{{ $venue->id }}-{{ $key }}" type="time" name="venue_windows[{{ $venue->id }}][{{ $key }}]" value="{{ old('venue_windows',$values['venue_windows'])[$venue->id][$key] ?? '' }}"></div>@endforeach</div>
         <p class="small text-muted">Leave blank to use the overall day times below. Venue hours must fit within that window; both court groups use these hours.</p>
         <p class="small text-muted">Set the time window when each court is available. Leave either time blank to use the venue start or finish. Played matches keep their saved time and court.</p>
-        <div class="row g-2">@forelse($courtOptions[$venue->id] ?? [] as $court)
+        <div class="row g-2" data-day-court-list>@forelse($courtOptions[$venue->id] ?? [] as $court)
           @php($courtStart = collect(old('court_starts',$values['court_starts'])[$venue->id] ?? [])->first(fn ($row) => (string)$row['court'] === (string)$court))
           <div class="col-12 col-sm-6" data-court-availability><label class="d-flex gap-2 align-items-center" style="min-height:44px"><input class="form-check-input day-court" type="checkbox" name="court_labels[{{ $venue->id }}][]" value="{{ $court }}" @checked(in_array($court,old('court_labels',$values['court_labels'])[$venue->id] ?? []))>Court {{ $court }}</label>
             <input class="day-court-start" type="hidden" name="court_starts[{{ $venue->id }}][{{ $loop->index }}][court]" value="{{ $court }}">
             <label class="form-label" for="court-start-{{ $venue->id }}-{{ $loop->index }}">Court {{ $court }} available from</label><input class="form-control day-court-start" id="court-start-{{ $venue->id }}-{{ $loop->index }}" type="time" name="court_starts[{{ $venue->id }}][{{ $loop->index }}][start_time]" value="{{ $courtStart['start_time'] ?? '' }}"><label class="form-label mt-2" for="court-end-{{ $venue->id }}-{{ $loop->index }}">Court {{ $court }} available until</label><input class="form-control day-court-start" id="court-end-{{ $venue->id }}-{{ $loop->index }}" type="time" name="court_starts[{{ $venue->id }}][{{ $loop->index }}][end_time]" value="{{ $courtStart['end_time'] ?? '' }}">
-          </div>@empty<span class="text-danger">No active courts.</span>@endforelse</div>
-        @if(count($courtOptions[$venue->id] ?? []) >= 2)
-        <label class="d-flex gap-2 align-items-center mt-2" style="min-height:44px"><input type="checkbox" class="form-check-input day-split-venue" @checked($savedGroups)>Split into two court groups</label>
+          </div>@empty<span class="text-danger" data-no-courts>No active courts.</span>@endforelse</div>
+        <label class="d-flex gap-2 align-items-center mt-2 {{ count($courtOptions[$venue->id] ?? []) < 2 ? 'd-none' : '' }}" data-split-control style="min-height:44px"><input type="checkbox" class="form-check-input day-split-venue" @checked($savedGroups)>Split into two court groups</label>
         <div class="day-court-groups mt-2" @if(!$savedGroups) hidden @endif>
           <p class="small text-muted">Assign each selected court to Group A or Group B. Both groups need at least one court.</p>
-          <div class="row g-2">@foreach($courtOptions[$venue->id] as $court)
+          <div class="row g-2" data-day-group-list>@foreach($courtOptions[$venue->id] as $court)
             @php($courtGroup = in_array($court,$savedGroups['B'] ?? []) ? 'B' : (in_array($court,$savedGroups['A'] ?? []) ? 'A' : ($loop->index < (int)ceil(count($courtOptions[$venue->id])/2) ? 'A' : 'B')))
             <div class="col-6" data-group-court="{{ $court }}"><label class="form-label w-100">Court {{ $court }}<select class="form-select day-group-select" aria-label="Court {{ $court }} group at {{ $venue->name }}"><option value="A" @selected($courtGroup==='A')>Group A</option><option value="B" @selected($courtGroup==='B')>Group B</option></select></label><input class="day-group-court" type="hidden" data-venue-id="{{ $venue->id }}" name="venue_groups[{{ $venue->id }}][{{ $courtGroup }}][]" value="{{ $court }}"></div>
           @endforeach</div>
         </div>
-        @endif
+        <div class="border-top mt-3 pt-3" data-add-court data-url="{{ route('backend.event-venue-schedule.courts', ['event'=>$event->id]) }}">
+          <h6>Add a court at {{ $venue->name }}</h6><p class="small text-muted">Add a physical court to this event, then set its available times and preview the revised day. Existing matches stay saved until you save a new preview.</p>
+          <div class="row g-2 align-items-end"><div class="col-12 col-sm-6"><label class="form-label" for="add-court-{{ $venue->id }}">Court label</label><input class="form-control day-add-label" id="add-court-{{ $venue->id }}" type="text" maxlength="50" placeholder="e.g. 7"></div>
+          <div class="col-6 day-add-group-field"><label class="form-label" for="add-group-{{ $venue->id }}">New court group</label><select class="form-select day-add-group" id="add-group-{{ $venue->id }}"><option value="A">Group A</option><option value="B">Group B</option></select></div>
+          <div class="col-12"><button class="btn btn-outline-primary day-add-court" type="button">Add court</button></div></div>
+          <p class="small mt-2 mb-0 day-add-status" role="status" aria-live="polite"></p>
+        </div>
       </div></div>@endforeach
     </div></fieldset>
     <fieldset class="mb-4"><legend class="h4">Assign venues to age groups</legend>
@@ -193,9 +198,12 @@
       const enabled=card.querySelector('.day-venue').checked;
       card.querySelectorAll('.day-court, .day-venue-hour').forEach(input=>input.disabled=!enabled);
       card.querySelectorAll('[data-court-availability]').forEach(row=>row.querySelectorAll('.day-court-start').forEach(input=>input.disabled=!enabled || !row.querySelector('.day-court').checked));
+      const add=card.querySelector('[data-add-court]');
+      add.querySelectorAll('input,select,button').forEach(input=>input.disabled=!enabled || add.dataset.busy==='1');
       const split=card.querySelector('.day-split-venue');
-      if(!split) return;
       split.disabled=!enabled;
+      card.querySelector('[data-split-control]').classList.toggle('d-none',card.querySelectorAll('.day-court').length<2);
+      add.querySelector('.day-add-group-field').hidden=!split.checked;
       card.querySelector('.day-court-groups').hidden=!split.checked;
       card.querySelectorAll('[data-group-court]').forEach(row=>{
         const selected=[...card.querySelectorAll('.day-court:checked')].some(input=>input.value===row.dataset.groupCourt);
@@ -209,6 +217,46 @@
     renderTieBoard();
   };
   const invalidate=()=>{const save=document.getElementById('save-full-day');if(save){save.disabled=true;save.textContent='Preview again to save changes';}};
+  const appendCourt=(card,label,group)=>{
+    const venueId=card.querySelector('.day-venue').value;
+    let existing=[...card.querySelectorAll('.day-court')].find(input=>input.value===label);
+    if(existing) {existing.checked=true;return existing.closest('[data-court-availability]');}
+    const index=card.querySelectorAll('[data-court-availability]').length;
+    const row=document.createElement('div');row.className='col-12 col-sm-6';row.dataset.courtAvailability='';
+    const checkLabel=document.createElement('label');checkLabel.className='d-flex gap-2 align-items-center';checkLabel.style.minHeight='44px';
+    const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.className='form-check-input day-court';checkbox.name=`court_labels[${venueId}][]`;checkbox.value=label;checkbox.checked=true;
+    checkLabel.append(checkbox,document.createTextNode(`Court ${label}`));row.append(checkLabel);
+    const identity=document.createElement('input');identity.type='hidden';identity.className='day-court-start';identity.name=`court_starts[${venueId}][${index}][court]`;identity.value=label;row.append(identity);
+    ['start_time','end_time'].forEach(key=>{
+      const input=document.createElement('input');input.type='time';input.className='form-control day-court-start';input.id=`added-court-${venueId}-${index}-${key}`;input.name=`court_starts[${venueId}][${index}][${key}]`;
+      const text=document.createElement('label');text.className='form-label mt-2';text.htmlFor=input.id;text.textContent=`Court ${label} available ${key==='start_time'?'from':'until'}`;row.append(text,input);
+    });
+    card.querySelector('[data-no-courts]')?.remove();card.querySelector('[data-day-court-list]').append(row);
+    const groupRow=document.createElement('div');groupRow.className='col-6';groupRow.dataset.groupCourt=label;
+    const groupLabel=document.createElement('label');groupLabel.className='form-label w-100';groupLabel.textContent=`Court ${label}`;
+    const select=document.createElement('select');select.className='form-select day-group-select';select.setAttribute('aria-label',`Court ${label} group at ${card.querySelector('.day-venue').parentElement.querySelector('strong').textContent}`);
+    ['A','B'].forEach(value=>{const option=document.createElement('option');option.value=value;option.textContent=`Group ${value}`;select.append(option);});select.value=group;
+    const hidden=document.createElement('input');hidden.type='hidden';hidden.className='day-group-court';hidden.dataset.venueId=venueId;hidden.value=label;
+    groupLabel.append(select);groupRow.append(groupLabel,hidden);card.querySelector('[data-day-group-list]').append(groupRow);return row;
+  };
+  form.addEventListener('click',async event=>{
+    const button=event.target.closest('.day-add-court');if(!button)return;
+    const add=button.closest('[data-add-court]'),card=add.closest('[data-day-venue]');
+    if(add.dataset.busy==='1')return;
+    const input=add.querySelector('.day-add-label'),status=add.querySelector('.day-add-status');
+    const label=input.value.trim();if(!label){input.setCustomValidity('Enter a court label.');input.reportValidity();return;}
+    input.setCustomValidity('');const group=add.querySelector('.day-add-group').value;
+    add.dataset.busy='1';status.textContent='Adding court...';sync();
+    try {
+      const response=await fetch(add.dataset.url,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json','X-CSRF-TOKEN':form.querySelector('[name="_token"]').value},body:JSON.stringify({venue_id:Number(card.querySelector('.day-venue').value),label,append_only:true})});
+      const result=await response.json();if(!response.ok)throw new Error(result.message || 'Court could not be added. Try again.');
+      const row=appendCourt(card,String(result.court.label),group);invalidate();sync();input.value='';
+      status.textContent=`Court ${result.court.label} is selected. Set its available times, choose its court group if needed, then preview again.`;
+      row.querySelector('input[type="time"]').focus();
+    } catch(error){status.textContent=error.message || 'Court could not be added. Try again.';}
+    finally {delete add.dataset.busy;sync();}
+  });
+  form.querySelectorAll('.day-add-label').forEach(input=>{input.addEventListener('input',()=>input.setCustomValidity(''));input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();input.closest('[data-add-court]').querySelector('.day-add-court').click();}});});
   board.addEventListener('dragstart',event=>{
     if(!event.target.closest('.tie-drag-handle')) return;
     const card=event.target.closest('[data-tie-key]');event.dataTransfer.setData('text/plain',card.dataset.tieKey);event.dataTransfer.effectAllowed='move';
