@@ -37,7 +37,13 @@
         <label class="d-flex gap-2 align-items-center mb-2" style="min-height:44px"><input class="form-check-input day-venue" type="checkbox" name="venue_ids[]" value="{{ $venue->id }}" @checked(in_array($venue->id,old('venue_ids',$values['venue_ids'])))><strong>{{ $venue->name }}</strong></label>
         <div class="row g-2 mb-2">@foreach(['start_time'=>'Venue starts','end_time'=>'Venue finishes by'] as $key=>$label)<div class="col-6"><label class="form-label" for="venue-{{ $venue->id }}-{{ $key }}">{{ $label }}</label><input class="form-control day-venue-hour" id="venue-{{ $venue->id }}-{{ $key }}" type="time" name="venue_windows[{{ $venue->id }}][{{ $key }}]" value="{{ old('venue_windows',$values['venue_windows'])[$venue->id][$key] ?? '' }}"></div>@endforeach</div>
         <p class="small text-muted">Leave blank to use the overall day times below. Venue hours must fit within that window; both court groups use these hours.</p>
-        <div class="d-flex flex-wrap gap-3">@forelse($courtOptions[$venue->id] ?? [] as $court)<label class="d-flex gap-2 align-items-center" style="min-height:44px"><input class="form-check-input day-court" type="checkbox" name="court_labels[{{ $venue->id }}][]" value="{{ $court }}" @checked(in_array($court,old('court_labels',$values['court_labels'])[$venue->id] ?? []))>Court {{ $court }}</label>@empty<span class="text-danger">No active courts.</span>@endforelse</div>
+        <p class="small text-muted">Set the time window when each court is available. Leave either time blank to use the venue start or finish. Played matches keep their saved time and court.</p>
+        <div class="row g-2">@forelse($courtOptions[$venue->id] ?? [] as $court)
+          @php($courtStart = collect(old('court_starts',$values['court_starts'])[$venue->id] ?? [])->first(fn ($row) => (string)$row['court'] === (string)$court))
+          <div class="col-12 col-sm-6" data-court-availability><label class="d-flex gap-2 align-items-center" style="min-height:44px"><input class="form-check-input day-court" type="checkbox" name="court_labels[{{ $venue->id }}][]" value="{{ $court }}" @checked(in_array($court,old('court_labels',$values['court_labels'])[$venue->id] ?? []))>Court {{ $court }}</label>
+            <input class="day-court-start" type="hidden" name="court_starts[{{ $venue->id }}][{{ $loop->index }}][court]" value="{{ $court }}">
+            <label class="form-label" for="court-start-{{ $venue->id }}-{{ $loop->index }}">Court {{ $court }} available from</label><input class="form-control day-court-start" id="court-start-{{ $venue->id }}-{{ $loop->index }}" type="time" name="court_starts[{{ $venue->id }}][{{ $loop->index }}][start_time]" value="{{ $courtStart['start_time'] ?? '' }}"><label class="form-label mt-2" for="court-end-{{ $venue->id }}-{{ $loop->index }}">Court {{ $court }} available until</label><input class="form-control day-court-start" id="court-end-{{ $venue->id }}-{{ $loop->index }}" type="time" name="court_starts[{{ $venue->id }}][{{ $loop->index }}][end_time]" value="{{ $courtStart['end_time'] ?? '' }}">
+          </div>@empty<span class="text-danger">No active courts.</span>@endforelse</div>
         @if(count($courtOptions[$venue->id] ?? []) >= 2)
         <label class="d-flex gap-2 align-items-center mt-2" style="min-height:44px"><input type="checkbox" class="form-check-input day-split-venue" @checked($savedGroups)>Split into two court groups</label>
         <div class="day-court-groups mt-2" @if(!$savedGroups) hidden @endif>
@@ -102,6 +108,7 @@
     @foreach($preview['unscheduled'] as $match)<div class="alert alert-warning">{{ $match['draw_name'] ?? '' }} · Match {{ $match['fixture_id'] ?? '' }}: {{ $match['reason'] ?? 'Cannot fit. Extend the day or add courts.' }}</div>@endforeach
     @foreach($preview['input']['day_venue_groups'] as $venueId=>$groups)<p><strong>{{ $venues->firstWhere('id',(int)$venueId)?->name }}</strong>: @foreach($groups as $group=>$courts){{ $loop->first ? '' : ' · ' }}Group {{ $group }} (courts {{ implode(', ',$courts) }})@endforeach</p>@endforeach
     @foreach($preview['input']['full_day_venue_windows'] as $venueId=>$window)<p><strong>{{ $venues->firstWhere('id',(int)$venueId)?->name }}</strong>: {{ substr($window['start'],11,5) }}–{{ substr($window['end'],11,5) }}</p>@endforeach
+    @foreach($preview['input']['full_day_court_starts'] as $venueId=>$starts)<p><strong>{{ $venues->firstWhere('id',(int)$venueId)?->name }}</strong>: @foreach($starts as $courtStart){{ $loop->first ? '' : ' · ' }}Court {{ $courtStart['court'] }} available from {{ substr($courtStart['start'],11,5) }} until {{ substr($courtStart['end'],11,5) }}@endforeach</p>@endforeach
     <h5>Proposed full day</h5><div class="table-responsive"><table class="table"><thead><tr><th>Time</th><th>Venue / group / court</th><th>Draw / round</th><th>Rubber / match</th><th>Tie / matchup</th></tr></thead><tbody>@foreach($preview['matches'] as $match)<tr><td class="text-nowrap">{{ substr($match['scheduled_at'],11,5) }}</td><td>{{ $venues->firstWhere('id',(int)$match['venue_id'])?->name }}@if($match['venue_group']) · Group {{ $match['venue_group'] }}@endif / {{ $match['court'] }}</td><td>{{ $match['draw_name'] }} · Round {{ $match['round'] }}</td><td>{{ $match['match'] }}<div class="small text-muted">{{ $match['stage'] }}@if($match['rank']) · Position {{ $match['rank'] }}@endif</div></td><td>@if($match['tie_nr'])<strong>Tie {{ $match['tie_nr'] }}</strong><br>@endif{{ implode(' vs ',$match['participants'] ?? []) }}</td></tr>@endforeach</tbody></table></div>
   @endif
 </div>
@@ -185,6 +192,7 @@
     form.querySelectorAll('[data-day-venue]').forEach(card=>{
       const enabled=card.querySelector('.day-venue').checked;
       card.querySelectorAll('.day-court, .day-venue-hour').forEach(input=>input.disabled=!enabled);
+      card.querySelectorAll('[data-court-availability]').forEach(row=>row.querySelectorAll('.day-court-start').forEach(input=>input.disabled=!enabled || !row.querySelector('.day-court').checked));
       const split=card.querySelector('.day-split-venue');
       if(!split) return;
       split.disabled=!enabled;

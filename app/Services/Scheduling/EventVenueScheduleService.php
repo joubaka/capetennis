@@ -158,6 +158,30 @@ final class EventVenueScheduleService
             $fullDayVenueWindows[$venueId] = ['start'=>$opens->format('Y-m-d H:i:s'), 'end'=>$closes->format('Y-m-d H:i:s')];
         }
         ksort($fullDayVenueWindows);
+        $fullDayCourtStarts = [];
+        $courtStarts = [];
+        $courtEnds = [];
+        foreach ($options['full_day_court_starts'] ?? [] as $venueId => $rows) {
+            if (! $fullDay || ! isset($courtLabels[$venueId]) || ! is_array($rows)) throw new \InvalidArgumentException('Court availability must belong to a selected day venue.');
+            foreach ($rows as $row) {
+                if (! is_array($row) || ! isset($row['court'], $row['start']) || ! in_array((string) $row['court'], $courtLabels[$venueId], true)
+                    || ! is_string($row['start']) || ! preg_match('/^\d{4}-\d{2}-\d{2} ([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $row['start'])) throw new \InvalidArgumentException('Choose an available-from time for a selected active court at its own venue.');
+                if (isset($row['end']) && (! is_string($row['end']) || ! preg_match('/^\d{4}-\d{2}-\d{2} ([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $row['end']))) throw new \InvalidArgumentException('Choose a valid court finishing time.');
+                $key = ScheduleAvailability::courtKey((string) $row['court']);
+                if (isset($courtStarts[$venueId][$key])) throw new \InvalidArgumentException('Set each court availability once.');
+                $opens = Carbon::parse($row['start']);
+                $venueOpen = Carbon::parse($fullDayVenueWindows[$venueId]['start'] ?? $start);
+                $venueClose = Carbon::parse($fullDayVenueWindows[$venueId]['end'] ?? $end);
+                if ($opens->toDateString() !== $fullDay || $opens->lt($venueOpen) || $opens->gte($venueClose)) throw new \InvalidArgumentException('Court availability must fit within its venue hours and the playing day.');
+                $closes = isset($row['end']) ? Carbon::parse($row['end']) : $venueClose->copy();
+                if ($closes->toDateString() !== $fullDay || $closes->lte($opens) || $closes->gt($venueClose)) throw new \InvalidArgumentException('Court finishing time must follow its start and fit within venue hours.');
+                $courtStarts[$venueId][$key] = $opens;
+                $courtEnds[$venueId][$key] = $closes;
+                $fullDayCourtStarts[$venueId][] = ['court'=>(string) $row['court'], 'start'=>$opens->format('Y-m-d H:i:s'), 'end'=>$closes->format('Y-m-d H:i:s')];
+            }
+            if (isset($fullDayCourtStarts[$venueId])) usort($fullDayCourtStarts[$venueId], fn ($a, $b) => strcmp($a['court'], $b['court']));
+        }
+        ksort($fullDayCourtStarts);
         $destinationPools = [];
         $drawPoolKeys = [];
         $poolCourtLabels = [];
@@ -496,12 +520,18 @@ final class EventVenueScheduleService
                             $blocked[$id] = 'This tie must stay in its allocated court group. Extend the day or add courts to that group to fit every rubber.';
                             continue;
                         }
-                        $at = $calendar->nextAvailableForMatch($venueRelease, $duration + $courtGap,
+                        $courtRelease = isset($courtStarts[$venueId][ScheduleAvailability::courtKey((string) $court)])
+                            ? $venueRelease->copy()->max($courtStarts[$venueId][ScheduleAvailability::courtKey((string) $court)]) : $venueRelease;
+                        $at = $calendar->nextAvailableForMatch($courtRelease, $duration + $courtGap,
                             $duration + $playerRest, $venueId, (string) $court, $node['participants'],
                             $node['participant_group']);
                         if (($node['programme_break'] ?? null) && $at->lt($node['programme_break'][1]) && $at->copy()->addMinutes($duration)->gt($node['programme_break'][0])) {
                             $at = $calendar->nextAvailableForMatch($node['programme_break'][1], $duration + $courtGap,
                                 $duration + $playerRest, $venueId, (string) $court, $node['participants'], $node['participant_group']);
+                        }
+                        if (isset($courtEnds[$venueId][ScheduleAvailability::courtKey((string) $court)]) && $at->copy()->addMinutes($duration)->gt($courtEnds[$venueId][ScheduleAvailability::courtKey((string) $court)])) {
+                            $blocked[$id] = 'No complete match fits within the selected court availability window. Extend the court hours or choose another court.';
+                            continue;
                         }
                         if ($end && $at->copy()->addMinutes($duration)->gt($end)) continue;
                         if (isset($fullDayVenueWindows[$venueId]) && $at->copy()->addMinutes($duration)->gt(Carbon::parse($fullDayVenueWindows[$venueId]['end']))) {
@@ -728,7 +758,7 @@ final class EventVenueScheduleService
             'draw_rounds' => $drawRounds,
             'programme' => $programme, 'day_scope' => $dayScope, 'full_day_scope' => $fullDay, 'day_court_labels' => ($dayScope || $fullDay) ? $courtLabels : null,
             'day_venue_groups' => $dayVenueGroups,
-            'full_day_venue_windows' => $fullDayVenueWindows,
+            'full_day_venue_windows' => $fullDayVenueWindows, 'full_day_court_starts' => $fullDayCourtStarts,
             'full_day_tie_destinations' => $tieDestinations,
             'full_day_destination_pools' => $destinationPools,
             'tie_allocation' => $tieAllocation,

@@ -128,6 +128,79 @@ class FullDayVenueScheduleTest extends TestCase
         $this->assertSame([], $scheduler->fullDayCourtLabels($event)[$venues[0]->id]);
     }
 
+    public function test_staggered_court_availability_is_revision_bound_and_keeps_played_matches_fixed(): void
+    {
+        [$event, $draws, $venue, $options] = $this->splitContext();
+        $options['end'] = '2026-10-23 12:00';
+        $played = TeamFixture::where('draw_id', $draws[1]->id)->first();
+        $played->update(['match_status'=>1, 'scheduled_at'=>'2026-10-23 08:00', 'venue_id'=>$venue->id, 'court_label'=>'2', 'duration_min'=>60]);
+        $before = $played->fresh()->getAttributes();
+        $options['full_day_court_starts'] = [$venue->id=>[['court'=>'2', 'start'=>'2026-10-23 10:00']]];
+        $scheduler = app(EventVenueScheduleService::class);
+        $preview = $scheduler->preview($event, $options);
+        $this->assertEmpty($preview['unscheduled']);
+        foreach ($preview['matches'] as $match) if ($match['court'] === '2') $this->assertGreaterThanOrEqual('2026-10-23 10:00:00', $match['scheduled_at']);
+        $this->assertContains('2026-10-23 08:00:00', array_column($preview['matches'], 'scheduled_at'));
+        $changed = $options;
+        $changed['full_day_court_starts'][$venue->id][0]['start'] = '2026-10-23 09:00';
+        try { $scheduler->apply($event, $changed, $preview['revision']); $this->fail('Expected changed availability rejection'); }
+        catch (\InvalidArgumentException $e) { $this->assertStringContainsString('fresh preview', $e->getMessage()); }
+        $scheduler->apply($event, $options, $preview['revision']);
+        $this->assertEquals($before, $played->fresh()->getAttributes());
+    }
+
+    public function test_court_finish_window_allows_exact_boundary_and_rejects_spill_and_stale_finish(): void
+    {
+        [$event, $draws, $venue, $options] = $this->splitContext();
+        $options['end'] = '2026-10-23 12:00';
+        $options['full_day_court_starts'] = [$venue->id=>[['court'=>'2','start'=>'2026-10-23 09:00','end'=>'2026-10-23 11:00']]];
+        $scheduler = app(EventVenueScheduleService::class);
+        $ties = collect($scheduler->fullDayTies($event))->keyBy('draw_id');
+        $options['full_day_tie_destinations'] = [$ties[$draws[0]->id]['key']=>['venue_id'=>$venue->id,'group'=>'A'], $ties[$draws[1]->id]['key']=>['venue_id'=>$venue->id,'group'=>'B']];
+        $preview = $scheduler->preview($event,$options);
+        $this->assertEmpty($preview['unscheduled']);
+        $this->assertContains('2026-10-23 10:00:00',collect($preview['matches'])->where('court','2')->pluck('scheduled_at')->all());
+        $options['full_day_court_starts'][$venue->id][0]['end'] = '2026-10-23 10:59';
+        try { $scheduler->apply($event,$options,$preview['revision']); $this->fail('Expected stale finish rejection'); }
+        catch (\InvalidArgumentException $e) { $this->assertStringContainsString('fresh preview',$e->getMessage()); }
+        $this->assertNotEmpty($scheduler->preview($event,$options)['unscheduled']);
+        foreach (['2026-10-23 08:59','2026-10-23 09:00','2026-10-23 12:01','2026-10-24 10:00','2026-10-23 25:00'] as $end) {
+            $options['full_day_court_starts'][$venue->id][0]['end'] = $end;
+            try { $scheduler->preview($event,$options); $this->fail('Expected invalid finish'); }
+            catch (\InvalidArgumentException $e) { $this->assertNotEmpty($e->getMessage()); }
+        }
+        $this->assertSame(0,TeamFixture::whereNotNull('scheduled_at')->count());
+    }
+
+    public function test_court_availability_is_isolated_by_venue_with_identical_court_labels(): void
+    {
+        [$event, $draws, $venues, $options] = $this->context();
+        $options['end'] = '2026-10-23 12:00';
+        $options['full_day_court_starts'] = [$venues[0]->id=>[['court'=>'1', 'start'=>'2026-10-23 10:00']]];
+        $ties = collect(app(EventVenueScheduleService::class)->fullDayTies($event))->keyBy('draw_id');
+        $options['full_day_tie_destinations'] = [$ties[$draws[0]->id]['key']=>['venue_id'=>$venues[0]->id,'group'=>null]];
+        $preview = app(EventVenueScheduleService::class)->preview($event, $options);
+        $this->assertEmpty($preview['unscheduled']);
+        $this->assertNotEmpty(collect($preview['matches'])->where('venue_id',$venues[0]->id));
+        foreach (collect($preview['matches'])->where('venue_id',$venues[0]->id) as $match) $this->assertGreaterThanOrEqual('2026-10-23 10:00:00',$match['scheduled_at']);
+        $this->assertNotEmpty(collect($preview['matches'])->where('scheduled_at','2026-10-23 08:00:00'));
+    }
+
+    public function test_court_availability_rejects_foreign_unselected_duplicate_and_out_of_hours_values(): void
+    {
+        [$event, $draws, $venue, $options] = $this->splitContext();
+        $foreign = Venue::forceCreate(['name'=>'Foreign']);
+        $cases = [[$foreign->id=>[['court'=>'1', 'start'=>'2026-10-23 09:00']]],
+            [$venue->id=>[['court'=>'99', 'start'=>'2026-10-23 09:00']]]];
+        foreach (['2026-10-22 09:00','2026-10-23 07:00','2026-10-23 10:00','2026-10-23 25:00'] as $start) $cases[] = [$venue->id=>[['court'=>'2','start'=>$start]]];
+        $cases[] = [$venue->id=>[['court'=>'2','start'=>'2026-10-23 09:00'],['court'=>'2','start'=>'2026-10-23 09:00']]];
+        foreach ($cases as $starts) {
+            try { app(EventVenueScheduleService::class)->preview($event, $options + ['full_day_court_starts'=>$starts]); $this->fail('Expected invalid court availability'); }
+            catch (\InvalidArgumentException $e) { $this->assertNotEmpty($e->getMessage()); }
+        }
+        $this->assertSame(0, TeamFixture::whereNotNull('scheduled_at')->count());
+    }
+
     private function splitContext(): array
     {
         [$event, $draws, $venues, $options] = $this->context();
@@ -285,15 +358,24 @@ class FullDayVenueScheduleTest extends TestCase
         $payload = ['date'=>'2026-10-23', 'draw_ids'=>$options['draw_ids'],
             'rounds'=>collect($options['draw_rounds'])->mapWithKeys(fn ($row) => [$row['draw_id']=>$row['rounds']])->all(),
             'venue_ids'=>[$venue->id], 'court_labels'=>$options['day_court_labels'], 'venue_groups'=>$options['day_venue_groups'],
+            'court_starts'=>[$venue->id=>[['court'=>'1','start_time'=>''],['court'=>'2','start_time'=>'09:00']]],
             'venue_windows'=>[$venue->id=>['end_time'=>'11:00']], 'start_time'=>'08:00', 'end_time'=>'12:00',
             'duration'=>60, 'player_rest'=>0, 'court_gap'=>0, 'action'=>'preview'];
+        $ties = collect(app(EventVenueScheduleService::class)->fullDayTies($event))->keyBy('draw_id');
+        $payload['tie_destinations'] = [$ties[$draws[0]->id]['key']=>$venue->id.':A', $ties[$draws[1]->id]['key']=>$venue->id.':B'];
         $response = $this->post($url, $payload)->assertOk()->assertSee('Group A (courts 1)')->assertSee('Group B (courts 2)')->assertSee('08:00–11:00');
         if (getenv('CT_DAY_EDIT_BROWSER_FIXTURE') === '1') file_put_contents(storage_path('framework/testing/full-day-split.html'), $response->getContent());
         $revision = $response->viewData('preview')['revision'];
         $this->post($url, array_replace($payload, ['action'=>'save', 'revision'=>$revision]))->assertRedirect();
         $response = $this->get($url)->assertOk()->assertSee('including court groups and venue hours');
         $this->assertEquals($options['day_venue_groups'], $response->viewData('values')['venue_groups']);
+        $this->assertEquals([$venue->id=>[['court'=>'2','start_time'=>'09:00','end_time'=>'11:00']]], $response->viewData('values')['court_starts']);
         $this->assertEquals([$venue->id=>['start_time'=>'08:00', 'end_time'=>'11:00']], $response->viewData('values')['venue_windows']);
+        $cleared = $payload;
+        unset($cleared['court_starts']);
+        $clearPreview = $this->post($url, $cleared)->assertOk();
+        $this->assertSame([], $clearPreview->viewData('values')['court_starts']);
+        $this->assertSame([], $clearPreview->viewData('preview')['input']['full_day_court_starts']);
         $payload['venue_groups'][$venue->id]['B'] = ['1', '2'];
         $this->post($url, $payload)->assertRedirect()->assertSessionHasErrors('schedule');
         $this->assertSame(4, TeamFixture::whereNotNull('scheduled_at')->count());
