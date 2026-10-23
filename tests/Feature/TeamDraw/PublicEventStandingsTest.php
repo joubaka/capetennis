@@ -195,7 +195,7 @@ class PublicEventStandingsTest extends TestCase
         $this->assertSame(['Audit Oak', 'Audit Pine'], array_column($groups['U9'], 'name'));
         $this->assertSame([6, 0], array_column($groups['U9'], 'points'));
         $this->assertSame(['boys' => 3, 'girls' => 3, 'mixed' => 0, 'other' => 0], $groups['U9'][0]['gender_points']);
-        $response->assertSeeInOrder(['>Pos.<', '>Region / school<', '>Points<', '>Boys<', '>Girls<', '>Mixed<', '>Sets W–L<', '>Games W–L<'], false)
+        $response->assertSeeInOrder(['>Pos.<', '>Region / school<', '>Match points<', '>Tie points<', '>Total points<', '>Boys<', '>Girls<', '>Mixed<', '>Sets W–L<', '>Games W–L<'], false)
             ->assertDontSee('>Other<', false);
         $ranked = $response->viewData('ageStandings')['U9'];
         $this->assertSame(['Audit Oak', 'Audit Pine'], array_column($ranked, 'name'));

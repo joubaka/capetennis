@@ -11,11 +11,11 @@
       <p>Draws use different scoring rules. Totals are shown without a combined ranking.</p>
     @endif
     <div class="table-responsive">
-      <table class="table"><thead><tr><th>Rank</th><th>Region / team</th><th>Played</th><th>Wins</th><th>Points</th></tr></thead><tbody>
+      <table class="table"><thead><tr><th>Rank</th><th>Region / team</th><th>Played</th><th>Wins</th><th>Match points</th><th>Tie points</th><th>Total points</th></tr></thead><tbody>
       @forelse($standings['rows'] as $row)
-        <tr><td>{{ $row['rank'] ?? '—' }}</td><td>{{ $row['name'] }}</td><td>{{ $row['played'] }}</td><td>{{ $row['wins'] }}</td><td>{{ $row['points'] }}</td></tr>
+        <tr><td>{{ $row['rank'] ?? '—' }}</td><td>{{ $row['name'] }}</td><td>{{ $row['played'] }}</td><td>{{ $row['wins'] }}</td><td data-match-points>{{ $row['match_points'] }}</td><td data-tie-points>{{ $row['tie_points'] }}</td><td>{{ $row['points'] }}</td></tr>
       @empty
-        <tr><td colspan="5">No standings available for this age group.</td></tr>
+        <tr><td colspan="7">No standings available for this age group.</td></tr>
       @endforelse
       </tbody></table>
     </div>

@@ -7,12 +7,12 @@
 <section class="card mb-4" data-team-round-robin-matrix>
   <div class="card-header"><h2 class="h5 mb-1">{{ $matrix['draw']->drawName }}: round-robin matrix</h2>
     <p class="mb-0">Read each result from the row team's perspective. Scores show rubbers won. @if($matrixScoring ?? true)Select an encounter to enter or review its match scores.@endif</p>
-    <p class="small text-muted mb-0 mt-2">Scroll across for all opponents and totals. Rankings and points use this draw's saved scoring rules.</p>
+    <p class="small text-muted mb-0 mt-2">Scroll across for all opponents and totals. Match points plus tie bonus points equal total points. Rankings and points use this draw's saved scoring rules.</p>
   </div>
   <div class="team-rr-scroll" tabindex="0" role="region" aria-label="{{ $matrix['draw']->drawName }} round-robin results">
     <table class="team-rr-table"><caption class="visually-hidden">Team encounters and current standings</caption><thead><tr><th scope="col" class="team-rr-name">Team</th>
       @foreach($matrix['rows'] as $opponent)<th scope="col">{{ $opponent['name'] }}</th>@endforeach
-      @foreach(['Played','Won','Drawn','Lost','Points','Position'] as $label)<th scope="col">{{ $label }}</th>@endforeach
+      @foreach(['Played','Won','Drawn','Lost','Match points','Tie points','Total points','Position'] as $label)<th scope="col">{{ $label }}</th>@endforeach
     </tr></thead><tbody>
     @forelse($matrix['rows'] as $row)<tr><th scope="row" class="team-rr-name">{{ $row['name'] }}</th>
       @foreach($matrix['rows'] as $opponent)
@@ -27,8 +27,8 @@
           @empty<span class="text-muted">Not scheduled</span>@endforelse
         </td>@endif
       @endforeach
-      @foreach(['played','wins','draws','losses','points','rank'] as $metric)<td>{{ $row[$metric] ?? '—' }}</td>@endforeach
-    </tr>@empty<tr><td colspan="7">No confirmed scoring rules or team encounters are available yet.</td></tr>@endforelse
+      @foreach(['played','wins','draws','losses','match_points','tie_points','points','rank'] as $metric)<td>{{ $row[$metric] ?? '—' }}</td>@endforeach
+    </tr>@empty<tr><td colspan="9">No confirmed scoring rules or team encounters are available yet.</td></tr>@endforelse
     </tbody></table>
   </div>
 </section>

@@ -15,6 +15,9 @@ class PublicStandingsPresentationTest extends TestCase
         $html = $this->renderStandings();
 
         $this->assertStringContainsString('<tr data-position="1"', $html);
+        $this->assertStringContainsString('data-match-points>3', $html);
+        $this->assertStringContainsString('data-tie-points>1', $html);
+        $this->assertStringContainsString('Total points', $html);
         $this->assertStringContainsString('2 won · 1 lost · 3 matches', $html);
         $this->assertStringContainsString('data-gender-points="mixed">1', $html);
         $this->assertStringContainsString('Points breakdown and match statistics', $html);
@@ -45,7 +48,7 @@ class PublicStandingsPresentationTest extends TestCase
     {
         $event = new Event(['name' => 'Schools tournament']);
         $event->id = 123;
-        $row = ['rank' => $mixed ? null : 1, 'points' => 4,
+        $row = ['rank' => $mixed ? null : 1, 'points' => 4, 'match_points' => 3, 'tie_points' => 1,
             'rubber_wins' => $unplayed ? 0 : 2, 'rubber_losses' => $unplayed ? 0 : 1,
             'sets_for' => 4, 'sets_against' => 2, 'games_for' => 30, 'games_against' => 20,
             'gender_points' => ['boys' => 2, 'girls' => 1, 'mixed' => 1, 'other' => 0]];

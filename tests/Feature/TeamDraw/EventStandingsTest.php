@@ -33,6 +33,43 @@ class EventStandingsTest extends TestCase
         return compact('draw', 'tie', 'rubber', 'teams', 'regions');
     }
 
+    public function test_match_and_tie_points_stay_separate_for_completed_drawn_and_incomplete_ties(): void
+    {
+        $event = $this->event();
+        $fixture = $this->draw($event, 'U10 Boys');
+        $rules = app(TeamEventRulesService::class)->defaults();
+        $rules['tie_win'] = 4;
+        $rules['tie_draw'] = 2;
+        $rules['tie_loss'] = 1;
+        $fixture['draw']->update(['team_scoring_rules' => $rules]);
+
+        $assertBreakdown = function (array $match, array $tie, array $total) use ($event): void {
+            $data = app(EventStandingsService::class)->forEvent($event);
+            foreach ([$data['sections'][0]['rows'], $data['overall'], $data['ageStandings']['U10'], $data['ageGroups']['U10']] as $rows) {
+                $this->assertEquals($match, array_column($rows, 'match_points'));
+                $this->assertEquals($tie, array_column($rows, 'tie_points'));
+                $this->assertEquals($total, array_column($rows, 'points'));
+                foreach ($rows as $row) {
+                    $this->assertEquals($row['points'], $row['match_points'] + $row['tie_points']);
+                    $this->assertEquals($row['points'], array_sum($row['gender_points']));
+                }
+            }
+        };
+        $assertBreakdown([3, 0], [4, 1], [7, 1]);
+        $second = TeamFixture::create(['draw_id' => $fixture['draw']->id, 'team_tie_id' => $fixture['tie']->id,
+            'fixture_type' => 1, 'rubber_code' => 'singles', 'rubber_sequence' => 2, 'round_nr' => 1, 'match_nr' => 2]);
+        // A completed rubber counts immediately; an incomplete tie earns no bonus.
+        $assertBreakdown([3, 0], [0, 0], [3, 0]);
+        app(TeamFixtureScoreService::class)->save($second, ['set1_home' => 2, 'set1_away' => 6, 'set2_home' => 3, 'set2_away' => 6]);
+        $assertBreakdown([3, 3], [2, 2], [5, 5]);
+
+        $admin = User::factory()->create();
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $this->actingAs($admin)->get(route('admin.events.standings', $event))->assertOk()
+            ->assertSee('Match points')->assertSee('Tie points')->assertSee('Total points')
+            ->assertSee('data-match-points>3', false)->assertSee('data-tie-points>2', false);
+    }
+
     public function test_event_access_and_read_only_render(): void
     {
         $event = $this->event();
@@ -206,6 +243,8 @@ class EventStandingsTest extends TestCase
         $this->assertSame(1, $stats['stats']['rubbers']);
         $this->assertEquals(0, $stats['stats']['ties']);
         $this->assertSame([3, 0], array_column($stats['overall'], 'points'));
+        $this->assertSame([3, 0], array_column($stats['overall'], 'match_points'));
+        $this->assertSame([0, 0], array_column($stats['overall'], 'tie_points'));
         $this->assertSame([12, 5], array_column($stats['overall'], 'games_for'));
         $this->assertSame([3, 0], array_column($stats['ageStandings']['U10'], 'points'));
         $this->assertSame([1, 2], array_column($stats['ageStandings']['U10'], 'rank'));

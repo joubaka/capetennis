@@ -16,11 +16,11 @@
   @else
   <p>Completed matches contribute points, match wins, sets and games. Team ties count as played once every required match is complete. Teams tied on all configured criteria share a rank.</p>
   <div class="card"><div class="table-responsive" tabindex="0" role="region" aria-label="Standings table; scroll sideways for all statistics"><table class="table align-middle mb-0 text-nowrap">
-    <thead><tr><th>Rank</th><th>Team / region</th><th>Ties played</th><th>Ties won</th><th>Ties drawn</th><th>Ties lost</th><th>Points</th><th>Matches W–L</th><th>Sets F–A</th><th>Games F–A</th></tr></thead>
+    <thead><tr><th>Rank</th><th>Team / region</th><th>Ties played</th><th>Ties won</th><th>Ties drawn</th><th>Ties lost</th><th>Match points</th><th>Tie points</th><th>Total points</th><th>Matches W–L</th><th>Sets F–A</th><th>Games F–A</th></tr></thead>
     <tbody>@forelse($rows as $row)<tr>
-      <td>{{ $row['rank'] }}</td><th>{{ $row['name'] }}</th><td>{{ $row['played'] }}</td><td>{{ $row['wins'] }}</td><td>{{ $row['draws'] }}</td><td>{{ $row['losses'] }}</td><td>{{ $row['points'] }}</td>
+      <td>{{ $row['rank'] }}</td><th>{{ $row['name'] }}</th><td>{{ $row['played'] }}</td><td>{{ $row['wins'] }}</td><td>{{ $row['draws'] }}</td><td>{{ $row['losses'] }}</td><td data-match-points>{{ $row['match_points'] }}</td><td data-tie-points>{{ $row['tie_points'] }}</td><td>{{ $row['points'] }}</td>
       <td>{{ $row['rubber_wins'] }}–{{ $row['rubber_losses'] }}</td><td>{{ $row['sets_for'] }}–{{ $row['sets_against'] }}</td><td>{{ $row['games_for'] }}–{{ $row['games_against'] }}</td>
-    </tr>@empty<tr><td colspan="10">No published team ties or legacy match results are available.</td></tr>@endforelse</tbody>
+    </tr>@empty<tr><td colspan="12">No published team ties or legacy match results are available.</td></tr>@endforelse</tbody>
   </table></div></div>
   <p class="text-muted mt-2">Legacy matches count towards match wins and scores, but do not count as completed team ties.</p>
   @endif

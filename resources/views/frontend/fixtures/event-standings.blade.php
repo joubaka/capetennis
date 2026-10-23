@@ -26,7 +26,7 @@
     #public-age-points .points-card-header h2 { color:#fff; font-size:1.15rem; font-weight:600; margin:0; }
     #public-age-points .points-card-header span { color:#deebe4; font-size:.75rem; }
     #public-age-points .points-table-scroll { overflow-x:auto; }
-    #public-age-points .points-table { width:100%; border-collapse:collapse; }
+    #public-age-points .points-table { width:100%; min-width:520px; border-collapse:collapse; }
     #public-age-points .points-position { width:60px; text-align:center; font-size:1.1rem; font-weight:700; color:#365940; }
     #public-age-points .points-record { display:block; color:#617168; font-size:.8rem; font-weight:400; margin-top:.3rem; }
     #public-age-points .points-details { border-top:1px solid #edf1ec; padding:1rem 1.25rem; }
@@ -87,10 +87,10 @@
         <div class="points-card-header"><h2>{{ $age === 'Unspecified' ? 'Age group unspecified' : $age.' standings' }}</h2><span>{{ count($rows) }} regions / schools</span></div>
         <div class="points-table-scroll" tabindex="0" role="region" aria-label="{{ $age }} points table; scroll horizontally if needed">
         <table class="points-table" aria-label="{{ $age }} points by region or school">
-          <thead><tr><th scope="col">Pos.</th><th scope="col">Region / school</th><th scope="col">Points</th></tr></thead>
+          <thead><tr><th scope="col">Pos.</th><th scope="col">Region / school</th><th scope="col">Match points</th><th scope="col">Tie points</th><th scope="col">Total points</th></tr></thead>
           <tbody>
             @foreach($rows as $row)
-            <tr data-position="{{ $hasResults ? $row['rank'] : '' }}"><td class="points-position">{{ $hasResults ? ($row['rank'] ?? '—') : '—' }}</td><th scope="row"><span class="points-region" style="--region-color:{{ $colors->get($row['name'], '#617168') }}" aria-hidden="true"></span>{{ $row['name'] }}<span class="points-record">{{ $row['rubber_wins'] }} won · {{ $row['rubber_losses'] }} lost · {{ $row['rubber_wins'] + $row['rubber_losses'] }} matches</span></th><td><span class="points-pill" data-points="{{ $row['points'] }}">{{ $row['points'] }}</span></td></tr>
+            <tr data-position="{{ $hasResults ? $row['rank'] : '' }}"><td class="points-position">{{ $hasResults ? ($row['rank'] ?? '—') : '—' }}</td><th scope="row"><span class="points-region" style="--region-color:{{ $colors->get($row['name'], '#617168') }}" aria-hidden="true"></span>{{ $row['name'] }}<span class="points-record">{{ $row['rubber_wins'] }} won · {{ $row['rubber_losses'] }} lost · {{ $row['rubber_wins'] + $row['rubber_losses'] }} matches</span></th><td data-match-points>{{ $row['match_points'] }}</td><td data-tie-points>{{ $row['tie_points'] }}</td><td><span class="points-pill" data-points="{{ $row['points'] }}">{{ $row['points'] }}</span></td></tr>
             @endforeach
           </tbody>
         </table>
@@ -110,7 +110,7 @@
       </section>
       @empty<p class="points-empty">No published points or participants for this age group yet.</p>@endforelse
     </div>
-    <p class="points-note">Positions follow each draw’s saved scoring and tie-break rules; equal records can share a position. Standings reflect completed published results and may change while play continues. Different scoring rules within an age group mean no combined positions are shown.</p>
+    <p class="points-note">Match points plus tie bonus points equal total points. The gender breakdown also includes tie bonuses. Positions follow each draw’s saved scoring and tie-break rules; equal records can share a position. Standings reflect completed published results and may change while play continues. Different scoring rules within an age group mean no combined positions are shown.</p>
   </div>
 </div>
 @include('frontend.fixtures.partials.live-results-script')

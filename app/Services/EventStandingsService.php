@@ -7,7 +7,7 @@ use App\Models\Team;
 
 final class EventStandingsService
 {
-    private const METRICS = ['played', 'wins', 'draws', 'losses', 'points', 'rubber_wins', 'rubber_losses', 'sets_for', 'sets_against', 'games_for', 'games_against'];
+    private const METRICS = ['played', 'wins', 'draws', 'losses', 'points', 'match_points', 'tie_points', 'rubber_wins', 'rubber_losses', 'sets_for', 'sets_against', 'games_for', 'games_against'];
 
     public function forEvent(Event $event, array $filters = [], bool $publishedOnly = false, ?int $drawId = null): array
     {
@@ -74,6 +74,7 @@ final class EventStandingsService
                     if (!$outcome['complete']) { continue; }
                     $other = $side === 'home' ? 'away' : 'home';
                     $legacyRows[$regionId]['points'] += $results->points($fixture, $outcome)[$side];
+                    $legacyRows[$regionId]['match_points'] += $results->points($fixture, $outcome)[$side];
                     $legacyRows[$regionId]['gender_points'][app(TeamStandingsService::class)->fixtureGender($fixture)] += $results->points($fixture, $outcome)[$side];
                     $legacyRows[$regionId]['rubber_wins'] += $outcome['winner'] === $side ? 1 : 0;
                     $legacyRows[$regionId]['rubber_losses'] += $outcome['winner'] === $other ? 1 : 0;
@@ -121,10 +122,10 @@ final class EventStandingsService
                 $overall[$key] ??= ['name' => $regionId ? $regions[$regionId]->region_name : $row['name'], 'teams' => [], 'rank' => null,
                     'gender_points' => array_fill_keys(['boys', 'girls', 'mixed', 'other'], 0)] + array_fill_keys(self::METRICS, 0);
                 foreach ($row['gender_points'] as $bucket => $points) { $overall[$key]['gender_points'][$bucket] += $points; }
-                $ageGroups[$section['age']][$key] ??= ['name' => $overall[$key]['name'], 'points' => 0,
+                $ageGroups[$section['age']][$key] ??= ['name' => $overall[$key]['name'], 'points' => 0, 'match_points' => 0, 'tie_points' => 0,
                     'gender_points' => array_fill_keys(['boys', 'girls', 'mixed', 'other'], 0),
                     'color' => \App\Support\RegionBadge::color($regionId ? $regions[$regionId] : null)];
-                $ageGroups[$section['age']][$key]['points'] += $row['points'];
+                foreach (['points', 'match_points', 'tie_points'] as $metric) { $ageGroups[$section['age']][$key][$metric] += $row[$metric]; }
                 foreach ($row['gender_points'] as $bucket => $points) { $ageGroups[$section['age']][$key]['gender_points'][$bucket] += $points; }
                 $ageStandings[$section['age']][$key] ??= ['name' => $overall[$key]['name'], 'rank' => null,
                     'gender_points' => array_fill_keys(['boys', 'girls', 'mixed', 'other'], 0)] + array_fill_keys(self::METRICS, 0);

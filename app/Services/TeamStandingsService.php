@@ -81,7 +81,7 @@ final class TeamStandingsService
             foreach (['home', 'away'] as $side) {
                 $team = $tie->{$side.'Team'};
                 if (!$team) { continue; }
-                $rows[$team->id] ??= ['team_id' => $team->id, 'name' => app(TeamDrawSideResolver::class)->label($draw, $team), 'played' => 0, 'wins' => 0, 'draws' => 0, 'losses' => 0, 'points' => 0, 'rubber_wins' => 0, 'rubber_losses' => 0, 'sets_for' => 0, 'sets_against' => 0, 'games_for' => 0, 'games_against' => 0];
+                $rows[$team->id] ??= ['team_id' => $team->id, 'name' => app(TeamDrawSideResolver::class)->label($draw, $team), 'played' => 0, 'wins' => 0, 'draws' => 0, 'losses' => 0, 'points' => 0, 'match_points' => 0, 'tie_points' => 0, 'rubber_wins' => 0, 'rubber_losses' => 0, 'sets_for' => 0, 'sets_against' => 0, 'games_for' => 0, 'games_against' => 0];
                 $rows[$team->id]['gender_points'] ??= array_fill_keys(['boys', 'girls', 'mixed', 'other'], 0);
             }
             if (!isset($rows[$tie->home_team_id], $rows[$tie->away_team_id])) { continue; }
@@ -94,6 +94,7 @@ final class TeamStandingsService
                 foreach (['home' => $tie->home_team_id, 'away' => $tie->away_team_id] as $side => $id) {
                     $other = $side === 'home' ? 'away' : 'home';
                     $rows[$id]['points'] += $points[$side];
+                    $rows[$id]['match_points'] += $points[$side];
                     $rows[$id]['gender_points'][$this->fixtureGender($rubber)] += $points[$side];
                     $rows[$id]['rubber_wins'] += $outcome['winner'] === $side ? 1 : 0;
                     $rows[$id]['rubber_losses'] += $outcome['winner'] === $other ? 1 : 0;
@@ -110,6 +111,7 @@ final class TeamStandingsService
                 $state = !$outcome['winner_team_id'] ? 'draw' : ($id === $outcome['winner_team_id'] ? 'win' : 'loss');
                 $rows[$id][['win' => 'wins', 'draw' => 'draws', 'loss' => 'losses'][$state]]++;
                 $rows[$id]['points'] += $rules['tie_'.$state];
+                $rows[$id]['tie_points'] += $rules['tie_'.$state];
                 // Tie bonuses belong to the draw; ambiguous draws keep them in Other.
                 $rows[$id]['gender_points'][$this->drawGender($draw)] += $rules['tie_'.$state];
             }
