@@ -63,7 +63,15 @@
         </div>
       @endforeach</div>
     </fieldset>
-    <details class="mb-3" @if(array_filter(old('tie_destinations',$values['tie_destinations']))) open @endif><summary class="h5" style="min-height:44px">Optional: place individual ties at venues</summary>
+    @if(collect($tieOptions)->contains(fn ($tie) => $tie['playoff_group'] !== null))
+    <fieldset class="mb-4" id="playoff-groups"><legend class="h4">Assign playoff ties to venues</legend>
+      <p>Choose where each age group's 1st vs 2nd and 3rd vs 4th playoff will play. Each choice assigns all matches in that playoff together, including singles, doubles and mixed doubles.</p>
+      <p class="small text-muted">Court groups A/B are sets of courts at a venue. Automatic lets the planner choose from the age group's allowed venues. Played matches remain fixed.</p>
+      <p class="small text-muted" id="playoff-groups-empty">Select playoff draws and rounds above to show their ties.</p>
+      <div id="playoff-group-choices" class="row g-3"></div>
+    </fieldset>
+    @endif
+    <details class="mb-3" @if(collect($tieOptions)->contains(fn ($tie) => !$tie['playoff_group'] && !empty(old('tie_destinations',$values['tie_destinations'])[$tie['key']]))) open @endif><summary class="h5" style="min-height:44px">Optional: place other individual ties at venues</summary>
     <fieldset class="mt-3"><legend class="h5">Place ties at venues</legend>
       <p class="small text-muted">Select draws and rounds above, then drag each tie into a venue or court group. You can also use each tie's destination menu. Automatic lets the planner choose. Times are calculated when you preview.</p>
       <p class="small text-muted" id="tie-board-empty">Select draws and rounds to show their available ties.</p>
@@ -71,11 +79,11 @@
         <section class="tie-board-column"><h6>Automatic / unassigned</h6><div class="tie-drop-lane" data-tie-destination="">
         @foreach($tieOptions as $tie)
           @php($chosenDestination = old('tie_destinations',$values['tie_destinations'])[$tie['key']] ?? '')
-          <article class="day-tie-card" data-tie-key="{{ $tie['key'] }}" data-draw-id="{{ $tie['draw_id'] }}" data-round="{{ $tie['round'] }}" data-dates="{{ json_encode($tie['dates']) }}">
-            <button type="button" class="btn btn-sm btn-outline-secondary tie-drag-handle mb-2" draggable="true" aria-label="Drag round {{ $tie['round'] }} tie {{ $tie['tie_nr'] ?: 'matchup' }} to a venue">Move tie</button>
-            <div class="small text-muted">{{ $tie['draw_name'] }}</div><strong>Round {{ $tie['round'] }} · {{ $tie['tie_nr'] ? 'Tie '.$tie['tie_nr'] : 'Matchup' }}</strong>
+          <article class="day-tie-card" data-playoff-group="{{ $tie['playoff_group'] }}" data-tie-key="{{ $tie['key'] }}" data-draw-id="{{ $tie['draw_id'] }}" data-round="{{ $tie['round'] }}" data-dates="{{ json_encode($tie['dates']) }}">
+            @unless($tie['playoff_group'])<button type="button" class="btn btn-sm btn-outline-secondary tie-drag-handle mb-2" draggable="true" aria-label="Drag round {{ $tie['round'] }} tie {{ $tie['tie_nr'] ?: 'matchup' }} to a venue">Move tie</button>@endunless
+            <div class="small text-muted">{{ $tie['draw_name'] }}</div><strong>{{ $tie['playoff_group'] ?: 'Round '.$tie['round'].' · '.($tie['tie_nr'] ? 'Tie '.$tie['tie_nr'] : 'Matchup') }}</strong>
             <p class="small my-2">{{ $tie['matchup'] }}</p>
-            <label class="form-label w-100">Tie destination<select class="form-select day-tie-destination" name="tie_destinations[{{ $tie['key'] }}]"><option value="">Automatic</option>@if($chosenDestination)<option value="{{ $chosenDestination }}" selected>Saved destination (review below)</option>@endif</select></label>
+            <label class="form-label w-100">{{ $tie['playoff_group'] ? 'Playoff venue' : 'Tie destination' }}<select class="form-select day-tie-destination" name="tie_destinations[{{ $tie['key'] }}]"><option value="">Automatic</option>@if($chosenDestination)<option value="{{ $chosenDestination }}" selected>Saved destination (review below)</option>@endif</select></label>
           </article>
         @endforeach
         </div></section>
@@ -151,7 +159,7 @@
       column.dataset.tieDestination=destination.value;column.append(title,hint,lane);board.append(column);lanes.set(destination.value,lane);
     });
     const selectedRounds=[...form.querySelectorAll('.day-round:checked:not(:disabled)')];
-    let activeCount=0;
+    let activeCount=0, playoffCount=0;
     tieCards.forEach(card=>{
       const select=card.querySelector('.day-tie-destination');const value=select.value;
       const dates=JSON.parse(card.dataset.dates);
@@ -165,9 +173,12 @@
       const valid=card.allowedTieDestinations.has(value);
       if(!valid) {const option=document.createElement('option');option.value=value;option.textContent='Unavailable destination — choose again';select.append(option);}
       select.value=value;select.classList.toggle('is-invalid',active && !valid);select.setCustomValidity(active && !valid ? 'Choose an available venue or court group for this tie.' : '');
-      if(active) {activeCount++;(valid ? lanes.get(value) : lanes.get('')).append(card);} else document.getElementById('inactive-ties').append(card);
+      if(active && card.dataset.playoffGroup) {
+        playoffCount++;card.classList.add('col-12','col-md-6');document.getElementById('playoff-group-choices').append(card);
+      } else if(active) {activeCount++;(valid ? lanes.get(value) : lanes.get('')).append(card);} else document.getElementById('inactive-ties').append(card);
     });
     document.getElementById('tie-board-empty').hidden=activeCount>0;
+    if(document.getElementById('playoff-groups-empty')) document.getElementById('playoff-groups-empty').hidden=playoffCount>0;
   };
   const sync=()=>{
     form.querySelectorAll('[data-day-draw]').forEach(card=>card.querySelectorAll('.day-round').forEach(input=>input.disabled=!card.querySelector('.day-draw').checked || card.querySelector('.day-draw').disabled));

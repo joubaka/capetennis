@@ -241,6 +241,8 @@ class PlayerPerformanceHistoryService
     {
         if (!$event->published) { return; }
         $network = $player === null; $asOf ??= CarbonImmutable::today();
+        $recoveryService = app(HistoricalIdentityRecoveryService::class);
+        $recoveries = $recoveryService->records($event);
         if ($network && !TeamFixture::query()->whereHas('draw', fn ($draw) => $draw->where('event_id', $event->id))->whereHas('teamResults')->exists()) { return; }
         $regions = $event->regions()->pluck('team_regions.id')->all();
         $teams = \App\Models\Team::query()->without('team_players_no_profile')->with(['category.category', 'regions:id,region_name', 'team_players' => fn ($query) => $query->limit(257)])->where(function ($query) use ($event, $regions, $network) {
@@ -263,9 +265,11 @@ class PlayerPerformanceHistoryService
             if ($rows->count() !== $needed) { $reason = 'Team match has missing or ambiguous player identities'; }
             foreach ($rows as $row) {
                 foreach ([1,2] as $side) {
-                    $hypothesis = $identityPreview?->identity((int) $event->id, (int) $row->id, $side);
+                    $recovery = $recoveries[$row->id.'-'.$side] ?? null;
+                    $hypothesis = $identityPreview?->identity((int) $event->id, (int) $row->id, $side)
+                        ?? ($recovery ? $recoveryService->resolveRecord($event, $recovery) : null);
                     if ($hypothesis) {
-                        // Already strictly source-validated by the review service in this consistent read.
+                        // Strictly validated counterfactual or later documentary recovery.
                         $sourceBySide[$side] = $hypothesis['team'];
                         $resolved[$row->id][$side] = $hypothesis['player'];
                         continue;

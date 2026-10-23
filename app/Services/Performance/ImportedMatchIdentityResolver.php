@@ -8,7 +8,7 @@ use App\Services\TeamParticipantHistoryService;
 /** Historical imported identities require an attestation captured before roster changes. */
 final class ImportedMatchIdentityResolver
 {
-    public const VERSION = 1;
+    public const VERSION = 2;
 
     public function resolve(TeamFixturePlayer $row, int $side, Team $source, int $eventId): ?Player
     {

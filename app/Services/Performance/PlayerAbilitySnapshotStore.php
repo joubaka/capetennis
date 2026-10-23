@@ -118,6 +118,11 @@ class PlayerAbilitySnapshotStore
         $capture('no_profile_team_players', ['id', 'team_id', 'player_profile', 'rank'], DB::table('no_profile_team_players')->whereIn('team_id', $teams));
         $capture('team_fixture_players', ['id', 'team_fixture_id', 'team1_id', 'team2_id', 'team1_no_profile_id', 'team2_no_profile_id', 'participant_snapshot'], DB::table('team_fixture_players')->whereIn('team_fixture_id', $team));
         $capture('team_fixtures', ['id', 'draw_id', 'team_tie_id', 'region1', 'region2', 'fixture_type', 'rubber_code', 'age', 'numSets'], DB::table('team_fixtures')->whereIn('id', $team));
+        if (Schema::hasTable('historical_identity_recoveries')) {
+            $recoveries = DB::table('historical_identity_recoveries')->whereIn('fixture_player_id', array_column($manifest['team_fixture_players'], 'id'));
+            $capture('historical_identity_recoveries', ['*'], $recoveries);
+            $manifest['historical_recovery_sources'] = app(HistoricalIdentityRecoveryService::class)->context($manifest['historical_identity_recoveries']);
+        }
         $capture('fixtures', ['id', 'draw_id', 'registration1_id', 'registration2_id'], DB::table('fixtures')->whereIn('id', $individual));
         $capture('category_event_registrations', ['id', 'category_event_id', 'registration_id'], DB::table('category_event_registrations')->whereIn('category_event_id', $fields));
         $registrationIds = array_merge(array_column($manifest['category_event_registrations'], 'registration_id'), array_column($manifest['fixtures'], 'registration1_id'), array_column($manifest['fixtures'], 'registration2_id'));
@@ -128,8 +133,18 @@ class PlayerAbilitySnapshotStore
 
     public function published(array $manifest): bool
     {
+        if (!empty($manifest['historical_identity_recoveries']) && !is_array($manifest['historical_recovery_sources'] ?? null)) { return false; }
         foreach ($manifest as $table => $captured) {
-            if (!in_array($table, ['events', 'draws', 'team_ties', 'eventtypes', 'category_events', 'categories', 'teams', 'team_regions', 'event_regions', 'team_players', 'no_profile_team_players', 'team_fixture_players', 'fixtures', 'team_fixtures', 'category_event_registrations', 'player_registrations'], true)) { return false; }
+            if ($table === 'historical_recovery_sources') {
+                // Recapture complete scoped groups, including previously empty rosters.
+                // Normalize object key order only; preserve scalar types and list order.
+                if ($this->canonicalRecoveryContext($captured) !== $this->canonicalRecoveryContext(app(HistoricalIdentityRecoveryService::class)->context($manifest['historical_identity_recoveries'] ?? []))) { return false; }
+                continue;
+            }
+            if (!in_array($table, ['events', 'draws', 'team_ties', 'eventtypes', 'category_events', 'categories', 'teams', 'team_regions', 'event_regions', 'team_players', 'no_profile_team_players', 'team_fixture_players', 'fixtures', 'team_fixtures', 'category_event_registrations', 'player_registrations', 'historical_identity_recoveries'], true)) { return false; }
+            if ($table === 'historical_identity_recoveries') {
+                if (!Schema::hasTable($table)) { return false; }
+            }
             $groupColumn = match ($table) {
                 'team_fixture_players' => 'team_fixture_id', 'category_event_registrations' => 'category_event_id',
                 'category_events' => 'event_id', 'team_players', 'no_profile_team_players' => 'team_id', default => null,
@@ -178,6 +193,14 @@ class PlayerAbilitySnapshotStore
             }
         }
         return true;
+    }
+
+    private function canonicalRecoveryContext(mixed $value): mixed
+    {
+        if (!is_array($value)) { return $value; }
+        foreach ($value as $key => $item) { $value[$key] = $this->canonicalRecoveryContext($item); }
+        if (!array_is_list($value)) { ksort($value, SORT_STRING); }
+        return $value;
     }
 
     public function replace(array $payload, CarbonImmutable $asOf, string $fingerprint, array $manifest): void

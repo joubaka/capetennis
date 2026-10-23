@@ -512,4 +512,66 @@ class FullDayVenueScheduleTest extends TestCase
         $this->assertDatabaseCount('team_fixtures', 6);
         $this->assertSame(6, TeamFixture::whereNotNull('scheduled_at')->count());
     }
+
+    public function test_playoff_group_choices_split_both_ages_between_schools_and_club_court_groups(): void
+    {
+        [$event, $draws, $venues, $options] = $this->agePoolContext();
+        $selected = collect([$draws[0], $draws[2]]);
+        $choices = [];
+        foreach ($selected as $index => $draw) {
+            $age = $index === 0 ? 15 : 19;
+            $draw->forceFill(['drawName'=>'U/'.$age.' placement playoffs', 'team_draw_selection'=>[
+                'competition'=>['phase'=>'playoff', 'group'=>'U'.$age, 'qualification_pending'=>true]]])->save();
+            foreach ([1, 2] as $number) {
+                $tie = \App\Models\TeamTie::create(['draw_id'=>$draw->id, 'round_nr'=>1, 'tie_nr'=>$number, 'status'=>'draft']);
+                if ($number === 1) TeamFixture::where('draw_id', $draw->id)->update(['team_tie_id'=>$tie->id]);
+                else foreach ([1, 2] as $rubber) TeamFixture::create(['draw_id'=>$draw->id, 'team_tie_id'=>$tie->id,
+                    'round_nr'=>1, 'tie_nr'=>$number, 'match_nr'=>2+$rubber, 'rubber_sequence'=>$rubber, 'match_status'=>0]);
+                $choices['draw:'.$draw->id.':tie:'.$tie->id] = $number === 1
+                    ? (string) $venues[$age === 15 ? 2 : 1]->id : $venues[0]->id.($age === 15 ? ':B' : ':A');
+            }
+        }
+        Role::firstOrCreate(['name'=>'admin', 'guard_name'=>'web']);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id'=>$event->id, 'user_id'=>$admin->id]);
+        $this->actingAs($admin);
+        $url = route('backend.event-venue-schedule.calendar.full-day', ['event'=>$event->id, 'date'=>'2026-10-23']);
+        $payload = ['date'=>'2026-10-23', 'draw_ids'=>$selected->pluck('id')->all(),
+            'rounds'=>$selected->mapWithKeys(fn ($draw) => [$draw->id=>[1]])->all(),
+            'venue_ids'=>$options['venue_ids'], 'court_labels'=>$options['day_court_labels'], 'venue_groups'=>$options['day_venue_groups'],
+            'destination_pools'=>['age:15'=>[(string) $venues[2]->id, $venues[0]->id.':B'],
+                'age:19'=>[(string) $venues[1]->id, $venues[0]->id.':A']],
+            'tie_destinations'=>$choices, 'start_time'=>'08:00', 'end_time'=>'10:00', 'duration'=>60, 'player_rest'=>0, 'court_gap'=>0, 'action'=>'preview'];
+        $response = $this->post($url, $payload)->assertOk()->assertSee('Assign playoff ties to venues')
+            ->assertSee('1st vs 2nd')->assertSee('3rd vs 4th')->assertSee('Each choice assigns all matches');
+        $playoffs = collect($response->viewData('tieOptions'))->whereNotNull('playoff_group');
+        $this->assertCount(4, $playoffs);
+        foreach ($playoffs as $tie) $this->assertSame(1, substr_count($response->getContent(), 'name="tie_destinations['.$tie['key'].']"'));
+        $preview = $response->viewData('preview');
+        $this->assertCount(8, $preview['matches']);
+        $this->assertEmpty($preview['unscheduled']);
+        foreach ($preview['matches'] as $row) {
+            $fixture = TeamFixture::findOrFail($row['fixture_id']);
+            $destination = explode(':', $choices['draw:'.$fixture->draw_id.':tie:'.$fixture->team_tie_id]);
+            $this->assertSame((int) $destination[0], $row['venue_id']);
+            $this->assertSame($destination[1] ?? null, $row['venue_group']);
+        }
+        if (getenv('CT_DAY_EDIT_BROWSER_FIXTURE') === '1') file_put_contents(storage_path('framework/testing/competition-group-venues.html'), $response->getContent());
+        $changed = $payload;
+        $changed['tie_destinations'][array_key_first($choices)] = $venues[0]->id.':B';
+        $this->post($url, array_replace($changed, ['action'=>'save', 'revision'=>$preview['revision']]))->assertRedirect()->assertSessionHasErrors('schedule');
+        $this->assertSame(0, TeamFixture::whereNotNull('scheduled_at')->count());
+        session()->forget('errors');
+        $this->post($url, array_replace($payload, ['action'=>'save', 'revision'=>$preview['revision']]))->assertRedirect();
+        $this->assertSame(8, TeamFixture::whereNotNull('scheduled_at')->count());
+        $this->assertDatabaseCount('published_schedule_assignments', 0);
+        $reloaded = $this->get($url)->assertOk();
+        $this->assertEquals($choices, $reloaded->viewData('values')['tie_destinations']);
+        $audit = \App\Models\DrawAuditLog::where('draw_id', $draws[0]->id)->latest('id')->first()->payload;
+        $this->assertCount(4, $audit['full_day_options']['full_day_tie_destinations']);
+        $invalid = $payload;
+        $invalid['tie_destinations'][array_key_first($choices)] = (string) $venues[1]->id;
+        $this->post($url, $invalid)->assertRedirect()->assertSessionHasErrors('schedule');
+        $this->assertSame(8, TeamFixture::whereNotNull('scheduled_at')->count());
+    }
 }

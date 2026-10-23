@@ -13,7 +13,7 @@ class PlayerAbilityRefreshState
         'team_fixture_players', 'team_fixtures', 'event_regions', 'team_regions',
         'eventtypes', 'category_events', 'categories', 'fixtures',
         'category_event_registrations', 'player_registrations', 'category_results',
-        'fixture_results', 'players', 'draw_settings', 'order_of_plays', 'team_fixture_results'];
+        'fixture_results', 'players', 'draw_settings', 'order_of_plays', 'team_fixture_results', 'historical_identity_recoveries'];
 
     public function observe(QueryExecuted $query): void
     {

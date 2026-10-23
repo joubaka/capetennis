@@ -21,9 +21,9 @@ class PlayerAbilityConsistentRead
         if ($driver === 'mysql') {
             if ($level !== 0) { throw new \RuntimeException('Consistent read requires an independent transaction.'); }
             $tables = $connection->table('information_schema.tables')->where('table_schema', $connection->getDatabaseName())
-                ->whereIn('table_name', array_map(fn ($table) => $connection->getTablePrefix().$table, [...self::SOURCE_TABLES, 'player_ability_refresh_state']))
+                ->whereIn('table_name', array_map(fn ($table) => $connection->getTablePrefix().$table, [...self::SOURCE_TABLES, 'player_ability_refresh_state', 'historical_identity_recoveries']))
                 ->selectRaw('TABLE_NAME as table_name, ENGINE as engine')->get();
-            $required = $tables->reject(fn ($table) => $table->table_name === $connection->getTablePrefix().'player_ability_refresh_state');
+            $required = $tables->reject(fn ($table) => in_array($table->table_name, [$connection->getTablePrefix().'player_ability_refresh_state', $connection->getTablePrefix().'historical_identity_recoveries'], true));
             if ($required->count() !== count(self::SOURCE_TABLES) || $tables->contains(fn ($table) => strcasecmp($table->engine ?? '', 'InnoDB') !== 0)) {
                 throw new \RuntimeException('Consistent read requires transactional source tables.');
             }

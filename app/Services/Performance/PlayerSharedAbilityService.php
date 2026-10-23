@@ -130,6 +130,14 @@ class PlayerSharedAbilityService
     public function fingerprint(): string
     {
         $hash = hash_init('sha256');
+        if (Schema::hasTable('historical_identity_recoveries')) {
+            $recoveries = [];
+            foreach (DB::table('historical_identity_recoveries')->orderBy('id')->lazyById(500) as $row) {
+                hash_update($hash, 'historical_identity_recoveries'.json_encode($row));
+                $recoveries[] = (array) $row;
+            }
+            hash_update($hash, 'historical_recovery_sources'.json_encode(app(HistoricalIdentityRecoveryService::class)->context($recoveries), JSON_THROW_ON_ERROR));
+        }
         foreach (['events' => ['id', 'published', 'results_published', 'start_date', 'end_date', 'eventType'],
             'draws' => ['id', 'published', 'event_id', 'category_event_id', 'team_scoring_rules', 'drawName', 'team_draw_selection'],
             'team_ties' => ['id', 'draw_id', 'home_team_id', 'away_team_id', 'published_at', 'status'],

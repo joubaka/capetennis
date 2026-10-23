@@ -73,7 +73,7 @@ class HistoricalIdentityReviewService
         if (!$condition) { throw ValidationException::withMessages(['proposal' => $message]); }
     }
 
-    private function validateIdentity(Event $event, int $rowId, int $side, int $teamId, int $playerId): array
+    public function validateIdentity(Event $event, int $rowId, int $side, int $teamId, int $playerId): array
     {
         $this->require(in_array($side, [1, 2], true), 'Choose the exact fixture side.');
         $row = TeamFixturePlayer::with(['fixture.draw.categoryEvent.category', 'fixture.teamTie', 'fixture.teamResults'])->findOrFail($rowId);
@@ -130,7 +130,7 @@ class HistoricalIdentityReviewService
         return compact('row', 'team', 'player', 'cohort');
     }
 
-    private function sourceFingerprint(TeamFixturePlayer $row, ?Team $team): string
+    public function sourceFingerprint(TeamFixturePlayer $row, ?Team $team): string
     {
         $fixture = $row->fixture()->with(['draw.categoryEvent.category', 'teamTie', 'teamResults'])->first();
         $imports = NoProfileTeamPlayer::whereIn('id', array_filter([$row->team1_no_profile_id, $row->team2_no_profile_id]))->orderBy('id')->get()->map->getRawOriginal()->all();
@@ -142,7 +142,7 @@ class HistoricalIdentityReviewService
             DB::table('event_regions')->where('event_id', $fixture?->draw?->event_id)->orderBy('id')->get()->all()], JSON_THROW_ON_ERROR));
     }
 
-    private function targetFingerprint(Player $player): string
+    public function targetFingerprint(Player $player): string
     {
         return hash('sha256', json_encode($player->only(['id', 'name', 'surname', 'dateOfBirth', 'gender']), JSON_THROW_ON_ERROR));
     }

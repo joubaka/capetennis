@@ -1291,6 +1291,9 @@ final class EventVenueScheduleService
                 continue;
             }
             $ties[$key] = ['key'=>$key, 'draw_id'=>(int) $fixture->draw_id, 'draw_name'=>$draws[$fixture->draw_id]->drawName,
+                'playoff_group'=>($draws[$fixture->draw_id]->team_draw_selection['competition']['phase'] ?? null) === 'playoff'
+                    && $fixture->teamTie && in_array((int) $fixture->teamTie->tie_nr, [1, 2], true)
+                    ? ($fixture->teamTie->tie_nr === 1 ? '1st vs 2nd' : '3rd vs 4th') : null,
                 'round'=>$node['round'], 'tie_nr'=>$fixture->teamTie?->tie_nr ?: $fixture->tie_nr, 'dates'=>[$date],
                 'matchup'=>($fixture->teamTie?->home_side_name ?: $fixture->region1Name?->name ?: 'Home team').' vs '.($fixture->teamTie?->away_side_name ?: $fixture->region2Name?->name ?: 'Away team')];
         }

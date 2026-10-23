@@ -5,7 +5,7 @@ namespace Tests\Feature;
 use App\Models\{Category, CategoryEvent, Draw, Event, HistoricalIdentityProposal, NoProfileTeamPlayer, Player, Team, TeamFixture, TeamPlayer, TeamRegion, TeamTie, User};
 use App\Services\Performance\{HistoricalIdentityReviewService, PlayerPerformanceHistoryService, PlayerSharedAbilityService};
 use Carbon\CarbonImmutable;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
@@ -13,7 +13,169 @@ use Tests\TestCase;
 
 class HistoricalIdentityReviewTest extends TestCase
 {
-    use RefreshDatabase;
+    // Counterfactual previews use a real read-only transaction, so cannot nest in RefreshDatabase.
+    use DatabaseTruncation;
+
+    protected function afterTruncatingDatabase(): void
+    {
+        // Restore this migration-seeded singleton after truncation between scenarios.
+        DB::table('player_ability_refresh_state')->insert(['id' => 1]);
+    }
+
+    protected function tearDown(): void
+    {
+        try { $this->truncateTablesForAllConnections(); }
+        finally { parent::tearDown(); }
+    }
+
+    public static function tearDownAfterClass(): void
+    {
+        // Subsequent RefreshDatabase classes need the pristine migration-seeded baseline.
+        \Illuminate\Foundation\Testing\RefreshDatabaseState::$migrated = false;
+        parent::tearDownAfterClass();
+    }
+
+    private function recoveryManifest(array $s): array
+    {
+        $review = app(HistoricalIdentityReviewService::class);
+        $identity = $review->validateIdentity($s['event'], $s['row']->id, 1, $s['home']->id, $s['first']->id);
+        return ['event_id' => $s['event']->id, 'fixture_ids' => [$s['fixture']->id], 'expected_additional_matches' => 1,
+            'reviewed_at' => '2026-03-03 10:00:00+02:00', 'documents' => [['reference' => 'Original fixture sheet page 2', 'sha256' => str_repeat('a', 64)]],
+            'entries' => [[...$this->input($s), 'event_id' => $s['event']->id, 'fixture_id' => $s['fixture']->id,
+                'target_fingerprint' => $review->targetFingerprint($identity['player']), 'cohort' => $identity['cohort']]]];
+    }
+
+    public function test_reviewed_recovery_is_exact_idempotent_and_does_not_mutate_sources_or_snapshots(): void
+    {
+        $s = $this->scenario(); $manifest = $this->recoveryManifest($s);
+        $service = app(\App\Services\Performance\HistoricalIdentityRecoveryService::class);
+        $before = $this->sources();
+        $this->assertTrue($service->import($s['event'], auth()->user(), $manifest)['preview']);
+        $this->assertDatabaseCount('historical_identity_recoveries', 0);
+        $this->assertSame($before, $this->sources());
+        $this->assertSame(1, $service->import($s['event'], auth()->user(), $manifest, true)['created']);
+        $this->assertSame(0, $service->import($s['event'], auth()->user(), $manifest, true)['created']);
+        $this->assertDatabaseCount('historical_identity_recoveries', 1);
+        // Only the refresh work marker may change; canonical sources remain immutable.
+        $after = $this->sources(); unset($before['player_ability_refresh_state'], $after['player_ability_refresh_state']);
+        $this->assertSame($before, $after);
+        $matches = iterator_to_array(app(PlayerPerformanceHistoryService::class)->teamMatches($s['event'], null));
+        $this->assertNull($matches[0]['reason']);
+        $this->assertSame($s['first']->id, $matches[0]['player1_id']);
+        $this->assertNull($s['row']->fresh()->participant_snapshot);
+        $this->assertFalse((bool) $s['event']->fresh()->results_published);
+    }
+
+    public function test_recovery_does_not_extend_to_other_matches_for_the_same_imported_identity(): void
+    {
+        $s = $this->scenario(); $manifest = $this->recoveryManifest($s);
+        $other = $s['fixture']->replicate(); $other->match_nr = 2; $other->save();
+        $other->fixturePlayers()->create(['slot_no' => 1, 'team1_no_profile_id' => $s['imported']->id, 'team2_id' => $s['second']->id]);
+        foreach ([1, 2] as $set) { $other->teamResults()->create(['set_nr' => $set, 'team1_score' => 6, 'team2_score' => 1]); }
+        app(\App\Services\Performance\HistoricalIdentityRecoveryService::class)->import($s['event'], auth()->user(), $manifest, true);
+        $matches = collect(iterator_to_array(app(PlayerPerformanceHistoryService::class)->teamMatches($s['event'], null)))->keyBy('fixture_id');
+        $this->assertNull($matches[$s['fixture']->id]['reason']);
+        $this->assertNotNull($matches[$other->id]['reason']);
+        $this->assertDatabaseCount('historical_identity_recoveries', 1);
+    }
+
+    public function test_saved_recovery_publication_context_uses_batched_reads_and_detects_roster_additions(): void
+    {
+        $s = $this->scenario(); $service = app(\App\Services\Performance\HistoricalIdentityRecoveryService::class);
+        $service->import($s['event'], auth()->user(), $this->recoveryManifest($s), true);
+        $record = (array) DB::table('historical_identity_recoveries')->first();
+        // Repeated references must not trigger repeated validation queries on saved reads.
+        $recoveries = array_fill(0, 160, $record);
+        $manifest = ['historical_identity_recoveries' => $recoveries, 'historical_recovery_sources' => $service->context($recoveries)];
+        $store = app(\App\Services\Performance\PlayerAbilitySnapshotStore::class);
+        $this->assertFalse($store->published(['historical_identity_recoveries' => $recoveries]), 'Missing recovery context must fail closed.');
+        DB::enableQueryLog(); DB::flushQueryLog();
+        $this->assertTrue($store->published($manifest));
+        $queries = count(DB::getQueryLog()); DB::disableQueryLog();
+        $this->assertLessThanOrEqual(24, $queries, 'Saved recovery checks must use bounded batched reads.');
+        NoProfileTeamPlayer::create(['team_id' => $s['home']->id, 'name' => 'Additional', 'surname' => 'Member', 'rank' => 2, 'pay_status' => 1]);
+        $this->assertFalse($store->published($manifest), 'Added imported roster membership must withhold saved estimates.');
+    }
+
+    public function test_saved_recovery_with_empty_roster_withholds_when_the_first_conflicting_member_is_added(): void
+    {
+        $s = $this->scenario();
+        TeamPlayer::where('team_id', $s['home']->id)->delete();
+        $service = app(\App\Services\Performance\HistoricalIdentityRecoveryService::class);
+        $service->import($s['event'], auth()->user(), $this->recoveryManifest($s), true);
+        $recoveries = DB::table('historical_identity_recoveries')->get()->map(fn ($row) => (array) $row)->all();
+        $manifest = ['historical_identity_recoveries' => $recoveries, 'historical_recovery_sources' => $service->context($recoveries)];
+        $this->assertSame([], $manifest['historical_recovery_sources']['team_players']);
+        $store = app(\App\Services\Performance\PlayerAbilitySnapshotStore::class);
+        $this->assertTrue($store->published($manifest));
+        TeamPlayer::create(['team_id' => $s['home']->id, 'rank' => 1, 'player_id' => $s['second']->id]);
+        $this->assertFalse($store->published($manifest));
+        $this->assertNull($service->resolve($s['event'], $s['row'], 1));
+    }
+
+    public function test_saved_recovery_compares_numeric_strings_exactly_while_tolerating_object_key_order(): void
+    {
+        $s = $this->scenario();
+        // The testing base schema stores gender as TINYINT. Use a VARCHAR identity
+        // field to exercise the same numeric-string coercion with a real stored edit.
+        $s['first']->update(['name' => '1']); $s['imported']->update(['name' => '1']);
+        $service = app(\App\Services\Performance\HistoricalIdentityRecoveryService::class);
+        $service->import($s['event'], auth()->user(), $this->recoveryManifest($s), true);
+        $recoveries = DB::table('historical_identity_recoveries')->get()->map(fn ($row) => (array) $row)->all();
+        $context = $service->context($recoveries);
+        // MySQL JSON may reorder object keys, including nested row fields.
+        foreach ($context as &$rows) { foreach ($rows as &$row) { krsort($row); } unset($row); } unset($rows);
+        krsort($context);
+        $manifest = ['historical_identity_recoveries' => $recoveries, 'historical_recovery_sources' => $context];
+        $store = app(\App\Services\Performance\PlayerAbilitySnapshotStore::class);
+        $this->assertTrue($store->published($manifest));
+        $this->assertNotNull($service->resolve($s['event'], $s['row'], 1));
+        $before = app(PlayerSharedAbilityService::class)->fingerprint();
+        // Simulate an external stored edit; Eloquent considers numeric strings equivalent.
+        DB::table('players')->where('id', $s['first']->id)->update(['name' => '01']);
+        $this->assertSame('01', DB::table('players')->where('id', $s['first']->id)->value('name'));
+        $this->assertFalse($store->published($manifest));
+        $this->assertNull($service->resolve($s['event'], $s['row'], 1));
+        $this->assertNotSame($before, app(PlayerSharedAbilityService::class)->fingerprint());
+    }
+
+    public function test_recovery_rejects_unauthorized_actor_cross_event_and_changed_score_atomically(): void
+    {
+        $s = $this->scenario(); $manifest = $this->recoveryManifest($s);
+        $service = app(\App\Services\Performance\HistoricalIdentityRecoveryService::class);
+        try { $service->import($s['event'], User::factory()->create(), $manifest, true); $this->fail('Unauthorized actor accepted'); }
+        catch (\Symfony\Component\HttpKernel\Exception\HttpException $error) { $this->assertSame(403, $error->getStatusCode()); }
+        foreach ([['event_id' => Event::factory()->create()->id], ['fixture_id' => $s['fixture']->id + 1]] as $change) {
+            $bad = $manifest; $bad['entries'][0] = [...$bad['entries'][0], ...$change];
+            try { $service->import($s['event'], auth()->user(), $bad, true); $this->fail('Invalid scope accepted'); }
+            catch (ValidationException) { $this->assertDatabaseCount('historical_identity_recoveries', 0); }
+        }
+        DB::table('team_fixture_results')->where('team_fixture_id', $s['fixture']->id)->update(['team2_score' => 2]);
+        $this->expectException(ValidationException::class);
+        $service->import($s['event'], auth()->user(), $manifest, true);
+    }
+
+    public function test_recovery_fails_closed_on_target_score_and_publication_changes_and_saved_snapshot_withholds(): void
+    {
+        $s = $this->scenario(); $service = app(\App\Services\Performance\HistoricalIdentityRecoveryService::class);
+        $service->import($s['event'], auth()->user(), $this->recoveryManifest($s), true);
+        $shared = app(PlayerSharedAbilityService::class);
+        $snapshot = $shared->calculateSnapshot(CarbonImmutable::parse('2026-10-22'));
+        $store = app(\App\Services\Performance\PlayerAbilitySnapshotStore::class);
+        $manifest = $store->manifest($snapshot);
+        $this->assertTrue($store->published($manifest));
+        $old = $shared->fingerprint();
+        $s['first']->update(['dateOfBirth' => '2014-04-03']);
+        $this->assertFalse($store->published($manifest));
+        $this->assertNotSame($old, $shared->fingerprint());
+        $matches = iterator_to_array(app(PlayerPerformanceHistoryService::class)->teamMatches($s['event'], null));
+        $this->assertNotNull($matches[0]['reason']);
+        $s['first']->update(['dateOfBirth' => '2014-04-02']);
+        DB::table('team_fixture_results')->where('team_fixture_id', $s['fixture']->id)->update(['team2_score' => 2]);
+        $this->assertFalse($store->published($manifest));
+        $s['event']->update(['published' => false]);
+        $this->assertSame([], iterator_to_array(app(PlayerPerformanceHistoryService::class)->teamMatches($s['event'], null)));
+    }
 
     public function test_review_table_indexes_have_mysql_compatible_names_and_expected_lookup_columns(): void
     {
@@ -61,7 +223,7 @@ class HistoricalIdentityReviewTest extends TestCase
     {
         $result = [];
         foreach (['events', 'players', 'teams', 'team_players', 'no_profile_team_players', 'team_fixture_players', 'team_fixture_results', 'team_fixtures', 'player_ability_snapshots', 'player_ability_refresh_state'] as $table) {
-            $result[$table] = DB::table($table)->orderBy('id')->get()->toJson();
+            $result[$table] = DB::table($table)->orderBy($table === 'player_ability_snapshots' ? 'snapshot_key' : 'id')->get()->toJson();
         }
         return $result;
     }

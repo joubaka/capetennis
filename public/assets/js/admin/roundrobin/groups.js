@@ -75,11 +75,6 @@
     $(
       '#rr-apply-group-count, #groups-tab-boxes, #btn-import-teams, #rr-assign-selected, #rr-select-visible, #rr-assign-target'
     ).prop('disabled', busy || !editable());
-    $('#rr-assign-selected, #rr-select-visible, #rr-assign-target').prop('disabled', busy || !editable() || !groups.length);
-    $('#rr-apply-group-count').text(groups.length ? 'Update groups' : 'Create groups');
-    $('#rr-apply-group-count').toggleClass('btn-primary', !groups.length).toggleClass('btn-outline-secondary', !!groups.length);
-    $('#rr-group-setup-title').text(groups.length ? '1. Groups' : '1. Create groups');
-    $('#rr-placement-next-step').text(groups.length ? 'Choose players, add them to a group, then save assignments.' : 'Create your groups first. Then choose players and add them to a group.');
     $('.rr-locked-overlay').toggleClass('d-none', editable());
   }
   function renderAvailable() {
@@ -93,7 +88,7 @@
         esc(p.name) +
         '"' +
         (selected.has(p.id) ? ' checked' : '') +
-        (!editable() || busy || !groups.length ? ' disabled' : '') +
+        (!editable() || busy ? ' disabled' : '') +
         '><span class="rr-player-name">' +
         esc(p.name) + (root.CTPlayerRatings?.marker({registrationId:p.id}, {categoryEventId:p.category_id}) || '') +
         '<small>' +
@@ -101,7 +96,7 @@
         '</small></span><button type="button" class="btn btn-sm btn-outline-primary rr-add-player" aria-label="Add ' +
         esc(p.name) +
         ' to selected group"' +
-        (!editable() || busy || !groups.length ? ' disabled' : '') +
+        (!editable() || busy ? ' disabled' : '') +
         '>Add</button></li>';
     });
     html += '</ul>';
@@ -164,7 +159,7 @@
         '</section>';
     });
     $('#rr-groups-row').html(
-      html || '<p class="small text-muted p-3">Your groups will appear here after you create them.</p>'
+      html || '<div class="alert alert-info">Choose the number of groups above and select Apply to begin.</div>'
     );
     renderAvailable();
     update();
@@ -173,7 +168,7 @@
   function initSortable() {
     instances.forEach(instance => instance.destroy());
     instances = [];
-    if (!root.Sortable || !editable() || busy || !groups.length) return;
+    if (!root.Sortable || !editable() || busy) return;
     document.querySelectorAll('#groups-pane .rr-sortable').forEach(el => {
       instances.push(
         new Sortable(el, {
@@ -320,7 +315,7 @@
     const result = await Swal.fire({
       title: groups.length ? 'Change groups?' : 'Create groups?',
       html:
-        (groups.length ? '<p>Keep the existing players and seed order in the remaining groups.</p>' : '<p>Create ' + count + ' empty groups for ' + esc($('#rr-category-name').text()) + '. Then add players.</p>') +
+        '<p>Keep the existing players and seed order in the remaining groups.</p>' +
         (moved
           ? '<p>' +
             moved +
@@ -332,7 +327,7 @@
             '</select>'
           : ''),
       showCancelButton: true,
-      confirmButtonText: groups.length ? 'Apply groups' : 'Create groups',
+      confirmButtonText: 'Apply groups',
       preConfirm: () => $('#rr-resize-target').val() || null
     });
     if (!result.isConfirmed) return;
@@ -471,7 +466,6 @@
       if (result.isConfirmed) assign([id], result.value);
     });
     $('#btn-save-groups').on('click', save);
-    $('#groups-tab-boxes').on('change', update);
     $('#btn-regenerate-fixtures').on('click', generate);
     $('#rr-apply-group-count').on('click', resize);
     $('#rr-discard-groups').on('click', function () {
