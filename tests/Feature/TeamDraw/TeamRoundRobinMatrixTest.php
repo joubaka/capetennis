@@ -78,10 +78,9 @@ class TeamRoundRobinMatrixTest extends TestCase
         $this->assertSame(1, $corrected['cells'][$this->tie->away_team_id][$this->tie->home_team_id][0]['for']);
         $this->assertDatabaseHas('draw_audit_logs', ['draw_id' => $this->draw->id, 'action' => 'score_corrected']);
         $workspace = $this->get(route('frontend.scoring.workspace', ['event' => $this->draw->event_id, 'draw' => $this->draw->id]))->assertOk();
-        $this->assertCount(1, $workspace->viewData('roundRobinMatrices'));
-        $workspace->assertSee('data-round-robin-match-list', false);
-        $this->assertLessThan(strpos($workspace->getContent(), 'data-round-robin-match-list'),
-            strpos($workspace->getContent(), 'data-team-round-robin-matrix'));
+        $workspace->assertDontSee('data-team-round-robin-matrix', false)
+            ->assertDontSee('data-round-robin-match-list', false)
+            ->assertSee('id="score-match-list"', false);
         $eventStandings = $this->get(route('admin.events.standings', $this->draw->event_id))->assertOk()
             ->assertSee('data-team-round-robin-matrix', false);
         $this->assertLessThan(strpos($eventStandings->getContent(), 'standings by region / school'),
@@ -91,6 +90,36 @@ class TeamRoundRobinMatrixTest extends TestCase
             if (!is_dir($path)) { mkdir($path, 0777, true); }
             foreach (['matrix' => $updated, 'scores' => $scores, 'workspace' => $workspace, 'standings' => $eventStandings] as $name => $response) {
                 file_put_contents($path.'/'.$name.'.html', $response->getContent());
+            }
+        }
+    }
+
+    public function test_workspace_always_shows_fixture_queue_without_round_robin_matrix(): void
+    {
+        $venue = \App\Models\Venue::forceCreate(['name' => 'Selected venue']);
+        $otherVenue = \App\Models\Venue::forceCreate(['name' => 'Other venue']);
+        $this->rubber->update(['venue_id' => $venue->id]);
+        TeamFixture::where('draw_id', $this->draw->id)->where('id', '!=', $this->rubber->id)
+            ->update(['venue_id' => $otherVenue->id]);
+
+        foreach ([null, $venue->id] as $venueId) {
+            foreach ([null, $this->draw->id] as $drawId) {
+                $workspace = $this->get(route('frontend.scoring.workspace', array_filter([
+                    'event' => $this->draw->event_id,
+                    'venue' => $venueId,
+                    'draw' => $drawId,
+                    'schedule_source' => 'working',
+                ])))->assertOk()
+                    ->assertDontSee('data-team-round-robin-matrix', false)
+                    ->assertDontSee('data-round-robin-match-list', false)
+                    ->assertDontSee('View individual match queue')
+                    ->assertSee('id="match-queue-title"', false)
+                    ->assertSee('id="score-match-list"', false);
+
+                $expected = TeamFixture::where('draw_id', $this->draw->id)
+                    ->when($venueId, fn ($query) => $query->where('venue_id', $venueId))
+                    ->pluck('id')->all();
+                $this->assertEqualsCanonicalizing($expected, $workspace->viewData('matches')->pluck('id')->all());
             }
         }
     }
