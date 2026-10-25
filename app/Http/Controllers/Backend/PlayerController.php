@@ -416,7 +416,7 @@ class PlayerController extends Controller
     }
     public function details($id)
     {
-        return view('backend.player.player_details');
+        return redirect()->route('backend.player.profile', ['id' => $id]);
     }
     public function profile($id)
     {
