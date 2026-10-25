@@ -48,7 +48,9 @@ class ChartController extends Controller
 
     function physical($id)
     {
-        $exersizes = Player::find($id)->exersizes->groupBy('exersize_name_id');
+        $player = Player::findOrFail($id);
+        $exersizes = $player->exercises()->with('exerciseName')->get()->groupBy('exersize_name_id');
+        $data = ['x' => [], 'y' => [], 'player' => $player->full_name];
 
         foreach ($exersizes as $key => $value) {
             if ($value->count() > 1) {
@@ -58,8 +60,7 @@ class ChartController extends Controller
                 $data['x'][] = $value[0]->score;
             }
 
-            $data['y'][] = ExerciseName::find($key)->name;
-            $data['player'] = Player::find($id)->full_name;
+            $data['y'][] = $value->first()->exerciseName?->name ?? 'Unknown exercise';
         }
 
         return $data;
