@@ -173,15 +173,16 @@ class PlayerController extends Controller
   {
     // Validate input
     $validated = $request->validate([
-      'player_name' => 'required|string',
-      'player_surname' => 'required|string',
+      'player_name' => 'required|string|max:255',
+      'player_surname' => 'required|string|max:255',
       'dob' => 'required|date',
       'gender' => 'required|in:1,2',
-      'cell_nr' => 'nullable|string',
+      'cell_nr' => 'nullable|string|max:255',
       'email' => 'nullable|email|max:255',
       'email_2' => 'sometimes|nullable|email|max:255',
       'email_3' => 'sometimes|nullable|email|max:255'
     ]);
+    $validated['dob'] = $request->date('dob')->format('Y-m-d');
 
     $claimContext = null;
     if ($request->input('type') === 'noProfile') {

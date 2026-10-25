@@ -129,6 +129,7 @@
         <h5 class="mb-0">Player Agreement Status</h5>
       </div>
       <div class="card-body">
+        <div class="table-responsive" role="region" aria-label="Player agreement status" tabindex="0">
         <table class="table">
           <thead>
             <tr>
@@ -151,6 +152,7 @@
             @endforeach
           </tbody>
         </table>
+        </div>
       </div>
     </div>
 

@@ -50,6 +50,8 @@
     <link rel="stylesheet" href="{{ asset('css/frontend-workspace.css') }}?v={{ filemtime(public_path('css/frontend-workspace.css')) }}">
   @endif
 
+  <link rel="stylesheet" href="{{ asset('css/mobile-workspace.css') }}?v={{ filemtime(public_path('css/mobile-workspace.css')) }}">
+
   <style>
     /* Keep the circular brand mark fully visible in navbar, menu and auth headers. */
     .app-brand-logo {

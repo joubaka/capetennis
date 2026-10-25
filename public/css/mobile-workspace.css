@@ -1,0 +1,45 @@
+/* Shared phone ergonomics. Keep draw/score/table geometry inside its own scroll
+   surface; never hide controls or turn data tables into incomplete cards. */
+@media screen and (max-width: 767.98px) {
+  :is(.ct-frontend, .ct-backend) :is(.layout-page, .content-wrapper, .content-p-y, .card-header, .modal-body) {
+    min-width: 0;
+  }
+
+  :is(.ct-frontend, .ct-backend) .card-header.d-flex {
+    flex-wrap: wrap;
+    gap: .75rem;
+  }
+  :is(.ct-frontend, .ct-backend) :is(.card-header, .modal-header) > :is(div, h1, h2, h3, h4, h5, h6) {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  :is(.ct-frontend, .ct-backend) .modal-header .btn-close { flex-shrink: 0; }
+  :is(.ct-frontend, .ct-backend) .modal-footer .btn {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    max-width: 100%;
+  }
+
+  /* 16px avoids automatic input zoom on iOS without disabling user zoom. */
+  :is(.ct-frontend, .ct-backend) .authentication-wrapper :is(.form-control, .form-select),
+  .draw-player-add .form-select { font-size: 16px; }
+  :is(.ct-frontend, .ct-backend) .table-responsive { min-width: 0; }
+  :is(.ct-frontend, .ct-backend) .authentication-wrapper .w-px-400 {
+    width: 100% !important;
+    max-width: 400px;
+    min-width: 0;
+  }
+  :is(.ct-frontend, .ct-backend) .authentication-wrapper .app-brand-link {
+    min-width: 0;
+    max-width: 100%;
+  }
+  :is(.ct-frontend, .ct-backend) .authentication-wrapper .app-brand-text {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .draw-player-toolbar { flex-direction: column; gap: .75rem; }
+  .draw-player-add { display: flex; flex-wrap: wrap; gap: .5rem; min-width: 0; }
+  .draw-player-add #player-select { min-width: 0; width: 100% !important; flex: 1 1 100%; }
+  .draw-player-toolbar :is(#add-player, #import-category) { min-height: 44px; white-space: normal; }
+}

@@ -31,7 +31,7 @@
                     Laravel 10 Upload Image To Storage Folder Preview - Laravelia
                 </div>
                  <div class="card-body">                    
-                    <form class="w-px-500 p-3 p-md-3" action="{{ route('photo.store') }}" method="post" enctype="multipart/form-data">
+                    <form class="w-100 p-3 p-md-3" action="{{ route('photo.store') }}" method="post" enctype="multipart/form-data">
                         @csrf
                         <div class="row mb-3">
                             <label class="col-sm-3 col-form-label">Image</label>
@@ -43,7 +43,7 @@
                                     <strong>{{ $message }}</strong>
                                 </span>
                             @enderror
-                            <img id="preview" src="#" alt="your image" class="mt-3" style="display:none;"/>
+                            <img id="preview" src="#" alt="your image" class="mt-3 img-fluid" style="display:none;"/>
                         </div>
                         <input type="hidden" name="event" value="{{$event->id}}">
                         <div class="row mb-3">

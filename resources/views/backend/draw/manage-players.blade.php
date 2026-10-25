@@ -34,12 +34,12 @@ $configData = Helper::appClasses();
   </div>
 
   <div class="card-body px-4">
-<div class="d-flex justify-content-between mb-3">
+<div class="draw-player-toolbar d-flex justify-content-between mb-3">
   <div>
     <button id="import-category" class="btn btn-secondary">Import From Category</button>
   </div>
-  <div>
-    <select id="player-select" class="form-select d-inline w-auto" style="min-width: 250px;">
+  <div class="draw-player-add">
+    <select id="player-select" class="form-select d-inline w-auto">
       <option value="">Select Player to Add</option>
       @foreach($allPlayers as $player)
         <option value="{{ $player->id }}">{{ $player->name }}</option>
@@ -49,6 +49,7 @@ $configData = Helper::appClasses();
   </div>
 </div>
 
+<div class="table-responsive" role="region" aria-label="Draw players" tabindex="0">
 <table class="table table-bordered" id="draw-players-table">
   <thead>
     <tr>
@@ -63,6 +64,7 @@ $configData = Helper::appClasses();
     <!-- Populated via AJAX -->
   </tbody>
 </table>
+</div>
 
 
 
