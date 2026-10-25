@@ -47,7 +47,7 @@ class CanonicalDrawWorkspaceTest extends TestCase
         }
         $this->get($url)->assertOk()->assertSee('Players &amp; Positions', false)
             ->assertSee('Draw &amp; Results', false)->assertSee('Setup &amp; Rules', false)
-            ->assertSee('Step 2 · Bracket size and starting positions')
+            ->assertSee('Players and starting positions')
             ->assertSee('Drag a player into a box, or click a box to choose a player.')
             ->assertSee('Print draw &amp; results', false)->assertSee('Print draw only')
             ->assertSee('id="fm-draw-only-print"', false)->assertSee('data-share-draw', false)

@@ -60,9 +60,11 @@ class EventServiceProvider extends ServiceProvider
             SendTeamRegistrationConfirmation::class,
         ],
         EntryWithdrawn::class => [
+            \App\Listeners\SendPlayerEntryUpdate::class,
             SyncMastersInvitationWithdrawal::class,
             SyncInterprovincialTrialInvitationWithdrawal::class,
         ],
+        \App\Domain\Entries\Events\EntryCreated::class => [\App\Listeners\SendPlayerEntryUpdate::class],
         // Auth events
         Login::class => [
             LogSuccessfulLogin::class,

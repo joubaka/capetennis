@@ -88,18 +88,19 @@ class EventAnnouncementAudienceTest extends TestCase
         $player = $this->nominate($event, $category, 'overlap@example.com');
         $directUser = User::factory()->create(['email' => 'direct-contact@example.com']);
         $linkedUser = User::factory()->create(['email' => 'linked-contact@example.com']);
-        $player->update(['userId' => $directUser->id]);
+        $player->update(['userId' => $directUser->id, 'email_2' => 'DIRECT-contact@example.com', 'email_3' => 'third@example.com']);
         $player->users()->attach($linkedUser);
         $this->attachPaidRegistration($category, $player);
 
         $this->publishWithCurrentAudience($admin, $event)->assertOk()
-            ->assertJsonPath('mail.queued', 1);
+            ->assertJsonPath('mail.queued', 4);
 
-        $this->assertDatabaseCount('bulk_email_logs', 2);
+        $this->assertDatabaseCount('bulk_email_logs', 5);
         $this->assertDatabaseHas('bulk_email_logs', ['recipient_email' => 'overlap@example.com']);
-        $this->assertDatabaseMissing('bulk_email_logs', ['recipient_email' => 'direct-contact@example.com']);
-        $this->assertDatabaseMissing('bulk_email_logs', ['recipient_email' => 'linked-contact@example.com']);
-        Queue::assertPushed(SendBulkEmailJob::class, 2);
+        $this->assertDatabaseHas('bulk_email_logs', ['recipient_email' => 'direct-contact@example.com']);
+        $this->assertDatabaseHas('bulk_email_logs', ['recipient_email' => 'linked-contact@example.com']);
+        $this->assertDatabaseHas('bulk_email_logs', ['recipient_email' => 'third@example.com']);
+        Queue::assertPushed(SendBulkEmailJob::class, 5);
     }
 
     public function test_registration_branch_only_includes_active_paid_players(): void

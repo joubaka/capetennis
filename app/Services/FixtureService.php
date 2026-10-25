@@ -16,14 +16,16 @@ class FixtureService
   /**
    * Create Draws per category/type and save fixtures.
    */
-  public function createDrawsAndFixtures(Event $event, string $mode = 'perType', array $onlyCategories = null): void
+  public function createDrawsAndFixtures(Event $event, string $mode = 'perType', ?array $onlyCategories = null): void
   {
-    $fixtures = $this->generateEventFixtures($event, $mode, $onlyCategories);
-
-    DB::transaction(function () use ($event, $fixtures) {
-      $drawIds = Draw::where('event_id', $event->id)->pluck('id');
-      TeamFixture::whereIn('draw_id', $drawIds)->delete();
-      Draw::where('event_id', $event->id)->delete();
+    DB::transaction(function () use ($event, $mode, $onlyCategories) {
+      $event = Event::whereKey($event->id)->lockForUpdate()->firstOrFail();
+      abort_if($event->isInterprovincialTrials() || ! $event->isTeam(), 422,
+        'Create individual and Trials fixtures through the individual draw setup.');
+      abort_unless(in_array($mode, ['perType', 'perTie'], true), 422, 'Choose a supported fixture generation mode.');
+      abort_if($event->draws()->lockForUpdate()->get()->isNotEmpty(), 409,
+        'This event already has draws. Use the draw workspace to review or regenerate one draw at a time.');
+      $fixtures = $this->generateEventFixtures($event, $mode, $onlyCategories);
 
       foreach ($fixtures as $category => $matches) {
         $grouped = collect($matches)->groupBy('type');

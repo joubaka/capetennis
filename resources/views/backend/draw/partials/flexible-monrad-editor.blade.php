@@ -1,6 +1,6 @@
 <main id="fm-app">
   @unless($config['readOnly'] ?? false)
-  <div class="fm-intro"><div><strong id="fm-phase">Step 2 · Bracket size and starting positions</strong><p>Drag a player into a box, or click a box to choose a player.
+  <div class="fm-intro"><div><strong id="fm-phase">Players and starting positions</strong><p>Drag a player into a box, or click a box to choose a player.
     {{ ($config['workflow'] ?? '') === 'playoffs' ? 'Winners advance; losers are eliminated.' : 'Winners advance; losers continue for finishing positions.' }}
   </p></div><span id="fm-status" class="fm-badge">Draft</span></div>
   @endunless

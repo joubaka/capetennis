@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\TeamDraw;
 
-use App\Models\Event;
+use App\Models\{Draw, Event, TeamTie};
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -19,7 +19,14 @@ class PublicStandingsPresentationTest extends TestCase
         $this->assertStringContainsString('data-tie-points>1', $html);
         $this->assertStringContainsString('Total points', $html);
         $this->assertStringContainsString('2 won · 1 lost · 3 matches', $html);
-        $this->assertStringContainsString('data-gender-points="mixed">1', $html);
+        $this->assertStringContainsString('data-team-round-robin-matrix', $html);
+        $this->assertStringContainsString('Read each result from the row team', $html);
+        $this->assertStringContainsString('<strong>2–1</strong>', $html);
+        $this->assertStringContainsString('<strong>1–2</strong>', $html);
+        $this->assertStringContainsString('Round 2', $html);
+        $this->assertStringContainsString('position:sticky', $html);
+        $this->assertStringNotContainsString('data-gender-points', $html);
+        $this->assertStringNotContainsString('class="team-rr-cell" href=', $html);
         $this->assertStringContainsString('Points breakdown and match statistics', $html);
         $this->assertLessThan(strpos($html, 'Alpha School'), strpos($html, 'Zulu School'));
         $this->assertStringContainsString('may change while play continues', $html);
@@ -53,12 +60,25 @@ class PublicStandingsPresentationTest extends TestCase
             'sets_for' => 4, 'sets_against' => 2, 'games_for' => 30, 'games_against' => 20,
             'gender_points' => ['boys' => 2, 'girls' => 1, 'mixed' => 1, 'other' => 0]];
         $rows = [['name' => 'Zulu School'] + $row, ['name' => 'Alpha School'] + $row];
+        $draw = new Draw(['drawName' => 'U10 round robin']);
+        $draw->id = 456;
+        $tie = new TeamTie(['round_nr' => 2]);
+        $tie->id = 789;
+        $matrixRows = [];
+        foreach ($rows as $index => $standing) {
+            $matrixRows[] = $standing + ['team_id' => $index + 1, 'played' => 1, 'wins' => $index === 0 ? 1 : 0, 'draws' => 0, 'losses' => $index === 0 ? 0 : 1];
+        }
+        $cell = ['tie' => $tie, 'status' => 'Complete', 'canScore' => true];
 
         return view('frontend.fixtures.event-standings', [
             'event' => $event, 'options' => ['age' => ['U10']], 'filters' => [],
             'ageStandings' => ['U10' => $rows],
             'ageGroups' => ['U10' => collect(array_reverse($rows))->map(fn ($row) => $row + ['color' => '#173f7a'])->all()],
             'ageMixedRules' => ['U10' => $mixed],
+            'publicMatrices' => ['U10' => [['draw' => $draw, 'rows' => $matrixRows, 'cells' => [
+                1 => [2 => [$cell + ['for' => 2, 'against' => 1]]],
+                2 => [1 => [$cell + ['for' => 1, 'against' => 2]]],
+            ]]]],
         ])->render();
     }
 }

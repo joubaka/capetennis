@@ -415,8 +415,15 @@ class AdminRegistrationRefundController extends Controller
     // Notify the player that their registration has been reinstated
     $playerEmail = optional($registration->players->first())->email
                 ?? optional($registration->user)->email;
-    if ($playerEmail && SiteSetting::emailEnabled('player_email_on_reinstatement')) {
-      Mail::to($playerEmail)->queue(new \App\Mail\RegistrationReinstatedMail($registration));
+    $additionalEmails = $registration->players->flatMap(fn ($player) =>
+      app(\App\Services\TeamSelection\TeamSelectionContactService::class)->emails($player)
+        ->intersect(collect([$player->email_2, $player->email_3])->map(fn ($email) => mb_strtolower(trim((string) $email)))));
+    $recipients = collect([$playerEmail])->merge($additionalEmails)->filter()
+      ->map(fn ($email) => mb_strtolower(trim($email)))->unique();
+    if (SiteSetting::emailEnabled('player_email_on_reinstatement')) {
+      foreach ($recipients as $email) {
+        Mail::to($email)->queue(new \App\Mail\RegistrationReinstatedMail($registration));
+      }
     }
 
     return redirect()

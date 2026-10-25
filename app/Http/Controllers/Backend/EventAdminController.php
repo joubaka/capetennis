@@ -587,8 +587,13 @@ class EventAdminController extends Controller
 
     abort_if($event->isInterprovincialTrials(), 422, 'Create Trials fixtures through the individual draw setup.');
 
-    $mode = $request->string('mode', 'perType')->toString();
-    $onlyCategories = $request->input('onlyCategories'); // array|null
+    $validated = $request->validate([
+      'mode' => ['sometimes', 'in:perType,perTie'],
+      'onlyCategories' => ['nullable', 'array'],
+      'onlyCategories.*' => ['required', 'string', 'max:255', 'distinct'],
+    ]);
+    $mode = $validated['mode'] ?? 'perType';
+    $onlyCategories = $validated['onlyCategories'] ?? null;
 
     // Build and persist
     $fixtureService->createDrawsAndFixtures($event, $mode, $onlyCategories);

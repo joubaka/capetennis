@@ -550,22 +550,24 @@ public function getFinalPositionsVerbose(): array
 
   public function generateRoundRobinFixtures($draw)
   {
-    $draw = Draw::with(['registrations'])->findOrFail($draw->id);
+    return DB::transaction(function () use ($draw) {
+      $draw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
+      \App\Domain\Draws\Services\RoundRobinGenerationService::assertRegenerable($draw);
+      $draw->load('registrations');
 
-    // Delete all existing fixtures for this draw
-    $draw->drawFixtures()->delete();
+      $fixtureIds = $draw->drawFixtures()->where('stage', 'RR')->pluck('id');
+      DB::table('order_of_plays')->whereIn('fixture_id', $fixtureIds)->delete();
+      DB::table('schedules')->whereIn('fixture_id', $fixtureIds)->delete();
+      $draw->drawFixtures()->where('stage', 'RR')->delete();
 
-    // Group registrations by box_number
-    $grouped = $draw->registrations
-      ->filter(fn($r) => $r->pivot->box_number)
-      ->sortBy(fn($r) => $r->pivot->seed ?? PHP_INT_MAX)
-      ->groupBy(fn($r) => $r->pivot->box_number);
+      // Group registrations by box_number
+      $grouped = $draw->registrations
+        ->filter(fn($r) => $r->pivot->box_number)
+        ->sortBy(fn($r) => $r->pivot->seed ?? PHP_INT_MAX)
+        ->groupBy(fn($r) => $r->pivot->box_number);
 
-    $matchNr = 1;
+      $matchNr = 1;
 
-    DB::beginTransaction();
-
-    try {
       foreach ($grouped as $boxNum => $regs) {
         $players = $regs->values(); // reset keys
 
@@ -611,15 +613,8 @@ public function getFinalPositionsVerbose(): array
         }
       }
 
-      DB::commit();
       return response()->json(['message' => 'Round Robin fixtures generated successfully.']);
-    } catch (\Throwable $e) {
-      DB::rollBack();
-      return response()->json([
-        'message' => 'Error generating fixtures.',
-        'error' => $e->getMessage(),
-      ], 500);
-    }
+    });
   }
   protected function resolveName($matchNr, $regId, $regModel): string
   {

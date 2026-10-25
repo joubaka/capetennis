@@ -39,12 +39,14 @@ final class RoundRobinGenerationService
      */
     public function generate(Draw $draw): void
     {
-        DrawGuard::requireMutable($draw, 'regenerate RR fixtures for');
-
-        $draw->loadMissing('groups.groupRegistrations');
-
         DB::transaction(function () use ($draw) {
+            $draw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
+            self::assertRegenerable($draw);
+            $draw->load('groups.groupRegistrations');
             // Remove existing RR fixtures only — leave MAIN/PLATE untouched.
+            $fixtureIds = $draw->drawFixtures()->where('stage', 'RR')->pluck('id');
+            DB::table('order_of_plays')->whereIn('fixture_id', $fixtureIds)->delete();
+            DB::table('schedules')->whereIn('fixture_id', $fixtureIds)->delete();
             $draw->drawFixtures()->where('stage', 'RR')->delete();
 
             $matchNr = 1;
@@ -56,6 +58,26 @@ final class RoundRobinGenerationService
         Log::info('[RoundRobinGenerationService] Generated RR fixtures', [
             'draw_id' => $draw->id,
         ]);
+    }
+
+    public static function assertRegenerable(Draw $draw): void
+    {
+        DrawGuard::requireMutable($draw, 'regenerate RR fixtures for');
+        DrawGuard::requireUnpublished($draw, 'regenerate RR fixtures for');
+        if ($draw->oop_published || DB::table('published_schedule_assignments')
+            ->where('draw_id', $draw->id)->where('fixture_kind', 'individual')->exists()) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'draw' => 'Hide the published schedule before regenerating Round Robin fixtures.',
+            ]);
+        }
+        $draw->drawFixtures()->lockForUpdate()->get(['id']);
+        if ($draw->drawFixtures()->where(function ($query) {
+            $query->whereHas('fixtureResults')->orWhereIn('match_status', [1, 2]);
+        })->exists()) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'draw' => 'Recorded results must be preserved. Round Robin fixtures cannot be regenerated.',
+            ]);
+        }
     }
 
     // ------------------------------------------------------------------

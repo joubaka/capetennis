@@ -1,5 +1,5 @@
 {{-- 🔹 ADMIN DRAW LIST (SEPARATE) --}}
-@if($isAdmin)
+@can('event.manage', $event)
 <div class="card mb-4 border border-warning">
   <div class="card-header bg-warning text-dark">
     <small class="card-text text-uppercase fw-bold">
@@ -77,4 +77,4 @@
 
   </div>
 </div>
-@endif
+@endcan

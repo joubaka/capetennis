@@ -180,7 +180,7 @@
 @section('content')
 @include('backend.draw.partials.guide-modal')
 @if($planningDate)
-<div class="container-xxl pt-3"><div class="alert alert-info mb-0">Reschedule {{ \Carbon\Carbon::parse($planningDate)->format('D j M Y') }}{{ !empty($planningScope['draw_id']) ? ' · selected draw' : '' }}{{ !empty($planningScope['venue_id']) ? ' · selected venue' : '' }}. This batch uses only this day and preserves existing saved times. Clear the day first to replace its schedule.</div></div>
+<div class="container-xxl pt-3"><div class="alert alert-info mb-0">Add matches - {{ \Carbon\Carbon::parse($planningDate)->format('D j M Y') }}{{ !empty($planningScope['draw_id']) ? ' · selected draw' : '' }}{{ !empty($planningScope['venue_id']) ? ' · selected venue' : '' }}. This batch uses only this day and preserves existing saved times. Use Edit saved times from the calendar to change existing bookings.</div></div>
 @endif
 <div class="container-xxl pt-3"><a class="btn btn-primary me-2" style="min-height:44px" href="{{ route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'group' => 'draw', 'date' => 'all']) }}">View matches by draw</a><a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar',$event) }}">Saved schedule · all days</a></div>
 @php
@@ -188,14 +188,17 @@
   $programmeDayCount = count($programmeDates);
   $unapplyRouteAvailable = \Illuminate\Support\Facades\Route::has('backend.event-venue-schedule.unapply');
   $guideSelection = $event->draws->whereIn('id', collect($draws)->where('selected', true)->pluck('id'));
+  $teamPlanning = $draws->where('selected', true)->contains('is_team', true) || ($draws->isEmpty() && $event->isTeam());
 @endphp
 <div class="container-xxl flex-grow-1 container-p-y schedule-workspace">
-  <nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Scheduling method"><span class="align-self-center">Schedule by:</span><span class="btn btn-primary" aria-current="page">Position band / draw</span><a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar.full-day', ['event'=>$event->id, 'date'=>$planningDate ?? ($event->start_date ? \Carbon\Carbon::parse($event->start_date)->toDateString() : now()->toDateString())]) }}">Whole tie · full day across venues</a></nav>
+  @if($planningDate)<a class="btn btn-outline-primary mb-3" href="{{ route('backend.event-venue-schedule.calendar', ['event'=>$event->id,'date'=>$planningDate] + ($guideSelection->count() === 1 ? ['draw_id'=>$guideSelection->first()->id] : []) + (!empty($planningScope['origin_draw_id']) ? ['origin_draw_id'=>$planningScope['origin_draw_id']] : [])) }}">Back to this saved day</a>@endif
+  <p class="small text-muted">{{ $teamPlanning ? 'Whole-tie planning' : 'Full-day planning' }} opens a broader selection across venues. Manual placement and removal save privately immediately; automatic allocation requires preview and save.</p>
+  <nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Scheduling method"><span class="align-self-center">Schedule by:</span><span class="btn btn-primary" aria-current="page">{{ $teamPlanning ? 'Position band / draw' : 'Matches / draw' }}</span><a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar.full-day', ['event'=>$event->id, 'date'=>$planningDate ?? ($event->start_date ? \Carbon\Carbon::parse($event->start_date)->toDateString() : now()->toDateString())] + ($guideSelection->count() === 1 ? ['draw_id'=>$guideSelection->first()->id] : []) + (!empty($planningScope['origin_draw_id']) ? ['origin_draw_id'=>$planningScope['origin_draw_id']] : [])) }}">{{ $teamPlanning ? 'Whole tie · full day across venues' : 'Full day across venues' }}</a></nav>
   @if($guideSelection->isNotEmpty())
     <section class="card card-body mb-3">
-      <h2 class="h5">Step 5 of 6 · Programme &amp; schedule</h2>
+      <h2 class="h5">{{ $teamPlanning ? 'Step 5 of 6' : 'Next' }} · Programme &amp; schedule</h2>
       <p>Arrange rounds, match order, playing days, venues and courts. Preview and save the schedule, then continue to review publication. Saving does not publish match times.</p>
-      <div class="d-flex flex-wrap gap-2">@foreach($guideSelection as $guideDraw)<a data-draw-guide-open class="btn btn-outline-primary" href="{{ route('draw.guide.show', [$event, $guideDraw]) }}">Review setup &amp; publication · {{ $guideDraw->drawName }}</a>@endforeach</div>
+      <div class="d-flex flex-wrap gap-2">@foreach($guideSelection as $guideDraw)<a data-draw-guide-open class="btn btn-outline-primary" href="{{ route('draw.guide.show', [$event, $guideDraw] + ($planningDate ? ['schedule_date'=>$planningDate] : [])) }}">Review setup &amp; publication · {{ $guideDraw->drawName }}</a>@endforeach</div>
     </section>
   @endif
   @include('backend.event.partials.header', [
@@ -386,7 +389,7 @@
     </div>
   </details>
   <details id="advanced-scheduling" class="workspace-section mb-3" @if($planningDate || $draws->where('programme_supported', true)->whereNotNull('programme_age')->isEmpty()) open @endif>
-    <summary><span class="section-title"><h5>Advanced scheduling</h5><small class="text-muted">Individual events, draw allocations and detailed timing rules</small></span></summary>
+    <summary><span class="section-title"><h5>{{ $teamPlanning ? 'Advanced scheduling' : 'Schedule setup' }}</h5><small class="text-muted">{{ $teamPlanning ? 'Individual events, draw allocations and detailed timing rules' : 'Allocate courts, set match times, then preview and save' }}</small></span></summary>
     <div class="section-body">
   <div class="workflow-rail mb-3" aria-label="Schedule workflow">
     <button type="button" class="workflow-step is-active" data-workflow-nav="1"><span class="step-number">1</span><span class="workflow-label">Court allocation</span></button>
@@ -539,17 +542,6 @@
         <div class="col-6 col-md-1"><label class="form-label" for="schedule-gap">Court gap</label><input id="schedule-gap" type="number" class="form-control" value="{{ $scheduleDraft['court_gap'] }}" min="0" max="120"></div>
         <div class="col-6 col-md-1"><label class="form-label" for="schedule-rest">Rest</label><input id="schedule-rest" type="number" class="form-control" value="{{ $scheduleDraft['player_rest'] }}" min="0" max="480"></div>
       </div>
-      <div class="row g-3 mt-1">
-        <div class="col-md-6">
-          <label class="form-label" for="round-progression">Team round progression</label>
-          <select id="round-progression" class="form-select">
-            <option value="team_ready" @selected($scheduleDraft['round_progression'] === 'team_ready')>Next tie when the team is ready and rested</option>
-            <option value="all_round" @selected($scheduleDraft['round_progression'] === 'all_round')>Finish the whole round before the next round</option>
-          </select>
-          <div class="form-text">Individual matches always follow their qualifying dependencies.</div>
-        </div>
-        <div class="col-md-6 small text-muted align-self-center">Ties may use multiple venues. We prefer each player's previous venue and warn when a move is needed. Published schedules can be adjusted; matches with play stay protected.</div>
-      </div>
       <div class="mt-3">
         <label class="form-label" for="gender-waves">Gender waves at shared venues</label>
         <select id="gender-waves" class="form-select">
@@ -566,6 +558,19 @@
           <option value="court_ready" @selected($scheduleDraft['gender_wave_release'] === 'court_ready')>Use free courts while the previous gender finishes</option>
         </select>
         <div class="form-text">Using free courts still allocates the earlier gender first. The next gender may start after the round wave interval from the previous gender's first start, as courts become available. Player rest and qualifying dependencies still apply.</div>
+      </div>
+      <details class="mt-3" data-team-scheduling-options @if($teamPlanning) open @endif>
+        <summary>Team scheduling options{{ $teamPlanning ? '' : ' (not needed for individual matches)' }}</summary>
+      <div class="row g-3 mt-1">
+        <div class="col-md-6">
+          <label class="form-label" for="round-progression">Team round progression</label>
+          <select id="round-progression" class="form-select">
+            <option value="team_ready" @selected($scheduleDraft['round_progression'] === 'team_ready')>Next tie when the team is ready and rested</option>
+            <option value="all_round" @selected($scheduleDraft['round_progression'] === 'all_round')>Finish the whole round before the next round</option>
+          </select>
+          <div class="form-text">Individual matches always follow their qualifying dependencies.</div>
+        </div>
+        <div class="col-md-6 small text-muted align-self-center">Ties may use multiple venues. We prefer each player's previous venue and warn when a move is needed. Published schedules can be adjusted; matches with play stay protected.</div>
       </div>
       <div class="mt-3">
         <label class="form-label" for="tie-allocation">Team tie allocation</label>
@@ -586,6 +591,7 @@
         <select id="cross-band-policy" class="form-select"><option value="highest_ranked" @selected($scheduleDraft['cross_band_policy'] === 'highest_ranked')>Prefer the highest-ranked player's venue and warn</option><option value="manual" @selected($scheduleDraft['cross_band_policy'] === 'manual')>Leave the match for manual placement</option></select>
         <div class="form-text">Highest ranked means the lowest roster position number. Manual venue changes remain available.</div>
       </div>
+      </details>
       <div class="mt-4">
         <div class="fw-semibold">Venue opening times</div>
         <div class="small text-muted mb-2">Leave blank to use the main schedule start. A later draw/category start still takes priority.</div>
@@ -761,7 +767,7 @@
   const venueUrl = @json(route('backend.event-venue-schedule.venues', $event));
   const courtUrl = @json(route('backend.event-venue-schedule.courts', $event));
   const announcementUrl = @json(route('admin.events.announcements.store', $event));
-  const drawsUrl = @json(route('backend.event-venue-schedule.calendar', ['event' => $event] + ($guideSelection->count() === 1 ? ['draw_id' => $guideSelection->first()->id] : [])));
+  const drawsUrl = @json(route('backend.event-venue-schedule.calendar', ['event' => $event] + ($planningDate ? ['date'=>$planningDate] : []) + ($guideSelection->count() === 1 ? ['draw_id' => $guideSelection->first()->id] : []) + (!empty($planningScope['origin_draw_id']) ? ['origin_draw_id'=>$planningScope['origin_draw_id']] : [])));
   const eventName = @json($event->name);
   const manualMode = @json(request()->boolean('manual'));
   const drawIds = @json($draws->reject(fn($draw) => $draw['locked'])->pluck('id')->values());
@@ -781,6 +787,12 @@
   let replanVenueIds = [];
   let allocationsDirty = false;
   let scheduleDirty = false;
+  let leavingSavedSchedule = false;
+  window.addEventListener('beforeunload', event => {
+    if (leavingSavedSchedule || !(allocationsDirty || scheduleDirty || programmeDirtyAges.size || (revision && lastScheduleResult?.matches?.length))) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
   let scheduleActivityTimer = null;
   let scheduleActivityHideTimer = null;
   let scheduleActivityStartedAt = 0;
@@ -2131,6 +2143,7 @@
       finishScheduleActivity(programmePending() ? 'Schedule saved. Your other programme edits remain unsaved.' : 'Schedule applied. Opening saved schedule…');
       window.setTimeout(() => {
         if (programmePending()) { invalidatePreview(); reportSaved(true); return; }
+        leavingSavedSchedule = true;
         window.location.assign(drawsUrl);
       }, 1000);
     }

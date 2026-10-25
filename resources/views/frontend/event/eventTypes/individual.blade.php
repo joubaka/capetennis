@@ -39,50 +39,14 @@
     </div>
     @endif
 
-    {{-- DOCUMENTS --}}
-    <div class="card event-section-card mb-4">
-      <div class="card-header d-flex justify-content-between">
-        <div>
-          <h5 class="mb-1">Event documents</h5>
-          <p class="text-muted small mb-0">Downloads supplied by the organiser.</p>
-        </div>
-
-        @auth
-          @if(auth()->user()->is_admin($event->id)->count() > 0 || auth()->id() == 584)
-            <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addFileModal">
-              Upload PDF
-            </button>
-          @endif
-        @endauth
-      </div>
-
-      <div class="card-body">
-        @forelse($event->files as $file)
-          <div class="event-document d-flex justify-content-between align-items-center gap-2 mb-2 file">
-            <a class="d-flex align-items-center gap-2 text-break" href="{{ route('events.documents.show', [$event, $file]) }}">
-              <i class="ti ti-file-description fs-4 text-primary"></i>
-              <span>{{ $file->name }}</span>
-            </a>
-
-            @can('admin')
-              @if(auth()->id() == $event->admin || auth()->id() == 584)
-                <button
-                  class="btn btn-danger btn-sm deleteFileButton"
-                  data-id="{{ $file->id }}">
-                  Delete
-                </button>
-              @endif
-            @endcan
-          </div>
-        @empty
-          <div class="text-center py-3">
-            <i class="ti ti-file-off fs-2 text-muted"></i>
-            <p class="text-muted small mb-0 mt-2">No event documents are available yet.</p>
-          </div>
-        @endforelse
-      </div>
-    </div>
-
+    @include('frontend.event.partials.event-documents', [
+      'documentCardClass' => 'event-section-card',
+      'documentTitle' => 'Event documents',
+      'documentDescription' => 'Downloads supplied by the organiser.',
+      'documentEmptyMessage' => 'No event documents are available yet.',
+      'documentNewWindow' => false,
+      'documentUploadModal' => '#addFileModal',
+    ])
     @include('frontend.event.partials.event-draws')
 
     {{-- PLAYERS --}}

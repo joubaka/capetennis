@@ -296,7 +296,9 @@ class EventCommunicationService
             $import = TeamSelectionImport::where('event_id', $event->id)->findOrFail($options['selection_import_id']);
             $invitations = app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->customMessageRecipients($import, $options['invitation_ids']);
             $rows = $invitations->map(fn ($invitation) => ['key' => 'player:'.$invitation->player_id,
-                'name' => $invitation->player?->full_name, 'emails' => [$this->contacts->primaryEmail($invitation->player)]]);
+                // legacyPlan renders only the escaped authored subject/body;
+                // this custom announcement contains no invitation action links.
+                'name' => $invitation->player?->full_name, 'emails' => $this->contacts->emails($invitation->player)->all()]);
 
             return $this->legacyPlan($event, $options, $rows, $subject, $body);
         }
@@ -336,7 +338,14 @@ class EventCommunicationService
                     ->map(fn ($row) => [
                         'key' => $row['player_key'], 'name' => $row['name'],
                         'emails' => filter_var($row['email'], FILTER_VALIDATE_EMAIL) ? [mb_strtolower(trim($row['email']))] : [],
-                        'html' => view('emails.team-selection.invitation', [
+                        // Only the established primary recipient receives bearer
+                        // decision links. Other contacts see an update-only copy.
+                        'html' => $row['email'] !== $this->contacts->primaryEmail($invitations->get($row['invitation_id'])->player)
+                            ? view('emails.player-contact-update', [
+                                'playerName' => $row['name'], 'messageBody' => strip_tags($body),
+                                'eventName' => $event->name, 'eventUrl' => $event->published ? route('events.show', $event) : null,
+                            ])->render()
+                            : view('emails.team-selection.invitation', [
                             'invitation' => $invitations->get($row['invitation_id']),
                             'kind' => 'custom_invitation', 'campaign' => ['message' => $body, 'include_clothing' => false],
                         ])->render(),

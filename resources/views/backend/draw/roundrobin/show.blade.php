@@ -13,7 +13,6 @@
 
 
 @php
-  $currentBoxes = (int) (optional($draw->settings)->boxes ?: ($groups->count() ?: 4));
   $roundRobinOnly = $draw->isRoundRobinOnly();
   $competitionRulesEditable = auth()->user()->can('editCompetitionRules', $draw);
   $assignmentService = app(\App\Services\Draw\GroupAssignmentService::class);
@@ -21,6 +20,8 @@
     'id' => $entry->registration_id, 'name' => $entry->registration->display_name,
     'category_id' => $entry->category_event_id, 'category' => $entry->categoryEvent->category?->name ?? 'Players',
   ])->unique('id')->values();
+  $suggestedBoxes = $eligibleRoster->count() >= 2 && $eligibleRoster->count() <= 4 ? 1 : 4;
+  $currentBoxes = (int) (optional($draw->settings)->boxes ?: ($groups->count() ?: $suggestedBoxes));
 @endphp
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/sweetalert2/sweetalert2.css') }}">
 <link rel="stylesheet" href="{{ asset('assets/css/draw-workspace.css') }}?v={{ filemtime(public_path('assets/css/draw-workspace.css')) }}">

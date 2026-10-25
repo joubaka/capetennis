@@ -85,6 +85,24 @@ class AllEventEmailSetupTest extends TestCase
     }
 
     #[DataProvider('workflows')]
+    public function test_updates_and_announcements_include_extra_player_contacts_and_reject_stale_previews(int $kind, ?string $code): void
+    {
+        [$event, $actor, $players] = $this->setupAudience($kind, $code);
+        $players->first()->update(['email_2' => 'parent.two@example.test', 'email_3' => 'parent.three@example.test']);
+        $players[1]->update(['email_2' => 'parent.two@example.test']);
+        $expected = ['parent.three@example.test', 'parent.two@example.test', 'shared@example.test'];
+        $service = app(EventCommunicationService::class);
+        $batch = $service->preview($event, $actor, ['scope' => 'all', 'filter' => 'all', 'recipients' => 'players'], 'Update', 'Event arrangements');
+        $this->assertSame($expected, array_column($batch->recipients, 'email'));
+        $this->assertSame($expected, app(EventAnnouncementService::class)->recipientEmails($event)->all());
+        $this->assertEqualsCanonicalizing($expected, app(\App\Services\MatchResultNotificationService::class)->recipients([$players->first()->id, $players[1]->id]));
+
+        $players->first()->update(['email_3' => 'changed@example.test']);
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        $service->approve($batch, $actor, true);
+    }
+
+    #[DataProvider('workflows')]
     public function test_approved_communication_sends_once_with_exact_event_audience_and_player_coverage(int $kind, ?string $code): void
     {
         [$event, $actor, $players] = $this->setupAudience($kind, $code);
@@ -94,8 +112,9 @@ class AllEventEmailSetupTest extends TestCase
         $this->assertEqualsCanonicalizing($players->take(2)->map(fn ($player) => 'player:'.$player->id)->all(), $batch->recipients[0]['player_keys']);
         $this->assertCount(1, $batch->issues);
         $this->assertStringContainsString('Missing Recipient', $batch->issues[0]);
-        $this->assertStringContainsString('First Recipient', $batch->recipients[0]['html']);
-        $this->assertStringContainsString('Second Recipient', $batch->recipients[0]['html']);
+        // Player coverage belongs in the audit keys above; outgoing composer
+        // mail contains only the operator's authored message.
+        $this->assertSame('Arrangements for this event', $batch->recipients[0]['html']);
         $this->assertSame(1, $service->approve($batch, $actor, true)['queued']);
         $this->assertSame(0, $service->approve($batch, $actor, true)['queued']);
         $this->assertDatabaseCount('bulk_email_logs', 1);
@@ -105,7 +124,9 @@ class AllEventEmailSetupTest extends TestCase
         $this->sendExactlyOnce($log);
         $log->update(['evidence_status' => 'server_accepted', 'accepted_at' => now()]);
         $this->assertSame(2, $batch->serverAcceptedPlayerCount());
-        $this->get(route('backend.event-communications.index', ['event' => $event, 'batch' => $batch->id, 'report_scope' => 'batch']))->assertOk()->assertSee('Event update')->assertSee('shared@example.test');
+        $report = ['event' => $event, 'batch' => $batch->id, 'report_scope' => 'batch'];
+        $this->get(route('backend.event-communications.index', $report))->assertOk()->assertSee('Event update');
+        $this->get(route('backend.event-communications.index', $report + ['history_send' => $log->id]))->assertOk()->assertSee('shared@example.test');
     }
 
     #[DataProvider('workflows')]

@@ -483,7 +483,7 @@
     if (phase) {
       phase.textContent = state.generated
         ? (config.workflow === 'playoffs' ? 'Play the knockout draw' : 'Play the draw and complete every position')
-        : 'Step 2 · Bracket size and starting positions';
+        : 'Players and starting positions';
     }
     $('fm-board-title').textContent = state.generated ? (config.workflow === 'playoffs' ? 'Playoff bracket' : 'Main draw & placement matches') : 'Starting positions';
     $('fm-sidebar').hidden = state.generated || config.readOnly;

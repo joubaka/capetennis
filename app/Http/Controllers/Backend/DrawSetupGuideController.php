@@ -21,9 +21,15 @@ final class DrawSetupGuideController extends Controller
     public function show(Request $request, Event $event, Draw $draw, DrawSetupGuide $guide)
     {
         $this->authorizeGuide($event, $draw);
-        $data = ['draw' => $draw, 'event' => $event, 'guide' => $guide->state($draw),
+        $scheduleDate = $request->validate(['schedule_date'=>['nullable', 'date_format:Y-m-d']])['schedule_date'] ?? null;
+        $state = $guide->state($draw);
+        if ($scheduleDate) {
+            $state['steps'][4]['url'] = route('backend.event-venue-schedule.index', ['event'=>$event->id, 'draw_ids'=>[$draw->id], 'date'=>$scheduleDate]);
+        }
+        $guideUrl = route('draw.guide.show', [$event, $draw] + ($scheduleDate ? ['schedule_date'=>$scheduleDate] : []));
+        $data = ['draw' => $draw, 'event' => $event, 'guide' => $state, 'scheduleDate'=>$scheduleDate, 'guideUrl'=>$guideUrl,
             'categories' => $event->categoryEvents()->with('category')->get()];
-        if ($request->expectsJson()) return response()->json(['html' => view('backend.draw.partials.guide-content', $data)->render(), 'guide_url' => route('draw.guide.show', [$event, $draw])])->header('Cache-Control', 'private, no-store');
+        if ($request->expectsJson()) return response()->json(['html' => view('backend.draw.partials.guide-content', $data)->render(), 'guide_url' => $guideUrl])->header('Cache-Control', 'private, no-store');
         return response()->view('backend.draw.guide', $data)->header('Cache-Control', 'private, no-store');
     }
 

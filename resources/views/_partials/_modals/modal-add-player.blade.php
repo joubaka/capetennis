@@ -39,6 +39,7 @@
                             <input class="form-control" name="email" type="email" id="modal_email"
                                    value="{{ Auth::user()->email ?? '' }}" placeholder="e.g. player@email.com">
                         </div>
+@include('frontend.player.partials.additional-emails', ['contactPlayer' => null, 'emailIdPrefix' => 'create-player-modal'])
                         <div class="col-md-6">
                             <label for="modal_cell_nr" class="form-label">Cell Number</label>
                             <input class="form-control" type="tel" name="cell_nr" id="modal_cell_nr"

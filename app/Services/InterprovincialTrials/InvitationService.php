@@ -176,7 +176,14 @@ class InvitationService
             'composition_hash' => $compositionHash,
             'review_expires_at' => $expiresAt,
             'review_proof' => app(InvitationMailSecurity::class)->reviewProof($actor->id, 'interpro:'.$event->id, $requestToken, $recipientHash, $compositionHash, $expiresAt),
-            'rendered_body' => collect($selection['recipients'])->map(fn ($recipient) => '<div class="card card-body mb-3"><p><strong>To:</strong> '.e($recipient['email']).'</p><h5>'.e($composition['subject']).'</h5>'.$rendered[$recipient['nomination_id']].'</div>')->implode(''),
+            'rendered_body' => collect($selection['recipients'])->map(function ($recipient) use ($composition, $rendered) {
+                $html = '<div class="card card-body mb-3"><p><strong>To:</strong> '.e($recipient['email']).'</p><h5>'.e($composition['subject']).'</h5>'.$rendered[$recipient['nomination_id']].'</div>';
+                foreach ($recipient['contact_emails'] as $email) {
+                    if ($email === mb_strtolower(trim($recipient['email']))) continue;
+                    $html .= '<div class="card card-body mb-3"><p><strong>To:</strong> '.e($email).'</p><h5>'.e($composition['subject']).'</h5>'.$rendered[$recipient['nomination_id'].':'.$email].'</div>';
+                }
+                return $html;
+            })->implode(''),
             'sender_warning' => 'The From address must be verified by the configured mail provider or delivery may fail.',
         ];
     }
@@ -274,6 +281,18 @@ class InvitationService
                     $invitation->update(['status' => 'queued', 'queued_at' => $invitation->queued_at ?? now()]);
                 }
                 DB::afterCommit(fn () => $this->dispatchInvitationLog($log->id, $event->id));
+                foreach ($recipient['contact_emails'] as $email) {
+                    if ($email === mb_strtolower(trim($recipient['email']))) continue;
+                    $copy = array_replace($payload, ['recipient_email' => $email, 'notification_only' => true]);
+                    $copy['rendered_html'] = $rendered[$recipient['nomination_id'].':'.$email];
+                    $copy['payload_integrity'] = app(InvitationMailSecurity::class)->payloadIntegrity($copy);
+                    $copyLog = BulkEmailLog::create(['mail_type' => 'interprovincial_trial_invitation',
+                        'related_type' => InterprovincialTrialInvitation::class, 'related_id' => $invitation->id,
+                        'recipient_email' => $email, 'recipient_name' => $recipient['name'],
+                        'status' => 'queued', 'payload' => $copy, 'queued_at' => now()]);
+                    DB::afterCommit(fn () => $this->dispatchInvitationLog($copyLog->id, $event->id));
+                    $queued++;
+                }
                 $queued++;
             }
 
@@ -1059,6 +1078,7 @@ class InvitationService
                 'player_id' => $nomination->player_id === null ? null : (int) $nomination->player_id,
                 'name' => $row['recipient_name'],
                 'email' => $row['recipient_email'],
+                'contact_emails' => $row['contact_emails'],
                 'category' => $nomination->categoryEvent?->category?->name,
                 'status' => $invitation?->status ?? 'nominated',
             ];
@@ -1079,6 +1099,7 @@ class InvitationService
             'player_id' => $row['player_id'],
             'category_event_id' => $row['category_event_id'],
             'email' => $row['email'],
+            'contact_emails' => $row['contact_emails'],
             'name' => $row['name'],
             'category' => $row['category'],
             'status' => $row['status'],
@@ -1102,6 +1123,8 @@ class InvitationService
             return ['nomination_id' => (int) $nomination->id, 'category_event_id' => (int) $nomination->category_event_id,
                 'player_id' => $nomination->player_id === null ? null : (int) $nomination->player_id,
                 'recipient_email' => $recipient?->email ?? $nomination->nominee_email,
+                'contact_emails' => app(\App\Services\TeamSelection\TeamSelectionContactService::class)->emails($player)
+                    ->intersect(collect([$player?->email_2, $player?->email_3])->map(fn ($value) => mb_strtolower(trim((string) $value))))->values()->all(),
                 'recipient_user_id' => $recipient?->id, 'recipient_name' => $nomination->display_name];
         })->sortBy('nomination_id')->values()->all();
     }
@@ -1147,6 +1170,13 @@ class InvitationService
             $rendered[$recipient['nomination_id']] = view('emails.interprovincial-trials.invitation', [
                 'recipientName' => $recipient['name'], 'messageBody' => $composition['body'], 'invitationUrl' => $url,
             ])->render();
+            foreach ($recipient['contact_emails'] as $email) {
+                if ($email === mb_strtolower(trim($recipient['email']))) continue;
+                $rendered[$recipient['nomination_id'].':'.$email] = view('emails.player-contact-update', [
+                    'playerName' => $recipient['name'], 'messageBody' => $composition['body'],
+                    'eventName' => $event->name, 'eventUrl' => $event->published ? route('events.show', $event) : null,
+                ])->render();
+            }
         }
 
         return $rendered;

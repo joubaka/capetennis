@@ -66,7 +66,7 @@ class EventPagePerformanceTest extends TestCase
 
     public function test_imported_roster_profiles_and_payer_controls_remain_available(): void
     {
-        $event = Event::factory()->create(['eventType' => 3]);
+        $event = Event::factory()->create(['eventType' => 3, 'deadline' => 0]);
         $region = TeamRegion::create(['region_name' => 'Imported region', 'clothing_order' => false]);
         $event->regions()->attach($region->id);
         $team = Team::factory()->create(['region_id' => $region->id, 'noProfile' => true]);
@@ -180,7 +180,7 @@ class EventPagePerformanceTest extends TestCase
 
     public function test_registration_remains_sponsored_but_withdrawal_requires_the_current_event_payer(): void
     {
-        $event = Event::factory()->create(['eventType' => 3]);
+        $event = Event::factory()->create(['eventType' => 3, 'deadline' => 0]);
         $region = TeamRegion::create(['region_name' => 'Payer region', 'clothing_order' => false]);
         $event->regions()->attach($region->id);
         $team = Team::factory()->create(['region_id' => $region->id]);

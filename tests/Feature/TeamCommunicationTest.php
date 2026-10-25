@@ -250,6 +250,34 @@ class TeamCommunicationTest extends TestCase
         $this->assertSame($super->email, EventCommunicationBatch::sole()->recipients[0]['email']);
     }
 
+    public function test_settled_team_order_keeps_receipt_with_payer_and_sends_safe_contact_updates_once(): void
+    {
+        Bus::fake(); Mail::fake();
+        $order = $this->order();
+        $order->effectivePlayer->update(['email_2' => 'parent2@example.test', 'email_3' => 'parent3@example.test']);
+        DB::table('team_payment_orders')->where('id', $order->id)->update(['pay_status' => 0, 'payfast_paid' => 0, 'payfast_amount_due' => 285]);
+        DB::table('team_players')->where('team_id', $order->team_id)->update(['pay_status' => 0]);
+        $service = app(\App\Domain\Payments\Services\TeamPaymentService::class);
+        $context = ['payment_method' => 'payfast', 'payfast_amount_received' => 285, 'pf_payment_id' => 'extra-contact-confirmation'];
+        $service->finalizePayment($order->fresh(), $context);
+        $service->finalizePayment($order->fresh(), $context);
+        $receipt = BulkEmailLog::where('mail_type', 'team_payment_confirmation')->sole();
+        $this->assertSame($order->user->email, $receipt->recipient_email);
+        $this->assertNotNull(app(TeamRegistrationConfirmationService::class)->authorizedMailable($receipt));
+        $updates = BulkEmailLog::where('mail_type', 'player_registration_update')->get();
+        $this->assertEqualsCanonicalizing(['parent2@example.test', 'parent3@example.test'], $updates->pluck('recipient_email')->all());
+        foreach ($updates as $log) {
+            $mail = app(\App\Services\PlayerRegistrationUpdateService::class)->authorizedMailable($log);
+            $this->assertNotNull($mail);
+            $this->assertStringNotContainsString('285', $mail->body);
+            $this->assertStringNotContainsString('checkout', $mail->body);
+        }
+        $this->assertSame(285.0, $order->fresh()->total_amount);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->assertDatabaseCount('user_players', 0);
+        $this->assertDatabaseCount('bulk_email_logs', 3);
+    }
+
     private function order(): TeamPaymentOrder
     {
         $user = User::factory()->create();

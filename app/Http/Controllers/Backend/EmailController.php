@@ -533,7 +533,9 @@ class EmailController extends Controller
     foreach ($this->teamsForEmailScope($event) as $team) {
       foreach ($team->players as $player) {
         if ($player->pivot->pay_status == 0) {
-          $recipients[] = trim(strtolower((string) $player->email));
+          // This legacy update dispatches only the operator's subject/message,
+          // without creating invitation tokens or account permissions.
+          array_push($recipients, ...app(\App\Services\TeamSelection\TeamSelectionContactService::class)->emails($player)->all());
         }
       }
     }
@@ -563,7 +565,8 @@ class EmailController extends Controller
     foreach ($teams as $team) {
       foreach ($team->players as $player) {
         if ($player->pivot->pay_status == 0) {
-          $recipients[] = trim(strtolower((string) $player->email));
+          // Resolve update contacts only; composeDispatch sends a plain message.
+          array_push($recipients, ...app(\App\Services\TeamSelection\TeamSelectionContactService::class)->emails($player)->all());
         }
       }
     }

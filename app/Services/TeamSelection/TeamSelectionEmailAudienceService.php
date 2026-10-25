@@ -247,7 +247,7 @@ class TeamSelectionEmailAudienceService
                         'invitation_id' => (int) $invitation->id,
                         'name' => $this->displayLabel((string) ($invitation->player?->full_name ?? 'Player')),
                         'status' => $invitation->status,
-                        'has_email' => filled($this->contacts->primaryEmail($invitation->player)),
+                        'has_email' => $this->contacts->emails($invitation->player)->isNotEmpty(),
                     ])->values();
                 if ($rosterByTeam->has($team->id)) {
                     $players = $rosterByTeam->get($team->id)->map(fn ($row) => ['roster_key' => $team->id.':'.$row['key'], 'name' => $this->displayLabel($row['name']), 'status' => $row['status'], 'has_email' => ! empty($row['emails'])])->values();
@@ -258,7 +258,7 @@ class TeamSelectionEmailAudienceService
                     'name' => $this->displayLabel((string) ($row->player?->full_name ?? 'Player')),
                     'status' => 'Rank '.(int) $row->rank_position,
                     'event_state' => $rankingStates->get((int) $row->player_id, 'unregistered'),
-                    'has_email' => filled($this->contacts->primaryEmail($row->player)),
+                    'has_email' => $this->contacts->emails($row->player)->isNotEmpty(),
                 ])->values();
 
                 return [
@@ -316,17 +316,17 @@ class TeamSelectionEmailAudienceService
             $rows = $rows->filter(fn (SeriesRanking $row) => $this->matchesRankingStatus(
                 $states->get((int) $row->player_id, 'unregistered'), $rankingStatus,
             ));
-            $allowed = $allowed->concat($rows->map(function (SeriesRanking $row) use ($eventRegion, $source, $runId, $states): array {
-                return [
+            $allowed = $allowed->concat($rows->flatMap(function (SeriesRanking $row) use ($eventRegion, $source, $runId, $states) {
+                return $this->contacts->emails($row->player)->map(fn ($email) => [
                     'series_ranking_id' => (int) $row->id,
-                    'email' => mb_strtolower(trim((string) $this->contacts->primaryEmail($row->player))),
+                    'email' => $email,
                     'name' => $this->displayLabel((string) ($row->player?->full_name ?? 'Player')),
                     'category' => $this->displayLabel((string) ($row->category?->name ?? 'Age group')),
                     'region' => $this->displayLabel((string) ($eventRegion->region?->region_name ?? 'Region')),
                     'status' => 'Rank '.(int) $row->rank_position,
                     'event_state' => $states->get((int) $row->player_id, 'unregistered'),
                     'source_identity' => implode(':', [(int) $source->id, (int) $source->series_id, $runId]),
-                ];
+                ]);
             }));
         }
         if ($allowed->pluck('series_ranking_id')->unique()->sort()->values()->all() !== $rowIds->all()) {

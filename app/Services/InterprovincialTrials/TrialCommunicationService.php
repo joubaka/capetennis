@@ -198,7 +198,8 @@ class TrialCommunicationService
         $groups = [];
         foreach ($rows as $row) {
             $player = $row['player'];
-            $contacts = collect([$player?->email, $player?->user?->email, $row['fallback']])->merge($player?->users?->pluck('email') ?? []);
+            // These updates link to the public event page, never invitation tokens.
+            $contacts = app(\App\Services\TeamSelection\TeamSelectionContactService::class)->rawEmails($player)->push($row['fallback']);
             $valid = [];
             foreach ($contacts->filter()->unique() as $email) {
                 $email = strtolower(trim($email));

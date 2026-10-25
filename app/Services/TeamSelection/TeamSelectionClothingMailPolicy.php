@@ -28,7 +28,8 @@ class TeamSelectionClothingMailPolicy
 
     public function includesClothing(array $payload): bool
     {
-        return ! in_array($payload['kind'] ?? 'invitation', ['replacement', 'custom_status_update'], true)
+        return ! (bool) ($payload['campaign']['notification_only'] ?? false)
+            && ! in_array($payload['kind'] ?? 'invitation', ['replacement', 'custom_status_update'], true)
             && (bool) ($payload['campaign']['include_clothing'] ?? false);
     }
 

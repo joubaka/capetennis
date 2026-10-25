@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="CLI Arguments" tests="4" assertions="90" errors="0" failures="0" skipped="0" time="121.408858">
+    <testsuite name="Tests\Feature\MastersInvitationMailReviewTest" file="C:\wamp64\www\ct\tests\Feature\MastersInvitationMailReviewTest.php" tests="1" assertions="11" errors="0" failures="0" skipped="0" time="119.219560">
+      <testcase name="test_optional_contacts_are_reviewed_notification_only_copies_and_removed_contacts_are_skipped" file="C:\wamp64\www\ct\tests\Feature\MastersInvitationMailReviewTest.php" line="164" class="Tests\Feature\MastersInvitationMailReviewTest" classname="Tests.Feature.MastersInvitationMailReviewTest" assertions="11" time="119.219560">
+        <system-out>﻿﻿</system-out>
+      </testcase>
+    </testsuite>
+    <testsuite name="Tests\Feature\InterprovincialTrialInvitationWorkflowTest" file="C:\wamp64\www\ct\tests\Feature\InterprovincialTrialInvitationWorkflowTest.php" tests="1" assertions="12" errors="0" failures="0" skipped="0" time="0.378765">
+      <testcase name="test_optional_contact_copies_keep_one_trial_invitation_lifecycle_and_skip_removed_contacts" file="C:\wamp64\www\ct\tests\Feature\InterprovincialTrialInvitationWorkflowTest.php" line="2089" class="Tests\Feature\InterprovincialTrialInvitationWorkflowTest" classname="Tests.Feature.InterprovincialTrialInvitationWorkflowTest" assertions="12" time="0.378765"/>
+    </testsuite>
+    <testsuite name="Tests\Feature\TeamSelection\TeamRankingInvitationWorkflowTest" file="C:\wamp64\www\ct\tests\Feature\TeamSelection\TeamRankingInvitationWorkflowTest.php" tests="2" assertions="67" errors="0" failures="0" skipped="0" time="1.810532">
+      <testcase name="test_event_admin_can_prepare_and_preview_the_actual_regional_invitation_email" file="C:\wamp64\www\ct\tests\Feature\TeamSelection\TeamRankingInvitationWorkflowTest.php" line="2913" class="Tests\Feature\TeamSelection\TeamRankingInvitationWorkflowTest" classname="Tests.Feature.TeamSelection.TeamRankingInvitationWorkflowTest" assertions="53" time="1.128844"/>
+      <testcase name="test_optional_invitation_contacts_are_fingerprinted_and_receive_only_safe_notifications" file="C:\wamp64\www\ct\tests\Feature\TeamSelection\TeamRankingInvitationWorkflowTest.php" line="6386" class="Tests\Feature\TeamSelection\TeamRankingInvitationWorkflowTest" classname="Tests.Feature.TeamSelection.TeamRankingInvitationWorkflowTest" assertions="14" time="0.681688"/>
+    </testsuite>
+  </testsuite>
+</testsuites>

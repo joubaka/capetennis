@@ -74,6 +74,7 @@
     <a href="#settings-information">Public information</a>
     <a href="#settings-schedule">Schedule</a>
     <a href="#result-controls">Results updates</a>
+    @if($event->isTeam())<a href="#settings-point-sharing">Point sharing</a>@endif
     @if($showSelectionCriteriaTab)<a href="#settings-team-selection">Selection criteria</a>@endif
     <a href="#settings-access">Access</a>
   </nav>
@@ -84,6 +85,7 @@
       <option value="#settings-information">Public information</option>
       <option value="#settings-schedule">Schedule</option>
       <option value="#result-controls">Results updates</option>
+      @if($event->isTeam())<option value="#settings-point-sharing">Point sharing</option>@endif
       @if($showSelectionCriteriaTab)<option value="#settings-team-selection">Selection criteria</option>@endif
       <option value="#settings-access">Access</option>
     </select>
@@ -132,6 +134,7 @@
 @endif
 <div class="row g-4">
 @if($event->isTeam())
+@include('backend.event.partials.point-sharing-settings')
 <div class="col-12"><section class="card settings-card"><div class="card-body">
   <h5>Main conveners by age group</h5>
   <p class="text-muted">Assign one account per age group. They can view that age group's standings after every match in the group has been processed.</p>
@@ -548,6 +551,21 @@ $(function () {
   const scoringVenues = @json($scoringVenues->map(fn ($venue) => ['id' => $venue->id, 'name' => $venue->name])->values());
   const initialScoringVenueAssignments = @json($scoringAccounts->mapWithKeys(fn ($account) => [(string) $account->user_id => $account->venue_id]));
   const feedback = window.AppFeedback;
+  $('#save-point-sharing').on('click', function () {
+    const button = $(this).prop('disabled', true);
+    $('#point-sharing-status').text('Saving…');
+    const rules = $('[data-point-sharing-team]').map(function () {
+      return {team_id: Number(this.dataset.pointSharingTeam), enabled: $(this).find('[data-sharing-active]').prop('checked'),
+        mode: $(this).find('[data-sharing-mode]').val(),
+        region_ids: $(this).find('[data-sharing-region]:checked').map(function () { return Number(this.value); }).get()};
+    }).get();
+    $.ajax({url: @json(route('admin.events.point-sharing.update', $event)), method:'PUT', headers:{'X-CSRF-TOKEN':csrf},
+      contentType:'application/json', data: JSON.stringify({enabled: $('#point-sharing-enabled').prop('checked'), rules})})
+      .done(function (data) { $('#point-sharing-status').text(data.message); })
+      .fail(function (xhr) { $('#point-sharing-status').text(Object.values(xhr.responseJSON?.errors || {}).flat().join(' ') || xhr.responseJSON?.message || 'Could not save point sharing.'); })
+      .always(function () { button.prop('disabled', false); });
+  });
+  $('#settings-point-sharing').on('change', 'input, select', function () { $('#point-sharing-status').text('Unsaved point-sharing changes. Use Save point sharing.'); });
   $('#save-selection-criteria').on('click', function () {
     const button = $(this).prop('disabled', true);
     $('#selection-criteria-status').text('Saving…');

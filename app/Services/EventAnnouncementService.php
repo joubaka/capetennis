@@ -183,11 +183,11 @@ class EventAnnouncementService
             ];
         }
         $players = $this->audiencePlayers($event)->map(fn (Player $player) => [
-            'email' => $this->contacts->primaryEmail($player), 'name' => trim($player->name.' '.$player->surname),
+            'emails' => $this->contacts->emails($player), 'name' => trim($player->name.' '.$player->surname),
         ]);
         return [
-            'recipients' => $players->filter(fn ($row) => filled($row['email']))->unique('email')->sortBy('email')->values(),
-            'excluded' => $players->filter(fn ($row) => blank($row['email']))->map(fn ($row) => [...$row, 'email' => ''])->values(),
+            'recipients' => $players->flatMap(fn ($row) => $row['emails']->map(fn ($email) => ['email' => $email, 'name' => $row['name']]))->unique('email')->sortBy('email')->values(),
+            'excluded' => $players->filter(fn ($row) => $row['emails']->isEmpty())->map(fn ($row) => ['name' => $row['name'], 'email' => ''])->values(),
         ];
     }
 

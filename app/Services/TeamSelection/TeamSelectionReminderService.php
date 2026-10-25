@@ -27,7 +27,7 @@ final class TeamSelectionReminderService
                 $grouped = $this->recipients($event, $eventRegion, $kind, $audience);
                 $result[$kind][$audience] = [
                     'emails' => $grouped->count(),
-                    'players' => $grouped->sum(fn (array $recipient) => count($recipient['players'])),
+                    'players' => $grouped->flatMap(fn (array $recipient) => $recipient['players'])->pluck('invitation_id')->unique()->count(),
                 ];
             }
         }
@@ -75,6 +75,7 @@ final class TeamSelectionReminderService
 
         $mailType = 'team_selection_'.$kind.'_reminder';
         $stats = ['total' => 0, 'queued' => 0, 'skipped' => 0, 'invalid' => 0, 'duplicate' => 0, 'failed' => 0, 'players' => 0];
+        $queuedPlayers = [];
         foreach ($recipients as $recipient) {
             $content = $this->content($event, $kind, $recipient['players'], $usesRegionalClothing);
             if ($communicationBatchId !== null) {
@@ -96,8 +97,11 @@ final class TeamSelectionReminderService
                 'player_keys' => collect($recipient['players'])->pluck('invitation_id')->map(fn ($id) => 'invitation:'.$id)->all(),
             ], false);
             foreach (['total', 'queued', 'skipped', 'invalid', 'duplicate', 'failed'] as $key) $stats[$key] += (int) $sent[$key];
-            if ($sent['queued'] > 0) $stats['players'] += count($recipient['players']);
+            if ($sent['queued'] > 0) {
+                foreach ($recipient['players'] as $player) $queuedPlayers[$player['invitation_id']] = true;
+            }
         }
+        $stats['players'] = count($queuedPlayers);
 
         activity('team-selection')->performedOn($event)->causedBy($actor)->withProperties($stats + [
             'kind' => $kind, 'audience' => $audience, 'send_token' => $token,
@@ -152,10 +156,11 @@ final class TeamSelectionReminderService
             })->values();
         }
 
-        return $invitations->map(function (TeamSelectionInvitation $invitation) use ($pendingKeys): array {
+        return $invitations->flatMap(function (TeamSelectionInvitation $invitation) use ($pendingKeys, $event) {
             $key = $invitation->team_id.'-'.$invitation->player_id;
-            return [
-                'email' => $this->contacts->primaryEmail($invitation->player),
+            $primary = $this->contacts->primaryEmail($invitation->player);
+            return $this->contacts->emails($invitation->player)->map(fn ($email) => [
+                'email' => $email,
                 'name' => $invitation->player?->full_name,
                 'player' => [
                     'invitation_id' => $invitation->id,
@@ -163,11 +168,12 @@ final class TeamSelectionReminderService
                     'team' => $invitation->team?->name,
                     'registered' => $invitation->status === TeamSelectionInvitation::PAID_CONFIRMED,
                     'pending_clothing' => $pendingKeys->has($key),
-                    'url' => $invitation->status === TeamSelectionInvitation::PAID_CONFIRMED
+                    'notification_only' => $email !== $primary,
+                    'url' => $email !== $primary ? route('events.show', $event) : ($invitation->status === TeamSelectionInvitation::PAID_CONFIRMED
                         ? route('team-selection.invitations.show', $invitation)
-                        : route('team-selection.invitations.show', ['invitation' => $invitation, 'action' => 'pay']),
+                        : route('team-selection.invitations.show', ['invitation' => $invitation, 'action' => 'pay'])),
                 ],
-            ];
+            ]);
         })->filter(fn (array $row) => filled($row['email']))
             ->groupBy('email')->map(function (Collection $rows): array {
                 return [
@@ -198,7 +204,8 @@ final class TeamSelectionReminderService
         $rows = collect($players)->map(function (array $player) use ($kind, $usesRegionalClothing): string {
             $name = e($player['name']);
             $team = e($player['team'] ?: 'Team event');
-            if (! $player['registered']) $action = 'Complete registration and payment';
+            if ($player['notification_only'] ?? false) $action = 'View event update';
+            elseif (! $player['registered']) $action = 'Complete registration and payment';
             elseif ($kind === 'incomplete_clothing' && $player['pending_clothing']) $action = 'Review your pending clothing order';
             else $action = $usesRegionalClothing ? 'Order clothing or confirm that no clothing is required' : 'Review registration';
             $url = e($player['url']);

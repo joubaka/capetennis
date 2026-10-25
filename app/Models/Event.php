@@ -369,6 +369,17 @@ class Event extends Model
     return (int) $this->eventTypeModel?->type === EventType::CAMP;
   }
 
+  /** Public directory scope only; existing order authorization is service-owned. */
+  public function requiresEventScopedRegionTeams(): bool
+  {
+    if ($this->isInterprovincialTrials()) {
+      return false;
+    }
+
+    return $this->isTeam()
+      || ((int) $this->eventType === 13 && ! $this->isMasters() && ! $this->isCamp());
+  }
+
   public function getEventBaseTypeAttribute(): ?int
   {
     return $this->eventTypeModel?->type;
@@ -380,27 +391,7 @@ class Event extends Model
    */
   public function getFrontendTypeViewAttribute(): string
   {
-    if ($this->isMasters()) {
-      return 'masters';
-    }
-
-    if ($this->isTeam()) {
-      return 'team';
-    }
-
-    if ($this->isCamp()) {
-      return 'default';
-    }
-
-    return match ((int) $this->eventType) {
-      14 => 'masters',
-      5 => 'cavaliers_trials',
-      9 => 'parentChildDoubles',
-      13 => 'interpro',
-      6, 1 => 'individual',
-      3, 7 => 'team',
-      default => 'default',
-    };
+    return \App\Support\EventTypePresentation::view($this);
   }
 
   /*

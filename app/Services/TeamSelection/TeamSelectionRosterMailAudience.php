@@ -17,7 +17,8 @@ class TeamSelectionRosterMailAudience
         }
         if ($target === 'imported_player') {
             $slot = $team->team_players_no_profile()->with('profile.user', 'profile.users')->findOrFail($selection['slot_id']);
-            return collect([['player_key' => $slot->player_profile ? 'player:'.$slot->player_profile : 'imported:'.$slot->id, 'name' => $slot->profile?->full_name ?? trim($slot->name.' '.$slot->surname), 'email' => $slot->player_profile ? $this->contacts->primaryEmail($slot->profile) : $slot->email]]);
+            $emails = $slot->player_profile ? $this->contacts->emails($slot->profile) : collect([$slot->email]);
+            return $emails->map(fn ($email) => ['player_key' => $slot->player_profile ? 'player:'.$slot->player_profile : 'imported:'.$slot->id, 'name' => $slot->profile?->full_name ?? trim($slot->name.' '.$slot->surname), 'email' => $email]);
         }
         if ($target === 'player') {
             $invitation = TeamSelectionInvitation::where('event_id', $event->id)->where('region_id', $region->region_id)->where('team_id', $team->id)->findOrFail($selection['invitation_id']);
@@ -47,10 +48,9 @@ class TeamSelectionRosterMailAudience
             ->when($teamId, fn ($query) => $query->where('team_id', $teamId))
             ->when($invitationId, fn ($query) => $query->whereKey($invitationId))
             ->get()
-            ->map(function (TeamSelectionInvitation $invitation): array {
-                $email = $this->contacts->primaryEmail($invitation->player);
-
-                return ['player_key' => 'player:'.$invitation->player_id, 'email' => $email, 'name' => $invitation->player?->full_name];
+            ->flatMap(function (TeamSelectionInvitation $invitation) {
+                return $this->contacts->emails($invitation->player)->map(fn ($email) => [
+                    'player_key' => 'player:'.$invitation->player_id, 'email' => $email, 'name' => $invitation->player?->full_name]);
             })
             ->unique(fn ($row) => ($row['player_key'] ?? '').':'.$row['email'])
             ->sortBy('email')
@@ -87,14 +87,13 @@ class TeamSelectionRosterMailAudience
                         ->where('team_players.pay_status', 1);
                 }))
             ->get()
-            ->map(function (NoProfileTeamPlayer $slot): array {
-                $linkedEmail = $this->contacts->primaryEmail($slot->profile);
-
-                return [
+            ->flatMap(function (NoProfileTeamPlayer $slot) {
+                $emails = $slot->player_profile ? $this->contacts->emails($slot->profile) : collect([$slot->email]);
+                return $emails->map(fn ($email) => [
                     'player_key' => $slot->player_profile ? 'player:'.$slot->player_profile : 'imported:'.$slot->id,
-                    'email' => mb_strtolower(trim((string) ($slot->player_profile ? $linkedEmail : $slot->email))),
+                    'email' => mb_strtolower(trim((string) $email)),
                     'name' => trim($slot->name.' '.$slot->surname),
-                ];
+                ]);
             })
             ->unique(fn ($row) => ($row['player_key'] ?? '').':'.$row['email'])->sortBy('email')->values();
     }

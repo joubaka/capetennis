@@ -178,7 +178,9 @@ class PlayerController extends Controller
       'dob' => 'required|date',
       'gender' => 'required|in:1,2',
       'cell_nr' => 'nullable|string',
-      'email' => 'nullable|email'
+      'email' => 'nullable|email|max:255',
+      'email_2' => 'sometimes|nullable|email|max:255',
+      'email_3' => 'sometimes|nullable|email|max:255'
     ]);
 
     $claimContext = null;
@@ -211,6 +213,7 @@ class PlayerController extends Controller
         'userId' => Auth::id(),
         'cellNr' => $validated['cell_nr'] ?? null,
         'email' => $validated['email'] ?? null,
+        ...array_intersect_key($validated, array_flip(['email_2', 'email_3'])),
       ]);
 
       if ($claimContext) {
@@ -281,7 +284,12 @@ class PlayerController extends Controller
      */
     public function edit($id)
     {
-        $data['player'] = Player::find($id);
+        $data['player'] = Player::findOrFail($id);
+        abort_unless(
+          (int) $data['player']->userId === (int) auth()->id()
+          || auth()->user()->hasAnyRole(['super-user', 'admin', 'convenor']),
+          403
+        );
         return view('backend.player.edit-player', $data);
     }
 
@@ -308,6 +316,8 @@ class PlayerController extends Controller
         'name' => 'required|string|max:255',
         'surname' => 'required|string|max:255',
         'email' => 'nullable|email|max:255',
+        'email_2' => 'sometimes|nullable|email|max:255',
+        'email_3' => 'sometimes|nullable|email|max:255',
         'cell_nr' => 'nullable|string|max:50',
       ]);
 
@@ -322,6 +332,7 @@ class PlayerController extends Controller
         'name' => $validated['name'],
         'surname' => $validated['surname'],
         'email' => $validated['email'] ?? $player->email,
+        ...array_intersect_key($validated, array_flip(['email_2', 'email_3'])),
         'cellNr' => $validated['cell_nr'] ?? $player->cellNr,
       ])->save();
 
@@ -337,6 +348,8 @@ class PlayerController extends Controller
       'player_name' => 'required|string|max:255',
       'player_surname' => 'required|string|max:255',
       'email' => 'nullable|email|max:255',
+      'email_2' => 'sometimes|nullable|email|max:255',
+      'email_3' => 'sometimes|nullable|email|max:255',
       'dob' => 'nullable|date',
       'cell_nr' => 'nullable|string|max:50',
       'gender' => 'nullable|string|max:10',
@@ -355,6 +368,7 @@ class PlayerController extends Controller
       'name' => $validated['player_name'],
       'surname' => $validated['player_surname'],
       'email' => $validated['email'] ?? $player->email,
+      ...array_intersect_key($validated, array_flip(['email_2', 'email_3'])),
       'dateOfBirth' => $validated['dob'] ?? $player->dateOfBirth,
       'cellNr' => $validated['cell_nr'] ?? $player->cellNr,
       'gender' => $validated['gender'] ?? $player->gender,
@@ -672,6 +686,8 @@ class PlayerController extends Controller
       'gender' => 'required|in:Male,Female',
       'cellNr' => 'required|string|max:50',
       'email' => 'nullable|email|max:255',
+      'email_2' => 'sometimes|nullable|email|max:255',
+      'email_3' => 'sometimes|nullable|email|max:255',
       'confirmed_details' => 'accepted',
     ], [
       'dateOfBirth.required' => 'Date of birth is required.',
@@ -697,6 +713,7 @@ class PlayerController extends Controller
         'gender' => $validated['gender'] === 'Male' ? 1 : 2,
         'cellNr' => $validated['cellNr'],
         'email' => $validated['email'] ?? null,
+        ...array_intersect_key($validated, array_flip(['email_2', 'email_3'])),
       ]);
       $player->markProfileUpdated();
 

@@ -24,6 +24,7 @@
 
 ## Mail, secrets, and dashboards
 
+- Player `email_2` and `email_3` are optional notification contacts. Resolve operational player updates and announcements through `TeamSelectionContactService::emails()` so valid addresses are normalized and deduplicated. These fields must never participate in identity matching, account linking, authorization, or payer receipt routing. Preserve the existing actionable invitation recipient; additional contacts receive notification-only copies without invitation, decision, clothing, or checkout links, included in recipient review and stale-contact checks.
 - Use the configured AMS/managed mail service; do not add batch-send transport logic.
 - SMTP dispatch is limited by `outbound-mail` to 14 messages per second (`MAIL_RATE_PER_SECOND=14` by default).
 - Restrict super-admin settings and financial tools to `super-user`.

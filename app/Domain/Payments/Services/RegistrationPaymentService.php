@@ -345,6 +345,7 @@ class RegistrationPaymentService
                 $entry->update(['payment_status_id' => 1, 'payment_method' => $method]);
             });
             app(\App\Services\InterprovincialTrials\InvitationService::class)->confirmPaidOrder($locked);
+            app(\App\Services\PlayerRegistrationUpdateService::class)->order($locked);
             if (isset($proof)) {
                 $proof->update(['status' => 'verified', 'reviewed_by_user_id' => $actor->id, 'reviewed_at' => now()]);
             }
@@ -443,6 +444,7 @@ class RegistrationPaymentService
                         ],
                     ]);
                 }
+                app(\App\Services\PlayerRegistrationUpdateService::class)->order($lockedOrder);
             });
         });
     }
@@ -477,6 +479,8 @@ class RegistrationPaymentService
                         $lockedOrder->status = 'completed';
                     }
                     $lockedOrder->save();
+
+                    app(\App\Services\PlayerRegistrationUpdateService::class)->order($lockedOrder);
 
                     return $lockedOrder;
                 });

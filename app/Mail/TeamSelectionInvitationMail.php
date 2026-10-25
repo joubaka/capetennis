@@ -41,6 +41,15 @@ class TeamSelectionInvitationMail extends Mailable
 
     public function content(): Content
     {
+        if (! empty($this->campaign['notification_only'])) {
+            $event = $this->invitation->selectionImport?->event;
+            return new Content(view: 'emails.player-contact-update', with: [
+                'playerName' => $this->invitation->player?->full_name ?? 'Player',
+                'messageBody' => (string) ($this->campaign['message'] ?? $this->invitation->selectionImport?->email_message ?? 'Your team selection has been updated.'),
+                'eventName' => $event?->name ?? 'Cape Tennis',
+                'eventUrl' => $this->campaign['event']['public_url'] ?? ($event?->published ? route('events.show', $event) : null),
+            ]);
+        }
         return new Content(view: 'emails.team-selection.invitation');
     }
 }

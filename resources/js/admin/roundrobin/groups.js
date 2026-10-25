@@ -73,8 +73,13 @@
       $(this).children().last().find('.rr-player-down').prop('disabled', true);
     });
     $(
-      '#rr-apply-group-count, #groups-tab-boxes, #btn-import-teams, #rr-assign-selected, #rr-select-visible, #rr-assign-target'
+      '#rr-apply-group-count, #groups-tab-boxes, #btn-import-teams'
     ).prop('disabled', busy || !editable());
+    $('#rr-assign-selected, #rr-select-visible, #rr-assign-target').prop('disabled', busy || !editable() || !groups.length);
+    $('#rr-apply-group-count').text(groups.length ? 'Update groups' : 'Create groups');
+    $('#rr-placement-next-step').text(groups.length
+      ? 'Choose players, add them to a group, then save assignments.'
+      : 'Create your groups first. Then choose players and add them to a group.');
     $('.rr-locked-overlay').toggleClass('d-none', editable());
   }
   function renderAvailable() {
@@ -88,7 +93,7 @@
         esc(p.name) +
         '"' +
         (selected.has(p.id) ? ' checked' : '') +
-        (!editable() || busy ? ' disabled' : '') +
+        (!editable() || busy || !groups.length ? ' disabled' : '') +
         '><span class="rr-player-name">' +
         esc(p.name) + (root.CTPlayerRatings?.marker({registrationId:p.id}, {categoryEventId:p.category_id}) || '') +
         '<small>' +
@@ -96,7 +101,7 @@
         '</small></span><button type="button" class="btn btn-sm btn-outline-primary rr-add-player" aria-label="Add ' +
         esc(p.name) +
         ' to selected group"' +
-        (!editable() || busy ? ' disabled' : '') +
+        (!editable() || busy || !groups.length ? ' disabled' : '') +
         '>Add</button></li>';
     });
     html += '</ul>';
@@ -159,7 +164,7 @@
         '</section>';
     });
     $('#rr-groups-row').html(
-      html || '<div class="alert alert-info">Choose the number of groups above and select Apply to begin.</div>'
+      html || '<div class="alert alert-info">Choose the number of groups above and select Create groups to begin.</div>'
     );
     renderAvailable();
     update();
@@ -168,7 +173,7 @@
   function initSortable() {
     instances.forEach(instance => instance.destroy());
     instances = [];
-    if (!root.Sortable || !editable() || busy) return;
+    if (!root.Sortable || !editable() || busy || !groups.length) return;
     document.querySelectorAll('#groups-pane .rr-sortable').forEach(el => {
       instances.push(
         new Sortable(el, {
@@ -315,7 +320,7 @@
     const result = await Swal.fire({
       title: groups.length ? 'Change groups?' : 'Create groups?',
       html:
-        '<p>Keep the existing players and seed order in the remaining groups.</p>' +
+        (groups.length ? '<p>Keep the existing players and seed order in the remaining groups.</p>' : '<p>Create ' + count + (count === 1 ? ' empty group' : ' empty groups') + ' for ' + esc($('#rr-category-name').text()) + ', then add your players.</p>') +
         (moved
           ? '<p>' +
             moved +
@@ -327,7 +332,7 @@
             '</select>'
           : ''),
       showCancelButton: true,
-      confirmButtonText: 'Apply groups',
+      confirmButtonText: groups.length ? 'Update groups' : 'Create groups',
       preConfirm: () => $('#rr-resize-target').val() || null
     });
     if (!result.isConfirmed) return;
@@ -350,7 +355,7 @@
       }
     } catch (error) {
       AdminToast.error(error.message);
-      $('#groups-tab-boxes').val(groups.length || 4);
+      $('#groups-tab-boxes').val(groups.length || count);
     } finally {
       busy = false;
       update();
@@ -421,10 +426,12 @@
       initSortable();
     });
     $(document).on('change', '.rr-player-select', function () {
+      if (!editable() || busy || !groups.length) return;
       const id = Number($(this).closest('li').data('id'));
       this.checked ? selected.add(id) : selected.delete(id);
     });
     $('#rr-select-visible').on('change', function () {
+      if (!editable() || busy || !groups.length) return;
       visiblePlayers().forEach(p => (this.checked ? selected.add(p.id) : selected.delete(p.id)));
       renderAvailable();
       initSortable();
@@ -468,6 +475,7 @@
     $('#btn-save-groups').on('click', save);
     $('#btn-regenerate-fixtures').on('click', generate);
     $('#rr-apply-group-count').on('click', resize);
+    $('#groups-tab-boxes').on('change', update);
     $('#rr-discard-groups').on('click', function () {
       if (!guard()) return;
       discard();

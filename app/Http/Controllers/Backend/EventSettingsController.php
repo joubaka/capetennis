@@ -52,6 +52,10 @@ class EventSettingsController extends Controller
 
     return view('backend.event.settings', [
       'event' => $event,
+      'pointSharingTeams' => $event->isTeam() ? \App\Models\Team::query()->without(['team_players', 'team_players_no_profile'])
+        ->whereHas('category', fn ($query) => $query->where('event_id', $event->id))
+        ->whereIn('region_id', $event->regions()->pluck('team_regions.id'))
+        ->with(['regions', 'category.category'])->orderBy('name')->get() : collect(),
       'users' => $users,
       'convenors' => $convenors,
       'scoringAccounts' => $scoringAccounts,

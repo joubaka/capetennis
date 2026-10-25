@@ -19,6 +19,12 @@ class MastersInvitationMailEligibility
             return 'Masters email does not match its invitation and event.';
         }
 
+        if (! empty($log->payload['notification_only'])
+            && ! app(\App\Services\TeamSelection\TeamSelectionContactService::class)->emails($invitation->player)
+                ->intersect(collect([$invitation->player?->email_2, $invitation->player?->email_3])->map(fn ($value) => mb_strtolower(trim((string) $value))))
+                ->contains(mb_strtolower(trim((string) $log->recipient_email)))) {
+            return 'The player contact changed after this notification was prepared.';
+        }
         $kind = $log->payload['kind'] ?? 'invitation';
         if (!in_array($kind, ['invitation', 'replacement', 'confirmed', 'declined', 'withdrawn'], true)) {
             return 'Unknown Masters email kind.';

@@ -46,10 +46,10 @@ class EventSchedulingWorkspaceTest extends TestCase
         $this->rubber($draw, ['scheduled' => true, 'scheduled_at' => '2026-10-10 09:00:00', 'venue_id' => $venue->id, 'court_label' => '1']);
         $scope = ['event' => $event, 'date' => '2026-10-10', 'venue_id' => $venue->id, 'draw_id' => $draw->id];
         $response = $this->get(route('backend.event-venue-schedule.calendar', $scope))->assertOk()
-            ->assertSee('Filter the selected day')->assertDontSee('id="calendar-date"', false)
+            ->assertSee('Venue and draw filters')->assertDontSee('id="calendar-date"', false)
             ->assertSee('name="date" value="2026-10-10"', false)
-            ->assertSee('Publish selected schedule')->assertSee('Hide selected public times')
-            ->assertSee('Publication scope:')->assertSee('Only this scope changes.')
+            ->assertSee('Public match time visibility')->assertSee('Preview public schedule')
+            ->assertSee('Publication scope:')->assertSee('A moved match also replaces its previous public time')
             ->assertSee('name="revision"', false);
         if (getenv('CT_BATCHES151617_QA')) {
             file_put_contents(storage_path('app/batches151617-qa/calendar.html'), $response->getContent());

@@ -104,7 +104,7 @@ final class MatchResultNotificationService
         return Player::whereIn('id', collect($snapshot['player_ids'])->merge($profileIds)->unique())
             ->with(['users', 'user'])->get()
             ->filter(function (Player $player) use ($recipient): bool {
-                $playerEmails = collect([$player->email])
+                $playerEmails = collect([$player->email, $player->email_2, $player->email_3])
                     ->map(fn ($email) => mb_strtolower(trim((string) $email)));
 
                 return ! $playerEmails->contains($recipient) && (

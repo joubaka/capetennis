@@ -356,13 +356,14 @@ class EventController extends Controller
     // ---------------------------------------------------------
     // FIXTURES PER VENUE
     // ---------------------------------------------------------
-    if ($event->eventType == 3) {
+    $venueFixtureKind = \App\Support\EventTypePresentation::venueFixtureKind($event);
+    if ($venueFixtureKind === 'team') {
       $fixturesPerVenue = TeamFixture::with(['team1', 'team2', 'venue'])
         ->whereIn('draw_id', $drawIds)
         ->when(! $canPreviewUnpublishedDraws, fn ($query) => $query->publicDrawFixtures())
         ->orderBy('scheduled_at')
         ->get();
-    } elseif ($event->eventType == 13) {
+    } elseif ($venueFixtureKind === 'individual') {
       $fixturesPerVenue = Fixture::with([
         'registration1.players',
         'registration2.players',
@@ -393,7 +394,7 @@ class EventController extends Controller
     // ---------------------------------------------------------
     // The team venue collection already uses this exact draw/visibility scope
     // and has its public schedule and lineups prepared.
-    if ($event->eventType == 3) {
+    if ($venueFixtureKind === 'team') {
       $teamFixtures = $fixturesPerVenue->sortBy('id')->values();
     } else {
       $teamFixtures = TeamFixture::whereIn('draw_id', $drawIds)

@@ -193,7 +193,7 @@ final class EventVenueScheduleController extends Controller
     {
         $this->authorize('event.manage', $event);
         $scope = $this->calendarScope($request, $event);
-        $reviewOptions = $request->validate(['group' => ['nullable', 'in:draw'], 'page' => ['nullable', 'integer', 'min:1']]);
+        $reviewOptions = $request->validate(['group' => ['nullable', 'in:draw'], 'page' => ['nullable', 'integer', 'min:1'], 'retained_page' => ['nullable', 'integer', 'min:1'], 'focus' => ['nullable', 'regex:/^(team|individual):[1-9][0-9]*$/']]);
         if (($reviewOptions['group'] ?? null) === 'draw') {
             $scope['date'] ??= 'all';
             $review = app(\App\Services\Scheduling\ScheduleDrawReviewService::class)->build($event, $scope, $request->integer('page', 1));
@@ -228,14 +228,29 @@ final class EventVenueScheduleController extends Controller
         $retained = $published->values()->filter($filter)->reject(fn ($row) => $workingKeys->contains($row['fixture_key']));
         $venues = $event->venues()->get()->concat($event->draws()->with('venues')->get()->flatMap(fn ($draw) => $draw->venues))->unique('id')->sortBy('name');
         $draws = $event->draws()->orderBy('drawName')->get();
-        $rows = $rows->take(1000)->values(); $retained = $retained->take(1000)->values();
+        $publicationCounts = $rows->countBy('publication_state');
+        $savedCount = $rows->count();
+        $retainedCount = $retained->count();
+        $page = $request->integer('page', 1);
+        if (! empty($reviewOptions['focus'])) {
+            $focusIndex = $rows->values()->search(fn ($row) => $row['fixture_key'] === $reviewOptions['focus']);
+            abort_if($focusIndex === false, 404);
+            $page = intdiv($focusIndex, 100) + 1;
+        }
+        $retainedPage = max(1, $request->integer('retained_page', 1));
+        $savedPages = new \Illuminate\Pagination\LengthAwarePaginator($rows->forPage($page, 100)->values(), $savedCount, 100, $page,
+            ['path' => $request->url(), 'query' => $request->except('page', 'focus')]);
+        $retainedPages = new \Illuminate\Pagination\LengthAwarePaginator($retained->forPage($retainedPage, 100)->values(), $retainedCount, 100, $retainedPage,
+            ['path' => $request->url(), 'query' => $request->except('retained_page', 'focus'), 'pageName' => 'retained_page']);
+        $rows = collect($savedPages->items());
+        $retained = collect($retainedPages->items());
         $rows = app(\App\Services\Scheduling\ScheduleDrawReviewService::class)->decorateRows($event, $rows, $draws);
         $drawIds = $draws->pluck('id');
         $unscheduledCount = Fixture::whereIn('draw_id', $drawIds)->when(! empty($scope['draw_id']), fn ($q) => $q->where('draw_id', $scope['draw_id']))
             ->where('match_status', 0)->whereDoesntHave('fixtureResults')->whereDoesntHave('orderOfPlay', fn ($q) => $q->whereNotNull('time'))->count()
             + TeamFixture::whereIn('draw_id', $drawIds)->when(! empty($scope['draw_id']), fn ($q) => $q->where('draw_id', $scope['draw_id']))->where('match_status', 0)->whereDoesntHave('fixtureResults')->whereNull('scheduled_at')->count();
         $revision = $publication->revision($event);
-        return view('backend.schedule.saved-calendar', compact('event', 'scope', 'days', 'date', 'rows', 'retained', 'venues', 'draws', 'revision', 'unscheduledCount', 'dailySavedCounts'));
+        return view('backend.schedule.saved-calendar', compact('event', 'scope', 'days', 'date', 'rows', 'retained', 'venues', 'draws', 'revision', 'unscheduledCount', 'dailySavedCounts', 'publicationCounts', 'savedCount', 'retainedCount', 'savedPages', 'retainedPages'));
     }
 
     public function editDay(Request $request, Event $event, EventVenueScheduleService $scheduler,
@@ -248,6 +263,7 @@ final class EventVenueScheduleController extends Controller
         }
         $data = $request->validate([
             'date' => ['required', 'date_format:Y-m-d'], 'draw_id' => ['required', 'integer'],
+            'origin_draw_id' => ['nullable', 'integer', 'min:1'],
             'venue_ids' => ['sometimes', 'required', 'array', 'min:1', 'max:100'],
             'venue_ids.*' => ['integer', 'distinct'], 'start_time' => ['sometimes', 'required', 'date_format:H:i'],
             'end_time' => ['sometimes', 'required', 'date_format:H:i'],
@@ -264,6 +280,8 @@ final class EventVenueScheduleController extends Controller
 
         ]);
         $draw = $event->draws()->findOrFail($data['draw_id']);
+        $originDraw = ! empty($data['origin_draw_id']) ? $event->draws()->findOrFail($data['origin_draw_id']) : $draw;
+        $originContext = ! empty($data['origin_draw_id']) ? ['origin_draw_id'=>$originDraw->id] : [];
         $rows = $publication->workingRows($event)->filter(fn ($row) => (int) $row['draw_id'] === $draw->id
             && substr($row['scheduled_at'], 0, 10) === $data['date'])->values();
         $venues = $event->venues()->get()->concat($draw->venues()->get())->unique('id')->sortBy('name');
@@ -341,16 +359,16 @@ final class EventVenueScheduleController extends Controller
                 if ($data['action'] === 'save') {
                     $request->validate(['revision' => ['required', 'string', 'size:64']]);
                     $result = $scheduler->apply($event, $options, $data['revision']);
-                    return redirect()->route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $data['date'], 'draw_id' => $draw->id])
+                    return redirect()->route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $data['date'], 'draw_id' => $draw->id] + $originContext)
                         ->with('success', $result['count'].' match times updated for this draw and day. Publish updates separately when ready.');
                 }
                 $preview = $scheduler->preview($event, $options);
             } catch (\InvalidArgumentException $exception) {
-                return redirect()->route('backend.event-venue-schedule.calendar.edit-day', ['event' => $event->id, 'date' => $data['date'], 'draw_id' => $draw->id])
+                return redirect()->route('backend.event-venue-schedule.calendar.edit-day', ['event' => $event->id, 'date' => $data['date'], 'draw_id' => $draw->id] + $originContext)
                     ->withInput()->withErrors(['schedule' => $exception->getMessage()]);
             }
         }
-        return response()->view('backend.schedule.edit-draw-day', compact('event', 'draw', 'data', 'rows', 'venues', 'allVenues', 'values', 'preview', 'courtOptions', 'bandNotice'))
+        return response()->view('backend.schedule.edit-draw-day', compact('event', 'draw', 'data', 'rows', 'venues', 'allVenues', 'values', 'preview', 'courtOptions', 'bandNotice', 'originDraw', 'originContext'))
             ->header('Cache-Control', 'no-store, private');
     }
 
@@ -360,6 +378,8 @@ final class EventVenueScheduleController extends Controller
         if ($request->isMethod('post')) $request->merge(['court_starts' => $request->input('court_starts', []), 'venue_groups' => $request->input('venue_groups', []), 'venue_windows' => $request->input('venue_windows', []), 'tie_destinations' => $request->input('tie_destinations', []), 'destination_pools' => $request->input('destination_pools', [])]);
         $data = $request->validate([
             'date' => ['required', 'date_format:Y-m-d'],
+            'draw_id' => ['nullable', 'integer', 'min:1'],
+            'origin_draw_id' => ['nullable', 'integer', 'min:1'],
             'draw_ids' => ['sometimes', 'required', 'array', 'min:1', 'max:200'], 'draw_ids.*' => ['integer', 'distinct'],
             'rounds' => ['sometimes', 'array', 'max:200'], 'rounds.*' => ['array', 'min:1', 'max:100'], 'rounds.*.*' => ['integer'],
             'venue_ids' => ['sometimes', 'required', 'array', 'min:1', 'max:100'], 'venue_ids.*' => ['integer', 'distinct'],
@@ -380,6 +400,12 @@ final class EventVenueScheduleController extends Controller
             'action' => ['sometimes', 'in:preview,save'], 'revision' => ['nullable', 'string', 'size:64'],
         ]);
         $draws = $event->draws()->with('venues')->orderBy('drawName')->get();
+        foreach (['draw_id', 'origin_draw_id'] as $contextKey) {
+            if (! empty($data[$contextKey]) && ! $draws->contains('id', (int) $data[$contextKey])) abort(404);
+        }
+        $contextDrawId = $data['origin_draw_id'] ?? $data['draw_id'] ?? null;
+        $contextDraw = $contextDrawId ? $draws->firstWhere('id', (int) $contextDrawId) : null;
+        $currentRows = app(\App\Services\Scheduling\SchedulePublicationService::class)->workingRows($event)->keyBy('fixture_key');
         $venues = $event->venues()->orderBy('name')->get();
         $roundOptions = $scheduler->availableDrawRounds($draws);
         $courtOptions = $scheduler->fullDayCourtLabels($event);
@@ -439,7 +465,9 @@ final class EventVenueScheduleController extends Controller
                 if ($data['action'] === 'save') {
                     $request->validate(['revision' => ['required', 'string', 'size:64']]);
                     $result = $scheduler->apply($event, $options, $data['revision']);
-                    return redirect()->route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $data['date']])
+                    return redirect()->route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $data['date']]
+                        + (count($data['draw_ids']) === 1 ? ['draw_id' => $data['draw_ids'][0]] : [])
+                        + ($contextDraw ? ['origin_draw_id' => $contextDraw->id] : []))
                         ->with('success', $result['count'].' match times saved for this day. Publish updates separately when ready.');
                 }
                 $preview = $scheduler->preview($event, $options);
@@ -447,7 +475,7 @@ final class EventVenueScheduleController extends Controller
                 return back()->withInput()->withErrors(['schedule' => $exception->getMessage()]);
             }
         }
-        return response()->view('backend.schedule.full-day', compact('event', 'data', 'draws', 'venues', 'roundOptions', 'courtOptions', 'tieOptions', 'poolOptions', 'values', 'preview', 'savedNotice'))
+        return response()->view('backend.schedule.full-day', compact('event', 'data', 'draws', 'venues', 'roundOptions', 'courtOptions', 'tieOptions', 'poolOptions', 'values', 'preview', 'savedNotice', 'contextDraw', 'currentRows'))
             ->header('Cache-Control', 'no-store, private');
     }
 
@@ -557,7 +585,8 @@ final class EventVenueScheduleController extends Controller
 
     private function calendarScope(Request $request, Event $event): array
     {
-        $scope = $request->validate(['date' => ['nullable', \Illuminate\Validation\Rule::when($request->input('date') !== 'all', ['date_format:Y-m-d'])], 'venue_id' => ['nullable', 'integer'], 'draw_id' => ['nullable', 'integer', 'min:1']]);
+        $scope = $request->validate(['date' => ['nullable', \Illuminate\Validation\Rule::when($request->input('date') !== 'all', ['date_format:Y-m-d'])], 'venue_id' => ['nullable', 'integer'], 'draw_id' => ['nullable', 'integer', 'min:1'], 'origin_draw_id' => ['nullable', 'integer', 'min:1']]);
+        if (! empty($scope['origin_draw_id'])) abort_unless($event->draws()->whereKey($scope['origin_draw_id'])->exists(), 422, 'Choose an origin draw in this event.');
         if (! empty($scope['draw_id'])) abort_unless($event->draws()->whereKey($scope['draw_id'])->exists(), 422, 'Choose a draw in this event.');
         if (! empty($scope['venue_id'])) abort_unless($event->venues()->whereKey($scope['venue_id'])->exists()
             || DB::table('draw_venues')->whereIn('draw_id', $event->draws()->pluck('id'))->where('venue_id', $scope['venue_id'])->exists(), 422, 'Choose a venue in this event.');

@@ -114,75 +114,7 @@ $nominations = EventNomination::all();
 @endphp
 
         @include('frontend.event.partials.event-about')
-        <div class="card mb-4">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <small class="card-text text-uppercase">Documents</small>
-                @auth
-                @if(Auth::user()->is_admin($event->id)->count() > 0 || Auth::user()->id == 584)
-                <form action="{{ route('file.store') }}" method="POST" enctype="multipart/form-data" class="mb-0">
-                    @csrf
-                    <input type="hidden" name="event_id" value="{{ $event->id }}">
-                    <label class="btn btn-success btn-sm mb-0">
-                        Upload .PDF
-                        <input type="file" name="myFile" class="d-none"
-                               accept=".pdf,.doc,.docx,.xls,.xlsx,.csv"
-                               onchange="this.form.submit()">
-                    </label>
-                </form>
-                @endif
-                @endauth
-            </div>
-
-            <div class="card-body">
-
-                <div class="demo-inline-spacing mt-3">
-                    <div class="list-group">
-
-                        @foreach($event->files as $key=> $file)
-
-
-
-                        <div class="file">
-                            <div class="row">
-
-                                <div class="col-7">
-                                    <a href="{{ route('events.documents.show', [$event, $file]) }}" class="list-group-item list-group-item-action d-flex justify-content-between">
-                                        <div class="li-wrapper d-flex justify-content-start align-items-center">
-                                            <div class="avatar avatar-sm me-3">
-                                                <span class="avatar-initial rounded-circle bg-label-success">{{($key+1)}}</span>
-                                            </div>
-                                            <div class="list-content">
-                                                <h6 class="mb-1">{{$file->name}}</h6>
-
-                                            </div>
-                                        </div>
-
-
-                                    </a>
-                                </div>
-                                <div class="col-4">
-                                    <small>
-                                        @can('admin')
-                                        @if(Auth::user()->id == $event->admin || Auth::user()->id == 584)
-                                        <div data-id="{{$file->id}}" class="btn btn-danger btn-sm deleteFileButton ml-4">Delete</div>
-                                        @endif
-                                        @endcan
-                                    </small>
-                                </div>
-                            </div>
-
-
-                        </div>
-                        @endforeach
-
-
-
-
-
-                    </div>
-                </div>
-            </div>
-        </div>
+        @include('frontend.event.partials.event-documents', ['documentNewWindow' => false])
 
         <!--        <div class="card mb-4">
             <div class="card-header"> <small class="card-text text-uppercase">Photos</small>

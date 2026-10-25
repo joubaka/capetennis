@@ -164,6 +164,7 @@ $(document).ready(function() {
         <label>Email</label>
         <input type="email" name="email" class="form-control" value="{{ old('email', $email ?? '') }}">
       </div>
+@include('frontend.player.partials.additional-emails', ['contactPlayer' => null])
 
       <div class="mb-3">
         <label>Cell No.</label>

@@ -162,6 +162,10 @@
   </div>
 </div>
 
+@can('event.manage', $event)
+  @include('backend.headOffice.partials.organiser-setup')
+@endcan
+
         @php
           $drawGrouping = request('draw_grouping') === 'gender' ? 'gender' : 'age';
           $drawGroups = app(\App\Services\Scheduling\AgeGroupVenueDefaultService::class)->groups($event);
@@ -251,6 +255,9 @@
                 </div>
                 <div class="event-draw-card-summary-actions">
                   @can('event.manage', $event)
+                  @can('view', $draw)
+                    <a data-draw-guide-open class="btn btn-sm btn-primary" href="{{ route('draw.guide.show', [$event, $draw]) }}">Continue setup</a>
+                  @endcan
                   @can('publish', $draw)
                     <button type="button" class="btn btn-sm {{ $draw->published ? 'btn-outline-danger' : 'btn-success' }} event-draw-quick-publication" data-quick-draw-publication data-published="{{ $draw->published ? 'true' : 'false' }}" aria-pressed="{{ $draw->published ? 'true' : 'false' }}" aria-label="{{ $draw->published ? 'Unpublish' : 'Publish' }} {{ $draw->drawName }}" @disabled($draw->published && $draw->locked) @if($draw->published && $draw->locked) title="Locked draws cannot be unpublished." @endif>{{ $draw->published ? 'Unpublish draw' : 'Publish draw' }}</button>
                   @endcan

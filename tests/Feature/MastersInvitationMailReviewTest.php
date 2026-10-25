@@ -160,4 +160,38 @@ class MastersInvitationMailReviewTest extends TestCase
         $payload['payload_integrity'] = app(InvitationMailSecurity::class)->payloadIntegrity($payload);
         return BulkEmailLog::create(['mail_type' => 'masters_invitation', 'related_type' => MastersInvitation::class, 'related_id' => $invitation->id, 'recipient_email' => 'invitee@example.test', 'recipient_name' => 'Exact Invitee', 'status' => 'queued', 'payload' => $payload, 'queued_at' => now()]);
     }
+
+    public function test_optional_contacts_are_reviewed_notification_only_copies_and_removed_contacts_are_skipped(): void
+    {
+        Bus::fake(); Mail::fake();
+        $invitation = $this->batch->invitations()->whereHas('player', fn ($query) => $query->where('userId', $this->recipient->id))->firstOrFail();
+        $invitation->player->update(['email_2' => 'second@example.test', 'email_3' => 'third@example.test']);
+        $invitation->player->users()->attach(User::factory()->create(['email' => 'second@example.test'])->id);
+        $service = app(\App\Services\Masters\MastersInvitationService::class);
+        $preview = $service->previewInitial($this->batch, $this->admin);
+        $this->assertCount(3, $preview['recipients']);
+        $this->assertStringContainsString('second@example.test', $preview['rendered_body']);
+        $invitation->player->update(['email_2' => 'changed@example.test']);
+        try {
+            $service->sendInvitations($this->batch, $this->admin, $preview);
+            $this->fail('Additional contact changes must invalidate reviewed recipients.');
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            $this->assertArrayHasKey('recipients', $exception->errors());
+        }
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        $invitation->player->update(['email_2' => 'second@example.test']);
+        $service->sendInvitations($this->batch, $this->admin, $preview);
+        $service->sendInvitations($this->batch, $this->admin, $preview);
+        $this->assertDatabaseCount('bulk_email_logs', 3);
+        $copy = BulkEmailLog::where('recipient_email', 'second@example.test')->sole();
+        $this->assertTrue($copy->payload['notification_only']);
+        $html = (new \App\Mail\MastersInvitationMail($invitation, 'invitation', $copy->payload))->render();
+        $this->assertStringNotContainsString('masters/invitations', $html);
+        $this->assertStringNotContainsString('signature=', $html);
+        $invitation->player->update(['email_2' => null]);
+        (new SendMastersInvitationEmailJob($copy->id, $this->event->id))->handle();
+        $this->assertSame('skipped', $copy->fresh()->status);
+        $this->assertDatabaseCount('user_players', 1);
+        Mail::assertNothingSent();
+    }
 }

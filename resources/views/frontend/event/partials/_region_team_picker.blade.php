@@ -28,7 +28,7 @@
     @foreach($regions as $idx => $region)
       @php($tabId = 'team-'.$event->id.'-'.$region->id)
       <div class="tab-pane fade {{ $idx === 0 ? 'active show' : '' }}" id="{{ $tabId }}" role="tabpanel">
-        @if($event->published && $region->clothingOrdersAvailable())<div class="alert alert-info py-2" role="status"><i class="ti ti-shirt me-1" aria-hidden="true"></i>Clothing orders open for {{ $region->region_name }}. Choose a player below to order.</div>@endif
+        @if($event->isTeam() && $event->published && $region->clothingOrdersAvailable())<div class="alert alert-info py-2" role="status"><i class="ti ti-shirt me-1" aria-hidden="true"></i>Clothing orders open for {{ $region->region_name }}. Choose a player below to order.</div>@endif
         <div class="row">
           @forelse($region->teams as $team)
             @if((int)($team->noProfile ?? 0) === 0)

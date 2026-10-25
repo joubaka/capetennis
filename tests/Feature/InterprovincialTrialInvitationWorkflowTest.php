@@ -2086,6 +2086,41 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         )->assertOk();
     }
 
+    public function test_optional_contact_copies_keep_one_trial_invitation_lifecycle_and_skip_removed_contacts(): void
+    {
+        Bus::fake(); \Illuminate\Support\Facades\Mail::fake();
+        $owner = User::factory()->create(['email' => 'primary@example.test']);
+        $player = Player::factory()->create(['userId' => $owner->id, 'email_2' => 'second@example.test', 'email_3' => 'third@example.test']);
+        $player->users()->attach(User::factory()->create(['email' => 'second@example.test'])->id);
+        EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id]);
+        $service = app(InvitationService::class);
+        $preview = $service->previewAttempt($this->event, $this->admin, 'new');
+        $this->assertStringContainsString('second@example.test', $preview['rendered_body']);
+        $player->update(['email_2' => 'changed@example.test']);
+        try {
+            $service->queueAttempt($this->event, $this->admin, $preview);
+            $this->fail('Additional contact changes must invalidate reviewed recipients.');
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            $this->assertArrayHasKey('recipients', $exception->errors());
+        }
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        $player->update(['email_2' => 'second@example.test']);
+        $service->queueAttempt($this->event, $this->admin, $preview);
+        $service->queueAttempt($this->event, $this->admin, $preview);
+        $this->assertDatabaseCount('interprovincial_trial_invitations', 1);
+        $this->assertDatabaseCount('interprovincial_trial_mail_dispatches', 1);
+        $this->assertDatabaseCount('bulk_email_logs', 3);
+        $copy = BulkEmailLog::where('recipient_email', 'second@example.test')->sole();
+        $this->assertTrue($copy->payload['notification_only']);
+        $this->assertStringNotContainsString('signature=', $copy->payload['rendered_html']);
+        $this->assertStringNotContainsString('invitations', $copy->payload['rendered_html']);
+        $player->update(['email_2' => null]);
+        (new SendInterprovincialTrialInvitationEmailJob($copy->id, $this->event->id))->handle();
+        $this->assertSame('skipped', $copy->fresh()->status);
+        $this->assertSame('queued', InterprovincialTrialInvitation::sole()->status);
+        $this->assertDatabaseCount('user_players', 1);
+    }
+
     public function test_interpro_job_rejects_tampered_log_envelope_and_relation_before_transport(): void
     {
         Bus::fake();

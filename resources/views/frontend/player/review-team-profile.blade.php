@@ -60,6 +60,7 @@
                 <label class="form-label" for="email">Email</label>
                 <input id="email" type="email" name="email" class="form-control @error('email') is-invalid @enderror" value="{{ old('email', $player->email) }}" placeholder="player@example.com">
               </div>
+@include('frontend.player.partials.additional-emails', ['contactPlayer' => $player])
             </div>
 
             <div class="form-check mt-4">

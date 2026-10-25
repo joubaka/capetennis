@@ -134,6 +134,7 @@
                       <label class="form-label">Email</label>
                       <input type="email" class="form-control" name="email" value="{{ $player['email'] }}">
                     </div>
+@include('frontend.player.partials.additional-emails', ['contactPlayer' => (object) $player, 'emailIdPrefix' => 'pending-'.$player['id']])
                   </div>
                   
                   @if($player['profile_updated_at'])

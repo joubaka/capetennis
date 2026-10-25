@@ -1,6 +1,9 @@
 @if($player)
 @php
-  $canOrder = $event->published && (int) $team->published === 1 && $region->clothingOrdersAvailable();
+  $canOrder = $event->isTeam()
+    && (int) $team->category?->event_id === (int) $event->id
+    && (int) $team->region_id === (int) $region->id
+    && $event->published && (int) $team->published === 1 && $region->clothingOrdersAvailable();
   $playerClothingOrders = ($myPaidClothingOrdersByPlayer ?? collect())->get($team->id.'-'.$player->id, collect());
   $clothingQuantity = $playerClothingOrders->sum(fn ($order) => $order->items->sum(fn ($item) => max(1, (int) ($item->qty ?? 1))));
   $clothingDetailsId = 'clothing-orders-'.$event->id.'-'.$team->id.'-'.$player->id;

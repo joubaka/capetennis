@@ -75,6 +75,17 @@ final class TeamSelectionMailReview
                 $messages[] = ['email' => $email, 'name' => $invitation->player?->full_name, 'kind' => 'players',
                     'player_keys' => ['player:'.$invitation->player_id], 'subject' => $mail->envelope()->subject, 'html' => $mail->render()];
                 $state['approved_messages'][$invitation->id] = end($messages);
+                // Additional contacts see the same notification-only template
+                // used by queueMail; its only link is a published event URL.
+                $contactEmails = app(TeamSelectionContactService::class)->emails($invitation->player);
+                $state['contact_emails'][$invitation->id] = $contactEmails->all();
+                foreach ($contactEmails->intersect(collect([$invitation->player?->email_2, $invitation->player?->email_3])
+                    ->map(fn ($value) => mb_strtolower(trim((string) $value))))->reject(fn ($contact) => $contact === $email) as $contact) {
+                    $copy = new TeamSelectionInvitationMail($invitation, $kind, [...$campaign, 'notification_only' => true]);
+                    $messages[] = ['email' => $contact, 'name' => $invitation->player?->full_name, 'kind' => 'players',
+                        'player_keys' => ['player:'.$invitation->player_id], 'subject' => $copy->envelope()->subject, 'html' => $copy->render()];
+                    $state['approved_messages'][$invitation->id]['contact_copies'][$contact] = end($messages);
+                }
             }
             $state['recipient_hash'] = hash('sha256', collect($contacts)->map(fn ($email, $id) => $id.'|'.$email)->sort()->values()->implode("\n"));
             $state['recipient_count'] = count($contacts);

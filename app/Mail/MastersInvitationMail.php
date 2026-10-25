@@ -40,6 +40,20 @@ class MastersInvitationMail extends Mailable
 
     public function content(): Content
     {
+        if (! empty($this->messagePayload['notification_only'])) {
+            $event = $this->invitation->batch?->event;
+            return new Content(view: 'emails.player-contact-update', with: [
+                'playerName' => $this->invitation->player?->full_name ?? 'Player',
+                'messageBody' => (string) ($this->messagePayload['body'] ?? match ($this->kind) {
+                    'confirmed' => 'Your place in this event is confirmed.',
+                    'declined' => 'Your unavailability has been recorded.',
+                    'withdrawn' => 'Your withdrawal has been recorded.',
+                    default => 'You have been invited to this event.',
+                }),
+                'eventName' => $event?->name ?? 'Cape Tennis',
+                'eventUrl' => $event?->published ? route('events.show', $event) : null,
+            ]);
+        }
         return new Content(view: 'emails.masters.invitation');
     }
 }

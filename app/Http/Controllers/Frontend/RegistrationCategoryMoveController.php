@@ -75,22 +75,24 @@ class RegistrationCategoryMoveController extends Controller
             ])
             ->log("Moved entry from {$oldCategoryName} to {$newCategoryName}");
 
-        if ($player && $player->email && SiteSetting::get('player_email_on_move', '1') === '1') {
-            try {
-                Mail::to($player->email)->send(new CategoryMovedMail([
-                    'player_name'  => trim($player->name . ' ' . $player->surname),
-                    'event_name'   => $event->name ?? 'Event',
-                    'event_context' => $event,
-                    'old_category' => $oldCategoryName,
-                    'new_category' => $newCategoryName,
-                    'changed_by'   => auth()->user()->userName ?? auth()->user()->name ?? 'User',
-                ]));
-            } catch (\Throwable $e) {
-                Log::warning('CATEGORY MOVE EMAIL FAILED', [
-                    'entry_id'     => $entry->id,
-                    'player_email' => $player->email,
-                    'error'        => $e->getMessage(),
-                ]);
+        if ($player && SiteSetting::get('player_email_on_move', '1') === '1') {
+            foreach (app(\App\Services\TeamSelection\TeamSelectionContactService::class)->emails($player) as $email) {
+                try {
+                    Mail::to($email)->send(new CategoryMovedMail([
+                        'player_name'  => trim($player->name . ' ' . $player->surname),
+                        'event_name'   => $event->name ?? 'Event',
+                        'event_context' => $event,
+                        'old_category' => $oldCategoryName,
+                        'new_category' => $newCategoryName,
+                        'changed_by'   => auth()->user()->userName ?? auth()->user()->name ?? 'User',
+                    ]));
+                } catch (\Throwable $e) {
+                    Log::warning('CATEGORY MOVE EMAIL FAILED', [
+                        'entry_id'     => $entry->id,
+                        'player_email' => $email,
+                        'error'        => $e->getMessage(),
+                    ]);
+                }
             }
         }
 

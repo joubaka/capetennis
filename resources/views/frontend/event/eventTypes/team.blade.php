@@ -126,21 +126,11 @@
       </div>
 
       {{-- 🔹 Regions & Teams --}}
-      <div class="card team-region-directory p-3 p-sm-4">
-        <div class="card-body p-0 pb-2">
-          <div class="badge team-region-kicker mb-3">
-            Click on a Region below to register
-          </div>
-        </div>
-
-        @if($regions->isNotEmpty())
-          @include('frontend.event.partials._region_team_picker', ['regions' => $regions])
-        @else
-          <div class="alert alert-secondary mt-3">
-            Regions are not configured for this event.
-          </div>
-        @endif
-      </div>
+      @include('frontend.event.partials.event-region-directory', [
+        'regions' => $regions,
+        'directoryClass' => 'team-region-directory',
+        'directoryBadgeClass' => 'team-region-kicker',
+      ])
     </div>
 
     <!-- ================= RIGHT COLUMN ================= -->
@@ -148,48 +138,7 @@
 
       @include('frontend.event.partials.event-about')
 
-      {{-- 🔹 Documents --}}
-      <div class="card team-documents-card mb-4 shadow-sm">
-        <div class="card-header d-flex justify-content-between align-items-center">
-          <h6 class="text-uppercase mb-0">
-            <i class="ti ti-folder text-primary me-2"></i> Documents
-          </h6>
-
-          @if(auth()->user()?->is_admin($event->id) || auth()->id() == 584)
-            <form action="{{ route('file.store') }}" method="POST"
-                  enctype="multipart/form-data" class="mb-0">
-              @csrf
-              <input type="hidden" name="event_id" value="{{ $event->id }}">
-              <label class="btn btn-sm btn-outline-primary mb-0">
-                Upload
-                <input type="file" name="myFile" class="d-none"
-                       accept=".pdf,.doc,.docx,.xls,.xlsx,.csv"
-                       onchange="this.form.submit()">
-              </label>
-            </form>
-          @endif
-        </div>
-
-        <div class="card-body pb-2">
-          @forelse($event->files as $file)
-            <div class="file-item border-bottom py-2 d-flex justify-content-between align-items-center">
-              <a href="{{ route('events.documents.show', [$event, $file]) }}" target="_blank"
-                 class="fw-semibold text-dark text-decoration-none">
-                {{ $file->name }}
-              </a>
-
-              @if(auth()->user()?->is_admin($event->id) || auth()->id() == 584)
-                <button class="btn btn-sm btn-outline-danger deleteFileButton"
-                        data-id="{{ $file->id }}">
-                  <i class="ti ti-trash"></i>
-                </button>
-              @endif
-            </div>
-          @empty
-            <div class="text-muted">No documents uploaded yet.</div>
-          @endforelse
-        </div>
-      </div>
+      @include('frontend.event.partials.event-documents', ['documentCardClass' => 'team-documents-card'])
 
       {{-- 🔹 Draws and Order of Play (Desktop only) --}}
       <div id="event-draws-match-times" class="d-none d-md-block" tabindex="-1" data-event-draw-section aria-label="Published draws">

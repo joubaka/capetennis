@@ -22,6 +22,12 @@
     </div>
   </div>
 
+  @if($event->isInterprovincialTrials())
+    @can('event.manage', $event)
+      @include('backend.headOffice.partials.organiser-setup')
+    @endcan
+  @endif
+
   @if($event->relationLoaded('categoryEvents'))
     <section class="card card-body mb-3" aria-labelledby="category-draw-progress">
       <h2 class="h5" id="category-draw-progress">Categories and saved draws</h2>

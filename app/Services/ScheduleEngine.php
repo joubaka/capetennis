@@ -144,8 +144,9 @@ class ScheduleEngine
       DB::table('events')->where('id', $draw->event_id)->lockForUpdate()->get();
       DB::table('venues')->whereIn('id', array_keys($venues))->orderBy('id')->lockForUpdate()->get();
       $this->assertSchedulable($drawId);
-      $all = Fixture::where('draw_id', $drawId)->with(['orderOfPlay', 'fixtureResults'])->orderBy('round')->orderBy('match_nr')->get()->keyBy('id');
-      $fixtures = $all->filter(fn ($f) => ($round === null || (int) $f->round === $round)
+      $all = Fixture::where('draw_id', $drawId)->with(['orderOfPlay', 'fixtureResults'])->orderBy('round')->orderBy('match_nr')->lockForUpdate()->get()->keyBy('id');
+      $fixtures = $all->filter(fn ($f) => $f->fixtureResults->isEmpty() && (int) $f->match_status === 0
+        && ($round === null || (int) $f->round === $round)
         && (! $brackets || in_array($f->bracket_id, $brackets)) && (! $rounds || in_array($f->round, $rounds)));
       $feeders = $this->feederMap($all);
       $participants = ScheduleAvailability::legacyParticipants($all);
@@ -296,8 +297,16 @@ class ScheduleEngine
    */
   public function clear(int $drawId)
   {
-    OrderOfPlay::where('draw_id', $drawId)->delete();
-    return true;
+    return DB::transaction(function () use ($drawId) {
+      DB::table('venues')->orderBy('id')->limit(1)->lockForUpdate()->get();
+      $draw = Draw::whereKey($drawId)->lockForUpdate()->firstOrFail();
+      DB::table('events')->where('id', $draw->event_id)->lockForUpdate()->get();
+      abort_if($draw->locked, 409, 'Unlock the draw before removing scheduled times.');
+      if ($draw->drawFixtures()->whereHas('orderOfPlay', fn ($query) => $query->whereNotNull('time'))->exists()) {
+        app(\App\Services\Scheduling\EventVenueScheduleService::class)->unapply($draw->event, $draw->id);
+      }
+      return true;
+    });
   }
 
 
@@ -306,16 +315,7 @@ class ScheduleEngine
    */
   public function reset(int $drawId)
   {
-    OrderOfPlay::where('draw_id', $drawId)->update([
-      'venue_id' => null,
-      'court' => null,
-      'time' => null,
-      'duration_minutes' => null,
-      'gap_minutes' => 0,
-      'round_number' => null,
-    ]);
-
-    return true;
+    return $this->clear($drawId);
   }
 }
 

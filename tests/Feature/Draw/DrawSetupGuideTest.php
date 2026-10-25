@@ -13,6 +13,18 @@ class DrawSetupGuideTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_returning_from_a_saved_day_keeps_that_day_in_guide_and_schedule_links(): void
+    {
+        [$event, $draw] = $this->scenario();
+        $url = route('draw.guide.show', [$event, $draw, 'schedule_date'=>'2026-10-23']);
+        $this->get($url)->assertOk()->assertSee('Resume saved day')
+            ->assertSee(e(route('backend.event-venue-schedule.calendar', ['event'=>$event->id,'draw_id'=>$draw->id,'date'=>'2026-10-23'])), false)
+            ->assertViewHas('guide', fn ($state) => $state['steps'][4]['url'] === route('backend.event-venue-schedule.index', ['event'=>$event->id,'draw_ids'=>[$draw->id],'date'=>'2026-10-23']));
+        $this->getJson($url)->assertOk()->assertJsonPath('guide_url', $url);
+        $this->getJson(route('draw.guide.show', [$event, $draw, 'schedule_date'=>'invalid']))->assertUnprocessable();
+        $this->assertDatabaseCount('fixtures', 0);
+    }
+
     private function scenario(bool $category = true): array
     {
         $event = Event::factory()->create();

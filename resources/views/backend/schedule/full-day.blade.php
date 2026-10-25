@@ -12,9 +12,16 @@
 @endsection
 @section('content')
 <div class="container-xxl py-3">
-  <a class="btn btn-outline-primary mb-3" href="{{ route('backend.event-venue-schedule.calendar', ['event'=>$event->id, 'date'=>$data['date']]) }}">Back to saved schedule</a>
-  <h3>Schedule a full day</h3>
-  <nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Scheduling method"><span class="align-self-center">Schedule by:</span><a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.index', ['event'=>$event->id,'date'=>$data['date']]) }}">Position band / draw</a><span class="btn btn-primary" aria-current="page">Whole tie · full day across venues</span></nav>
+  @php
+    $viewContext = array_intersect_key($data, array_flip(['draw_id','origin_draw_id']));
+    $viewingDraw = !empty($data['draw_id']) ? $draws->firstWhere('id',(int)$data['draw_id']) : null;
+  @endphp
+  <a class="btn btn-outline-primary mb-3" href="{{ route('backend.event-venue-schedule.calendar', ['event'=>$event->id, 'date'=>$data['date']] + $viewContext) }}">Back to saved schedule</a>
+  <h3>Replan selected rounds - whole ties</h3>
+  @if($contextDraw)<a class="btn btn-outline-primary mb-3" href="{{ route('draw.guide.show', [$event, $contextDraw, 'schedule_date'=>$data['date']]) }}">Back to original draw - {{ $contextDraw->drawName }}</a>@endif
+  <div class="alert alert-info">Planning scope: selected draws and rounds across all selected venues. Calendar venue and draw filters do not restrict the matches included. Each selected round includes unscheduled matches as well as saved matches on this day. Review the preview before saving.</div>
+  @include('backend.schedule.partials.day-navigation', ['mode'=>'whole-tie', 'navigationDraw'=>$viewingDraw])
+  <nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Scheduling method"><span class="align-self-center">Schedule by:</span><a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.index', ['event'=>$event->id,'date'=>$data['date']] + ($viewingDraw ? ['draw_ids'=>[$viewingDraw->id]] : []) + (!empty($data['origin_draw_id']) ? ['origin_draw_id'=>$data['origin_draw_id']] : [])) }}">Position band / draw</a><span class="btn btn-primary" aria-current="page">Whole tie · full day across venues</span></nav>
   <p>{{ $event->name }} · {{ \Carbon\Carbon::parse($data['date'])->format('D j M Y') }}</p>
   <p>Schedule selected draws and rounds together across your venues. Every tie stays at one venue; the next tie may use a different venue. This uses the day's selected courts instead of position bands. Unscheduled matches are included. Matches saved on other days, played matches and unselected rounds stay fixed.</p>
   <p class="small text-muted">Preview first, then save the complete day. Published times change only when you publish updates.</p>
@@ -23,9 +30,11 @@
   @if($errors->any())<div class="alert alert-danger">{{ $errors->first() }}</div>@endif
   <form method="post" id="full-day-form" class="card card-body mb-3">
     @csrf
+    @foreach($viewContext as $contextKey=>$contextValue)<input type="hidden" name="{{ $contextKey }}" value="{{ $contextValue }}">@endforeach
     <label class="form-label" for="full-day-date">Playing day</label><input class="form-control mb-3" type="date" id="full-day-date" name="date" value="{{ old('date',$data['date']) }}" required>
+    <div class="row g-3 mb-3">@foreach(['start_time'=>'Start time','end_time'=>'Finish by','duration'=>'Match minutes','player_rest'=>'Player rest minutes','court_gap'=>'Court gap minutes'] as $key=>$label)<div class="col-6 col-lg-2"><label for="full-day-{{ $key }}" class="form-label">{{ $label }}</label><input class="form-control" id="full-day-{{ $key }}" name="{{ $key }}" type="{{ str_ends_with($key,'time') ? 'time' : 'number' }}" @if(!str_ends_with($key,'time')) min="{{ $key==='duration'?1:0 }}" max="{{ $key==='court_gap'?120:480 }}" @endif value="{{ old($key,$values[$key]) }}" required></div>@endforeach</div>
     <fieldset class="mb-3"><legend class="h5">Draws and rounds for this day</legend>
-      <p class="small text-muted">Select the rounds that should play today. Saved times in those rounds on this day will be replanned together.</p>
+      <p class="small text-muted">Select the rounds that should play today. Saved times in those rounds on this day will be replanned together, and unscheduled matches in those rounds will be added. Matches on other days stay fixed. No rounds are selected automatically from the calendar filter.</p>
       <div class="row g-3">@foreach($draws as $draw)<div class="col-12 col-md-6"><div class="border rounded p-3" data-day-draw>
         <label class="d-flex gap-2 align-items-center mb-2" style="min-height:44px"><input type="checkbox" class="form-check-input day-draw" name="draw_ids[]" value="{{ $draw->id }}" @checked(in_array($draw->id,old('draw_ids',$values['draw_ids']))) @disabled($draw->locked || empty($roundOptions[$draw->id]))><strong>{{ $draw->drawName }}</strong> @if($draw->locked)<span class="text-muted">Locked</span>@endif</label>
         <div class="d-flex flex-wrap gap-3">@forelse($roundOptions[$draw->id] ?? [] as $round)<label class="d-flex gap-2 align-items-center" style="min-height:44px"><input class="form-check-input day-round" type="checkbox" name="rounds[{{ $draw->id }}][]" value="{{ $round }}" @checked(in_array($round,old('rounds',$values['rounds'])[$draw->id] ?? []))>Round {{ $round }}</label>@empty<span class="text-muted">No matches available.</span>@endforelse</div>
@@ -35,8 +44,9 @@
       @foreach($venues as $venue)<div class="col-12 col-md-6"><div class="border rounded p-3" data-day-venue>
         @php($savedGroups = old('venue_groups', $values['venue_groups'])[$venue->id] ?? [])
         <label class="d-flex gap-2 align-items-center mb-2" style="min-height:44px"><input class="form-check-input day-venue" type="checkbox" name="venue_ids[]" value="{{ $venue->id }}" @checked(in_array($venue->id,old('venue_ids',$values['venue_ids'])))><strong>{{ $venue->name }}</strong></label>
+        <details class="mb-2" data-advanced-venue><summary style="min-height:44px">Venue hours, court availability and groups - {{ count($savedGroups) ? 'court groups active' : 'review overrides' }}</summary>
         <div class="row g-2 mb-2">@foreach(['start_time'=>'Venue starts','end_time'=>'Venue finishes by'] as $key=>$label)<div class="col-6"><label class="form-label" for="venue-{{ $venue->id }}-{{ $key }}">{{ $label }}</label><input class="form-control day-venue-hour" id="venue-{{ $venue->id }}-{{ $key }}" type="time" name="venue_windows[{{ $venue->id }}][{{ $key }}]" value="{{ old('venue_windows',$values['venue_windows'])[$venue->id][$key] ?? '' }}"></div>@endforeach</div>
-        <p class="small text-muted">Leave blank to use the overall day times below. Venue hours must fit within that window; both court groups use these hours.</p>
+        <p class="small text-muted">Leave blank to use the overall day times above. Venue hours must fit within that window; both court groups use these hours.</p>
         <p class="small text-muted">Set the time window when each court is available. Leave either time blank to use the venue start or finish. Played matches keep their saved time and court.</p>
         <div class="row g-2" data-day-court-list>@forelse($courtOptions[$venue->id] ?? [] as $court)
           @php($courtStart = collect(old('court_starts',$values['court_starts'])[$venue->id] ?? [])->first(fn ($row) => (string)$row['court'] === (string)$court))
@@ -59,6 +69,7 @@
           <div class="col-12"><button class="btn btn-outline-primary day-add-court" type="button">Add court</button></div></div>
           <p class="small mt-2 mb-0 day-add-status" role="status" aria-live="polite"></p>
         </div>
+        </details>
       </div></div>@endforeach
     </div></fieldset>
     <fieldset class="mb-4"><legend class="h4">Assign venues to age groups</legend>
@@ -103,11 +114,12 @@
       <p class="small text-danger mt-2" id="tie-board-status" role="status" aria-live="polite"></p>
     </fieldset>
     </details>
-    <div class="row g-3 mb-3">@foreach(['start_time'=>'Start time','end_time'=>'Finish by','duration'=>'Match minutes','player_rest'=>'Player rest minutes','court_gap'=>'Court gap minutes'] as $key=>$label)<div class="col-6 col-lg-2"><label for="full-day-{{ $key }}" class="form-label">{{ $label }}</label><input class="form-control" id="full-day-{{ $key }}" name="{{ $key }}" type="{{ str_ends_with($key,'time') ? 'time' : 'number' }}" @if(!str_ends_with($key,'time')) min="{{ $key==='duration'?1:0 }}" max="{{ $key==='court_gap'?120:480 }}" @endif value="{{ old($key,$values[$key]) }}" required></div>@endforeach</div>
+
     <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary" name="action" value="preview">Preview full day</button>
     @if($preview)<input type="hidden" name="revision" value="{{ $preview['revision'] }}"><button class="btn btn-success" id="save-full-day" name="action" value="save" @disabled(count($preview['unscheduled'])>0 || count($preview['matches'])===0)>Save full day preview</button>@endif</div>
   </form>
   @if($preview)
+    @include('backend.schedule.partials.change-review', ['originalRows'=>$currentRows])
     <div class="alert alert-info">{{ count($preview['matches']) }} proposed match times · {{ count($preview['unscheduled']) }} matches could not fit. Saved times remain unchanged until you save.</div>
     @foreach($preview['warnings'] as $warning)<div class="alert alert-warning">{{ $warning }}</div>@endforeach
     @foreach($preview['unscheduled'] as $match)<div class="alert alert-warning">{{ $match['draw_name'] ?? '' }} · Match {{ $match['fixture_id'] ?? '' }}: {{ $match['reason'] ?? 'Cannot fit. Extend the day or add courts.' }}</div>@endforeach
@@ -119,6 +131,8 @@
 </div>
 @endsection
 @section('page-script')
+@include('backend.schedule.partials.day-navigation-script')
+@include('backend.schedule.partials.unsaved-guard', ['editorId'=>'full-day-form', 'pendingPreview'=>(bool) $preview || session()->hasOldInput()])
 <script>
 (() => {
   const form=document.getElementById('full-day-form');
@@ -201,6 +215,11 @@
       const add=card.querySelector('[data-add-court]');
       add.querySelectorAll('input,select,button').forEach(input=>input.disabled=!enabled || add.dataset.busy==='1');
       const split=card.querySelector('.day-split-venue');
+      const courtCount=card.querySelectorAll('.day-court:checked').length;
+      const hours=[...card.querySelectorAll('.day-venue-hour')].map(input=>input.value).filter(Boolean);
+      const courtOverrides=[...card.querySelectorAll('input.day-court-start[type="time"]')].filter(input=>input.value).length;
+      card.querySelector('[data-advanced-venue] summary').textContent=`${courtCount} courts selected / ${hours.length ? 'venue hours: '+hours.join(' - ') : 'day hours'} / ${courtOverrides} court time overrides / ${split.checked ? 'groups A/B active' : 'one court group'} - edit courts and hours`;
+
       split.disabled=!enabled;
       card.querySelector('[data-split-control]').classList.toggle('d-none',card.querySelectorAll('.day-court').length<2);
       add.querySelector('.day-add-group-field').hidden=!split.checked;

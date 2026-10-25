@@ -67,4 +67,28 @@ class TeamSelectionReminderDispatchTest extends TestCase
         $this->assertSame(1, $stats['players']);
         $this->assertSame('warning', $stats['severity']);
     }
+
+    public function test_extra_contacts_receive_reviewed_reminders_without_invitation_decision_links(): void
+    {
+        [$event, $region, $actor] = $this->fixture();
+        $player = Player::firstOrFail();
+        $player->update(['email_2' => 'parent2@example.test', 'email_3' => 'parent3@example.test']);
+        $service = app(TeamSelectionReminderService::class);
+        $messages = $service->previewMessages($event, $region, 'registration_clothing', 'all');
+        $hash = $service->recipientHash($event, $region, 'registration_clothing', 'all');
+        $this->assertCount(3, $messages);
+        $this->assertSame(['emails' => 3, 'players' => 1], $service->summaries($event, $region)['registration_clothing']['all']);
+        foreach ($messages->whereIn('email', ['parent2@example.test', 'parent3@example.test']) as $message) {
+            $this->assertStringContainsString(route('events.show', $event), $message['html']);
+            $this->assertStringNotContainsString('invitations/', $message['html']);
+            $this->assertStringNotContainsString('action=pay', $message['html']);
+        }
+        $stats = $service->send($event, $region, 'registration_clothing', 'all', (string) Str::uuid(), $hash, $actor,
+            approvedMessages: $messages->all());
+        $this->assertSame(3, $stats['queued']);
+        $this->assertSame(1, $stats['players']);
+        $player->update(['email_3' => null]);
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        $service->send($event, $region, 'registration_clothing', 'all', (string) Str::uuid(), $hash, $actor);
+    }
 }

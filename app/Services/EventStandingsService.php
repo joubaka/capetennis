@@ -111,6 +111,9 @@ final class EventStandingsService
         $ageRules = [];
         $ageRuleSets = [];
         $ruleSets = [];
+        $shared = [];
+        $pointSharing = $event->team_result_settings['point_sharing'] ?? [];
+        $sharingRules = ($pointSharing['enabled'] ?? false) ? collect($pointSharing['rules'] ?? [])->keyBy('team_id') : collect();
         foreach ($sections as $section) {
             $ruleSets[] = json_encode(app(TeamEventRulesService::class)->forDraw($section['draw']));
             $ageRuleSets[$section['age']][] = end($ruleSets);
@@ -136,8 +139,38 @@ final class EventStandingsService
                 foreach (self::METRICS as $metric) { $ageStandings[$section['age']][$key][$metric] += $row[$metric]; }
                 if ($team) { $overall[$key]['teams'][$team->id] = true; }
                 foreach (self::METRICS as $metric) { $overall[$key][$metric] += $row[$metric]; }
+                // Allocate from original team results only: never from another region's shared total.
+                $sharing = $team ? $sharingRules->get($team->id) : null;
+                if (!$sharing || !($sharing['enabled'] ?? false) || !$regions->has($team->region_id)
+                    || !in_array($sharing['mode'] ?? null, ['full', 'split'], true)) { continue; }
+                $recipients = array_values(array_unique(array_map('intval', $sharing['region_ids'] ?? [])));
+                // Fail closed if a saved mapping has become invalid after an event-region change.
+                if (!$recipients || array_diff($recipients, $regions->keys()->all()) || in_array((int) $team->region_id, $recipients, true)) { continue; }
+                $divisor = $sharing['mode'] === 'split' ? count($recipients) : 1;
+                foreach ($recipients as $recipientId) {
+                    $shared[$recipientId][$team->id] ??= ['source' => $team->name, 'mode' => $sharing['mode'],
+                        'points' => 0, 'match_points' => 0, 'tie_points' => 0,
+                        'gender_points' => array_fill_keys(['boys', 'girls', 'mixed', 'other'], 0)];
+                    foreach (['points', 'match_points', 'tie_points'] as $metric) {
+                        $shared[$recipientId][$team->id][$metric] += $row[$metric] / $divisor;
+                    }
+                    foreach ($row['gender_points'] as $bucket => $points) {
+                        $shared[$recipientId][$team->id]['gender_points'][$bucket] += $points / $divisor;
+                    }
+                }
             }
         }
+        foreach ($shared as $recipientId => $contributions) {
+            $key = 'region:'.$recipientId;
+            $overall[$key] ??= ['name' => $regions[$recipientId]->region_name, 'teams' => [], 'rank' => null,
+                'gender_points' => array_fill_keys(['boys', 'girls', 'mixed', 'other'], 0)] + array_fill_keys(self::METRICS, 0);
+            $overall[$key]['shared_contributions'] = array_values($contributions);
+            foreach ($contributions as $contribution) {
+                foreach (['points', 'match_points', 'tie_points'] as $metric) { $overall[$key][$metric] += $contribution[$metric]; }
+                foreach ($contribution['gender_points'] as $bucket => $points) { $overall[$key]['gender_points'][$bucket] += $points; }
+            }
+        }
+        $pointSharingEnabled = $sharingRules->contains(fn ($rule) => $rule['enabled'] ?? false);
         $mixedRules = count(array_unique($ruleSets)) > 1;
         uksort($ageGroups, 'strnatcasecmp');
         $ageMixedRules = [];
@@ -200,14 +233,26 @@ final class EventStandingsService
             ])->all();
         }
 
-        return compact('sections', 'placementSections', 'overall', 'mixedRules', 'options', 'filters', 'stats', 'breakdowns', 'ageGroups', 'ageMixedRules', 'ageStandings');
+        $publicMatrices = [];
+        if ($publishedOnly) {
+            $matrices = app(TeamRoundRobinMatrixService::class);
+            foreach ($sections as $section) {
+                if ($matrices->supports($section['draw'])) {
+                    $publicMatrices[$section['age']][] = $matrices->forDraw($section['draw'], $section['rows'], publishedOnly: true);
+                }
+            }
+        }
+
+        return compact('sections', 'placementSections', 'overall', 'mixedRules', 'options', 'filters', 'stats', 'breakdowns', 'ageGroups', 'ageMixedRules', 'ageStandings', 'publicMatrices', 'pointSharingEnabled');
     }
 
     private function criteria(array $row, array $rules): array
     {
-        return array_map(fn ($key) => match ($key) {
+        // Equal native and divided point totals must share a rank despite PHP numeric types
+        // and insignificant floating-point noise from equal-split accumulation.
+        return array_map(fn ($key) => round((float) match ($key) {
             'tie_wins' => $row['wins'], 'rubber_difference' => $row['rubber_wins'] - $row['rubber_losses'],
             'set_difference' => $row['sets_for'] - $row['sets_against'], 'game_difference' => $row['games_for'] - $row['games_against'], default => $row['points'],
-        }, $rules['standings_order']);
+        }, 10), $rules['standings_order']);
     }
 }

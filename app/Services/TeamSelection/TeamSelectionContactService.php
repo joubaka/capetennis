@@ -18,7 +18,7 @@ final class TeamSelectionContactService
 
         $player->loadMissing(['user', 'users']);
 
-        return collect([$player->email, $player->user?->email])
+        return collect([$player->email, $player->email_2, $player->email_3, $player->user?->email])
             ->merge($player->users->pluck('email'))
             ->map(fn ($email) => mb_strtolower(trim((string) $email)))
             ->filter()
@@ -36,6 +36,17 @@ final class TeamSelectionContactService
 
     public function primaryEmail(?Player $player): ?string
     {
-        return $this->emails($player)->first();
+        if (! $player) {
+            return null;
+        }
+
+        $player->loadMissing(['user', 'users']);
+
+        // Actionable invitations keep their existing contact policy. Update-only
+        // addresses must never become the fallback holder of an invitation link.
+        return collect([$player->email, $player->user?->email])
+            ->merge($player->users->pluck('email'))
+            ->map(fn ($email) => mb_strtolower(trim((string) $email)))
+            ->first(fn ($email) => filter_var($email, FILTER_VALIDATE_EMAIL));
     }
 }

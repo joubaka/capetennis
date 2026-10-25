@@ -3,12 +3,14 @@
 @section('page-style')<style>[data-draw-day-editor] .btn, [data-draw-day-editor] .form-check { min-height:44px; } [data-draw-day-editor] .form-check {display:flex;align-items:center;gap:.5rem;padding-right:.5rem;}</style>@endsection
 @section('content')
 <div class="container-xxl py-3" data-draw-day-editor>
-  <a class="btn btn-outline-primary mb-3" href="{{ route('backend.event-venue-schedule.calendar', ['event'=>$event->id, 'draw_id'=>$draw->id, 'date'=>$data['date']]) }}">Back to current schedule</a>
+  <a class="btn btn-outline-primary mb-3" href="{{ route('backend.event-venue-schedule.calendar', ['event'=>$event->id, 'draw_id'=>$draw->id, 'date'=>$data['date']] + $originContext) }}">Back to current schedule</a>
+  <a class="btn btn-outline-primary mb-3" href="{{ route('draw.guide.show', [$event, $originDraw, 'schedule_date'=>$data['date']]) }}">{{ $originDraw->id !== $draw->id ? 'Back to original draw' : 'Back to this draw' }} - {{ $originDraw->drawName }}</a>
+  @include('backend.schedule.partials.day-navigation', ['mode'=>'draw-day', 'navigationDraw'=>$draw])
   <h3>{{ $draw->drawName }} · {{ \Carbon\Carbon::parse($data['date'])->format('D j M Y') }}</h3>
-  <nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Scheduling method"><span class="align-self-center">Schedule by:</span><span class="btn btn-primary" aria-current="page">Position band / draw</span><a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar.full-day', ['event'=>$event->id, 'date'=>$data['date']]) }}">Whole tie · full day across venues</a></nav>
+  <nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Scheduling method"><span class="align-self-center">Schedule by:</span><span class="btn btn-primary" aria-current="page">Position band / draw</span><a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar.full-day', ['event'=>$event->id, 'date'=>$data['date'], 'draw_id'=>$draw->id] + $originContext) }}">Whole tie · full day across venues</a></nav>
   <p>Change venues and times for this draw's already scheduled matches on this day. Other draws and days keep their times. Played matches stay fixed. Preview first, then save. Published times change only when you publish updates.</p>
   @if($errors->any())<div class="alert alert-danger">{{ $errors->first() }}</div>@endif
-  @if($rows->isEmpty())<div class="alert alert-info">This draw has no saved times on this day. Use <a href="{{ route('backend.event-venue-schedule.index', ['event'=>$event->id, 'draw_ids'=>[$draw->id], 'date'=>$data['date']]) }}">Add matches to this day</a> to schedule a new batch.</div>@endif
+  @if($rows->isEmpty())<div class="alert alert-info">This draw has no saved times on this day. Use <a href="{{ route('backend.event-venue-schedule.index', ['event'=>$event->id, 'draw_ids'=>[$draw->id], 'date'=>$data['date']] + $originContext) }}">Add matches to this day</a> to schedule a new batch.</div>@endif
   <div class="card card-body mb-3">
     <details class="mb-3" id="day-add-venues">
       <summary class="btn btn-outline-primary">Add venues</summary>
@@ -28,8 +30,13 @@
     </details>
     <form method="post" id="draw-day-form">
       @csrf
+      @foreach($originContext as $contextKey=>$contextValue)<input type="hidden" name="{{ $contextKey }}" value="{{ $contextValue }}">@endforeach
       <input type="hidden" name="draw_id" value="{{ $draw->id }}"><input type="hidden" name="date" value="{{ $data['date'] }}">
       <input type="hidden" name="court_labels_present" value="1">
+      <div class="row g-3 mb-3">
+        @foreach(['start_time'=>'Start time', 'end_time'=>'Finish by'] as $key=>$label)<div class="col-6 col-lg-2"><label class="form-label" for="day-{{ $key }}">{{ $label }}</label><input class="form-control" id="day-{{ $key }}" type="time" name="{{ $key }}" value="{{ old($key, $values[$key]) }}" required></div>@endforeach
+        @foreach(['duration'=>'Match minutes', 'player_rest'=>'Player rest minutes', 'court_gap'=>'Court gap minutes'] as $key=>$label)<div class="col-6 col-lg-2"><label class="form-label" for="day-{{ $key }}">{{ $label }}</label><input class="form-control" id="day-{{ $key }}" type="number" name="{{ $key }}" min="{{ $key==='duration'?1:0 }}" max="{{ $key==='court_gap'?120:480 }}" value="{{ old($key, $values[$key]) }}" required></div>@endforeach
+      </div>
       <fieldset class="mb-3"><legend class="h5">Venues for this draw and day</legend><p class="small text-muted">Choose destination venues. This does not change venue assignments for other days or age groups.</p>
         <div class="row g-3" id="day-venue-list">
         @foreach($venues as $venue)
@@ -70,10 +77,6 @@
         <div class="col-12 col-md-2"><button class="btn btn-outline-danger remove-day-band mb-2" type="button">Remove</button></div>
       </div></template>
       @endif
-      <div class="row g-3 mb-3">
-        @foreach(['start_time'=>'Start time', 'end_time'=>'Finish by'] as $key=>$label)<div class="col-6 col-lg-2"><label class="form-label" for="day-{{ $key }}">{{ $label }}</label><input class="form-control" id="day-{{ $key }}" type="time" name="{{ $key }}" value="{{ old($key, $values[$key]) }}" required></div>@endforeach
-        @foreach(['duration'=>'Match minutes', 'player_rest'=>'Player rest minutes', 'court_gap'=>'Court gap minutes'] as $key=>$label)<div class="col-6 col-lg-2"><label class="form-label" for="day-{{ $key }}">{{ $label }}</label><input class="form-control" id="day-{{ $key }}" type="number" name="{{ $key }}" min="{{ $key==='duration'?1:0 }}" max="{{ $key==='court_gap'?120:480 }}" value="{{ old($key, $values[$key]) }}" required></div>@endforeach
-      </div>
       <button class="btn btn-primary" name="action" value="preview" @disabled($rows->isEmpty())>Preview this draw and day</button>
       @if($preview)
         <input type="hidden" name="revision" value="{{ $preview['revision'] }}">
@@ -82,6 +85,7 @@
     </form>
   </div>
   @if($preview)
+    @include('backend.schedule.partials.change-review', ['originalRows'=>$rows->keyBy('fixture_key')])
     <div class="alert alert-info">{{ count($preview['matches']) }} proposed changes · {{ count($preview['unscheduled']) }} matches could not fit. Saved times remain unchanged until you save.</div>
     @foreach($preview['warnings'] as $warning)<div class="alert alert-warning">{{ $warning }}</div>@endforeach
     @foreach($preview['unscheduled'] as $match)<div class="alert alert-warning">Match {{ $match['fixture_id'] ?? $match['match'] ?? '' }}: {{ $match['reason'] ?? 'Cannot fit in this day. Adjust the window or venues.' }}</div>@endforeach
@@ -93,6 +97,8 @@
 </div>
 @endsection
 @section('page-script')
+@include('backend.schedule.partials.day-navigation-script')
+@include('backend.schedule.partials.unsaved-guard', ['editorId'=>'draw-day-form', 'pendingPreview'=>(bool) $preview || session()->hasOldInput()])
 <script>
 (() => {
   const form = document.getElementById('draw-day-form');

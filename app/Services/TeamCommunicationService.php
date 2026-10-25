@@ -11,6 +11,9 @@ final class TeamCommunicationService
 {
     public function player(TeamPaymentOrder $order, string $action, array $details = []): void
     {
+        if (in_array($action, ['registration', 'withdrawal'], true)) {
+            app(PlayerRegistrationUpdateService::class)->record($order, $action);
+        }
         if ($action === 'registration' && ! $order->fresh()?->event?->isInterprovincialTrials()) {
             app(TeamRegistrationConfirmationService::class)->record($order);
             return;

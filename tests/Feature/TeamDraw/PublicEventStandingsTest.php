@@ -42,6 +42,36 @@ class PublicEventStandingsTest extends TestCase
             : ['set1_home' => 6, 'set1_away' => 2, 'set2_home' => 6, 'set2_away' => 3]);
     }
 
+    public function test_public_breakdown_uses_published_event_scoped_round_robin_encounters_without_score_links(): void
+    {
+        $event = $this->event();
+        $visible = $this->draw($event, 'U10 visible round robin');
+        $visible['draw']->update(['team_format_snapshot' => ['pairing_format' => 'round_robin']]);
+        $this->score($visible['rubber']);
+        $hidden = $this->draw($event, 'U10 secret round robin');
+        $hidden['draw']->update(['published' => false, 'team_format_snapshot' => ['pairing_format' => 'round_robin']]);
+        $foreign = $this->draw($this->event(), 'U10 foreign round robin');
+        $foreign['draw']->update(['team_format_snapshot' => ['pairing_format' => 'round_robin']]);
+        $hiddenTie = TeamTie::create(['draw_id' => $visible['draw']->id, 'home_team_id' => $visible['teams'][0]->id,
+            'away_team_id' => $visible['teams'][1]->id, 'round_nr' => 99, 'tie_nr' => 1, 'status' => 'draft']);
+        TeamTie::create(['draw_id' => $visible['draw']->id, 'home_team_id' => $visible['teams'][0]->id,
+            'away_team_id' => $foreign['teams'][1]->id, 'round_nr' => 98, 'tie_nr' => 1,
+            'published_at' => now(), 'status' => TeamTie::STATUS_PUBLISHED]);
+
+        $response = $this->get(route('frontend.events.standings', $event))->assertOk()
+            ->assertSee('data-team-round-robin-matrix', false)->assertSee('Round 1')
+            ->assertSee('<strong>1–0</strong>', false)->assertSee('<strong>0–1</strong>', false)
+            ->assertDontSee('Round 99')->assertDontSee('Round 98')->assertDontSee('U10 secret round robin')->assertDontSee('U10 foreign round robin')
+            ->assertDontSee('class="team-rr-cell" href=', false);
+        $matrices = collect($response->viewData('publicMatrices'))->flatten(1);
+        $this->assertSame([$visible['draw']->id], $matrices->pluck('draw.id')->all());
+        $this->assertSame([$visible['tie']->id], collect($matrices[0]['cells'][$visible['teams'][0]->id][$visible['teams'][1]->id])->pluck('tie.id')->all());
+        $this->assertDatabaseHas('team_ties', ['id' => $hiddenTie->id, 'status' => 'draft']);
+        $this->get(route('frontend.events.standings', [$event, 'age' => 'U99']))->assertOk()->assertViewHas('publicMatrices', []);
+        $event->forceFill(['standings_published' => false])->save();
+        $this->get(route('frontend.events.standings', $event))->assertNotFound();
+    }
+
     public function test_standings_publication_is_explicit_event_scoped_idempotent_and_separate(): void
     {
         \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
@@ -159,7 +189,7 @@ class PublicEventStandingsTest extends TestCase
         $response = $this->get(route('frontend.events.standings', $event))->assertOk()
             ->assertSee('data-auto-refresh="0"', false)->assertSee('Reload this page')->assertSee('data-points="3"', false)
             ->assertSee('<details class="points-details">', false)->assertDontSee('<details class="points-details" open', false)
-            ->assertSee('12–5');
+            ->assertSee('1 won · 0 lost · 1 matches');
         $this->assertSame([12, 5], array_column($response->viewData('overall'), 'games_for'));
         $this->assertSame([2, 0], array_column($response->viewData('overall'), 'sets_for'));
         $this->get(route('frontend.team-draw.standings', $data['draw']))->assertOk()
@@ -188,15 +218,15 @@ class PublicEventStandingsTest extends TestCase
         $this->score($foreign['rubber']);
         $url = route('frontend.events.standings', $event);
         $response = $this->get($url)->assertOk()->assertSee('Team standings')
-            ->assertSee('data-points="6"', false)->assertDontSee('Standings by draw')->assertSee('12–5')
+            ->assertSee('data-points="6"', false)->assertDontSee('Standings by draw')
             ->assertSee('<details class="points-details">', false);
         $groups = $response->viewData('ageGroups');
         $this->assertSame(['U9', 'U10'], array_keys($groups));
         $this->assertSame(['Audit Oak', 'Audit Pine'], array_column($groups['U9'], 'name'));
         $this->assertSame([6, 0], array_column($groups['U9'], 'points'));
         $this->assertSame(['boys' => 3, 'girls' => 3, 'mixed' => 0, 'other' => 0], $groups['U9'][0]['gender_points']);
-        $response->assertSeeInOrder(['>Pos.<', '>Region / school<', '>Match points<', '>Tie points<', '>Total points<', '>Boys<', '>Girls<', '>Mixed<', '>Sets W–L<', '>Games W–L<'], false)
-            ->assertDontSee('>Other<', false);
+        $response->assertSeeInOrder(['>Pos.<', '>Region / school<', '>Match points<', '>Tie points<', '>Total points<'], false)
+            ->assertDontSee('data-gender-points', false);
         $ranked = $response->viewData('ageStandings')['U9'];
         $this->assertSame(['Audit Oak', 'Audit Pine'], array_column($ranked, 'name'));
         $this->assertSame([1, 2], array_column($ranked, 'rank'));
@@ -254,7 +284,7 @@ class PublicEventStandingsTest extends TestCase
         $this->assertSame($row['points'], array_sum($row['gender_points']));
 
         $data['draw']->update(['drawName' => 'U12 Open', 'gender' => null]);
-        $response = $this->get($url)->assertOk()->assertSee('>Other<', false);
+        $response = $this->get($url)->assertOk()->assertDontSee('data-gender-points', false);
         $row = $response->viewData('ageGroups')['U12'][0];
         $this->assertSame(['boys' => 2, 'girls' => 2, 'mixed' => 4, 'other' => 7], $row['gender_points']);
         $this->assertSame($row['points'], array_sum($row['gender_points']));
@@ -287,7 +317,7 @@ class PublicEventStandingsTest extends TestCase
         $response = $this->get(route('frontend.events.standings', $event))->assertOk()
             ->assertSee('data-live-results="event-standings"', false)->assertSee('js/live-results.js')->assertSee('data-points="3"', false)
             ->assertSee('<details class="points-details">', false)->assertDontSee('<details class="points-details" open', false)
-            ->assertSee('12–5');
+            ->assertSee('1 won · 0 lost · 1 matches');
         $rows = $response->viewData('overall');
         $this->assertSame([0, 0], array_column($rows, 'played'));
         $this->assertSame([1, 0], array_column($rows, 'rubber_wins'));

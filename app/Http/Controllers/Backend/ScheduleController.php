@@ -242,11 +242,11 @@ class ScheduleController extends Controller
   public function clearSchedule(Draw $draw)
   {
     $this->authorize('modifySchedule', $draw);
-    OrderOfPlay::where('draw_id', $draw->id)->delete();
-
-    Fixture::where('draw_id', $draw->id)->update([
-      'scheduled' => 0
-    ]);
+    try {
+      app(ScheduleEngine::class)->clear($draw->id);
+    } catch (\InvalidArgumentException $exception) {
+      return response()->json(['message' => $exception->getMessage()], 422);
+    }
 
     return response()->json(['message' => 'All schedules cleared']);
   }
@@ -254,13 +254,11 @@ class ScheduleController extends Controller
   public function resetTrials(Draw $draw)
   {
     $this->authorize('modifySchedule', $draw);
-    $fixtureIds = $draw->drawFixtures()->pluck('id');
-
-    OrderOfPlay::whereIn('fixture_id', $fixtureIds)->delete();
-
-    Fixture::whereIn('id', $fixtureIds)->update([
-      'scheduled' => 0
-    ]);
+    try {
+      app(ScheduleEngine::class)->clear($draw->id);
+    } catch (\InvalidArgumentException $exception) {
+      return response()->json(['message' => $exception->getMessage()], 422);
+    }
 
     return response()->json([
       'success' => true,
@@ -321,7 +319,7 @@ class ScheduleController extends Controller
     });
 
     // ------------------------------------------------------------------
-    // Court conflicts — use actual gap between consecutive slots per court
+    // Court conflicts — use each saved booking's occupied duration.
     // ------------------------------------------------------------------
     $conflicts = [];
     $slotsByCourtVenue = [];
@@ -329,37 +327,29 @@ class ScheduleController extends Controller
     foreach ($fixtures as $fx) {
       $oop = $fx->orderOfPlay;
       if (!$oop || !$oop->time || !$oop->venue_id) continue;
-      $key = $oop->venue_id . '|' . ($oop->court ?? '?');
+      $key = $oop->venue_id . '|' . \App\Domain\Draws\Services\ScheduleAvailability::courtKey((string) ($oop->court ?? '?'));
       $slotsByCourtVenue[$key][] = [
         'start'      => \Carbon\Carbon::parse($oop->time),
+        'end'        => \Carbon\Carbon::parse($oop->time)->addMinutes($oop->occupiedMinutes()),
         'fixture_id' => $fx->id,
         'time_str'   => $oop->time,
       ];
     }
 
-    // Infer slot duration = minimum gap between consecutive matches across all courts
-    $minGap = null;
     foreach ($slotsByCourtVenue as $key => $slots) {
       usort($slots, fn($a, $b) => $a['start']->timestamp <=> $b['start']->timestamp);
       $slotsByCourtVenue[$key] = $slots;
-      for ($i = 1; $i < count($slots); $i++) {
-        $gap = $slots[$i]['start']->diffInMinutes($slots[$i-1]['start']);
-        if ($gap > 0 && ($minGap === null || $gap < $minGap)) {
-          $minGap = $gap;
-        }
-      }
     }
-    $slotDuration = $minGap ?? 60; // fallback 60 min if only one match per court
 
     foreach ($slotsByCourtVenue as $key => $slots) {
       for ($i = 0; $i < count($slots); $i++) {
         $aStart = $slots[$i]['start'];
-        $aEnd   = $aStart->copy()->addMinutes($slotDuration);
+        $aEnd   = $slots[$i]['end'];
         for ($j = $i + 1; $j < count($slots); $j++) {
           $bStart = $slots[$j]['start'];
           // Once bStart >= aEnd there can be no more overlaps (slots are sorted)
           if ($bStart->gte($aEnd)) break;
-          $bEnd = $bStart->copy()->addMinutes($slotDuration);
+          $bEnd = $slots[$j]['end'];
           if ($aStart->lt($bEnd) && $aEnd->gt($bStart)) {
             [$venueId, $court] = explode('|', $key);
             $conflicts[] = [
@@ -376,7 +366,7 @@ class ScheduleController extends Controller
     }
 
     // ------------------------------------------------------------------
-    // Player double-booking — overlap-aware using same inferred duration
+    // Player double-booking uses the same persisted occupied durations.
     // ------------------------------------------------------------------
     $playerConflicts = [];
     $playerSlots     = [];
@@ -386,7 +376,7 @@ class ScheduleController extends Controller
       if (!$oop || !$oop->time) continue;
 
       $start   = \Carbon\Carbon::parse($oop->time);
-      $end     = $start->copy()->addMinutes($slotDuration);
+      $end     = $start->copy()->addMinutes($oop->occupiedMinutes());
       $players = collect()
         ->merge($fx->registration1?->players ?? [])
         ->merge($fx->registration2?->players ?? []);

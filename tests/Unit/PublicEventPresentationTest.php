@@ -58,9 +58,12 @@ class PublicEventPresentationTest extends TestCase
     {
         foreach (['team.blade.php', 'interpro.blade.php'] as $template) {
             $html = file_get_contents(resource_path('views/frontend/event/eventTypes/'.$template));
-            $this->assertStringContainsString('frontend.event.partials._region_team_picker', $html);
+            $this->assertStringContainsString('frontend.event.partials.event-region-directory', $html);
             $this->assertStringNotContainsString('flex-nowrap overflow-auto', $html);
         }
+
+        $directory = file_get_contents(resource_path('views/frontend/event/partials/event-region-directory.blade.php'));
+        $this->assertStringContainsString('frontend.event.partials._region_team_picker', $directory);
 
         $picker = file_get_contents(resource_path('views/frontend/event/partials/_region_team_picker.blade.php'));
         $this->assertStringContainsString('region-tab-grid', $picker);

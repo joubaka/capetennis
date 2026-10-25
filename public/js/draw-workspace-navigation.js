@@ -1,5 +1,14 @@
 (() => {
   'use strict';
+  if (new URLSearchParams(location.search).get('review') === 'publication') {
+    const toggle = document.querySelector('[data-publication-review-toggle]');
+    if (toggle) {
+      const tools = toggle.closest('details');
+      if (tools) tools.open = true;
+      window.bootstrap?.Dropdown.getOrCreateInstance(toggle).show();
+      toggle.focus();
+    }
+  }
   const status = document.querySelector('[data-share-status]');
   document.querySelectorAll('[data-share-draw]').forEach(button => button.addEventListener('click', async () => {
     if (button.disabled) return;

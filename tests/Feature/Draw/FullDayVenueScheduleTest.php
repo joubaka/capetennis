@@ -13,6 +13,97 @@ class FullDayVenueScheduleTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_calendar_paginates_without_truncating_scope_totals_and_keeps_draw_day_links(): void
+    {
+        [$event, $draws, $venues] = $this->context();
+        Role::firstOrCreate(['name'=>'admin', 'guard_name'=>'web']);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id'=>$event->id, 'user_id'=>$admin->id]);
+        $rows = [];
+        for ($i = 1; $i <= 1001; $i++) {
+            $rows[] = ['draw_id'=>$draws[0]->id, 'round_nr'=>1, 'tie_nr'=>$i, 'match_nr'=>$i, 'match_status'=>0,
+                'scheduled_at'=>'2026-10-23 08:00:00', 'venue_id'=>$venues[0]->id, 'court_label'=>'1'];
+        }
+        DB::table('team_fixtures')->insert($rows);
+        $scope = ['event'=>$event->id, 'date'=>'2026-10-23', 'draw_id'=>$draws[0]->id];
+        $response = $this->actingAs($admin)->get(route('backend.event-venue-schedule.calendar', $scope + ['page'=>11]))->assertOk();
+        $response->assertViewHas('savedCount', 1001)->assertViewHas('publicationCounts', fn ($counts) => $counts['Private'] === 1001)
+            ->assertViewHas('rows', fn ($rows) => $rows->count() === 1)->assertSee('1001 private')
+            ->assertSee('Edit saved times - this draw and day')->assertSee('Back to this draw')
+            ->assertSee(e(route('backend.event-venue-schedule.calendar.full-day', $scope)), false);
+        $last = TeamFixture::where('draw_id', $draws[0]->id)->whereNotNull('scheduled_at')->latest('id')->first();
+        $this->get(route('backend.event-venue-schedule.calendar', $scope + ['focus'=>'team:'.$last->id]))->assertOk()
+            ->assertViewHas('savedPages', fn ($pages) => $pages->currentPage() === 11)
+            ->assertSee('id="match-team-'.$last->id.'"', false);
+        $foreign = TeamFixture::create(['draw_id'=>Draw::factory()->create()->id, 'match_nr'=>1]);
+        $this->get(route('backend.event-venue-schedule.calendar', $scope + ['focus'=>'team:'.$foreign->id]))->assertNotFound();
+        $this->get(route('backend.event-venue-schedule.calendar', $scope + ['retained_page'=>0]))->assertRedirect()->assertSessionHasErrors('retained_page');
+        $this->assertDatabaseCount('published_schedule_assignments', 0);
+    }
+
+    public function test_whole_tie_editor_retains_draw_context_without_selecting_its_rounds_and_rejects_foreign_context(): void
+    {
+        [$event, $draws] = $this->context();
+        Role::firstOrCreate(['name'=>'admin', 'guard_name'=>'web']);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id'=>$event->id, 'user_id'=>$admin->id]);
+        $url = route('backend.event-venue-schedule.calendar.full-day', ['event'=>$event->id, 'date'=>'2026-10-23','draw_id'=>$draws[0]->id]);
+        $this->actingAs($admin)->get($url)->assertOk()->assertViewHas('contextDraw', fn ($draw) => $draw->id === $draws[0]->id)
+            ->assertViewHas('values', fn ($values) => $values['draw_ids'] === [] && $values['rounds'] === [])
+            ->assertSee('Calendar venue and draw filters do not restrict')->assertSee('beforeunload', false);
+        $foreign = Draw::factory()->create();
+        $this->get(route('backend.event-venue-schedule.calendar.full-day', ['event'=>$event->id, 'date'=>'2026-10-23','draw_id'=>$foreign->id]))->assertNotFound();
+    }
+
+    public function test_whole_tie_preview_shows_new_and_changed_bookings_and_save_returns_to_origin_draw_day(): void
+    {
+        [$event, $draws, $venues, $options] = $this->context();
+        Role::firstOrCreate(['name'=>'admin', 'guard_name'=>'web']);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id'=>$event->id, 'user_id'=>$admin->id]);
+        TeamFixture::where('draw_id', $draws[0]->id)->first()->update(['scheduled_at'=>'2026-10-23 09:00:00', 'venue_id'=>$venues[0]->id, 'court_label'=>'1', 'duration_min'=>60]);
+        $url = route('backend.event-venue-schedule.calendar.full-day', ['event'=>$event->id]);
+        $payload = ['date'=>'2026-10-23', 'draw_id'=>$draws[0]->id, 'draw_ids'=>$options['draw_ids'],
+            'rounds'=>$draws->mapWithKeys(fn ($draw) => [$draw->id=>[1]])->all(), 'venue_ids'=>$options['venue_ids'],
+            'court_labels'=>$options['day_court_labels'], 'start_time'=>'08:00', 'end_time'=>'10:00', 'duration'=>60, 'player_rest'=>0, 'court_gap'=>0, 'action'=>'preview'];
+        $response = $this->actingAs($admin)->post($url, $payload)->assertOk()->assertSee('Review before saving privately')
+            ->assertSee('5 new bookings')->assertSee('1 changed')->assertSee('Before and after times and courts');
+        $this->assertSame(1, TeamFixture::whereNotNull('scheduled_at')->count());
+        $payload['action'] = 'save';
+        $this->post($url, $payload + ['revision'=>$response->viewData('preview')['revision']])
+            ->assertRedirect(route('backend.event-venue-schedule.calendar', ['event'=>$event->id,'date'=>'2026-10-23','origin_draw_id'=>$draws[0]->id]));
+        $this->assertSame(6, TeamFixture::whereNotNull('scheduled_at')->count());
+        $this->assertDatabaseCount('published_schedule_assignments', 0);
+    }
+
+    public function test_whole_tie_save_shows_the_selected_draw_and_preserves_a_different_origin(): void
+    {
+        [$event, $draws, $venues, $options] = $this->context();
+        Role::firstOrCreate(['name'=>'admin', 'guard_name'=>'web']);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id'=>$event->id, 'user_id'=>$admin->id]);
+        $url = route('backend.event-venue-schedule.calendar.full-day', ['event'=>$event->id]);
+        $payload = ['date'=>'2026-10-23', 'draw_id'=>$draws[0]->id, 'draw_ids'=>[$draws[1]->id],
+            'rounds'=>[$draws[1]->id=>[1]], 'venue_ids'=>$options['venue_ids'], 'court_labels'=>$options['day_court_labels'],
+            'start_time'=>'08:00', 'end_time'=>'10:00', 'duration'=>60, 'player_rest'=>0, 'court_gap'=>0, 'action'=>'preview'];
+        $response = $this->actingAs($admin)->post($url, $payload)->assertOk();
+        $payload['action'] = 'save';
+        $scope = ['event'=>$event->id, 'date'=>'2026-10-23', 'draw_id'=>$draws[1]->id, 'origin_draw_id'=>$draws[0]->id];
+        $this->post($url, $payload + ['revision'=>$response->viewData('preview')['revision']])
+            ->assertRedirect(route('backend.event-venue-schedule.calendar', $scope));
+        $this->get(route('backend.event-venue-schedule.calendar', $scope))->assertOk()->assertViewHas('savedCount', 2)
+            ->assertSee(e(route('draw.guide.show', [$event, $draws[0], 'schedule_date'=>'2026-10-23'])), false);
+        $this->get(route('backend.event-venue-schedule.calendar.full-day', $scope))->assertOk()
+            ->assertSee(e(route('backend.event-venue-schedule.calendar', $scope)), false)
+            ->assertSee('name="draw_id" value="'.$draws[1]->id.'"', false)
+            ->assertSee('name="origin_draw_id" value="'.$draws[0]->id.'"', false)
+            ->assertSee(e(route('backend.event-venue-schedule.index', ['event'=>$event->id, 'date'=>'2026-10-23', 'draw_ids'=>[$draws[1]->id], 'origin_draw_id'=>$draws[0]->id])), false);
+        $this->get(route('backend.event-venue-schedule.calendar', array_replace($scope, ['origin_draw_id'=>Draw::factory()->create()->id])))
+            ->assertStatus(422);
+        $this->assertSame(2, TeamFixture::whereNotNull('scheduled_at')->count());
+        $this->assertDatabaseCount('published_schedule_assignments', 0);
+    }
+
     private function context(): array
     {
         $event = Event::factory()->create();

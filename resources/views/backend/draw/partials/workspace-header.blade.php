@@ -11,7 +11,7 @@
   <x-slot:actions>
       @can('event.manage', $draw->event)<a data-draw-guide-open class="btn btn-sm btn-primary" href="{{ route('draw.guide.show', [$draw->event_id, $draw]) }}">Continue setup</a>@endcan
       @unless($draw->isTeamDraw())
-        <details data-individual-draw-tools><summary class="btn btn-sm btn-outline-secondary">More tools</summary><div class="d-flex flex-wrap gap-2 pt-2">
+        <details data-individual-draw-tools @if(request('review') === 'publication') open @endif><summary class="btn btn-sm btn-outline-secondary">More tools</summary><div class="d-flex flex-wrap gap-2 pt-2">
       @endunless
       @if(!empty($rankingReference))
         <div class="dropdown draw-ranking-reference">
@@ -63,7 +63,7 @@
       <button class="btn btn-sm btn-outline-secondary" type="button" data-share-draw="{{ route('public.roundrobin.show', $draw) }}" @disabled(!$draw->published) title="{{ $draw->published ? 'Share public draw link' : 'Publish the draw before sharing' }}">Share</button>
       @if(($workspaceSurface ?? '') === 'roundrobin')
         @can('publish', $draw)
-          <div class="dropdown"><button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Publication</button><div class="dropdown-menu dropdown-menu-end p-2">
+          <div class="dropdown"><button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" data-publication-review-toggle>Publication</button><div class="dropdown-menu dropdown-menu-end p-2">
             <button type="button" class="dropdown-item" id="rr-publish-draw" data-url="{{ route('draw.toggle.publish', $draw) }}">{{ $draw->published ? 'Unpublish draw' : 'Publish draw' }}</button>
             <button type="button" class="dropdown-item" id="rr-publish-schedule" data-url="{{ route('draw.toggle.publish.schedule', $draw) }}">{{ $draw->oop_published ? 'Unpublish schedule' : 'Publish schedule' }}</button>
           </div></div>

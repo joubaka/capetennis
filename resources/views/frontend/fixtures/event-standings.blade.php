@@ -33,7 +33,8 @@
     #public-age-points .points-details summary { cursor:pointer; color:#365940; font-weight:600; min-height:44px; display:flex; align-items:center; }
     #public-age-points .points-details summary::after { content:'⌄'; margin-left:auto; padding-left:.75rem; font-size:1.2rem; }
     #public-age-points .points-details[open] summary::after { content:'⌃'; }
-    #public-age-points .points-details .points-table { min-width:520px; }
+    #public-age-points .points-details > .card { margin-top:.75rem; }
+    #public-age-points .team-rr-scroll { overscroll-behavior-x:contain; }
     #public-age-points .points-table tbody tr[data-position="1"] { background:#f1f6ed; }
     #public-age-points .points-table th, #public-age-points .points-table td { padding:.9rem 1.25rem; }
     #public-age-points .points-table thead { color:#617168; background:#f6f8f5; font-size:.7rem; letter-spacing:.04em; text-transform:uppercase; }
@@ -75,11 +76,25 @@
   </form>
   @include('frontend.fixtures.partials.live-results-status')
   <div data-live-results="event-standings">
+    @if($pointSharingEnabled ?? false)
+    <section class="points-card mb-4" data-shared-overall-standings>
+      <div class="points-card-header"><h2>Overall regional standings</h2><span>Includes shared points</span></div>
+      <p class="points-empty">Shared points apply to the selected results below. Source teams retain their points; age-group competition standings remain unchanged.</p>
+      <div class="points-table-scroll" tabindex="0" role="region" aria-label="Overall regional standings including shared points">
+        <table class="points-table"><thead><tr><th scope="col">Pos.</th><th scope="col">Region / school</th><th scope="col">Match points</th><th scope="col">Tie points</th><th scope="col">Total points</th></tr></thead><tbody>
+        @forelse($overall as $row)
+          <tr><td class="points-position">{{ $row['rank'] ?? '—' }}</td><th scope="row">{{ $row['name'] }}@include('frontend.fixtures.partials.shared-point-contributions')</th><td>{{ \App\Support\StandingsPoints::format($row['match_points']) }}</td><td>{{ \App\Support\StandingsPoints::format($row['tie_points']) }}</td><td>{{ \App\Support\StandingsPoints::format($row['points']) }}</td></tr>
+        @empty<tr><td colspan="5">No published regional points yet.</td></tr>@endforelse
+        </tbody></table>
+      </div>
+      @if($mixedRules)<p class="points-empty">Draws use different scoring rules. Overall regions are listed alphabetically without a combined rank.</p>@endif
+      <p class="points-empty">Equal splits display up to four decimal places; calculations retain full precision.</p>
+    </section>
+    @endif
     @include('frontend.fixtures.partials.team-placement-results')
     <div class="points-groups">
       @forelse($ageStandings as $age => $rows)
       @php
-        $showOther = collect($rows)->contains(fn ($row) => $row['gender_points']['other'] != 0);
         $colors = collect($ageGroups[$age] ?? [])->pluck('color', 'name');
         $hasResults = collect($rows)->contains(fn ($row) => $row['rubber_wins'] + $row['rubber_losses'] > 0);
       @endphp
@@ -97,20 +112,18 @@
         </div>
         <details class="points-details">
           <summary>Points breakdown and match statistics</summary>
-          <div class="points-table-scroll" tabindex="0" role="region" aria-label="{{ $age }} detailed statistics; scroll horizontally if needed">
-            <table class="points-table" aria-label="{{ $age }} points breakdown">
-              <thead><tr><th scope="col">Region / school</th><th scope="col">Boys</th><th scope="col">Girls</th><th scope="col">Mixed</th>@if($showOther)<th scope="col">Other</th>@endif<th scope="col">Sets W–L</th><th scope="col">Games W–L</th></tr></thead>
-              <tbody>@foreach($rows as $row)<tr><th scope="row">{{ $row['name'] }}</th>@foreach(['boys', 'girls', 'mixed'] as $bucket)<td data-gender-points="{{ $bucket }}">{{ $row['gender_points'][$bucket] }}</td>@endforeach@if($showOther)<td data-gender-points="other">{{ $row['gender_points']['other'] }}</td>@endif<td>{{ $row['sets_for'] }}–{{ $row['sets_against'] }}</td><td>{{ $row['games_for'] }}–{{ $row['games_against'] }}</td></tr>@endforeach</tbody>
-            </table>
-          </div>
+          @forelse($publicMatrices[$age] ?? [] as $matrix)
+            @include('backend.team-draw.partials.round-robin-matrix', ['matrix' => $matrix, 'matrixScoring' => false])
+          @empty
+            <p class="points-empty">No published round-robin encounters are available for this age group yet.</p>
+          @endforelse
         </details>
-        @if($showOther)<p class="points-empty">Other includes points without a specified gender, including bonuses from those draws.</p>@endif
         @if($ageMixedRules[$age])<p class="points-empty">Points use each draw’s scoring rules. Regions / schools are listed alphabetically.</p>@endif
         @if(!$hasResults)<p class="points-empty">No completed match points yet.</p>@endif
       </section>
       @empty<p class="points-empty">No published points or participants for this age group yet.</p>@endforelse
     </div>
-    <p class="points-note">Match points plus tie bonus points equal total points. The gender breakdown also includes tie bonuses. Positions follow each draw’s saved scoring and tie-break rules; equal records can share a position. Standings reflect completed published results and may change while play continues. Different scoring rules within an age group mean no combined positions are shown.</p>
+    <p class="points-note">Match points plus tie bonus points equal total points. Expand the breakdown to see opponents, encounter scores and standings for each round-robin draw. Positions follow each draw’s saved scoring and tie-break rules; equal records can share a position. Standings reflect completed published results and may change while play continues. Different scoring rules within an age group mean no combined positions are shown.</p>
   </div>
 </div>
 @include('frontend.fixtures.partials.live-results-script')

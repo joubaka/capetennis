@@ -22,7 +22,7 @@
       </div>
     </div>
   @endif
-  <div class="card event-section-card mb-4 shadow-sm masters-documents"><div class="card-header"><h6 class="text-uppercase mb-0"><i class="ti ti-folder text-primary me-2"></i>Documents</h6></div><div class="card-body pb-2">@forelse($event->files as $file)<div class="file-item border-bottom py-2"><a href="{{ route('events.documents.show', [$event, $file]) }}" target="_blank" class="fw-semibold text-dark text-decoration-none">{{ $file->name }}</a></div>@empty<div class="text-muted">No documents uploaded yet.</div>@endforelse</div></div>
+  @include('frontend.event.partials.event-documents', ['documentsReadOnly' => true, 'documentCardClass' => 'event-section-card masters-documents'])
   <div class="card event-section-card mb-4 masters-registration"><div class="card-body"><small class="text-uppercase">Registration</small><p class="small text-muted mt-3 mb-0">Invitations are limited to the players displayed in the Masters categories. Select your name to continue.</p></div></div>
 </div></div></div>
 

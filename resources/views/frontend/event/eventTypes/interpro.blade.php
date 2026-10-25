@@ -16,9 +16,6 @@
   color: #fff;
 }
 </style>
-@php
-  $isAdmin = auth()->check() && in_array(auth()->id(), [1764, 584, 585, 763]);
-@endphp
 {{-- resources/views/frontend/event/eventTypes/interpro.blade.php --}}
 <div class="col-xl-12">
   <div class="row mb-4">
@@ -34,25 +31,7 @@
       @include('frontend.event.partials.interpro-draws-mobile')
 
       {{-- 🔹 Regions & Teams Tabs --}}
-      <div class="card p-3 p-sm-4">
-        <div class="card-body p-0 pb-2">
-          <div class="badge bg-label-primary mb-3" role="alert">
-            Click on a Region below to register
-          </div>
-        </div>
-
-        @php $regions = $event->region_in_events ?? collect(); @endphp
-
-        @if($regions->isNotEmpty())
-          @include('frontend.event.partials._region_team_picker', ['regions' => $regions])
-
-        @else
-          <div class="alert alert-secondary mt-3">
-            Regions are not configured for this event.
-          </div>
-        @endif
-
-      </div>
+      @include('frontend.event.partials.event-region-directory', ['regions' => $regions, 'directoryAlert' => true])
     </div>
 
 
@@ -63,62 +42,7 @@
 
    
 
-      {{-- 🔹 Documents --}}
-      <div class="card mb-4 shadow-sm">
-        <div class="card-header d-flex justify-content-between align-items-center">
-          <h6 class="card-title text-uppercase mb-0">
-            <i class="ti ti-folder text-primary me-2"></i> Documents
-          </h6>
-
-          @if(auth()->user()?->is_admin($event->id) || auth()->id() == 584)
-            <form action="{{ route('file.store') }}" method="POST" enctype="multipart/form-data"
-                  class="d-flex align-items-center gap-2 mb-0">
-              @csrf
-              <input type="hidden" name="event_id" value="{{ $event->id }}">
-
-              <label class="btn btn-sm btn-outline-primary mb-0">
-                <i class="ti ti-upload me-1"></i> Upload
-                <input type="file" name="myFile" class="d-none"
-                       accept=".pdf,.doc,.docx,.xls,.xlsx,.csv"
-                       onchange="this.form.submit()">
-              </label>
-
-            </form>
-          @endif
-
-        </div>
-
-        <div class="card-body pb-2">
-
-          @forelse($event->files as $file)
-            <div class="file-item border-bottom py-2 d-flex justify-content-between align-items-center">
-
-              <div class="d-flex align-items-center">
-                <i class="ti ti-file-description text-primary fs-5 me-2"></i>
-                <a href="{{ route('events.documents.show', [$event, $file]) }}" target="_blank"
-                   class="fw-semibold text-dark text-decoration-none">
-                  {{ $file->name }}
-                </a>
-              </div>
-
-              <div class="d-flex align-items-center">
-                @if(auth()->user()?->is_admin($event->id) || auth()->id() == 584)
-                  <button type="button" data-id="{{ $file->id }}"
-                          class="btn btn-sm btn-icon btn-outline-danger deleteFileButton"
-                          data-bs-toggle="tooltip" title="Delete">
-                    <i class="ti ti-trash"></i>
-                  </button>
-                @endif
-              </div>
-            </div>
-          @empty
-            <div class="text-muted">No documents uploaded yet.</div>
-          @endforelse
-
-        </div>
-
-      </div>
-
+      @include('frontend.event.partials.event-documents')
 
       {{-- Scorers need a venue-first entry point on every screen size. --}}
       @include('frontend.event.partials._venue-scoring')
@@ -133,56 +57,3 @@
     </div>
   </div>
 </div>
-
-
-{{-- 🔹 SweetAlert2-based File Delete --}}
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-  document.querySelectorAll('.deleteFileButton').forEach(btn => {
-    btn.addEventListener('click', function () {
-      const fileId = this.dataset.id;
-      const button = this;
-
-      Swal.fire({
-        title: 'Delete this file?',
-        text: 'This action cannot be undone.',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonText: 'Yes, delete',
-        cancelButtonText: 'Cancel',
-        customClass: {
-          confirmButton: 'btn btn-danger',
-          cancelButton: 'btn btn-secondary ms-2'
-        },
-        buttonsStyling: false
-      }).then(result => {
-        if (result.isConfirmed) {
-
-          fetch(`{{ url('/file') }}/${fileId}`, {
-            method: 'POST',
-            headers: {
-              'X-CSRF-TOKEN': '{{ csrf_token() }}',
-              'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: new URLSearchParams({ '_method': 'DELETE' })
-          })
-          .then(res => res.json())
-          .then(data => {
-            if (data.success) {
-              Swal.fire('Deleted!', 'File removed successfully.', 'success');
-              button.closest('.file-item').remove();
-            } else {
-              Swal.fire('Error', data.msg || 'Delete failed.', 'error');
-            }
-          })
-          .catch(err => {
-            console.error('Delete error:', err);
-            Swal.fire('Error', 'Something went wrong.', 'error');
-          });
-
-        }
-      });
-    });
-  });
-});
-</script>

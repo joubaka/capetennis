@@ -51,6 +51,13 @@
   <h2 id="example-email-heading">Example email</h2>
   <iframe title="Example invitation email" sandbox="" srcdoc="{{ view('emails.team-selection.invitation', ['invitation' => $sample['invitation'] ?? $invitation, 'campaign' => $campaign, 'kind' => $sample['kind'] ?? $kind])->render() }}" class="mail-review-frame"></iframe>
   </section>
+  @if(collect($recipients ?? [])->contains(fn ($recipient) => !empty($recipient['notification_only'])))
+    <section class="mail-review-example" aria-labelledby="contact-email-heading">
+      <h2 id="contact-email-heading">Additional contact notification</h2>
+      <p>Additional contacts receive this update with the public event link. Invitation decisions stay with the original recipient.</p>
+      <iframe title="Additional contact notification email" sandbox="" srcdoc="{{ (new \App\Mail\TeamSelectionInvitationMail($sample['invitation'] ?? $invitation, $sample['kind'] ?? $kind, [...$campaign, 'notification_only' => true]))->render() }}" class="mail-review-frame"></iframe>
+    </section>
+  @endif
   @if(isset($customSend) || isset($campaignSend))
     <p class="mail-review-note mail-review-muted">Sending submits the reviewed emails for background delivery. Delivery may continue after you leave this page.</p>
   @endif

@@ -1,6 +1,7 @@
-<div class="container-xxl py-3" style="max-width:1000px" data-draw-guide data-draw-guide-url="{{ route('draw.guide.show', [$event, $draw]) }}">
+<div class="container-xxl py-3" style="max-width:1000px" data-draw-guide data-draw-guide-url="{{ $guideUrl ?? route('draw.guide.show', [$event, $draw]) }}">
   <a href="{{ route('headOffice.show', $event) }}" class="btn btn-link px-0 mb-2">← Back to event</a>
   <h1 class="h3">{{ $draw->drawName }}</h1>
+  @if(!empty($scheduleDate))<a class="btn btn-outline-primary mb-3" style="min-height:44px" href="{{ route('backend.event-venue-schedule.calendar', ['event'=>$event->id,'draw_id'=>$draw->id,'date'=>$scheduleDate]) }}">Resume saved day - {{ \Carbon\Carbon::parse($scheduleDate)->format('D j M Y') }}</a>@endif
   @if(($draw->team_draw_selection['competition']['phase'] ?? null) === 'playoff')
     <p class="text-muted">{{ $draw->formatDisplayLabel() }}</p>
   @endif
@@ -45,6 +46,8 @@
       3 => array_merge($guide['steps'][3], ['label' => 'Players and draw']),
     ];
     $phaseOneReady = !$guide['team'] && $guide['steps'][3]['complete'];
+    $trialsReady = $phaseOneReady && $event->isInterprovincialTrials();
+    $publicationUrl = !$guide['team'] ? $guide['workspace'].($draw->usesFlexibleMonrad() ? '#matrix' : '?review=publication#matrix') : $guide['steps'][5]['url'];
     $current = $guide['steps'][$guide['next']];
   @endphp
   <ol class="list-unstyled d-flex flex-wrap gap-2 mb-4" aria-label="Draw setup progress">
@@ -59,7 +62,16 @@
     <section class="card card-body mb-3">
       <h2 class="h4">Draw and players ready</h2>
       <p>Your generated draw is saved. Open it to review the players and matches.</p>
-      <a class="btn btn-primary align-self-start" href="{{ $guide['workspace'] }}">Open draw</a>
+      @if($trialsReady)
+        <h3 class="h5" id="trials-schedule-next">Next: programme and schedule</h3>
+        <p>{{ $guide['steps'][4]['detail'] }}</p>
+        <a class="btn btn-primary align-self-start" href="{{ $guide['scheduleComplete'] ? route('backend.event-venue-schedule.calendar', ['event'=>$event->id, 'draw_id'=>$draw->id, 'date'=>$scheduleDate ?? 'all']) : $guide['steps'][4]['url'] }}">{{ $guide['scheduleComplete'] ? 'Review saved schedule' : 'Set venues and schedule' }}</a>
+        <a class="btn btn-outline-secondary align-self-start mt-2" href="{{ $guide['workspace'] }}">Open draw</a>
+        <p class="small text-muted mt-3 mb-2">Saving keeps the programme private. Review and publish the draw and its match times separately when ready.</p>
+        <a class="align-self-start" href="{{ $publicationUrl }}">Review publication controls</a>
+      @else
+        <a class="btn btn-primary align-self-start" href="{{ $guide['workspace'] }}">Open draw</a>
+      @endif
       <a class="align-self-start mt-3" href="{{ route('headOffice.show', $event) }}">Back to categories</a>
     </section>
   @else
@@ -96,11 +108,11 @@
   </section>
   @endif
   <details class="card card-body"><summary>Review saved setup{{ $guide['team'] ? ' or open another step' : '' }}</summary><div class="d-grid gap-2 mt-3">@foreach($visibleSteps as $index => $step)<a class="btn btn-outline-secondary text-start" href="{{ $step['url'] }}">{{ $guide['team'] ? $index + 1 : $index }}. {{ $step['label'] }}</a>@endforeach</div></details>
-  @unless($guide['team'])
+  @if(!$guide['team'] && !$trialsReady)
     <details class="card card-body mt-3"><summary>Later: scheduling and publication</summary>
       <p class="small text-muted mt-2">Prepare match times and publish the draw separately when you are ready.</p>
       <a class="align-self-start" href="{{ $guide['steps'][4]['url'] }}">Open scheduling</a>
-      <a class="align-self-start mt-2" href="{{ $guide['steps'][5]['url'] }}">Review publication controls</a>
+      <a class="align-self-start mt-2" href="{{ $publicationUrl }}">Review publication controls</a>
     </details>
-  @endunless
+  @endif
 </div>

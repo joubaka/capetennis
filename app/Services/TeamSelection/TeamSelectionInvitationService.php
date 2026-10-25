@@ -1130,7 +1130,7 @@ final class TeamSelectionInvitationService
             $this->queueMail($locked, $email, 'invitation', $this->savedCampaignSnapshot($locked->selectionImport),
                 allowHistoricalRepeat: true, communicationBatchId: $communicationBatchId,
                 reviewMetadata: ['manual_restored_send' => true, 'created_by' => $actor->id], approvedMessage: $approvedMessage);
-            $log = BulkEmailLog::where('related_type', TeamSelectionInvitation::class)->where('related_id', $locked->id)->latest('id')->firstOrFail();
+            $log = BulkEmailLog::where('related_type', TeamSelectionInvitation::class)->where('related_id', $locked->id)->where('recipient_email', $email)->latest('id')->firstOrFail();
             $locked->update(['invited_at' => now()]);
             activity('team-selection')->performedOn($locked)->causedBy($actor)
                 ->withProperties(['recipient_email' => $email, 'email_log_id' => $log->id])
@@ -1501,6 +1501,10 @@ final class TeamSelectionInvitationService
             foreach ($logs as $log) {
                 $invitation = $invitations->get($log->related_id);
                 $email = $invitation ? $this->contactEmail($invitation) : null;
+                if (data_get($log->payload, 'campaign.notification_only', false)) {
+                    $email = $invitation && $this->contacts->emails($invitation->player)->contains($log->recipient_email)
+                        ? $log->recipient_email : null;
+                }
                 if (! $email || ($invitation->effectiveResponseDeadline() && now()->gt($invitation->effectiveResponseDeadline()))) {
                     continue;
                 }
@@ -1546,7 +1550,7 @@ final class TeamSelectionInvitationService
             $this->queueMail($locked, $email, $locked->invitationMailKind(), $this->savedCampaignSnapshot($locked->selectionImport),
                 allowHistoricalRepeat: true, communicationBatchId: $communicationBatchId,
                 reviewMetadata: ['manual_resend' => true, 'created_by' => $actor->id], approvedMessage: $approvedMessage);
-            $log = BulkEmailLog::where('related_type', TeamSelectionInvitation::class)->where('related_id', $locked->id)->latest('id')->firstOrFail();
+            $log = BulkEmailLog::where('related_type', TeamSelectionInvitation::class)->where('related_id', $locked->id)->where('recipient_email', $email)->latest('id')->firstOrFail();
             activity('team-selection')->performedOn($locked)->causedBy($actor)
                 ->withProperties(['recipient_email' => $email, 'email_log_id' => $log->id])
                 ->log('regional manager resent team selection invitation');
@@ -1963,6 +1967,10 @@ final class TeamSelectionInvitationService
             'id' => (int) $invitation->id,
             'name' => (string) ($invitation->player?->full_name ?: 'Player'),
             'email' => (string) $this->contactEmail($invitation),
+            'contact_emails' => $this->contacts->emails($invitation->player)->intersect(collect([$invitation->player?->email_2, $invitation->player?->email_3])->map(fn ($value) => mb_strtolower(trim((string) $value))))->values()->all(),
+            'notification_hash' => hash('sha256', (new \App\Mail\TeamSelectionInvitationMail(
+                $invitation, $this->customEmailKind($invitation), [...$campaign, 'notification_only' => true],
+            ))->render()),
             'status' => (string) $invitation->status,
             'kind' => $this->customEmailKind($invitation),
         ])->values()->all();
@@ -2128,6 +2136,8 @@ final class TeamSelectionInvitationService
             'recipients' => collect($recipients)->map(fn (array $recipient) => [
                 'id' => $recipient['id'],
                 'email' => mb_strtolower(trim($recipient['email'])),
+                'contact_emails' => $recipient['contact_emails'] ?? [],
+                'notification_hash' => $recipient['notification_hash'] ?? null,
                 'status' => $recipient['status'],
                 'kind' => $recipient['kind'],
             ])->values()->all(),
@@ -2348,6 +2358,34 @@ final class TeamSelectionInvitationService
         ?int $communicationBatchId = null,
         array $reviewMetadata = [],
         ?array $approvedMessage = null,
+    ): bool {
+        $queued = $this->queueSingleMail($invitation, $email, $kind, $campaign, $allowHistoricalRepeat,
+            $customPreviewHash, $communicationBatchId, $reviewMetadata, $approvedMessage);
+        // Contact copies use the notification view: escaped text and a published
+        // event URL only, never invitation, decline, payment or clothing links.
+        foreach ($this->contacts->emails($invitation->player)->intersect(collect([$invitation->player?->email_2, $invitation->player?->email_3])
+            ->map(fn ($value) => mb_strtolower(trim((string) $value))))->reject(fn (string $contact) => $contact === $email) as $contact) {
+            $approvedCopy = $approvedMessage === null ? null : ($approvedMessage['contact_copies'][$contact] ?? null);
+            if ($approvedMessage !== null && $approvedCopy === null) {
+                throw ValidationException::withMessages(['preview' => 'Player contacts changed after review. Prepare a fresh exact preview.']);
+            }
+            $queued = $this->queueSingleMail($invitation, $contact, $kind, [...$campaign, 'notification_only' => true],
+                $allowHistoricalRepeat, $customPreviewHash, $communicationBatchId, $reviewMetadata, $approvedCopy) || $queued;
+        }
+
+        return $queued;
+    }
+
+    private function queueSingleMail(
+        TeamSelectionInvitation $invitation,
+        string $email,
+        string $kind,
+        array $campaign = [],
+        bool $allowHistoricalRepeat = false,
+        ?string $customPreviewHash = null,
+        ?int $communicationBatchId = null,
+        array $reviewMetadata = [],
+        ?array $approvedMessage = null,
     ): bool
     {
         if ($customPreviewHash && BulkEmailLog::query()->where([
@@ -2471,6 +2509,11 @@ final class TeamSelectionInvitationService
         $snapshot['recipient_count'] = $recipients->whereNotNull('email')->count();
         $snapshot['missing_email_count'] = $recipients->whereNull('email')->count();
         $snapshot['message_hashes'] = $import->invitations()->with(['selectionImport.event', 'region', 'team', 'player'])->where('status', TeamSelectionInvitation::INVITED)->orderBy('id')->get()->mapWithKeys(fn ($invitation) => [$invitation->id => hash('sha256', (new \App\Mail\TeamSelectionInvitationMail($invitation, 'invitation', $snapshot))->render())])->all();
+        $snapshot['contact_message_hashes'] = $import->invitations()->with(['selectionImport.event', 'player'])
+            ->where('status', TeamSelectionInvitation::INVITED)->orderBy('id')->get()
+            ->mapWithKeys(fn ($invitation) => [$invitation->id => hash('sha256', (new \App\Mail\TeamSelectionInvitationMail(
+                $invitation, 'invitation', [...$snapshot, 'notification_only' => true],
+            ))->render())])->all();
         $snapshot['hash'] = hash('sha256', json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
         return $snapshot;
@@ -2488,6 +2531,7 @@ final class TeamSelectionInvitationService
                 'invitation_id' => (int) $invitation->id,
                 'player_id' => (int) $invitation->player_id,
                 'email' => $this->contactEmail($invitation),
+                'contact_emails' => $this->contacts->emails($invitation->player)->intersect(collect([$invitation->player?->email_2, $invitation->player?->email_3])->map(fn ($value) => mb_strtolower(trim((string) $value))))->values()->all(),
             ])
             ->sortBy('invitation_id')
             ->values();

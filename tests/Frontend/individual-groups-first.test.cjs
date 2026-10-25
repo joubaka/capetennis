@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-function workspace(groups = [], locked = false) {
+function workspace(groups = [], locked = false, {confirm = false, failRequest = false} = {}) {
   const values = new Map([['#groups-tab-boxes', '2'], ['#rr-category-name:text', 'U19 Boys']]);
   const props = new Map(), handlers = new Map(), dialogs = [], requests = [];
   let sortables = 0;
@@ -30,9 +30,9 @@ function workspace(groups = [], locked = false) {
   const context = { jQuery: $, window, document, Sortable: window.Sortable,
     AdminState: {setGroups() {}, on() {}},
     AdminRoutes: {drawUrl: (id, path) => `/draw/${id}${path}`},
-    AdminApi: {request: async request => { requests.push(request); return {}; }},
+    AdminApi: {request: async request => { requests.push(request); if (failRequest) throw new Error('Resize rejected'); return {}; }},
     AdminToast: {warning() {}, error() {}},
-    Swal: {fire: async options => { dialogs.push(options); return {isConfirmed: false}; }}
+    Swal: {fire: async options => { dialogs.push(options); return {isConfirmed: confirm}; }}
   };
   vm.runInNewContext(fs.readFileSync('public/assets/js/admin/roundrobin/groups.js', 'utf8'), context);
   window.RRGroups.init(7);
@@ -78,4 +78,20 @@ test('chosen group count survives searches and renders and is used by the single
   await page.handlers.get('click:#rr-apply-group-count')();
   assert.match(page.dialogs[0].html, /Create 3 empty groups for U19 Boys/);
   assert.equal(page.requests.length, 0);
+});
+
+test('failed group changes restore saved count while failed first creation keeps the chosen suggestion', async () => {
+  const saved = workspace([{id: 10, name: 'A', players: []}], false, {confirm: true, failRequest: true});
+  saved.values.set('#groups-tab-boxes', '3');
+  await saved.handlers.get('click:#rr-apply-group-count')();
+  assert.equal(saved.requests.length, 1);
+  assert.equal(saved.values.get('#groups-tab-boxes'), 1);
+  assert.match(saved.values.get('#rr-groups-row:html'), /Group A/);
+
+  const fresh = workspace([], false, {confirm: true, failRequest: true});
+  fresh.values.set('#groups-tab-boxes', '3');
+  await fresh.handlers.get('click:#rr-apply-group-count')();
+  assert.equal(fresh.requests.length, 1);
+  assert.equal(fresh.values.get('#groups-tab-boxes'), 3);
+  assert.equal(fresh.sortables(), 0);
 });

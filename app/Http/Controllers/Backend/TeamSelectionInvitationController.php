@@ -354,9 +354,23 @@ class TeamSelectionInvitationController extends Controller
         $subject = $campaign['subject'];
 
         $previewVariants = $selectionImport->invitations()->with(['selectionImport.event', 'region', 'team', 'player'])->where('status', 'invited')->orderBy('queue_position')->get()->map(fn ($item) => ['invitation' => $item, 'status' => $item->status, 'kind' => 'invitation']);
-        $recipients = $previewVariants->map(fn ($variant) => ['name' => $variant['invitation']->player?->full_name, 'email' => app(\App\Services\TeamSelection\TeamSelectionContactService::class)->primaryEmail($variant['invitation']->player)])->all();
+        $recipients = $previewVariants->flatMap(fn ($variant) => $this->invitationPreviewContacts($variant['invitation']))->all();
         $campaignSend = ['route' => route('backend.team-selection.send', [$event, $selectionImport]), 'data' => $data];
         return view('backend.team-selection.email-preview', compact('invitation', 'campaign', 'kind', 'subject', 'previewVariants', 'recipients', 'campaignSend'));
+    }
+
+    private function invitationPreviewContacts(TeamSelectionInvitation $invitation): array
+    {
+        $contacts = app(\App\Services\TeamSelection\TeamSelectionContactService::class);
+        $primary = $contacts->primaryEmail($invitation->player);
+        $rows = [['name' => $invitation->player?->full_name, 'email' => $primary, 'notification_only' => false]];
+        if (! $primary) return $rows;
+        foreach ($contacts->emails($invitation->player)->intersect(collect([$invitation->player?->email_2, $invitation->player?->email_3])
+            ->map(fn ($value) => mb_strtolower(trim((string) $value))))->reject(fn ($email) => $email === $primary) as $email) {
+            $rows[] = ['name' => $invitation->player?->full_name, 'email' => $email, 'notification_only' => true];
+        }
+
+        return $rows;
     }
 
     public function restart(Request $request, Event $event, TeamSelectionImport $selectionImport, TeamRankingImportService $service)
@@ -723,7 +737,7 @@ class TeamSelectionInvitationController extends Controller
             ->whereIn('id', collect($preview['recipients'])->pluck('id'))->get()->keyBy('id');
         $invitation = $previewInvitations->get($preview['recipients'][0]['id']) ?? abort(404);
         $campaign = $preview['campaign'];
-        $recipients = $preview['recipients'];
+        $recipients = collect($preview['recipients'])->flatMap(fn ($recipient) => $this->invitationPreviewContacts($previewInvitations->get($recipient['id'])))->all();
         $kind = $preview['recipients'][0]['kind'];
         $previewVariants = collect($preview['recipients'])->map(fn (array $recipient): array => [
             'invitation' => $previewInvitations->get($recipient['id']),
@@ -733,7 +747,7 @@ class TeamSelectionInvitationController extends Controller
         $subject = $campaign['subject'];
         $customSend = [
             'route' => route('backend.team-selection.invitations.email.custom-send', [$event, $selectionImport]),
-            'invitation_ids' => collect($recipients)->pluck('id')->all(),
+            'invitation_ids' => collect($preview['recipients'])->pluck('id')->all(),
             'email_subject' => $campaign['subject'],
             'email_message' => $campaign['message'],
             'preview_hash' => $preview['hash'],

@@ -102,6 +102,7 @@
                        value="{{ old('email') }}">
                 @error('email')<div class="invalid-feedback">{{ $message }}</div>@enderror
               </div>
+@include('frontend.player.partials.additional-emails', ['contactPlayer' => null])
 
             </div>
 

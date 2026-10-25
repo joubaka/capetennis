@@ -259,7 +259,7 @@ class HeadOfficeController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    if ($event->eventType == 5 && ! $event->isInterprovincialTrials()) {
+    if ($event->eventType == 5 && ! $event->isTeam() && ! $event->isInterprovincialTrials()) {
 
       $data['playingDays'] = $this->getDatesBetween(
         $event->start_date,

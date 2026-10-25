@@ -59,72 +59,7 @@
         @endAuth
         @endif
         @include('frontend.event.partials.event-about')
-        <div class="card mb-4">
-            <div class="card-header"> <small class="card-text text-uppercase">Documents</small>
-                @guest
-
-                @else
-
-                @if(Auth::user()->is_admin($event->id)->count() > 0 || Auth::user()->id == 584 )
-                <div class="btn btn-success btn-sm float-right" data-bs-target='#addFileModal' data-bs-toggle='modal'>Upload .PDF</div>
-                @endif
-                @endguest
-
-
-
-            </div>
-
-            <div class="card-body">
-
-                <div class="demo-inline-spacing mt-3">
-                    <div class="list-group">
-
-                        @foreach($event->files as $key=> $file)
-
-
-
-                        <div class="file">
-                            <div class="row">
-
-                                <div class="col-7">
-                                    <a href="{{ route('events.documents.show', [$event, $file]) }}" class="list-group-item list-group-item-action d-flex justify-content-between">
-                                        <div class="li-wrapper d-flex justify-content-start align-items-center">
-                                            <div class="avatar avatar-sm me-3">
-                                                <span class="avatar-initial rounded-circle bg-label-success">{{($key+1)}}</span>
-                                            </div>
-                                            <div class="list-content">
-                                                <h6 class="mb-1">{{$file->name}}</h6>
-
-                                            </div>
-                                        </div>
-
-
-                                    </a>
-                                </div>
-                                <div class="col-4">
-                                    <small>
-                                        @can('admin')
-                                        @if(Auth::user()->id == $event->admin)
-                                        <div data-id="{{$file->id}}" class="btn btn-danger btn-sm deleteFileButton ml-4">Delete</div>
-                                        @endif
-                                        @endcan
-                                    </small>
-                                </div>
-                            </div>
-
-
-                        </div>
-                        @endforeach
-
-
-
-
-
-                    </div>
-                </div>
-            </div>
-        </div>
-
+        @include('frontend.event.partials.event-documents', ['documentNewWindow' => false])
 
         @if(is_null($event->series))
         @else
@@ -196,10 +131,10 @@
                                 @php $registration = $cereg->registration; @endphp
                                 @if($registration && $registration->players->count())
 
-                                <a href="javascript:void(0);" class="list-group-item list-group-item-action"> {{$registration->players[0]->name}} {{$registration->players[0]->surname}}
-                                    @if($registration->order_item)
+                                <a href="javascript:void(0);" class="list-group-item list-group-item-action"> {{ $registration->display_name }}
+                                    @if($registration->players->count() === 1 && $registration->order_item)
 
-                                    {{$event->eventType->id == 9 ?  '+'. $registration->order_item->parent:''}}
+                                    {{ (int) $event->eventType === 9 ? '+'.$registration->order_item->parent : '' }}
 
                                     @endif
 

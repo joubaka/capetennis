@@ -330,10 +330,7 @@ class DrawController extends Controller
       'players.*' => ['integer', 'exists:registrations,id'],
     ]);
 
-    foreach ($validated['players'] as $player) {
-      $this->assertRegistrationBelongsToDraw($draw, (int) $player);
-    }
-    $draw->registrations()->syncWithoutDetaching($validated['players']);
+    $this->attachRegistrations($draw, $validated['players']);
 
     return redirect()->back();
   }
@@ -358,7 +355,7 @@ class DrawController extends Controller
     $eventCategory = CategoryEvent::findOrFail($request->category);
     $this->assertCategoryBelongsToDraw($draw, $eventCategory);
     $registrationIds = $eventCategory->activeRegistrations()->pluck('registration_id')->all();
-    $draw->registrations()->syncWithoutDetaching($registrationIds);
+    $this->attachRegistrations($draw, $registrationIds);
 
     return redirect()->back();
   }
@@ -643,10 +640,7 @@ class DrawController extends Controller
       'players.*' => 'integer|distinct|exists:registrations,id',
     ]);
 
-    foreach ($request->players as $playerId) {
-      $this->assertRegistrationBelongsToDraw($draw, (int) $playerId);
-      $draw->registrations()->syncWithoutDetaching($playerId);
-    }
+    $this->attachRegistrations($draw, $request->players);
 
     return redirect()->back()->with('success', 'Players added to draw.');
   }
@@ -801,11 +795,7 @@ class DrawController extends Controller
         ->where('category_event_registrations.payment_status_id', 1))
       ->get();
 
-    foreach ($registrations as $registration) {
-      foreach ($registration->players as $player) {
-        $draw->registrations()->syncWithoutDetaching($registration->id);
-      }
-    }
+    $this->attachRegistrations($draw, $registrations->pluck('id')->all());
 
     return response()->json(['message' => 'All players from category event added to draw.']);
   }
@@ -818,7 +808,7 @@ class DrawController extends Controller
     $this->assertRegistrationBelongsToDraw($draw, (int) $validated['player_id']);
     $this->assertNotAssignedToOtherDraw($draw, (int) $validated['player_id']);
 
-    $draw->registrations()->syncWithoutDetaching($validated['player_id']);
+    $this->attachRegistrations($draw, [$validated['player_id']]);
     return response()->noContent();
   }
 
@@ -841,11 +831,7 @@ class DrawController extends Controller
     ]);
     $playerIds = $validated['players'] ?? [];
 
-    foreach ($playerIds as $registrationId) {
-      $this->assertRegistrationBelongsToDraw($draw, (int) $registrationId);
-    }
-
-    $draw->registrations()->sync($playerIds);
+    $this->attachRegistrations($draw, $playerIds, true);
 
     return response()->json(['message' => 'Players updated successfully.']);
   }
@@ -867,24 +853,7 @@ class DrawController extends Controller
       ], 404);
     }
 
-    // Ensure not in another draw for same category_event
-    $categoryEventId = $draw->category_event_id;
-    $alreadyAssigned = Draw::where('category_event_id', $categoryEventId)
-      ->whereHas('registrations', function ($q) use ($registrationId) {
-        $q->where('registration_id', $registrationId);
-      })
-      ->exists();
-
-    if ($alreadyAssigned) {
-      return response()->json([
-        'error' => 'Player already assigned to another draw in this event.'
-      ], 400);
-    }
-
-    // Attach if not already added to this draw
-    if (!$draw->registrations()->where('registration_id', $registrationId)->exists()) {
-      $draw->registrations()->attach($registrationId);
-    }
+    $this->attachRegistrations($draw, [(int) $registrationId]);
 
     return response()->json([
       'message' => 'Player added successfully.',
@@ -926,6 +895,7 @@ class DrawController extends Controller
       ->with('players')->get();
 
     DB::transaction(function () use ($activeRegistrations, $draw, $existingRegistrationIds, &$attached) {
+      CategoryEvent::query()->whereKey($draw->category_event_id)->lockForUpdate()->first();
       foreach ($activeRegistrations as $registration) {
         if (in_array($registration->id, $existingRegistrationIds, true)) {
           continue;
@@ -958,6 +928,7 @@ class DrawController extends Controller
     $skipped = 0;
 
     DB::transaction(function () use ($request, $draw, &$added, &$skipped) {
+      CategoryEvent::query()->whereKey($draw->category_event_id)->lockForUpdate()->first();
       foreach ($request->player_ids as $playerId) {
         $this->assertRegistrationBelongsToDraw($draw, (int) $playerId);
 
@@ -1204,6 +1175,8 @@ class DrawController extends Controller
       });
 
       return response()->json(['message' => 'Round Robin fixtures generated successfully.']);
+    } catch (ValidationException $e) {
+      throw $e;
     } catch (\Throwable $e) {
       return response()->json([
         'message' => 'Error generating fixtures.',
@@ -1485,6 +1458,22 @@ public function json(Draw $draw)
     return response()->json(['status' => 'ok']);
   }
 
+  private function attachRegistrations(Draw $draw, array $registrationIds, bool $replace = false): void
+  {
+    DB::transaction(function () use ($draw, $registrationIds, $replace) {
+      CategoryEvent::query()->whereKey($draw->category_event_id)->lockForUpdate()->first();
+      foreach ($registrationIds as $registrationId) {
+        $this->assertRegistrationBelongsToDraw($draw, (int) $registrationId);
+        $this->assertNotAssignedToOtherDraw($draw, (int) $registrationId);
+      }
+      if ($replace) {
+        $draw->registrations()->sync($registrationIds);
+      } else {
+        $draw->registrations()->syncWithoutDetaching($registrationIds);
+      }
+    });
+  }
+
   private function assertCategoryBelongsToDraw(Draw $draw, CategoryEvent $categoryEvent): void
   {
     if ((int) $categoryEvent->event_id !== (int) $draw->event_id
@@ -1524,6 +1513,7 @@ public function json(Draw $draw)
     $assignedElsewhere = DB::table('draw_registrations as assigned')
       ->join('draws as other_draw', 'other_draw.id', '=', 'assigned.draw_id')
       ->where('assigned.registration_id', $registrationId)
+      ->where('other_draw.event_id', $draw->event_id)
       ->where('other_draw.category_event_id', $draw->category_event_id)
       ->where('other_draw.id', '!=', $draw->id)
       ->exists();

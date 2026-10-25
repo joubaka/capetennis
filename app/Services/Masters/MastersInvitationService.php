@@ -371,12 +371,16 @@ final class MastersInvitationService
         $recipientHash = $this->initialRecipientHash($selection['recipients']);
         $compositionHash = $this->initialCompositionHash($composition);
         $expiresAt = now()->addMinutes(15)->getTimestamp();
-        $previewInvitation = $batch->invitations()->with(['batch.event', 'categoryEvent.category', 'player'])->whereKey($selection['recipients'][0]['invitation_id'] ?? 0)->first();
         return $selection + $composition + [
             'request_token' => $requestToken, 'recipient_hash' => $recipientHash, 'composition_hash' => $compositionHash,
             'review_expires_at' => $expiresAt,
             'review_proof' => app(InvitationMailSecurity::class)->reviewProof($actor->id, 'masters:'.$batch->id.':'.$batch->event_id, $requestToken, $recipientHash, $compositionHash, $expiresAt),
-            'rendered_body' => $previewInvitation ? view('emails.masters.invitation', ['invitation' => $previewInvitation, 'kind' => 'invitation', 'messagePayload' => $composition])->render() : '',
+            'rendered_body' => collect($selection['recipients'])->map(function ($recipient) use ($batch, $composition) {
+                $invitation = $batch->invitations()->with(['batch.event', 'player'])->findOrFail($recipient['invitation_id']);
+                $mail = new \App\Mail\MastersInvitationMail($invitation, 'invitation', [...$composition,
+                    'notification_only' => (bool) ($recipient['notification_only'] ?? false)]);
+                return '<div><p><strong>To:</strong> '.e($recipient['email']).'</p>'.$mail->render().'</div>';
+            })->implode(''),
             'sender_warning' => 'The From address must be verified by the configured mail provider or delivery may fail.',
         ];
     }
@@ -420,6 +424,7 @@ final class MastersInvitationService
                     continue;
                 }
                 $payload = ['invitation_id' => $invitation->id, 'event_id' => $lockedBatch->event_id, 'kind' => 'invitation', 'request_token' => $request['request_token'], 'requested_by_user_id' => $actor->id, 'created_by' => $actor->id, 'recipient_hash' => $request['recipient_hash'], 'composition_hash' => $request['composition_hash'], 'recipient_name' => $recipientRow['name'], 'recipient_email' => $email, 'related_type' => MastersInvitation::class, 'related_id' => $invitation->id] + $composition;
+                $payload['notification_only'] = (bool) ($recipientRow['notification_only'] ?? false);
                 $payload['payload_integrity'] = app(InvitationMailSecurity::class)->payloadIntegrity($payload);
                 $log = BulkEmailLog::create(['mail_type' => 'masters_invitation', 'related_type' => MastersInvitation::class, 'related_id' => $invitation->id, 'recipient_email' => $email, 'recipient_name' => $recipientRow['name'], 'status' => 'queued', 'payload' => $payload, 'queued_at' => now()]);
                 DB::afterCommit(fn () => $this->dispatchMastersInvitationLog($log->id, $lockedBatch->event_id));
@@ -443,14 +448,21 @@ final class MastersInvitationService
         foreach ($query->get() as $invitation) {
             $email = $this->playerUser($invitation->player)?->email;
             $row = ['invitation_id' => (int) $invitation->id, 'name' => $invitation->player?->full_name ?? 'Player '.$invitation->player_id, 'email' => $email, 'category' => $invitation->categoryEvent?->category?->name, 'status' => $invitation->status];
-            if ($email && filter_var($email, FILTER_VALIDATE_EMAIL)) $recipients[] = $row; else $blockers[] = $row + ['reason' => $email ? 'Linked player account email is invalid' : 'Missing linked player account email'];
+            if ($email && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $recipients[] = $row;
+                foreach (app(\App\Services\TeamSelection\TeamSelectionContactService::class)->emails($invitation->player)
+                    ->intersect(collect([$invitation->player?->email_2, $invitation->player?->email_3])->map(fn ($value) => mb_strtolower(trim((string) $value))))
+                    ->reject(fn ($contact) => mb_strtolower(trim($email)) === $contact) as $contact) {
+                    $recipients[] = array_replace($row, ['email' => $contact, 'notification_only' => true]);
+                }
+            } else $blockers[] = $row + ['reason' => $email ? 'Linked player account email is invalid' : 'Missing linked player account email'];
         }
         return compact('recipients', 'blockers');
     }
 
     private function initialRecipientHash(array $recipients): string
     {
-        return hash('sha256', json_encode(collect($recipients)->map(fn (array $recipient): array => collect($recipient)->only(['invitation_id', 'name', 'email', 'category', 'status'])->all())->values()->all(), JSON_THROW_ON_ERROR));
+        return hash('sha256', json_encode(collect($recipients)->map(fn (array $recipient): array => collect($recipient)->only(['invitation_id', 'name', 'email', 'category', 'status', 'notification_only'])->all())->values()->all(), JSON_THROW_ON_ERROR));
     }
 
     private function initialComposition(MastersInvitationBatch $batch, array $input): array
@@ -579,6 +591,19 @@ final class MastersInvitationService
             $payload = ['invitation_id' => $invitation->id, 'event_id' => $invitation->batch->event_id, 'created_by' => $invitation->batch->created_by, 'kind' => $kind, 'recipient_email' => $user->email, 'recipient_name' => $invitation->player?->full_name, 'related_type' => MastersInvitation::class, 'related_id' => $invitation->id];
             $payload['payload_integrity'] = app(InvitationMailSecurity::class)->payloadIntegrity($payload);
             $log = BulkEmailLog::create(['mail_type' => 'masters_invitation', 'related_type' => MastersInvitation::class, 'related_id' => $invitation->id, 'recipient_email' => $user->email, 'recipient_name' => $invitation->player?->full_name, 'status' => 'queued', 'payload' => $payload, 'queued_at' => now()]);
+            $this->dispatchMastersInvitationLog($log->id, $invitation->batch->event_id);
+        }
+        foreach (app(\App\Services\TeamSelection\TeamSelectionContactService::class)->emails($invitation->player)
+            ->intersect(collect([$invitation->player?->email_2, $invitation->player?->email_3])->map(fn ($value) => mb_strtolower(trim((string) $value))))
+            ->reject(fn ($email) => $email === mb_strtolower(trim((string) $user?->email))) as $email) {
+            $payload = ['invitation_id' => $invitation->id, 'event_id' => $invitation->batch->event_id,
+                'created_by' => $invitation->batch->created_by, 'kind' => $kind, 'notification_only' => true,
+                'recipient_email' => $email, 'recipient_name' => $invitation->player?->full_name,
+                'related_type' => MastersInvitation::class, 'related_id' => $invitation->id];
+            $payload['payload_integrity'] = app(InvitationMailSecurity::class)->payloadIntegrity($payload);
+            $log = BulkEmailLog::create(['mail_type' => 'masters_invitation', 'related_type' => MastersInvitation::class,
+                'related_id' => $invitation->id, 'recipient_email' => $email, 'recipient_name' => $invitation->player?->full_name,
+                'status' => 'queued', 'payload' => $payload, 'queued_at' => now()]);
             $this->dispatchMastersInvitationLog($log->id, $invitation->batch->event_id);
         }
     }

@@ -38,16 +38,22 @@ class SendInterprovincialTrialInvitationEmailJob implements ShouldQueue
         }
         $invitation = InterprovincialTrialInvitation::with(['batch.event', 'categoryEvent.category', 'player'])->find($log->related_id);
         $kind = (string) data_get($log->payload, 'kind', 'initial');
+        $notificationOnly = (bool) data_get($log->payload, 'notification_only', false);
         $eligibleStates = $kind === 'initial'
-            ? ['queued', 'sending', 'failed']
+            ? ($notificationOnly ? ['queued', 'sending', 'failed', 'sent'] : ['queued', 'sending', 'failed'])
             : ['sent', InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT];
+        if ($notificationOnly && (! $invitation || ! app(\App\Services\TeamSelection\TeamSelectionContactService::class)
+            ->emails($invitation->player)->intersect(collect([$invitation->player?->email_2, $invitation->player?->email_3])
+                ->map(fn ($value) => mb_strtolower(trim((string) $value))))->contains(mb_strtolower(trim((string) $log->recipient_email))))) {
+            $log->markAsSkipped('The player contact changed after this notification was prepared.'); return;
+        }
         if (! $invitation || (int) $invitation->event_id !== $this->eventId || ! in_array($invitation->status, $eligibleStates, true)) {
             $log->markAsSkipped('Invitation is no longer eligible to send.'); return;
         }
         // SMTP is at-least-once: a worker can fail after transport acceptance but
         // before this state is committed. The stable log/dispatch keys prevent
         // separate queue requests; provider-level idempotency is unavailable.
-        if ($kind === 'initial') {
+        if ($kind === 'initial' && ! $notificationOnly) {
             $claimed = InterprovincialTrialInvitation::whereKey($invitation->id)->whereIn('status', $eligibleStates)->update(['status' => 'sending']);
             if (! $claimed) {
                 $log->markAsSkipped('Invitation lifecycle changed before sending.');
@@ -74,12 +80,12 @@ class SendInterprovincialTrialInvitationEmailJob implements ShouldQueue
         }
         try {
             $log->recordTransportResult($sent, $mailTransport->getSymfonyTransport(), $mailer);
-            if ($kind === 'initial') InterprovincialTrialInvitation::whereKey($invitation->id)->where('status', 'sending')->update(['status' => 'sent', 'sent_at' => now()]);
+            if ($kind === 'initial' && ! $notificationOnly) InterprovincialTrialInvitation::whereKey($invitation->id)->where('status', 'sending')->update(['status' => 'sent', 'sent_at' => now()]);
         } catch (Throwable) {
             // Once transport returned successfully, a receipt-write failure must not authorise another send.
             try {
                 $log->update(['status' => 'acceptance_unknown', 'sent_at' => now(), 'error_message' => 'Transport returned successfully, but receipt storage failed. Check the mail server before attempting another send.']);
-                if ($kind === 'initial') InterprovincialTrialInvitation::whereKey($invitation->id)->where('status', 'sending')->update(['status' => 'sent', 'sent_at' => now()]);
+                if ($kind === 'initial' && ! $notificationOnly) InterprovincialTrialInvitation::whereKey($invitation->id)->where('status', 'sending')->update(['status' => 'sent', 'sent_at' => now()]);
             } catch (Throwable) {
                 \Illuminate\Support\Facades\Log::critical('Trials invitation transport returned successfully but evidence could not be stored; do not resend without server verification.', ['log_id' => $log->id]);
             }
@@ -91,7 +97,7 @@ class SendInterprovincialTrialInvitationEmailJob implements ShouldQueue
         $log = BulkEmailLog::find($this->logId);
         if ($log && ! $log->sent_at && ! in_array($log->status, ['sending', 'acceptance_unknown'], true)) {
             $log->markAsFailed('The queued message could not be prepared. Review before retrying.');
-            if ((string) data_get($log->payload, 'kind', 'initial') === 'initial') {
+            if ((string) data_get($log->payload, 'kind', 'initial') === 'initial' && ! data_get($log->payload, 'notification_only', false)) {
                 InterprovincialTrialInvitation::whereKey($log->related_id)->where('event_id', $this->eventId)->whereIn('status', ['queued', 'sending', 'failed'])->whereNull('sent_at')->update(['status' => 'failed']);
             }
         }

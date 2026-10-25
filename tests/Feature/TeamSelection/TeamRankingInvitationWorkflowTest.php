@@ -1514,9 +1514,9 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $rankingPreview = $this->actingAs($manager)->postJson(
             route('backend.team-selection.event-roster-email.preview', $event),
             $rankingFilters,
-        )->assertOk()->assertJsonPath('count', 3);
+        )->assertOk()->assertJsonPath('count', 7);
         $this->assertEqualsCanonicalizing(
-            ['shared.contact@example.test', 'first-region@example.test', 'second-region@example.test'],
+            [...$parentEmails, 'shared.contact@example.test', 'first-region@example.test', 'second-region@example.test'],
             collect($rankingPreview->json('recipients'))->pluck('email')->all(),
         );
         $this->actingAs($manager)->postJson(route('backend.team-selection.event-roster-email.preview', $event), [
@@ -6383,6 +6383,46 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         if (isset($payload['player_id'])) $payload['player_ids'] = [$payload['player_id']];
         return $this->postJson(route($route), $payload + ['team_id' => $team->id, 'event_id' => $team->category->event_id]);
     }
+    public function test_optional_invitation_contacts_are_fingerprinted_and_receive_only_safe_notifications(): void
+    {
+        Queue::fake(); Mail::fake();
+        [$source] = $this->selectionSource();
+        $actor = User::factory()->create();
+        $import = app(TeamRankingImportService::class)->import($source, $actor);
+        $invitation = $import->invitations()->where('status', TeamSelectionInvitation::INVITED)->firstOrFail();
+        $invitation->player->update(['email_2' => 'second@example.test', 'email_3' => 'third@example.test']);
+        $invitation->player->users()->attach(User::factory()->create(['email' => 'second@example.test'])->id);
+        EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $actor->id]);
+        $this->actingAs($actor)->post(route('backend.team-selection.email.preview', [$source->event, $import]), [
+            'email_subject' => 'Contact invitation', 'email_message' => 'A reviewed player update.',
+            'registration_deadline' => now()->addDay()->format('Y-m-d H:i:s'),
+        ])->assertOk()->assertSee('second@example.test')->assertSee('third@example.test')
+            ->assertSee('Additional contact notification email');
+        $service = app(TeamSelectionInvitationService::class);
+        $details = ['response_deadline' => now()->addDay(), 'payment_deadline' => now()->addDays(2)];
+        $preview = $service->previewCampaign($import, $details);
+        $invitation->player->update(['email_3' => 'changed@example.test']);
+        try {
+            $service->send($import, $details + ['expected_campaign_hash' => $preview['hash']], $actor);
+            $this->fail('Changed additional contacts must invalidate invitation review.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('email_preview', $exception->errors());
+        }
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        $service->send($import, $details, $actor);
+        $this->assertDatabaseCount('bulk_email_logs', 4);
+        $copy = BulkEmailLog::where('recipient_email', 'second@example.test')->sole();
+        $this->assertTrue($copy->payload['campaign']['notification_only']);
+        $this->assertSame((new TeamSelectionInvitationMail($invitation->fresh(), $copy->payload['kind'], $copy->payload['campaign']))->render(), $copy->payload['rendered_html']);
+        $this->assertStringNotContainsString('action=decline', $copy->payload['rendered_html']);
+        $this->assertStringNotContainsString('team-selection', $copy->payload['rendered_html']);
+        $invitation->player->update(['email_2' => null]);
+        (new SendTeamSelectionInvitationEmailJob($copy->id, $source->event_id))->handle();
+        $this->assertSame('skipped', $copy->fresh()->status);
+        $this->assertDatabaseCount('user_players', 1);
+        Mail::assertNothingSent();
+    }
+
     private function selectionSource(): array
     {
         $actor = User::factory()->create();

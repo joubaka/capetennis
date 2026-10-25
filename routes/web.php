@@ -971,6 +971,8 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     'event/{event}/settings',
     [EventSettingsController::class, 'update']
   )->name('admin.events.settings.update');
+  Route::put('event/{event}/settings/point-sharing', [\App\Http\Controllers\Backend\EventPointSharingController::class, 'update'])
+    ->name('admin.events.point-sharing.update');
   Route::get(
     'event/{event}/settings/users',
     [EventSettingsController::class, 'searchUsers']

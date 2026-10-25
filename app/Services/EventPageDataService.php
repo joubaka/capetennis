@@ -35,7 +35,7 @@ final class EventPageDataService
     public function prepareRegions(Event $event): void
     {
         $event->regions->load(['clothingItems.sizes', 'teams' => fn ($query) => $query
-            ->when($event->isTeam() && !$event->isInterprovincialTrials(), fn ($teams) => $teams->whereIn('teams.id', app(EventTeamScope::class)->query($event)->select('teams.id')))
+            ->when($event->requiresEventScopedRegionTeams(), fn ($teams) => $teams->whereIn('teams.id', app(EventTeamScope::class)->query($event)->select('teams.id')))
             ->where(fn ($teams) => $teams->whereNull('category_event_id')
                 ->orWhereHas('category', fn ($category) => $category->where('event_id', $event->id)))
             ->with(['category.category', 'team_players.player', 'team_players_no_profile.profile'])]);

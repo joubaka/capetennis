@@ -1,6 +1,7 @@
 @php($typeView = $event->frontend_type_view)
+@php($typeTemplate = \App\Support\EventTypePresentation::template($event))
 
-@if($event->isInterprovincialTrials())
+@if($typeTemplate === 'interprovincial-trials')
   @include('frontend.event.eventTypes.interprovincial-trials', ['publishedCategories' => $interprovincialTrialCategories ?? collect()])
 @elseif($typeView === 'masters')
   @include('frontend.event.eventTypes.masters', ['invitations' => $mastersInvitations ?? collect()])

@@ -25,6 +25,7 @@ final class ScheduleAuditService
         $rows = [];
         $unscheduled = 0;
         foreach ($individual->concat($team) as $fixture) {
+            $fixture->setRelation('draw', $draws[$fixture->draw_id]);
             $isTeam = $fixture instanceof TeamFixture;
             $slot = $isTeam ? $fixture : $fixture->orderOfPlay;
             $time = $isTeam ? $fixture->scheduled_at : $slot?->time;
@@ -54,7 +55,7 @@ final class ScheduleAuditService
             if (count($issues) >= 200) return;
             $issues[] = ['severity' => $severity, 'code' => $code, 'message' => $message, 'matches' => array_map(fn ($row) => [
                 'label' => $row['label'], 'time' => $row['start']->format('Y-m-d H:i').'–'.$row['end']->format('H:i').' · '.$row['venue_name'].' / Court '.$row['court'],
-                'url' => route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $row['start']->toDateString()]).'#match-'.str_replace(':', '-', $row['key']),
+                'url' => route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $row['start']->toDateString(), 'focus' => $row['key']]).'#match-'.str_replace(':', '-', $row['key']),
             ], $own), 'external' => count($own) !== count($bookings)];
         };
         foreach ($rows as $row) {
@@ -81,7 +82,7 @@ final class ScheduleAuditService
                 ->where(fn ($query) => $query->whereHas('orderOfPlay', fn ($q) => $q->whereIn('venue_id', $venues))
                     ->orWhereHas('registration1.players', fn ($q) => $q->whereIn('players.id', $profiles))
                     ->orWhereHas('registration2.players', fn ($q) => $q->whereIn('players.id', $profiles)))->limit(10001)->get();
-            $foreignTeam = TeamFixture::withoutEagerLoads()->with(['teamTie', 'fixturePlayers.noProfile1', 'fixturePlayers.noProfile2'])
+            $foreignTeam = TeamFixture::withoutEagerLoads()->with(['draw', 'teamTie', 'fixturePlayers.noProfile1', 'fixturePlayers.noProfile2'])
                 ->whereHas('draw', fn ($query) => $query->where('event_id', '!=', $event->id))->whereBetween('scheduled_at', [$start, $end])
                 ->where(fn ($query) => $query->whereIn('venue_id', $venues)->orWhereHas('fixturePlayers', fn ($q) => $q->whereIn('team1_id', $profiles)->orWhereIn('team2_id', $profiles)->orWhereIn('team1_no_profile_id', $noProfiles)->orWhereIn('team2_no_profile_id', $noProfiles)
                     ->orWhereHas('noProfile1', fn ($linked) => $linked->whereIn('player_profile', $profiles))->orWhereHas('noProfile2', fn ($linked) => $linked->whereIn('player_profile', $profiles))))->limit(10001)->get();

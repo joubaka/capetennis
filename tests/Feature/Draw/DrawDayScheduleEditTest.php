@@ -217,7 +217,7 @@ class DrawDayScheduleEditTest extends TestCase
         $url=route('backend.event-venue-schedule.calendar.edit-day',$event);
         $payload=['date'=>'2026-10-11','draw_id'=>$draw->id,'venue_ids'=>[$target->id],'start_time'=>'09:00','end_time'=>'18:00',
             'duration'=>60,'player_rest'=>0,'court_gap'=>0,'action'=>'preview'];
-        $this->actingAs($admin)->get(route('backend.event-venue-schedule.calendar',['event'=>$event->id,'draw_id'=>$draw->id,'date'=>'all']))->assertOk()->assertDontSee('Change venues / reschedule this draw');
+        $this->actingAs($admin)->get(route('backend.event-venue-schedule.calendar',['event'=>$event->id,'draw_id'=>$draw->id,'date'=>'all']))->assertOk()->assertDontSee('Edit saved times - this draw and day');
         $this->actingAs($admin)->get($url.'?'.http_build_query(['date'=>'2026-10-11','draw_id'=>$draw->id]))->assertOk()->assertSee('Gericke')->assertSee('Charlie Hofmeyr')->assertSee('Current saved schedule');
         $response=$this->post($url,$payload)->assertOk()->assertSee('Proposed schedule')->assertSee('Save preview');
         if (getenv('CT_DAY_EDIT_BROWSER_FIXTURE') === '1') {

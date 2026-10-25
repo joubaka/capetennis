@@ -78,6 +78,7 @@ class RetryMastersInvitationEmails
             ->where('mail_type', 'masters_invitation')
             ->where('related_type', MastersInvitation::class)
             ->where('related_id', $invitation->id)
+            ->where('recipient_email', $log->recipient_email)
             ->where('payload->kind', $log->payload['kind'])
             ->where('id', '!=', $log->id)
             ->whereIn('status', ['queued', 'sent']);

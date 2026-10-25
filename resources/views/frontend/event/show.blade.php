@@ -501,8 +501,14 @@ $(document).on('click', '.deleteFileButton', function (e) {
     $.post(url, {
       _method: 'DELETE',
       _token: $('meta[name="csrf-token"]').attr('content')
-    }).done(() => {
+    }).done((data) => {
+      if (!data || data.success !== true) {
+        Swal.fire('Error', data?.msg || 'Delete failed. Please try again.', 'error');
+        return;
+      }
       location.reload();
+    }).fail((response) => {
+      Swal.fire('Error', response.responseJSON?.msg || 'The file could not be deleted. Please try again.', 'error');
     });
   });
 });

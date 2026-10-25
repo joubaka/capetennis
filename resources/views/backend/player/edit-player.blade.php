@@ -34,6 +34,7 @@
     </div></div></div>
     <div class="card mb-3"><div class="card-header"><h5 class="mb-0">Contact details</h5></div><div class="card-body"><div class="row g-3">
       <div class="col-md-6"><label for="player-email" class="form-label">Email</label><input class="form-control" name="email" type="email" value="{{ old('email', $player->email) }}" id="player-email" maxlength="255" autocomplete="email"></div>
+@include('frontend.player.partials.additional-emails', ['contactPlayer' => $player])
       <div class="col-md-6"><label for="player-cell" class="form-label">Cell number</label><input class="form-control" type="tel" name="cell_nr" value="{{ old('cell_nr', $player->cellNr) }}" id="player-cell" maxlength="50" autocomplete="tel"></div>
     </div></div></div>
     <div class="card mb-3"><div class="card-header"><h5 class="mb-0">Coach and development</h5></div><div class="card-body">

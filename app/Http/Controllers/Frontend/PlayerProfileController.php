@@ -36,6 +36,8 @@ class PlayerProfileController extends Controller
             'gender'      => 'required|in:1,2',
             'cellNr'      => 'nullable|string|max:50',
             'email'       => 'nullable|email|max:255',
+            'email_2' => 'sometimes|nullable|email|max:255',
+            'email_3' => 'sometimes|nullable|email|max:255',
         ], [
             'dateOfBirth.required' => 'Date of birth is required.',
             'dateOfBirth.before'   => 'Date of birth must be in the past.',
@@ -51,6 +53,7 @@ class PlayerProfileController extends Controller
             $result = app(\App\Services\InterprovincialTrials\NominationProfileService::class)->complete($trialNomination->id, $user, [
                 'dateOfBirth' => $validated['dateOfBirth'], 'gender' => (int) $validated['gender'],
                 'cellNr' => $validated['cellNr'] ?? null, 'email' => $validated['email'] ?? null,
+                ...array_intersect_key($validated, array_flip(['email_2', 'email_3'])),
             ]);
             $request->session()->forget('trial_nomination_profile');
 
@@ -81,6 +84,7 @@ class PlayerProfileController extends Controller
                 'gender'      => $gender,
                 'cellNr'      => $validated['cellNr'] ?? null,
                 'email'       => $validated['email'] ?? null,
+                ...array_intersect_key($validated, array_flip(['email_2', 'email_3'])),
                 'userId'      => $user->id,
             ]);
         });
@@ -126,6 +130,8 @@ class PlayerProfileController extends Controller
                 'surname' => $player->surname,
                 'full_name' => $player->name . ' ' . $player->surname,
                 'email' => $player->email,
+                'email_2' => $player->email_2,
+                'email_3' => $player->email_3,
                 'cellNr' => $player->cellNr,
                 'dateOfBirth' => $player->dateOfBirth ? Carbon::parse($player->dateOfBirth)->format('Y-m-d') : '',
                 'gender' => $player->gender == 1 ? 'Male' : ($player->gender == 2 ? 'Female' : ''),
@@ -176,6 +182,8 @@ class PlayerProfileController extends Controller
             'name' => 'required|string|max:255',
             'surname' => 'required|string|max:255',
             'email' => 'nullable|email|max:255',
+            'email_2' => 'sometimes|nullable|email|max:255',
+            'email_3' => 'sometimes|nullable|email|max:255',
             'cellNr' => 'required|string|max:50',
             'dateOfBirth' => 'required|date|before:today',
             'gender' => 'required|in:Male,Female',

@@ -20,6 +20,8 @@ class Player extends Model
     'gender',
     'userId',
     'email',
+    'email_2',
+    'email_3',
     'dateOfBirth',
     'coach',
     'is_player_of_colour',
@@ -37,6 +39,8 @@ class Player extends Model
   ];
 
   protected $hidden = [
+    'email_2',
+    'email_3',
     'identity_name_hash',
     'identity_email_dob_hash',
     'identity_cell_dob_hash',

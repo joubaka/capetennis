@@ -85,6 +85,13 @@ class SendTeamSelectionInvitationEmailJob implements ShouldQueue
         $currentContactEmail = $invitation
             ? app(TeamSelectionContactService::class)->primaryEmail($invitation->player)
             : null;
+        $currentRecipient = $invitation && app(TeamSelectionContactService::class)->emails($invitation->player)
+            ->contains(mb_strtolower(trim((string) $log->recipient_email)));
+        $notificationOnly = (bool) data_get($log->payload, 'campaign.notification_only', false);
+        if ($notificationOnly) {
+            $currentRecipient = $currentRecipient && collect([$invitation?->player?->email_2, $invitation?->player?->email_3])
+                ->map(fn ($value) => mb_strtolower(trim((string) $value)))->contains($log->recipient_email);
+        }
         $customContextIsStale = $isCustomEmail && (
             ! $invitation?->selectionImport
             || $invitation->selectionImport->status !== 'sent'
@@ -92,10 +99,11 @@ class SendTeamSelectionInvitationEmailJob implements ShouldQueue
             || (int) $invitation->import_id !== (int) $invitation->selectionImport->id
             || $invitation->roster_rank === null
             || ! is_string($currentContactEmail)
-            || ! hash_equals((string) $log->recipient_email, $currentContactEmail)
+            || (! $notificationOnly && ! hash_equals((string) $log->recipient_email, $currentContactEmail))
             || app(TeamSelectionInvitationService::class)->customEmailKind($invitation) !== $kind
         );
         if (! $invitation || (int) $invitation->event_id !== $this->eventId
+            || ! $currentRecipient
             || ! in_array($invitation->status, $eligibleStatuses, true)
             || $customContextIsStale
             || ($customRegistrationEmail && ! app(ExternalTeamRosterService::class)->registrationIsOpen($invitation->selectionImport->event))
