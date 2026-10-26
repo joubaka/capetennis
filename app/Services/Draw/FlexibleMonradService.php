@@ -42,7 +42,7 @@ final class FlexibleMonradService
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
             $this->editable($draw);
             CategoryEvent::whereKey($draw->category_event_id)->lockForUpdate()->firstOrFail();
-            abort_if($draw->event->isInterprovincialTrials() && ! $addPaidEntry, 422, 'Trials players must be added as nominated paid entries.');
+            abort_if($draw->event->isInterprovincialTrials() && ! $addPaidEntry, 422, 'Trials players must be added as paid entries.');
             $record = FlexibleMonradDraw::where('draw_id', $draw->id)->first();
             $this->revision($record, $revision);
             abort_if($record?->graph || $draw->drawFixtures()->exists(), 409, 'Use Edit starting positions before adding players. Existing results and schedules must be preserved.');

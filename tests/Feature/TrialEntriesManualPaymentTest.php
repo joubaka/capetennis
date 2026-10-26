@@ -55,19 +55,19 @@ class TrialEntriesManualPaymentTest extends TestCase
         return route('admin.category.addPlayer', $category ?? $this->category);
     }
 
-    public function test_admin_can_add_paid_nominee_after_draw_creation_without_changing_fixtures(): void
+    public function test_admin_can_add_any_system_player_paid_after_draw_creation_without_changing_fixtures(): void
     {
         \Illuminate\Support\Facades\Event::fake([\App\Domain\Entries\Events\EntryCreated::class]);
         $draw = Draw::factory()->create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id]);
         \App\Models\Fixture::factory()->create(['draw_id' => $draw->id]);
         $fixtures = $draw->drawFixtures()->get()->toArray();
         $player = Player::factory()->create();
-        EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id]);
         $payload = ['registration_id' => $player->id, 'collection_status' => 'paid_privately'];
         $this->postJson($this->endpoint(), $payload)->assertOk()->assertJsonPath('admin_payment_status', 'paid');
         $entry = $this->category->categoryEventRegistrations()->whereHas('registration.players', fn ($q) => $q->whereKey($player->id))->sole();
         $this->assertTrue($entry->is_paid);
         $this->assertSame($this->admin->id, $entry->user_id);
+        $this->assertDatabaseMissing('event_nominations', ['event_id' => $this->event->id, 'player_id' => $player->id]);
         $this->assertDatabaseHas('transactions_pf', ['registration_id' => $entry->registration_id, 'amount_gross' => 0, 'amount_net' => 0]);
         $this->postJson($this->endpoint(), $payload)->assertUnprocessable();
         $this->assertDatabaseCount('category_event_registrations', 2);
@@ -79,13 +79,11 @@ class TrialEntriesManualPaymentTest extends TestCase
         $this->assertSame($fixtures, $draw->drawFixtures()->get()->toArray());
     }
 
-    public function test_after_draw_paid_admin_exception_preserves_nomination_lock_and_event_authorization(): void
+    public function test_after_draw_paid_admin_exception_preserves_lock_and_event_authorization(): void
     {
         Draw::factory()->create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id]);
         $player = Player::factory()->create();
         $payload = ['registration_id' => $player->id, 'collection_status' => 'paid_privately'];
-        $this->postJson($this->endpoint(), $payload)->assertUnprocessable(); // No current nomination.
-        EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id]);
         $this->postJson($this->endpoint(), ['registration_id' => $player->id])->assertUnprocessable(); // Unpaid admin add still follows before-draw gate.
         $this->category->update(['locked_at' => now()]);
         $this->postJson($this->endpoint(), $payload)->assertForbidden();
@@ -96,6 +94,15 @@ class TrialEntriesManualPaymentTest extends TestCase
         $this->assertDatabaseCount('category_event_registrations', 1);
         $this->assertDatabaseCount('transactions_pf', 0);
         $this->assertDatabaseMissing('player_registrations', ['player_id' => $player->id]);
+    }
+
+    public function test_public_and_unpaid_admin_paths_still_require_a_current_nomination(): void
+    {
+        $player = Player::factory()->create();
+        $this->postJson($this->endpoint(), ['registration_id' => $player->id])->assertUnprocessable();
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Only a current nominee in this Trials category may register.');
+        app(\App\Domain\Entries\Services\EntryEligibilityService::class)->assertCanRegister($this->category, $player->id);
     }
 
     public function test_public_registration_remains_closed_after_trials_draw_creation(): void

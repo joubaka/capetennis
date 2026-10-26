@@ -105,7 +105,7 @@ class FlexibleMonradTest extends TestCase
         $this->assertDatabaseMissing('flexible_monrad_draws', ['draw_id' => $draw->id]);
     }
 
-    public function test_trials_draw_exposes_paid_player_action_and_adds_only_current_nominees(): void
+    public function test_trials_draw_exposes_paid_player_action_and_adds_any_system_player(): void
     {
         [$draw] = $this->setupDraw();
         \Illuminate\Support\Facades\Event::fake([\App\Domain\Entries\Events\EntryCreated::class]);
@@ -116,9 +116,8 @@ class FlexibleMonradTest extends TestCase
             ->assertViewHas('config', fn ($config) => $config['canAddPlayer'] && $config['paidEntryRequired']);
         $player = Player::factory()->create();
         $payload = ['player_id' => $player->id, 'revision' => 0, 'add_paid_entry' => true];
-        $this->postJson(route('flexible-monrad.players.add', $draw), $payload)->assertUnprocessable();
-        \App\Models\EventNomination::create(['event_id' => $draw->event_id, 'category_event_id' => $draw->category_event_id, 'player_id' => $player->id]);
         $this->postJson(route('flexible-monrad.players.add', $draw), $payload)->assertOk()->assertJsonCount(5, 'players');
+        $this->assertDatabaseMissing('event_nominations', ['event_id' => $draw->event_id, 'player_id' => $player->id]);
         $entry = $draw->categoryEvent->categoryEventRegistrations()->whereHas('registration.players', fn ($q) => $q->whereKey($player->id))->sole();
         $this->assertSame('paid', $entry->admin_payment_status);
         $this->assertTrue(app(FlexibleMonradService::class)->eligible($draw->fresh())->whereKey($entry->registration_id)->exists());

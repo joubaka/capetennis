@@ -31,7 +31,7 @@
 <dialog id="fm-add-player-dialog" aria-labelledby="fm-add-player-title">
   <form method="dialog"><button class="fm-close" aria-label="Close system player search">×</button></form>
   <h2 id="fm-add-player-title">{{ ($config['paidEntryRequired'] ?? false) ? 'Add paid player' : 'Add system player' }}</h2>
-  <p class="fm-help">{{ ($config['paidEntryRequired'] ?? false) ? 'Trials players must be current nominees and added as paid event entries. Existing checkouts must be handled on the Entries page.' : 'Add an existing player to this draw only, or select the paid-entry option below to also add them to the event entries.' }} Then place them in a starting position.</p>
+  <p class="fm-help">{{ ($config['paidEntryRequired'] ?? false) ? 'Add any system player as a paid event entry. Existing checkouts must be handled on the Entries page.' : 'Add an existing player to this draw only, or select the paid-entry option below to also add them to the event entries.' }} Then place them in a starting position.</p>
   <label><input id="fm-add-paid-entry" type="checkbox"> Add as paid entry — paid outside the app</label>
   <p class="fm-help">Select this only after receiving payment outside the app. It also adds the player to the event's category entries using the existing private-payment record. The category must be unlocked.</p>
   <form id="fm-system-player-search-form"><label for="fm-system-player-search">Player name</label><input id="fm-system-player-search" type="search" minlength="2" maxlength="100" required placeholder="At least 2 characters"><button type="submit">Search system players</button></form>
