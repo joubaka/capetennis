@@ -105,6 +105,25 @@ class FlexibleMonradTest extends TestCase
         $this->assertDatabaseMissing('flexible_monrad_draws', ['draw_id' => $draw->id]);
     }
 
+    public function test_trials_draw_exposes_paid_player_action_and_adds_only_current_nominees(): void
+    {
+        [$draw] = $this->setupDraw();
+        \Illuminate\Support\Facades\Event::fake([\App\Domain\Entries\Events\EntryCreated::class]);
+        $type = DB::table('eventtypes')->insertGetId(['name' => 'Trials paid draw test', 'code' => \App\Models\EventType::INTERPROVINCIAL_TRIALS_CODE, 'type' => \App\Models\EventType::INDIVIDUAL]);
+        $draw->event->update(['eventType' => $type, 'entryFee' => 123.45]);
+        $draw->settings->update(['draw_format_id' => \App\Models\DrawFormats::where('name', 'Flexible Monrad')->sole()->id]);
+        $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()->assertSee('Add paid player')
+            ->assertViewHas('config', fn ($config) => $config['canAddPlayer'] && $config['paidEntryRequired']);
+        $player = Player::factory()->create();
+        $payload = ['player_id' => $player->id, 'revision' => 0, 'add_paid_entry' => true];
+        $this->postJson(route('flexible-monrad.players.add', $draw), $payload)->assertUnprocessable();
+        \App\Models\EventNomination::create(['event_id' => $draw->event_id, 'category_event_id' => $draw->category_event_id, 'player_id' => $player->id]);
+        $this->postJson(route('flexible-monrad.players.add', $draw), $payload)->assertOk()->assertJsonCount(5, 'players');
+        $entry = $draw->categoryEvent->categoryEventRegistrations()->whereHas('registration.players', fn ($q) => $q->whereKey($player->id))->sole();
+        $this->assertSame('paid', $entry->admin_payment_status);
+        $this->assertTrue(app(FlexibleMonradService::class)->eligible($draw->fresh())->whereKey($entry->registration_id)->exists());
+    }
+
     public function test_admin_can_add_paid_entry_after_draw_creation_and_reuse_draw_only_identity(): void
     {
         [$draw, $draft] = $this->setupDraw();

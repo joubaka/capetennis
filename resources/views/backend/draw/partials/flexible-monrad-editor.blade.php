@@ -10,7 +10,7 @@
     <label>Starting bracket <select id="fm-size"><option>4</option><option>8</option><option>16</option><option>32</option><option>64</option></select></label>
     <span class="fm-help" title="The suggested size is the smallest bracket that fits the eligible players. Empty opening paths can be marked as byes.">Choose the smallest bracket that fits all players.</span>
     <button type="button" id="fm-undo">Undo</button>
-    <button type="button" id="fm-add-player" hidden>Add system player</button>
+    <button type="button" id="fm-add-player" hidden>{{ ($config['paidEntryRequired'] ?? false) ? 'Add paid player' : 'Add system player' }}</button>
     <button type="button" id="fm-byes">Mark remaining empty paths as byes</button>
     <button type="button" id="fm-example" hidden>Load 22-player example</button>
     <span class="fm-spacer"></span>
@@ -30,7 +30,7 @@
 </main>
 <dialog id="fm-add-player-dialog" aria-labelledby="fm-add-player-title">
   <form method="dialog"><button class="fm-close" aria-label="Close system player search">×</button></form>
-  <h2 id="fm-add-player-title">Add system player</h2>
+  <h2 id="fm-add-player-title">{{ ($config['paidEntryRequired'] ?? false) ? 'Add paid player' : 'Add system player' }}</h2>
   <p class="fm-help">{{ ($config['paidEntryRequired'] ?? false) ? 'Trials players must be current nominees and added as paid event entries. Existing checkouts must be handled on the Entries page.' : 'Add an existing player to this draw only, or select the paid-entry option below to also add them to the event entries.' }} Then place them in a starting position.</p>
   <label><input id="fm-add-paid-entry" type="checkbox"> Add as paid entry — paid outside the app</label>
   <p class="fm-help">Select this only after receiving payment outside the app. It also adds the player to the event's category entries using the existing private-payment record. The category must be unlocked.</p>

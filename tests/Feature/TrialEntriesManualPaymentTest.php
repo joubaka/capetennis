@@ -118,7 +118,7 @@ class TrialEntriesManualPaymentTest extends TestCase
         $this->assertDatabaseCount('category_event_registrations', 1);
         $this->assertDatabaseCount('registration_orders', 1);
         $this->assertDatabaseCount('registration_manual_receipts', 1);
-        $this->assertDatabaseCount('transactions_pf', 1);
+        $this->assertDatabaseCount('transactions_pf', 0);
         $this->assertDatabaseCount('wallet_transactions', 0);
         $this->assertDatabaseHas('registration_manual_receipts', ['order_id' => $this->order->id, 'amount' => '123.45']);
     }
@@ -248,11 +248,12 @@ class TrialEntriesManualPaymentTest extends TestCase
         $this->assertFalse($this->entry->fresh()->is_paid);
     }
 
-    public function test_category_draw_and_withdrawn_entry_protections_are_preserved(): void
+    public function test_category_lock_and_withdrawn_entry_protections_are_preserved_after_draw_creation(): void
     {
-        $draw = Draw::factory()->create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id]);
-        $this->postJson($this->endpoint(), $this->payload())->assertUnprocessable();
-        $draw->delete();
+        Draw::factory()->create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id]);
+        $this->category->update(['locked_at' => now()]);
+        $this->postJson($this->endpoint(), $this->payload())->assertForbidden();
+        $this->category->update(['locked_at' => null]);
         $this->entry->update(['status' => 'withdrawn', 'withdrawn_at' => now()]);
         $this->postJson($this->endpoint(), $this->payload())->assertUnprocessable();
         $this->assertDatabaseCount('registration_manual_receipts', 0);
