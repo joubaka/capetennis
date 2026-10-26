@@ -42,7 +42,7 @@ final class FlexibleMonradService
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
             $this->editable($draw);
             CategoryEvent::whereKey($draw->category_event_id)->lockForUpdate()->firstOrFail();
-            abort_if($draw->event->isInterprovincialTrials(), 422, 'Use the Trials nomination and registration workflow to add a player.');
+            abort_if($draw->event->isInterprovincialTrials() && ! $addPaidEntry, 422, 'Trials players must be added as nominated paid entries.');
             $record = FlexibleMonradDraw::where('draw_id', $draw->id)->first();
             $this->revision($record, $revision);
             abort_if($record?->graph || $draw->drawFixtures()->exists(), 409, 'Use Edit starting positions before adding players. Existing results and schedules must be preserved.');
@@ -497,7 +497,8 @@ final class FlexibleMonradService
         }
         // The saved workflow, never a submitted mode, controls progression.
         $additional = FlexibleMonradDraw::where('draw_id', $draw->id)->first()?->draft['additional_registration_ids'] ?? [];
-        return ['size' => (int) $draft['size'], 'slots' => $slots, 'additional_registration_ids' => $additional]
+        return ['size' => (int) $draft['size'], 'slots' => $slots]
+            + ($additional ? ['additional_registration_ids' => $additional] : [])
             + ($draw->settings?->workflow ? ['mode' => $draw->settings->workflow] : []);
     }
 

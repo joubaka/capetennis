@@ -71,7 +71,7 @@ class EntriesManualPaymentService
                 $this->conflict();
             }
             app(TrialProgrammeService::class)->authorize($category->event, $actor);
-            app(EntryEligibilityService::class)->assertAdminCategoryEligible($category, $playerId);
+            app(EntryEligibilityService::class)->assertAdminCategoryEligible($category, $playerId, $actor, true);
 
             if (!isset($confirmation['existing_order_id'])
                 && app(\App\Domain\Payments\Services\RegistrationPaymentService::class)->expireUnpaidCheckout($order)) {

@@ -55,6 +55,74 @@ class TrialEntriesManualPaymentTest extends TestCase
         return route('admin.category.addPlayer', $category ?? $this->category);
     }
 
+    public function test_admin_can_add_paid_nominee_after_draw_creation_without_changing_fixtures(): void
+    {
+        \Illuminate\Support\Facades\Event::fake([\App\Domain\Entries\Events\EntryCreated::class]);
+        $draw = Draw::factory()->create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id]);
+        \App\Models\Fixture::factory()->create(['draw_id' => $draw->id]);
+        $fixtures = $draw->drawFixtures()->get()->toArray();
+        $player = Player::factory()->create();
+        EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id]);
+        $payload = ['registration_id' => $player->id, 'collection_status' => 'paid_privately'];
+        $this->postJson($this->endpoint(), $payload)->assertOk()->assertJsonPath('admin_payment_status', 'paid');
+        $entry = $this->category->categoryEventRegistrations()->whereHas('registration.players', fn ($q) => $q->whereKey($player->id))->sole();
+        $this->assertTrue($entry->is_paid);
+        $this->assertSame($this->admin->id, $entry->user_id);
+        $this->assertDatabaseHas('transactions_pf', ['registration_id' => $entry->registration_id, 'amount_gross' => 0, 'amount_net' => 0]);
+        $this->postJson($this->endpoint(), $payload)->assertUnprocessable();
+        $this->assertDatabaseCount('category_event_registrations', 2);
+        $this->assertDatabaseCount('registrations', 2);
+        $this->assertDatabaseCount('transactions_pf', 1);
+        $this->assertDatabaseCount('registration_orders', 1);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->assertDatabaseCount('registration_manual_receipts', 0);
+        $this->assertSame($fixtures, $draw->drawFixtures()->get()->toArray());
+    }
+
+    public function test_after_draw_paid_admin_exception_preserves_nomination_lock_and_event_authorization(): void
+    {
+        Draw::factory()->create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id]);
+        $player = Player::factory()->create();
+        $payload = ['registration_id' => $player->id, 'collection_status' => 'paid_privately'];
+        $this->postJson($this->endpoint(), $payload)->assertUnprocessable(); // No current nomination.
+        EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id]);
+        $this->postJson($this->endpoint(), ['registration_id' => $player->id])->assertUnprocessable(); // Unpaid admin add still follows before-draw gate.
+        $this->category->update(['locked_at' => now()]);
+        $this->postJson($this->endpoint(), $payload)->assertForbidden();
+        $this->category->update(['locked_at' => null]);
+        $foreignAdmin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => Event::factory()->create()->id, 'user_id' => $foreignAdmin->id]);
+        $this->actingAs($foreignAdmin)->postJson($this->endpoint(), $payload)->assertForbidden();
+        $this->assertDatabaseCount('category_event_registrations', 1);
+        $this->assertDatabaseCount('transactions_pf', 0);
+        $this->assertDatabaseMissing('player_registrations', ['player_id' => $player->id]);
+    }
+
+    public function test_public_registration_remains_closed_after_trials_draw_creation(): void
+    {
+        Draw::factory()->create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id]);
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Trials entries may only be added before the category draw is created.');
+        app(\App\Domain\Entries\Services\EntryEligibilityService::class)->assertCanRegister($this->category, $this->player->id);
+    }
+
+    public function test_existing_checkout_can_be_confirmed_once_by_admin_after_draw_creation(): void
+    {
+        Draw::factory()->create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id]);
+        $this->postJson($this->endpoint(), $this->payload(false))->assertStatus(409)
+            ->assertJsonPath('existing_checkout.amount', '123.45');
+        foreach ([1, 2] as $attempt) $this->postJson($this->endpoint(), $this->payload())->assertOk();
+        $this->assertSame($this->payer->id, $this->order->fresh()->user_id);
+        $this->assertSame($this->payer->id, $this->entry->fresh()->user_id);
+        $this->assertTrue($this->entry->fresh()->is_paid);
+        $this->assertDatabaseCount('category_event_registrations', 1);
+        $this->assertDatabaseCount('registration_orders', 1);
+        $this->assertDatabaseCount('registration_manual_receipts', 1);
+        $this->assertDatabaseCount('transactions_pf', 1);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->assertDatabaseHas('registration_manual_receipts', ['order_id' => $this->order->id, 'amount' => '123.45']);
+    }
+
     public function test_entries_add_paid_player_resets_abandoned_450_rand_interpro_handoff(): void
     {
         $this->order->forceFill(['total_fee' => 450, 'payfast_amount_due' => 450,

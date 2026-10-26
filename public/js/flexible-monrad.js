@@ -467,7 +467,7 @@
     $('fm-size').value = draft.size;
     $('fm-add-player').hidden = !config.canAddPlayer || state.generated || state.published || state.locked;
     $('fm-add-player').disabled = !editable();
-    $('fm-add-paid-entry').disabled = busy;
+    $('fm-add-paid-entry').disabled = busy || config.paidEntryRequired;
     const status = $('fm-status');
     if (status) {
       status.textContent = state.locked
@@ -701,7 +701,7 @@
     if (!editable()) return;
     $('fm-system-player-error').textContent = '';
     $('fm-system-player-results').replaceChildren();
-    $('fm-add-paid-entry').checked = false;
+    $('fm-add-paid-entry').checked = !!config.paidEntryRequired;
     $('fm-add-player-dialog').showModal();
     $('fm-system-player-search').focus();
   });

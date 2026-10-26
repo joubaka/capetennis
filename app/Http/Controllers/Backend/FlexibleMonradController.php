@@ -195,8 +195,8 @@ class FlexibleMonradController extends Controller
             'setupUrl' => $public ? null : route('draw.setup.show', $draw),
             'demo' => false, 'readOnly' => $public,
             'canEdit' => ! $public && auth()->user()->can('view', $draw),
-            'canAddPlayer' => ! $public && (auth()->user()->hasRole('super-user') || auth()->user()->is_event_admin($draw->event_id))
-                && ! $draw->event->isInterprovincialTrials(),
+            'canAddPlayer' => ! $public && (auth()->user()->hasRole('super-user') || auth()->user()->is_event_admin($draw->event_id)),
+            'paidEntryRequired' => ! $public && $draw->event->isInterprovincialTrials(),
             'canScore' => ! $public && auth()->user()->can('saveScore', $draw),
             'canPublish' => ! $public && auth()->user()->can('publish', $draw),
             'canPrepareWithdrawalRedraw' => ! $public && auth()->user()->can('prepareWithdrawalRedraw', $draw),

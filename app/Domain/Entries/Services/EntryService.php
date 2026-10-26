@@ -99,7 +99,7 @@ class EntryService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            $this->eligibility->assertCanAddAdmin($lockedCategoryEvent, $playerId);
+            $this->eligibility->assertCanAddAdmin($lockedCategoryEvent, $playerId, $actingUser, $collectionStatus === 'paid_privately');
             if ($lockedCategoryEvent->event->isInterprovincialTrials() && (float) $lockedCategoryEvent->event->entryFee > 0 && $collectionStatus !== 'paid_privately') {
                 throw ValidationException::withMessages(['collection_status' => 'Receive and record the Trials payment before creating a paid administrative entry, or use the nominee checkout.']);
             }
