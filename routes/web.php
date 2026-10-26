@@ -1372,6 +1372,8 @@ Route::delete(
   Route::post('draw/{draw}/setup', [\App\Http\Controllers\Backend\DrawSetupController::class, 'store'])->name('draw.setup.store');
   Route::get('draw/{draw}/flexible-monrad', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'show'])->name('flexible-monrad.show');
   Route::put('draw/{draw}/flexible-monrad', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'save'])->name('flexible-monrad.save');
+  Route::get('draw/{draw}/flexible-monrad/players', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'searchPlayers'])->name('flexible-monrad.players.search');
+  Route::post('draw/{draw}/flexible-monrad/players', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'addPlayer'])->name('flexible-monrad.players.add');
   Route::post('draw/{draw}/flexible-monrad/generate', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'generate'])->name('flexible-monrad.generate');
   Route::post('draw/{draw}/flexible-monrad/publish', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'publish'])->name('flexible-monrad.publish');
   Route::post('draw/{draw}/flexible-monrad/reopen', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'reopen'])->name('flexible-monrad.reopen');

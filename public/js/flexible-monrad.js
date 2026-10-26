@@ -465,6 +465,9 @@
     draft.slots = Object.assign({}, draft.slots);
     $('fm-board').replaceChildren();
     $('fm-size').value = draft.size;
+    $('fm-add-player').hidden = !config.canAddPlayer || state.generated || state.published || state.locked;
+    $('fm-add-player').disabled = !editable();
+    $('fm-add-paid-entry').disabled = busy;
     const status = $('fm-status');
     if (status) {
       status.textContent = state.locked
@@ -694,6 +697,49 @@
     history = [];
     message('Draft saved.');
   }
+  $('fm-add-player').addEventListener('click', () => {
+    if (!editable()) return;
+    $('fm-system-player-error').textContent = '';
+    $('fm-system-player-results').replaceChildren();
+    $('fm-add-paid-entry').checked = false;
+    $('fm-add-player-dialog').showModal();
+    $('fm-system-player-search').focus();
+  });
+  let playerSearchSequence = 0;
+  $('fm-system-player-search-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    const sequence = ++playerSearchSequence;
+    const results = $('fm-system-player-results');
+    results.replaceChildren();
+    $('fm-system-player-error').textContent = '';
+    try {
+      const response = await fetch(config.urls.searchPlayers + '?q=' + encodeURIComponent($('fm-system-player-search').value.trim()), {headers: {Accept: 'application/json'}});
+      const data = await response.json();
+      if (sequence !== playerSearchSequence) return;
+      if (!response.ok) throw Error(data.errors ? Object.values(data.errors).flat().join(' ') : data.message || 'Unable to search players.');
+      if (!data.players.length) results.append(el('p', '', 'No players found. Try another name.'));
+      data.players.forEach(player => {
+        const button = el('button', '', 'Add ' + player.name + ' · profile #' + player.id);
+        button.type = 'button';
+        button.addEventListener('click', () => run(async () => {
+          if (!config.canAddPlayer || state.generated || state.published || state.locked) return;
+          const addPaidEntry = $('fm-add-paid-entry').checked;
+          try {
+            state = await request(config.urls.addPlayer, {player_id: player.id, revision: state.revision, add_paid_entry: addPaidEntry});
+          } catch (error) {
+            $('fm-system-player-error').textContent = error.message;
+            return;
+          }
+          // Retain local, unsaved positions; the server owns the additional player pool.
+          $('fm-add-player-dialog').close();
+          message(player.name + (addPaidEntry ? ' added as an event entry paid outside the app. ' : ' is available in the player list. ') + 'Place them in a starting position.');
+        }));
+        results.append(button);
+      });
+    } catch (error) {
+      if (sequence === playerSearchSequence) $('fm-system-player-error').textContent = error.message;
+    }
+  });
   function openScore(key) {
     scoreKey = key;
     const match = state.matches[key];

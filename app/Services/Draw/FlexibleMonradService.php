@@ -2,7 +2,8 @@
 
 namespace App\Services\Draw;
 
-use App\Models\{Draw, DrawAuditLog, DrawFormats, Fixture, FlexibleMonradDraw, Registration};
+use App\Models\{CategoryEvent, Draw, DrawAuditLog, DrawFormats, Fixture, FlexibleMonradDraw, Player, Registration};
+use App\Domain\Entries\Services\EntryService;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -21,7 +22,8 @@ final class FlexibleMonradService
     private function activeEntries(Draw $draw)
     {
         // Category membership is authoritative even if an old draw pivot still exists.
-        return Registration::with('players')->whereHas('categoryEvents', fn ($q) => $q
+        $additional = FlexibleMonradDraw::where('draw_id', $draw->id)->first()?->draft['additional_registration_ids'] ?? [];
+        return Registration::with('players')->where(fn ($entries) => $entries->whereHas('categoryEvents', fn ($q) => $q
             ->where('category_events.id', $draw->category_event_id)
             ->where('category_events.event_id', $draw->event_id)
             ->whereNotIn('category_event_registrations.status', [
@@ -30,7 +32,58 @@ final class FlexibleMonradService
             ])
             ->where('category_event_registrations.payment_status_id', 1)
             ->whereNull('category_event_registrations.withdrawn_at')
-            ->whereNull('category_event_registrations.deleted_at'));
+            ->whereNull('category_event_registrations.deleted_at'))
+            ->orWhere(fn ($extra) => $extra->whereIn('registrations.id', $additional)->whereDoesntHave('categoryEvents')));
+    }
+
+    public function addSystemPlayer(Draw $draw, int $playerId, int $revision, bool $addPaidEntry = false): void
+    {
+        DB::transaction(function () use ($draw, $playerId, $revision, $addPaidEntry) {
+            $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
+            $this->editable($draw);
+            CategoryEvent::whereKey($draw->category_event_id)->lockForUpdate()->firstOrFail();
+            abort_if($draw->event->isInterprovincialTrials(), 422, 'Use the Trials nomination and registration workflow to add a player.');
+            $record = FlexibleMonradDraw::where('draw_id', $draw->id)->first();
+            $this->revision($record, $revision);
+            abort_if($record?->graph || $draw->drawFixtures()->exists(), 409, 'Use Edit starting positions before adding players. Existing results and schedules must be preserved.');
+            Player::findOrFail($playerId);
+            try {
+                app(\App\Services\PlayerEligibilityService::class)->assertEligible($playerId, $draw->event_id);
+            } catch (\RuntimeException $exception) {
+                throw ValidationException::withMessages(['player_id' => $exception->getMessage()]);
+            }
+            $registrations = Registration::whereHas('players', fn ($q) => $q->whereKey($playerId));
+            abort_if((clone $registrations)->whereHas('draws', fn ($q) => $q
+                ->where('draws.category_event_id', $draw->category_event_id)->where('draws.id', '!=', $draw->id))->exists(),
+                422, 'This player is already assigned to another draw in this category.');
+            $alreadyAvailable = $this->eligible($draw)->whereHas('players', fn ($q) => $q->whereKey($playerId))->exists();
+            if ($alreadyAvailable && ! $addPaidEntry) {
+                return;
+            }
+            abort_if(! $alreadyAvailable && $this->eligible($draw)->count() >= 64, 422, 'The draw already has the maximum of 64 available players.');
+            abort_if((clone $registrations)->whereHas('categoryEvents', fn ($q) => $q->where('category_events.id', $draw->category_event_id))->exists(),
+                422, 'This player already has a category entry. Manage the existing entry before adding them to the draw.');
+            if ($addPaidEntry) {
+                try {
+                    $entry = app(EntryService::class)->addPlayerAsAdmin($draw->categoryEvent, $playerId, auth()->user(), 'paid_privately');
+                } catch (\RuntimeException $exception) {
+                    throw ValidationException::withMessages(['player_id' => $exception->getMessage()]);
+                }
+                $registration = $entry->registration;
+            } else {
+                $registration = Registration::create([]);
+                $registration->players()->attach($playerId);
+            }
+            $draw->registrations()->syncWithoutDetaching([$registration->id]);
+            $record ??= new FlexibleMonradDraw(['draw_id' => $draw->id]);
+            $draft = $record->draft ?? ['size' => 32, 'slots' => []];
+            if (! $addPaidEntry) $draft['additional_registration_ids'][] = $registration->id;
+            $record->fill(['draft' => $draft, 'revision' => $revision + 1])->save();
+            DrawAuditLog::record($draw->id, 'monrad_system_player_added', null, [
+                'player_id' => $playerId, 'registration_id' => $registration->id, 'revision' => $record->revision,
+                'draw_only' => ! $addPaidEntry,
+            ]);
+        });
     }
 
     public function save(Draw $draw, array $draft, int $revision): FlexibleMonradDraw
@@ -440,10 +493,11 @@ final class FlexibleMonradService
             }
         }
         if ($this->eligible($draw)->whereIn('registrations.id', $ids)->count() !== count($ids)) {
-            $this->fail('All players must be registered in this draw’s event and category.');
+            $this->fail('Players must be eligible category entrants or explicitly added to this draw by an administrator.');
         }
         // The saved workflow, never a submitted mode, controls progression.
-        return ['size' => (int) $draft['size'], 'slots' => $slots]
+        $additional = FlexibleMonradDraw::where('draw_id', $draw->id)->first()?->draft['additional_registration_ids'] ?? [];
+        return ['size' => (int) $draft['size'], 'slots' => $slots, 'additional_registration_ids' => $additional]
             + ($draw->settings?->workflow ? ['mode' => $draw->settings->workflow] : []);
     }
 

@@ -12,6 +12,7 @@ use App\Domain\Entries\Events\EntryWithdrawn;
 use App\Domain\Entries\StateMachine\EntryStateMachine;
 use App\Models\CategoryEvent;
 use App\Models\CategoryEventRegistration;
+use App\Models\Draw;
 use App\Models\PlayerRegistration;
 use App\Models\Registration;
 use App\Models\User;
@@ -106,12 +107,16 @@ class EntryService
             $adminPaymentStatus = $collectionStatus === 'paid_privately' ? 'paid' : 'unpaid';
             $capeTennisFee = round((float) $lockedCategoryEvent->event()
                 ->value('cape_tennis_fee'), 2);
-            $registration = Registration::create([]);
-
-            PlayerRegistration::create([
-                'player_id'       => $playerId,
-                'registration_id' => $registration->id,
-            ]);
+            // A draw-only entrant keeps its registration identity when becoming
+            // a category entry, so existing starting positions and results survive.
+            $registration = $this->drawOnlyRegistration($lockedCategoryEvent, $playerId);
+            if (! $registration) {
+                $registration = Registration::create([]);
+                PlayerRegistration::create([
+                    'player_id'       => $playerId,
+                    'registration_id' => $registration->id,
+                ]);
+            }
 
             /** @var CategoryEventRegistration $entry */
             $entry = $lockedCategoryEvent->categoryEventRegistrations()->create([
@@ -172,6 +177,21 @@ class EntryService
 
             return $entry;
         });
+    }
+
+    private function drawOnlyRegistration(CategoryEvent $categoryEvent, int $playerId): ?Registration
+    {
+        $candidates = Registration::query()->whereDoesntHave('categoryEvents')
+            ->whereHas('players', fn ($q) => $q->whereKey($playerId))
+            ->has('players', '=', 1)->orderBy('id')->cursor();
+        foreach ($candidates as $registration) {
+            $owned = Draw::query()->where('event_id', $categoryEvent->event_id)
+                ->where('category_event_id', $categoryEvent->id)
+                ->whereHas('flexibleMonrad', fn ($q) => $q->whereJsonContains('draft->additional_registration_ids', $registration->id))
+                ->exists();
+            if ($owned) return $registration;
+        }
+        return null;
     }
 
     /**

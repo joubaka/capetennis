@@ -47,6 +47,12 @@ class DrawPolicy
         return $this->canManage($user, $draw);
     }
 
+    public function addSystemPlayer(User $user, Draw $draw): bool
+    {
+        return ! $draw->locked && ! $draw->published
+            && $this->canManage($user, $draw, false);
+    }
+
     /**
      * Save a score to a fixture.
      */

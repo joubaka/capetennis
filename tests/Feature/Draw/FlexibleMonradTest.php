@@ -36,6 +36,196 @@ class FlexibleMonradTest extends TestCase
         return [$draw, ['size' => 4, 'slots' => $slots], $players];
     }
 
+    public function test_admin_can_add_system_player_to_existing_draft_without_event_or_payment_changes(): void
+    {
+        [$draw, $draft] = $this->setupDraw();
+        $player = Player::factory()->create(['name' => 'System', 'surname' => 'Entrant']);
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $counts = [];
+        foreach (['category_event_registrations', 'transactions_pf', 'registration_orders', 'wallet_transactions'] as $table) {
+            $counts[$table] = DB::table($table)->count();
+        }
+        $this->getJson(route('flexible-monrad.players.search', $draw).'?q=System%20Entrant')
+            ->assertOk()->assertExactJson(['players' => [['id' => $player->id, 'name' => 'System Entrant']]]);
+        $this->postJson(route('flexible-monrad.players.add', $draw), ['player_id' => $player->id, 'revision' => 1])
+            ->assertOk()->assertJsonPath('revision', 2)->assertJsonCount(5, 'players');
+        $registrationId = $draw->registrations()->whereHas('players', fn ($q) => $q->whereKey($player->id))->sole()->id;
+        $this->assertEquals($draft['slots'], FlexibleMonradDraw::where('draw_id', $draw->id)->sole()->draft['slots']);
+        $draft['slots']['aa']['id'] = $registrationId;
+        $draft['additional_registration_ids'] = [999999]; // Submitted membership must never be authoritative.
+        $this->putJson(route('flexible-monrad.save', $draw), ['revision' => 2, 'draft' => $draft])->assertOk();
+        $this->assertSame([$registrationId], FlexibleMonradDraw::where('draw_id', $draw->id)->sole()->draft['additional_registration_ids']);
+        $this->postJson(route('flexible-monrad.players.add', $draw), ['player_id' => $player->id, 'revision' => 3])
+            ->assertOk()->assertJsonPath('revision', 3)->assertJsonCount(5, 'players');
+        foreach ($counts as $table => $count) $this->assertSame($count, DB::table($table)->count(), $table);
+        $this->postJson(route('flexible-monrad.generate', $draw), ['revision' => 3])->assertOk();
+        $this->assertContains($registrationId, $draw->fresh()->flexibleMonrad->graph['players']);
+        $this->assertFalse($service->state($draw->fresh())['players']->firstWhere('id', $registrationId)['withdrawn']);
+    }
+
+    public function test_system_player_add_rejects_foreign_admin_and_unsafe_draw_states(): void
+    {
+        [$draw, $draft] = $this->setupDraw();
+        $admin = auth()->user();
+        $player = Player::factory()->create();
+        $url = route('flexible-monrad.players.add', $draw);
+        $this->actingAs(User::factory()->create())->postJson($url, ['player_id' => $player->id, 'revision' => 0])->assertForbidden();
+        $this->getJson(route('flexible-monrad.players.search', $draw).'?q=System')->assertForbidden();
+        $foreignAdmin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => Event::factory()->create()->id, 'user_id' => $foreignAdmin->id]);
+        $this->actingAs($foreignAdmin)->postJson($url, ['player_id' => $player->id, 'revision' => 0])->assertForbidden();
+        $this->actingAs($admin);
+        $draw->settings->update(['draw_format_id' => \App\Models\DrawFormats::where('name', 'Flexible Monrad')->sole()->id]);
+        $draw->update(['published' => true]);
+        $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()
+            ->assertViewHas('config', fn ($config) => $config['canAddPlayer'] === true);
+        $this->postJson($url, ['player_id' => $player->id, 'revision' => 0])->assertForbidden();
+        $draw->update(['published' => false, 'locked' => true]);
+        $this->postJson($url, ['player_id' => $player->id, 'revision' => 0])->assertForbidden();
+        $draw->update(['locked' => false]);
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $this->postJson($url, ['player_id' => $player->id, 'revision' => 0])->assertConflict();
+        $service->generate($draw, 1);
+        $this->postJson($url, ['player_id' => $player->id, 'revision' => 2])->assertConflict();
+        $this->assertDatabaseMissing('player_registrations', ['player_id' => $player->id]);
+    }
+
+    public function test_trials_draw_cannot_bypass_nomination_registration_with_draw_only_players(): void
+    {
+        [$draw] = $this->setupDraw();
+        $type = \App\Models\EventType::unguarded(fn () => \App\Models\EventType::firstOrCreate(
+            ['name' => 'Interprovincial Trials'], ['code' => \App\Models\EventType::INTERPROVINCIAL_TRIALS_CODE]
+        ));
+        $draw->event->update(['eventType' => $type->id]);
+        $player = Player::factory()->create();
+        $this->postJson(route('flexible-monrad.players.add', $draw), ['player_id' => $player->id, 'revision' => 0])->assertUnprocessable();
+        $this->assertDatabaseMissing('player_registrations', ['player_id' => $player->id]);
+        $this->assertDatabaseMissing('flexible_monrad_draws', ['draw_id' => $draw->id]);
+    }
+
+    public function test_admin_can_add_paid_entry_after_draw_creation_and_reuse_draw_only_identity(): void
+    {
+        [$draw, $draft] = $this->setupDraw();
+        \Illuminate\Support\Facades\Event::fake([\App\Domain\Entries\Events\EntryCreated::class]);
+        $player = Player::factory()->create();
+        $url = route('flexible-monrad.players.add', $draw);
+        $this->postJson($url, ['player_id' => $player->id, 'revision' => 0])->assertOk();
+        $registrationId = $draw->fresh()->flexibleMonrad->draft['additional_registration_ids'][0];
+        $draft['slots']['aa']['id'] = $registrationId;
+        $this->putJson(route('flexible-monrad.save', $draw), ['draft' => $draft, 'revision' => 1])->assertOk();
+        $beforeRegistrations = Registration::count();
+        $beforeEntries = CategoryEventRegistration::count();
+        $beforeTransactions = DB::table('transactions_pf')->count();
+        $beforeWallet = DB::table('wallet_transactions')->count();
+        $this->postJson($url, ['player_id' => $player->id, 'revision' => 2, 'add_paid_entry' => true])->assertOk();
+        $this->assertSame($beforeRegistrations, Registration::count());
+        $this->assertSame($beforeEntries + 1, CategoryEventRegistration::count());
+        $this->assertSame($beforeTransactions + 1, DB::table('transactions_pf')->count());
+        $this->assertSame($beforeWallet, DB::table('wallet_transactions')->count());
+        $this->assertDatabaseHas('category_event_registrations', [
+            'category_event_id' => $draw->category_event_id, 'registration_id' => $registrationId,
+            'payment_status_id' => 1, 'admin_payment_status' => 'paid', 'status' => 'active',
+        ]);
+        $this->assertDatabaseHas('transactions_pf', ['registration_id' => $registrationId, 'amount_gross' => 0, 'amount_net' => 0]);
+        $this->assertEquals($draft['slots'], $draw->fresh()->flexibleMonrad->draft['slots']);
+        $this->postJson($url, ['player_id' => $player->id, 'revision' => 3, 'add_paid_entry' => true])->assertUnprocessable();
+        $this->assertSame($beforeTransactions + 1, DB::table('transactions_pf')->count());
+        $this->assertSame($beforeEntries + 1, CategoryEventRegistration::count());
+        $this->assertSame(1, $draw->registrations()->whereKey($registrationId)->count());
+    }
+
+    public function test_existing_entries_action_after_draw_creation_reuses_draw_only_player_and_preserves_fixtures(): void
+    {
+        [$draw, $draft] = $this->setupDraw();
+        \Illuminate\Support\Facades\Event::fake([\App\Domain\Entries\Events\EntryCreated::class]);
+        $player = Player::factory()->create();
+        $service = app(FlexibleMonradService::class);
+        $service->addSystemPlayer($draw, $player->id, 0);
+        $registrationId = $draw->fresh()->flexibleMonrad->draft['additional_registration_ids'][0];
+        $draft['slots']['aa']['id'] = $registrationId;
+        $service->save($draw, $draft, 1);
+        $service->generate($draw, 2);
+        $fixtures = $draw->drawFixtures()->orderBy('id')->get()->toArray();
+        $this->postJson(route('admin.category.addPlayer', $draw->category_event_id), [
+            'registration_id' => $player->id, 'collection_status' => 'paid_privately',
+        ])->assertOk();
+        $this->assertDatabaseHas('category_event_registrations', [
+            'category_event_id' => $draw->category_event_id, 'registration_id' => $registrationId,
+            'payment_status_id' => 1, 'admin_payment_status' => 'paid',
+        ]);
+        $this->assertSame($fixtures, $draw->drawFixtures()->orderBy('id')->get()->toArray());
+        $this->assertCount(1, $service->state($draw->fresh())['players']->where('id', $registrationId));
+    }
+
+    public function test_draw_paid_entry_mode_respects_category_lock_and_has_no_partial_writes(): void
+    {
+        [$draw] = $this->setupDraw();
+        $draw->categoryEvent->update(['locked_at' => now()]);
+        $player = Player::factory()->create();
+        $registrations = Registration::count();
+        $transactions = DB::table('transactions_pf')->count();
+        $this->postJson(route('flexible-monrad.players.add', $draw), [
+            'player_id' => $player->id, 'revision' => 0, 'add_paid_entry' => true,
+        ])->assertUnprocessable();
+        $this->assertSame($registrations, Registration::count());
+        $this->assertSame($transactions, DB::table('transactions_pf')->count());
+        $this->assertDatabaseMissing('flexible_monrad_draws', ['draw_id' => $draw->id]);
+    }
+
+    public function test_fresh_paid_entry_is_available_without_draw_only_membership(): void
+    {
+        [$draw] = $this->setupDraw();
+        \Illuminate\Support\Facades\Event::fake([\App\Domain\Entries\Events\EntryCreated::class]);
+        $player = Player::factory()->create();
+        $this->postJson(route('flexible-monrad.players.add', $draw), [
+            'player_id' => $player->id, 'revision' => 0, 'add_paid_entry' => true,
+        ])->assertOk()->assertJsonCount(5, 'players');
+        $entry = CategoryEventRegistration::where('category_event_id', $draw->category_event_id)
+            ->whereHas('registration.players', fn ($q) => $q->whereKey($player->id))->sole();
+        $this->assertSame('paid', $entry->admin_payment_status);
+        $this->assertEmpty($draw->fresh()->flexibleMonrad->draft['additional_registration_ids'] ?? []);
+        $this->assertTrue(app(FlexibleMonradService::class)->eligible($draw)->whereKey($entry->registration_id)->exists());
+    }
+
+    public function test_system_player_modes_respect_canonical_disciplinary_eligibility(): void
+    {
+        [$draw] = $this->setupDraw();
+        $player = Player::factory()->create();
+        $this->mock(\App\Services\PlayerEligibilityService::class, function ($mock) use ($draw, $player) {
+            $mock->shouldReceive('assertEligible')->twice()->with($player->id, $draw->event_id)
+                ->andThrow(new \RuntimeException('Player has an active event suspension.'));
+        });
+        foreach ([false, true] as $paid) {
+            $this->postJson(route('flexible-monrad.players.add', $draw), [
+                'player_id' => $player->id, 'revision' => 0, 'add_paid_entry' => $paid,
+            ])->assertUnprocessable()->assertJsonValidationErrors('player_id');
+        }
+        $this->assertDatabaseMissing('player_registrations', ['player_id' => $player->id]);
+        $this->assertDatabaseMissing('flexible_monrad_draws', ['draw_id' => $draw->id]);
+    }
+
+    public function test_additional_players_are_draw_scoped_and_withdrawn_entries_cannot_be_readded(): void
+    {
+        [$draw, $draft, $registrations] = $this->setupDraw();
+        $player = Player::factory()->create();
+        $registrations[0]->players()->attach($player);
+        DB::table('category_event_registrations')->where('registration_id', $registrations[0]->id)->update(['status' => 'withdrawn']);
+        $this->postJson(route('flexible-monrad.players.add', $draw), ['player_id' => $player->id, 'revision' => 0])->assertUnprocessable();
+        $additional = Player::factory()->create();
+        $this->postJson(route('flexible-monrad.players.add', $draw), ['player_id' => $additional->id, 'revision' => 0])->assertOk();
+        $record = $draw->fresh()->flexibleMonrad;
+        $registrationId = $record->draft['additional_registration_ids'][0];
+        $other = Draw::factory()->create(['event_id' => $draw->event_id, 'category_event_id' => $draw->category_event_id]);
+        $other->settings()->create(['workflow' => 'custom_monrad']);
+        $this->assertFalse(app(FlexibleMonradService::class)->eligible($other)->whereKey($registrationId)->exists());
+        $draft['slots']['aa']['id'] = $registrationId;
+        $draft['additional_registration_ids'] = [$registrationId];
+        $this->putJson(route('flexible-monrad.save', $other), ['revision' => 0, 'draft' => $draft])->assertUnprocessable();
+        $this->postJson(route('flexible-monrad.players.add', $other), ['player_id' => $additional->id, 'revision' => 0])->assertUnprocessable();
+    }
+
     public function test_draft_revision_isolation_generation_and_publication(): void
     {
         [$draw, $draft] = $this->setupDraw();

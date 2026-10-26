@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Backend;
 use App\Domain\Ranking\Enums\RankingStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Draw;
+use App\Models\Player;
 use App\Models\RankingList;
 use App\Models\SeriesRanking;
 use App\Services\Draw\FlexibleMonradService;
@@ -62,6 +63,26 @@ class FlexibleMonradController extends Controller
         $this->authorize('update', $draw);
         $data = $request->validate(['revision' => 'required|integer|min:0', 'draft' => 'required|array']);
         $this->monrad->save($draw, $data['draft'], $data['revision']);
+        return response()->json($this->monrad->state($draw->fresh()));
+    }
+
+    public function searchPlayers(Request $request, Draw $draw)
+    {
+        $this->authorize('addSystemPlayer', $draw);
+        $data = $request->validate(['q' => 'required|string|min:2|max:100']);
+        $query = Player::query();
+        foreach (preg_split('/\s+/', trim($data['q'])) as $word) {
+            $query->where(fn ($q) => $q->where('name', 'like', '%'.$word.'%')->orWhere('surname', 'like', '%'.$word.'%'));
+        }
+        return response()->json(['players' => $query->orderBy('surname')->orderBy('name')->limit(20)
+            ->get(['id', 'name', 'surname'])->map(fn ($player) => ['id' => $player->id, 'name' => trim($player->name.' '.$player->surname)])]);
+    }
+
+    public function addPlayer(Request $request, Draw $draw)
+    {
+        $this->authorize('addSystemPlayer', $draw);
+        $data = $request->validate(['player_id' => 'required|integer|exists:players,id', 'revision' => 'required|integer|min:0', 'add_paid_entry' => 'sometimes|boolean']);
+        $this->monrad->addSystemPlayer($draw, $data['player_id'], $data['revision'], $data['add_paid_entry'] ?? false);
         return response()->json($this->monrad->state($draw->fresh()));
     }
 
@@ -174,6 +195,8 @@ class FlexibleMonradController extends Controller
             'setupUrl' => $public ? null : route('draw.setup.show', $draw),
             'demo' => false, 'readOnly' => $public,
             'canEdit' => ! $public && auth()->user()->can('view', $draw),
+            'canAddPlayer' => ! $public && (auth()->user()->hasRole('super-user') || auth()->user()->is_event_admin($draw->event_id))
+                && ! $draw->event->isInterprovincialTrials(),
             'canScore' => ! $public && auth()->user()->can('saveScore', $draw),
             'canPublish' => ! $public && auth()->user()->can('publish', $draw),
             'canPrepareWithdrawalRedraw' => ! $public && auth()->user()->can('prepareWithdrawalRedraw', $draw),
@@ -181,6 +204,8 @@ class FlexibleMonradController extends Controller
             'publicUrl' => route('public.flexible-monrad.show', $draw),
             'urls' => $public ? [] : [
                 'save' => route('flexible-monrad.save', $draw), 'generate' => route('flexible-monrad.generate', $draw),
+                'searchPlayers' => route('flexible-monrad.players.search', $draw),
+                'addPlayer' => route('flexible-monrad.players.add', $draw),
                 'publish' => route('flexible-monrad.publish', $draw),
                 'reopen' => route('flexible-monrad.reopen', $draw),
                 'prepareWithdrawalRedraw' => route('flexible-monrad.withdrawal-redraw', $draw),
