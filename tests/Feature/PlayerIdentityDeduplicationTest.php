@@ -11,6 +11,43 @@ class PlayerIdentityDeduplicationTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_create_requires_a_cell_number_before_writing_a_player(): void
+    {
+        $user = User::factory()->create();
+        $payload = [
+            'player_name' => 'Jamie',
+            'player_surname' => 'Smith',
+            'dob' => '2012-04-03',
+            'gender' => 1,
+        ];
+
+        foreach ([[], ['cell_nr' => null], ['cell_nr' => ''], ['cell_nr' => '   ']] as $cell) {
+            $this->actingAs($user)->postJson(route('player.store'), [...$payload, ...$cell])
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors('cell_nr')
+                ->assertJsonPath('errors.cell_nr.0', 'Please enter a cell number for the player or their parent/guardian.');
+
+            $this->assertDatabaseCount('players', 0);
+            $this->assertDatabaseCount('user_players', 0);
+        }
+    }
+
+    public function test_missing_cell_number_redirects_with_a_clear_message_and_preserves_input(): void
+    {
+        $this->actingAs(User::factory()->create())->from(route('player.create'))
+            ->post(route('player.store'), [
+                'player_name' => 'Jamie',
+                'player_surname' => 'Smith',
+                'dob' => '2012-04-03',
+                'gender' => 1,
+            ])->assertRedirect(route('player.create'))
+            ->assertSessionHasErrors(['cell_nr' => 'Please enter a cell number for the player or their parent/guardian.'])
+            ->assertSessionHasInput('player_name', 'Jamie');
+
+        $this->assertDatabaseCount('players', 0);
+        $this->assertDatabaseCount('user_players', 0);
+    }
+
     public function test_create_rejects_values_longer_than_the_player_columns_without_writes(): void
     {
         $user = User::factory()->create();

@@ -109,7 +109,7 @@ class SelectedTeamReserveRegistrationTest extends TestCase
             });
         });
         $this->actingAs(User::factory()->create())->post(route('player.store'), ['type' => 'noProfile', 'noProfile' => $slots[11]->id,
-            'team' => $team->id, 'event' => $event->id, 'player_name' => 'New', 'player_surname' => 'Reserve', 'dob' => '2013-01-01', 'gender' => 1])
+            'team' => $team->id, 'event' => $event->id, 'player_name' => 'New', 'player_surname' => 'Reserve', 'dob' => '2013-01-01', 'gender' => 1, 'cell_nr' => '0820000000'])
             ->assertRedirect()->assertSessionHasErrors('player');
         $this->assertDatabaseCount('players', 12);
         $this->assertDatabaseCount('user_players', 0);

@@ -838,6 +838,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'player_surname' => 'Player',
             'dob' => '2013-04-05',
             'gender' => 1,
+            'cell_nr' => '0820000000',
         ]);
 
         $player = Player::where('name', 'New')->where('surname', 'Player')->firstOrFail();
@@ -877,6 +878,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'dob' => '2013-04-05',
             'gender' => 1,
             'email' => 'existing@example.test',
+            'cell_nr' => '0820000000',
         ])->assertRedirect(route('team.payment.payfast', [$this->team, $existing, $this->event]));
 
         $this->assertSame($before, Player::count());
@@ -940,6 +942,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'player_surname' => 'Player',
             'dob' => '2013-04-05',
             'gender' => 1,
+            'cell_nr' => '0820000000',
         ])->assertSessionHasErrors('event');
 
         $this->assertSame($before, Player::count());

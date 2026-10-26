@@ -41,9 +41,11 @@
                         </div>
 @include('frontend.player.partials.additional-emails', ['contactPlayer' => null, 'emailIdPrefix' => 'create-player-modal'])
                         <div class="col-md-6">
-                            <label for="modal_cell_nr" class="form-label">Cell Number</label>
+                            <label for="modal_cell_nr" class="form-label">Cell Number <span class="text-danger">*</span> (required)</label>
                             <input class="form-control" type="tel" name="cell_nr" id="modal_cell_nr"
-                                   value="{{ Auth::user()->cellNr ?? Auth::user()->phone ?? '' }}" placeholder="e.g. 0821234567">
+                                   value="{{ Auth::user()->cellNr ?? Auth::user()->phone ?? '' }}" placeholder="e.g. 0821234567"
+                                   maxlength="255" autocomplete="tel" required aria-describedby="modal-cell-help">
+                            <div id="modal-cell-help" class="form-text">Enter a cell number for the player or their parent/guardian.</div>
                         </div>
                     </div>
 
@@ -61,3 +63,12 @@
         </div>
     </div>
 </div>
+<script>
+  // Validate before any of the checkout's AJAX click handlers run.
+  document.getElementById('createPlayerButton').addEventListener('click', function (event) {
+    if (!this.form.reportValidity()) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  }, true);
+</script>

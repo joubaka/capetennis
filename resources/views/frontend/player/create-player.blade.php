@@ -75,7 +75,7 @@ $(document).ready(function() {
 
 @if($errors->any())
   <div class="alert alert-danger" role="alert">
-    <strong>We could not link this roster position.</strong>
+    <strong>Please check the details below and try again.</strong>
     <ul class="mb-0 mt-2">
       @foreach($errors->all() as $error)
         <li>{{ $error }}</li>
@@ -167,8 +167,12 @@ $(document).ready(function() {
 @include('frontend.player.partials.additional-emails', ['contactPlayer' => null])
 
       <div class="mb-3">
-        <label>Cell No.</label>
-        <input type="text" name="cell_nr" class="form-control" value="{{ old('cell_nr', $cell_nr ?? '') }}">
+        <label for="player-cell-number" class="form-label">Cell Number <span class="text-danger">*</span> (required)</label>
+        <input type="tel" id="player-cell-number" name="cell_nr" class="form-control @error('cell_nr') is-invalid @enderror"
+               value="{{ old('cell_nr', $cell_nr ?? '') }}" maxlength="255" autocomplete="tel" required
+               aria-describedby="player-cell-help @error('cell_nr') player-cell-error @enderror" @error('cell_nr') aria-invalid="true" @enderror>
+        <div id="player-cell-help" class="form-text">Enter a cell number for the player or their parent/guardian.</div>
+        @error('cell_nr')<div id="player-cell-error" class="invalid-feedback">{{ $message }}</div>@enderror
       </div>
 
       <div class="mb-3">

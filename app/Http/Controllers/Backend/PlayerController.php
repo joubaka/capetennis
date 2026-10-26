@@ -177,10 +177,14 @@ class PlayerController extends Controller
       'player_surname' => 'required|string|max:255',
       'dob' => 'required|date',
       'gender' => 'required|in:1,2',
-      'cell_nr' => 'nullable|string|max:255',
+      'cell_nr' => 'required|string|max:255',
       'email' => 'nullable|email|max:255',
       'email_2' => 'sometimes|nullable|email|max:255',
       'email_3' => 'sometimes|nullable|email|max:255'
+    ], [
+      'cell_nr.required' => 'Please enter a cell number for the player or their parent/guardian.',
+      'cell_nr.string' => 'Please enter the cell number as text.',
+      'cell_nr.max' => 'The cell number must not exceed 255 characters.',
     ]);
     $validated['dob'] = $request->date('dob')->format('Y-m-d');
 
@@ -212,7 +216,7 @@ class PlayerController extends Controller
         'dateOfBirth' => $validated['dob'],
         'gender' => (int) $validated['gender'],
         'userId' => Auth::id(),
-        'cellNr' => $validated['cell_nr'] ?? null,
+        'cellNr' => $validated['cell_nr'],
         'email' => $validated['email'] ?? null,
         ...array_intersect_key($validated, array_flip(['email_2', 'email_3'])),
       ]);
