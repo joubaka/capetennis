@@ -11,8 +11,10 @@ thead { display: table-header-group; } tr { page-break-inside: avoid; } .text-en
 <p>Payments included: {{ ($category ?? 'all') === 'all' ? 'Entry fees and clothing' : ucfirst($category) }}</p>
 @if($player)<p><strong>Full matching checkout amounts include all players in shared checkouts. These are not player-only expenses.</strong></p>@endif
 <p><strong>{{ $account->name }}</strong> · {{ $account->email }} · Account #{{ $account->id }}<br>
-Recorded period: {{ $from }} to {{ $to }}@if($player) · Player search: {{ $player }}@endif<br>Generated {{ $generated_at->format('Y-m-d H:i T') }} · {{ $rows->count() }} records</p>
-<p class="totals">Payments: <strong>R {{ number_format($paid / 100, 2) }}</strong> &nbsp; Completed refunds: <strong>R {{ number_format($refunded / 100, 2) }}</strong> &nbsp; Net payments: <strong>R {{ number_format($net / 100, 2) }}</strong></p>
+Recorded period: {{ ($allTime ?? false) ? 'All time' : $from.' to '.$to }}@if($player) · Player search: {{ $player }}@endif<br>Generated {{ $generated_at->format('Y-m-d H:i T') }} · {{ $rows->count() }} known receipt records</p>
+<p class="totals">Known payments: <strong>R {{ number_format($paid / 100, 2) }}</strong> &nbsp; Completed refunds: <strong>R {{ number_format($refunded / 100, 2) }}</strong> &nbsp; Net known payments: <strong>R {{ number_format($net / 100, 2) }}</strong></p>
+<p>{{ ($historicalRows ?? collect())->count() }} historical paid records are shown separately and excluded from known totals.</p>
 @include('account.statement-table', ['statementRows' => $rows])
+@include('account.statement-history', ['historyRows' => $historicalRows ?? collect()])
 <div class="notes">@include('account.statement-notes')</div>
 </body></html>

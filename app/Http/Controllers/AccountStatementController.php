@@ -25,16 +25,18 @@ class AccountStatementController extends Controller
             'player' => ['nullable', 'string', 'max:100'],
             'format' => ['nullable', 'in:pdf,csv'],
             'category' => ['nullable', 'in:all,entry,clothing'],
+            'all_time' => ['nullable', 'boolean'],
         ]);
         $from = $input['from'] ?? now()->startOfYear()->toDateString();
         $to = $input['to'] ?? now()->toDateString();
-        if ($to < $from || \Carbon\Carbon::parse($from)->diffInDays($to) > 731) {
+        $allTime = array_key_exists('all_time', $input) ? (bool) $input['all_time'] : ! $request->hasAny(['from', 'to']);
+        if (! $allTime && ($to < $from || \Carbon\Carbon::parse($from)->diffInDays($to) > 731)) {
             throw \Illuminate\Validation\ValidationException::withMessages(['to' => 'Choose a period of up to two years, ending on or after the start date.']);
         }
-        $statement = $service->build($account, $from, $to, trim($input['player'] ?? ''), $input['category'] ?? 'all');
+        $statement = $service->build($account, $from, $to, trim($input['player'] ?? ''), $input['category'] ?? 'all', $allTime);
         $statement['adminView'] = $adminView;
         $statement['statementUrl'] = $adminView ? route('superadmin.account-statements.show', $account) : route('account.statement');
-        $filename = 'cape-tennis-account-'.$account->id.'-statement-'.$from.'-'.$to;
+        $filename = 'cape-tennis-account-'.$account->id.'-statement-'.($allTime ? 'all-time' : $from.'-'.$to);
         if (($input['format'] ?? null) === 'pdf') {
             $pdf = Pdf::loadView('account.statement-pdf', $statement)->setPaper('a4', 'landscape');
             $pdf->render();
@@ -55,7 +57,7 @@ class AccountStatementController extends Controller
                 }
                 $write(['Matching checkouts include all their players and full receipt amounts. Item fees are descriptive, not additional payments.']);
                 $write(['Completed refunds and category-change wallet credits recorded in the selected dates reduce the net. Category-change charges are included with entry fees. Unverified/private collections and unreconciled payments are excluded. This is not a wallet balance or outstanding-fee statement.']);
-                fputcsv($out, ['From', $statement['from'], 'To', $statement['to'], 'Generated', $statement['generated_at']->toIso8601String()], ',', '"', '');
+                fputcsv($out, ['Period', $statement['allTime'] ? 'All time' : $statement['from'].' to '.$statement['to'], 'Generated', $statement['generated_at']->toIso8601String()], ',', '"', '');
                 fputcsv($out, ['Recorded date', 'Method', 'Reference', 'Checkout', 'Entry details (fees are not additional payments)', 'Paid ZAR', 'Refunded ZAR'], ',', '"', '');
                 foreach ($statement['rows'] as $row) {
                     $details = collect($row['details'])->map(fn ($d) => $d['player'].' / '.$d['event'].' / '.($d['event_date'] ?? '').($d['fee'] === null ? '' : ' / fee R'.number_format($d['fee'] / 100, 2, '.', '')))->implode('; ');
@@ -63,13 +65,24 @@ class AccountStatementController extends Controller
                         number_format($row['paid'] / 100, 2, '.', ''), number_format($row['refunded'] / 100, 2, '.', '')];
                     $write($cells);
                 }
-                fputcsv($out, ['Totals', '', '', '', '', number_format($statement['paid'] / 100, 2, '.', ''), number_format($statement['refunded'] / 100, 2, '.', '')], ',', '"', '');
+                fputcsv($out, ['Known receipt totals', '', '', '', '', number_format($statement['paid'] / 100, 2, '.', ''), number_format($statement['refunded'] / 100, 2, '.', '')], ',', '"', '');
+                $write(['Historical paid record count (excluded from known receipt totals)', $statement['historicalRows']->count()]);
+                $write(['Historical paid records — separate from known receipt totals. Undated records are shown regardless of selected payment period. Amounts and dates unavailable in the original records are not inferred.']);
+                $write(['Payment date', 'Method', 'Reference', 'Historical record', 'Player / event', 'Recorded amount ZAR (excluded from receipt totals)']);
+                foreach ($statement['historicalRows'] as $row) {
+                    $write([$row['date'] ?? 'Payment date unavailable', $row['method'], $row['reference'], $row['checkout'],
+                        collect($row['details'])->map(fn ($d) => $d['player'].' / '.$d['event'].' / Event date: '.($d['event_date'] ?? 'unavailable'))->implode('; '),
+                        $row['amount'] === null ? 'Amount unavailable' : number_format($row['amount'] / 100, 2, '.', '')]);
+                }
                 fclose($out);
             }, $filename.'.csv', ['Content-Type' => 'text/csv; charset=UTF-8', 'Cache-Control' => 'private, no-store']);
         }
         $page = LengthAwarePaginator::resolveCurrentPage();
         $statement['payments'] = new LengthAwarePaginator($statement['rows']->forPage($page, 25)->values(), $statement['rows']->count(), 25, $page,
             ['path' => $request->url(), 'query' => $request->query()]);
+        $historyPage = LengthAwarePaginator::resolveCurrentPage('history_page');
+        $statement['historicalPayments'] = new LengthAwarePaginator($statement['historicalRows']->forPage($historyPage, 25)->values(), $statement['historicalRows']->count(), 25, $historyPage,
+            ['path' => $request->url(), 'query' => $request->query(), 'pageName' => 'history_page']);
 
         return response()->view('account.statement', $statement)->header('Cache-Control', 'private, no-store');
     }

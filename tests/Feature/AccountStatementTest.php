@@ -130,7 +130,7 @@ class AccountStatementTest extends TestCase
         $mia = Player::factory()->create(['name' => 'Mia']);
         $order = RegistrationOrder::create(['user_id' => $user->id, 'pay_status' => true, 'payfast_paid' => true,
             'payfast_amount_due' => 500.01, 'payfast_pf_payment_id' => 'INDIVIDUAL']);
-        foreach ([100.01, 400] as $price) {
+        foreach ([100.01, 200, 200] as $price) {
             RegistrationOrderItems::unguarded(fn () => RegistrationOrderItems::create(['order_id' => $order->id,
                 'player_id' => $mia->id, 'category_event_id' => $category->id, 'item_price' => $price]));
         }
@@ -141,7 +141,7 @@ class AccountStatementTest extends TestCase
         $this->assertSame(70001, $statement['paid']);
         $this->assertCount(2, $statement['rows']);
         $details = $statement['rows']->firstWhere('checkout', 'R'.$order->id)['details'];
-        $this->assertSame([10001, 40000], array_column($details, 'fee'));
+        $this->assertSame([10001, 20000, 20000], array_column($details, 'fee'));
     }
 
     public function test_clothing_payments_refunds_and_category_filter_are_payer_scoped(): void
