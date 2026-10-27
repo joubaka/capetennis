@@ -51,6 +51,19 @@
   @media (max-width:991px) { #rank-preferences .rank-band-fields { grid-template-columns:repeat(2,minmax(0,1fr)); } #rank-preferences .rank-draw-field { grid-column:1 / -1; grid-row:2; } }
   @media (max-width:575px) { #rank-preferences .rank-band-fields { grid-template-columns:minmax(0,1fr); gap:.8rem; } #rank-preferences .rank-draw-field { grid-column:auto; grid-row:auto; } }
   .schedule-workspace { --schedule-border:#e6e8ee; --schedule-muted:#667085; --schedule-soft:#f7f8fa; }
+  .schedule-workspace .schedule-toolbar { padding:1rem; border:1px solid var(--schedule-border); border-radius:.85rem; background:#fff; }
+  .schedule-workspace .schedule-toolbar-row { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.75rem 1.5rem; margin-bottom:.65rem; }
+  .schedule-workspace .schedule-method, .schedule-workspace .schedule-saved-links { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; min-width:0; }
+  .schedule-workspace .schedule-toolbar-label { font-size:.85rem; font-weight:600; }
+  .schedule-workspace .schedule-toolbar .btn, .schedule-workspace .schedule-publication .btn { min-height:44px; white-space:normal; }
+  .schedule-workspace .schedule-publication { padding:.9rem 1rem; border-left:3px solid var(--bs-primary); border-radius:0 .5rem .5rem 0; background:rgba(var(--bs-primary-rgb), .035); }
+  .schedule-workspace .schedule-publication .btn { max-width:100%; text-align:left; overflow-wrap:anywhere; }
+  @media (max-width:575.98px) {
+    .schedule-workspace .schedule-method, .schedule-workspace .schedule-saved-links { width:100%; }
+    .schedule-workspace .schedule-toolbar-label { flex-basis:100%; }
+    .schedule-workspace .schedule-toolbar .btn { flex:1 1 10rem; }
+    .schedule-workspace .schedule-publication .btn { width:100%; }
+  }
   .schedule-workspace .workspace-header { max-width: 52rem; }
   .schedule-workspace .workspace-actions .btn { white-space: nowrap; }
   .schedule-workspace .workflow-rail { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); border:1px solid var(--schedule-border); border-radius:.85rem; background:#fff; overflow:hidden; }
@@ -179,10 +192,6 @@
 
 @section('content')
 @include('backend.draw.partials.guide-modal')
-@if($planningDate)
-<div class="container-xxl pt-3"><div class="alert alert-info mb-0">Add matches - {{ \Carbon\Carbon::parse($planningDate)->format('D j M Y') }}{{ !empty($planningScope['draw_id']) ? ' · selected draw' : '' }}{{ !empty($planningScope['venue_id']) ? ' · selected venue' : '' }}. This batch uses only this day and preserves existing saved times. Use Edit saved times from the calendar to change existing bookings.</div></div>
-@endif
-<div class="container-xxl pt-3"><a class="btn btn-primary me-2" style="min-height:44px" href="{{ route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'group' => 'draw', 'date' => 'all']) }}">View matches by draw</a><a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar',$event) }}">Saved schedule · all days</a></div>
 @php
   $programmeDates = app(\App\Services\Scheduling\ScheduleProgramme::class)->eventDates($event);
   $programmeDayCount = count($programmeDates);
@@ -191,25 +200,36 @@
   $teamPlanning = $draws->where('selected', true)->contains('is_team', true) || ($draws->isEmpty() && $event->isTeam());
 @endphp
 <div class="container-xxl flex-grow-1 container-p-y schedule-workspace">
-  @if($planningDate)<a class="btn btn-outline-primary mb-3" href="{{ route('backend.event-venue-schedule.calendar', ['event'=>$event->id,'date'=>$planningDate] + ($guideSelection->count() === 1 ? ['draw_id'=>$guideSelection->first()->id] : []) + (!empty($planningScope['origin_draw_id']) ? ['origin_draw_id'=>$planningScope['origin_draw_id']] : [])) }}">Back to this saved day</a>@endif
-  <p class="small text-muted">{{ $teamPlanning ? 'Whole-tie planning' : 'Full-day planning' }} opens a broader selection across venues. Manual placement and removal save privately immediately; automatic allocation requires preview and save.</p>
-  <nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Scheduling method"><span class="align-self-center">Schedule by:</span><span class="btn btn-primary" aria-current="page">{{ $teamPlanning ? 'Position band / draw' : 'Matches / draw' }}</span><a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar.full-day', ['event'=>$event->id, 'date'=>$planningDate ?? ($event->start_date ? \Carbon\Carbon::parse($event->start_date)->toDateString() : now()->toDateString())] + ($guideSelection->count() === 1 ? ['draw_id'=>$guideSelection->first()->id] : []) + (!empty($planningScope['origin_draw_id']) ? ['origin_draw_id'=>$planningScope['origin_draw_id']] : [])) }}">{{ $teamPlanning ? 'Whole tie · full day across venues' : 'Full day across venues' }}</a></nav>
-  @if($guideSelection->isNotEmpty())
-    <section class="card card-body mb-3">
-      <h2 class="h5">{{ $teamPlanning ? 'Step 5 of 6' : 'Next' }} · Programme &amp; schedule</h2>
-      <p>Arrange rounds, match order, playing days, venues and courts. Preview and save the schedule, then continue to review publication. Saving does not publish match times.</p>
-      <div class="d-flex flex-wrap gap-2">@foreach($guideSelection as $guideDraw)<a data-draw-guide-open class="btn btn-outline-primary" href="{{ route('draw.guide.show', [$event, $guideDraw] + ($planningDate ? ['schedule_date'=>$planningDate] : [])) }}">Review setup &amp; publication · {{ $guideDraw->drawName }}</a>@endforeach</div>
-    </section>
-  @endif
   @include('backend.event.partials.header', [
     'eventWorkspaceActive' => 'schedule',
     'eventWorkspaceIcon' => 'ti-calendar-event',
     'eventWorkspaceSubtitle' => 'Event venue schedule',
   ])
+@if($planningDate)
+  <div class="alert alert-info mb-3">Add matches - {{ \Carbon\Carbon::parse($planningDate)->format('D j M Y') }}{{ !empty($planningScope['draw_id']) ? ' · selected draw' : '' }}{{ !empty($planningScope['venue_id']) ? ' · selected venue' : '' }}. This batch uses only this day and preserves existing saved times. Use Edit saved times from the calendar to change existing bookings.</div>
+@endif
+  @if($planningDate)<a class="btn btn-outline-primary mb-3" href="{{ route('backend.event-venue-schedule.calendar', ['event'=>$event->id,'date'=>$planningDate] + ($guideSelection->count() === 1 ? ['draw_id'=>$guideSelection->first()->id] : []) + (!empty($planningScope['origin_draw_id']) ? ['origin_draw_id'=>$planningScope['origin_draw_id']] : [])) }}">Back to this saved day</a>@endif
+  <section class="schedule-toolbar mb-3" aria-label="Schedule views and planning">
+    <div class="schedule-toolbar-row">
+      <nav class="schedule-method" aria-label="Scheduling method"><span class="schedule-toolbar-label">Schedule by:</span><span class="btn btn-primary" aria-current="page">{{ $teamPlanning ? 'Position band / draw' : 'Matches / draw' }}</span><a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar.full-day', ['event'=>$event->id, 'date'=>$planningDate ?? ($event->start_date ? \Carbon\Carbon::parse($event->start_date)->toDateString() : now()->toDateString())] + ($guideSelection->count() === 1 ? ['draw_id'=>$guideSelection->first()->id] : []) + (!empty($planningScope['origin_draw_id']) ? ['origin_draw_id'=>$planningScope['origin_draw_id']] : [])) }}">{{ $teamPlanning ? 'Whole tie · full day across venues' : 'Full day across venues' }}</a></nav>
+      <nav class="schedule-saved-links" aria-label="Saved schedules">
+      <a class="btn btn-outline-secondary" href="{{ route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'group' => 'draw', 'date' => 'all']) }}">View matches by draw</a>
+      <a class="btn btn-outline-secondary" href="{{ route('backend.event-venue-schedule.calendar',$event) }}">Saved schedule · all days</a>
+    </nav>
+    </div>
+    <p class="small text-muted mb-0">{{ $teamPlanning ? 'Whole-tie planning' : 'Full-day planning' }} opens a broader selection across venues. Manual placement and removal save privately immediately; automatic allocation requires preview and save.</p>
+  </section>
+  @if($guideSelection->isNotEmpty())
+    <section class="schedule-publication mb-3" aria-label="Review publication">
+      <h2 class="h6 mb-1">{{ $teamPlanning ? 'Step 5 of 6' : 'Next' }} · Programme &amp; schedule</h2>
+      <p class="small text-muted mb-2">Preview and save the schedule, then review publication. Saving does not publish match times.</p>
+      <div class="d-flex flex-wrap gap-2">@foreach($guideSelection as $guideDraw)<a data-draw-guide-open class="btn btn-outline-primary" href="{{ route('draw.guide.show', [$event, $guideDraw] + ($planningDate ? ['schedule_date'=>$planningDate] : [])) }}">Review setup &amp; publication · {{ $guideDraw->drawName }}</a>@endforeach</div>
+    </section>
+  @endif
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
     <div class="workspace-header">
       <div class="text-uppercase text-primary fw-semibold small">Event schedule workspace</div>
-      <h3 class="mb-1">{{ $event->name }}</h3>
+      <h2 class="h4 mb-1">Plan the schedule</h2>
       @if(!$teamPlanning)
         <p class="text-muted mb-0">Select individual draws, choose gender, then set up days, venues and match times.</p>
       @elseif(!$planningDate && $draws->where('programme_supported', true)->whereNotNull('programme_age')->isNotEmpty())
