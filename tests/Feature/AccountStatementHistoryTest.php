@@ -43,7 +43,7 @@ class AccountStatementHistoryTest extends TestCase
             'created_at' => '2019-04-05 12:00:00', 'updated_at' => '2019-04-05 12:00:00']));
     }
 
-    public function test_all_time_includes_old_paid_entries_and_clothing_without_inventing_amount_or_date(): void
+    public function test_all_time_shows_old_entry_references_without_inventing_payments_and_omits_amountless_clothing(): void
     {
         $user = User::factory()->create();
         $player = Player::factory()->create(['name' => 'Mia', 'surname' => 'Example']);
@@ -53,12 +53,12 @@ class AccountStatementHistoryTest extends TestCase
         ClothingOrder::create(['user_id' => $user->id, 'player_id' => $player->id, 'event_id' => $event->id,
             'pay_status' => 1, 'total' => 0, 'amount_paid' => 0, 'paid_at' => null]);
         $data = app(AccountStatementService::class)->build($user, '2025-01-01', '2026-12-31', '', 'all', true);
-        $this->assertCount(2, $data['historicalRows']);
-        $this->assertSame([null, null], $data['historicalRows']->pluck('amount')->all());
-        $this->assertSame([null, null], $data['historicalRows']->pluck('date')->all());
+        $this->assertCount(1, $data['historicalRows']);
+        $this->assertSame([null], $data['historicalRows']->pluck('amount')->all());
+        $this->assertSame([null], $data['historicalRows']->pluck('date')->all());
         $this->assertSame(0, $data['paid']);
         $period = app(AccountStatementService::class)->build($user, '2025-01-01', '2026-12-31', 'Mia');
-        $this->assertCount(2, $period['historicalRows']);
+        $this->assertCount(1, $period['historicalRows']);
         $this->assertCount(0, app(AccountStatementService::class)->build(User::factory()->create(), '2025-01-01', '2026-12-31')['historicalRows']);
         $this->actingAs($user)->get(route('account.statement'))->assertOk()->assertViewHas('allTime', true)
             ->assertSee('Amount unavailable')->assertSee('Payment date unavailable')->assertSee('Known payments');
@@ -138,7 +138,7 @@ class AccountStatementHistoryTest extends TestCase
         $event = Event::factory()->create();
         foreach (['2019-02-01', '2025-02-01', null] as $date) {
             ClothingOrder::create(['user_id' => $user->id, 'player_id' => $player->id, 'event_id' => $event->id,
-                'pay_status' => 1, 'paid_at' => $date, 'amount_paid' => 0, 'total' => 0]);
+                'pay_status' => 1, 'paid_at' => $date, 'amount_paid' => 125, 'total' => 0]);
         }
         $period = app(AccountStatementService::class)->build($user, '2025-01-01', '2026-12-31');
         $this->assertCount(2, $period['historicalRows']);
@@ -270,9 +270,8 @@ class AccountStatementHistoryTest extends TestCase
         $this->assertNull($eventRow['date']);
         $categoryRow = $data['historicalRows']->firstWhere('checkout', 'Historical entry '.$categoryEntry->id);
         $this->assertSame('Current category-listed entry fee', $categoryRow['details'][0]['listed_fee_source']);
-        foreach ([$zeroEntry, $negativeEntry, $captured] as $entry) {
-            $this->assertNull($data['historicalRows']->firstWhere('checkout', 'Historical entry '.$entry->id)['listedFee']);
-        }
+        foreach ([$zeroEntry, $negativeEntry] as $entry) $this->assertNull($data['historicalRows']->firstWhere('checkout', 'Historical entry '.$entry->id));
+        $this->assertNull($data['historicalRows']->firstWhere('checkout', 'Historical entry '.$captured->id)['listedFee']);
     }
 
     public function test_listed_fees_handle_ambiguous_items_missing_event_prices_clothing_and_player_payer_filters(): void
@@ -329,5 +328,108 @@ class AccountStatementHistoryTest extends TestCase
         $this->assertStringNotContainsString('280.00', $csv);
         $this->assertStringContainsString('historical price unverified', $csv);
         $this->get(route('superadmin.account-statements.show', $params + ['format' => 'pdf']))->assertOk()->assertHeader('content-type', 'application/pdf');
+    }
+
+    public function test_shared_registrations_retain_creation_date_without_becoming_dated_payments(): void
+    {
+        $user = User::factory()->create();
+        $mia = Player::factory()->create(['name' => 'Mia']);
+        $dawid = Player::factory()->create(['name' => 'Dawid']);
+        $category = CategoryEvent::factory()->create();
+        $entry = $this->entry($user, $mia, $category, 'SHARED-REGISTRATION');
+        $registration = $entry->registration;
+        $registration->players()->attach($dawid);
+        $registration->forceFill(['created_at' => '2023-08-31 17:23:48', 'updated_at' => '2026-10-27 10:00:00'])->save();
+        $entry->forceFill(['created_at' => '2025-04-03 21:39:19', 'updated_at' => '2026-10-27 11:00:00'])->save();
+        $secondCategory = CategoryEvent::factory()->create(['event_id' => $category->event_id]);
+        CategoryEventRegistration::create(['user_id' => $user->id, 'registration_id' => $registration->id,
+            'category_event_id' => $secondCategory->id, 'payment_status_id' => 1, 'pf_transaction_id' => 'SHARED-REGISTRATION']);
+        $this->capturedFee($user, $entry, $mia, 240);
+        $data = app(AccountStatementService::class)->build($user, '2025-01-01', '2026-12-31');
+        $this->assertCount(2, $data['historicalRows']);
+        $this->assertSame(['2023-08-31 17:23:48', '2023-08-31 17:23:48'], $data['historicalRows']->pluck('registration_date')->all());
+        $this->assertSame([null, null], $data['historicalRows']->pluck('date')->all());
+        $this->assertSame(0, $data['paid']);
+        $this->assertSame(24000, $data['recordedFeeTotal']);
+        $this->assertCount(2, $data['historicalRows'][0]['details']);
+        $this->assertCount(0, app(AccountStatementService::class)->build(User::factory()->create(), '2025-01-01', '2026-12-31')['historicalRows']);
+    }
+
+    public function test_missing_registration_dates_never_fall_back_to_entry_order_event_or_update_dates(): void
+    {
+        $user = User::factory()->create();
+        $player = Player::factory()->create();
+        $category = CategoryEvent::factory()->create();
+        $entry = $this->entry($user, $player, $category);
+        $registration = $entry->registration;
+        $registration->timestamps = false;
+        $registration->forceFill(['created_at' => null, 'updated_at' => '2024-03-24 11:22:33'])->save();
+        $entry->forceFill(['created_at' => '2025-04-03 21:39:19', 'updated_at' => '2026-10-27 11:00:00'])->save();
+        $this->capturedFee($user, $entry, $player, 450);
+        TeamPaymentOrder::create(['user_id' => $user->id, 'event_id' => $category->event_id, 'player_id' => $player->id, 'pay_status' => true]);
+        ClothingOrder::create(['user_id' => $user->id, 'event_id' => $category->event_id, 'player_id' => $player->id, 'pay_status' => 1, 'amount_paid' => 75]);
+        $data = app(AccountStatementService::class)->build($user, '2025-01-01', '2026-12-31');
+        $this->assertCount(3, $data['historicalRows']);
+        $this->assertSame([null, null, null], $data['historicalRows']->pluck('registration_date')->all());
+        $cer = $data['historicalRows']->firstWhere('checkout', 'Historical entry '.$entry->id);
+        $this->assertTrue($cer['registration_applicable']);
+        foreach ($data['historicalRows']->where('registration_applicable', false) as $row) $this->assertNull($row['registration_date']);
+        $this->assertSame(0, $data['paid']);
+        $this->assertSame(45000, $data['recordedFeeTotal']);
+    }
+
+    public function test_registration_date_is_separately_labelled_in_selected_account_preview_pdf_and_csv(): void
+    {
+        $user = User::factory()->create();
+        $entry = $this->entry($user, Player::factory()->create(), CategoryEvent::factory()->create(), 'HISTORIC-DATE');
+        $entry->registration->forceFill(['created_at' => '2023-11-16 13:14:15'])->save();
+        Role::findOrCreate('super-user', 'web');
+        $admin = User::factory()->create()->assignRole('super-user');
+        $params = ['user' => $user, 'from' => '2025-01-01', 'to' => '2026-12-31'];
+        $this->actingAs($admin)->get(route('superadmin.account-statements.show', $params))->assertOk()
+            ->assertSee('Registration date: 16 Nov 2023 13:14')->assertSee('Payment date unavailable')->assertViewHas('paid', 0);
+        $csv = $this->get(route('superadmin.account-statements.show', $params + ['format' => 'csv']))->assertOk()->streamedContent();
+        $this->assertStringContainsString('Registration date (linked registration created at; not payment date)', $csv);
+        $this->assertStringContainsString('2023-11-16 13:14:15', $csv);
+        $this->assertStringContainsString('Payment date unavailable', $csv);
+        $this->assertStringContainsString($user->email, $csv);
+        $this->get(route('superadmin.account-statements.show', $params + ['format' => 'pdf']))->assertOk()->assertHeader('content-type', 'application/pdf');
+    }
+
+    public function test_only_display_records_without_any_usable_amount_are_omitted_without_deleting_data(): void
+    {
+        $user = User::factory()->create();
+        $player = Player::factory()->create();
+        $zeroEvent = Event::factory()->create(['entryFee' => 0]);
+        $zeroCategory = CategoryEvent::factory()->create(['event_id' => $zeroEvent->id, 'entry_fee' => null]);
+        $this->entry($user, $player, $zeroCategory, 'HIDE-AMOUNTLESS-ENTRY');
+        $captured = $this->entry($user, $player, $zeroCategory, 'KEEP-CAPTURED-FEE');
+        $this->capturedFee($user, $captured, $player, 450);
+        $listedEvent = Event::factory()->create(['entryFee' => 265]);
+        $this->entry($user, $player, CategoryEvent::factory()->create(['event_id' => $listedEvent->id, 'entry_fee' => null]), 'KEEP-LISTED-FEE');
+        ClothingOrder::create(['user_id' => $user->id, 'player_id' => $player->id, 'event_id' => $zeroEvent->id,
+            'pay_status' => 1, 'pf_id' => 'HIDE-AMOUNTLESS-CLOTHING', 'amount_paid' => 0]);
+        ClothingOrder::create(['user_id' => $user->id, 'player_id' => $player->id, 'event_id' => $zeroEvent->id,
+            'pay_status' => 1, 'pf_id' => 'KEEP-POSITIVE-HISTORICAL-AMOUNT', 'amount_paid' => 75]);
+        $data = app(AccountStatementService::class)->build($user, '2025-01-01', '2026-12-31', '', 'all', true);
+        $this->assertCount(3, $data['historicalRows']);
+        $this->assertSame(0, $data['paid']);
+        $this->assertSame(45000, $data['recordedFeeTotal']);
+        $this->assertSame(26500, $data['listedFeeTotal']);
+        $actual = $data['historicalRows']->firstWhere('reference', 'KEEP-POSITIVE-HISTORICAL-AMOUNT');
+        $this->assertSame(7500, $actual['amount']);
+        $this->assertNull($actual['date']);
+        $this->assertNull($actual['registration_date']);
+        $this->actingAs($user)->get(route('account.statement'))->assertOk()->assertDontSee('HIDE-AMOUNTLESS-ENTRY')
+            ->assertDontSee('HIDE-AMOUNTLESS-CLOTHING')->assertSee('KEEP-CAPTURED-FEE')->assertSee('KEEP-LISTED-FEE')
+            ->assertSee('KEEP-POSITIVE-HISTORICAL-AMOUNT')->assertSee('Records with no available amount or fee reference are omitted.');
+        $csv = $this->get(route('account.statement', ['all_time' => 1, 'format' => 'csv']))->assertOk()->streamedContent();
+        $this->assertStringNotContainsString('HIDE-AMOUNTLESS', $csv);
+        $this->assertStringContainsString('KEEP-POSITIVE-HISTORICAL-AMOUNT', $csv);
+        $this->get(route('account.statement', ['all_time' => 1, 'format' => 'pdf']))->assertOk()->assertHeader('content-type', 'application/pdf');
+        $this->assertCount(0, app(AccountStatementService::class)->build(User::factory()->create(), '2025-01-01', '2026-12-31')['historicalRows']);
+        $this->assertDatabaseCount('category_event_registrations', 3);
+        $this->assertDatabaseCount('clothing_orders', 2);
+        $this->assertDatabaseCount('registration_order_items', 1);
     }
 }

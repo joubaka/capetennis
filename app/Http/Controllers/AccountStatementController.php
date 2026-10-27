@@ -70,9 +70,11 @@ class AccountStatementController extends Controller
                 $write(['Recorded historical entry fee subtotal ZAR (not verified payments; excluded from known receipt totals)', number_format($statement['recordedFeeTotal'] / 100, 2, '.', '')]);
                 $write(['Current listed entry fee reference subtotal ZAR (not historical price or payment proof; excluded from captured fees and receipt totals)', number_format($statement['listedFeeTotal'] / 100, 2, '.', '')]);
                 $write(['Historical paid records — separate from known receipt totals. Undated records are shown regardless of selected payment period. Amounts and dates unavailable in the original records are not inferred.']);
-                $write(['Payment date', 'Method', 'Reference', 'Historical record', 'Player / event / fee sources', 'Recorded amount ZAR (excluded from receipt totals)', 'Recorded historical entry fee ZAR (not verified payment)', 'Fee completeness', 'Current listed entry fee ZAR (reference only; historical price unverified)']);
+                $write(['Records with no available amount or fee reference are omitted. Registration dates are linked registration creation dates, not payment dates.']);
+                $write(['Payment date', 'Registration date (linked registration created at; not payment date)', 'Method', 'Reference', 'Historical record', 'Player / event / fee sources', 'Recorded amount ZAR (excluded from receipt totals)', 'Recorded historical entry fee ZAR (not verified payment)', 'Fee completeness', 'Current listed entry fee ZAR (reference only; historical price unverified)']);
                 foreach ($statement['historicalRows'] as $row) {
-                    $write([$row['date'] ?? 'Payment date unavailable', $row['method'], $row['reference'], $row['checkout'],
+                    $write([$row['date'] ?? 'Payment date unavailable', $row['registration_date'] ?? ($row['registration_applicable'] ? 'Registration date unavailable' : 'Not applicable'),
+                        $row['method'], $row['reference'], $row['checkout'],
                         collect($row['details'])->map(fn ($d) => $d['player'].' / '.$d['event'].' / Event date: '.($d['event_date'] ?? 'unavailable')
                             .' / Recorded historical entry fee: '.(($d['recorded_fee'] ?? null) === null ? 'Amount unavailable' : 'R '.number_format($d['recorded_fee'] / 100, 2, '.', ''))
                             .(($d['listed_fee'] ?? null) === null ? '' : ' / '.$d['listed_fee_source'].': R '.number_format($d['listed_fee'] / 100, 2, '.', '').' (reference only; historical price unverified)'))->implode('; '),

@@ -42,6 +42,12 @@
           "slug": "backend.superadmin"
         },
         {
+          "url": "superadmin/account-statements",
+          "name": "Account statements",
+          "icon": "circle",
+          "slug": ["superadmin.account-statements.index", "superadmin.account-statements.show"]
+        },
+        {
           "url": "backend/user",
           "name": "Users",
           "icon": "circle",

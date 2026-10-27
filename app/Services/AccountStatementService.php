@@ -243,7 +243,7 @@ class AccountStatementService
                     'date' => null, 'amount' => null, 'details' => [$this->withListedFee($this->detail($order->player, $order->event, null),
                         $order->team?->category, $order->event, 'team:'.$order->id.':'.($order->player_id ?? 0))]]);
             }
-            $entries = $this->bounded(CategoryEventRegistration::withTrashed()->with(['players', 'categoryEvent.event'])
+            $entries = $this->bounded(CategoryEventRegistration::withTrashed()->with(['players', 'categoryEvent.event', 'registration'])
                 ->where('user_id', $user->id)->where('payment_status_id', 1));
             foreach ($entries as $entry) {
                 $item = \App\Models\RegistrationOrderItems::where('registration_id', $entry->registration_id)
@@ -280,7 +280,9 @@ class AccountStatementService
                     $entry->categoryEvent, $entry->categoryEvent?->event,
                     'entry:'.($entry->registration_id ?: 'missing-'.$entry->id).':'.$entry->category_event_id.':0')];
                 $history->push(['checkout' => 'Historical entry '.$entry->id, 'reference' => $entry->pf_transaction_id ?: 'Reference unavailable',
-                    'method' => $entry->payment_method ?: 'Recorded as paid', 'date' => null, 'amount' => null, 'details' => $details]);
+                    'method' => $entry->payment_method ?: 'Recorded as paid', 'date' => null, 'amount' => null,
+                    'registration_date' => $entry->registration?->created_at?->format('Y-m-d H:i:s'),
+                    'registration_applicable' => true, 'details' => $details]);
             }
         }
         if ($category !== 'entry') {
@@ -316,6 +318,8 @@ class AccountStatementService
             });
         }
         $history = $history->map(function ($row) {
+            $row['registration_date'] ??= null;
+            $row['registration_applicable'] ??= false;
             $fees = collect($row['details'])->filter(fn ($detail) => isset($detail['recorded_fee_item_id']))->unique('recorded_fee_item_id');
             $row['recordedFee'] = $fees->isEmpty() ? null : $fees->sum('recorded_fee');
             $row['partialRecordedFee'] = $fees->isNotEmpty() && $fees->count() < count($row['details']);
@@ -324,6 +328,7 @@ class AccountStatementService
 
             return $row;
         });
+        $history = $history->filter(fn ($row) => ($row['amount'] ?? 0) > 0 || ($row['recordedFee'] ?? 0) > 0 || ($row['listedFee'] ?? 0) > 0);
         if ($history->count() > self::LIMIT) $this->tooMany();
 
         return $history->values();

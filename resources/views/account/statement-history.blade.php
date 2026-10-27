@@ -1,5 +1,5 @@
 <div class="statement-history-intro"><h2 class="statement-section-title">Historical paid records</h2>
-<p class="statement-caption">Marked paid in Cape Tennis; full receipt evidence is unavailable. Undated records appear regardless of the selected payment period. Event dates are not payment dates.</p>
+<p class="statement-caption">Marked paid in Cape Tennis; full receipt evidence is unavailable. Records without payment dates appear regardless of the selected payment period. Registration dates show when the linked registration was created; registration and event dates are not payment dates. Records with no available amount or fee reference are omitted.</p>
 <div class="statement-fee-summary">
 <p><strong>Recorded historical entry fees: R {{ number_format(($recordedFeeTotal ?? 0) / 100, 2) }}</strong> · Original captured item prices.</p>
 <p><strong>Current listed fee references: R {{ number_format(($listedFeeTotal ?? 0) / 100, 2) }}</strong> · Category or event fees used only where captured prices are missing.</p>
@@ -9,7 +9,10 @@
 <colgroup><col style="width:14%"><col style="width:19%"><col style="width:37%"><col style="width:15%"><col style="width:15%"></colgroup>
 <thead><tr><th>Payment date</th><th>Record / reference</th><th>Player / event / fee source</th><th class="statement-right">Payment amount</th><th class="statement-right">Entry fee reference</th></tr></thead>
 <tbody>@forelse($historyRows as $row)<tr>
-<td>@if($row['date']){{ substr($row['date'], 0, 10) }}@else<span class="statement-unavailable">Payment date unavailable</span>@endif</td>
+<td>@if($row['date']){{ substr($row['date'], 0, 10) }}@else<span class="statement-unavailable">Payment date unavailable</span>@endif
+@if($row['registration_date'] ?? null)<br><small>Registration date: {{ \Illuminate\Support\Carbon::parse($row['registration_date'])->format('d M Y H:i') }}</small>
+@elseif($row['registration_applicable'] ?? false)<br><small class="statement-unavailable">Registration date unavailable</small>@endif
+</td>
 <td><strong>{{ $row['checkout'] }}</strong><br><span class="statement-reference">{{ $row['reference'] }}</span><br><small>{{ $row['method'] }}</small></td>
 <td>@foreach($row['details'] as $detail)<div class="entry-detail"><strong>{{ $detail['player'] }}</strong><br>{{ $detail['event'] }}
 @if($detail['event_date'])<br><small>Event date: {{ \Illuminate\Support\Carbon::parse($detail['event_date'])->format('d M Y') }}</small>@endif

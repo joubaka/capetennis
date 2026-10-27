@@ -145,6 +145,7 @@
             <div class="sa-workspace-heading"><i class="ti ti-report-money text-success"></i>Finance</div>
             <div class="sa-workspace-links">
               <a class="sa-workspace-link" href="{{ route('superadmin.finances') }}">Finance dashboard</a>
+              <a class="sa-workspace-link" href="{{ route('superadmin.account-statements.index') }}">Account statements</a>
               <a class="sa-workspace-link" href="{{ route('admin.registration.refunds.bank.index') }}">Bank refunds @if($pendingRefunds > 0)<span class="badge bg-danger ms-1">{{ $pendingRefunds }}</span>@endif</a>
               <a class="sa-workspace-link" href="{{ route('backend.superadmin.workspace', ['tab' => 'wallets']) }}">Wallets</a>
             </div>
