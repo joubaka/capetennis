@@ -12,6 +12,13 @@
     state.ready = draw => !draw.locked && rounds(draw).length > 0;
     state.matches = (drawId, round) => (details(draws.find(draw => Number(draw.id) === Number(drawId)) || {})[round] || []).flatMap(group => group.matches || []);
     state.eligible = match => !match.scheduled_at || String(match.scheduled_at).slice(0,10) === state.day;
+    state.updateBooking = (key, scheduledAt) => {
+      draws.forEach(draw=>rounds(draw).forEach(round=>state.matches(draw.id,round).forEach(match=>{
+        if(match.key!==key)return;
+        match.scheduled_at=String(scheduledAt).replace('T',' ');
+        if(!state.eligible(match))state.selectedFixtures.get(Number(draw.id)+':'+round)?.delete(key);
+      })));
+    };
     state.selectRound = (drawId, round, checked) => {
       drawId=Number(drawId); round=Number(round);
       if (!state.selectedDrawIds.includes(drawId)) return;
@@ -141,6 +148,8 @@
       get('day-batch-order-mode').value=prefs.draw_order_mode||'mixed';get('day-batch-progression').value=prefs.round_progression||'team_ready';get('day-batch-tie-allocation').value=prefs.tie_allocation||'balanced';
       get('day-batch-replan').checked=false;
     };
+    const updateBooking=state.updateBooking;
+    state.updateBooking=(key,scheduledAt)=>{updateBooking(key,scheduledAt);renderRounds();};
     const readOptions=()=>{
       const config={...(options.getConfig?.()||{}), start_time:get('day-batch-start').value,end_time:get('day-batch-end').value,
         duration:Number(get('day-batch-duration').value),player_rest:Number(get('day-batch-rest').value),court_gap:Number(get('day-batch-gap').value),

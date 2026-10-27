@@ -13,7 +13,7 @@ const draws=[
   {id:5,name:'Not generated',day_round_details:{}},
 ];
 const venues=[{id:7,court_list:[{label:'1'},{label:'2'}]},{id:8,court_labels:['A','B']}];
-function state(){const value=createState(draws,venues,days);value.setCourt(7,'2',true);return value;}
+function state(){const value=createState(structuredClone(draws),structuredClone(venues),days);value.setCourt(7,'2',true);return value;}
 
 test('day batch selects one, several or all available draws without adding locked or empty draws',()=>{
  const s=state();s.selectDraw(1,true);assert.deepEqual(s.selectedDrawIds,[1]);
@@ -62,6 +62,23 @@ test('payload cannot preview without selected courts or rounds and replanning is
  const s=state();s.selectDraw(1,true);s.setCourt(7,'2',false);assert.throws(()=>buildPayload(s),/court/i);
  s.setCourt(7,'1',true);s.selectRound(1,1,false);assert.throws(()=>buildPayload(s),/round/i);
  s.selectRound(1,1,true);assert.equal(buildPayload(s,{reschedule_existing:true}).reschedule_existing,true);
+});
+test('moving a saved match to another day updates eligibility without changing the chosen day or other selections',()=>{
+ const s=state();s.selectDraw(1,true);s.selectRound(1,2,true);
+ s.updateBooking('individual:1',days[1]+' 09:00:00');
+ assert.equal(s.day,days[0]);assert.deepEqual(s.selectedDrawIds,[1]);
+ assert.deepEqual([...s.selectedRounds.get(1)],[1,2]);
+ assert.deepEqual(buildPayload(s).selected_fixture_keys,['individual:2','individual:3']);
+ assert.equal(s.matches(1,1).find(match=>match.key==='individual:1').scheduled_at,days[1]+' 09:00:00');
+ s.setDay(days[1]);assert.ok(buildPayload(s).selected_fixture_keys.includes('individual:1'));
+});
+test('booking updates distinguish team and individual IDs and retain same-day match selections',()=>{
+ const s=state();s.selectAll();
+ s.updateBooking('team:1',days[1]+' 10:00:00');
+ assert.ok(s.selectedFixtures.get('1:1').has('individual:1'),'same numeric individual ID remains selected');
+ assert.ok(!s.selectedFixtures.get('3:1').has('team:1'));
+ s.updateBooking('individual:2',days[0]+' 11:00:00');
+ assert.ok(s.selectedFixtures.get('1:1').has('individual:2'));
 });
 
 function mounted() {

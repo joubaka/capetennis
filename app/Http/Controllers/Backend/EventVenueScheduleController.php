@@ -1141,6 +1141,18 @@ final class EventVenueScheduleController extends Controller
         $this->authorize('event.manage', $event);
         try {
             $options = $this->validatedOptions($request);
+            if ($request->has('preview_move')) {
+                $data = $request->validate([
+                    'revision'=>['required','string','size:64'], 'preview_move'=>['required','array:fixture_key,scheduled_at,venue_id,court'],
+                    'preview_move.fixture_key'=>['required','regex:/^(individual|team):[1-9][0-9]*$/'],
+                    'preview_move.scheduled_at'=>['required','date'], 'preview_move.venue_id'=>['required','integer'], 'preview_move.court'=>['required','string','max:50'],
+                ]);
+                $current = $scheduler->preview($event->fresh(), $options);
+                if (! hash_equals($current['revision'], $data['revision'])) throw new \InvalidArgumentException('The preview changed. Generate a new preview before moving this match.');
+                if (! collect($current['matches'])->contains('fixture_key', $data['preview_move']['fixture_key'])) throw new \InvalidArgumentException('Choose an unsaved suggested match in this preview.');
+                $options['preview_moves'] = collect($options['preview_moves'] ?? [])->reject(fn ($move) => $move['fixture_key'] === $data['preview_move']['fixture_key'])->push($data['preview_move'])->values()->all();
+                return response()->json($scheduler->preview($event->fresh(), $options));
+            }
             if (empty($options['programme']) && empty($options['day_batch'])) $playoffs->prepareEvent($event, $options['draw_ids'] ?? []);
 
             return response()->json($scheduler->preview($event->fresh(), $options));
@@ -1349,6 +1361,10 @@ final class EventVenueScheduleController extends Controller
     private function validatedOptions(Request $request): array
     {
         return $request->validate([
+            'preview_moves'=>['sometimes','array','max:100'],
+            'preview_moves.*'=>['required','array:fixture_key,scheduled_at,venue_id,court'],
+            'preview_moves.*.fixture_key'=>['required','distinct','regex:/^(individual|team):[1-9][0-9]*$/'],
+            'preview_moves.*.scheduled_at'=>['required','date'], 'preview_moves.*.venue_id'=>['required','integer'], 'preview_moves.*.court'=>['required','string','max:50'],
             'day_batch' => ['sometimes', 'boolean'],
             'draw_order_mode' => ['sometimes', 'in:mixed,sequential'],
             'draw_order' => ['sometimes', 'array', 'min:1', 'max:200'],

@@ -139,23 +139,34 @@
   .schedule-workspace .preview-venue-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.75rem; padding:.75rem 1rem; border-top:1px solid var(--schedule-border); background:var(--schedule-soft); }
   .schedule-workspace .workspace-footer { position:sticky; bottom:.75rem; z-index:4; display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-top:1rem; padding:.8rem; border:1px solid var(--schedule-border); border-radius:.75rem; background:rgba(255,255,255,.96); box-shadow:0 .5rem 1.5rem rgba(31,42,68,.1); backdrop-filter:blur(8px); }
   .schedule-workspace .compact-note { border-left:3px solid var(--bs-info); padding:.55rem .75rem; background:rgba(var(--bs-info-rgb), .06); border-radius:0 .5rem .5rem 0; }
-  .schedule-workspace .manual-match-card { display:block; width:100%; min-width:8.75rem; padding:.5rem; border:1px solid rgba(var(--bs-primary-rgb), .25); border-radius:.5rem; background:rgba(var(--bs-primary-rgb), .07); color:var(--bs-body-color); text-align:left; cursor:grab; }
+  .schedule-workspace .manual-match-card { display:block; width:100%; min-width:0; padding:.5rem; border:1px solid rgba(var(--bs-primary-rgb), .25); border-radius:.5rem; background:rgba(var(--bs-primary-rgb), .07); color:var(--bs-body-color); text-align:left; cursor:grab; overflow-wrap:anywhere; }
   .schedule-workspace .manual-match-card:hover, .schedule-workspace .manual-match-card:focus-visible { border-color:var(--bs-primary); background:rgba(var(--bs-primary-rgb), .12); outline:0; }
   .schedule-workspace .manual-match-card.is-selected { border-color:var(--bs-primary); box-shadow:0 0 0 .2rem rgba(var(--bs-primary-rgb), .18); }
   .schedule-workspace .manual-match-card[draggable="true"]:active { cursor:grabbing; }
-  .schedule-workspace .manual-match-cell { display:grid; gap:.4rem; min-width:8.75rem; }
+  .schedule-workspace .manual-match-cell { display:grid; gap:.4rem; min-width:0; }
   .schedule-workspace .manual-match-remove { justify-self:start; }
-  .schedule-workspace .manual-drop-slot { min-width:8.75rem; background:rgba(var(--bs-success-rgb), .035); transition:background .15s ease, box-shadow .15s ease; }
+  .schedule-workspace .manual-drop-slot { min-width:0; background:rgba(var(--bs-success-rgb), .035); transition:background .15s ease, box-shadow .15s ease; }
   .schedule-workspace .manual-drop-slot.is-drag-over { background:rgba(var(--bs-success-rgb), .18); box-shadow:inset 0 0 0 2px var(--bs-success); }
   .schedule-workspace .manual-slot-button { width:100%; min-height:4rem; border:1px dashed rgba(var(--bs-success-rgb), .5); border-radius:.5rem; background:transparent; color:var(--bs-success); text-align:left; }
   .schedule-workspace .manual-slot-button:hover, .schedule-workspace .manual-slot-button:focus-visible { border-style:solid; background:rgba(var(--bs-success-rgb), .08); outline:0; }
   .schedule-workspace .court-grid-hint { display:flex; align-items:center; gap:.4rem; padding:.55rem 1rem; border-top:1px solid var(--schedule-border); color:var(--bs-secondary-color); background:var(--schedule-soft); }
-  .schedule-workspace .court-grid-scroll { position:relative; max-height:clamp(24rem, 62vh, 48rem); overflow:auto; overscroll-behavior:contain; scrollbar-gutter:stable both-edges; border-top:1px solid var(--schedule-border); }
-  .schedule-workspace .court-grid-scroll table { min-width:max-content; border-top:0; }
+  .schedule-workspace.day-batch-review { max-width:none; }
+  .schedule-workspace .court-grid-scroll { position:relative; max-height:none; overflow:visible; border-top:1px solid var(--schedule-border); }
+  .schedule-workspace .court-grid-scroll table { width:100%; table-layout:fixed; border-top:0; }
+  .schedule-workspace .court-grid-scroll td, .schedule-workspace .court-grid-scroll th { overflow-wrap:anywhere; white-space:normal !important; }
+  .schedule-workspace .court-grid-scroll .badge { white-space:normal; }
+  .schedule-workspace #venue-slot-grids .preview-venue { border:0; box-shadow:none; }
   .schedule-workspace .court-grid-scroll thead th { position:sticky; top:0; z-index:3; background:var(--bs-body-bg); box-shadow:0 1px 0 var(--schedule-border); }
   .schedule-workspace .court-grid-scroll tr > :first-child { position:sticky; left:0; z-index:2; min-width:8.75rem; background:var(--bs-body-bg); box-shadow:1px 0 0 var(--schedule-border); }
   .schedule-workspace .court-grid-scroll thead tr > :first-child { z-index:4; }
-  @media (max-width: 575.98px) { .schedule-workspace .court-grid-scroll tr > :first-child { min-width:6rem; width:6rem; max-width:6rem; white-space:normal !important; } }
+  @media (max-width: 991.98px) {
+    .schedule-workspace .court-grid-scroll table, .schedule-workspace .court-grid-scroll tbody { display:block; }
+    .schedule-workspace .court-grid-scroll thead { display:none; }
+    .schedule-workspace .court-grid-scroll tr { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr)); margin-bottom:1rem; }
+    .schedule-workspace .court-grid-scroll tr > :first-child { grid-column:1/-1; position:static; min-width:0; width:auto; max-width:none; }
+    .schedule-workspace .court-grid-scroll td { display:block; }
+    .schedule-workspace .court-grid-scroll td::before { content:attr(data-court-label); display:block; font-weight:600; margin-bottom:.4rem; }
+  }
   .schedule-workspace .court-grid-scroll::-webkit-scrollbar { width:12px; height:12px; }
   .schedule-workspace .court-grid-scroll::-webkit-scrollbar-thumb { border:3px solid transparent; border-radius:999px; background:rgba(var(--bs-secondary-rgb), .45); background-clip:padding-box; }
   .schedule-workspace .court-grid-scroll { scrollbar-color:rgba(var(--bs-secondary-rgb), .55) transparent; scrollbar-width:auto; }
@@ -167,7 +178,7 @@
   .schedule-workspace .full-page-stepper { display:none; }
   .schedule-workspace .schedule-display.is-full-page .full-page-stepper { position:sticky; top:-1rem; z-index:7; display:grid; margin:-1rem -1rem 1rem; border-width:0 0 1px; border-radius:0; box-shadow:0 .35rem 1rem rgba(31,42,68,.08); }
   .schedule-workspace .schedule-display.is-full-page #preview-view-controls { position:relative; top:auto; z-index:6; margin-inline:-1rem; padding:1rem; border-bottom:1px solid var(--schedule-border); background:rgba(var(--bs-body-bg-rgb), .97); box-shadow:0 .35rem 1rem rgba(31,42,68,.08); backdrop-filter:blur(8px); }
-  .schedule-workspace .schedule-display.is-full-page .court-grid-scroll { max-height:calc(100vh - 15rem); }
+  .schedule-workspace .schedule-display.is-full-page .court-grid-scroll { max-height:none; }
   .manual-match-picker-option { text-align:left; }
   .manual-match-picker-option .match-picker-meta { color:var(--bs-secondary-color); font-size:.78rem; }
   @media (max-width: 767.98px) {
@@ -857,6 +868,7 @@
   let payload = null;
   let programmePayload = null;
   let dayBatchPayload = null;
+  let dayBatchState = null;
   @if($planningDate)
   document.querySelectorAll('.draw-start, .venue-start, #reschedule-existing').forEach(input => { input.disabled = true; input.title = 'This day-only batch preserves existing times and uses one daily start.'; });
   ['schedule-start', 'schedule-end'].forEach(id => {
@@ -928,10 +940,14 @@
     element.classList.remove('text-muted', 'text-danger', 'text-success', 'text-warning');
     element.classList.add(`text-${tone}`);
   };
-  const notify = (message, tone = 'success') => {
-    if (window.toastr && typeof window.toastr[tone] === 'function') {
-      window.toastr[tone](message);
-      return;
+  let lastToast = {message:'', time:0};
+  const notify = (message, tone = 'success', pending = false) => {
+    if (!pending && lastToast.message === message && Date.now() - lastToast.time < 700) return () => {};
+    lastToast = {message, time:Date.now()};
+    const method = tone === 'danger' ? 'error' : tone;
+    if (window.toastr && typeof window.toastr[method] === 'function') {
+      const toast = window.toastr[method](message, '', pending ? {timeOut:0,extendedTimeOut:0} : undefined);
+      return () => window.toastr.clear(toast);
     }
     const container = document.getElementById('schedule-toast-container') || Object.assign(document.createElement('div'), {
       id: 'schedule-toast-container',
@@ -939,7 +955,7 @@
     });
     if (!container.isConnected) document.body.appendChild(container);
     const toast = document.createElement('div');
-    toast.className = `toast align-items-center text-bg-${tone === 'danger' ? 'danger' : tone === 'warning' ? 'warning' : 'success'} border-0`;
+    toast.className = `toast align-items-center text-bg-${['danger','warning','info','success'].includes(tone) ? tone : 'info'} border-0`;
     toast.setAttribute('role', 'status');
     const row = document.createElement('div');
     row.className = 'd-flex';
@@ -955,7 +971,9 @@
     toast.appendChild(row);
     container.appendChild(toast);
     toast.addEventListener('hidden.bs.toast', () => toast.remove());
-    bootstrap.Toast.getOrCreateInstance(toast, {delay: 3500}).show();
+    const instance = bootstrap.Toast.getOrCreateInstance(toast, {delay:3500,autohide:!pending});
+    instance.show();
+    return () => { instance.hide(); };
   };
   const updateScheduleActivity = () => {
     const elapsed = Math.max(0, performance.now() - scheduleActivityStartedAt);
@@ -1277,9 +1295,11 @@
       if (stale()) throw Object.assign(new Error('Preview selection changed.'), {stalePreview:true});
       if (!response.ok) throw Object.assign(new Error(data.message || Object.values(data.errors || {}).flat()[0] || 'Request failed.'), {response:data});
       if (generation !== null) data.previewGeneration = generation;
+      if (url !== previewUrl && data.message) notify(data.message, 'success');
       return data;
     } catch (error) {
       if (stale()) error.stalePreview = true;
+      if (!error.stalePreview) notify(error.message, 'danger');
       throw error;
     }
   };
@@ -1507,17 +1527,17 @@
             ? `<button type="button" class="btn btn-sm btn-outline-danger manual-match-remove" data-unapply-fixture="${fixtureKey(starts)}" data-match-label="${escapeHtml(starts.draw_name)} ${escapeHtml(matchLabel(starts))}"><i class="ti ti-calendar-off me-1" aria-hidden="true"></i>Remove from schedule</button>`
             : '';
           const move = starts.fixed && starts.editable ? `<button type="button" class="btn btn-sm btn-outline-primary" data-reschedule-fixture="${fixtureKey(starts)}">Reschedule</button>` : '';
-          return `<td><div class="manual-match-cell">${card}${move}${remove}</div></td>`;
+          return `<td data-court-label="Court ${escapeHtml(court)}"><div class="manual-match-cell">${card}${move}${remove}</div></td>`;
         }
         const occupied = rows.find(row => String(row.court) === String(court) && asDate(row.scheduled_at) < time && matchEnd(row, result) > time);
-        if (occupied) return `<td class="bg-label-secondary text-muted"><span class="fw-semibold">In use</span><div class="small">until ${escapeHtml(matchEnd(occupied, result).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}))}</div></td>`;
-        return `<td class="manual-drop-slot" data-manual-slot data-venue="${venue.id}" data-court="${escapeHtml(court)}" data-time="${escapeHtml(assignmentTime(time))}"><button type="button" class="manual-slot-button"><span class="fw-semibold">Available</span><span class="small text-muted d-block">Drop or select a valid match</span></button></td>`;
+        if (occupied) return `<td data-court-label="Court ${escapeHtml(court)}" class="bg-label-secondary text-muted"><span class="fw-semibold">In use</span><div class="small">until ${escapeHtml(matchEnd(occupied, result).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}))}</div></td>`;
+        return `<td class="manual-drop-slot" data-court-label="Court ${escapeHtml(court)}" data-manual-slot data-venue="${venue.id}" data-court="${escapeHtml(court)}" data-time="${escapeHtml(assignmentTime(time))}"><button type="button" class="manual-slot-button"><span class="fw-semibold">Available</span><span class="small text-muted d-block">Drop or select a valid match</span></button></td>`;
       }).join('');
       return `<tr><th class="text-nowrap">${escapeHtml(formatSlotTime(time))}</th>${cells}</tr>`;
     }).join('');
     const truncated = times.size >= 200 ? '<div class="alert alert-warning py-2 mb-0">Only the first 200 time rows are shown. Shorten the scheduling window to inspect it in more detail.</div>' : '';
 
-    return `<details class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap align-items-center gap-2"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span class="venue-age-group-summary">${ageGroupScheduleSummary(rows)}</span><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="court-grid-hint small"><i class="ti ti-arrows-horizontal" aria-hidden="true"></i><span>Scroll sideways to see every court. Court headings and start times remain visible while you scroll.</span></div><div class="court-grid-scroll" tabindex="0" role="region" aria-label="${escapeHtml(venue.name)} court schedule; scroll horizontally and vertically"><table class="table table-bordered align-middle mb-0"><thead><tr><th>Slot starts</th>${courtHeaders}</tr></thead><tbody>${body || '<tr><td colspan="99" class="text-center text-muted py-4">No slots in this scheduling window.</td></tr>'}</tbody></table></div>${truncated}</details>`;
+    return `<details class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap align-items-center gap-2"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span class="venue-age-group-summary">${ageGroupScheduleSummary(rows)}</span><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="court-grid-hint small"><i class="ti ti-arrows-horizontal" aria-hidden="true"></i><span>Drag a match to an Available slot, or select the match and then its slot. Each venue has its own courts.</span></div><div class="court-grid-scroll" tabindex="0" role="region" aria-label="${escapeHtml(venue.name)} court schedule"><table class="table table-bordered align-middle mb-0"><thead><tr><th>Slot starts</th>${courtHeaders}</tr></thead><tbody>${body || '<tr><td colspan="99" class="text-center text-muted py-4">No slots in this scheduling window.</td></tr>'}</tbody></table></div>${truncated}</details>`;
   }
 
   function venueChangeWarnings(result) {
@@ -1591,6 +1611,7 @@
     ['reschedule-existing', 'programme-reschedule-existing'].forEach(id => document.getElementById(id).checked = false);
     const next = {...buildPayload(), replan_venue_ids:[], reschedule_existing:false};
     delete next.programme;
+    delete next.preview_moves;
     const movedTime = String(scheduledAt).replace(' ', 'T').slice(0,16);
     const day = movedTime.slice(0,10);
     if (next.day_batch && movedFixtureKey) {
@@ -1604,7 +1625,7 @@
     if (!next.end || movedTime >= String(next.end).replace(' ', 'T').slice(0,16)) next.end = day+'T23:59';
     return next;
   };
-  const markManualBookingView = () => {
+  const markManualBookingView = (key, scheduledAt) => {
     if (!dayBatchPayload) return false;
     revision = null;
     document.getElementById('apply-preview').disabled = true;
@@ -1615,9 +1636,25 @@
   const placeMatchManually = async (fixtureId, slot) => {
     if (!fixtureId || !slot) return;
     const status = document.getElementById('schedule-status');
-    setStatus(status, 'Checking and saving the manual match assignment…');
+    const suggested = lastScheduleResult?.matches?.find(row => fixtureKey(row) === fixtureId);
+    const pendingMessage = suggested ? 'Checking this move in the unsaved preview…' : 'Checking and saving the manual match assignment…';
+    setStatus(status, pendingMessage);
+    const clearPendingToast = notify(pendingMessage, 'info', true);
     document.getElementById('venue-slot-grids').classList.add('pe-none');
     try {
+      if (suggested) {
+        if (!payload || !revision) throw new Error('Generate a current preview before moving suggested matches.');
+        const result = await post(previewUrl, {...payload, revision, preview_move:{fixture_key:fixtureId,scheduled_at:slot.dataset.time,venue_id:Number(slot.dataset.venue),court:slot.dataset.court}});
+        payload = {...payload, preview_moves:result.input.preview_moves};
+        if (dayBatchPayload) dayBatchPayload = {...dayBatchPayload, preview_moves:result.input.preview_moves};
+        if (programmePayload) programmePayload = {...programmePayload, preview_moves:result.input.preview_moves};
+        selectedManualFixture = null;
+        render(result);
+        const venueName = result.venues.find(venue => Number(venue.id) === Number(slot.dataset.venue))?.name || 'Selected venue';
+        const message = `${venueName}, Court ${slot.dataset.court}: preview updated; save the schedule to keep this move.`;
+        setStatus(status, message, 'success'); notify(message, 'success');
+        return;
+      }
       const saved = await post(manualAssignmentUrl, {
         ...fixtureRef(fixtureId), scheduled_at:slot.dataset.time,
         venue_id:Number(slot.dataset.venue), court:slot.dataset.court,
@@ -1628,15 +1665,19 @@
         round_progression:document.getElementById('round-progression').value,
       });
       selectedManualFixture = null;
+      if (dayBatchPayload) dayBatchState?.updateBooking(fixtureId, slot.dataset.time);
       payload = fixedBookingPreviewPayload(slot.dataset.time, fixtureId);
       render(await post(previewUrl, payload));
       if (saved.warnings?.length) {
         document.getElementById('preview-warnings').insertAdjacentHTML('afterbegin', saved.warnings.map(message => `<div class="alert alert-warning py-2">${escapeHtml(message)}</div>`).join(''));
       }
-      if (!markManualBookingView()) setStatus(status, saved.message + ' It is saved; the remaining unsaved suggestions were adapted around it.', 'success');
+      if (!markManualBookingView(fixtureId, slot.dataset.time)) setStatus(status, saved.message + ' It is saved; the remaining unsaved suggestions were adapted around it.', 'success');
+      notify(saved.message+' Saved privately; publish separately to update public times.', 'success');
     } catch (error) { if (error.stalePreview) return;
       setStatus(status, error.message, 'danger');
+      notify(error.message, 'danger');
     } finally {
+      clearPendingToast();
       document.getElementById('venue-slot-grids').classList.remove('pe-none');
     }
   };
@@ -1703,9 +1744,10 @@
         limit_daily_matches:document.getElementById('schedule-daily-limit').checked, round_progression:document.getElementById('round-progression').value,
       });
       bootstrap.Modal.getOrCreateInstance(rescheduleModal).hide();
+      if (dayBatchPayload) dayBatchState?.updateBooking(rescheduleFixture, document.getElementById('reschedule-match-time').value);
       payload = fixedBookingPreviewPayload(document.getElementById('reschedule-match-time').value, rescheduleFixture);
       render(await post(previewUrl, payload));
-      if (!markManualBookingView()) setStatus(document.getElementById('schedule-status'), saved.message+' Publish separately to update public times.', 'success');
+      if (!markManualBookingView(rescheduleFixture, document.getElementById('reschedule-match-time').value)) setStatus(document.getElementById('schedule-status'), saved.message+' Publish separately to update public times.', 'success');
     } catch (error) { status.textContent = error.message; }
     finally { button.disabled = false; }
   });
@@ -2308,6 +2350,8 @@
     let completed = false;
     try {
       const applied = await post(applyUrl, {...submittedPayload, revision});
+      if (dayBatchPayload) delete dayBatchPayload.preview_moves;
+      if (programmePayload) delete programmePayload.preview_moves;
       if (submittedProgramme?.days?.length && submittedAge) {
         programmeSavedAges.add(submittedAge);
         if ((programmeEditVersions.get(submittedAge) || 0) === submittedEditVersion) {
@@ -2328,6 +2372,7 @@
         invalidatePreview();
       } else {
         payload = submittedProgramme?.days?.length ? {...submittedPayload, replan_venue_ids:[]} : {...buildPayload(), replan_venue_ids:[]};
+        delete payload.preview_moves;
         setScheduleActivityPhase(revalidationActivityStages);
         try {
           const savedPreview = await post(previewUrl, payload);
@@ -2972,7 +3017,7 @@
     document.getElementById('schedule-daily-limit').checked = Boolean(config.limit_daily_matches);
     document.getElementById('programme-daily-limit').checked = Boolean(config.limit_daily_matches);
   };
-  CapeDayBatch.mount({
+  dayBatchState = CapeDayBatch.mount({
     draws:@json($draws->values()), venues:@json($venues->values()), dates:@json($programmeDates),
     initialDay:@json($planningDate), initialDrawIds:@json(request()->has('draw_ids') ? $draws->filter(fn($draw) => $draw['selected'] && !$draw['locked'])->pluck('id')->values() : []),
     savedByDay:@json($scheduleDraft['day_batch_settings'] ?? []),

@@ -344,6 +344,24 @@ final class EventVenueScheduleService
         }
         unset($node);
 
+        $previewMoves = [];
+        if (count($options['preview_moves'] ?? []) > 100) throw new \InvalidArgumentException('Move at most 100 suggested matches in one preview.');
+        foreach ($options['preview_moves'] ?? [] as $move) {
+            $key = (string) ($move['fixture_key'] ?? '');
+            if (! preg_match('/^(individual|team):([1-9][0-9]*)$/', $key, $parts) || isset($previewMoves[$key])) throw new \InvalidArgumentException('Choose each suggested match once.');
+            $id = $parts[1] === 'team' ? $key : (int) $parts[2];
+            $node = $nodes[$id] ?? null;
+            if (! $node || ! $node['selected_round'] || $node['fixed'] || $node['played'] || $node['automatic']) throw new \InvalidArgumentException('Move only an unsaved suggested match in the selected event draws and rounds.');
+            $at = Carbon::parse($move['scheduled_at']); $venue = (int) $move['venue_id']; $court = (string) $move['court'];
+            if (! in_array($court, array_map('strval', $node['venue_courts'][$venue] ?? []), true)) throw new \InvalidArgumentException('Choose a permitted active court for this suggested match.');
+            if ($at->lt($start) || ($end && $at->copy()->addMinutes($duration)->gt($end))
+                || (isset($node['programme_end']) && $at->copy()->addMinutes($duration)->gt($node['programme_end']))) throw new \InvalidArgumentException('Move the match within its selected playing day and time window.');
+            $normalized = ['fixture_key'=>$key, 'scheduled_at'=>$at->format('Y-m-d H:i:s'), 'venue_id'=>$venue, 'court'=>$court];
+            $previewMoves[$key] = $normalized;
+            $nodes[$id]['preview_move'] = $normalized;
+        }
+        ksort($previewMoves);
+
         $allRegistrations = collect($nodes)->flatMap(fn ($node) => $node['participants'])->unique()->values()->all();
         $excludedIndividual = array_values(array_filter($excluded, 'is_int'));
         $excludedTeam = collect($excluded)->filter(fn ($id) => is_string($id) && str_starts_with($id, 'team:'))->map(fn ($id) => (int) substr($id, 5))->all();
@@ -357,6 +375,7 @@ final class EventVenueScheduleService
         foreach ($nodes as $id => &$node) {
             $node['wave'] = $this->wave($id, $nodes);
             $node['not_before'] = $node['draw_start']->copy()->addMinutes(($programme || $dayScope || $fullDay) ? 0 : ($node['wave'] - 1) * $waveMinutes);
+            if (isset($node['preview_move'])) $node['not_before'] = $node['not_before']->max(Carbon::parse($node['preview_move']['scheduled_at']))->copy();
             if ($programme) {
                 $node['wave'] = $node['programme_phase'];
                 $slot = $this->nodeSlot($node);
@@ -519,6 +538,16 @@ final class EventVenueScheduleService
                 }
                 $blocked[$id] = $capacityReason;
                 $venuePassedGenderOrder = false;
+                $choiceCalendar = $calendar;
+                if ($previewMoves) {
+                    $choiceCalendar = clone $calendar;
+                    foreach ($nodes as $otherId => $other) {
+                        if ($otherId === $id || ! isset($other['preview_move']) || isset($started[$otherId])) continue;
+                        $move = $other['preview_move'];
+                        $choiceCalendar->reserveWithRest($move['venue_id'], $move['court'], Carbon::parse($move['scheduled_at']),
+                            $duration + $courtGap, $duration + $playerRest, $other['participants'], $other['participant_group'], false);
+                    }
+                }
                 foreach ($node['venue_courts'] as $venueId => $courts) {
                     if ($wholeTieForNode($node) && isset($tieVenues[$node['tie_allocation_key']]) && $tieVenues[$node['tie_allocation_key']] !== (int) $venueId) {
                         $blocked[$id] = 'This tie must stay at its allocated venue. Extend the day or add courts there to fit every rubber.';
@@ -553,6 +582,7 @@ final class EventVenueScheduleService
                     }
                     $venuePassedGenderOrder = true;
                     foreach ($courts as $court) {
+                        if (isset($node['preview_move']) && ((int) $venueId !== $node['preview_move']['venue_id'] || (string) $court !== $node['preview_move']['court'])) continue;
                         $venueGroup = $courtGroups[$venueId][ScheduleAvailability::courtKey((string) $court)] ?? null;
                         if ($wholeTieForNode($node) && array_key_exists($node['tie_allocation_key'] ?? '', $tieGroups) && $tieGroups[$node['tie_allocation_key']] !== $venueGroup) {
                             $blocked[$id] = 'This tie must stay in its allocated court group. Extend the day or add courts to that group to fit every rubber.';
@@ -560,11 +590,11 @@ final class EventVenueScheduleService
                         }
                         $courtRelease = isset($courtStarts[$venueId][ScheduleAvailability::courtKey((string) $court)])
                             ? $venueRelease->copy()->max($courtStarts[$venueId][ScheduleAvailability::courtKey((string) $court)]) : $venueRelease;
-                        $at = $calendar->nextAvailableForMatch($courtRelease, $duration + $courtGap,
+                        $at = $choiceCalendar->nextAvailableForMatch($courtRelease, $duration + $courtGap,
                             $duration + $playerRest, $venueId, (string) $court, $node['participants'],
                             $node['participant_group']);
                         if (($node['programme_break'] ?? null) && $at->lt($node['programme_break'][1]) && $at->copy()->addMinutes($duration)->gt($node['programme_break'][0])) {
-                            $at = $calendar->nextAvailableForMatch($node['programme_break'][1], $duration + $courtGap,
+                            $at = $choiceCalendar->nextAvailableForMatch($node['programme_break'][1], $duration + $courtGap,
                                 $duration + $playerRest, $venueId, (string) $court, $node['participants'], $node['participant_group']);
                         }
                         if (isset($courtEnds[$venueId][ScheduleAvailability::courtKey((string) $court)]) && $at->copy()->addMinutes($duration)->gt($courtEnds[$venueId][ScheduleAvailability::courtKey((string) $court)])) {
@@ -577,6 +607,10 @@ final class EventVenueScheduleService
                             continue;
                         }
                         if (isset($node['programme_end']) && $at->copy()->addMinutes($duration)->gt($node['programme_end'])) continue;
+                        if (isset($node['preview_move']) && ! $at->equalTo(Carbon::parse($node['preview_move']['scheduled_at']))) {
+                            $blocked[$id] = 'The requested slot conflicts with court availability, qualifying matches or player rest. Choose another slot.';
+                            continue;
+                        }
                         if ($dailyLimit) {
                             $fixtureKey = ($node['fixture_kind'] ?? 'individual').':'.$node['fixture']->id;
                             $dailyError = $dailyLimit->error($fixtureKey, $at->toDateString());
@@ -595,12 +629,13 @@ final class EventVenueScheduleService
                         }
                         if ($dayScope || $fullDay || ($node['fixture_kind'] ?? 'individual') === 'team') {
                             foreach ($nodes as $later) {
-                                if ((! $later['fixed'] && ! $later['played']) || ! in_array($id, $later['dependencies'], true)) continue;
+                                if ((! $later['fixed'] && ! $later['played'] && ! isset($later['preview_move'])) || ! in_array($id, $later['dependencies'], true)) continue;
                                 $laterSlot = $this->nodeSlot($later);
                                 $requiredUntil = in_array($id, $later['programme_start_dependencies'] ?? [], true)
                                     ? $at->copy() : $at->copy()->addMinutes($duration + $playerRest);
                                 if (in_array($id, $later['day_finish_dependencies'] ?? [], true)) $requiredUntil = $at->copy()->addMinutes($duration);
-                                if ($laterSlot?->time && $requiredUntil->gt(Carbon::parse($laterSlot->time))) {
+                                $laterTime = $later['preview_move']['scheduled_at'] ?? $laterSlot?->time;
+                                if ($laterTime && $requiredUntil->gt(Carbon::parse($laterTime))) {
                                     $blocked[$id] = ($node['fixture_kind'] ?? 'individual') === 'team'
                                         ? 'A saved later team tie leaves insufficient time for this rubber and required rest.'
                                         : 'A saved later match leaves insufficient time for this match and required rest.';
@@ -727,6 +762,9 @@ final class EventVenueScheduleService
             ];
         }
 
+        foreach ($pending as $id => $node) {
+            if (isset($node['preview_move'])) throw new \InvalidArgumentException('Match '.$node['match'].' could not be moved: '.($blocked[$id] ?? 'Choose a valid slot after its qualifying matches.'));
+        }
         usort($plan, function ($a, $b) {
             $order = [$a['scheduled_at'], $a['venue_id']] <=> [$b['scheduled_at'], $b['venue_id']];
             return $order ?: strnatcasecmp((string) $a['court'], (string) $b['court']);
@@ -804,6 +842,7 @@ final class EventVenueScheduleService
             return $kept;
         }
         $input = compact('duration', 'waveMinutes', 'courtGap', 'playerRest') + [
+            'preview_moves' => array_values($previewMoves),
             'day_batch' => $dayBatch, 'draw_order_mode' => $drawOrderMode, 'draw_order' => $drawOrder,
             'selected_fixture_keys' => $selectedFixtureKeys, 'reschedule_existing' => (bool) ($options['reschedule_existing'] ?? false),
             'limit_daily_matches' => $limitDailyMatches,
@@ -1000,6 +1039,7 @@ final class EventVenueScheduleService
                     'gender_waves' => $preview['input']['gender_waves'], 'draw_order' => $preview['input']['draw_order'],
                     'draw_order_mode' => $preview['input']['draw_order_mode'], 'day_court_labels' => $preview['input']['day_court_labels'],
                 ]);
+                unset($stored['day_batch_settings'][$preview['input']['full_day_scope']]['preview_moves']);
                 foreach ($matches as $row) {
                     $courts = $row['venue_courts'];
                     $banded = collect($preview['input']['rank_venue_preferences'])->contains(fn ($rule) => in_array((int) $row['draw_id'], array_map('intval', $rule['draw_ids']), true));
