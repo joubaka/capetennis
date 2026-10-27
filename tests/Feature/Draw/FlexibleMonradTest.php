@@ -36,6 +36,64 @@ class FlexibleMonradTest extends TestCase
         return [$draw, ['size' => 4, 'slots' => $slots], $players];
     }
 
+    public function test_setup_withdrawal_projects_clean_slots_without_writing_and_save_keeps_disabled_roster(): void
+    {
+        [$draw, $draft, $players] = $this->setupDraw();
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $otherCategory = CategoryEvent::factory()->create(['event_id' => $draw->event_id]);
+        $players[1]->categoryEvents()->attach($otherCategory->id, ['status' => 'withdrawn', 'payment_status_id' => 1]);
+        $this->withdrawRegistration($draw, $players[0]->id);
+        DB::table('category_event_registrations')->where('category_event_id', $draw->category_event_id)
+            ->where('registration_id', $players[2]->id)->update(['withdrawn_at' => now()]);
+
+        $state = $service->state($draw->fresh());
+        $slots = (array) $state['draft']['slots'];
+        $this->assertArrayNotHasKey('aa', $slots);
+        $this->assertArrayNotHasKey('ba', $slots);
+        $this->assertEquals($draft['slots']['ab'], $slots['ab']);
+        $this->assertEquals($draft['slots']['bb'], $slots['bb']);
+        $this->assertTrue($state['setup_withdrawals_removed']);
+        $this->assertTrue($state['players']->firstWhere('id', $players[0]->id)['withdrawn']);
+        $this->assertFalse($state['players']->firstWhere('id', $players[0]->id)['eligible']);
+        $this->assertTrue($state['players']->firstWhere('id', $players[1]->id)['eligible']);
+        $this->assertSame(1, $draw->fresh()->flexibleMonrad->revision);
+        $this->assertEquals($draft['slots'], $draw->fresh()->flexibleMonrad->draft['slots']);
+
+        // A stale editor can save safely; only previously saved withdrawals are cleaned.
+        $this->putJson(route('flexible-monrad.save', $draw), ['draft' => $draft, 'revision' => 1])->assertOk();
+        $saved = $draw->fresh()->flexibleMonrad;
+        $this->assertEquals($slots, $saved->draft['slots']);
+        $this->assertSame(2, $saved->revision);
+        $again = $service->state($draw->fresh());
+        $this->assertFalse($again['setup_withdrawals_removed']);
+        $this->assertTrue($again['players']->firstWhere('id', $players[0]->id)['withdrawn']);
+        $this->assertCount(4, $again['players']);
+        $this->assertDatabaseCount('fixtures', 0);
+        $this->assertDatabaseCount('registrations', 4);
+        $this->assertDatabaseCount('category_event_registrations', 5);
+    }
+
+    public function test_generation_cleans_saved_setup_withdrawal_without_changing_other_players(): void
+    {
+        [$draw, $draft, $players] = $this->setupDraw();
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $this->withdrawRegistration($draw, $players[0]->id);
+        $this->postJson(route('flexible-monrad.generate', $draw), ['revision' => 1])->assertUnprocessable();
+        $this->assertDatabaseCount('fixtures', 0);
+        $this->assertSame(1, $draw->fresh()->flexibleMonrad->revision);
+        // Removed players leave an empty position; the organiser explicitly chooses its replacement or bye.
+        $draft['slots']['aa'] = ['type' => 'bye'];
+        $service->save($draw, $draft, 1);
+        $generated = $service->generate($draw, 2);
+        $this->assertSame(['type' => 'bye'], $generated->draft['slots']['aa']);
+        $this->assertNotContains($players[0]->id, $generated->graph['players']);
+        $this->assertEqualsCanonicalizing($players->skip(1)->pluck('id')->all(), $generated->graph['players']);
+        $this->assertDatabaseHas('category_event_registrations', ['category_event_id' => $draw->category_event_id,
+            'registration_id' => $players[0]->id, 'status' => 'withdrawn']);
+    }
+
     public function test_admin_can_add_system_player_to_existing_draft_without_event_or_payment_changes(): void
     {
         [$draw, $draft] = $this->setupDraw();

@@ -1,6 +1,12 @@
 @php($pageConfigs = ['myLayout' => 'vertical'])
 @extends('layouts.backend')
 @section('title', $title)
+@section('vendor-style')
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}">
+@endsection
+@section('vendor-script')
+<script src="{{ asset('assets/vendor/libs/select2/select2.js') }}"></script>
+@endsection
 @section('content')
 <div class="operational-page">
 @include('backend.partials.operational-controls')

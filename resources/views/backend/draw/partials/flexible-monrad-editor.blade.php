@@ -1,6 +1,6 @@
 <main id="fm-app">
   @unless($config['readOnly'] ?? false)
-  <div class="fm-intro"><div><strong id="fm-phase">Players and starting positions</strong><p>Drag a player into a box, or click a box to choose a player.
+  <div class="fm-intro"><div><strong id="fm-phase">Players and starting positions</strong><p>Drag a player into a box, or click a box to choose a player. Drag one placed player onto another to swap their positions.
     {{ ($config['workflow'] ?? '') === 'playoffs' ? 'Winners advance; losers are eliminated.' : 'Winners advance; losers continue for finishing positions.' }}
   </p></div><span id="fm-status" class="fm-badge">Draft</span></div>
   @endunless
@@ -42,7 +42,7 @@
   <form method="dialog"><button class="fm-close" aria-label="Close player picker">×</button></form>
   <h2 id="fm-slot-title">Starting position</h2><p id="fm-slot-description"></p>
   <p id="fm-slot-error" role="alert"></p>
-  <label for="fm-pick-search">Find a player</label><input id="fm-pick-search" type="search" placeholder="Search names…">
+  <div id="fm-pick-search-fallback"><label for="fm-pick-search">Find a player</label><input id="fm-pick-search" type="search" placeholder="Search names…"></div>
   <label for="fm-pick">Player</label><select id="fm-pick" size="6"></select>
   <div class="fm-dialog-actions"><button type="button" id="fm-place" class="fm-primary">Place / move player</button><button type="button" id="fm-swap">Swap players</button><button type="button" id="fm-remove">Remove player / bye</button><button type="button" id="fm-bye">Set this path as a bye</button></div>
   <p class="fm-help">Remove a direct entrant to reopen their earlier qualifying path. Occupied earlier paths must be cleared individually.</p>

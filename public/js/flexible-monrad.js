@@ -172,6 +172,28 @@
         picker.append(option);
       });
     if (selectedPlayer) picker.value = selectedPlayer;
+    if (window.jQuery?.fn.select2 && window.jQuery(picker).hasClass('select2-hidden-accessible'))
+      window.jQuery(picker).trigger('change.select2');
+  }
+  function enhancePlayerPicker() {
+    const jq = window.jQuery;
+    if (!jq?.fn.select2) return false;
+    const picker = jq($('fm-pick'));
+    if (!picker.hasClass('select2-hidden-accessible')) {
+      picker.removeAttr('size').select2({
+        dropdownParent: jq($('fm-slot-dialog')),
+        width: '100%',
+        minimumResultsForSearch: 0,
+        selectOnClose: false
+      });
+      picker.on('select2:open', () => {
+        $('fm-slot-dialog').querySelector('.select2-container--open .select2-search__field')?.focus();
+      });
+      $('fm-pick-search-fallback').hidden = true;
+      $('fm-slot-dialog').addEventListener('close', () => picker.select2('close'));
+    }
+    picker.next('.select2-container').find('[role="combobox"]')[0]?.focus();
+    return true;
   }
   function openSlot(path) {
     if (!editable() || !allowedStart(path)) return;
@@ -186,7 +208,7 @@
     pickerOptions();
     $('fm-remove').disabled = !draft.slots[path];
     $('fm-slot-dialog').showModal();
-    $('fm-pick-search').focus();
+    if (!enhancePlayerPicker()) $('fm-pick-search').focus();
   }
   function renderPlayers() {
     const list = $('fm-players'),
@@ -202,7 +224,7 @@
         `fm-player${path ? ' assigned' : ''}${selectedPlayer === player.id ? ' selected' : ''}`
       );
       button.type = 'button';
-      button.append(playerNameNode(player.id), el('small', '', path ? 'Placed' : 'Unplaced'));
+      button.append(playerNameNode(player.id), el('small', '', player.withdrawn ? 'Withdrawn — unavailable' : path ? 'Placed' : 'Unplaced'));
       button.title = path ? `${name(player.id)} · Placed in ${roundName(path.length - 1)}` : name(player.id);
       draggablePlayer(button, player.id, editable() && player.eligible !== false);
       button.addEventListener('dragover', allowReturnToList);
@@ -282,7 +304,10 @@
             button.classList.remove('drop-target');
             const id = draggedPlayer;
             clearDrag();
-            if (id !== null && state.players.some(p => Number(p.id) === id)) place(id, key);
+            if (id !== null && state.players.some(p => Number(p.id) === id)) {
+              const swap = Boolean(assignedPath(id) && draft.slots[key]?.type === 'player');
+              place(id, key, swap);
+            }
           });
           card.append(button);
         });
@@ -1001,6 +1026,10 @@
       if (saved && [4, 8, 16, 32, 64].includes(saved.size) && saved.slots) draft = saved;
     } catch (_) {}
     message('Demo only: these are dummy players. No event data is changed.');
+  }
+  if (state.setup_withdrawals_removed && !state.generated) {
+    dirty = true;
+    message('Withdrawn players returned to the player list. Save the draft to keep the updated starting positions.');
   }
   render();
 })();

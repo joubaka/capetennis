@@ -94,7 +94,7 @@ final class FlexibleMonradService
             $record = FlexibleMonradDraw::where('draw_id', $draw->id)->first();
             $this->revision($record, $revision);
             abort_if($record?->graph || $draw->drawFixtures()->exists(), 409, 'Fixtures already exist. Use an empty draw for the placement editor.');
-            $draft = $this->validateDraft($draw, $draft);
+            $draft = $this->validateDraft($draw, $this->withoutWithdrawnSetupSlots($draw, $draft, $record?->draft ?? []));
             $record ??= new FlexibleMonradDraw(['draw_id' => $draw->id]);
             $record->fill(['draft' => $draft, 'revision' => $revision + 1])->save();
             $format = DrawFormats::where('name', 'Flexible Monrad')->firstOrFail();
@@ -113,7 +113,7 @@ final class FlexibleMonradService
             $this->revision($record, $revision);
             if ($record->graph) return $record;
             abort_if($draw->drawFixtures()->exists(), 409, 'This draw already contains fixtures.');
-            $draft = $this->validateDraft($draw, $record->draft);
+            $draft = $this->validateDraft($draw, $this->withoutWithdrawnSetupSlots($draw, $record->draft));
             $graph = app(FlexibleMonradCompiler::class)->compile($draft);
             $map = [];
             foreach ($graph['nodes'] as $key => $node) {
@@ -132,7 +132,7 @@ final class FlexibleMonradService
                 }
             }
             $draw->registrations()->sync($graph['players']);
-            $record->fill(['graph' => $graph, 'fixture_map' => $map, 'revision' => $revision + 1])->save();
+            $record->fill(['draft' => $draft, 'graph' => $graph, 'fixture_map' => $map, 'revision' => $revision + 1])->save();
             $this->resolve($record);
             DrawAuditLog::record($draw->id, 'monrad_generated', null, ['revision' => $record->revision, 'matches' => count($map)]);
             return $record;
@@ -335,6 +335,10 @@ final class FlexibleMonradService
         $withdrawn = $record?->graph ? $this->withdrawn($draw, $record->graph) : array_values(array_diff(
             $assigned, $this->activeEntries($draw)->whereIn('registrations.id', $assigned)->pluck('registrations.id')->all()
         ));
+        if (! $record?->graph) {
+            $withdrawn = array_values(array_unique(array_merge($withdrawn, $this->withdrawnSetupIds($draw))));
+            $assigned = array_values(array_unique(array_merge($assigned, $withdrawn)));
+        }
         $lateWithdrawals = array_values(array_unique(array_merge(
             array_map('intval', array_keys($record?->graph['late_withdrawals'] ?? [])),
             $draw->published ? $withdrawn : []
@@ -366,9 +370,15 @@ final class FlexibleMonradService
                 'sets' => $fx->fixtureResults->sortBy('set_nr')->map(fn ($r) => [$r->registration1_score, $r->registration2_score])->values()->all()];
         }
         $draft = $record?->draft ?? ['size' => 32, 'slots' => []];
+        $setupSlotsRemoved = false;
+        if (! $record?->graph && ! $draw->published && ! $draw->locked) {
+            $cleaned = $this->withoutWithdrawnSetupSlots($draw, $draft);
+            $setupSlotsRemoved = $cleaned !== $draft;
+            $draft = $cleaned;
+        }
         // Slot paths are object keys in the editor, including for an empty saved draft.
         $draft['slots'] = (object) $draft['slots'];
-        return ['revision' => $record?->revision ?? 0, 'draft' => $draft,
+        return ['revision' => $record?->revision ?? 0, 'draft' => $draft, 'setup_withdrawals_removed' => $setupSlotsRemoved,
             'best_of' => (int) ($draw->settings?->num_sets ?: 1),
             'generated' => (bool) $record?->graph, 'published' => (bool) $draw->published, 'locked' => (bool) $draw->locked,
             'players' => $players, 'matches' => (object) $matches, 'positions' => $progression['positions'],
@@ -468,6 +478,31 @@ final class FlexibleMonradService
             }
         }
         return array_keys($found);
+    }
+
+    private function withdrawnSetupIds(Draw $draw): array
+    {
+        return Registration::whereHas('categoryEvents', fn ($query) => $query
+            ->where('category_events.id', $draw->category_event_id)
+            ->where('category_events.event_id', $draw->event_id)
+            ->where(fn ($entry) => $entry
+                ->whereIn('category_event_registrations.status', ['withdrawn', 'withdrawn_pending_refund', 'withdrawn_refunded'])
+                ->orWhereNotNull('category_event_registrations.withdrawn_at')))
+            ->pluck('registrations.id')->map(fn ($id) => (int) $id)->all();
+    }
+
+    private function withoutWithdrawnSetupSlots(Draw $draw, array $draft, ?array $savedDraft = null): array
+    {
+        if (! is_array($draft['slots'] ?? null)) return $draft;
+        // Only stale assignments already saved by the server may be removed.
+        // Newly submitted ineligible players must still fail normal validation.
+        $assigned = array_column(array_filter(($savedDraft ?? $draft)['slots'] ?? [],
+            fn ($slot) => is_array($slot) && ($slot['type'] ?? null) === 'player'), 'id');
+        $withdrawn = array_intersect($this->withdrawnSetupIds($draw), array_map('intval', $assigned));
+        $draft['slots'] = array_filter($draft['slots'], fn ($slot) => ! is_array($slot)
+            || ($slot['type'] ?? null) !== 'player'
+            || ! in_array((int) ($slot['id'] ?? 0), $withdrawn, true));
+        return $draft;
     }
 
     private function validateDraft(Draw $draw, array $draft): array
