@@ -427,6 +427,28 @@ final class EventVenueScheduleService
             if ($feeder?->scheduled_at) $finished[$dependency] = Carbon::parse($feeder->scheduled_at)->addMinutes((int) ($feeder->duration_min ?: 120) + $playerRest);
         }
 
+        if ($previewMoves) foreach ($nodes as $later) {
+            $laterSlot = $this->nodeSlot($later);
+            $laterTime = $later['preview_move']['scheduled_at'] ?? (($later['fixed'] || $later['played']) ? $laterSlot?->time : null);
+            if (! $laterTime) continue;
+            foreach ($later['dependencies'] as $dependency) {
+                $earlier = $nodes[$dependency] ?? null;
+                if (! $earlier) continue;
+                $earlierSlot = $this->nodeSlot($earlier);
+                $earlierTime = $earlier['preview_move']['scheduled_at'] ?? (($earlier['fixed'] || $earlier['played']) ? $earlierSlot?->time : null);
+                if (! $earlierTime) continue;
+                $minutes = isset($earlier['preview_move']) ? $duration : (int) ($earlierSlot?->duration_minutes ?: $duration);
+                $startOnly = in_array($dependency, $later['programme_start_dependencies'] ?? [], true);
+                $finishOnly = in_array($dependency, $later['day_finish_dependencies'] ?? [], true);
+                $rest = ($startOnly || $finishOnly) ? 0 : $playerRest;
+                $release = Carbon::parse($earlierTime)->addMinutes($startOnly ? 0 : $minutes + $rest);
+                if ($release->gt(Carbon::parse($laterTime))) throw new \InvalidArgumentException(
+                    'Match '.$later['match'].' stays at '.Carbon::parse($laterTime)->format('H:i').', but Match '.$earlier['match'].' at '.Carbon::parse($earlierTime)->format('H:i')
+                    .' needs '.($startOnly ? 'the required programme order' : $minutes.' minutes of play'.($rest ? ' and '.$rest.' minutes player rest' : ''))
+                    .'. The earliest start for Match '.$later['match'].' would be '.$release->format('H:i').'. Other match slots were not changed.');
+            }
+        }
+
         if ($programme || ($dayBatch && $drawOrderMode === 'sequential')) {
             foreach ($nodes as $node) {
                 if (! $node['fixed'] && ! $node['played']) continue;

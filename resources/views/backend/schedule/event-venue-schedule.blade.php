@@ -739,7 +739,7 @@
     <div id="preview-view-controls" class="d-none flex-wrap justify-content-between align-items-center gap-2 mb-3">
       <div>
         <strong>Fixtures per venue</strong>
-        <div class="small text-muted">In the court grid, drag a match onto an Available slot. You can also select a match, then select a slot. Saved matches stay in the grid; unsaved suggestions adapt around them.</div>
+        <div class="small text-muted">In the court grid, drag a match onto an Court free slot. You can also select a match, then select a slot. Saved matches stay in the grid; unsaved suggestions adapt around them.</div>
       </div>
       <div class="d-flex flex-wrap gap-2">
         <button type="button" id="keep-all-applied" class="btn btn-sm btn-outline-secondary d-none"><i class="ti ti-arrow-back-up me-1" aria-hidden="true"></i>Keep all current venue times</button>
@@ -1537,13 +1537,13 @@
         }
         const occupied = rows.find(row => String(row.court) === String(court) && asDate(row.scheduled_at) < time && matchEnd(row, result) > time);
         if (occupied) return `<td data-court-label="Court ${escapeHtml(court)}" class="bg-label-secondary text-muted"><span class="fw-semibold">In use</span><div class="small">until ${escapeHtml(matchEnd(occupied, result).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}))}</div></td>`;
-        return `<td class="manual-drop-slot" data-court-label="Court ${escapeHtml(court)}" data-manual-slot data-venue="${venue.id}" data-court="${escapeHtml(court)}" data-time="${escapeHtml(assignmentTime(time))}"><button type="button" class="manual-slot-button"><span class="fw-semibold">Available</span><span class="small text-muted d-block">Drop or select a valid match</span></button></td>`;
+        return `<td class="manual-drop-slot" data-court-label="Court ${escapeHtml(court)}" data-manual-slot data-venue="${venue.id}" data-court="${escapeHtml(court)}" data-time="${escapeHtml(assignmentTime(time))}"><button type="button" class="manual-slot-button"><span class="fw-semibold">Court free</span><span class="small text-muted d-block">Match eligibility checked on move</span></button></td>`;
       }).join('');
       return `<tr><th class="text-nowrap">${escapeHtml(formatSlotTime(time))}</th>${cells}</tr>`;
     }).join('');
     const truncated = times.size >= 200 ? '<div class="alert alert-warning py-2 mb-0">Only the first 200 time rows are shown. Shorten the scheduling window to inspect it in more detail.</div>' : '';
 
-    return `<details open class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap align-items-center gap-2"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span class="venue-age-group-summary">${ageGroupScheduleSummary(rows)}</span><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="court-grid-hint small"><i class="ti ti-arrows-horizontal" aria-hidden="true"></i><span>Drag a match to an Available slot, or select the match and then its slot. Each venue has its own courts.</span></div><div class="court-grid-scroll ${venue.court_labels.length > 8 ? 'court-grid-many' : ''}" tabindex="0" role="region" aria-label="${escapeHtml(venue.name)} court schedule"><table class="table table-bordered align-middle mb-0"><thead><tr><th>Slot starts</th>${courtHeaders}</tr></thead><tbody>${body || '<tr><td colspan="99" class="text-center text-muted py-4">No slots in this scheduling window.</td></tr>'}</tbody></table></div>${truncated}</details>`;
+    return `<details open class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap align-items-center gap-2"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span class="venue-age-group-summary">${ageGroupScheduleSummary(rows)}</span><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="court-grid-hint small"><i class="ti ti-arrows-horizontal" aria-hidden="true"></i><span>Drag a match to an Court free slot, or select the match and then its slot. Each venue has its own courts.</span></div><div class="court-grid-scroll ${venue.court_labels.length > 8 ? 'court-grid-many' : ''}" tabindex="0" role="region" aria-label="${escapeHtml(venue.name)} court schedule"><table class="table table-bordered align-middle mb-0"><thead><tr><th>Slot starts</th>${courtHeaders}</tr></thead><tbody>${body || '<tr><td colspan="99" class="text-center text-muted py-4">No slots in this scheduling window.</td></tr>'}</tbody></table></div>${truncated}</details>`;
   }
 
   function venueChangeWarnings(result) {
@@ -1633,6 +1633,7 @@
     const next = {...buildPayload(), replan_venue_ids:[], reschedule_existing:false};
     delete next.programme;
     delete next.preview_moves;
+    delete next.preview_frozen_keys;
     const movedTime = String(scheduledAt).replace(' ', 'T').slice(0,16);
     const day = movedTime.slice(0,10);
     if (next.day_batch && movedFixtureKey) {
@@ -1654,6 +1655,15 @@
     setStatus(document.getElementById('schedule-status'), 'Match moved. Showing its saved booking; preview your selected rounds again to continue. Publish separately to update public times.', 'success');
     return true;
   };
+  const renderPreservedManualPreview = saved => {
+    if (!saved.preview) return false;
+    payload = saved.preview_options;
+    if (dayBatchPayload) dayBatchPayload = {...payload};
+    if (programmePayload) programmePayload = {...payload};
+    render(saved.preview);
+    setStatus(document.getElementById('schedule-status'), saved.message+' All other match slots stayed in place. Publish separately to update public times.', 'success');
+    return true;
+  };
   const placeMatchManually = async (fixtureId, slot) => {
     if (!fixtureId || !slot) return;
     const status = document.getElementById('schedule-status');
@@ -1666,9 +1676,10 @@
       if (suggested) {
         if (!payload || !revision) throw new Error('Generate a current preview before moving suggested matches.');
         const result = await post(previewUrl, {...payload, revision, preview_move:{fixture_key:fixtureId,scheduled_at:slot.dataset.time,venue_id:Number(slot.dataset.venue),court:slot.dataset.court}});
-        payload = {...payload, preview_moves:result.input.preview_moves};
-        if (dayBatchPayload) dayBatchPayload = {...dayBatchPayload, preview_moves:result.input.preview_moves};
-        if (programmePayload) programmePayload = {...programmePayload, preview_moves:result.input.preview_moves};
+        const preserved = {preview_moves:result.input.preview_moves, preview_frozen_keys:result.input.preview_frozen_keys || []};
+        payload = {...payload, ...preserved};
+        if (dayBatchPayload) dayBatchPayload = {...dayBatchPayload, ...preserved};
+        if (programmePayload) programmePayload = {...programmePayload, ...preserved};
         selectedManualFixture = null;
         render(result);
         const venueName = result.venues.find(venue => Number(venue.id) === Number(slot.dataset.venue))?.name || 'Selected venue';
@@ -1676,6 +1687,7 @@
         setStatus(status, message, 'success'); notify(message, 'success');
         return;
       }
+      if ((!payload || !revision) && ((lastScheduleResult?.matches?.length || 0) + (lastScheduleResult?.unscheduled?.length || 0))) throw new Error('Generate a current preview before moving this saved match.');
       const saved = await post(manualAssignmentUrl, {
         ...fixtureRef(fixtureId), scheduled_at:slot.dataset.time,
         venue_id:Number(slot.dataset.venue), court:slot.dataset.court,
@@ -1684,9 +1696,11 @@
         player_rest:Number(document.getElementById('schedule-rest').value),
         limit_daily_matches:document.getElementById('schedule-daily-limit').checked,
         round_progression:document.getElementById('round-progression').value,
+        ...(payload && revision ? {preview_context:payload,preview_revision:revision} : {}),
       });
       selectedManualFixture = null;
       if (dayBatchPayload) dayBatchState?.updateBooking(fixtureId, slot.dataset.time);
+      if (renderPreservedManualPreview(saved)) return;
       payload = fixedBookingPreviewPayload(slot.dataset.time, fixtureId);
       render(await post(previewUrl, payload));
       if (saved.warnings?.length) {
@@ -1762,9 +1776,11 @@
         duration:Number(document.getElementById('reschedule-match-duration').value),
         player_rest:Number(document.getElementById('schedule-rest').value), court_gap:Number(document.getElementById('schedule-gap').value),
         limit_daily_matches:document.getElementById('schedule-daily-limit').checked, round_progression:document.getElementById('round-progression').value,
+        ...(payload && revision ? {preview_context:payload,preview_revision:revision} : {}),
       });
       bootstrap.Modal.getOrCreateInstance(rescheduleModal).hide();
       if (dayBatchPayload) dayBatchState?.updateBooking(rescheduleFixture, document.getElementById('reschedule-match-time').value);
+      if (renderPreservedManualPreview(saved)) return;
       payload = fixedBookingPreviewPayload(document.getElementById('reschedule-match-time').value, rescheduleFixture);
       render(await post(previewUrl, payload));
       if (!markManualBookingView(rescheduleFixture, document.getElementById('reschedule-match-time').value)) setStatus(document.getElementById('schedule-status'), saved.message+' Publish separately to update public times.', 'success');
@@ -1882,7 +1898,7 @@
         option.classList.toggle('is-selected', selected);
         option.setAttribute('aria-pressed', String(selected));
       });
-      setStatus(document.getElementById('schedule-status'), 'Match selected. Choose an Available slot.', 'success');
+      setStatus(document.getElementById('schedule-status'), 'Match selected. Choose an Court free slot.', 'success');
       return;
     }
     const slot = event.target.closest('[data-manual-slot]');
@@ -2357,6 +2373,8 @@
       const applied = await post(applyUrl, {...submittedPayload, revision});
       if (dayBatchPayload) delete dayBatchPayload.preview_moves;
       if (programmePayload) delete programmePayload.preview_moves;
+      if (dayBatchPayload) delete dayBatchPayload.preview_frozen_keys;
+      if (programmePayload) delete programmePayload.preview_frozen_keys;
       if (submittedProgramme?.days?.length && submittedAge) {
         programmeSavedAges.add(submittedAge);
         if ((programmeEditVersions.get(submittedAge) || 0) === submittedEditVersion) {
@@ -2378,6 +2396,7 @@
       } else {
         payload = submittedProgramme?.days?.length ? {...submittedPayload, replan_venue_ids:[]} : {...buildPayload(), replan_venue_ids:[]};
         delete payload.preview_moves;
+        delete payload.preview_frozen_keys;
         setScheduleActivityPhase(revalidationActivityStages);
         try {
           const savedPreview = await post(previewUrl, payload);

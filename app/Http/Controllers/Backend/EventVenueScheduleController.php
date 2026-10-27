@@ -1149,9 +1149,11 @@ final class EventVenueScheduleController extends Controller
                 ]);
                 $current = $scheduler->preview($event->fresh(), $options);
                 if (! hash_equals($current['revision'], $data['revision'])) throw new \InvalidArgumentException('The preview changed. Generate a new preview before moving this match.');
-                if (! collect(array_merge($current['matches'], $current['unscheduled']))->contains('fixture_key', $data['preview_move']['fixture_key'])) throw new \InvalidArgumentException('Choose an unsaved match in this preview.');
+                $moving = collect(array_merge($current['matches'], $current['unscheduled']))->firstWhere('fixture_key', $data['preview_move']['fixture_key']);
+                if (! $moving) throw new \InvalidArgumentException('Choose an unsaved match in this preview.');
                 $options = $scheduler->preservePreviewOptions($options, $current, $data['preview_move']);
-                return response()->json($scheduler->preview($event->fresh(), $options));
+                try { return response()->json($scheduler->preview($event->fresh(), $options)); }
+                catch (\InvalidArgumentException $exception) { throw new \InvalidArgumentException('Match '.$moving['match'].' was not moved. '.$exception->getMessage()); }
             }
             if (empty($options['programme']) && empty($options['day_batch'])) $playoffs->prepareEvent($event, $options['draw_ids'] ?? []);
 
@@ -1253,6 +1255,28 @@ final class EventVenueScheduleController extends Controller
                     $saved = collect($current['existing_matches'])->firstWhere('fixture_key', $key);
                     if (! $saved || empty($saved['editable'])) throw new \InvalidArgumentException('Choose an editable saved match in this preview.');
                     $preserved = $scheduler->preservePreviewOptions($options, $current);
+                    if (! empty($options['day_batch'])) {
+                        $movedDay = \Carbon\Carbon::parse($data['scheduled_at'])->toDateString();
+                        if ($movedDay !== $options['full_day_scope']) {
+                            $selected = $options['selected_fixture_keys'];
+                            $retained = collect(array_merge($current['matches'], $current['unscheduled'], $current['existing_matches']))
+                                ->filter(fn ($row) => $row['fixture_key'] !== $key && in_array($row['fixture_key'], $selected, true))->unique('fixture_key');
+                            if ($retained->isEmpty()) {
+                                $retained = collect([array_replace($saved, ['scheduled_at'=>$data['scheduled_at']])]);
+                                $preserved['full_day_scope'] = $movedDay;
+                                $preserved['start'] = $movedDay.' 00:00:00'; $preserved['end'] = $movedDay.' 23:59:00';
+                                unset($preserved['full_day_venue_windows'], $preserved['full_day_court_starts'], $preserved['full_day_destination_pools'], $preserved['full_day_tie_destinations']);
+                            }
+                            $preserved['selected_fixture_keys'] = $retained->pluck('fixture_key')->values()->all();
+                            $preserved['draw_ids'] = $retained->pluck('draw_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+                            $preserved['draw_order'] = array_values(array_intersect($options['draw_order'], $preserved['draw_ids']));
+                            $preserved['draw_rounds'] = $retained->groupBy('draw_id')->map(fn ($rows, $id) => ['draw_id'=>(int) $id,'rounds'=>$rows->pluck('round')->map(fn ($round)=>(int) $round)->unique()->values()->all()])->values()->all();
+                        } else {
+                            $at = \Carbon\Carbon::parse($data['scheduled_at']);
+                            if ($at->lt(\Carbon\Carbon::parse($preserved['start']))) $preserved['start'] = $movedDay.' 00:00:00';
+                            if ($at->copy()->addMinutes($data['duration'])->gt(\Carbon\Carbon::parse($preserved['end']))) $preserved['end'] = $movedDay.' 23:59:00';
+                        }
+                    }
                     $inner = Request::create($request->url(), 'POST', $data);
                     $inner->setUserResolver(fn () => $request->user());
                     $response = $this->assignFixture($inner, $event, $conflicts, $scheduleEngine);
