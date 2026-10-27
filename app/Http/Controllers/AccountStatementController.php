@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\AccountStatementService;
+use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -11,6 +12,13 @@ class AccountStatementController extends Controller
 {
     public function __invoke(Request $request, AccountStatementService $service)
     {
+        return $this->forAccount($request, $service, $request->user());
+    }
+
+    public function forAccount(Request $request, AccountStatementService $service, User $account, bool $adminView = false)
+    {
+        abort_unless($request->user() && ($request->user()->is($account) || ($adminView && $request->user()->hasRole('super-user'))), 403);
+        abort_if($adminView && ! $request->user()->hasRole('super-user'), 403);
         $input = $request->validate([
             'from' => ['nullable', 'date_format:Y-m-d'],
             'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
@@ -23,8 +31,10 @@ class AccountStatementController extends Controller
         if ($to < $from || \Carbon\Carbon::parse($from)->diffInDays($to) > 731) {
             throw \Illuminate\Validation\ValidationException::withMessages(['to' => 'Choose a period of up to two years, ending on or after the start date.']);
         }
-        $statement = $service->build($request->user(), $from, $to, trim($input['player'] ?? ''), $input['category'] ?? 'all');
-        $filename = 'cape-tennis-account-statement-'.$from.'-'.$to;
+        $statement = $service->build($account, $from, $to, trim($input['player'] ?? ''), $input['category'] ?? 'all');
+        $statement['adminView'] = $adminView;
+        $statement['statementUrl'] = $adminView ? route('superadmin.account-statements.show', $account) : route('account.statement');
+        $filename = 'cape-tennis-account-'.$account->id.'-statement-'.$from.'-'.$to;
         if (($input['format'] ?? null) === 'pdf') {
             $pdf = Pdf::loadView('account.statement-pdf', $statement)->setPaper('a4', 'landscape');
             $pdf->render();

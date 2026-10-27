@@ -3,9 +3,14 @@
 @section('content')
 <x-backend.page-header title="Account statement" eyebrow="Cape Tennis" subtitle="Your entry fees, clothing payments and completed refunds." icon="ti-file-invoice" />
 <div class="card mb-4"><div class="card-body">
-    <a href="{{ route('backend.dashboard') }}" class="btn btn-outline-secondary mb-3">Back to my account</a>
+    @if($adminView ?? false)
+        <div class="alert alert-info"><strong>Super Admin: viewing another account</strong><br>{{ $account->name }} · {{ $account->email }} · Account #{{ $account->id }}</div>
+        <a href="{{ route('superadmin.account-statements.index') }}" class="btn btn-outline-secondary mb-3">Choose another user</a>
+    @else
+        <a href="{{ route('backend.dashboard') }}" class="btn btn-outline-secondary mb-3">Back to my account</a>
+    @endif
     @if($errors->any())<div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>@endif
-    <form method="get" action="{{ route('account.statement') }}" class="row g-3 align-items-end">
+    <form method="get" action="{{ $statementUrl ?? route('account.statement') }}" class="row g-3 align-items-end">
         <div class="col-12"><label for="statement-category" class="form-label">Payments included</label><select id="statement-category" name="category" class="form-select"><option value="all" @selected($category === 'all')>Entry fees and clothing</option><option value="entry" @selected($category === 'entry')>Entry fees only</option><option value="clothing" @selected($category === 'clothing')>Clothing only</option></select></div>
         <div class="col-12 col-sm-6 col-lg-3"><label for="statement-from" class="form-label">Recorded from</label><input id="statement-from" class="form-control" type="date" name="from" required value="{{ old('from', $from) }}"></div>
         <div class="col-12 col-sm-6 col-lg-3"><label for="statement-to" class="form-label">Recorded to</label><input id="statement-to" class="form-control" type="date" name="to" required value="{{ old('to', $to) }}"></div>

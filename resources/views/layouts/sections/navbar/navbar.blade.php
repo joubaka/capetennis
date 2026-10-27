@@ -347,6 +347,9 @@ $navbarDetached = ($navbarDetached ?? '');
               Account statement
             </a>
           </li>
+          @role('super-user')
+          <li><a class="dropdown-item {{ request()->routeIs('superadmin.account-statements.*') ? 'active' : '' }}" href="{{ route('superadmin.account-statements.index') }}" @if(request()->routeIs('superadmin.account-statements.*')) aria-current="page" @endif><i class="ti ti-users me-2"></i>User account statements</a></li>
+          @endrole
           @endauth
 
           @if (Auth::check() && Laravel\Jetstream\Jetstream::hasApiFeatures())
