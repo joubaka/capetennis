@@ -40,17 +40,6 @@ $configData = Helper::appClasses();
         </a>
       </li>
       @endif
-      @auth
-      <li class="menu-item {{ $currentRouteName === 'account.statement' ? 'active' : '' }}">
-        <a href="{{ route('account.statement') }}" class="menu-link" @if($currentRouteName === 'account.statement') aria-current="page" @endif>
-          <i class="menu-icon tf-icons ti ti-file-invoice"></i>
-          <div>Account statement</div>
-        </a>
-      </li>
-      @role('super-user')
-      <li class="menu-item {{ request()->routeIs('superadmin.account-statements.*') ? 'active' : '' }}"><a href="{{ route('superadmin.account-statements.index') }}" class="menu-link" @if(request()->routeIs('superadmin.account-statements.*')) aria-current="page" @endif><i class="menu-icon tf-icons ti ti-users"></i><div>User account statements</div></a></li>
-      @endrole
-      @endauth
       @foreach ($menuData[1]->menu as $menu)
 
       {{-- active menu method --}}
