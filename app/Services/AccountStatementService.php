@@ -192,11 +192,14 @@ class AccountStatementService
         $historicalRows = $this->historicalRecords($user, $rows, $player, $category, $start, $end);
         $recordedFeeTotal = $historicalRows->flatMap(fn ($row) => $row['details'])->filter(fn ($detail) => isset($detail['recorded_fee_item_id']))
             ->unique('recorded_fee_item_id')->sum('recorded_fee');
+        $listedFeeTotal = $historicalRows->flatMap(fn ($row) => $row['details'])->filter(fn ($detail) => isset($detail['listed_fee_key']))
+            ->unique('listed_fee_key')->sum('listed_fee');
 
         return ['rows' => $rows, 'paid' => $rows->sum('paid'), 'refunded' => $rows->sum('refunded'),
             'net' => $rows->sum('paid') - $rows->sum('refunded'), 'from' => $from, 'to' => $to,
             'player' => $player, 'category' => $category, 'allTime' => $allTime, 'historicalRows' => $historicalRows,
             'recordedFeeTotal' => $recordedFeeTotal,
+            'listedFeeTotal' => $listedFeeTotal,
             'warnings' => array_values(array_unique($warnings)), 'generated_at' => now(), 'account' => $user];
     }
 
@@ -231,13 +234,14 @@ class AccountStatementService
         $history = collect();
         $knownReferences = $knownRows->pluck('reference');
         if ($category !== 'clothing') {
-            $teamOrders = $this->bounded(TeamPaymentOrder::with(['player', 'event'])->where('user_id', $user->id)->where('pay_status', true)
+            $teamOrders = $this->bounded(TeamPaymentOrder::with(['player', 'event', 'team.category'])->where('user_id', $user->id)->where('pay_status', true)
                 ->where(fn ($q) => $q->whereNull('collection_status')->orWhere('collection_status', '!=', 'reconciliation_required')));
             foreach ($teamOrders as $order) {
                 if ($knownRows->contains('checkout', 'T'.$order->id) || $this->hasDatedTeamReceipt($user, $order)) continue;
                 $history->push(['checkout' => 'Historical team entry T'.$order->id,
                     'reference' => $order->payfast_pf_payment_id ?: 'Reference unavailable', 'method' => 'Recorded as paid',
-                    'date' => null, 'amount' => null, 'details' => [$this->detail($order->player, $order->event, null)]]);
+                    'date' => null, 'amount' => null, 'details' => [$this->withListedFee($this->detail($order->player, $order->event, null),
+                        $order->team?->category, $order->event, 'team:'.$order->id.':'.($order->player_id ?? 0))]]);
             }
             $entries = $this->bounded(CategoryEventRegistration::withTrashed()->with(['players', 'categoryEvent.event'])
                 ->where('user_id', $user->id)->where('payment_status_id', 1));
@@ -265,10 +269,16 @@ class AccountStatementService
                     $fee = $this->historicalEntryFee($user, $entry, (int) $p->id);
                     $detail['recorded_fee'] = $fee['amount'] ?? null;
                     $detail['recorded_fee_item_id'] = $fee['item_id'] ?? null;
+                    if ($fee === null) {
+                        $detail = $this->withListedFee($detail, $entry->categoryEvent, $entry->categoryEvent?->event,
+                            'entry:'.($entry->registration_id ?: 'missing-'.$entry->id).':'.$entry->category_event_id.':'.$p->id);
+                    }
 
                     return $detail;
                 })->all();
-                if ($details === []) $details = [$this->detail(null, $entry->categoryEvent?->event, null)];
+                if ($details === []) $details = [$this->withListedFee($this->detail(null, $entry->categoryEvent?->event, null),
+                    $entry->categoryEvent, $entry->categoryEvent?->event,
+                    'entry:'.($entry->registration_id ?: 'missing-'.$entry->id).':'.$entry->category_event_id.':0')];
                 $history->push(['checkout' => 'Historical entry '.$entry->id, 'reference' => $entry->pf_transaction_id ?: 'Reference unavailable',
                     'method' => $entry->payment_method ?: 'Recorded as paid', 'date' => null, 'amount' => null, 'details' => $details]);
             }
@@ -309,6 +319,8 @@ class AccountStatementService
             $fees = collect($row['details'])->filter(fn ($detail) => isset($detail['recorded_fee_item_id']))->unique('recorded_fee_item_id');
             $row['recordedFee'] = $fees->isEmpty() ? null : $fees->sum('recorded_fee');
             $row['partialRecordedFee'] = $fees->isNotEmpty() && $fees->count() < count($row['details']);
+            $listedFees = collect($row['details'])->filter(fn ($detail) => isset($detail['listed_fee_key']))->unique('listed_fee_key');
+            $row['listedFee'] = $listedFees->isEmpty() ? null : $listedFees->sum('listed_fee');
 
             return $row;
         });
@@ -327,6 +339,19 @@ class AccountStatementService
         $fee = $this->cents($items->first()->item_price);
 
         return $fee > 0 ? ['amount' => $fee, 'item_id' => (int) $items->first()->id] : null;
+    }
+
+    private function withListedFee(array $detail, $category, $event, string $key): array
+    {
+        if (! $event) return $detail;
+        $hasCategoryOverride = $category && (int) $category->event_id === (int) $event->id && $category->entry_fee !== null;
+        $fee = $this->cents($hasCategoryOverride ? $category->entry_fee : $event->entryFee);
+        if ($fee <= 0) return $detail;
+        $detail['listed_fee'] = $fee;
+        $detail['listed_fee_source'] = $hasCategoryOverride ? 'Current category-listed entry fee' : 'Current event-listed entry fee';
+        $detail['listed_fee_key'] = $key;
+
+        return $detail;
     }
 
     private function hasDatedEntryReceipt(User $user, CategoryEventRegistration $entry): bool

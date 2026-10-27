@@ -68,15 +68,18 @@ class AccountStatementController extends Controller
                 fputcsv($out, ['Known receipt totals', '', '', '', '', number_format($statement['paid'] / 100, 2, '.', ''), number_format($statement['refunded'] / 100, 2, '.', '')], ',', '"', '');
                 $write(['Historical paid record count (excluded from known receipt totals)', $statement['historicalRows']->count()]);
                 $write(['Recorded historical entry fee subtotal ZAR (not verified payments; excluded from known receipt totals)', number_format($statement['recordedFeeTotal'] / 100, 2, '.', '')]);
+                $write(['Current listed entry fee reference subtotal ZAR (not historical price or payment proof; excluded from captured fees and receipt totals)', number_format($statement['listedFeeTotal'] / 100, 2, '.', '')]);
                 $write(['Historical paid records — separate from known receipt totals. Undated records are shown regardless of selected payment period. Amounts and dates unavailable in the original records are not inferred.']);
-                $write(['Payment date', 'Method', 'Reference', 'Historical record', 'Player / event / captured entry fee', 'Recorded amount ZAR (excluded from receipt totals)', 'Recorded historical entry fee ZAR (not verified payment)', 'Fee completeness']);
+                $write(['Payment date', 'Method', 'Reference', 'Historical record', 'Player / event / fee sources', 'Recorded amount ZAR (excluded from receipt totals)', 'Recorded historical entry fee ZAR (not verified payment)', 'Fee completeness', 'Current listed entry fee ZAR (reference only; historical price unverified)']);
                 foreach ($statement['historicalRows'] as $row) {
                     $write([$row['date'] ?? 'Payment date unavailable', $row['method'], $row['reference'], $row['checkout'],
                         collect($row['details'])->map(fn ($d) => $d['player'].' / '.$d['event'].' / Event date: '.($d['event_date'] ?? 'unavailable')
-                            .' / Recorded historical entry fee: '.(($d['recorded_fee'] ?? null) === null ? 'Amount unavailable' : 'R '.number_format($d['recorded_fee'] / 100, 2, '.', '')))->implode('; '),
+                            .' / Recorded historical entry fee: '.(($d['recorded_fee'] ?? null) === null ? 'Amount unavailable' : 'R '.number_format($d['recorded_fee'] / 100, 2, '.', ''))
+                            .(($d['listed_fee'] ?? null) === null ? '' : ' / '.$d['listed_fee_source'].': R '.number_format($d['listed_fee'] / 100, 2, '.', '').' (reference only; historical price unverified)'))->implode('; '),
                         $row['amount'] === null ? 'Amount unavailable' : number_format($row['amount'] / 100, 2, '.', ''),
                         $row['recordedFee'] === null ? 'Amount unavailable' : number_format($row['recordedFee'] / 100, 2, '.', ''),
-                        $row['recordedFee'] === null ? 'Unavailable' : ($row['partialRecordedFee'] ? 'Partial — some player fees unavailable' : 'Captured fee available')]);
+                        $row['recordedFee'] === null ? 'Unavailable' : ($row['partialRecordedFee'] ? 'Partial — some player fees unavailable' : 'Captured fee available'),
+                        $row['listedFee'] === null ? 'Amount unavailable' : number_format($row['listedFee'] / 100, 2, '.', '')]);
                 }
                 fclose($out);
             }, $filename.'.csv', ['Content-Type' => 'text/csv; charset=UTF-8', 'Cache-Control' => 'private, no-store']);

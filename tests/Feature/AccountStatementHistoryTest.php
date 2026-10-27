@@ -247,4 +247,87 @@ class AccountStatementHistoryTest extends TestCase
         $this->get(route('superadmin.account-statements.show', $params + ['format' => 'pdf']))->assertOk()->assertHeader('content-type', 'application/pdf');
         $this->assertDatabaseCount('registration_order_items', 1);
     }
+
+    public function test_listed_fee_reference_respects_category_override_captured_priority_and_never_adds_cape_fee(): void
+    {
+        $user = User::factory()->create();
+        $player = Player::factory()->create();
+        $event = Event::factory()->create(['entryFee' => 265, 'cape_tennis_fee' => 15]);
+        $eventEntry = $this->entry($user, $player, CategoryEvent::factory()->create(['event_id' => $event->id, 'entry_fee' => null]));
+        $categoryEntry = $this->entry($user, $player, CategoryEvent::factory()->create(['event_id' => $event->id, 'entry_fee' => 300]));
+        $zeroEntry = $this->entry($user, $player, CategoryEvent::factory()->create(['event_id' => $event->id, 'entry_fee' => 0]));
+        $negativeEntry = $this->entry($user, $player, CategoryEvent::factory()->create(['event_id' => $event->id, 'entry_fee' => -1]));
+        $captured = $this->entry($user, $player, CategoryEvent::factory()->create(['event_id' => $event->id, 'entry_fee' => 300]));
+        $this->capturedFee($user, $captured, $player, 450);
+        $data = app(AccountStatementService::class)->build($user, '2025-01-01', '2026-12-31');
+        $this->assertSame(56500, $data['listedFeeTotal']);
+        $this->assertSame(45000, $data['recordedFeeTotal']);
+        $this->assertSame(0, $data['paid']);
+        $eventRow = $data['historicalRows']->firstWhere('checkout', 'Historical entry '.$eventEntry->id);
+        $this->assertSame(26500, $eventRow['listedFee']);
+        $this->assertSame('Current event-listed entry fee', $eventRow['details'][0]['listed_fee_source']);
+        $this->assertNull($eventRow['amount']);
+        $this->assertNull($eventRow['date']);
+        $categoryRow = $data['historicalRows']->firstWhere('checkout', 'Historical entry '.$categoryEntry->id);
+        $this->assertSame('Current category-listed entry fee', $categoryRow['details'][0]['listed_fee_source']);
+        foreach ([$zeroEntry, $negativeEntry, $captured] as $entry) {
+            $this->assertNull($data['historicalRows']->firstWhere('checkout', 'Historical entry '.$entry->id)['listedFee']);
+        }
+    }
+
+    public function test_listed_fees_handle_ambiguous_items_missing_event_prices_clothing_and_player_payer_filters(): void
+    {
+        $user = User::factory()->create();
+        $mia = Player::factory()->create(['name' => 'Mia']);
+        $dawid = Player::factory()->create(['name' => 'Dawid']);
+        $event = Event::factory()->create(['entryFee' => 265]);
+        $category = CategoryEvent::factory()->create(['event_id' => $event->id, 'entry_fee' => null]);
+        $entry = $this->entry($user, $mia, $category);
+        $this->capturedFee($user, $entry, $mia, 400);
+        $this->capturedFee($user, $entry, $mia, 400);
+        $duplicate = $entry->replicate();
+        $duplicate->save();
+        $duplicate->delete();
+        TeamPaymentOrder::create(['user_id' => $user->id, 'player_id' => $dawid->id, 'event_id' => $event->id, 'pay_status' => true]);
+        ClothingOrder::create(['user_id' => $user->id, 'player_id' => $mia->id, 'event_id' => $event->id, 'pay_status' => 1]);
+        foreach ([0, -1] as $price) {
+            $missingEvent = Event::factory()->create(['entryFee' => $price]);
+            $this->entry($user, $mia, CategoryEvent::factory()->create(['event_id' => $missingEvent->id, 'entry_fee' => null]));
+        }
+        $data = app(AccountStatementService::class)->build($user, '2025-01-01', '2026-12-31');
+        $this->assertSame(53000, $data['listedFeeTotal']);
+        $this->assertSame(0, $data['recordedFeeTotal']);
+        $this->assertSame(0, $data['paid']);
+        foreach ($data['historicalRows']->filter(fn ($row) => str_starts_with($row['checkout'], 'Historical clothing')) as $row) {
+            $this->assertNull($row['listedFee']);
+            $this->assertArrayNotHasKey('listed_fee', $row['details'][0]);
+        }
+        $this->assertSame(26500, app(AccountStatementService::class)->build($user, '2025-01-01', '2026-12-31', 'Mia')['listedFeeTotal']);
+        $this->assertSame(0, app(AccountStatementService::class)->build($user, '2025-01-01', '2026-12-31', '', 'clothing')['listedFeeTotal']);
+        $this->assertSame(0, app(AccountStatementService::class)->build(User::factory()->create(), '2025-01-01', '2026-12-31')['listedFeeTotal']);
+        $method = new \ReflectionMethod(AccountStatementService::class, 'withListedFee');
+        $nullFee = $method->invoke(app(AccountStatementService::class), [], null, new Event(['entryFee' => null]), 'missing');
+        $this->assertArrayNotHasKey('listed_fee', $nullFee);
+    }
+
+    public function test_listed_fee_sources_are_exported_as_reference_only_for_selected_admin_target(): void
+    {
+        $user = User::factory()->create();
+        $player = Player::factory()->create();
+        $event = Event::factory()->create(['entryFee' => 265, 'cape_tennis_fee' => 15]);
+        $this->entry($user, $player, CategoryEvent::factory()->create(['event_id' => $event->id, 'entry_fee' => null]));
+        Role::findOrCreate('super-user', 'web');
+        $admin = User::factory()->create()->assignRole('super-user');
+        $params = ['user' => $user, 'all_time' => 1];
+        $this->actingAs($admin)->get(route('superadmin.account-statements.show', $params))->assertOk()
+            ->assertViewHas('listedFeeTotal', 26500)->assertViewHas('recordedFeeTotal', 0)->assertViewHas('paid', 0)
+            ->assertSee('Current event-listed entry fee');
+        $csv = $this->get(route('superadmin.account-statements.show', $params + ['format' => 'csv']))->assertOk()->streamedContent();
+        $this->assertStringContainsString($user->email, $csv);
+        $this->assertStringContainsString('Current event-listed entry fee', $csv);
+        $this->assertStringContainsString('265.00', $csv);
+        $this->assertStringNotContainsString('280.00', $csv);
+        $this->assertStringContainsString('historical price unverified', $csv);
+        $this->get(route('superadmin.account-statements.show', $params + ['format' => 'pdf']))->assertOk()->assertHeader('content-type', 'application/pdf');
+    }
 }
