@@ -141,7 +141,10 @@
           </li>
         </ul>
 
-        <div class="d-flex justify-content-center gap-2 mt-3">
+        <div class="d-flex flex-wrap justify-content-center gap-2 mt-3">
+          <a href="{{ route('account.statement') }}" class="btn btn-outline-primary btn-sm">
+            <i class="ti ti-file-invoice me-1"></i> Account statement
+          </a>
           <a href="{{ route('wallet.show', $user->id) }}" class="btn btn-outline-info btn-sm">
             <i class="ti ti-wallet me-1"></i> Wallet
           </a>

@@ -544,6 +544,14 @@
     $('fm-publish').hidden = !state.generated || !config.canPublish || state.locked;
     $('fm-publish').textContent = state.published ? 'Unpublish draw' : 'Publish draw';
     $('fm-publish').disabled = busy;
+    document.querySelectorAll('[data-workspace-publish-draw-proxy]').forEach(button => {
+      button.textContent = state.published ? 'Unpublish draw' : 'Publish draw';
+      button.disabled = busy || !state.generated || !config.canPublish || state.locked;
+      button.setAttribute('aria-pressed', String(Boolean(state.published)));
+      button.classList.toggle('btn-success', Boolean(state.published));
+      button.classList.toggle('btn-outline-primary', !state.published);
+      button.title = state.locked ? 'Unlock the draw before changing publication.' : !state.generated ? 'Generate and review the fixtures before publishing.' : '';
+    });
     $('fm-reopen').hidden = !state.generated || config.readOnly || !config.canEdit || state.published || state.locked;
     $('fm-reopen').disabled = busy;
     const withdrawn = state.players.filter(p => p.withdrawn);
@@ -990,8 +998,15 @@
   );
   $('fm-publish').addEventListener('click', () =>
     run(async () => {
-      state = await request(config.urls.publish, { revision: state.revision, published: !state.published });
-      message(state.published ? 'Draw published. Authorized scoring remains available.' : 'Draw unpublished.');
+      try {
+        state = await request(config.urls.publish, { revision: state.revision, published: !state.published });
+        const text = state.published ? 'Draw published. Schedule publication is unchanged.' : 'Draw unpublished. Schedule publication is unchanged.';
+        message(text);
+        document.querySelectorAll('[data-publication-status]').forEach(label => { label.textContent = text; label.classList.remove('text-danger'); });
+      } catch (error) {
+        document.querySelectorAll('[data-publication-status]').forEach(label => { label.textContent = error.message; label.classList.add('text-danger'); });
+        throw error;
+      }
     })
   );
   $('fm-withdrawals').addEventListener('click', () => run(async () => {

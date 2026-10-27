@@ -10,6 +10,42 @@
     }
   }
   const status = document.querySelector('[data-share-status]');
+  const publicationStatus = (button, message, failed = false) => {
+    const target = button.closest('[data-draw-publication]')?.querySelector('[data-publication-status]') || status;
+    if (!target) return;
+    target.textContent = message;
+    target.classList.toggle('text-danger', failed);
+    target.classList.toggle('text-muted', !failed);
+  };
+  const paintPublication = (button, published, kind) => {
+    button.textContent = `${published ? 'Unpublish' : 'Publish'} ${kind}`;
+    button.setAttribute('aria-pressed', String(published));
+    button.classList.toggle('btn-success', published);
+    button.classList.toggle('btn-outline-primary', !published);
+  };
+  document.querySelectorAll('[data-workspace-publish-draw-proxy]').forEach(button => button.addEventListener('click', () => {
+    const editorButton = document.getElementById('fm-publish');
+    if (!editorButton || editorButton.disabled || editorButton.hidden) return;
+    editorButton.click();
+  }));
+  document.querySelectorAll('[data-workspace-publish-draw]').forEach(button => button.addEventListener('click', async () => {
+    if (button.disabled || !window.confirm(button.textContent.trim() + '?')) return;
+    button.disabled = true;
+    try {
+      const flexible = button.dataset.flexibleRevision !== undefined;
+      const response = await fetch(button.dataset.workspacePublishDraw, {method:'POST', headers:{
+        'X-CSRF-TOKEN':document.querySelector('meta[name="csrf-token"]').content,
+        Accept:'application/json', 'Content-Type':'application/json'
+      }, body: JSON.stringify(flexible ? {revision:Number(button.dataset.flexibleRevision),published:button.dataset.published !== '1'} : {})});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Publication failed. Reload this page and try again.');
+      button.dataset.published = data.published ? '1' : '0';
+      if (flexible) button.dataset.flexibleRevision = String(data.revision);
+      paintPublication(button, Boolean(data.published), 'draw');
+      publicationStatus(button, data.published ? 'Draw published. Schedule publication is unchanged.' : 'Draw unpublished. Schedule publication is unchanged.');
+    } catch (error) { publicationStatus(button, error.message, true); }
+    finally { button.disabled = false; }
+  }));
   document.querySelectorAll('[data-share-draw]').forEach(button => button.addEventListener('click', async () => {
     if (button.disabled) return;
     try {
@@ -28,20 +64,21 @@
     if (allowed.includes(context)) link.hash = context;
   }));
   document.querySelectorAll('[data-workspace-publish-schedule]').forEach(button => button.addEventListener('click', async () => {
-    if (!window.confirm(button.textContent.trim() + '?')) return;
-    button.disabled = true;
+    if (button.disabled || !window.confirm(button.textContent.trim() + '?')) return;
+    const siblings = [...document.querySelectorAll('[data-workspace-publish-schedule]')].filter(item => item.dataset.workspacePublishSchedule === button.dataset.workspacePublishSchedule);
+    siblings.forEach(item => { item.disabled = true; });
     try {
       const response = await fetch(button.dataset.workspacePublishSchedule, { method: 'POST', headers: {
         'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content, Accept: 'application/json'
       }});
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'Publication failed.');
-      button.textContent = data.oop_published ? 'Unpublish schedule' : 'Publish schedule';
-      if (status) status.textContent = data.oop_published
+      siblings.forEach(item => paintPublication(item, Boolean(data.oop_published), 'schedule'));
+      publicationStatus(button, data.oop_published
         ? (data.preview_only ? 'Times published for authorized front-page preview; the draw remains hidden from the public.' : 'Schedule published and visible with the public draw.')
-        : 'Schedule unpublished.';
-    } catch (error) { if (status) status.textContent = error.message; }
-    finally { button.disabled = false; }
+        : 'Schedule unpublished.');
+    } catch (error) { publicationStatus(button, error.message, true); }
+    finally { siblings.forEach(item => { item.disabled = false; }); }
   }));
   const workspace = document.getElementById('flexible-draw-workspace');
   document.querySelector('[data-workspace-notes]')?.addEventListener('submit', async event => {

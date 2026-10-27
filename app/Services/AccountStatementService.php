@@ -3,6 +3,10 @@
 namespace App\Services;
 
 use App\Models\CategoryEventRegistration;
+use App\Models\CategoryAdjustment;
+use App\Models\Player;
+use App\Models\ClothingOrder;
+use App\Models\ClothingRefund;
 use App\Models\RegistrationManualReceipt;
 use App\Models\RegistrationOrder;
 use App\Models\TeamPaymentOrder;
@@ -18,17 +22,29 @@ class AccountStatementService
 {
     private const LIMIT = 2000;
 
-    public function build(User $user, string $from, string $to, string $player = ''): array
+    public function build(User $user, string $from, string $to, string $player = '', string $category = 'all'): array
     {
         $rows = collect();
         $start = $from.' 00:00:00';
         $end = $to.' 23:59:59';
         $receipts = $this->bounded(Transaction::query()->with(['player', 'event', 'category_event.event'])
-            ->where('custom_int4', $user->id)->where('payment_status', 'COMPLETE')->where('is_test', false)
+            ->where('custom_int4', $user->id)->where(fn ($q) => $q->where('payment_status', 'COMPLETE')->orWhereNull('payment_status'))->where('is_test', false)
             ->whereNull('archived_at')->whereNotNull('pf_payment_id')->where('pf_payment_id', '!=', '')
             ->where('amount_gross', '>', 0)->whereBetween('created_at', [$start, $end]));
 
-        foreach ($receipts as $receipt) {
+        foreach ($receipts->unique('pf_payment_id') as $receipt) {
+            if ($receipt->custom_str5 === 'CategoryAdjustment') {
+                $adjustment = CategoryAdjustment::with('event')->whereKey($receipt->custom_int5)->where('user_id', $user->id)
+                    ->where('status', 'completed')->whereNotNull('applied_at')->where('pay_status', true)->first();
+                if ($adjustment && (int) $adjustment->event_id === (int) $receipt->event_id
+                    && (int) $adjustment->player_id === (int) $receipt->player_id
+                    && (string) $adjustment->payfast_pf_payment_id === (string) $receipt->pf_payment_id
+                    && $this->cents($adjustment->difference) === $this->cents($receipt->amount_gross)) {
+                    $rows->push($this->row($receipt->created_at, 'Category change / PayFast', 'PF '.$receipt->pf_payment_id,
+                        'A'.$adjustment->id, [$this->detail($receipt->player, $adjustment->event, $adjustment->difference)], $this->cents($receipt->amount_gross), 0));
+                }
+                continue;
+            }
             $team = $receipt->custom_str5 === 'TeamOrder';
             if (! $team && filled($receipt->custom_str5)) {
                 continue;
@@ -38,8 +54,12 @@ class AccountStatementService
                 continue;
             }
             if ($order) {
+                if ((string) $order->payfast_pf_payment_id !== (string) $receipt->pf_payment_id
+                    || $this->cents($order->payfast_amount_due) !== $this->cents($receipt->amount_gross)) {
+                    continue;
+                }
                 $details = $this->details($order);
-            } elseif (! $team && $receipt->player && $receipt->category_event
+            } elseif ($receipt->payment_status === 'COMPLETE' && ! $team && $receipt->player && $receipt->category_event
                 && (int) $receipt->category_event->event_id === (int) $receipt->event_id) {
                 $details = [$this->detail($receipt->player, $receipt->category_event->event, null)];
             } else {
@@ -60,6 +80,17 @@ class AccountStatementService
             if ($order && $order->wallet_debited) {
                 $rows->push($this->row($debit->created_at, 'Wallet', 'W'.$debit->id,
                     ($team ? 'T' : 'R').$order->id, $this->details($order), abs($this->cents($debit->amount)), 0));
+            }
+        }
+        $credits = $this->bounded(WalletTransaction::query()->whereHas('wallet', fn ($q) => $q
+            ->where('payable_type', $user->getMorphClass())->where('payable_id', $user->id))
+            ->where('type', 'credit')->where('source_type', 'category_adjustment')->whereBetween('created_at', [$start, $end]));
+        foreach ($credits as $credit) {
+            $adjustment = CategoryAdjustment::with('event')->whereKey($credit->source_id)->where('user_id', $user->id)
+                ->where('status', 'completed')->whereNotNull('applied_at')->where('wallet_transaction_id', $credit->id)->first();
+            if ($adjustment && $this->cents($adjustment->difference) < 0 && abs($this->cents($adjustment->difference)) === $this->cents($credit->amount)) {
+                $rows->push($this->row($credit->created_at, 'Category change / Wallet credit', 'W'.$credit->id,
+                    'A'.$adjustment->id, [$this->detail(Player::find($adjustment->player_id), $adjustment->event, null)], 0, $this->cents($credit->amount)));
             }
         }
 
@@ -91,6 +122,37 @@ class AccountStatementService
                 'Entry refund '.$refund->id, 'Entry '.$refund->id, $details, 0, $this->cents($refund->refund_net)));
         }
 
+        $clothing = $this->bounded(ClothingOrder::query()->with(['player', 'event', 'items.itemType', 'transaction'])
+            ->where('user_id', $user->id)->where('pay_status', 1)
+            ->where(fn ($q) => $q->whereBetween('paid_at', [$start, $end])->orWhereHas('transaction', fn ($t) => $t->whereBetween('created_at', [$start, $end]))));
+        foreach ($clothing as $order) {
+            $tx = $order->transaction;
+            $date = $order->paid_at;
+            $amount = $order->amount_paid;
+            $reference = $order->payfast_pf_payment_id ?: $order->pf_id;
+            if (! $date && $tx && ! $tx->is_test && ! $tx->archived_at && $tx->payment_status === 'COMPLETE'
+                && (int) $tx->custom_int4 === (int) $user->id && (int) $tx->event_id === (int) $order->event_id) {
+                $date = $tx->created_at;
+                $amount = $tx->amount_gross;
+            }
+            if ($date && $date->betweenIncluded($start, $end) && $reference && $this->cents($amount) > 0) {
+                $rows->push($this->row($date, 'Clothing / PayFast', 'PF '.$reference, 'C'.$order->id,
+                    $this->clothingDetails($order), $this->cents($amount), 0));
+            }
+        }
+        $clothingRefunds = $this->bounded(ClothingRefund::query()->with(['order.player', 'order.event', 'order.items.itemType'])
+            ->where('payer_id', $user->id)->whereHas('order', fn ($q) => $q->where('user_id', $user->id))
+            ->where('refund_status', 'completed')->whereBetween('refunded_at', [$start, $end]));
+        foreach ($clothingRefunds as $refund) {
+            if ((int) $refund->event_id === (int) $refund->order->event_id) {
+                $rows->push($this->row($refund->refunded_at, 'Clothing refund / '.($refund->refund_method ?: 'recorded'),
+                    'Clothing refund '.$refund->id, 'C'.$refund->clothing_order_id, $this->clothingDetails($refund->order), 0, $this->cents($refund->refund_net)));
+            }
+        }
+
+        if ($category !== 'all') {
+            $rows = $rows->filter(fn ($r) => ($category === 'clothing') === str_starts_with($r['checkout'], 'C'));
+        }
         if ($player !== '') {
             $rows = $rows->filter(fn ($r) => collect($r['details'])->contains(fn ($d) => mb_stripos($d['player'], $player) !== false));
         }
@@ -101,7 +163,7 @@ class AccountStatementService
 
         return ['rows' => $rows, 'paid' => $rows->sum('paid'), 'refunded' => $rows->sum('refunded'),
             'net' => $rows->sum('paid') - $rows->sum('refunded'), 'from' => $from, 'to' => $to,
-            'player' => $player, 'generated_at' => now(), 'account' => $user];
+            'player' => $player, 'category' => $category, 'generated_at' => now(), 'account' => $user];
     }
 
     private function order(User $user, bool $team, int $id): RegistrationOrder|TeamPaymentOrder|null
@@ -126,6 +188,14 @@ class AccountStatementService
         return $order instanceof TeamPaymentOrder
             ? [$this->detail($order->player, $order->event, $order->total_amount)]
             : $order->items->map(fn ($i) => $this->detail($i->player, $i->category_event?->event, $i->item_price))->all();
+    }
+
+    private function clothingDetails(ClothingOrder $order): array
+    {
+        $details = $this->detail($order->player, $order->event, $order->total);
+        $details['event'] .= ' — Clothing: '.$order->items->map(fn ($i) => ($i->item_name ?: $i->itemType?->item_type_name ?: 'Item').' × '.$i->qty)->implode(', ');
+
+        return [$details];
     }
 
     private function detail($player, $event, $fee): array

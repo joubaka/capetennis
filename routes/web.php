@@ -107,6 +107,8 @@ $controller_path = 'App\Http\Controllers';
 // Temp: OPcache clear
 // Main Page Route
 Route::get('/', [HomeController::class, 'index'])->name('home');
+Route::get('/account/statement', \App\Http\Controllers\AccountStatementController::class)
+  ->middleware(['auth', 'throttle:30,1'])->name('account.statement');
 Route::get('/page-2', $controller_path . '\pages\Page2@index')->name('pages-page-2');
 Route::get(
   '/events/ajax/home',

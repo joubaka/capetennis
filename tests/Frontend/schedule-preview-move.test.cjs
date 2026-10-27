@@ -6,17 +6,18 @@ const source=fs.readFileSync('resources/views/backend/schedule/event-venue-sched
 
 function mover(reject=false) {
  const controls=new Map(['schedule-status','venue-slot-grids','schedule-duration','schedule-gap','schedule-rest','schedule-daily-limit','round-progression'].map(id=>[id,{value:'30',classList:{add(){},remove(){}}}]));
- const calls=[],toasts=[],statuses=[];
+ const calls=[],toasts=[],statuses=[],conflicts=[];
  const key='individual:20',slot={dataset:{time:'2026-10-30 11:00:00',venue:'7',court:'2'}};
  const result={input:{preview_moves:[{fixture_key:key,scheduled_at:slot.dataset.time,venue_id:7,court:'2'}],preview_frozen_keys:['individual:99']},venues:[{id:7,name:'School courts'}]};
  const context={lastScheduleResult:{matches:[{fixture_key:key}]},fixtureKey:row=>row.fixture_key,payload:{day_batch:true},revision:'a'.repeat(64),previewUrl:'/preview',manualAssignmentUrl:'/manual',
   dayBatchPayload:{day_batch:true},programmePayload:null,selectedManualFixture:key,
   document:{getElementById:id=>controls.get(id)},setStatus:(element,message,tone)=>statuses.push([message,tone]),
   notify:(message,tone,pending)=>{toasts.push([message,tone,pending]);return()=>toasts.push(['cleared']);},
+  showMoveConflict:(error,key,slot)=>conflicts.push([error.message,key,slot]),
   post:async(url,body)=>{calls.push([url,body]);if(reject)throw new Error('Required player rest is missing.');return result;},
   render:()=>{},fixtureRef:()=>{throw new Error('An unsaved preview move must not call the saved manual path.');}};
  vm.runInNewContext(source.slice(source.indexOf('  const placeMatchManually ='),source.indexOf("  ['programme-daily-limit'"))+';globalThis.move=placeMatchManually;',context);
- return {context,key,slot,calls,toasts,statuses};
+ return {context,key,slot,calls,toasts,statuses,conflicts};
 }
 
 test('suggested drop updates validated preview and never posts an immediate saved assignment',async()=>{
@@ -33,7 +34,9 @@ test('suggested drop updates validated preview and never posts an immediate save
 test('rejected suggestion leaves payload unchanged and reports the error with pending cleanup',async()=>{
  const app=mover(true);await app.context.move(app.key,app.slot);
  assert.equal(app.context.payload.preview_moves,undefined);
- assert.ok(app.toasts.some(([message,tone])=>tone==='danger'&&message.includes('player rest')));
+ assert.equal(app.conflicts.length,1);
+ assert.ok(app.conflicts[0][0].includes('player rest'));
+ assert.equal(app.conflicts[0][1],app.key);
  assert.ok(app.statuses.some(([message,tone])=>tone==='danger'&&message.includes('player rest')));
  assert.deepEqual(app.toasts.at(-1),['cleared']);
 });

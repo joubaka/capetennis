@@ -1151,9 +1151,13 @@ final class EventVenueScheduleController extends Controller
                 if (! hash_equals($current['revision'], $data['revision'])) throw new \InvalidArgumentException('The preview changed. Generate a new preview before moving this match.');
                 $moving = collect(array_merge($current['matches'], $current['unscheduled']))->firstWhere('fixture_key', $data['preview_move']['fixture_key']);
                 if (! $moving) throw new \InvalidArgumentException('Choose an unsaved match in this preview.');
-                $options = $scheduler->preservePreviewOptions($options, $current, $data['preview_move']);
-                try { return response()->json($scheduler->preview($event->fresh(), $options)); }
-                catch (\InvalidArgumentException $exception) { throw new \InvalidArgumentException('Match '.$moving['match'].' was not moved. '.$exception->getMessage()); }
+                $preserved = $scheduler->preservePreviewOptions($options, $current, $data['preview_move']);
+                try { return response()->json($scheduler->preview($event->fresh(), $preserved)); }
+                catch (\InvalidArgumentException $exception) {
+                    return response()->json(['message' => 'Match '.$moving['match'].' was not moved. '.$exception->getMessage(),
+                        'move_conflict' => app(\App\Services\Scheduling\ScheduleMoveConflictService::class)
+                            ->report($event, $options, $current, $data['preview_move'], $exception->getMessage())], 422);
+                }
             }
             if (empty($options['programme']) && empty($options['day_batch'])) $playoffs->prepareEvent($event, $options['draw_ids'] ?? []);
 
@@ -1244,8 +1248,9 @@ final class EventVenueScheduleController extends Controller
         if ($request->has('preview_context')) {
             $context = $request->validate(['preview_context'=>['required','array'], 'preview_revision'=>['required','string','size:64']]);
             $options = $this->validatedOptions(Request::create('/', 'POST', $context['preview_context']));
+            $moveConflictContext = null;
             try {
-                return DB::transaction(function () use ($request, $event, $data, $options, $context, $conflicts, $scheduleEngine) {
+                return DB::transaction(function () use ($request, $event, $data, $options, $context, $conflicts, $scheduleEngine, &$moveConflictContext) {
                     Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
                     DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
                     $scheduler = app(EventVenueScheduleService::class);
@@ -1254,6 +1259,7 @@ final class EventVenueScheduleController extends Controller
                     $key = ($data['fixture_kind'] ?? 'individual').':'.$data['fixture_id'];
                     $saved = collect($current['existing_matches'])->firstWhere('fixture_key', $key);
                     if (! $saved || empty($saved['editable'])) throw new \InvalidArgumentException('Choose an editable saved match in this preview.');
+                    $moveConflictContext = ['preview' => $current, 'move' => ['fixture_key' => $key, 'scheduled_at' => $data['scheduled_at'], 'venue_id' => (int) $data['venue_id'], 'court' => $data['court']]];
                     $preserved = $scheduler->preservePreviewOptions($options, $current);
                     if (! empty($options['day_batch'])) {
                         $movedDay = \Carbon\Carbon::parse($data['scheduled_at'])->toDateString();
@@ -1288,7 +1294,11 @@ final class EventVenueScheduleController extends Controller
                     return response()->json($result);
                 });
             } catch (\InvalidArgumentException $exception) {
-                return response()->json(['message'=>$exception->getMessage()], 422);
+                $result = ['message' => $exception->getMessage()];
+                if ($moveConflictContext) $result['move_conflict'] = app(\App\Services\Scheduling\ScheduleMoveConflictService::class)
+                    ->report($event, array_replace($options, ['duration' => $data['duration'], 'player_rest' => $data['player_rest'], 'court_gap' => $data['court_gap']]),
+                        $moveConflictContext['preview'], $moveConflictContext['move'], $exception->getMessage(), false);
+                return response()->json($result, 422);
             }
         }
 

@@ -8,6 +8,7 @@ $breadcrumbs = [['link' => 'home', 'name' => 'Home'], ['link' => 'javascript:voi
 
 
 @section('content')
+  <div class="card mb-4"><div class="card-body"><h2 class="h5">Account statement</h2><p>Download your entry fee and clothing payment history, including recorded refunds.</p><a href="{{ route('account.statement') }}" class="btn btn-outline-primary">View account statement</a></div></div>
 
   @if (Laravel\Fortify\Features::canUpdateProfileInformation())
    <div class="mb-4">

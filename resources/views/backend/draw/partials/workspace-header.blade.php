@@ -1,7 +1,10 @@
 @php
   $workspaceUrl = route('backend.draw.roundrobin.show', $draw);
   $flexibleWorkspace = $draw->usesFlexibleMonrad();
-  $workspaceDraws = $draw->event->draws;
+  $workspaceDraws = $draw->event->draws->where('event_id', $draw->event_id)->sort(fn ($left, $right) => strnatcasecmp($left->drawName, $right->drawName) ?: $left->id <=> $right->id)->values();
+  $workspaceDrawIndex = $workspaceDraws->search(fn ($item) => $item->id === $draw->id);
+  $workspacePrevious = $workspaceDrawIndex > 0 ? $workspaceDraws[$workspaceDrawIndex - 1] : null;
+  $workspaceNext = $workspaceDrawIndex !== false && $workspaceDrawIndex < $workspaceDraws->count() - 1 ? $workspaceDraws[$workspaceDrawIndex + 1] : null;
 @endphp
 <x-backend.page-header :title="$draw->drawName" :subtitle="$draw->event->name" eyebrow="Draw workspace" icon="ti-tournament" class="draw-workspace-header" data-backend-wide data-workspace-context="{{ $workspaceContext ?? '' }}">
   <x-slot:meta>
@@ -10,6 +13,7 @@
   </x-slot:meta>
   <x-slot:actions>
       @can('event.manage', $draw->event)<a data-draw-guide-open class="btn btn-sm btn-primary" href="{{ route('draw.guide.show', [$draw->event_id, $draw]) }}">Continue setup</a>@endcan
+      @include('backend.draw.partials.publication-controls', ['publicationDraw' => $draw, 'publicationSurface' => $flexibleWorkspace ? 'flexible' : (($workspaceSurface ?? '') === 'roundrobin' ? 'roundrobin' : 'standalone')])
       @unless($draw->isTeamDraw())
         <details data-individual-draw-tools @if(request('review') === 'publication') open @endif><summary class="btn btn-sm btn-outline-secondary">More tools</summary><div class="d-flex flex-wrap gap-2 pt-2">
       @endunless
@@ -62,12 +66,6 @@
       <a class="btn btn-sm btn-outline-secondary" href="{{ $flexibleWorkspace ? route('public.flexible-monrad.show', $draw) : route('public.roundrobin.show', $draw) }}" target="_blank" rel="noopener" data-workspace-public @if(!$draw->published && !$draw->oop_published) hidden @endif>{{ $draw->published ? 'Public view' : 'Preview times' }}</a>
       <button class="btn btn-sm btn-outline-secondary" type="button" data-share-draw="{{ route('public.roundrobin.show', $draw) }}" @disabled(!$draw->published) title="{{ $draw->published ? 'Share public draw link' : 'Publish the draw before sharing' }}">Share</button>
       @if(($workspaceSurface ?? '') === 'roundrobin')
-        @can('publish', $draw)
-          <div class="dropdown"><button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" data-publication-review-toggle>Publication</button><div class="dropdown-menu dropdown-menu-end p-2">
-            <button type="button" class="dropdown-item" id="rr-publish-draw" data-url="{{ route('draw.toggle.publish', $draw) }}">{{ $draw->published ? 'Unpublish draw' : 'Publish draw' }}</button>
-            <button type="button" class="dropdown-item" id="rr-publish-schedule" data-url="{{ route('draw.toggle.publish.schedule', $draw) }}">{{ $draw->oop_published ? 'Unpublish schedule' : 'Publish schedule' }}</button>
-          </div></div>
-        @endcan
         @can('lockToggle', $draw)
           <button type="button" class="btn btn-sm {{ $draw->locked ? 'btn-danger' : 'btn-outline-secondary' }}" id="btn-toggle-lock"><span id="lock-label">{{ $draw->locked ? 'Unlock' : 'Lock' }}</span></button>
         @endcan
@@ -82,6 +80,11 @@
         </div></details>
       @endunless
       @if($workspaceDraws->count() > 1)
+        <nav class="d-flex flex-wrap align-items-center gap-2" aria-label="Draw navigation">
+          @if($workspacePrevious)<a class="btn btn-sm btn-outline-primary" href="{{ route('backend.draw.roundrobin.show', $workspacePrevious) }}" data-workspace-switch title="{{ $workspacePrevious->drawName }}">Previous draw</a>@else<span class="btn btn-sm btn-outline-secondary disabled" aria-disabled="true">Previous draw</span>@endif
+          <span class="small text-muted">Draw {{ $workspaceDrawIndex + 1 }} of {{ $workspaceDraws->count() }}</span>
+          @if($workspaceNext)<a class="btn btn-sm btn-outline-primary" href="{{ route('backend.draw.roundrobin.show', $workspaceNext) }}" data-workspace-switch title="{{ $workspaceNext->drawName }}">Next draw</a>@else<span class="btn btn-sm btn-outline-secondary disabled" aria-disabled="true">Next draw</span>@endif
+        </nav>
         <div class="dropdown">
           <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown">Switch Draw ({{ $workspaceDraws->count() }})</button>
           <ul class="dropdown-menu dropdown-menu-end">

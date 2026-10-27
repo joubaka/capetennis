@@ -247,6 +247,7 @@
     </div>
     <p class="small text-muted mb-0 legacy-schedule-copy">{{ $teamPlanning ? 'Whole-tie planning' : 'Full-day planning' }} opens a broader selection across venues. Manual placement and removal save privately immediately; automatic allocation requires preview and save.</p>
   </section>
+  @include('backend.schedule.partials.draw-controls')
   @if($guideSelection->isNotEmpty())
     <section class="schedule-publication mb-3" aria-label="Review publication">
       <h2 class="h6 mb-1">{{ $teamPlanning ? 'Step 5 of 6' : 'Next' }} · Programme &amp; schedule</h2>
@@ -758,6 +759,7 @@
   </details>
 </div>
 
+@include('backend.schedule.partials.move-conflict-modal')
 <div class="modal fade" id="rescheduleMatchModal" tabindex="-1" aria-labelledby="rescheduleMatchLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered"><form id="reschedule-match-form" class="modal-content">
     <div class="modal-header"><h5 class="modal-title" id="rescheduleMatchLabel">Reschedule match</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
@@ -854,6 +856,7 @@
 
 @section('page-script')
 <script src="{{ asset('js/schedule-day-batch.js') }}"></script>
+<script src="{{ asset('js/schedule-move-conflicts.js') }}"></script>
 <script>
 (() => {
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
@@ -1305,7 +1308,7 @@
       return data;
     } catch (error) {
       if (stale()) error.stalePreview = true;
-      if (!error.stalePreview) notify(error.message, 'danger');
+      if (!error.stalePreview && !error.response?.move_conflict && !body.preview_move && url !== manualAssignmentUrl) notify(error.message, 'danger');
       throw error;
     }
   };
@@ -1709,7 +1712,7 @@
       if (!markManualBookingView(fixtureId, slot.dataset.time)) setStatus(status, saved.message + ' It is saved; all other match slots stayed in place.', 'success');
     } catch (error) { if (error.stalePreview) return;
       setStatus(status, error.message, 'danger');
-      notify(error.message, 'danger');
+      showMoveConflict(error, fixtureId, slot.dataset);
     } finally {
       clearPendingToast();
       document.getElementById('venue-slot-grids').classList.remove('pe-none');
@@ -1741,6 +1744,24 @@
     finally { button.disabled = false; }
   }));
   const rescheduleModal = document.getElementById('rescheduleMatchModal');
+  const moveConflictDialog = window.CapeScheduleMoveConflicts.mount({document, bootstrap,
+    onSuggestion:slot => placeMatchManually(slot.fixture_key, {dataset:{time:slot.scheduled_at,venue:String(slot.venue_id),court:slot.court}}),
+    onReview:key => {
+      const savedButton = document.querySelector(`[data-reschedule-fixture="${key}"]`);
+      if (savedButton) { savedButton.click(); return; }
+      const card = document.querySelector(`[data-manual-fixture="${key}"]`);
+      if (!card) { setStatus(document.getElementById('schedule-status'), 'Find this match in the schedule or include its draw in a new preview.', 'warning'); return; }
+      card.closest('details')?.setAttribute('open', '');
+      card.scrollIntoView({behavior:'smooth',block:'center'}); card.focus(); card.click();
+      setStatus(document.getElementById('schedule-status'), 'Blocking match selected. Choose its new slot first, then retry the original move.', 'warning');
+    },
+  });
+  const showMoveConflict = (error, key, slot) => {
+    if (error.response?.move_conflict) { moveConflictDialog.show(error.response.move_conflict); return; }
+    const row = [...(lastScheduleResult?.matches || []), ...(lastScheduleResult?.existing_matches || []), ...(lastScheduleResult?.unscheduled || [])].find(match => fixtureKey(match) === key);
+    moveConflictDialog.show({message:error.message, moving:row ? {...row,venue_name:lastScheduleResult.venues.find(venue => Number(venue.id) === Number(row.venue_id))?.name || 'Venue'} : null,
+      requested:{scheduled_at:slot.time,venue_name:lastScheduleResult?.venues.find(venue => Number(venue.id) === Number(slot.venue))?.name || 'Selected venue',court:slot.court},issues:[],suggestions:[]});
+  };
   let rescheduleFixture = null;
   const rescheduleCourts = selected => {
     const venue = lastScheduleResult?.venues.find(row => Number(row.id) === Number(document.getElementById('reschedule-match-venue').value));
@@ -1785,7 +1806,10 @@
       payload = fixedBookingPreviewPayload(document.getElementById('reschedule-match-time').value, rescheduleFixture);
       render(await post(previewUrl, payload));
       if (!markManualBookingView(rescheduleFixture, document.getElementById('reschedule-match-time').value)) setStatus(document.getElementById('schedule-status'), saved.message+' Publish separately to update public times.', 'success');
-    } catch (error) { status.textContent = error.message; }
+    } catch (error) {
+      status.textContent = error.message;
+      showMoveConflict(error, rescheduleFixture, {time:document.getElementById('reschedule-match-time').value,venue:document.getElementById('reschedule-match-venue').value,court:document.getElementById('reschedule-match-court').value});
+    }
     finally { button.disabled = false; }
   });
 
