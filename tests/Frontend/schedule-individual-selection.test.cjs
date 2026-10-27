@@ -44,7 +44,7 @@ test('programme group uses exact individual IDs and keeps team age selection',()
 test('changing selection while preview is pending restores button and ignores stale response', async()=>{
  const h=harness(draws); h.select([1],'all'); h.configure();
  let complete;
- Object.assign(h.context,{programmeGroup:()=>[draws[0]],programmeDayIndexes:[0],allocationsDirty:false,programmeStatus:()=>{},buildPayload:()=>({}),previewUrl:'/preview',post:()=>new Promise(resolve=>{complete=resolve;}),render:()=>{throw new Error('stale preview rendered');}});
+ Object.assign(h.context,{programmeGroup:()=>[draws[0]],programmeDayIndexes:[0],allocationsDirty:false,programmeStatus:()=>{},readProgrammeMatchOverrides:()=>[],buildPayload:()=>({}),previewUrl:'/preview',post:()=>new Promise(resolve=>{complete=resolve;}),render:()=>{throw new Error('stale preview rendered');}});
  const start=source.indexOf('  const refreshProgrammePreview =');
  const end=source.indexOf('  // Refresh only card details',start);
  h.context.document.querySelectorAll=selector=>selector==='[data-programme-draw]'?[]:h.choices;

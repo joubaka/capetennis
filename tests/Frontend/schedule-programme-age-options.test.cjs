@@ -18,7 +18,9 @@ for (const key of ['draw_id', 'drawId']) test(`age selection restores saved opti
   const settings = new Map([['13', {duration:85, player_rest:45, court_gap:7, gender_wave_release:'court_ready', reschedule_existing:true,
     programme:{days:[0,1,2].map(day => ({start:`2026-10-${String(9+day).padStart(2,'0')} 09:30:00`, end:`2026-10-${String(9+day).padStart(2,'0')} 17:15:00`, gender_waves:'girls_then_boys', break_start:`2026-10-${String(9+day).padStart(2,'0')} 12:00:00`, break_end:`2026-10-${String(9+day).padStart(2,'0')} 13:00:00`})), rounds:[{[key]:1, round:1, day:2, sequence:8}]} }], ['15', {programme:{days:[0,1,2].map(day => ({start:`2026-10-${String(9+day).padStart(2,'0')}T08:00`,end:`2026-10-${String(9+day).padStart(2,'0')}T18:00`})), rounds:[{[key]:2,round:1,day:3,sequence:1}]}}]]);
   let rows = [];
-  const context = {document:{getElementById:get}, programmeSettings:settings, selectedProgrammeAge:'', programmePayload:null,
+  const context = {document:{getElementById:get, addEventListener() {}}, programmeSettings:settings, selectedProgrammeAge:'', programmePayload:null,
+    programmeDates:['2026-10-09','2026-10-10','2026-10-11'], programmeDayIndexes:[0,1,2], programmeDayNumbers:[1,2,3], programmeDayCount:3,
+    programmeMatchOverrides:new Map(), readProgrammeMatchOverrides:() => [],
     programmeGroup:() => get('programme-age').value === '13' ? [{id:1,name:'Mixed doubles',rounds:[1],venues:[]}] : [{id:2,name:'Mixed doubles',rounds:[1],venues:[]}],
     programmeRows:() => rows, invalidatePreview:() => {}, renderProgrammeStages:() => {}, updateProgrammeDayPublicationLinks:() => {}, programmeStatus:() => {}, updateProgrammeSaveState:() => {}, updateProgrammeDayLabels:() => {}, programmeDayLabel:day => `Day ${day}`, escapeHtml:value => value};
   const setupStart = source.indexOf('  const programmeOptionControls =');
@@ -68,7 +70,8 @@ test('programme labels use selected dates and save status keeps later edits pend
   const elements = new Map(['programme-age','programme-save-state', 'programme-start-0','programme-start-1','programme-start-2'].map(id => [id, {value:'',textContent:''}]));
   elements.get('programme-age').value='13';
   ['09','10','11'].forEach((day,index) => elements.get('programme-start-'+index).value='2026-10-'+day+'T08:00');
-  const context = {document:{getElementById:id => elements.get(id)}, programmeSettings:new Map([['13',{programme:{days:[1,2,3],rounds:[1]}}],['15',{programme:{days:[1,2,3],rounds:[1]}}]])};
+  const days = ['09','10','11'].map(day => ({start:`2026-10-${day}T08:00`,end:`2026-10-${day}T18:00`}));
+  const context = {document:{getElementById:id => elements.get(id)}, programmeDayCount:3, programmeDates:['2026-10-09','2026-10-10','2026-10-11'], programmeSettings:new Map([['13',{programme:{days,rounds:[1]}}],['15',{programme:{days,rounds:[1]}}]])};
   const start = source.indexOf('  const programmeSavedAges =');
   const end = source.indexOf("  let selectedProgrammeAge =",start);
   vm.runInNewContext(source.slice(start,end)+'; globalThis.api={programmeDayLabel,markProgrammeDirty,updateProgrammeSaveState,programmeDirtyAges,programmeSavedAges,programmeEditVersions};',context);

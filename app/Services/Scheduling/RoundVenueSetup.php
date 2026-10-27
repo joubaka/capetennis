@@ -2,11 +2,44 @@
 
 namespace App\Services\Scheduling;
 
-use App\Models\{Event, TeamFixture};
+use App\Models\{Event, Fixture, TeamFixture};
+use App\Domain\Draws\Services\ScheduleAvailability;
 use Illuminate\Support\Facades\DB;
 
 final class RoundVenueSetup
 {
+    /** Effective individual allocation: a round override replaces draw defaults. */
+    public function individualCourtError(Fixture $fixture, int $venueId, string $court): ?string
+    {
+        $draw = $fixture->draw;
+        $stored = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $draw->event_id)->value('options'), true) ?: [];
+        $round = $draw->usesFlexibleMonrad() ? (app(EventVenueScheduleService::class)->programmeFixtureRounds($draw)[$fixture->id] ?? null) : $fixture->round;
+        $override = collect($stored['round_venue_setups'] ?? [])->first(fn ($row) => (int) $row['draw_id'] === (int) $draw->id && (int) $row['round'] === (int) $round);
+        $assigned = $draw->venues->firstWhere('id', $venueId);
+        if ($override) {
+            $available = DB::table('event_venues')->where('event_id', $draw->event_id)->where('venue_id', $venueId)->exists()
+                || DB::table('draw_venues')->join('draws', 'draws.id', '=', 'draw_venues.draw_id')->where('draws.event_id', $draw->event_id)->where('draw_venues.venue_id', $venueId)->exists();
+            if (! $available || ! in_array($venueId, array_map('intval', $override['venue_ids']), true)) return 'Choose a venue allocated to this match round.';
+        } elseif (! $assigned) return 'The selected venue is not assigned to this draw.';
+        $definitions = DB::table('event_venue_courts')->where('event_id', $draw->event_id)->where('venue_id', $venueId)->get();
+        $active = $definitions->where('active', true)->pluck('label')->all();
+        if ($definitions->isEmpty()) {
+            $count = $override
+                ? (DB::table('event_venues')->where('event_id', $draw->event_id)->where('venue_id', $venueId)->value('num_courts')
+                    ?? DB::table('draw_venues')->join('draws', 'draws.id', '=', 'draw_venues.draw_id')->where('draws.event_id', $draw->event_id)->where('draw_venues.venue_id', $venueId)->max('draw_venues.num_courts'))
+                : max(1, (int) $assigned->pivot->num_courts);
+            $active = (int) $count > 0 ? range(1, (int) $count) : [];
+        }
+        $allocated = $override
+            ? collect($override['court_allocations'])->where('venue_id', $venueId)->flatMap(fn ($row) => $row['court_labels'])->all()
+            : DB::table('draw_venue_court_allocations')->where('draw_id', $draw->id)->where('venue_id', $venueId)->pluck('court_label')->all();
+        $key = ScheduleAvailability::courtKey($court);
+        $active = array_map(fn ($label) => ScheduleAvailability::courtKey((string) $label), $active);
+        $allocated = array_map(fn ($label) => ScheduleAvailability::courtKey((string) $label), $allocated);
+        if (! in_array($key, $active, true) || ($override && ! $allocated) || ($allocated && ! in_array($key, $allocated, true))) return $override ? 'Choose an active court allocated to this match round.' : 'Choose an active court allocated to this draw.';
+        return null;
+    }
+
     public function save(Event $event, array $rows, ?int $actor): array
     {
         return DB::transaction(function () use ($event, $rows, $actor) {

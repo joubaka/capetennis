@@ -10,9 +10,9 @@ use Illuminate\Support\Facades\DB;
 final class FlexibleMonradScheduler
 {
     public function saveFixture(Draw $draw, int $fixtureId, ?string $start, int $venueId, string $court,
-        ?int $duration, bool $requireCourtDurationFit = true): ?OrderOfPlay
+        ?int $duration, bool $requireCourtDurationFit = true, ?int $participantRest = null, ?int $courtGap = null): ?OrderOfPlay
     {
-        return DB::transaction(function () use ($draw, $fixtureId, $start, $venueId, $court, $duration, $requireCourtDurationFit) {
+        return DB::transaction(function () use ($draw, $fixtureId, $start, $venueId, $court, $duration, $requireCourtDurationFit, $participantRest, $courtGap) {
             DB::table('venues')->orderBy('id')->limit(1)->lockForUpdate()->get();
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
             DB::table('events')->where('id', $draw->event_id)->lockForUpdate()->get();
@@ -22,22 +22,9 @@ final class FlexibleMonradScheduler
             $duration ??= (int) ($fixture->orderOfPlay?->duration_minutes ?: 75);
             if ($start) {
                 DB::table('venues')->where('id', $venueId)->lockForUpdate()->get();
-                $assigned = $draw->venues->firstWhere('id', $venueId);
-                $permittedCourts = DB::table('draw_venue_court_allocations')->where('draw_id', $draw->id)
-                    ->where('venue_id', $venueId)->pluck('court_label')->map(fn ($label) => (string) $label);
-                if ($permittedCourts->isEmpty()) {
-                    $permittedCourts = DB::table('event_venue_courts')->where('event_id', $draw->event_id)
-                        ->where('venue_id', $venueId)->where('active', true)->pluck('label')->map(fn ($label) => (string) $label);
-                }
-                if ($permittedCourts->isEmpty() && $assigned) {
-                    $permittedCourts = collect(range(1, max(1, (int) $assigned->pivot->num_courts)))
-                        ->map(fn ($label) => (string) $label);
-                }
-                if (! $assigned || ! $permittedCourts->contains($court)) {
-                    throw new \InvalidArgumentException('Choose a court assigned to this draw.');
-                }
+                if ($error = app(\App\Services\Scheduling\RoundVenueSetup::class)->individualCourtError($fixture, $venueId, $court)) throw new \InvalidArgumentException($error);
                 $conflict = app(\App\Domain\Draws\Services\ScheduleConflictService::class)
-                    ->conflict($draw, $fixture, $venueId, $court, $start, $duration, null, null, $requireCourtDurationFit);
+                    ->conflict($draw, $fixture, $venueId, $court, $start, $duration, $participantRest, $courtGap, $requireCourtDurationFit);
             } else {
                 $conflict = $this->removalConflict($draw, $fixture);
             }
@@ -83,7 +70,7 @@ final class FlexibleMonradScheduler
             ? 'Remove the dependent match times first, or reset the whole schedule.' : null;
     }
 
-    public function conflict(Draw $draw, Fixture $fixture, string $start, int $duration): ?string
+    public function conflict(Draw $draw, Fixture $fixture, string $start, int $duration, ?int $participantRest = null): ?string
     {
         if ($duration < 1 || $duration > 1440) return 'Match duration must be between 1 and 1440 minutes.';
         $matches = (array) app(FlexibleMonradService::class)->state($draw)['matches'];
@@ -116,7 +103,8 @@ final class FlexibleMonradScheduler
             if ($matches[$id]['automatic']) continue;
             $slot = $slots->get($matches[$id]['id']);
             if (! $slot && ! $matches[$id]['sets']) return 'Schedule the qualifying matches before this match.';
-            if ($slot && $from->lt(Carbon::parse($slot->time)->addMinutes($slot->occupiedMinutes()))) {
+            $releaseMinutes = $slot ? max($slot->occupiedMinutes(), (int) ($slot->duration_minutes ?: 75) + max(0, $participantRest ?? 0)) : 0;
+            if ($slot && $from->lt(Carbon::parse($slot->time)->addMinutes($releaseMinutes))) {
                 return 'This match must start after its qualifying matches finish.';
             }
         }

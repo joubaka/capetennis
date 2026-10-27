@@ -58,12 +58,24 @@ final class ScheduleAuditService
                 'url' => route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $row['start']->toDateString(), 'focus' => $row['key']]).'#match-'.str_replace(':', '-', $row['key']),
             ], $own), 'external' => count($own) !== count($bookings)];
         };
+        $programmeFixtureRounds = [];
         foreach ($rows as $row) {
             if (! $row['venue'] || ! trim($row['court'])) $add('error', 'missing_location', 'A saved match is missing its venue or court.', [$row]);
             if ($row['raw_duration'] < 1) $add('warning', 'missing_duration', 'Match duration is missing or invalid; overlap checks use the scheduling default.', [$row]);
             if (count($row['players']) < $row['expected_players']) $add('warning', 'unknown_players', 'Player identities are unresolved; player overlap checks cannot fully verify this match.', [$row]);
-            $programmeRound = collect($draft['programme']['rounds'] ?? [])->first(fn ($round) => (int) ($round['draw_id'] ?? $round['drawId'] ?? 0) === $row['draw'] && (int) $round['round'] === $row['round']);
-            $day = $programmeRound ? ($draft['programme']['days'][$programmeRound['day'] - 1] ?? null) : null;
+            $programmeKey = $draft['individual_programme_by_draw'][(string) $row['draw']] ?? null;
+            $programme = $programmeKey ? ($draft['programme_settings'][$programmeKey]['programme'] ?? $draft['programme'] ?? []) : ($draft['programme'] ?? []);
+            $fixtureId = (int) explode(':', $row['key'])[1];
+            $programmeRound = collect($programme['matches'] ?? [])->first(fn ($match) => (int) ($match['draw_id'] ?? $match['drawId'] ?? 0) === $row['draw'] && (int) ($match['fixture_id'] ?? $match['fixtureId'] ?? 0) === $fixtureId);
+            if (! $programmeRound) {
+                $round = $row['round'];
+                if (str_starts_with($row['key'], 'individual:') && $draws[$row['draw']]->usesFlexibleMonrad()) {
+                    $programmeFixtureRounds[$row['draw']] ??= app(EventVenueScheduleService::class)->programmeFixtureRounds($draws[$row['draw']]);
+                    $round = $programmeFixtureRounds[$row['draw']][$fixtureId] ?? $round;
+                }
+                $programmeRound = collect($programme['rounds'] ?? [])->first(fn ($entry) => (int) ($entry['draw_id'] ?? $entry['drawId'] ?? 0) === $row['draw'] && (int) $entry['round'] === $round);
+            }
+            $day = $programmeRound ? ($programme['days'][$programmeRound['day'] - 1] ?? null) : null;
             if ($day && ($row['start']->lt(Carbon::parse($day['start'])) || $row['end']->gt(Carbon::parse($day['end'])))) $add('error', 'outside_programme', 'Saved time falls outside its configured programme day.', [$row]);
         }
         $externalCount = 0;

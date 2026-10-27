@@ -212,7 +212,7 @@ class ScheduleEngine
     });
   }
 
-  public function dependencyConflict(Draw $draw, Fixture $fixture, ?string $start, int $duration): ?string
+  public function dependencyConflict(Draw $draw, Fixture $fixture, ?string $start, int $duration, ?int $participantRest = null): ?string
   {
     $all = $draw->drawFixtures()->with(['orderOfPlay', 'fixtureResults'])->get()->keyBy('id');
     $feeders = $this->feederMap($all);
@@ -240,7 +240,8 @@ class ScheduleEngine
         if ($this->automatic($parent, $feeders)) continue;
         $slot = $parent->orderOfPlay;
         if (! $slot?->time && $parent->fixtureResults->isEmpty()) return 'Schedule the qualifying matches first.';
-        if ($slot?->time && $from->lt(Carbon::parse($slot->time)->addMinutes($slot->occupiedMinutes()))) {
+        $releaseMinutes = $slot ? max($slot->occupiedMinutes(), (int) ($slot->duration_minutes ?: 75) + max(0, $participantRest ?? 0)) : 0;
+        if ($slot?->time && $from->lt(Carbon::parse($slot->time)->addMinutes($releaseMinutes))) {
           return 'This match must start after its qualifying matches finish.';
         }
       }
@@ -259,16 +260,17 @@ class ScheduleEngine
   }
 
   public function saveFixture(Draw $draw, int $fixtureId, ?string $start, int $venueId, string $court,
-    ?int $duration, bool $allowPublished = false, bool $requireCourtDurationFit = true): ?OrderOfPlay
+    ?int $duration, bool $allowPublished = false, bool $requireCourtDurationFit = true,
+    ?int $participantRest = null, ?int $courtGap = null): ?OrderOfPlay
   {
-    return DB::transaction(function () use ($draw, $fixtureId, $start, $venueId, $court, $duration, $allowPublished, $requireCourtDurationFit) {
+    return DB::transaction(function () use ($draw, $fixtureId, $start, $venueId, $court, $duration, $allowPublished, $requireCourtDurationFit, $participantRest, $courtGap) {
         DB::table('venues')->orderBy('id')->limit(1)->lockForUpdate()->get();
       $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
       DB::table('events')->where('id', $draw->event_id)->lockForUpdate()->get();
       abort_if($draw->locked || (! $allowPublished && $draw->published), 409, 'Unpublish and unlock the draw before scheduling.');
       if ($draw->usesFlexibleMonrad()) {
         return app(\App\Services\Draw\FlexibleMonradScheduler::class)->saveFixture(
-          $draw, $fixtureId, $start, $venueId, $court, $duration, $requireCourtDurationFit
+          $draw, $fixtureId, $start, $venueId, $court, $duration, $requireCourtDurationFit, $participantRest, $courtGap
         );
       }
       $fixture = $draw->drawFixtures()->lockForUpdate()->findOrFail($fixtureId);
@@ -278,7 +280,7 @@ class ScheduleEngine
         DB::table('venues')->where('id', $venueId)->lockForUpdate()->get();
         if ($duration < 1 || $duration > 1440) throw new \InvalidArgumentException('Match duration must be between 1 and 1440 minutes.');
         $conflict = app(ScheduleConflictService::class)->conflict(
-          $draw, $fixture, $venueId, $court, $start, $duration, null, null, $requireCourtDurationFit
+          $draw, $fixture, $venueId, $court, $start, $duration, $participantRest, $courtGap, $requireCourtDurationFit
         );
         if ($conflict) throw new \InvalidArgumentException($conflict);
         $slot = OrderOfPlay::updateOrCreate(['fixture_id' => $fixtureId], [

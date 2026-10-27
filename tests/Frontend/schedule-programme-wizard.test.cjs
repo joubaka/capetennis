@@ -35,6 +35,7 @@ function harness(id, fail = false) {
   const context = {
     allocationsDirty:false, scheduleDirty:false, programmePayload:null, payload:null, revision:null, previewUrl:'/preview',
     programmeRefreshVersion:0, programmeCreateLabel:'Create programme preview',
+    programmeDayIndexes:[0,1,2],programmeDayNumbers:[1,2,3],programmeDayCount:3,readProgrammeMatchOverrides:()=>[],
     document:{addEventListener:() => {}, getElementById:element, querySelector: selector => selector.includes('[value=') ? target : null,
       querySelectorAll:selector => selector.startsWith('.assignment-choice') ? [{value:'4'}] : []},
     programmeGroup:() => [{id:2, locked:false, published:false}], programmeStatus:(...args) => messages.push(args),

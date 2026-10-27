@@ -1417,6 +1417,48 @@ final class EventVenueScheduleService
         return collect($this->nodesForDraw($draw, Carbon::now(), 90, true))->mapWithKeys(fn ($node, $id) => [$id => $node['round']])->all();
     }
 
+    public function programmeRoundDetails(Draw $draw): array
+    {
+        if (! $draw->usesFlexibleMonrad() || ! $draw->flexibleMonrad?->graph) return [];
+        $rounds = $this->programmeFixtureRounds($draw);
+        $matches = (array) app(FlexibleMonradService::class)->state($draw)['matches'];
+        $graph = $draw->flexibleMonrad->graph;
+        $finishes = [];
+        foreach ($graph['base_positions'] ?? $graph['positions'] ?? [] as $position => $source) {
+            if (isset($source['match'])) $finishes[$source['match']][] = (int) $position;
+        }
+        $details = [];
+        foreach ($matches as $key => $match) {
+            if ($match['automatic'] || ! isset($rounds[$match['id']])) continue;
+            $section = (string) $match['section'];
+            if (isset($match['challenge_positions'])) {
+                $label = 'Conditional play-off · Positions '.implode('–', $match['challenge_positions']);
+            } elseif ($section === 'Main draw') {
+                $label = 'Main draw · '.$match['label'];
+            } elseif (count($finishes[$key] ?? []) === 2) {
+                $positions = $finishes[$key]; sort($positions);
+                $label = 'Positions '.implode('–', $positions).' final';
+            } elseif (str_contains($section, 'Feed-in')) {
+                $label = $match['label'].' · '.str_replace(' · Feed-in', '', $section);
+            } else {
+                $remaining = null;
+                if (preg_match('/^Positions (\d+)–(\d+)$/u', $section, $band)) {
+                    $size = (int) $band[2] - (int) $band[1] + 1;
+                    if ($size > 0 && ($size & ($size - 1)) === 0) $remaining = $size / (2 ** max(0, (int) $match['round'] - 1));
+                }
+                $label = $section.' '.match ($remaining) {
+                    4, 4.0 => 'semifinals', 8, 8.0 => 'quarterfinals', default => 'qualifying matches',
+                };
+            }
+            $round = $rounds[$match['id']];
+            $details[$round][$label] ??= ['label' => $label, 'count' => 0, 'matches' => []];
+            $details[$round][$label]['count']++;
+            $details[$round][$label]['matches'][] = ['fixture_id' => (int) $match['id'], 'number' => (int) $match['number']];
+        }
+        ksort($details);
+        return array_map(fn ($groups) => array_values($groups), $details);
+    }
+
     public function availableDrawRounds(Collection $draws, bool $programme = false): array
     {
         $teamIds = $draws->filter(fn ($draw) => $draw->isTeamDraw())->pluck('id');

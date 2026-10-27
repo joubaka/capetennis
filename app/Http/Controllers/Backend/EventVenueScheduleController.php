@@ -83,6 +83,7 @@ final class EventVenueScheduleController extends Controller
                 'programme_supported' => app(\App\Services\Scheduling\ScheduleProgramme::class)->supports($draw),
                 'rounds' => $availableRounds[$draw->id] ?? [],
                 'programme_rounds' => $programmeRounds[$draw->id] ?? [],
+                'programme_round_details' => app(EventVenueScheduleService::class)->programmeRoundDetails($draw),
                 'selected' => ! $selectionSupplied || $requestedDrawIds->contains((int) $draw->id)];
         });
         $venues = $availableVenues->map(function ($venue) use ($drawVenues, $courtRows) {
@@ -1252,7 +1253,7 @@ final class EventVenueScheduleController extends Controller
                 if ($error) throw new \InvalidArgumentException($error);
 
                 $slot = $scheduleEngine->saveFixture($fixture->draw, $fixture->id, $data['scheduled_at'],
-                    $venueId, $court, (int) $data['duration'], true, true);
+                    $venueId, $court, (int) $data['duration'], true, true, (int) $data['player_rest'], (int) $data['court_gap']);
                 $slot->update(['gap_minutes' => (int) $data['court_gap']]);
                 DrawAuditLog::record($fixture->draw_id, 'event_venue_match_manually_scheduled', null, [
                     'event_id' => $event->id, 'fixture_id' => $fixture->id, 'venue_id' => $venueId,
@@ -1331,19 +1332,7 @@ final class EventVenueScheduleController extends Controller
         }
         if ($fixture->fixtureResults->isNotEmpty() || (int) $fixture->match_status !== 0) return 'A match with play cannot be moved to another slot.';
 
-        $assignedVenue = $fixture->draw->venues->firstWhere('id', $venueId);
-        if (! $assignedVenue) return 'The selected venue is not assigned to this draw.';
-
-        $activeCourts = DB::table('event_venue_courts')->where('event_id', $event->id)
-            ->where('venue_id', $venueId)->where('active', true)->pluck('label')->map(fn ($label) => (string) $label);
-        if ($activeCourts->isEmpty()) {
-            $activeCourts = collect(range(1, max(1, (int) $assignedVenue->pivot->num_courts)))
-                ->map(fn ($label) => (string) $label);
-        }
-        $allocatedCourts = DB::table('draw_venue_court_allocations')->where('draw_id', $fixture->draw_id)
-            ->where('venue_id', $venueId)->pluck('court_label')->map(fn ($label) => (string) $label);
-        $permittedCourts = $allocatedCourts->isNotEmpty() ? $allocatedCourts->intersect($activeCourts) : $activeCourts;
-        if (! $permittedCourts->contains($court)) return 'Choose an active court allocated to this draw.';
+        if ($error = app(\App\Services\Scheduling\RoundVenueSetup::class)->individualCourtError($fixture, $venueId, $court)) return $error;
 
         $stored = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true) ?: [];
         if (($stored['limit_daily_matches'] ?? false) || ($data['limit_daily_matches'] ?? false)) {
@@ -1360,7 +1349,13 @@ final class EventVenueScheduleController extends Controller
     {
         return $request->validate([
             'start' => ['required', 'date'], 'end' => ['nullable', 'date', 'after:start'],
-            'programme' => ['sometimes', 'array:days,rounds'],
+            'programme' => ['sometimes', 'array:days,rounds,matches'],
+            'programme.matches' => ['sometimes', 'array', 'max:2000'],
+            'programme.matches.*' => ['array:draw_id,fixture_id,day,sequence'],
+            'programme.matches.*.draw_id' => ['required', 'integer'],
+            'programme.matches.*.fixture_id' => ['required', 'integer', 'distinct'],
+            'programme.matches.*.day' => ['required', 'integer', 'min:1'],
+            'programme.matches.*.sequence' => ['required', 'integer', 'between:1,100'],
             'programme.days' => ['required_with:programme', 'array', 'min:1'],
             'programme.days.*.start' => ['required', 'date'],
             'programme.days.*.end' => ['required', 'date'],

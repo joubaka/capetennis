@@ -756,7 +756,12 @@ class EventVenueScheduleTest extends TestCase
         DB::table('events')->where('id', $event->id)->update(['venues' => 'Legacy venue description']);
         $this->get(route('backend.event-venue-schedule.index', $event))
             ->assertOk()
-            ->assertSee('Schedule every assigned draw / category')
+            ->assertSee('1. Select individual draws')
+            ->assertSee('id="individual-schedule-selection"', false)
+            ->assertSee('id="individual-schedule-gender"', false)
+            ->assertSee('id="individual-schedule-configure"', false)
+            ->assertSee($draws->first()->drawName)
+            ->assertSee($draws->last()->drawName)
             ->assertSee('Print all-match pack')
             ->assertSee(route('headoffice.drawPack', $event), false)
             ->assertSeeInOrder(['Shared Venue', $availableVenue->name])
@@ -1323,7 +1328,9 @@ class EventVenueScheduleTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('mail.total', 1)
-            ->assertJsonPath('mail.queued', 1);
+            ->assertJsonPath('mail.queued', 1)
+            ->assertJsonPath('copies.total', 1)
+            ->assertJsonPath('copies.queued', 1);
         $announcement = Announcement::where('event_id', $event->id)->sole();
         $this->assertSame('Final court allocation', $announcement->title);
         $this->assertDatabaseHas('bulk_email_logs', [
@@ -1332,8 +1339,19 @@ class EventVenueScheduleTest extends TestCase
             'recipient_email' => 'player@example.com',
             'status' => 'queued',
         ]);
-        $this->assertSame(1, BulkEmailLog::where('related_id', $announcement->id)->count());
-        Queue::assertPushed(SendBulkEmailJob::class, 1);
+        $logs = BulkEmailLog::where('mail_type', 'event_announcement')->where('related_type', Announcement::class)
+            ->where('related_id', $announcement->id)->get();
+        $participantLogs = $logs->filter(fn ($log) => ($log->payload['recipient_kind'] ?? null) === 'players');
+        $copyLogs = $logs->filter(fn ($log) => ($log->payload['recipient_kind'] ?? null) === 'admin_copy');
+        $this->assertCount(2, $logs);
+        $this->assertCount(1, $participantLogs);
+        $this->assertCount(1, $copyLogs);
+        $this->assertSame('player@example.com', $participantLogs->sole()->recipient_email);
+        $this->assertSame(strtolower(trim($admin->email)), $copyLogs->sole()->recipient_email);
+        $this->assertSame(['queued'], $logs->pluck('status')->unique()->values()->all());
+        Queue::assertPushed(SendBulkEmailJob::class, 2);
+        $this->assertCount(1, Queue::pushed(SendBulkEmailJob::class)->filter(fn ($job) => $job->logId === $participantLogs->sole()->id));
+        $this->assertCount(1, Queue::pushed(SendBulkEmailJob::class)->filter(fn ($job) => $job->logId === $copyLogs->sole()->id));
     }
 
     public function test_an_admin_of_another_event_cannot_publish_or_edit_event_announcements(): void

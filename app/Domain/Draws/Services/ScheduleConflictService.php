@@ -19,15 +19,13 @@ final class ScheduleConflictService
         $courtMinutes = $requireCourtDurationFit ? $duration + ($courtGap ?? $savedGap) : 1;
         $participantMinutes = $duration + ($participantRest ?? $savedGap);
         if ($draw->usesFlexibleMonrad()) {
-            $conflict = app(\App\Services\Draw\FlexibleMonradScheduler::class)->conflict($draw, $fixture, $start, $participantMinutes);
+            $conflict = app(\App\Services\Draw\FlexibleMonradScheduler::class)->conflict($draw, $fixture, $start, $participantMinutes, $participantRest);
             if ($conflict) return $conflict;
         } else {
-            $conflict = app(\App\Services\ScheduleEngine::class)->dependencyConflict($draw, $fixture, $start, $participantMinutes);
+            $conflict = app(\App\Services\ScheduleEngine::class)->dependencyConflict($draw, $fixture, $start, $participantMinutes, $participantRest);
             if ($conflict) return $conflict;
         }
-        if ($draw->venues->isNotEmpty() && ! $draw->venues->contains('id', $venueId)) {
-            return 'The selected venue is not assigned to this draw.';
-        }
+        if ($error = app(\App\Services\Scheduling\RoundVenueSetup::class)->individualCourtError($fixture, $venueId, $court)) return $error;
 
         $from = Carbon::parse($start);
         $candidateIds = [$fixture->registration1_id, $fixture->registration2_id];

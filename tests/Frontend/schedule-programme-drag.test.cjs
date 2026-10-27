@@ -36,7 +36,9 @@ function scenario() {
   const requests = [], sortables = [], rendered = [];
   const context = {
     document:{getElementById:get, querySelectorAll: selector => selector === '.programme-day-lane' ? lanes : rows},
-    programmeGroup:() => [{id:1,rubber_code:'singles'},{id:2,rubber_code:'singles'},{id:3,rubber_code:'reverse_singles'}],
+    programmeGroup:() => [{id:1,name:'Boys singles',is_team:true,rubber_code:'singles'},{id:2,name:'Girls singles',is_team:true,rubber_code:'singles'},{id:3,name:'Reverse singles',is_team:true,rubber_code:'reverse_singles'}],
+    programmeDayIndexes:[0,1,2],programmeDayNumbers:[1,2,3],programmeDayCount:3,programmeMatchOverrides:new Map(),readProgrammeMatchOverrides:()=>[],
+    programmeRoundDescription:()=>'',programmeMatchControls:()=>'',
     Sortable:class {constructor(lane, options){sortables.push({lane, options});} destroy(){}},
     programmeDayLabel:day => `Day ${day}`, dirtyCalls:0, markProgrammeDirty:() => { context.dirtyCalls++; }, refreshProgrammeStageSummaries:() => {}, escapeHtml:String, allocationsDirty:false, programmePayload:null, payload:null, revision:null,
     previewGeneration:0, previewUrl:'/preview', csrf:'test', programmeStatus:() => {}, showWorkflowStep:() => {}, setStatus:() => {}, lastScheduleResult:null,

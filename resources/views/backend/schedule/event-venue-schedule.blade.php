@@ -380,7 +380,7 @@
       <div class="row g-3 mb-3">@foreach($programmeDates as $day => $programmeDate)<div class="{{ $programmeDayCount === 1 ? 'col-12' : ($programmeDayCount === 2 ? 'col-md-6' : 'col-md-4') }}"><strong data-programme-day-label="{{ $day + 1 }}">Day {{ $day + 1 }}</strong><label class="form-label d-block mt-2" for="programme-start-{{ $day }}">Starts</label><input id="programme-start-{{ $day }}" class="form-control programme-time" type="datetime-local" value="{{ $programmeDate.'T08:00' }}" min="{{ $programmeDate }}T00:00" max="{{ $programmeDate }}T23:59"><label class="form-label d-block mt-2" for="programme-end-{{ $day }}">Finishes</label><input id="programme-end-{{ $day }}" class="form-control programme-time" type="datetime-local" value="{{ $programmeDate.'T18:00' }}" min="{{ $programmeDate }}T00:00" max="{{ $programmeDate }}T23:59"><label class="form-label d-block mt-2" for="programme-gender-{{ $day }}">Order within each round</label><select id="programme-gender-{{ $day }}" class="form-select programme-gender-day"><option value="boys_then_girls" @selected($scheduleDraft['gender_waves'] === 'boys_then_girls')>Boys then girls</option><option value="girls_then_boys" @selected($scheduleDraft['gender_waves'] === 'girls_then_boys')>Girls then boys</option><option value="combined" @selected($scheduleDraft['gender_waves'] === 'combined')>Together</option></select><a class="btn btn-sm btn-outline-primary mt-2" data-programme-review-day="{{ $day }}" href="{{ route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $programmeDate]) }}">Review &amp; publish this day</a></div>@endforeach</div>
       <p class="small mb-2">Drag the handle to put rounds in order or move them between days. {{ $teamPlanning ? 'Boys and girls in the same round move together.' : 'Each selected draw has its own round cards.' }} Each drop refreshes the preview using AJAX; match times are saved only when you choose Save. Use the Up/Down buttons or day selector with a keyboard.</p>
       <div id="programme-stages" class="row g-3 mb-3" aria-label="Drag rounds into daily playing order"></div>
-      <details class="mb-3"><summary>Advanced: individual draw round days and numbered order</summary><div id="programme-rounds" class="table-responsive mt-2"></div></details>
+      <details class="mb-3"><summary>Advanced: round, position-group and individual match days</summary><p class="small mt-2">Rounds set the default day and order. Expand a round to move a position group or specific match. Exceptions stay in place when you move the round; choose Follow round to reset them. For an exact time or court, save the schedule and use Reschedule.</p><div id="programme-rounds" class="table-responsive mt-2"></div></details>
       <div class="d-flex flex-wrap gap-3 align-items-center mb-3" data-timing-settings>
         <label class="form-check-label"><input id="programme-daily-limit" type="checkbox" class="form-check-input me-2" @checked($scheduleDraft['limit_daily_matches'])>Maximum 3 matches per player per day (optional)</label>
         <button type="button" class="btn btn-sm btn-outline-primary" data-save-timing="programme">Save timing settings</button>
@@ -799,7 +799,7 @@
       <p id="programme-setup-policy" class="small text-muted mt-3"></p>
       <div id="programme-setup-status" class="small" role="status" aria-live="polite"></div>
     </div>
-    <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-primary" id="programme-setup-save">Save setup</button></div>
+    <div class="modal-footer"><button type="button" class="btn btn-outline-primary me-auto" data-programme-manage-venues>Edit event venues &amp; courts</button><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-primary" id="programme-setup-save">Save setup</button></div>
   </div></div>
 </div>
 @endsection
@@ -2353,6 +2353,8 @@
     document.querySelectorAll('.programme-day-lane').forEach(lane => lane.setAttribute('aria-label', programmeDayLabel(lane.dataset.day)+' playing order'));
   };
   let selectedProgrammeAge = '';
+  let programmeMatchOverrides = new Map();
+  const readProgrammeMatchOverrides = () => [...programmeMatchOverrides.values()].sort((a,b) => a.fixture_id - b.fixture_id);
   const programmeGroup = () => programmeDraws.filter(draw => String(document.getElementById('programme-age').value).startsWith('individual:') ? document.getElementById('programme-age').value.slice(11).split(',').map(Number).includes(Number(draw.id)) && !draw.is_team : String(draw.programme_age) === String(document.getElementById('programme-age').value));
   const programmeStatus = (message, tone = 'secondary') => setStatus(document.getElementById('programme-status'), message, tone);
   let programmeSortables = [];
@@ -2416,6 +2418,35 @@
     });
     return `<ul>${lines.join('')}</ul>`;
   };
+  const programmeRoundDescription = (draw, round) => {
+    const items = draw.programme_round_details?.[round] || [];
+    if (!items.length) return '';
+    const list = '<ul class="mb-2">'+items.map(item => `<li>${escapeHtml(item.label)}: ${Number(item.count)} ${Number(item.count) === 1 ? 'match' : 'matches'}</li>`).join('')+'</ul>';
+    const total = items.reduce((count, item) => count + Number(item.count), 0);
+    const exceptions = items.flatMap(item => item.matches || []).filter(match => programmeMatchOverrides.has(Number(match.fixture_id))).length;
+    const note = exceptions ? `<div class="small text-warning">${exceptions} ${exceptions === 1 ? 'match has' : 'matches have'} separate day/order settings in Advanced.</div>` : '';
+    return (items.length > 4
+      ? `<details class="mt-1"><summary>Matches in this round · ${total}</summary>${list}</details>`
+      : `<div class="mt-1"><span class="text-muted">Matches in this round</span>${list}</div>`)+note;
+  };
+  const programmeMatchChoices = (value, follow = false) => (follow ? '<option value="">Follow round</option>' : '')
+    + (programmeDayNumbers.includes(Number(value)) || !value ? programmeDayNumbers : [Number(value), ...programmeDayNumbers])
+      .map(day => `<option value="${day}" ${Number(value) === day ? 'selected' : ''}>${escapeHtml(programmeDayLabel(day))}</option>`).join('');
+  const programmeMatchControls = (draw, round, day, sequence) => {
+    const groups = draw.programme_round_details?.[round] || [];
+    if (!groups.length || draw.is_team) return '';
+    return `<details class="mt-2"><summary>Position groups and specific matches</summary>${groups.map((group,index) => `<section class="border rounded p-2 my-2" data-match-group-draw="${draw.id}" data-match-group-round="${round}" data-match-group-index="${index}"><strong>${escapeHtml(group.label)}</strong><div class="d-flex flex-wrap gap-2 align-items-end my-2"><label class="small">Group day<select class="form-select form-select-sm programme-group-day">${programmeMatchChoices(day)}</select></label><label class="small">Group order<input class="form-control form-control-sm programme-group-order" type="number" min="1" max="100" value="${sequence}"></label><button class="btn btn-sm btn-outline-primary" type="button" data-apply-match-group>Apply to group</button><button class="btn btn-sm btn-outline-secondary" type="button" data-reset-match-group>Follow round</button></div>${group.matches.map(match => {
+      const saved = programmeMatchOverrides.get(Number(match.fixture_id));
+      return `<div class="d-flex flex-wrap gap-2 align-items-end border-top py-2" data-match-override="${match.fixture_id}" data-match-override-draw="${draw.id}" data-match-override-round="${round}"><span class="small fw-semibold align-self-center">Match ${Number(match.number)}</span><label class="small">Day<select class="form-select form-select-sm programme-match-day">${programmeMatchChoices(saved?.day, true)}</select></label><label class="small">Order<input class="form-control form-control-sm programme-match-order" type="number" min="1" max="100" value="${saved?.sequence ?? ''}" placeholder="Follow round"></label><button type="button" class="btn btn-sm btn-outline-secondary" data-reset-match>Follow round</button></div>`;
+    }).join('')}</section>`).join('')}</details>`;
+  };
+  const syncProgrammeMatchControls = () => document.querySelectorAll('[data-match-override]').forEach(row => {
+    const saved = programmeMatchOverrides.get(Number(row.dataset.matchOverride));
+    const day = row.querySelector('.programme-match-day');
+    day.innerHTML = programmeMatchChoices(saved?.day, true);
+    day.value = saved ? String(saved.day) : '';
+    row.querySelector('.programme-match-order').value = saved?.sequence ?? '';
+  });
   const refreshProgrammeStageSummaries = () => {
     const draws = new Map(programmeGroup().map(draw => [Number(draw.id), draw]));
     const rules = programmeSetupRules();
@@ -2426,7 +2457,8 @@
         + members.map(draw => {
           const label = programmeDrawLabel(draw);
           const heading = members.filter(member => programmeDrawLabel(member) === label).length === 1 ? label : draw.name;
-          return `<div class="mt-1"><strong>${escapeHtml(heading)}</strong><div>${programmeDrawSetup(draw, rules, Number(memberKeys.find(key => Number(key.split(':')[0]) === Number(draw.id))?.split(':')[1]))}</div></div>`;
+          const round = Number(memberKeys.find(key => Number(key.split(':')[0]) === Number(draw.id))?.split(':')[1]);
+          return `<div class="mt-1"><strong>${escapeHtml(heading)}</strong>${programmeRoundDescription(draw, round)}<div>${programmeDrawSetup(draw, rules, round)}</div></div>`;
         }).join('');
     });
   };
@@ -2509,6 +2541,12 @@
     programmeSetupModal.querySelectorAll('[data-setup-draw]').forEach(section => rules.filter(rule => rule.draw_ids.map(Number).includes(Number(section.dataset.setupDraw))).forEach(rule => addProgrammeSetupBand(section, rule)));
     document.getElementById('programme-setup-policy').textContent = draws.every(draw => !draw.is_team) ? 'Choose the available venues and courts for these playing rounds.' : 'Uses the saved event rule when players span different venue bands. Change that event-wide rule in scheduling rules; this setup save preserves it.';
     document.getElementById('programme-setup-status').textContent = '';
+    const missingVenues = draws.filter(draw => !document.querySelector(`.assignment-choice[data-draw="${draw.id}"]`));
+    missingVenues.forEach(draw => {
+      const section = programmeSetupModal.querySelector(`[data-setup-draw="${draw.id}"]`);
+      section.insertAdjacentHTML('beforeend', '<div class="alert alert-info mb-0">No venues are available for this event yet. Add a venue and its courts, then return here to assign them.<div class="mt-2"><button type="button" class="btn btn-sm btn-primary" data-programme-manage-venues>Add venues &amp; courts</button></div></div>');
+    });
+    document.getElementById('programme-setup-save').disabled = missingVenues.length > 0;
     bootstrap.Modal.getOrCreateInstance(programmeSetupModal).show();
   };
   programmeSetupModal.addEventListener('change', event => {
@@ -2525,6 +2563,11 @@
     section.querySelectorAll('.programme-setup-band-venue').forEach(select => { select.innerHTML = programmeSetupVenueOptions(section, select.value); });
   });
   programmeSetupModal.addEventListener('click', event => {
+    if (event.target.closest('[data-programme-manage-venues]')) {
+      programmeSetupModal.addEventListener('hidden.bs.modal', () => bootstrap.Modal.getOrCreateInstance(document.getElementById('venue-management-modal')).show(), {once:true});
+      bootstrap.Modal.getOrCreateInstance(programmeSetupModal).hide();
+      return;
+    }
     const allCourts = event.target.closest('.programme-setup-all-courts');
     if (allCourts) {
       const section = allCourts.closest('[data-setup-draw]');
@@ -2608,11 +2651,18 @@
       programmeSettings.set(selectedProgrammeAge, {...readProgrammeOptions(), programme:{
         days:programmeDayIndexes.map(day => ({start:document.getElementById(`programme-start-${day}`).value, end:document.getElementById(`programme-end-${day}`).value, gender_waves:document.getElementById(`programme-gender-${day}`).value, break_start:document.getElementById(`programme-break-start-${day}`).value, break_end:document.getElementById(`programme-break-end-${day}`).value})),
         rounds:programmeRows().map(row => ({draw_id:Number(row.dataset.programmeDraw), round:Number(row.dataset.programmeRound), day:Number(row.querySelector('.programme-day').value), sequence:Number(row.querySelector('.programme-sequence').value)})),
+        matches:readProgrammeMatchOverrides(),
       }});
     }
     selectedProgrammeAge = document.getElementById('programme-age').value;
     updateProgrammeSaveState();
     const settings = programmeSettings.get(selectedProgrammeAge);
+    programmeMatchOverrides = new Map((settings?.programme?.matches || []).map(row => {
+      const savedDate = String(settings.programme.days?.[Number(row.day)-1]?.start || '').slice(0,10);
+      const day = programmeDates.includes(savedDate) ? programmeDates.indexOf(savedDate)+1 : programmeDayCount+Number(row.day);
+      const override = {draw_id:Number(row.draw_id ?? row.drawId), fixture_id:Number(row.fixture_id ?? row.fixtureId), day, sequence:Number(row.sequence)};
+      return [override.fixture_id, override];
+    }));
     const localDateTime = value => String(value || '').replace(' ', 'T').slice(0,16);
     programmeDayIndexes.forEach(day => {
       const saved = settings?.programme?.days?.find(window => localDateTime(window.start).slice(0,10) === programmeDates[day] && localDateTime(window.end).slice(0,10) === programmeDates[day]) || programmeDefaultDays[day];
@@ -2654,7 +2704,49 @@
     markProgrammeDirty(); updateProgrammeDayLabels();
   });
   document.querySelectorAll('.programme-time').forEach(input => input.addEventListener('change', () => { programmePayload = null; invalidatePreview(); }));
-  document.getElementById('programme-rounds').addEventListener('change', () => { programmePayload = null; invalidatePreview(); renderProgrammeStages(); });
+  const changeProgrammeMatchOverrides = () => {
+    syncProgrammeMatchControls();
+    programmePayload = null; invalidatePreview(); markProgrammeDirty(); renderProgrammeStages();
+  };
+  document.getElementById('programme-rounds').addEventListener('change', event => {
+    if (event.target.matches('.programme-match-day, .programme-match-order')) {
+      const row = event.target.closest('[data-match-override]');
+      const fixtureId = Number(row.dataset.matchOverride);
+      const round = document.querySelector(`[data-programme-draw="${row.dataset.matchOverrideDraw}"][data-programme-round="${row.dataset.matchOverrideRound}"]`);
+      if (!event.target.value) programmeMatchOverrides.delete(fixtureId);
+      else programmeMatchOverrides.set(fixtureId, {draw_id:Number(row.dataset.matchOverrideDraw), fixture_id:fixtureId,
+        day:Number(row.querySelector('.programme-match-day').value || round.querySelector('.programme-day').value),
+        sequence:Number(row.querySelector('.programme-match-order').value || round.querySelector('.programme-sequence').value)});
+      changeProgrammeMatchOverrides();
+      return;
+    }
+    if (event.target.matches('.programme-group-day, .programme-group-order')) return;
+    programmePayload = null; invalidatePreview(); renderProgrammeStages();
+  });
+  document.getElementById('programme-rounds').addEventListener('click', event => {
+    const reset = event.target.closest('[data-reset-match]');
+    if (reset) {
+      programmeMatchOverrides.delete(Number(reset.closest('[data-match-override]').dataset.matchOverride));
+      changeProgrammeMatchOverrides();
+      return;
+    }
+    const button = event.target.closest('[data-apply-match-group], [data-reset-match-group]');
+    if (!button) return;
+    const section = button.closest('[data-match-group-draw]');
+    const drawId = Number(section.dataset.matchGroupDraw);
+    const draw = programmeGroup().find(draw => Number(draw.id) === drawId);
+    const group = draw?.programme_round_details?.[section.dataset.matchGroupRound]?.[section.dataset.matchGroupIndex];
+    if (!group) return;
+    const day = Number(section.querySelector('.programme-group-day').value);
+    const sequence = Number(section.querySelector('.programme-group-order').value);
+    if (button.hasAttribute('data-apply-match-group') && (!Number.isInteger(sequence) || sequence < 1 || sequence > 100)) return programmeStatus('Choose a group order from 1 to 100.', 'danger');
+    group.matches.forEach(match => {
+      const id = Number(match.fixture_id);
+      if (button.hasAttribute('data-reset-match-group')) programmeMatchOverrides.delete(id);
+      else programmeMatchOverrides.set(id, {draw_id:drawId, fixture_id:id, day, sequence});
+    });
+    changeProgrammeMatchOverrides();
+  });
   document.getElementById('programme-stages').addEventListener('click', event => {
     const setupButton = event.target.closest('.programme-stage-setup');
     if (setupButton) return openProgrammeSetup(setupButton.closest('.programme-stage'));
@@ -2713,7 +2805,7 @@
       return {start, end, gender_waves:document.getElementById(`programme-gender-${index}`).value, break_start:breakStart ? `${start.slice(0,10)}T${breakStart}` : null, break_end:breakEnd ? `${start.slice(0,10)}T${breakEnd}` : null};
     });
     const rounds = [...document.querySelectorAll('[data-programme-draw]')].map(row => ({draw_id:Number(row.dataset.programmeDraw), round:Number(row.dataset.programmeRound), day:Number(row.querySelector('.programme-day').value), sequence:Number(row.querySelector('.programme-sequence').value)}));
-    programmePayload = {draw_ids:group.map(draw => draw.id), draw_rounds:[], draw_starts:[], venue_starts:[], start:days[0].start, end:days[days.length - 1].end, programme:{days,rounds}, allow_partial:false, cross_band_policy:'highest_ranked'};
+    programmePayload = {draw_ids:group.map(draw => draw.id), draw_rounds:[], draw_starts:[], venue_starts:[], start:days[0].start, end:days[days.length - 1].end, programme:{days,rounds,matches:readProgrammeMatchOverrides()}, allow_partial:false, cross_band_policy:'highest_ranked'};
     payload = buildPayload(); revision = null; button.disabled = true;
     const refreshVersion = ++programmeRefreshVersion;
     button.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>Creating event schedule preview…';

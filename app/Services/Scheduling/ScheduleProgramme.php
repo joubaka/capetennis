@@ -87,15 +87,31 @@ final class ScheduleProgramme
         }
         if (! $rounds) throw new \InvalidArgumentException('The selected age group has no rounds to schedule.');
         ksort($rounds);
-        return ['days' => $days, 'rounds' => array_values($rounds)];
+        $matches = []; $availableMatches = [];
+        foreach ($programme['matches'] ?? [] as $row) {
+            $drawId = (int) ($row['draw_id'] ?? 0);
+            $fixtureId = (int) ($row['fixture_id'] ?? 0);
+            $day = (int) ($row['day'] ?? 0);
+            $sequence = (int) ($row['sequence'] ?? 0);
+            $draw = $draws->firstWhere('id', $drawId);
+            if (! $draw || $draw->isTeamDraw() || ! $draw->usesFlexibleMonrad()) throw new \InvalidArgumentException('Match overrides must belong to a selected individual Monrad draw.');
+            $availableMatches[$drawId] ??= collect((array) app(\App\Services\Draw\FlexibleMonradService::class)->state($draw)['matches'])
+                ->reject(fn ($match) => $match['automatic'])->pluck('id')->map(fn ($id) => (int) $id)->all();
+            if (! in_array($fixtureId, $availableMatches[$drawId], true)) throw new \InvalidArgumentException('Choose a playable match from the selected draw.');
+            if (isset($matches[$fixtureId]) || $day < 1 || $day > count($days) || $sequence < 1 || $sequence > 100) throw new \InvalidArgumentException('Choose one valid day and order for each match override.');
+            $matches[$fixtureId] = compact('drawId', 'fixtureId', 'day', 'sequence');
+        }
+        ksort($matches);
+        return ['days' => $days, 'rounds' => array_values($rounds)] + ($matches ? ['matches' => array_values($matches)] : []);
     }
 
     public function configureNodes(array &$nodes, array $programme): void
     {
         if (! $programme) return;
         $rounds = collect($programme['rounds'])->keyBy(fn ($row) => $row['drawId'].'|'.$row['round']);
+        $matches = collect($programme['matches'] ?? [])->keyBy(fn ($row) => $row['drawId'].'|'.$row['fixtureId']);
         foreach ($nodes as &$node) {
-            $row = $rounds[$node['draw_id'].'|'.$node['round']];
+            $row = $matches[$node['draw_id'].'|'.$node['fixture']->id] ?? $rounds[$node['draw_id'].'|'.$node['round']];
             $node['programme_phase'] = ($row['day'] - 1) * 100 + $row['sequence'];
             $node['draw_start'] = Carbon::parse($programme['days'][$row['day'] - 1]['start']);
             $node['programme_end'] = Carbon::parse($programme['days'][$row['day'] - 1]['end']);
@@ -105,6 +121,11 @@ final class ScheduleProgramme
             $node['programme_break'] = isset($programme['days'][$row['day'] - 1]['break_start']) ? [Carbon::parse($programme['days'][$row['day'] - 1]['break_start']), Carbon::parse($programme['days'][$row['day'] - 1]['break_end'])] : null;
         }
         unset($node);
+        foreach ($nodes as $node) foreach ($node['dependencies'] as $dependency) {
+            if (isset($nodes[$dependency]) && $nodes[$dependency]['programme_phase'] > $node['programme_phase']) {
+                throw new \InvalidArgumentException($node['draw_name'].' match '.$node['match'].' must follow its qualifying matches. Move its match override or qualifying section to an earlier day/order.');
+            }
+        }
         $phases = collect($nodes)->groupBy('programme_phase', preserveKeys: true)->sortKeys();
         $previous = [];
         $prerequisites = [];

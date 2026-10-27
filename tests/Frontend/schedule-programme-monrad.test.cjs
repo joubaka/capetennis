@@ -9,7 +9,14 @@ for (const size of [8,16,32]) test('individual Monrad '+size+' uses a separate s
   const get = id => { if (!elements.has(id)) elements.set(id, {value:'',innerHTML:'',addEventListener(_,fn){this.listener=fn;}}); return elements.get(id); };
   get('programme-age').value='monrad:19';
   const rounds=Array.from({length:Math.log2(size)},(_,i)=>i+1);
-  const context={document:{getElementById:get},programmeSettings:new Map(),selectedProgrammeAge:'',programmePayload:null,
+  for (let day=0;day<3;day++) {
+    get(`programme-start-${day}`).value=`2026-10-${String(9+day).padStart(2,'0')}T08:00`;
+    get(`programme-end-${day}`).value=`2026-10-${String(9+day).padStart(2,'0')}T18:00`;
+  }
+  const days=[0,1,2].map(day=>({start:get(`programme-start-${day}`).value,end:get(`programme-end-${day}`).value}));
+  const context={document:{getElementById:get,addEventListener(){}},programmeSettings:new Map(),selectedProgrammeAge:'',programmePayload:null,
+    programmeDates:['2026-10-09','2026-10-10','2026-10-11'],programmeDayIndexes:[0,1,2],programmeDayNumbers:[1,2,3],programmeDayCount:3,
+    programmeMatchOverrides:new Map(),readProgrammeMatchOverrides:()=>[],
     programmeDraws:[{id:1,programme_age:'monrad:19',name:'Girls',is_team:false,rounds,venues:[]},{id:2,programme_age:'19',name:'Team',is_team:true,rounds:[1],venues:[]}],
     programmeRows:()=>[],invalidatePreview:()=>{},renderProgrammeStages:()=>{},updateProgrammeDayPublicationLinks:()=>{},programmeStatus:()=>{},updateProgrammeSaveState:()=>{},updateProgrammeDayLabels:()=>{},programmeDayLabel:day=>'Day '+day,escapeHtml:String};
   vm.createContext(context);
@@ -24,7 +31,7 @@ for (const size of [8,16,32]) test('individual Monrad '+size+' uses a separate s
   const html=get('programme-rounds').innerHTML;
   const daySelections=[...html.matchAll(/<option value="([123])" selected/g)].map(match=>Number(match[1]));
   assert.deepEqual(daySelections,rounds.map(round=>Math.min(3,Math.floor((round-1)*3/rounds.length)+1)));
-  context.programmeSettings.set('monrad:19',{duration:70,programme:{days:[],rounds:[{drawId:1,round:1,day:3,sequence:9}]}});
+  context.programmeSettings.set('monrad:19',{duration:70,programme:{days,rounds:[{drawId:1,round:1,day:3,sequence:9}]}});
   context.selectedProgrammeAge='';get('programme-age').listener();
   assert.equal(get('programme-duration').value,70);
   assert.match(get('programme-rounds').innerHTML,/value="3" selected/);
