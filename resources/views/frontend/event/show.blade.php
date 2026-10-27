@@ -314,9 +314,11 @@
             <ul class="list-inline d-flex gap-2 flex-wrap">
               @if($event->isIndividual())
               @endif
-              <li class="list-inline-item">
-                <i class="ti ti-map-pin"></i> {{ $event->venues }}
-              </li>
+              @if($event->venue_notes)
+                <li class="list-inline-item">
+                  <i class="ti ti-map-pin"></i> {{ $event->venue_notes }}
+                </li>
+              @endif
             </ul>
             <div class="d-inline-flex align-items-center gap-2 flex-wrap rounded bg-label-primary px-3 py-2" aria-label="Tournament match progress">
               <i class="ti ti-ball-tennis" aria-hidden="true"></i>

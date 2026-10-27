@@ -79,6 +79,7 @@ final class EventVenueScheduleController extends Controller
                 'applied_match_count' => (int) ($scheduledCounts[$draw->id] ?? 0),
                 'locked' => (bool) $draw->locked, 'published' => (bool) $draw->published,
                 'is_team' => $draw->isTeamDraw(),
+                'schedule_gender' => app(EventVenueScheduleService::class)->drawGender($draw),
                 'programme_supported' => app(\App\Services\Scheduling\ScheduleProgramme::class)->supports($draw),
                 'rounds' => $availableRounds[$draw->id] ?? [],
                 'programme_rounds' => $programmeRounds[$draw->id] ?? [],
@@ -110,10 +111,11 @@ final class EventVenueScheduleController extends Controller
         $scheduleDraft = array_replace([
             'start' => optional($event->start_date)->format('Y-m-d').'T08:00',
             'end' => optional($event->start_date)->format('Y-m-d').'T18:00',
-            'duration' => 75,
+            'duration' => 60,
             'wave_minutes' => 90,
             'court_gap' => 5,
-            'player_rest' => 60,
+            'player_rest' => 30,
+            'limit_daily_matches' => false,
             'draw_starts' => [],
             'draw_rounds' => [],
             'venue_starts' => [],
@@ -289,6 +291,12 @@ final class EventVenueScheduleController extends Controller
         $stored = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true) ?: [];
         $age = app(\App\Services\Scheduling\ScheduleProgramme::class)->key($draw);
         $settings = $stored['programme_settings'][(string) $age] ?? $stored;
+        if (! $draw->isTeamDraw()) {
+            $selectionKey = $stored['individual_programme_by_draw'][(string) $draw->id] ?? null;
+            if ($selectionKey !== null) {
+                $settings = $stored['programme_settings'][$selectionKey] ?? $settings;
+            }
+        }
         $courtOptions = $scheduler->dayCourtLabels($event, $draw);
         $defaultCourts = [];
         $fixtureRounds = $draw->usesFlexibleMonrad() ? $scheduler->programmeFixtureRounds($draw) : [];
@@ -918,7 +926,7 @@ final class EventVenueScheduleController extends Controller
             $request->merge(['schedule' => array_replace([
                 'start' => \Carbon\Carbon::parse($event->start_date)->format('Y-m-d').'T08:00',
                 'end' => \Carbon\Carbon::parse($event->start_date)->format('Y-m-d').'T18:00',
-                'duration' => 75, 'wave_minutes' => 90, 'court_gap' => 5, 'player_rest' => 60,
+                'duration' => 60, 'wave_minutes' => 90, 'court_gap' => 5, 'player_rest' => 30, 'limit_daily_matches' => false,
                 'draw_starts' => [], 'venue_starts' => [], 'reschedule_existing' => false,
             ], $storedSetup, array_intersect_key((array) $request->input('schedule', []), array_flip(['rank_venue_preferences', 'rank_preference_draw_ids'])))]);
         }
@@ -939,6 +947,7 @@ final class EventVenueScheduleController extends Controller
             'schedule.wave_minutes' => ['required', 'integer', 'min:15', 'max:480'],
             'schedule.court_gap' => ['required', 'integer', 'min:0', 'max:120'],
             'schedule.player_rest' => ['required', 'integer', 'min:0', 'max:480'],
+            'schedule.limit_daily_matches' => ['sometimes', 'boolean'],
             'schedule.draw_starts' => ['present', 'array'],
             'schedule.draw_starts.*.draw_id' => ['required', 'integer', 'distinct'],
             'schedule.draw_starts.*.start' => ['required', 'date'],
@@ -995,7 +1004,7 @@ final class EventVenueScheduleController extends Controller
                     $data['schedule'] = array_replace([
                         'start' => \Carbon\Carbon::parse($event->start_date)->format('Y-m-d').'T08:00',
                         'end' => \Carbon\Carbon::parse($event->start_date)->format('Y-m-d').'T18:00',
-                        'duration' => 75, 'wave_minutes' => 90, 'court_gap' => 5, 'player_rest' => 60,
+                        'duration' => 60, 'wave_minutes' => 90, 'court_gap' => 5, 'player_rest' => 30, 'limit_daily_matches' => false,
                         'draw_starts' => [], 'venue_starts' => [], 'reschedule_existing' => false,
                     ], $storedSetup, array_intersect_key($data['schedule'], array_flip(['rank_venue_preferences', 'rank_preference_draw_ids'])));
                     $data['schedule']['draw_rounds'] = collect($storedSetup['draw_rounds'] ?? [])
@@ -1101,6 +1110,7 @@ final class EventVenueScheduleController extends Controller
                     $data['schedule']['rank_venue_preferences'] = $retainedRules;
                 }
                 $data['schedule']['cross_band_policy'] ??= $stored['cross_band_policy'] ?? 'highest_ranked';
+                $data['schedule']['limit_daily_matches'] = ! empty($stored['limit_daily_matches']) || ! empty($data['schedule']['limit_daily_matches']);
                 $data['schedule']['round_venue_setups'] = $stored['round_venue_setups'] ?? [];
                 foreach (['programme', 'programme_settings'] as $key) {
                     if (isset($stored[$key])) $data['schedule'][$key] = $stored[$key];
@@ -1177,6 +1187,27 @@ final class EventVenueScheduleController extends Controller
         }
     }
 
+    public function saveTimingSettings(Request $request, Event $event)
+    {
+        $this->authorize('event.manage', $event);
+        $data = $request->validate([
+            'duration' => ['required', 'integer', 'between:15,480'],
+            'player_rest' => ['required', 'integer', 'between:0,480'],
+            'court_gap' => ['required', 'integer', 'between:0,120'],
+            'limit_daily_matches' => ['required', 'boolean'],
+        ]);
+        DB::transaction(function () use ($event, $data) {
+            DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
+            $draft = DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->lockForUpdate()->first();
+            $stored = json_decode((string) ($draft->options ?? ''), true) ?: [];
+            DB::table('event_venue_schedule_drafts')->updateOrInsert(['event_id' => $event->id], [
+                'options' => json_encode(array_replace($stored, $data), JSON_THROW_ON_ERROR),
+                'updated_by' => auth()->id(), 'created_at' => $draft->created_at ?? now(), 'updated_at' => now(),
+            ]);
+        });
+        return response()->json(['message' => 'Timing settings saved. Existing match times are unchanged.']);
+    }
+
     public function assignFixture(Request $request, Event $event, ScheduleConflictService $conflicts,
         ScheduleEngine $scheduleEngine)
     {
@@ -1190,6 +1221,7 @@ final class EventVenueScheduleController extends Controller
             'duration' => ['required', 'integer', 'min:15', 'max:480'],
             'court_gap' => ['required', 'integer', 'min:0', 'max:120'],
             'player_rest' => ['required', 'integer', 'min:0', 'max:480'],
+            'limit_daily_matches' => ['sometimes', 'boolean'],
             'round_progression' => ['sometimes', 'in:team_ready,all_round'],
         ]);
 
@@ -1254,6 +1286,7 @@ final class EventVenueScheduleController extends Controller
             'duration' => ['required', 'integer', 'min:15', 'max:480'],
             'court_gap' => ['required', 'integer', 'min:0', 'max:120'],
             'player_rest' => ['required', 'integer', 'min:0', 'max:480'],
+            'limit_daily_matches' => ['sometimes', 'boolean'],
             'round_progression' => ['sometimes', 'in:team_ready,all_round'],
         ]);
 
@@ -1312,6 +1345,12 @@ final class EventVenueScheduleController extends Controller
         $permittedCourts = $allocatedCourts->isNotEmpty() ? $allocatedCourts->intersect($activeCourts) : $activeCourts;
         if (! $permittedCourts->contains($court)) return 'Choose an active court allocated to this draw.';
 
+        $stored = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true) ?: [];
+        if (($stored['limit_daily_matches'] ?? false) || ($data['limit_daily_matches'] ?? false)) {
+            $error = \App\Services\Scheduling\DailyMatchLimit::load($event)->error('individual:'.$fixture->id, $data['scheduled_at']);
+            if ($error) return $error;
+        }
+
         return $conflicts->conflict($fixture->draw, $fixture, $venueId, $court,
             $data['scheduled_at'], (int) $data['duration'], (int) $data['player_rest'],
             (int) $data['court_gap'], true);
@@ -1336,6 +1375,7 @@ final class EventVenueScheduleController extends Controller
             'wave_minutes' => ['required', 'integer', 'min:15', 'max:480'],
             'court_gap' => ['required', 'integer', 'min:0', 'max:120'],
             'player_rest' => ['required', 'integer', 'min:0', 'max:480'],
+            'limit_daily_matches' => ['sometimes', 'boolean'],
             'draw_ids' => ['nullable', 'array'], 'draw_ids.*' => ['integer'],
             'venue_ids' => ['nullable', 'array'], 'venue_ids.*' => ['integer'],
             'replan_venue_ids' => ['nullable', 'array'], 'replan_venue_ids.*' => ['integer'],

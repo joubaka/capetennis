@@ -13,6 +13,8 @@ final class ScheduleConflictService
         bool $requireCourtDurationFit = true): ?string
     {
         // Manual edits retain the booking's existing turnaround gap.
+        $dailyLimit = \App\Services\Scheduling\DailyMatchLimit::configured($draw->event);
+        if ($dailyLimit && ($error = $dailyLimit->error('individual:'.$fixture->id, $start))) return $error;
         $savedGap = (int) ($fixture->orderOfPlay?->gap_minutes ?? 0);
         $courtMinutes = $requireCourtDurationFit ? $duration + ($courtGap ?? $savedGap) : 1;
         $participantMinutes = $duration + ($participantRest ?? $savedGap);

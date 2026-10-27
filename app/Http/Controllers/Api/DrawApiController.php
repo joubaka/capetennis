@@ -312,6 +312,17 @@ class DrawApiController extends Controller
         }
 
         DB::transaction(function () use ($draw, $validated, $venueId) {
+                DB::table('venues')->orderBy('id')->limit(1)->lockForUpdate()->get();
+                DB::table('events')->where('id', $draw->event_id)->lockForUpdate()->get();
+                $ownIds = $draw->drawFixtures()->whereIn('id', collect($validated['items'])->pluck('fixture_id'))->pluck('id');
+                $dailyLimit = \App\Services\Scheduling\DailyMatchLimit::configured($draw->event,
+                    $ownIds->map(fn ($id) => 'individual:'.$id)->all());
+                if ($dailyLimit) foreach ($validated['items'] as $item) {
+                    if (! $ownIds->contains($item['fixture_id']) || empty($item['start_time'])) continue;
+                    $date = strlen($item['start_time']) <= 8 ? now()->toDateString() : Carbon::parse($item['start_time'])->toDateString();
+                    if ($error = $dailyLimit->error('individual:'.$item['fixture_id'], $date)) throw \Illuminate\Validation\ValidationException::withMessages(['items' => $error]);
+                    $dailyLimit->reserve('individual:'.$item['fixture_id'], $date);
+                }
                 foreach ($validated['items'] as $item) {
                     $fixture = $draw->drawFixtures()->find($item['fixture_id']);
                     if (!$fixture) continue;

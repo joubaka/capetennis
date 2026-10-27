@@ -177,6 +177,8 @@ final class FlexibleMonradScheduler
             $plan = [];
             $calendar = ScheduleAvailability::load(array_keys($venues), $record->graph['players'],
                 array_column($pending, 'id'), $draw);
+            $dailyLimit = \App\Services\Scheduling\DailyMatchLimit::configured($draw->event,
+                array_map(fn ($match) => 'individual:'.$match['id'], array_values($pending)));
             while ($pending) {
                 $best = null;
                 foreach ($pending as $key => $match) {
@@ -189,6 +191,9 @@ final class FlexibleMonradScheduler
                         foreach ($courts as $court => $freeAt) {
                             $at = $freeAt->copy()->max($release);
                             $at = $calendar->nextAvailable($at, $duration, (int) $venueId, (string) $court, $participants[$key]);
+                            if ($dailyLimit && ($error = $dailyLimit->error('individual:'.$match['id'], $at->toDateString()))) {
+                                throw new \InvalidArgumentException($error.' Use the event schedule to arrange rounds across days.');
+                            }
                             if ($best === null || $at->lt($best['time'])) {
                                 $best = ['key' => $key, 'time' => $at->copy(), 'venue' => $venueId, 'court' => $court];
                             }
@@ -197,6 +202,7 @@ final class FlexibleMonradScheduler
                 }
                 if ($best === null) throw new \InvalidArgumentException('The draw contains unresolved scheduling dependencies.');
                 $key = $best['key'];
+                $dailyLimit?->reserve('individual:'.$matches[$key]['id'], $best['time']->toDateString());
                 $plan[$key] = $best;
                 $finished[$key] = $best['time']->copy()->addMinutes($duration);
                 $timeline[$best['venue']][$best['court']] = $finished[$key]->copy();

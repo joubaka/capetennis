@@ -751,6 +751,14 @@ class TeamFixtureController extends Controller
 
     $fixtures = $this->publicVenueFixtures($event, $venue);
 
+    if ($event->isInterprovincialTrials()) {
+      $date = 'all';
+      $availableDates = $fixtures->map(fn ($fixture) => Carbon::parse($fixture->scheduled_at)->toDateString())->unique()->sort()->values();
+      $availableDraws = $fixtures->map(fn ($fixture) => $fixture->draw)->unique('id')->sortBy('drawName')->values();
+      $selectedDrawId = null;
+      return view('frontend.fixture.individual-venue', compact('event', 'venue', 'fixtures', 'date', 'availableDates', 'availableDraws', 'selectedDrawId'));
+    }
+
     return view('frontend.fixture.byVenue', compact('event', 'venue', 'fixtures'));
   }
 
@@ -773,7 +781,7 @@ class TeamFixtureController extends Controller
 
     $fixtures = $this->publicVenueFixtures($event, $venue);
     $availableDates = $fixtures
-      ->map(fn(TeamFixture $fixture) => Carbon::parse($fixture->scheduled_at)->toDateString())
+      ->map(fn($fixture) => Carbon::parse($fixture->scheduled_at)->toDateString())
       ->unique()
       ->sort()
       ->values();
@@ -789,6 +797,10 @@ class TeamFixtureController extends Controller
       $fixtures = $fixtures->filter(fn ($fixture) => Carbon::parse($fixture->scheduled_at)->toDateString() === $date)->values();
     }
 
+    if ($event->isInterprovincialTrials()) {
+      return view('frontend.fixture.individual-venue', compact('event', 'venue', 'fixtures', 'date', 'availableDates', 'availableDraws', 'selectedDrawId'));
+    }
+
     $fixtures = app(TeamFixtureOrder::class)->sort($fixtures);
 
     return view('frontend.fixture.orderOfPlay', compact(
@@ -799,6 +811,13 @@ class TeamFixtureController extends Controller
   private function publicVenueFixtures(Event $event, Venue $venue)
   {
     $publication = app(\App\Services\Scheduling\SchedulePublicationService::class);
+    if ($event->isInterprovincialTrials()) {
+      $rows = $publication->publishedRows($event)->where('fixture_kind', 'individual')->where('venue_id', $venue->id);
+      $fixtures = \App\Models\Fixture::with(['draw', 'registration1.players', 'registration2.players', 'fixtureResults'])
+        ->whereIn('draw_id', $event->draws()->select('id'))->whereIn('id', $rows->pluck('fixture_id'))->get();
+      $publication->projectFixtures($fixtures);
+      return $fixtures->sort(fn ($left, $right) => app(\App\Services\Scheduling\VenueMatchOrder::class)->compare($left, $right))->values();
+    }
     $fixtureIds = $publication->publishedRows($event)->where('fixture_kind', 'team')
       ->where('venue_id', $venue->id)->pluck('fixture_id');
 

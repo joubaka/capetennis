@@ -152,6 +152,8 @@ class ScheduleEngine
       $participants = ScheduleAvailability::legacyParticipants($all);
       $ids = $fixtures->flatMap(fn ($f) => $participants[$f->id])->all();
       $calendar = ScheduleAvailability::load(array_keys($venues), $ids, $fixtures->pluck('id')->all(), $draw);
+      $dailyLimit = \App\Services\Scheduling\DailyMatchLimit::configured($draw->event,
+        $fixtures->pluck('id')->map(fn ($id) => 'individual:'.$id)->all());
       $pending = $fixtures->all();
       $finished = [];
       foreach ($all as $id => $fixture) {
@@ -186,6 +188,8 @@ class ScheduleEngine
             }
           }
           if ($best === null) throw new \InvalidArgumentException('Assign at least one court before scheduling.');
+          if ($dailyLimit && ($error = $dailyLimit->error('individual:'.$fixtureId, $best['time']->toDateString()))) throw new \InvalidArgumentException($error);
+          $dailyLimit?->reserve('individual:'.$fixtureId, $best['time']->toDateString());
           $finished[$fixtureId] = $best['time']->copy()->addMinutes($duration + $gap);
           foreach ([$fixture->parent_fixture_id, $fixture->loser_parent_fixture_id] as $target) {
             if ($target && ! isset($fixtures[$target]) && isset($all[$target]) && $all[$target]->orderOfPlay?->time

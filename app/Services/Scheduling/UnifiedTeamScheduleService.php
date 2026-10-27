@@ -110,6 +110,9 @@ final class UnifiedTeamScheduleService
         if (! in_array($court, $labels, true) || ($allocated && ! in_array($court, $allocated, true))) return 'Select a permitted court for this draw.';
         $time = $data['scheduled_at'] ?? $data['start'] ?? null;
         if (! $time) return 'Choose a start time.';
+        if (($draft['limit_daily_matches'] ?? false) || ($data['limit_daily_matches'] ?? false)) {
+            if ($error = DailyMatchLimit::load($event)->error('team:'.$fixture->id, $time)) return $error;
+        }
         $start = Carbon::parse($time);
         $duration = (int) ($data['duration'] ?? $data['duration_min'] ?? 75);
         $rest = (int) ($data['player_rest'] ?? 0);

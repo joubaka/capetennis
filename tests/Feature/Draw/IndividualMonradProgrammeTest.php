@@ -67,10 +67,44 @@ class IndividualMonradProgrammeTest extends TestCase
             $this->assertSame(0, OrderOfPlay::whereIn('fixture_id', $matches->keys())->count());
             $this->assertSame($count, $service->apply($event, $options, $preview['revision'])['count']);
             $saved = json_decode(DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true);
-            $this->assertSame($this->canonicalJson($preview['input']['programme']), $this->canonicalJson($saved['programme_settings']['monrad:19']['programme']));
+            $this->assertSame($this->canonicalJson($preview['input']['programme']), $this->canonicalJson($saved['programme_settings']['individual:'.$draw->id]['programme']));
             $this->assertFalse((bool) $draw->fresh()->oop_published);
             $this->assertSame([], $service->preview($event, $options)['matches']);
         }
+    }
+
+    public function test_individual_subsets_preserve_other_draws_and_store_separate_programmes(): void
+    {
+        [$event, $first, , $firstOptions] = $this->scenario();
+        [, $second, , $secondOptions] = $this->scenario();
+        $second->update(['event_id' => $event->id]);
+        $second->categoryEvent->update(['event_id' => $event->id]);
+        $service = app(EventVenueScheduleService::class);
+        $firstPreview = $service->preview($event, $firstOptions);
+        $service->apply($event, $firstOptions, $firstPreview['revision']);
+        $firstRows = OrderOfPlay::whereIn('fixture_id', $first->drawFixtures->pluck('id'))->orderBy('id')->get()->toArray();
+        $secondPreview = $service->preview($event, $secondOptions);
+        $this->assertSame([$second->id], collect($secondPreview['matches'])->pluck('draw_id')->unique()->all());
+        $service->apply($event, $secondOptions, $secondPreview['revision']);
+        $this->assertSame($firstRows, OrderOfPlay::whereIn('fixture_id', $first->drawFixtures->pluck('id'))->orderBy('id')->get()->toArray());
+        $stored = json_decode(DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true);
+        $this->assertArrayHasKey('individual:'.$first->id, $stored['programme_settings']);
+        $this->assertArrayHasKey('individual:'.$second->id, $stored['programme_settings']);
+        $this->assertSame('individual:'.$second->id, $stored['individual_programme_by_draw'][$second->id]);
+        $this->assertFalse((bool) $first->fresh()->oop_published);
+        $this->assertFalse((bool) $second->fresh()->oop_published);
+        $second->categoryEvent->category->update(['name' => 'Under 17 Girls']);
+        $combined = $firstOptions;
+        $combined['draw_ids'] = [$first->id, $second->id];
+        $combined['replan_venue_ids'] = [$first->venues->first()->id, $second->venues->first()->id];
+        $combined['programme']['rounds'] = array_merge($firstOptions['programme']['rounds'], $secondOptions['programme']['rounds']);
+        $this->assertCount(24, $service->preview($event, $combined)['matches']);
+        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        $admin = \App\Models\User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $this->actingAs($admin)->get(route('backend.event-venue-schedule.calendar.edit-day', [
+            'event' => $event, 'draw_id' => $second->id, 'date' => '2026-10-09',
+        ]))->assertOk()->assertViewHas('values', fn ($values) => $values['duration'] === 30 && $values['player_rest'] === 20 && $values['court_gap'] === 0);
     }
 
     public function test_admin_can_load_builder_and_save_monrad_round_courts_without_publication(): void
@@ -81,7 +115,7 @@ class IndividualMonradProgrammeTest extends TestCase
         DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
         $url = route('backend.event-venue-schedule.index', $event);
         $this->actingAs($admin);
-        $response = $this->get($url)->assertOk()->assertSee('Individual Monrad · Under 19')->assertSee('programme_rounds', false);
+        $response = $this->get($url)->assertOk()->assertSee('1. Select individual draws')->assertSee('2. Gender')->assertSee('3. Set up schedule')->assertSee('programme_rounds', false);
         if (getenv('MONRAD_PROGRAMME_SNAPSHOT')) {
             file_put_contents(getenv('MONRAD_PROGRAMME_SNAPSHOT'), $response->getContent());
         }

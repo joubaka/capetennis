@@ -1252,6 +1252,8 @@ Route::delete(
     ->name('backend.event-venue-schedule.unapply');
   Route::post('events/{event}/venue-schedule/manual-assignment', [EventVenueScheduleController::class, 'assignFixture'])
     ->name('backend.event-venue-schedule.manual-assignment');
+  Route::post('events/{event}/venue-schedule/timing-settings', [EventVenueScheduleController::class, 'saveTimingSettings'])
+    ->name('backend.event-venue-schedule.timing-settings');
   Route::post('events/{event}/venue-schedule/manual-options', [EventVenueScheduleController::class, 'manualOptions'])
     ->name('backend.event-venue-schedule.manual-options');
   Route::post('events/{event}/venue-schedule/assignments', [EventVenueScheduleController::class, 'updateAssignments'])
