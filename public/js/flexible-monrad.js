@@ -581,7 +581,11 @@
       button.disabled = !state.published;
       button.title = state.published ? 'Share public draw link' : 'Publish the draw before sharing';
     });
-    document.querySelectorAll('[data-workspace-public]').forEach(link => { link.hidden = !state.published; });
+    document.querySelectorAll('[data-workspace-public]').forEach(link => {
+      link.dataset.workspaceDrawPublished = state.published ? '1' : '0';
+      link.hidden = !state.published && link.dataset.workspaceSchedulePublished !== '1';
+      link.textContent = state.published ? 'Public view' : 'Preview times';
+    });
     document.querySelectorAll('[data-workspace-status]').forEach(label => { label.textContent = state.locked ? 'Locked' : state.published ? 'Published' : dirty ? 'Unsaved draft' : 'Draft'; });
     // Fit the complete diagram to landscape paper; vertical pagination stays native.
     $('fm-board').style.setProperty('--ct-print-scale', Math.min(1, 980 / (parseFloat($('fm-board').style.width) || $('fm-board').offsetWidth || 980)));

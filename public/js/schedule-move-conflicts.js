@@ -12,6 +12,29 @@
   };
   const matchLabel = row => `${row.draw_name} · Match ${row.match ?? '—'}`;
   const location = row => `${time(row.scheduled_at)} · ${row.venue_name} · Court ${row.court}`;
+  function checkingContext(preview, allowedDrawIds, fixtureKey, slot) {
+    const allowed = new Set(allowedDrawIds.map(Number));
+    const rows = [...new Map([...(preview?.matches || []), ...(preview?.existing_matches || []), ...(preview?.unscheduled || [])]
+      .filter(row => allowed.has(Number(row.draw_id))).map(row => [row.fixture_key, row])).values()];
+    const moving = rows.find(row => row.fixture_key === fixtureKey);
+    const describe = row => ({fixture_key:row.fixture_key, draw_name:row.draw_name, match:row.match, scheduled_at:row.scheduled_at,
+      venue_name:(preview.venues || []).find(venue => Number(venue.id) === Number(row.venue_id))?.name || 'Venue', court:row.court});
+    const dependencies = row => (row.dependencies || []).map(key => typeof key === 'number' || /^\d+$/.test(String(key)) ? 'individual:'+key : key);
+    const related = moving ? rows.filter(row => row.fixture_key !== fixtureKey && (dependencies(moving).includes(row.fixture_key) || dependencies(row).includes(fixtureKey)))
+      .map(row => ({...describe(row), relationship:dependencies(row).includes(fixtureKey) ? 'dependent' : 'qualifier'})) : [];
+    return {moving:moving ? describe(moving) : null,
+      requested:{scheduled_at:slot.time,venue_name:(preview?.venues || []).find(venue => Number(venue.id) === Number(slot.venue))?.name || 'Selected venue',court:slot.court},
+      related:related.slice(0,8),omitted_related:Math.max(0,related.length-8)};
+  }
+  function checkingHtml(report) {
+    return `<div data-move-check-context><div class="d-flex align-items-center gap-2 mb-3"><span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span><span role="status">Request in progress</span><span class="small text-muted ms-auto" data-move-check-elapsed role="timer" aria-live="off">Elapsed: 0s</span></div>
+      <p class="fw-semibold mb-1">${report.moving ? escape(matchLabel(report.moving)) : 'Selected match'}</p>${report.requested ? `<p class="small text-muted">Requested: ${escape(location(report.requested))}</p>` : ''}
+      <h6>Checks included in this request</h6><ul><li>Requested venue, court availability and other bookings.</li><li>Qualifying matches and required player rest.</li><li>Later matches that depend on this match.</li><li>Nearby alternatives if this move does not fit.</li></ul>
+      <p class="small text-muted">The server has not returned a result yet. These checks do not indicate completed steps.</p>
+      ${(report.related || []).length ? `<h6>Related matches being checked</h6><ul class="list-unstyled d-grid gap-2">${report.related.map(row => `<li class="border rounded p-2"><div class="small fw-semibold">${row.relationship === 'dependent' ? 'Later dependent match' : 'Earlier qualifying match'}</div><div>${escape(matchLabel(row))}</div><div class="small text-muted">${escape(location(row))}</div></li>`).join('')}</ul>` : '<p class="small text-muted">Any other relevant bookings are checked by the server.</p>'}
+      ${report.omitted_related ? `<p class="small text-muted">${Number(report.omitted_related)} more related matches are included in the checks.</p>` : ''}
+      <p class="small mb-0">You can hide these details. The request will continue; hiding this window does not cancel the move.</p></div>`;
+  }
   function html(report) {
     const issues = [...(report.issues || [])].sort((left, right) => Number(right.type === 'dependent') - Number(left.type === 'dependent'));
     const labels = {dependent:'Move this later match first', qualifier:'Qualifying match', court:'Court already booked', player_rest:'Player availability', availability:'Scheduling rule'};
@@ -27,7 +50,15 @@
     const element = doc.getElementById('scheduleMoveConflictModal');
     const body = doc.getElementById('schedule-move-conflict-body');
     const modal = options.bootstrap.Modal.getOrCreateInstance(element);
+    const title = doc.getElementById('scheduleMoveConflictLabel');
+    const dismiss = doc.getElementById('schedule-move-conflict-dismiss');
+    const now = options.now || Date.now;
+    const schedule = options.setInterval || setInterval;
+    const cancel = options.clearInterval || clearInterval;
     let report = null;
+    let mode = 'closed';
+    let timer = null;
+    let startedAt = 0;
     let returnFocus = null;
     let followup = false;
     element.addEventListener('hidden.bs.modal', () => {
@@ -39,23 +70,52 @@
       element.addEventListener('hidden.bs.modal', callback, {once:true});
       modal.hide();
     };
+    const clearChecking = () => {
+      if (timer !== null) cancel(timer);
+      timer = null;
+      body.setAttribute('aria-busy','false');
+    };
+    const present = () => {
+      if (!element.classList?.contains('show')) returnFocus = doc.activeElement;
+      const open = doc.querySelector('.modal.show');
+      if (open && open !== element) {
+        open.addEventListener('hidden.bs.modal', () => { if (mode !== 'closed') modal.show(); }, {once:true});
+        options.bootstrap.Modal.getOrCreateInstance(open).hide();
+      } else modal.show();
+    };
     element.addEventListener('click', event => {
       const suggestion = event.target.closest('[data-conflict-suggestion]');
       const review = event.target.closest('[data-conflict-review]');
+      if (mode !== 'conflict') return;
       if (suggestion && report?.suggestions?.[Number(suggestion.dataset.conflictSuggestion)]) {
         const slot = report.suggestions[Number(suggestion.dataset.conflictSuggestion)];
         afterClose(() => options.onSuggestion?.(slot));
       } else if (review) afterClose(() => options.onReview?.(review.dataset.conflictReview));
     });
-    return {show(value) {
-      if (!element.classList?.contains('show')) returnFocus = doc.activeElement;
-      report = value; body.innerHTML = html(value);
-      const open = doc.querySelector('.modal.show');
-      if (open && open !== element) {
-        open.addEventListener('hidden.bs.modal', () => modal.show(), {once:true});
-        options.bootstrap.Modal.getOrCreateInstance(open).hide();
-      } else modal.show();
-    }};
+    return {
+      show(value) {
+        clearChecking(); mode = 'conflict'; report = value;
+        title.textContent = 'Why this match cannot move'; dismiss.textContent = 'Return to schedule';
+        body.innerHTML = html(value); present();
+      },
+      checking(value) {
+        if (mode === 'checking') return;
+        mode = 'checking'; report = value; startedAt = now();
+        title.textContent = 'Checking this move'; dismiss.textContent = 'Hide details';
+        body.innerHTML = checkingHtml(value); body.setAttribute('aria-busy','true');
+        timer = schedule(() => {
+          const seconds = Math.max(0,Math.floor((now()-startedAt)/1000));
+          const elapsed = body.querySelector('[data-move-check-elapsed]');
+          if (elapsed) elapsed.textContent = 'Elapsed: '+(seconds >= 60 ? Math.floor(seconds/60)+'m ' : '')+(seconds%60)+'s';
+        },1000);
+        present();
+      },
+      reopenChecking() { if (mode === 'checking') present(); },
+      finishChecking() {
+        if (mode !== 'checking') return;
+        clearChecking(); mode = 'closed'; modal.hide();
+      },
+    };
   }
-  return {html, mount};
+  return {html, checkingHtml, checkingContext, mount};
 });

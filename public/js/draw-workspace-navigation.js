@@ -42,6 +42,13 @@
       button.dataset.published = data.published ? '1' : '0';
       if (flexible) button.dataset.flexibleRevision = String(data.revision);
       paintPublication(button, Boolean(data.published), 'draw');
+      document.querySelectorAll('[data-workspace-status]').forEach(label => { label.textContent = data.published ? 'Published' : 'Draft'; });
+      document.querySelectorAll('[data-share-draw]').forEach(item => { item.disabled = !data.published; });
+      document.querySelectorAll('[data-workspace-public]').forEach(link => {
+        link.dataset.workspaceDrawPublished = data.published ? '1' : '0';
+        link.hidden = !data.published && link.dataset.workspaceSchedulePublished !== '1';
+        link.textContent = data.published ? 'Public view' : 'Preview times';
+      });
       publicationStatus(button, data.published ? 'Draw published. Schedule publication is unchanged.' : 'Draw unpublished. Schedule publication is unchanged.');
     } catch (error) { publicationStatus(button, error.message, true); }
     finally { button.disabled = false; }
@@ -74,6 +81,11 @@
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'Publication failed.');
       siblings.forEach(item => paintPublication(item, Boolean(data.oop_published), 'schedule'));
+      document.querySelectorAll('[data-workspace-public]').forEach(link => {
+        link.dataset.workspaceSchedulePublished = data.oop_published ? '1' : '0';
+        link.hidden = link.dataset.workspaceDrawPublished !== '1' && !data.oop_published;
+        link.textContent = link.dataset.workspaceDrawPublished === '1' ? 'Public view' : 'Preview times';
+      });
       publicationStatus(button, data.oop_published
         ? (data.preview_only ? 'Times published for authorized front-page preview; the draw remains hidden from the public.' : 'Schedule published and visible with the public draw.')
         : 'Schedule unpublished.');

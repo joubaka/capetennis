@@ -698,6 +698,7 @@
         <button type="button" id="save-timing" class="btn btn-outline-primary" data-audit-ignore="true"><i class="ti ti-device-floppy me-1"></i>Save timing</button>
         <button type="button" id="generate-preview" class="btn btn-primary" data-audit-ignore="true"><i class="ti ti-wand me-1"></i>Generate combined preview</button>
         <span id="schedule-status" class="align-self-center text-muted small" role="status" aria-live="polite">Preview the full event before applying.</span>
+        <button type="button" id="show-move-check-details" class="btn btn-sm btn-outline-primary" hidden>Show move checks</button>
       </div>
       <div id="schedule-activity" class="border rounded bg-light p-3 mt-3 d-none" aria-busy="false">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
@@ -1667,15 +1668,14 @@
     setStatus(document.getElementById('schedule-status'), saved.message+' All other match slots stayed in place. Publish separately to update public times.', 'success');
     return true;
   };
+  let manualMovePending = false;
   const placeMatchManually = async (fixtureId, slot) => {
-    if (!fixtureId || !slot) return;
+    if (!fixtureId || !slot || manualMovePending) return;
+    manualMovePending = true;
     const status = document.getElementById('schedule-status');
     const suggested = [...(lastScheduleResult?.matches || []), ...(lastScheduleResult?.unscheduled || [])].find(row => fixtureKey(row) === fixtureId);
-    const pendingMessage = suggested ? 'Checking this move in the unsaved preview…' : 'Checking and saving the manual match assignment…';
-    setStatus(status, pendingMessage);
-    const clearPendingToast = notify(pendingMessage, 'info', true);
-    document.getElementById('venue-slot-grids').classList.add('pe-none');
     try {
+      beginMoveCheck(fixtureId, slot.dataset);
       if (suggested) {
         if (!payload || !revision) throw new Error('Generate a current preview before moving suggested matches.');
         const result = await post(previewUrl, {...payload, revision, preview_move:{fixture_key:fixtureId,scheduled_at:slot.dataset.time,venue_id:Number(slot.dataset.venue),court:slot.dataset.court}});
@@ -1710,12 +1710,14 @@
         document.getElementById('preview-warnings').insertAdjacentHTML('afterbegin', saved.warnings.map(message => `<div class="alert alert-warning py-2">${escapeHtml(message)}</div>`).join(''));
       }
       if (!markManualBookingView(fixtureId, slot.dataset.time)) setStatus(status, saved.message + ' It is saved; all other match slots stayed in place.', 'success');
-    } catch (error) { if (error.stalePreview) return;
+    } catch (error) { if (error.stalePreview) {
+        setStatus(status, 'The preview selection changed. Generate a new preview before moving another match.', 'warning');
+        return;
+      }
       setStatus(status, error.message, 'danger');
       showMoveConflict(error, fixtureId, slot.dataset);
     } finally {
-      clearPendingToast();
-      document.getElementById('venue-slot-grids').classList.remove('pe-none');
+      finishMoveCheck();
     }
   };
 
@@ -1756,6 +1758,24 @@
       setStatus(document.getElementById('schedule-status'), 'Blocking match selected. Choose its new slot first, then retry the original move.', 'warning');
     },
   });
+  const beginMoveCheck = (key, slot) => {
+    const report = window.CapeScheduleMoveConflicts.checkingContext(lastScheduleResult, drawIds, key, slot);
+    const match = report.moving;
+    const label = match ? match.draw_name+' · Match '+match.match : 'Selected match';
+    setStatus(document.getElementById('schedule-status'), label+': checking '+String(slot.time).replace('T',' ').slice(0,16)+' · '+report.requested.venue_name+' / Court '+slot.court+'. The request continues if you hide its details.', 'muted');
+    document.getElementById('show-move-check-details').hidden = false;
+    const grid = document.getElementById('venue-slot-grids');
+    grid.classList.add('pe-none'); grid.setAttribute('aria-busy','true');
+    moveConflictDialog.checking(report);
+  };
+  const finishMoveCheck = () => {
+    manualMovePending = false;
+    document.getElementById('show-move-check-details').hidden = true;
+    const grid = document.getElementById('venue-slot-grids');
+    grid.classList.remove('pe-none'); grid.setAttribute('aria-busy','false');
+    moveConflictDialog.finishChecking();
+  };
+  document.getElementById('show-move-check-details').addEventListener('click', () => moveConflictDialog.reopenChecking());
   const showMoveConflict = (error, key, slot) => {
     if (error.response?.move_conflict) { moveConflictDialog.show(error.response.move_conflict); return; }
     const row = [...(lastScheduleResult?.matches || []), ...(lastScheduleResult?.existing_matches || []), ...(lastScheduleResult?.unscheduled || [])].find(match => fixtureKey(match) === key);
@@ -1787,10 +1807,13 @@
   document.getElementById('reschedule-match-venue').addEventListener('change', () => rescheduleCourts());
   document.getElementById('reschedule-match-form').addEventListener('submit', async event => {
     event.preventDefault();
+    if (manualMovePending) return;
+    manualMovePending = true;
     const button = event.target.querySelector('[type="submit"]');
     const status = document.getElementById('reschedule-match-status');
     button.disabled = true;
     try {
+      beginMoveCheck(rescheduleFixture, {time:document.getElementById('reschedule-match-time').value,venue:document.getElementById('reschedule-match-venue').value,court:document.getElementById('reschedule-match-court').value});
       if ((!payload || !revision) && ((lastScheduleResult?.matches?.length || 0) + (lastScheduleResult?.unscheduled?.length || 0))) throw new Error('Generate a current preview before moving this saved match.');
       const saved = await post(manualAssignmentUrl, {...fixtureRef(rescheduleFixture),
         scheduled_at:document.getElementById('reschedule-match-time').value,
@@ -1807,10 +1830,11 @@
       render(await post(previewUrl, payload));
       if (!markManualBookingView(rescheduleFixture, document.getElementById('reschedule-match-time').value)) setStatus(document.getElementById('schedule-status'), saved.message+' Publish separately to update public times.', 'success');
     } catch (error) {
+      if (error.stalePreview) return;
       status.textContent = error.message;
       showMoveConflict(error, rescheduleFixture, {time:document.getElementById('reschedule-match-time').value,venue:document.getElementById('reschedule-match-venue').value,court:document.getElementById('reschedule-match-court').value});
     }
-    finally { button.disabled = false; }
+    finally { button.disabled = false; finishMoveCheck(); }
   });
 
   const slotGrids = document.getElementById('venue-slot-grids');

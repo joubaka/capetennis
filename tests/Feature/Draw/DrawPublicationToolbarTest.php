@@ -41,7 +41,7 @@ class DrawPublicationToolbarTest extends TestCase
         $previous = Draw::factory()->create(['event_id' => $event->id, 'drawName' => 'U/17 Boys']);
         Draw::factory()->create(['drawName' => 'PRIVATE FOREIGN DRAW']);
         $event = $event->fresh(); $draw->setRelation('event', $event);
-        $html = view('backend.draw.partials.workspace-header', compact('draw'))->render();
+        $html = view('backend.draw.partials.workspace-header', ['draw' => $draw, 'workspaceSurface' => 'flexible'])->render();
         $this->assertStringContainsString('data-workspace-publish-draw-proxy', $html);
         $this->assertStringContainsString('data-workspace-publish-schedule', $html);
         $this->assertLessThan(strpos($html, 'data-individual-draw-tools'), strpos($html, 'data-draw-publication'));

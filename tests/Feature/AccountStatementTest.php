@@ -106,6 +106,7 @@ class AccountStatementTest extends TestCase
             'total' => 350.25, 'payfast_pf_payment_id' => 'CLOTHES']);
         ClothingRefund::create(['clothing_order_id' => $order->id, 'event_id' => $event->id, 'payer_id' => $user->id,
             'requested_by' => $user->id, 'request_fingerprint' => hash('sha256', 'test-statement'),
+            'refund_gross' => 120.15, 'reason' => 'Statement fixture refund',
             'request_token' => 'test-statement-refund', 'refund_status' => 'completed', 'refund_method' => 'wallet', 'refund_net' => 120.15, 'refunded_at' => '2026-01-02']);
         $statement = $this->statement($user);
         $this->assertSame(35025, $statement['paid']);

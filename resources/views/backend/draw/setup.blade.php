@@ -4,7 +4,7 @@
 <div class="operational-page">
 @include('backend.partials.operational-controls')
 
-@include('backend.draw.partials.workspace-header', ['workspaceContext' => 'settings'])
+@include('backend.draw.partials.workspace-header', ['workspaceContext' => 'settings', 'workspaceSurface' => 'standalone'])
 @include('backend.draw.partials.workspace-links', ['workspaceTab' => 'settings'])
 <div class="mx-auto" style="max-width:900px">
   <p class="text-primary mb-1">Step 2 of 3 · Draw format</p>

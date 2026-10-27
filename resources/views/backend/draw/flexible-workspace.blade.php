@@ -14,7 +14,7 @@
 <link rel="stylesheet" href="{{ asset('assets/css/draw-workspace.css') }}">
 <link rel="stylesheet" href="{{ asset('css/flexible-monrad.css') }}?v={{ filemtime(public_path('css/flexible-monrad.css')) }}">
 <link rel="stylesheet" href="{{ asset('css/flexible-workspace.css') }}?v={{ filemtime(public_path('css/flexible-workspace.css')) }}">
-@include('backend.draw.partials.workspace-header')
+@include('backend.draw.partials.workspace-header', ['workspaceSurface' => 'flexible'])
 <div id="flexible-draw-workspace" data-has-generated-draw="{{ $config['state']['generated'] ? '1' : '0' }}">
   <nav class="rr-workspace-nav mb-3" aria-label="Draw workspace">
     <a href="{{ route('draw.setup.show', $draw) }}">1 · Format</a>

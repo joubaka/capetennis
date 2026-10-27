@@ -1,6 +1,7 @@
 @php
   $workspaceUrl = route('backend.draw.roundrobin.show', $draw);
   $flexibleWorkspace = $draw->usesFlexibleMonrad();
+  $workspacePublicationSurface = $workspaceSurface ?? ($flexibleWorkspace ? 'flexible' : 'standalone');
   $workspaceDraws = $draw->event->draws->where('event_id', $draw->event_id)->sort(fn ($left, $right) => strnatcasecmp($left->drawName, $right->drawName) ?: $left->id <=> $right->id)->values();
   $workspaceDrawIndex = $workspaceDraws->search(fn ($item) => $item->id === $draw->id);
   $workspacePrevious = $workspaceDrawIndex > 0 ? $workspaceDraws[$workspaceDrawIndex - 1] : null;
@@ -13,7 +14,7 @@
   </x-slot:meta>
   <x-slot:actions>
       @can('event.manage', $draw->event)<a data-draw-guide-open class="btn btn-sm btn-primary" href="{{ route('draw.guide.show', [$draw->event_id, $draw]) }}">Continue setup</a>@endcan
-      @include('backend.draw.partials.publication-controls', ['publicationDraw' => $draw, 'publicationSurface' => $flexibleWorkspace ? 'flexible' : (($workspaceSurface ?? '') === 'roundrobin' ? 'roundrobin' : 'standalone')])
+      @include('backend.draw.partials.publication-controls', ['publicationDraw' => $draw, 'publicationSurface' => $workspacePublicationSurface])
       @unless($draw->isTeamDraw())
         <details data-individual-draw-tools @if(request('review') === 'publication') open @endif><summary class="btn btn-sm btn-outline-secondary">More tools</summary><div class="d-flex flex-wrap gap-2 pt-2">
       @endunless
@@ -63,7 +64,7 @@
       @else
         <a class="btn btn-sm btn-outline-primary" href="{{ $workspaceUrl }}#print">Print</a>
       @endif
-      <a class="btn btn-sm btn-outline-secondary" href="{{ $flexibleWorkspace ? route('public.flexible-monrad.show', $draw) : route('public.roundrobin.show', $draw) }}" target="_blank" rel="noopener" data-workspace-public @if(!$draw->published && !$draw->oop_published) hidden @endif>{{ $draw->published ? 'Public view' : 'Preview times' }}</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ $flexibleWorkspace ? route('public.flexible-monrad.show', $draw) : route('public.roundrobin.show', $draw) }}" target="_blank" rel="noopener" data-workspace-public data-workspace-draw-published="{{ $draw->published ? '1' : '0' }}" data-workspace-schedule-published="{{ $draw->oop_published ? '1' : '0' }}" @if(!$draw->published && !$draw->oop_published) hidden @endif>{{ $draw->published ? 'Public view' : 'Preview times' }}</a>
       <button class="btn btn-sm btn-outline-secondary" type="button" data-share-draw="{{ route('public.roundrobin.show', $draw) }}" @disabled(!$draw->published) title="{{ $draw->published ? 'Share public draw link' : 'Publish the draw before sharing' }}">Share</button>
       @if(($workspaceSurface ?? '') === 'roundrobin')
         @can('lockToggle', $draw)

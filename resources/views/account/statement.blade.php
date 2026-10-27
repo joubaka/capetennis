@@ -22,7 +22,7 @@
     <div class="d-flex flex-wrap gap-4 mb-3"><span>Payments: <strong>R {{ number_format($paid / 100, 2) }}</strong></span><span>Completed refunds: <strong>R {{ number_format($refunded / 100, 2) }}</strong></span><span>Net payments: <strong>R {{ number_format($net / 100, 2) }}</strong></span></div>
     <p class="small text-muted">{{ $payments->total() }} records. Totals cover all matching pages.</p>
     <div class="table-responsive">@include('account.statement-table', ['statementRows' => $payments])</div>
-    {{ $payments->links() }}
+    {{ $payments->links('pagination::bootstrap-5') }}
     <div class="small text-muted mt-4">@include('account.statement-notes')</div>
 </div></div>
 @endsection
