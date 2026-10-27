@@ -18,6 +18,7 @@ use App\Models\User;
 use App\Models\WalletTransaction;
 use App\Services\AccountStatementService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class AccountStatementTest extends TestCase
@@ -36,6 +37,54 @@ class AccountStatementTest extends TestCase
     private function statement(User $user, string $player = '', string $category = 'all'): array
     {
         return app(AccountStatementService::class)->build($user, '2025-01-01', '2026-12-31', $player, $category);
+    }
+
+    public function test_historical_schema_without_payfast_status_uses_verified_orders_and_discloses_unsupported_history(): void
+    {
+        $user = User::factory()->create();
+        $other = User::factory()->create();
+        $event = Event::factory()->create();
+        $category = CategoryEvent::factory()->create(['event_id' => $event->id]);
+        $player = Player::factory()->create();
+        $order = TeamPaymentOrder::create(['user_id' => $user->id, 'player_id' => $player->id, 'event_id' => $event->id,
+            'total_amount' => 300, 'pay_status' => true, 'payfast_paid' => true,
+            'payfast_amount_due' => 300, 'payfast_pf_payment_id' => 'HISTORICAL-PAID']);
+        $this->receipt($user, ['pf_payment_id' => 'HISTORICAL-PAID', 'payment_status' => null,
+            'custom_str5' => 'TeamOrder', 'custom_int5' => $order->id, 'event_id' => $event->id]);
+        $this->receipt($user, ['pf_payment_id' => 'UNVERIFIED-STANDALONE', 'player_id' => $player->id,
+            'category_event_id' => $category->id, 'event_id' => $event->id]);
+        $this->receipt($user, ['pf_payment_id' => 'WRONG-REFERENCE', 'custom_str5' => 'TeamOrder',
+            'custom_int5' => $order->id, 'event_id' => $event->id]);
+
+        $schema = Schema::getFacadeRoot();
+        $mock = \Mockery::mock($schema);
+        $mock->shouldReceive('hasTable')->andReturnUsing(fn ($table) => $schema->hasTable($table))->byDefault();
+        $mock->shouldReceive('hasColumn')->andReturnUsing(fn ($table, $column) => $schema->hasColumn($table, $column))->byDefault();
+        $mock->shouldReceive('hasColumn')->with('transactions_pf', 'payment_status')->andReturn(false);
+        $mock->shouldReceive('hasTable')->with('registration_manual_receipts')->andReturn(false);
+        $mock->shouldReceive('hasTable')->with('trial_participation_receipts')->andReturn(false);
+        Schema::swap($mock);
+        $queries = [];
+        \Illuminate\Support\Facades\DB::listen(function ($query) use (&$queries) { $queries[] = $query->sql; });
+        try {
+            $statement = $this->statement($user);
+            $this->assertCount(1, $statement['rows']);
+            $this->assertSame(30000, $statement['paid']);
+            $this->assertCount(2, $statement['warnings']);
+            $this->assertCount(0, $this->statement($other)['rows']);
+            $this->assertStringNotContainsString('`payment_status`', implode("\n", $queries));
+            $params = ['from' => '2025-01-01', 'to' => '2026-12-31'];
+            $this->actingAs($user)->get(route('account.statement', $params))
+                ->assertOk()->assertSee('History notice')->assertSee('older PayFast receipts');
+            $csv = $this->get(route('account.statement', $params + ['format' => 'csv']))->assertOk();
+            $this->assertStringContainsString('History notice', $csv->streamedContent());
+            $this->get(route('account.statement', $params + ['format' => 'pdf']))->assertOk()
+                ->assertHeader('content-type', 'application/pdf');
+            $this->assertStringContainsString($statement['warnings'][0], view('account.statement-pdf', $statement)->render());
+            $this->assertDatabaseCount('transactions_pf', 3);
+        } finally {
+            Schema::swap($schema);
+        }
     }
 
     public function test_guests_cannot_access_statement_and_invalid_ranges_are_rejected(): void

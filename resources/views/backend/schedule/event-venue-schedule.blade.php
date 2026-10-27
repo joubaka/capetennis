@@ -1792,6 +1792,7 @@
   document.addEventListener('click', event => {
     const button = event.target.closest('[data-reschedule-fixture]');
     if (!button) return;
+    if (manualMovePending) { moveConflictDialog.reopenChecking(); return; }
     const match = [...(lastScheduleResult?.existing_matches || []), ...(lastScheduleResult?.matches || [])].find(row => fixtureKey(row) === button.dataset.rescheduleFixture);
     if (!match?.editable) return;
     rescheduleFixture = fixtureKey(match);

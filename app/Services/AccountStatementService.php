@@ -15,6 +15,7 @@ use App\Models\TrialParticipationReceipt;
 use App\Models\User;
 use App\Models\WalletTransaction;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 /** Read-only payer statement. Tender amounts are never inferred from reservations or current fees. */
@@ -25,10 +26,17 @@ class AccountStatementService
     public function build(User $user, string $from, string $to, string $player = '', string $category = 'all'): array
     {
         $rows = collect();
+        $warnings = [];
+        $hasPaymentStatus = Schema::hasColumn('transactions_pf', 'payment_status');
+        if (! $hasPaymentStatus) {
+            $warnings[] = 'Some older PayFast receipts cannot be verified against a paid checkout and may be missing from this statement. Contact Cape Tennis if you need help reconciling older payments.';
+        }
         $start = $from.' 00:00:00';
         $end = $to.' 23:59:59';
         $receipts = $this->bounded(Transaction::query()->with(['player', 'event', 'category_event.event'])
-            ->where('custom_int4', $user->id)->where(fn ($q) => $q->where('payment_status', 'COMPLETE')->orWhereNull('payment_status'))->where('is_test', false)
+            ->where('custom_int4', $user->id)
+            ->when($hasPaymentStatus, fn ($q) => $q->where(fn ($status) => $status->where('payment_status', 'COMPLETE')->orWhereNull('payment_status')))
+            ->where('is_test', false)
             ->whereNull('archived_at')->whereNotNull('pf_payment_id')->where('pf_payment_id', '!=', '')
             ->where('amount_gross', '>', 0)->whereBetween('created_at', [$start, $end]));
 
@@ -59,7 +67,7 @@ class AccountStatementService
                     continue;
                 }
                 $details = $this->details($order);
-            } elseif ($receipt->payment_status === 'COMPLETE' && ! $team && $receipt->player && $receipt->category_event
+            } elseif ($hasPaymentStatus && $receipt->payment_status === 'COMPLETE' && ! $team && $receipt->player && $receipt->category_event
                 && (int) $receipt->category_event->event_id === (int) $receipt->event_id) {
                 $details = [$this->detail($receipt->player, $receipt->category_event->event, null)];
             } else {
@@ -95,6 +103,12 @@ class AccountStatementService
         }
 
         foreach ([RegistrationManualReceipt::class, TrialParticipationReceipt::class] as $class) {
+            if (! Schema::hasTable((new $class)->getTable())) {
+                if ($category !== 'clothing') {
+                    $warnings[] = 'Verified manual payment history is currently unavailable. This statement may be incomplete; contact Cape Tennis for assistance.';
+                }
+                continue;
+            }
             $team = $class === TrialParticipationReceipt::class;
             $manual = $this->bounded($class::query()->whereHas('order', fn ($q) => $q->where('user_id', $user->id))
                 ->whereBetween('paid_at', [$start, $end]));
@@ -130,7 +144,7 @@ class AccountStatementService
             $date = $order->paid_at;
             $amount = $order->amount_paid;
             $reference = $order->payfast_pf_payment_id ?: $order->pf_id;
-            if (! $date && $tx && ! $tx->is_test && ! $tx->archived_at && $tx->payment_status === 'COMPLETE'
+            if (! $date && $hasPaymentStatus && $tx && ! $tx->is_test && ! $tx->archived_at && $tx->payment_status === 'COMPLETE'
                 && (int) $tx->custom_int4 === (int) $user->id && (int) $tx->event_id === (int) $order->event_id) {
                 $date = $tx->created_at;
                 $amount = $tx->amount_gross;
@@ -163,7 +177,7 @@ class AccountStatementService
 
         return ['rows' => $rows, 'paid' => $rows->sum('paid'), 'refunded' => $rows->sum('refunded'),
             'net' => $rows->sum('paid') - $rows->sum('refunded'), 'from' => $from, 'to' => $to,
-            'player' => $player, 'category' => $category, 'generated_at' => now(), 'account' => $user];
+            'player' => $player, 'category' => $category, 'warnings' => array_values(array_unique($warnings)), 'generated_at' => now(), 'account' => $user];
     }
 
     private function order(User $user, bool $team, int $id): RegistrationOrder|TeamPaymentOrder|null

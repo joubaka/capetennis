@@ -7,6 +7,7 @@ th:nth-child(1) { width: 14%; } th:nth-child(2) { width: 22%; } th:nth-child(3) 
 thead { display: table-header-group; } tr { page-break-inside: avoid; } .text-end { text-align: right; } .entry-detail { margin-bottom: 6px; } .notes { font-size: 8px; margin-top: 16px; color: #526075; } .totals { margin: 16px 0; font-size: 12px; }
 </style></head><body>
 <h1>Cape Tennis</h1><h2>Account payment statement</h2>
+@include('account.statement-warnings')
 <p>Payments included: {{ ($category ?? 'all') === 'all' ? 'Entry fees and clothing' : ucfirst($category) }}</p>
 @if($player)<p><strong>Full matching checkout amounts include all players in shared checkouts. These are not player-only expenses.</strong></p>@endif
 <p><strong>{{ $account->name }}</strong> · {{ $account->email }} · Account #{{ $account->id }}<br>

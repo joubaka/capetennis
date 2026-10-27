@@ -341,6 +341,12 @@ $navbarDetached = ($navbarDetached ?? '');
               My Wallet
             </a>
           </li>
+          <li>
+            <a class="dropdown-item {{ request()->routeIs('account.statement') ? 'active' : '' }}" href="{{ route('account.statement') }}" @if(request()->routeIs('account.statement')) aria-current="page" @endif>
+              <i class="ti ti-file-invoice me-2"></i>
+              Account statement
+            </a>
+          </li>
           @endauth
 
           @if (Auth::check() && Laravel\Jetstream\Jetstream::hasApiFeatures())

@@ -16,6 +16,7 @@
 </div></div>
 <div class="card"><div class="card-body">
     <h2 class="h5">Cape Tennis account payment statement</h2>
+    @include('account.statement-warnings')
     <p>{{ $account->name }} · {{ $account->email }}<br>Account #{{ $account->id }} · Generated {{ $generated_at->format('Y-m-d H:i T') }}<br>Recorded period: {{ $from }} to {{ $to }}@if($player) · Player search: {{ $player }}@endif</p>
     @if($player)<div class="alert alert-info">These are full matching checkout amounts, including other players in a shared checkout. They are not player-only expenses.</div>@endif
     <p>Payments included: {{ $category === 'all' ? 'Entry fees and clothing' : ucfirst($category) }}</p>

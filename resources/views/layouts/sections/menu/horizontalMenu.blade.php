@@ -40,6 +40,14 @@ $configData = Helper::appClasses();
         </a>
       </li>
       @endif
+      @auth
+      <li class="menu-item {{ $currentRouteName === 'account.statement' ? 'active' : '' }}">
+        <a href="{{ route('account.statement') }}" class="menu-link" @if($currentRouteName === 'account.statement') aria-current="page" @endif>
+          <i class="menu-icon tf-icons ti ti-file-invoice"></i>
+          <div>Account statement</div>
+        </a>
+      </li>
+      @endauth
       @foreach ($menuData[1]->menu as $menu)
 
       {{-- active menu method --}}

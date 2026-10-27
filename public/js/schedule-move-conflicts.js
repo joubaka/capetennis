@@ -24,12 +24,13 @@
       .map(row => ({...describe(row), relationship:dependencies(row).includes(fixtureKey) ? 'dependent' : 'qualifier'})) : [];
     return {moving:moving ? describe(moving) : null,
       requested:{scheduled_at:slot.time,venue_name:(preview?.venues || []).find(venue => Number(venue.id) === Number(slot.venue))?.name || 'Selected venue',court:slot.court},
-      related:related.slice(0,8),omitted_related:Math.max(0,related.length-8)};
+      related:related.slice(0,8),omitted_related:Math.max(0,related.length-8),
+      checks_alternatives:[...(preview?.matches || []),...(preview?.unscheduled || [])].some(row => row.fixture_key === fixtureKey)};
   }
   function checkingHtml(report) {
     return `<div data-move-check-context><div class="d-flex align-items-center gap-2 mb-3"><span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span><span role="status">Request in progress</span><span class="small text-muted ms-auto" data-move-check-elapsed role="timer" aria-live="off">Elapsed: 0s</span></div>
       <p class="fw-semibold mb-1">${report.moving ? escape(matchLabel(report.moving)) : 'Selected match'}</p>${report.requested ? `<p class="small text-muted">Requested: ${escape(location(report.requested))}</p>` : ''}
-      <h6>Checks included in this request</h6><ul><li>Requested venue, court availability and other bookings.</li><li>Qualifying matches and required player rest.</li><li>Later matches that depend on this match.</li><li>Nearby alternatives if this move does not fit.</li></ul>
+      <h6>Checks included in this request</h6><ul><li>Requested venue, court availability and other bookings.</li><li>Qualifying matches and required player rest.</li><li>Later matches that depend on this match.</li><li>Keeping every other match in place.</li>${report.checks_alternatives ? '<li>Nearby alternatives if this unsaved preview move does not fit.</li>' : ''}</ul>
       <p class="small text-muted">The server has not returned a result yet. These checks do not indicate completed steps.</p>
       ${(report.related || []).length ? `<h6>Related matches being checked</h6><ul class="list-unstyled d-grid gap-2">${report.related.map(row => `<li class="border rounded p-2"><div class="small fw-semibold">${row.relationship === 'dependent' ? 'Later dependent match' : 'Earlier qualifying match'}</div><div>${escape(matchLabel(row))}</div><div class="small text-muted">${escape(location(row))}</div></li>`).join('')}</ul>` : '<p class="small text-muted">Any other relevant bookings are checked by the server.</p>'}
       ${report.omitted_related ? `<p class="small text-muted">${Number(report.omitted_related)} more related matches are included in the checks.</p>` : ''}
@@ -59,14 +60,20 @@
     let mode = 'closed';
     let timer = null;
     let startedAt = 0;
+    let desiredVisible = false;
+    let waitingForOtherModal = false;
     let returnFocus = null;
     let followup = false;
+    element.addEventListener('hide.bs.modal', () => { desiredVisible = false; });
+    element.addEventListener('shown.bs.modal', () => { if (!desiredVisible) modal.hide(); });
     element.addEventListener('hidden.bs.modal', () => {
-      if (!followup && returnFocus?.isConnected && returnFocus.getClientRects().length) returnFocus.focus();
+      if (desiredVisible) modal.show();
+      else if (!followup && returnFocus?.isConnected && returnFocus.getClientRects().length) returnFocus.focus();
       followup = false;
     });
     const afterClose = callback => {
       followup = true;
+      desiredVisible = false;
       element.addEventListener('hidden.bs.modal', callback, {once:true});
       modal.hide();
     };
@@ -76,14 +83,17 @@
       body.setAttribute('aria-busy','false');
     };
     const present = () => {
-      if (!element.classList?.contains('show')) returnFocus = doc.activeElement;
+      desiredVisible = true;
+      if (waitingForOtherModal) return;
       const open = doc.querySelector('.modal.show');
       if (open && open !== element) {
-        open.addEventListener('hidden.bs.modal', () => { if (mode !== 'closed') modal.show(); }, {once:true});
+        waitingForOtherModal = true;
+        open.addEventListener('hidden.bs.modal', () => { waitingForOtherModal = false; if (desiredVisible) modal.show(); }, {once:true});
         options.bootstrap.Modal.getOrCreateInstance(open).hide();
       } else modal.show();
     };
     element.addEventListener('click', event => {
+      if (event.target.closest('[data-bs-dismiss="modal"]')) desiredVisible = false;
       const suggestion = event.target.closest('[data-conflict-suggestion]');
       const review = event.target.closest('[data-conflict-review]');
       if (mode !== 'conflict') return;
@@ -94,12 +104,14 @@
     });
     return {
       show(value) {
+        if (mode !== 'checking' && !desiredVisible) returnFocus = doc.activeElement;
         clearChecking(); mode = 'conflict'; report = value;
         title.textContent = 'Why this match cannot move'; dismiss.textContent = 'Return to schedule';
         body.innerHTML = html(value); present();
       },
       checking(value) {
         if (mode === 'checking') return;
+        returnFocus = doc.activeElement;
         mode = 'checking'; report = value; startedAt = now();
         title.textContent = 'Checking this move'; dismiss.textContent = 'Hide details';
         body.innerHTML = checkingHtml(value); body.setAttribute('aria-busy','true');
@@ -113,7 +125,7 @@
       reopenChecking() { if (mode === 'checking') present(); },
       finishChecking() {
         if (mode !== 'checking') return;
-        clearChecking(); mode = 'closed'; modal.hide();
+        clearChecking(); mode = 'closed'; desiredVisible = false; modal.hide();
       },
     };
   }

@@ -6,18 +6,20 @@ const source=fs.readFileSync('resources/views/backend/schedule/event-venue-sched
 
 function mover(reject=false) {
  const controls=new Map(['schedule-status','venue-slot-grids','schedule-duration','schedule-gap','schedule-rest','schedule-daily-limit','round-progression'].map(id=>[id,{value:'30',classList:{add(){},remove(){}}}]));
- const calls=[],toasts=[],statuses=[],conflicts=[];
+ const calls=[],toasts=[],statuses=[],conflicts=[],checks=[];
  const key='individual:20',slot={dataset:{time:'2026-10-30 11:00:00',venue:'7',court:'2'}};
  const result={input:{preview_moves:[{fixture_key:key,scheduled_at:slot.dataset.time,venue_id:7,court:'2'}],preview_frozen_keys:['individual:99']},venues:[{id:7,name:'School courts'}]};
  const context={lastScheduleResult:{matches:[{fixture_key:key}]},fixtureKey:row=>row.fixture_key,payload:{day_batch:true},revision:'a'.repeat(64),previewUrl:'/preview',manualAssignmentUrl:'/manual',
-  dayBatchPayload:{day_batch:true},programmePayload:null,selectedManualFixture:key,
+  dayBatchPayload:{day_batch:true},programmePayload:null,selectedManualFixture:key,manualMovePending:false,
   document:{getElementById:id=>controls.get(id)},setStatus:(element,message,tone)=>statuses.push([message,tone]),
   notify:(message,tone,pending)=>{toasts.push([message,tone,pending]);return()=>toasts.push(['cleared']);},
   showMoveConflict:(error,key,slot)=>conflicts.push([error.message,key,slot]),
+  beginMoveCheck:(key,slot)=>checks.push(['start',key,slot]),
+  finishMoveCheck:()=>{checks.push(['finish']);context.manualMovePending=false;},
   post:async(url,body)=>{calls.push([url,body]);if(reject)throw new Error('Required player rest is missing.');return result;},
   render:()=>{},fixtureRef:()=>{throw new Error('An unsaved preview move must not call the saved manual path.');}};
  vm.runInNewContext(source.slice(source.indexOf('  const placeMatchManually ='),source.indexOf("  ['programme-daily-limit'"))+';globalThis.move=placeMatchManually;',context);
- return {context,key,slot,calls,toasts,statuses,conflicts};
+ return {context,key,slot,calls,toasts,statuses,conflicts,checks,result};
 }
 
 test('suggested drop updates validated preview and never posts an immediate saved assignment',async()=>{
@@ -28,7 +30,7 @@ test('suggested drop updates validated preview and never posts an immediate save
  assert.equal(app.context.payload.preview_moves.length,1);assert.equal(app.context.dayBatchPayload.preview_moves.length,1);
  assert.equal(app.context.payload.preview_frozen_keys[0],'individual:99');
  assert.ok(app.toasts.some(([message,tone])=>tone==='success'&&message.includes('School courts, Court 2')&&message.includes('save')));
- assert.deepEqual(app.toasts.at(-1),['cleared']);
+ assert.deepEqual(app.checks.at(-1),['finish']);
 });
 
 test('rejected suggestion leaves payload unchanged and reports the error with pending cleanup',async()=>{
@@ -38,7 +40,36 @@ test('rejected suggestion leaves payload unchanged and reports the error with pe
  assert.ok(app.conflicts[0][0].includes('player rest'));
  assert.equal(app.conflicts[0][1],app.key);
  assert.ok(app.statuses.some(([message,tone])=>tone==='danger'&&message.includes('player rest')));
- assert.deepEqual(app.toasts.at(-1),['cleared']);
+ assert.deepEqual(app.checks.at(-1),['finish']);
+});
+
+test('duplicate move actions stay blocked until the first request finishes',async()=>{
+ const app=mover();let resolve;
+ const pending=new Promise(done=>{resolve=done;});
+ app.context.post=async(url,body)=>{app.calls.push([url,body]);return pending;};
+ const first=app.context.move(app.key,app.slot);
+ assert.equal(app.context.manualMovePending,true);assert.equal(app.checks[0][0],'start');
+ await app.context.move('individual:21',app.slot);assert.equal(app.calls.length,1);
+ resolve(app.result);await first;
+ assert.equal(app.context.manualMovePending,false);assert.equal(app.checks.filter(row=>row[0]==='finish').length,1);
+});
+
+test('a stale preview still ends checking and releases the pending move guard without an error modal',async()=>{
+ const app=mover();app.context.post=async()=>{throw Object.assign(new Error('Old selection'),{stalePreview:true});};
+ await app.context.move(app.key,app.slot);
+ assert.equal(app.context.manualMovePending,false);assert.equal(app.conflicts.length,0);
+ assert.deepEqual(app.checks.at(-1),['finish']);
+ assert.ok(app.statuses.some(([message,tone])=>tone==='warning'&&message.includes('selection changed')));
+});
+
+test('opening another saved editor while checking cannot replace the in-flight reschedule target',()=>{
+ const marker="    const button = event.target.closest('[data-reschedule-fixture]');";
+ const body=source.indexOf(marker),start=source.lastIndexOf("  document.addEventListener('click', event => {",body),end=source.indexOf("  document.getElementById('reschedule-match-venue')",body);
+ let click,reopened=0;
+ const context={manualMovePending:true,rescheduleFixture:'individual:5',moveConflictDialog:{reopenChecking:()=>reopened++},document:{addEventListener:(name,callback)=>{click=callback;}}};
+ vm.runInNewContext(source.slice(start,end),context);
+ click({target:{closest:()=>({dataset:{rescheduleFixture:'individual:6'}})}});
+ assert.equal(context.rescheduleFixture,'individual:5');assert.equal(reopened,1);
 });
 
 test('an unscheduled picker match uses validated preview insertion rather than immediate saving',async()=>{

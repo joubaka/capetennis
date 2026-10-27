@@ -40,6 +40,9 @@ class AccountStatementController extends Controller
                 };
                 $write(['Cape Tennis account payment statement', $statement['account']->name, $statement['account']->email]);
                 $write(['Category', $statement['category'], 'Player search', $statement['player']]);
+                foreach ($statement['warnings'] as $warning) {
+                    $write(['History notice', $warning]);
+                }
                 $write(['Matching checkouts include all their players and full receipt amounts. Item fees are descriptive, not additional payments.']);
                 $write(['Completed refunds and category-change wallet credits recorded in the selected dates reduce the net. Category-change charges are included with entry fees. Unverified/private collections and unreconciled payments are excluded. This is not a wallet balance or outstanding-fee statement.']);
                 fputcsv($out, ['From', $statement['from'], 'To', $statement['to'], 'Generated', $statement['generated_at']->toIso8601String()], ',', '"', '');

@@ -25,6 +25,14 @@ $configData = Helper::appClasses();
   <div class="menu-inner-shadow"></div>
 
   <ul class="menu-inner py-1">
+    @auth
+    <li class="menu-item {{ request()->routeIs('account.statement') ? 'active' : '' }}">
+      <a href="{{ route('account.statement') }}" class="menu-link" @if(request()->routeIs('account.statement')) aria-current="page" @endif>
+        <i class="menu-icon tf-icons ti ti-file-invoice"></i>
+        <div>Account statement</div>
+      </a>
+    </li>
+    @endauth
     @foreach ($menuData[0]->menu as $menu)
 
     {{-- adding active and open class if child is active --}}
