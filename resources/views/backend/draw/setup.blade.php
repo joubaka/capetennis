@@ -144,5 +144,43 @@ document.getElementById('draw-format-form')?.addEventListener('submit', event =>
 document.getElementById('confirm-format-reset')?.addEventListener('change', event => event.currentTarget.setCustomValidity(''));
 </script>
 @endif
+<dialog id="draw-progress-modal" aria-labelledby="draw-progress-title" aria-describedby="draw-progress-description" style="border:0;border-radius:1rem;padding:2rem;max-width:min(420px,calc(100vw - 2rem));text-align:center;color:inherit">
+  <div class="spinner-border text-primary mb-3" aria-hidden="true"></div>
+  <h2 id="draw-progress-title" class="h5">Updating draw…</h2>
+  <p id="draw-progress-description" class="mb-0" role="status" aria-live="polite">Please wait while we save the draw setup. This can take a moment.</p>
+</dialog>
+<style>#draw-progress-modal::backdrop{background:rgba(15,23,42,.55)}</style>
+<script>
+(() => {
+  const form = document.getElementById('draw-format-form');
+  const modal = document.getElementById('draw-progress-modal');
+  const button = form.querySelector('button[type="submit"]');
+  let submitting = false;
+  let slowTimer;
+  modal.addEventListener('cancel', event => event.preventDefault());
+  form.addEventListener('submit', event => {
+    if (event.defaultPrevented) return;
+    if (submitting) {
+      event.preventDefault();
+      return;
+    }
+    submitting = true;
+    button.disabled = true;
+    form.setAttribute('aria-busy', 'true');
+    modal.showModal();
+    slowTimer = window.setTimeout(() => {
+      document.getElementById('draw-progress-description').textContent = 'This is taking longer than usual. Please keep this page open and avoid submitting again while the request is processing.';
+    }, 20000);
+  });
+  window.addEventListener('pageshow', () => {
+    window.clearTimeout(slowTimer);
+    submitting = false;
+    button.disabled = false;
+    form.removeAttribute('aria-busy');
+    if (modal.open) modal.close();
+    document.getElementById('draw-progress-description').textContent = 'Please wait while we save the draw setup. This can take a moment.';
+  });
+})();
+</script>
 </div>
 @endsection

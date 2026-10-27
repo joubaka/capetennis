@@ -17,9 +17,10 @@
 @include('backend.draw.partials.workspace-header')
 <div id="flexible-draw-workspace" data-has-generated-draw="{{ $config['state']['generated'] ? '1' : '0' }}">
   <nav class="rr-workspace-nav mb-3" aria-label="Draw workspace">
-    <button type="button" data-flexible-tab="groups">Players &amp; Positions</button>
-    <button type="button" data-flexible-tab="matrix">Draw &amp; Results</button>
-    <button type="button" data-flexible-tab="schedule">Schedule</button>
+    <a href="{{ route('draw.setup.show', $draw) }}">1 · Format</a>
+    <button type="button" data-flexible-tab="groups">2 · Players &amp; Positions</button>
+    <button type="button" data-flexible-tab="matrix">3 · Draw &amp; Results</button>
+    <button type="button" data-flexible-tab="schedule">4 · Schedule</button>
     <button type="button" data-flexible-tab="settings">Setup &amp; Rules</button>
   </nav>
   <section data-flexible-panel="editor" class="fm-surface">

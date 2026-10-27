@@ -107,6 +107,26 @@
   @empty
     <div class="alert alert-info m-0"><strong>Draws are being finalised.</strong> They will appear here when released; match times may follow later.</div>
   @endforelse
+  @php
+    $publicVenueRows = $publicRowsByDraw->flatten(1)->filter(fn ($row) => !empty($row['venue_id']) && !empty($row['venue_name']))->groupBy('venue_id');
+  @endphp
+  @if($publicVenueRows->isNotEmpty())
+    <section class="mt-4" aria-label="Published venues and order of play">
+      <h6 class="fw-bold">Venues and Order of Play</h6>
+      <div class="d-grid gap-3">
+        @foreach($publicVenueRows->sortBy(fn ($rows) => $rows->first()['venue_name']) as $venueId => $venueRows)
+          <div>
+            <a class="btn btn-outline-primary mb-2" style="min-height:44px" href="{{ route('fixtures.venue', [$event->id, $venueId]) }}">{{ $venueRows->first()['venue_name'] }} fixtures</a>
+            <div class="d-flex flex-wrap gap-2">
+              @foreach($venueRows->pluck('scheduled_at')->map(fn ($time) => \Carbon\Carbon::parse($time)->toDateString())->unique()->sort() as $venueDate)
+                <a class="btn btn-outline-success" style="min-height:44px" href="{{ route('fixtures.order', [$event->id, $venueId, $venueDate]) }}">{{ \Carbon\Carbon::parse($venueDate)->format('D j M') }} order of play</a>
+              @endforeach
+            </div>
+          </div>
+        @endforeach
+      </div>
+    </section>
+  @endif
     
 
 </div>

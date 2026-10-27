@@ -48,9 +48,10 @@
   </div></details>
 </div>
 <nav class="rr-workspace-nav" aria-label="Draw workspace">
-  <button type="button" data-workspace="players">Players &amp; Groups</button>
-  <button type="button" data-workspace="results">Draw &amp; Results</button>
-  <button type="button" data-workspace="schedule">Schedule</button>
+  @unless($draw->isTeamDraw())<a href="{{ route('draw.setup.show', $draw) }}">1 · Format</a>@endunless
+  <button type="button" data-workspace="players">{{ $draw->isTeamDraw() ? '' : '2 · ' }}Players &amp; Groups</button>
+  <button type="button" data-workspace="results">{{ $draw->isTeamDraw() ? '' : '3 · ' }}Draw &amp; Results</button>
+  <button type="button" data-workspace="schedule">{{ $draw->isTeamDraw() ? '' : '4 · ' }}Schedule</button>
   <button type="button" data-workspace="setup">Draw settings</button>
   <button type="button" data-workspace="rules">Rules &amp; notes</button>
 </nav>

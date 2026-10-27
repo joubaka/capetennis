@@ -179,8 +179,8 @@ class FrontFixtureController extends Controller
     app(PublicTournamentVisibility::class)->ensureDrawIsVisible($draw, auth()->user());
 
     // Resolve the base format semantically so event type database ids can vary.
-    $isTeamEvent = $draw->event?->isTeam()
-      || (! $draw->event?->isIndividual() && (int) $draw->event?->eventType === 3);
+    $isTeamEvent = ! $draw->event?->isInterprovincialTrials() && ($draw->event?->isTeam()
+      || (! $draw->event?->isIndividual() && (int) $draw->event?->eventType === 3));
 
     // ---------------------------------------------------------
     // FIXTURE LOADERS

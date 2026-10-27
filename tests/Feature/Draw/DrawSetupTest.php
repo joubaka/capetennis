@@ -205,6 +205,39 @@ class DrawSetupTest extends TestCase
         $this->get(route('backend.draw.roundrobin.show', $draw))->assertForbidden();
     }
 
+    public function test_generated_sixteen_player_monrad_can_switch_to_feed_in_with_selected_challenges(): void
+    {
+        $draw = $this->draw();
+        $slots = [];
+        foreach (range(0, 15) as $index) {
+            $registration = Registration::factory()->create();
+            $registration->categoryEvents()->attach($draw->category_event_id, ['status' => 'registered', 'payment_status_id' => 1]);
+            $path = strtr(str_pad(decbin($index), 4, '0', STR_PAD_LEFT), ['0' => 'a', '1' => 'b']);
+            $slots[$path] = ['type' => 'player', 'id' => $registration->id];
+        }
+        $this->post(route('draw.setup.store', $draw), ['workflow' => 'monrad'])->assertRedirect();
+        $this->putJson(route('flexible-monrad.save', $draw), ['revision' => 1,
+            'draft' => ['size' => 16, 'slots' => $slots]])->assertOk();
+        $this->postJson(route('flexible-monrad.generate', $draw), ['revision' => 2])->assertOk();
+        $this->assertSame(32, $draw->drawFixtures()->count());
+
+        $this->post(route('draw.setup.store', $draw), ['workflow' => 'feed_in_monrad', 'reset_existing' => 1,
+            'challenge_playoffs' => 1, 'challenge_pairs' => [2, 4, 6, 8]])
+            ->assertRedirect(route('backend.draw.roundrobin.show', $draw));
+        $draw->refresh();
+        $this->assertSame(0, $draw->drawFixtures()->count());
+        $this->assertSame(16, $draw->registrations()->reorder()->count());
+        $this->assertSame($slots, $draw->flexibleMonrad->draft['slots']);
+        $this->assertSame([2, 4, 6, 8], $draw->flexibleMonrad->draft['challenge_pairs']);
+        $this->assertSame('feed_in_monrad', $draw->settings->workflow);
+        $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()
+            ->assertSee('1 · Format')->assertSee('2 · Players')->assertSee('4 · Schedule');
+        $this->get(route('draw.setup.show', $draw))->assertOk()
+            ->assertSee('aria-current="page"', false)->assertSee('draw-progress-modal');
+        $this->postJson(route('flexible-monrad.generate', $draw), ['revision' => 1])->assertOk();
+        $this->assertSame(40, $draw->drawFixtures()->count());
+    }
+
     public function test_only_custom_monrad_accepts_later_round_entry(): void
     {
         foreach (['playoffs', 'monrad', 'custom_monrad', 'feed_in_monrad'] as $workflow) {

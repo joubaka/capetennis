@@ -3,6 +3,9 @@
     <div class="col-lg-8">
       @include('frontend.event.partials.event-information')
       @include('frontend.event.partials.event-announcements')
+      <div id="event-draws-mobile" class="d-block d-md-none mb-4" tabindex="-1" data-event-draw-section aria-label="Published draws">
+        @include('frontend.event.partials._draws_and_order_of_play')
+      </div>
       @include('frontend.event.partials.trial-programme')
       <div class="card mt-4">
         <div class="card-header"><h5 class="mb-0">Trial nominations</h5></div>
@@ -99,6 +102,9 @@
     </div>
     <div class="col-lg-4">
       @include('frontend.event.partials.event-about')
+      <div id="event-draws-match-times" class="d-none d-md-block" tabindex="-1" data-event-draw-section aria-label="Published draws">
+        @include('frontend.event.partials._draws_and_order_of_play')
+      </div>
     </div>
   </div>
 </div>
