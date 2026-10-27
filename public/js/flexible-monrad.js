@@ -384,7 +384,9 @@
     let yOffset = 0,
       width = 500;
     const winnerLines = [];
-    const terminalWinners = new Set(bracketLayout.terminalWinnerKeys(state.matches));
+    // A winner still needs an ending line on this board when they continue
+    // into a separate feed-in, placement or challenge board.
+    const terminalWinners = new Set(bracketLayout.terminalWinnerKeys(state.matches, {withinSections: true}));
     Object.entries(state.matches).forEach(([key, match]) => {
       if (!sections.has(match.section)) sections.set(match.section, []);
       sections.get(match.section).push([key, match]);
@@ -408,7 +410,7 @@
           const card = bracketMatch(position, `Match ${match.number}${match.challenge_positions ? ' · '+match.challenge_positions.join(' v ') : ''}`);
           match.players.forEach((id, slot) => {
             const knownWinner = match.winner && match.players.some(player => player && Number(player) === Number(match.winner));
-            const line = el('div', `fm-slot${id && knownWinner ? (Number(id) === Number(match.winner) ? ' winner winner-home' : ' loser loser-home') : ''}`);
+            const line = el('div', `fm-slot${id && knownWinner ? (Number(id) === Number(match.winner) ? ' winner' : ' loser') : ''}`);
             line.style.top = (slot ? position.bottom - position.top : 0) + 'px';
             const withdrawnId = match.withdrawn_players?.[slot];
             const pendingWithdrawalId = match.pending_withdrawal_players?.[slot];
@@ -453,10 +455,12 @@
       });
       entries.filter(([key]) => terminalWinners.has(key)).forEach(([key, match]) => {
         const placement = section.match(/^Positions\s+(\d+)/),
+          basePosition = match.winner ? state.base_positions?.find(row => Number(row.player) === Number(match.winner))?.position : null,
           position = coords.get(key),
           lineEnd = position.x + bracketDimensions.width + 120,
           endpoint = el('div', 'fm-winner-endpoint'),
-          label = match.challenge_positions ? `Position ${match.challenge_positions[0]}` : section === 'Main draw' ? 'Champion' : placement ? `Position ${placement[1]}` : 'Winner';
+          label = match.challenge_positions ? `Position ${match.challenge_positions[0]}` : section === 'Main draw' ? 'Champion'
+            : placement ? `${state.challenge_playoffs ? 'Base position' : 'Position'} ${basePosition || placement[1]}` : 'Winner';
         endpoint.style.left = lineEnd + 10 + 'px';
         endpoint.style.top = position.middle - bracketDimensions.slotHeight + 'px';
         const winnerName = el('strong', 'fm-winner-name');

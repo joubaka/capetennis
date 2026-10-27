@@ -52,6 +52,22 @@ test('every winner without a follow-up match is a terminal bracket endpoint', ()
   assert.deepEqual(terminalWinnerKeys(matches), ['main_final', 'place_3_4', 'place_7_9_final']);
 });
 
+test('a visible section keeps its winner ending line when its winner feeds a different section', () => {
+  const matches = {
+    main_a: {section: 'Main draw', sources: [direct(), direct()]},
+    main_final: {section: 'Main draw', sources: [feeder('main_a'), direct()]},
+    third: {section: 'Positions 3–4', sources: [{type: 'loser', match: 'main_a'}, direct()]},
+    gold_a: {section: 'Positions 5–16 · Feed-in', sources: [direct(), direct()]},
+    gold_final: {section: 'Positions 5–16 · Feed-in', sources: [feeder('gold_a'), direct()]},
+    challenge_2: {section: 'Challenge play-offs', sources: [{type: 'loser', match: 'main_final'}, feeder('third')]},
+    challenge_4: {section: 'Challenge play-offs', sources: [{type: 'loser', match: 'third'}, feeder('gold_final')]}
+  };
+  assert.deepEqual(terminalWinnerKeys(matches), ['main_final', 'challenge_2', 'challenge_4']);
+  assert.deepEqual(terminalWinnerKeys(matches, {withinSections: true}), ['main_final', 'third', 'gold_final', 'challenge_2', 'challenge_4']);
+  // The ending line uses exactly the same thin, orthogonal path generator as playoffs.
+  assert.equal(linePath([], [[220, 96, 340, 96]], {raw: true}), 'M 220 96 H 340');
+});
+
 test('standard bracket centres later rounds on their actual feeders', () => {
   const entries = [
     { key: 'a', column: 0, sources: [direct(), direct()] },

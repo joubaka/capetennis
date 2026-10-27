@@ -139,8 +139,13 @@ class CategoryAdjustmentService
             $this->reject('This entry needs organiser reconciliation before changing category.');
         }
         if ($validateMove) {
+            // Lock the draw range as well: legacy draw creation does not always
+            // lock its category, so category locks alone cannot exclude a draw
+            // being inserted while this adjustment is being settled.
+            $draws = \App\Models\Draw::whereIn('category_event_id', [$entry->category_event_id, $target->id])
+                ->orderBy('id')->lockForUpdate()->get(['id']);
             if ($entry->categoryEvent->isLocked() || $target->isLocked()
-                || $entry->categoryEvent->draws()->exists() || $target->draws()->exists()) {
+                || $draws->isNotEmpty()) {
                 $this->reject('Categories may only be changed before either draw is created or locked.');
             }
             foreach ($entry->registration->players as $player) {

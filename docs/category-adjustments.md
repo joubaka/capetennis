@@ -27,3 +27,5 @@ Subsequent changes and withdrawal refunds use the remaining funding after earlie
 Regression coverage is in `tests/Feature/CategoryAdjustmentTest.php` and `tests/Feature/CategoryAdjustmentInvitationTest.php`. Run them against an isolated test database with all mail transports set to array, then run the full feature suite. Check routes, Blade compilation, syntax, `git diff --check`, and `tests/Unit/DeploymentConfigTest.php --fail-on-skipped`.
 
 The exact required migration is `database/migrations/2026_10_27_120000_create_category_adjustments.php`, included in `deploy.config`'s migration allowlist. Local implementation and allowlisting do not authorize production migration execution or deployment.
+
+The draw-insert race safeguard uses the existing indexed category range under MySQL/InnoDB `REPEATABLE READ` gap locking. Verify that isolation assumption during deployment review; SQLite tests and `READ COMMITTED` do not prove this range-lock behavior.

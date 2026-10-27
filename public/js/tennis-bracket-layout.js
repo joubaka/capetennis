@@ -67,12 +67,13 @@
     });
     return paths.join(' ');
   }
-  function terminalWinnerKeys(matches) {
+  function terminalWinnerKeys(matches, { withinSections = false } = {}) {
     const entries = Object.entries(matches);
     const followedWinners = new Set();
     entries.forEach(([, match]) => {
       match.sources.forEach(source => {
-        if (source.type === 'winner' && source.match) followedWinners.add(source.match);
+        if (source.type === 'winner' && source.match
+          && (!withinSections || matches[source.match]?.section === match.section)) followedWinners.add(source.match);
       });
     });
     return entries.map(([key]) => key).filter(key => !followedWinners.has(key));

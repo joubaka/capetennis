@@ -16,6 +16,8 @@ final class FlexibleMonradPdfLayout
     {
         $matches = (array) ($state['matches'] ?? []);
         $players = collect($state['players'] ?? [])->mapWithKeys(fn ($player) => [(int) $player['id'] => $player]);
+        $baseRanks = collect($state['base_positions'] ?? [])->filter(fn ($row) => ! empty($row['player']))
+            ->mapWithKeys(fn ($row) => [(int) $row['player'] => (int) $row['position']]);
         $sections = [];
         foreach ($matches as $key => $match) {
             $sections[$match['section']][] = ['key' => $key, 'match' => $match];
@@ -104,7 +106,8 @@ final class FlexibleMonradPdfLayout
                     'x' => $lineEnd + 10,
                     'y' => $position['middle'] - self::SLOT_HEIGHT,
                     'label' => isset($entry['match']['challenge_positions']) ? 'Position '.$entry['match']['challenge_positions'][0]
-                        : ($section === 'Main draw' ? 'Champion' : (isset($placement[1]) ? 'Position '.$placement[1] : 'Winner')),
+                        : ($section === 'Main draw' ? 'Champion' : (isset($placement[1])
+                            ? (($state['challenge_playoffs'] ?? false) ? 'Base position ' : 'Position ').($baseRanks[(int) ($entry['match']['winner'] ?? 0)] ?? $placement[1]) : 'Winner')),
                     'name' => ($entry['match']['challenge_status'] ?? null) === 'skipped' ? 'Skipped - positions unchanged' : (!empty($entry['match']['winner'])
                         ? ($players[(int) $entry['match']['winner']]['name'] ?? 'Winner')
                         : 'Awaiting result'),
