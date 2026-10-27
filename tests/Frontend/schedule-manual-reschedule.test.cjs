@@ -31,3 +31,21 @@ test('manual reschedule refresh keeps saved matches fixed and includes the new d
   const atEnd = context.preview('2026-10-30T18:00');
   assert.equal(atEnd.end, '2026-10-30T23:59');
 });
+
+test('daily manual refresh keeps its moved fixture identity and day court pool',()=>{
+ const controls=new Map(['reschedule-existing','programme-reschedule-existing'].map(id=>[id,{checked:true}]));
+ const original={day_batch:true,full_day_scope:'2026-10-30',start:'2026-10-30T08:00',end:'2026-10-30T18:00',
+  draw_ids:[1,3],draw_order:[1,3],draw_order_mode:'sequential',selected_fixture_keys:['individual:1','team:1'],
+  venue_ids:[7],day_court_labels:{7:['2']},reschedule_existing:true,full_day_tie_destinations:{stale:{venue_id:7}}};
+ const context={programmePayload:null,replanVenueIds:[7],document:{getElementById:id=>controls.get(id)},buildPayload:()=>({...original}),
+  lastScheduleResult:{existing_matches:[{fixture_key:'team:1',draw_id:3,round:2}]},fixtureKey:row=>row.fixture_key};
+ const start=source.indexOf('  const fixedBookingPreviewPayload =');
+ const end=source.indexOf('  const placeMatchManually =',start);
+ vm.runInNewContext(source.slice(start,end)+';globalThis.preview=fixedBookingPreviewPayload;',context);
+ const payload=context.preview('2026-10-31T09:00','team:1');
+ assert.equal(payload.full_day_scope,'2026-10-31');assert.equal(payload.draw_order_mode,'mixed');
+ assert.deepEqual(Array.from(payload.draw_ids),[3]);assert.deepEqual(Array.from(payload.selected_fixture_keys),['team:1']);
+ assert.deepEqual(JSON.parse(JSON.stringify(payload.day_court_labels)),{7:['2']});
+ assert.equal(payload.reschedule_existing,false);assert.equal(payload.full_day_tie_destinations,undefined);
+ assert.deepEqual(original.draw_ids,[1,3],'refresh must not change the original draw selection');
+});

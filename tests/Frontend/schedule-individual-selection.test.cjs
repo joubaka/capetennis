@@ -15,7 +15,7 @@ function harness(draws) {
   const context={document:{getElementById:get,querySelectorAll:()=>choices}, values:()=>selected,programmeDayCount:3,programmePayload:{},programmeRefreshVersion:0,programmeCreateLabel:"Create preview",
     programmeSettings:new Map(),invalidatePreview:()=>{},rememberRankRules:()=>{},loadRankScope:()=>{},showWorkflowStep:()=>{},Option:function(text,value){this.value=value;},Event:function(){}};
   const start=source.indexOf('  const individualSelection =');
-  const end=source.indexOf('  showWorkflowStep(1);\n  if (!document',start);
+  const end=source.indexOf('  const workspace =',start);
   const block=source.slice(start,end).replace(/@json\([^\n]+\)/,JSON.stringify(draws)).replace(/@json\(\(bool\) \$planningDate\)/g, "false");
   vm.runInNewContext(block,context);
   return {get,choices,context,select(ids){selected=ids;get('individual-schedule-selection').listeners.change();},configure(){get('individual-schedule-configure').listeners.click();}};

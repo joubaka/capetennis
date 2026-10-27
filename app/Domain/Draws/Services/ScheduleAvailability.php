@@ -48,9 +48,14 @@ final class ScheduleAvailability
             foreach ($allIds as $id) $q->orWhereJsonContains('graph->players', (int) $id);
         })->get() : collect();
         $possible = [];
+        $participantGroups = [];
         foreach ($monrads as $record) {
             $matches = (array) app(FlexibleMonradService::class)->state(Draw::findOrFail($record->draw_id))['matches'];
-            foreach (self::participants($matches) as $key => $ids) $possible[$matches[$key]['id']] = $ids;
+            foreach (self::participants($matches) as $key => $ids) {
+                $fixtureId = $matches[$key]['id'];
+                $possible[$fixtureId] = $ids;
+                $participantGroups[$fixtureId] = 'flexible-draw-'.$record->draw_id;
+            }
         }
         // A legacy finalist may still be TBD even though their qualifier identifies the possible players.
         $legacyDraws = $allIds ? Fixture::where(fn ($q) => $q->whereIn('registration1_id', $allIds)->orWhereIn('registration2_id', $allIds))
@@ -85,8 +90,10 @@ final class ScheduleAvailability
             $participantMinutes = $participantRest === null
                 ? $occupied
                 : $matchMinutes + max(0, $participantRest);
+            // Match newly planned nodes' group: graph dependencies separate
+            // sibling paths, while courts and participants in other draws remain reserved.
             $calendar->reserveWithRest((int) $slot->venue_id, (string) $slot->court, Carbon::parse($slot->time),
-                $occupied, $participantMinutes, $participants, null,
+                $occupied, $participantMinutes, $participants, $participantGroups[$slot->fixture_id] ?? null,
                 $calendar->historyEligible($slot->fixture?->draw?->event_id, Carbon::parse($slot->time)),
                 $calendar->fixtureSource($slot->fixture, 'individual'));
         }

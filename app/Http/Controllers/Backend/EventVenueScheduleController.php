@@ -84,6 +84,7 @@ final class EventVenueScheduleController extends Controller
                 'rounds' => $availableRounds[$draw->id] ?? [],
                 'programme_rounds' => $programmeRounds[$draw->id] ?? [],
                 'programme_round_details' => app(EventVenueScheduleService::class)->programmeRoundDetails($draw),
+                'day_round_details' => app(EventVenueScheduleService::class)->dayRoundDetails($draw),
                 'selected' => ! $selectionSupplied || $requestedDrawIds->contains((int) $draw->id)];
         });
         $venues = $availableVenues->map(function ($venue) use ($drawVenues, $courtRows) {
@@ -1140,7 +1141,7 @@ final class EventVenueScheduleController extends Controller
         $this->authorize('event.manage', $event);
         try {
             $options = $this->validatedOptions($request);
-            if (empty($options['programme'])) $playoffs->prepareEvent($event, $options['draw_ids'] ?? []);
+            if (empty($options['programme']) && empty($options['day_batch'])) $playoffs->prepareEvent($event, $options['draw_ids'] ?? []);
 
             return response()->json($scheduler->preview($event->fresh(), $options));
         } catch (\InvalidArgumentException $exception) {
@@ -1155,7 +1156,7 @@ final class EventVenueScheduleController extends Controller
         $request->validate(['revision' => ['required', 'string', 'size:64']]);
         try {
             $options = $this->validatedOptions($request);
-            if (empty($options['programme'])) $playoffs->prepareEvent($event, $options['draw_ids'] ?? []);
+            if (empty($options['programme']) && empty($options['day_batch'])) $playoffs->prepareEvent($event, $options['draw_ids'] ?? []);
 
             return response()->json($scheduler->apply($event->fresh(), $options, (string) $request->string('revision')));
         } catch (\InvalidArgumentException $exception) {
@@ -1348,6 +1349,31 @@ final class EventVenueScheduleController extends Controller
     private function validatedOptions(Request $request): array
     {
         return $request->validate([
+            'day_batch' => ['sometimes', 'boolean'],
+            'draw_order_mode' => ['sometimes', 'in:mixed,sequential'],
+            'draw_order' => ['sometimes', 'array', 'min:1', 'max:200'],
+            'draw_order.*' => ['required', 'integer', 'distinct'],
+            'selected_fixture_keys' => ['sometimes', 'array', 'min:1', 'max:2000'],
+            'selected_fixture_keys.*' => ['required', 'string', 'distinct', 'regex:/^(individual|team):[1-9][0-9]*$/'],
+            'full_day_scope' => ['sometimes', 'date_format:Y-m-d'],
+            'day_court_labels' => ['sometimes', 'array', 'max:200'],
+            'day_court_labels.*' => ['required', 'array', 'min:1', 'max:100'],
+            'day_court_labels.*.*' => ['required', 'string', 'max:50'],
+            'day_venue_groups' => ['sometimes', 'array', 'max:200'],
+            'day_venue_groups.*' => ['required', 'array:A,B'],
+            'day_venue_groups.*.*' => ['required', 'array', 'min:1', 'max:100'],
+            'day_venue_groups.*.*.*' => ['required', 'string', 'max:50'],
+            'full_day_venue_windows' => ['sometimes', 'array', 'max:200'],
+            'full_day_venue_windows.*' => ['required', 'array:start,end'],
+            'full_day_venue_windows.*.start' => ['required', 'date'],
+            'full_day_venue_windows.*.end' => ['required', 'date'],
+            'full_day_court_starts' => ['sometimes', 'array', 'max:200'],
+            'full_day_court_starts.*' => ['required', 'array', 'max:100'],
+            'full_day_court_starts.*.*' => ['required', 'array:court,start,end'],
+            'full_day_court_starts.*.*.court' => ['required', 'string', 'max:50'],
+            'full_day_court_starts.*.*.start' => ['required', 'date'],
+            'full_day_court_starts.*.*.end' => ['required', 'date'],
+            'reschedule_existing' => ['sometimes', 'boolean'],
             'start' => ['required', 'date'], 'end' => ['nullable', 'date', 'after:start'],
             'programme' => ['sometimes', 'array:days,rounds,matches'],
             'programme.matches' => ['sometimes', 'array', 'max:2000'],

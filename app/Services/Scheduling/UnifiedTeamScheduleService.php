@@ -93,6 +93,11 @@ final class UnifiedTeamScheduleService
         $venueId = (int) ($data['venue_id'] ?? 0);
         $draft = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true) ?: [];
         $roundSetup = collect($draft['round_venue_setups'] ?? [])->first(fn ($row) => (int) $row['draw_id'] === (int) $fixture->draw_id && (int) $row['round'] === (int) $fixture->round_nr);
+        $dayAllocation = $draft['day_batch_allocations']['team:'.$fixture->id] ?? null;
+        if ($dayAllocation && (int) ($dayAllocation['draw_id'] ?? 0) === (int) $fixture->draw_id) {
+            if (! $event->venues()->where('venues.id', $venueId)->exists()) return 'Select a current event venue for this rubber.';
+            $roundSetup = $dayAllocation;
+        }
         $venue = $roundSetup
             ? (in_array($venueId, array_map('intval', $roundSetup['venue_ids']), true) ? \App\Models\Venue::find($venueId) : null)
             : $fixture->draw->venues()->where('venues.id', $venueId)->first();
@@ -107,7 +112,7 @@ final class UnifiedTeamScheduleService
         $allocated = DB::table('draw_venue_court_allocations')->where('draw_id', $fixture->draw_id)
             ->where('venue_id', $venueId)->pluck('court_label')->map(fn ($label) => ScheduleAvailability::courtKey((string) $label))->all();
         if ($roundSetup) $allocated = collect($roundSetup['court_allocations'])->where('venue_id', $venueId)->flatMap(fn ($allocation) => $allocation['court_labels'])->map(fn ($label) => ScheduleAvailability::courtKey((string) $label))->all();
-        if (! in_array($court, $labels, true) || ($allocated && ! in_array($court, $allocated, true))) return 'Select a permitted court for this draw.';
+        if (! in_array($court, $labels, true) || (($roundSetup || $allocated) && ! in_array($court, $allocated, true))) return 'Select a permitted court for this draw.';
         $time = $data['scheduled_at'] ?? $data['start'] ?? null;
         if (! $time) return 'Choose a start time.';
         if (($draft['limit_daily_matches'] ?? false) || ($data['limit_daily_matches'] ?? false)) {

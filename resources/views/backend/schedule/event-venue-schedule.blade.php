@@ -200,7 +200,17 @@
   $guideSelection = $event->draws->whereIn('id', collect($draws)->where('selected', true)->pluck('id'));
   $teamPlanning = $draws->where('selected', true)->contains('is_team', true) || ($draws->isEmpty() && $event->isTeam());
 @endphp
-<div class="container-xxl flex-grow-1 container-p-y schedule-workspace">
+<style>
+  .day-batch-mode #individual-schedule-selection, .day-batch-mode #programme-wizard,
+  .day-batch-mode #advanced-scheduling > summary, .day-batch-mode #advanced-scheduling .workflow-rail,
+  .day-batch-mode #court-allocation-step, .day-batch-mode #schedule-rules-step,
+  .day-batch-mode #back-to-rules { display:none !important; }
+  .day-batch-mode .schedule-method, .day-batch-mode .legacy-schedule-copy,
+  .day-batch-mode .schedule-publication { display:none !important; }
+  .schedule-workspace:not(.day-batch-mode) .day-batch-intro { display:none; }
+  .day-batch-mode:not(.day-batch-review) #advanced-scheduling { display:none; }
+</style>
+<div class="container-xxl flex-grow-1 container-p-y schedule-workspace day-batch-mode">
   @include('backend.event.partials.header', [
     'eventWorkspaceActive' => 'schedule',
     'eventWorkspaceIcon' => 'ti-calendar-event',
@@ -218,7 +228,7 @@
       <a class="btn btn-outline-secondary" href="{{ route('backend.event-venue-schedule.calendar',$event) }}">Saved schedule · all days</a>
     </nav>
     </div>
-    <p class="small text-muted mb-0">{{ $teamPlanning ? 'Whole-tie planning' : 'Full-day planning' }} opens a broader selection across venues. Manual placement and removal save privately immediately; automatic allocation requires preview and save.</p>
+    <p class="small text-muted mb-0 legacy-schedule-copy">{{ $teamPlanning ? 'Whole-tie planning' : 'Full-day planning' }} opens a broader selection across venues. Manual placement and removal save privately immediately; automatic allocation requires preview and save.</p>
   </section>
   @if($guideSelection->isNotEmpty())
     <section class="schedule-publication mb-3" aria-label="Review publication">
@@ -231,6 +241,8 @@
     <div class="workspace-header">
       <div class="text-uppercase text-primary fw-semibold small">Event schedule workspace</div>
       <h2 class="h4 mb-1">Plan the schedule</h2>
+      <p class="text-muted mb-0 day-batch-intro">Select draws, set up courts for one day, choose rounds, then preview. Save match times privately and publish separately when ready.</p>
+      <div class="legacy-schedule-copy">
       @if(!$teamPlanning)
         <p class="text-muted mb-0">Select individual draws, then set up days, venues and match times. Each draw keeps its own gender.</p>
       @elseif(!$planningDate && $draws->where('programme_supported', true)->whereNotNull('programme_age')->isNotEmpty())
@@ -240,6 +252,7 @@
         <p class="text-muted mb-0">Assign courts, set the timing, then review and save the schedule.</p>
         <p class="text-muted small mt-2 mb-0">Choose any combination of draws across all age groups in this event. Team and individual matches share the same court calendar.</p>
       @endif
+      </div>
     </div>
     <div class="d-flex flex-wrap gap-2 workspace-actions">
       @if($draws->isNotEmpty())
@@ -369,6 +382,7 @@
         </div>
       </div>
 
+  @include('backend.schedule.partials.day-batch')
   @if(!$teamPlanning)
   <section class="workspace-section mb-3" id="individual-schedule-selection">
     <div class="section-body">
@@ -822,6 +836,7 @@
 @endsection
 
 @section('page-script')
+<script src="{{ asset('js/schedule-day-batch.js') }}"></script>
 <script>
 (() => {
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
@@ -841,6 +856,7 @@
   const drawIds = @json($draws->reject(fn($draw) => $draw['locked'])->pluck('id')->values());
   let payload = null;
   let programmePayload = null;
+  let dayBatchPayload = null;
   @if($planningDate)
   document.querySelectorAll('.draw-start, .venue-start, #reschedule-existing').forEach(input => { input.disabled = true; input.title = 'This day-only batch preserves existing times and uses one daily start.'; });
   ['schedule-start', 'schedule-end'].forEach(id => {
@@ -1231,7 +1247,7 @@
           || readDrawRounds().some(selection => Number(selection.draw_id) === Number(row.draw_id) && selection.rounds.map(Number).includes(Number(row.round))))
         .flatMap(row => row.venue_ids.map(Number)))
   )];
-  const buildPayload = () => ({
+  const buildPayload = () => dayBatchPayload ? {...dayBatchPayload} : ({
     ...buildScheduleDraft(),
     allow_partial: true,
     draw_ids: values('.draw-choice'),
@@ -1443,6 +1459,7 @@
   const unresolvedAtVenue = (result, venueId) => (result.unscheduled || [])
     .filter(match => permittedCourts(match, venueId).length > 0).length;
   const venueActions = (result, venue) => {
+    if (payload?.day_batch) return '';
     const planned = result.matches.filter(match => Number(match.venue_id) === Number(venue.id)).length;
     const fixed = (result.existing_matches || []).filter(match => Number(match.venue_id) === Number(venue.id)).length;
     const unresolved = unresolvedAtVenue(result, venue.id);
@@ -1551,7 +1568,7 @@
     const applyPreview = document.getElementById('apply-preview');
     applyPreview.innerHTML = `<i class="ti ti-device-floppy me-1"></i>${result.input.programme?.days?.length ? 'Save complete event schedule' : 'Save matches that fit'}`;
     const continueToDraws = document.getElementById('continue-to-draws');
-    applyPreview.disabled = !hasSuggestions || (!!result.input.programme?.days?.length && result.unscheduled.length > 0);
+    applyPreview.disabled = !hasSuggestions || ((!!result.input.programme?.days?.length || !!result.input.day_batch) && result.unscheduled.length > 0);
     applyPreview.classList.toggle('d-none', scheduleComplete);
     continueToDraws.classList.toggle('d-none', !scheduleComplete);
     const previewMessage = result.unscheduled.length
@@ -1568,7 +1585,7 @@
     }
   }
 
-  const fixedBookingPreviewPayload = scheduledAt => {
+  const fixedBookingPreviewPayload = (scheduledAt, movedFixtureKey = null) => {
     programmePayload = null;
     replanVenueIds = [];
     ['reschedule-existing', 'programme-reschedule-existing'].forEach(id => document.getElementById(id).checked = false);
@@ -1576,9 +1593,24 @@
     delete next.programme;
     const movedTime = String(scheduledAt).replace(' ', 'T').slice(0,16);
     const day = movedTime.slice(0,10);
+    if (next.day_batch && movedFixtureKey) {
+      const moved = [...(lastScheduleResult?.matches || []), ...(lastScheduleResult?.existing_matches || [])].find(row => fixtureKey(row) === movedFixtureKey);
+      if (!moved) throw new Error('Reload the saved schedule to review this moved match.');
+      Object.assign(next, {full_day_scope:day, start:day+'T00:00', end:day+'T23:59', draw_ids:[Number(moved.draw_id)], draw_order:[Number(moved.draw_id)], draw_order_mode:'mixed', draw_rounds:[{draw_id:Number(moved.draw_id),rounds:[Number(moved.round)]}], selected_fixture_keys:[movedFixtureKey], full_day_venue_windows:{}, full_day_court_starts:{}, day_venue_groups:{}});
+      delete next.day_scope; delete next.full_day_tie_destinations; delete next.full_day_destination_pools;
+      return next;
+    }
     if (movedTime < String(next.start).replace(' ', 'T').slice(0,16)) next.start = day+'T00:00';
     if (!next.end || movedTime >= String(next.end).replace(' ', 'T').slice(0,16)) next.end = day+'T23:59';
     return next;
+  };
+  const markManualBookingView = () => {
+    if (!dayBatchPayload) return false;
+    revision = null;
+    document.getElementById('apply-preview').disabled = true;
+    document.getElementById('continue-to-draws').classList.add('d-none');
+    setStatus(document.getElementById('schedule-status'), 'Match moved. Showing its saved booking; preview your selected rounds again to continue. Publish separately to update public times.', 'success');
+    return true;
   };
   const placeMatchManually = async (fixtureId, slot) => {
     if (!fixtureId || !slot) return;
@@ -1596,12 +1628,12 @@
         round_progression:document.getElementById('round-progression').value,
       });
       selectedManualFixture = null;
-      payload = fixedBookingPreviewPayload(slot.dataset.time);
+      payload = fixedBookingPreviewPayload(slot.dataset.time, fixtureId);
       render(await post(previewUrl, payload));
       if (saved.warnings?.length) {
         document.getElementById('preview-warnings').insertAdjacentHTML('afterbegin', saved.warnings.map(message => `<div class="alert alert-warning py-2">${escapeHtml(message)}</div>`).join(''));
       }
-      setStatus(status, saved.message + ' It is saved; the remaining unsaved suggestions were adapted around it.', 'success');
+      if (!markManualBookingView()) setStatus(status, saved.message + ' It is saved; the remaining unsaved suggestions were adapted around it.', 'success');
     } catch (error) { if (error.stalePreview) return;
       setStatus(status, error.message, 'danger');
     } finally {
@@ -1671,9 +1703,9 @@
         limit_daily_matches:document.getElementById('schedule-daily-limit').checked, round_progression:document.getElementById('round-progression').value,
       });
       bootstrap.Modal.getOrCreateInstance(rescheduleModal).hide();
-      payload = fixedBookingPreviewPayload(document.getElementById('reschedule-match-time').value);
+      payload = fixedBookingPreviewPayload(document.getElementById('reschedule-match-time').value, rescheduleFixture);
       render(await post(previewUrl, payload));
-      setStatus(document.getElementById('schedule-status'), saved.message+' Publish separately to update public times.', 'success');
+      if (!markManualBookingView()) setStatus(document.getElementById('schedule-status'), saved.message+' Publish separately to update public times.', 'success');
     } catch (error) { status.textContent = error.message; }
     finally { button.disabled = false; }
   });
@@ -2311,7 +2343,12 @@
       window.setTimeout(() => {
         if (programmePending()) { invalidatePreview(); reportSaved(true); return; }
         leavingSavedSchedule = true;
-        window.location.assign(drawsUrl);
+        if (submittedPayload.day_batch) {
+          const savedDay = new URL(drawsUrl, window.location.origin);
+          savedDay.searchParams.set('date', submittedPayload.full_day_scope);
+          if (submittedPayload.draw_ids.length === 1) savedDay.searchParams.set('draw_id', submittedPayload.draw_ids[0]); else savedDay.searchParams.delete('draw_id');
+          window.location.assign(savedDay.toString());
+        } else window.location.assign(drawsUrl);
       }, 1000);
     }
     catch (error) { if (error.stalePreview) return; setStatus(document.getElementById('schedule-status'), error.message, 'danger'); setStatus(document.getElementById('review-status'), error.message, 'danger'); notify(error.message, 'danger'); button.disabled = false; }
@@ -2929,6 +2966,37 @@
     });
     invalidateIndividualSelection();
   }
+  const workspace = document.querySelector('.schedule-workspace');
+  const syncDayTiming = config => {
+    [['duration','duration'],['player_rest','rest'],['court_gap','gap']].forEach(([key,suffix]) => { document.getElementById('schedule-'+suffix).value = config[key]; });
+    document.getElementById('schedule-daily-limit').checked = Boolean(config.limit_daily_matches);
+    document.getElementById('programme-daily-limit').checked = Boolean(config.limit_daily_matches);
+  };
+  CapeDayBatch.mount({
+    draws:@json($draws->values()), venues:@json($venues->values()), dates:@json($programmeDates),
+    initialDay:@json($planningDate), initialDrawIds:@json(request()->has('draw_ids') ? $draws->filter(fn($draw) => $draw['selected'] && !$draw['locked'])->pluck('id')->values() : []),
+    savedByDay:@json($scheduleDraft['day_batch_settings'] ?? []),
+    getConfig:() => ({}),
+    onChange:() => { dayBatchPayload = null; payload = null; invalidatePreview('Selection changed. Preview the selected rounds again.'); workspace.classList.remove('day-batch-review'); },
+    onSaveTiming:async config => { syncDayTiming(config); await post(timingSettingsUrl, {duration:config.duration,player_rest:config.player_rest,court_gap:config.court_gap,limit_daily_matches:config.limit_daily_matches}); invalidatePreview(); },
+    onPreview:async config => {
+      syncDayTiming(config); programmePayload = null; dayBatchPayload = config; payload = {...config};
+      const result = await post(previewUrl, payload);
+      workspace.classList.add('day-batch-review');
+      document.getElementById('advanced-scheduling').hidden = false;
+      document.getElementById('advanced-scheduling').open = true;
+      showWorkflowStep(3); render(result);
+      document.getElementById('apply-preview').innerHTML = 'Save this day’s selected matches';
+      document.getElementById('schedule-review-step').scrollIntoView({behavior:'smooth',block:'start'});
+    },
+  });
+  document.getElementById('toggle-advanced-scheduling').addEventListener('click', event => {
+    const normal = workspace.classList.toggle('day-batch-mode');
+    document.getElementById('day-batch-workflow').hidden = !normal;
+    event.currentTarget.textContent = normal ? 'Advanced: complete programmes and draw defaults' : 'Back to scheduling selected rounds for one day';
+    dayBatchPayload = null; payload = null; programmePayload = null; invalidatePreview();
+    if (!normal) { document.getElementById('advanced-scheduling').hidden = false; document.getElementById('advanced-scheduling').open = true; showWorkflowStep(1); }
+  });
   showWorkflowStep(1);
   if (!document.getElementById('programme-wizard').hidden) document.getElementById('advanced-scheduling').open = false;
 })();

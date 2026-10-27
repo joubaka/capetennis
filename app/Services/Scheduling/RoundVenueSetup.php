@@ -15,6 +15,8 @@ final class RoundVenueSetup
         $stored = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $draw->event_id)->value('options'), true) ?: [];
         $round = $draw->usesFlexibleMonrad() ? (app(EventVenueScheduleService::class)->programmeFixtureRounds($draw)[$fixture->id] ?? null) : $fixture->round;
         $override = collect($stored['round_venue_setups'] ?? [])->first(fn ($row) => (int) $row['draw_id'] === (int) $draw->id && (int) $row['round'] === (int) $round);
+        $dayAllocation = $stored['day_batch_allocations']['individual:'.$fixture->id] ?? null;
+        if ($dayAllocation && (int) ($dayAllocation['draw_id'] ?? 0) === (int) $draw->id) $override = $dayAllocation;
         $assigned = $draw->venues->firstWhere('id', $venueId);
         if ($override) {
             $available = DB::table('event_venues')->where('event_id', $draw->event_id)->where('venue_id', $venueId)->exists()

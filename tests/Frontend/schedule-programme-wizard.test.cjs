@@ -92,7 +92,7 @@ test('real programme payload honors rescheduling and limits venue selection to i
   const end = source.indexOf('  const post =', start);
   const checkbox = {checked:true};
   const context = {
-    programmePayload:{draw_ids:[2,3], programme:{days:[]}, replan_venue_ids:[]},
+    dayBatchPayload:null, programmePayload:{draw_ids:[2,3], programme:{days:[]}, replan_venue_ids:[]},
     roundVenueSetups:[{draw_id:2,round:2,venue_ids:[6]}, {draw_id:9,round:1,venue_ids:[98]}, {draw_id:9,round:2,venue_ids:[97]}],
     replanVenueIds:[99], buildScheduleDraft:() => ({reschedule_existing:checkbox.checked}),
     values:() => [9], readDrawRounds:() => [],
