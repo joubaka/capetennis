@@ -12,6 +12,15 @@ use Illuminate\Support\Facades\DB;
 
 final class EventVenueScheduleService
 {
+    public function preservePreviewOptions(array $options, array $preview, ?array $move = null): array
+    {
+        $moves = collect($preview['matches'])->map(fn ($row) => ['fixture_key'=>$row['fixture_key'], 'scheduled_at'=>$row['scheduled_at'], 'venue_id'=>(int) $row['venue_id'], 'court'=>(string) $row['court']]);
+        if ($move) $moves = $moves->reject(fn ($row) => $row['fixture_key'] === $move['fixture_key'])->push($move);
+        $options['preview_moves'] = $moves->values()->all();
+        $options['preview_frozen_keys'] = collect($preview['unscheduled'])->pluck('fixture_key')->reject(fn ($key) => $move && $key === $move['fixture_key'])->values()->all();
+        return $options;
+    }
+
     public function preview(Event $event, array $options): array
     {
         $roundProgression = $options['round_progression'] ?? 'team_ready';
@@ -345,7 +354,7 @@ final class EventVenueScheduleService
         unset($node);
 
         $previewMoves = [];
-        if (count($options['preview_moves'] ?? []) > 100) throw new \InvalidArgumentException('Move at most 100 suggested matches in one preview.');
+        if (count($options['preview_moves'] ?? []) > 2000) throw new \InvalidArgumentException('Keep at most 2000 suggested matches in one preview.');
         foreach ($options['preview_moves'] ?? [] as $move) {
             $key = (string) ($move['fixture_key'] ?? '');
             if (! preg_match('/^(individual|team):([1-9][0-9]*)$/', $key, $parts) || isset($previewMoves[$key])) throw new \InvalidArgumentException('Choose each suggested match once.');
@@ -361,6 +370,15 @@ final class EventVenueScheduleService
             $nodes[$id]['preview_move'] = $normalized;
         }
         ksort($previewMoves);
+        $frozenKeys = array_values($options['preview_frozen_keys'] ?? []);
+        if (count($frozenKeys) > 2000 || count($frozenKeys) !== count(array_unique($frozenKeys))) throw new \InvalidArgumentException('Keep each unallocated match once.');
+        foreach ($frozenKeys as $key) {
+            if (! preg_match('/^(individual|team):([1-9][0-9]*)$/', $key, $parts) || isset($previewMoves[$key])) throw new \InvalidArgumentException('Choose a distinct unscheduled match in this preview.');
+            $id = $parts[1] === 'team' ? $key : (int) $parts[2]; $node = $nodes[$id] ?? null;
+            if (! $node || ! $node['selected_round'] || $node['fixed'] || $node['played'] || $node['automatic']) throw new \InvalidArgumentException('Keep only selected unsaved matches in planning.');
+            $nodes[$id]['preview_frozen'] = true;
+        }
+        sort($frozenKeys);
 
         $allRegistrations = collect($nodes)->flatMap(fn ($node) => $node['participants'])->unique()->values()->all();
         $excludedIndividual = array_values(array_filter($excluded, 'is_int'));
@@ -507,6 +525,10 @@ final class EventVenueScheduleService
             foreach ($pending as $id => $node) {
                 // Re-evaluate the current blocker after another prerequisite has been placed.
                 unset($blocked[$id]);
+                if (! empty($node['preview_frozen'])) {
+                    $blocked[$id] = 'Kept unscheduled while moving one match. Generate a new preview to allocate it.';
+                    continue;
+                }
                 if ($node['rank_preference']['manual'] ?? false) {
                     $blocked[$id] = $node['rank_preference']['warning'];
                     continue;
@@ -546,7 +568,7 @@ final class EventVenueScheduleService
                 $blocked[$id] = $capacityReason;
                 $venuePassedGenderOrder = false;
                 $choiceCalendar = $calendar;
-                if ($previewMoves) {
+                if ($previewMoves && ! isset($node['preview_move'])) {
                     $choiceCalendar = clone $calendar;
                     foreach ($nodes as $otherId => $other) {
                         if ($otherId === $id || ! isset($other['preview_move']) || isset($started[$otherId])) continue;
@@ -850,6 +872,7 @@ final class EventVenueScheduleService
         }
         $input = compact('duration', 'waveMinutes', 'courtGap', 'playerRest') + [
             'preview_moves' => array_values($previewMoves),
+            'preview_frozen_keys' => $frozenKeys,
             'day_batch' => $dayBatch, 'draw_order_mode' => $drawOrderMode, 'draw_order' => $drawOrder,
             'selected_fixture_keys' => $selectedFixtureKeys, 'reschedule_existing' => (bool) ($options['reschedule_existing'] ?? false),
             'limit_daily_matches' => $limitDailyMatches,
@@ -1046,7 +1069,7 @@ final class EventVenueScheduleService
                     'gender_waves' => $preview['input']['gender_waves'], 'draw_order' => $preview['input']['draw_order'],
                     'draw_order_mode' => $preview['input']['draw_order_mode'], 'day_court_labels' => $preview['input']['day_court_labels'],
                 ]);
-                unset($stored['day_batch_settings'][$preview['input']['full_day_scope']]['preview_moves']);
+                unset($stored['day_batch_settings'][$preview['input']['full_day_scope']]['preview_moves'], $stored['day_batch_settings'][$preview['input']['full_day_scope']]['preview_frozen_keys']);
                 foreach ($matches as $row) {
                     $courts = $row['venue_courts'];
                     $banded = collect($preview['input']['rank_venue_preferences'])->contains(fn ($rule) => in_array((int) $row['draw_id'], array_map('intval', $rule['draw_ids']), true));

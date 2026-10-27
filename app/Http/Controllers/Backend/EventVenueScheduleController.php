@@ -1150,7 +1150,7 @@ final class EventVenueScheduleController extends Controller
                 $current = $scheduler->preview($event->fresh(), $options);
                 if (! hash_equals($current['revision'], $data['revision'])) throw new \InvalidArgumentException('The preview changed. Generate a new preview before moving this match.');
                 if (! collect(array_merge($current['matches'], $current['unscheduled']))->contains('fixture_key', $data['preview_move']['fixture_key'])) throw new \InvalidArgumentException('Choose an unsaved match in this preview.');
-                $options['preview_moves'] = collect($options['preview_moves'] ?? [])->reject(fn ($move) => $move['fixture_key'] === $data['preview_move']['fixture_key'])->push($data['preview_move'])->values()->all();
+                $options = $scheduler->preservePreviewOptions($options, $current, $data['preview_move']);
                 return response()->json($scheduler->preview($event->fresh(), $options));
             }
             if (empty($options['programme']) && empty($options['day_batch'])) $playoffs->prepareEvent($event, $options['draw_ids'] ?? []);
@@ -1238,6 +1238,35 @@ final class EventVenueScheduleController extends Controller
             'limit_daily_matches' => ['sometimes', 'boolean'],
             'round_progression' => ['sometimes', 'in:team_ready,all_round'],
         ]);
+
+        if ($request->has('preview_context')) {
+            $context = $request->validate(['preview_context'=>['required','array'], 'preview_revision'=>['required','string','size:64']]);
+            $options = $this->validatedOptions(Request::create('/', 'POST', $context['preview_context']));
+            try {
+                return DB::transaction(function () use ($request, $event, $data, $options, $context, $conflicts, $scheduleEngine) {
+                    Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
+                    DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
+                    $scheduler = app(EventVenueScheduleService::class);
+                    $current = $scheduler->preview($event->fresh(), $options);
+                    if (! hash_equals($current['revision'], $context['preview_revision'])) throw new \InvalidArgumentException('The preview changed. Generate a new preview before moving this match.');
+                    $key = ($data['fixture_kind'] ?? 'individual').':'.$data['fixture_id'];
+                    $saved = collect($current['existing_matches'])->firstWhere('fixture_key', $key);
+                    if (! $saved || empty($saved['editable'])) throw new \InvalidArgumentException('Choose an editable saved match in this preview.');
+                    $preserved = $scheduler->preservePreviewOptions($options, $current);
+                    $inner = Request::create($request->url(), 'POST', $data);
+                    $inner->setUserResolver(fn () => $request->user());
+                    $response = $this->assignFixture($inner, $event, $conflicts, $scheduleEngine);
+                    $result = $response->getData(true);
+                    if ($response->getStatusCode() >= 400) throw new \InvalidArgumentException($result['message'] ?? 'This match could not be moved.');
+                    // Validate every unchanged suggestion before the outer transaction can commit.
+                    $result['preview'] = $scheduler->preview($event->fresh(), $preserved);
+                    $result['preview_options'] = $preserved;
+                    return response()->json($result);
+                });
+            } catch (\InvalidArgumentException $exception) {
+                return response()->json(['message'=>$exception->getMessage()], 422);
+            }
+        }
 
         try {
             if (($data['fixture_kind'] ?? 'individual') === 'team') {
@@ -1361,10 +1390,12 @@ final class EventVenueScheduleController extends Controller
     private function validatedOptions(Request $request): array
     {
         return $request->validate([
-            'preview_moves'=>['sometimes','array','max:100'],
+            'preview_moves'=>['sometimes','array','max:2000'],
             'preview_moves.*'=>['required','array:fixture_key,scheduled_at,venue_id,court'],
             'preview_moves.*.fixture_key'=>['required','distinct','regex:/^(individual|team):[1-9][0-9]*$/'],
             'preview_moves.*.scheduled_at'=>['required','date'], 'preview_moves.*.venue_id'=>['required','integer'], 'preview_moves.*.court'=>['required','string','max:50'],
+            'preview_frozen_keys'=>['sometimes','array','max:2000'],
+            'preview_frozen_keys.*'=>['required','string','distinct','regex:/^(individual|team):[1-9][0-9]*$/'],
             'day_batch' => ['sometimes', 'boolean'],
             'draw_order_mode' => ['sometimes', 'in:mixed,sequential'],
             'draw_order' => ['sometimes', 'array', 'min:1', 'max:200'],

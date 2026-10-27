@@ -952,7 +952,7 @@
     lastToast = {message, time:Date.now()};
     const method = tone === 'danger' ? 'error' : tone;
     if (window.toastr && typeof window.toastr[method] === 'function') {
-      const toast = window.toastr[method](message, '', pending ? {timeOut:0,extendedTimeOut:0} : undefined);
+      const toast = window.toastr[method](message, '', {escapeHtml:true, ...(pending ? {timeOut:0,extendedTimeOut:0} : {})});
       return () => window.toastr.clear(toast);
     }
     const container = document.getElementById('schedule-toast-container') || Object.assign(document.createElement('div'), {

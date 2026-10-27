@@ -57,7 +57,7 @@ test('toasts map danger to error, retain info and clear a pending toast',()=>{
  const calls=[],context={window:{toastr:{error:message=>calls.push(['error',message]),info:(message,title,options)=>{calls.push(['info',message,options]);return 'pending';},clear:toast=>calls.push(['clear',toast])}},Date};
  vm.runInNewContext(source.slice(source.indexOf('  let lastToast ='),source.indexOf('  const updateScheduleActivity ='))+';globalThis.notify=notify;',context);
  context.notify('Cannot move','danger');const clear=context.notify('Checking move','info',true);clear();
- assert.equal(calls[0][0],'error');assert.equal(calls[1][0],'info');assert.equal(calls[1][2].timeOut,0);assert.deepEqual(calls[2],['clear','pending']);
+ assert.equal(calls[0][0],'error');assert.equal(calls[1][0],'info');assert.equal(calls[1][2].timeOut,0);assert.equal(calls[1][2].escapeHtml,true);assert.deepEqual(calls[2],['clear','pending']);
 });
 
 test('AJAX render preserves collapsed venues and scroll while opening newly shown venues',()=>{
