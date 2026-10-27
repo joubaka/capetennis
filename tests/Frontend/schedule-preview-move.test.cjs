@@ -8,7 +8,7 @@ function mover(reject=false) {
  const controls=new Map(['schedule-status','venue-slot-grids','schedule-duration','schedule-gap','schedule-rest','schedule-daily-limit','round-progression'].map(id=>[id,{value:'30',classList:{add(){},remove(){}}}]));
  const calls=[],toasts=[],statuses=[];
  const key='individual:20',slot={dataset:{time:'2026-10-30 11:00:00',venue:'7',court:'2'}};
- const result={input:{preview_moves:[{fixture_key:key,scheduled_at:slot.dataset.time,venue_id:7,court:'2'}]},venues:[{id:7,name:'School courts'}]};
+ const result={input:{preview_moves:[{fixture_key:key,scheduled_at:slot.dataset.time,venue_id:7,court:'2'}],preview_frozen_keys:['individual:99']},venues:[{id:7,name:'School courts'}]};
  const context={lastScheduleResult:{matches:[{fixture_key:key}]},fixtureKey:row=>row.fixture_key,payload:{day_batch:true},revision:'a'.repeat(64),previewUrl:'/preview',manualAssignmentUrl:'/manual',
   dayBatchPayload:{day_batch:true},programmePayload:null,selectedManualFixture:key,
   document:{getElementById:id=>controls.get(id)},setStatus:(element,message,tone)=>statuses.push([message,tone]),
@@ -25,6 +25,7 @@ test('suggested drop updates validated preview and never posts an immediate save
  assert.equal(app.calls[0][1].preview_move.fixture_key,'individual:20');
  assert.equal(app.calls[0][1].preview_move.venue_id,7);assert.equal(app.calls[0][1].preview_move.court,'2');
  assert.equal(app.context.payload.preview_moves.length,1);assert.equal(app.context.dayBatchPayload.preview_moves.length,1);
+ assert.equal(app.context.payload.preview_frozen_keys[0],'individual:99');
  assert.ok(app.toasts.some(([message,tone])=>tone==='success'&&message.includes('School courts, Court 2')&&message.includes('save')));
  assert.deepEqual(app.toasts.at(-1),['cleared']);
 });
@@ -40,6 +41,25 @@ test('rejected suggestion leaves payload unchanged and reports the error with pe
 test('an unscheduled picker match uses validated preview insertion rather than immediate saving',async()=>{
  const app=mover();app.context.lastScheduleResult.unscheduled=app.context.lastScheduleResult.matches;app.context.lastScheduleResult.matches=[];
  await app.context.move(app.key,app.slot);assert.equal(app.calls[0][0],'/preview');assert.equal(app.calls[0][1].preview_move.fixture_key,app.key);
+});
+
+test('saved drop sends its exact preview context and renders the atomic preserved response without replanning',async()=>{
+ const app=mover(),oldPayload=app.context.payload,rendered=[];
+ app.context.lastScheduleResult.matches=[];app.context.lastScheduleResult.unscheduled=[];
+ app.context.fixtureRef=()=>({fixture_id:20});app.context.dayBatchState={updateBooking(){}};
+ app.context.renderPreservedManualPreview=saved=>{rendered.push(saved);return true;};
+ app.context.post=async(url,body)=>{app.calls.push([url,body]);return {message:'Saved',preview:{matches:[]},preview_options:{preview_moves:[]}};};
+ app.context.fixedBookingPreviewPayload=()=>{throw new Error('Saved contextual moves must not create a new automatic plan.');};
+ await app.context.move(app.key,app.slot);
+ assert.equal(app.calls.length,1);assert.equal(app.calls[0][0],'/manual');assert.equal(app.calls[0][1].preview_context,oldPayload);assert.equal(app.calls[0][1].preview_revision,'a'.repeat(64));assert.equal(rendered.length,1);
+});
+
+test('preserved saved response carries exact slots and frozen matches into subsequent save state',()=>{
+ const rendered=[],context={payload:{},dayBatchPayload:{},programmePayload:null,render:value=>rendered.push(value),document:{getElementById:()=>({})},setStatus(){}};
+ vm.runInNewContext(source.slice(source.indexOf('  const renderPreservedManualPreview ='),source.indexOf('  const placeMatchManually ='))+';globalThis.accept=renderPreservedManualPreview;',context);
+ const options={preview_moves:[{fixture_key:'individual:2',scheduled_at:'2026-10-30 08:00',venue_id:7,court:'2'}],preview_frozen_keys:['individual:3']};
+ const saved={message:'Saved',preview:{matches:[]},preview_options:options};
+ assert.equal(context.accept(saved),true);assert.equal(context.payload,options);assert.equal(context.dayBatchPayload.preview_moves[0].scheduled_at,'2026-10-30 08:00');assert.equal(context.dayBatchPayload.preview_frozen_keys[0],'individual:3');assert.equal(rendered[0],saved.preview);
 });
 
 test('native card drag transfers typed fixture identity and drop uses destination venue and court',()=>{

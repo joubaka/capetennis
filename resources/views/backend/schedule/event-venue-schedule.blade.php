@@ -739,7 +739,7 @@
     <div id="preview-view-controls" class="d-none flex-wrap justify-content-between align-items-center gap-2 mb-3">
       <div>
         <strong>Fixtures per venue</strong>
-        <div class="small text-muted">In the court grid, drag a match onto an Court free slot. You can also select a match, then select a slot. Saved matches stay in the grid; unsaved suggestions adapt around them.</div>
+        <div class="small text-muted">In the court grid, drag a match onto a free court slot. You can also select a match, then select a slot. Only the selected match moves; other matches stay in place.</div>
       </div>
       <div class="d-flex flex-wrap gap-2">
         <button type="button" id="keep-all-applied" class="btn btn-sm btn-outline-secondary d-none"><i class="ti ti-arrow-back-up me-1" aria-hidden="true"></i>Keep all current venue times</button>
@@ -790,7 +790,7 @@
           <span class="input-group-text"><i class="ti ti-search" aria-hidden="true"></i></span>
           <input type="search" id="manual-match-picker-search" class="form-control" placeholder="Search by draw / category, match or player" autocomplete="off">
         </div>
-        <div class="small text-muted mb-2">Selecting a match saves it in this box immediately, removes it from this list, and adapts the remaining unsaved suggestions. Match order, participant conflicts and player rest are checked before saving.</div>
+        <div class="small text-muted mb-2">Selecting a match changes only its preview slot. Save the schedule to keep an unsaved move. Match order, participant conflicts and player rest are checked before moving.</div>
         <div class="list-group" id="manual-match-picker-list"></div>
         <div class="alert alert-info mb-0 d-none" id="manual-match-picker-empty">No matching schedulable matches are available.</div>
       </div>
@@ -1543,7 +1543,7 @@
     }).join('');
     const truncated = times.size >= 200 ? '<div class="alert alert-warning py-2 mb-0">Only the first 200 time rows are shown. Shorten the scheduling window to inspect it in more detail.</div>' : '';
 
-    return `<details open class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap align-items-center gap-2"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span class="venue-age-group-summary">${ageGroupScheduleSummary(rows)}</span><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="court-grid-hint small"><i class="ti ti-arrows-horizontal" aria-hidden="true"></i><span>Drag a match to an Court free slot, or select the match and then its slot. Each venue has its own courts.</span></div><div class="court-grid-scroll ${venue.court_labels.length > 8 ? 'court-grid-many' : ''}" tabindex="0" role="region" aria-label="${escapeHtml(venue.name)} court schedule"><table class="table table-bordered align-middle mb-0"><thead><tr><th>Slot starts</th>${courtHeaders}</tr></thead><tbody>${body || '<tr><td colspan="99" class="text-center text-muted py-4">No slots in this scheduling window.</td></tr>'}</tbody></table></div>${truncated}</details>`;
+    return `<details open class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap align-items-center gap-2"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span class="venue-age-group-summary">${ageGroupScheduleSummary(rows)}</span><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="court-grid-hint small"><i class="ti ti-arrows-horizontal" aria-hidden="true"></i><span>Drag a match to a free court slot, or select the match and then its slot. Each venue has its own courts.</span></div><div class="court-grid-scroll ${venue.court_labels.length > 8 ? 'court-grid-many' : ''}" tabindex="0" role="region" aria-label="${escapeHtml(venue.name)} court schedule"><table class="table table-bordered align-middle mb-0"><thead><tr><th>Slot starts</th>${courtHeaders}</tr></thead><tbody>${body || '<tr><td colspan="99" class="text-center text-muted py-4">No slots in this scheduling window.</td></tr>'}</tbody></table></div>${truncated}</details>`;
   }
 
   function venueChangeWarnings(result) {
@@ -1706,7 +1706,7 @@
       if (saved.warnings?.length) {
         document.getElementById('preview-warnings').insertAdjacentHTML('afterbegin', saved.warnings.map(message => `<div class="alert alert-warning py-2">${escapeHtml(message)}</div>`).join(''));
       }
-      if (!markManualBookingView(fixtureId, slot.dataset.time)) setStatus(status, saved.message + ' It is saved; the remaining unsaved suggestions were adapted around it.', 'success');
+      if (!markManualBookingView(fixtureId, slot.dataset.time)) setStatus(status, saved.message + ' It is saved; all other match slots stayed in place.', 'success');
     } catch (error) { if (error.stalePreview) return;
       setStatus(status, error.message, 'danger');
       notify(error.message, 'danger');
@@ -1770,6 +1770,7 @@
     const status = document.getElementById('reschedule-match-status');
     button.disabled = true;
     try {
+      if ((!payload || !revision) && ((lastScheduleResult?.matches?.length || 0) + (lastScheduleResult?.unscheduled?.length || 0))) throw new Error('Generate a current preview before moving this saved match.');
       const saved = await post(manualAssignmentUrl, {...fixtureRef(rescheduleFixture),
         scheduled_at:document.getElementById('reschedule-match-time').value,
         venue_id:Number(document.getElementById('reschedule-match-venue').value), court:document.getElementById('reschedule-match-court').value,
@@ -1898,7 +1899,7 @@
         option.classList.toggle('is-selected', selected);
         option.setAttribute('aria-pressed', String(selected));
       });
-      setStatus(document.getElementById('schedule-status'), 'Match selected. Choose an Court free slot.', 'success');
+      setStatus(document.getElementById('schedule-status'), 'Match selected. Choose a free court slot.', 'success');
       return;
     }
     const slot = event.target.closest('[data-manual-slot]');

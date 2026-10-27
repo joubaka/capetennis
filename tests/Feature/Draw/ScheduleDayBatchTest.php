@@ -12,6 +12,17 @@ class ScheduleDayBatchTest extends TestCase
 {
     use RefreshDatabase;
 
+    private function signSlots(array $rows): array
+    {
+        return collect($rows)->mapWithKeys(fn ($row)=>[$row['fixture_key']=>[$row['scheduled_at'],$row['venue_id'],$row['court']]])->sortKeys()->all();
+    }
+
+    private function signInAdmin(Event $event): void
+    {
+        \Spatie\Permission\Models\Role::firstOrCreate(['name'=>'admin','guard_name'=>'web']);
+        $admin=User::factory()->create()->assignRole('admin');DB::table('event_admins')->insert(['event_id'=>$event->id,'user_id'=>$admin->id]);$this->actingAs($admin);
+    }
+
     private function context(bool $team = false): array
     {
         $event = Event::factory()->create(['start_date'=>'2026-10-30','end_date'=>'2026-11-01']);
@@ -274,5 +285,55 @@ class ScheduleDayBatchTest extends TestCase
         try {$service->preview($event,$options+['preview_moves'=>[$move,$conflict]]);$this->fail('One tie was split across venues.');}
         catch (\InvalidArgumentException $error) {$this->assertStringContainsString('same venue',$error->getMessage());}
         $this->assertDatabaseCount('published_schedule_assignments',0);
+    }
+
+    public function test_manual_move_preserves_every_other_suggestion_and_leaves_vacancy_and_unallocated_matches(): void
+    {
+        [$event,$draws,$venue,$fixtures,$options]=$this->context();$this->signInAdmin($event);$options['wave_minutes']=90;
+        $waiting=Fixture::factory()->create(['draw_id'=>$draws[0]->id,'round'=>1,'match_nr'=>3,'bracket_id'=>1,
+            'registration1_id'=>Registration::factory()->create()->id,'registration2_id'=>Registration::factory()->create()->id]);
+        $waitingKey='individual:'.$waiting->id;$options['selected_fixture_keys'][]=$waitingKey;$options['preview_frozen_keys']=[$waitingKey];
+        $url=route('backend.event-venue-schedule.preview',$event);$base=$this->postJson($url,$options)->assertOk()->json();
+        $key='individual:'.$fixtures[0]->id;$original=collect($base['matches'])->firstWhere('fixture_key',$key);
+        $move=['fixture_key'=>$key,'scheduled_at'=>'2026-10-30 10:00','venue_id'=>$venue->id,'court'=>'1'];
+        $result=$this->postJson($url,$options+['revision'=>$base['revision'],'preview_move'=>$move])->assertOk()->json();
+        $this->assertSame($this->signSlots(collect($base['matches'])->reject(fn ($row)=>$row['fixture_key']===$key)->all()),$this->signSlots(collect($result['matches'])->reject(fn ($row)=>$row['fixture_key']===$key)->all()));
+        $this->assertSame([$waitingKey],array_column($result['unscheduled'],'fixture_key'));
+        $this->assertFalse(collect($result['matches'])->contains(fn ($row)=>$row['scheduled_at']===$original['scheduled_at']&&$row['venue_id']===$original['venue_id']&&$row['court']===$original['court']));
+        $preserved=array_replace($options,['preview_moves'=>$result['input']['preview_moves'],'preview_frozen_keys'=>$result['input']['preview_frozen_keys']]);
+        $again=$this->postJson($url,$preserved)->assertOk()->json();$this->assertSame($this->signSlots($result['matches']),$this->signSlots($again['matches']));
+        $this->postJson(route('backend.event-venue-schedule.apply',$event),$preserved+['revision'=>$result['revision']])->assertStatus(422);
+        $this->assertDatabaseCount('order_of_plays',0);$this->assertDatabaseCount('published_schedule_assignments',0);
+    }
+
+    public function test_dependent_move_rejection_names_the_unchanged_match_and_needed_rest_release(): void
+    {
+        [$event,$draws,$venue,$fixtures,$options]=$this->context();$this->signInAdmin($event);$options['wave_minutes']=90;
+        $fixtures[0]->update(['match_nr'=>5]);
+        $final=Fixture::factory()->create(['draw_id'=>$draws[0]->id,'round'=>2,'match_nr'=>6,'bracket_id'=>1,'registration1_id'=>null,'registration2_id'=>Registration::factory()->create()->id]);
+        $fixtures[0]->update(['parent_fixture_id'=>$final->id,'feeder_slot'=>1]);$options['draw_rounds'][0]['rounds']=[1,2];$options['selected_fixture_keys'][]='individual:'.$final->id;
+        $url=route('backend.event-venue-schedule.preview',$event);$base=$this->postJson($url,$options)->assertOk()->json();
+        $response=$this->postJson($url,$options+['revision'=>$base['revision'],'preview_move'=>['fixture_key'=>'individual:'.$fixtures[0]->id,'scheduled_at'=>'2026-10-30 09:05','venue_id'=>$venue->id,'court'=>'1']])->assertStatus(422);
+        foreach (['Match 5 was not moved','Match 6 stays at 09:30','30 minutes player rest','10:35','Other match slots were not changed'] as $text) $this->assertStringContainsString($text,$response->json('message'));
+        $this->assertDatabaseCount('order_of_plays',0);
+    }
+
+    public function test_saved_move_preserves_pending_slots_and_rolls_back_if_an_unchanged_dependent_would_break(): void
+    {
+        [$event,$draws,$venue,$fixtures,$options]=$this->context();$this->signInAdmin($event);$options['wave_minutes']=90;
+        $draws[0]->venues()->attach($venue->id,['num_courts'=>2]);$fixtures[0]->update(['match_nr'=>5]);
+        $final=Fixture::factory()->create(['draw_id'=>$draws[0]->id,'round'=>2,'match_nr'=>6,'bracket_id'=>1,'registration1_id'=>null,'registration2_id'=>Registration::factory()->create()->id]);
+        $fixtures[0]->update(['parent_fixture_id'=>$final->id,'feeder_slot'=>1]);$options['draw_rounds'][0]['rounds']=[1,2];$options['selected_fixture_keys'][]='individual:'.$final->id;
+        $slot=OrderOfPlay::create(['fixture_id'=>$fixtures[0]->id,'draw_id'=>$draws[0]->id,'venue_id'=>$venue->id,'court'=>'1','time'=>'2026-10-30 08:00','duration_minutes'=>60]);
+        $url=route('backend.event-venue-schedule.preview',$event);$base=$this->postJson($url,$options)->assertOk()->json();
+        $request=['fixture_id'=>$fixtures[0]->id,'venue_id'=>$venue->id,'court'=>'1','scheduled_at'=>'2026-10-30 09:05','duration'=>60,'player_rest'=>30,'court_gap'=>0,'preview_context'=>$options,'preview_revision'=>$base['revision']];
+        $auditCount=\App\Models\DrawAuditLog::count();
+        $rejected=$this->postJson(route('backend.event-venue-schedule.manual-assignment',$event),$request)->assertStatus(422);
+        $this->assertStringContainsString('Match 6',$rejected->json('message'));$this->assertStringContainsString('10:35',$rejected->json('message'));
+        $this->assertStringStartsWith('2026-10-30 08:00',$slot->fresh()->time);$this->assertSame($auditCount,\App\Models\DrawAuditLog::count());
+        $saved=$this->postJson(route('backend.event-venue-schedule.manual-assignment',$event),array_replace($request,['scheduled_at'=>'2026-10-30 07:00']))->assertOk()->json();
+        $this->assertSame($this->signSlots($base['matches']),$this->signSlots($saved['preview']['matches']));
+        $this->assertStringStartsWith('2026-10-30 07:00',$slot->fresh()->time);
+        $this->assertDatabaseCount('order_of_plays',1);$this->assertDatabaseCount('published_schedule_assignments',0);
     }
 }
