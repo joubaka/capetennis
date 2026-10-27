@@ -244,7 +244,8 @@ class ScheduleDailyLimitTest extends TestCase
         [$event, $draw, $venue, $options] = $this->scenario();
         $this->admin($event);
         $response = $this->get(route('backend.event-venue-schedule.index', $event))->assertOk()
-            ->assertSee('Maximum 3 matches per player per day')->assertSee('reschedule-match-form', false)->assertSee('Save new time');
+            ->assertSee('Maximum 3 matches per player per day')->assertSee('reschedule-match-form', false)->assertSee('Save new time')
+            ->assertSee('Search for a venue…')->assertSee('minimumResultsForSearch:0', false);
         if ($snapshot = getenv('SCHEDULING_LIMIT_SNAPSHOT')) {
             if (! is_dir(dirname($snapshot))) mkdir(dirname($snapshot), 0777, true);
             file_put_contents($snapshot, $response->getContent());

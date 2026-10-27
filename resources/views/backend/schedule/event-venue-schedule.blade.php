@@ -125,6 +125,7 @@
   .schedule-workspace .assigned-venue-chip { display:inline-flex; align-items:center; gap:.35rem; padding:.4rem .55rem; border:1px solid rgba(var(--bs-primary-rgb), .16); border-radius:.55rem; background:#fff; color:var(--bs-body-color); font-size:.76rem; font-weight:600; }
   .schedule-workspace .venue-management-body { padding:1rem; }
   .schedule-workspace .venue-management-modal .modal-body { background:var(--schedule-soft); }
+  #venue-management-modal .select2-container { max-width:100%; }
   .schedule-workspace .venue-add-mode { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:.5rem; padding:.3rem; border:1px solid var(--schedule-border); border-radius:.7rem; background:var(--schedule-soft); }
   .schedule-workspace .venue-add-mode .btn { display:flex; align-items:center; justify-content:center; gap:.4rem; border:0; border-radius:.5rem; color:var(--schedule-muted); background:transparent; box-shadow:none; }
   .schedule-workspace .venue-add-mode .btn.active { color:var(--bs-primary); background:#fff; box-shadow:0 .15rem .5rem rgba(31,42,68,.09); }
@@ -1377,9 +1378,15 @@
     newVenueName.disabled = !creating;
     if (creating) existingVenue.value = '';
     else newVenueName.value = '';
+    const enhanced = window.jQuery?.fn?.select2 && window.jQuery(existingVenue);
+    if (enhanced && enhanced.hasClass('select2-hidden-accessible')) {
+      enhanced.select2('close');
+      enhanced.trigger('change.select2');
+    }
     document.getElementById('add-venue-label').textContent = creating ? 'Create venue and courts' : 'Add existing venue';
     document.getElementById('venue-add-status').textContent = '';
-    (creating ? newVenueName : existingVenue).focus();
+    if (!creating && enhanced && enhanced.hasClass('select2-hidden-accessible')) enhanced.select2('open');
+    else (creating ? newVenueName : existingVenue).focus();
   };
   document.querySelectorAll('[data-venue-mode]').forEach(button => button.addEventListener('click', () => setVenueMode(button.dataset.venueMode)));
   const card = (value, label, tone='primary') => `<div class="col-6 col-md-3"><div class="card"><div class="card-body py-3"><div class="fs-4 fw-bold text-${tone}">${value}</div><small class="text-muted">${label}</small></div></div></div>`;
@@ -2067,6 +2074,14 @@
     }
   }));
   const venueModal = document.getElementById('venue-management-modal');
+  const initialiseVenueSelect = () => {
+    if (!window.jQuery?.fn?.select2) return;
+    const control = window.jQuery(existingVenue);
+    if (control.hasClass('select2-hidden-accessible')) return;
+    control.select2({width:'100%', dropdownParent:window.jQuery(venueModal),
+      placeholder:'Search for a venue…', allowClear:true, minimumResultsForSearch:0});
+  };
+  venueModal.addEventListener('shown.bs.modal', initialiseVenueSelect);
   let venueManagementChanged = false;
   let venueManagementPending = false;
   const venueDraftKey = 'venue-management-draft-{{ $event->id }}-{{ auth()->id() }}';
@@ -2108,6 +2123,7 @@
     document.querySelectorAll('.venue-editor').forEach(editor => { editor.open = openVenues.includes(editor.dataset.venue); });
     if (modalBody) modalBody.scrollTop = scrollTop;
     existingVenue.innerHTML = choices.innerHTML;
+    if (window.jQuery?.fn?.select2 && window.jQuery(existingVenue).hasClass('select2-hidden-accessible')) window.jQuery(existingVenue).trigger('change.select2');
     document.getElementById('venue-management-counts').textContent = page.getElementById('venue-management-counts').textContent;
   };
   const venueAction = async (button, action) => {
