@@ -10,7 +10,7 @@ function scenario(programme = true) {
   const messages=[], requests=[], timers=[], redirects=[], rendered=[];
   const context = {
     payload:{draw_ids:[1], ...(programme ? {programme:{days:[{start:'2026-10-09'},{start:'2026-10-10'},{start:'2026-10-11'}],rounds:[{draw_id:1,round:1,day:2,sequence:1}]}} : {})},
-    revision:'original-revision', selectedProgrammeAge:'13', programmeEditVersions:new Map([['13',1]]),
+    revision:'original-revision', dayBatchPayload:null, programmePayload:null, selectedProgrammeAge:'13', programmeEditVersions:new Map([['13',1]]),
     programmeDirtyAges:new Set(programme ? ['13'] : []), programmeSavedAges:new Set(), programmeSettings:new Map(),
     document:{getElementById:id => id==='apply-preview' ? button : {id}},
     readProgrammeOptions:() => ({duration:30}), updateProgrammeSaveState:() => {},

@@ -114,7 +114,7 @@
     const state=createState(options.draws,options.venues,options.dates);
     const escape=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
     const label=date=>new Date(date+'T12:00:00').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
-    const status=(message,error=false)=>{get('day-batch-status').textContent=message;get('day-batch-status').className='mt-3 '+(error?'text-danger':'text-muted');};
+    const status=(message,error=false)=>{get('day-batch-status').textContent=message;get('day-batch-status').className='mt-3 '+(error?'text-danger':'text-muted');if(error)options.notify?.(message,'danger');};
     const changed=()=>{options.onChange?.(state);};
     if(options.initialDay && state.dates.includes(options.initialDay))state.setDay(options.initialDay);
     (options.initialDrawIds||[]).forEach(id=>state.selectDraw(id,true));
@@ -197,7 +197,7 @@
       const invalid=get('day-batch-workflow').querySelector('input:invalid');if(invalid){invalid.reportValidity();return;}
       const button=event.currentTarget;button.disabled=true;
       try{const payload=buildPayload(state,readOptions());status('Checking selected matches, courts, player rest and draw order…');await options.onPreview(payload,state);status('Review this day’s selected matches below. Saving and publishing are separate.');}
-      catch(error){status(error.message,true);}finally{button.disabled=false;}
+      catch(error){if(!error.stalePreview)status(error.message,true);}finally{button.disabled=false;}
     });
     get('day-batch-save-timing').addEventListener('click',async event=>{const button=event.currentTarget;button.disabled=true;try{await options.onSaveTiming?.(readOptions());status('Timing settings saved. Existing match times are unchanged.');}catch(error){status(error.message,true);}finally{button.disabled=false;}});
     return state;

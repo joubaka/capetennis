@@ -3,7 +3,7 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const source=fs.readFileSync('resources/views/backend/schedule/event-venue-schedule.blade.php','utf8');
 const postSource=source.slice(source.indexOf('  const post = async'),source.indexOf('  const announcementTitle'));
-function client(fetch){return new Function('fetch', `let previewGeneration=0; const previewUrl='/preview',csrf='test'; ${postSource}; return {post,invalidate(){previewGeneration++;}};`)(fetch);}
+function client(fetch){return new Function('fetch', `let previewGeneration=0; const notify=()=>{}; const previewUrl='/preview',csrf='test'; ${postSource}; return {post,invalidate(){previewGeneration++;}};`)(fetch);}
 function deferred(){let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});return{promise,resolve,reject};}
 test('changing selected draws rejects a late preview success',async()=>{
  const pending=deferred();const api=client(()=>pending.promise);const result=api.post('/preview',{draw_ids:[1474]});api.invalidate();pending.resolve({ok:true,json:async()=>({matches:[{draw_id:1474}]})});

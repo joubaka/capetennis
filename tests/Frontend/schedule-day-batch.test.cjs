@@ -143,7 +143,7 @@ test('normal day preview reveals review even after legacy selection hides advanc
  };
  let rendered=false;
  const context={document:{getElementById:get},workspace:{classList:{add(){}}},syncDayTiming(){},post:async()=>({matches:[]}),previewUrl:'/preview',
-  showWorkflowStep(){},render(){rendered=true;},programmePayload:{},dayBatchPayload:null,payload:null};
+  showWorkflowStep(){},notify(){},render(){rendered=true;},programmePayload:{},dayBatchPayload:null,payload:null};
  vm.runInNewContext(source.slice(start,end).replace('    onPreview:async config => {','globalThis.preview=async config => {')+'\n};',context);
  await context.preview({day_batch:true,full_day_scope:days[0]});
  assert.equal(get('advanced-scheduling').hidden,false);

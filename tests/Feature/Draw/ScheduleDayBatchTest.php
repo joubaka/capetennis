@@ -137,6 +137,12 @@ class ScheduleDayBatchTest extends TestCase
         $this->assertSame([],$onlyLast['matches']);$this->assertNotEmpty($onlyLast['unscheduled']);
         $this->assertStringContainsString('must be scheduled first',implode(' ',array_column($onlyLast['unscheduled'],'reason')));
         $preview=$service->preview($event,$options);$this->assertSame([],$preview['unscheduled']);
+        $positional=collect($preview['matches'])->first(fn ($row)=>$row['round']===$last);
+        $forced=['fixture_key'=>$positional['fixture_key'],'scheduled_at'=>$positional['scheduled_at'],'venue_id'=>$venue->id,'court'=>$positional['court']==='1'?'2':'1'];
+        $shifted=$service->preview($event,$options+['preview_moves'=>[$forced]]);
+        $actual=collect($shifted['matches'])->firstWhere('fixture_key',$forced['fixture_key']);
+        $this->assertSame($forced['scheduled_at'],$actual['scheduled_at']);$this->assertSame($forced['court'],$actual['court']);
+        $this->assertDatabaseCount('order_of_plays',0);
         $service->apply($event,$options,$preview['revision']);
         $fixture=$draw->drawFixtures()->get()->first(fn ($fixture)=>(int) $fixture->round!==$last && in_array('individual:'.$fixture->id,$lastKeys,true));
         $this->assertNotNull($fixture,'Positional fixtures must exercise differing raw and graph rounds.');
@@ -215,6 +221,58 @@ class ScheduleDayBatchTest extends TestCase
         $service->apply($event,$options,$preview['revision']);
         $stored=json_decode(DB::table('event_venue_schedule_drafts')->where('event_id',$event->id)->value('options'),true);
         $this->assertSame([$venue->id],$stored['day_batch_allocations']['team:'.$extra->id]['venue_ids']);
+        $this->assertDatabaseCount('published_schedule_assignments',0);
+    }
+
+    public function test_suggested_dependent_can_move_between_venues_without_saving_and_apply_keeps_the_valid_day_pool(): void
+    {
+        [$event,$draws,$venue,$fixtures,$options]=$this->context();
+        $other=Venue::forceCreate(['name'=>'Other venue']);$event->venues()->attach($other->id,['num_courts'=>1]);
+        $options['venue_ids'][]=$other->id;$options['day_court_labels']=[$venue->id=>['1'],$other->id=>['1']];$options['wave_minutes']=90;
+        $final=Fixture::factory()->create(['draw_id'=>$draws[0]->id,'round'=>2,'match_nr'=>2,'bracket_id'=>1,
+            'registration1_id'=>null,'registration2_id'=>Registration::factory()->create()->id]);
+        $fixtures[0]->update(['parent_fixture_id'=>$final->id,'feeder_slot'=>1]);
+        $options['draw_rounds'][0]['rounds']=[1,2];$options['selected_fixture_keys'][]='individual:'.$final->id;
+        \Spatie\Permission\Models\Role::firstOrCreate(['name'=>'admin','guard_name'=>'web']);$admin=User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id'=>$event->id,'user_id'=>$admin->id]);$this->actingAs($admin);
+        $url=route('backend.event-venue-schedule.preview',$event);
+        $preview=$this->postJson($url,$options)->assertOk()->json();
+        $move=['fixture_key'=>'individual:'.$final->id,'scheduled_at'=>'2026-10-30 09:30','venue_id'=>$other->id,'court'=>'1'];
+        foreach ([['scheduled_at'=>'2026-10-30 09:00'],['venue_id'=>999999],['court'=>'missing'],['fixture_key'=>'team:'.$final->id]] as $invalid) {
+            $this->postJson($url,$options+['revision'=>$preview['revision'],'preview_move'=>array_replace($move,$invalid)])->assertStatus(422);
+            $this->assertDatabaseCount('order_of_plays',0);
+        }
+        $moved=$this->postJson($url,$options+['revision'=>$preview['revision'],'preview_move'=>$move])->assertOk()->json();
+        $row=collect($moved['matches'])->firstWhere('fixture_id',$final->id);
+        $this->assertSame('2026-10-30 09:30:00',$row['scheduled_at']);$this->assertSame($other->id,$row['venue_id']);$this->assertSame('1',$row['court']);
+        $this->assertDatabaseCount('order_of_plays',0);$this->assertDatabaseCount('published_schedule_assignments',0);
+        $movedOptions=$options+['preview_moves'=>$moved['input']['preview_moves']];
+        $this->postJson(route('backend.event-venue-schedule.apply',$event),$movedOptions+['revision'=>$preview['revision']])->assertStatus(422);
+        $this->postJson(route('backend.event-venue-schedule.apply',$event),$movedOptions+['revision'=>$moved['revision']])->assertOk()->assertJsonPath('count',3);
+        $stored=json_decode(DB::table('event_venue_schedule_drafts')->where('event_id',$event->id)->value('options'),true);
+        $this->assertEqualsCanonicalizing([$venue->id,$other->id],$stored['day_batch_allocations']['individual:'.$final->id]['venue_ids']);
+        $this->assertArrayNotHasKey('preview_moves',$stored['day_batch_settings']['2026-10-30']);
+        $this->postJson(route('backend.event-venue-schedule.manual-assignment',$event),['fixture_id'=>$final->id,'scheduled_at'=>'2026-10-30 12:00',
+            'venue_id'=>$venue->id,'court'=>'1','duration'=>60,'player_rest'=>30,'court_gap'=>0])->assertOk();
+        $this->assertDatabaseCount('order_of_plays',3);$this->assertDatabaseCount('published_schedule_assignments',0);
+    }
+
+    public function test_moving_a_suggested_team_rubber_keeps_the_whole_unbanded_tie_at_its_chosen_venue(): void
+    {
+        [$event,$draws,$venue,$fixtures,$options]=$this->context(true);
+        $other=Venue::forceCreate(['name'=>'Another team venue']);$event->venues()->attach($other->id,['num_courts'=>2]);
+        $options['venue_ids'][]=$other->id;$options['day_court_labels'][$other->id]=['1','2'];
+        $extra=TeamFixture::create(['draw_id'=>$draws[0]->id,'round_nr'=>1,'tie_nr'=>1,'match_nr'=>2,'match_status'=>0]);
+        $options['selected_fixture_keys'][]='team:'.$extra->id;
+        $move=['fixture_key'=>'team:'.$extra->id,'scheduled_at'=>'2026-10-30 08:00','venue_id'=>$other->id,'court'=>'2'];
+        $service=app(EventVenueScheduleService::class);$result=$service->preview($event,$options+['preview_moves'=>[$move]]);
+        $this->assertSame([],$result['unscheduled']);
+        $this->assertSame([$other->id],collect($result['matches'])->where('draw_id',$draws[0]->id)->pluck('venue_id')->unique()->values()->all());
+        $this->assertSame('2',collect($result['matches'])->firstWhere('fixture_key','team:'.$extra->id)['court']);
+        $this->assertSame(0,TeamFixture::whereNotNull('scheduled_at')->count());
+        $conflict=['fixture_key'=>'team:'.$fixtures[0]->id,'scheduled_at'=>'2026-10-30 08:00','venue_id'=>$venue->id,'court'=>'1'];
+        try {$service->preview($event,$options+['preview_moves'=>[$move,$conflict]]);$this->fail('One tie was split across venues.');}
+        catch (\InvalidArgumentException $error) {$this->assertStringContainsString('same venue',$error->getMessage());}
         $this->assertDatabaseCount('published_schedule_assignments',0);
     }
 }

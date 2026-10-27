@@ -457,6 +457,13 @@ final class EventVenueScheduleService
         $blocked = [];
         $tieVenues = [];
         $tieGroups = [];
+        foreach ($nodes as $node) {
+            if (! isset($node['preview_move']) || ! $wholeTieForNode($node) || ! $node['tie_allocation_key']) continue;
+            $move = $node['preview_move']; $key = $node['tie_allocation_key'];
+            $group = $courtGroups[$move['venue_id']][ScheduleAvailability::courtKey($move['court'])] ?? null;
+            if (isset($tieVenues[$key]) && ($tieVenues[$key] !== $move['venue_id'] || $tieGroups[$key] !== $group)) throw new \InvalidArgumentException('Suggested moves in one team tie must use the same venue and court group.');
+            $tieVenues[$key] = $move['venue_id']; $tieGroups[$key] = $group;
+        }
         $plannedTieKeys = collect($pending)->pluck('tie_allocation_key')->filter()->flip();
         $plannedTieNodes = collect($pending)->groupBy('tie_allocation_key');
         $tieDestinations = [];
@@ -615,7 +622,7 @@ final class EventVenueScheduleService
                             $fixtureKey = ($node['fixture_kind'] ?? 'individual').':'.$node['fixture']->id;
                             $dailyError = $dailyLimit->error($fixtureKey, $at->toDateString());
                             // Explicit programme/day choices stay fixed. An open multi-day window may use the next day.
-                            while ($dailyError && ! $programme && ! $dayScope && ! $fullDay && $end
+                            while ($dailyError && ! isset($node['preview_move']) && ! $programme && ! $dayScope && ! $fullDay && $end
                                 && $at->copy()->addDay()->startOfDay()->lt($end)) {
                                 $at = $calendar->nextAvailableForMatch($at->copy()->addDay()->setTimeFrom($start),
                                     $duration + $courtGap, $duration + $playerRest, $venueId, (string) $court, $node['participants'], $node['participant_group']);

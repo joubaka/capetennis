@@ -1149,7 +1149,7 @@ final class EventVenueScheduleController extends Controller
                 ]);
                 $current = $scheduler->preview($event->fresh(), $options);
                 if (! hash_equals($current['revision'], $data['revision'])) throw new \InvalidArgumentException('The preview changed. Generate a new preview before moving this match.');
-                if (! collect($current['matches'])->contains('fixture_key', $data['preview_move']['fixture_key'])) throw new \InvalidArgumentException('Choose an unsaved suggested match in this preview.');
+                if (! collect(array_merge($current['matches'], $current['unscheduled']))->contains('fixture_key', $data['preview_move']['fixture_key'])) throw new \InvalidArgumentException('Choose an unsaved match in this preview.');
                 $options['preview_moves'] = collect($options['preview_moves'] ?? [])->reject(fn ($move) => $move['fixture_key'] === $data['preview_move']['fixture_key'])->push($data['preview_move'])->values()->all();
                 return response()->json($scheduler->preview($event->fresh(), $options));
             }

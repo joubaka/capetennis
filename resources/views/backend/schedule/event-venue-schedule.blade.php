@@ -156,6 +156,12 @@
   .schedule-workspace .court-grid-scroll td, .schedule-workspace .court-grid-scroll th { overflow-wrap:anywhere; white-space:normal !important; }
   .schedule-workspace .court-grid-scroll .badge { white-space:normal; }
   .schedule-workspace #venue-slot-grids .preview-venue { border:0; box-shadow:none; }
+  .schedule-workspace .court-grid-many table, .schedule-workspace .court-grid-many tbody { display:block; }
+  .schedule-workspace .court-grid-many thead { display:none; }
+  .schedule-workspace .court-grid-many tr { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr)); margin-bottom:1rem; }
+  .schedule-workspace .court-grid-many tr > :first-child { grid-column:1/-1; position:static; min-width:0; width:auto; max-width:none; }
+  .schedule-workspace .court-grid-many td { display:block; }
+  .schedule-workspace .court-grid-many td::before { content:attr(data-court-label); display:block; font-weight:600; margin-bottom:.4rem; }
   .schedule-workspace .court-grid-scroll thead th { position:sticky; top:0; z-index:3; background:var(--bs-body-bg); box-shadow:0 1px 0 var(--schedule-border); }
   .schedule-workspace .court-grid-scroll tr > :first-child { position:sticky; left:0; z-index:2; min-width:8.75rem; background:var(--bs-body-bg); box-shadow:1px 0 0 var(--schedule-border); }
   .schedule-workspace .court-grid-scroll thead tr > :first-child { z-index:4; }
@@ -1537,7 +1543,7 @@
     }).join('');
     const truncated = times.size >= 200 ? '<div class="alert alert-warning py-2 mb-0">Only the first 200 time rows are shown. Shorten the scheduling window to inspect it in more detail.</div>' : '';
 
-    return `<details class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap align-items-center gap-2"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span class="venue-age-group-summary">${ageGroupScheduleSummary(rows)}</span><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="court-grid-hint small"><i class="ti ti-arrows-horizontal" aria-hidden="true"></i><span>Drag a match to an Available slot, or select the match and then its slot. Each venue has its own courts.</span></div><div class="court-grid-scroll" tabindex="0" role="region" aria-label="${escapeHtml(venue.name)} court schedule"><table class="table table-bordered align-middle mb-0"><thead><tr><th>Slot starts</th>${courtHeaders}</tr></thead><tbody>${body || '<tr><td colspan="99" class="text-center text-muted py-4">No slots in this scheduling window.</td></tr>'}</tbody></table></div>${truncated}</details>`;
+    return `<details open class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap align-items-center gap-2"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span class="venue-age-group-summary">${ageGroupScheduleSummary(rows)}</span><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="court-grid-hint small"><i class="ti ti-arrows-horizontal" aria-hidden="true"></i><span>Drag a match to an Available slot, or select the match and then its slot. Each venue has its own courts.</span></div><div class="court-grid-scroll ${venue.court_labels.length > 8 ? 'court-grid-many' : ''}" tabindex="0" role="region" aria-label="${escapeHtml(venue.name)} court schedule"><table class="table table-bordered align-middle mb-0"><thead><tr><th>Slot starts</th>${courtHeaders}</tr></thead><tbody>${body || '<tr><td colspan="99" class="text-center text-muted py-4">No slots in this scheduling window.</td></tr>'}</tbody></table></div>${truncated}</details>`;
   }
 
   function venueChangeWarnings(result) {
@@ -1555,8 +1561,23 @@
     }).join('');
   }
 
+  const capturePreviewLayout = () => {
+    const venues = new Map();
+    ['venue-timelines','venue-slot-grids'].forEach(id => document.getElementById(id).querySelectorAll('[data-preview-venue]').forEach(section => venues.set(id+':'+section.dataset.previewVenue, section.open)));
+    const display = document.getElementById('schedule-display');
+    return {venues, x:window.scrollX, y:window.scrollY, displayTop:display?.scrollTop || 0};
+  };
+  const restorePreviewLayout = state => {
+    ['venue-timelines','venue-slot-grids'].forEach(id => document.getElementById(id).querySelectorAll('[data-preview-venue]').forEach(section => {
+      const key = id+':'+section.dataset.previewVenue;
+      section.open = state.venues.has(key) ? state.venues.get(key) : true;
+    }));
+    const restoreScroll = () => { const display=document.getElementById('schedule-display');if(display)display.scrollTop=state.displayTop;window.scrollTo({left:state.x,top:state.y,behavior:'instant'}); };
+    if(window.requestAnimationFrame)window.requestAnimationFrame(restoreScroll);else restoreScroll();
+  };
   function render(result) {
     if (result.previewGeneration !== undefined && result.previewGeneration !== previewGeneration) return;
+    const previousLayout = capturePreviewLayout();
     lastScheduleResult = result;
     revision = result.revision;
     replanVenueIds = (result.input.replan_venue_ids || []).map(Number);
@@ -1571,7 +1592,7 @@
     document.getElementById('preview-view-controls').classList.add('d-flex');
     document.getElementById('venue-timelines').innerHTML = result.venues.map(venue => {
       const rows = venueRows(result, venue.id);
-      return `<details class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap align-items-center gap-2"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span class="venue-age-group-summary">${ageGroupScheduleSummary(rows)}</span><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Time</th><th>Court</th><th>Draw / category</th><th>Round</th><th>Match</th><th>Players / qualification path</th><th>State</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td class="text-nowrap fw-semibold">${escapeHtml(row.scheduled_at.slice(0,16))}</td><td>${escapeHtml(row.court)}</td><td>${escapeHtml(row.draw_name)}</td><td>${scheduleRoundLabel(row)}</td><td class="text-nowrap fw-semibold">Match ${escapeHtml(row.match || '—')}</td><td>${participantNamesHtml(row)}${lineupDetails(row)}</td><td>${row.fixed ? '<span class="badge bg-label-success">Saved</span>' : '<span class="badge bg-label-primary">Suggested · not saved</span>'}</td><td>${row.fixed && row.editable ? `<button type="button" class="btn btn-sm btn-outline-primary me-1" data-reschedule-fixture="${fixtureKey(row)}">Reschedule</button>` : ''}${row.fixed && row.editable && unapplyUrl ? `<button type="button" class="btn btn-sm btn-outline-danger" data-unapply-fixture="${fixtureKey(row)}" data-match-label="${escapeHtml(row.draw_name)} ${escapeHtml(matchLabel(row))}">Remove</button>` : '<span class="text-muted">—</span>'}</td></tr>`).join('') || '<tr><td colspan="8" class="text-center text-muted py-4">No fixtures allocated.</td></tr>'}</tbody></table></div></details>`;
+      return `<details open class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap align-items-center gap-2"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span class="venue-age-group-summary">${ageGroupScheduleSummary(rows)}</span><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>Time</th><th>Court</th><th>Draw / category</th><th>Round</th><th>Match</th><th>Players / qualification path</th><th>State</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td class="text-nowrap fw-semibold">${escapeHtml(row.scheduled_at.slice(0,16))}</td><td>${escapeHtml(row.court)}</td><td>${escapeHtml(row.draw_name)}</td><td>${scheduleRoundLabel(row)}</td><td class="text-nowrap fw-semibold">Match ${escapeHtml(row.match || '—')}</td><td>${participantNamesHtml(row)}${lineupDetails(row)}</td><td>${row.fixed ? '<span class="badge bg-label-success">Saved</span>' : '<span class="badge bg-label-primary">Suggested · not saved</span>'}</td><td>${row.fixed && row.editable ? `<button type="button" class="btn btn-sm btn-outline-primary me-1" data-reschedule-fixture="${fixtureKey(row)}">Reschedule</button>` : ''}${row.fixed && row.editable && unapplyUrl ? `<button type="button" class="btn btn-sm btn-outline-danger" data-unapply-fixture="${fixtureKey(row)}" data-match-label="${escapeHtml(row.draw_name)} ${escapeHtml(matchLabel(row))}">Remove</button>` : '<span class="text-muted">—</span>'}</td></tr>`).join('') || '<tr><td colspan="8" class="text-center text-muted py-4">No fixtures allocated.</td></tr>'}</tbody></table></div></details>`;
     }).join('');
     document.getElementById('venue-slot-grids').innerHTML = result.venues.map(venue => slotGrid(result, venue)).join('');
     const appliedVenueIds = [...new Set([
@@ -1599,10 +1620,10 @@
     const previewTone = result.unscheduled.length ? 'danger' : 'success';
     setStatus(document.getElementById('schedule-status'), previewMessage, previewTone);
     setStatus(document.getElementById('review-status'), previewMessage, previewTone);
-    if (manualMode) {
+    if (manualMode && !previousLayout.venues.size) {
       document.querySelector('[data-preview-view="grid"]')?.click();
-      document.querySelector('#venue-slot-grids [data-preview-venue]')?.setAttribute('open', 'open');
     }
+    restorePreviewLayout(previousLayout);
   }
 
   const fixedBookingPreviewPayload = (scheduledAt, movedFixtureKey = null) => {
@@ -1636,7 +1657,7 @@
   const placeMatchManually = async (fixtureId, slot) => {
     if (!fixtureId || !slot) return;
     const status = document.getElementById('schedule-status');
-    const suggested = lastScheduleResult?.matches?.find(row => fixtureKey(row) === fixtureId);
+    const suggested = [...(lastScheduleResult?.matches || []), ...(lastScheduleResult?.unscheduled || [])].find(row => fixtureKey(row) === fixtureId);
     const pendingMessage = suggested ? 'Checking this move in the unsaved preview…' : 'Checking and saving the manual match assignment…';
     setStatus(status, pendingMessage);
     const clearPendingToast = notify(pendingMessage, 'info', true);
@@ -1672,7 +1693,6 @@
         document.getElementById('preview-warnings').insertAdjacentHTML('afterbegin', saved.warnings.map(message => `<div class="alert alert-warning py-2">${escapeHtml(message)}</div>`).join(''));
       }
       if (!markManualBookingView(fixtureId, slot.dataset.time)) setStatus(status, saved.message + ' It is saved; the remaining unsaved suggestions were adapted around it.', 'success');
-      notify(saved.message+' Saved privately; publish separately to update public times.', 'success');
     } catch (error) { if (error.stalePreview) return;
       setStatus(status, error.message, 'danger');
       notify(error.message, 'danger');
@@ -1783,7 +1803,7 @@
       const current = match.scheduled_at ? `Suggested · not saved: ${match.scheduled_at.slice(0, 16)} · Court ${match.court}` : 'Unscheduled';
       const searchable = `${match.draw_name} match ${match.match || ''} ${players}`.toLowerCase();
       const sequence = match.wave ? `Wave ${match.wave} · Round ${match.round}` : `Round ${match.round}`;
-      return `<button type="button" class="list-group-item list-group-item-action manual-match-picker-option" data-picker-fixture="${fixtureKey(match)}" data-search="${escapeHtml(searchable)}"><span class="fw-semibold d-block">${escapeHtml(match.draw_name)} · ${escapeHtml(matchLabel(match))}</span><span class="d-block">${escapeHtml(players)}</span><span class="match-picker-meta d-block">${sequence} · ${escapeHtml(current)}</span></button>`;
+      return `<button type="button" class="list-group-item list-group-item-action manual-match-picker-option" data-picker-fixture="${fixtureKey(match)}" data-search="${escapeHtml(searchable)}"><span class="fw-semibold d-block">${escapeHtml(match.draw_name)} · ${escapeHtml(matchLabel(match))}</span><span class="d-block">${escapeHtml(players)}</span><span class="match-picker-meta d-block">${sequence} · ${escapeHtml(current)} · Checked when selected</span></button>`;
     }).join('');
   };
   const openMatchPicker = async slot => {
@@ -1798,23 +1818,8 @@
     matchPickerModal.addEventListener('shown.bs.modal', () => matchPickerSearch.focus(), {once:true});
     const candidates = pickerCandidates().filter(match => canUseCourt(match, slot.dataset.venue, slot.dataset.court));
     try {
-      const eligible = new Set();
-      for (const kind of ['individual', 'team']) {
-        const matches = candidates.filter(match => (match.fixture_kind || 'individual') === kind);
-        for (let offset = 0; offset < matches.length; offset += 200) {
-          const options = await post(manualOptionsUrl, {
-            fixture_kind:kind, fixture_ids:matches.slice(offset, offset + 200).map(match => Number(match.fixture_id)), scheduled_at:slot.dataset.time,
-            venue_id:Number(slot.dataset.venue), court:slot.dataset.court,
-            duration:Number(document.getElementById('schedule-duration').value),
-            court_gap:Number(document.getElementById('schedule-gap').value),
-            player_rest:Number(document.getElementById('schedule-rest').value),
-            limit_daily_matches:document.getElementById('schedule-daily-limit').checked,
-        round_progression:document.getElementById('round-progression').value,
-          });
-          (options.eligible_fixture_ids || []).forEach(id => eligible.add(`${kind}:${id}`));
-        }
-      }
-      renderPickerCandidates(candidates.filter(match => eligible.has(fixtureKey(match))));
+      matchPickerEmpty.textContent = 'No selected unsaved match is allocated to this court. Choose another court or change the selected rounds.';
+      renderPickerCandidates(candidates);
       filterMatchPicker();
     } catch (error) { if (error.stalePreview) return;
       matchPickerList.innerHTML = '';
@@ -2059,7 +2064,7 @@
     setStatus(document.getElementById('schedule-status'), 'Building the combined preview…');
     startScheduleActivity(previewActivityStages, 'Progress is estimated while the server builds and validates the complete schedule.');
     let completed = false;
-    try { render(await post(previewUrl, payload)); completed = true; finishScheduleActivity('Combined preview ready.'); }
+    try { render(await post(previewUrl, payload)); notify('Preview ready. Save the schedule to keep these times.', 'success'); completed = true; finishScheduleActivity('Combined preview ready.'); }
     catch (error) { if (error.stalePreview) return; setStatus(document.getElementById('schedule-status'), error.message, 'danger'); }
     finally { if (!completed) stopScheduleActivity(); button.innerHTML = originalButtonHtml; button.disabled = false; }
   });
@@ -3018,6 +3023,7 @@
     document.getElementById('programme-daily-limit').checked = Boolean(config.limit_daily_matches);
   };
   dayBatchState = CapeDayBatch.mount({
+    notify,
     draws:@json($draws->values()), venues:@json($venues->values()), dates:@json($programmeDates),
     initialDay:@json($planningDate), initialDrawIds:@json(request()->has('draw_ids') ? $draws->filter(fn($draw) => $draw['selected'] && !$draw['locked'])->pluck('id')->values() : []),
     savedByDay:@json($scheduleDraft['day_batch_settings'] ?? []),
@@ -3031,6 +3037,7 @@
       document.getElementById('advanced-scheduling').hidden = false;
       document.getElementById('advanced-scheduling').open = true;
       showWorkflowStep(3); render(result);
+      notify('Preview ready. Save the schedule to keep these times.', 'success');
       document.getElementById('apply-preview').innerHTML = 'Save this day’s selected matches';
       document.getElementById('schedule-review-step').scrollIntoView({behavior:'smooth',block:'start'});
     },
