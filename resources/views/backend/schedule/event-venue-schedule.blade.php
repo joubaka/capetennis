@@ -231,7 +231,7 @@
       <div class="text-uppercase text-primary fw-semibold small">Event schedule workspace</div>
       <h2 class="h4 mb-1">Plan the schedule</h2>
       @if(!$teamPlanning)
-        <p class="text-muted mb-0">Select individual draws, choose gender, then set up days, venues and match times.</p>
+        <p class="text-muted mb-0">Select individual draws, then set up days, venues and match times. Each draw keeps its own gender.</p>
       @elseif(!$planningDate && $draws->where('programme_supported', true)->whereNotNull('programme_age')->isNotEmpty())
         <p class="text-muted mb-0">Choose an age group, arrange its rounds by day, then preview and save the complete schedule.</p>
         <p class="text-muted small mt-2 mb-0">Your saved days, venue bands and courts load for the selected age group. Review and publish the saved schedule when ready.</p>
@@ -380,12 +380,8 @@
           </label>
         @endforeach
       </div>
-      <label class="form-label" for="individual-schedule-gender">2. Gender</label>
-      <select id="individual-schedule-gender" class="form-select mb-3" disabled>
-        <option value="">Choose gender</option><option value="all">All selected draws</option><option value="boys">Boys</option><option value="girls">Girls</option>
-      </select>
-      <button type="button" id="individual-schedule-configure" class="btn btn-primary" disabled>3. Set up schedule</button>
-      <p id="individual-selection-status" class="small mt-2" role="status" aria-live="polite">Select draws, then choose gender.</p>
+      <button type="button" id="individual-schedule-configure" class="btn btn-primary" disabled>2. Set up schedule</button>
+      <p id="individual-selection-status" class="small mt-2" role="status" aria-live="polite">Select the draws to schedule. Each draw keeps its own gender.</p>
     </div>
   </section>
   @endif
@@ -396,7 +392,7 @@
       <label class="form-label" for="programme-age" @if(!$teamPlanning) hidden @endif>Age group</label>
       <select id="programme-age" class="form-select mb-3" @if(!$teamPlanning) hidden @endif><option value="">Choose age group</option>@foreach($draws->where('programme_supported', true)->pluck('programme_age')->filter()->unique()->sort() as $age)<option value="{{ $age }}">{{ 'Under '.(str_starts_with((string) $age, 'monrad:') ? substr($age, 7) : $age) }}</option>@endforeach</select>
       <p class="small">{{ $teamPlanning ? 'Choose an age group to load its saved days and venue bands.' : 'Your selected draws define this programme.' }} Move each round to its playing day, assign venues and courts, then preview and save. Review and publication remain separate.</p>
-      <div id="programme-save-state" class="alert alert-info py-2" role="status" aria-live="polite">{{ $teamPlanning ? "Choose an age group." : "Select draws and gender to set up the schedule." }}</div>
+      <div id="programme-save-state" class="alert alert-info py-2" role="status" aria-live="polite">{{ $teamPlanning ? "Choose an age group." : "Select draws to set up the schedule." }}</div>
       <div class="row g-3 mb-3">@foreach($programmeDates as $day => $programmeDate)<div class="{{ $programmeDayCount === 1 ? 'col-12' : ($programmeDayCount === 2 ? 'col-md-6' : 'col-md-4') }}"><strong data-programme-day-label="{{ $day + 1 }}">Day {{ $day + 1 }}</strong><label class="form-label d-block mt-2" for="programme-start-{{ $day }}">Starts</label><input id="programme-start-{{ $day }}" class="form-control programme-time" type="datetime-local" value="{{ $programmeDate.'T08:00' }}" min="{{ $programmeDate }}T00:00" max="{{ $programmeDate }}T23:59"><label class="form-label d-block mt-2" for="programme-end-{{ $day }}">Finishes</label><input id="programme-end-{{ $day }}" class="form-control programme-time" type="datetime-local" value="{{ $programmeDate.'T18:00' }}" min="{{ $programmeDate }}T00:00" max="{{ $programmeDate }}T23:59"><label class="form-label d-block mt-2" for="programme-gender-{{ $day }}">Order within each round</label><select id="programme-gender-{{ $day }}" class="form-select programme-gender-day"><option value="boys_then_girls" @selected($scheduleDraft['gender_waves'] === 'boys_then_girls')>Boys then girls</option><option value="girls_then_boys" @selected($scheduleDraft['gender_waves'] === 'girls_then_boys')>Girls then boys</option><option value="combined" @selected($scheduleDraft['gender_waves'] === 'combined')>Together</option></select><a class="btn btn-sm btn-outline-primary mt-2" data-programme-review-day="{{ $day }}" href="{{ route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $programmeDate]) }}">Review &amp; publish this day</a></div>@endforeach</div>
       <p class="small mb-2">Drag the handle to put rounds in order or move them between days. {{ $teamPlanning ? 'Boys and girls in the same round move together.' : 'Each selected draw has its own round cards.' }} Each drop refreshes the preview using AJAX; match times are saved only when you choose Save. Use the Up/Down buttons or day selector with a keyboard.</p>
       <div id="programme-stages" class="row g-3 mb-3" aria-label="Drag rounds into daily playing order"></div>
@@ -2874,28 +2870,26 @@
   const individualSelection = document.getElementById('individual-schedule-selection');
   if (individualSelection) {
     const individualDraws = @json($draws->where('is_team', false)->values());
-    const gender = document.getElementById('individual-schedule-gender');
     const configure = document.getElementById('individual-schedule-configure');
     const wizard = document.getElementById('programme-wizard');
     const advanced = document.getElementById('advanced-scheduling');
     const selectedIndividualDraws = () => {
       const ids = values('.individual-draw-choice');
-      return individualDraws.filter(draw => ids.includes(Number(draw.id)) && !draw.locked && (gender.value === 'all' || draw.schedule_gender === gender.value));
+      return individualDraws.filter(draw => ids.includes(Number(draw.id)) && !draw.locked);
     };
     const invalidateIndividualSelection = () => {
-      gender.disabled = !values('.individual-draw-choice').length;
-      configure.disabled = gender.disabled || !gender.value || !selectedIndividualDraws().length;
+      configure.disabled = !selectedIndividualDraws().length;
       wizard.hidden = true; advanced.hidden = true;
       programmePayload = null; ++programmeRefreshVersion; invalidatePreview();
       const previewButton = document.getElementById("programme-create");
       previewButton.disabled = false; previewButton.innerHTML = programmeCreateLabel;
       document.querySelectorAll('.draw-choice').forEach(input => { input.checked = false; });
-      document.getElementById('individual-selection-status').textContent = configure.disabled ? 'Select draws, then choose a matching gender.' : `${selectedIndividualDraws().length} draws selected. Continue to schedule setup.`;
+      document.getElementById('individual-selection-status').textContent = configure.disabled ? 'Select the draws to schedule.' : `${selectedIndividualDraws().length} draws selected. Continue to schedule setup.`;
     };
     individualSelection.addEventListener('change', invalidateIndividualSelection);
     configure.addEventListener('click', () => {
       const group = selectedIndividualDraws();
-      if (!group.length || !gender.value) return;
+      if (!group.length) return;
       const ids = group.map(draw => Number(draw.id));
       document.querySelectorAll('.draw-choice').forEach(input => { input.checked = !input.disabled && ids.includes(Number(input.value)); });
       const useProgramme = !@json((bool) $planningDate) && programmeDayCount > 0 && group.every(draw => draw.programme_supported);

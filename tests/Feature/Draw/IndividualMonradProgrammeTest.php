@@ -115,7 +115,8 @@ class IndividualMonradProgrammeTest extends TestCase
         DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
         $url = route('backend.event-venue-schedule.index', $event);
         $this->actingAs($admin);
-        $response = $this->get($url)->assertOk()->assertSee('1. Select individual draws')->assertSee('2. Gender')->assertSee('3. Set up schedule')->assertSee('programme_rounds', false);
+        $response = $this->get($url)->assertOk()->assertSee('1. Select individual draws')->assertSee('2. Set up schedule')
+            ->assertDontSee('id="individual-schedule-gender"', false)->assertSee('programme_rounds', false);
         if (getenv('MONRAD_PROGRAMME_SNAPSHOT')) {
             file_put_contents(getenv('MONRAD_PROGRAMME_SNAPSHOT'), $response->getContent());
         }
