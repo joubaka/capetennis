@@ -10,7 +10,7 @@ final class ScheduleProgramme
 {
     public function supports(\App\Models\Draw $draw): bool
     {
-        return $draw->isTeamDraw() || ($draw->usesFlexibleMonrad() && in_array($draw->settings?->workflow, ['monrad', 'custom_monrad'], true));
+        return $draw->isTeamDraw() || ($draw->usesFlexibleMonrad() && in_array($draw->settings?->workflow, ['monrad', 'custom_monrad', 'feed_in_monrad'], true));
     }
 
     public function key(\App\Models\Draw $draw): ?string

@@ -2,6 +2,7 @@
   @unless($config['readOnly'] ?? false)
   <div class="fm-intro"><div><strong id="fm-phase">Players and starting positions</strong><p>Drag a player into a box, or click a box to choose a player. Drag one placed player onto another to swap their positions.
     {{ ($config['workflow'] ?? '') === 'playoffs' ? 'Winners advance; losers are eliminated.' : 'Winners advance; losers continue for finishing positions.' }}
+    @if(($config['workflow'] ?? '') === 'feed_in_monrad') Earlier-round losers cross into the feed-in draw against later-round losers. Semifinal losers play for third; the feed-in winner takes fifth. @endif
   </p></div><span id="fm-status" class="fm-badge">Draft</span></div>
   @endunless
   <div id="fm-message" role="status" aria-live="polite"></div>
@@ -50,8 +51,8 @@
 <dialog id="fm-score-dialog" aria-labelledby="fm-score-title">
   <form method="dialog"><button class="fm-close" aria-label="Close score entry">×</button></form>
   <h2 id="fm-score-title">Enter result</h2><p id="fm-score-players"></p>
-  <label for="fm-sets">Set scores, in the player order above</label><input id="fm-sets" placeholder="6-4, 6-3" autocomplete="off">
-  <p class="fm-help" id="fm-score-format">Enter completed sets, separated by commas: 6–0 to 6–4, 7–5 or 7–6.</p>
+  <p class="fm-help" id="fm-score-format">Enter completed sets.</p>
+  @include('shared.scoring.set-grid', ['scoreGridPrefix' => 'fm-score'])
   <p id="fm-score-error" role="alert"></p>
   <label id="fm-reset-label" hidden><input type="checkbox" id="fm-reset"> Reset the affected later results listed above</label>
   <div class="fm-dialog-actions"><button type="button" id="fm-score-save" class="fm-primary">Save result</button><button type="button" id="fm-score-delete">Delete result</button></div>

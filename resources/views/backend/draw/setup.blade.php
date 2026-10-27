@@ -16,7 +16,7 @@
       <p class="mb-2"><strong>Most tournaments:</strong> choose Round robin → playoffs so everyone plays a group stage before the knockout rounds.</p>
       <p class="mb-2"><strong>Small field or league:</strong> choose Round robin only when final standings should decide the result.</p>
       <p class="mb-2"><strong>Fast knockout:</strong> choose Playoffs only; a player may have only one match.</p>
-      <p class="mb-0"><strong>Placement matches:</strong> choose Monrad. Custom Monrad is an advanced option for placing players into different starting rounds.</p>
+      <p class="mb-0"><strong>Placement matches:</strong> choose Monrad. Feed-in Monrad lets earlier-round losers meet later-round losers. Custom Monrad is an advanced option for placing players into different starting rounds.</p>
     </div>
   </details>
   @if($errors->any())<div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>@endif
@@ -32,12 +32,13 @@
     <div class="alert alert-warning" role="alert">
       <strong>Changing format resets this draw.</strong>
       It will permanently remove {{ $resetSummary['fixtures'] }} generated match{{ $resetSummary['fixtures'] === 1 ? '' : 'es' }},
-      {{ $resetSummary['scheduled_times'] }} scheduled time{{ $resetSummary['scheduled_times'] === 1 ? '' : 's' }}, and current group or starting-position placements.
+      {{ $resetSummary['scheduled_times'] }} scheduled time{{ $resetSummary['scheduled_times'] === 1 ? '' : 's' }} and current group placements.
+      Starting positions and byes are kept when switching between Monrad and Feed-in Monrad; other format changes reset them.
       The draw, venue allocation and {{ $resetSummary['roster_entries'] }} roster entr{{ $resetSummary['roster_entries'] === 1 ? 'y' : 'ies' }} remain available for rebuilding.
     </div>
   @endif
   <form method="POST" action="{{ route('draw.setup.store', $draw) }}" id="draw-format-form"
-    data-current-workflow="{{ $draw->settings?->workflow }}" data-has-format-state="{{ $resetSummary['has_format_state'] ? '1' : '0' }}">
+    data-current-workflow="{{ $draw->settings?->workflow }}" data-current-challenges="{{ ($draw->settings?->playoff_config['challenge_playoffs'] ?? false) ? '1' : '0' }}" data-current-pairs='@json($selectedChallengePairs)' data-has-format-state="{{ $resetSummary['has_format_state'] ? '1' : '0' }}">
     @csrf
     <fieldset @disabled($draw->locked || $draw->published || $draw->oop_published || $resetSummary['results'] > 0)>
       <legend class="visually-hidden">Draw format</legend>
@@ -59,6 +60,7 @@
                   @elseif($value === 'round_robin_playoffs') Best for a full tournament with group play and a championship finish.
                   @elseif($value === 'playoffs') Fastest format, but eliminated players do not continue.
                   @elseif($value === 'monrad') Best when finishing positions and additional matches matter.
+                  @elseif($value === 'feed_in_monrad') Use crossed feed-in paths and placement matches, as in the Interpro trials draws.
                   @else Use when seeded players must enter in different rounds.
                   @endif
                 </small>
@@ -68,22 +70,62 @@
         @endforeach
       </div>
       @if($resetSummary['has_format_state'])
+        <p class="text-muted">Switching between Monrad and Feed-in Monrad preserves the bracket size, player starting positions and explicit byes. Fixtures and scheduled times still reset.</p>
         <label class="form-check border rounded p-3 mb-3" for="confirm-format-reset">
           <input class="form-check-input ms-0 me-2" type="checkbox" name="reset_existing" value="1" id="confirm-format-reset">
           <span class="form-check-label"><strong>I understand this removes the current fixtures and scheduled times.</strong></span>
         </label>
       @endif
+      <label class="form-check border rounded p-3 mb-3">
+        <input type="hidden" name="challenge_playoffs" value="0">
+        <input type="checkbox" class="form-check-input ms-0 me-2" name="challenge_playoffs" value="1" id="challenge-playoffs"
+          @checked(old('challenge_playoffs', $draw->settings?->playoff_config['challenge_playoffs'] ?? false))>
+        <span class="form-check-label"><strong>Optional challenge play-offs (Feed-in Monrad only)</strong><br>
+          After every base match is complete, base positions 2 v 3, 4 v 5, 6 v 7 and so on may play once more.
+          Players who already played each other in this draw skip the challenge and keep their base positions.
+          The winner takes the higher position; first and the last unpaired position stay unchanged.</span>
+      </label>
+      <div id="challenge-pair-options" class="border rounded p-3 mb-3" hidden>
+        <input type="hidden" name="challenge_pairs_submitted" value="1">
+        <p class="fw-semibold mb-2">Choose the base-position pairs that may challenge</p>
+        <div class="d-flex flex-wrap gap-3">
+          @for($upper = 2; $upper < $challengePairLimit; $upper += 2)
+            <label class="form-check mb-1 border rounded px-3 py-2 d-flex align-items-center" style="min-height:44px;cursor:pointer"><input type="checkbox" class="form-check-input ms-0 me-2" name="challenge_pairs[]" value="{{ $upper }}"
+              @checked(in_array($upper, array_map('intval', (array) old('challenge_pairs', old('challenge_pairs_submitted') ? [] : $selectedChallengePairs)), true))>
+              <span class="form-check-label">{{ $upper }} v {{ $upper + 1 }}</span></label>
+          @endfor
+        </div>
+        <p class="form-text mb-0">Select at least one pair. Ranks refer to the completed base draw and remain fixed after challenge upsets. Only pairs present in the final field can play.</p>
+      </div>
       <button class="btn btn-primary" type="submit">{{ $resetSummary['has_format_state'] ? 'Change format and reset draw' : 'Continue to players →' }}</button>
     </fieldset>
   </form>
   <p class="text-muted small mt-3">Recorded results are always protected. A confirmed reset keeps the draw and eligible roster, but removes generated fixtures and timetable entries.</p>
 </div>
+<script>
+(() => {
+  const form = document.getElementById('draw-format-form');
+  const option = document.getElementById('challenge-playoffs');
+  const pairs = document.getElementById('challenge-pair-options');
+  const refresh = () => {
+    option.disabled = form.querySelector('[name="workflow"]:checked')?.value !== 'feed_in_monrad';
+    pairs.hidden = option.disabled || !option.checked;
+    pairs.querySelectorAll('input').forEach(input => { input.disabled = pairs.hidden; });
+  };
+  form.querySelectorAll('[name="workflow"]').forEach(input => input.addEventListener('change', refresh));
+  option.addEventListener('change', refresh);
+  refresh();
+})();
+</script>
 @if($resetSummary['has_format_state'])
 <script>
 document.getElementById('draw-format-form')?.addEventListener('submit', event => {
   const form = event.currentTarget;
   const selected = form.querySelector('input[name="workflow"]:checked')?.value;
-  if (!selected || selected === form.dataset.currentWorkflow) return;
+  const challenges = selected === 'feed_in_monrad' && form.querySelector('#challenge-playoffs').checked;
+  const pairs = challenges ? [...form.querySelectorAll('[name="challenge_pairs[]"]:checked')].map(input => Number(input.value)).sort((a, b) => a - b) : [];
+  const previousPairs = JSON.parse(form.dataset.currentPairs || '[]').map(Number).sort((a, b) => a - b);
+  if (!selected || (selected === form.dataset.currentWorkflow && challenges === (form.dataset.currentChallenges === '1') && JSON.stringify(pairs) === JSON.stringify(previousPairs))) return;
   const confirmation = document.getElementById('confirm-format-reset');
   if (!confirmation?.checked) {
     event.preventDefault();
@@ -93,7 +135,9 @@ document.getElementById('draw-format-form')?.addEventListener('submit', event =>
     return;
   }
   confirmation.setCustomValidity('');
-  if (!window.confirm('Change draw format? This permanently removes the current fixtures, scheduled times, and group or starting-position placements. Recorded results are protected.')) {
+  const preservesStarts = ['monrad', 'feed_in_monrad'].includes(form.dataset.currentWorkflow) && ['monrad', 'feed_in_monrad'].includes(selected);
+  const placementWarning = preservesStarts ? ' Starting positions and byes are kept.' : ' Group and starting-position placements are removed.';
+  if (!window.confirm('Change draw format or challenge option? This permanently removes the current fixtures and scheduled times.' + placementWarning + ' Recorded results are protected.')) {
     event.preventDefault();
   }
 });

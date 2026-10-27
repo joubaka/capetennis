@@ -72,8 +72,8 @@ final class FlexibleMonradScheduler
         do {
             $count = count($affected);
             foreach ($matches as $id => $match) {
-                foreach ($match['sources'] as $source) {
-                    if (isset($source['match'], $affected[$source['match']])) $affected[$id] = true;
+                foreach (FlexibleMonradCompiler::dependencies($match) as $dependency) {
+                    if (isset($affected[$dependency])) $affected[$id] = true;
                 }
             }
         } while (count($affected) !== $count);
@@ -92,10 +92,10 @@ final class FlexibleMonradScheduler
         if ($matches[$key]['automatic']) return 'Walkovers and closed matches do not need court time.';
         $ancestors = [];
         $visit = function ($id) use (&$visit, &$ancestors, $matches) {
-            foreach ($matches[$id]['sources'] as $source) {
-                if (! isset($source['match']) || isset($ancestors[$source['match']])) continue;
-                $ancestors[$source['match']] = true;
-                $visit($source['match']);
+            foreach (FlexibleMonradCompiler::dependencies($matches[$id]) as $dependency) {
+                if (isset($ancestors[$dependency])) continue;
+                $ancestors[$dependency] = true;
+                $visit($dependency);
             }
         };
         $visit($key);
@@ -103,8 +103,8 @@ final class FlexibleMonradScheduler
         do {
             $count = count($descendants);
             foreach ($matches as $id => $match) {
-                foreach ($match['sources'] as $source) {
-                    if (isset($source['match'], $descendants[$source['match']])) $descendants[$id] = true;
+                foreach (FlexibleMonradCompiler::dependencies($match) as $dependency) {
+                    if (isset($descendants[$dependency])) $descendants[$id] = true;
                 }
             }
         } while (count($descendants) !== $count);
@@ -181,10 +181,9 @@ final class FlexibleMonradScheduler
                 $best = null;
                 foreach ($pending as $key => $match) {
                     $release = $start->copy();
-                    foreach ($match['sources'] as $source) {
-                        if (! isset($source['match'])) continue;
-                        if (! isset($finished[$source['match']])) continue 2;
-                        $release = $release->max($finished[$source['match']])->copy();
+                    foreach (FlexibleMonradCompiler::dependencies($match) as $dependency) {
+                        if (! isset($finished[$dependency])) continue 2;
+                        $release = $release->max($finished[$dependency])->copy();
                     }
                     foreach ($timeline as $venueId => $courts) {
                         foreach ($courts as $court => $freeAt) {

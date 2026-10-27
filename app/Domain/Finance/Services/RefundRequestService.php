@@ -148,6 +148,8 @@ class RefundRequestService
                     ->lockForUpdate()
                     ->findOrFail($registration->id);
 
+                $locked->lockCategoryFundingOrder();
+
                 if (($attributes['refund_status'] ?? null) === 'pending'
                     && in_array($locked->refund_status, ['pending', 'completed'], true)) {
                     throw new RefundAlreadyProcessedException('Refund already requested or completed.');
@@ -155,13 +157,20 @@ class RefundRequestService
 
                 if (($attributes['refund_status'] ?? null) === 'pending') {
                     $this->assertRegistrationRefundEligible($locked, $actor);
+                    if ($locked->hasCategoryAdjustedFunding()) {
+                        $remaining = round($locked->maxRefundableAmount(), 2);
+                        if ($remaining <= 0 || round((float) ($attributes['refund_gross'] ?? 0), 2) !== $remaining
+                            || round((float) ($attributes['refund_net'] ?? 0) + (float) ($attributes['refund_fee'] ?? 0), 2) !== $remaining) {
+                            throw ValidationException::withMessages(['refund' => 'The remaining category funding changed. Review this refund again.']);
+                        }
+                    }
                 }
 
                 $locked->fill($attributes);
                 $locked->save();
 
                 return $locked;
-            });
+            }, 3);
         });
     }
 
@@ -242,7 +251,7 @@ class RefundRequestService
         if (! $registration->is_paid) {
             throw ValidationException::withMessages(['refund' => 'Only a paid registration can be refunded.']);
         }
-        if ($registration->isAdminEntry()) {
+        if ($registration->isAdminEntry() && ! $registration->hasCategoryAdjustedFunding()) {
             throw ValidationException::withMessages([
                 'refund' => 'Admin-created entries have no reconciled payment to refund.',
             ]);

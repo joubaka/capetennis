@@ -1103,6 +1103,14 @@ final class MastersInvitationService
         DB::transaction(function () use ($order) {
             $invitation = MastersInvitation::query()->lockForUpdate()->where('order_id', $order->id)->first();
             if (!$invitation || $invitation->status === MastersInvitation::PAID_CONFIRMED) return;
+            if ($invitation->status === MastersInvitation::WITHDRAWN) {
+                $item = $order->items()->where('registration_id', $invitation->registration_id)
+                    ->where('player_id', $invitation->player_id)->first();
+                if ($item && app(\App\Domain\Entries\Services\CategoryAdjustmentInvitationService::class)
+                    ->originalPaidItemMatchesCurrentInvitation($order, $item, $invitation)) {
+                    return;
+                }
+            }
             if ($invitation->status !== MastersInvitation::ACCEPTED_PENDING_PAYMENT) {
                 throw ValidationException::withMessages(['payment' => 'Masters invitation is not awaiting payment.']);
             }

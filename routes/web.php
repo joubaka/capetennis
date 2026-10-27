@@ -343,6 +343,13 @@ Route::post(
 )->middleware('auth')
   ->name('registrations.moveCategory');
 
+Route::middleware('auth')->controller(\App\Http\Controllers\Frontend\RegistrationCategoryMoveController::class)->group(function () {
+  Route::post('/registrations/{entry}/category-quote', 'quote')->name('registrations.categoryQuote');
+  Route::get('/category-changes/{adjustment}', 'show')->name('registrations.categoryAdjustment.show');
+  Route::post('/category-changes/{adjustment}/pay', 'pay')->name('registrations.categoryAdjustment.pay');
+  Route::post('/category-changes/{adjustment}/cancel', 'cancel')->name('registrations.categoryAdjustment.cancel');
+});
+
 // routes/web.php (admin section)
 
 

@@ -490,6 +490,12 @@ class InvitationService
                 ->lockForUpdate()
                 ->get();
             $item = $items->count() === 1 ? $items->first() : null;
+            if ($item && app(\App\Domain\Entries\Services\CategoryAdjustmentInvitationService::class)
+                ->originalPaidItemMatchesCurrentInvitation($lockedOrder, $item, $invitation)) {
+                // The original receipt is immutable; its paid entry has already
+                // moved through a separately settled category adjustment.
+                return;
+            }
             $entry = CategoryEventRegistration::query()
                 ->where('registration_id', $invitation->registration_id)
                 ->where('category_event_id', $invitation->category_event_id)

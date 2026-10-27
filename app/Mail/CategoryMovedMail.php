@@ -9,6 +9,7 @@ use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Queue\Middleware\RateLimited;
 
 class CategoryMovedMail extends Mailable implements ShouldQueue
 {
@@ -74,5 +75,10 @@ class CategoryMovedMail extends Mailable implements ShouldQueue
     public function attachments(): array
     {
         return [];
+    }
+
+    public function middleware(): array
+    {
+        return [new RateLimited('outbound-mail')];
     }
 }

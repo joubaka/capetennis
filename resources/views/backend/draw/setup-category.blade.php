@@ -13,6 +13,8 @@
   <form method="POST" action="{{ route('draw.setup.store', $draw) }}">
     @csrf
     <input type="hidden" name="workflow" value="{{ $workflow }}">
+    <input type="hidden" name="challenge_playoffs" value="{{ ($challengePlayoffs ?? false) ? '1' : '0' }}">
+    @foreach(($challengePairs ?? []) as $upper)<input type="hidden" name="challenge_pairs[]" value="{{ $upper }}">@endforeach
     <label for="setup-category" class="form-label">Player category</label>
     <select id="setup-category" name="category_event_id" class="form-select mb-3" required>
       <option value="">Choose a category</option>

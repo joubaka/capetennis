@@ -672,6 +672,7 @@
           @endforeach
         </select>
 
+        <p class="small text-muted mt-2">Paid category changes are reviewed before confirmation. Wallet credit to the original payer is the default for a decrease. Increases must be paid by the registering account through PayFast.</p>
       </div>
 
       <div class="modal-footer">
@@ -1357,50 +1358,31 @@ if (moveSelect) {
 ===================== */
 const moveForm = document.getElementById('movePlayerForm');
 if (moveForm) {
-    moveForm.addEventListener('submit', function(e) {
+    moveForm.addEventListener('submit', async function(e) {
         e.preventDefault();
-
         const entryId = document.getElementById('move_entry_id').value;
         const url = window.routes.movePlayer.replace(':id', entryId);
-
-        fetch(url, {
-            method: 'POST',
-            headers: {
-                'X-CSRF-TOKEN': csrf,
-                'Accept': 'application/json'
-            },
-            body: new FormData(moveForm)
-        })
-        .then(r => r.json())
-        .then(res => {
-            if (res && res.success === false) {
-                toastr.error(res.message || 'Move failed.');
-                return;
+        const submit = moveForm.querySelector('button:not([type="button"]):not([data-bs-dismiss])');
+        if (submit) submit.disabled = true;
+        try {
+            async function send(body) {
+                const response = await fetch(url, {method:'POST',headers:{'X-CSRF-TOKEN':csrf,'Accept':'application/json'},body});
+                const result = await response.json();
+                if (!response.ok || result.success === false) throw new Error(Object.values(result.errors || {}).flat()[0] || result.message || 'Move failed.');
+                return result;
             }
+            const review = new FormData(moveForm); review.set('preview', '1');
+            const quote = await send(review);
+            const text = quote.legacy_unpaid ? 'Move this unpaid entry? No payment or wallet credit will be recorded.' : Number(quote.wallet_credit) > 0 ? 'Change category and credit R'+Number(quote.wallet_credit).toFixed(2)+' to the original payer wallet?' : 'Change category with no additional payment?';
+            if (!window.confirm(text)) return;
+            const body = new FormData(moveForm);
+            if (!quote.legacy_unpaid) { body.set('quote_token', quote.quote_token); body.set('request_token', quote.request_token); }
+            const result = await send(body);
             movePlayerModal.hide();
-            toastr.success('Player moved successfully.');
-            // Remove row from current card
-            const entryId = document.getElementById('move_entry_id').value;
-            const row = document.querySelector(`[data-entry-id="${entryId}"]`);
-            if (row) {
-                const card = row.closest('.category-card');
-                row.remove();
-                reindexRows(card);
-                updateEntryCount(card, -1);
-            }
-            // If new row HTML is returned, append to destination card
-            const newCatId = document.getElementById('moveCategorySelect').value;
-            const destCard = document.querySelector(`.category-card[data-category-id="${newCatId}"]`);
-            if (destCard && res && res.row) {
-                const tbody = destCard.querySelector('tbody');
-                if (tbody) {
-                    tbody.insertAdjacentHTML('beforeend', res.row);
-                    reindexRows(destCard);
-                    updateEntryCount(destCard, +1);
-                }
-            }
-        })
-        .catch(() => toastr.error('Move failed. Please try again.'));
+            toastr.success(result.message || 'Category changed.');
+            window.location.reload();
+        } catch (exception) { toastr.error(exception.message); }
+        finally { if (submit) submit.disabled = false; }
     });
 }
 

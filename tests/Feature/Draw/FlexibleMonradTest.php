@@ -122,6 +122,33 @@ class FlexibleMonradTest extends TestCase
         $this->assertFalse($service->state($draw->fresh())['players']->firstWhere('id', $registrationId)['withdrawn']);
     }
 
+    public function test_shared_numeric_score_grid_exposes_configured_formats_and_preserves_server_validation(): void
+    {
+        [$draw, $draft] = $this->setupDraw();
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $record = $service->generate($draw, 1);
+        $fixture = $record->fixture_map['main_a'];
+        foreach ([
+            TennisScoreFormat::SHORT_SET_4 => [[4, 1]],
+            TennisScoreFormat::PRO_SET_8 => [[8, 6]],
+            TennisScoreFormat::MATCH_TIEBREAK_10 => [[22, 20]],
+            TennisScoreFormat::BEST_OF_5_FULL => [[6, 0], [6, 0], [6, 0]],
+        ] as $format => $sets) {
+            $draw->settings()->update(['score_format' => $format, 'num_sets' => 1]);
+            $state = $service->state($draw->fresh());
+            $this->assertSame(TennisScoreFormat::maxSets($format), $state['score_max_sets']);
+            $this->assertSame(TennisScoreFormat::rules($format), $state['score_guidance']);
+            $this->putJson(route('flexible-monrad.score', [$draw, $fixture]), ['revision' => $state['revision'], 'sets' => $sets])->assertOk();
+        }
+        $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()
+            ->assertSee('data-set-score-grid', false)->assertSee('Set 5 home score')->assertDontSee('id="fm-sets"', false);
+        $state = $service->state($draw->fresh());
+        $this->putJson(route('flexible-monrad.score', [$draw, $fixture]), ['revision' => $state['revision'], 'sets' => [[3, 1]]])->assertUnprocessable();
+        $this->putJson(route('flexible-monrad.score', [$draw, $fixture]), ['revision' => $state['revision'], 'sets' => null])->assertOk();
+        $this->assertSame(0, Fixture::findOrFail($fixture)->fixtureResults()->count());
+    }
+
     public function test_system_player_add_rejects_foreign_admin_and_unsafe_draw_states(): void
     {
         [$draw, $draft] = $this->setupDraw();

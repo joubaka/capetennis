@@ -430,6 +430,16 @@ class RegisterController extends Controller
       return response('Ignored', 200);
     }
 
+    if (($data['custom_str5'] ?? null) === 'CategoryAdjustment') {
+      try {
+        app(\App\Domain\Entries\Services\CategoryAdjustmentService::class)->receive($data);
+        return response('OK', 200);
+      } catch (\Illuminate\Validation\ValidationException|\RuntimeException $exception) {
+        Log::warning('Category adjustment ITN rejected', ['adjustment_id' => (int) ($data['custom_int5'] ?? 0)]);
+        return response('Payment verification failed', 400);
+      }
+    }
+
     // Route the legacy PayFast callback through the canonical payment adapter.
     if (! app(RegistrationPaymentController::class)->handlePayfastSuccess($data)) {
       return response('Payment verification failed', 400);

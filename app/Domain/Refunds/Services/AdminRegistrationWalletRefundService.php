@@ -21,28 +21,40 @@ class AdminRegistrationWalletRefundService
         if ($entry->refund_status === 'completed' || $entry->refund_status === 'pending') {
             throw ValidationException::withMessages(['refund' => 'This refund is already completed or pending reconciliation.']);
         }
-        $item = RegistrationOrderItems::where('registration_id', $entry->registration_id)
-            ->where('category_event_id', $entry->category_event_id)->first();
-        if ($item?->order && $item->order->items()->count() !== 1) {
+        $adjustment = \App\Models\CategoryAdjustment::where('entry_id', $entry->id)->whereNotNull('applied_at')->latest('id')->first();
+        $item = $adjustment ? RegistrationOrderItems::find($adjustment->original_order_item_id)
+            : RegistrationOrderItems::where('registration_id', $entry->registration_id)->where('category_event_id', $entry->category_event_id)->first();
+        if (! $adjustment && $item?->order && $item->order->items()->count() !== 1) {
             throw ValidationException::withMessages(['refund' => 'This order contains multiple entries. Reconcile the individual paid amount before refunding.']);
         }
         $payer = $item?->order?->user ?? $entry->user;
         $order = $item?->order;
-        if (!$order || !$order->pay_status
+        $paidAdminUpgrade = $adjustment && ! $adjustment->original_order_item_id && $entry->isAdminEntry();
+        if ((! $order && ! $paidAdminUpgrade) || ($order && (!$order->pay_status
             || ((float) $order->wallet_reserved > 0 && (!$order->wallet_debited || !$order->walletTransaction || $order->walletTransaction->type !== 'debit'))
-            || ((float) $order->payfast_amount_due > 0 && (!$order->payfast_paid || !$order->payfast_pf_payment_id))) {
+            || ((float) $order->payfast_amount_due > 0 && (!$order->payfast_paid || !$order->payfast_pf_payment_id))))) {
             throw ValidationException::withMessages(['refund' => 'The original paid order must be verified before this refund.']);
         }
-        if ($order->wallet_debited && (round((float) $order->walletTransaction?->amount, 2) !== round((float) $order->wallet_reserved, 2)
+        if ($order?->wallet_debited && (round((float) $order->walletTransaction?->amount, 2) !== round((float) $order->wallet_reserved, 2)
             || (int) $order->walletTransaction?->wallet?->payable_id !== (int) $payer->id
             || $order->walletTransaction?->wallet?->payable_type !== User::class)) {
             throw ValidationException::withMessages(['refund' => 'The wallet payment does not match the original payer.']);
         }
         $payment = $entry->paymentInfo();
         $gross = round((float) ($payment['gross'] ?? 0) + (float) ($payment['wallet_paid'] ?? 0), 2);
-        $captured = round(($order->payfast_paid ? (float) $order->payfast_amount_due : 0)
-            + ($order->wallet_debited ? (float) $order->wallet_reserved : 0), 2);
-        if ($gross !== $captured || $gross !== round((float) $item->item_price, 2)) {
+        $captured = round(($order?->payfast_paid ? (float) $order->payfast_amount_due : 0)
+            + ($order?->wallet_debited ? (float) $order->wallet_reserved : 0), 2);
+        if ($paidAdminUpgrade) {
+            $history = \App\Models\CategoryAdjustment::where('entry_id', $entry->id)->whereNotNull('applied_at')->get();
+            $verified = $history->where('difference', '>', 0)->every(fn ($row) => $row->payfast_paid && $row->payfast_pf_payment_id
+                && (int) $row->user_id === (int) $payer?->id);
+            $captured = round($history->where('difference', '>', 0)->sum('difference') - $history->sum('wallet_credit'), 2);
+            if (! $verified || $gross !== $captured) { throw ValidationException::withMessages(['refund' => 'The category upgrade receipts need reconciliation.']); }
+        }
+        if ((! $adjustment && ($gross !== $captured || $gross !== round((float) $item->item_price, 2)))
+            || ($adjustment && ((int) $adjustment->user_id !== (int) $payer?->id
+                || (! $paidAdminUpgrade && (int) $item?->registration_id !== (int) $entry->registration_id)
+                || $gross !== round((float) $adjustment->payment_after['total_paid'], 2)))) {
             throw ValidationException::withMessages(['refund' => 'The item price and captured payment do not match. Reconcile before refunding.']);
         }
         $admins = $event->admins()->orderBy('users.id')->get()->filter(fn ($user) => filter_var($user->email, FILTER_VALIDATE_EMAIL));
@@ -96,7 +108,9 @@ class AdminRegistrationWalletRefundService
         }
         return DB::transaction(function () use ($event, $entry, $actor, $percentage, $reason, $approved) {
             $locked = CategoryEventRegistration::lockForUpdate()->findOrFail($entry->id);
-            $item = RegistrationOrderItems::where('registration_id', $locked->registration_id)->where('category_event_id', $locked->category_event_id)->first();
+            $adjustment = \App\Models\CategoryAdjustment::where('entry_id', $locked->id)->whereNotNull('applied_at')->latest('id')->first();
+            $item = $adjustment ? RegistrationOrderItems::find($adjustment->original_order_item_id)
+                : RegistrationOrderItems::where('registration_id', $locked->registration_id)->where('category_event_id', $locked->category_event_id)->first();
             $item?->order()->lockForUpdate()->first();
             $snapshot = $this->snapshot($event, $locked, $percentage, $reason);
             if (($approved['expires'] ?? 0) < now()->timestamp || ($approved['snapshot'] ?? []) != $snapshot) {

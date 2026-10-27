@@ -17,6 +17,10 @@
   </div>
 @endif
 
+@if($event->isIndividual())
+  @include('frontend.event.partials.category-adjustments')
+@endif
+
 {{-- Some registration-focused event layouts do not include a draws section. --}}
 @if(($eventDraws ?? collect())->where('published', true)->isNotEmpty()
     && ($event->isInterprovincialTrials() || !in_array($typeView, ['individual', 'team', 'interpro', 'cavaliers_trials'], true)))

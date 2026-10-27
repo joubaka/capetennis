@@ -195,6 +195,7 @@ class PlayerRatingBadgeTest extends TestCase
         $this->superAdmin();
         $draw = $this->draw();
         $event = $draw->event;
+        $event->update(['start_date' => now()->addMonth(), 'deadline' => 1, 'signUp' => true]);
         $player = Player::factory()->create(['name' => 'Test "Quoted"', 'surname' => 'Player']);
         $registration = Registration::factory()->create();
         $registration->players()->attach($player);

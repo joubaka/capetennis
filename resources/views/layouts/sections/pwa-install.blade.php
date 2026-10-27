@@ -48,7 +48,17 @@
     const installButton = document.getElementById('ct-install-app');
     const installSteps = document.getElementById('ct-install-steps');
     let installPrompt = null;
-    const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    const standalone = ['standalone', 'minimal-ui', 'window-controls-overlay']
+      .some(mode => window.matchMedia(`(display-mode: ${mode})`).matches) || window.navigator.standalone === true;
+    document.documentElement.classList.toggle('ct-app-standalone', standalone);
+    document.getElementById('ct-app-back')?.addEventListener('click', () => {
+      if (window.history.length > 1) {
+        window.history.back();
+      } else {
+        window.location.assign(@json(url('/')));
+      }
+    });
+    document.getElementById('ct-app-refresh')?.addEventListener('click', () => window.location.reload());
     const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
 
     if ('serviceWorker' in navigator) {

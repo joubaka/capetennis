@@ -43,7 +43,7 @@
     @endforeach
   @endforeach
   @if($layout['positions'])
-    <text x="0" y="{{ $layout['positions_y'] }}" fill="#172033" font-family="DejaVu Sans, Arial, sans-serif" font-size="12" font-weight="700">Final positions</text>
+    <text x="0" y="{{ $layout['positions_y'] }}" fill="#172033" font-family="DejaVu Sans, Arial, sans-serif" font-size="12" font-weight="700">{{ $layout['positions_label'] ?? 'Final positions' }}</text>
     @foreach($layout['positions'] as $index => $position)
       @php($x = ($index % 8) * 125)
       @php($y = $layout['positions_y'] + 12 + intdiv($index, 8) * 34)

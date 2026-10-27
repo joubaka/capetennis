@@ -78,7 +78,9 @@ final class DrawResultOrderService
     private function forDraw(Draw $draw): Collection
     {
         if ($draw->flexibleMonrad?->graph) {
-            $positions = collect($this->flexibleMonrad->state($draw)['positions'] ?? [])
+            $state = $this->flexibleMonrad->state($draw);
+            if (($state['challenge_playoffs'] ?? false) && ! $state['positions_complete']) return collect();
+            $positions = collect($state['positions'] ?? [])
                 ->sortBy(fn (array $row) => (int) $row['position'])
                 ->pluck('player')
                 ->filter();

@@ -340,7 +340,34 @@ class FinancialLedgerService
                     ])->values(),
                 ];
             })
-            ->toBase()->merge($this->buildParticipationRefundRows($event))->merge($this->buildClothingRefundRows($event))->values();
+            ->toBase()->merge($this->buildParticipationRefundRows($event))->merge($this->buildClothingRefundRows($event))
+            ->merge($this->buildCategoryAdjustmentRefundRows($event))->values();
+    }
+
+    private function buildCategoryAdjustmentRefundRows(Event $event): Collection
+    {
+        return \App\Models\CategoryAdjustment::with(['user', 'entry.registration.players', 'targetCategory.category'])
+            ->where('event_id', $event->id)->whereNotNull('applied_at')->where('wallet_credit', '>', 0)->get()
+            ->map(function ($adjustment) use ($event) {
+                $credit = (float) $adjustment->wallet_credit;
+                $player = $adjustment->entry?->registration?->players->first();
+                return (object) [
+                    'type' => 'refund', 'subtype' => 'category_adjustment_wallet',
+                    'amount_gross' => $credit, 'amount_fee' => 0.0, 'amount_net' => -$credit,
+                    'payment_method' => 'wallet', 'refund_status' => 'completed', 'withdrawal_status' => null,
+                    'status_label' => 'Category difference (Wallet)', 'status_colour' => 'success',
+                    'source_tx_id' => null, 'source_order_id' => null, 'source_pf_id' => null,
+                    'cer_id' => $adjustment->entry_id, 'user_name' => $adjustment->user?->name ?? '—', 'event_id' => $event->id,
+                    'created_at' => $adjustment->applied_at, 'player' => $player?->full_name ?? '—',
+                    'category' => $adjustment->targetCategory?->category?->name, 'method' => 'Wallet',
+                    'pf_payment_id' => null, 'tx_id' => null, 'paid_at' => $adjustment->applied_at,
+                    'refund_gross' => $credit, 'refund_fee' => 0.0, 'refund_net' => $credit,
+                    'gross' => -$credit, 'fee' => 0.0, 'capeFee' => 0.0, 'net' => -$credit,
+                    'original_gross' => $adjustment->payment_before['total_paid'], 'model' => $adjustment,
+                    'registrationDetails' => collect([['player' => $player?->full_name ?? '—',
+                        'category' => $adjustment->targetCategory?->category?->name, 'price' => $credit]]),
+                ];
+            });
     }
 
     private function buildClothingRefundRows(Event $event): Collection
@@ -636,6 +663,10 @@ class FinancialLedgerService
 
     private function mapPayfastRow(Transaction $tx, float $feePerEntry, ?array $context = null): object
     {
+        $categoryAdjustment = $tx->custom_str5 === 'CategoryAdjustment'
+            ? \App\Models\CategoryAdjustment::whereKey($tx->custom_int5)->where('event_id', $tx->event_id)
+                ->where('user_id', $tx->custom_int4)->where('player_id', $tx->player_id)
+                ->where('payfast_pf_payment_id', $tx->pf_payment_id)->first() : null;
         // PayFast's order number is shared by independent order tables. Resolve
         // its type, payer and event before using any wallet or entry metadata.
         if ($context !== null) {
@@ -663,7 +694,8 @@ class FinancialLedgerService
                 : null;
         }
         $reconciliationOrder = $teamOrder?->collection_status === 'reconciliation_required' ? $teamOrder : null;
-        $requiresReconciliation = $reconciliationOrder !== null
+        $requiresReconciliation = ($tx->custom_str5 === 'CategoryAdjustment' && ! $categoryAdjustment?->applied_at)
+            || $reconciliationOrder !== null
             || (($context === null || $context['reconciliation_candidates']->has($tx->custom_int5))
                 && app(\App\Domain\Payments\Services\ExpiredPayfastHandoffService::class)->registrationReceiptRequiresReconciliation($tx));
         $participation = $teamOrder ? ($context !== null
@@ -751,9 +783,9 @@ class FinancialLedgerService
             'type'             => $isAdminEntry
                 ? 'admin_entry_fee'
                 : ($isUnmarkedZeroValue ? 'unreconciled' : 'payment'),
-            'subtype'          => $requiresReconciliation ? 'superseded_payfast_receipt' : ($isAdminEntry
+            'subtype'          => $requiresReconciliation ? 'superseded_payfast_receipt' : ($categoryAdjustment ? 'category_adjustment' : ($isAdminEntry
                 ? 'admin_entry_fee_liability'
-                : ($isUnmarkedZeroValue ? 'unreconciled_zero_value' : strtolower(str_replace(' ', '_', $method)))),
+                : ($isUnmarkedZeroValue ? 'unreconciled_zero_value' : strtolower(str_replace(' ', '_', $method))))),
             'amount_gross'     => $grossTx,
             'amount_fee'       => $pfFeeTx,
             'amount_net'       => $netTx,

@@ -20,7 +20,7 @@ final class FlexibleMonradCompiler
         }
         $depth = (int) log($size, 2);
         $mode = $draft['mode'] ?? 'custom_monrad';
-        if (! in_array($mode, ['playoffs', 'monrad', 'custom_monrad'], true)) {
+        if (! in_array($mode, ['playoffs', 'monrad', 'custom_monrad', 'feed_in_monrad'], true)) {
             $this->fail('Choose a supported draw format.');
         }
         $slots = $draft['slots'] ?? [];
@@ -58,6 +58,33 @@ final class FlexibleMonradCompiler
             $this->positions[2] = ['type' => 'loser', 'match' => $winner['match']];
             return ['nodes' => $this->nodes, 'positions' => $this->positions, 'players' => array_keys($seen)];
         }
+        if ($mode === 'feed_in_monrad') {
+            $this->feedIn();
+            ksort($this->positions);
+            $graph = ['nodes' => $this->nodes, 'positions' => $this->positions, 'players' => array_keys($seen)];
+            if ($draft['challenge_playoffs'] ?? false) {
+                $graph['base_positions'] = $this->positions;
+                $graph['challenge_playoffs'] = true;
+                $selectedPairs = array_key_exists('challenge_pairs', $draft) ? $draft['challenge_pairs'] : range(2, 62, 2);
+                $graph['challenge_pairs'] = [];
+                $prerequisites = array_keys($this->nodes);
+                // These pairs are fixed to BASE ranks; challenge upsets never
+                // change the participants in another challenge.
+                for ($upper = 2; $upper < count($this->positions); $upper += 2) {
+                    if (! in_array($upper, $selectedPairs, true)) continue;
+                    $graph['challenge_pairs'][] = $upper;
+                    $lower = $upper + 1;
+                    $graph['nodes']['challenge_'.$upper] = [
+                        'sources' => [$this->positions[$upper] + ['base_position' => $upper],
+                            $this->positions[$lower] + ['base_position' => $lower]],
+                        'prerequisites' => $prerequisites, 'challenge_positions' => [$upper, $lower],
+                        'section' => 'Challenge play-offs', 'round' => 1,
+                        'label' => 'Base positions '.$upper.'–'.$lower, 'path' => null,
+                    ];
+                }
+            }
+            return $graph;
+        }
         ksort($this->losses);
         $place = 2;
         foreach ($this->losses as $sources) {
@@ -67,6 +94,88 @@ final class FlexibleMonradCompiler
         ksort($this->positions);
 
         return ['nodes' => $this->nodes, 'positions' => $this->positions, 'players' => array_keys($seen)];
+    }
+
+    /** Match dependencies shared by correction and scheduling, not just feeders. */
+    public static function dependencies(array $node): array
+    {
+        return array_values(array_unique(array_merge(array_column($node['sources'], 'match'), $node['prerequisites'] ?? [])));
+    }
+
+    /**
+     * Cross earlier main-round losers into later losers, then classify each
+     * eliminated band. The 16-player Interpro template reverses A9–A12 into
+     * B8–B5; alternating later crossings also matches the historical 32 draw.
+     */
+    private function feedIn(): void
+    {
+        $place = 2;
+        foreach ([0, 1] as $depth) {
+            $sources = $this->losses[$depth] ?? [];
+            if ($sources) $this->classify($sources, $place);
+            $place += count($sources);
+        }
+        $bands = array_filter($this->losses, fn ($depth) => $depth >= 2, ARRAY_FILTER_USE_KEY);
+        krsort($bands);
+        $survivors = [];
+        $eliminated = [];
+        $round = 1;
+        $feedRound = 0;
+        $last = $place + array_sum(array_map('count', $bands)) - 1;
+        $section = 'Positions '.$place.'–'.$last.' · Feed-in';
+        foreach ($bands as $incoming) {
+            if (! $survivors) {
+                $survivors = $incoming;
+                continue;
+            }
+            $this->reduceFeedIn($survivors, count($incoming), $eliminated, $round, $section);
+            // First crossing reverses later main-draw losers. The next crossing
+            // retains their order, so the opposite halves continue to meet.
+            if (++$feedRound % 2 === 1) $incoming = array_reverse($incoming);
+            $pairs = min(count($survivors), count($incoming));
+            $next = array_merge(array_slice($survivors, $pairs), array_slice($incoming, $pairs));
+            $losers = [];
+            for ($i = 0; $i < $pairs; $i++) {
+                [$win, $lose] = $this->feedMatch([$incoming[$i], $survivors[$i]], $round, $section);
+                $next[] = $win;
+                $losers[] = $lose;
+            }
+            if ($losers) $eliminated[] = $losers;
+            $survivors = $next;
+            $round++;
+        }
+        if (! $survivors) return;
+        $this->reduceFeedIn($survivors, 1, $eliminated, $round, $section);
+        $this->positions[$place++] = $survivors[0];
+        foreach (array_reverse($eliminated) as $losers) {
+            $this->classify($losers, $place);
+            $place += count($losers);
+        }
+    }
+
+    private function reduceFeedIn(array &$sources, int $target, array &$eliminated, int &$round, string $section): void
+    {
+        while (count($sources) > $target) {
+            $pairs = min(intdiv(count($sources), 2), count($sources) - $target);
+            $next = array_slice($sources, $pairs * 2);
+            $losers = [];
+            for ($i = 0; $i < $pairs; $i++) {
+                [$win, $lose] = $this->feedMatch([$sources[$i * 2], $sources[$i * 2 + 1]], $round, $section);
+                $next[] = $win;
+                $losers[] = $lose;
+            }
+            $eliminated[] = $losers;
+            $sources = $next;
+            $round++;
+        }
+    }
+
+    private function feedMatch(array $sources, int $round, string $section): array
+    {
+        $key = 'feed_'.count($this->nodes);
+        $this->nodes[$key] = ['sources' => $sources, 'section' => $section,
+            'round' => $round, 'label' => 'Feed-in round '.$round, 'path' => null];
+        return [['type' => 'winner', 'match' => $key], ['type' => 'loser', 'match' => $key]];
     }
 
     private function main(string $path, int $depth, array $slots): array

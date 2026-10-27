@@ -391,6 +391,26 @@ class EventEntryController extends Controller
     $this->rejectMastersRosterMutation($newCategory->event);
     $this->authorize('category.manage', $newCategory);
 
+    if (! $entry->is_paid && $request->boolean('preview')) {
+      return response()->json(['success' => true, 'legacy_unpaid' => true, 'wallet_credit' => 0]);
+    }
+    if ($entry->is_paid) {
+      $adjustments = app(\App\Domain\Entries\Services\CategoryAdjustmentService::class);
+      if ($request->boolean('preview')) {
+        $quote = $adjustments->quote($entry, $newCategory, $request->user(), true);
+        if ($quote['difference'] > 0) {
+          return response()->json(['success' => false, 'message' => 'The registering account must change this category and pay the difference through PayFast.'], 422);
+        }
+        return response()->json($quote + ['success' => true]);
+      }
+      $request->validate(['quote_token' => ['required', 'string'], 'request_token' => ['required', 'uuid']]);
+      $adjustment = $adjustments->start($entry, $newCategory, $request->user(), $request->quote_token, $request->request_token, true);
+      return response()->json(['success' => true,
+        'message' => (float) $adjustment->wallet_credit > 0 ? 'Category changed; difference credited to the original payer wallet.' : 'Category changed.',
+        'row' => view('backend.event.partials.entry-row', ['reg' => $entry->fresh()->load('registration.players')])->render(),
+      ]);
+    }
+
     if ($entry->categoryEvent->draws()->exists() || $newCategory->draws()->exists()) {
       return response()->json(['success' => false, 'message' => 'Players can only move before draw creation.'], 422);
     }

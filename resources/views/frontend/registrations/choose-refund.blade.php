@@ -102,7 +102,7 @@
         </button>
 
         <small class="text-muted d-block mt-1">
-          Wallet refunds are processed immediately.
+          Wallet refunds are processed immediately. Category differences already returned to your wallet are excluded from this refund.
         </small>
       </form>
       @endif

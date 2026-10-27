@@ -146,7 +146,7 @@ final class FlexibleMonradService
             abort_if($draw->locked, 409, 'The draw is locked.');
             $record = FlexibleMonradDraw::where('draw_id', $draw->id)->firstOrFail();
             $this->revision($record, $revision);
-            abort_if($published && ! in_array($draw->settings?->workflow, ['playoffs', 'monrad', 'custom_monrad'], true),
+            abort_if($published && ! in_array($draw->settings?->workflow, ['playoffs', 'monrad', 'custom_monrad', 'feed_in_monrad'], true),
                 422, 'Select a draw format before publishing.');
             abort_unless($record->graph, 422, 'Generate and review the fixtures first.');
             $this->resolve($record);
@@ -261,6 +261,12 @@ final class FlexibleMonradService
             $fixture = $fixtures->get($fixtureId);
             abort_unless($fixture, 404);
             if ($sets !== null) {
+                if (isset($record->graph['nodes'][$key]['challenge_positions'])) {
+                    $challenge = $this->progression($record, $fixtures, $this->withdrawn($draw, $record->graph))['matches'][$key];
+                    abort_unless(in_array($challenge['challenge_status'], ['ready', 'completed'], true)
+                        && ! array_intersect(array_filter($challenge['players']), $this->withdrawn($draw, $record->graph)), 422,
+                        $challenge['skip_reason'] ?? 'Complete every base match before scoring challenge play-offs.');
+                }
                 abort_unless($fixture->registration1_id && $fixture->registration2_id, 422,
                     'Both active players must qualify before entering a score. Withdrawals advance by walkover.');
             }
@@ -379,7 +385,15 @@ final class FlexibleMonradService
         // Slot paths are object keys in the editor, including for an empty saved draft.
         $draft['slots'] = (object) $draft['slots'];
         return ['revision' => $record?->revision ?? 0, 'draft' => $draft, 'setup_withdrawals_removed' => $setupSlotsRemoved,
+            'challenge_playoffs' => (bool) ($record?->graph['challenge_playoffs'] ?? $draft['challenge_playoffs'] ?? false),
+            'base_positions' => $progression['base_positions'] ?? [],
+            'positions_complete' => $progression['positions_complete'] ?? false,
             'best_of' => (int) ($draw->settings?->num_sets ?: 1),
+            'score_max_sets' => $draw->settings?->score_format
+                ? \App\Domain\Draws\Services\TennisScoreFormat::maxSets($draw->settings->score_format) : (int) ($draw->settings?->num_sets ?: 1),
+            'score_guidance' => $draw->settings?->score_format
+                ? \App\Domain\Draws\Services\TennisScoreFormat::rules($draw->settings->score_format)
+                : ($draw->settings?->requiresFullSets() === false ? 'Custom set scores allowed.' : 'Enter completed sets using the configured match format.'),
             'generated' => (bool) $record?->graph, 'published' => (bool) $draw->published, 'locked' => (bool) $draw->locked,
             'players' => $players, 'matches' => (object) $matches, 'positions' => $progression['positions'],
             'has_withdrawals' => (bool) $withdrawn,
@@ -433,7 +447,7 @@ final class FlexibleMonradService
             if ($match['automatic']) $automatic[$key] = $match['automatic'];
             if ($fixture->fixtureResults->isNotEmpty()) continue;
             $fixture->fill(['registration1_id' => $match['players'][0], 'registration2_id' => $match['players'][1],
-                'winner_registration' => $match['winner'], 'match_status' => $match['resolved'] ? 3 : 0]);
+                'winner_registration' => $match['winner'], 'match_status' => $match['automatic'] === 'challenge_skipped' ? 5 : ($match['resolved'] ? 3 : 0)]);
             $changed = $fixture->isDirty() || $changed;
             $fixture->save();
         }
@@ -469,8 +483,8 @@ final class FlexibleMonradService
             $source = array_shift($queue);
             foreach ($nodes as $id => $node) {
                 if (isset($found[$id])) continue;
-                foreach ($node['sources'] as $slot) {
-                    if (($slot['match'] ?? null) === $source) {
+                foreach (FlexibleMonradCompiler::dependencies($node) as $dependency) {
+                    if ($dependency === $source) {
                         $found[$id] = true;
                         $queue[] = $id;
                     }
@@ -513,7 +527,7 @@ final class FlexibleMonradService
         $ids = [];
         foreach ($draft['slots'] as $path => $source) {
             if (! preg_match('/^[ab]{1,6}$/', $path) || strlen($path) > log($draft['size'], 2)) $this->fail('Invalid starting position.');
-            if (in_array($draw->settings?->workflow, ['playoffs', 'monrad'], true) && strlen($path) !== (int) log($draft['size'], 2)) {
+            if (in_array($draw->settings?->workflow, ['playoffs', 'monrad', 'feed_in_monrad'], true) && strlen($path) !== (int) log($draft['size'], 2)) {
                 $this->fail('Place players and byes in the opening round. Choose Custom Monrad for later-round entry.');
             }
             for ($i = 1; $i < strlen($path); $i++) {
@@ -533,6 +547,9 @@ final class FlexibleMonradService
         // The saved workflow, never a submitted mode, controls progression.
         $additional = FlexibleMonradDraw::where('draw_id', $draw->id)->first()?->draft['additional_registration_ids'] ?? [];
         return ['size' => (int) $draft['size'], 'slots' => $slots]
+            + ($draw->settings?->workflow === 'feed_in_monrad' && ($draw->settings?->playoff_config['challenge_playoffs'] ?? false)
+                ? ['challenge_playoffs' => true] + (array_key_exists('challenge_pairs', $draw->settings->playoff_config)
+                    ? ['challenge_pairs' => array_map('intval', $draw->settings->playoff_config['challenge_pairs'])] : []) : [])
             + ($additional ? ['additional_registration_ids' => $additional] : [])
             + ($draw->settings?->workflow ? ['mode' => $draw->settings->workflow] : []);
     }

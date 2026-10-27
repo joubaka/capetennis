@@ -1162,9 +1162,8 @@ final class EventVenueScheduleService
                 $sourceLabels = collect($match['sources'])->map(fn ($source) => isset($source['match'])
                     ? ucfirst((string) $source['type']).' of Match '.($matchNumbers[$source['match']] ?? $source['match'])
                     : (($source['type'] ?? null) === 'bye' ? 'Bye' : 'Unassigned draw position'))->all();
-                $nodes[$match['id']] = $this->node($draw, $fixture, array_values(array_filter(array_map(
-                    fn ($source) => isset($source['match']) ? ($keyToId[$source['match']] ?? null) : null,
-                    $match['sources']))), $participants[$key] ?? [], (bool) $match['automatic'], (bool) $match['sets'] || $fixture->fixtureResults->isNotEmpty() || (int) $fixture->match_status !== 0,
+                $dependencies = array_map(fn ($dependency) => $keyToId[$dependency], \App\Services\Draw\FlexibleMonradCompiler::dependencies($match));
+                $nodes[$match['id']] = $this->node($draw, $fixture, $dependencies, $participants[$key] ?? [], (bool) $match['automatic'], (bool) $match['sets'] || $fixture->fixtureResults->isNotEmpty() || (int) $fixture->match_status !== 0,
                     $sourceLabels);
             }
             // Placement sections restart fixture round numbers; programme rounds follow graph depth.

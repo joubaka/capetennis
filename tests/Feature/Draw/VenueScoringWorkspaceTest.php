@@ -257,7 +257,8 @@ class VenueScoringWorkspaceTest extends TestCase
         $this->assertStringContainsString('saveButton.disabled = false;', $template);
         $this->assertStringContainsString('clearButton.disabled = false;', $template);
         $this->assertStringContainsString('data-num-sets=', $template);
-        $this->assertStringContainsString('input.disabled = hidden', $template);
+        $this->assertStringContainsString('CTSetScoreGrid.populate', $template);
+        $this->assertStringContainsString('shared.scoring.set-grid', $template);
         $this->assertTrue(method_exists(\App\Http\Controllers\Frontend\VenueScoringController::class, 'startFixture'));
         $this->assertTrue(method_exists(\App\Http\Controllers\Frontend\VenueScoringController::class, 'startTeamFixture'));
         $this->assertStringContainsString('await refreshWorkspace(window.location.href)', $template);

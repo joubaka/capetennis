@@ -26,7 +26,7 @@ final class DrawRulesService
 
         $flexible = $draw->usesFlexibleMonrad();
         $workflow = $settings?->workflow;
-        $roundRobin = ! $flexible && ! in_array($workflow, ['playoffs', 'monrad', 'custom_monrad'], true);
+        $roundRobin = ! $flexible && ! in_array($workflow, ['playoffs', 'monrad', 'custom_monrad', 'feed_in_monrad'], true);
         if ($roundRobin) {
             $add('round_robin', 'Round Robin scoring rules', 'Players play the other players in their group. Standings are ordered by matches won, then percentage of sets won, then percentage of games won, then head-to-head. Players still tied remain equal until the tie is resolved.');
         }
@@ -47,7 +47,12 @@ final class DrawRulesService
             $mode = $draw->flexibleMonrad?->draft['mode'] ?? $workflow;
             $add('playoffs', $mode === 'playoffs' ? 'Playoff rules' : 'Placement draw rules', $mode === 'playoffs'
                 ? 'Winners advance through the knockout bracket to the final. Byes advance without a match.'
-                : 'Winners and losers follow the pathways shown in the draw to determine final positions. Byes advance without a match.');
+                : ($mode === 'feed_in_monrad'
+                    ? 'Main-draw winners play for the title. Earlier-round losers cross into the feed-in draw and meet later-round losers for fifth place; semifinal losers play for third. Further placement matches determine the remaining positions. Byes advance without a match.'
+                    : 'Winners and losers follow the pathways shown in the draw to determine final positions. Byes advance without a match.'));
+            if ($mode === 'feed_in_monrad' && ($draw->flexibleMonrad?->draft['challenge_playoffs'] ?? false)) {
+                $add('challenges', 'Optional challenge play-offs', 'After every base match is complete, fixed base positions 2 v 3, 4 v 5, 6 v 7 and so on may play once more. Pairs who already played each other in this draw skip the challenge and keep their base order. A played challenge winner takes the higher position and its loser the lower; first and the last unpaired position remain unchanged. Positions are provisional until all eligible challenges are complete.');
+            }
         }
 
         return $sections;

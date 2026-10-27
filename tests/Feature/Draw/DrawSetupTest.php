@@ -45,7 +45,7 @@ class DrawSetupTest extends TestCase
         $this->get(route('backend.draw.roundrobin.show', $draw))->assertRedirect(route('draw.setup.show', $draw));
         $response = $this->get(route('draw.setup.show', $draw))->assertOk()
             ->assertSee('How should this draw start?')->assertSee('Round robin only')->assertSee('Round robin → playoffs')
-            ->assertSee('Playoffs only')->assertSee('Monrad only')->assertSee('Custom Monrad')
+            ->assertSee('Playoffs only')->assertSee('Monrad only')->assertSee('Custom Monrad')->assertSee('Feed-in Monrad')
             ->assertSee('Help me choose a format')->assertSee('Recommended')->assertSee('Advanced');
         if (getenv('DRAW_SETUP_SNAPSHOT')) {
             \Illuminate\Support\Facades\Storage::disk('local')->put('testing/draw-setup.html', $response->getContent());
@@ -54,7 +54,7 @@ class DrawSetupTest extends TestCase
         $this->assertSame(0, $draw->groups()->count());
         $this->post(route('draw.setup.store', $draw), ['workflow' => 'round_robin_playoffs'])
             ->assertRedirect(route('backend.draw.roundrobin.show', $draw));
-        $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()->assertSee('Build your groups');
+        $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()->assertSee('Players &amp; Groups', false);
         $publicDraw = $this->get(route('public.roundrobin.show', $draw))->assertOk();
         $publicBracket = $this->get(route('public.roundrobin.main-bracket', $draw))->assertOk();
         foreach ([$publicDraw, $publicBracket] as $response) {
@@ -100,10 +100,10 @@ class DrawSetupTest extends TestCase
 
     public function test_direct_formats_persist_resume_and_generate_the_correct_matches(): void
     {
-        foreach (['playoffs' => 3, 'monrad' => 4, 'custom_monrad' => 4] as $workflow => $count) {
+        foreach (['playoffs' => 3, 'monrad' => 4, 'custom_monrad' => 4, 'feed_in_monrad' => 4] as $workflow => $count) {
             $draw = $this->draw();
             $this->post(route('draw.setup.store', $draw), ['workflow' => $workflow])->assertRedirect(route('backend.draw.roundrobin.show', $draw));
-            $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()->assertSee('Step 2')->assertSee('Setup &amp; Rules', false);
+            $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()->assertSee('Players &amp; Positions', false)->assertSee('Setup &amp; Rules', false);
             $this->get(route('flexible-monrad.show', $draw))->assertRedirect(route('backend.draw.roundrobin.show', $draw));
             $this->assertSame($workflow, $draw->fresh()->settings->workflow);
             $this->assertIsObject(app(FlexibleMonradService::class)->state($draw->fresh())['draft']['slots']);
@@ -123,9 +123,91 @@ class DrawSetupTest extends TestCase
         }
     }
 
+    public function test_feed_in_sixteen_uses_shared_workspace_schedule_print_and_protected_result_lifecycle(): void
+    {
+        $draw = $this->draw();
+        $draw->update(['drawName' => 'Feed-in Monrad — 16-player test']);
+        $draw->event->update(['name' => 'Isolated Interpro feed-in test']);
+        $slots = [];
+        foreach (range(0, 15) as $index) {
+            $registration = Registration::factory()->create();
+            $registration->players()->attach(\App\Models\Player::factory()->create([
+                'name' => 'Test', 'surname' => sprintf('Player %02d', $index + 1),
+            ]));
+            $registration->categoryEvents()->attach($draw->category_event_id, ['status' => 'registered', 'payment_status_id' => 1]);
+            $path = strtr(str_pad(decbin($index), 4, '0', STR_PAD_LEFT), ['0' => 'a', '1' => 'b']);
+            $slots[$path] = ['type' => 'player', 'id' => $registration->id];
+        }
+        $this->post(route('draw.setup.store', $draw), ['workflow' => 'feed_in_monrad'])->assertRedirect();
+        $foreign = Registration::factory()->create();
+        $bad = $slots;
+        $bad['aaaa']['id'] = $foreign->id;
+        $this->putJson(route('flexible-monrad.save', $draw), ['revision' => 1, 'draft' => ['size' => 16, 'slots' => $bad]])->assertUnprocessable();
+        // Client mode is ignored; the saved workflow controls the feed-in graph.
+        $this->putJson(route('flexible-monrad.save', $draw), ['revision' => 1,
+            'draft' => ['size' => 16, 'slots' => $slots, 'mode' => 'playoffs']])->assertOk();
+        $this->postJson(route('flexible-monrad.generate', $draw), ['revision' => 2])->assertOk();
+        $this->postJson(route('flexible-monrad.generate', $draw), ['revision' => 3])->assertOk();
+        $draw->refresh();
+        $this->assertSame('feed_in_monrad', $draw->flexibleMonrad->draft['mode']);
+        $this->assertSame(36, $draw->drawFixtures()->count());
+        $this->assertSame(16, $draw->registrations()->reorder()->count());
+        $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()->assertSee('Feed-in Monrad')
+            ->assertSee('Players &amp; Positions', false)->assertSee('Setup &amp; Rules', false);
+        $programme = app(\App\Services\Scheduling\ScheduleProgramme::class);
+        $this->assertTrue($programme->supports($draw));
+        $this->assertTrue(app(\App\Domain\Draws\Services\DrawReadinessService::class)->for($draw)['checks']['format']['ok']);
+        $this->assertStringContainsString('Earlier-round losers', json_encode(app(\App\Domain\Draws\Services\DrawRulesService::class)->sections($draw)));
+        $service = app(FlexibleMonradService::class);
+        $state = $service->state($draw);
+        $print = app(\App\Services\Draw\FlexibleMonradPdfLayout::class)->build($state);
+        $this->assertNotEmpty($print);
+        $preview = $this->get(route('public.flexible-monrad.show', $draw))->assertOk()->assertSee('Feed-in Monrad')
+            ->assertSee('Test Player 01')->assertSee('Test Player 16');
+        if (getenv('FEED_IN_WORKSPACE_SNAPSHOT')) {
+            @mkdir(storage_path('app/testing'), 0777, true);
+            file_put_contents(storage_path('app/testing/feed-in-monrad.html'), $preview->getContent());
+        }
+
+        $venue = DB::table('venues')->insertGetId(['name' => 'Feed-in test venue', 'event_id' => $draw->event_id]);
+        $draw->venues()->attach($venue, ['num_courts' => 4]);
+        $this->postJson(route('backend.individual-schedule.auto', $draw), ['start' => '2026-10-30 08:00:00', 'duration' => 60])->assertOk();
+        $scheduled = \App\Models\OrderOfPlay::where('draw_id', $draw->id)->get()->keyBy('fixture_id');
+        $this->assertCount(36, $scheduled);
+        $state = $service->state($draw->fresh());
+        $matches = (array) $state['matches'];
+        foreach ($matches as $match) {
+            foreach ($match['sources'] as $source) {
+                if (! isset($source['match'])) continue;
+                $parent = $scheduled[$matches[$source['match']]['id']];
+                $this->assertGreaterThanOrEqual(\Carbon\Carbon::parse($parent->time)->addMinutes(60)->timestamp,
+                    \Carbon\Carbon::parse($scheduled[$match['id']]->time)->timestamp);
+            }
+        }
+
+        // Resolve every feed-in and classification path through the canonical scorer.
+        for ($played = 0; $played < 36; $played++) {
+            $state = $service->state($draw->fresh());
+            $ready = collect((array) $state['matches'])->first(fn ($match) => ! $match['sets']
+                && ! $match['automatic'] && count(array_filter($match['players'])) === 2);
+            $this->assertNotNull($ready);
+            $service->score($draw, $ready['id'], [[6, 2]], $state['revision'], false);
+        }
+        $state = $service->state($draw->fresh());
+        $this->assertCount(16, array_unique(array_column($state['positions'], 'player')));
+        $this->assertNotContains(null, array_column($state['positions'], 'player'));
+        $before = $draw->drawFixtures()->with('fixtureResults')->get()->toArray();
+        $this->postJson(route('draw.setup.store', $draw), ['workflow' => 'monrad', 'reset_existing' => true])->assertConflict();
+        $this->assertEquals($before, $draw->drawFixtures()->with('fixtureResults')->get()->toArray());
+        $this->postJson(route('flexible-monrad.publish', $draw), ['revision' => $state['revision'], 'published' => true])->assertOk();
+        $this->postJson(route('flexible-monrad.reopen', $draw), ['revision' => $state['revision'] + 1])->assertForbidden();
+        $this->actingAs(User::factory()->create()->assignRole('admin'));
+        $this->get(route('backend.draw.roundrobin.show', $draw))->assertForbidden();
+    }
+
     public function test_only_custom_monrad_accepts_later_round_entry(): void
     {
-        foreach (['playoffs', 'monrad', 'custom_monrad'] as $workflow) {
+        foreach (['playoffs', 'monrad', 'custom_monrad', 'feed_in_monrad'] as $workflow) {
             $draw = $this->draw();
             $slots = $this->slots($draw);
             $this->post(route('draw.setup.store', $draw), ['workflow' => $workflow])->assertRedirect();
@@ -134,6 +216,93 @@ class DrawSetupTest extends TestCase
             if ($workflow === 'custom_monrad') $response->assertOk();
             else $response->assertUnprocessable();
         }
+    }
+
+    public function test_compatible_monrad_switches_keep_saved_starts_and_byes_but_reset_confirmed_unplayed_fixtures(): void
+    {
+        $draw = $this->draw();
+        $slots = $this->slots($draw);
+        $slots['bb'] = ['type' => 'bye'];
+        $this->post(route('draw.setup.store', $draw), ['workflow' => 'monrad'])->assertRedirect();
+        $this->putJson(route('flexible-monrad.save', $draw), ['revision' => 1, 'draft' => ['size' => 4, 'slots' => $slots]])->assertOk();
+        $this->postJson(route('draw.setup.store', $draw), ['workflow' => 'feed_in_monrad'])->assertConflict();
+        $this->post(route('draw.setup.store', $draw), ['workflow' => 'feed_in_monrad', 'reset_existing' => true])->assertRedirect();
+        $this->assertEquals($slots, $draw->fresh()->flexibleMonrad->draft['slots']);
+        $this->assertSame(4, $draw->fresh()->flexibleMonrad->draft['size']);
+        $this->postJson(route('flexible-monrad.generate', $draw), ['revision' => 1])->assertOk();
+        $fixture = $draw->drawFixtures()->firstOrFail();
+        $venue = DB::table('venues')->insertGetId(['name' => 'Switch test court', 'event_id' => $draw->event_id]);
+        \App\Models\OrderOfPlay::create(['draw_id' => $draw->id, 'fixture_id' => $fixture->id, 'venue_id' => $venue,
+            'court' => '1', 'time' => '2026-10-30 08:00:00']);
+        $draw->update(['published' => true]);
+        $this->postJson(route('draw.setup.store', $draw), ['workflow' => 'monrad', 'reset_existing' => true])->assertForbidden();
+        $draw->update(['published' => false]);
+        $this->postJson(route('draw.setup.store', $draw), ['workflow' => 'monrad'])->assertConflict();
+        $this->post(route('draw.setup.store', $draw), ['workflow' => 'monrad', 'reset_existing' => true])->assertRedirect();
+        $this->assertEquals($slots, $draw->fresh()->flexibleMonrad->draft['slots']);
+        $this->assertSame(0, $draw->drawFixtures()->count());
+        $this->assertSame(0, \App\Models\OrderOfPlay::where('draw_id', $draw->id)->count());
+        $this->postJson(route('flexible-monrad.generate', $draw), ['revision' => 1])->assertOk();
+        $state = app(FlexibleMonradService::class)->state($draw->fresh());
+        $ready = collect((array) $state['matches'])->first(fn ($match) => ! $match['automatic'] && count(array_filter($match['players'])) === 2);
+        app(FlexibleMonradService::class)->score($draw, $ready['id'], [[6, 2]], $state['revision'], false);
+        $before = $draw->fresh()->flexibleMonrad->draft;
+        $this->postJson(route('draw.setup.store', $draw), ['workflow' => 'feed_in_monrad', 'reset_existing' => true])->assertConflict();
+        $this->assertEquals($before, $draw->fresh()->flexibleMonrad->draft);
+    }
+
+    public function test_challenge_option_is_server_owned_default_off_and_same_workflow_toggle_preserves_starts(): void
+    {
+        $draw = $this->draw();
+        $slots = $this->slots($draw);
+        $this->post(route('draw.setup.store', $draw), ['workflow' => 'feed_in_monrad'])->assertRedirect();
+        $this->putJson(route('flexible-monrad.save', $draw), ['revision' => 1,
+            'draft' => ['size' => 4, 'slots' => $slots, 'challenge_playoffs' => true]])->assertOk();
+        $this->assertFalse($draw->fresh()->flexibleMonrad->draft['challenge_playoffs'] ?? false);
+        $this->postJson(route('draw.setup.store', $draw), ['workflow' => 'feed_in_monrad', 'challenge_playoffs' => true])->assertUnprocessable();
+        $this->postJson(route('draw.setup.store', $draw), ['workflow' => 'feed_in_monrad', 'challenge_playoffs' => true, 'challenge_pairs' => [2]])->assertConflict();
+        $this->post(route('draw.setup.store', $draw), ['workflow' => 'feed_in_monrad', 'challenge_playoffs' => true, 'challenge_pairs' => [2], 'reset_existing' => true])->assertRedirect();
+        $this->assertTrue($draw->fresh()->settings->playoff_config['challenge_playoffs']);
+        $this->assertTrue($draw->fresh()->flexibleMonrad->draft['challenge_playoffs']);
+        $this->assertEquals($slots, $draw->fresh()->flexibleMonrad->draft['slots']);
+        $this->postJson(route('flexible-monrad.generate', $draw), ['revision' => 1])->assertOk();
+        $this->postJson(route('flexible-monrad.generate', $draw), ['revision' => 2])->assertOk();
+        $this->assertSame(5, $draw->drawFixtures()->count());
+        $new = $this->draw();
+        $this->slots($new);
+        $category = $new->category_event_id;
+        $new->update(['category_event_id' => null]);
+        $this->post(route('draw.setup.store', $new), ['workflow' => 'feed_in_monrad', 'challenge_playoffs' => true, 'challenge_pairs' => [2]])
+            ->assertOk()->assertSee('name="challenge_playoffs" value="1"', false);
+        $this->postJson(route('draw.setup.store', $new), ['workflow' => 'feed_in_monrad', 'challenge_playoffs' => true, 'challenge_pairs' => [30], 'category_event_id' => $category])->assertUnprocessable();
+        $this->post(route('draw.setup.store', $new), ['workflow' => 'feed_in_monrad', 'challenge_playoffs' => true, 'challenge_pairs' => [2], 'category_event_id' => $category])->assertRedirect();
+        $this->assertTrue($new->fresh()->settings->playoff_config['challenge_playoffs']);
+    }
+
+    public function test_individual_challenge_pairs_are_explicit_validated_canonical_and_reset_guarded(): void
+    {
+        $draw = $this->draw();
+        foreach ([[], [1], [3], [64], [2, 2]] as $pairs) {
+            $this->postJson(route('draw.setup.store', $draw), ['workflow' => 'feed_in_monrad', 'challenge_playoffs' => true,
+                'challenge_pairs' => $pairs])->assertUnprocessable();
+        }
+        $this->post(route('draw.setup.store', $draw), ['workflow' => 'feed_in_monrad', 'challenge_playoffs' => true, 'challenge_pairs' => [4, 2]])->assertRedirect();
+        $this->assertSame([2, 4], $draw->fresh()->settings->playoff_config['challenge_pairs']);
+        $this->post(route('draw.setup.store', $draw), ['workflow' => 'feed_in_monrad', 'challenge_playoffs' => true, 'challenge_pairs' => [2, 4]])->assertRedirect();
+        $this->assertSame(1, $draw->fresh()->flexibleMonrad->revision);
+        $slots = $this->slots($draw);
+        $this->putJson(route('flexible-monrad.save', $draw), ['revision' => 1,
+            'draft' => ['size' => 4, 'slots' => $slots, 'challenge_pairs' => [6]]])->assertOk();
+        $this->assertSame([2, 4], $draw->fresh()->flexibleMonrad->draft['challenge_pairs']);
+        $this->postJson(route('draw.setup.store', $draw), ['workflow' => 'feed_in_monrad', 'challenge_playoffs' => true,
+            'challenge_pairs' => [2]])->assertConflict();
+        $this->post(route('draw.setup.store', $draw), ['workflow' => 'feed_in_monrad', 'challenge_playoffs' => true,
+            'challenge_pairs' => [2], 'reset_existing' => true])->assertRedirect();
+        $this->assertEquals($slots, $draw->fresh()->flexibleMonrad->draft['slots']);
+        $this->get(route('draw.setup.show', $draw))->assertOk()->assertSee('Choose the base-position pairs')
+            ->assertSee('name="challenge_pairs[]" value="2"', false);
+        $this->postJson(route('flexible-monrad.generate', $draw), ['revision' => 1])->assertOk();
+        $this->assertSame([2], $draw->fresh()->flexibleMonrad->graph['challenge_pairs']);
     }
 
     public function test_direct_format_suggests_the_smallest_bracket_that_fits_the_category(): void

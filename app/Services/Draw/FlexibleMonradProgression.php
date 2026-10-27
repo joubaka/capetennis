@@ -41,7 +41,7 @@ final class FlexibleMonradProgression
             ];
             unset($visiting[$key]);
         };
-        foreach (array_keys($graph['nodes']) as $key) $resolve($key);
+        foreach ($graph['nodes'] as $key => $node) if (! isset($node['challenge_positions'])) $resolve($key);
         $positions = [];
         foreach ($graph['positions'] as $position => $source) {
             $value = $this->source($source, $matches, $withdrawn);
@@ -49,7 +49,57 @@ final class FlexibleMonradProgression
                 'vacant' => $value['resolved'] && $value['player'] === null,
                 'bye' => $value['bye']];
         }
-        return ['matches' => $matches, 'positions' => $positions];
+        $basePositions = $positions;
+        $complete = ! array_filter($matches, fn ($match) => ! $match['resolved']);
+        $playedPairs = [];
+        foreach ($graph['nodes'] as $key => $node) {
+            if (isset($node['challenge_positions']) || ! ($fixtures[$key]['played'] ?? false)) continue;
+            $pair = array_filter($fixtures[$key]['players']);
+            if (count($pair) !== 2) continue;
+            sort($pair);
+            $playedPairs[implode(':', $pair)] = true;
+        }
+        foreach ($graph['nodes'] as $key => $node) {
+            if (! isset($node['challenge_positions'])) continue;
+            [$upper, $lower] = $node['challenge_positions'];
+            $sources = array_map(fn ($source) => $this->source($source, $matches, $withdrawn), $node['sources']);
+            $players = array_column($sources, 'player');
+            $pair = array_filter($players);
+            sort($pair);
+            $reason = ! $complete ? null : (count($pair) !== 2 ? 'A base-position player is unavailable or withdrawn.'
+                : (isset($playedPairs[implode(':', $pair)]) ? 'These players already played each other in this draw.' : null));
+            $fixture = $fixtures[$key];
+            $status = ! $complete ? 'pending' : ($reason ? 'skipped' : 'ready');
+            if ($fixture['played']) {
+                // Keep played evidence even after a later withdrawal. Corrections
+                // to base results explicitly reset dependent challenge results.
+                $match = $fixture + ['resolved' => true, 'automatic' => null, 'vacant' => [false, false],
+                    'withdrawn_players' => [null, null], 'byes' => [false, false]];
+                $status = 'completed';
+                $reason = null;
+                if (count(array_filter($fixture['players'])) === 2 && in_array($fixture['winner'], $fixture['players'], true)) {
+                    $winner = $fixture['winner'];
+                    $loser = $fixture['players'][0] === $winner ? $fixture['players'][1] : $fixture['players'][0];
+                    foreach ($positions as &$position) {
+                        $id = (int) $position['position'] === $upper ? $winner : ((int) $position['position'] === $lower ? $loser : null);
+                        if ($id !== null) {
+                            $position['player'] = in_array($id, $withdrawn, true) ? null : $id;
+                            $position['vacant'] = $position['player'] === null;
+                            $position['bye'] = false;
+                        }
+                    }
+                    unset($position);
+                }
+            } else {
+                $match = ['players' => $complete ? $players : [null, null], 'winner' => null,
+                    'resolved' => $status === 'skipped', 'automatic' => $status === 'skipped' ? 'challenge_skipped' : null,
+                    'vacant' => [false, false], 'withdrawn_players' => [null, null], 'byes' => [false, false]];
+            }
+            $matches[$key] = $match + ['challenge_status' => $status, 'skip_reason' => $reason];
+        }
+        $positionsComplete = ! array_filter($matches, fn ($match) => ! $match['resolved']);
+        return ['matches' => $matches, 'positions' => $positions, 'base_positions' => $basePositions,
+            'positions_complete' => $positionsComplete];
     }
 
     private function source(array $source, array $matches, array $withdrawn): array

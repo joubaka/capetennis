@@ -466,7 +466,7 @@
                       data-store="{{ $isFlexible ? $flexibleUrl : $normalStore }}"
                       data-delete="{{ $isFlexible ? $flexibleUrl : $normalDelete }}"
                       data-revision="{{ $draw->flexibleMonrad?->revision ?? 0 }}"
-                      data-num-sets="{{ max(1, min(5, (int) ($draw->settings?->num_sets ?: 3))) }}"
+                      data-num-sets="{{ $draw->settings?->score_format ? \App\Domain\Draws\Services\TennisScoreFormat::maxSets($draw->settings->score_format) : max(1, min(5, (int) ($draw->settings?->num_sets ?: 3))) }}"
                       data-score-guidance="{{ $draw->settings?->score_format
                         ? \App\Domain\Draws\Services\TennisScoreFormat::rules($draw->settings->score_format)
                         : 'Enter completed sets' }}"
@@ -534,14 +534,7 @@
       </div>
       <div class="modal-body">
         <div id="score-entry-error" class="alert alert-danger d-none" role="alert"></div>
-        <div class="row g-2 text-center fw-semibold mb-1"><div class="col" id="score-home-label">Player 1</div><div class="col" id="score-away-label">Player 2</div></div>
-        @for($set = 1; $set <= 5; $set++)
-          <div class="row g-2 align-items-center mb-2 score-set-row">
-            <div class="col"><input type="number" min="0" @if($set !== 3) max="20" @endif inputmode="numeric" class="form-control score-input" data-side="home" data-set="{{ $set }}" aria-label="Set {{ $set }} home score"></div>
-            <div class="col-auto text-muted small">Set {{ $set }}</div>
-            <div class="col"><input type="number" min="0" @if($set !== 3) max="20" @endif inputmode="numeric" class="form-control score-input" data-side="away" data-set="{{ $set }}" aria-label="Set {{ $set }} away score"></div>
-          </div>
-        @endfor
+        @include('shared.scoring.set-grid', ['scoreGridPrefix' => 'score'])
       </div>
       <div class="modal-footer d-flex flex-nowrap">
         <button type="button" class="btn btn-outline-danger me-auto d-none" id="score-clear">Clear result</button>
@@ -681,20 +674,9 @@ document.addEventListener('DOMContentLoaded', function () {
           ? 'Custom set scores allowed'
           : (active.scoreGuidance || 'Enter completed sets');
       document.getElementById('score-match-title').textContent = active.home + ' vs ' + active.away;
-      document.getElementById('score-home-label').textContent = active.home;
-      document.getElementById('score-away-label').textContent = active.away;
-      const numberOfSets = Math.max(1, Math.min(5, Number(active.numSets || 3)));
-      document.querySelectorAll('.score-set-row').forEach(function (row, index) {
-        const hidden = index >= numberOfSets;
-        row.classList.toggle('d-none', hidden);
-        row.querySelectorAll('input').forEach(input => input.disabled = hidden);
-      });
       const scores = JSON.parse(active.scores || '[]');
-      document.querySelectorAll('.score-input').forEach(input => input.value = '');
-      scores.forEach(function (set, index) {
-        const row = index + 1;
-        document.querySelector('[data-side="home"][data-set="' + row + '"]').value = set[0];
-        document.querySelector('[data-side="away"][data-set="' + row + '"]').value = set[1];
+      CTSetScoreGrid.populate(modalElement.querySelector('[data-set-score-grid]'), {
+        names: [active.home, active.away], maxSets: active.numSets || 3, scores: scores
       });
       clearButton.classList.toggle('d-none', scores.length === 0);
       modal.show();
@@ -738,16 +720,7 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
   function setsFromForm() {
-    const sets = [];
-    for (let set = 1; set <= 5; set++) {
-      const home = document.querySelector('[data-side="home"][data-set="' + set + '"]').value.trim();
-      const away = document.querySelector('[data-side="away"][data-set="' + set + '"]').value.trim();
-      if (home === '' && away === '') continue;
-      if (home === '' || away === '') throw new Error('Complete both scores for set ' + set + '.');
-      sets.push([Number(home), Number(away)]);
-    }
-    if (!sets.length) throw new Error('Enter at least one completed set.');
-    return sets;
+    return CTSetScoreGrid.read(modalElement.querySelector('[data-set-score-grid]'));
   }
 
   async function request(url, method, body) {

@@ -49,7 +49,7 @@
   }
   const roundName = depth => ['Final', 'Semifinals', 'Quarterfinals'][depth] || `Round of ${2 ** (depth + 1)}`;
   const editable = () => config.canEdit && !state.generated && !state.published && !state.locked && !busy;
-  const customStarts = !['playoffs', 'monrad'].includes(config.workflow);
+  const customStarts = !['playoffs', 'monrad', 'feed_in_monrad'].includes(config.workflow);
   const allowedStart = path => customStarts || path.length === Math.log2(draft.size);
   const message = (text, error = false) => {
     $('fm-message').textContent = text;
@@ -348,6 +348,7 @@
     window.TennisBracket.refresh();
   }
   function sourceLabel(source) {
+    if (source.base_position) return `Base position ${source.base_position}`;
     if (source.type === 'player') return 'Direct entry';
     return `${source.type === 'winner' ? 'Winner' : 'Loser'} of Match ${state.matches[source.match]?.number ?? '?'}`;
   }
@@ -398,13 +399,13 @@
       rounds.forEach((round, col) => {
         const group = entries.filter(([, m]) => Number(m.round) === round),
           x = col * bracketDimensions.column;
-        const heading = el('div', 'fm-round-title', group[0][1].label);
+        const heading = el('div', 'fm-round-title', group[0][1].challenge_positions ? 'Challenge play-offs' : group[0][1].label);
         heading.style.top = yOffset + 32 + 'px';
         heading.style.left = x + 'px';
         board.append(heading);
         group.forEach(([key, match]) => {
           const position = coords.get(key);
-          const card = bracketMatch(position, `Match ${match.number}`);
+          const card = bracketMatch(position, `Match ${match.number}${match.challenge_positions ? ' · '+match.challenge_positions.join(' v ') : ''}`);
           match.players.forEach((id, slot) => {
             const knownWinner = match.winner && match.players.some(player => player && Number(player) === Number(match.winner));
             const line = el('div', `fm-slot${id && knownWinner ? (Number(id) === Number(match.winner) ? ' winner winner-home' : ' loser loser-home') : ''}`);
@@ -431,7 +432,13 @@
           }
           if (match.pending_withdrawal_players?.some(Boolean)) {
             card.append(el('div', 'fm-match-note fm-match-note-alert', 'Late withdrawal · admin decision required'));
-          } else if (match.automatic) card.append(el('div', 'fm-match-note', match.automatic === 'walkover'
+          } else if (match.skip_reason) {
+            const note = el('div', 'fm-match-note', match.skip_reason.includes('already played') ? 'Skipped · already played' : 'Skipped · player unavailable');
+            note.title = match.skip_reason;
+            card.append(note);
+          }
+          else if (match.challenge_status === 'pending') card.append(el('div', 'fm-match-note', 'Awaiting all base results · provisional'));
+          else if (match.automatic) card.append(el('div', 'fm-match-note', match.automatic === 'walkover'
             ? (match.withdrawn_players?.some(Boolean) ? 'Late withdrawal · opponent advances' : match.byes?.some(Boolean) ? 'Bye · opponent advances' : 'Walkover · no score played')
             : 'Closed · no active players'));
           if (config.canScore && !state.locked && !match.automatic && !match.pending_withdrawal_players?.some(Boolean) && match.players.every(Boolean)) {
@@ -449,11 +456,12 @@
           position = coords.get(key),
           lineEnd = position.x + bracketDimensions.width + 120,
           endpoint = el('div', 'fm-winner-endpoint'),
-          label = section === 'Main draw' ? 'Champion' : placement ? `Position ${placement[1]}` : 'Winner';
+          label = match.challenge_positions ? `Position ${match.challenge_positions[0]}` : section === 'Main draw' ? 'Champion' : placement ? `Position ${placement[1]}` : 'Winner';
         endpoint.style.left = lineEnd + 10 + 'px';
         endpoint.style.top = position.middle - bracketDimensions.slotHeight + 'px';
         const winnerName = el('strong', 'fm-winner-name');
-        if (match.winner) winnerName.append(playerNameNode(match.winner, 'fm-player-identity-winner'));
+        if (match.challenge_status === 'skipped') winnerName.textContent = 'Skipped · positions unchanged';
+        else if (match.winner) winnerName.append(playerNameNode(match.winner, 'fm-player-identity-winner'));
         else winnerName.textContent = 'Awaiting result';
         endpoint.append(el('span', 'fm-winner-label', label), winnerName);
         board.append(endpoint);
@@ -477,6 +485,8 @@
     lines.push(...winnerLines);
     connectors(board, coords.values(), lines, width, yOffset);
     $('fm-positions').replaceChildren();
+    $('fm-results').querySelector('h2').textContent = state.challenge_playoffs && !state.positions_complete
+      ? 'Provisional positions · challenge play-offs pending' : 'Final positions';
     state.positions.forEach(p => {
       const chip = el('div', 'fm-position');
       chip.append(el('strong', '', p.position));
@@ -770,15 +780,15 @@
     const match = state.matches[key];
     $('fm-score-title').textContent = `Match ${match.number}`;
     $('fm-score-players').textContent = match.players.map(name).join(' vs ');
-    const bestOf = state.best_of || 1;
-    $('fm-score-format').textContent = `Best of ${bestOf}: ${Math.floor(bestOf / 2) + 1} set wins needed. Enter completed sets separated by commas: 6–0 to 6–4, 7–5 or 7–6.`;
-    $('fm-sets').placeholder = bestOf === 1 ? '6-4' : '6-4, 6-3';
-    $('fm-sets').value = match.sets.map(s => s.join('-')).join(', ');
+    $('fm-score-format').textContent = state.score_guidance || `Best of ${state.best_of || 1}: enter completed sets.`;
+    CTSetScoreGrid.populate($('fm-score-dialog').querySelector('[data-set-score-grid]'), {
+      names: match.players.map(name), maxSets: state.score_max_sets || state.best_of || 1, scores: match.sets
+    });
     $('fm-score-error').textContent = '';
     $('fm-reset').checked = false;
     $('fm-reset-label').hidden = true;
     $('fm-score-dialog').showModal();
-    $('fm-sets').focus();
+    $('fm-score-dialog').querySelector('.score-input:not(:disabled)').focus();
   }
   function demoResolve() {
     const resolve = source => {
@@ -800,18 +810,12 @@
     const match = state.matches[scoreKey];
     let sets = null;
     if (!remove) {
-      const chunks = $('fm-sets')
-        .value.split(',')
-        .map(s => s.trim());
-      if (!chunks.length || chunks.length > (state.best_of || 1) || chunks.some(s => !/^\d{1,2}\s*-\s*\d{1,2}$/.test(s))) {
-        $('fm-score-error').textContent = `Enter up to ${state.best_of || 1} sets, using scores such as 6-4.`;
-        return;
-      }
-      sets = chunks.map(s => s.split('-').map(Number));
+      try { sets = CTSetScoreGrid.read($('fm-score-dialog').querySelector('[data-set-score-grid]')); }
+      catch (error) { $('fm-score-error').textContent = error.message; return; }
     }
     busy = true;
     try {
-      if (sets) {
+      if (sets && config.demo) {
         const bestOf = state.best_of || 1;
         const needed = Math.floor(bestOf / 2) + 1;
         const wins = [0, 0];

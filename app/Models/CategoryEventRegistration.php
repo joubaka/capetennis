@@ -227,6 +227,15 @@ class CategoryEventRegistration extends Model
    */
   public function paymentInfo(): array
   {
+    if ($this->is_paid) {
+      $adjustment = CategoryAdjustment::where('entry_id', $this->id)->whereNotNull('applied_at')->latest('id')->first();
+      if ($adjustment) {
+        return app(\App\Domain\Entries\Services\CategoryAdjustmentService::class)->funding($this);
+      }
+      if ($this->hasCategoryAdjustedFunding()) {
+        return app(\App\Domain\Entries\Services\CategoryAdjustmentService::class)->funding($this) + ['category_adjusted' => true];
+      }
+    }
     // Must be paid (payment_status_id = 1)
     if (!$this->is_paid) {
       return [];
@@ -609,11 +618,30 @@ class CategoryEventRegistration extends Model
     return max(0, $gross);
   }
 
+  /** A sibling adjustment also requires exact per-item allocation of a shared receipt. */
+  public function hasCategoryAdjustedFunding(): bool
+  {
+    if (CategoryAdjustment::where('entry_id', $this->id)->whereNotNull('applied_at')->exists()) { return true; }
+    $orderId = RegistrationOrderItems::where('registration_id', $this->registration_id)
+      ->where('category_event_id', $this->category_event_id)->value('order_id');
+    return $orderId && CategoryAdjustment::whereNotNull('applied_at')->whereIn('original_order_item_id',
+      RegistrationOrderItems::where('order_id', $orderId)->select('id'))->exists();
+  }
+
+  /** Serialize shared-order refunds against a first category adjustment. Transaction required. */
+  public function lockCategoryFundingOrder(): void
+  {
+    $origin = CategoryAdjustment::where('entry_id', $this->id)->whereNotNull('applied_at')->latest('id')->lockForUpdate()->first();
+    $item = $origin ? RegistrationOrderItems::whereKey($origin->original_order_item_id)->lockForUpdate()->first()
+      : RegistrationOrderItems::where('registration_id', $this->registration_id)->where('category_event_id', $this->category_event_id)->lockForUpdate()->first();
+    if ($item) { RegistrationOrder::whereKey($item->order_id)->lockForUpdate()->first(); }
+  }
+
   public function canRequestRefund(): bool
   {
     return $this->status === 'withdrawn'
       && $this->is_paid
-      && ! $this->isAdminEntry()
+      && (! $this->isAdminEntry() || CategoryAdjustment::where('entry_id', $this->id)->whereNotNull('applied_at')->exists())
       && in_array($this->refund_status, [null, '', 'not_refunded']);
   }
 

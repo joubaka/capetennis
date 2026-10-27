@@ -51,7 +51,7 @@ final class FlexibleMonradPdfLayout
                     'bottom' => $position['bottom'],
                     'middle' => $position['middle'],
                     'width' => self::CARD_WIDTH,
-                    'number' => $match['number'],
+                    'number' => isset($match['challenge_positions']) ? $match['number'].' · '.implode(' v ', $match['challenge_positions']) : $match['number'],
                     'participants' => [
                         ['label' => $participantLabels[0], 'style' => $this->participantStyle($match, 0, $players), 'width' => $this->pillWidth($participantLabels[0])],
                         ['label' => $participantLabels[1], 'style' => $this->participantStyle($match, 1, $players), 'width' => $this->pillWidth($participantLabels[1])],
@@ -63,11 +63,11 @@ final class FlexibleMonradPdfLayout
                     'winner' => $match['winner'] ?? null,
                     'player_ids' => $match['players'] ?? [null, null],
                     'schedule' => $this->scheduleLabel($match['schedule'] ?? null),
-                    'note' => match ($match['automatic'] ?? null) {
+                    'note' => isset($match['skip_reason']) ? (str_contains($match['skip_reason'], 'already played') ? 'Skipped - already played' : 'Skipped - player unavailable') : (($match['challenge_status'] ?? null) === 'pending' ? 'Awaiting all base results' : match ($match['automatic'] ?? null) {
                         'walkover' => 'Walkover',
                         'void' => 'Closed - no active players',
                         default => null,
-                    },
+                    }),
                 ];
             }
 
@@ -103,10 +103,11 @@ final class FlexibleMonradPdfLayout
                 $endpoints[] = [
                     'x' => $lineEnd + 10,
                     'y' => $position['middle'] - self::SLOT_HEIGHT,
-                    'label' => $section === 'Main draw' ? 'Champion' : (isset($placement[1]) ? 'Position '.$placement[1] : 'Winner'),
-                    'name' => !empty($entry['match']['winner'])
+                    'label' => isset($entry['match']['challenge_positions']) ? 'Position '.$entry['match']['challenge_positions'][0]
+                        : ($section === 'Main draw' ? 'Champion' : (isset($placement[1]) ? 'Position '.$placement[1] : 'Winner')),
+                    'name' => ($entry['match']['challenge_status'] ?? null) === 'skipped' ? 'Skipped - positions unchanged' : (!empty($entry['match']['winner'])
                         ? ($players[(int) $entry['match']['winner']]['name'] ?? 'Winner')
-                        : 'Awaiting result',
+                        : 'Awaiting result'),
                 ];
                 $connections[] = [
                     'x1' => $position['x'] + self::CARD_WIDTH,
@@ -120,7 +121,8 @@ final class FlexibleMonradPdfLayout
             $roundHeadings = $rounds->map(fn ($round, $column) => [
                 'x' => $column * self::COLUMN_GAP,
                 'y' => $sectionTop + 48,
-                'label' => collect($entries)->first(fn ($entry) => (int) $entry['match']['round'] === (int) $round)['match']['label'] ?? 'Round '.$round,
+                'label' => $section === 'Challenge play-offs' ? 'Challenge play-offs'
+                    : (collect($entries)->first(fn ($entry) => (int) $entry['match']['round'] === (int) $round)['match']['label'] ?? 'Round '.$round),
             ])->all();
 
             $boards[] = compact('section', 'sectionTop', 'cards', 'connections', 'endpoints', 'roundHeadings');
@@ -143,6 +145,8 @@ final class FlexibleMonradPdfLayout
             'height' => max(260, $yOffset + ($positions ? 72 : 0)),
             'boards' => $boards,
             'positions' => $positions,
+            'positions_label' => ($state['challenge_playoffs'] ?? false) && ! ($state['positions_complete'] ?? false)
+                ? 'Provisional positions - challenges pending' : 'Final positions',
             'positions_y' => $yOffset + 12,
         ];
     }
@@ -223,6 +227,7 @@ final class FlexibleMonradPdfLayout
             return 'Bye (inactive)';
         }
         $source = (array) ($match['sources'][$slot] ?? []);
+        if (isset($source['base_position'])) return 'Base position '.$source['base_position'];
         if (($source['type'] ?? null) === 'player') {
             return 'Direct entry';
         }

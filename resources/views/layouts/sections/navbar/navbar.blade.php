@@ -184,6 +184,27 @@ $navbarDetached = ($navbarDetached ?? '');
   @endif
 
   <div class="navbar-nav-right d-flex align-items-center" id="navbar-collapse">
+    <style>
+      .ct-app-navigation { display: none; flex-shrink: 0; gap: .375rem; margin-right: .5rem; }
+      .ct-app-navigation .btn { min-width: 44px; min-height: 44px; padding: .5rem; }
+      .ct-app-standalone .ct-app-navigation { display: flex; }
+      @media (display-mode: standalone), (display-mode: minimal-ui), (display-mode: window-controls-overlay) {
+        .ct-app-navigation { display: flex; }
+      }
+      @media (max-width: 575.98px) {
+        .ct-app-navigation-label { display: none; }
+      }
+    </style>
+    <div class="ct-app-navigation" role="group" aria-label="App navigation">
+      <button type="button" class="btn btn-outline-primary" id="ct-app-back" aria-label="Go back" title="Go back">
+        <i class="ti ti-arrow-left" aria-hidden="true"></i>
+        <span class="ct-app-navigation-label">Back</span>
+      </button>
+      <button type="button" class="btn btn-outline-primary" id="ct-app-refresh" aria-label="Refresh page" title="Refresh page">
+        <i class="ti ti-refresh" aria-hidden="true"></i>
+        <span class="ct-app-navigation-label">Refresh</span>
+      </button>
+    </div>
     @if(auth()->check() && \Illuminate\Support\Facades\Schema::hasTable('event_mail_issues'))
       @php($emailIssueCount=\App\Models\EventMailIssue::where('user_id',Auth::id())->whereNull('read_at')->count())
       @if($emailIssueCount)<a class="btn btn-sm btn-outline-danger me-2" href="{{ route('backend.email-issues') }}" aria-label="{{ $emailIssueCount }} email issues need attention">Email issues <span class="badge bg-danger">{{ $emailIssueCount }}</span></a>@endif

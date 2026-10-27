@@ -289,6 +289,20 @@ class RefundExecutionService
                     return $locked;
                 }
 
+                if ($locked instanceof \App\Models\CategoryEventRegistration) { $locked->lockCategoryFundingOrder(); }
+
+                if ($locked instanceof \App\Models\CategoryEventRegistration
+                    && $locked->hasCategoryAdjustedFunding()) {
+                    $remaining = round($locked->maxRefundableAmount(), 2);
+                    $gross = round((float) ($statusOverrides['refund_gross'] ?? 0), 2);
+                    $fee = round((float) ($statusOverrides['refund_fee'] ?? 0), 2);
+                    if ($locked->status !== 'withdrawn' || ! $locked->is_paid || $remaining <= 0
+                        || $gross !== $remaining || round($amount + $fee, 2) !== $remaining || $fee < 0 || $amount <= 0
+                        || ! $locked->user?->wallet()->whereKey($wallet->id)->exists()) {
+                        throw ValidationException::withMessages(['refund' => 'The remaining category funding changed. Review this refund again.']);
+                    }
+                }
+
                 $transitioned = true;
                 $this->ledgerService->appendWalletCredit($wallet, $amount, $sourceType, $sourceId, $meta);
 
@@ -319,7 +333,7 @@ class RefundExecutionService
                 $locked->save();
 
                 return $locked;
-            });
+            }, 3);
         });
 
         if ($transitioned) {
