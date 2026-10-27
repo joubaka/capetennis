@@ -190,10 +190,13 @@ class AccountStatementService
         }
         $rows = $rows->sortBy(fn ($r) => $r['date'].' '.$r['reference'])->values();
         $historicalRows = $this->historicalRecords($user, $rows, $player, $category, $start, $end);
+        $recordedFeeTotal = $historicalRows->flatMap(fn ($row) => $row['details'])->filter(fn ($detail) => isset($detail['recorded_fee_item_id']))
+            ->unique('recorded_fee_item_id')->sum('recorded_fee');
 
         return ['rows' => $rows, 'paid' => $rows->sum('paid'), 'refunded' => $rows->sum('refunded'),
             'net' => $rows->sum('paid') - $rows->sum('refunded'), 'from' => $from, 'to' => $to,
             'player' => $player, 'category' => $category, 'allTime' => $allTime, 'historicalRows' => $historicalRows,
+            'recordedFeeTotal' => $recordedFeeTotal,
             'warnings' => array_values(array_unique($warnings)), 'generated_at' => now(), 'account' => $user];
     }
 
@@ -257,7 +260,14 @@ class AccountStatementService
                         ->where('payable_type', $user->getMorphClass())->where('payable_id', $user->id))->exists()) {
                     continue;
                 }
-                $details = $entry->players->map(fn ($p) => $this->detail($p, $entry->categoryEvent?->event, null))->all();
+                $details = $entry->players->map(function ($p) use ($entry, $user) {
+                    $detail = $this->detail($p, $entry->categoryEvent?->event, null);
+                    $fee = $this->historicalEntryFee($user, $entry, (int) $p->id);
+                    $detail['recorded_fee'] = $fee['amount'] ?? null;
+                    $detail['recorded_fee_item_id'] = $fee['item_id'] ?? null;
+
+                    return $detail;
+                })->all();
                 if ($details === []) $details = [$this->detail(null, $entry->categoryEvent?->event, null)];
                 $history->push(['checkout' => 'Historical entry '.$entry->id, 'reference' => $entry->pf_transaction_id ?: 'Reference unavailable',
                     'method' => $entry->payment_method ?: 'Recorded as paid', 'date' => null, 'amount' => null, 'details' => $details]);
@@ -289,10 +299,34 @@ class AccountStatementService
         }
         if ($player !== '') {
             $history = $history->filter(fn ($r) => collect($r['details'])->contains(fn ($d) => mb_stripos($d['player'], $player) !== false));
+            $history = $history->map(function ($row) use ($player) {
+                $row['details'] = array_values(array_filter($row['details'], fn ($detail) => mb_stripos($detail['player'], $player) !== false));
+
+                return $row;
+            });
         }
+        $history = $history->map(function ($row) {
+            $fees = collect($row['details'])->filter(fn ($detail) => isset($detail['recorded_fee_item_id']))->unique('recorded_fee_item_id');
+            $row['recordedFee'] = $fees->isEmpty() ? null : $fees->sum('recorded_fee');
+            $row['partialRecordedFee'] = $fees->isNotEmpty() && $fees->count() < count($row['details']);
+
+            return $row;
+        });
         if ($history->count() > self::LIMIT) $this->tooMany();
 
         return $history->values();
+    }
+
+    private function historicalEntryFee(User $user, CategoryEventRegistration $entry, int $playerId): ?array
+    {
+        if (! Schema::hasColumn('registration_order_items', 'user_id')) return null;
+        $items = \App\Models\RegistrationOrderItems::where('user_id', $user->id)
+            ->where('registration_id', $entry->registration_id)->where('category_event_id', $entry->category_event_id)
+            ->where('player_id', $playerId)->limit(2)->get(['id', 'item_price']);
+        if ($items->count() !== 1 || $items->first()->item_price === null) return null;
+        $fee = $this->cents($items->first()->item_price);
+
+        return $fee > 0 ? ['amount' => $fee, 'item_id' => (int) $items->first()->id] : null;
     }
 
     private function hasDatedEntryReceipt(User $user, CategoryEventRegistration $entry): bool
