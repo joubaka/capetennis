@@ -7,8 +7,17 @@
         @include('frontend.event.partials._draws_and_order_of_play')
       </div>
       @include('frontend.event.partials.trial-programme')
-      <div class="card mt-4">
-        <div class="card-header"><h5 class="mb-0">Trial nominations</h5></div>
+      @php
+        $nominationsCloseAt = $event->registrationClosesAt();
+        $nominationsClosed = $nominationsCloseAt && now()->gt($nominationsCloseAt);
+      @endphp
+      <details class="card mt-4" @if(!$nominationsClosed) open @endif>
+        <summary class="card-header" style="cursor: pointer;">
+          <span class="h5 mb-0">Trial nominations</span>
+          @if($nominationsClosed)
+            <span class="small text-muted ms-2">Registration closed · View nominations</span>
+          @endif
+        </summary>
         <div class="card-body">
           @if($publishedCategories->isEmpty())
             <p class="text-muted mb-0">No trial nominations have been published.</p>
@@ -98,7 +107,7 @@
             </div>
           @endif
         </div>
-      </div>
+      </details>
     </div>
     <div class="col-lg-4">
       @include('frontend.event.partials.event-about')

@@ -1,0 +1,23 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Feed-in bye presentation fixture</title>
+<link rel="stylesheet" href="../../../public/css/tennis-bracket.css"><link rel="stylesheet" href="../../../public/css/flexible-monrad.css">
+<style>body{font:14px Arial;margin:16px} .fm-workspace{display:block} #fm-board{position:relative} .fixture-scroll{overflow:auto;max-width:100%}</style>
+<h1>Fictional Feed-in Monrad: explicit byes</h1><p><a href="?sparse=1">Sparse 3 in 8</a> · <a href="?">12 in 16</a></p>
+<main id="fm-app"><h2 id="fm-board-title"></h2><div class="fm-workspace"><div class="fixture-scroll"><div id="fm-board"></div></div></div><section id="fm-results"><h2>Final positions</h2><div id="fm-positions"></div></section><div hidden><div id="fm-message"></div><div id="fm-slot-dialog"></div><div id="fm-slot-error"></div><div id="fm-sidebar"></div><div id="fm-pick-search"></div><div id="fm-pick"></div><div id="fm-pick-search-fallback"></div><div id="fm-slot-title"></div><div id="fm-slot-description"></div><div id="fm-remove"></div><div id="fm-players"></div><div id="fm-search"></div><div id="fm-count"></div><div id="fm-size"></div><div id="fm-add-player"></div><div id="fm-add-paid-entry"></div><div id="fm-status"></div><div id="fm-phase"></div><div id="fm-workspace"></div><div id="fm-undo"></div><div id="fm-example"></div><div id="fm-save"></div><div id="fm-generate"></div><div id="fm-publish"></div><div id="fm-reopen"></div><div id="fm-withdrawn"></div><div id="fm-withdrawals"></div><div id="fm-withdrawal-redraw"></div><div id="fm-public"></div><div id="fm-generated-roster"></div><div id="fm-system-player-error"></div><div id="fm-system-player-results"></div><div id="fm-add-player-dialog"></div><div id="fm-system-player-search"></div><div id="fm-system-player-search-form"></div><div id="fm-score-title"></div><div id="fm-score-players"></div><div id="fm-score-format"></div><div id="fm-score-dialog"></div><div id="fm-score-error"></div><div id="fm-reset"></div><div id="fm-reset-label"></div><div id="fm-place"></div><div id="fm-swap"></div><div id="fm-bye"></div><div id="fm-byes"></div><div id="fm-score-save"></div><div id="fm-score-delete"></div><div id="fm-print"></div></div></main>
+<section id="fm-print-content" class="fm-print-only"></section>
+<script src="../../../public/js/tennis-bracket-layout.js"></script><script src="../../../public/js/tennis-bracket.js"></script><script>
+const sparse = location.search.includes('sparse');
+const size = sparse ? 8 : 16, depth = Math.log2(size), slots = {}, matches = {}, players = [];
+const byes = sparse ? ['aaa','aab','aba','abb','baa'] : ['aaab','abab','baab','bbab'];
+let id = 0, number = 0;
+function visit(path) {
+  if(path.length === depth) { if(byes.includes(path)) return slots[path] = {type:'bye'}; players.push({id:++id,name:'Fictional Player '+id}); return slots[path] = {type:'player',id}; }
+  const sources = [visit(path+'a'),visit(path+'b')];
+  if(sources[0].type === 'bye') return sources[1]; if(sources[1].type === 'bye') return sources[0];
+  const key = 'main_'+(path || 'final');
+  matches[key] = {section:'Main draw',path,round:depth-path.length,label:['Final','Semifinals','Quarterfinals'][path.length] || 'Round of '+2**(path.length+1),sources,number:++number,id:number,players:sources.map(source=>source.id || null),winner:null,sets:[]};
+  return {type:'winner',match:key};
+}
+visit('');
+const config = {workflow:'feed_in_monrad',readOnly:true,state:{draft:{size,slots},matches,players,positions:[],generated:true,published:true,locked:false}};
+const node = document.createElement('script'); node.id='fm-config'; node.type='application/json'; node.textContent=JSON.stringify(config); document.body.append(node);
+</script><script src="../../../public/js/flexible-monrad.js"></script></html>

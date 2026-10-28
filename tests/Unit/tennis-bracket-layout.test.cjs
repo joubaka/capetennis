@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { layout, dimensions, linePath, terminalWinnerKeys, strokeWidth } = require('../../public/js/tennis-bracket-layout.js');
+const { layout, dimensions, linePath, terminalWinnerKeys, strokeWidth, withMainDrawByes } = require('../../public/js/tennis-bracket-layout.js');
 const direct = () => ({ type: 'player' });
 const feeder = match => ({ type: 'winner', match });
 
@@ -117,4 +117,66 @@ test('64-player draw fits every match in its full-height bounds without same-rou
       if (index) assert.ok(p.top - dimensions.slotHeight > round[index - 1].bottom);
     });
   }
+});
+
+function feedInMain(size, byePaths) {
+  const slots = {}, matches = {};
+  const depth = Math.log2(size);
+  let id = 0, number = 0;
+  const visit = path => {
+    if (path.length === depth) return slots[path] = byePaths.includes(path) ? {type: 'bye'} : {type: 'player', id: ++id};
+    const sources = [visit(path + 'a'), visit(path + 'b')];
+    if (sources[0].type === 'bye') return sources[1];
+    if (sources[1].type === 'bye') return sources[0];
+    const key = `main_${path || 'final'}`;
+    matches[key] = {section: 'Main draw', path, round: depth - path.length, sources,
+      number: ++number, id: number, players: sources.map(source => source.id || null), winner: null, sets: []};
+    return feeder(key);
+  };
+  visit('');
+  return {matches, draft: {size, slots}};
+}
+
+test('12 players in a 16-slot feed-in draw display every opening player and bye without changing fixtures', () => {
+  const {matches, draft} = feedInMain(16, ['aaab', 'abab', 'baab', 'bbab']);
+  matches.feed_1 = {section: 'Positions 5–12 · Feed-in', sources: [{type: 'loser', match: 'main_aaa'}, direct()]};
+  const before = JSON.stringify(matches);
+  const displayed = withMainDrawByes(matches, draft);
+  const main = Object.entries(displayed).filter(([, match]) => match.section === 'Main draw');
+  assert.equal(main.length, 15);
+  assert.equal(main.filter(([, match]) => match.round === 1).length, 8);
+  assert.equal(main.filter(([, match]) => match.displayOnly).length, 4);
+  assert.equal(main.filter(([, match]) => match.round === 1).flatMap(([, match]) => match.byes || []).filter(Boolean).length, 4);
+  assert.equal(main.filter(([, match]) => match.round === 1).flatMap(([, match]) => match.players).filter(Boolean).length, 12);
+  assert.equal(JSON.stringify(matches), before);
+  assert.equal(displayed.feed_1, matches.feed_1);
+  for (const [key, match] of Object.entries(matches).filter(([, match]) => match.section === 'Main draw')) {
+    assert.equal(displayed[key].id, match.id);
+    assert.equal(displayed[key].number, match.number);
+    assert.deepEqual(displayed[key].players, match.players);
+  }
+  const result = layout(main.map(([key, match]) => ({key, column: match.round - 1, sources: match.sources})));
+  const opening = main.filter(([, match]) => match.round === 1).map(([key]) => result.positions.get(key)).sort((a, b) => a.top - b.top);
+  opening.forEach((position, index) => {
+    assert.equal(position.bottom - position.top, dimensions.lineGap);
+    if (index) assert.ok(position.top > opening[index - 1].bottom);
+  });
+  assert.deepEqual(terminalWinnerKeys(displayed, {withinSections: true}).filter(key => !displayed[key].displayOnly || displayed[key].path === ''), ['main_final', 'feed_1']);
+});
+
+test('sparse feed-in draws keep both-bye branches explicit and retain original winner source labels', () => {
+  const {matches, draft} = feedInMain(8, ['aaa', 'aab', 'aba', 'abb', 'baa']);
+  const displayed = withMainDrawByes(matches, draft);
+  assert.equal(Object.keys(displayed).length, 7);
+  assert.ok(displayed.display_bye_a.byes.every(Boolean));
+  assert.ok(displayed.display_bye_aa.byes.every(Boolean));
+  assert.equal(displayed.display_bye_final.sources[1].match, 'main_b');
+  assert.equal(displayed.display_bye_final.sources[1].original_match, 'main_b');
+  assert.equal(displayed.display_bye_final.winner, null);
+  assert.deepEqual(terminalWinnerKeys(displayed, {withinSections: true}).filter(key => !displayed[key].displayOnly || displayed[key].path === ''), ['display_bye_final']);
+  matches.main_b.winner = 2;
+  const resolved = withMainDrawByes(matches, draft).display_bye_final;
+  assert.equal(resolved.winner, 2);
+  assert.deepEqual(resolved.players, [null, 2]);
+  assert.deepEqual(matches.main_b.players, [1, null]);
 });

@@ -74,7 +74,9 @@ class TeamRosterService
                         if ($mirror->first()) $payments->updateTeamPlayerSlot($mirror->first(), ['player_id' => $player->id, 'pay_status' => 0]);
                         else $payments->createUnpaidTeamPlayerSlot($team, $player, $rank);
                     }
-                    NoProfileTeamPlayer::create(['team_id' => $team->id, 'name' => $data['name'], 'surname' => $data['surname'], 'rank' => $rank, 'pay_status' => 0, 'player_profile' => $player?->id]);
+                    $attributes = ['team_id' => $team->id, 'name' => $data['name'], 'surname' => $data['surname'], 'rank' => $rank, 'pay_status' => 0];
+                    if ($player) $attributes['player_profile'] = $player->id;
+                    NoProfileTeamPlayer::create($attributes);
                 } else {
                     $player = Player::query()->lockForUpdate()->findOrFail($data['player_id']);
                     try { app(\App\Services\PlayerEligibilityService::class)->assertEligible($player, $event); }

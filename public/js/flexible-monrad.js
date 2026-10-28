@@ -350,7 +350,8 @@
   function sourceLabel(source) {
     if (source.base_position) return `Base position ${source.base_position}`;
     if (source.type === 'player') return 'Direct entry';
-    return `${source.type === 'winner' ? 'Winner' : 'Loser'} of Match ${state.matches[source.match]?.number ?? '?'}`;
+    if (source.type === 'bye') return 'Bye';
+    return `${source.type === 'winner' ? 'Winner' : 'Loser'} of Match ${state.matches[source.original_match || source.match]?.number ?? '?'}`;
   }
   function scheduleParts(schedule) {
     if (!schedule?.time) return { date: '', time: '' };
@@ -378,6 +379,8 @@
     return match.vacant?.[slot] ? 'Bye (inactive)' : sourceLabel(match.sources[slot]);
   }
   function generatedBoard() {
+    const displayMatches = config.workflow === 'feed_in_monrad'
+      ? bracketLayout.withMainDrawByes(state.matches, state.draft) : state.matches;
     const board = $('fm-board'),
       sections = new Map(),
       coords = new Map();
@@ -386,8 +389,8 @@
     const winnerLines = [];
     // A winner still needs an ending line on this board when they continue
     // into a separate feed-in, placement or challenge board.
-    const terminalWinners = new Set(bracketLayout.terminalWinnerKeys(state.matches, {withinSections: true}));
-    Object.entries(state.matches).forEach(([key, match]) => {
+    const terminalWinners = new Set(bracketLayout.terminalWinnerKeys(displayMatches, {withinSections: true}));
+    Object.entries(displayMatches).forEach(([key, match]) => {
       if (!sections.has(match.section)) sections.set(match.section, []);
       sections.get(match.section).push([key, match]);
     });
@@ -407,7 +410,7 @@
         board.append(heading);
         group.forEach(([key, match]) => {
           const position = coords.get(key);
-          const card = bracketMatch(position, `Match ${match.number}${match.challenge_positions ? ' · '+match.challenge_positions.join(' v ') : ''}`);
+          const card = bracketMatch(position, match.displayOnly ? 'Bye' : `Match ${match.number}${match.challenge_positions ? ' · '+match.challenge_positions.join(' v ') : ''}`);
           match.players.forEach((id, slot) => {
             const knownWinner = match.winner && match.players.some(player => player && Number(player) === Number(match.winner));
             const line = el('div', `fm-slot${id && knownWinner ? (Number(id) === Number(match.winner) ? ' winner' : ' loser') : ''}`);
@@ -432,7 +435,9 @@
             schedule.setAttribute('aria-label', `Scheduled ${scheduleLabel(match.schedule, true)}`);
             card.append(schedule);
           }
-          if (match.pending_withdrawal_players?.some(Boolean)) {
+          if (match.displayOnly) {
+            card.append(el('div', 'fm-match-note', match.byes.every(Boolean) ? 'Byes · no match played' : 'Bye · no match played'));
+          } else if (match.pending_withdrawal_players?.some(Boolean)) {
             card.append(el('div', 'fm-match-note fm-match-note-alert', 'Late withdrawal · admin decision required'));
           } else if (match.skip_reason) {
             const note = el('div', 'fm-match-note', match.skip_reason.includes('already played') ? 'Skipped · already played' : 'Skipped · player unavailable');
@@ -443,7 +448,7 @@
           else if (match.automatic) card.append(el('div', 'fm-match-note', match.automatic === 'walkover'
             ? (match.withdrawn_players?.some(Boolean) ? 'Late withdrawal · opponent advances' : match.byes?.some(Boolean) ? 'Bye · opponent advances' : 'Walkover · no score played')
             : 'Closed · no active players'));
-          if (config.canScore && !state.locked && !match.automatic && !match.pending_withdrawal_players?.some(Boolean) && match.players.every(Boolean)) {
+          if (config.canScore && !state.locked && !match.displayOnly && !match.automatic && !match.pending_withdrawal_players?.some(Boolean) && match.players.every(Boolean)) {
             const score = el('button', 'fm-score-button', match.winner ? 'Edit result' : 'Enter result');
             score.type = 'button';
             score.disabled = busy;
@@ -453,7 +458,7 @@
           board.append(card);
         });
       });
-      entries.filter(([key]) => terminalWinners.has(key)).forEach(([key, match]) => {
+      entries.filter(([key, match]) => terminalWinners.has(key) && (!match.displayOnly || match.path === '')).forEach(([key, match]) => {
         const placement = section.match(/^Positions\s+(\d+)/),
           basePosition = match.winner ? state.base_positions?.find(row => Number(row.player) === Number(match.winner))?.position : null,
           position = coords.get(key),
@@ -478,7 +483,7 @@
     board.style.width = width + 'px';
     board.style.height = Math.max(yOffset, 250) + 'px';
     const lines = [];
-    Object.entries(state.matches).forEach(([key, match]) => {
+    Object.entries(displayMatches).forEach(([key, match]) => {
       const target = coords.get(key);
       match.sources.forEach((source, slot) => {
         const from = coords.get(source.match);

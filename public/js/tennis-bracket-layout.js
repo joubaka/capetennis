@@ -1,4 +1,4 @@
-/* Shared line-bracket geometry. Presentation only: never resolves entrants or byes. */
+/* Shared line-bracket presentation. Never creates fixtures or changes results. */
 (function (root) {
   'use strict';
   const dimensions = { width: 220, column: 260, slotHeight: 32, lineGap: 64 };
@@ -78,10 +78,50 @@
     });
     return entries.map(([key]) => key).filter(key => !followedWinners.has(key));
   }
+  // The compiler omits unplayed bye matches. Restore their lines for a full
+  // opening bracket without adding them to the canonical match/fixture state.
+  function withMainDrawByes(matches, draft) {
+    const depth = Math.log2(Number(draft?.size));
+    if (!Number.isInteger(depth) || depth < 2 || depth > 6) return matches;
+    const slots = draft.slots || {};
+    const main = Object.entries(matches).filter(([, match]) => match.section === 'Main draw');
+    if (!main.length) return matches;
+    const byPath = new Map(main.map(([key, match]) => [match.path, [key, match]]));
+    const expanded = {};
+    const visit = path => {
+      if (path.length === depth) return { source: slots[path] || {type: 'bye'} };
+      const children = [visit(path + 'a'), visit(path + 'b')];
+      const existing = byPath.get(path);
+      const key = existing?.[0] || `display_bye_${path || 'final'}`;
+      const sources = children.map(child => child.key
+        ? {...child.source, original_match: child.source.match, match: child.key}
+        : {...child.source});
+      let source;
+      if (existing) {
+        const match = existing[1];
+        expanded[key] = {...match, sources};
+        source = {type: 'winner', match: key};
+      } else {
+        source = children.find(child => child.source.type !== 'bye')?.source || {type: 'bye'};
+        const players = children.map(child => child.source.type === 'player' ? child.source.id
+          : child.source.type === 'winner' ? matches[child.source.match]?.winner || null : null);
+        expanded[key] = {
+          section: 'Main draw', path, round: depth - path.length,
+          label: ['Final', 'Semifinals', 'Quarterfinals'][path.length] || `Round of ${2 ** (path.length + 1)}`,
+          sources, players, byes: children.map(child => child.source.type === 'bye'),
+          winner: source.type === 'player' ? source.id : matches[source.match]?.winner || null,
+          sets: [], displayOnly: true,
+        };
+      }
+      return {key, source};
+    };
+    visit('');
+    return {...expanded, ...Object.fromEntries(Object.entries(matches).filter(([, match]) => match.section !== 'Main draw'))};
+  }
   // Keep crispEdges at exactly one device pixel, including fractional browser zoom.
   // A 1 CSS-pixel stroke at e.g. 125% can otherwise rasterise into two columns.
   const strokeWidth = ratio => 1 / (Number.isFinite(ratio) && ratio > 0 ? ratio : 1);
-  const api = { dimensions, layout, linePath, terminalWinnerKeys, strokeWidth };
+  const api = { dimensions, layout, linePath, terminalWinnerKeys, strokeWidth, withMainDrawByes };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.TennisBracketLayout = api;
 })(typeof window === 'undefined' ? globalThis : window);

@@ -17,7 +17,7 @@ class RegionalRosterTest extends TestCase
         [$event, $region, $team, $manager] = $this->roster();
         $this->actingAs($manager);
         $player = Player::factory()->create(['name' => 'Ajax', 'surname' => 'Roster']);
-        $url = route('admin.events.teams', $event).'?roster_region='.$region->id.'&panel=players';
+        $url = route('admin.events.teams', $event).'?roster_region='.$team->region_id.'&panel=players';
         $this->rosterChange($team, ['action' => 'add', 'player_id' => $player->id])->assertOk();
         $this->get($url, ['X-Requested-With' => 'XMLHttpRequest'])->assertOk()
             ->assertSee('Ajax Roster')->assertSee('1 occupied places')->assertDontSee('<!DOCTYPE', false);
@@ -103,6 +103,12 @@ class RegionalRosterTest extends TestCase
         $this->put(route('backend.team-selection.manager.assign', [$event, $region]), ['manager_user_id' => $manager->id])->assertForbidden();
         $this->post(route('backend.team-selection.teams.publish-all', [$event, $region]))->assertForbidden();
         $this->get(route('backend.event-communications.index', $event))->assertForbidden();
+        $this->get(route('admin.events.teams', $event))->assertOk()->assertDontSee('name="refund_action"', false);
+        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        $manager->assignRole('super-user');
+        $this->actingAs($manager->fresh())->get(route('admin.events.teams', $event).'?roster_region='.$team->region_id.'&panel=players', ['X-Requested-With' => 'XMLHttpRequest'])
+            ->assertOk()->assertSee('name="refund_action"', false)
+            ->assertSee('Refund original payer')->assertSee('Waive refund')->assertSee('The replacement starts unpaid');
     }
 
     public function test_linked_imported_slots_keep_mirrors_and_block_inflight_then_release_unpaid_reservation(): void
@@ -276,7 +282,7 @@ class RegionalRosterTest extends TestCase
         $mirror = $payments->createUnpaidTeamPlayerSlot($team, Player::factory()->create(), 2);
         $payments->updateTeamPlayerSlot($mirror, ['player_id' => 0]);
         $beforeMirror = $mirror->fresh()->getAttributes();
-        $this->actingAs($manager)->get(route('admin.events.teams', $event))->assertOk()->assertSee('Edit name')->assertSee('Save name')->assertSee('value="Typoo"', false);
+        $this->actingAs($manager)->get(route('admin.events.teams', $event))->assertOk()->assertSee('Change name')->assertSee('Save name')->assertSee('value="Typoo"', false);
         $payload = ['event_id' => $event->id, 'team_id' => $team->id, 'slot_id' => $slot->id, 'expected_rank' => 2,
             'expected_player_id' => 0, 'expected_name' => 'Typoo', 'expected_surname' => 'Unlinked', 'name' => '  Typo  ', 'surname' => 'Unlinked'];
         $this->postJson(route('backend.team.editPlayerName'), $payload)->assertOk();
