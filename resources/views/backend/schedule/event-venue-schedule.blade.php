@@ -789,6 +789,7 @@
 </div>
 
 @include('backend.schedule.partials.move-conflict-modal')
+@include('backend.schedule.partials.timeline-editor')
 <div class="modal fade" id="rescheduleMatchModal" tabindex="-1" aria-labelledby="rescheduleMatchLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered"><form id="reschedule-match-form" class="modal-content">
     <div class="modal-header"><h5 class="modal-title" id="rescheduleMatchLabel">Reschedule match</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
@@ -886,6 +887,7 @@
 @section('page-script')
 <script src="{{ asset('js/schedule-day-batch.js') }}"></script>
 <script src="{{ asset('js/schedule-move-conflicts.js') }}"></script>
+<script src="{{ asset('js/schedule-timeline.js') }}"></script>
 <script>
 (() => {
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
@@ -934,6 +936,7 @@
   let selectedManualFixture = null;
   let pendingManualSlot = null;
   let lastScheduleResult = null;
+  const timelineState = CapeScheduleTimeline.createState();
 
   const previewActivityStages = [
     {after: 0, percent: 5, label: 'Sending the scheduling rules…'},
@@ -1064,6 +1067,7 @@
   };
   const invalidatePreview = (message = 'Settings changed. Generate a new preview before applying.') => {
     previewGeneration++;
+    timelineState.reset();
     document.getElementById('preview-warnings').replaceChildren();
     document.getElementById('venue-timelines').replaceChildren();
     document.getElementById('venue-slot-grids').replaceChildren();
@@ -1535,10 +1539,14 @@
     return `<div class="preview-venue-actions"><div>${state}<span class="small text-muted ms-2">Change previews new times; unapply removes saved times and returns matches to planning.</span></div><div class="d-flex flex-wrap gap-2">${keep}${change}${unapply}${apply}</div></div>`;
   };
 
-  function slotGrid(result, venue) {
-    const rows = venueRows(result, venue.id);
+  const timelineWindow = (result, rows) => {
     const start = asDate(result.input.start);
     const end = result.input.end ? asDate(result.input.end) : new Date(Math.max(start.getTime(), ...rows.map(row => matchEnd(row, result).getTime())));
+    return {start, end};
+  };
+  function slotGrid(result, venue) {
+    const rows = venueRows(result, venue.id);
+    const {start, end} = timelineWindow(result, rows);
     const step = Math.max(15, Number(result.input.duration) + Number(result.input.courtGap || 0));
     const times = new Map(rows.map(row => [dateKey(row.scheduled_at), asDate(row.scheduled_at)]));
     let cursor = new Date(start);
@@ -1546,7 +1554,8 @@
       times.set(cursor.getTime(), new Date(cursor));
       cursor = new Date(cursor.getTime() + step * 60000);
     }
-    const slots = [...times.values()].filter(time => time >= start && time < end).sort((a, b) => a - b).slice(0, 200);
+    const baseSlots = [...times.values()].filter(time => time >= start && time < end).sort((a, b) => a - b).slice(0, 200);
+    const slots = timelineState.times(venue.id, baseSlots, rows.map(row => row.scheduled_at), start, end);
     const courtHeaders = venue.court_labels.map(court => `<th class="text-nowrap">Court ${escapeHtml(court)}</th>`).join('');
     const body = slots.map(time => {
       const cells = venue.court_labels.map(court => {
@@ -1571,9 +1580,9 @@
         if (occupied) return `<td data-court-label="Court ${escapeHtml(court)}" class="bg-label-secondary text-muted"><span class="fw-semibold">In use</span><div class="small">until ${escapeHtml(matchEnd(occupied, result).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}))}</div></td>`;
         return `<td class="manual-drop-slot" data-court-label="Court ${escapeHtml(court)}" data-manual-slot data-venue="${venue.id}" data-court="${escapeHtml(court)}" data-time="${escapeHtml(assignmentTime(time))}"><button type="button" class="manual-slot-button"><span class="fw-semibold">Court free</span><span class="small text-muted d-block">Match eligibility checked on move</span></button></td>`;
       }).join('');
-      return `<tr><th class="text-nowrap">${escapeHtml(formatSlotTime(time))}</th>${cells}</tr>`;
+      return `<tr><th scope="row" class="text-nowrap"><span class="d-block">${escapeHtml(formatSlotTime(time))}</span><button type="button" class="btn btn-sm btn-outline-primary mt-2" data-edit-timeline data-venue="${venue.id}" data-time="${escapeHtml(assignmentTime(time))}" aria-label="Edit timeline time ${escapeHtml(formatSlotTime(time))}">Edit time</button></th>${cells}</tr>`;
     }).join('');
-    const truncated = times.size >= 200 ? '<div class="alert alert-warning py-2 mb-0">Only the first 200 time rows are shown. Shorten the scheduling window to inspect it in more detail.</div>' : '';
+    const truncated = times.size >= 200 ? '<div class="alert alert-warning py-2 mb-0">Only the first 200 standard time rows, plus edited times, are shown. Shorten the scheduling window to inspect it in more detail.</div>' : '';
 
     return `<details open class="card preview-venue mb-4" data-preview-venue="${venue.id}"><summary class="card-header d-flex flex-wrap align-items-center gap-2"><h5 class="mb-0">${escapeHtml(venue.name)}</h5><span class="venue-age-group-summary">${ageGroupScheduleSummary(rows)}</span><span class="small text-muted">${venue.courts} courts · ${rows.length} fixtures</span><i class="ti ti-chevron-down summary-chevron" aria-hidden="true"></i></summary>${venueActions(result, venue)}<div class="court-grid-hint small"><i class="ti ti-arrows-horizontal" aria-hidden="true"></i><span>Drag a match to a free court slot, or select the match and then its slot. Each venue has its own courts.</span></div><div class="court-grid-scroll ${venue.court_labels.length > 8 ? 'court-grid-many' : ''}" tabindex="0" role="region" aria-label="${escapeHtml(venue.name)} court schedule"><table class="table table-bordered align-middle mb-0"><thead><tr><th>Slot starts</th>${courtHeaders}</tr></thead><tbody>${body || '<tr><td colspan="99" class="text-center text-muted py-4">No slots in this scheduling window.</td></tr>'}</tbody></table></div>${truncated}</details>`;
   }
@@ -1867,6 +1876,18 @@
   });
 
   const slotGrids = document.getElementById('venue-slot-grids');
+  CapeScheduleTimeline.mount({document, bootstrap, state:timelineState,
+    context:venueId => {
+      const venue = lastScheduleResult?.venues?.find(item => Number(item.id) === Number(venueId));
+      if (!venue) return null;
+      const window = timelineWindow(lastScheduleResult, venueRows(lastScheduleResult, venue.id));
+      return {name:venue.name, start:assignmentTime(window.start), end:assignmentTime(window.end), version:lastScheduleResult};
+    },
+    onChange:() => {
+      render(lastScheduleResult);
+      setStatus(document.getElementById('schedule-status'), 'Timeline updated for this session. Existing match times are unchanged; move a match to use the new slot.', 'success');
+    },
+  });
   const matchPickerModal = document.getElementById('manualMatchPickerModal');
   const matchPickerList = document.getElementById('manual-match-picker-list');
   const matchPickerSearch = document.getElementById('manual-match-picker-search');
