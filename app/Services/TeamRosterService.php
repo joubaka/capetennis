@@ -60,7 +60,21 @@ class TeamRosterService
                     if ($mirror->count() > 1 || $mirror->contains(fn ($slot) => $slot->pay_status || (int) $slot->player_id > 0)) $this->fail('This roster needs administrator review.');
                     $duplicate = $this->hasDuplicateRawName($slots, $data['name'], $data['surname']);
                     if ($duplicate) $this->fail('This player is already on the team.');
-                    NoProfileTeamPlayer::create(['team_id' => $team->id, 'name' => $data['name'], 'surname' => $data['surname'], 'rank' => $rank, 'pay_status' => 0]);
+                    $player = !empty($data['player_id']) ? Player::query()->lockForUpdate()->findOrFail($data['player_id']) : null;
+                    if ($player) {
+                        try { app(PlayerEligibilityService::class)->assertEligible($player, $event); }
+                        catch (\RuntimeException $exception) { $this->fail($exception->getMessage()); }
+                        if (TeamPlayer::whereIn('team_id', app(EventTeamScope::class)->query($event)->select('teams.id'))->where('player_id', $player->id)->lockForUpdate()->exists()
+                            || NoProfileTeamPlayer::whereIn('team_id', app(EventTeamScope::class)->query($event)->select('teams.id'))->where('player_profile', $player->id)->lockForUpdate()->exists()) $this->fail('This player is already on a team in this event.');
+                        if (TeamPaymentOrder::where('event_id', $event->id)->forPlayerHistory([$player->id])->lockForUpdate()->exists()
+                            || TeamSelectionInvitation::where('event_id', $event->id)->where('player_id', $player->id)->lockForUpdate()->exists()
+                            || \App\Models\ClothingOrder::where('event_id', $event->id)->where('player_id', $player->id)->lockForUpdate()->exists()
+                            || \App\Models\CategoryEventRegistration::withTrashed()->whereHas('categoryEvent', fn ($query) => $query->where('event_id', $event->id))
+                                ->whereHas('registration.players', fn ($query) => $query->where('players.id', $player->id))->lockForUpdate()->exists()) $this->fail('This player has payment, registration, clothing or selection history. Use the existing selection workflow.');
+                        if ($mirror->first()) $payments->updateTeamPlayerSlot($mirror->first(), ['player_id' => $player->id, 'pay_status' => 0]);
+                        else $payments->createUnpaidTeamPlayerSlot($team, $player, $rank);
+                    }
+                    NoProfileTeamPlayer::create(['team_id' => $team->id, 'name' => $data['name'], 'surname' => $data['surname'], 'rank' => $rank, 'pay_status' => 0, 'player_profile' => $player?->id]);
                 } else {
                     $player = Player::query()->lockForUpdate()->findOrFail($data['player_id']);
                     try { app(\App\Services\PlayerEligibilityService::class)->assertEligible($player, $event); }
@@ -173,13 +187,35 @@ class TeamRosterService
             $rank = (int) $slot->rank;
             $playerId = (int) ($team->noProfile ? $slot->player_profile : $slot->player_id);
             if ($rank !== (int) $data['expected_rank'] || $playerId !== (int) $data['expected_player_id']) $this->fail('This player changed. Refresh and try again.');
-            if (!$team->noProfile && $playerId === (int) $data['player_id']) $this->fail('Choose a different player.');
-            $this->change($event, $region, $team, $actor, 'remove', $data);
+            if (!empty($data['player_id']) && $playerId === (int) $data['player_id']) $this->fail('Choose a different player.');
+            if ($team->noProfile && !empty($data['player_id'])) {
+                $replacement = Player::query()->lockForUpdate()->findOrFail($data['player_id']);
+                $data['name'] = $replacement->name;
+                $data['surname'] = $replacement->surname;
+            }
+            $mirror = $team->noProfile ? TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('rank', $rank)->lockForUpdate()->first() : $slot;
+            $paid = (int) $slot->pay_status === 1 || (int) $mirror?->pay_status === 1;
+            if ($paid) {
+                abort_unless($actor->hasRole('super-user'), 403);
+                $this->assertBeforeCompetition($event, $team);
+                if (empty($data['player_id']) || !in_array($data['refund_action'] ?? null, ['refund', 'waive'], true) || blank($data['reason'] ?? null)) $this->fail('Choose a database player, a refund or waiver, and give a reason for replacing a paid player.');
+                if (!$mirror || (int) $mirror->player_id !== $playerId) $this->fail('The paid roster mirror no longer agrees. Refresh the player list.');
+                $withdrawals = app(AdminTeamWithdrawalService::class);
+                $review = $withdrawals->review($event, $team, $mirror, $actor, refundAction: $data['refund_action']);
+                if ($data['refund_action'] === 'refund' && !$review['refundAvailable']) $this->fail('The refund deadline has passed. Choose an explicit refund waiver to continue.');
+                $withdrawals->confirm($event, $team, $mirror, $actor, [
+                    'order_id' => $review['order']->id, 'fingerprint' => $review['fingerprint'],
+                    'reason' => $data['reason'], 'refund_action' => $data['refund_action'],
+                ]);
+            } else {
+                if (!empty($data['refund_action'])) $this->fail('Refresh the player list: this player is unpaid and needs no refund decision.');
+                $this->change($event, $region, $team, $actor, 'remove', $data);
+            }
             $this->change($event, $region, $team, $actor, 'add', array_replace($data, ['_replacement_rank' => $rank]));
             $after = $team->noProfile ? NoProfileTeamPlayer::where('team_id', $team->id)->where('rank', $rank)->firstOrFail()
                 : TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('rank', $rank)->firstOrFail();
             activity('team-roster')->performedOn($team)->causedBy($actor)
-                ->withProperties(['event_id' => $event->id, 'rank' => $rank, 'before' => $before, 'after' => $after->getAttributes()])
+                ->withProperties(['event_id' => $event->id, 'rank' => $rank, 'before' => $before, 'after' => $after->getAttributes(), 'refund_action' => $data['refund_action'] ?? null, 'reason' => $data['reason'] ?? null])
                 ->log('changed team roster player');
         });
     }

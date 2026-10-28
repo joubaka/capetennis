@@ -186,6 +186,59 @@ class RegionalRosterTest extends TestCase
         Queue::assertNothingPushed(); Mail::assertNothingSent();
     }
 
+    public function test_imported_player_can_be_replaced_with_database_player_and_unpaid_checkout_is_closed(): void
+    {
+        Queue::fake(); Mail::fake();
+        [$event, $region, $team, $manager] = $this->roster(true);
+        $old = Player::factory()->create(); $replacement = Player::factory()->create();
+        $slot = NoProfileTeamPlayer::create(['team_id' => $team->id, 'name' => $old->name, 'surname' => $old->surname, 'rank' => 2, 'player_profile' => $old->id, 'pay_status' => 0]);
+        $mirror = app(\App\Domain\Payments\Services\TeamPaymentService::class)->createUnpaidTeamPlayerSlot($team, $old, 2);
+        $order = TeamPaymentOrder::create(['team_id' => $team->id, 'event_id' => $event->id, 'player_id' => $old->id, 'user_id' => $manager->id, 'total_amount' => 100, 'wallet_reserved' => 40, 'payfast_amount_due' => 60, 'pay_status' => false]);
+        $payload = ['team_id' => $team->id, 'event_id' => $event->id, 'slot_id' => $slot->id, 'expected_rank' => 2, 'expected_player_id' => $old->id, 'player_id' => $replacement->id];
+        $this->actingAs($manager)->get(route('admin.events.teams', $event))->assertOk()->assertSee('Find player in database');
+        $this->postJson(route('backend.team.changePlayer'), $payload)->assertOk();
+        $this->assertDatabaseHas('no_profile_team_players', ['team_id' => $team->id, 'rank' => 2, 'player_profile' => $replacement->id, 'pay_status' => 0]);
+        $this->assertSame($replacement->id, (int) $mirror->fresh()->player_id);
+        $this->assertSame(0, (int) $mirror->fresh()->pay_status);
+        $this->assertSame(0.0, (float) $order->fresh()->wallet_reserved);
+        $this->assertNotNull($order->fresh()->withdrawn_at);
+        $this->assertSame($old->id, (int) $order->fresh()->player_id);
+        $this->postJson(route('backend.team.changePlayer'), $payload)->assertNotFound();
+        $this->assertSame(1, NoProfileTeamPlayer::count());
+        $this->assertSame(1, TeamPlayer::count());
+        $this->assertSame(1, TeamPaymentOrder::count());
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        Queue::assertNothingPushed(); Mail::assertNothingSent();
+    }
+
+    public function test_unlinked_imported_player_can_be_swapped_and_duplicate_replacement_rolls_back(): void
+    {
+        [$event, $region, $team, $manager] = $this->roster(true);
+        $slot = NoProfileTeamPlayer::create(['team_id' => $team->id, 'name' => 'Unlinked', 'surname' => 'Name', 'rank' => 1, 'pay_status' => 0]);
+        $replacement = Player::factory()->create();
+        $payload = ['team_id' => $team->id, 'event_id' => $event->id, 'slot_id' => $slot->id, 'expected_rank' => 1, 'expected_player_id' => 0, 'player_id' => $replacement->id];
+        $this->actingAs($manager)->postJson(route('backend.team.changePlayer'), $payload)->assertOk();
+        $second = NoProfileTeamPlayer::create(['team_id' => $team->id, 'name' => 'Other', 'surname' => 'Name', 'rank' => 2, 'pay_status' => 0]);
+        $this->postJson(route('backend.team.changePlayer'), array_replace($payload, ['slot_id' => $second->id, 'expected_rank' => 2]))->assertUnprocessable();
+        $this->assertNotNull($second->fresh());
+        $this->assertSame(2, NoProfileTeamPlayer::count());
+        $this->assertSame(1, TeamPlayer::count());
+    }
+
+    public function test_imported_database_replacement_cannot_bypass_existing_incoming_clothing_history(): void
+    {
+        [$event, $region, $team, $manager] = $this->roster(true);
+        $slot = NoProfileTeamPlayer::create(['team_id' => $team->id, 'name' => 'Unlinked', 'surname' => 'Name', 'rank' => 1, 'pay_status' => 0]);
+        $replacement = Player::factory()->create();
+        \App\Models\ClothingOrder::create(['event_id' => $event->id, 'team_id' => $team->id, 'player_id' => $replacement->id, 'user_id' => $manager->id]);
+        $this->actingAs($manager)->postJson(route('backend.team.changePlayer'), ['team_id' => $team->id, 'event_id' => $event->id,
+            'slot_id' => $slot->id, 'expected_rank' => 1, 'expected_player_id' => 0, 'player_id' => $replacement->id])->assertUnprocessable();
+        $this->assertNotNull($slot->fresh());
+        $this->assertDatabaseCount('no_profile_team_players', 1);
+        $this->assertDatabaseCount('team_players', 0);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
     public function test_change_player_is_atomic_and_preserves_paid_or_handed_off_players(): void
     {
         Queue::fake();

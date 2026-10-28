@@ -13,7 +13,7 @@ class CanonicalDrawWorkspaceTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function draw(): Draw
+    private function draw(bool $generate = true): Draw
     {
         Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
         $admin = User::factory()->create()->assignRole('admin');
@@ -32,7 +32,9 @@ class CanonicalDrawWorkspaceTest extends TestCase
             $slots[$path] = ['type' => 'player', 'id' => $registration->id];
         }
         app(FlexibleMonradService::class)->save($draw, ['size' => 4, 'slots' => $slots], 0);
-        app(FlexibleMonradService::class)->generate($draw, 1);
+        if ($generate) {
+            app(FlexibleMonradService::class)->generate($draw, 1);
+        }
         $this->actingAs($admin);
         return $draw->fresh();
     }
@@ -120,6 +122,38 @@ class CanonicalDrawWorkspaceTest extends TestCase
             ->assertSee('Manage this draw')
             ->assertSee('Back to tournament')
             ->assertDontSee('CAPE TENNIS / DRAW BUILDER');
+    }
+
+    public function test_saved_draft_without_fixtures_returns_its_admin_to_the_workspace(): void
+    {
+        $draw = $this->draw(false);
+        $draft = $draw->flexibleMonrad->draft;
+
+        $response = $this->get(route('public.flexible-monrad.show', $draw))
+            ->assertRedirect(route('backend.draw.roundrobin.show', $draw));
+        $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
+        $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()->assertSee('Save draft');
+
+        $this->assertSame(0, $draw->drawFixtures()->count());
+        $this->assertSame($draft, $draw->fresh()->flexibleMonrad->draft);
+        $this->assertSame(1, $draw->fresh()->flexibleMonrad->revision);
+        $this->assertFalse((bool) $draw->fresh()->published);
+
+        $this->actingAs(User::factory()->create()->assignRole('admin'));
+        $this->get(route('public.flexible-monrad.show', $draw))->assertForbidden();
+        auth()->logout();
+        $this->get(route('public.flexible-monrad.show', $draw))->assertForbidden();
+    }
+
+    public function test_empty_draft_without_a_saved_monrad_record_returns_to_the_workspace(): void
+    {
+        $draw = $this->draw(false);
+        $draw->flexibleMonrad->delete();
+
+        $this->get(route('public.flexible-monrad.show', $draw))
+            ->assertRedirect(route('backend.draw.roundrobin.show', $draw));
+        $this->assertSame(0, $draw->drawFixtures()->count());
+        $this->assertNull($draw->fresh()->flexibleMonrad);
     }
 
     public function test_other_event_admin_cannot_open_workspace_scheduler_or_publish_schedule(): void

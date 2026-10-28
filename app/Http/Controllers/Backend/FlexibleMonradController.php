@@ -32,6 +32,10 @@ class FlexibleMonradController extends Controller
     public function publicShow(Draw $draw)
     {
         app(PublicTournamentVisibility::class)->ensureDrawIsVisible($draw, auth()->user());
+        if (! $draw->published && ! $draw->flexibleMonrad?->graph && (auth()->user()?->can('view', $draw) ?? false)) {
+            return redirect()->route('backend.draw.roundrobin.show', $draw)
+                ->header('Cache-Control', 'private, no-store, max-age=0');
+        }
         abort_unless($draw->flexibleMonrad?->graph, 404);
         $response = response($this->page($draw, true));
         if (! $draw->published) $response->headers->set('Cache-Control', 'private, no-store, max-age=0');

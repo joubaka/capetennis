@@ -14,6 +14,31 @@ use Illuminate\Validation\ValidationException;
 
 class RefundExecutionService
 {
+    /** Explicitly close a settled, withdrawn team's refund entitlement without moving money. */
+    public function waiveAdminTeamWithdrawalRefund(\App\Models\TeamPaymentOrder $order, User $actor, string $reason, string $feeMode = 'current'): Model
+    {
+        abort_unless($actor->hasRole('super-user'), 403);
+        abort_unless(in_array($feeMode, ['current', 'full'], true), 422);
+        return DB::transaction(function () use ($order, $actor, $reason, $feeMode) {
+            $locked = \App\Models\TeamPaymentOrder::with('event')->lockForUpdate()->findOrFail($order->id);
+            if (!$locked->withdrawn_at || !$locked->pay_status || $locked->hasRefund() || $locked->refund_waived_at || $locked->refunded_at || blank($reason)
+                || $locked->refund_waived_by || filled($locked->refund_waiver_reason) || filled($locked->refund_method)
+                || (float) $locked->refund_gross !== 0.0 || (float) $locked->refund_fee !== 0.0 || (float) $locked->refund_net !== 0.0
+                || \App\Models\TrialParticipation::where('order_id', $locked->id)->exists()
+                || DB::table('trial_provider_refund_attempts')->where('order_id', $locked->id)->exists()) {
+                throw ValidationException::withMessages(['refund' => 'A settled withdrawn order without refund history and a waiver reason are required.']);
+            }
+            $this->assertNoTeamProviderClaim($locked);
+            app(\App\Domain\Payments\Services\TeamPaymentService::class)->assertAdminWithdrawalSettlement($locked);
+            $amounts = app(TeamRefundCalculator::class)->calculate($locked, $feeMode === 'full');
+            FinanceMutationScope::run('refund_state_write', fn () => $locked->forceFill([
+                'refund_status' => 'pending', 'refund_gross' => $amounts['gross'],
+                'refund_fee' => $amounts['fee'], 'refund_net' => $amounts['net'],
+            ])->save());
+            return $this->waiveRefund($locked, $actor->id, $reason);
+        });
+    }
+
     public function requestAdminTeamWithdrawalRefund(\App\Models\TeamPaymentOrder $order, User $actor, string $destination, string $feeMode, string $fingerprint): Model
     {
         abort_unless($actor->hasRole('super-user'), 403);

@@ -37,6 +37,89 @@ class AdminTeamWithdrawalTest extends TestCase
         return ['order_id' => $s['order']->id, 'fingerprint' => $review['fingerprint'], 'reason' => 'Player requested withdrawal', 'confirm' => 1];
     }
 
+    private function replacementPayload(array $s, string $action = 'refund'): array
+    {
+        return ['event_id' => $s['event']->id, 'team_id' => $s['team']->id, 'slot_id' => $s['slot']->id,
+            'expected_rank' => 1, 'expected_player_id' => $s['player']->id,
+            'player_id' => Player::factory()->create()->id, 'refund_action' => $action, 'reason' => 'Player replaced at their request'];
+    }
+
+    public function test_paid_roster_replacement_refunds_original_payer_once_and_replacement_starts_unpaid(): void
+    {
+        $s = $this->scenario(); $payload = $this->replacementPayload($s);
+        $this->postJson(route('backend.team.changePlayer'), $payload)->assertOk();
+        $this->postJson(route('backend.team.changePlayer'), $payload)->assertUnprocessable();
+        $this->assertDatabaseHas('team_players', ['id' => $s['slot']->id, 'player_id' => $payload['player_id'], 'pay_status' => 0, 'rank' => 1]);
+        $this->assertDatabaseHas('team_payment_orders', ['id' => $s['order']->id, 'player_id' => $s['player']->id, 'user_id' => $s['payer']->id, 'pay_status' => 1, 'refund_status' => 'completed', 'refund_net' => 256.50]);
+        $this->assertDatabaseHas('wallet_transactions', ['wallet_id' => $s['wallet']->id, 'type' => 'credit', 'amount' => 256.50, 'source_id' => $s['order']->id]);
+        $this->assertDatabaseCount('wallet_transactions', 2);
+        $this->assertDatabaseCount('team_payment_orders', 1);
+        $this->assertDatabaseCount('team_players', 1);
+    }
+
+    public function test_paid_imported_replacement_detects_paid_mirror_and_records_waiver_without_money_moving(): void
+    {
+        $s = $this->scenario(); $payload = $this->replacementPayload($s, 'waive');
+        $s['team']->update(['noProfile' => 1]);
+        $raw = \App\Models\NoProfileTeamPlayer::create(['team_id' => $s['team']->id, 'name' => $s['player']->name, 'surname' => $s['player']->surname, 'player_profile' => $s['player']->id, 'rank' => 1, 'pay_status' => 0]);
+        $payload['slot_id'] = $raw->id;
+        $this->postJson(route('backend.team.changePlayer'), $payload)->assertOk();
+        $this->postJson(route('backend.team.changePlayer'), $payload)->assertNotFound();
+        $this->assertDatabaseHas('team_players', ['id' => $s['slot']->id, 'player_id' => $payload['player_id'], 'pay_status' => 0]);
+        $this->assertDatabaseHas('no_profile_team_players', ['team_id' => $s['team']->id, 'rank' => 1, 'player_profile' => $payload['player_id'], 'pay_status' => 0]);
+        $this->assertDatabaseHas('team_payment_orders', ['id' => $s['order']->id, 'pay_status' => 1, 'user_id' => $s['payer']->id, 'player_id' => $s['player']->id, 'refund_status' => 'waived', 'refund_waived_by' => $s['actor']->id, 'refund_waiver_reason' => $payload['reason'], 'refunded_at' => null]);
+        $this->assertNotNull($s['order']->fresh()->withdrawn_at);
+        $this->assertDatabaseCount('wallet_transactions', 1);
+        $this->assertDatabaseCount('team_players', 1);
+        $this->assertDatabaseCount('no_profile_team_players', 1);
+        $this->assertDatabaseCount('team_payment_orders', 1);
+        Events::assertNotDispatched(\App\Events\RefundCompleted::class);
+    }
+
+    public function test_paid_replacement_rejects_missing_decision_cross_event_and_invalid_target_atomically(): void
+    {
+        $s = $this->scenario(); $payload = $this->replacementPayload($s);
+        foreach ([['refund_action' => null], ['reason' => ' '], ['event_id' => Event::factory()->create()->id], ['player_id' => $s['player']->id]] as $bad) {
+            $this->postJson(route('backend.team.changePlayer'), array_replace($payload, $bad))->assertStatus(isset($bad['event_id']) ? 404 : 422);
+        }
+        $otherTeam = Team::factory()->create(['category_event_id' => $s['team']->category_event_id, 'noProfile' => 0]);
+        app(\App\Domain\Payments\Services\TeamPaymentService::class)->createUnpaidTeamPlayerSlot($otherTeam, Player::findOrFail($payload['player_id']), 1);
+        $this->postJson(route('backend.team.changePlayer'), $payload)->assertUnprocessable();
+        $this->assertNull($s['order']->fresh()->withdrawn_at);
+        $this->assertSame('not_refunded', $s['order']->fresh()->refund_status);
+        $this->assertSame($s['player']->id, (int) $s['slot']->fresh()->player_id);
+        $this->assertDatabaseCount('wallet_transactions', 1);
+        $this->assertDatabaseCount('team_payment_orders', 1);
+    }
+
+    public function test_late_replacement_requires_explicit_waiver_and_event_admin_cannot_make_financial_decision(): void
+    {
+        $s = $this->scenario(); $payload = $this->replacementPayload($s);
+        $s['event']->update(['withdrawal_deadline' => now()->subDay()]);
+        $this->postJson(route('backend.team.changePlayer'), $payload)->assertUnprocessable();
+        $admin = User::factory()->create();
+        \App\Models\EventAdmin::create(['event_id' => $s['event']->id, 'user_id' => $admin->id]);
+        $this->actingAs($admin)->postJson(route('backend.team.changePlayer'), $payload)->assertForbidden();
+        $this->actingAs($s['actor'])->postJson(route('backend.team.changePlayer'), array_replace($payload, ['refund_action' => 'waive']))->assertOk();
+        $this->assertSame('waived', $s['order']->fresh()->refund_status);
+        $this->assertDatabaseCount('wallet_transactions', 1);
+    }
+
+    public function test_paid_replacement_rejects_unresolved_handoff_and_waiver_rolls_back_for_duplicate_target(): void
+    {
+        $s = $this->scenario(); $payload = $this->replacementPayload($s, 'waive');
+        DB::table('team_payment_orders')->where('id', $s['order']->id)->update(['payfast_handed_off_at' => now(), 'payfast_amount_due' => 50]);
+        $this->postJson(route('backend.team.changePlayer'), $payload)->assertUnprocessable();
+        DB::table('team_payment_orders')->where('id', $s['order']->id)->update(['payfast_handed_off_at' => null, 'payfast_amount_due' => 0]);
+        $otherTeam = Team::factory()->create(['category_event_id' => $s['team']->category_event_id, 'noProfile' => 0]);
+        app(\App\Domain\Payments\Services\TeamPaymentService::class)->createUnpaidTeamPlayerSlot($otherTeam, Player::findOrFail($payload['player_id']), 1);
+        $this->postJson(route('backend.team.changePlayer'), $payload)->assertUnprocessable();
+        $this->assertNull($s['order']->fresh()->withdrawn_at);
+        $this->assertNull($s['order']->fresh()->refund_waived_at);
+        $this->assertSame($s['player']->id, (int) $s['slot']->fresh()->player_id);
+        $this->assertDatabaseCount('wallet_transactions', 1);
+    }
+
     private function url(array $s, string $action = 'store'): string
     {
         return route('backend.team.withdrawal.'.$action, [$s['event'], $s['team'], $s['slot']]);

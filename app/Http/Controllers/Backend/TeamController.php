@@ -1038,7 +1038,8 @@ class TeamController extends Controller
     $data = $request->validate([
       'slot_id' => ['required', 'integer', 'min:1'], 'expected_rank' => ['required', 'integer', 'min:1'],
       'expected_player_id' => ['required', 'integer', 'min:0'],
-    ] + ($team->noProfile ? ['name' => ['required', 'string', 'max:100'], 'surname' => ['required', 'string', 'max:100']]
+      'refund_action' => ['nullable', 'in:refund,waive'], 'reason' => ['nullable', 'string', 'max:1000'],
+    ] + ($team->noProfile ? ['player_id' => ['nullable', 'integer', 'exists:players,id', 'prohibits:name,surname'], 'name' => ['required_without:player_id', 'nullable', 'string', 'max:100'], 'surname' => ['required_without:player_id', 'nullable', 'string', 'max:100']]
       : ['player_id' => ['required', 'integer', 'exists:players,id']]));
     app(\App\Services\TeamRosterService::class)->replace($event, $region, $team, $request->user(), $data);
 
