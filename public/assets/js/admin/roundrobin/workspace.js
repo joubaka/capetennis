@@ -12,14 +12,22 @@
   };
   if (document.getElementById('main-bracket-tab')) areas.results.push('main-bracket');
   let active = 'players';
-  function open(area, view, replace) {
+  let publicationReview = new URLSearchParams(location.search).get('review') === 'publication';
+  function open(area, view, replace, preserveReview = false) {
     if (area === 'setup' && view === 'notes') area = 'rules';
     if (!areas[area]) return;
+    if (!preserveReview) publicationReview = false;
+    const target = areas[area].includes(view) ? view : areas[area][0];
+    const reviewing = publicationReview && area === 'results' && target === 'matrix';
     active = area;
     document.querySelectorAll('[data-workspace]').forEach(button => {
-      const selected = button.dataset.workspace === area;
+      const selected = !reviewing && button.dataset.workspace === area;
       button.classList.toggle('active', selected);
       button.setAttribute('aria-pressed', String(selected));
+    });
+    document.querySelectorAll('[data-workspace-review]').forEach(link => {
+      link.classList.toggle('active', reviewing);
+      link.setAttribute('aria-current', reviewing ? 'step' : 'false');
     });
     document.querySelectorAll('[data-full-schedule-action]').forEach(action => {
       action.classList.toggle('d-none', area !== 'schedule');
@@ -28,7 +36,6 @@
       const id = $(this).find('button').attr('id').replace(/-tab$/, '');
       $(this).toggleClass('rr-tab-hidden', !areas[area].includes(id) || areas[area].length === 1);
     });
-    const target = areas[area].includes(view) ? view : areas[area][0];
     bootstrap.Tab.getOrCreateInstance(document.getElementById(target + '-tab')).show();
     try {
       sessionStorage.setItem('rr-view-' + DRAW_ID, target);
@@ -63,6 +70,7 @@
     Object.values(AdminState.getFixtures() || {}).flat().forEach(fixture => fixtures.set(String(fixture.id), fixture));
     (AdminState.getOop() || []).forEach(fixture => fixtures.set(String(fixture.id), fixture));
     const values = Array.from(fixtures.values());
+    document.querySelectorAll('[data-draw-next-schedule]').forEach(section => { section.hidden = values.length === 0; });
     $('#rr-next-step').text(
       values.length ? 'Fixtures ready · review results and schedule' : 'Start with your players and groups'
     );
@@ -70,7 +78,7 @@
   }
   $(function () {
     $('[data-workspace]').on('click', function () {
-      open(this.dataset.workspace);
+      open(this.dataset.workspace, this.dataset.workspaceView);
     });
     $('[data-open-workspace]').on('click', function () {
       open(this.dataset.openWorkspace);
@@ -118,7 +126,7 @@
     const view = String(location.hash || stored || defaultView).replace(/^#/, '').replace(/-(tab|pane)$/, '');
     const area = Object.keys(areas).find(key => areas[key].includes(view)) || 'players';
     if (view === 'print') print();
-    else open(area, view, true);
+    else open(area, view, true, true);
   });
   root.RRWorkspace = { open: open, refreshHub: refreshHub };
 })(jQuery, window);

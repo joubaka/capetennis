@@ -504,6 +504,7 @@
     });
   }
   function render() {
+    document.querySelectorAll('[data-draw-next-schedule]').forEach(section => { section.hidden = !state.generated; });
     $('fm-app').dataset.dirty = String(dirty || busy);
     // PHP encodes an empty associative array as []; always edit a keyed object.
     draft.slots = Object.assign({}, draft.slots);
@@ -1001,7 +1002,7 @@
         if (dirty || state.revision === 0) await saveDraft();
         state = await request(config.urls.generate, { revision: state.revision });
         dirty = false;
-        message('Fixtures generated. Review the draw before publishing. Starting assignments are now frozen.');
+        message('Fixtures generated. Review the draw, then choose Schedule matches. Saving match times and publication are separate. Starting assignments are now frozen.');
       }
     })
   );

@@ -1,6 +1,6 @@
 <div class="tab-pane fade" id="groups-pane" role="tabpanel" aria-labelledby="groups-tab">
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-    <span class="small text-muted">Step 3 of 3 · Players · {{ $draw->isRoundRobinOnly() ? 'Round robin only' : 'Round robin → playoffs' }}</span>
+    <span class="small text-muted">Step 2 of 5 · Players &amp; Positions · {{ $draw->isRoundRobinOnly() ? 'Round robin only' : 'Round robin → playoffs' }}</span>
     <a href="{{ route('draw.setup.show', $draw) }}" class="btn btn-sm btn-outline-secondary">Draw format</a>
   </div>
   <p class="mb-3" id="rr-category-scope"><strong>Player category:</strong> <span id="rr-category-name">{{ $draw->categoryEvent?->category?->name ?? 'All event categories' }}</span></p>

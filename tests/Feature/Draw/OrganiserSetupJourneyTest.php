@@ -29,14 +29,15 @@ class OrganiserSetupJourneyTest extends TestCase
     public function test_new_organiser_can_follow_participants_draw_schedule_and_publication_in_order(): void
     {
         [$event] = $this->scenario();
-        $this->get(route('headOffice.show', $event))->assertOk()
-            ->assertSeeInOrder(['Set up your tournament', 'Check participants', 'Create or continue a draw', 'Set venues and schedule', 'Review and publish'])
+        $response = $this->get(route('headOffice.show', $event))->assertOk()
             ->assertSee('No draws saved yet.')
             ->assertSee('Team tie for teams playing singles and doubles')
             ->assertSee('saving setup does not make them public')
             ->assertSee(e(route('admin.events.teams', $event)), false)
             ->assertSee(e(route('backend.event-venue-schedule.index', $event)), false)
             ->assertSee(e(route('backend.event-venue-schedule.calendar', ['event' => $event, 'date' => 'all'])), false);
+        $this->assertSame(1, preg_match('/<section[^>]*data-organiser-setup[^>]*>([\s\S]*?)<\/section>/', $response->getContent(), $setup));
+        $this->assertMatchesRegularExpression('/Set up your tournament[\s\S]*Check participants[\s\S]*Create or continue a draw[\s\S]*Set venues and schedule[\s\S]*Review and publish/', $setup[1]);
         $this->assertDatabaseCount('draws', 0);
         $this->assertDatabaseCount('team_fixtures', 0);
     }
@@ -49,14 +50,31 @@ class OrganiserSetupJourneyTest extends TestCase
         $before = $draw->refresh()->getAttributes();
 
         $response = $this->get(route('headOffice.show', $event))->assertOk()
-            ->assertSee('Keep existing draws when returning to setup.')
+            ->assertSee($draw->drawName)
+            ->assertSee(e(route('draw.guide.show', [$event, $draw])), false)
             ->assertDontSee('No draws saved yet.')
             ->assertDontSee($foreign->drawName);
         $html = $response->getContent();
-        $summaryEnd = strpos($html, '</summary>', strpos($html, '<summary class="event-draw-card-summary"'));
         $resume = strpos($html, 'href="'.route('draw.guide.show', [$event, $draw]).'"');
         $this->assertNotFalse($resume);
-        $this->assertLessThan($summaryEnd, $resume, 'Resume setup should be available before expanding the draw card.');
+        $dom = new \DOMDocument();
+        @$dom->loadHTML($html);
+        $xpath = new \DOMXPath($dom);
+        $resumeSelector = 'a[@data-draw-guide-open and @href="'.route('draw.guide.show', [$event, $draw]).'"]';
+        $visibleResumeCount = 0;
+        foreach ($xpath->query('//'.$resumeSelector) as $resumeNode) {
+            $hidden = false;
+            foreach ($xpath->query('ancestor::details[not(@open)]', $resumeNode) as $closedDetails) {
+                $insideSummary = false;
+                foreach ($xpath->query('ancestor::summary/parent::details', $resumeNode) as $summaryDetails) {
+                    if ($closedDetails->isSameNode($summaryDetails)) $insideSummary = true;
+                }
+                if (!$insideSummary) $hidden = true;
+            }
+            if (!$hidden) $visibleResumeCount++;
+        }
+        $this->assertGreaterThan(0, $visibleResumeCount,
+            'At least one resume action must be outside collapsed details or inside their always-visible summary.');
         $this->assertSame($before, $draw->fresh()->getAttributes());
         $this->assertDatabaseCount('draws', 2);
         $this->assertDatabaseCount('team_fixtures', 0);
@@ -99,7 +117,7 @@ class OrganiserSetupJourneyTest extends TestCase
         $this->get(route('headOffice.show', $event))->assertOk()
             ->assertSee('Continue setup: '.$draw->drawName)
             ->assertSee(e($guideUrl), false);
-        $this->get($guideUrl)->assertOk()->assertSee('Step 3 of 3')
+        $this->get($guideUrl)->assertOk()->assertSee('Step 2 of 5')
             ->assertSee('Place your players');
         $this->assertSame($before, $draw->fresh()->getAttributes());
         $this->assertDatabaseCount('draws', 1);
@@ -147,11 +165,13 @@ class OrganiserSetupJourneyTest extends TestCase
         $draw = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => CategoryEvent::factory()->create(['event_id' => $event->id])->id]);
         $fixture = Fixture::factory()->create(['draw_id' => $draw->id, 'winner_registration' => null]);
         $url = route('draw.guide.show', [$event, $draw]);
-        $this->get($url)->assertOk()->assertSee('Next: programme and schedule')
-            ->assertSee('Set venues and schedule')->assertDontSee('Later: scheduling and publication')
+        $this->get($url)->assertOk()->assertSee('Step 4 of 5 · Schedule')
+            ->assertSee('Schedule matches')->assertDontSee('Later: scheduling and publication')
             ->assertSee(e(route('backend.draw.roundrobin.show', $draw).'?review=publication#matrix'), false);
         $this->get(route('backend.draw.roundrobin.show', [$draw, 'review' => 'publication']))->assertOk()
-            ->assertSee('data-individual-draw-tools  open', false)->assertSee('data-publication-review-toggle', false);
+            ->assertSee('data-individual-draw-tools  open', false)
+            ->assertSee('id="rr-publish-draw"', false)->assertSee('id="rr-publish-schedule"', false)
+            ->assertSee('Draw and schedule publish separately.');
         $venue = Venue::forceCreate(['name' => 'Synthetic Trials courts']);
         OrderOfPlay::create(['fixture_id' => $fixture->id, 'draw_id' => $draw->id, 'time' => '2026-10-30 09:00:00', 'court' => '1', 'venue_id' => $venue->id]);
         $this->get($url)->assertOk()->assertSee('Review saved schedule');

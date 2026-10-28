@@ -127,20 +127,30 @@
   }));
   if (!workspace) return;
   const aliases = { standings: 'matrix', 'main-bracket': 'matrix', oop: 'schedule', notes: 'settings' };
+  let publicationReview = new URLSearchParams(location.search).get('review') === 'publication';
   function open() {
     const hash = location.hash.slice(1).replace(/-(tab|pane)$/, '');
     const defaultTab = workspace.dataset.hasGeneratedDraw === '1' ? 'matrix' : 'groups';
     const tab = aliases[hash] || (['groups', 'matrix', 'schedule', 'settings', 'print'].includes(hash) ? hash : defaultTab);
     const panel = ['groups', 'matrix'].includes(tab) ? 'editor' : tab;
+    const reviewing = publicationReview && tab === 'matrix';
     workspace.querySelectorAll('[data-flexible-panel]').forEach(element => { element.hidden = element.dataset.flexiblePanel !== panel; });
     workspace.querySelectorAll('[data-flexible-tab]').forEach(button => {
-      const active = button.dataset.flexibleTab === tab;
+      const active = !reviewing && button.dataset.flexibleTab === tab;
       button.classList.toggle('active', active);
       button.setAttribute('aria-pressed', String(active));
     });
+    workspace.querySelectorAll('[data-workspace-review]').forEach(link => {
+      link.classList.toggle('active', reviewing);
+      link.setAttribute('aria-current', reviewing ? 'step' : 'false');
+    });
     window.dispatchEvent(new Event('resize'));
   }
-  workspace.querySelectorAll('[data-flexible-tab]').forEach(button => button.addEventListener('click', () => { location.hash = button.dataset.flexibleTab; }));
+  workspace.querySelectorAll('[data-flexible-tab]').forEach(button => button.addEventListener('click', () => {
+    publicationReview = false;
+    location.hash = button.dataset.flexibleTab;
+    open();
+  }));
   window.addEventListener('hashchange', open);
   document.getElementById('fm-workspace-print').addEventListener('click', () => {
     workspace.classList.remove('print-draw-only', 'print-timetable');

@@ -1,19 +1,24 @@
 <section id="day-batch-workflow" class="workspace-section mb-3">
   <div class="section-body">
     <h5>1. Select draws</h5>
-    <p class="small text-muted">Choose all draws, several, or just one. Only the rounds and matches you select will be scheduled.</p>
+    <p class="small text-muted">Choose one or more draws to plan this day.</p>
     <div class="d-flex flex-wrap gap-2 mb-3"><button type="button" class="btn btn-sm btn-outline-primary" id="day-batch-all">Select all ready draws</button><button type="button" class="btn btn-sm btn-outline-secondary" id="day-batch-clear">Clear selection</button></div>
     <div id="day-batch-draws" class="row g-2 mb-3"></div>
-    <div id="day-batch-order" class="mb-3"></div>
-    <label class="form-label" for="day-batch-order-mode">Draw order</label>
-    <select id="day-batch-order-mode" class="form-select mb-2"><option value="mixed">Mix draws · use the earliest available courts</option><option value="sequential">In order · finish each draw's round before the next draw</option></select>
-    <p class="small text-muted">In order follows your draw list for each selected round, then moves to the next round. Mix draws fills available courts across the selection. Draw order replaces separate boys/girls priority; each draw keeps its own gender.</p>
+    <details class="mb-3 day-batch-order-options">
+      <summary>Draw order (optional)</summary>
+      <div class="pt-3">
+        <label class="form-label" for="day-batch-order-mode">Scheduling order</label>
+        <select id="day-batch-order-mode" class="form-select mb-2"><option value="mixed">Mix draws · fill available courts</option><option value="sequential">In order · finish each draw's round first</option></select>
+        <p class="small text-muted">Mix draws fills courts sooner. In order follows the draw list within each round.</p>
+        <div id="day-batch-order"></div>
+      </div>
+    </details>
     <button type="button" class="btn btn-primary" id="day-batch-next-courts">Continue to day &amp; courts</button>
 
     <section id="day-batch-courts-step" class="border-top pt-3 mt-3" hidden>
       <h5>2. Set up courts for this day</h5>
       <div class="row g-3 mb-3"><div class="col-md-4"><label class="form-label" for="day-batch-date">Playing day</label><select id="day-batch-date" class="form-select"></select></div><div class="col-6 col-md-4"><label class="form-label" for="day-batch-start">Starts</label><input id="day-batch-start" class="form-control" type="time" value="08:00" required></div><div class="col-6 col-md-4"><label class="form-label" for="day-batch-end">Finishes</label><input id="day-batch-end" class="form-control" type="time" value="18:00" required></div></div>
-      <p class="small">These courts apply to this day's selected matches. Other days, draw defaults and saved times stay in place.</p>
+      <p class="small">Choose the event courts available for this day. Saved times stay in place unless you choose to replan.</p>
       <button type="button" class="btn btn-sm btn-outline-primary mb-3" data-bs-toggle="modal" data-bs-target="#venue-management-modal">Add or edit event venues &amp; courts</button>
       <div id="day-batch-venues" class="mb-3"></div>
       <div class="row g-3 mb-3"><div class="col-6 col-md-4"><label class="form-label" for="day-batch-duration">Match minutes</label><input id="day-batch-duration" class="form-control" type="number" min="15" max="480" value="{{ $scheduleDraft['duration'] }}" required></div><div class="col-6 col-md-4"><label class="form-label" for="day-batch-rest">Player rest minutes</label><input id="day-batch-rest" class="form-control" type="number" min="0" max="480" value="{{ $scheduleDraft['player_rest'] }}" required></div><div class="col-6 col-md-4"><label class="form-label" for="day-batch-gap">Court gap minutes</label><input id="day-batch-gap" class="form-control" type="number" min="0" max="120" value="{{ $scheduleDraft['court_gap'] }}" required></div></div>
@@ -26,11 +31,10 @@
 
     <section id="day-batch-rounds-step" class="border-top pt-3 mt-3" hidden>
       <h5>3. Choose rounds for this day</h5>
-      <p class="small text-muted">Add or remove rounds below. Expand a round to select position groups or specific matches. Matches already saved on another day stay fixed. Earlier qualifying matches must already be scheduled.</p>
+      <p class="small text-muted">Choose rounds, then preview the selected matches. Expand a round to choose individual matches. Earlier qualifying matches need saved times.</p>
       <div id="day-batch-rounds"></div>
       <button type="button" id="day-batch-preview" class="btn btn-primary">Preview selected matches</button>
     </section>
     <div id="day-batch-status" class="mt-3" role="status" aria-live="polite"></div>
   </div>
 </section>
-<button type="button" id="toggle-advanced-scheduling" class="btn btn-link mb-3">Advanced: complete programmes and draw defaults</button>

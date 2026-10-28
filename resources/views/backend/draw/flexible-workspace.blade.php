@@ -21,6 +21,7 @@
     <button type="button" data-flexible-tab="groups">2 · Players &amp; Positions</button>
     <button type="button" data-flexible-tab="matrix">3 · Draw &amp; Results</button>
     <button type="button" data-flexible-tab="schedule">4 · Schedule</button>
+    <a data-workspace-review href="{{ route('backend.draw.roundrobin.show', $draw) }}?review=publication#matrix">5 · Review &amp; publish</a>
     <button type="button" data-flexible-tab="settings">Setup &amp; Rules</button>
   </nav>
   <section data-flexible-panel="editor" class="fm-surface">
@@ -34,9 +35,8 @@
       <div class="d-flex flex-wrap justify-content-between gap-2 mb-3">
         <div><h2 class="h5">Schedule &amp; Venues</h2><p class="text-muted mb-0">Timetable publication is separate from draw publication.</p></div>
         <div class="d-flex flex-wrap gap-2">
-          <a class="btn btn-primary" href="{{ route('backend.individual-schedule.page', $draw) }}">Manage this draw</a>
-          <a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'manual' => 1]) }}">Manage full schedule</a>
-          <a class="btn btn-outline-secondary" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id], 'manual' => 1]) }}">Schedule only this draw</a>
+          <a class="btn btn-primary" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]) }}">Schedule this draw</a>
+          <a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id]) }}">Schedule multiple draws</a>
         </div>
       </div>
       @can('publish', $draw)

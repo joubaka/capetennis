@@ -40,21 +40,23 @@
     </section>
   @endif
   @php
+    $publicationUrl = !$guide['team'] ? $guide['workspace'].'?review=publication#matrix' : $guide['steps'][5]['url'];
     $visibleSteps = $guide['team'] ? $guide['steps'] : [
-      1 => array_merge($guide['steps'][1], ['label' => 'Category']),
-      2 => array_merge($guide['steps'][2], ['label' => 'Format']),
-      3 => array_merge($guide['steps'][3], ['label' => 'Players and draw']),
+      1 => array_merge($guide['steps'][2], ['label' => 'Format']),
+      2 => array_merge($guide['steps'][3], ['label' => 'Players & Positions', 'url' => $guide['workspace'].'#groups']),
+      3 => array_merge($guide['steps'][3], ['label' => 'Draw & Results', 'url' => $guide['workspace'].'#matrix']),
+      4 => array_merge($guide['steps'][4], ['label' => 'Schedule']),
+      5 => array_merge($guide['steps'][5], ['label' => 'Review & publish', 'url' => $publicationUrl]),
     ];
+    $displayStep = $guide['team'] ? $guide['next'] : ([1 => 0, 2 => 1, 3 => 2, 4 => 4, 5 => 5][$guide['next']]);
     $phaseOneReady = !$guide['team'] && $guide['steps'][3]['complete'];
-    $trialsReady = $phaseOneReady && $event->isInterprovincialTrials();
-    $publicationUrl = !$guide['team'] ? $guide['workspace'].($draw->usesFlexibleMonrad() ? '#matrix' : '?review=publication#matrix') : $guide['steps'][5]['url'];
     $current = $guide['steps'][$guide['next']];
   @endphp
   <ol class="list-unstyled d-flex flex-wrap gap-2 mb-4" aria-label="Draw setup progress">
     @foreach($visibleSteps as $index => $step)
-      <li class="border rounded px-3 py-2 {{ $index === $guide['next'] ? 'border-primary' : '' }}" @if($index === $guide['next']) aria-current="step" @endif>
+      <li class="border rounded px-3 py-2 {{ $index === $displayStep ? 'border-primary' : '' }}" @if($index === $displayStep) aria-current="step" @endif>
         <span class="small">{{ $guide['team'] ? $index + 1 : $index }}. {{ $step['label'] }}</span>
-        <span class="d-block small {{ $step['complete'] ? 'text-success' : 'text-muted' }}">{{ $step['complete'] ? 'Complete' : ($index === $guide['next'] ? 'Continue here' : 'Still to do') }}</span>
+        <span class="d-block small {{ $step['complete'] ? 'text-success' : 'text-muted' }}">{{ $step['complete'] ? 'Complete' : ($index === $displayStep ? 'Continue here' : 'Still to do') }}</span>
       </li>
     @endforeach
   </ol>
@@ -62,22 +64,24 @@
     <section class="card card-body mb-3">
       <h2 class="h4">Draw and players ready</h2>
       <p>Your generated draw is saved. Open it to review the players and matches.</p>
-      @if($trialsReady)
-        <h3 class="h5" id="trials-schedule-next">Next: programme and schedule</h3>
+        <h3 class="h5" id="draw-schedule-next">{{ $guide['scheduleComplete'] ? 'Step 5 of 5 · Review & publish' : 'Step 4 of 5 · Schedule' }}</h3>
         <p>{{ $guide['steps'][4]['detail'] }}</p>
-        <a class="btn btn-primary align-self-start" href="{{ $guide['scheduleComplete'] ? route('backend.event-venue-schedule.calendar', ['event'=>$event->id, 'draw_id'=>$draw->id, 'date'=>$scheduleDate ?? 'all']) : $guide['steps'][4]['url'] }}">{{ $guide['scheduleComplete'] ? 'Review saved schedule' : 'Set venues and schedule' }}</a>
+        <a class="btn btn-primary align-self-start" data-next-schedule href="{{ $guide['scheduleComplete'] ? route('backend.event-venue-schedule.calendar', ['event'=>$event->id, 'draw_id'=>$draw->id, 'date'=>$scheduleDate ?? 'all']) : $guide['steps'][4]['url'] }}">{{ $guide['scheduleComplete'] ? 'Review saved schedule' : 'Schedule matches' }}</a>
         <a class="btn btn-outline-secondary align-self-start mt-2" href="{{ $guide['workspace'] }}">Open draw</a>
         <p class="small text-muted mt-3 mb-2">Saving keeps the programme private. Review and publish the draw and its match times separately when ready.</p>
         <a class="align-self-start" href="{{ $publicationUrl }}">Review publication controls</a>
-      @else
-        <a class="btn btn-primary align-self-start" href="{{ $guide['workspace'] }}">Open draw</a>
-      @endif
       <a class="align-self-start mt-3" href="{{ route('headOffice.show', $event) }}">Back to categories</a>
     </section>
   @else
   <section class="card card-body mb-3">
-    <p class="small text-primary mb-1">Step {{ $guide['team'] ? $guide['next'] + 1 : $guide['next'] }} of {{ $guide['team'] ? 6 : 3 }}</p>
-    <h2 class="h4">{{ $guide['team'] ? $current['label'] : $visibleSteps[$guide['next']]['label'] }}</h2>
+    <p class="small text-primary mb-1">
+      @if(!$guide['team'] && $displayStep === 0)
+        Before you start · Choose a category
+      @else
+        Step {{ $guide['team'] ? $guide['next'] + 1 : $displayStep }} of {{ $guide['team'] ? 6 : 5 }}
+      @endif
+    </p>
+    <h2 class="h4">{{ $guide['team'] ? $current['label'] : ($displayStep === 0 ? 'Category' : $visibleSteps[$displayStep]['label']) }}</h2>
     <p>{{ !$guide['team'] && $guide['next'] === 3 ? 'Place your players, save the assignments and generate the matches.' : $current['detail'] }}</p>
     @if($guide['next'] === 1 && !$guide['team'] && !$draw->category_event_id && !$draw->locked && !$draw->published && !$draw->oop_published)
       @if($categories->isEmpty())
@@ -102,17 +106,10 @@
         <button class="btn btn-primary">Generate team ties &amp; continue</button>
       </form>
     @else
-      <a href="{{ $current['url'] }}" class="btn btn-primary align-self-start">{{ $guide['next'] === 5 ? 'Review publication controls' : 'Continue to '.$current['label'] }}</a>
+      <a href="{{ $current['url'] }}" class="btn btn-primary align-self-start">{{ $guide['next'] === 5 ? 'Review publication controls' : 'Continue to '.($guide['team'] ? $current['label'] : ($displayStep === 0 ? 'category' : $visibleSteps[$displayStep]['label'])) }}</a>
     @endif
     <p class="small text-muted mt-3 mb-0">Saving setup does not publish changes. Review the current draw and schedule publication separately.</p>
   </section>
   @endif
   <details class="card card-body"><summary>Review saved setup{{ $guide['team'] ? ' or open another step' : '' }}</summary><div class="d-grid gap-2 mt-3">@foreach($visibleSteps as $index => $step)<a class="btn btn-outline-secondary text-start" href="{{ $step['url'] }}">{{ $guide['team'] ? $index + 1 : $index }}. {{ $step['label'] }}</a>@endforeach</div></details>
-  @if(!$guide['team'] && !$trialsReady)
-    <details class="card card-body mt-3"><summary>Later: scheduling and publication</summary>
-      <p class="small text-muted mt-2">Prepare match times and publish the draw separately when you are ready.</p>
-      <a class="align-self-start" href="{{ $guide['steps'][4]['url'] }}">Open scheduling</a>
-      <a class="align-self-start mt-2" href="{{ $publicationUrl }}">Review publication controls</a>
-    </details>
-  @endif
 </div>

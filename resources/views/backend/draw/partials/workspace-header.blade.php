@@ -98,6 +98,16 @@
       <a class="btn btn-sm btn-outline-secondary" href="{{ route('headOffice.show', $draw->event_id) }}">Back to Event</a>
   </x-slot:actions>
 </x-backend.page-header>
+@unless($draw->isTeamDraw())
+  @can('event.manage', $draw->event)
+    <section class="alert alert-info" data-draw-next-schedule @if(!$draw->drawFixtures()->exists()) hidden @endif aria-label="Next step: schedule matches">
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <div><strong>Step 4 of 5 · Schedule</strong><p class="mb-0">Review the generated draw, then set match times, venues and courts.</p></div>
+      <a class="btn btn-primary" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]) }}">Schedule matches</a>
+      </div>
+    </section>
+  @endcan
+@endunless
 @once
   <link rel="stylesheet" href="{{ asset('css/draw-workspace-navigation.css') }}?v={{ filemtime(public_path('css/draw-workspace-navigation.css')) }}">
   <script src="{{ asset('js/draw-workspace-navigation.js') }}?v={{ filemtime(public_path('js/draw-workspace-navigation.js')) }}" defer></script>

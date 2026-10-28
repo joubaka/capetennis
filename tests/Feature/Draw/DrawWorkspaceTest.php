@@ -45,9 +45,9 @@ class DrawWorkspaceTest extends TestCase
         $this->post(route('draw.setup.store', $draw), ['workflow' => 'round_robin_playoffs'])
             ->assertRedirect(route('backend.draw.roundrobin.show', $draw));
         $page = $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()
-            ->assertSee('Players &amp; Groups', false)->assertSee('Draw &amp; Results', false)
+            ->assertSee('Players &amp; Positions', false)->assertSee('Draw &amp; Results', false)
             ->assertSee('data-workspace="setup">Draw settings', false)->assertSee('data-workspace="rules">Rules &amp; notes', false)->assertSee('Print Draw Pack')
-            ->assertSee('Manage full schedule')
+            ->assertSee('Schedule multiple draws')
             ->assertSee('data-full-schedule-action', false)
             ->assertSee(route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'manual' => 1]));
         $page->assertSee('Create groups');
@@ -55,7 +55,7 @@ class DrawWorkspaceTest extends TestCase
         $page->assertSee('Create your groups first. Then choose players and add them to a group.');
         $this->assertSame(1, substr_count($page->getContent(), 'id="groups-tab-boxes"'));
         $this->assertSame(1, substr_count($page->getContent(), 'id="rr-apply-group-count"'));
-        $page->assertSee('<details data-individual-draw-tools>', false);
+        $this->assertMatchesRegularExpression('/<details\s+data-individual-draw-tools\s*>/', $page->getContent());
         $page->assertSee('More tools');
         $page->assertDontSee('data-individual-draw-tools open', false);
         $page->assertSee('href="'.route('admin.events.entries.new', $draw->event_id).'">Manage event entries', false);
@@ -78,7 +78,7 @@ class DrawWorkspaceTest extends TestCase
         $before = $draw->drawFixtures()->get()->map(fn ($fixture) => $fixture->getAttributes())->all();
         $service->save($draw, ['groups' => [['group_id' => $group->id, 'registration_ids' => [$players[2]->id, $players[0]->id]]]]);
         $url = route('draw.guide.show', [$draw->event_id, $draw]);
-        $this->get($url)->assertOk()->assertSee('Saved groups differ from the generated matches')->assertSee('Step 3 of 3');
+        $this->get($url)->assertOk()->assertSee('Saved groups differ from the generated matches')->assertSee('Step 2 of 5');
         $this->get($url)->assertOk()->assertSee('Saved groups differ from the generated matches');
         $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()
             ->assertSee('Saved groups differ from the generated matches')

@@ -49,9 +49,10 @@
 </div>
 <nav class="rr-workspace-nav" aria-label="Draw workspace">
   @unless($draw->isTeamDraw())<a href="{{ route('draw.setup.show', $draw) }}">1 · Format</a>@endunless
-  <button type="button" data-workspace="players">{{ $draw->isTeamDraw() ? '' : '2 · ' }}Players &amp; Groups</button>
+  <button type="button" data-workspace="players">{{ $draw->isTeamDraw() ? 'Players & Groups' : '2 · Players & Positions' }}</button>
   <button type="button" data-workspace="results">{{ $draw->isTeamDraw() ? '' : '3 · ' }}Draw &amp; Results</button>
-  <button type="button" data-workspace="schedule">{{ $draw->isTeamDraw() ? '' : '4 · ' }}Schedule</button>
+  <button type="button" data-workspace="schedule" data-workspace-view="{{ $draw->isTeamDraw() ? 'oop' : 'schedule' }}">{{ $draw->isTeamDraw() ? '' : '4 · ' }}Schedule</button>
+  @unless($draw->isTeamDraw())<a data-workspace-review href="{{ route('backend.draw.roundrobin.show', $draw) }}?review=publication#matrix">5 · Review &amp; publish</a>@endunless
   <button type="button" data-workspace="setup">Draw settings</button>
   <button type="button" data-workspace="rules">Rules &amp; notes</button>
 </nav>
@@ -111,7 +112,7 @@
 
 </ul>
 <a class="btn btn-primary d-none" data-full-schedule-action href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'manual' => 1]) }}">
-  <i class="ti ti-calendar-cog me-1" aria-hidden="true"></i> Manage full schedule
+  <i class="ti ti-calendar-cog me-1" aria-hidden="true"></i> Schedule multiple draws
 </a>
 </div>
 
@@ -805,7 +806,11 @@
         @empty
           <div class="text-muted text-center py-3">
             <i class="ti ti-map-pin-off fs-3 d-block mb-2"></i>
-            No venues assigned. Add a venue to enable scheduling.
+            @if($draw->isTeamDraw())
+              No venues assigned. Add a venue to enable scheduling.
+            @else
+              No draw venue defaults. Choose event venues and courts in Schedule this draw.
+            @endif
           </div>
         @endforelse
       </div>
@@ -820,11 +825,15 @@
       </div>
       <div class="d-flex gap-2">
         <a class="btn btn-outline-primary btn-sm" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'manual' => 1]) }}">
-          <i class="ti ti-calendar-cog me-1" aria-hidden="true"></i> Manage full schedule
+          <i class="ti ti-calendar-cog me-1" aria-hidden="true"></i> Schedule multiple draws
         </a>
+        @if($draw->isTeamDraw())
         <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#scheduleModal">
           <i class="ti ti-calendar-plus me-1"></i> Schedule Matches
         </button>
+        @else
+        <a class="btn btn-primary btn-sm" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]) }}">Schedule this draw</a>
+        @endif
       </div>
     </div>
     <div class="card-body">

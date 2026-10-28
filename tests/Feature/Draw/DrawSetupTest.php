@@ -80,7 +80,7 @@ class DrawSetupTest extends TestCase
         $this->assertDatabaseCount('flexible_monrad_draws', 0);
 
         $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()
-            ->assertSee('Step 3 of 3 · Players · Round robin only')
+            ->assertSee('Step 2 of 5 · Players &amp; Positions · Round robin only', false)
             ->assertDontSee('id="main-bracket-tab"', false)
             ->assertDontSee('id="btn-add-playoff"', false)
             ->assertDontSee('id="btn-print-bracket"', false)
@@ -227,7 +227,14 @@ class DrawSetupTest extends TestCase
         $draw->refresh();
         $this->assertSame(0, $draw->drawFixtures()->count());
         $this->assertSame(16, $draw->registrations()->reorder()->count());
-        $this->assertSame($slots, $draw->flexibleMonrad->draft['slots']);
+        $savedSlots = $draw->flexibleMonrad->draft['slots'];
+        $this->assertCount(16, $savedSlots);
+        $this->assertSame(array_keys($slots), array_keys($savedSlots));
+        foreach ($slots as $path => $slot) {
+            $this->assertSame($slot['id'], $savedSlots[$path]['id']);
+            $this->assertSame($slot['type'], $savedSlots[$path]['type']);
+            $this->assertCount(2, $savedSlots[$path]);
+        }
         $this->assertSame([2, 4, 6, 8], $draw->flexibleMonrad->draft['challenge_pairs']);
         $this->assertSame('feed_in_monrad', $draw->settings->workflow);
         $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()
