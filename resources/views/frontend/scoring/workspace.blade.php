@@ -182,8 +182,7 @@
               $nextTime = $nextMatch->scheduled_at;
               $nextVenue = $nextMatch->venue?->name;
             } else {
-              $nextHome = $nextMatch->registration1?->players?->first()?->full_name ?? 'Player 1';
-              $nextAway = $nextMatch->registration2?->players?->first()?->full_name ?? 'Player 2';
+              [$nextHome, $nextAway] = $nextMatch->scoring_participant_labels;
               $nextTime = $nextMatch->orderOfPlay?->time;
               $nextVenue = $nextMatch->orderOfPlay?->venue?->name;
             }
@@ -391,8 +390,7 @@
             $engine = 'team';
           } else {
             $schedule = $match->orderOfPlay;
-            $home = $match->registration1?->players?->first()?->full_name ?? 'To be decided';
-            $away = $match->registration2?->players?->first()?->full_name ?? 'To be decided';
+            [$home, $away] = $match->scoring_participant_labels;
             $hasPlayers = $match->registration1_id && $match->registration2_id;
             $sets = $match->fixtureResults->sortBy('set_nr')->map(fn($set) => [(int) $set->registration1_score, (int) $set->registration2_score])->values();
             $scheduleTime = $schedule?->time;

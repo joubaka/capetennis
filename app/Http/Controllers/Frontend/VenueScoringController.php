@@ -156,6 +156,7 @@ class VenueScoringController extends Controller
             ->get();
 
         app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($teamFixtures);
+        app(\App\Services\Scoring\FixtureParticipantLabels::class)->prepare($fixtures);
 
         $matches = $fixtures->concat($teamFixtures);
         if ($publishedSchedule) {

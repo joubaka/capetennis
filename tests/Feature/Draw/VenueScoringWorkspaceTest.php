@@ -26,6 +26,30 @@ class VenueScoringWorkspaceTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_unresolved_monrad_queue_shows_qualification_paths_without_enabling_scoring(): void
+    {
+        [$event, $draw, $venue, $opening] = $this->scheduledFixture('Feeder Venue');
+        $opening->update(['stage' => 'FM', 'match_nr' => 1]);
+        $otherOpening = Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'FM', 'match_nr' => 2]);
+        $feedIn = Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'FM', 'match_nr' => 17,
+            'registration1_id' => null, 'registration2_id' => null]);
+        OrderOfPlay::create(['fixture_id' => $feedIn->id, 'draw_id' => $draw->id, 'venue_id' => $venue->id,
+            'court' => '1', 'time' => '2026-09-10 16:30:00']);
+        FlexibleMonradDraw::create(['draw_id' => $draw->id, 'revision' => 1, 'draft' => ['size' => 4, 'slots' => []],
+            'graph' => ['nodes' => ['feed' => ['sources' => [
+                ['type' => 'loser', 'match' => 'a'], ['type' => 'loser', 'match' => 'b'],
+            ]]]], 'fixture_map' => ['a' => $opening->id, 'b' => $otherOpening->id, 'feed' => $feedIn->id]]);
+        $url = route('frontend.scoring.workspace', ['event' => $event, 'venue' => $venue->id, 'schedule_source' => 'working']);
+        $response = $this->actingAs($this->scorerFor($event))->get($url)->assertOk()
+            ->assertSee('Loser of Match 1')->assertSee('Loser of Match 2')->assertSee('Waiting for players');
+        $this->assertSame(['Loser of Match 1', 'Loser of Match 2'],
+            $response->viewData('matches')->firstWhere('id', $feedIn->id)->scoring_participant_labels);
+        $this->assertSame(1, $response->viewData('ready'));
+        $this->assertSame([$opening->id], $response->viewData('nextMatches')->pluck('id')->all());
+        $this->assertDatabaseHas('fixtures', ['id' => $feedIn->id, 'registration1_id' => null, 'registration2_id' => null]);
+        $this->assertDatabaseCount('fixture_results', 0);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
