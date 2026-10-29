@@ -51,6 +51,15 @@ final class RegionManagerAccessService
     public function canManageTeam(User $user, Team $team, ?Event $event = null): bool
     {
         $event ??= $team->category?->event;
+        if (! $event && $team->category_event_id === null && $team->region_id) {
+            // Legacy rosters have no category. A shared region cannot establish
+            // event ownership, so resolve only an unambiguous event-region link.
+            $eventIds = EventRegion::query()->where('region_id', $team->region_id)
+                ->distinct()->limit(2)->pluck('event_id');
+            if ($eventIds->count() === 1) {
+                $event = Event::find($eventIds->first());
+            }
+        }
         if (! $event || ! app(\App\Services\EventTeamScope::class)->query($event)->whereKey($team->id)->exists()) return false;
         if ($this->isEventManager($user, $event)) return true;
         if (! $event->isTeam() || ! $team->region_id) return false;

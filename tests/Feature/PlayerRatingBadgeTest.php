@@ -202,7 +202,8 @@ class PlayerRatingBadgeTest extends TestCase
             CategoryResult::create(['event_id' => $event->id, 'category_id' => $draw->categoryEvent->category_id, 'registration_id' => $registration->id, 'position' => $position]);
             $playerId ??= $player->id;
         }
-        $this->artisan('player-ability:refresh')->assertSuccessful();
+        $exitCode = \Illuminate\Support\Facades\Artisan::call('player-ability:refresh');
+        $this->assertSame(0, $exitCode, \Illuminate\Support\Facades\Artisan::output());
         $url = route('backend.player-performance.badges').'?players[]='.$playerId.'&draw_id='.$draw->id;
         $response = $this->getJson($url)->assertOk();
         $this->assertGreaterThan(50, $response->json('ratings.p:'.$playerId.'.0.score'));

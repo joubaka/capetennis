@@ -35,7 +35,8 @@ class RegionalRatingAccessTest extends TestCase
         $other = $this->roster();
         $rating = ['score' => 54.8, 'cohort' => 'u10 boys', 'component' => 'test', 'last_played' => '2026-09-01'];
         $this->partialMock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn([
-            'reason' => null, 'badge_players' => [$own['player']->id => [$rating], $other['player']->id => [$rating]],
+            'reason' => null, 'built_at' => '2026-10-29 10:00:00', 'snapshot_stale' => false,
+            'badge_players' => [$own['player']->id => [$rating], $other['player']->id => [$rating]],
         ]);
         $this->actingAs($own['manager']);
         $this->assertSame([$own['player']->id], array_keys(app(PlayerSharedAbilityService::class)->badgeSnapshot($own['field'])));

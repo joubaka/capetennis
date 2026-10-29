@@ -61,7 +61,7 @@ class RegionalRosterTest extends TestCase
         $this->rosterChange($team, ['action' => 'remove', 'slot_id' => $slot->id, 'expected_player_id' => $slot->player_id, 'expected_rank' => 1])->assertNotFound();
         $this->assertSame(0, (int) $slot->fresh()->player_id);
         $replacement = Player::factory()->create();
-        $this->rosterChange($team, ['action' => 'add', 'player_id' => $replacement->id])->assertOk();
+        $this->rosterChange($team, ['action' => 'add', 'player_id' => $replacement->id, 'target_rank' => 1])->assertOk();
         $this->rosterChange($team, ['action' => 'remove', 'slot_id' => $slot->id, 'expected_player_id' => $second->id, 'expected_rank' => 1])->assertUnprocessable();
         $this->rosterChange($team, ['action' => 'move', 'direction' => 'down', 'slot_id' => $slot->id, 'expected_player_id' => $second->id, 'expected_rank' => 1])->assertUnprocessable();
         $this->assertSame($replacement->id, (int) $slot->fresh()->player_id);
@@ -379,6 +379,28 @@ class RegionalRosterTest extends TestCase
         $this->assertSame(2, NoProfileTeamPlayer::where('team_id', $team->id)->count());
         $this->assertSame(2, (int) NoProfileTeamPlayer::where('team_id', $team->id)->where('name', 'Extra')->sole()->rank);
         $this->assertSame(0, TeamPaymentOrder::count());
+    }
+
+    public function test_legacy_team_actions_resolve_only_an_unambiguous_event_and_assigned_manager(): void
+    {
+        [$event, $region, $team, $manager] = $this->roster(true);
+        [$otherEvent, , , $otherManager] = $this->roster();
+        $team->update(['category_event_id' => null]);
+        $team = $team->fresh();
+        NoProfileTeamPlayer::create(['team_id' => $team->id, 'rank' => 1, 'name' => 'Legacy', 'surname' => 'Player', 'pay_status' => 0]);
+        $access = app(RegionManagerAccessService::class);
+        $this->assertTrue($access->canManageTeam($manager, $team));
+        $this->assertFalse($access->canManageTeam($otherManager, $team));
+        $this->assertFalse($access->canManageTeam($manager, $team, $otherEvent));
+        $this->actingAs($manager);
+        $this->assertTrue($manager->can('team.players.manage', $team));
+        $this->get(route('admin.events.teams', [$event, 'roster_region' => $team->region_id]))
+            ->assertOk()->assertSee('Change player')->assertSee('Change name')->assertSee('Move up');
+        $sharedRegion = new EventRegion();
+        $sharedRegion->forceFill(['event_id' => $otherEvent->id, 'region_id' => $team->region_id, 'ordering' => 2])->save();
+        $this->assertFalse($access->canManageTeam($manager, $team));
+        $this->assertFalse($access->canManageTeam($manager, $team, $event));
+        $this->assertFalse($manager->can('team.players.manage', $team));
     }
 
     private function rosterChange(Team $team, array $payload)
