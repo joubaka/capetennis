@@ -32,7 +32,9 @@ class MyTennisController extends Controller
     public function rating(Request $request, \App\Models\Player $player)
     {
         abort_unless(app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $player), 403);
-        $history = app(\App\Services\Performance\PlayerRatingHistoryService::class)->forPlayer($player);
+        $filters = $request->validate(['cohort' => 'nullable|string|max:255', 'month' => 'nullable|integer|min:0|max:11',
+            'scope' => 'nullable|in:new,all', 'page' => 'nullable|integer|min:1|max:2500', 'scale' => 'nullable|in:focused,full']);
+        $history = app(\App\Services\Performance\PlayerRatingHistoryService::class)->forPlayer($player, $filters);
         return response()->view('frontend.my-tennis.rating', [
             'ratingPlayer' => $player,
             'ratingHistory' => $history,

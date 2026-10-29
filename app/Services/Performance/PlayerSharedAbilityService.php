@@ -264,7 +264,8 @@ class PlayerSharedAbilityService
                 }
                 foreach ($orderedFields as $fieldIndex => $ids) {
                     $source = 'ordinal:'.$event->id.':'.$cohort.':'.$fieldIndex;
-                    $eventOrdinal[$cohort][] = ['players' => $ids, 'weight' => SharedAbilityModel::ORDINAL_WEIGHT * $this->decay(CarbonImmutable::parse($event->start_date)->toDateString(), $asOf), 'source_id' => $source];
+                    $eventOrdinal[$cohort][] = ['players' => $ids, 'weight' => SharedAbilityModel::ORDINAL_WEIGHT * $this->decay(CarbonImmutable::parse($event->start_date)->toDateString(), $asOf), 'source_id' => $source,
+                        'event_id' => $event->id, 'event_name' => $event->name, 'event_date' => CarbonImmutable::parse($event->start_date)->toDateString(), 'completed_at' => CarbonImmutable::parse($event->end_date)->toDateString()];
                     for ($rank = 0; $rank < count($ids) - 1; $rank++) {
                         $edge = ['winner' => $ids[$rank], 'loser' => $ids[$rank + 1], 'kind' => $divisionBoundary === $rank ? 'division_order' : 'finish_order',
                             'weight' => $eventOrdinal[$cohort][array_key_last($eventOrdinal[$cohort])]['weight'], 'source_id' => $source.':'.$rank, 'topology_only' => true];
@@ -324,6 +325,10 @@ class PlayerSharedAbilityService
             }, $graph['edges']);
             $cohorts[$cohort] = app(SharedAbilityModel::class)->fit($edges, $cohort, $ordinalFields[$cohort] ?? [], $baseline['anchors'], $experiment)
                 + ['players' => $graph['players'], 'baseline' => $baseline];
+            if ($completedSources !== null) {
+                $cohorts[$cohort]['history_evidence'] = ['matches' => array_values(array_filter($edges, fn ($edge) => $edge['kind'] === 'played')),
+                    'fields' => $ordinalFields[$cohort] ?? []];
+            }
         }
         return ['cohorts' => $cohorts, 'names' => $names, 'reason' => null, 'built_at' => $builtAt,
             'source_events' => collect($graphs)->flatMap(fn ($g) => array_column($g['edges'], 'event_id'))->unique()->values()->all(),

@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\File;
 /** Durable private derived data; atomic replacement retains the last good build on failure. */
 class PlayerRatingHistoryStore
 {
-    public const VERSION = 1;
+    public const VERSION = 2;
 
     public function path(): string { return storage_path('app/private/player-rating-history.json'); }
 
@@ -44,7 +44,8 @@ class PlayerRatingHistoryStore
             || !preg_match('/^[a-f0-9]{64}$/', $saved['source_fingerprint'] ?? '')
             || !is_string($saved['as_of'] ?? null) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $saved['as_of'])
             || $saved['as_of'] > CarbonImmutable::today('Africa/Johannesburg')->toDateString()
-            || !is_string($saved['built_at'] ?? null) || !is_array($saved['months'] ?? null) || count($saved['months']) !== 12) return false;
+            || !is_string($saved['built_at'] ?? null) || !is_array($saved['months'] ?? null) || !array_is_list($saved['months']) || count($saved['months']) !== 12
+            || !is_array($saved['evidence'] ?? null) || !array_is_list($saved['evidence']) || count($saved['evidence']) > 50000) return false;
         $today = CarbonImmutable::createFromFormat('!Y-m-d', $saved['as_of'], 'Africa/Johannesburg');
         if ($today->toDateString() !== $saved['as_of']) return false;
         foreach ($saved['months'] as $index => $month) {
@@ -60,6 +61,22 @@ class PlayerRatingHistoryStore
                         || ($rating['score'] !== null && (!is_numeric($rating['score']) || !is_finite((float) $rating['score']) || $rating['score'] < 0 || $rating['score'] > 100))) return false;
                 }
             }
+        }
+        foreach ($saved['evidence'] as $row) {
+            if (!is_array($row) || !in_array($row['kind'] ?? null, ['match', 'finish'], true)
+                || !is_string($row['source_id'] ?? null) || strlen($row['source_id']) > 350 || !is_string($row['cohort'] ?? null) || strlen($row['cohort']) > 255
+                || !is_int($row['event_id'] ?? null) || $row['event_id'] < 1 || !is_string($row['event'] ?? null) || mb_strlen($row['event']) > 255
+                || !is_string($row['date'] ?? null) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $row['date'])
+                || !is_string($row['completed_at'] ?? null) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $row['completed_at'])
+                || !is_string($row['date_basis'] ?? null) || strlen($row['date_basis']) > 150
+                || !is_int($row['months'] ?? null) || $row['months'] < 1 || $row['months'] > 4095
+                || !is_int($row['baseline_months'] ?? null) || $row['baseline_months'] < 0 || ($row['baseline_months'] & ~$row['months']) !== 0
+                || !is_array($row['players'] ?? null) || !array_is_list($row['players']) || count($row['players']) < 2 || count($row['players']) > 256
+                || count(array_unique($row['players'])) !== count($row['players']) || !is_array($row['names'] ?? null) || !array_is_list($row['names']) || count($row['names']) !== count($row['players'])) return false;
+            foreach ($row['players'] as $id) if (!is_int($id) || $id < 1) return false;
+            foreach ($row['names'] as $name) if (!is_string($name) || mb_strlen($name) > 255) return false;
+            if ($row['kind'] === 'match' && (count($row['players']) !== 2 || !in_array($row['winner_side'] ?? null, [1, 2], true)
+                || !is_string($row['score'] ?? null) || strlen($row['score']) > 150)) return false;
         }
         return true;
     }
