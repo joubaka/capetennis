@@ -55,9 +55,9 @@
       @if($rosterLocked)<p class="text-muted">This competition has fixture history. Ask the event administrator to change this player list.</p>
 @endif
 
-      @unless($rosterOnly)
       <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <span class="small text-muted">Team #{{ $team->id }} · Player order is shown by rank.</span>
+        @unless($rosterOnly)
         <div class="d-flex flex-wrap gap-2">
           @if($team->noProfile && app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(auth()->user(), $event))
             <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.team-selection.profile-matches.index', [$event, $team]) }}">Check existing profiles</a>
@@ -68,16 +68,15 @@
 @endcan
 
         </div>
+        @endunless
       </div>
-
-@endunless
 
       @if(!$rosterOnly && !$rosterLocked && !$rankingManaged && $event->isTeam() && !$event->isInterprovincialTrials() && $team->num_team_members > 0 && $rosterCanEdit)
         <div class="mb-3">@include('backend.adminPage.admin_show._roster-add', ['reserveAdd' => true])</div>
       @endif
 
       <div class="table-responsive roster-compact-table"><table class="table align-middle team-player-table mb-0">
-        <thead><tr><th scope="col">Rank</th><th scope="col">Player</th>@unless($rosterOnly)<th scope="col">Contact</th><th scope="col">Payment</th>
+        <thead><tr><th scope="col">Rank</th><th scope="col" data-roster-player-column>Player</th>@unless($rosterOnly)<th scope="col">Contact</th><th scope="col">Payment</th>
 @endunless
 <th scope="col">Actions</th></tr></thead>
         <tbody>

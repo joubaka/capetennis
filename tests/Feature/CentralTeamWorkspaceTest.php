@@ -136,6 +136,8 @@ class CentralTeamWorkspaceTest extends TestCase
         $page = $this->get(route('admin.events.teams', $this->event))->assertOk();
         $page->assertSee('regional-roster-workspace')->assertSee('Change player')->assertSee('Existing player profile')
             ->assertSee('Player without a profile')->assertSee('data-regional-search', false)
+            ->assertSee('Team #'.$this->team->id.' · Player order is shown by rank.')
+            ->assertSee('data-roster-player-column', false)
             ->assertDontSee('confidential-roster@example.test')->assertDontSee('South private region')
             ->assertDontSee('data-region-organizers', false)->assertDontSee('data-team-email-open', false)
             ->assertDontSee('data-roster-filter="payment"', false)->assertDontSee('name="refund_action"', false);

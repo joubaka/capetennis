@@ -222,9 +222,13 @@
 @media (max-width: 575px) { .roster-advanced-filters { grid-template-columns: 1fr; } }
 
 /* Compact Players roster: secondary controls expand in flow so they cannot be clipped. */
+.team-admin-workspace .roster-compact-table .team-player-table { table-layout: fixed; }
 .team-admin-workspace .roster-compact-table .team-player-table td { padding: .55rem .5rem; }
-.team-admin-workspace .roster-compact-table .team-player-table td:nth-child(2) { width: 28%; }
-.team-admin-workspace .roster-compact-table .team-player-table td:last-child { width: 250px; }
+.team-admin-workspace .roster-compact-table .team-player-table th:first-child { width: 65px; }
+.team-admin-workspace .roster-compact-table .team-player-table th:last-child { width: 250px; }
+.team-admin-workspace .roster-compact-table .team-player-table th[data-roster-player-column] { width: 28%; }
+.team-admin-workspace .roster-compact-table .team-player-table th[data-roster-player-column]:nth-last-child(2) { width: auto; }
+.team-admin-workspace .roster-compact-table .team-player-table td:nth-child(n) { width: auto; }
 .roster-compact-table .roster-contact { display: grid; gap: .15rem; line-height: 1.35; }
 .roster-row-actions, .roster-compact-table .team-roster-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
 .roster-compact-table .team-roster-actions > form { margin: 0; }
@@ -272,13 +276,8 @@
 @media(max-width:767.98px) { .team-admin-workspace [data-team-card-id] .table-responsive { overflow-x:auto; max-width:100%; } }
 [data-canonical-roster] + .nav-tabs { display:none; }
 
-/* Keep the regional roster in the same workspace with only its existing controls. */
-.regional-roster-workspace > .nav-tabs-shadow > .tab-content { padding-top:0 !important; }
-.regional-roster-workspace .roster-region-header { padding-top:.5rem; }
+/* Regional permissions hide controls; the roster uses the shared admin spacing. */
 .regional-roster-workspace:has(#tab-order.active) [data-regional-search] { display:none; }
-.regional-roster-workspace .roster-team-summary { min-height:64px; }
-.regional-roster-workspace .team-player-table td:nth-child(2) { width:auto; }
-.regional-roster-workspace .team-player-table td:last-child { width:220px; }
 .roster-replacement { min-width:0; max-width:100%; }
 .roster-replacement[open] { flex-basis:100%; width:100%; }
 .roster-replacement > summary { cursor:pointer; list-style:none; }
@@ -288,9 +287,4 @@
 .roster-replacement-choice legend { float:none; width:100%; font-size:.875rem; }
 .roster-replacement-form fieldset { min-width:0; }
 .roster-replacement-form .form-label { font-size:.875rem; }
-@media(max-width:767.98px) {
-  .regional-roster-workspace .roster-team-summary { flex-direction:row; align-items:center; }
-  .regional-roster-workspace .team-player-table td:last-child { width:auto; }
-  .regional-roster-workspace .roster-row-actions { width:100%; }
-}
 .team-player-table tr:has(.roster-replacement[open]) > td { vertical-align:top; }
