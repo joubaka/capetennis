@@ -114,6 +114,15 @@ class PlayerSharedAbilityService
         return $this->build($eventStart->startOfDay()->subDay(), $eventStart->startOfDay(), $excludedEventId, $experiment);
     }
 
+    /** Background history only: completed-event source validation is independent of later cutoffs.
+     * Scheduled dates outside the event interval always retain the canonical event-start fallback.
+     * The caller holds a consistent read and checks the source fingerprint before saving.
+     */
+    public function historySnapshot(CarbonImmutable $asOf, array &$completedSources): array
+    {
+        return $this->build($asOf, $asOf->addDay()->startOfDay(), completedSources: $completedSources);
+    }
+
     private function formatBadgeSnapshot(array $snapshot, CarbonImmutable $asOf): array
     {
         $players = [];
@@ -190,7 +199,7 @@ class PlayerSharedAbilityService
         return trim($label, " -–");
     }
 
-    private function build(CarbonImmutable $asOf, ?CarbonImmutable $completedBefore = null, ?int $excludedEventId = null, array $experiment = [], ?HistoricalIdentityPreviewContext $identityPreview = null, array $selectedCohorts = []): array
+    private function build(CarbonImmutable $asOf, ?CarbonImmutable $completedBefore = null, ?int $excludedEventId = null, array $experiment = [], ?HistoricalIdentityPreviewContext $identityPreview = null, array $selectedCohorts = [], ?array &$completedSources = null): array
     {
         $builtAt = CarbonImmutable::now('Africa/Johannesburg')->format('Y-m-d H:i:s').' SAST';
         $graphs = []; $ordinalFields = []; $trialBaselines = []; $names = []; $eventsSeen = 0; $edgeCount = 0; $scannedMatches = 0; $seenSources = [];
@@ -206,7 +215,9 @@ class PlayerSharedAbilityService
             if (CarbonImmutable::parse($event->end_date)->greaterThan($asOf)) { $event->end_date = $asOf->toDateString(); }
             $weight = max(PHP_FLOAT_MIN, pow(0.5, max(0, CarbonImmutable::parse($event->end_date)->diffInDays($asOf, false)) / 180));
             $eventPlayed = []; $eventOrdinal = []; $eventEdges = [];
-            $definitionCounts = [];
+            $sourceData = $completedSources[$event->id] ?? null;
+            $definitionCounts = $sourceData['definitions'] ?? [];
+            if ($sourceData === null) {
             foreach (\App\Models\CategoryEvent::query()->with('category')->where('event_id', $event->id)->get() as $definition) {
                 $division = $pilot->division($definition->category->name);
                 $label = $division['cohort'];
@@ -214,8 +225,20 @@ class PlayerSharedAbilityService
                 $key = $this->cohort($label);
                 $definitionCounts[$key] = ($definitionCounts[$key] ?? 0) + 1;
             }
+            }
             $fields = [];
-            $preview = $pilot->preview([], 'singles', $asOf, 12, null, $event->id, true);
+            $preview = $sourceData === null ? $pilot->preview([], 'singles', $asOf, 12, null, $event->id, true)
+                : ['evidence' => collect($sourceData['ordinal'])];
+            if ($completedSources !== null && $sourceData === null) {
+                $matches = [];
+                try {
+                    foreach ($this->playedSources($history, $event, $pilot, $asOf) as $match) {
+                        $matches[] = $match;
+                        if (count($matches) > self::EDGE_CAP) return $this->withheld($builtAt);
+                    }
+                } catch (\OverflowException) { return $this->withheld($builtAt); }
+                $sourceData = $completedSources[$event->id] = ['definitions' => $definitionCounts, 'ordinal' => $preview['evidence']->all(), 'matches' => $matches];
+            }
             foreach ($preview['evidence']->whereNull('reason')->whereNotNull('position') as $row) {
                 if (count($row['players']) !== 1) { continue; }
                 $cohort = $this->cohort($row['cohort']);
@@ -251,7 +274,7 @@ class PlayerSharedAbilityService
                 }
             }
             try {
-                foreach ($this->playedSources($history, $event, $pilot, $asOf, $identityPreview) as $match) {
+                foreach ($sourceData['matches'] ?? $this->playedSources($history, $event, $pilot, $asOf, $identityPreview) as $match) {
                     if (++$scannedMatches > self::EDGE_CAP) { return $this->withheld($builtAt); }
                     if ($match['reason'] !== null || $match['discipline'] !== 'singles') { continue; }
                     $source = ($match['source'] === 'Team match' ? 'team-match:' : 'match:').$match['fixture_id'];

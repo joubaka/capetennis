@@ -95,12 +95,20 @@
   </div>
 
   <ul class="nav nav-pills nav-fill mb-4" id="my-tennis-tabs" role="tablist">
+    @if($canViewRating ?? false)
+    <li class="nav-item" role="presentation"><button class="nav-link" id="my-tennis-rating-tab" data-bs-toggle="pill" data-bs-target="#my-tennis-rating" type="button" role="tab" aria-controls="my-tennis-rating" aria-selected="false">Player rating</button></li>
+    @endif
     <li class="nav-item" role="presentation"><button class="nav-link active" id="my-tennis-overview-tab" data-bs-toggle="pill" data-bs-target="#my-tennis-overview" type="button" role="tab" aria-controls="my-tennis-overview" aria-selected="true"><i class="ti ti-dashboard me-1" aria-hidden="true"></i>Overview</button></li>
     <li class="nav-item" role="presentation"><button class="nav-link" id="my-tennis-history-tab" data-bs-toggle="pill" data-bs-target="#my-tennis-history" type="button" role="tab" aria-controls="my-tennis-history" aria-selected="false"><i class="ti ti-clipboard-list me-1" aria-hidden="true"></i>Entries & history</button></li>
     <li class="nav-item" role="presentation"><button class="nav-link" id="my-tennis-manage-tab" data-bs-toggle="pill" data-bs-target="#my-tennis-manage" type="button" role="tab" aria-controls="my-tennis-manage" aria-selected="false"><i class="ti ti-users me-1" aria-hidden="true"></i>Manage players</button></li>
   </ul>
 
   <div class="tab-content" id="my-tennis-tab-content">
+  @if($canViewRating ?? false)
+  <div class="tab-pane fade" id="my-tennis-rating" role="tabpanel" aria-labelledby="my-tennis-rating-tab" data-rating-url="{{ route('my.tennis.rating', $ratingPlayer) }}">
+    <div class="card"><div class="card-body"><p role="status">Select Player rating to view the saved last 12 months.</p><button type="button" class="btn btn-outline-primary" data-rating-retry hidden>Try again</button></div></div>
+  </div>
+  @endif
   <div class="tab-pane fade show active" id="my-tennis-overview" role="tabpanel" aria-labelledby="my-tennis-overview-tab">
   @if(!$selectedPlayer)
     <div class="card border-0 shadow-sm mb-4">
@@ -264,6 +272,32 @@
 @endsection
 
 @section('page-script')
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const button = document.getElementById('my-tennis-rating-tab');
+  const panel = document.getElementById('my-tennis-rating');
+  if (!button || !panel) return;
+  let loaded = false, loading = false;
+  const load = async () => {
+    if (loaded || loading) return;
+    loading = true;
+    panel.setAttribute('aria-busy', 'true');
+    panel.querySelector('[role="status"]').textContent = 'Loading saved rating history…';
+    try {
+      const response = await fetch(panel.dataset.ratingUrl, { headers: { Accept: 'text/html' }, cache: 'no-store' });
+      if (!response.ok || response.redirected) throw new Error('Unavailable');
+      panel.innerHTML = await response.text();
+      loaded = true;
+    } catch (error) {
+      panel.querySelector('[role="status"]').textContent = 'Rating history could not be loaded. Please try again.';
+      panel.querySelector('[data-rating-retry]').hidden = false;
+    } finally { loading = false; panel.removeAttribute('aria-busy'); }
+  };
+  button.addEventListener('shown.bs.tab', load);
+  panel.querySelector('[data-rating-retry]').addEventListener('click', load);
+  if (window.location.hash === '#rating') bootstrap.Tab.getOrCreateInstance(button).show();
+});
+</script>
 <script>
 (() => {
   const playerSelect = document.getElementById('my-tennis-player');

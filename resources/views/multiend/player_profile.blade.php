@@ -17,6 +17,9 @@
         <div class="card-header pb-0">
         <div class="planning-tabs-wrap" aria-label="Player planning sections">
         <ul class="nav nav-pills planning-tabs" role="tablist">
+            @if(auth()->user()?->hasRole('super-user'))
+            <li class="nav-item"><a class="nav-link" href="{{ route('my.tennis', ['player' => $player->id]) }}#rating">Player rating</a></li>
+            @endif
             <li class="nav-item" role="presentation">
                 <button type="button" class="nav-link active" role="tab" data-bs-toggle="tab" data-bs-target="#navs-pills-top-events" aria-controls="navs-pills-top-events" aria-selected="true">
                     <i class="ti ti-calendar-event me-1"></i>Registered events

@@ -15,10 +15,28 @@ class MyTennisController extends Controller
 
     public function index(Request $request)
     {
-        return view('frontend.my-tennis.index', $this->myTennis->dashboard(
+        $data = $this->myTennis->dashboard(
             $request->user(),
             $request->integer('player') ?: null,
-        ));
+        );
+        // A super admin may preview another player's rating without granting ownership.
+        if (!$data['selectedPlayer'] && $request->user()->hasRole('super-user') && $request->integer('player')) {
+            $data['ratingPreviewPlayer'] = \App\Models\Player::findOrFail($request->integer('player'));
+        }
+        $ratingPlayer = $data['ratingPreviewPlayer'] ?? $data['selectedPlayer'];
+        $data['ratingPlayer'] = $ratingPlayer;
+        $data['canViewRating'] = $ratingPlayer && app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $ratingPlayer);
+        return response()->view('frontend.my-tennis.index', $data)->header('Cache-Control', 'private, no-store');
+    }
+
+    public function rating(Request $request, \App\Models\Player $player)
+    {
+        abort_unless(app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $player), 403);
+        $history = app(\App\Services\Performance\PlayerRatingHistoryService::class)->forPlayer($player);
+        return response()->view('frontend.my-tennis.rating', [
+            'ratingPlayer' => $player,
+            'ratingHistory' => $history,
+        ])->header('Cache-Control', 'private, no-store');
     }
 
     public function players(Request $request)

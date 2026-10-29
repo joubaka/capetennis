@@ -2246,6 +2246,7 @@ Route::get('/admin/draws/format-options/{id}', function ($id) {
 });
 Route::middleware('auth')->group(function () {
   Route::get('/my-tennis', [MyTennisController::class, 'index'])->name('my.tennis');
+  Route::get('/my-tennis/players/{player}/rating', [MyTennisController::class, 'rating'])->middleware('throttle:30,1')->name('my.tennis.rating');
   Route::get('/my-tennis/match-reminder', \App\Http\Controllers\Frontend\MatchReminderController::class)->name('my.tennis.match-reminder');
   Route::get('backend/ranking/{series}', [RankingController::class, 'show'])
     ->name('backend.ranking.show');

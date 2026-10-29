@@ -1259,6 +1259,16 @@
                     </div>
                   </div>
 
+                  <div class="col-md-6">
+                    <div class="border rounded p-3 h-100">
+                      <label class="form-check form-switch">
+                        <input class="form-check-input sa-toggle-setting" type="checkbox" role="switch" name="player_rating_membership_enabled" value="1" data-setting-key="player_rating_membership_enabled" @checked(($generalSettings['player_rating_membership_enabled'] ?? '0') === '1')>
+                        <span class="form-check-label">Player rating · premium membership access</span>
+                      </label>
+                      <small class="text-muted">Off by default. Super Admin can always preview any player. Enabling also requires a verified premium entitlement; premium membership integration is pending, so this switch alone does not grant member access.</small>
+                    </div>
+                  </div>
+
                 </div>
               </div>
             </div>

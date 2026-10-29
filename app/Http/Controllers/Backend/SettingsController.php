@@ -61,6 +61,9 @@ class SettingsController extends Controller
         SiteSetting::set('require_code_of_conduct', $request->boolean('require_code_of_conduct') ? '1' : '0', SiteSetting::GROUP_GENERAL);
         SiteSetting::set('require_terms', $request->boolean('require_terms') ? '1' : '0', SiteSetting::GROUP_GENERAL);
         SiteSetting::set('require_profile_update', $request->boolean('require_profile_update') ? '1' : '0', SiteSetting::GROUP_GENERAL);
+        if ($request->has(\App\Services\Performance\PlayerRatingAccess::SETTING)) {
+            SiteSetting::set(\App\Services\Performance\PlayerRatingAccess::SETTING, $request->boolean(\App\Services\Performance\PlayerRatingAccess::SETTING) ? '1' : '0', SiteSetting::GROUP_GENERAL);
+        }
         SiteSetting::set(SiteSetting::DISCIPLINARY_SYSTEM_ENABLED, $request->boolean(SiteSetting::DISCIPLINARY_SYSTEM_ENABLED) ? '1' : '0', SiteSetting::GROUP_GENERAL);
         SiteSetting::set('brand_logo_url', trim((string) $request->input('brand_logo_url', '')), SiteSetting::GROUP_GENERAL);
 
@@ -130,6 +133,7 @@ class SettingsController extends Controller
             'require_terms'                => [SiteSetting::GROUP_GENERAL, 'boolean'],
             'require_profile_update'       => [SiteSetting::GROUP_GENERAL, 'boolean'],
             SiteSetting::DISCIPLINARY_SYSTEM_ENABLED => [SiteSetting::GROUP_GENERAL, 'boolean'],
+            \App\Services\Performance\PlayerRatingAccess::SETTING => [SiteSetting::GROUP_GENERAL, 'boolean'],
         ];
         foreach (SiteSetting::AUTOMATED_EMAIL_TOGGLES as $emailKey) {
             $allowedKeys[$emailKey] = [SiteSetting::GROUP_EMAIL, 'boolean'];
