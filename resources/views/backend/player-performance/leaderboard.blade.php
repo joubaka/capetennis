@@ -92,6 +92,7 @@
         {{ $players->links('pagination::bootstrap-5') }}
     @endif
     <div class="d-flex flex-wrap gap-3 mt-3">
+        <a style="min-height:44px" href="{{ route('backend.player-performance.ratings') }}">Browse current age groups and gender</a>
         @if($event)<a style="min-height:44px" href="{{ route('backend.player-performance.ratings') }}">Site-wide ratings</a>@endif
         <a style="min-height:44px" href="{{ route('backend.player-performance.directory') }}">Search all player profiles</a>
         <a style="min-height:44px" href="{{ route('backend.player-performance.index') }}">A/B performance comparison</a>

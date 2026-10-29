@@ -12,6 +12,55 @@ class PlayerRatingLeaderboardTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_current_profile_age_and_gender_filters_do_not_relabel_saved_ratings(): void
+    {
+        $this->travelTo(\Carbon\CarbonImmutable::parse('2026-10-29', 'Africa/Johannesburg'));
+        $this->admin();
+        $match = Player::factory()->create(['name' => 'Find', 'surname' => 'This', 'dateOfBirth' => '2014-12-31', 'gender' => 2]);
+        Player::factory()->create(['name' => 'Wrong', 'surname' => 'Gender', 'dateOfBirth' => '2014-01-01', 'gender' => 1]);
+        Player::factory()->create(['name' => 'Wrong', 'surname' => 'Age', 'dateOfBirth' => '2013-12-31', 'gender' => 2]);
+        $this->saved([$match->id => [$this->estimate(61, 'first', 'u11 girls'), $this->estimate(72, 'second', 'u12 girls')]]);
+        $response = $this->get(route('backend.player-performance.ratings', ['age_group' => 'u12', 'gender' => 'girls']))->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')->assertSee('Find This')->assertDontSee('Wrong Gender')->assertDontSee('Wrong Age')
+            ->assertSee('61.0/100')->assertSee('u11 girls')->assertSee('72.0/100')->assertSee('u12 girls')->assertSee('not rating ranks');
+        $this->assertSame(1, $response->viewData('players')->total());
+        $this->get(route('backend.player-performance.ratings', ['search' => 'This Find']))->assertOk()->assertSee('Find This')->assertDontSee('Wrong Gender');
+        $this->getJson(route('backend.player-performance.ratings', ['age_group' => 'u99']))->assertUnprocessable();
+        $this->getJson(route('backend.player-performance.ratings', ['gender' => 'invalid']))->assertUnprocessable();
+    }
+
+    public function test_profile_groups_cover_year_boundaries_unknown_profiles_and_pagination(): void
+    {
+        $this->travelTo(\Carbon\CarbonImmutable::parse('2026-10-29', 'Africa/Johannesburg'));
+        $this->admin();
+        $this->saved();
+        foreach (['2016-01-01' => 'Youngest', '2017-12-31' => 'Younger', '2015-12-31' => 'Eleven', '2012-01-01' => 'Fourteen', '2008-12-31' => 'Eighteen', '2007-12-31' => 'Adult', '2027-01-01' => 'Future'] as $birth => $name) {
+            Player::factory()->create(['name' => $name, 'surname' => 'Boundary', 'dateOfBirth' => $birth, 'gender' => 1]);
+        }
+        Player::factory()->create(['name' => 'Unknown', 'surname' => 'Profile', 'dateOfBirth' => null, 'gender' => null]);
+        Player::factory()->create(['name' => 'Unrecognised', 'surname' => 'Profile', 'dateOfBirth' => '2014-01-01', 'gender' => 9]);
+        $url = route('backend.player-performance.ratings');
+        $this->get($url.'?age_group=u10')->assertOk()->assertSee('Youngest Boundary')->assertSee('Younger Boundary')->assertDontSee('Eleven Boundary')->assertDontSee('Future Boundary');
+        $this->get($url.'?age_group=u18')->assertOk()->assertSee('Fourteen Boundary')->assertSee('Eighteen Boundary')->assertDontSee('Adult Boundary');
+        $this->get($url.'?age_group=unknown')->assertOk()->assertSee('Future Boundary')->assertSee('Unknown Profile')->assertDontSee('Youngest Boundary');
+        $this->get($url.'?gender=unknown')->assertOk()->assertSee('Unknown Profile')->assertSee('Unrecognised Profile')->assertDontSee('Youngest Boundary');
+        foreach (range(1, 27) as $i) {
+            Player::factory()->create(['name' => 'Paged', 'surname' => sprintf('Row%02d', $i), 'dateOfBirth' => '2013-01-01', 'gender' => 1]);
+        }
+        $response = $this->get($url.'?age_group=u13&gender=boys&page=2')->assertOk()->assertSee('Paged Row26')->assertDontSee('Paged Row01')->assertSee('start="26"', false);
+        $this->assertSame(27, $response->viewData('players')->total());
+    }
+
+    public function test_profile_search_retains_profiles_when_ratings_are_unavailable(): void
+    {
+        $this->admin();
+        Player::factory()->create(['name' => 'Visible', 'surname' => 'Profile']);
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn(['reason' => 'Unavailable', 'built_at' => 'Not yet updated', 'snapshot_stale' => true]);
+        $this->mock(PlayerSharedAbilityService::class)->shouldNotReceive('badgeSnapshot');
+        $this->get(route('backend.player-performance.ratings'))->assertOk()->assertSee('Visible Profile')->assertSee('Ratings are currently unavailable')->assertSee('Rating unavailable')
+            ->assertSee('This page will refresh automatically')->assertSee('Retry ratings update')->assertSee('CTLeaderboardRefresh')->assertSee('player-ratings-leaderboard-refresh.js');
+    }
+
     private function admin(): void
     {
         Role::findOrCreate('super-user', 'web');
@@ -136,7 +185,7 @@ class PlayerRatingLeaderboardTest extends TestCase
             $players[2]->id => [$this->estimate(99, 'second'), $this->estimate(3, 'other', 'u10 boys')],
         ]);
         $url = route('backend.player-performance.ratings');
-        $this->get($url)->assertOk()->assertSee('Choose a cohort to see')->assertDontSee('High Test');
+        $this->get($url.'?view=recorded')->assertOk()->assertSee('Choose a cohort to see')->assertDontSee('High Test');
         $this->get($url.'?cohort=u12%20boys')->assertOk()->assertSeeInOrder(['High Test', 'Low Test', 'Comparison group: second', 'Separate Test', 'Unrated players', 'Unrated Test']);
         $rows = app(PlayerRatingLeaderboardService::class)->build(null, 'u12 boys')['rows'];
         $this->assertSame([1, 2, 1, null], $rows->pluck('position')->all());
@@ -179,7 +228,7 @@ class PlayerRatingLeaderboardTest extends TestCase
         $response->assertDontSee('Ratings banner event · player ratings');
 
         $this->get(route('backend.player-performance.ratings'))->assertOk()
-            ->assertSee('Site-wide player ratings')->assertDontSee('Tournament workspace')
+            ->assertSee('Player ratings by age group')->assertDontSee('Tournament workspace')
             ->assertDontSee('event-workspace-chrome');
     }
 
@@ -209,7 +258,7 @@ class PlayerRatingLeaderboardTest extends TestCase
         }
         $this->get(route('backend.player-performance.event-ratings', $event))->assertOk()
             ->assertSeeInOrder(['First High 8', 'First Low 8', 'Second High 8', 'Second Low 8', 'Unrated A 8', 'Unrated Z 8', 'First High 10', 'First High 12']);
-        $site = $this->get(route('backend.player-performance.ratings'))->assertOk();
+        $site = $this->get(route('backend.player-performance.ratings', ['view' => 'recorded']))->assertOk();
         $this->assertSame(['u8 boys', 'u10 boys', 'u12 boys'], $site->viewData('cohorts'));
     }
 
