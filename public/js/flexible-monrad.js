@@ -444,7 +444,7 @@
             note.title = match.skip_reason;
             card.append(note);
           }
-          else if (match.challenge_status === 'pending') card.append(el('div', 'fm-match-note', 'Awaiting all base results · provisional'));
+          else if (match.challenge_status === 'pending') card.append(el('div', 'fm-match-note fm-pending-result', 'Awaiting all base results · provisional'));
           else if (match.automatic) card.append(el('div', 'fm-match-note', match.automatic === 'walkover'
             ? (match.withdrawn_players?.some(Boolean) ? 'Late withdrawal · opponent advances' : match.byes?.some(Boolean) ? 'Bye · opponent advances' : 'Walkover · no score played')
             : 'Closed · no active players'));
@@ -471,7 +471,7 @@
         const winnerName = el('strong', 'fm-winner-name');
         if (match.challenge_status === 'skipped') winnerName.textContent = 'Skipped · positions unchanged';
         else if (match.winner) winnerName.append(playerNameNode(match.winner, 'fm-player-identity-winner'));
-        else winnerName.textContent = 'Awaiting result';
+        else { winnerName.textContent = 'Awaiting result'; winnerName.classList.add('fm-pending-result'); }
         endpoint.append(el('span', 'fm-winner-label', label), winnerName);
         board.append(endpoint);
         winnerLines.push([position.x + bracketDimensions.width, position.middle, lineEnd, position.middle]);
@@ -499,7 +499,7 @@
     state.positions.forEach(p => {
       const chip = el('div', 'fm-position');
       chip.append(el('strong', '', p.position));
-      chip.append(p.player ? playerNameNode(p.player) : el('span', 'fm-source-name', p.bye ? 'Bye · no position awarded' : p.vacant ? 'Unassigned after withdrawal' : 'Awaiting results'));
+      chip.append(p.player ? playerNameNode(p.player) : el('span', 'fm-source-name' + (!p.bye && !p.vacant ? ' fm-pending-result' : ''), p.bye ? 'Bye · no position awarded' : p.vacant ? 'Unassigned after withdrawal' : 'Awaiting results'));
       $('fm-positions').append(chip);
     });
   }
@@ -689,13 +689,13 @@
       (state.generated
         ? ['Match', 'Round', 'Player 1 / source', 'Player 2 / source', 'Result', 'Scheduled']
         : ['Starting round', 'Match', 'Slot', 'Player']
-      ).forEach(t => tr.append(el('th', '', t)));
+      ).forEach((t, index) => tr.append(el('th', state.generated && index === 4 ? 'fm-print-result' : '', t)));
       head.append(tr);
       table.append(head);
       const body = el('tbody');
       rows.forEach(row => {
         const r = el('tr');
-        row.forEach(cell => r.append(el('td', '', cell)));
+        row.forEach((cell, index) => r.append(el('td', state.generated && index === 4 ? 'fm-print-result' : '', cell)));
         body.append(r);
       });
       table.append(body);

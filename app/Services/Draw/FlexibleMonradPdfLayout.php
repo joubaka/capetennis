@@ -65,11 +65,11 @@ final class FlexibleMonradPdfLayout
                     'winner' => $match['winner'] ?? null,
                     'player_ids' => $match['players'] ?? [null, null],
                     'schedule' => $this->scheduleLabel($match['schedule'] ?? null),
-                    'note' => isset($match['skip_reason']) ? (str_contains($match['skip_reason'], 'already played') ? 'Skipped - already played' : 'Skipped - player unavailable') : (($match['challenge_status'] ?? null) === 'pending' ? 'Awaiting all base results' : match ($match['automatic'] ?? null) {
+                    'note' => isset($match['skip_reason']) ? (str_contains($match['skip_reason'], 'already played') ? 'Skipped - already played' : 'Skipped - player unavailable') : match ($match['automatic'] ?? null) {
                         'walkover' => 'Walkover',
                         'void' => 'Closed - no active players',
                         default => null,
-                    }),
+                    },
                 ];
             }
 
@@ -110,7 +110,7 @@ final class FlexibleMonradPdfLayout
                             ? (($state['challenge_playoffs'] ?? false) ? 'Base position ' : 'Position ').($baseRanks[(int) ($entry['match']['winner'] ?? 0)] ?? $placement[1]) : 'Winner')),
                     'name' => ($entry['match']['challenge_status'] ?? null) === 'skipped' ? 'Skipped - positions unchanged' : (!empty($entry['match']['winner'])
                         ? ($players[(int) $entry['match']['winner']]['name'] ?? 'Winner')
-                        : 'Awaiting result'),
+                        : ''),
                 ];
                 $connections[] = [
                     'x1' => $position['x'] + self::CARD_WIDTH,
@@ -137,7 +137,7 @@ final class FlexibleMonradPdfLayout
             'position' => $position['position'],
             'name' => !empty($position['player'])
                 ? ($players[(int) $position['player']]['name'] ?? 'Player')
-                : (!empty($position['bye']) ? 'Bye - no position awarded' : (!empty($position['vacant']) ? 'Unassigned after withdrawal' : 'Awaiting results')),
+                : (!empty($position['bye']) ? 'Bye - no position awarded' : (!empty($position['vacant']) ? 'Unassigned after withdrawal' : '')),
         ])->all();
         if ($positions) {
             $maxWidth = max($maxWidth, min(8, count($positions)) * 125);

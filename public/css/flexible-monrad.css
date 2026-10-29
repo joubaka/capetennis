@@ -666,6 +666,8 @@
   }
 }
 @media print {
+  :where(.fm-surface) .fm-pending-result { visibility: hidden !important; }
+  :where(.fm-surface) .fm-print-result { width: 20%; min-width: 32mm; }
   @page {
     size: landscape;
     margin: 10mm;

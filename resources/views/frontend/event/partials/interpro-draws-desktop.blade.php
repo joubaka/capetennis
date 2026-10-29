@@ -42,7 +42,7 @@
                         <a href="{{ route('frontend.scoring.workspace', ['event' => $event, 'draw' => $draw->id]) }}"
                            class="btn btn-sm btn-light border"
                            title="Score {{ $draw->drawName }}">
-                          <i class="ti ti-scoreboard me-1" aria-hidden="true"></i>Score
+                          <i class="ti ti-scoreboard me-1" aria-hidden="true"></i>Enter scores per draw
                           <span class="visually-hidden"> {{ $draw->drawName }}</span>
                         </a>
                       @endif
