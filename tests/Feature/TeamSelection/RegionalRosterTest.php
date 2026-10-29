@@ -53,7 +53,8 @@ class RegionalRosterTest extends TestCase
         $slots = TeamPlayer::where('team_id', $team->id)->get();
         $this->assertCount(2, $slots);
         $slot = $slots->firstWhere('player_id', $second->id);
-        $this->rosterChange($team, ['action' => 'move', 'direction' => 'up', 'slot_id' => $slot->id, 'expected_player_id' => $slot->player_id, 'expected_rank' => 2])->assertOk();
+        $this->rosterChange($team, ['action' => 'move', 'direction' => 'up', 'slot_id' => $slot->id, 'expected_player_id' => $slot->player_id, 'expected_rank' => 2])
+            ->assertOk()->assertJsonPath('order_type', 'profile')->assertJsonPath('order.0.slot_id', $slot->id)->assertJsonPath('order.0.rank', 1);
         $this->assertSame(1, (int) $slot->fresh()->rank);
         $this->assertSame(2, (int) $slots->firstWhere('player_id', $first->id)->fresh()->rank);
         $this->rosterChange($team, ['action' => 'remove', 'slot_id' => $slot->id, 'expected_player_id' => $slot->player_id, 'expected_rank' => 2])->assertUnprocessable();
@@ -79,7 +80,8 @@ class RegionalRosterTest extends TestCase
         foreach (['First', 'Second'] as $name) $this->rosterChange($team, ['action' => 'add', 'name' => $name, 'surname' => 'Player'])->assertOk();
         $this->rosterChange($team, ['action' => 'add', 'name' => 'First', 'surname' => 'Player'])->assertUnprocessable();
         $second = NoProfileTeamPlayer::where('team_id', $team->id)->where('rank', 2)->firstOrFail();
-        $this->rosterChange($team, ['action' => 'move', 'direction' => 'up', 'slot_id' => $second->id, 'expected_player_id' => 0, 'expected_rank' => 2])->assertOk();
+        $this->rosterChange($team, ['action' => 'move', 'direction' => 'up', 'slot_id' => $second->id, 'expected_player_id' => 0, 'expected_rank' => 2])
+            ->assertOk()->assertJsonPath('order_type', 'imported')->assertJsonPath('order.0.slot_id', $second->id)->assertJsonPath('order.0.rank', 1);
         $this->assertSame(1, (int) $second->fresh()->rank);
         $this->rosterChange($team, ['action' => 'remove', 'slot_id' => $second->id, 'expected_player_id' => 0, 'expected_rank' => 1])->assertOk();
         $this->rosterChange($team, ['action' => 'remove', 'slot_id' => $second->id, 'expected_player_id' => 0, 'expected_rank' => 1])->assertNotFound();
