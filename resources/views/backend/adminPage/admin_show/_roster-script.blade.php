@@ -1,3 +1,4 @@
+<script src="{{ asset('js/team-roster-order.js') }}?v={{ filemtime(public_path('js/team-roster-order.js')) }}"></script>
 <script>
 if (!window.teamRosterControls) {
   window.teamRosterControls = true;
@@ -85,6 +86,7 @@ if (!window.teamRosterControls) {
     let feedback = form.parentElement.querySelector('[data-team-roster-feedback]');
     if (!feedback) { feedback = document.createElement('p'); feedback.dataset.teamRosterFeedback = ''; feedback.setAttribute('role','status'); form.after(feedback); }
     feedback.className = 'alert alert-info'; feedback.textContent = 'Saving…';
+    let movedInPlace = false;
     try {
       if (!form.dataset.saved) {
         const response = await fetch(form.getAttribute('action'), {method:'POST', body:payload, headers:{Accept:'application/json'}});
@@ -92,10 +94,17 @@ if (!window.teamRosterControls) {
         const data = await response.json();
         if (!response.ok) throw new Error(Object.values(data.errors || {}).flat()[0] || data.message || 'The change could not be saved.');
         form.dataset.saved = '1';
+        if (form.elements.direction && window.applyTeamRosterOrder?.(form, data)) {
+          movedInPlace = true;
+          delete form.dataset.saved;
+          feedback.remove();
+        }
       }
-      if (window.refreshTeamRoster && panel) await window.refreshTeamRoster(form);
-      else if (window.refreshTeamWorkspace) window.refreshTeamWorkspace();
-      else throw new Error('The change was saved. Reopen this player list to see the updated roster.');
+      if (!movedInPlace) {
+        if (window.refreshTeamRoster && panel) await window.refreshTeamRoster(form);
+        else if (window.refreshTeamWorkspace) await window.refreshTeamWorkspace();
+        else throw new Error('The change was saved. Reopen this player list to see the updated roster.');
+      }
       window.toastr?.success('Player list updated.');
     } catch (error) {
       feedback.className = 'alert alert-danger'; feedback.textContent = error.message;
@@ -112,6 +121,7 @@ if (!window.teamRosterControls) {
       delete form.dataset.busy;
       if (panel) delete panel.dataset.rosterSaving;
       buttons.forEach(button => { if (!form.dataset.saved || !form.contains(button)) button.disabled = false; });
+      if (movedInPlace && event.submitter?.isConnected) event.submitter.focus({preventScroll:true});
     }
   });
 }

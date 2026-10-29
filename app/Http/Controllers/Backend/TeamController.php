@@ -361,7 +361,13 @@ class TeamController extends Controller
           $data = $request->validate(['direction' => ['required', 'in:up,down'], 'slot_id' => ['required', 'integer'], 'expected_rank' => ['required', 'integer', 'min:1'], 'expected_player_id' => ['required', 'integer', 'min:0']]);
           app(\App\Services\TeamRosterService::class)->change($event, $region, $team, $request->user(), 'move', $data);
 
-          return response()->json(['message' => 'Player order updated.']);
+          $slots = $team->noProfile ? $team->team_players_no_profile()->orderBy('rank')->get()
+            : TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)
+                ->where(fn ($query) => $query->where('player_id', '>', 0)->orWhere('rank', '<=', $team->num_team_members))->orderBy('rank')->get();
+
+          return response()->json(['message' => 'Player order updated.', 'order_type' => $team->noProfile ? 'imported' : 'profile',
+            'order' => $slots->map(fn ($slot) => ['slot_id' => (int) $slot->id, 'rank' => (int) $slot->rank,
+              'player_id' => (int) ($team->noProfile ? $slot->player_profile : $slot->player_id)])->values()]);
         }
         $teamId = (int) $request->input('team_id');
         $team = Team::findOrFail($teamId);
