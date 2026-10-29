@@ -1,5 +1,14 @@
 # Draw workspace browser regressions
 
+`node tests/Browser/all-age-ratings.cjs` checks the all-age ratings directory at
+320, 390, 768 and 1440px with synthetic shared and withheld players. First run
+`AllAgeRatingIntegrationTest` with `CT_ALL_AGE_QA_HTML=1` to render the fixture.
+Use Node 20+ and configure `NODE_PATH` for Playwright when necessary. The harness
+loads actual rendered stylesheet links in source order and blocks external
+requests. It checks containment, touch targets, filters and evidence disclosure;
+it does not submit application mutations. Screenshots are saved under
+`storage/framework/testing/all-age-ratings-*.png`.
+
 `node tests/Browser/mobile-workspace.cjs` runs presentation regressions at 320,
 375, 430, 768 and 1280px in both workspace themes. It uses the real Manage Players
 toolbar and photo form fragments with local theme/authentication/mobile CSS and

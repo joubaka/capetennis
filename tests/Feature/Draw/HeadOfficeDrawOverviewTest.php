@@ -3,6 +3,8 @@
 namespace Tests\Feature\Draw;
 
 use App\Models\Draw;
+use App\Models\Category;
+use App\Models\CategoryEvent;
 use App\Models\DrawSetting;
 use App\Models\Event;
 use App\Models\FlexibleMonradDraw;
@@ -37,6 +39,7 @@ class HeadOfficeDrawOverviewTest extends TestCase
             'workflow' => $flexible ? 'custom_monrad' : 'round_robin_playoffs',
         ]));
         $draw->setRelation('venues', collect());
+        $draw->setRelation('event', (new Event)->forceFill(['id' => 233]));
         $draw->setRelation('flexibleMonrad', $flexible
             ? (new FlexibleMonradDraw)->forceFill(['draw_id' => 42, 'revision' => 7, 'graph' => []])
             : null);
@@ -217,6 +220,39 @@ class HeadOfficeDrawOverviewTest extends TestCase
         $this->assertStringNotContainsString('Custom Monrad', $html);
         $this->assertStringContainsString(route('backend.event-venue-schedule.index', ['event' => 233, 'draw_ids' => [42]]), $html);
         $this->assertStringContainsString('Select a draw format before publishing', $html);
+    }
+
+    public function test_primary_draw_table_has_one_set_of_actions_and_keeps_category_creation_in_optional_panel(): void
+    {
+        Gate::before(fn (?User $user) => true);
+        $event = (new Event)->forceFill(['id' => 233, 'name' => 'Trial event']);
+        $draw = $this->draw();
+        $draw->forceFill(['category_event_id' => 501, 'order_of_play_count' => 4]);
+        $draw->setRelation('event', $event);
+        $event->setRelation('draws', collect([$draw]));
+        $categories = collect([501, 502])->map(function ($id) {
+            $category = (new CategoryEvent)->forceFill(['id' => $id, 'eligible_draw_entries_count' => 12]);
+            $category->setRelation('category', (new Category)->forceFill(['name' => 'Category '.$id]));
+
+            return $category;
+        });
+        $event->setRelation('categoryEvents', $categories);
+        $html = view('backend.headOffice.partials.individual-draw-overview', compact('event'))->render();
+        $document = new \DOMDocument;
+        @$document->loadHTML($html);
+        $xpath = new \DOMXPath($document);
+
+        $this->assertSame(1, $xpath->query('//article[contains(@class,"draw-overview-row")]')->length);
+        $this->assertSame(0, $xpath->query('//article[contains(@class,"draw-overview-row")]/ancestor::details')->length);
+        $this->assertSame(1, $xpath->query('//button[contains(concat(" ",normalize-space(@class)," ")," toggle-publish ")]')->length);
+        $this->assertSame(1, $xpath->query('//button[contains(concat(" ",normalize-space(@class)," ")," toggle-schedule-publication ")]')->length);
+        $this->assertSame(1, $xpath->query('//details[@data-draw-categories and not(@open)]')->length);
+        $this->assertSame(1, $xpath->query('//details[@data-draw-categories]//button[@data-create-category="502"]')->length);
+        $this->assertSame(0, $xpath->query('//details[@data-draw-categories]//button[@data-create-category="501"]')->length);
+        $this->assertSame(0, $xpath->query('//details[@data-draw-categories]//*[@data-draw-guide-open]')->length);
+        $this->assertStringContainsString('12 eligible players', $html);
+        $this->assertStringContainsString('1 saved draw', $html);
+        $this->assertStringContainsString('Manage event categories', $html);
     }
 
     public function test_empty_event_has_creation_guidance_without_unusable_filters(): void

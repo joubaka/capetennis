@@ -5,7 +5,7 @@
     'eventWorkspaceSubtitle' => 'Individual draws, schedules and publication',
   ])
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 no-print">
-    <div><h2 class="h4 mb-1">Set up your draws</h2><p class="text-muted mb-0">Choose a category below to start or continue.</p></div>
+    <div><h2 class="h4 mb-1">Manage your draws</h2><p class="text-muted mb-0">Open draws, plan match times and manage publication.</p></div>
     <div class="draws-event-actions">
       @if($event->draws->isNotEmpty())
         <details class="draws-extra-tools"><summary class="btn draws-button draws-button-secondary">Event tools</summary><div class="d-flex flex-wrap gap-2 mt-2">
@@ -22,47 +22,6 @@
     </div>
   </div>
 
-  @if($event->isInterprovincialTrials())
-    @can('event.manage', $event)
-      @include('backend.headOffice.partials.organiser-setup')
-    @endcan
-  @endif
-
-  @if($event->relationLoaded('categoryEvents'))
-    <section class="card card-body mb-3" aria-labelledby="category-draw-progress">
-      <h2 class="h5" id="category-draw-progress">Categories and saved draws</h2>
-      <p class="text-muted small">Your saved progress is kept when you leave.</p>
-      @forelse($event->categoryEvents as $progressCategory)
-        @php
-          $categoryDraws = $event->draws->where('category_event_id', $progressCategory->id);
-        @endphp
-        <div class="border-top py-3 category-draw-action">
-          <div>
-          <strong>{{ $progressCategory->category?->name ?? 'Category #'.$progressCategory->id }}</strong>
-          <span class="d-block text-muted small">{{ $progressCategory->eligible_draw_entries_count }} eligible {{ Str::plural('player', $progressCategory->eligible_draw_entries_count) }}</span>
-          </div><div class="d-flex flex-wrap gap-2">
-          @foreach($categoryDraws as $savedCategoryDraw)
-            @include('backend.headOffice.partials.category-draw-next-action', ['savedCategoryDraw' => $savedCategoryDraw])
-          @endforeach
-          @if($categoryDraws->isEmpty())
-            @can('individual-draw.create', $event)<button type="button" class="btn btn-primary" data-create-category="{{ $progressCategory->id }}" data-bs-toggle="modal" data-bs-target="#createDrawModal">Create draw</button>@endcan
-          @endif
-          </div>
-        </div>
-      @empty
-        <p class="mb-0">No categories created yet. Add event categories before placing players.</p>
-        @can('event-category.manage', $event)<a class="btn btn-primary align-self-start mt-3" href="{{ route('admin.events.categories', $event) }}">Add categories</a>@endcan
-      @endforelse
-      @foreach($event->draws->whereNull('category_event_id') as $savedCategoryDraw)
-        <div class="border-top py-3 category-draw-action"><strong>{{ $savedCategoryDraw->drawName }} <small class="d-block text-muted">Combined or unassigned category</small></strong><div>@include('backend.headOffice.partials.category-draw-next-action', ['savedCategoryDraw' => $savedCategoryDraw])</div></div>
-      @endforeach
-      <details class="mt-3"><summary>Category settings and help</summary><div class="pt-2">
-        @can('event-category.manage', $event)<a href="{{ route('admin.events.categories', $event) }}">Manage event categories</a>@endcan
-        <p class="small text-muted mb-0 mt-2">Create a draw, choose its format, place players, then prepare the schedule. Save each step before leaving. Draws and match times are published separately after review.</p>
-      </div></details>
-    </section>
-  @endif
-
   @if(session('success'))
     <div class="alert alert-success alert-dismissible fade show" role="alert">
       {{ session('success') }}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
@@ -78,7 +37,7 @@
       $schedulePublishedCount = $event->draws->where('oop_published', true)->count();
     @endphp
     @if($scheduledCount > $schedulePublishedCount)
-      <div class="alert alert-warning" role="status">{{ $scheduledCount - $schedulePublishedCount }} {{ Str::plural('schedule', $scheduledCount - $schedulePublishedCount) }} prepared but not public. Open Draw details and tools to review and publish times.</div>
+      <div class="alert alert-warning" role="status">{{ $scheduledCount - $schedulePublishedCount }} {{ Str::plural('schedule', $scheduledCount - $schedulePublishedCount) }} prepared but not public. Use Publish times beside a draw to review and publish its schedule.</div>
     @endif
     <details class="card mb-3"><summary class="p-3">Publication summary</summary>
     <section aria-labelledby="release-readiness-heading">
@@ -113,7 +72,6 @@
     </details>
   @endif
 
-  <details class="card mb-3" data-draw-details><summary class="p-3">Draw details and tools ({{ $event->draws->count() }})</summary>
   <section class="draws-overview" aria-labelledby="draws-heading">
     <div class="draws-toolbar">
       <div>
@@ -180,5 +138,44 @@
       </div>
     @endif
   </section>
-  </details>
+  @if($event->isInterprovincialTrials())
+    @can('event.manage', $event)
+      <details class="card mt-3"><summary class="p-3">Setup help</summary>
+        @include('backend.headOffice.partials.organiser-setup')
+      </details>
+    @endcan
+  @endif
+  @if($event->relationLoaded('categoryEvents'))
+    <details class="card mt-3" data-draw-categories>
+      <summary class="p-3">Categories and player counts</summary>
+      <section class="card-body pt-0" aria-label="Categories and player counts">
+      @forelse($event->categoryEvents as $progressCategory)
+        @php
+          $categoryDraws = $event->draws->where('category_event_id', $progressCategory->id);
+        @endphp
+        <div class="border-top py-3 category-draw-action">
+          <div>
+          <strong>{{ $progressCategory->category?->name ?? 'Category #'.$progressCategory->id }}</strong>
+          <span class="d-block text-muted small">{{ $progressCategory->eligible_draw_entries_count }} eligible {{ Str::plural('player', $progressCategory->eligible_draw_entries_count) }}</span>
+          </div><div class="d-flex flex-wrap gap-2">
+          @if($categoryDraws->isNotEmpty())
+            <span class="text-muted small">{{ $categoryDraws->count() }} saved {{ Str::plural('draw', $categoryDraws->count()) }}</span>
+          @endif
+          @if($categoryDraws->isEmpty())
+            @can('individual-draw.create', $event)<button type="button" class="btn btn-primary" data-create-category="{{ $progressCategory->id }}" data-bs-toggle="modal" data-bs-target="#createDrawModal">Create draw</button>@endcan
+          @endif
+          </div>
+        </div>
+      @empty
+        <p class="mb-0">No categories created yet. Add event categories before placing players.</p>
+        @can('event-category.manage', $event)<a class="btn btn-primary align-self-start mt-3" href="{{ route('admin.events.categories', $event) }}">Add categories</a>@endcan
+      @endforelse
+      <div class="mt-3">
+        @can('event-category.manage', $event)<a href="{{ route('admin.events.categories', $event) }}">Manage event categories</a>@endcan
+        <p class="small text-muted mb-0 mt-2">Create a draw, choose its format, place players, then prepare the schedule. Save each step before leaving. Draws and match times are published separately after review.</p>
+      </div>
+      </section>
+    </details>
+  @endif
+
 </div>

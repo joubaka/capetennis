@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\File;
 /** Durable private derived data; atomic replacement retains the last good build on failure. */
 class PlayerRatingHistoryStore
 {
-    public const VERSION = 2;
+    public const VERSION = 3;
 
     public function path(): string { return storage_path('app/private/player-rating-history.json'); }
 
@@ -53,12 +53,13 @@ class PlayerRatingHistoryStore
             $expected = $offset === 0 ? $today : $today->startOfMonth()->subMonths($offset)->endOfMonth();
             if (($month['date'] ?? null) !== $expected->toDateString() || !is_array($month['cohorts'] ?? null) || count($month['cohorts']) > 1000) return false;
             $count = 0;
-            foreach ($month['cohorts'] as $players) {
+            foreach ($month['cohorts'] as $cohort => $players) {
                 if (!is_array($players) || ($count += count($players)) > 50000) return false;
                 foreach ($players as $rating) {
                     if (!is_array($rating) || !array_key_exists('score', $rating) || !is_string($rating['component'] ?? null)
                         || !preg_match('/^[a-f0-9]{64}$/', $rating['group'] ?? '')
                         || ($rating['score'] !== null && (!is_numeric($rating['score']) || !is_finite((float) $rating['score']) || $rating['score'] < 0 || $rating['score'] > 100))) return false;
+                    if ($cohort === AllAgeRatingModel::COHORT && !$this->validSharedConnection($rating, $month['date'])) return false;
                 }
             }
         }
@@ -79,5 +80,23 @@ class PlayerRatingHistoryStore
                 || !is_string($row['score'] ?? null) || strlen($row['score']) > 150)) return false;
         }
         return true;
+    }
+
+    private function validSharedConnection(array $rating, string $date): bool
+    {
+        $status = $rating['connection_status'] ?? null;
+        if (!in_array($status, ['recent', 'historical', 'disconnected'], true)
+            || !is_bool($rating['historical_connection'] ?? null)
+            || !array_key_exists('connection_age_days', $rating) || !array_key_exists('connection_reference_date', $rating)) return false;
+        if ($status === 'disconnected') {
+            return $rating['score'] === null && $rating['historical_connection'] === false
+                && $rating['connection_age_days'] === null && $rating['connection_reference_date'] === null;
+        }
+        $age = $rating['connection_age_days'];
+        return $rating['score'] !== null && is_int($age) && $age >= 0 && $age <= AllAgeRatingModel::WINDOW_DAYS
+            && $rating['historical_connection'] === ($status === 'historical')
+            && ($status === 'historical' ? $age > AllAgeRatingModel::RECENT_WINDOW_DAYS : $age <= AllAgeRatingModel::RECENT_WINDOW_DAYS)
+            && is_string($rating['connection_reference_date'])
+            && $rating['connection_reference_date'] === CarbonImmutable::parse($date)->subDays($age)->toDateString();
     }
 }

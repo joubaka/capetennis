@@ -27,11 +27,11 @@
     @if($event)<h2 class="h3">Player ratings</h2>@else<h1 class="h3">Site-wide player ratings</h1>@endif
     @if($event)<p><a class="btn btn-outline-primary" href="{{ route('backend.player-performance.identity-review', $event) }}">Review historical identity evidence</a></p>@endif
     <p><a class="btn btn-outline-primary" href="{{ route('backend.player-performance.masters-review') }}">Review Masters qualification</a></p>
-    <p class="mb-1">Private provisional singles ratings. Compare players only within the same exact cohort and comparison group.</p>
+    <p class="mb-1">Private provisional singles ratings. {{ ($unified ?? false) ? 'The same shared rating follows a player across age categories; compare players in the same standard-singles reference group.' : 'Compare players only within the same exact cohort and comparison group.' }}</p>
     <details class="ratings-explanation small text-muted mb-2">
         <summary>How to read these ratings</summary>
         <p>Cohorts follow age order. Players are grouped by comparison group within each exact cohort, highest rating to lowest within each group, with unrated players last. Positions refer to each comparison group. Separate groups cannot be compared directly. Ratings are calculated from published evidence; they cannot be edited here.</p>
-        <p>The score out of 100 represents relative ability within a connected comparison group, not a win percentage. Confidence describes the strength and freshness of the evidence, not rating accuracy.</p>
+        <p>The score out of 100 represents relative ability within a connected comparison group, not a win percentage. Confidence describes the strength and freshness of the evidence, not rating accuracy. @if($unified ?? false)Age categories filter membership; they do not recalculate the shared rating. Disconnected players have no shared score until suitable played evidence connects them.@endif</p>
         <p class="mb-2">Includes recorded individual entries (including unpaid and withdrawn entries) and saved team rosters. Unrated members remain visible. A player entered in multiple cohorts appears once in each.</p>
     </details>
     @if($snapshot['reason'])
@@ -78,11 +78,12 @@
                         </div>
                         @if($displayRating)
                             <p class="small text-muted mb-1">{{ $displayRating['played'] ?? 'Unknown' }} recorded played matches · {{ $displayRating['direct_opponents'] ?? 'Unknown' }} opponents · last match {{ $displayRating['last_direct_match'] ?? 'unknown' }}</p>
+                            @if(!empty($displayRating['historical_connection']))<p class="small mb-1"><strong>Low confidence — historical connection</strong> · link dated {{ $displayRating['connection_reference_date'] ?? 'unknown' }}.</p>@endif
                             <details class="rating-evidence text-muted"><summary>Rating evidence</summary>
                             <p class="small text-muted mb-1">Last eligible activity: {{ $displayRating['last_eligible_activity'] ?? $displayRating['last_played'] ?? 'unknown' }} · {{ $displayRating['baseline_status'] ?? 'No connected main-trial baseline' }}</p>
                             <p class="small text-muted mb-0">{{ $displayRating['confidence_explanation'] }}</p>
                             </details>
-                        @else<p class="small text-muted mb-0">{{ !$member['player_id'] ? 'Imported roster member has no linked player profile.' : ($snapshot['reason'] ? 'A safe current estimate is unavailable; this does not mean the player has no rating evidence.' : 'No eligible saved estimate for this exact cohort; check the player evidence or pending update.') }}</p>@endif
+                        @else<p class="small text-muted mb-0">{{ !$member['player_id'] ? 'Imported roster member has no linked player profile.' : ($snapshot['reason'] ? 'A safe current estimate is unavailable; this does not mean the player has no rating evidence.' : ($member['rating_reason'] ?? 'No eligible saved estimate; check the player evidence or pending update.')) }}</p>@endif
                     </li>
                 @endforeach
                 </ul>

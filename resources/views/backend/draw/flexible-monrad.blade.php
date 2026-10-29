@@ -24,7 +24,7 @@
     <h2>Match times &amp; courts</h2>
     <p class="fm-public-timetable-help">
       Find your name, then confirm the date, time, venue and court.
-      @if($draw->settings?->showsFirstMatchOnly()) Later matches are marked <strong>Followed by</strong> until their times are released. @endif
+      Dates, times and venues stay blank until the schedule is available.
     </p>
     @if($draw->oop_published)
       <div id="fm-timetable"></div>

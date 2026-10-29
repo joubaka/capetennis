@@ -26,8 +26,14 @@ class CapePlayerRatingController extends Controller
         $record = Player::query()->findOrFail($player);
         $snapshot = app(PlayerAbilitySnapshotStore::class)->current();
         $ratings = [];
+        $unified = array_key_exists('all_age', $snapshot);
+        $shared = null;
         if (empty($snapshot['reason'])) {
-            foreach (app(PlayerSharedAbilityService::class)->badgeSnapshot()[$record->id] ?? [] as $rating) {
+            if ($unified) {
+                $shared = app(PlayerSharedAbilityService::class)->allAgeBadgeSnapshot()[$record->id] ?? null;
+            }
+            $estimates = $unified ? ($shared ? [$shared] : []) : (app(PlayerSharedAbilityService::class)->badgeSnapshot()[$record->id] ?? []);
+            foreach ($estimates as $rating) {
                 $score = $rating['score'] ?? null;
                 if (!is_numeric($score) || !is_finite((float) $score) || $score < 0 || $score > 100) {
                     continue;
@@ -38,7 +44,12 @@ class CapePlayerRatingController extends Controller
                     'component' => (string) $rating['component'],
                     'confidence_label' => (string) ($rating['confidence_label'] ?? 'Limited'),
                     'baseline_status' => (string) ($rating['baseline_status'] ?? 'No connected main-trial baseline'),
-                ];
+                ] + ($unified ? ['rating_scope' => 'all_age', 'rating_status' => $rating['rating_status'],
+                    'comparable' => (bool) $rating['comparable']] : [])
+                    + (isset($rating['connection_status']) ? ['connection_status' => $rating['connection_status'],
+                        'historical_connection' => (bool) ($rating['historical_connection'] ?? false),
+                        'connection_age_days' => $rating['connection_age_days'] ?? null,
+                        'connection_reference_date' => $rating['connection_reference_date'] ?? null] : []);
             }
         }
         $builtAt = $snapshot['built_at'] ?? null;
@@ -50,7 +61,8 @@ class CapePlayerRatingController extends Controller
                 ? CarbonImmutable::parse($builtAt, 'Africa/Johannesburg')->toIso8601String() : null,
             'stale' => (bool) ($snapshot['snapshot_stale'] ?? true),
             'ratings' => $ratings,
-        ]])->header('Cache-Control', 'private, no-store');
+        ] + ($unified ? ['rating_scope' => 'all_age', 'rating_status' => $shared['rating_status'] ?? 'unrated',
+            'rating_reason' => $shared['reason'] ?? $snapshot['reason'] ?? null] : [])])->header('Cache-Control', 'private, no-store');
     }
 }
 

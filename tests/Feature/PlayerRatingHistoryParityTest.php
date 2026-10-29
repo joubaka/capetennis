@@ -42,7 +42,13 @@ class PlayerRatingHistoryParityTest extends TestCase
             $canonicalQueries = count(DB::getQueryLog()); DB::flushQueryLog();
             $reused = $ability->historySnapshot($asOf, $sources);
             $reusedQueries = count(DB::getQueryLog()); DB::disableQueryLog();
-            $this->assertSame($canonical['cohorts'], $reused['cohorts']);
+            $core = $reused['cohorts'];
+            foreach ($core as &$data) unset($data['history_evidence']);
+            unset($data);
+            $this->assertSame($canonical['cohorts'], $core);
+            $used = $reused['cohorts']['u10 boys']['history_evidence'];
+            $this->assertCount(1, $used['matches']);
+            $this->assertSame([], $used['fields'], 'Finishing order covered by played connectivity must not be labelled retained likelihood.');
             $this->assertSame($canonical['source_matches'], $reused['source_matches']);
             $this->assertContains('match:'.$fixture->id, $reused['source_matches']);
             $this->assertSame([$event->id], $reused['source_events']);

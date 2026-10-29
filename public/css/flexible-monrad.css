@@ -294,8 +294,9 @@
   font-weight: 700;
   line-height: 1.15;
   pointer-events: auto;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-align: right;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 :where(.fm-surface) .fm-slot {
   position: absolute;

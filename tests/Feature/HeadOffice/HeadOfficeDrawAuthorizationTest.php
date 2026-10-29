@@ -311,7 +311,7 @@ class HeadOfficeDrawAuthorizationTest extends TestCase
         $this->actingAs($this->admin)
             ->get(route('headOffice.show', $event))
             ->assertOk()
-            ->assertSee('Categories and saved draws')
+            ->assertSee('Categories and player counts')
             ->assertSee('Player category')
             ->assertSee('Save draw &amp; continue', false)
             ->assertSee('Combine players from different categories');

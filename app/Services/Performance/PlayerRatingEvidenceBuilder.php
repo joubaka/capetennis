@@ -20,11 +20,14 @@ class PlayerRatingEvidenceBuilder
             $this->indexedEvents[$eventId] = true;
         }
         $bit = 1 << $month;
-        foreach ($snapshot['cohorts'] as $cohort => $data) {
+        $projections = $snapshot['cohorts'];
+        if (isset($snapshot['all_age'])) { $projections[AllAgeRatingModel::COHORT] = $snapshot['all_age']; }
+        foreach ($projections as $cohort => $data) {
             foreach ($data['history_evidence']['matches'] ?? [] as $edge) {
                 $id = $edge['source_id'];
                 $match = $this->matches[$id] ?? throw new \RuntimeException('Fit provenance has no validated source.');
-                $this->registry[$id] ??= [
+                $registryId = $cohort === AllAgeRatingModel::COHORT ? 'all_age|'.$id : $id;
+                $this->registry[$registryId] ??= [
                     'source_id' => $id, 'kind' => 'match', 'cohort' => $cohort,
                     'event_id' => (int) $match['event_id'], 'event' => $match['event'], 'date' => $match['confidence_date'],
                     'date_basis' => $match['confidence_date_basis'], 'completed_at' => $match['date'],
@@ -32,9 +35,9 @@ class PlayerRatingEvidenceBuilder
                     'names' => [$snapshot['names'][$match['player1_id']] ?? 'Player #'.$match['player1_id'], $snapshot['names'][$match['player2_id']] ?? 'Player #'.$match['player2_id']],
                     'winner_side' => (int) $match['winner_side'], 'score' => $match['score'], 'months' => 0, 'baseline_months' => 0,
                 ];
-                if ($this->registry[$id]['cohort'] !== $cohort) throw new \RuntimeException('Match appears in conflicting fit cohorts.');
-                $this->registry[$id]['months'] |= $bit;
-                if ($edge['topology_only'] ?? false) $this->registry[$id]['baseline_months'] |= $bit;
+                if ($this->registry[$registryId]['cohort'] !== $cohort) throw new \RuntimeException('Match appears in conflicting fit cohorts.');
+                $this->registry[$registryId]['months'] |= $bit;
+                if ($edge['topology_only'] ?? false) $this->registry[$registryId]['baseline_months'] |= $bit;
             }
             foreach ($data['history_evidence']['fields'] ?? [] as $field) {
                 $players = $field['players']; $count = count($players);

@@ -11,6 +11,13 @@ use Tests\TestCase;
 
 class PlayerRatingHistoryTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Command-status regressions must not touch the application's host-local leases/markers.
+        config(['cache.stores.file' => ['driver' => 'array']]);
+    }
+
     protected function tearDown(): void
     {
         CarbonImmutable::setTestNow();
@@ -30,13 +37,14 @@ class PlayerRatingHistoryTest extends TestCase
             $date = $offset ? CarbonImmutable::today()->startOfMonth()->subMonths($offset)->endOfMonth() : CarbonImmutable::today();
             $months[] = ['date' => $date->toDateString(), 'cohorts' => []];
         }
-        $saved = ['months' => $months, 'as_of' => '2026-10-29', 'built_at' => '2026-10-29T03:00:00+02:00',
+        $saved = ['months' => $months, 'evidence' => [], 'as_of' => '2026-10-29', 'built_at' => '2026-10-29T03:00:00+02:00',
             'source_fingerprint' => str_repeat('a', 64), 'policy_hash' => $store->policyHash(), 'version' => PlayerRatingHistoryStore::VERSION];
         try {
             $this->assertNull($store->read());
             $store->replace($saved, str_repeat('a', 64));
             $this->assertSame($saved, $store->read());
-            foreach ([[$saved, str_repeat('b', 64)], [array_replace($saved, ['policy_hash' => 'old']), str_repeat('a', 64)]] as [$invalid, $fingerprint]) {
+            foreach ([[$saved, str_repeat('b', 64)], [array_replace($saved, ['policy_hash' => 'old']), str_repeat('a', 64)],
+                [array_replace($saved, ['evidence' => [['kind' => 'match', 'months' => 4096]]]), str_repeat('a', 64)]] as [$invalid, $fingerprint]) {
                 try { $store->replace($invalid, $fingerprint); $this->fail('Invalid history replaced last good data'); }
                 catch (\RuntimeException) { $this->assertSame($saved, $store->read()); }
             }
@@ -64,7 +72,7 @@ class PlayerRatingHistoryTest extends TestCase
         $dates = [];
         $ability->shouldReceive('historySnapshot')->times(12)->andReturnUsing(function ($date, &$sources) use (&$dates) {
             $this->assertSame(count($dates), count($sources));
-            $sources[] = 'Evidence reused';
+            $sources[] = ['matches' => [], 'ordinal' => []];
             $dates[] = $date->toDateString();
             return ['reason' => null, 'cohorts' => ['u12 boys' => [
                 'ratings' => [42 => ['score' => count($dates) === 1 ? null : 50 + count($dates), 'component' => 'a']],
@@ -184,12 +192,18 @@ class PlayerRatingHistoryTest extends TestCase
         $access->shouldReceive('allows')->twice()->andReturn(true);
         $this->app->instance(PlayerRatingAccess::class, $access);
         $history = Mockery::mock(PlayerRatingHistoryService::class);
-        $history->shouldReceive('forPlayer')->once()->andReturn(['reason' => null, 'as_of' => '2026-10-29', 'stale' => true, 'series' => ['u12 boys' => [
+        $points = [
             ['date' => '2026-06-30', 'index' => 7, 'score' => 48, 'component' => 'a', 'group' => 'same'],
             ['date' => '2026-08-31', 'index' => 9, 'score' => 50, 'component' => 'a', 'group' => 'same'],
             ['date' => '2026-09-30', 'index' => 10, 'score' => 52, 'component' => 'a', 'group' => 'same'],
             ['date' => '2026-10-29', 'index' => 11, 'score' => 62, 'component' => 'b', 'group' => 'changed'],
-        ]]]);
+        ];
+        $months = [];
+        for ($offset = 11; $offset >= 0; $offset--) $months[] = ['date' => ($offset ? CarbonImmutable::parse('2026-10-29')->startOfMonth()->subMonths($offset)->endOfMonth() : CarbonImmutable::parse('2026-10-29'))->toDateString()];
+        $history->shouldReceive('forPlayer')->once()->andReturn(['reason' => null, 'as_of' => '2026-10-29', 'built_at' => '2026-10-29T03:00:00+02:00', 'stale' => true,
+            'series' => ['u12 boys' => $points], 'cohort' => 'u12 boys', 'points' => $points, 'point' => $points[3], 'previous' => $points[2],
+            'month' => 11, 'months' => $months, 'scope' => 'new', 'scale' => 'focused', 'axis' => \App\Services\Performance\PlayerRatingHistoryDisplay::axis($points, 'focused'),
+            'evidence' => ['rows' => [], 'total' => 0, 'included' => 0, 'new' => 0, 'matches' => 0, 'wins' => 0, 'losses' => 0, 'finishes' => 0, 'page' => 1, 'pages' => 1]]);
         $history->shouldReceive('forPlayer')->once()->andReturn(['reason' => 'Awaiting nightly update at 03:00 SAST', 'series' => []]);
         $this->app->instance(PlayerRatingHistoryService::class, $history);
         $controller = app(\App\Http\Controllers\Frontend\MyTennisController::class);
@@ -198,7 +212,9 @@ class PlayerRatingHistoryTest extends TestCase
         $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
         $this->assertStringContainsString('<svg', $response->getContent());
         $this->assertStringContainsString('+2.0', $response->getContent());
-        $this->assertSame(1, substr_count($response->getContent(), 'stroke-width="3"'));
+        $this->assertSame(2, substr_count($response->getContent(), 'stroke-width="3"'));
+        $this->assertSame(1, substr_count($response->getContent(), 'stroke-dasharray="6 5"'));
+        $this->assertStringContainsString('Cape Tennis Rating', $response->getContent());
         $this->assertStringNotContainsString('+10.0', $response->getContent());
         $this->assertStringContainsString('Rating Preview', $response->getContent());
         $this->assertMatchesRegularExpression('/x="45" y="250"[^>]*>Nov<\/text>/', $response->getContent());

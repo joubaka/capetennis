@@ -7,9 +7,11 @@ class SharedAbilityModel
 {
     public const ORDINAL_WEIGHT = 0.2;
     public const ORDINAL_TARGET_SPAN = 1.0;
+    public const DEFAULT_REGULARIZATION = 0.5;
 
-    public function fit(array $edges, string $cohort = '', array $ordinalFields = [], array $anchors = [], array $experiment = []): array
+    public function fit(array $edges, string $cohort = '', array $ordinalFields = [], array $anchors = [], array $experiment = [], float $regularization = self::DEFAULT_REGULARIZATION): array
     {
+        if (!is_finite($regularization) || $regularization <= 0) { throw new \InvalidArgumentException('Regularization must be finite and positive.'); }
         $scale = $experiment['anchor_weight_scale'] ?? 1.0;
         if (!in_array($scale, [0.5, 1.0, 2.0], true)) { throw new \InvalidArgumentException('Unsupported experimental anchor weight.'); }
         $anchors = array_map(fn ($anchor) => array_replace($anchor, ['weight' => $anchor['weight'] * $scale]), $anchors);
@@ -67,8 +69,8 @@ class SharedAbilityModel
                 $movement = 0.0;
                 foreach ($members as $id) {
                     $anchor = $ownAnchors[$id] ?? null;
-                    $curvature = $anchor ? $anchor['weight'] : 0.5;
-                    $gradient = $anchor ? -$anchor['weight'] * ($strength[$id] - $anchor['target']) : -0.5 * $strength[$id];
+                    $curvature = $anchor ? $anchor['weight'] : $regularization;
+                    $gradient = $anchor ? -$anchor['weight'] * ($strength[$id] - $anchor['target']) : -$regularization * $strength[$id];
                     foreach ($links[$id] as [$other, $outcome, $weight]) {
                         $p = $this->sigmoid($strength[$id] - $strength[$other]);
                         $gradient += $weight * ($outcome - $p);
@@ -101,7 +103,7 @@ class SharedAbilityModel
                 if ($experiment['diagnostics'] ?? false) {
                     // Conditional information holds all opponents/field peers fixed.
                     // It omits covariance and is not a calibrated confidence interval.
-                    $information = $ownAnchors[$id]['weight'] ?? 0.5;
+                    $information = $ownAnchors[$id]['weight'] ?? $regularization;
                     foreach ($links[$id] as [$other, $outcome, $weight]) {
                         $p = $this->sigmoid($strength[$id] - $strength[$other]);
                         $information += $weight * $p * (1 - $p);

@@ -17,6 +17,10 @@ function harness({ enabled = true, svg = false, category = false } = {}) {
   let failed = false;
   let networkFailure = false;
   const document = { readyState: 'complete', hidden: false, body: {},
+    querySelector(selector) {
+      assert.equal(selector, '[data-rating-field]:not([data-rating-field="0"])');
+      return null; // This fixture exercises global/draw/category markers, not a regional field.
+    },
     querySelectorAll(selector) {
       if (selector === '[data-rating-status]') return [label];
       if (selector === '[data-rating-detail-version]') return [detail];

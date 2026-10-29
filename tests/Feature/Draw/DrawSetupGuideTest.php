@@ -70,10 +70,10 @@ class DrawSetupGuideTest extends TestCase
             'event' => $event, 'eventVenues' => $event->getRelation('venues'),
         ])->render();
         if (getenv('DRAW_GUIDE_SNAPSHOT_DIR')) file_put_contents(getenv('DRAW_GUIDE_SNAPSHOT_DIR').'/individual-overview.html', $html);
-        $this->assertStringContainsString('Categories and saved draws', $html);
-        $this->assertStringContainsString('Continue setup: '.$draw->drawName, $html);
+        $this->assertStringContainsString('Categories and player counts', $html);
+        $this->assertStringContainsString('Continue setup</a>', $html);
         $this->assertStringContainsString('id="venue-print-venue"', $html);
-        $this->assertStringContainsString('data-draw-details', $html);
+        $this->assertStringNotContainsString('data-draw-details', $html);
         $this->assertStringNotContainsString('id="createDrawForm" data-guided-create', $html);
         $this->assertStringContainsString('<summary>Advanced options</summary>', $html);
         $this->assertSame(1, Draw::count());
@@ -92,11 +92,11 @@ class DrawSetupGuideTest extends TestCase
         $event->draws->firstWhere('id', $draw->id)->pending_late_withdrawal_count = 1;
         $html = view('backend.headOffice.partials.individual-draw-overview', compact('event'))->render();
         $this->assertStringContainsString('data-create-category="'.$newCategory->id.'"', $html);
-        $this->assertStringContainsString('Review 1 late withdrawal:', $html);
-        $this->assertStringContainsString('Open draw: '.$combined->drawName, $html);
-        $this->assertStringContainsString('Combined or unassigned category', $html);
-        $this->assertStringContainsString('<details class="card mb-3" data-draw-details>', $html);
-        $this->assertStringNotContainsString('data-draw-details open', $html);
+        $this->assertStringContainsString('1 late withdrawal', $html);
+        $this->assertStringContainsString('data-draw-id="'.$combined->id.'"', $html);
+        $this->assertStringContainsString('data-draw-categories', $html);
+        $this->assertStringNotContainsString('data-draw-details', $html);
+        $this->assertSame(2, substr_count($html, '<article class="draw-overview-row"'));
     }
 
     public function test_category_delete_action_is_available_only_for_authorized_draft_draws(): void

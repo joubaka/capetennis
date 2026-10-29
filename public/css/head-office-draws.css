@@ -82,10 +82,10 @@
 .draw-format-unset { color: #748393; font-size: 12px; }
 .draw-match-count { font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; color: #40566d; }
 .draw-column-label { display: none; }
-.draw-overview-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.draw-overview-actions { display: flex; flex-wrap: wrap; min-width: 0; align-items: center; justify-content: flex-end; gap: 6px; }
 .draws-workspace .draw-open-button { color: #1d5265; background: #edf5f6; border-color: #ddecee; }
 .draws-workspace .draw-open-button:hover { color: #fff; background: #245c6d; border-color: #245c6d; }
-.draw-overview-actions .draws-button { min-height: 36px; padding: 8px 10px; font-size: 12px; gap: 6px; }
+.draw-overview-actions .draws-button { min-height: 36px; max-width: 100%; padding: 8px 10px; font-size: 12px; gap: 6px; white-space: normal; }
 .draw-overview-actions .draws-icon { width: 16px; height: 16px; }
 .draws-workspace .draw-schedule-button { color: #586b7e; background: #fff; border-color: #dce4ec; }
 .draws-workspace .draw-schedule-button:hover { color: var(--draws-ink); border-color: #aebecd; background: #f1f5f8; }

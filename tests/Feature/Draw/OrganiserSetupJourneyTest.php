@@ -115,7 +115,7 @@ class OrganiserSetupJourneyTest extends TestCase
         $guideUrl = route('draw.guide.show', [$event, $draw]);
 
         $this->get(route('headOffice.show', $event))->assertOk()
-            ->assertSee('Continue setup: '.$draw->drawName)
+            ->assertSee('Continue setup')
             ->assertSee(e($guideUrl), false);
         $this->get($guideUrl)->assertOk()->assertSee('Step 2 of 5')
             ->assertSee('Place your players');

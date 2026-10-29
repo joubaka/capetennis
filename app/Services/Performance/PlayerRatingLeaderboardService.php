@@ -14,7 +14,9 @@ class PlayerRatingLeaderboardService
     public function build(?Event $event, string $selected = '', string $search = ''): array
     {
         $snapshot = app(PlayerAbilitySnapshotStore::class)->current();
-        $ratings = app(PlayerSharedAbilityService::class)->badgeSnapshot();
+        $unified = array_key_exists('all_age', $snapshot);
+        $sharedRatings = $unified ? app(PlayerSharedAbilityService::class)->allAgeBadgeSnapshot() : [];
+        $ratings = $unified ? [] : app(PlayerSharedAbilityService::class)->badgeSnapshot();
         $fields = DB::table('category_events as ce')->join('categories as c', 'c.id', '=', 'ce.category_id')
             ->join('events as e', 'e.id', '=', 'ce.event_id')
             ->when($event, fn ($q) => $q->where('ce.event_id', $event->id))
@@ -41,9 +43,11 @@ class PlayerRatingLeaderboardService
         }
         $fieldIds = array_keys(array_filter($contexts, fn ($cohort) => !$selected || $cohort === $selected));
         $members = [];
-        $add = function ($id, string $name, string $cohort, string $identity, ?string $region = null) use (&$members, $ratings, $event) {
+        $add = function ($id, string $name, string $cohort, string $identity, ?string $region = null) use (&$members, $ratings, $event, $unified, $sharedRatings) {
             $key = $cohort.'|'.$identity;
-            $estimate = collect($ratings[$id] ?? [])->first(fn ($r) => $r['cohort'] === $cohort);
+            $estimate = $unified ? ($sharedRatings[$id] ?? null) : collect($ratings[$id] ?? [])->first(fn ($r) => $r['cohort'] === $cohort);
+            $ratingReason = $estimate['reason'] ?? null;
+            if (!is_numeric($estimate['score'] ?? null)) { $estimate = null; }
             $regions = $members[$key]['regions'] ?? [];
             if ($event && trim((string) $region) !== '') {
                 $regions[] = trim($region);
@@ -51,7 +55,7 @@ class PlayerRatingLeaderboardService
             $regions = array_values(array_unique($regions));
             sort($regions, SORT_NATURAL | SORT_FLAG_CASE);
             $members[$key] = ['player_id' => $id, 'name' => $name, 'cohort' => $cohort, 'identity' => $identity, 'regions' => $regions,
-                'rating' => $estimate, 'component' => $estimate['component'] ?? 'Unrated'];
+                'rating' => $estimate, 'component' => $estimate['component'] ?? 'Unrated', 'rating_reason' => $ratingReason];
         };
         $individual = DB::table('category_event_registrations as cer')
             ->join('player_registrations as pr', 'pr.registration_id', '=', 'cer.registration_id')
@@ -112,6 +116,6 @@ class PlayerRatingLeaderboardService
             }
             return true;
         })->values();
-        return compact('rows', 'cohorts', 'snapshot') + ['limitReason' => null];
+        return compact('rows', 'cohorts', 'snapshot', 'unified') + ['limitReason' => null];
     }
 }

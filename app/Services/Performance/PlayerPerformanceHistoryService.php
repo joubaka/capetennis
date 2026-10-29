@@ -191,7 +191,7 @@ class PlayerPerformanceHistoryService
             $won = $winner === ($targetFirst ? 1 : 2);
             $tier = $division['tier'];
             $opponents = ($targetFirst ? $second : $first)->map(fn ($opponent) => trim($opponent->name.' '.$opponent->surname))->implode(' / ');
-            yield $dateEvidence + ['outcome_target' => app(PlayedMatchMarginPolicy::class)->target($sets->sortBy('set_nr')->map(fn ($set) => [(int) $set->registration1_score, (int) $set->registration2_score])->values()->all(), $winner, $hasPreset ? \App\Domain\Draws\Services\TennisScoreFormat::get($format)['set_types'] : null), 'fixture_id' => $fixture->id, 'source' => 'Individual match', 'event_id' => $event->id, 'event' => $event->name, 'date' => CarbonImmutable::parse($event->end_date)->toDateString(), 'category' => $field?->category?->name ?? $fixture->draw->drawName, 'cohort' => $cohort, 'tier' => $tier, 'discipline' => $discipline, 'won' => $won, 'player1_id' => $first->first()?->id, 'player2_id' => $second->first()?->id, 'winner_side' => $winner, 'opponents' => $opponents, 'points' => $reason ? null : ($tier === 'A' ? 50 : 0) + ($tier === 'Open' ? 100 : 50) * (int) $won, 'reason' => $reason, 'score' => $sets->map(fn ($set) => $targetFirst ? $set->registration1_score.'-'.$set->registration2_score : $set->registration2_score.'-'.$set->registration1_score)->implode(' ')];
+            yield $dateEvidence + ['outcome_target' => app(PlayedMatchMarginPolicy::class)->target($sets->sortBy('set_nr')->map(fn ($set) => [(int) $set->registration1_score, (int) $set->registration2_score])->values()->all(), $winner, $hasPreset ? \App\Domain\Draws\Services\TennisScoreFormat::get($format)['set_types'] : null), 'draw_id' => $fixture->draw_id, 'venue_id' => $fixture->oop?->venue_id, 'court_label' => $fixture->oop?->court, 'fixture_id' => $fixture->id, 'source' => 'Individual match', 'event_id' => $event->id, 'event' => $event->name, 'date' => CarbonImmutable::parse($event->end_date)->toDateString(), 'category' => $field?->category?->name ?? $fixture->draw->drawName, 'cohort' => $cohort, 'tier' => $tier, 'discipline' => $discipline, 'won' => $won, 'player1_id' => $first->first()?->id, 'player2_id' => $second->first()?->id, 'winner_side' => $winner, 'opponents' => $opponents, 'points' => $reason ? null : ($tier === 'A' ? 50 : 0) + ($tier === 'Open' ? 100 : 50) * (int) $won, 'reason' => $reason, 'score' => $sets->map(fn ($set) => $targetFirst ? $set->registration1_score.'-'.$set->registration2_score : $set->registration2_score.'-'.$set->registration1_score)->implode(' ')];
         }
     }
 
@@ -237,7 +237,7 @@ class PlayerPerformanceHistoryService
         return $wins[1] > $wins[2] ? 1 : 2;
     }
 
-    public function teamMatches(Event $event, ?Player $player, ?CarbonImmutable $asOf = null, ?HistoricalIdentityPreviewContext $identityPreview = null): \Generator
+    public function teamMatches(Event $event, ?Player $player, ?CarbonImmutable $asOf = null, ?HistoricalIdentityPreviewContext $identityPreview = null, bool $allAgeEvidence = false): \Generator
     {
         if (!$event->published) { return; }
         $network = $player === null; $asOf ??= CarbonImmutable::today();
@@ -331,16 +331,70 @@ class PlayerPerformanceHistoryService
             $dateEvidence = $this->evidenceDate($fixture->scheduled_at, $event, $asOf);
             if ($network && $dateEvidence['confidence_future']) { $reason = 'Team match schedule is later than the snapshot date'; }
             if ($network && $rows->contains(fn ($row) => !($resolved[$row->id][1] ?? $row->player1) || !($resolved[$row->id][2] ?? $row->player2))) { $reason ??= 'Team match player profile cannot be verified'; }
+            // Preserve all identity/score/date failures before the legacy demographic gate can overwrite them.
+            $allAgeReason = $reason;
+            $allAgeContext = $allAgeEvidence ? $this->allAgeTeamContext($sourceBySide, $teams, $regions, $event, $rows) : [];
+            if ($allAgeEvidence) {
+                $allAgeReason ??= $allAgeContext['reason'];
+                if ($field && (int) $field->event_id !== (int) $event->id) { $allAgeReason ??= 'Team draw category belongs to another event'; }
+            }
             $sharedCohort = $this->verifiedTeamCohort($sourceBySide, $event, $fixture->draw->drawName);
             if ((!$field || (int) $field->event_id !== (int) $event->id) && (!$network || !$sharedCohort)) { $reason = 'Team match category/event cannot be verified'; }
             if ($network && !$sharedCohort) { $reason = 'Team singles age/gender context cannot be verified'; }
-            if ($network && (!$fixture->isSingles() && !(!$fixture->rubber_code && in_array($fixture->fixture_type, [null, 0], true) && preg_match('/\bsingles\b/i', $fixture->draw->drawName) && !preg_match('/doubles|mixed/i', $fixture->draw->drawName)))) { $reason = 'Legacy team discipline is ambiguous or doubles'; }
+            if ($network && (!$fixture->isSingles() && !(!$fixture->rubber_code && in_array($fixture->fixture_type, [null, 0], true) && preg_match('/\bsingles\b/i', $fixture->draw->drawName) && !preg_match('/doubles|mixed/i', $fixture->draw->drawName)))) {
+                $reason = 'Legacy team discipline is ambiguous or doubles';
+                $allAgeReason ??= $reason;
+            }
+            $allAgeData = $allAgeEvidence ? ['all_age_reason' => $allAgeReason,
+                'all_age_requires_explicit_format' => $sharedCohort === null,
+                'all_age_contexts' => $allAgeContext['contexts'],
+                'all_age_cohort' => $sharedCohort ?? implode(' / ', $allAgeContext['contexts']),
+                'all_age_source_format_reason' => $allAgeContext['format_reason']] : [];
             $cohort = 'team · '.mb_strtolower(trim(preg_replace('/\s+/u', ' ', $category)));
             $targetFirst = !$player || $ids1->contains($player->id);
             $won = $winner === ($targetFirst ? 1 : 2);
             $opponents = $rows->map(fn ($row) => $targetFirst ? ($resolved[$row->id][2] ?? $row->player2) : ($resolved[$row->id][1] ?? $row->player1))->filter()->sortBy('id')->map(fn ($opponent) => trim($opponent->name.' '.$opponent->surname))->implode(' / ');
-            yield $dateEvidence + ['outcome_target' => app(PlayedMatchMarginPolicy::class)->target($fixture->teamResults->sortBy('set_nr')->map(fn ($set) => [(int) $set->team1_score, (int) $set->team2_score])->values()->all(), $winner), 'shared_cohort' => $sharedCohort, 'player1_id' => $ids1->first(), 'player2_id' => $ids2->first(), 'winner_side' => $winner, 'fixture_id' => $fixture->id, 'source' => 'Team match', 'event_id' => $event->id, 'event' => $event->name, 'date' => CarbonImmutable::parse($event->end_date)->toDateString(), 'category' => $category, 'cohort' => $cohort, 'tier' => 'Open', 'discipline' => $discipline, 'won' => $won, 'opponents' => $opponents, 'points' => $reason ? null : ($won ? 100 : 0), 'reason' => $reason, 'score' => $fixture->teamResults->map(fn ($set) => $targetFirst ? $set->team1_score.'-'.$set->team2_score : $set->team2_score.'-'.$set->team1_score)->implode(' ')];
+            yield $dateEvidence + $allAgeData + ['outcome_target' => app(PlayedMatchMarginPolicy::class)->target($fixture->teamResults->sortBy('set_nr')->map(fn ($set) => [(int) $set->team1_score, (int) $set->team2_score])->values()->all(), $winner), 'shared_cohort' => $sharedCohort, 'player1_id' => $ids1->first(), 'player2_id' => $ids2->first(), 'winner_side' => $winner, 'draw_id' => $fixture->draw_id, 'venue_id' => $fixture->venue_id, 'court_label' => $fixture->court_label, 'fixture_id' => $fixture->id, 'source' => 'Team match', 'event_id' => $event->id, 'event' => $event->name, 'date' => CarbonImmutable::parse($event->end_date)->toDateString(), 'category' => $category, 'cohort' => $cohort, 'tier' => 'Open', 'discipline' => $discipline, 'won' => $won, 'opponents' => $opponents, 'points' => $reason ? null : ($won ? 100 : 0), 'reason' => $reason, 'score' => $fixture->teamResults->map(fn ($set) => $targetFirst ? $set->team1_score.'-'.$set->team2_score : $set->team2_score.'-'.$set->team1_score)->implode(' ')];
         }
+    }
+
+    /** Shared-only reader: demographic labels never replace the independent source/identity gates. */
+    public function allAgeTeamMatches(Event $event, ?CarbonImmutable $asOf = null): \Generator
+    {
+        foreach ($this->teamMatches($event, null, $asOf, allAgeEvidence: true) as $match) {
+            yield array_replace($match, ['reason' => $match['all_age_reason'], 'shared_cohort' => $match['all_age_cohort']]);
+        }
+    }
+
+    private function allAgeTeamContext(array $sources, Collection $teams, array $regions, Event $event, Collection $rows): array
+    {
+        $contexts = []; $reason = null; $formatReason = null;
+        if (count($sources) !== 2 || !isset($sources[1], $sources[2]) || $rows->count() !== 1) {
+            $reason = 'Shared team singles require exactly two verified event-side sources and one participant row';
+        }
+        foreach ($sources as $side => $source) {
+            $eventScoped = $source->category
+                ? (int) $source->category->event_id === (int) $event->id
+                : (int) $source->year === CarbonImmutable::parse($event->start_date)->year && in_array((int) $source->region_id, array_map('intval', $regions), true);
+            if (!$teams->has($source->id) || !$eventScoped) { $reason ??= 'Shared team source does not belong to this event'; }
+            $row = $rows->first();
+            if ($row) {
+                $profile = (int) $row->{'team'.$side.'_id'}; $imported = (int) $row->{'team'.$side.'_no_profile_id'};
+                if (($profile > 0) === ($imported > 0)) { $reason ??= 'Team match side has missing or competing identity identifiers'; }
+                if ($profile && empty($row->participant_snapshot[$side]) && $source->team_players->where('player_id', $profile)->count() !== 1) {
+                    $reason ??= 'Shared team player roster membership is ambiguous';
+                }
+            }
+            $label = $source->category?->category?->name ?? $source->name;
+            $formatLabel = $label ?? '';
+            if (!$source->category && $source->regions?->region_name
+                && preg_match('/^(.+?)\s+(u\s*\/?\s*\d{1,2}\b.*)$/iu', trim($formatLabel), $parts)
+                && preg_match('/^'.preg_quote(trim($parts[1]), '/').'(?:\s|$)/iu', trim($source->regions->region_name))) { $formatLabel = $parts[2]; }
+            if ((new AllAgeRatingModel)->format($formatLabel, 'yellow')['reason'] !== null) { $formatReason = 'Team source declares a modified ball or court format'; }
+            $normalized = app(PlayerSharedAbilityService::class)->cohort(app(PlayerPerformancePilotService::class)->division($label ?? '')['cohort']);
+            $contexts[] = preg_match('/\bu(\d{1,2}) (boys|girls)\b/u', $normalized, $parts) ? 'u'.(int) $parts[1].' '.$parts[2] : 'unclassified singles';
+        }
+        return ['reason' => $reason, 'contexts' => array_values(array_unique($contexts)), 'format_reason' => $formatReason];
     }
 
     private function completeSequence(Collection $sets, int $needed, string $first, string $second): bool

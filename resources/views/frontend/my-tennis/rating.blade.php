@@ -15,12 +15,19 @@
     .ctr-history .ctr-line-key-dashed { border-top-style:dashed; }
     .ctr-history .ctr-chart-scroll { overflow-x:auto;max-width:100%;border:1px solid #e2e9e6;border-radius:10px; }
     .ctr-history .ctr-method { border-top:1px solid #e0e7e3;margin-top:1.5rem;padding-top:1rem; }
-    @media(max-width:767.98px) { .ctr-history .ctr-stats { grid-template-columns:1fr;gap:.65rem; } .ctr-history .ctr-filters { grid-template-columns:1fr; } }
+    @media(max-width:991.98px) { .ctr-history .ctr-stats { grid-template-columns:1fr;gap:.65rem; } }
+    @media(max-width:767.98px) { .ctr-history .ctr-filters { grid-template-columns:1fr; } }
   </style>
   <div class="ctr-heading">
     <div><h2 id="player-rating-heading" class="h4 mb-1">{{ $ratingPlayer->full_name }} · Player rating</h2><p class="small text-muted mb-0">12-month progress · provisional ability estimates</p></div>
     @if(auth()->user()?->hasRole('super-user'))<span class="badge bg-label-primary">Super Admin preview</span>@endif
   </div>
+  @if(auth()->user()?->hasRole('super-user'))
+    <div class="d-flex flex-wrap align-items-center gap-2 mt-3" data-history-refresh-controls data-refresh-url="{{ route('my.tennis.rating.refresh') }}" data-status-url="{{ route('my.tennis.rating.refresh-status') }}">
+      <button class="btn btn-outline-primary" type="button" data-history-refresh>Update saved ratings</button>
+      <span class="small text-muted" role="status" data-history-refresh-status>Recalculates saved rating history for all players in the background.</span>
+    </div>
+  @endif
   @if($ratingHistory['reason'])
     <p role="status" class="alert alert-warning mt-3">{{ $ratingHistory['reason'] }}</p>
   @elseif(!$ratingHistory['series'])
@@ -28,7 +35,7 @@
   @else
     @php
       $points = $ratingHistory['points'];
-      $latest = end($points);
+      $latest = end($points) ?: null;
       $point = $ratingHistory['point'];
       $previous = $ratingHistory['previous'];
       $evidence = $ratingHistory['evidence'];
@@ -38,9 +45,11 @@
       $query = ['cohort' => $ratingHistory['cohort'], 'month' => $ratingHistory['month'], 'scope' => $ratingHistory['scope'], 'scale' => $ratingHistory['scale']];
       $ratingUrl = fn ($changes = []) => route('my.tennis.rating', ['player' => $ratingPlayer->id] + array_replace($query, $changes));
     @endphp
-    <p class="small text-muted mt-3 mb-3">Saved through {{ $ratingHistory['as_of'] }} · updated nightly at 03:00 SAST.@if($ratingHistory['stale']) Awaiting the next scheduled update.@endif</p>
+    <p class="small text-muted mt-3 mb-3">Saved through {{ $ratingHistory['as_of'] }} · updated nightly at 03:00 SAST.@if($ratingHistory['stale']) Showing the latest saved calculation until the next update is ready.@endif</p>
+    @if(!$points)<p role="status" class="alert alert-info">No comparable shared rating is available for this player. Suitable recent standard-singles results must connect the player to the reference group. Historical context estimates remain available in the selector.</p>@endif
+    @if(!empty($point['historical_connection']))<p role="status" class="alert alert-warning"><strong>Low confidence — historical connection.</strong> The selected estimate needs an older match link dated {{ $point['connection_reference_date'] ?? 'unknown' }} ({{ $point['connection_age_days'] ?? '?' }} days old), even if this player has recent results.</p>@endif
     <form method="get" action="{{ route('my.tennis.rating', $ratingPlayer) }}" data-rating-filters class="ctr-filters">
-      <div><label for="ctr-cohort">Playing cohort</label><select class="form-select" name="cohort" id="ctr-cohort">
+      <div><label for="ctr-cohort">Shared rating / historical context</label><select class="form-select" name="cohort" id="ctr-cohort">
         @foreach(array_keys($ratingHistory['series']) as $cohort)<option value="{{ $cohort }}" @selected($ratingHistory['cohort'] === $cohort)>{{ ucfirst($cohort) }}</option>@endforeach
       </select></div>
       <div><label for="ctr-month">Explore a month</label><select class="form-select" name="month" id="ctr-month">
@@ -51,7 +60,7 @@
       <noscript><button class="btn btn-primary" type="submit">Show selection</button></noscript>
     </form>
     <div class="ctr-stats">
-      <div class="ctr-stat"><h3>Latest {{ ucfirst($ratingHistory['cohort']) }} estimate</h3><x-ctr-badge :score="$latest['score']" /><p class="small text-muted mt-2 mb-0">{{ $latest['date'] }} · 0–100 ability scale</p></div>
+      <div class="ctr-stat"><h3>Latest {{ ucfirst($ratingHistory['cohort']) }} estimate</h3>@if($latest)<x-ctr-badge :score="$latest['score']" /><p class="small text-muted mt-2 mb-0">{{ $latest['date'] }} · 0–100 ability scale</p>@if(!empty($latest['historical_connection']))<p class="small mt-2 mb-0"><strong>Low confidence — historical connection</strong> · link dated {{ $latest['connection_reference_date'] ?? 'unknown' }}.</p>@endif @else<div class="ctr-stat-value">Unrated</div>@endif</div>
       <div class="ctr-stat"><h3>Selected month · {{ \Carbon\CarbonImmutable::parse($ratingHistory['months'][$ratingHistory['month']]['date'])->format('M Y') }}</h3>
         <div class="ctr-stat-value">{{ $point ? number_format($point['score'], 1).' / 100' : 'Unrated' }}</div>
         @if($comparable)<p class="mt-2 mb-0"><strong>{{ sprintf('%+.1f', $point['score'] - $previous['score']) }}</strong> from the previous month</p>
@@ -65,15 +74,16 @@
     <div class="ctr-heading mb-2"><h3 class="h5 mb-0">{{ ucfirst($ratingHistory['cohort']) }} progress</h3><span class="small text-muted">Axis {{ $axis['min'] }}–{{ $axis['max'] }} · {{ $axis['step'] }}-point steps · overall scale 0–100</span></div>
     <p class="small text-muted d-sm-none mb-2">Swipe the chart to see all months. Tap a point to explore its results.</p>
     <div class="ctr-chart-scroll" role="region" aria-label="Rating chart; scroll horizontally on small screens" tabindex="0">
-      <svg viewBox="0 0 660 270" role="img" aria-label="{{ ucfirst($ratingHistory['cohort']) }} monthly rating history; axis {{ $axis['min'] }} to {{ $axis['max'] }}" style="width:100%;min-width:660px;max-height:360px">
+      <svg viewBox="0 0 660 270" role="group" aria-label="{{ ucfirst($ratingHistory['cohort']) }} monthly rating history; axis {{ $axis['min'] }} to {{ $axis['max'] }}" style="width:100%;min-width:660px;max-height:360px">
         <title>{{ ucfirst($ratingHistory['cohort']) }} monthly rating history</title>
+        <desc>Choose a point to view the saved personal results included in that month. Solid lines retain the same comparison group; dashed lines show changed groups.</desc>
         @foreach($axis['ticks'] as $tick)<line x1="45" x2="635" y1="{{ $plotY($tick) }}" y2="{{ $plotY($tick) }}" stroke="#d9e2e6"/><text x="35" y="{{ $plotY($tick) + 4 }}" text-anchor="end" font-size="12" fill="#334e60">{{ $tick }}</text>@endforeach
         @foreach($points as $chartPoint)
           @php($before = $points[$loop->index - 1] ?? null)
           @if($before && $before['index'] + 1 === $chartPoint['index'])
             <line x1="{{ 45 + $before['index'] * 53 }}" y1="{{ $plotY($before['score']) }}" x2="{{ 45 + $chartPoint['index'] * 53 }}" y2="{{ $plotY($chartPoint['score']) }}" stroke="#167b70" stroke-width="3" @if($before['group'] !== $chartPoint['group']) stroke-dasharray="6 5" @endif><title>{{ $before['group'] === $chartPoint['group'] ? 'Same comparison group' : 'Comparison group or reference changed; monthly change is not directly comparable' }}</title></line>
           @endif
-          <a href="{{ $ratingUrl(['month' => $chartPoint['index']]) }}" data-rating-link aria-label="Explore {{ $chartPoint['date'] }} rating {{ number_format($chartPoint['score'], 1) }}"><circle cx="{{ 45 + $chartPoint['index'] * 53 }}" cy="{{ $plotY($chartPoint['score']) }}" r="{{ $chartPoint['index'] === $ratingHistory['month'] ? 7 : 5 }}" fill="{{ $chartPoint['index'] === $ratingHistory['month'] ? '#d58a19' : '#167b70' }}"><title>{{ $chartPoint['date'] }}: {{ number_format($chartPoint['score'], 1) }} / 100</title></circle></a>
+          <a href="{{ $ratingUrl(['month' => $chartPoint['index']]) }}" data-rating-link aria-label="Explore {{ $chartPoint['date'] }} rating {{ number_format($chartPoint['score'], 1) }}"><circle cx="{{ 45 + $chartPoint['index'] * 53 }}" cy="{{ $plotY($chartPoint['score']) }}" r="22" fill="transparent" aria-hidden="true"/><circle cx="{{ 45 + $chartPoint['index'] * 53 }}" cy="{{ $plotY($chartPoint['score']) }}" r="{{ $chartPoint['index'] === $ratingHistory['month'] ? 7 : 5 }}" fill="{{ $chartPoint['index'] === $ratingHistory['month'] ? '#d58a19' : '#167b70' }}"><title>{{ $chartPoint['date'] }}: {{ number_format($chartPoint['score'], 1) }} / 100</title></circle></a>
         @endforeach
         @foreach($ratingHistory['months'] as $index => $month)<text x="{{ 45 + $index * 53 }}" y="250" text-anchor="middle" font-size="11" fill="#334e60">{{ \Carbon\CarbonImmutable::parse($month['date'])->format('M') }}</text>@endforeach
       </svg>
@@ -93,7 +103,7 @@
         <a class="btn btn-sm {{ $ratingHistory['scope'] === 'new' ? 'btn-primary' : 'btn-outline-primary' }}" href="{{ $ratingUrl(['scope' => 'new']) }}" data-rating-link @if($ratingHistory['scope'] === 'new') aria-current="true" @endif>{{ $ratingHistory['month'] === 0 ? 'Included at chart start' : 'Added since previous month' }} ({{ $evidence['new'] }})</a>
         <a class="btn btn-sm {{ $ratingHistory['scope'] === 'all' ? 'btn-primary' : 'btn-outline-primary' }}" href="{{ $ratingUrl(['scope' => 'all']) }}" data-rating-link @if($ratingHistory['scope'] === 'all') aria-current="true" @endif>All included ({{ $evidence['included'] }})</a>
       </div>
-      @if(!$point)<p role="status">No rating was available for this cohort in the selected month.</p>
+      @if(!$point)<p role="status">No rating was available for this category in the selected month.</p>
       @elseif(!$evidence['rows'])<p role="status">{{ $ratingHistory['scope'] === 'new' ? 'No new personal results were added since the previous snapshot. A rating can still change through time weighting or opponents’ results.' : 'No direct singles results or retained finishing-order evidence were recorded for this player in this snapshot.' }}</p>
       @else
         <p class="small text-muted">Showing {{ ($evidence['page'] - 1) * 20 + 1 }}–{{ min($evidence['page'] * 20, $evidence['total']) }} of {{ $evidence['total'] }} {{ $ratingHistory['scope'] === 'all' ? 'included' : 'newly included' }} records. Events enter only after completion.</p>
@@ -114,8 +124,8 @@
       @endif
     </section>
     <details class="ctr-method"><summary>How to read CTR and its evidence</summary><div class="small text-muted mt-2">
-      <p>CTR is a provisional ability estimate, not an official ranking or an accuracy percentage. Compare within the same playing cohort. Solid lines retain the same comparison group; dashed lines join consecutive snapshots whose group or baseline changed. Those changes are not like-for-like performance gains or losses.</p>
-      <p>Each point refits the existing model using events completed by that date. Recorded publication and player identity are checked as they exist now, so this is a retrospective reconstruction rather than archived historical ratings. Finishing-order evidence is shown only when it was retained by the model; main-trial results supporting a baseline are labelled separately.</p>
+      <p>CTR is a provisional ability estimate, not an official ranking or an accuracy percentage. The all-age standard-singles rating uses played results across ages; compare players connected to the same shared reference group. Separate historical age-context estimates remain comparable only within their own cohort and group. Solid lines retain the same comparison group; dashed lines join consecutive snapshots whose group or baseline changed. Those changes are not like-for-like performance gains or losses.</p>
+      <p>Each point refits the model using events completed by that date. The shared model uses up to two years of standard-singles results with a six-month weight half-life. Comparisons needing links older than one year are marked Low confidence — historical connection. Modified-ball formats are excluded and disconnected scores are withheld. Older conventional categories may include an explicitly assumed standard playing format. Recorded publication and player identity are checked as they exist now, so this is a retrospective reconstruction rather than archived historical ratings. Finishing-order and main-trial baseline evidence belong to separate historical context estimates.</p>
       <p>Premium membership access remains hidden until enabled and a verified premium entitlement is connected. Super Admin can preview any player.</p>
       @if($point)<details><summary>Technical comparison reference</summary><p class="mt-2 mb-0">Cohort: {{ $ratingHistory['cohort'] }} · comparison group {{ $point['component'] }} · saved {{ $ratingHistory['built_at'] }}</p></details>@endif
     </div></details>

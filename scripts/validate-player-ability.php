@@ -6,7 +6,7 @@ require dirname(__DIR__).'/vendor/autoload.php';
 $app = require dirname(__DIR__).'/bootstrap/app.php';
 $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
-$options = getopt('', ['event:', 'events:', 'compare']);
+$options = getopt('', ['event:', 'events:', 'compare', 'all-age', 'compare-history']);
 try { $ids = App\Services\Performance\PlayerAbilityValidationService::eventIds($options); }
 catch (InvalidArgumentException) {
     fwrite(STDERR, "Supply --event=ID or --events=ID,ID (at most ten completed events).\n");
@@ -23,9 +23,11 @@ try {
     foreach ($ids as $id) {
         $event = App\Models\Event::find($id);
         if (!$event) { throw new RuntimeException('Event unavailable.'); }
-        $reports[] = app(App\Services\Performance\PlayerAbilityValidationService::class)->run($event, isset($options['compare']));
+        $reports[] = app(App\Services\Performance\PlayerAbilityValidationService::class)->run($event, isset($options['compare']), isset($options['all-age']), isset($options['compare-history']));
     }
-    $report = isset($options['event']) ? $reports[0] : ['reports' => $reports, 'interpretation' => 'Separate event holdouts; reports are not pooled across events. Each prediction compares players only within the same cohort and component; event metrics summarize those compatible pairs.'];
+    $report = isset($options['event']) ? $reports[0] : ['reports' => $reports, 'interpretation' => isset($options['all-age'])
+        ? 'Separate chronological event holdouts of the shared standard-singles reference; reports are not pooled across events. Age-category diagnostics measure coverage, not separate rating scales.'
+        : 'Separate event holdouts; reports are not pooled across events. Each prediction compares players only within the same cohort and component; event metrics summarize those compatible pairs.'];
     fwrite(STDOUT, json_encode($report, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR)."\n");
     $connection->rollBack();
     exit(0);

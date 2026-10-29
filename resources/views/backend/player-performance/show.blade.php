@@ -11,7 +11,8 @@
 @include('backend.player-performance.card')
 @if($ability['cohorts']->isNotEmpty())
 <div class="card mb-4"><div class="card-body">
-    <h2 class="h4">Shared ability comparison evidence</h2>
+    <h2 class="h4">Age-specific comparison evidence</h2>
+    <p>These separate context estimates explain historical evidence. They are not the all-age rating shown above and cannot be compared across age groups.</p>
     @foreach($ability['cohorts'] as $estimate)
         <h3 class="h5">{{ $estimate['cohort'] }} · comparison group {{ $estimate['component'] }}</h3>
         <p><strong>{{ $estimate['score'] === null ? 'Estimate withheld' : number_format($estimate['score'], 1).'/100' }}</strong> · Evidence confidence: {{ \App\Services\Performance\AbilityConfidenceDisplay::label((int) $estimate['confidence_index'], $estimate) }}</p>

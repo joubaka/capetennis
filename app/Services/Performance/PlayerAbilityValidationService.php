@@ -22,8 +22,10 @@ class PlayerAbilityValidationService
         return array_values(array_unique(array_map('intval', $ids)));
     }
 
-    public function run(Event $event, bool $compare = false): array
+    public function run(Event $event, bool $compare = false, bool $allAge = false, bool $compareHistory = false): array
     {
+        if ($compare && $allAge) { throw new \InvalidArgumentException('Age-specific anchor experiments do not apply to the shared model.'); }
+        if ($compareHistory && !$allAge) { throw new \InvalidArgumentException('Historical comparison requires the shared model.'); }
         $start = $event->getRawOriginal('start_date');
         $end = $event->getRawOriginal('end_date');
         if (!$start || !$end || !$event->published || CarbonImmutable::parse($end)->lessThan(CarbonImmutable::parse($start)) || CarbonImmutable::parse($end)->greaterThan(CarbonImmutable::today('Africa/Johannesburg'))) {
@@ -32,6 +34,8 @@ class PlayerAbilityValidationService
         $shared = app(PlayerSharedAbilityService::class);
         $before = $shared->fingerprint();
         $training = $shared->validationSnapshot(CarbonImmutable::parse($start), $event->id);
+        $recentTraining = $compareHistory ? $shared->validationSnapshot(CarbonImmutable::parse($start), $event->id, ['all_age_window_days' => 365]) : null;
+        if ($recentTraining && $recentTraining['reason']) { throw new \RuntimeException('Recent-only comparison fit was withheld.'); }
         $experiments = [];
         if ($compare) {
             foreach (['current_information' => 1.0, 'trial_weight_half' => 0.5, 'trial_weight_double' => 2.0] as $name => $scale) {
@@ -51,17 +55,107 @@ class PlayerAbilityValidationService
         }
         $history = app(PlayerPerformanceHistoryService::class);
         $asOf = CarbonImmutable::parse($end);
-        $matches = (function () use ($history, $event, $asOf) {
+        $matches = (function () use ($history, $event, $asOf, $allAge) {
             yield from $history->individualMatches($event, null, app(PlayerPerformancePilotService::class), $asOf, true);
-            yield from $history->teamMatches($event, null, $asOf);
+            if ($allAge) { yield from $history->allAgeTeamMatches($event, $asOf); }
+            else { yield from $history->teamMatches($event, null, $asOf); }
         })();
-        $report = $this->evaluate($training, $matches, CarbonImmutable::parse($start)->subDay(), $experiments);
+        if ($allAge) {
+            $resolver = new AllAgeMatchFormatResolver;
+            $resolved = (function () use ($matches, $resolver, $event) {
+                foreach ($matches as $match) { yield array_replace($match, $resolver->resolve($event->id, $match)); }
+            })();
+            if ($compareHistory) {
+                $bounded = [];
+                foreach ($resolved as $row) {
+                    if (count($bounded) >= 50000) { throw new \OverflowException('Validation source limit exceeded.'); }
+                    $bounded[] = $row;
+                }
+                $report = $this->compareAllAgeHistory($recentTraining, $training, $bounded);
+            } else {
+                $report = $this->evaluateAllAge($training, $resolved);
+            }
+        } else {
+            $report = $this->evaluate($training, $matches, CarbonImmutable::parse($start)->subDay(), $experiments);
+        }
         // Raw counts explain an empty stream without weakening canonical eligibility.
         $report['source_candidates'] = $this->sourceCandidates($event);
         $report['source_scope_note'] = 'Candidate counts include all event fixtures, including doubles and unplayed/unpublished fixtures. Source diagnostics cover only records yielded by canonical eligibility readers; prefiltered records have no attributed rejection reason.';
         if ($before !== $shared->fingerprint()) { throw new \RuntimeException('Sources changed during validation; report withheld.'); }
         return ['holdout_event_id' => $event->id, 'training_completed_before' => CarbonImmutable::parse($start)->toDateString(),
             'caveat' => 'Retrospective evaluation uses current publication/identity records and date proxies; historical availability is not reconstructed. Model-derived probabilities are uncalibrated.'] + $report;
+    }
+
+    /** Pure retrospective scoring of held-out rows with already resolved playing formats. */
+    public function evaluateAllAge(array $training, iterable $matches): array
+    {
+        $graph = $training['all_age'] ?? [];
+        $predictions = []; $groups = []; $excluded = []; $seen = []; $eligible = 0; $scanned = 0; $connectionGroups = [];
+        foreach ($matches as $match) {
+            if (++$scanned > 50000) { throw new \OverflowException('Validation source limit exceeded.'); }
+            $key = $match['source'].':'.$match['fixture_id'];
+            if (isset($seen[$key])) { continue; }
+            $seen[$key] = true;
+            $format = (new AllAgeRatingModel)->format($match['category'] ?? '', $match['ball_type'] ?? null);
+            $reason = $match['reason'] ?? ($match['discipline'] !== 'singles' ? 'Non-singles discipline' : null)
+                ?? $match['format_reason'] ?? $format['reason'];
+            if ($reason !== null) { $excluded[$reason] = ($excluded[$reason] ?? 0) + 1; continue; }
+            $winner = (int) ($match['winner_side'] === 1 ? $match['player1_id'] : $match['player2_id']);
+            $loser = (int) ($match['winner_side'] === 1 ? $match['player2_id'] : $match['player1_id']);
+            if ($winner < 1 || $loser < 1 || $winner === $loser) { $excluded['invalid_identity'] = ($excluded['invalid_identity'] ?? 0) + 1; continue; }
+            $eligible++;
+            $cohort = $match['shared_cohort'] ?? $match['cohort'] ?? 'Unresolved category';
+            $groups[$cohort] ??= ['eligible' => 0, 'predictions' => []];
+            $groups[$cohort]['eligible']++;
+            $a = $graph['ratings'][$winner] ?? null; $b = $graph['ratings'][$loser] ?? null;
+            if (!$a || !$b || !is_numeric($a['score'] ?? null) || !is_numeric($b['score'] ?? null)
+                || !is_finite((float) $a['score']) || !is_finite((float) $b['score']) || $a['score'] < 0 || $a['score'] > 100 || $b['score'] < 0 || $b['score'] > 100
+                || !is_finite((float) ($a['strength'] ?? NAN)) || !is_finite((float) ($b['strength'] ?? NAN))
+                || empty($a['comparable']) || empty($b['comparable'])
+                || $a['component'] !== $b['component'] || $a['component'] !== ($graph['reference_component'] ?? null)) {
+                $excluded['no_shared_pre_event_reference'] = ($excluded['no_shared_pre_event_reference'] ?? 0) + 1; continue;
+            }
+            $p = $this->probability($a['strength'] - $b['strength']);
+            $predictions[] = $p; $groups[$cohort]['predictions'][] = $p;
+            $connectionGroups[!empty($a['historical_connection']) || !empty($b['historical_connection']) ? 'historical_connection' : 'recent_connection'][] = $p;
+        }
+        $subgroups = [];
+        foreach ($groups as $cohort => $group) {
+            $subgroups[$cohort] = ['eligible_matches' => $group['eligible'], 'coverage' => count($group['predictions']) / $group['eligible']] + $this->metrics($group['predictions']);
+        }
+        return ['rating_scope' => 'all_age', 'status' => !$eligible ? 'no_evidence' : (!$predictions ? 'insufficient_coverage' : (count($predictions) < $eligible ? 'partial_coverage' : 'evaluated')),
+            'eligible_matches' => $eligible, 'coverage' => $eligible ? count($predictions) / $eligible : null,
+            'current' => $this->metrics($predictions), 'chance_reference' => $this->metrics(array_fill(0, count($predictions), 0.5)),
+            'connection_groups' => array_map($this->metrics(...), $connectionGroups),
+            'age_category_groups' => $subgroups, 'excluded' => $excluded,
+            'interpretation' => 'Chronological holdout of the shared standard-singles reference. Category groups describe held-out events, not separate rating scales. Small samples and sparse bridges cannot establish all-age calibration.'];
+    }
+
+    /** Same held-out rows, plus a paired comparison on the intersection of covered players. */
+    public function compareAllAgeHistory(array $recent, array $historical, array $matches): array
+    {
+        $current = $this->evaluateAllAge($historical, $matches);
+        $baseline = $this->evaluateAllAge($recent, $matches);
+        $compatible = function (array $snapshot, array $match): bool {
+            $graph = $snapshot['all_age'] ?? [];
+            $a = $graph['ratings'][$match['player1_id'] ?? 0] ?? null;
+            $b = $graph['ratings'][$match['player2_id'] ?? 0] ?? null;
+            return $a && $b && !empty($a['comparable']) && !empty($b['comparable'])
+                && is_numeric($a['score'] ?? null) && is_numeric($b['score'] ?? null)
+                && is_finite((float) $a['score']) && is_finite((float) $b['score'])
+                && $a['score'] >= 0 && $a['score'] <= 100 && $b['score'] >= 0 && $b['score'] <= 100
+                && is_finite((float) ($a['strength'] ?? NAN)) && is_finite((float) ($b['strength'] ?? NAN))
+                && $a['component'] === $b['component'] && $a['component'] === ($graph['reference_component'] ?? null);
+        };
+        $common = array_values(array_filter($matches, fn ($match) => $compatible($recent, $match) && $compatible($historical, $match)));
+        $oldPairs = $this->evaluateAllAge($recent, $common)['current'];
+        $newPairs = $this->evaluateAllAge($historical, $common)['current'];
+        $current['historical_comparison'] = ['recent_only_window_days' => 365, 'historical_window_days' => 730,
+            'recent_only' => $baseline, 'paired_recent_only' => $oldPairs, 'paired_historical' => $newPairs,
+            'paired_brier_change' => $newPairs['brier'] === null || $oldPairs['brier'] === null ? null : $newPairs['brier'] - $oldPairs['brier'],
+            'paired_log_loss_change' => $newPairs['log_loss'] === null || $oldPairs['log_loss'] === null ? null : $newPairs['log_loss'] - $oldPairs['log_loss'],
+            'interpretation' => 'Coverage gains are distinct from predictive accuracy. Paired losses use identical eligible matches; negative changes favor historical evidence on those pairs. Historical connections remain low confidence, not calibrated certainty.'];
+        return $current;
     }
 
     private function sourceCandidates(Event $event): array

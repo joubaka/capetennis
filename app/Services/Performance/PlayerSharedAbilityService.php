@@ -9,11 +9,28 @@ use Illuminate\Support\Facades\{Cache, DB, Schema};
 /** Private v6 shared-opponent estimates. No saved financial/player/ranking state. */
 class PlayerSharedAbilityService
 {
-    public const VERSION = 7;
+    public const VERSION = 10;
     private const EVENT_CAP = 1000;
     private const PLAYER_CAP = 5000;
     private const EDGE_CAP = 50000;
     private const EVENT_FIELD_CAP = 256;
+
+    /** Single shared estimate per authorized player, including explicit disconnected states. */
+    public function allAgeBadgeSnapshot(?\App\Models\CategoryEvent $field = null): array
+    {
+        $regional = !auth()->user()?->hasRole('super-user');
+        $allowed = $regional && $field ? app(RegionalRatingAccess::class)->playerIds($field) : [];
+        if ($regional && !$allowed) { return []; }
+        $snapshot = app(PlayerAbilitySnapshotStore::class)->current();
+        if ($snapshot['reason']) { return []; }
+        $ratings = $snapshot['all_age']['ratings'] ?? [];
+        if ($regional) { $ratings = array_intersect_key($ratings, array_flip($allowed)); }
+        foreach ($ratings as &$rating) {
+            unset($rating['local_score'], $rating['strength']);
+            $rating['snapshot_stale'] = $snapshot['snapshot_stale'] ?? false;
+        } unset($rating);
+        return $ratings;
+    }
 
     /** Compact data for name badges; caller enforces the private audience. */
     public function badgeSnapshot(?\App\Models\CategoryEvent $field = null): array
@@ -91,7 +108,9 @@ class PlayerSharedAbilityService
             return AbilityConfidenceDisplay::normalize($estimate);
         });
         $cohorts = $cohorts->sort(fn ($a, $b) => strcmp($b['last_played'], $a['last_played']) ?: strcmp($a['cohort'], $b['cohort']))->values();
-        return ['headline' => $cohorts->first(), 'cohorts' => $cohorts, 'reason' => $snapshot['reason'], 'built_at' => $snapshot['built_at'], 'snapshot_as_of' => $snapshot['snapshot_as_of'] ?? $asOf->toDateString(), 'snapshot_stale' => $snapshot['snapshot_stale'] ?? false];
+        $allAge = $snapshot['all_age']['ratings'][$player->id] ?? null;
+        if ($allAge !== null) { unset($allAge['local_score'], $allAge['strength']); }
+        return ['headline' => $allAge, 'all_age' => $allAge, 'cohorts' => $cohorts, 'reason' => $snapshot['reason'], 'built_at' => $snapshot['built_at'], 'snapshot_as_of' => $snapshot['snapshot_as_of'] ?? $asOf->toDateString(), 'snapshot_stale' => $snapshot['snapshot_stale'] ?? false];
     }
 
     /** Explicit background/preview calculation; never called by ordinary page reads. */
@@ -157,7 +176,7 @@ class PlayerSharedAbilityService
             'team_players' => ['id', 'team_id', 'player_id', 'rank'],
             'no_profile_team_players' => ['id', 'team_id', 'player_profile', 'rank'],
             'team_fixture_players' => ['id', 'team_fixture_id', 'team1_id', 'team2_id', 'team1_no_profile_id', 'team2_no_profile_id', 'participant_snapshot'],
-            'team_fixtures' => ['id', 'draw_id', 'team_tie_id', 'fixture_type', 'numSets', 'scheduled_at', 'region1', 'region2', 'rubber_code', 'match_status', 'age'],
+            'team_fixtures' => ['id', 'draw_id', 'team_tie_id', 'fixture_type', 'numSets', 'scheduled_at', 'venue_id', 'court_label', 'region1', 'region2', 'rubber_code', 'match_status', 'age'],
             'event_regions' => ['id', 'event_id', 'region_id'],
             'team_regions' => ['id', 'region_name'],
             'eventtypes' => ['id', 'name', 'code', 'type'],
@@ -177,6 +196,10 @@ class PlayerSharedAbilityService
             foreach (DB::table($table)->orderBy('id')->lazyById(500) as $row) {
                 hash_update($hash, $table.json_encode($row));
             }
+        }
+        foreach (['event_venue_courts', 'draw_venue_court_allocations', 'order_of_plays'] as $table) {
+            if (!Schema::hasTable($table)) { continue; }
+            foreach (DB::table($table)->orderBy('id')->lazyById(500) as $row) { hash_update($hash, $table.json_encode($row)); }
         }
         foreach (['category_results', 'category_event_registrations', 'category_events', 'categories', 'fixtures', 'fixture_results', 'player_registrations', 'players', 'draw_settings', 'order_of_plays', 'team_fixture_results'] as $table) {
             $query = DB::table($table);
@@ -202,7 +225,8 @@ class PlayerSharedAbilityService
     private function build(CarbonImmutable $asOf, ?CarbonImmutable $completedBefore = null, ?int $excludedEventId = null, array $experiment = [], ?HistoricalIdentityPreviewContext $identityPreview = null, array $selectedCohorts = [], ?array &$completedSources = null): array
     {
         $builtAt = CarbonImmutable::now('Africa/Johannesburg')->format('Y-m-d H:i:s').' SAST';
-        $graphs = []; $ordinalFields = []; $trialBaselines = []; $names = []; $eventsSeen = 0; $edgeCount = 0; $scannedMatches = 0; $seenSources = [];
+        $graphs = []; $ordinalFields = []; $trialBaselines = []; $names = []; $eventsSeen = 0; $edgeCount = 0; $scannedMatches = 0; $seenSources = []; $allAgeMatches = []; $allAgePlayers = []; $allAgeEvents = [];
+        $formats = new AllAgeMatchFormatResolver;
         $pilot = app(PlayerPerformancePilotService::class);
         $history = app(PlayerPerformanceHistoryService::class);
         $events = Event::query()->with('eventTypeModel')->whereDate('start_date', '<=', $asOf->toDateString())
@@ -277,14 +301,26 @@ class PlayerSharedAbilityService
             try {
                 foreach ($sourceData['matches'] ?? $this->playedSources($history, $event, $pilot, $asOf, $identityPreview) as $match) {
                     if (++$scannedMatches > self::EDGE_CAP) { return $this->withheld($builtAt); }
-                    if ($match['reason'] !== null || $match['discipline'] !== 'singles') { continue; }
+                    if ($match['discipline'] !== 'singles') { continue; }
+                    $allAgeReason = array_key_exists('all_age_reason', $match) ? $match['all_age_reason'] : $match['reason'];
+                    if ($match['reason'] !== null && $allAgeReason !== null) { continue; }
                     $source = ($match['source'] === 'Team match' ? 'team-match:' : 'match:').$match['fixture_id'];
                     if (isset($seenSources[$source])) { continue; }
                     $seenSources[$source] = true;
                     $cohort = $match['source'] === 'Team match' ? ($match['shared_cohort'] ?? '') : $this->cohort($match['cohort']);
-                    if ($cohort === '') { continue; }
                     $winner = $match['winner_side'] === 1 ? $match['player1_id'] : $match['player2_id'];
                     $loser = $match['winner_side'] === 1 ? $match['player2_id'] : $match['player1_id'];
+                    if ($allAgeReason === null) {
+                        $globalCohort = $match['all_age_cohort'] ?? $cohort;
+                        $allAgeMatches[] = ['winner' => $winner, 'loser' => $loser, 'source_id' => $source, 'event_id' => $event->id,
+                            'event_name' => $event->name, 'category' => $match['category'], 'cohort' => $globalCohort,
+                            'age_groups' => $match['all_age_contexts'] ?? [$globalCohort],
+                            'confidence_date' => $match['confidence_date'], 'confidence_date_basis' => $match['confidence_date_basis'],
+                            'outcome_target' => $match['outcome_target'] ?? 1.0] + $formats->resolve((int) $event->id, $match);
+                        $allAgePlayers[(int) $winner] = true; $allAgePlayers[(int) $loser] = true;
+                        $allAgeEvents[(int) $event->id] = true;
+                    }
+                    if ($match['reason'] !== null || $cohort === '') { continue; }
                     $eventEdges[$cohort][] = ['winner' => $winner, 'loser' => $loser, 'weight' => $this->decay($match['confidence_date'], $asOf), 'kind' => 'played', 'outcome_target' => $match['outcome_target'] ?? 1.0, 'source_id' => $source, 'event_id' => $event->id, 'confidence_date' => $match['confidence_date'], 'confidence_date_basis' => $match['confidence_date_basis']];
                     $eventPlayed[$cohort][$winner][$loser] = true; $eventPlayed[$cohort][$loser][$winner] = true;
                     if (++$edgeCount > self::EDGE_CAP) { return $this->withheld($builtAt); }
@@ -306,11 +342,11 @@ class PlayerSharedAbilityService
                     if (!$this->coveredByPlayed($field['players'], $eventPlayed[$cohort] ?? [])) { $ordinalFields[$cohort][] = $field; }
                 }
             }
-            $uniqueIds = [];
+            $uniqueIds = $allAgePlayers;
             foreach ($graphs as $graph) { foreach (array_keys($graph['players']) as $id) { $uniqueIds[$id] = true; } }
             if (count($uniqueIds) > self::PLAYER_CAP) { return $this->withheld($builtAt); }
         }
-        $playerIds = collect($graphs)->flatMap(fn ($graph) => array_keys($graph['players']))->unique()->all();
+        $playerIds = collect($graphs)->flatMap(fn ($graph) => array_keys($graph['players']))->merge(array_keys($allAgePlayers))->unique()->all();
         foreach (array_chunk($playerIds, 500) as $chunk) {
             foreach (Player::query()->whereIn('id', $chunk)->get(['id', 'name', 'surname']) as $player) { $names[$player->id] = trim($player->name.' '.$player->surname); }
         }
@@ -330,8 +366,8 @@ class PlayerSharedAbilityService
                     'fields' => $ordinalFields[$cohort] ?? []];
             }
         }
-        return ['cohorts' => $cohorts, 'names' => $names, 'reason' => null, 'built_at' => $builtAt,
-            'source_events' => collect($graphs)->flatMap(fn ($g) => array_column($g['edges'], 'event_id'))->unique()->values()->all(),
+        return ['cohorts' => $cohorts, 'all_age' => (new AllAgeRatingModel)->fit($allAgeMatches, $asOf, $experiment['all_age_window_days'] ?? AllAgeRatingModel::WINDOW_DAYS), 'names' => $names, 'reason' => null, 'built_at' => $builtAt,
+            'source_events' => collect($graphs)->flatMap(fn ($g) => array_column($g['edges'], 'event_id'))->merge(array_keys($allAgeEvents))->unique()->values()->all(),
             'source_matches' => array_keys($seenSources)];
     }
 
@@ -351,7 +387,7 @@ class PlayerSharedAbilityService
     private function playedSources(PlayerPerformanceHistoryService $history, Event $event, PlayerPerformancePilotService $pilot, CarbonImmutable $asOf, ?HistoricalIdentityPreviewContext $identityPreview = null): \Generator
     {
         yield from $history->individualMatches($event, null, $pilot, $asOf, true);
-        yield from $history->teamMatches($event, null, $asOf, $identityPreview);
+        yield from $history->teamMatches($event, null, $asOf, $identityPreview, allAgeEvidence: true);
     }
 
     private function coveredByPlayed(array $ids, array $adjacency): bool

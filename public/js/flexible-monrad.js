@@ -430,7 +430,7 @@
             card.append(line);
           });
           if (match.schedule?.time) {
-            const schedule = el('div', 'fm-match-schedule', scheduleLabel(match.schedule));
+            const schedule = el('div', 'fm-match-schedule', scheduleLabel(match.schedule, true));
             schedule.title = scheduleLabel(match.schedule, true);
             schedule.setAttribute('aria-label', `Scheduled ${scheduleLabel(match.schedule, true)}`);
             card.append(schedule);
@@ -611,16 +611,16 @@
     matches.sort((a, b) => String(a.schedule?.time || '9999').localeCompare(String(b.schedule?.time || '9999')) || a.number - b.number).forEach(match => {
       const row = el('tr');
       const players = match.players.map((id, i) => matchParticipantLabel(match, i)).join(' vs ');
-      const schedule = scheduleParts(match.schedule);
       const scheduleHidden = match.schedule_hidden === true;
-      const followedBy = 'Followed by';
+      const visibleSchedule = !scheduleHidden && match.schedule?.time ? match.schedule : null;
+      const schedule = scheduleParts(visibleSchedule);
       const cells = [
         ['Match', String(match.number)],
         ['Players', players],
-        ['Date', scheduleHidden ? followedBy : schedule.date || 'Not scheduled'],
-        ['Time', scheduleHidden ? followedBy : schedule.time || '—'],
-        ['Venue', scheduleHidden ? followedBy : match.schedule?.venue || '—'],
-        ['Court', scheduleHidden ? followedBy : match.schedule?.court ? `Court ${match.schedule.court}` : '—'],
+        ['Date', schedule.date || ''],
+        ['Time', schedule.time || ''],
+        ['Venue', visibleSchedule?.venue || ''],
+        ['Court', visibleSchedule?.court ? `Court ${visibleSchedule.court}` : ''],
       ];
       cells.filter(([label]) => !config.readOnly || label !== 'Court').forEach(([label, value]) => {
         const cell = el('td', '', String(value));
@@ -662,7 +662,7 @@
             match.label,
             ...match.players.map((id, i) => matchParticipantLabel(match, i)),
             match.automatic === 'walkover' ? 'Walkover' : match.automatic === 'void' ? 'Closed — no active players' : match.sets.map(s => s.join('-')).join(', '),
-            match.schedule_hidden === true ? 'Followed by' : match.schedule?.time ? scheduleLabel(match.schedule, true) : 'Not scheduled'
+            match.schedule_hidden !== true && match.schedule?.time ? scheduleLabel(match.schedule, true) : ''
           ]);
       });
     else

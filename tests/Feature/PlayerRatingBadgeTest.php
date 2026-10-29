@@ -187,7 +187,7 @@ class PlayerRatingBadgeTest extends TestCase
         $this->assertStringContainsString('Team roster rank', $html);
     }
 
-    public function test_private_estimate_from_real_published_results_disappears_after_unpublication(): void
+    public function test_finishing_order_only_has_no_shared_badge_and_context_is_withheld_after_unpublication(): void
     {
         $this->superAdmin();
         $draw = $this->draw();
@@ -202,12 +202,18 @@ class PlayerRatingBadgeTest extends TestCase
             CategoryResult::create(['event_id' => $event->id, 'category_id' => $draw->categoryEvent->category_id, 'registration_id' => $registration->id, 'position' => $position]);
             $playerId ??= $player->id;
         }
-        $this->artisan('player-ability:refresh')->assertSuccessful();
+        $service = app(PlayerSharedAbilityService::class);
+        $store = app(\App\Services\Performance\PlayerAbilitySnapshotStore::class);
+        $asOf = \Carbon\CarbonImmutable::today('Africa/Johannesburg');
+        $payload = $service->calculateSnapshot($asOf);
+        $store->replace($payload, $asOf, $service->fingerprint(), $store->manifest($payload));
         $url = route('backend.player-performance.badges').'?players[]='.$playerId.'&draw_id='.$draw->id;
         $response = $this->getJson($url)->assertOk();
-        $this->assertGreaterThan(50, $response->json('ratings.p:'.$playerId.'.0.score'));
-        $this->assertSame('Low', $response->json('ratings.p:'.$playerId.'.0.confidence_band'));
-        $this->get(route('backend.player-performance.show', $playerId))->assertOk()->assertSee('Evidence confidence: Low')->assertDontSee('Evidence confidence C');
+        $response->assertJsonPath('ratings.p:'.$playerId, []);
+        $ability = $service->forPlayer(Player::findOrFail($playerId));
+        $this->assertNull($ability['headline']);
+        $this->assertGreaterThan(50, $ability['cohorts']->first()['score']);
+        $this->get(route('backend.player-performance.show', $playerId))->assertOk()->assertSee('Unrated')->assertSee('Age-specific comparison evidence');
         \Illuminate\Support\Facades\DB::table('events')->where('id', $event->id)->update(['results_published' => false]);
         app()->forgetInstance(PlayerRatingBadgeService::class);
         app()->forgetInstance(\App\Services\Performance\PlayerAbilitySnapshotStore::class);

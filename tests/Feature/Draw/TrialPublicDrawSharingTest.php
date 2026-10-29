@@ -51,6 +51,8 @@ class TrialPublicDrawSharingTest extends TestCase
         $venueUrl = route('fixtures.venue', [$event->id, $venue->id]);
         $orderUrl = route('fixtures.order', [$event->id, $venue->id, '2026-10-30']);
         $this->get(route('events.show', $event))->assertOk()->assertSee($drawUrl, false)
+            ->assertDontSee('Draws and match times')
+            ->assertDontSee('class="card event-draws-card mb-4"', false)
             ->assertDontSee('Private trial draw')->assertDontSee('Foreign trial draw')
             ->assertDontSee('Published trial courts')->assertDontSee('09:15');
         $this->get(route('frontend.fixtures.index', $privateDraw))->assertForbidden();

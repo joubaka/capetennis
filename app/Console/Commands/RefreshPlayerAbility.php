@@ -35,6 +35,11 @@ class RefreshPlayerAbility extends Command
         $lock = Cache::store('file')->lock('player-ability:refresh', 7200);
         if (!$lock->get()) { PlayerRatingRefreshDiagnostics::write($reference, 'command', 'builder_lock_held'); $this->error('An ability refresh is already running.'); return $this->option('pending') ? self::SUCCESS : self::FAILURE; }
         PlayerRatingRefreshDiagnostics::write($reference, 'command', 'starting');
+        // The bounded graph plus exact saved source manifest outgrows PHP's 128 MiB default.
+        // Raise only this background process, never the HTTP or global PHP configuration.
+        $originalLimit = (string) ini_get('memory_limit');
+        $memoryLimit = ini_parse_quantity($originalLimit);
+        if ($memoryLimit > 0 && $memoryLimit < 512 * 1024 * 1024) { ini_set('memory_limit', '512M'); }
         $stage = 'preparation';
         $failureReason = 'unexpected_error';
         try {
@@ -60,6 +65,7 @@ class RefreshPlayerAbility extends Command
                 return [$generation, $fingerprint, $snapshot, $manifest];
             });
             $stage = 'validation';
+            if (array_key_exists('all_age', $snapshot)) { $store->assertAllAgeGraph($snapshot['all_age']); }
             foreach ($snapshot['cohorts'] as $cohort) {
                 foreach ($cohort['components'] as $component) {
                     if (!$component['converged']) {
@@ -99,6 +105,9 @@ class RefreshPlayerAbility extends Command
             ]); } catch (\Throwable) { /* Keep the builder lease cleanup independent of logging. */ }
             $this->error('Ability refresh failed ['.$failureReason.'; stage: '.$stage.']. The last successful snapshot is retained; source publication checks still apply.');
             return self::FAILURE;
-        } finally { $lock->release(); }
+        } finally {
+            $lock->release();
+            if ($memoryLimit > 0 && $memoryLimit < 512 * 1024 * 1024 && memory_get_usage(true) < $memoryLimit) { ini_set('memory_limit', $originalLimit); }
+        }
     }
 }

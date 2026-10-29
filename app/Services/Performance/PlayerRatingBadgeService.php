@@ -11,6 +11,7 @@ class PlayerRatingBadgeService
     private array $contexts = [];
     private array $regionalSnapshots = [];
     private array $regionalPlayers = [];
+    private ?bool $allAge = null;
 
     public static function visible(): bool
     {
@@ -31,14 +32,28 @@ class PlayerRatingBadgeService
         }
         $cohort = $context ? $this->contextCohort($context) : null;
         if ($context && $cohort === null) { return null; }
+        $allAge = $this->allAge ??= array_key_exists('all_age', app(PlayerAbilitySnapshotStore::class)->current());
+        $load = fn () => $allAge
+            ? app(PlayerSharedAbilityService::class)->allAgeBadgeSnapshot($regional ? $context : null)
+            : app(PlayerSharedAbilityService::class)->badgeSnapshot($regional ? $context : null);
         $snapshot = $regional
-            ? ($this->regionalSnapshots[$scopeKey] ??= app(PlayerSharedAbilityService::class)->badgeSnapshot($context))
-            : ($this->snapshot ??= app(PlayerSharedAbilityService::class)->badgeSnapshot());
-        $ratings = $snapshot[$playerId] ?? [];
-        if ($context) { $ratings = array_filter($ratings, fn ($rating) => $rating['cohort'] === $cohort); }
+            ? ($this->regionalSnapshots[$scopeKey] ??= $load())
+            : ($this->snapshot ??= $load());
+        $ratings = $allAge ? (isset($snapshot[$playerId]) ? [$snapshot[$playerId]] : []) : ($snapshot[$playerId] ?? []);
+        if ($context && !$allAge) { $ratings = array_filter($ratings, fn ($rating) => $rating['cohort'] === $cohort); }
         usort($ratings, fn ($a, $b) => strcmp($b['last_played'], $a['last_played']) ?: strcmp($a['cohort'], $b['cohort']));
         $rating = $ratings[0] ?? null;
-        if (!$rating) { return null; }
+        if (!$rating || !is_numeric($rating['score'] ?? null)) { return null; }
+        if ($allAge) {
+            $rating = AbilityConfidenceDisplay::normalize($rating);
+            return $rating + ['label' => number_format($rating['score'], 1),
+                'display_label' => number_format($rating['score'], 1).' | '.$rating['confidence_label'].(!empty($rating['historical_connection']) ? ' · old link' : ''),
+                'title' => 'Cape Tennis all-age singles rating: '.number_format($rating['score'], 1).'/100. Provisional; compare across ages within standard singles comparison group '.$rating['component']
+                    .'. Evidence confidence: '.$rating['confidence_label'].'. '.($rating['confidence_explanation'] ?? '')
+                    .' Recorded matches: '.($rating['played'] ?? 0).'. '.($rating['reason'] ?? '')
+                    .(!empty($rating['standard_assumed_matches']) ? ' Includes legacy results whose standard playing format is assumed.' : '')
+                    .(!empty($rating['snapshot_stale']) ? ' Saved update is stale; awaiting the background refresh.' : '')];
+        }
         $reference = $rating['baseline_status'] ?? 'No connected main-trial baseline';
         if ($rating['baseline_source'] ?? null) { $reference .= ': '.$rating['baseline_source']['event_name'].' ('.$rating['baseline_source']['date'].'). Model-derived trial-match reference, not a published finish.'; }
         else { $reference .= '. Local comparison only; not trial-calibrated.'; }

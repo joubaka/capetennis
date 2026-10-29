@@ -5,9 +5,11 @@
         <p class="small"><a href="{{ url()->current() }}" data-rating-detail-version="{{ $ratingStatus['version'] }}" hidden>Reload this page for the latest detailed rating and evidence.</a></p>
     @endif
     @if($ability['snapshot_stale'] ?? false)<p class="alert alert-warning text-dark">Last successful update: {{ $ability['snapshot_as_of'] ?? 'Pending' }}. Awaiting the background refresh.</p>@endif
-    <h2 class="h4">Cape Tennis Shared Ability · provisional index</h2>
+    <h2 class="h4">Cape Tennis all-age singles rating</h2>
     @if($ability['reason'])
         <p class="alert alert-warning text-dark">{{ $ability['reason'] }}</p>
+    @elseif($ability['all_age'] ?? null)
+        @include('backend.player-performance.all-age-rating', ['estimate' => $ability['all_age']])
     @elseif($ability['headline'])
         @php($estimate = $ability['headline'])
         <p class="h2">{{ $estimate['score'] === null ? 'Estimate withheld' : number_format($estimate['score'], 1).'/100' }}</p>
@@ -27,8 +29,8 @@
         @if($estimate['played'] === 0)<p>With little direct evidence, the model pulls this estimate toward 50. That does not establish average playing strength.</p>@endif
         @if($estimate['reason'])<p>{{ $estimate['reason'] }}</p>@endif
     @else
-        <p class="h3">Unrated</p><p>No eligible connected individual singles evidence.</p>
+        <p class="h3">Unrated</p><p>No eligible standard-singles evidence for a shared rating. Modified-ball and unverified playing formats cannot establish a comparable all-age score.</p>
     @endif
-    <p class="alert alert-info text-dark">Compare only players in the same cohort and comparison group. This uncalibrated 0–100 index is not a win probability. Disconnected groups and separate performance scores cannot be compared.</p>
+    <p class="alert alert-info text-dark">The shared rating uses one scale across ages within the connected standard-singles reference group. This provisional 0–100 index is not a win probability or an official selection ranking. Disconnected groups and separate age-specific performance scores cannot be compared.</p>
     <p>Calculated {{ $ability['built_at'] }} · <a href="{{ route('backend.player-performance.show', $player->id) }}">View shared comparison evidence</a></p>
 </div></div>

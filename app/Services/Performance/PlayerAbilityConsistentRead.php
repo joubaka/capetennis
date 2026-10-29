@@ -10,7 +10,8 @@ class PlayerAbilityConsistentRead
     private const SOURCE_TABLES = ['events', 'draws', 'team_ties', 'teams', 'team_players', 'no_profile_team_players',
         'team_fixture_players', 'team_fixtures', 'event_regions', 'team_regions', 'eventtypes', 'category_events',
         'categories', 'draw_settings', 'fixtures', 'category_event_registrations', 'player_registrations',
-        'fixture_results', 'team_fixture_results', 'category_results', 'players', 'order_of_plays', 'registrations'];
+        'fixture_results', 'team_fixture_results', 'category_results', 'players', 'order_of_plays', 'registrations',
+        'event_venue_courts', 'draw_venue_court_allocations'];
 
     public function run(callable $read): mixed
     {
