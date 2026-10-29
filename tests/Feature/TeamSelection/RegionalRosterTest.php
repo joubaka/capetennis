@@ -203,7 +203,8 @@ class RegionalRosterTest extends TestCase
         $mirror = app(\App\Domain\Payments\Services\TeamPaymentService::class)->createUnpaidTeamPlayerSlot($team, $old, 2);
         $order = TeamPaymentOrder::create(['team_id' => $team->id, 'event_id' => $event->id, 'player_id' => $old->id, 'user_id' => $manager->id, 'total_amount' => 100, 'wallet_reserved' => 40, 'payfast_amount_due' => 60, 'pay_status' => false]);
         $payload = ['team_id' => $team->id, 'event_id' => $event->id, 'slot_id' => $slot->id, 'expected_rank' => 2, 'expected_player_id' => $old->id, 'player_id' => $replacement->id];
-        $this->actingAs($manager)->get(route('admin.events.teams', [$event, 'roster_region' => $team->region_id]))->assertOk()->assertSee('Find player in database');
+        $this->actingAs($manager)->get(route('admin.events.teams', [$event, 'roster_region' => $team->region_id]))->assertOk()
+            ->assertSee('Replacement player')->assertSee('data-roster-replacement-select', false);
         $this->postJson(route('backend.team.changePlayer'), $payload)->assertOk();
         $this->assertDatabaseHas('no_profile_team_players', ['team_id' => $team->id, 'rank' => 2, 'player_profile' => $replacement->id, 'pay_status' => 0]);
         $this->assertSame($replacement->id, (int) $mirror->fresh()->player_id);

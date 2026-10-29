@@ -146,7 +146,7 @@ class EventCommunicationsTest extends TestCase
         $batch = $this->preview();
         $response = $this->get(route('backend.event-communications.review', [$this->event, $batch]))->assertOk();
         $response->assertSeeInOrder(['1. Recipients', '2. Message preview', '3. Approve'])
-            ->assertSee('confirm_send')->assertSee('Approve and queue');
+            ->assertSee('confirm_send')->assertSee('id="approve-ranking-mail"', false)->assertSee('Send email');
         $this->assertDatabaseCount('bulk_email_logs', 0);
         Mail::assertNothingSent();
         if (getenv('CT_BATCHES_QA') === '1') {

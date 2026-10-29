@@ -20,8 +20,7 @@
         @endif
         <fieldset data-replacement-fields="profile">
           <legend class="visually-hidden">Existing player profile</legend>
-          <label class="form-label w-100">Find player in database<input class="form-control" type="search" minlength="2" placeholder="Type a first name or surname" data-team-roster-search="{{ route('backend.team.availablePlayers', ['team_id' => $team->id, 'event_id' => $event->id]) }}"></label>
-          <label class="form-label w-100">Replacement player<select class="form-select" name="player_id" required data-team-roster-results><option value="">Search for a player first</option></select></label>
+          <label class="form-label w-100">Replacement player<select class="form-select" name="player_id" required data-roster-replacement-select="{{ route('backend.team.availablePlayers', ['team_id' => $team->id, 'event_id' => $event->id]) }}"><option value=""></option></select></label>
         </fieldset>
         @if($team->noProfile && !$replacementPaid)
           <fieldset data-replacement-fields="name" hidden disabled>

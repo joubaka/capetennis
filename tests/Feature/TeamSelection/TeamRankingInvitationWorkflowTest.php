@@ -3399,7 +3399,9 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $import = app(TeamRankingImportService::class)->import($source, $manager);
         $this->actingAs($manager)->postJson(route('backend.team-selection.teams.create', [$source->event, $source]))->assertUnprocessable()->assertJsonValidationErrors('categories');
         $this->get(route('backend.team-selection.preview', [$source->event, $source]))->assertOk();
-        $this->postJson(route('backend.team-selection.import', [$source->event, $source]))->assertUnprocessable()->assertJsonValidationErrors('import');
+        $this->postJson(route('backend.team-selection.import', [$source->event, $source]))->assertUnprocessable()->assertJsonValidationErrors('confirm_incomplete_rosters');
+        $this->postJson(route('backend.team-selection.import', [$source->event, $source]), ['confirm_incomplete_rosters' => 1])
+            ->assertUnprocessable()->assertJsonValidationErrors('import');
         $this->postJson(route('backend.team-selection.roster-email.send', [$source->event, $source->eventRegion]))->assertUnprocessable();
         $this->deleteJson(route('backend.team-selection.unlink', [$source->event, $source]))->assertUnprocessable()->assertJsonValidationErrors('series_id');
         $this->assertSame('draft', $import->fresh()->status);

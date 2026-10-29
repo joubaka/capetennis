@@ -2,6 +2,32 @@
 if (!window.teamRosterControls) {
   window.teamRosterControls = true;
   let searchTimer, searchRequest;
+  const initReplacementSelects = root => {
+    if (!window.jQuery?.fn?.select2) return;
+    root.querySelectorAll('[data-roster-replacement-select]').forEach(element => {
+      const select = window.jQuery(element);
+      if (select.hasClass('select2-hidden-accessible')) return;
+      select.select2({
+        width: '100%',
+        placeholder: 'Search for a player…',
+        minimumInputLength: 2,
+        allowClear: true,
+        dropdownParent: window.jQuery(document.body),
+        ajax: {
+          url: element.dataset.rosterReplacementSelect,
+          dataType: 'json',
+          delay: 250,
+          data: params => ({q: (params.term || '').trim()}),
+          processResults: data => ({results: data.players.map(player => ({id: player.id, text: player.name}))})
+        }
+      });
+    });
+  };
+  // Roster fragments are loaded and replaced dynamically. Initialize when
+  // their replacement panel opens, including panels added after page load.
+  document.addEventListener('toggle', event => {
+    if (event.target.matches?.('details.roster-replacement') && event.target.open) initReplacementSelects(event.target);
+  }, true);
   document.addEventListener('click', event => {
     const toggle = event.target.closest('[data-team-roster-remove-toggle]');
     const cancel = event.target.closest('[data-team-roster-remove-cancel]');
@@ -18,6 +44,10 @@ if (!window.teamRosterControls) {
     choice.form.querySelectorAll('[data-replacement-fields]').forEach(fields => {
       const active = fields.dataset.replacementFields === choice.value;
       fields.hidden = !active; fields.disabled = !active;
+      fields.querySelectorAll('[data-roster-replacement-select]').forEach(select => {
+        select.disabled = !active;
+        if (!active && window.jQuery?.fn?.select2 && window.jQuery(select).hasClass('select2-hidden-accessible')) window.jQuery(select).select2('close');
+      });
     });
   });
   document.addEventListener('input', event => {
