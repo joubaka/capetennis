@@ -36,6 +36,32 @@ class FlexibleMonradTest extends TestCase
         return [$draw, ['size' => 4, 'slots' => $slots], $players];
     }
 
+    public function test_timed_deciding_point_is_separate_from_equal_games_and_propagates_the_selected_winner(): void
+    {
+        [$draw, $draft] = $this->setupDraw();
+        $draw->settings->update(['score_format' => \App\Domain\Draws\Services\TennisScoreFormat::TIMED, 'num_sets' => 1,
+            'match_duration_minutes' => 20, 'changeover_minutes' => 5]);
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $record = $service->generate($draw, 1);
+        $fixture = Fixture::findOrFail($record->fixture_map['main_a']);
+        $url = route('flexible-monrad.score', [$draw, $fixture->id]);
+        $this->putJson($url, ['revision' => $record->revision, 'sets' => [[3, 3]]])->assertUnprocessable();
+        $this->putJson($url, ['revision' => $record->revision, 'sets' => [[3, 3]], 'deciding_point_winner_id' => Registration::factory()->create()->id])->assertUnprocessable();
+        $this->putJson($url, ['revision' => $record->revision, 'sets' => [[3, 3]], 'deciding_point_winner_id' => $fixture->registration2_id])->assertOk();
+        $fixture->refresh();
+        $this->assertSame((int) $fixture->registration2_id, (int) $fixture->winner_registration);
+        $this->assertSame(3, (int) $fixture->fixtureResults()->first()->registration1_score);
+        $this->assertSame(3, (int) $fixture->fixtureResults()->first()->registration2_score);
+        $this->assertNull($fixture->fixtureResults()->first()->winner_registration);
+        $final = Fixture::findOrFail($record->fixture_map['main_final']);
+        $this->assertContains((int) $fixture->registration2_id, [(int) $final->registration1_id, (int) $final->registration2_id]);
+        $revision = $draw->fresh()->flexibleMonrad->revision;
+        $this->putJson($url, ['revision' => $revision, 'sets' => [[3, 3]], 'deciding_point_winner_id' => $fixture->registration2_id])->assertOk();
+        $this->assertSame($revision, $draw->fresh()->flexibleMonrad->revision);
+        $this->assertSame(1, $fixture->fixtureResults()->count());
+    }
+
     public function test_setup_withdrawal_projects_clean_slots_without_writing_and_save_keeps_disabled_roster(): void
     {
         [$draw, $draft, $players] = $this->setupDraw();

@@ -20,6 +20,9 @@ final class FlexibleMonradScheduler
             $fixture = $draw->drawFixtures()->lockForUpdate()->findOrFail($fixtureId);
             abort_if($fixture->fixtureResults()->exists() || (int) $fixture->match_status !== 0, 409, 'A match with play or results cannot be rescheduled.');
             $duration ??= (int) ($fixture->orderOfPlay?->duration_minutes ?: 75);
+            $timing = app(\App\Services\Scheduling\MatchTimingService::class)->forDraw($draw, $duration, $courtGap ?? (int) ($fixture->orderOfPlay?->gap_minutes ?? 0));
+            $duration = $timing['duration_minutes'];
+            $courtGap = $timing['court_gap_minutes'];
             if ($start) {
                 DB::table('venues')->where('id', $venueId)->lockForUpdate()->get();
                 if ($error = app(\App\Services\Scheduling\RoundVenueSetup::class)->individualCourtError($fixture, $venueId, $court)) throw new \InvalidArgumentException($error);
@@ -32,7 +35,7 @@ final class FlexibleMonradScheduler
             $slot = OrderOfPlay::firstOrNew(['fixture_id' => $fixtureId]);
             if ($start) {
                 $slot->fill(['draw_id' => $draw->id, 'venue_id' => $venueId, 'court' => $court,
-                    'time' => Carbon::parse($start)->format('Y-m-d H:i:s'), 'duration_minutes' => $duration,
+                    'time' => Carbon::parse($start)->format('Y-m-d H:i:s'), 'duration_minutes' => $duration, 'gap_minutes' => $courtGap,
                     'round_number' => $fixture->round]);
                 $changed = $slot->isDirty() || ! $fixture->scheduled;
                 $slot->save();
@@ -126,6 +129,9 @@ final class FlexibleMonradScheduler
             if ($draw->locked || $draw->published) throw new \InvalidArgumentException('Unpublish and unlock the draw before auto-scheduling.');
             // Serialize Monrad bookings of shared venues, including initially empty courts.
             DB::table('venues')->whereIn('id', array_keys($venues))->orderBy('id')->lockForUpdate()->get();
+            $timing = app(\App\Services\Scheduling\MatchTimingService::class)->forDraw($draw, $duration, 0);
+            $duration = $timing['duration_minutes'];
+            $gap = $timing['court_gap_minutes'];
             $timeline = [];
             foreach ($venues as $venueId => $venue) {
                 $assigned = $draw->venues->firstWhere('id', $venueId);
@@ -178,7 +184,7 @@ final class FlexibleMonradScheduler
                     foreach ($timeline as $venueId => $courts) {
                         foreach ($courts as $court => $freeAt) {
                             $at = $freeAt->copy()->max($release);
-                            $at = $calendar->nextAvailable($at, $duration, (int) $venueId, (string) $court, $participants[$key]);
+                            $at = $calendar->nextAvailable($at, $duration + $gap, (int) $venueId, (string) $court, $participants[$key]);
                             if ($dailyLimit && ($error = $dailyLimit->error('individual:'.$match['id'], $at->toDateString()))) {
                                 throw new \InvalidArgumentException($error.' Use the event schedule to arrange rounds across days.');
                             }
@@ -192,7 +198,7 @@ final class FlexibleMonradScheduler
                 $key = $best['key'];
                 $dailyLimit?->reserve('individual:'.$matches[$key]['id'], $best['time']->toDateString());
                 $plan[$key] = $best;
-                $finished[$key] = $best['time']->copy()->addMinutes($duration);
+                $finished[$key] = $best['time']->copy()->addMinutes($duration + $gap);
                 $timeline[$best['venue']][$best['court']] = $finished[$key]->copy();
                 unset($pending[$key]);
             }
@@ -201,7 +207,7 @@ final class FlexibleMonradScheduler
                 $match = $matches[$key];
                 $oop = OrderOfPlay::firstOrNew(['fixture_id' => $match['id']]);
                 $oop->fill(['draw_id' => $draw->id, 'venue_id' => $slot['venue'], 'court' => $slot['court'],
-                    'time' => $slot['time']->format('Y-m-d H:i:s'), 'duration_minutes' => $duration, 'gap_minutes' => 0, 'round_number' => $match['round']]);
+                    'time' => $slot['time']->format('Y-m-d H:i:s'), 'duration_minutes' => $duration, 'gap_minutes' => $gap, 'round_number' => $match['round']]);
                 $changed = $oop->isDirty() || $changed;
                 $oop->save();
                 $flags = Fixture::whereKey($match['id'])

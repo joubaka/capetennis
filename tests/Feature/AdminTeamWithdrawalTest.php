@@ -205,6 +205,34 @@ class AdminTeamWithdrawalTest extends TestCase
         $this->assertDatabaseCount('wallet_transactions', 1);
     }
 
+    public function test_late_refund_requires_explicit_fresh_preview_and_credits_original_payer_once(): void
+    {
+        $s = $this->scenario();
+        $s['event']->update(['withdrawal_deadline' => now()->subDay()]);
+        $payload = $this->payload($s) + ['deadline_override' => 1];
+        $this->postJson($this->url($s), $payload)->assertUnprocessable();
+        $this->get($this->url($s, 'show').'?deadline_override=1')->assertOk()
+            ->assertSee('R256.50')->assertSee('Reason for refund after the deadline');
+        $review = app(AdminTeamWithdrawalService::class)->review($s['event'], $s['team'], $s['slot'], $s['actor'], 'wallet', 'current', 'refund', true);
+        $payload['fingerprint'] = $review['fingerprint'];
+        $this->actingAs($s['payer'])->postJson($this->url($s), $payload)->assertForbidden();
+        $this->actingAs($s['actor']);
+        $otherEvent = Event::factory()->create();
+        $this->postJson(route('backend.team.withdrawal.store', [$otherEvent, $s['team'], $s['slot']]), $payload)->assertNotFound();
+        $this->postJson($this->url($s), array_replace($payload, ['reason' => '']))->assertUnprocessable();
+        $this->assertDatabaseCount('wallet_transactions', 1);
+        $this->post($this->url($s), $payload)->assertRedirect();
+        $this->post($this->url($s), $payload)->assertRedirect();
+        $this->assertDatabaseHas('wallet_transactions', ['wallet_id' => $s['wallet']->id, 'type' => 'credit', 'amount' => 256.50]);
+        $this->assertDatabaseHas('team_payment_orders', ['id' => $s['order']->id, 'pay_status' => 1, 'refund_status' => 'completed', 'refund_fee' => 28.5, 'refund_net' => 256.5]);
+        $this->assertDatabaseCount('wallet_transactions', 2);
+        $this->assertDatabaseCount('team_payment_orders', 1);
+        $this->assertDatabaseHas('team_players', ['id' => $s['slot']->id, 'player_id' => 0, 'pay_status' => 0]);
+        $audit = \Spatie\Activitylog\Models\Activity::where('description', 'super user authorized team withdrawal refund after deadline')->sole();
+        $this->assertTrue($audit->properties['deadline_override']);
+        $this->assertSame($payload['reason'], $audit->properties['reason']);
+    }
+
     public function test_pending_private_and_unverified_payments_are_rejected_without_changes(): void
     {
         $s = $this->scenario();

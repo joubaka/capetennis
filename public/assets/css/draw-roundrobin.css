@@ -497,3 +497,55 @@
     .rr-group-heading { align-items: flex-start; flex-direction: column; gap: 3px; }
     .rr-mobile-match:focus-visible { outline: 3px solid #14796e; outline-offset: 2px; }
   }
+
+/* Stack the playoff editor into labelled cards on phones. */
+@media (max-width: 767.98px) {
+  #playoff-config-table,
+  #playoff-config-table tbody {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+  #playoff-config-table thead { display: none; }
+  #playoff-config-table tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+    padding: 14px;
+    border: 1px solid #dbe3eb;
+    border-radius: 10px;
+    background: #fff;
+  }
+  #playoff-config-table tbody td {
+    display: block;
+    min-width: 0;
+    padding: 0 !important;
+    border: 0;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
+  #playoff-config-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 6px;
+    color: #52637a;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  #playoff-config-table td[data-label="Enabled"] { grid-area: 1 / 1; }
+  #playoff-config-table td[data-label="Actions"] { grid-area: 1 / 2; text-align: right; }
+  #playoff-config-table td[data-label="Playoff name"] { grid-area: 2 / 1 / auto / -1; }
+  #playoff-config-table td[data-label="Bracket size"] { grid-area: 3 / 1; }
+  #playoff-config-table td[data-label="Preview"] { grid-area: 3 / 2; }
+  #playoff-config-table td[data-label="Group positions"] { grid-area: 4 / 1 / auto / -1; }
+  #playoff-config-table .playoff-name,
+  #playoff-config-table .playoff-size { width: 100% !important; min-width: 0 !important; }
+  #playoff-config-table .position-btn {
+    min-width: 38px;
+    min-height: 32px;
+    padding: 5px 7px !important;
+    font-size: 12px !important;
+  }
+  #playoff-config-table td[colspan] { grid-column: 1 / -1; }
+}

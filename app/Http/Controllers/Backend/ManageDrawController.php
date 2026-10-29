@@ -73,6 +73,8 @@ class ManageDrawController extends Controller
             'playoff_size' => 'nullable|integer',
             'num_sets' => ['nullable', 'integer', Rule::in([1, 2, 3, 5])],
             'score_format' => ['nullable', 'string', Rule::in(TennisScoreFormat::keys())],
+            'match_duration_minutes' => 'sometimes|integer|min:1|max:240',
+            'changeover_minutes' => 'sometimes|integer|min:0|max:60',
             'move_to_group_id' => 'nullable|integer',
             'playoff_config' => 'sometimes|required|array|min:1',
             'playoff_config.*.name' => 'required|string|max:255',
@@ -85,6 +87,16 @@ class ManageDrawController extends Controller
             'playoff_config.*.group_order.*' => 'string|regex:/^[A-Z]$/',
             'preset_key' => 'nullable|string|max:255',
         ]);
+
+        $effectiveFormat = $data['score_format'] ?? $draw->settings?->score_format;
+        if ($effectiveFormat === TennisScoreFormat::TIMED) {
+            abort_if($draw->isTeamDraw(), 422, 'Timed scoring is available for individual draws.');
+            foreach (['match_duration_minutes', 'changeover_minutes'] as $field) {
+                if (! array_key_exists($field, $data) && $draw->settings?->{$field} === null) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([$field => 'Set the match duration and changeover time for timed matches.']);
+                }
+            }
+        }
 
         // The manage form uses draw-level names, while the engine API uses the
         // settings column names. Normalize both inputs before persisting.
@@ -101,6 +113,8 @@ class ManageDrawController extends Controller
                 ? TennisScoreFormat::maxSets($data['score_format'])
                 : ($data['num_sets'] ?? null),
             'score_format' => $data['score_format'] ?? null,
+            'match_duration_minutes' => $data['match_duration_minutes'] ?? null,
+            'changeover_minutes' => $data['changeover_minutes'] ?? null,
         ], fn($v) => !is_null($v) && $v !== '');
 
         if (array_key_exists('playoff_config', $data)) {

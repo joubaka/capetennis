@@ -11,8 +11,8 @@ class AdminTeamWithdrawalController extends Controller
 {
     public function show(Request $request, Event $event, Team $team, TeamPlayer $slot, AdminTeamWithdrawalService $service)
     {
-        $request->validate(['destination' => 'sometimes|in:wallet,payfast', 'fee_mode' => 'sometimes|in:current,full']);
-        $review = $service->review($event, $team, $slot, $request->user(), $request->input('destination', 'wallet'), $request->input('fee_mode', 'current'));
+        $request->validate(['destination' => 'sometimes|in:wallet,payfast', 'fee_mode' => 'sometimes|in:current,full', 'deadline_override' => 'sometimes|boolean']);
+        $review = $service->review($event, $team, $slot, $request->user(), $request->input('destination', 'wallet'), $request->input('fee_mode', 'current'), 'refund', $request->boolean('deadline_override'));
         return view('backend.adminPage.admin_show.team-withdrawal', compact('event', 'team', 'slot', 'review'));
     }
 
@@ -22,6 +22,7 @@ class AdminTeamWithdrawalController extends Controller
             'order_id' => 'required|integer', 'fingerprint' => 'required|string|size:64',
             'reason' => 'required|string|min:3|max:1000', 'confirm' => 'accepted',
             'destination' => 'sometimes|in:wallet,payfast', 'fee_mode' => 'sometimes|in:current,full',
+            'deadline_override' => 'sometimes|boolean',
         ]);
         $order = $service->confirm($event, $team, $slot, $request->user(), $data);
         if ($order->refund_status === 'pending' && $order->refund_method === 'payfast') {

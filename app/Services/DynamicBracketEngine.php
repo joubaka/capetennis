@@ -69,6 +69,7 @@ class DynamicBracketEngine
 
         foreach ($playoffConfig as $config) {
             if (!($config['enabled'] ?? false)) continue;
+            if (app(\App\Services\Draw\PlayoffParticipationService::class)->isDormant($this->draw, $config)) continue;
 
             $slug = $config['slug'] ?? 'unknown';
             $stage = $this->slugToStage($slug);

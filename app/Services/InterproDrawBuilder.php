@@ -245,7 +245,7 @@ class InterproDrawBuilder
         $awayGames += (int) $set->registration2_score;
         if ($set->registration1_score > $set->registration2_score) {
           $homeSets++;
-        } else {
+        } elseif ($set->registration1_score < $set->registration2_score) {
           $awaySets++;
         }
       }
@@ -298,6 +298,10 @@ class InterproDrawBuilder
       });
 
       $sorted[$gid] = $rows;
+    }
+
+    if ($draw->settings?->score_format === \App\Domain\Draws\Services\TennisScoreFormat::TIMED) {
+      $sorted = $this->standings($draw);
     }
 
     // 4) Build seeds
@@ -409,7 +413,7 @@ class InterproDrawBuilder
       foreach ($fx->fixtureResults as $set) {
         if ($set->registration1_score > $set->registration2_score) {
           $homeSets++;
-        } else {
+        } elseif ($set->registration1_score < $set->registration2_score) {
           $awaySets++;
         }
       }
@@ -463,6 +467,10 @@ class InterproDrawBuilder
       Log::info("  📈 After sort (Group ID {$gid})", $rows);
 
       $sorted[$gid] = $rows;
+    }
+
+    if ($draw->settings?->score_format === \App\Domain\Draws\Services\TennisScoreFormat::TIMED) {
+      $sorted = $this->standings($draw);
     }
 
     // 4) Build seeds for 2nd & 3rd positions
@@ -831,8 +839,18 @@ class InterproDrawBuilder
   // ============================================================
 // PRIVATE: FULL STANDINGS (MATCH → SET → H2H) FOR HUB
 // ============================================================
+  /** Read-only standings projection shared by timed legacy and canonical engine paths. */
+  public function standings(Draw $draw): array
+  {
+    $draw->loadMissing(['settings', 'groups.groupRegistrations.registration.players', 'drawFixtures.fixtureResults']);
+    foreach ($draw->drawFixtures as $fixture) $fixture->setRelation('draw', $draw);
+    return $this->buildStandingsFromFixtures($draw);
+  }
+
   private function buildStandingsFromFixtures(Draw $draw): array
   {
+    $timed = $draw->settings?->score_format === \App\Domain\Draws\Services\TennisScoreFormat::TIMED;
+    $rankingMetric = $timed ? 'points' : 'wins';
     $standings = [];
 
     // ============================================================
@@ -853,6 +871,7 @@ class InterproDrawBuilder
           'box' => $group->name,
           'wins' => 0,
           'losses' => 0,
+          ...($timed ? ['draws' => 0, 'points' => 0] : []),
           'sets_won' => 0,
           'sets_lost' => 0,
           'games_won' => 0,
@@ -909,7 +928,7 @@ class InterproDrawBuilder
         $awayGames += (int) $set->registration2_score;
         if ($set->registration1_score > $set->registration2_score) {
           $homeSets++;
-        } else {
+        } elseif ($set->registration1_score < $set->registration2_score) {
           $awaySets++;
         }
       }
@@ -938,10 +957,17 @@ class InterproDrawBuilder
       // Update wins/losses
       if ($winner == $home) {
         $standings[$box][$home]['wins']++;
+        if ($timed) $standings[$box][$home]['points'] += 2;
         $standings[$box][$away]['losses']++;
       } elseif ($winner == $away) {
         $standings[$box][$away]['wins']++;
+        if ($timed) $standings[$box][$away]['points'] += 2;
         $standings[$box][$home]['losses']++;
+      } elseif ($timed && $fx->fixtureResults->count() === 1 && $homeGames === $awayGames) {
+        $standings[$box][$home]['draws']++;
+        $standings[$box][$away]['draws']++;
+        $standings[$box][$home]['points']++;
+        $standings[$box][$away]['points']++;
       }
     }
 
@@ -1041,14 +1067,14 @@ class InterproDrawBuilder
       Log::info("📊 [RR HUB] Standings before sort", $rows);
 
       // Step 1: sort by wins descending
-      usort($rows, fn($a, $b) => $b['wins'] <=> $a['wins']);
+      usort($rows, fn($a, $b) => $b[$rankingMetric] <=> $a[$rankingMetric]);
 
       // Step 2: resolve tiebreaks within each win-group
       $final = [];
       $i = 0;
       while ($i < count($rows)) {
         $j = $i + 1;
-        while ($j < count($rows) && $rows[$j]['wins'] === $rows[$i]['wins']) $j++;
+        while ($j < count($rows) && $rows[$j][$rankingMetric] === $rows[$i][$rankingMetric]) $j++;
         $final = array_merge($final, $resolveGroup(array_slice($rows, $i, $j - $i)));
         $i = $j;
       }
@@ -1441,7 +1467,7 @@ class InterproDrawBuilder
     $this->generateRoundRobinFixtures($draw);
   }
 
-  public function saveBracketScore(Fixture $fixture, array $sets): array
+  public function saveBracketScore(Fixture $fixture, array $sets, ?int $decidingPointWinnerId = null): array
   {
     Log::info("🎾 [BracketScore] Saving score for fixture {$fixture->id}", [
       'fixture_id' => $fixture->id,
@@ -1451,7 +1477,18 @@ class InterproDrawBuilder
       'incoming_sets' => $sets
     ]);
 
-    DB::transaction(function () use ($fixture, $sets) {
+    DB::transaction(function () use ($fixture, $sets, $decidingPointWinnerId) {
+      Fixture::whereKey($fixture->id)->lockForUpdate()->firstOrFail();
+      $fixture->refresh();
+
+      if ($fixture->draw?->settings?->score_format === \App\Domain\Draws\Services\TennisScoreFormat::TIMED) {
+        $validation = app(\App\Domain\Draws\Services\ScoreValidationService::class)->validate($fixture, $sets, $decidingPointWinnerId);
+        abort_unless($validation['valid'], 422, $validation['message']);
+        $nextWinner = app(IndividualMatchOutcomeService::class)->winnerFromSets($fixture, $sets, $decidingPointWinnerId);
+        if ($fixture->fixtureResults()->exists() && (int) $fixture->winner_registration !== (int) $nextWinner) {
+          app(\App\Services\Draw\DrawRecoveryImpactService::class)->assertSafeOrdinaryCorrection($fixture);
+        }
+      }
 
       // DELETE OLD RESULTS
       Log::info("🧹 [BracketScore] Clearing old fixtureResults for fixture {$fixture->id}");
@@ -1462,13 +1499,13 @@ class InterproDrawBuilder
 
       foreach ($sets as $i => [$s1, $s2]) {
 
-        $winner = $s1 > $s2
+        $winner = (int) $s1 === (int) $s2 ? null : ($s1 > $s2
           ? $fixture->registration1_id
-          : $fixture->registration2_id;
+          : $fixture->registration2_id);
 
-        $loser = $s1 > $s2
+        $loser = (int) $s1 === (int) $s2 ? null : ($s1 > $s2
           ? $fixture->registration2_id
-          : $fixture->registration1_id;
+          : $fixture->registration1_id);
 
         Log::info("➕ [BracketScore] Add Set", [
           'fixture_id' => $fixture->id,
@@ -1494,7 +1531,7 @@ class InterproDrawBuilder
       }
 
       // DETERMINE MATCH WINNER
-      $winner = app(IndividualMatchOutcomeService::class)->winnerFromSets($fixture, $sets);
+      $winner = app(IndividualMatchOutcomeService::class)->winnerFromSets($fixture, $sets, $decidingPointWinnerId);
 
       $loser = $winner ? (($winner === $fixture->registration1_id)
         ? $fixture->registration2_id
@@ -1692,6 +1729,16 @@ class InterproDrawBuilder
     Log::info("🎾 [RR Save] Saving RR score for fixture {$fixture->id}");
 
     DB::transaction(function () use ($fixture, $sets) {
+      Fixture::whereKey($fixture->id)->lockForUpdate()->firstOrFail();
+      $fixture->refresh();
+      if ($fixture->draw?->settings?->score_format === \App\Domain\Draws\Services\TennisScoreFormat::TIMED) {
+        $validation = app(\App\Domain\Draws\Services\ScoreValidationService::class)->validate($fixture, $sets);
+        abort_unless($validation['valid'], 422, $validation['message']);
+        $nextWinner = app(IndividualMatchOutcomeService::class)->winnerFromSets($fixture, $sets);
+        if ($fixture->fixtureResults()->exists() && (int) $fixture->winner_registration !== (int) $nextWinner) {
+          app(\App\Services\Draw\DrawRecoveryImpactService::class)->assertSafeOrdinaryCorrection($fixture);
+        }
+      }
 
       // CLEAR OLD RESULTS
       $fixture->fixtureResults()->delete();
@@ -1700,13 +1747,13 @@ class InterproDrawBuilder
 
       foreach ($sets as $i => [$s1, $s2]) {
 
-        $winner = $s1 > $s2
+        $winner = (int) $s1 === (int) $s2 ? null : ($s1 > $s2
           ? $fixture->registration1_id
-          : $fixture->registration2_id;
+          : $fixture->registration2_id);
 
-        $loser = ($winner === $fixture->registration1_id)
+        $loser = $winner === null ? null : (($winner === $fixture->registration1_id)
           ? $fixture->registration2_id
-          : $fixture->registration1_id;
+          : $fixture->registration1_id);
 
         $fixture->fixtureResults()->create([
           'set_nr' => $i + 1,

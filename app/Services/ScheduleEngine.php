@@ -143,6 +143,9 @@ class ScheduleEngine
       $draw = Draw::whereKey($drawId)->lockForUpdate()->firstOrFail();
       DB::table('events')->where('id', $draw->event_id)->lockForUpdate()->get();
       DB::table('venues')->whereIn('id', array_keys($venues))->orderBy('id')->lockForUpdate()->get();
+      $timing = app(\App\Services\Scheduling\MatchTimingService::class)->forDraw($draw, $duration, $gap);
+      $duration = $timing['duration_minutes'];
+      $gap = $timing['court_gap_minutes'];
       $this->assertSchedulable($drawId);
       $all = Fixture::where('draw_id', $drawId)->with(['orderOfPlay', 'fixtureResults'])->orderBy('round')->orderBy('match_nr')->lockForUpdate()->get()->keyBy('id');
       $fixtures = $all->filter(fn ($f) => $f->fixtureResults->isEmpty() && (int) $f->match_status === 0
@@ -276,6 +279,9 @@ class ScheduleEngine
       $fixture = $draw->drawFixtures()->lockForUpdate()->findOrFail($fixtureId);
             abort_if($fixture->fixtureResults()->exists() || (int) $fixture->match_status !== 0, 409, 'A match with play or results cannot be rescheduled.');
       $duration ??= (int) ($fixture->orderOfPlay?->duration_minutes ?: 75);
+      $timing = app(\App\Services\Scheduling\MatchTimingService::class)->forDraw($draw, $duration, $courtGap ?? (int) ($fixture->orderOfPlay?->gap_minutes ?? 0));
+      $duration = $timing['duration_minutes'];
+      $courtGap = $timing['court_gap_minutes'];
       if ($start) {
         DB::table('venues')->where('id', $venueId)->lockForUpdate()->get();
         if ($duration < 1 || $duration > 1440) throw new \InvalidArgumentException('Match duration must be between 1 and 1440 minutes.');
@@ -285,7 +291,7 @@ class ScheduleEngine
         if ($conflict) throw new \InvalidArgumentException($conflict);
         $slot = OrderOfPlay::updateOrCreate(['fixture_id' => $fixtureId], [
           'draw_id' => $draw->id, 'venue_id' => $venueId, 'court' => $court,
-          'time' => Carbon::parse($start)->format('Y-m-d H:i:s'), 'duration_minutes' => $duration, 'round_number' => $fixture->round,
+          'time' => Carbon::parse($start)->format('Y-m-d H:i:s'), 'duration_minutes' => $duration, 'gap_minutes' => $courtGap, 'round_number' => $fixture->round,
         ]);
       } else {
         $conflict = $this->dependencyConflict($draw, $fixture, null, $duration);

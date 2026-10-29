@@ -368,6 +368,7 @@
         @php
           $isTeamFixture = $match instanceof \App\Models\TeamFixture;
           $draw = $match->draw;
+          $isTimed = !$isTeamFixture && $draw->settings?->score_format === 'timed';
           $hasScore = $match->fixtureResults->isNotEmpty();
           $isPlaying = !$hasScore && (int) ($match->match_status ?? 0) === \App\Domain\Draws\Enums\FixtureState::STATUS_PARTIAL;
           $isFlexible = !$isTeamFixture && $draw->usesFlexibleMonrad();
@@ -427,6 +428,8 @@
                 : null;
             }
           }
+          $isTimedDraw = $isTimed && $hasScore && strtoupper((string) $match->stage) === 'RR'
+            && $sets->count() === 1 && $sets[0][0] === $sets[0][1];
         @endphp
         <article class="card match-card {{ $hasScore ? 'is-completed' : ($isPlaying ? 'is-playing' : ($hasPlayers ? '' : 'is-waiting')) }}"
                  data-score-state="{{ $state }}" data-score-timing="{{ $timing }}">
@@ -437,12 +440,15 @@
                 @if($venueName)<span><i class="ti ti-map-pin"></i> {{ $venueName }}</span>@endif
               </div>
               <span class="badge match-status {{ $hasScore ? 'bg-label-success' : ($isPlaying ? 'bg-label-warning' : ($hasPlayers ? 'bg-label-primary' : 'bg-label-secondary')) }}">
-                <span class="match-status-light" aria-hidden="true"></span>{{ $hasScore ? 'Completed' : ($isPlaying ? 'Playing now' : ($hasPlayers ? 'Awaiting court' : 'Waiting for players')) }}
+                <span class="match-status-light" aria-hidden="true"></span>{{ $hasScore ? ($isTimedDraw ? 'Completed · Draw' : 'Completed') : ($isPlaying ? 'Playing now' : ($hasPlayers ? 'Awaiting court' : 'Waiting for players')) }}
               </span>
             </div>
             <div class="match-card-main">
               <div class="match-identity">
                 <div class="small text-muted mb-1">{{ $draw->drawName }} · {{ $stageLabel }} · Match {{ $matchNumber }}</div>
+                @if($isTimed)
+                  <div class="small text-muted mb-1">{{ $draw->settings->match_duration_minutes }} minutes of play · {{ $draw->settings->changeover_minutes }} minutes changeover</div>
+                @endif
                 <div class="match-players">
                   <div class="match-player{{ $winnerSide ? ($winnerSide === 'home' ? ' is-winner' : ' is-loser') : '' }}">{{ $home }}@if($winnerSide)<span class="visually-hidden"> ({{ $winnerSide === 'home' ? 'Winner' : 'Loser' }})</span>@endif</div>
                   <div class="match-versus">vs</div>
@@ -468,6 +474,11 @@
                       data-store="{{ $isFlexible ? $flexibleUrl : $normalStore }}"
                       data-delete="{{ $isFlexible ? $flexibleUrl : $normalDelete }}"
                       data-revision="{{ $draw->flexibleMonrad?->revision ?? 0 }}"
+                      data-score-format="{{ $isTimed ? 'timed' : '' }}" data-stage="{{ $isTeamFixture ? '' : $match->stage }}"
+                      data-home-registration="{{ $isTeamFixture ? '' : $match->registration1_id }}" data-away-registration="{{ $isTeamFixture ? '' : $match->registration2_id }}"
+                      data-deciding-winner="{{ $isTimed && $hasScore ? ($winnerRegistration ?? '') : '' }}"
+                      data-match-minutes="{{ $isTimed ? $draw->settings->match_duration_minutes : '' }}"
+                      data-changeover-minutes="{{ $isTimed ? $draw->settings->changeover_minutes : '' }}"
                       data-num-sets="{{ $draw->settings?->score_format ? \App\Domain\Draws\Services\TennisScoreFormat::maxSets($draw->settings->score_format) : max(1, min(5, (int) ($draw->settings?->num_sets ?: 3))) }}"
                       data-score-guidance="{{ $draw->settings?->score_format
                         ? \App\Domain\Draws\Services\TennisScoreFormat::rules($draw->settings->score_format)
@@ -537,6 +548,13 @@
       <div class="modal-body">
         <div id="score-entry-error" class="alert alert-danger d-none" role="alert"></div>
         @include('shared.scoring.set-grid', ['scoreGridPrefix' => 'score'])
+        <div id="score-deciding-point" class="mt-3" hidden>
+          <label class="form-label" for="score-deciding-winner">Who won the deciding point?</label>
+          <p class="small text-muted mb-2">Games are level at time. Record the deciding-point winner without adding a game to the score.</p>
+          <select id="score-deciding-winner" class="form-select">
+            <option value="">Choose the winner</option>
+          </select>
+        </div>
       </div>
       <div class="modal-footer d-flex flex-nowrap">
         <button type="button" class="btn btn-outline-danger me-auto d-none" id="score-clear">Clear result</button>
@@ -557,8 +575,38 @@ document.addEventListener('DOMContentLoaded', function () {
   const error = document.getElementById('score-entry-error');
   const clearButton = document.getElementById('score-clear');
   const saveButton = document.getElementById('score-save');
+  const decidingPanel = document.getElementById('score-deciding-point');
+  const decidingWinner = document.getElementById('score-deciding-winner');
   let active = null;
   let workspaceRequestSequence = 0;
+
+  function venueNeedsDecidingPoint(match, sets) {
+    return match?.scoreFormat === 'timed' && match.engine !== 'team'
+      && String(match.stage || '').toUpperCase() !== 'RR'
+      && sets.length === 1 && sets[0][0] === sets[0][1];
+  }
+
+  function venueScorePayload(match, sets, decidingId) {
+    const payload = {sets: sets};
+    if (venueNeedsDecidingPoint(match, sets)) {
+      const id = Number(decidingId);
+      if (!id || ![Number(match.homeRegistration), Number(match.awayRegistration)].includes(id)) {
+        throw new Error('Choose who won the deciding point for this tied playoff.');
+      }
+      payload.deciding_point_winner_id = id;
+    }
+    return payload;
+  }
+
+  function syncTimedDecision() {
+    const values = Array.from(modalElement.querySelector('[data-score-row]').querySelectorAll('input')).map(input => input.value.trim());
+    const complete = values.every(value => /^\d+$/.test(value));
+    const required = complete && venueNeedsDecidingPoint(active, [values.map(Number)]);
+    decidingPanel.hidden = !required;
+    decidingWinner.disabled = !required;
+    if (!required) decidingWinner.value = '';
+  }
+  modalElement.querySelector('[data-set-score-grid]').addEventListener('input', syncTimedDecision);
 
   function currentFilter() {
     return document.querySelector('[data-score-filter][aria-pressed="true"]')?.dataset.scoreFilter || 'outstanding';
@@ -672,14 +720,27 @@ document.addEventListener('DOMContentLoaded', function () {
       clearButton.disabled = false;
       error.classList.add('d-none');
       document.getElementById('score-entry-guidance').textContent =
-        active.engine === 'flexible' && active.requireFullSets === '0'
+        active.scoreFormat === 'timed'
+          ? active.matchMinutes + ' minutes of play. Enter games won at time. ' + (String(active.stage).toUpperCase() === 'RR' ? 'Equal games are a draw.' : 'If games are level, play a deciding point.')
+          : active.engine === 'flexible' && active.requireFullSets === '0'
           ? 'Custom set scores allowed'
           : (active.scoreGuidance || 'Enter completed sets');
       document.getElementById('score-match-title').textContent = active.home + ' vs ' + active.away;
       const scores = JSON.parse(active.scores || '[]');
       CTSetScoreGrid.populate(modalElement.querySelector('[data-set-score-grid]'), {
-        names: [active.home, active.away], maxSets: active.numSets || 3, scores: scores
+        names: [active.home, active.away], maxSets: active.scoreFormat === 'timed' ? 1 : (active.numSets || 3), scores: scores
       });
+      modalElement.querySelectorAll('[data-score-row]').forEach(function (row, index) {
+        row.querySelector('span').textContent = active.scoreFormat === 'timed' ? 'Games' : 'Set ' + (index + 1);
+        row.querySelectorAll('input').forEach(function (input, side) {
+          input.setAttribute('aria-label', active.scoreFormat === 'timed'
+            ? 'Games won by ' + (side ? active.away : active.home)
+            : 'Set ' + (index + 1) + ' ' + (side ? 'away' : 'home') + ' score');
+        });
+      });
+      decidingWinner.replaceChildren(new Option('Choose the winner', ''), new Option(active.home, active.homeRegistration), new Option(active.away, active.awayRegistration));
+      syncTimedDecision();
+      if (!decidingPanel.hidden) decidingWinner.value = active.decidingWinner || '';
       clearButton.classList.toggle('d-none', scores.length === 0);
       modal.show();
       return;
@@ -722,6 +783,13 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
   function setsFromForm() {
+    if (active?.scoreFormat === 'timed') {
+      const values = Array.from(modalElement.querySelector('[data-score-row]').querySelectorAll('input')).map(input => input.value.trim());
+      if (!values.every(value => /^\d+$/.test(value) && Number.isSafeInteger(Number(value)))) {
+        throw new Error('Enter both games scores as non-negative whole numbers.');
+      }
+      return [values.map(Number)];
+    }
     return CTSetScoreGrid.read(modalElement.querySelector('[data-set-score-grid]'));
   }
 
@@ -749,12 +817,13 @@ document.addEventListener('DOMContentLoaded', function () {
     saveButton.disabled = true;
     try {
       const sets = setsFromForm();
+      const scorePayload = venueScorePayload(active, sets, decidingWinner.value);
       if (active.engine === 'flexible') {
         try {
-          await request(active.store, 'PUT', {sets: sets, revision: Number(active.revision)});
+          await request(active.store, 'PUT', {...scorePayload, revision: Number(active.revision)});
         } catch (failure) {
           if (failure.status !== 409 || !failure.message.includes('later scored matches') || !confirm(failure.message + '\n\nReset those later results and continue?')) throw failure;
-          await request(active.store, 'PUT', {sets: sets, revision: Number(active.revision), reset_dependents: true});
+          await request(active.store, 'PUT', {...scorePayload, revision: Number(active.revision), reset_dependents: true});
         }
       } else if (active.engine === 'team') {
         const teamPayload = {participant_revision: active.participantRevision};
@@ -764,7 +833,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
         await request(active.store, 'POST', teamPayload);
       } else {
-        await request(active.store, 'POST', {sets: sets.map(set => set[0] + '-' + set[1])});
+        await request(active.store, 'POST', {...scorePayload, sets: sets.map(set => set[0] + '-' + set[1])});
       }
       modal.hide();
       active = null;

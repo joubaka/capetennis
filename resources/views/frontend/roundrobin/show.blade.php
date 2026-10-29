@@ -378,6 +378,7 @@
     window.RR_GROUPS    = @json($groupsJson);   // THE ONLY CORRECT ONE
     window.RR_OOP       = @json($oops);
     window.RR_STANDINGS = @json($standings);
+    window.RR_SCORE_FORMAT = @json($draw->settings?->score_format);
 
     window.RR_MAIN_BRACKET_URL = "{{ route('public.roundrobin.main-bracket', $draw) }}";
 </script>

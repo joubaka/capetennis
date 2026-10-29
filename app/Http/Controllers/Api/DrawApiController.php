@@ -85,19 +85,21 @@ class DrawApiController extends Controller
             (int) $result->registration2_score,
         ])->values()->all();
 
+        $decision = $request->validate(['deciding_point_winner_id' => 'nullable|integer|min:1']);
+        $decidingPointWinnerId = isset($decision['deciding_point_winner_id']) ? (int) $decision['deciding_point_winner_id'] : null;
         $scoreValidation = app(\App\Domain\Draws\Services\ScoreValidationService::class)
-            ->validate($fixture, $validSets);
+            ->validate($fixture, $validSets, $decidingPointWinnerId);
         if (! $scoreValidation['valid']) {
             return response()->json(['success' => false, 'message' => $scoreValidation['message']], 422);
         }
         $wins1 = count(array_filter($validSets, fn ($set) => $set[0] > $set[1]));
         $wins2 = count(array_filter($validSets, fn ($set) => $set[1] > $set[0]));
-        $newWinner = $wins1 > $wins2 ? $fixture->registration1_id : $fixture->registration2_id;
-        if ($fixture->winner_registration && (int) $fixture->winner_registration !== (int) $newWinner) {
+        $newWinner = app(\App\Services\IndividualMatchOutcomeService::class)->winnerFromSets($fixture, $validSets, $decidingPointWinnerId);
+        if ($previousSets !== [] && (int) $fixture->winner_registration !== (int) $newWinner) {
             app(\App\Services\Draw\DrawRecoveryImpactService::class)->assertSafeOrdinaryCorrection($fixture);
         }
 
-        $response = DB::transaction(function () use ($draw, $fixture, $validSets) {
+        $response = DB::transaction(function () use ($draw, $fixture, $validSets, $decidingPointWinnerId) {
             if ($fixture->stage === 'RR') {
                 $resp = $this->service->saveScore($fixture, $validSets);
                 $hub  = $this->service->loadRoundRobinHub($draw);
@@ -108,13 +110,14 @@ class DrawApiController extends Controller
             }
 
             // Bracket stages — route through the service (which uses EngineRouter internally)
-            return $this->service->saveBracketScore($fixture, $validSets);
+            return $this->service->saveBracketScore($fixture, $validSets, $decidingPointWinnerId);
         });
 
         DrawAuditLog::record($draw->id, $previousSets ? 'score_corrected' : 'score_saved', $fixture->id, [
             'stage' => $fixture->stage,
             'previous_sets' => $previousSets,
             'sets'  => $validSets,
+          'deciding_point_winner_id' => $decidingPointWinnerId,
         ]);
 
         return response()->json(['success' => true] + $response);

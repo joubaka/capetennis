@@ -39,13 +39,13 @@ class RefundExecutionService
         });
     }
 
-    public function requestAdminTeamWithdrawalRefund(\App\Models\TeamPaymentOrder $order, User $actor, string $destination, string $feeMode, string $fingerprint): Model
+    public function requestAdminTeamWithdrawalRefund(\App\Models\TeamPaymentOrder $order, User $actor, string $destination, string $feeMode, string $fingerprint, bool $deadlineOverride = false, string $overrideReason = ''): Model
     {
         abort_unless($actor->hasRole('super-user'), 403);
-        return DB::transaction(function () use ($order, $actor, $destination, $feeMode, $fingerprint) {
+        return DB::transaction(function () use ($order, $actor, $destination, $feeMode, $fingerprint, $deadlineOverride, $overrideReason) {
             $locked = \App\Models\TeamPaymentOrder::with('event')->lockForUpdate()->findOrFail($order->id);
             abort_unless(in_array($destination, ['wallet', 'payfast'], true) && in_array($feeMode, ['current', 'full'], true), 422);
-            if (!$locked->withdrawn_at || $locked->withdrawn_at->gt($locked->event->withdrawalCloseAt()) || !$locked->pay_status
+            if (!$locked->withdrawn_at || ($locked->withdrawn_at->gt($locked->event->withdrawalCloseAt()) && (!$deadlineOverride || blank($overrideReason))) || !$locked->pay_status
                 || $locked->hasRefund() || $locked->refund_waived_at || $locked->refunded_at
                 || \App\Models\TrialParticipation::where('order_id', $locked->id)->exists()
                 || DB::table('trial_provider_refund_attempts')->where('order_id', $locked->id)->exists()
@@ -56,6 +56,16 @@ class RefundExecutionService
             app(\App\Domain\Payments\Services\TeamPaymentService::class)->assertAdminWithdrawalSettlement($locked);
             abort_unless($amounts['net'] > 0, 422);
             $payer = User::lockForUpdate()->findOrFail($locked->user_id);
+            if ($deadlineOverride) {
+                abort_unless(filled($overrideReason), 422);
+                activity('refund')->performedOn($locked)->causedBy($actor)->withProperties([
+                    'deadline_override' => true, 'reason' => trim($overrideReason), 'fingerprint' => $fingerprint,
+                    'payer_id' => $locked->user_id, 'beneficiary_player_id' => $locked->effective_player_id,
+                    'destination' => $destination, 'fee_mode' => $feeMode,
+                    'withdrawn_at' => $locked->withdrawn_at->format('Y-m-d H:i:s'),
+                    'deadline' => $locked->event->withdrawalCloseAt()->format('Y-m-d H:i:s'),
+                ])->log('super user authorized team withdrawal refund after deadline');
+            }
             $state = ['refund_method' => $destination, 'refund_gross' => $amounts['gross'], 'refund_fee' => $amounts['fee'], 'refund_net' => $amounts['net']];
             if ($destination === 'wallet') {
                 $wallet = $payer->wallet ?? $payer->wallet()->create();
@@ -160,8 +170,20 @@ class RefundExecutionService
         $cents = fn ($value) => (int) round((float) $value * 100);
         app(\App\Domain\Payments\Services\TeamPaymentService::class)->assertVerifiedTeamPayfastSettlement($order);
         $receipt = \App\Models\Transaction::where('custom_str5', 'TeamOrder')->where('custom_int5', $order->id)->firstOrFail();
+        $lateAuthorization = \Spatie\Activitylog\Models\Activity::where('subject_type', $order::class)->where('subject_id', $order->id)
+            ->where('causer_type', User::class)->where('causer_id', $attempt->requested_by)
+            ->where('description', 'super user authorized team withdrawal refund after deadline')->latest('id')->first();
+        $lateAuthorized = $lateAuthorization && data_get($lateAuthorization->properties, 'deadline_override') === true
+            && filled(data_get($lateAuthorization->properties, 'reason'))
+            && data_get($lateAuthorization->properties, 'fingerprint') === $attempt->review_fingerprint
+            && (int) data_get($lateAuthorization->properties, 'payer_id') === (int) $attempt->payer_id
+            && (int) data_get($lateAuthorization->properties, 'beneficiary_player_id') === (int) $attempt->beneficiary_player_id
+            && data_get($lateAuthorization->properties, 'destination') === 'payfast'
+            && data_get($lateAuthorization->properties, 'fee_mode') === $attempt->fee_mode
+            && data_get($lateAuthorization->properties, 'withdrawn_at') === $attempt->authorized_withdrawn_at?->format('Y-m-d H:i:s')
+            && data_get($lateAuthorization->properties, 'deadline') === $attempt->authorized_deadline?->format('Y-m-d H:i:s');
         if (!$order->withdrawn_at || $order->withdrawn_at->format('Y-m-d H:i:s') !== $attempt->authorized_withdrawn_at?->format('Y-m-d H:i:s')
-            || $attempt->authorized_withdrawn_at->gt($attempt->authorized_deadline) || $receipt->is_test
+            || ($attempt->authorized_withdrawn_at->gt($attempt->authorized_deadline) && !$lateAuthorized) || $receipt->is_test
             || (int) $attempt->order_id !== (int) $order->id || (int) $attempt->payer_id !== (int) $order->user_id
             || (int) $attempt->beneficiary_player_id !== $order->effective_player_id || $attempt->pf_payment_id !== $order->payfast_pf_payment_id
             || $order->refund_method !== 'payfast' || !in_array($order->refund_status, ['pending', 'completed'], true)

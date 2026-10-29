@@ -595,6 +595,9 @@ class DrawService
   // ============================================================
   private function buildStandingsFromFixturesLegacy(Draw $draw): array
   {
+    if ($draw->settings?->score_format === \App\Domain\Draws\Services\TennisScoreFormat::TIMED) {
+      return $this->canonicalStandings->forDraw($draw);
+    }
     $standings = [];
 
     // ============================================================
@@ -1115,7 +1118,7 @@ class DrawService
     );
   }
 
-  public function saveBracketScore(Fixture $fixture, array $sets): array
+  public function saveBracketScore(Fixture $fixture, array $sets, ?int $decidingPointWinnerId = null): array
   {
     abort_if($fixture->stage === 'FM', 409, 'Use the Flexible Monrad editor to score this match.');
     Log::info("🎾 [BracketScore] Saving score for fixture {$fixture->id}", [
@@ -1126,11 +1129,16 @@ class DrawService
       'incoming_sets' => $sets
     ]);
 
-    DB::transaction(function () use ($fixture, $sets) {
+    DB::transaction(function () use ($fixture, $sets, $decidingPointWinnerId) {
       $fixture = Fixture::query()
         ->with(['draw', 'fixtureResults'])
         ->lockForUpdate()
         ->findOrFail($fixture->id);
+
+      if ($fixture->draw?->settings?->score_format === \App\Domain\Draws\Services\TennisScoreFormat::TIMED) {
+        $validation = app(\App\Domain\Draws\Services\ScoreValidationService::class)->validate($fixture, $sets, $decidingPointWinnerId);
+        abort_unless($validation['valid'], 422, $validation['message']);
+      }
 
       $wins1 = 0;
       $wins2 = 0;
@@ -1140,7 +1148,7 @@ class DrawService
         if ($s2 > $s1) $wins2++;
       }
 
-      $winner = app(IndividualMatchOutcomeService::class)->winnerFromSets($fixture, $sets);
+      $winner = app(IndividualMatchOutcomeService::class)->winnerFromSets($fixture, $sets, $decidingPointWinnerId);
 
       $loser = $winner ? (($winner === $fixture->registration1_id)
         ? $fixture->registration2_id
@@ -1169,13 +1177,13 @@ class DrawService
 
       foreach ($sets as $i => [$s1, $s2]) {
 
-        $setWinner = $s1 > $s2
+        $setWinner = (int) $s1 === (int) $s2 ? null : ($s1 > $s2
           ? $fixture->registration1_id
-          : $fixture->registration2_id;
+          : $fixture->registration2_id);
 
-        $setLoser = $s1 > $s2
+        $setLoser = (int) $s1 === (int) $s2 ? null : ($s1 > $s2
           ? $fixture->registration2_id
-          : $fixture->registration1_id;
+          : $fixture->registration1_id);
 
         Log::info("➕ [BracketScore] Add Set", [
           'fixture_id' => $fixture->id,
@@ -1504,6 +1512,16 @@ class DrawService
     Log::info("🎾 [RR Save] Saving RR score for fixture {$fixture->id}");
 
     DB::transaction(function () use ($fixture, $sets) {
+      Fixture::whereKey($fixture->id)->lockForUpdate()->firstOrFail();
+      $fixture->refresh();
+      if ($fixture->draw?->settings?->score_format === \App\Domain\Draws\Services\TennisScoreFormat::TIMED) {
+        $validation = app(\App\Domain\Draws\Services\ScoreValidationService::class)->validate($fixture, $sets);
+        abort_unless($validation['valid'], 422, $validation['message']);
+        $nextWinner = app(IndividualMatchOutcomeService::class)->winnerFromSets($fixture, $sets);
+        if ($fixture->fixtureResults()->exists() && (int) $fixture->winner_registration !== (int) $nextWinner) {
+          app(\App\Services\Draw\DrawRecoveryImpactService::class)->assertSafeOrdinaryCorrection($fixture);
+        }
+      }
 
       // CLEAR OLD RESULTS
       $fixture->fixtureResults()->delete();
@@ -1512,13 +1530,13 @@ class DrawService
 
       foreach ($sets as $i => [$s1, $s2]) {
 
-        $winner = $s1 > $s2
+        $winner = (int) $s1 === (int) $s2 ? null : ($s1 > $s2
           ? $fixture->registration1_id
-          : $fixture->registration2_id;
+          : $fixture->registration2_id);
 
-        $loser = ($winner === $fixture->registration1_id)
+        $loser = $winner === null ? null : (($winner === $fixture->registration1_id)
           ? $fixture->registration2_id
-          : $fixture->registration1_id;
+          : $fixture->registration1_id);
 
         $fixture->fixtureResults()->create([
           'set_nr' => $i + 1,

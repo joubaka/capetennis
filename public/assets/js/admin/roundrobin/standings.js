@@ -105,15 +105,17 @@
 
       var gFixtures = fixtures[gid] || [];
       var rows = Object.values(standings[gid]);
+      var timed = root.RR_SCORE_FORMAT === 'timed';
+      var rankingValue = function(row) { return timed ? Number(row.points || 0) : Number(row.wins || 0); };
 
       // Sort by wins then resolve ties
-      rows.sort(function (a, b) { return b.wins - a.wins; });
+      rows.sort(function (a, b) { return rankingValue(b) - rankingValue(a); });
 
       var final = [];
       var i = 0;
       while (i < rows.length) {
         var j = i + 1;
-        while (j < rows.length && rows[j].wins === rows[i].wins) j++;
+        while (j < rows.length && rankingValue(rows[j]) === rankingValue(rows[i])) j++;
         final.push.apply(final, _resolveGroup(rows.slice(i, j), gFixtures));
         i = j;
       }
@@ -126,6 +128,7 @@
         '<thead><tr>',
         '<th>#</th><th>Player</th>',
         '<th class="text-center">W</th>',
+        timed ? '<th class="text-center">D</th><th class="text-center">Pts</th>' : '',
         '<th class="text-center">L</th>',
         '<th class="text-center">Sets %</th>',
         '<th class="text-center">Games %</th>',
@@ -149,6 +152,7 @@
           '<td>' + (idx + 1) + '</td>' +
           '<td>' + r.player + '</td>' +
           '<td class="text-center">' + r.wins + '</td>' +
+          (timed ? '<td class="text-center">' + Number(r.draws || 0) + '</td><td class="text-center">' + Number(r.points || 0) + '</td>' : '') +
           '<td class="text-center">' + r.losses + '</td>' +
           '<td class="text-center">' + setsPct + '%</td>' +
           '<td class="text-center">' + gamesPct + '%</td>' +

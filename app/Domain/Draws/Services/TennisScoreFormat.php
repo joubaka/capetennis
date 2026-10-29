@@ -6,6 +6,7 @@ use InvalidArgumentException;
 
 final class TennisScoreFormat
 {
+    public const TIMED = 'timed';
     public const ONE_SET_TO_3 = 'one_set_to_3';
     public const SHORT_SET_4 = 'short_set_4';
     public const ONE_SET_TO_5 = 'one_set_to_5';
@@ -32,6 +33,12 @@ final class TennisScoreFormat
     public static function catalog(): array
     {
         return [
+            self::TIMED => [
+                'label' => 'Timed match · most games wins',
+                'description' => 'Play for the saved match duration. Equal games are a round-robin draw; playoffs use a deciding point.',
+                'max_sets' => 1, 'wins_needed' => 1, 'set_types' => ['timed'],
+                'rules' => 'The player with the most games when time ends wins. Equal games are a draw in round robin; a tied playoff is settled by one deciding point. Record the games as played and select the deciding-point winner separately.',
+            ],
             self::ONE_SET_TO_3 => [
                 'label' => 'One set · first to 3 games',
                 'description' => 'The set ends when a player reaches 3 games.',

@@ -166,9 +166,13 @@ class PlayerPerformanceHistoryService
             if ($first->count() !== ($discipline === 'singles' ? 1 : 2) || $second->count() !== $first->count() || $first->pluck('id')->merge($second->pluck('id'))->unique()->count() !== $first->count() + $second->count()) { $reason = 'Match participants are missing, duplicated or ambiguous'; }
             if ($field && ($memberships[$field->id]->count() > 256 || !$memberships[$field->id]->contains($fixture->registration1_id) || !$memberships[$field->id]->contains($fixture->registration2_id))) { $reason = 'Match registrations do not belong to this event category or its roster exceeds the validation limit'; }
             $sets = $fixture->fixtureResults;
-            $winner = $this->completedWinner($sets, 'registration1_score', 'registration2_score');
+            $format = $fixture->draw->settings?->score_format;
+            $timed = $format === \App\Domain\Draws\Services\TennisScoreFormat::TIMED;
+            $timedWinner = $timed ? app(\App\Services\IndividualMatchOutcomeService::class)->winner($fixture) : null;
+            $winner = $timed ? ($timedWinner ? ((int) $timedWinner === (int) $fixture->registration1_id ? 1 : 2) : null)
+                : $this->completedWinner($sets, 'registration1_score', 'registration2_score');
             $validation = app(\App\Domain\Draws\Services\ScoreValidationService::class)->validate($fixture,
-                $sets->sortBy('set_nr')->map(fn ($set) => [(int) $set->registration1_score, (int) $set->registration2_score])->all());
+                $sets->sortBy('set_nr')->map(fn ($set) => [(int) $set->registration1_score, (int) $set->registration2_score])->all(), $timed && $fixture->stage !== 'RR' && $sets->count() === 1 && (int) $sets->first()->registration1_score === (int) $sets->first()->registration2_score ? $timedWinner : null);
             $format = $fixture->draw->settings?->score_format;
             $hasPreset = $format && in_array($format, \App\Domain\Draws\Services\TennisScoreFormat::keys(), true);
             $credibleLegacy = $sets->every(fn ($set) => $this->legacyTerminalSet((int) $set->registration1_score, (int) $set->registration2_score));
@@ -181,7 +185,9 @@ class PlayerPerformanceHistoryService
                 || ((int) $fixture->match_status === 0 && (!$sharedNetwork || !$this->completeSequence($sets, $winsNeeded, 'registration1_score', 'registration2_score')))
                 || ((int) $fixture->match_status === 2 && (!$legacyRr || (!$hasPreset && $maxWins < $winsNeeded)))
                 || ((int) $fixture->match_status === 3 && ($declared !== $expected || (!$hasPreset && $maxWins < $winsNeeded)))) {
-                $reason = 'Match is unfinished, unplayed or has inconsistent winner/score evidence';
+                $reason = $timed && $fixture->stage === 'RR' && $validation['valid'] && ! $winner
+                    ? 'Timed round-robin draw; no winner-based rating points are awarded'
+                    : 'Match is unfinished, unplayed or has inconsistent winner/score evidence';
             }
             $dateEvidence = $this->confidenceDate($fixture, $event, $asOf ?? CarbonImmutable::today());
             if ($sharedNetwork && $dateEvidence['confidence_future']) { $reason = 'Match schedule is later than the snapshot date'; }

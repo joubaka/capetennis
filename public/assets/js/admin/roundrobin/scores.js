@@ -13,6 +13,16 @@
   var $matchLabel  = $('#rrm-match-label');
   var recoverySets = null;
   var recoveryPreview = null;
+  var currentMatch = null;
+  function _timedTie() {
+    var home = $('#set1-p1').val(), away = $('#set1-p2').val();
+    return root.RR_SCORE_FORMAT === 'timed' && currentMatch && String(currentMatch.stage || 'RR').toUpperCase() !== 'RR'
+      && home !== '' && away !== '' && Number(home) === Number(away);
+  }
+  function _updateDecidingPoint() {
+    $('#rrm-deciding-point').prop('hidden', !_timedTie());
+    if (!_timedTie()) $('#rrm-deciding-winner').val('');
+  }
 
   // ─── Open modal ───────────────────────────────────────────────────
   function open(id, home, away) {
@@ -22,6 +32,11 @@
       Object.values(AdminState.getFixtures()).some(function(rows) { match = rows.find(function(f) { return f.id == id; }); return !!match; });
     }
     if (match) { home = match.home || match.name1 || home; away = match.away || match.name2 || away; }
+    currentMatch = match || null;
+    $('#rrm-deciding-winner').html('<option value="">Choose the winner</option>' + (match ?
+      '<option value="' + Number(match.r1_id || match.registration1_id) + '">' + _escape(home) + '</option>' +
+      '<option value="' + Number(match.r2_id || match.registration2_id) + '">' + _escape(away) + '</option>' : ''));
+    $('#rrm-deciding-winner').val('');
     $fixtureId.val(id);
     $matchLabel.text(home + ' vs ' + away);
 
@@ -36,6 +51,8 @@
 
     // Pre-fill existing score if available
     _prefillScore(id);
+    _updateDecidingPoint();
+    if (_timedTie() && match) $('#rrm-deciding-winner').val(match.winner_registration || match.winner || '');
 
     new bootstrap.Modal(document.getElementById('rrScoreModal')).show();
   }
@@ -74,7 +91,7 @@
       var v2 = $('#set' + n + '-p2').val().trim();
       if (v1 === '' && v2 === '') continue; // blank set — skip
       if (v1 === '' || v2 === '') {
-        AdminToast.error('Please complete both values for Set ' + n + '.');
+        AdminToast.error(root.RR_SCORE_FORMAT === 'timed' ? 'Please enter both games totals.' : 'Please complete both values for Set ' + n + '.');
         err = true;
         continue;
       }
@@ -99,7 +116,13 @@
     var $btn    = $form.find('[type="submit"]');
     var restore = AdminLoading.button($btn, 'Saving…');
 
-    AdminApi.post(AdminRoutes.score(fixtureId), { sets: sets })
+    var payload = { sets: sets };
+    if (_timedTie()) {
+      var winner = Number($('#rrm-deciding-winner').val());
+      if (!winner) { restore(); AdminToast.error('Choose who won the deciding point.'); return; }
+      payload.deciding_point_winner_id = winner;
+    }
+    AdminApi.post(AdminRoutes.score(fixtureId), payload)
       .then(function (res) {
         AdminToast.success('Score saved');
         _handleScoreResponse(res, fixtureId);
@@ -299,6 +322,7 @@
 
     // Form submit
     $form.on('submit', _save);
+    $('#set1-p1, #set1-p2').on('input change', _updateDecidingPoint);
 
     // Delete button
     $(document).on('click', '#rrm-delete-score', _delete);

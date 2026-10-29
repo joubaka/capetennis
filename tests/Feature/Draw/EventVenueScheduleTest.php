@@ -278,6 +278,7 @@ class EventVenueScheduleTest extends TestCase
             'playoff_config' => [
                 ['name' => '1st/2nd', 'slug' => 'main', 'size' => 2, 'positions' => [1, 2], 'enabled' => true],
                 ['name' => '3rd/4th', 'slug' => 'plate', 'size' => 2, 'positions' => [3, 4], 'enabled' => true],
+                ['name' => '5th/6th', 'slug' => 'cons', 'size' => 2, 'positions' => [5, 6], 'enabled' => true],
             ],
         ]);
         $group = DrawGroup::create(['draw_id' => $draw->id, 'name' => 'A']);
@@ -297,7 +298,12 @@ class EventVenueScheduleTest extends TestCase
             ]);
         }
 
-        $created = app(RoundRobinPlayoffScheduleService::class)->prepare($draw->fresh());
+        $service = app(RoundRobinPlayoffScheduleService::class);
+        $this->assertTrue($service->supportsEntireConfiguration($draw->fresh()));
+        $created = $service->prepare($draw->fresh());
+        $ids = $draw->drawFixtures()->where('stage', '!=', 'RR')->orderBy('id')->pluck('id')->all();
+        $service->prepare($draw->fresh());
+        $this->assertSame($ids, $draw->drawFixtures()->where('stage', '!=', 'RR')->orderBy('id')->pluck('id')->all());
         $preview = app(EventVenueScheduleService::class)->preview($event->fresh(), $this->schedulingOptions());
         $matches = collect($preview['matches']);
         $playoffs = $matches->whereIn('fixture_id', $created->pluck('id'));

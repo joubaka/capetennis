@@ -30,6 +30,18 @@ class EventScheduleVisibilityTest extends TestCase
         DB::table('event_admins')->insert(['event_id' => $this->event->id, 'user_id' => $this->admin->id]);
     }
 
+    public function test_bulk_format_cannot_bypass_individual_timed_duration_validation(): void
+    {
+        $draw = Draw::factory()->create(['event_id' => $this->event->id]);
+        $draw->settings()->create(['score_format' => TennisScoreFormat::SHORT_SET_4, 'num_sets' => 1]);
+        $before = $draw->settings->getAttributes();
+        $this->actingAs($this->admin)->postJson(route('backend.events.schedule-visibility', $this->event), [
+            'schedule_visibility' => DrawSetting::SCHEDULE_VISIBILITY_FULL,
+            'score_format' => TennisScoreFormat::TIMED,
+        ])->assertUnprocessable()->assertJsonValidationErrors('score_format');
+        $this->assertSame($before, $draw->settings->fresh()->getAttributes());
+    }
+
     public function test_event_admin_can_apply_first_match_visibility_to_every_event_draw(): void
     {
         $existing = Draw::factory()->create(['event_id' => $this->event->id]);

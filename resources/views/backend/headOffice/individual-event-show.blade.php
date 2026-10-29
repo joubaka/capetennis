@@ -390,7 +390,7 @@ $(document).ready(function () {
     ->map(fn ($draw) => $draw->settings?->score_format ?: 'legacy')
     ->unique();
   $eventSetFormat = $eventSetFormats->count() === 1 ? $eventSetFormats->first() : 'mixed';
-  $supportedEventSetFormats = \App\Domain\Draws\Services\TennisScoreFormat::catalog();
+  $supportedEventSetFormats = array_diff_key(\App\Domain\Draws\Services\TennisScoreFormat::catalog(), ['timed' => true]);
   $eventScoringSettingsLocked = $event->draws->contains(fn ($draw) => (bool) $draw->locked)
     || $event->hasRecordedResults();
 @endphp
@@ -424,6 +424,7 @@ $(document).ready(function () {
               @foreach(\App\Domain\Draws\Services\TennisScoreFormat::groupedCatalog() as $groupLabel => $formats)
                 <optgroup label="{{ $groupLabel }}">
                   @foreach($formats as $key => $format)
+                    @continue($key === 'timed')
                     <option value="{{ $key }}" @selected($eventSetFormat === $key)>{{ $format['label'] }}</option>
                   @endforeach
                 </optgroup>
@@ -431,6 +432,7 @@ $(document).ready(function () {
             </select>
             <div class="form-text">This changes scoring across all {{ $event->draws->count() }} {{ Str::plural('draw', $event->draws->count()) }} for the day.</div>
             <div class="form-text mt-2">Use a Custom scoring preset when non-standard completed set scores must be accepted.</div>
+            <div class="form-text">Configure timed matches in each draw's settings, where playing time and changeover are saved together.</div>
           </fieldset>
 
           <fieldset>

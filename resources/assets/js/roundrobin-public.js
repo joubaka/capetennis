@@ -335,18 +335,21 @@
           while (j < grp.length &&
             Math.abs(sp(grp[j]) - sp(grp[i])) <= 0.0001 &&
             Math.abs(gp(grp[j]) - gp(grp[i])) <= 0.0001) j++;
-          resolved.push(...resolveGroup(grp.slice(i, j)));
+          if (j - i === grp.length) resolved.push(...grp.map(row => ({...row, tiebreak: row.tiebreak || '='})));
+          else resolved.push(...resolveGroup(grp.slice(i, j)));
           i = j;
         }
         return resolved;
       }
 
-      rows.sort((a, b) => b.wins - a.wins);
+      const timed = window.RR_SCORE_FORMAT === 'timed';
+      const rankingValue = row => timed ? Number(row.points || 0) : Number(row.wins || 0);
+      rows.sort((a, b) => rankingValue(b) - rankingValue(a));
       const final = [];
       let i = 0;
       while (i < rows.length) {
         let j = i + 1;
-        while (j < rows.length && rows[j].wins === rows[i].wins) j++;
+        while (j < rows.length && rankingValue(rows[j]) === rankingValue(rows[i])) j++;
         final.push(...resolveGroup(rows.slice(i, j)));
         i = j;
       }
@@ -361,6 +364,7 @@
               <th>#</th>
               <th>Player</th>
               <th class="text-center">W</th>
+              ${timed ? '<th class="text-center">D</th><th class="text-center">Pts</th>' : ''}
               <th class="text-center">L</th>
               <th class="text-center">Sets %</th>
               <th class="text-center">Games %</th>
@@ -389,6 +393,7 @@
             <td>${i + 1}</td>
             <td>${escapeHtml(r.player)}</td>
             <td class="text-center">${r.wins}</td>
+            ${timed ? `<td class="text-center">${Number(r.draws || 0)}</td><td class="text-center">${Number(r.points || 0)}</td>` : ''}
             <td class="text-center">${r.losses}</td>
             <td class="text-center">${setsPct}%</td>
             <td class="text-center">${gamesPct}%</td>

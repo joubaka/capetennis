@@ -10,7 +10,7 @@ final class ScoreValidationService
      * Validates the safe common denominator for configured tennis formats.
      * Format-specific overrides can be added without changing controllers.
      */
-    public function validate(Fixture $fixture, array $sets): array
+    public function validate(Fixture $fixture, array $sets, ?int $decidingPointWinnerId = null): array
     {
         $draw = $fixture->relationLoaded('draw')
             ? $fixture->getRelation('draw')
@@ -19,6 +19,12 @@ final class ScoreValidationService
             ? $draw->getRelation('settings')
             : ($draw?->exists ? $draw->settings : null);
         $scoreFormat = (string) ($settings?->score_format ?? '');
+        if ($scoreFormat === TennisScoreFormat::TIMED) {
+            return $this->validateTimed($fixture, $sets, $decidingPointWinnerId);
+        }
+        if ($decidingPointWinnerId !== null) {
+            return $this->failure('A deciding-point winner is only allowed for tied timed playoffs.');
+        }
         if ($scoreFormat !== '' && in_array($scoreFormat, TennisScoreFormat::keys(), true)) {
             return $this->validatePreset($scoreFormat, $sets);
         }
@@ -48,6 +54,26 @@ final class ScoreValidationService
             return ['valid' => false, 'message' => 'The entered sets do not produce a match winner.'];
         }
 
+        return ['valid' => true, 'message' => null];
+    }
+
+    private function validateTimed(Fixture $fixture, array $sets, ?int $decidingPointWinnerId): array
+    {
+        if (count($sets) !== 1 || ! is_array($sets[0]) || count($sets[0]) !== 2) {
+            return $this->failure('Record one pair of game totals for a timed match.');
+        }
+        [$home, $away] = array_map(fn ($score) => filter_var($score, FILTER_VALIDATE_INT), $sets[0]);
+        if ($home === false || $away === false || min($home, $away) < 0 || max($home, $away) > 999) {
+            return $this->failure('Timed game totals must be whole numbers from 0 to 999.');
+        }
+        if ($fixture->stage === 'RR' || $home !== $away) {
+            return $decidingPointWinnerId === null ? ['valid' => true, 'message' => null]
+                : $this->failure('Select a deciding-point winner only when a timed playoff is tied.');
+        }
+        $participants = array_filter([(int) $fixture->registration1_id, (int) $fixture->registration2_id]);
+        if ($decidingPointWinnerId === null || ! in_array($decidingPointWinnerId, $participants, true) || count($participants) !== 2) {
+            return $this->failure('A tied timed playoff needs its deciding-point winner, selected from the two current participants.');
+        }
         return ['valid' => true, 'message' => null];
     }
 

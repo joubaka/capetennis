@@ -23,6 +23,8 @@ class DrawSetting extends Model
       'playoff_size',
       'num_sets',
       'score_format',
+      'match_duration_minutes',
+      'changeover_minutes',
       'require_full_sets',
       'playoff_config',  // JSON: playoff brackets configuration
       'preset_key',      // Store which preset template was used
@@ -36,6 +38,8 @@ class DrawSetting extends Model
       'notes' => 'array',
       'notes_print' => 'array',
       'require_full_sets' => 'boolean',
+      'match_duration_minutes' => 'integer',
+      'changeover_minutes' => 'integer',
     ];
 
     public function requiresFullSets(): bool

@@ -8,6 +8,16 @@ $('#score-format').on('change', function() {
 // Compare the editable draft against the saved setup; nothing is persisted until save.
 const savedScoreFormat = $('#score-format').val() || '';
 const savedScoreLabel = $('#score-format option:selected').text();
+const savedMatchMinutes = $('#match-duration-minutes').val();
+const savedChangeoverMinutes = $('#changeover-minutes').val();
+function updateTimedSettings() {
+    const timed = $('#score-format').val() === 'timed';
+    $('#timed-match-settings').prop('hidden', !timed);
+    const play = Number($('#match-duration-minutes').val());
+    const gap = Number($('#changeover-minutes').val());
+    $('#timed-slot-summary').text(Number.isInteger(play) && play > 0 && Number.isInteger(gap) && gap >= 0
+        ? play + ' minutes play + ' + gap + ' minutes changeover = ' + (play + gap) + ' minutes per court slot.' : 'Enter playing time and changeover minutes.');
+}
 let draftPlayoffs = () => null;
 let savedPlayoffs = null;
 let isSavingSettings = false;
@@ -31,6 +41,9 @@ function updateSettingsChanges() {
     if (($('#score-format').val() || '') !== savedScoreFormat) {
         changes.push('Match scoring: ' + savedScoreLabel + ' → ' + $('#score-format option:selected').text());
     }
+    if ($('#score-format').val() === 'timed' && ($('#match-duration-minutes').val() !== savedMatchMinutes || $('#changeover-minutes').val() !== savedChangeoverMinutes)) {
+        changes.push('Match timing: ' + $('#match-duration-minutes').val() + ' minutes play + ' + $('#changeover-minutes').val() + ' minutes changeover');
+    }
     const draft = draftPlayoffs();
     if (draft !== null && JSON.stringify(draft) !== JSON.stringify(savedPlayoffs)) {
         const describe = item => item ? item.name + ': ' + (item.enabled ? 'Enabled' : 'Disabled') + ', ' + item.size + ' places, positions ' + (item.positions || []).join(', ') + (item.group_order ? ', group order ' + item.group_order.join(', ') : '') : 'Removed';
@@ -46,6 +59,9 @@ function updateSettingsChanges() {
     $('#btn-save-settings').prop('disabled', isSavingSettings || !rulesEditable || !changes.length);
 }
 $('#score-format').on('change', updateSettingsChanges);
+$('#score-format').on('change', updateTimedSettings);
+$('#match-duration-minutes, #changeover-minutes').on('input change', function() { updateTimedSettings(); updateSettingsChanges(); });
+updateTimedSettings();
 $('#drawSettingsForm').on('submit', function(event) {
     event.preventDefault();
     const $button = $('#btn-save-settings');
@@ -54,6 +70,16 @@ $('#drawSettingsForm').on('submit', function(event) {
     const payload = {_token: @json(csrf_token())};
     const score = $('#score-format').val() || '';
     if (score !== savedScoreFormat) payload.score_format = score;
+    if (score === 'timed') {
+        const minutes = Number($('#match-duration-minutes').val());
+        const gap = Number($('#changeover-minutes').val());
+        if (!Number.isInteger(minutes) || minutes < 1 || minutes > 240 || !Number.isInteger(gap) || gap < 0 || gap > 60) {
+            $('#draw-settings-error').text('Playing time must be 1–240 minutes and changeover 0–60 minutes.');
+            return;
+        }
+        payload.match_duration_minutes = minutes;
+        payload.changeover_minutes = gap;
+    }
     const draft = draftPlayoffs();
     if (draft !== null && JSON.stringify(draft) !== JSON.stringify(savedPlayoffs)) {
         payload.playoff_config = draft;
@@ -174,6 +200,7 @@ function togglePositionSelection($btn, idx, pos) {
     
     // Sort positions
     playoffConfig[idx].positions.sort((a, b) => a - b);
+    $btn.attr('aria-pressed', playoffConfig[idx].positions.includes(pos) ? 'true' : 'false');
     
     // Update preview
     updatePlayoffPreview(idx);
@@ -309,7 +336,7 @@ function renderPlayoffTable() {
     const actualTotalPlayers = assignedPlayerTotal();
     
     playoffConfig.forEach((playoff, idx) => {
-        if (!playoff.enabled && !showDisabledPlayoffs) return;
+        if ((!playoff.enabled || (assignedPlayerTotal() > 0 && qualifierCount(playoff.positions || []) === 0)) && !showDisabledPlayoffs) return;
         const positions = playoff.positions || [];
         const totalPlayers = qualifierCount(positions);
         const size = playoff.size || 4;
@@ -326,25 +353,25 @@ function renderPlayoffTable() {
         
         html += `
         <tr data-idx="${idx}">
-          <td>
+          <td data-label="Enabled">
             <div class="form-check form-switch">
-              <input class="form-check-input playoff-enabled" type="checkbox" 
+              <input class="form-check-input playoff-enabled" type="checkbox" aria-label="Enable ${escapeSettingsText(playoff.name)}"
                      ${playoff.enabled ? 'checked' : ''}
                      data-idx="${idx}">
             </div>
           </td>
-          <td>
-            <input type="text" class="form-control form-control-sm playoff-name" 
+          <td data-label="Playoff name">
+            <input type="text" class="form-control form-control-sm playoff-name" aria-label="Playoff name"
                    value="${escapeSettingsText(playoff.name)}" data-idx="${idx}" style="min-width: 150px;">
           </td>
-          <td>
-            <select class="form-select form-select-sm playoff-size" data-idx="${idx}" style="width: 80px;">
+          <td data-label="Bracket size">
+            <select class="form-select form-select-sm playoff-size" aria-label="Bracket size for ${escapeSettingsText(playoff.name)}" data-idx="${idx}" style="width: 80px;">
               ${[2, 4, 8, 16, 32].map(size => 
                 `<option value="${size}" ${playoff.size == size ? 'selected' : ''}>${size}</option>`
               ).join('')}
             </select>
           </td>
-          <td>
+          <td data-label="Group positions">
             <div class="d-flex flex-wrap gap-1">
               ${Array.from(new Set([...Array.from({length: positionsToShow}, (_, i) => i + 1), ...positions])).sort((a, b) => a - b).map(pos => {
                 const isSelected = positions.includes(pos);
@@ -375,33 +402,33 @@ function renderPlayoffTable() {
                         class="btn btn-sm position-btn ${btnClass}"
                         data-idx="${idx}" 
                         data-pos="${pos}"
-                        title="${escapeSettingsText(tooltip)}"
+                        title="${escapeSettingsText(tooltip)}" aria-label="${escapeSettingsText(tooltip)}" aria-pressed="${isSelected}"
                         ${style ? `style="${style}"` : ''}>
                   #${pos}${isFullyInvalid ? '✗' : isPartial ? '⚠' : ''}
                 </button>`;
               }).join('')}
             </div>
             <small class="text-muted">
-              <strong>Assigned positions:</strong> ${maxPlayersInGroup ? `#1–#${maxPlayersInGroup}` : 'None yet'}
+              <strong>Current group positions:</strong> ${maxPlayersInGroup ? `#1–#${maxPlayersInGroup}` : 'None yet'}
               ${minPlayersInGroup !== maxPlayersInGroup ? 
                 ` | <span class="text-warning">Partial: #${minPlayersInGroup + 1}-#${maxPlayersInGroup}</span>` : ''}
             </small>
             ${positions.some(pos => pos > maxPlayersInGroup) ? '<br><small class="text-muted">Future positions preserved; no qualifiers there yet.</small>' : ''}
           </td>
-          <td>
+          <td data-label="Preview">
             <small class="playoff-preview ${statusClass}" data-idx="${idx}">
               ${statusIcon}${totalPlayers} players
             </small>
           </td>
-          <td>
-            <button type="button" class="btn btn-sm btn-outline-danger btn-remove-playoff" data-idx="${idx}">
+          <td data-label="Actions">
+            <button type="button" class="btn btn-sm btn-outline-danger btn-remove-playoff" aria-label="Remove ${escapeSettingsText(playoff.name)}" data-idx="${idx}">
               <i class="ti ti-trash"></i>
             </button>
           </td>
         </tr>`;
     });
-    $('#playoff-config-body').html(html || '<tr><td colspan="6" class="text-muted">No enabled playoffs. Load a preset, add a playoff, or show disabled playoffs.</td></tr>');
-    $('#rr-show-disabled-label').text('Show disabled playoffs (' + playoffConfig.filter(item => !item.enabled).length + ')');
+    $('#playoff-config-body').html(html || '<tr><td colspan="6" class="text-muted">No enabled playoffs. Load a preset, add a playoff, or show unused playoffs.</td></tr>');
+    $('#rr-show-disabled-label').text('Show unused playoffs (' + playoffConfig.filter(item => !item.enabled || (assignedPlayerTotal() > 0 && qualifierCount(item.positions || []) === 0)).length + ')');
 }
 
 // Update flow preview - MASTER SYNC FUNCTION
@@ -1198,6 +1225,13 @@ $('#rr-show-future-positions').on('change', function() {
 });
 refreshPlayoffGroups = function() {
     numGroups = savedGroupCounts().length;
+    const unused = item => !item.enabled || (assignedPlayerTotal() > 0 && qualifierCount(item.positions || []) === 0);
+    const describe = item => '<li>' + escapeSettingsText(item.name) + ' — ' +
+        (item.enabled ? (unused(item) ? 'Awaiting qualifying positions' : 'Enabled') : 'Disabled') + ', ' + item.size +
+        ' places, group positions ' + escapeSettingsText((item.positions || []).join(', ') || 'none') + '</li>';
+    const unusedSaved = savedPlayoffs.filter(unused);
+    $('#rr-saved-playoff-summary').html('<ul class="mb-0">' + savedPlayoffs.filter(item => !unused(item)).map(describe).join('') + '</ul>' +
+        (unusedSaved.length ? '<details class="mt-2"><summary>Unused preset playoffs (' + unusedSaved.length + ')</summary><ul>' + unusedSaved.map(describe).join('') + '</ul></details>' : ''));
     renderPlayoffTable();
     validateDrawConfiguration();
     updateFlowPreview();

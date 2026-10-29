@@ -247,9 +247,9 @@ final class FlexibleMonradService
         });
     }
 
-    public function score(Draw $draw, int $fixtureId, ?array $sets, int $revision, bool $resetDependents): FlexibleMonradDraw
+    public function score(Draw $draw, int $fixtureId, ?array $sets, int $revision, bool $resetDependents, ?int $decidingPointWinnerId = null): FlexibleMonradDraw
     {
-        return DB::transaction(function () use ($draw, $fixtureId, $sets, $revision, $resetDependents) {
+        return DB::transaction(function () use ($draw, $fixtureId, $sets, $revision, $resetDependents, $decidingPointWinnerId) {
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
             abort_if($draw->locked, 409, 'The draw is locked.');
             $record = FlexibleMonradDraw::where('draw_id', $draw->id)->firstOrFail();
@@ -276,7 +276,7 @@ final class FlexibleMonradService
                     $draw->setRelation('settings', $settings);
                     $fixture->setRelation('draw', $draw);
                     $validation = app(\App\Domain\Draws\Services\ScoreValidationService::class)
-                        ->validate($fixture, $sets);
+                        ->validate($fixture, $sets, $decidingPointWinnerId);
                     if (! $validation['valid']) {
                         throw \Illuminate\Validation\ValidationException::withMessages([
                             'sets' => $validation['message'],
@@ -290,13 +290,18 @@ final class FlexibleMonradService
                     );
                 }
             }
+            if ($sets !== null) $sets = array_map(fn ($set) => array_map('intval', $set), $sets);
+            $newWinner = $sets === null ? null : app(\App\Services\IndividualMatchOutcomeService::class)->winnerFromSets($fixture, $sets, $decidingPointWinnerId);
+            // Legacy flexible draws without an explicit format retain their agreed set-count validator.
+            if ($sets !== null && ! $draw->settings?->score_format) {
+                $newWinner = count(array_filter($sets, fn ($set) => $set[0] > $set[1])) > count($sets) / 2
+                    ? $fixture->registration1_id : $fixture->registration2_id;
+            }
             $old = $fixture->fixtureResults->sortBy('set_nr')->map(fn ($r) => [(int) $r->registration1_score, (int) $r->registration2_score])->values()->all();
-            if ($old === ($sets ?? [])) {
+            if ($old === ($sets ?? []) && (int) $newWinner === (int) $fixture->winner_registration) {
                 if ($reconciled) $record->increment('revision');
                 return $record;
             }
-            $newWinner = $sets === null ? null : (count(array_filter($sets, fn ($s) => $s[0] > $s[1])) > count($sets) / 2
-                ? $fixture->registration1_id : $fixture->registration2_id);
             $changedWinner = $fixture->winner_registration && (int) $newWinner !== (int) $fixture->winner_registration;
             $descendants = $this->descendants($record->graph['nodes'], $key);
             $affected = array_values(array_filter($descendants, fn ($k) => $fixtures[$record->fixture_map[$k]]->fixtureResults->isNotEmpty()));
@@ -320,13 +325,13 @@ final class FlexibleMonradService
             foreach ($sets ?? [] as $i => [$a, $b]) {
                 $fixture->fixtureResults()->create(['set_nr' => $i + 1,
                     'registration1_score' => $a, 'registration2_score' => $b,
-                    'winner_registration' => $a > $b ? $fixture->registration1_id : $fixture->registration2_id,
-                    'loser_registration' => $a > $b ? $fixture->registration2_id : $fixture->registration1_id]);
+                    'winner_registration' => (int) $a === (int) $b ? null : ($a > $b ? $fixture->registration1_id : $fixture->registration2_id),
+                    'loser_registration' => (int) $a === (int) $b ? null : ($a > $b ? $fixture->registration2_id : $fixture->registration1_id)]);
             }
             $fixture->update(['winner_registration' => $newWinner, 'match_status' => $newWinner ? 1 : 0]);
             $this->resolve($record);
             $record->increment('revision');
-            DrawAuditLog::record($draw->id, 'monrad_score_changed', $fixtureId, ['before' => $old, 'after' => $sets,
+            DrawAuditLog::record($draw->id, 'monrad_score_changed', $fixtureId, ['before' => $old, 'after' => $sets, 'deciding_point_winner_id' => $decidingPointWinnerId,
                 'reset_matches' => $changedWinner ? $affected : [], 'reset_results' => $resetResults, 'revision' => $record->revision]);
             app(\App\Services\MatchResultNotificationService::class)->record($fixture);
             return $record->refresh();

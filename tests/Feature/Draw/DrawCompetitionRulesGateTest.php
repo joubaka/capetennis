@@ -142,13 +142,12 @@ class DrawCompetitionRulesGateTest extends TestCase
             ->assertSee('Current setup')->assertSee('Change settings')->assertSee('Changes preview')
             ->assertSee('No changes.')->assertSee('Saved main')->assertSee('Unused plate')
             ->assertSee('View full setup')->assertSee('Save changes')
-            ->assertSee('Show disabled playoffs')->assertSee('Show future positions')
+            ->assertSee('Show unused playoffs')->assertSee('Show future positions')
             ->assertDontSee('Save Settings')->assertDontSee('Save Playoff Config');
         $this->assertSame(1, substr_count($response->getContent(), 'id="btn-save-settings"'));
         // Empty disabled rows must not overwrite the draw-wide assignment total.
-        $this->assertSame(4, $this->draw->groups->sum(fn ($group) => $group->registrations->count()));
-        $response->assertSee('const totalPlayers = assignedPlayerTotal();', false)
-            ->assertDontSee('Choose only group positions that currently contain players before saving playoff changes.');
+        $this->assertMatchesRegularExpression('/id="rr-overview-player-count">\s*4\s*<\/h3>/', $response->getContent());
+        $response->assertDontSee('Choose only group positions that currently contain players before saving playoff changes.');
         if (getenv('DRAW_SETTINGS_SNAPSHOT')) {
             file_put_contents(storage_path('framework/testing/draw-settings-qa.html'), $response->getContent());
         }

@@ -648,6 +648,7 @@
         <div class="col-6 col-md-1"><label class="form-label" for="schedule-gap">Court gap</label><input id="schedule-gap" type="number" class="form-control" value="{{ $scheduleDraft['court_gap'] }}" min="0" max="120"></div>
         <div class="col-6 col-md-1"><label class="form-label" for="schedule-rest">Rest</label><input id="schedule-rest" type="number" class="form-control" value="{{ $scheduleDraft['player_rest'] }}" min="0" max="480"></div>
       </div>
+      <p class="small text-muted mt-2">Match minutes and court gap above are estimates for standard formats. Timed draws use their saved playing time and changeover gap; player rest is applied separately.</p>
       <div class="mt-3">
         <div class="d-flex flex-wrap gap-3 align-items-center mb-3" data-timing-settings>
           <label><input id="schedule-daily-limit" type="checkbox" class="form-check-input me-2" @checked($scheduleDraft['limit_daily_matches'])>Maximum 3 matches per player per day (optional)</label>
@@ -798,7 +799,8 @@
       <label class="form-label" for="reschedule-match-time">Date and time</label><input id="reschedule-match-time" class="form-control mb-3" type="datetime-local" required>
       <label class="form-label" for="reschedule-match-venue">Venue</label><select id="reschedule-match-venue" class="form-select mb-3" required></select>
       <label class="form-label" for="reschedule-match-court">Court</label><select id="reschedule-match-court" class="form-select mb-3" required></select>
-      <label class="form-label" for="reschedule-match-duration">Match minutes</label><input id="reschedule-match-duration" class="form-control mb-3" type="number" min="15" max="480" required>
+      <label class="form-label" for="reschedule-match-duration">Match minutes</label><input id="reschedule-match-duration" class="form-control mb-3" type="number" min="1" max="480" required>
+      <p id="reschedule-match-timing" class="small text-muted"></p>
       <p class="small text-muted">Only this match moves. Feeder order, player rest, court availability and the optional daily limit are checked. Publish separately to update public times.</p>
       <div id="reschedule-match-status" role="status" aria-live="polite"></div>
     </div>
@@ -1486,7 +1488,7 @@
   const scheduleRoundLabel = row => row.programme_day ? `${escapeHtml(programmeDayLabel(row.programme_day))} · Order ${row.programme_sequence} · R${row.round}` : row.wave ? `Wave ${row.wave} · R${row.round}` : `R${row.round}`;
   const matchEnd = (match, result) => match.ends_at
     ? asDate(match.ends_at)
-    : new Date(dateKey(match.scheduled_at) + (Number(match.duration || result.input.duration) + Number(result.input.courtGap || 0)) * 60000);
+    : new Date(dateKey(match.scheduled_at) + (Number(match.duration || result.input.duration) + Number(match.court_gap ?? result.input.courtGap ?? 0)) * 60000);
   const venueRank = row => {
     for (const field of ['home_rank_nr', 'rank_nr', 'away_rank_nr', 'rank', 'rubber_sequence']) {
       const rank = Number(row[field]);
@@ -1835,7 +1837,12 @@
     rescheduleFixture = fixtureKey(match);
     document.getElementById('reschedule-match-name').textContent = match.draw_name+' · '+matchLabel(match);
     document.getElementById('reschedule-match-time').value = match.scheduled_at.replace(' ', 'T').slice(0,16);
-    document.getElementById('reschedule-match-duration').value = match.duration;
+    const durationInput = document.getElementById('reschedule-match-duration');
+    durationInput.value = match.timed ? match.timed_duration : match.duration;
+    durationInput.readOnly = Boolean(match.timed);
+    durationInput.min = match.timed ? '1' : '15';
+    document.getElementById('reschedule-match-timing').textContent = match.timed
+      ? `Timed match: ${match.timed_duration} minutes play + ${match.timed_gap} minutes changeover, from the saved draw settings.` : '';
     const venues = document.getElementById('reschedule-match-venue');
     venues.replaceChildren(...lastScheduleResult.venues.map(venue => new Option(venue.name, venue.id)));
     venues.value = String(match.venue_id); rescheduleCourts(match.court);

@@ -8,6 +8,7 @@ use App\Models\{Draw, DrawAuditLog, Event, Fixture, OrderOfPlay, TeamFixture, Te
 use App\Services\EventAnnouncementService;
 use App\Services\ScheduleEngine;
 use App\Services\Scheduling\EventVenueScheduleService;
+use App\Services\Scheduling\MatchTimingService;
 use App\Services\Scheduling\RoundRobinPlayoffScheduleService;
 use App\Services\Scheduling\UnifiedTeamScheduleService;
 use Illuminate\Http\Request;
@@ -1238,12 +1239,16 @@ final class EventVenueScheduleController extends Controller
             'scheduled_at' => ['required', 'date'],
             'venue_id' => ['required', 'integer'],
             'court' => ['required', 'string', 'max:50', 'regex:/\S/'],
-            'duration' => ['required', 'integer', 'min:15', 'max:480'],
+            'duration' => ['required', 'integer', 'min:1', 'max:480'],
             'court_gap' => ['required', 'integer', 'min:0', 'max:120'],
             'player_rest' => ['required', 'integer', 'min:0', 'max:480'],
             'limit_daily_matches' => ['sometimes', 'boolean'],
             'round_progression' => ['sometimes', 'in:team_ready,all_round'],
         ]);
+
+        if (($data['fixture_kind'] ?? 'individual') === 'team' && $data['duration'] < 15) {
+            return response()->json(['message' => 'Team match duration must be at least 15 minutes.'], 422);
+        }
 
         if ($request->has('preview_context')) {
             $context = $request->validate(['preview_context'=>['required','array'], 'preview_revision'=>['required','string','size:64']]);
@@ -1322,6 +1327,9 @@ final class EventVenueScheduleController extends Controller
                     ->whereHas('draw', fn ($draws) => $draws->where('event_id', $event->id))
                     ->lockForUpdate()->find($data['fixture_id']);
                 if (! $fixture) throw new \InvalidArgumentException('This match does not belong to the event.');
+                $timing = app(MatchTimingService::class)->forFixture($fixture, (int) $data['duration'], (int) $data['court_gap']);
+                $data['duration'] = $timing['duration_minutes'];
+                $data['court_gap'] = $timing['court_gap_minutes'];
                 $venueId = (int) $data['venue_id'];
                 $court = trim((string) $data['court']);
                 DB::table('venues')->where('id', $venueId)->lockForUpdate()->get();
@@ -1360,7 +1368,7 @@ final class EventVenueScheduleController extends Controller
             'scheduled_at' => ['required', 'date'],
             'venue_id' => ['required', 'integer'],
             'court' => ['required', 'string', 'max:50', 'regex:/\S/'],
-            'duration' => ['required', 'integer', 'min:15', 'max:480'],
+            'duration' => ['required', 'integer', 'min:1', 'max:480'],
             'court_gap' => ['required', 'integer', 'min:0', 'max:120'],
             'player_rest' => ['required', 'integer', 'min:0', 'max:480'],
             'limit_daily_matches' => ['sometimes', 'boolean'],
@@ -1368,6 +1376,7 @@ final class EventVenueScheduleController extends Controller
         ]);
 
         if (($data['fixture_kind'] ?? 'individual') === 'team') {
+            if ($data['duration'] < 15) return response()->json(['message' => 'Team match duration must be at least 15 minutes.'], 422);
             $fixtures = TeamFixture::whereIn('id', $data['fixture_ids'])
                 ->whereHas('draw', fn ($draws) => $draws->where('event_id', $event->id))->get()->keyBy('id');
             $eligible = [];
@@ -1403,6 +1412,9 @@ final class EventVenueScheduleController extends Controller
     private function manualAssignmentError(Event $event, Fixture $fixture, int $venueId, string $court,
         array $data, ScheduleConflictService $conflicts): ?string
     {
+        if ($fixture->draw->settings?->score_format !== 'timed' && (int) $data['duration'] < 15) {
+            return 'Match duration must be at least 15 minutes.';
+        }
         if ($fixture->draw->locked) {
             return 'Unlock the draw before manually scheduling this match.';
         }
@@ -1416,9 +1428,10 @@ final class EventVenueScheduleController extends Controller
             if ($error) return $error;
         }
 
+        $timing = app(MatchTimingService::class)->forFixture($fixture, (int) $data['duration'], (int) $data['court_gap']);
         return $conflicts->conflict($fixture->draw, $fixture, $venueId, $court,
-            $data['scheduled_at'], (int) $data['duration'], (int) $data['player_rest'],
-            (int) $data['court_gap'], true);
+            $data['scheduled_at'], $timing['duration_minutes'], (int) $data['player_rest'],
+            $timing['court_gap_minutes'], true);
     }
 
     private function validatedOptions(Request $request): array

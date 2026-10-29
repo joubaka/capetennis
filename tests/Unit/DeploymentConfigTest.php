@@ -6,6 +6,14 @@ use PHPUnit\Framework\TestCase;
 
 class DeploymentConfigTest extends TestCase
 {
+    public function test_timed_match_settings_migration_is_explicitly_allowlisted(): void
+    {
+        $config = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.config');
+        preg_match('/^MIGRATION_PATHS="([^"]*)"/ms', $config, $match);
+        $paths = preg_split('/\\s+/', trim($match[1] ?? ''));
+        $this->assertContains('database/migrations/2026_10_29_120000_add_timed_match_settings_to_draw_settings.php', $paths);
+    }
+
     public function test_category_adjustment_migration_is_explicitly_allowlisted(): void
     {
         $config = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.config');

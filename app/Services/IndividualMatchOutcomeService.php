@@ -11,14 +11,21 @@ final class IndividualMatchOutcomeService
     {
         $sets = $fixture->fixtureResults->sortBy('set_nr')->unique('set_nr')
             ->map(fn ($set) => [(int) $set->registration1_score, (int) $set->registration2_score])->values()->all();
-        return $this->winnerFromSets($fixture, $sets);
+        $decidingWinner = $fixture->draw?->settings?->score_format === TennisScoreFormat::TIMED
+            && $fixture->stage !== 'RR' && count($sets) === 1 && (int) $sets[0][0] === (int) $sets[0][1]
+            ? $fixture->winner_registration : null;
+        return $this->winnerFromSets($fixture, $sets, $decidingWinner);
     }
 
-    public function winnerFromSets(Fixture $fixture, array $sets): ?int
+    public function winnerFromSets(Fixture $fixture, array $sets, ?int $decidingPointWinnerId = null): ?int
     {
-        if (!app(ScoreValidationService::class)->validate($fixture, $sets)['valid']) return null;
+        if (!app(ScoreValidationService::class)->validate($fixture, $sets, $decidingPointWinnerId)['valid']) return null;
         $settings = $fixture->draw?->settings;
         $format = (string) ($settings?->score_format ?? '');
+        if ($format === TennisScoreFormat::TIMED) {
+            if ((int) $sets[0][0] === (int) $sets[0][1]) return $decidingPointWinnerId;
+            return $sets[0][0] > $sets[0][1] ? $fixture->registration1_id : $fixture->registration2_id;
+        }
         $needed = in_array($format, TennisScoreFormat::keys(), true) ? TennisScoreFormat::get($format)['wins_needed']
             : (int) ceil(max(1, min(5, (int) ($settings?->num_sets ?: 3))) / 2);
         $home = count(array_filter($sets, fn ($set) => $set[0] > $set[1]));

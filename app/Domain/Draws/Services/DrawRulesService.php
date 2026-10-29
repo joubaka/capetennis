@@ -11,9 +11,9 @@ final class DrawRulesService
     {
         $settings = $draw->settings;
         $sections = [];
-        $add = function (string $key, string $label, string $rules = '') use (&$sections, $settings): void {
+        $add = function (string $key, string $label, string $rules = '', bool $dormant = false) use (&$sections, $settings): void {
             $sections[] = [
-                'key' => $key, 'label' => $label, 'rules' => $rules,
+                'key' => $key, 'label' => $label, 'rules' => $rules, 'dormant' => $dormant,
                 'notes' => $this->eventNotes($settings?->notes[$key] ?? ''),
                 'print_notes' => (bool) ($settings?->notes_print[$key] ?? true),
             ];
@@ -24,11 +24,15 @@ final class DrawRulesService
             $add('match_format', 'Configured match format', TennisScoreFormat::get($format)['label']."\n\n".TennisScoreFormat::rules($format));
         }
 
+        $timed = $format === TennisScoreFormat::TIMED;
+        if ($timed) {
+            $add('timing', 'Match timing', 'Playing time: '.(int) $settings->match_duration_minutes.' minutes. Changeover: '.(int) $settings->changeover_minutes.' minutes between court bookings.');
+        }
         $flexible = $draw->usesFlexibleMonrad();
         $workflow = $settings?->workflow;
         $roundRobin = ! $flexible && ! in_array($workflow, ['playoffs', 'monrad', 'custom_monrad', 'feed_in_monrad'], true);
         if ($roundRobin) {
-            $add('round_robin', 'Round Robin scoring rules', 'Players play the other players in their group. Standings are ordered by matches won, then percentage of sets won, then percentage of games won, then head-to-head. Players still tied remain equal until the tie is resolved.');
+            $add('round_robin', 'Round Robin scoring rules', $timed ? 'Players play the other players in their group for the saved match duration. Most games wins; equal games are a draw. Standings award 2 points for a win, 1 for a draw and 0 for a loss. Existing head-to-head, sets percentage and games percentage tiebreaks apply within equal-points groups.' : 'Players play the other players in their group. Standings are ordered by matches won, then percentage of sets won, then percentage of games won, then head-to-head. Players still tied remain equal until the tie is resolved.');
         }
         if ($roundRobin && ! $draw->isRoundRobinOnly()) {
             $brackets = collect($settings?->playoff_config ?? [])->filter(fn ($bracket) => is_array($bracket) && ($bracket['enabled'] ?? false));
@@ -40,7 +44,10 @@ final class DrawRulesService
                     if (! empty($bracket['group_order'])) {
                         $rules .= ' Group seed order: '.implode(', ', $bracket['group_order']).'.';
                     }
-                    $add('bracket_'.$bracket['slug'], ($bracket['name'] ?? 'Bracket').' rules', $rules);
+                    $dormant = app(\App\Services\Draw\PlayoffParticipationService::class)->isDormant($draw, $bracket);
+                    if ($timed) $rules .= ' Most games at the end of the timed match wins; equal games require one deciding point. Keep the game score unchanged and record the deciding-point winner separately.';
+                    if ($dormant) $rules .= ' This preset stage awaits qualifying players and currently has no matches.';
+                    $add('bracket_'.$bracket['slug'], ($bracket['name'] ?? 'Bracket').' rules', $rules, $dormant);
                 }
             }
         } elseif (! $roundRobin) {
@@ -62,6 +69,7 @@ final class DrawRulesService
     {
         $notes = [];
         foreach ($this->sections($draw) as $section) {
+            if ($section['dormant'] ?? false) continue;
             $text = trim($section['rules'].($section['print_notes'] && $section['notes'] !== '' ? "\n\n".$section['notes'] : ''));
             if ($text !== '') {
                 $label = $section['label'];

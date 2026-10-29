@@ -449,16 +449,18 @@ class RoundRobinController extends Controller
         ], 422);
       }
 
+      $decision = $request->validate(['deciding_point_winner_id' => 'nullable|integer|min:1']);
+      $decidingPointWinnerId = isset($decision['deciding_point_winner_id']) ? (int) $decision['deciding_point_winner_id'] : null;
       $scoreValidation = app(\App\Domain\Draws\Services\ScoreValidationService::class)
-        ->validate($fixture, $validSets);
+        ->validate($fixture, $validSets, $decidingPointWinnerId);
       if (! $scoreValidation['valid']) {
         return response()->json(['success' => false, 'message' => $scoreValidation['message']], 422);
       }
 
       $wins1 = count(array_filter($validSets, fn ($set) => $set[0] > $set[1]));
       $wins2 = count(array_filter($validSets, fn ($set) => $set[1] > $set[0]));
-      $newWinner = $wins1 > $wins2 ? $fixture->registration1_id : $fixture->registration2_id;
-      if ($fixture->winner_registration && (int) $fixture->winner_registration !== (int) $newWinner) {
+      $newWinner = app(\App\Services\IndividualMatchOutcomeService::class)->winnerFromSets($fixture, $validSets, $decidingPointWinnerId);
+      if ($hadExistingResult && (int) $fixture->winner_registration !== (int) $newWinner) {
         app(\App\Services\Draw\DrawRecoveryImpactService::class)->assertSafeOrdinaryCorrection($fixture);
       }
 
@@ -481,18 +483,20 @@ class RoundRobinController extends Controller
           'stage' => $fixture->stage,
           'previous_sets' => $previousSets,
           'sets'  => $validSets,
+          'deciding_point_winner_id' => $decidingPointWinnerId,
         ]);
 
         return response()->json($response);
       }
 
       // BRACKET MODE
-      $response = DB::transaction(fn () => $this->builder->saveBracketScore($fixture, $validSets));
+      $response = DB::transaction(fn () => $this->builder->saveBracketScore($fixture, $validSets, $decidingPointWinnerId));
 
       DrawAuditLog::record($draw->id, $hadExistingResult ? 'bracket_score_corrected' : 'bracket_score_saved', $fixture->id, [
         'stage' => $fixture->stage,
         'previous_sets' => $previousSets,
         'sets'  => $validSets,
+          'deciding_point_winner_id' => $decidingPointWinnerId,
       ]);
 
       return response()->json($response);
@@ -1017,6 +1021,10 @@ class RoundRobinController extends Controller
 
     foreach ($playoffConfig as $config) {
       if (!($config['enabled'] ?? false)) {
+        continue;
+      }
+
+      if (app(\App\Services\Draw\PlayoffParticipationService::class)->isDormant($draw, $config)) {
         continue;
       }
 
@@ -1628,7 +1636,7 @@ class RoundRobinController extends Controller
           && count(array_unique($positions, SORT_REGULAR)) === count($positions)
           && collect($positions)->every(fn ($position) => filter_var($position, FILTER_VALIDATE_INT) !== false && (int) $position > 0)
           && count($positions) * $groups->count() <= $size
-          && is_array($order) && array_is_list($order) && count(array_unique($order, SORT_REGULAR)) === count($order)
+          && is_array($order) && array_is_list($order)
           && collect($order)->every(fn ($name) => is_string($name) && $groups->contains('name', $name));
       });
       if ($groups->isEmpty() || !$configured) {
@@ -1639,6 +1647,7 @@ class RoundRobinController extends Controller
       }
       $svgData = (new \App\Services\DynamicBracketEngine($draw))->build();
       $previewWidth = 0;
+      $svgData['roundGap'] = 280;
       foreach ($svgData['brackets'] as &$bracket) {
         $sourceLabels = [];
         foreach ($groups as $group) {
@@ -1652,6 +1661,9 @@ class RoundRobinController extends Controller
         }
         foreach ($bracket['rounds'] as &$matches) {
           foreach ($matches as &$match) {
+            // Give full qualifying and progression labels space without abbreviating them.
+            $match['x'] = 60 + ($match['x'] - 60) * 1.4;
+            $match['width'] *= 1.4;
             // Final winner lines extend 120px beyond the match box.
             // Leave a further 40px gutter instead of cropping that exit line.
             $previewWidth = max($previewWidth, $match['x'] + $match['width'] + 160);
@@ -1671,6 +1683,8 @@ class RoundRobinController extends Controller
         }
         unset($matches);
         foreach ($bracket['positionPlayoffs'] as &$placement) {
+          $placement['x'] = 60 + ($placement['x'] - 60) * 1.4;
+          $placement['width'] *= 1.4;
           $previewWidth = max($previewWidth, $placement['x'] + $placement['width'] + 140);
           foreach (['feederLabel1', 'feederLabel2'] as $label) {
             if (preg_match('/^([WL])(\d+)$/', $placement[$label] ?? '', $feeder)) {

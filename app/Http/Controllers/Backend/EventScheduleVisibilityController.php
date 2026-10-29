@@ -27,7 +27,7 @@ final class EventScheduleVisibilityController extends Controller
                 DrawSetting::SCHEDULE_VISIBILITY_FULL,
             ])],
             'num_sets' => ['sometimes', 'nullable', 'integer', Rule::in([1, 2, 3, 5])],
-            'score_format' => ['sometimes', 'nullable', 'string', Rule::in(TennisScoreFormat::keys())],
+            'score_format' => ['sometimes', 'nullable', 'string', Rule::in(array_values(array_diff(TennisScoreFormat::keys(), [TennisScoreFormat::TIMED])))],
             'require_full_sets' => ['sometimes', 'boolean'],
         ]);
 

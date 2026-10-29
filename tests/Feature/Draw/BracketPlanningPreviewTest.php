@@ -51,6 +51,71 @@ class BracketPlanningPreviewTest extends TestCase
         $this->assertSame(0, DB::table('order_of_plays')->count());
     }
 
+    public function test_eight_assigned_players_use_two_brackets_and_keep_the_future_template(): void
+    {
+        $draw = $this->planningDraw();
+        $config = [
+            ['slug' => 'main', 'name' => 'Main', 'enabled' => true, 'size' => 4, 'positions' => [1, 2]],
+            ['slug' => 'plate', 'name' => 'Plate', 'enabled' => true, 'size' => 4, 'positions' => [3, 4]],
+            ['slug' => 'cons', 'name' => 'Future third bracket', 'enabled' => true, 'size' => 4, 'positions' => [5, 6]],
+        ];
+        $draw->settings->update(['playoff_config' => $config]);
+        $seeds = [];
+        foreach (['A', 'B'] as $name) {
+            $group = $draw->groups()->create(['name' => $name]);
+            foreach (\App\Models\Registration::factory()->count(4)->create() as $index => $registration) {
+                $group->registrations()->attach($registration->id, ['seed' => $index + 1]);
+                $seeds[$name.($index + 1)] = $registration->id;
+            }
+        }
+        $this->get(route('backend.draw.main-bracket', $draw))->assertOk()
+            ->assertSee('Main')->assertSee('Plate')->assertDontSee('Future third bracket');
+        $this->assertSame(0, Fixture::count());
+        $this->assertEquals($config, $draw->settings->fresh()->playoff_config);
+        $method = new \ReflectionMethod(\App\Http\Controllers\Backend\RoundRobinController::class, 'generateDynamicPlayoffFixtures');
+        $method->invoke(app(\App\Http\Controllers\Backend\RoundRobinController::class), $draw->fresh(), $config, $seeds);
+        $this->assertSame(['MAIN', 'PLATE'], Fixture::where('draw_id', $draw->id)->distinct()->orderBy('stage')->pluck('stage')->all());
+        $this->assertSame(8, Fixture::where('draw_id', $draw->id)->count());
+        // An existing future-stage fixture must remain visible, never be discarded by a preview.
+        $existing = Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'CONS', 'round' => 1]);
+        $shown = (new \App\Services\DynamicBracketEngine($draw->fresh()))->build();
+        $this->assertContains('cons', array_column($shown['brackets'], 'slug'));
+        $this->assertDatabaseHas('fixtures', ['id' => $existing->id]);
+        // A position present in only one group is still active; retain its missing source as a bye.
+        $draw->groups()->where('name', 'B')->first()->registrations()->detach($seeds['B4']);
+        $this->assertFalse(app(\App\Services\Draw\PlayoffParticipationService::class)->isDormant($draw->fresh(), ['slug' => 'partial', 'positions' => [4]]));
+        $this->assertEquals($config, $draw->settings->fresh()->playoff_config);
+    }
+
+    public function test_full_qualifier_wording_and_progression_labels_have_wider_preview_slots(): void
+    {
+        $draw = $this->planningDraw();
+        foreach (['A', 'B'] as $name) $draw->groups()->create(['name' => $name]);
+        $draw->settings->update(['playoff_config' => [
+            ['slug' => 'main', 'name' => 'Runner-up qualifiers', 'enabled' => true, 'size' => 4, 'positions' => [2]],
+            ['slug' => 'plate', 'name' => 'Fourth-position qualifiers', 'enabled' => true, 'size' => 4, 'positions' => [4]],
+        ]]);
+        $page = $this->get(route('backend.draw.main-bracket', $draw))->assertOk();
+        $page->assertSee('>Runner-up Group A', false)->assertSee('>Runner-up Group B', false)
+            ->assertSee('>Group A position 4', false)->assertSee('>Group B position 4', false)
+            ->assertSee('>Winner match 1', false)->assertSee('>Loser match 1', false)
+            ->assertDontSee('Runner-up Gro...')->assertDontSee('Group A posit...');
+        $this->assertEquals(266, $page->viewData('svgData')['brackets'][0]['rounds'][1][0]['width']);
+        if (getenv('DRAW_GUIDE_SNAPSHOT_DIR')) file_put_contents(getenv('DRAW_GUIDE_SNAPSHOT_DIR').'/playoff-label-preview.html', $page->getContent());
+    }
+
+    public function test_single_group_repeated_order_preset_remains_previewable(): void
+    {
+        $draw = $this->planningDraw();
+        $draw->groups()->create(['name' => 'A']);
+        $preset = \App\Models\DrawSetting::getPresetTemplates()['1_group_4s']['config'];
+        $preset[0]['group_order'] = ['A', 'A'];
+        $draw->settings->update(['playoff_config' => $preset]);
+        $this->get(route('backend.draw.main-bracket', $draw))->assertOk()->assertSee('<svg', false)
+            ->assertDontSee('Choose and save the playoff format');
+        $this->assertEquals($preset, $draw->settings->fresh()->playoff_config);
+    }
+
     public function test_no_groups_undefined_settings_and_round_robin_only_get_clear_next_actions(): void
     {
         $draw = $this->planningDraw();

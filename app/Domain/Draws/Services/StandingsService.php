@@ -34,6 +34,9 @@ final class StandingsService
      */
     public function forDraw(Draw $draw): array
     {
+        if ($draw->settings?->score_format === TennisScoreFormat::TIMED) {
+            return app(\App\Services\InterproDrawBuilder::class)->standings($draw);
+        }
         $draw->loadMissing([
             'settings',
             'groups.groupRegistrations.registration',
@@ -57,6 +60,11 @@ final class StandingsService
      */
     public function forGroup(DrawGroup $group, Collection $allFixtures): array
     {
+        if ($group->draw?->settings?->score_format === TennisScoreFormat::TIMED) {
+            $draw = $group->draw;
+            $draw->setRelation('drawFixtures', $allFixtures);
+            return app(\App\Services\InterproDrawBuilder::class)->standings($draw)[$group->id] ?? [];
+        }
         $group->loadMissing('groupRegistrations.registration');
 
         // 1. Initialise a row per registered player

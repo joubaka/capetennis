@@ -22,9 +22,10 @@ final class ScheduleMoveConflictService
         ];
         $key = fn ($dependency) => is_numeric($dependency) ? 'individual:'.$dependency : (string) $dependency;
         $at = Carbon::parse($move['scheduled_at']);
-        $duration = (int) ($options['duration'] ?? $moving['duration'] ?? 60);
+        $timing = app(MatchTimingService::class)->forDraw($draws[$moving['draw_id']], (int) ($options['duration'] ?? $moving['duration'] ?? 60), (int) ($options['court_gap'] ?? 5));
+        $duration = $timing['duration_minutes'];
         $rest = (int) ($options['player_rest'] ?? 30);
-        $gap = (int) ($options['court_gap'] ?? 5);
+        $gap = $timing['court_gap_minutes'];
         $ready = $at->copy()->addMinutes($duration + $rest);
         $dependencies = array_map($key, $moving['dependencies'] ?? []);
         $release = function (array $target, string $sourceKey, Carbon $sourceStart, int $sourceDuration) use ($key, $rest): Carbon {
@@ -37,7 +38,7 @@ final class ScheduleMoveConflictService
             if ($row['fixture_key'] === $moving['fixture_key'] || ! $row['scheduled_at']) continue;
             $start = Carbon::parse($row['scheduled_at']);
             $end = $start->copy()->addMinutes((int) $row['duration']);
-            $courtEnd = isset($row['ends_at']) ? Carbon::parse($row['ends_at']) : $end->copy()->addMinutes($gap);
+            $courtEnd = isset($row['ends_at']) ? Carbon::parse($row['ends_at']) : $end->copy()->addMinutes((int) ($row['court_gap'] ?? $gap));
             $own = $draws->has($row['draw_id']);
             $match = $own ? $describe($row) : null;
             $laterRelease = $release($row, $moving['fixture_key'], $at, $duration);

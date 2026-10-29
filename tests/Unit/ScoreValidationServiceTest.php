@@ -132,10 +132,34 @@ class ScoreValidationServiceTest extends TestCase
                     'pro8' => [8, 6],
                     'match_tiebreak' => [10, 8],
                     'custom' => [1, 0],
+                    'timed' => [3, 1],
                 };
             }
 
             $this->assertTrue($validator->validate($this->fixtureFor($key), $sets)['valid'], $key);
         }
     }
+    public function test_timed_matches_accept_one_total_and_only_tied_playoffs_require_a_current_deciding_winner(): void
+    {
+        $validator = new ScoreValidationService();
+        $fixture = $this->fixtureFor(TennisScoreFormat::TIMED);
+        $fixture->stage = 'RR';
+        $fixture->registration1_id = 10;
+        $fixture->registration2_id = 20;
+        $this->assertTrue($validator->validate($fixture, [[3, 3]])['valid']);
+        $this->assertTrue($validator->validate($fixture, [[0, 0]])['valid']);
+        $this->assertTrue($validator->validate($fixture, [[8, 5]])['valid']);
+        $this->assertFalse($validator->validate($fixture, [[3, 3]], 10)['valid']);
+        $this->assertFalse($validator->validate($fixture, [[3, 3], [1, 0]])['valid']);
+        $fixture->stage = 'MAIN';
+        $this->assertFalse($validator->validate($fixture, [[3, 3]])['valid']);
+        $this->assertFalse($validator->validate($fixture, [[3, 3]], 99)['valid']);
+        $this->assertTrue($validator->validate($fixture, [[3, 3]], 10)['valid']);
+        $this->assertTrue($validator->validate($fixture, [[3, 3]], 20)['valid']);
+        $this->assertFalse($validator->validate($fixture, [[4, 3]], 20)['valid']);
+        $this->assertFalse($validator->validate($fixture, [[-1, 3]], 20)['valid']);
+        $fixture->registration2_id = null;
+        $this->assertFalse($validator->validate($fixture, [[3, 3]], 10)['valid']);
+    }
+
 }

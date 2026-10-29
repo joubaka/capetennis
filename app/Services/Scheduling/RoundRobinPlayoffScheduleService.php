@@ -77,7 +77,8 @@ final class RoundRobinPlayoffScheduleService
     public function supportsEntireConfiguration(Draw $draw): bool
     {
         $draw->loadMissing(['settings', 'groups']);
-        $config = collect($draw->settings?->playoff_config ?? [])->where('enabled', true);
+        $config = collect($draw->settings?->playoff_config ?? [])->where('enabled', true)
+            ->reject(fn ($entry) => app(\App\Services\Draw\PlayoffParticipationService::class)->isDormant($draw, $entry));
 
         return $config->isNotEmpty()
             && $config->every(fn ($entry) => (int) ($entry['size'] ?? 0) === 2)
@@ -125,7 +126,7 @@ final class RoundRobinPlayoffScheduleService
 
         return collect($draw->settings?->playoff_config ?? [])->filter(function ($entry) {
             return ($entry['enabled'] ?? false) && (int) ($entry['size'] ?? 0) === 2;
-        })->map(function ($entry) use ($groups) {
+        })->reject(fn ($entry) => app(\App\Services\Draw\PlayoffParticipationService::class)->isDormant($draw, $entry))->map(function ($entry) use ($groups) {
             $sources = collect($entry['positions'] ?? [])->flatMap(fn ($position) => $groups->map(fn ($group) => [
                 'group_id' => (int) $group->id,
                 'group_name' => (string) $group->name,

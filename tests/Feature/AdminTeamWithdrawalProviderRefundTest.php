@@ -109,6 +109,57 @@ class AdminTeamWithdrawalProviderRefundTest extends TestCase
         $this->assertDatabaseCount('team_provider_refund_attempts', 0);
     }
 
+    public function test_late_provider_refund_preserves_deadline_and_uses_audited_authorization_for_recovery(): void
+    {
+        $s = $this->scenario();
+        $s['event']->update(['withdrawal_deadline' => now()->subDay()]);
+        $deadline = $s['event']->withdrawalCloseAt()->format('Y-m-d H:i:s');
+        $review = app(AdminTeamWithdrawalService::class)->review($s['event'], $s['team'], $s['slot'], $s['actor'], 'payfast', 'full', 'refund', true);
+        $payload = ['order_id' => $s['order']->id, 'fingerprint' => $review['fingerprint'], 'destination' => 'payfast',
+            'fee_mode' => 'full', 'deadline_override' => 1, 'reason' => 'Exceptional late withdrawal approved', 'confirm' => 1];
+        $this->mock(Payfast::class)->shouldReceive('refundToOriginalSource')->once()->with($s['order']->payfast_pf_payment_id, 200.0, 'Team withdrawal refund')->andThrow(new \RuntimeException('timeout'));
+        $this->post($this->url($s), $payload)->assertRedirect();
+        $attempt = TeamProviderRefundAttempt::where('order_id', $s['order']->id)->sole();
+        $this->assertSame($deadline, $attempt->authorized_deadline->format('Y-m-d H:i:s'));
+        $this->assertTrue($attempt->authorized_withdrawn_at->gt($attempt->authorized_deadline));
+        $this->assertSame('uncertain', $attempt->status);
+        $this->post($this->url($s), $payload)->assertRedirect();
+        $evidence = ['action' => 'reconcile', 'confirm' => 1, 'externally_confirmed' => 1,
+            'pf_payment_id' => $attempt->pf_payment_id, 'amount' => '200.00', 'reference' => 'LATE-REFUND-123',
+            'reason' => 'Verified independently with provider', 'confirmed_at' => now()->toDateTimeString()];
+        $audit = \Spatie\Activitylog\Models\Activity::where('description', 'super user authorized team withdrawal refund after deadline')->sole();
+        $properties = $audit->properties;
+        $audit->update(['properties' => $properties->merge(['fingerprint' => str_repeat('0', 64)])]);
+        $this->postJson($this->recovery($s), $evidence)->assertUnprocessable();
+        $this->assertDatabaseCount('wallet_transactions', 1);
+        $this->assertSame('uncertain', $attempt->fresh()->status);
+        $audit->delete();
+        $this->postJson($this->recovery($s), $evidence)->assertUnprocessable();
+        $this->assertDatabaseCount('wallet_transactions', 1);
+        activity('refund')->performedOn($s['order'])->causedBy($s['actor'])->withProperties($properties)->log('super user authorized team withdrawal refund after deadline');
+        $this->post($this->recovery($s), $evidence)->assertRedirect();
+        $this->assertDatabaseHas('team_payment_orders', ['id' => $s['order']->id, 'refund_status' => 'completed', 'refund_net' => 285, 'refund_fee' => 0]);
+        $this->assertDatabaseHas('wallet_transactions', ['wallet_id' => $s['wallet']->id, 'type' => 'credit', 'amount' => 85]);
+        $this->assertDatabaseCount('team_provider_refund_attempts', 1);
+        $this->assertDatabaseCount('wallet_transactions', 2);
+    }
+
+    public function test_canonical_admin_refund_request_rejects_late_withdrawal_without_override(): void
+    {
+        $s = $this->scenario();
+        $s['event']->update(['withdrawal_deadline' => now()->subDay()]);
+        $withdrawn = app(\App\Domain\Payments\Services\TeamPaymentService::class)->recordWithdrawal($s['order'], $s['actor']);
+        try {
+            app(RefundExecutionService::class)->requestAdminTeamWithdrawalRefund($withdrawn, $s['actor'], 'wallet', 'current', str_repeat('a', 64));
+            $this->fail('Late canonical refund must require explicit override.');
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            $this->assertArrayHasKey('refund', $exception->errors());
+        }
+        $this->assertDatabaseCount('team_provider_refund_attempts', 0);
+        $this->assertDatabaseCount('wallet_transactions', 1);
+        $this->assertSame('not_refunded', $s['order']->fresh()->refund_status);
+    }
+
     public function test_choices_are_bound_to_preview_and_review_is_read_only(): void
     {
         $s = $this->scenario();

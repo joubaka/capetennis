@@ -253,12 +253,28 @@
         <div class="card-header"><h5 class="mb-0">Current setup</h5></div>
         <div class="card-body">
           <p><strong>Groups:</strong> {{ $currentBoxes }} · <strong>Match scoring:</strong> {{ $scoreFormats[$currentScoreFormat]['label'] ?? "Legacy: maximum {$legacySets} sets" }}</p>
+          @if($currentScoreFormat === 'timed')
+            <p class="mb-2">{{ $draw->settings->match_duration_minutes }} minutes playing time + {{ $draw->settings->changeover_minutes }} minutes changeover.</p>
+          @endif
           @unless($roundRobinOnly)
+            <div id="rr-saved-playoff-summary">
+            @php
+              $unusedPlayoffs = collect($playoffConfig)->filter(fn ($playoff) => !($playoff['enabled'] ?? false) || app(\App\Services\Draw\PlayoffParticipationService::class)->isDormant($draw, $playoff));
+            @endphp
             <ul class="mb-0">
               @foreach($playoffConfig as $playoff)
+                @continue($unusedPlayoffs->contains('slug', $playoff['slug']))
                 <li>{{ $playoff['name'] }} — {{ ($playoff['enabled'] ?? false) ? 'Enabled' : 'Disabled' }}, {{ $playoff['size'] }} places, group positions {{ implode(', ', $playoff['positions'] ?? []) ?: 'none' }}</li>
               @endforeach
             </ul>
+            @if($unusedPlayoffs->isNotEmpty())
+              <details class="mt-2"><summary>Unused preset playoffs ({{ $unusedPlayoffs->count() }})</summary><ul class="mt-2 mb-0">
+                @foreach($unusedPlayoffs as $playoff)
+                  <li>{{ $playoff['name'] }} — {{ ($playoff['enabled'] ?? false) ? 'Awaiting qualifying positions' : 'Disabled' }}, group positions {{ implode(', ', $playoff['positions'] ?? []) ?: 'none' }}</li>
+                @endforeach
+              </ul></details>
+            @endif
+            </div>
           @endunless
         </div>
       </div>
@@ -289,6 +305,7 @@
                   @foreach(\App\Domain\Draws\Services\TennisScoreFormat::groupedCatalog() as $groupLabel => $formats)
                     <optgroup label="{{ $groupLabel }}">
                       @foreach($formats as $key => $format)
+                        @continue($key === 'timed' && $draw->isTeamDraw())
                         <option value="{{ $key }}" data-description="{{ $format['description'] }}" data-max-sets="{{ $format['max_sets'] }}"
                           @selected($currentScoreFormat === $key)>{{ $format['label'] }}</option>
                       @endforeach
@@ -301,6 +318,15 @@
               </div>
 
             </div>
+            <fieldset class="border rounded p-3 mt-3" id="timed-match-settings" @if($currentScoreFormat !== 'timed') hidden @endif>
+              <legend class="float-none w-auto fs-6 px-1">Timed matches</legend>
+              <div class="row g-3">
+                <div class="col-sm-6"><label for="match-duration-minutes" class="form-label">Playing time (minutes)</label><input type="number" id="match-duration-minutes" class="form-control" min="1" max="240" step="1" value="{{ $draw->settings?->match_duration_minutes ?? 20 }}"></div>
+                <div class="col-sm-6"><label for="changeover-minutes" class="form-label">Changeover gap (minutes)</label><input type="number" id="changeover-minutes" class="form-control" min="0" max="60" step="1" value="{{ $draw->settings?->changeover_minutes ?? 5 }}"></div>
+              </div>
+              <p class="small text-muted mt-2 mb-0" id="timed-slot-summary" aria-live="polite"></p>
+              <p class="small mb-0 mt-2">Most games wins when time expires. Group ties are draws (win 2 points, draw 1, loss 0). A tied playoff is decided by one deciding point. Scheduling uses playing time plus the changeover gap; player rest remains separate.</p>
+            </fieldset>
           @unless($roundRobinOnly)
           <hr class="my-4">
 
@@ -356,10 +382,10 @@
           <hr class="my-3">
 
           <div class="d-flex flex-wrap gap-3 mb-3">
-            <label class="form-check"><input type="checkbox" class="form-check-input" id="rr-show-disabled"><span class="form-check-label" id="rr-show-disabled-label">Show disabled playoffs</span></label>
+            <label class="form-check"><input type="checkbox" class="form-check-input" id="rr-show-disabled"><span class="form-check-label" id="rr-show-disabled-label">Show unused playoffs</span></label>
             <label class="form-check"><input type="checkbox" class="form-check-input" id="rr-show-future-positions"><span class="form-check-label">Show future positions</span></label>
           </div>
-          <p class="small text-muted">Previews count saved player assignments. Preset positions and group order are preserved, including positions awaiting players.</p>
+          <p class="small text-muted">Previews count saved player assignments. Preset positions and group order are preserved, including stages awaiting qualifying positions. Unused stages are hidden until they have qualifiers.</p>
           <div class="table-responsive">
             <table class="table table-sm table-hover" id="playoff-config-table">
               <thead class="table-light">
@@ -826,7 +852,7 @@
     <div class="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center">
       <div>
         <h5 class="card-title mb-0"><i class="ti ti-notes me-1"></i> Rules & Notes</h5>
-        <small class="text-muted">Rules follow the saved draw settings. Add event-specific notes below; save before printing. Print switches apply only to notes.</small>
+        <small class="text-muted">Review the saved rules, then open a section to add notes. Print switches control your notes; match rules are always included.</small>
       </div>
       <button class="btn btn-success btn-sm" id="btn-save-notes">
         <i class="ti ti-device-floppy me-1"></i> Save All Notes
@@ -875,27 +901,28 @@
         </div>
 
         @foreach($ruleSections as $section)
-          <div class="col-md-6">
-            <div class="card border h-100">
-              <div class="card-header py-2 bg-light d-flex flex-wrap gap-2 justify-content-between align-items-center">
-                <h6 class="mb-0">{{ $section['label'] }}</h6>
+          <div class="col-12">
+            <details class="card border rr-rule-section" @if(in_array($section['key'], ['general', 'match_format'], true)) open @endif>
+              <summary class="p-3 fw-semibold">{{ $section['label'] }}
+                @if($section['dormant'] ?? false)<span class="badge bg-label-secondary ms-2">No current qualifiers</span>
+                @elseif($section['notes'] !== '')<span class="badge bg-label-primary ms-2">Notes added</span>@endif
+              </summary>
+              <div class="card-body p-3 pt-0">
                 @unless($section['key'] === 'match_format')
-                  <div class="form-check form-switch mb-0">
+                  <div class="form-check form-switch mb-3">
                     <input class="form-check-input notes-enabled" type="checkbox" id="print-note-{{ $section['key'] }}" data-key="{{ $section['key'] }}" @checked($section['print_notes'])>
                     <label class="form-check-label small text-muted" for="print-note-{{ $section['key'] }}">Print notes</label>
                   </div>
                 @endunless
-              </div>
-              <div class="card-body p-3">
                 @if($section['rules'] !== '')
                   <div class="mb-3" style="white-space:pre-line">{{ $section['rules'] }}</div>
                 @endif
                 @unless($section['key'] === 'match_format')
                   <label class="form-label small" for="event-note-{{ $section['key'] }}">Event-specific notes</label>
-                  <textarea id="event-note-{{ $section['key'] }}" class="form-control notes-field" data-key="{{ $section['key'] }}" rows="4" placeholder="Add event-specific instructions...">{{ $section['notes'] }}</textarea>
+                  <textarea id="event-note-{{ $section['key'] }}" class="form-control notes-field" data-key="{{ $section['key'] }}" rows="3" placeholder="Add event-specific instructions...">{{ $section['notes'] }}</textarea>
                 @endunless
               </div>
-            </div>
+            </details>
           </div>
         @endforeach
 
@@ -963,16 +990,19 @@
 
         <input type="hidden" id="rrm-fixture-id">
 
-        <label class="form-label fw-bold mb-1">Set Scores</label>
+        <label class="form-label fw-bold mb-1">{{ $selectedScoreFormat === 'timed' ? 'Games at time' : 'Set Scores' }}</label>
         <p class="small text-muted mb-3">
           {{ optional($draw->settings)->score_format
             ? \App\Domain\Draws\Services\TennisScoreFormat::rules($draw->settings->score_format)
             : 'Legacy scoring: enter a decisive result within the configured set limit.' }}
+          @if($selectedScoreFormat === 'timed')
+            {{ $draw->settings->match_duration_minutes }} minutes playing time; {{ $draw->settings->changeover_minutes }} minutes changeover.
+          @endif
         </p>
 
         @for($setNumber = 1; $setNumber <= 5; $setNumber++)
           <div class="row g-2 mb-2 score-set-row" data-set-row="{{ $setNumber }}">
-            <div class="col-12 fw-bold">Set {{ $setNumber }}</div>
+            <div class="col-12 fw-bold">{{ $selectedScoreFormat === 'timed' ? 'Games won' : 'Set '.$setNumber }}</div>
             <div class="col-6">
               <label class="form-label"><span id="set{{ $setNumber }}-p1-label">Player 1</span></label>
               <input type="number" min="0" max="999" inputmode="numeric" class="form-control" id="set{{ $setNumber }}-p1">
@@ -983,6 +1013,11 @@
             </div>
           </div>
         @endfor
+        <div id="rrm-deciding-point" class="mt-3" hidden>
+          <label for="rrm-deciding-winner" class="form-label">Who won the deciding point?</label>
+          <select id="rrm-deciding-winner" class="form-select"><option value="">Choose the winner</option></select>
+          <p class="form-text">The games remain tied. This point decides who advances in the playoff.</p>
+        </div>
 
       </div>
 
@@ -1072,6 +1107,9 @@
 
     window.RR_SAVE_SCORE_URL   = "{{ route('backend.roundrobin.score.store', ['fixture' => 'FIXTURE_ID']) }}";
     window.RR_DELETE_SCORE_URL = "{{ route('backend.roundrobin.score.delete', ['fixture' => 'FIXTURE_ID']) }}";
+    window.RR_SCORE_FORMAT = @json($draw->settings?->score_format);
+    window.RR_MATCH_MINUTES = @json($draw->settings?->match_duration_minutes);
+    window.RR_CHANGEOVER_MINUTES = @json($draw->settings?->changeover_minutes);
     window.RR_SCORE_MAX_SETS = {{ optional($draw->settings)->score_format
       ? \App\Domain\Draws\Services\TennisScoreFormat::maxSets($draw->settings->score_format)
       : max(1, min(5, (int) (optional($draw->settings)->num_sets ?: 3))) }};
