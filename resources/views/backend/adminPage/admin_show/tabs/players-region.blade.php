@@ -96,7 +96,7 @@
               $paid = (int) $slot->pay_status === 1;
             @endphp
             @continue($rosterOnly && !$player && !$np)
-            <tr data-roster-row="{{ $slot->id ?? 'imported-'.$np?->id }}" data-roster-player-id="{{ $player?->id }}" data-roster-imported-id="{{ $slot->noProfile?->id }}" data-occupied="{{ ($player || $np) ? 'true' : 'false' }}" data-search="{{ $rosterOnly ? $name : $name.' '.$email.' '.$cell }}" @unless($rosterOnly)data-payment="{{ ($player || $np) ? ($paid ? 'paid' : 'unpaid') : 'vacant' }}" data-profile="{{ $player ? 'linked' : ($np ? 'imported' : 'vacant') }}"
+            <tr data-roster-row="{{ $slot->id ?? 'imported-'.$slot->noProfile?->id }}" data-roster-player-id="{{ $player?->id }}" data-roster-imported-id="{{ $slot->noProfile?->id }}" data-occupied="{{ ($player || $np) ? 'true' : 'false' }}" data-search="{{ $rosterOnly ? $name : $name.' '.$email.' '.$cell }}" @unless($rosterOnly)data-payment="{{ ($player || $np) ? ($paid ? 'paid' : 'unpaid') : 'vacant' }}" data-profile="{{ $player ? 'linked' : ($np ? 'imported' : 'vacant') }}"
 @endunless
 >
               <td data-label="Rank"><span class="badge bg-label-primary">{{ $slot->rank }}</span>@if(!$rosterOnly && $slot->selected_team_reserve)<span class="badge bg-label-warning ms-1">Reserve</span>
@@ -139,9 +139,9 @@
               @endif
               @if($rosterLocked && !$rosterOnly && $slot->exists && $player && $paid)
                 @role('super-user')
-                  <details class="roster-more-actions" data-roster-player-actions><summary class="btn btn-sm btn-outline-secondary" aria-label="Player actions for {{ $name }}">Player actions <i class="ti ti-chevron-down" aria-hidden="true"></i></summary>
-                    <div class="roster-more-panel"><a class="btn btn-sm btn-outline-warning" href="{{ route('backend.team.withdrawal.show', [$event, $team, $slot]) }}">Review withdrawal / refund</a></div>
-                  </details>
+                  @component('backend.adminPage.admin_show._roster-player-modal', ['team' => $team, 'rosterSlot' => $slot, 'identity' => $slot->noProfile ?? $slot, 'name' => $name, 'event' => $event])
+                    <a class="btn btn-sm btn-outline-warning" href="{{ route('backend.team.withdrawal.show', [$event, $team, $slot]) }}">Review withdrawal / refund</a>
+                  @endcomponent
                 @endrole
               @endif
 

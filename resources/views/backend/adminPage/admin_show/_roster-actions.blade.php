@@ -5,9 +5,7 @@
 <div class="team-roster-actions">
   @if($compactRoster)
     @include('backend.adminPage.admin_show._roster-order-buttons')
-    <details class="roster-more-actions" data-roster-player-actions>
-      <summary class="btn btn-sm btn-outline-secondary" aria-label="Player actions for {{ $name }}">Player actions <i class="ti ti-chevron-down" aria-hidden="true"></i></summary>
-      <div class="roster-more-panel">
+    @component('backend.adminPage.admin_show._roster-player-modal', ['team' => $team, 'rosterSlot' => $slot, 'identity' => $identity, 'name' => $name, 'event' => $event])
   @endif
   @if(!$replacementPaid || auth()->user()->hasRole('super-user'))
     <details class="roster-replacement">
@@ -88,6 +86,7 @@
         <a class="btn btn-sm btn-outline-warning mt-2" href="{{ route('backend.team.withdrawal.show', [$event, $team, $slot]) }}">Review withdrawal / refund</a>
       @endrole
     @endif
-  </div></details>@endif
+    @endcomponent
+  @endif
 </div>
 @endif

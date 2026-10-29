@@ -295,4 +295,17 @@
 .roster-player-form fieldset { min-width:0; }
 .roster-player-form > button, .roster-player-form form > button { margin-top:.5rem; }
 .roster-player-form .select2-container { max-width:100%; }
+.roster-player-actions-modal .modal-title { overflow-wrap:anywhere; }
+.roster-player-actions-body > details { margin-bottom:1rem; }
+.roster-player-actions-body > form { margin:1rem 0; }
+.roster-player-actions-body .roster-replacement-form { margin-bottom:1rem; }
+.roster-player-actions-body [data-team-roster-remove-confirm]:not([hidden]) { display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.5rem; }
+.roster-player-actions-body [data-team-roster-remove-confirm] > .small { flex-basis:100%; }
+@media (max-width:991px) {
+  .roster-player-actions-modal .btn,
+  .roster-player-actions-modal .form-control,
+  .roster-player-actions-modal .form-select { min-height:44px; }
+  .roster-player-actions-modal .btn-close { min-width:44px; min-height:44px; box-sizing:border-box; }
+  .roster-player-actions-modal .roster-replacement-choice label { display:inline-flex; align-items:center; gap:.5rem; min-height:44px; }
+}
 .team-player-table tr:has(.roster-replacement[open]) > td { vertical-align:top; }

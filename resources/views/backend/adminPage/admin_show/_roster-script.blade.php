@@ -3,6 +3,31 @@
 if (!window.teamRosterControls) {
   window.teamRosterControls = true;
   let searchTimer, searchRequest;
+  const actionModalAnchors = new WeakMap();
+  document.addEventListener('show.bs.modal', event => {
+    const modal = event.target;
+    if (!modal.matches?.('[data-roster-actions-modal]') || actionModalAnchors.has(modal)) return;
+    const anchor = document.createComment('player actions');
+    modal.before(anchor); actionModalAnchors.set(modal, anchor);
+    document.body.append(modal);
+  });
+  document.addEventListener('hidden.bs.modal', event => {
+    const modal = event.target, anchor = actionModalAnchors.get(modal);
+    if (!anchor) return;
+    if (anchor.isConnected) anchor.replaceWith(modal);
+    else { window.bootstrap?.Modal.getInstance(modal)?.dispose(); modal.remove(); }
+    actionModalAnchors.delete(modal);
+  });
+  document.addEventListener('hide.bs.modal', event => {
+    if (!event.target.matches?.('[data-roster-actions-modal]') || !window.jQuery?.fn?.select2) return;
+    event.target.querySelectorAll('.select2-hidden-accessible').forEach(select => window.jQuery(select).select2('close'));
+  });
+  const closeActionsModal = modal => {
+    if (!modal?.classList.contains('show')) return Promise.resolve();
+    const instance = window.bootstrap?.Modal.getInstance(modal);
+    if (!instance) return Promise.reject(new Error('Close player actions, then retry updating the roster.'));
+    return new Promise(resolve => { modal.addEventListener('hidden.bs.modal', resolve, {once:true}); instance.hide(); });
+  };
   const initReplacementSelects = root => {
     if (!window.jQuery?.fn?.select2) return;
     root.querySelectorAll('[data-roster-replacement-select]').forEach(element => {
@@ -13,7 +38,7 @@ if (!window.teamRosterControls) {
         placeholder: 'Search for a player…',
         minimumInputLength: 2,
         allowClear: true,
-        dropdownParent: window.jQuery(document.body),
+        dropdownParent: window.jQuery(element.closest('.modal') || document.body),
         ajax: {
           url: element.dataset.rosterReplacementSelect,
           dataType: 'json',
@@ -73,7 +98,9 @@ if (!window.teamRosterControls) {
   document.addEventListener('submit', async event => {
     const form = event.target.closest('[data-team-roster-change]'); if (!form) return;
     event.preventDefault(); if (form.dataset.busy) return;
-    const panel = form.closest('[data-roster-panel]');
+    const modal = form.closest('[data-roster-actions-modal]');
+    const owner = modal && document.querySelector('[data-roster-actions-target="#' + CSS.escape(modal.id) + '"]');
+    const panel = form.closest('[data-roster-panel]') || owner?.closest('[data-roster-panel]');
     if (panel?.dataset.rosterSaving) return;
     if (form.elements.remove) {
       const confirmation = form.querySelector('[data-team-roster-remove-confirm]');
@@ -81,7 +108,9 @@ if (!window.teamRosterControls) {
     }
     form.dataset.busy = '1';
     if (panel) panel.dataset.rosterSaving = '1';
-    const payload = new FormData(form), buttons = [...(panel || form).querySelectorAll('button')].filter(button => !button.disabled);
+    const payload = new FormData(form), buttons = [...new Set([
+      ...(panel || form).querySelectorAll('button'), ...(modal || form).querySelectorAll('button')
+    ])].filter(button => !button.disabled);
     buttons.forEach(button => button.disabled = true);
     let feedback = form.parentElement.querySelector('[data-team-roster-feedback]');
     if (!feedback) { feedback = document.createElement('p'); feedback.dataset.teamRosterFeedback = ''; feedback.setAttribute('role','status'); form.after(feedback); }
@@ -101,7 +130,8 @@ if (!window.teamRosterControls) {
         }
       }
       if (!movedInPlace) {
-        if (window.refreshTeamRoster && panel) await window.refreshTeamRoster(form);
+        await closeActionsModal(modal);
+        if (window.refreshTeamRoster && panel) await window.refreshTeamRoster(panel);
         else if (window.refreshTeamWorkspace) await window.refreshTeamWorkspace();
         else throw new Error('The change was saved. Reopen this player list to see the updated roster.');
       }
@@ -112,7 +142,7 @@ if (!window.teamRosterControls) {
         const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'btn btn-outline-secondary ms-2'; retry.textContent = 'Refresh player list';
         retry.addEventListener('click', async () => {
           retry.disabled = true;
-          try { await window.refreshTeamRoster(form); window.toastr?.success('Player list updated.'); }
+          try { await closeActionsModal(modal); await window.refreshTeamRoster(panel || form); window.toastr?.success('Player list updated.'); }
           catch (refreshError) { feedback.firstChild.textContent = refreshError.message; retry.disabled = false; }
         });
         feedback.append(retry);

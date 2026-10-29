@@ -28,17 +28,40 @@
     return result.sort((a, b) => a.rank - b.rank);
   }
 
+  function syncRelated(teamId, data) {
+    if (!teamId || !Array.isArray(data.order)) return;
+    const byPlayer = new Map(data.order.filter(item => item.player_id > 0).map(item => [String(item.player_id), item.rank]));
+    const bySlot = new Map(data.order.map(item => [String(item.slot_id), item.rank]));
+    root.document.querySelectorAll('[data-roster-modal-portal] form, [data-roster-actions-modal] form').forEach(form => {
+      const modal = form.closest('.modal');
+      const scope = form.querySelector('[name="expected_team_id"]')?.value || form.querySelector('[name="team_id"]')?.value || modal?.dataset.teamId;
+      if (String(scope) !== String(teamId)) return;
+      const playerId = form.querySelector('[name="expected_player_id"]')?.value;
+      const rank = Number(playerId) > 0 ? byPlayer.get(String(playerId))
+        : modal?.dataset.slotType === data.order_type ? bySlot.get(String(modal.dataset.slotId)) : undefined;
+      if (!rank) return;
+      form.querySelectorAll('input[type="hidden"][name="expected_rank"], input[type="hidden"][name="expected_roster_rank"]')
+        .forEach(input => { input.value = String(rank); });
+      modal?.querySelectorAll('[data-current-roster-rank]').forEach(label => { label.textContent = String(rank); });
+    });
+    if (data.order_type === 'imported') root.document.querySelectorAll('[data-rank-slot-id]').forEach(option => {
+      const rank = bySlot.get(option.dataset.rankSlotId);
+      if (rank) option.textContent = option.dataset.rankPlayerName + ' · Rank ' + rank;
+    });
+  }
+
   function apply(form, data) {
     const team = form.closest('[data-roster-team]');
     const body = team?.querySelector('.roster-compact-table .team-player-table > tbody');
-    if (!body) return false;
+    if (!body || team.isConnected === false) return false;
     const rows = [...body.children].filter(row => row.matches('[data-roster-row]'));
+    const ordered = plan(rows, data.order, data.order_type);
+    if (!ordered) return false;
+    syncRelated(team.dataset?.rosterTeam, data);
     // Reserve promotion has conditional controls; reconcile that case using the
     // existing authorized AJAX fragment rather than guessing selection state.
     if (rows.some(row => row.querySelector('[name="confirm_main_slot_id"]')
         || [...row.querySelectorAll('[data-label="Rank"] .badge')].some(badge => badge.textContent.trim() === 'Reserve'))) return false;
-    const ordered = plan(rows, data.order, data.order_type);
-    if (!ordered) return false;
     const blocks = ordered.map(item => {
       const details = [];
       let next = item.row.nextElementSibling;
@@ -66,5 +89,5 @@
     return true;
   }
   root.applyTeamRosterOrder = apply;
-  if (typeof module !== 'undefined' && module.exports) module.exports = {plan, apply};
+  if (typeof module !== 'undefined' && module.exports) module.exports = {plan, apply, syncRelated};
 })(typeof window === 'undefined' ? globalThis : window);

@@ -472,7 +472,7 @@ class RegionalRosterTest extends TestCase
         $this->assertDatabaseCount('wallet_transactions', 0);
     }
 
-    public function test_one_player_actions_menu_keeps_change_remove_and_name_controls_with_order_outside(): void
+    public function test_one_player_actions_modal_keeps_change_remove_and_name_controls_with_order_outside(): void
     {
         [$event, $region, $team, $manager] = $this->roster(true);
         $raw = NoProfileTeamPlayer::create(['team_id' => $team->id, 'rank' => 1, 'name' => 'Menu', 'surname' => 'Player', 'pay_status' => 0]);
@@ -481,10 +481,25 @@ class RegionalRosterTest extends TestCase
         $document = new \DOMDocument();
         $document->loadHTML($response->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING);
         $xpath = new \DOMXPath($document);
-        $menus = $xpath->query('//details[@data-roster-player-actions]');
+        $menus = $xpath->query('//*[@data-roster-actions-modal]');
         $this->assertSame(1, $menus->length);
         $menu = $menus->item(0);
-        $this->assertStringContainsString('Player actions', $xpath->query('./summary', $menu)->item(0)->textContent);
+        $openers = $xpath->query('//button[@data-roster-actions-target]');
+        $this->assertSame(1, $openers->length);
+        $opener = $openers->item(0);
+        $this->assertSame('modal', $opener->getAttribute('data-bs-toggle'));
+        $this->assertSame('#'.$menu->getAttribute('id'), $opener->getAttribute('data-bs-target'));
+        $this->assertSame($opener->getAttribute('data-bs-target'), $opener->getAttribute('data-roster-actions-target'));
+        $this->assertSame('roster-player-actions-imported-'.$team->id.'-'.$raw->id, $menu->getAttribute('id'));
+        $this->assertSame((string) $team->id, $menu->getAttribute('data-team-id'));
+        $this->assertSame((string) $raw->id, $menu->getAttribute('data-slot-id'));
+        $this->assertSame('imported', $menu->getAttribute('data-slot-type'));
+        $this->assertSame((string) $team->region_id, $menu->getAttribute('data-region-id'));
+        $this->assertSame('imported-'.$raw->id, $menu->getAttribute('data-roster-row-key'));
+        $this->assertSame('true', $menu->getAttribute('aria-hidden'));
+        $this->assertSame($menu->getAttribute('id').'-title', $menu->getAttribute('aria-labelledby'));
+        $this->assertStringContainsString('Player actions', $menu->textContent);
+        $this->assertStringContainsString('Menu Player', $menu->textContent);
         $actions = [];
         foreach ($xpath->query('.//form', $menu) as $form) $actions[] = $form->getAttribute('action');
         $this->assertContains(route('backend.team.changePlayer'), $actions);
@@ -495,7 +510,7 @@ class RegionalRosterTest extends TestCase
         $this->assertSame(1, $xpath->query('.//*[@data-team-roster-remove-confirm and @hidden]', $menu)->length);
         $slot = (new TeamPlayer(['team_id' => $team->id, 'rank' => 1, 'player_id' => 0, 'pay_status' => 0]))->setRelation('noProfile', $raw);
         $legacy = view('backend.adminPage.admin_show._roster-actions', ['event' => $event, 'team' => $team, 'slot' => $slot, 'name' => 'Menu Player', 'compactRoster' => false])->render();
-        $this->assertStringNotContainsString('data-roster-player-actions', $legacy);
+        $this->assertStringNotContainsString('data-roster-actions-modal', $legacy);
         foreach (['Move up', 'Move down', 'Change player', 'Change name', 'Confirm remove'] as $label) $this->assertStringContainsString($label, $legacy);
     }
 
