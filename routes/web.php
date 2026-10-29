@@ -1261,6 +1261,8 @@ Route::delete(
     ->name('backend.event-venue-schedule.index');
   Route::post('events/{event}/venue-schedule/preview', [EventVenueScheduleController::class, 'preview'])
     ->name('backend.event-venue-schedule.preview');
+  Route::post('events/{event}/venue-schedule/prepare-playoffs', [EventVenueScheduleController::class, 'preparePlayoffs'])
+    ->name('backend.event-venue-schedule.prepare-playoffs');
   Route::post('events/{event}/venue-schedule/apply', [EventVenueScheduleController::class, 'apply'])
     ->name('backend.event-venue-schedule.apply');
   Route::post('events/{event}/venue-schedule/unapply', [EventVenueScheduleController::class, 'unapply'])

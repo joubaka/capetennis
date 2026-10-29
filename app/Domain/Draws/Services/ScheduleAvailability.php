@@ -140,9 +140,21 @@ final class ScheduleAvailability
 
     public static function legacyParticipants($fixtures): array
     {
+        $groupIds = collect($fixtures)->flatMap(fn ($fixture) => [$fixture->registration1_source_group_id, $fixture->registration2_source_group_id])->filter()->unique();
+        $groups = \App\Models\DrawGroup::with('groupRegistrations')->whereIn('id', $groupIds)->get()->keyBy('id');
         $possible = [];
         foreach ($fixtures as $fixture) {
-            $possible[$fixture->id] = array_values(array_filter([$fixture->registration1_id, $fixture->registration2_id]));
+            $sourceParticipants = [];
+            foreach ([1, 2] as $slot) {
+                if ($fixture->getAttribute("registration{$slot}_id")) continue;
+                $group = $groups->get($fixture->getAttribute("registration{$slot}_source_group_id"));
+                if ($group && (int) $group->draw_id === (int) $fixture->draw_id) {
+                    $sourceParticipants = array_merge($sourceParticipants, $group->groupRegistrations->pluck('registration_id')->all());
+                }
+            }
+            $possible[$fixture->id] = array_values(array_unique(array_filter(array_merge(
+                [$fixture->registration1_id, $fixture->registration2_id], $sourceParticipants
+            ))));
         }
         // Propagate to a fixed point so fixture ordering and malformed cycles cannot cause recursion failures.
         do {

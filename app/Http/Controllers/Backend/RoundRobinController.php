@@ -1011,7 +1011,60 @@ class RoundRobinController extends Controller
    * Generate playoff fixtures based on playoff_config
    * Includes position playoffs (3rd/4th, 5th/6th, etc.)
    */
-  protected function generateDynamicPlayoffFixtures(Draw $draw, array $playoffConfig, array $seeds): array
+  public function prepareSchedulePlayoffs(Draw $draw): int
+  {
+    return DB::transaction(function () use ($draw) {
+      $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
+      $draw->load(['settings', 'groups.groupRegistrations']);
+      if ($draw->locked || $draw->published) {
+        throw new \InvalidArgumentException('Unpublish and unlock the draw before preparing its playoff fixtures.');
+      }
+      if ($draw->settings?->workflow !== 'round_robin_playoffs'
+          || ! $draw->drawFixtures()->where('stage', 'RR')->exists()) {
+        throw new \InvalidArgumentException('Choose a round-robin playoff draw with generated group matches.');
+      }
+      // Preparation never replaces existing results, bookings or bracket identities.
+      if ($draw->drawFixtures()->where('stage', '!=', 'RR')->exists()) return 0;
+      $config = collect($draw->settings->playoff_config ?? [])->where('enabled', true)
+        ->reject(fn ($entry) => app(\App\Services\Draw\PlayoffParticipationService::class)->isDormant($draw, $entry))->values()->all();
+      if (! $config) throw new \InvalidArgumentException('Configure playoff stages in the draw first.');
+      $sources = [];
+      $stages = [];
+      $usedSources = [];
+      foreach ($config as $entry) {
+        $size = (int) ($entry['size'] ?? 0);
+        $positions = $entry['positions'] ?? [];
+        $stage = strtoupper((string) ($entry['slug'] ?? 'MAIN'));
+        $groupOrder = $entry['group_order'] ?? [];
+        if (! preg_match('/^[A-Z][A-Z0-9_-]{0,29}$/', $stage) || $stage === 'RR' || in_array($stage, $stages, true)
+            || ! is_array($positions) || count($positions) !== count(array_unique($positions))
+            || collect($positions)->contains(fn ($position) => filter_var($position, FILTER_VALIDATE_INT) === false)
+            || ! is_array($groupOrder) || count($groupOrder) !== count(array_unique($groupOrder))
+            || array_diff($groupOrder, $draw->groups->pluck('name')->all())) {
+          throw new \InvalidArgumentException('Choose distinct playoff stages, valid group positions and group order in draw setup.');
+        }
+        $stages[] = $stage;
+        if (! in_array($size, [2, 4, 8, 16, 32], true) || count($positions) * $draw->groups->count() !== $size) {
+          throw new \InvalidArgumentException('Complete the playoff positions and bracket sizes in draw setup first.');
+        }
+        foreach ($positions as $position) foreach ($draw->groups as $group) {
+          if ((int) $position < 1 || $group->groupRegistrations->count() < (int) $position) {
+            throw new \InvalidArgumentException('Prepare playoff brackets with byes from the draw workspace first.');
+          }
+          $sourceKey = $group->id.':'.(int) $position;
+          if (isset($usedSources[$sourceKey])) throw new \InvalidArgumentException('A group position may qualify for only one playoff stage.');
+          $usedSources[$sourceKey] = true;
+          $sources[$group->name.$position] = ['group_id' => $group->id, 'position' => (int) $position];
+        }
+      }
+      $this->generateDynamicPlayoffFixtures($draw, $config, $sources, true);
+      $count = $draw->drawFixtures()->where('stage', '!=', 'RR')->count();
+      DrawAuditLog::record($draw->id, 'bracket_prepared_for_schedule', null, ['fixture_count' => $count]);
+      return $count;
+    });
+  }
+
+  protected function generateDynamicPlayoffFixtures(Draw $draw, array $playoffConfig, array $seeds, bool $sourcePositions = false): array
   {
     $allFixtures = [];
     $groups = $draw->groups;
@@ -1125,7 +1178,7 @@ class RoundRobinController extends Controller
         $p1 = $players[$matchup[0] - 1] ?? null; // seeds are 1-indexed
         $p2 = $players[$matchup[1] - 1] ?? null;
 
-        \Log::info("  Match {$i}: seed{$matchup[0]}(reg={$p1}) vs seed{$matchup[1]}(reg={$p2})");
+        if (! $sourcePositions) \Log::info("  Match {$i}: seed{$matchup[0]}(reg={$p1}) vs seed{$matchup[1]}(reg={$p2})");
         
         $fx = Fixture::create([
           'draw_id' => $draw->id,
@@ -1133,8 +1186,14 @@ class RoundRobinController extends Controller
           'round' => 1,
           'match_nr' => $matchNr++,
           'position' => null,
-          'registration1_id' => $p1,
-          'registration2_id' => $p2,
+          'registration1_id' => $sourcePositions ? null : $p1,
+          'registration2_id' => $sourcePositions ? null : $p2,
+          ...($sourcePositions ? [
+            'registration1_source_group_id' => $p1['group_id'] ?? null,
+            'registration1_source_position' => $p1['position'] ?? null,
+            'registration2_source_group_id' => $p2['group_id'] ?? null,
+            'registration2_source_position' => $p2['position'] ?? null,
+          ] : []),
         ]);
         
         $fixtures[1][] = $fx;
@@ -1198,7 +1257,7 @@ class RoundRobinController extends Controller
     }
 
     // Auto-advance all byes in the brackets
-    $this->autoAdvanceByes($draw);
+    if (! $sourcePositions) $this->autoAdvanceByes($draw);
 
     return $allFixtures;
   }

@@ -16,10 +16,25 @@ use Illuminate\Support\Facades\DB;
 
 final class EventVenueScheduleController extends Controller
 {
+    public function preparePlayoffs(Request $request, Event $event)
+    {
+        $this->authorize('event.manage', $event);
+        $data = $request->validate(['draw_ids' => ['required', 'array', 'min:1', 'max:200'], 'draw_ids.*' => ['required', 'integer', 'distinct']]);
+        $draws = $event->draws()->whereIn('id', $data['draw_ids'])->get();
+        abort_unless($draws->count() === count($data['draw_ids']), 422, 'Choose draws belonging to this event.');
+        try {
+            $count = DB::transaction(fn () => $draws->sum(fn ($draw) => app(RoundRobinController::class)->prepareSchedulePlayoffs($draw)));
+        } catch (\InvalidArgumentException $exception) {
+            return back()->withErrors(['playoffs' => $exception->getMessage()]);
+        }
+        return redirect()->route('backend.event-venue-schedule.index', ['event' => $event->id, 'draw_ids' => $data['draw_ids']])
+            ->with('success', $count ? "Prepared {$count} playoff matches for scheduling. Qualifiers remain undecided until group results are complete." : 'Existing playoff matches are ready to select.');
+    }
+
     public function index(Request $request, Event $event, EventAnnouncementService $announcements)
     {
         $this->authorize('event.manage', $event);
-        $event->load('draws.venues', 'draws.draw_types');
+        $event->load('draws.venues', 'draws.draw_types', 'draws.settings');
         $eventDraws = $event->draws->sortBy(function ($draw) {
             $typeName = mb_strtolower($draw->draw_types?->drawTypeName ?? $draw->drawName);
             $typeOrder = match (true) {
@@ -42,6 +57,9 @@ final class EventVenueScheduleController extends Controller
         if ($selectionSupplied && $requestedDrawIds->diff($eventDraws->pluck('id')->map(fn ($id) => (int) $id))->isNotEmpty()) {
             abort(422, 'One or more selected draws do not belong to this event.');
         }
+        $eventDraws->loadCount(['drawFixtures as playoff_fixture_count' => fn ($query) => $query->where('stage', '!=', 'RR')]);
+        $pendingPlayoffDraws = $eventDraws->filter(fn ($draw) => $draw->settings?->workflow === 'round_robin_playoffs'
+            && (int) $draw->playoff_fixture_count === 0 && (! $selectionSupplied || $requestedDrawIds->contains((int) $draw->id)));
         $eventVenues = $event->venues()->get();
         $drawVenues = $eventDraws->flatMap(fn ($draw) => $draw->venues);
 
@@ -173,7 +191,7 @@ final class EventVenueScheduleController extends Controller
         })->filter(fn ($notice) => $notice['pending_count'] > 0 || $notice['review_required'])->values();
 
         return view('backend.schedule.event-venue-schedule', compact(
-            'event', 'draws', 'venues', 'allVenues', 'announcementDraft', 'scheduleDraft', 'adaptationNotices', 'planningDate', 'planningScope'
+            'event', 'draws', 'venues', 'allVenues', 'announcementDraft', 'scheduleDraft', 'adaptationNotices', 'planningDate', 'planningScope', 'pendingPlayoffDraws'
         ));
     }
 

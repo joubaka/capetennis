@@ -304,7 +304,7 @@ class EventVenueScheduleTest extends TestCase
         $ids = $draw->drawFixtures()->where('stage', '!=', 'RR')->orderBy('id')->pluck('id')->all();
         $service->prepare($draw->fresh());
         $this->assertSame($ids, $draw->drawFixtures()->where('stage', '!=', 'RR')->orderBy('id')->pluck('id')->all());
-        $preview = app(EventVenueScheduleService::class)->preview($event->fresh(), $this->schedulingOptions());
+        $preview = app(EventVenueScheduleService::class)->preview($event->fresh(), array_replace($this->schedulingOptions(), ['end' => '2026-09-10 20:00:00']));
         $matches = collect($preview['matches']);
         $playoffs = $matches->whereIn('fixture_id', $created->pluck('id'));
 
@@ -313,7 +313,8 @@ class EventVenueScheduleTest extends TestCase
         $this->assertSame([4], $playoffs->pluck('wave')->unique()->values()->all());
         $this->assertSame(['Group A #1', 'Group A #2'], $playoffs->firstWhere('stage', 'MAIN')['participants']);
         $this->assertSame(['Group A #3', 'Group A #4'], $playoffs->firstWhere('stage', 'PLATE')['participants']);
-        $this->assertSame(['2026-09-10 14:45:00'], $playoffs->pluck('scheduled_at')->unique()->values()->all());
+        // Until positions are resolved, each fixture reserves all possible group entrants.
+        $this->assertSame(['2026-09-10 14:45:00', '2026-09-10 17:00:00'], $playoffs->pluck('scheduled_at')->sort()->values()->all());
     }
 
     public function test_unresolved_flexible_monrad_fixtures_show_their_numbered_source_paths(): void

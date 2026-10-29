@@ -4,6 +4,18 @@
     <p class="small text-muted">Choose one or more draws to plan this day.</p>
     <div class="d-flex flex-wrap gap-2 mb-3"><button type="button" class="btn btn-sm btn-outline-primary" id="day-batch-all">Select all ready draws</button><button type="button" class="btn btn-sm btn-outline-secondary" id="day-batch-clear">Clear selection</button></div>
     <div id="day-batch-draws" class="row g-2 mb-3"></div>
+    @if($pendingPlayoffDraws->isNotEmpty())
+      <details class="mb-3"><summary>Prepare playoff matches</summary>
+        <p class="small text-muted mt-2">Create the configured playoff fixtures before choosing their rounds. Group qualifiers remain undecided. Unpublish and unlock the draw before preparing its fixtures.</p>
+        <form method="POST" action="{{ route('backend.event-venue-schedule.prepare-playoffs', $event) }}">
+          @csrf
+          @foreach($pendingPlayoffDraws as $playoffDraw)
+            <label class="d-block mb-2"><input type="checkbox" name="draw_ids[]" value="{{ $playoffDraw->id }}" class="form-check-input me-2" @disabled($playoffDraw->locked || $playoffDraw->published)> {{ $playoffDraw->drawName }} @if($playoffDraw->locked || $playoffDraw->published)<span class="small text-muted">(unpublish and unlock first)</span>@endif</label>
+          @endforeach
+          <button class="btn btn-outline-primary" type="submit">Prepare playoff fixtures</button>
+        </form>
+      </details>
+    @endif
     <details class="mb-3 day-batch-order-options">
       <summary>Draw order (optional)</summary>
       <div class="pt-3">

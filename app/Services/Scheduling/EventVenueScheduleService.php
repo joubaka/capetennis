@@ -1421,6 +1421,10 @@ final class EventVenueScheduleService
             $nodes[$fixture->id] = $this->node($draw, $fixture, $dependencies,
                 $participants[$fixture->id] ?? [], $automatic, ($fixture->fixtureResults->isNotEmpty() || (int) $fixture->match_status !== 0), $labels);
         }
+        if ($draw->settings?->workflow === 'round_robin_playoffs') {
+            foreach (array_keys($nodes) as $id) $nodes[$id]['venue_round'] = $this->wave($id, $nodes);
+            if ($programme) foreach (array_keys($nodes) as $id) $nodes[$id]['round'] = $nodes[$id]['venue_round'];
+        }
         return $nodes;
     }
 
@@ -1656,7 +1660,8 @@ final class EventVenueScheduleService
         foreach ($nodes as $node) {
             $key = ($node['fixture_kind'] ?? 'individual').':'.$node['fixture']->id;
             if (! isset($byKey[$key])) continue;
-            $label = $draw->isTeamDraw() ? ($node['fixture']->rubber_name ?: $node['fixture']->rubber_code ?: 'Team matches') : 'Draw matches';
+            $label = $draw->isTeamDraw() ? ($node['fixture']->rubber_name ?: $node['fixture']->rubber_code ?: 'Team matches')
+                : ($draw->settings?->workflow === 'round_robin_playoffs' ? ($node['stage'] === 'RR' ? 'Round robin' : $node['stage'].' playoffs') : 'Draw matches');
             $round = $node['round'];
             $groups[$round][$label] ??= ['label' => $label, 'count' => 0, 'matches' => []];
             $groups[$round][$label]['count']++; $groups[$round][$label]['matches'][] = $byKey[$key];
@@ -1673,7 +1678,7 @@ final class EventVenueScheduleService
             ->concat(TeamFixture::whereIn('draw_id', $teamIds)->selectRaw('draw_id, round_nr as round')->distinct()->get());
         $available = $rows->groupBy('draw_id')->map(fn ($rounds) => $rounds->pluck('round')->map(fn ($round) => max(1, (int) $round))
             ->unique()->sort()->values()->all())->all();
-        foreach ($draws->filter(fn ($draw) => $programme && $draw->usesFlexibleMonrad()) as $draw) {
+        foreach ($draws->filter(fn ($draw) => $programme && ($draw->usesFlexibleMonrad() || $draw->settings?->workflow === 'round_robin_playoffs')) as $draw) {
             $draw->loadMissing('drawFixtures.fixtureResults');
             $available[$draw->id] = collect($this->nodesForDraw($draw, Carbon::now(), 90, true))
                 ->pluck('round')->unique()->sort()->values()->all();
