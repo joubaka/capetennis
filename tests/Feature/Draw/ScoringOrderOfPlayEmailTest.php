@@ -134,6 +134,8 @@ class ScoringOrderOfPlayEmailTest extends TestCase
 
     public function test_published_copy_retains_public_times_and_excludes_unsnapshotted_working_matches(): void
     {
+        $this->event->update(['published' => true]);
+        $this->draw->update(['published' => true]);
         app(SchedulePublicationService::class)->publish($this->event, ['draw_id' => $this->draw->id]);
         $this->fixture->orderOfPlay()->update(['time' => '2026-10-30 16:30:00']);
         $new = Fixture::factory()->create(['draw_id' => $this->draw->id]);
