@@ -32,7 +32,7 @@
         </div>
         <div class="col-12 col-lg-auto">
           <div class="d-flex flex-wrap gap-2 clothing-summary" aria-label="Clothing setup summary">
-            @if($isEventManager)<span class="badge bg-label-primary"><strong>{{ $selectedRegions->count() }}</strong> of {{ $visibleRegions->count() }} regions selected</span>@endif
+            <span class="badge bg-label-primary"><strong>{{ $selectedRegions->count() }}</strong> of {{ $visibleRegions->count() }} regions selected</span>
             <span class="badge bg-label-info"><strong>{{ $readyRegions->count() }}</strong> catalogues prepared</span>
             <span class="badge bg-label-success"><strong>{{ $openRegions->count() }}</strong> ordering open</span>
             <span class="badge bg-label-secondary"><strong>{{ $selectedRegions->count() - $openRegions->count() }}</strong> ordering closed</span>
@@ -43,7 +43,6 @@
     </div>
   </div>
 
-  @if($isEventManager)
   <div class="card mb-4">
     <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-3">
       <div>
@@ -78,7 +77,6 @@
     </div>
   </form>
   </div>
-  @endif
 
   <section aria-labelledby="catalogue-heading">
     <div class="d-flex gap-3 align-items-start mb-3 px-1">

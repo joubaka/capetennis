@@ -43,6 +43,35 @@ class EventCommunicationsTest extends TestCase
         return $overrides + ['scope' => 'all', 'filter' => 'all', 'recipients' => 'players'];
     }
 
+    public function test_regional_admin_mail_reviews_are_limited_to_assigned_region_and_recheck_revocation(): void
+    {
+        $manager = User::factory()->create();
+        $assignment = EventRegionManager::create(['event_id' => $this->event->id, 'region_id' => $this->team->region_id, 'event_region_id' => $this->eventRegion->id, 'user_id' => $manager->id]);
+        $otherRegion = TeamRegion::create(['region_name' => 'Private second region']);
+        EventRegion::create(['event_id' => $this->event->id, 'region_id' => $otherRegion->id]);
+        $otherTeam = Team::factory()->create(['category_event_id' => $this->team->category_event_id, 'region_id' => $otherRegion->id]);
+        $otherPlayer = Player::factory()->create(['email' => 'hidden-region@example.test', 'userId' => null]);
+        TeamPlayer::create(['team_id' => $otherTeam->id, 'player_id' => $otherPlayer->id, 'rank' => 1, 'pay_status' => 0]);
+        $this->actingAs($manager);
+        $payload = ['target_type' => 'team', 'to' => 'All players in team', 'team_id' => $this->team->id,
+            'event_id' => $this->event->id, 'emailSubject' => 'Own team update', 'message' => 'Review this message.'];
+        $this->postJson(route('email.send'), $payload)->assertOk()->assertJsonPath('review_required', true);
+        $batch = EventCommunicationBatch::sole();
+        $this->assertSame(['child@example.test'], array_column($batch->recipients, 'email'));
+        $this->postJson(route('email.send'), array_replace($payload, ['target_type' => 'player', 'to' => $this->player->id]))->assertOk()->assertJsonPath('review_required', true);
+        $this->postJson(route('email.send'), array_replace($payload, ['target_type' => 'player', 'to' => $otherPlayer->id]))->assertForbidden();
+        $this->postJson(route('email.send'), array_replace($payload, ['team_id' => $otherTeam->id]))->assertForbidden();
+        $this->postJson(route('email.send'), array_replace($payload, ['target_type' => 'region', 'region_id' => $otherRegion->id, 'to' => 'All players in region']))->assertForbidden();
+        $this->postJson(route('email.send'), array_replace($payload, ['to' => 'All players in event']))->assertForbidden();
+        $this->postJson(route('email.send'), array_replace($payload, ['target_type' => 'player', 'to' => 'arbitrary@example.test']))->assertForbidden();
+        $this->assertDatabaseCount('event_communication_batches', 2);
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        $assignment->delete();
+        $this->post(route('backend.event-communications.send', $this->event), ['token' => $batch->token, 'confirm_send' => 1])->assertForbidden();
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        Mail::assertNothingSent();
+    }
+
     private function preview(array $options = []): EventCommunicationBatch
     {
         return app(EventCommunicationService::class)->preview($this->event, $this->admin, $this->audienceOptions($options), 'Event update', 'Please review the arrangements.');

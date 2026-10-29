@@ -9,10 +9,12 @@ class PlayerRatingBadgeService
 {
     private ?array $snapshot = null;
     private array $contexts = [];
+    private array $regionalSnapshots = [];
+    private array $regionalPlayers = [];
 
     public static function visible(): bool
     {
-        return (bool) auth()->user()?->hasRole('super-user') && !request()->routeIs(
+        return ((bool) auth()->user()?->hasRole('super-user') || app(RegionalRatingAccess::class)->visible()) && !request()->routeIs(
             'event.draw.get.pdf', 'headoffice.printDrawsPdf', 'headoffice.printDrawsData', 'headoffice.drawPack'
         );
     }
@@ -20,10 +22,19 @@ class PlayerRatingBadgeService
     public function forPlayer(int $playerId, Draw|CategoryEvent|Category|null $context = null): ?array
     {
         if (!self::visible() || $playerId < 1) { return null; }
+        $regional = !auth()->user()?->hasRole('super-user');
+        if ($regional) {
+            if (!$context instanceof CategoryEvent) return null;
+            $scopeKey = auth()->id().':'.$context->id;
+            $allowed = $this->regionalPlayers[$scopeKey] ??= app(RegionalRatingAccess::class)->playerIds($context);
+            if (!in_array($playerId, $allowed, true)) return null;
+        }
         $cohort = $context ? $this->contextCohort($context) : null;
         if ($context && $cohort === null) { return null; }
-        $this->snapshot ??= app(PlayerSharedAbilityService::class)->badgeSnapshot();
-        $ratings = $this->snapshot[$playerId] ?? [];
+        $snapshot = $regional
+            ? ($this->regionalSnapshots[$scopeKey] ??= app(PlayerSharedAbilityService::class)->badgeSnapshot($context))
+            : ($this->snapshot ??= app(PlayerSharedAbilityService::class)->badgeSnapshot());
+        $ratings = $snapshot[$playerId] ?? [];
         if ($context) { $ratings = array_filter($ratings, fn ($rating) => $rating['cohort'] === $cohort); }
         usort($ratings, fn ($a, $b) => strcmp($b['last_played'], $a['last_played']) ?: strcmp($a['cohort'], $b['cohort']));
         $rating = $ratings[0] ?? null;

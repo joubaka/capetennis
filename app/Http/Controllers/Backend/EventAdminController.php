@@ -77,22 +77,23 @@ class EventAdminController extends Controller
   {
     $access = app(\App\Services\TeamSelection\RegionManagerAccessService::class);
     $isRegionalPreview = $previewRegion !== null;
-    $rosterOnly = $isRegionalPreview || !$access->isEventManager(request()->user(), $event);
+    $regionalScoped = $isRegionalPreview || !$access->isEventManager(request()->user(), $event);
+    $rosterOnly = false;
     $event->load(['event_admins', 'regions', 'eventCategories.category']);
     $eventRegions = \App\Models\EventRegion::with(['events', 'region'])->where('event_id', $event->id)
       ->when($previewRegion, fn ($query) => $query->whereKey($previewRegion->id))->get();
-    if ($rosterOnly && !$isRegionalPreview) {
+    if ($regionalScoped && !$isRegionalPreview) {
       $eventRegions = $eventRegions->filter(fn ($region) => $access->canManageRoster(request()->user(), $region));
       abort_if($eventRegions->isEmpty(), 403);
     }
-    if ($rosterOnly) $event->setRelation('regions', $event->regions->whereIn('id', $eventRegions->pluck('region_id'))->values());
+    if ($regionalScoped) $event->setRelation('regions', $event->regions->whereIn('id', $eventRegions->pluck('region_id'))->values());
     $teamSelectionInvitations = TeamSelectionInvitation::query()
       ->where('event_id', $event->id)
-      ->when($rosterOnly, fn ($query) => $query->whereIn('region_id', $eventRegions->pluck('region_id')))
+      ->when($regionalScoped, fn ($query) => $query->whereIn('region_id', $eventRegions->pluck('region_id')))
       ->whereHas('selectionImport', fn ($query) => $query->whereIn('status', ['draft', 'sent']))
       ->orderBy('team_id')->orderBy('queue_position')->get()->groupBy('team_id')->toBase();
     $teams = app(\App\Services\EventTeamScope::class)->query($event, $teamSelectionInvitations->keys()->all())
-      ->when($rosterOnly, fn ($query) => $query->whereIn('region_id', $eventRegions->pluck('region_id')))
+      ->when($regionalScoped, fn ($query) => $query->whereIn('region_id', $eventRegions->pluck('region_id')))
       ->with(['category.category', 'teamPlayers', 'team_players_no_profile'])
       ->orderBy('name')->get()->groupBy('region_id');
     $selectionImports = \App\Models\EventSelectionRosterImport::where('event_id', $event->id)->orderBy('id')->limit(501)->get(['groups']);
@@ -123,7 +124,7 @@ class EventAdminController extends Controller
       });
     });
 
-    if ($rosterOnly) {
+    if ($regionalScoped) {
       foreach ($event->regions as $region) {
         $region->teams->loadMissing(['teamPlayers.player', 'team_players_no_profile.profile']);
         $region->teams->each(fn ($team) => $team->workspaceSlots->filter(fn ($slot) => !$slot->exists)
@@ -161,9 +162,9 @@ class EventAdminController extends Controller
     $regions = TeamRegion::orderBy('region_name')->get();
     $players = collect();
     $administrator = $event->event_admins->contains('user_id', Auth::id());
-    $data = compact('event', 'teamSelectionInvitations', 'allCategories', 'regions', 'players', 'administrator', 'eventRegions', 'rosterOnly', 'isRegionalPreview', 'previewRegion');
+    $data = compact('event', 'teamSelectionInvitations', 'allCategories', 'regions', 'players', 'administrator', 'eventRegions', 'rosterOnly', 'regionalScoped', 'isRegionalPreview', 'previewRegion');
     $data['centralTeamWorkspace'] = true;
-    if (!$rosterOnly) {
+    if (!$regionalScoped) {
       $eventRegions->loadMissing('managerAssignment.user');
       $data['organizerRegions'] = $eventRegions->map(function ($eventRegion) use ($access) {
         $defaults = $access->defaultManagerCandidates($eventRegion);
@@ -767,14 +768,7 @@ class EventAdminController extends Controller
 
   public function exportAllPlayersPdf($eventId)
   {
-    $event = \App\Models\Event::with([
-      'regions.teams.players' => function ($q) {
-        $q->withPivot('rank', 'pay_status')->orderBy('team_players.rank');
-      },
-      'regions.teams.team_players_no_profile'
-    ])->findOrFail($eventId);
-
-    $this->authorize('event-draw.view', $event);
+    $event = $this->rosterExportEvent((int) $eventId);
 
     $pdf = Pdf::loadView('backend.event.exports.all-players-pdf', compact('event'))
       ->setPaper('A4', 'portrait');
@@ -784,14 +778,24 @@ class EventAdminController extends Controller
 
   public function exportPlayersExcel($eventId)
   {
-    $event = Event::with([
-      'regions.teams.players'
-    ])->findOrFail($eventId);
-
-    $this->authorize('event-draw.view', $event);
+    $event = $this->rosterExportEvent((int) $eventId);
 
     return Excel::download(new EventPlayersExport($event), "event_players_{$event->id}.xlsx");
 
+  }
+  private function rosterExportEvent(int $eventId): Event
+  {
+    $event = Event::findOrFail($eventId);
+    $access = app(\App\Services\TeamSelection\RegionManagerAccessService::class);
+    abort_unless($access->canAccessWorkspace(request()->user(), $event), 403);
+    $regions = $access->managedRegionIds(request()->user(), $event);
+    $event->load(['regions' => fn ($query) => $query->whereIn('team_regions.id', $regions)]);
+    $teams = app(\App\Services\EventTeamScope::class)->query($event)->whereIn('region_id', $regions)
+      ->with(['players' => fn ($query) => $query->withPivot('rank', 'pay_status')->orderBy('team_players.rank'), 'team_players_no_profile'])
+      ->get()->groupBy('region_id');
+    $event->regions->each(fn ($region) => $region->setRelation('teams', $teams->get($region->id, new Collection)));
+
+    return $event;
   }
   public function importTeamCategoryEvents(Event $event)
   {

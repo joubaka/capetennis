@@ -16,12 +16,15 @@ class PlayerSharedAbilityService
     private const EVENT_FIELD_CAP = 256;
 
     /** Compact data for name badges; caller enforces the private audience. */
-    public function badgeSnapshot(): array
+    public function badgeSnapshot(?\App\Models\CategoryEvent $field = null): array
     {
-        if (!auth()->user()?->hasRole('super-user')) { return []; }
+        $regional = !auth()->user()?->hasRole('super-user');
+        $allowed = $regional && $field ? app(RegionalRatingAccess::class)->playerIds($field) : [];
+        if ($regional && !$allowed) { return []; }
         $snapshot = app(PlayerAbilitySnapshotStore::class)->current();
         if ($snapshot['reason']) { return []; }
         $players = $snapshot['badge_players'] ?? [];
+        if ($regional) $players = array_intersect_key($players, array_flip($allowed));
         foreach ($players as $id => &$ratings) {
             foreach ($ratings as &$rating) {
                 $data = $snapshot['cohorts'][$rating['cohort']] ?? [];

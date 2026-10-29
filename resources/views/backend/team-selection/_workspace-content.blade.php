@@ -102,6 +102,7 @@
   <div class="region-workspaces {{ $eventRegions->count() > 1 ? 'tab-content' : 'row g-3' }}">
     @foreach($eventRegions as $eventRegion)
       @php($source = $eventRegion->rankingSource)
+      @php($canManageRegion = app(\App\Services\TeamSelection\RegionManagerAccessService::class)->canManage(auth()->user(), $eventRegion))
       @php($sourceReady = $source && $readySeriesIds->contains($source->series_id))
       @php($regionTeams = $teams->get($eventRegion->region_id, collect()))
       @php($categorySetup = $source ? $categorySetups->get($source->id) : null)
@@ -166,7 +167,7 @@
           </div>
           <div class="card-body">
             <div class="nav nav-pills region-task-tabs" role="tablist" aria-label="{{ $eventRegion->region?->region_name }} workspace" data-region-task-tabs="{{ $eventRegion->id }}">
-              @foreach(['teams' => ['ti-users-group', $isEventManager ? 'Selection & reserves' : 'Players'], 'invitations' => ['ti-file-import', $isEventManager ? 'Import & send' : 'Invitations'], 'messages' => ['ti-message-circle', $usesRegionalClothing ? 'Messages & clothing' : 'Messages'], 'overview' => ['ti-layout-dashboard', 'Help & progress'], 'setup' => ['ti-settings', 'Ranking setup']] as $taskKey => [$taskIcon, $taskLabel])
+              @foreach(['teams' => ['ti-users-group', 'Selection & reserves'], 'invitations' => ['ti-file-import', 'Import & send'], 'messages' => ['ti-message-circle', $usesRegionalClothing ? 'Messages & clothing' : 'Messages'], 'overview' => ['ti-layout-dashboard', 'Help & progress'], 'setup' => ['ti-settings', 'Ranking setup']] as $taskKey => [$taskIcon, $taskLabel])
                 @if($taskKey === 'overview')<details class="regional-more-options"><summary>More options</summary><div class="regional-more-options-menu">@endif
                 <button class="nav-link {{ $loop->first ? 'active' : '' }}" id="region-{{ $eventRegion->id }}-{{ $taskKey }}-tab" data-bs-toggle="tab" data-bs-target="#region-{{ $eventRegion->id }}-{{ $taskKey }}" type="button" role="tab" aria-controls="region-{{ $eventRegion->id }}-{{ $taskKey }}" aria-selected="{{ $loop->first ? 'true' : 'false' }}" data-region-task="{{ $taskKey }}"><i class="ti {{ $taskIcon }}"></i>{{ $taskLabel }}@if($taskKey === 'teams' && $unpublishedTeamCount)<span class="badge bg-label-warning">{{ $unpublishedTeamCount }}</span>@endif</button>
                 @if($loop->last)</div></details>@endif
@@ -186,7 +187,7 @@
                     @endforeach
                   </ol>
                 </div>
-            @if($isEventManager)
+            @if($canManageRegion)
               <div class="modal fade" id="final-team-reminders-{{ $eventRegion->id }}" tabindex="-1" aria-hidden="true">
                 <div class="modal-dialog modal-lg modal-dialog-centered"><form method="POST" action="{{ route('backend.team-selection.final-reminders.send', [$event, $eventRegion]) }}" class="modal-content" data-mail-launch data-final-reminder-form data-clothing-enabled="{{ $usesRegionalClothing ? '1' : '0' }}" data-reminder-summaries='@json($reminderSummaries[$eventRegion->id] ?? [])' data-reminder-hashes='@json($reminderHashes[$eventRegion->id] ?? [])'>@csrf
                   <input type="hidden" name="send_token" value="{{ (string) \Illuminate\Support\Str::uuid() }}">
@@ -279,7 +280,7 @@
                     @if($activeImport?->status === 'draft' && $unpublishedTeamCount > 0)
                       <button type="button" class="dropdown-item publish-all-teams" data-url="{{ route('backend.team-selection.teams.publish-all', [$event, $eventRegion]) }}"><i class="ti ti-world-upload me-2"></i>Publish all teams</button>
                     @endif
-                    @if($isEventManager)
+                    @if($canManageRegion)
                       <button class="dropdown-item" type="button" data-bs-toggle="modal" data-bs-target="#reimport-roster-{{ $eventRegion->id }}"><i class="ti ti-file-spreadsheet me-2"></i>Re-import roster contacts</button>
                     @endif
                     @if($unlinkedImportedRecipients->isNotEmpty())
@@ -633,7 +634,7 @@
                     <span class="badge bg-label-success">Registered: {{ $activeImport->invitations->where('status', 'paid_confirmed')->count() }}</span>
                     <span class="badge bg-label-secondary">Declined: {{ $activeImport->invitations->where('status', 'declined')->count() }}</span>
                   </div>
-                  @if($activeImport->status === 'sent' && $isEventManager)
+                  @if($activeImport->status === 'sent' && $canManageRegion)
                     <button type="button" class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="filtered" data-unanswered-invitations="1" data-recipient="Players awaiting a response in this region" @disabled($unansweredInvitations->isEmpty())>Email players awaiting response</button>
                     @if($unansweredInvitations->isEmpty())<p class="small text-muted">No sent invitations are awaiting a response.</p>@endif
                   @elseif($activeImport->status !== 'sent')
@@ -735,7 +736,7 @@
             <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
               <div><h6 class="mb-1">{{ $usesRegionalClothing ? 'Messages & clothing' : 'Messages' }}</h6><p class="text-muted small mb-0">{{ $usesRegionalClothing ? 'Contact selected players and manage the regional clothing workflow.' : 'Contact selected players in this region.' }}</p></div>
               <div class="d-flex flex-wrap gap-2">
-                @if($isEventManager)
+                @if($canManageRegion)
                   <a href="{{ route('backend.regional-registration-mail.compose', ['event' => $event, 'region_id' => $eventRegion->region_id]) }}" class="btn btn-primary"><i class="ti ti-mail me-1"></i>Registration open email</a>
                   <button class="btn btn-outline-warning" type="button" data-bs-toggle="modal" data-bs-target="#final-team-reminders-{{ $eventRegion->id }}" data-reminder-open-kind="registration_clothing"><i class="ti ti-user-exclamation me-1"></i>Registration reminder</button>
                   @if($usesRegionalClothing)<button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#final-team-reminders-{{ $eventRegion->id }}" data-reminder-open-kind="incomplete_clothing"><i class="ti ti-shirt me-1"></i>Incomplete clothing reminder</button>@endif
@@ -823,7 +824,7 @@
         </form></div>
       </div>
 
-      @if($isEventManager)
+      @if($canManageRegion)
         <div class="modal fade" id="reimport-roster-{{ $eventRegion->id }}" tabindex="-1" aria-hidden="true">
           <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <form class="modal-content roster-contact-import-form" method="POST" enctype="multipart/form-data" action="{{ route('backend.team-selection.imported-contacts.enrich', [$event, $eventRegion]) }}">

@@ -22,7 +22,7 @@ final class ImportedRosterProfileMatchController extends Controller
 {
     private function authorizeTeam(Request $request, Event $event, Team $team): void
     {
-        abort_unless(app(RegionManagerAccessService::class)->isEventManager($request->user(), $event), 403);
+        abort_unless(app(RegionManagerAccessService::class)->canManageTeam($request->user(), $team, $event), 403);
         abort_unless($team->noProfile && $team->category()->where('event_id', $event->id)->exists(), 404);
     }
 
@@ -38,7 +38,7 @@ final class ImportedRosterProfileMatchController extends Controller
 
     private function authorizeRegion(Request $request, Event $event, TeamRegion $region): void
     {
-        abort_unless(app(RegionManagerAccessService::class)->isEventManager($request->user(), $event), 403);
+        abort_unless(app(RegionManagerAccessService::class)->managedRegionIds($request->user(), $event)->contains((int) $region->id), 403);
         abort_unless(DB::table('event_regions')->where('event_id', $event->id)->where('region_id', $region->id)->exists(), 404);
     }
 

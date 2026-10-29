@@ -9,6 +9,11 @@
                     </button>
                 </div>
                 <div class="modal-body">
+                    @isset($event)<input type="hidden" name="event_id" value="{{ $event->id }}">
+                    @if(!app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(auth()->user(), $event))
+                      <label class="form-label" for="new-team-category">Category</label><select id="new-team-category" name="category_event_id" class="form-select" required>@foreach($event->eventCategories as $teamCategory)<option value="{{ $teamCategory->id }}">{{ $teamCategory->category?->name }}</option>@endforeach</select>
+                    @endif
+                    @endisset
                     <div>
                         <label for="defaultFormControlInput" class="form-label">Name</label>
                         <input name="team_name" type="text" class="form-control" id="defaultFormControlInput" placeholder="" aria-describedby="defaultFormControlHelp">

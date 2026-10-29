@@ -184,29 +184,7 @@ class ClothingOrderController extends Controller
 
   public function showRegionClothing($id)
   {
-      $region = TeamRegion::findOrFail($id);
-      $this->authorize('region-clothing.manage', $region);
-      $teams = $region->teams
-                 ->pluck('id');
-
-      $clothings = ClothingOrder::with([
-          'player',
-          'team',
-          'items',           // ← load the items themselves
-          'items.size',      // ← then size on each item
-          'items.itemType',
-          'transaction' // ← and itemType (for price, name, etc.)
-      ])
-      ->whereIn('team_id', $teams)
-      ->where('pay_status', 1)
-      ->where('status', 'completed')
-      ->get();
-
-  
-      return view('backend.clothing.clothing-index', [
-          'clothings' => $clothings,
-          'region'    => $region,
-      ]);
+      return app(RegionClothingController::class)->orders(request(), TeamRegion::findOrFail($id));
   }
 
 

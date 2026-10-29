@@ -73,7 +73,9 @@ class RegionClothingController extends Controller
   public function updateEventRegions(Request $request, Event $event)
   {
     abort_unless($event->isTeam(), 404);
-    $this->authorize('event-draw.view', $event);
+    $access = app(RegionManagerAccessService::class);
+    $managedRegionIds = $access->managedRegionIds($request->user(), $event);
+    abort_if($managedRegionIds->isEmpty(), 403);
 
     $data = $request->validate([
       'region_ids' => ['nullable', 'array'],
@@ -85,6 +87,8 @@ class RegionClothingController extends Controller
     if ($selectedIds->diff($eventRegionIds->map(fn ($id) => (int) $id))->isNotEmpty()) {
       abort(422, 'A selected region does not belong to this event.');
     }
+    abort_if($selectedIds->diff($managedRegionIds)->isNotEmpty(), 403);
+    $eventRegionIds = $eventRegionIds->intersect($managedRegionIds);
 
     DB::transaction(function () use ($eventRegionIds, $selectedIds): void {
       TeamRegion::query()->whereIn('id', $eventRegionIds)->get()->each(function (TeamRegion $region) use ($selectedIds): void {

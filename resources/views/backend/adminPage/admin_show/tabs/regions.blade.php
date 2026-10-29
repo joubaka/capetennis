@@ -11,12 +11,12 @@
         <i class="ti ti-home me-1"></i> Regions & Teams in Event
       </h5>
 
-      <button type="button"
+      @can('event.manage', $event)<button type="button"
               class="btn btn-primary btn-sm"
               data-bs-toggle="modal"
               data-bs-target="#modalToggle">
         <i class="ti ti-plus me-1"></i> Add Region
-      </button>
+      </button>@endcan
     </div>
 
     <div class="card-body">
@@ -89,7 +89,7 @@
                        data-bs-target="#import-region-teams-modal">
                       <i class="ti ti-file-spreadsheet me-1"></i> Import Teams
                     </a>
-                    <div class="dropdown">
+                    @can('event.manage', $event)<div class="dropdown">
                       <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Region tools</button>
                       <div class="dropdown-menu dropdown-menu-end">
                     <button type="button"
@@ -106,7 +106,7 @@
                       <i class="ti ti-trash me-1"></i> Remove Region
                     </a>
                       </div>
-                    </div>
+                    </div>@endcan
                   </div>
                   <section class="border rounded p-3 mb-3" aria-label="Team publication for {{ $region->region_name }}">
                     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">

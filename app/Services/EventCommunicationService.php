@@ -292,8 +292,10 @@ class EventCommunicationService
             return $plan;
         }
         if (($options['source'] ?? null) === 'team_selection_custom') {
-            abort_unless($event->isTeam() && $this->managesWholeEvent($event, $actor), 403);
+            abort_unless($event->isTeam(), 403);
             $import = TeamSelectionImport::where('event_id', $event->id)->findOrFail($options['selection_import_id']);
+            $region = EventRegion::with('events')->where('event_id', $event->id)->where('region_id', $import->region_id)->firstOrFail();
+            abort_unless($this->access->canManage($actor, $region), 403);
             $invitations = app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->customMessageRecipients($import, $options['invitation_ids']);
             $rows = $invitations->map(fn ($invitation) => ['key' => 'player:'.$invitation->player_id,
                 // legacyPlan renders only the escaped authored subject/body;

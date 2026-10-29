@@ -1,5 +1,5 @@
 @php($importedRoster = $regionTeam->team_players_no_profile->sortBy('rank')->values())
-@if(!($isRegionalPreview ?? false) && app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(auth()->user(), $event))
+@if(!($isRegionalPreview ?? false) && app(\App\Services\TeamSelection\RegionManagerAccessService::class)->canManageTeam(auth()->user(), $regionTeam, $event))
   <div class="p-3"><a class="btn btn-sm btn-outline-primary" href="{{ route('backend.team-selection.profile-matches.index', [$event, $regionTeam]) }}">Check existing profiles</a></div>
 @endif
 @php($transferOrders = !($isRegionalPreview ?? false) && auth()->user()->hasRole('super-user') ? \App\Models\TeamPaymentOrder::query()->where('event_id', $event->id)->where('team_id', $regionTeam->id)->whereNull('withdrawn_at')->where('pay_status', true)->get()->keyBy('effective_player_id') : collect())
@@ -71,7 +71,7 @@
                   <span class="badge bg-label-info">Imported · Unlinked</span>
                   <div class="small text-muted mt-1">Profile can be linked from the public team page.</div>
                 @endif
-                @if(!($isRegionalPreview ?? false) && app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(auth()->user(), $event))
+                @if(!($isRegionalPreview ?? false) && app(\App\Services\TeamSelection\RegionManagerAccessService::class)->canManageTeam(auth()->user(), $regionTeam, $event))
                   @if($linkedProfile && !(int) $slot->pay_status)
                     <details class="mt-2">
                       <summary class="small text-danger">Reset profile link</summary>

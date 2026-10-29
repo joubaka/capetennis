@@ -13,12 +13,14 @@ final class TeamSelectionMailReview
 {
     public function plan(Event $event, User $actor, array $options, bool $locking = false): array
     {
-        abort_unless($event->isTeam() && app(RegionManagerAccessService::class)->isEventManager($actor, $event), 403);
+        abort_unless($event->isTeam(), 403);
+        $access = app(RegionManagerAccessService::class);
         $current = fn ($query) => $locking ? $query->lockForUpdate() : $query;
         if ($locking) $event = Event::whereKey($event->id)->lockForUpdate()->firstOrFail();
         $action = $options['lifecycle_action'] ?? '';
         if ($action === 'reminder') {
             $region = $current(EventRegion::with(['region' => $current])->where('event_id', $event->id))->findOrFail($options['event_region_id']);
+            abort_unless($access->canManage($actor, $region), 403);
             abort_unless(in_array($options['reminder_kind'], ['registration_clothing', 'incomplete_clothing'], true)
                 && in_array($options['reminder_audience'], ['all', 'registered', 'unregistered'], true), 422);
             $service = app(TeamSelectionReminderService::class);
@@ -31,6 +33,8 @@ final class TeamSelectionMailReview
         } else {
             abort_unless(in_array($action, ['pending', 'resend', 'restored'], true), 422);
             $import = $current(TeamSelectionImport::where('event_id', $event->id)->where('status', 'sent'))->findOrFail($options['selection_import_id']);
+            $region = $current(EventRegion::with('events')->where('event_id', $event->id)->where('region_id', $import->region_id))->firstOrFail();
+            abort_unless($access->canManage($actor, $region), 403);
             $import->setRelation('event', $event);
             abort_if(TeamSelectionImport::where('event_id', $event->id)->where('region_id', $import->region_id)->where('id', '>', $import->id)->exists(), 422);
             $query = $current($import->invitations()->with(['player' => $current, 'player.user' => $current, 'player.users' => $current, 'team' => $current, 'region' => $current]))
@@ -100,10 +104,13 @@ final class TeamSelectionMailReview
         $action = $options['lifecycle_action'];
         if ($action === 'reminder') {
             $region = EventRegion::with(['region' => fn ($q) => $q->lockForUpdate()])->where('event_id', $event->id)->lockForUpdate()->findOrFail($options['event_region_id']);
+            abort_unless(app(RegionManagerAccessService::class)->canManage($actor, $region), 403);
 
             return app(TeamSelectionReminderService::class)->send($event, $region, $options['reminder_kind'], $options['reminder_audience'], $token, $state['recipient_hash'], $actor, $batchId, $options['team_id'] ?? null, $options['player_id'] ?? null, $state['approved_messages']);
         }
         $import = TeamSelectionImport::where('event_id', $event->id)->lockForUpdate()->findOrFail($options['selection_import_id']);
+        $region = EventRegion::with('events')->where('event_id', $event->id)->where('region_id', $import->region_id)->lockForUpdate()->firstOrFail();
+        abort_unless(app(RegionManagerAccessService::class)->canManage($actor, $region), 403);
         $service = app(TeamSelectionInvitationService::class);
         if ($action === 'pending') return $service->sendPendingActivatedInvitations($import, $actor, $state['recipient_hash'], $state['recipient_count'], $batchId, $state['approved_messages'], isset($options['invitation_id']) ? [$options['invitation_id']] : []);
         $invitation = $import->invitations()->where('event_id', $event->id)->lockForUpdate()->findOrFail($options['invitation_id']);

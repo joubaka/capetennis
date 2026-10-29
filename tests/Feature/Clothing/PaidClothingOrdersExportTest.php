@@ -155,6 +155,34 @@ class PaidClothingOrdersExportTest extends TestCase
         ]))->assertOk()->assertSee('No clothing orders found for this region');
     }
 
+    public function test_regional_convener_has_admin_clothing_controls_only_in_assigned_event_region(): void
+    {
+        [, $event, $region] = $this->managedRegion();
+        $event->update(['eventType' => DB::table('eventtypes')->insertGetId(['name' => 'Regional team event', 'type' => 2])]);
+        $manager = User::factory()->create();
+        $eventRegion = DB::table('event_regions')->where('event_id', $event->id)->where('region_id', $region->id)->value('id');
+        DB::table('event_region_managers')->insert(['event_id' => $event->id, 'region_id' => $region->id, 'event_region_id' => $eventRegion, 'user_id' => $manager->id]);
+        $otherRegion = TeamRegion::create(['region_name' => 'Private clothing region', 'clothing_admin' => 1]);
+        DB::table('event_regions')->insert(['event_id' => $event->id, 'region_id' => $otherRegion->id]);
+        $otherEvent = Event::factory()->create();
+        DB::table('event_regions')->insert(['event_id' => $otherEvent->id, 'region_id' => $region->id]);
+        $this->order($event, $region, true, 'Assigned shirt');
+        $this->order($otherEvent, $region, true, 'Other event private shirt');
+        $this->actingAs($manager)->get(route('backend.event.clothing.index', $event))->assertOk()
+            ->assertSee('Edit regions')->assertDontSee('Private clothing region');
+        $this->patch(route('backend.event.clothing.regions.update', $event), ['region_ids' => [$region->id]])->assertRedirect();
+        $this->assertSame(1, (int) $otherRegion->fresh()->clothing_admin);
+        $this->patch(route('backend.event.clothing.regions.update', $event), ['region_ids' => [$otherRegion->id]])->assertForbidden();
+        $this->get(route('backend.region.clothing.orders', ['region' => $region, 'event_id' => $event->id]))->assertOk()
+            ->assertSee('Assigned shirt')->assertDontSee('Other event private shirt');
+        $this->get(route('backend.region.clothing.orders', ['region' => $region, 'event_id' => $otherEvent->id]))->assertForbidden();
+        $this->get(route('backend.region.clothing.orders', ['region' => $region]))->assertForbidden();
+        Excel::fake();
+        $this->get(route('export.excel.clothing', ['id' => $region->id, 'event_id' => $event->id]))->assertOk();
+        Excel::assertDownloaded('clothing_orders.xlsx', fn (ClothingOrdersExport $export) => $export->collection()->count() === 1
+            && $export->collection()->first()['item']->item_name === 'Assigned shirt');
+    }
+
     public function test_non_super_user_cannot_use_region_wide_listing_or_exports(): void
     {
         [$admin, , $region] = $this->managedRegion();

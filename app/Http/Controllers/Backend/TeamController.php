@@ -266,11 +266,26 @@ class TeamController extends Controller
       'year' => 'nullable|string|max:10',
       'region_id' => 'required|integer|exists:team_regions,id',
       'published' => 'nullable|boolean',
+      'event_id' => 'nullable|integer|exists:events,id',
+      'category_event_id' => 'nullable|integer|exists:category_events,id',
     ]);
 
     // Authorize: user must be able to create teams in this event context
     // For region-based teams, we check the admin/convenor role
-    $this->authorize('team.admin', Event::class);
+    if (!empty($validated['event_id'])) {
+      $event = Event::findOrFail($validated['event_id']);
+      $access = app(\App\Services\TeamSelection\RegionManagerAccessService::class);
+      abort_unless($access->managedRegionIds($request->user(), $event)->contains((int) $validated['region_id']), 403);
+      if (!$access->isEventManager($request->user(), $event)) {
+        $request->validate(['category_event_id' => 'required|integer']);
+        abort_unless(CategoryEvent::where('event_id', $event->id)->whereKey($validated['category_event_id'])->exists(), 404);
+        $validated['year'] = $event->start_date?->year ?? now()->year;
+      } elseif (!empty($validated['category_event_id'])) {
+        abort_unless(CategoryEvent::where('event_id', $event->id)->whereKey($validated['category_event_id'])->exists(), 404);
+      }
+    } else {
+      $this->authorize('team.admin', Event::class);
+    }
 
     Log::info('addToRegion: validated data', $validated);
 
@@ -283,6 +298,7 @@ class TeamController extends Controller
         'year' => $validated['year'] ?? date('Y'),
         'region_id' => $validated['region_id'],
         'published' => $validated['published'] ?? 0,
+        'category_event_id' => $validated['category_event_id'] ?? null,
       ]);
 
       Log::info('addToRegion: team created', [
@@ -380,7 +396,7 @@ class TeamController extends Controller
 
   public function publishRegionTeams(Request $request, Event $event, TeamRegion $region)
   {
-    $this->authorize('event-draw.view', $event);
+    abort_unless(app(\App\Services\TeamSelection\RegionManagerAccessService::class)->managedRegionIds($request->user(), $event)->contains((int) $region->id), 403);
 
     abort_unless(
       $event->regions()->whereKey($region->id)->exists(),
@@ -636,7 +652,7 @@ class TeamController extends Controller
     PlayerIdentityService $identities
   )
   {
-    $this->authorize('event.manage', $event);
+    abort_unless(app(\App\Services\TeamSelection\RegionManagerAccessService::class)->canManageTeam($request->user(), $team, $event), 403);
     $rosters->assertTeamBelongsToEvent($team, $event);
     app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->assertRosterEditable($team);
 
@@ -712,7 +728,7 @@ class TeamController extends Controller
     ExternalTeamWorkbookParser $parser,
     ExternalTeamWorkbookService $workbooks
   ) {
-    $this->authorize('event.manage', $event);
+    abort_unless(app(\App\Services\TeamSelection\RegionManagerAccessService::class)->managedRegionIds($request->user(), $event)->contains((int) $region->id), 403);
     $workbooks->assertRegionBelongsToEvent($event, $region);
 
     $validated = $request->validate([
@@ -823,7 +839,7 @@ class TeamController extends Controller
 
   public function downloadTemplate(Event $event, Team $team, ExternalTeamRosterService $rosters)
   {
-    $this->authorize('event.manage', $event);
+    abort_unless(app(\App\Services\TeamSelection\RegionManagerAccessService::class)->canManageTeam($request->user(), $team, $event), 403);
     $rosters->assertTeamBelongsToEvent($team, $event);
 
     $spreadsheet = new Spreadsheet();

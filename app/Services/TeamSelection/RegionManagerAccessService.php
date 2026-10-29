@@ -8,6 +8,7 @@ use App\Models\Event;
 use App\Models\EventRegion;
 use App\Models\EventRegionManager;
 use App\Models\User;
+use App\Models\Team;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -24,16 +25,39 @@ final class RegionManagerAccessService
     {
         $event = $eventRegion->relationLoaded('events') ? $eventRegion->events : $eventRegion->events()->first();
 
-        return $event && $this->isEventManager($user, $event);
+        return $event && ($this->isEventManager($user, $event)
+            || (int) $this->manager($eventRegion)?->id === (int) $user->id);
     }
 
     public function canManageRoster(User $user, EventRegion $eventRegion): bool
     {
-        $event = $eventRegion->relationLoaded('events') ? $eventRegion->events : $eventRegion->events()->first();
-        if (! $event) return false;
-        if ($this->isEventManager($user, $event)) return true;
+        return $this->canManage($user, $eventRegion);
+    }
 
-        return (int) $this->manager($eventRegion)?->id === (int) $user->id;
+    /** Exact event-region scope, shared by workspace reads and team actions. */
+    public function managedRegionIds(User $user, Event $event): Collection
+    {
+        return EventRegion::query()->with('events')->where('event_id', $event->id)->get()
+            ->filter(fn (EventRegion $region) => $this->canManage($user, $region))
+            ->pluck('region_id')->map(fn ($id) => (int) $id)->values();
+    }
+
+    public function canAccessWorkspace(User $user, Event $event): bool
+    {
+        return $this->isEventManager($user, $event)
+            || ($event->isTeam() && $this->managedRegionIds($user, $event)->isNotEmpty());
+    }
+
+    public function canManageTeam(User $user, Team $team, ?Event $event = null): bool
+    {
+        $event ??= $team->category?->event;
+        if (! $event || ! app(\App\Services\EventTeamScope::class)->query($event)->whereKey($team->id)->exists()) return false;
+        if ($this->isEventManager($user, $event)) return true;
+        if (! $event->isTeam() || ! $team->region_id) return false;
+
+        $region = EventRegion::query()->with('events')->where('event_id', $event->id)->where('region_id', $team->region_id)->first();
+
+        return $region && $this->canManage($user, $region);
     }
 
     public function manager(EventRegion $eventRegion): ?User

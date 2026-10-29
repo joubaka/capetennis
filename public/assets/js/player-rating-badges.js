@@ -1,4 +1,4 @@
-/* Loaded only by the private Super Admin view. The endpoint enforces that role. */
+/* Private workspace badges. The endpoint validates actor and roster context. */
 (function (root) {
   'use strict';
   const config = root.CTPlayerRatingConfig;
@@ -61,7 +61,9 @@
     if (document.hidden || polling || running) return;
     polling = true;
     try {
-      const response = await fetch(config.endpoint, {credentials: 'same-origin', headers: {'Accept':'application/json'}});
+      const firstField = document.querySelector('[data-rating-field]:not([data-rating-field="0"])')?.dataset.ratingField;
+      const endpoint = config.endpoint + (firstField ? '?category_event_id=' + encodeURIComponent(firstField) : '');
+      const response = await fetch(endpoint, {credentials: 'same-origin', headers: {'Accept':'application/json'}});
       if (response.ok) { status((await response.json()).status); schedule(); }
     } catch (_) { /* Retain the last successful badges during network failures. */ }
     finally { polling = false; }

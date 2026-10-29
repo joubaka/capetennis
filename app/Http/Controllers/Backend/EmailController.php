@@ -69,7 +69,9 @@ class EmailController extends Controller
   {
     $request->validate(['event_id'=>'required|integer|exists:events,id','campaign_key'=>'nullable|uuid','emailSubject'=>'required|string|max:200','message'=>'required|string|max:30000']);
     $event = Event::findOrFail($request->event_id);
-    $this->authorize('event-email.bulk-send',$event);
+    if (!$request->user()->can('event-email.bulk-send', $event)) {
+      $this->authorizeRegionalTarget($request, $event);
+    }
     if (is_numeric($request->to)) {
       $player = Player::whereKey($request->to)->where(function ($query) use ($event) {
         $query->whereHas('registrations.categoryEventRegistrations.categoryEvent', fn ($q) => $q->where('event_id', $event->id))
@@ -88,7 +90,9 @@ class EmailController extends Controller
 
   private function reviewEventResponse(Request $request, Event $event)
   {
-    abort_unless(app(\App\Services\EventCommunicationService::class)->managesWholeEvent($event,$request->user()),403);
+    if (!app(\App\Services\EventCommunicationService::class)->managesWholeEvent($event, $request->user())) {
+      $this->authorizeRegionalTarget($request, $event);
+    }
     $options = ['scope'=>'all', 'recipients'=>'players'];
     if ($request->target_type === 'player' || is_numeric($request->to) || filter_var($request->to, FILTER_VALIDATE_EMAIL)) {
       $options = is_numeric($request->to) ? ['scope'=>'individual', 'individual_key'=>'player:'.$request->to, 'recipients'=>'players'] : ['scope'=>'direct', 'direct_email'=>$request->to, 'recipients'=>'players'];
@@ -129,6 +133,41 @@ class EmailController extends Controller
     if ($request->expectsJson()) return response()->json(['success'=>true,'review_required'=>true,'review_url'=>$url]);
     return redirect($url);
 
+  }
+
+  private function authorizeRegionalTarget(Request $request, Event $event): void
+  {
+    abort_unless($event->isTeam(), 403);
+    // Resolve a player against a current team in the actor's exact event and
+    // assigned regions before the legacy adapter may prepare their review.
+    if ($request->target_type === 'player' && is_numeric($request->to)) {
+      $regionIds = app(\App\Services\TeamSelection\RegionManagerAccessService::class)->managedRegionIds($request->user(), $event);
+      abort_if($regionIds->isEmpty(), 403);
+      $playerId = (int) $request->to;
+      $exists = app(\App\Services\EventTeamScope::class)->query($event)->whereIn('region_id', $regionIds)
+        ->where(fn ($query) => $query->whereHas('team_players', fn ($slots) => $slots->where('player_id', $playerId))
+          ->orWhereHas('team_players_no_profile', fn ($slots) => $slots->where('player_profile', $playerId)))->exists();
+      abort_unless($exists, 403);
+      return;
+    }
+    // Group buttons may address one explicit region or team only. Arbitrary
+    // addresses and all-event audiences are never accepted by this adapter.
+    abort_unless(!is_numeric($request->to) && !filter_var($request->to, FILTER_VALIDATE_EMAIL)
+      && in_array($request->target_type, ['team', 'region'], true), 403);
+    $regionId = null;
+    if ($request->target_type === 'team') {
+      $team = Team::withoutGlobalScopes()->whereHas('category', fn ($query) => $query->where('event_id', $event->id))->findOrFail($request->team_id);
+      $regionId = $team->region_id;
+    } else {
+      $regionId = $request->region_id ?? $request->region;
+    }
+    $eventRegion = \App\Models\EventRegion::with('events')->where('event_id', $event->id)->where('region_id', $regionId)->firstOrFail();
+    abort_unless(app(\App\Services\TeamSelection\RegionManagerAccessService::class)->canManage($request->user(), $eventRegion), 403);
+    $target = mb_strtolower(trim((string) $request->to));
+    $allowedTargets = $request->target_type === 'team'
+      ? ['all players in team', 'all unregistered players in team']
+      : ['all players in region', 'all unregistered players in region'];
+    abort_unless(in_array($target, $allowedTargets, true), 403);
   }
 
   /**

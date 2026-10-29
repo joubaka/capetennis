@@ -11,7 +11,7 @@ class PlayerRatingBadgeController extends Controller
 {
     public function __invoke(Request $request, PlayerRatingBadgeService $badges, PlayerAbilityRefreshState $state)
     {
-        abort_unless($request->user()?->hasRole('super-user'), 403);
+        $regional = !$request->user()?->hasRole('super-user');
         $data = $request->validate([
             'players' => ['sometimes', 'array', 'max:100'], 'players.*' => ['integer', 'min:1'],
             'registrations' => ['sometimes', 'array', 'max:100'], 'registrations.*' => ['integer', 'min:1'],
@@ -20,6 +20,13 @@ class PlayerRatingBadgeController extends Controller
             'category_event_id' => ['nullable', 'integer', 'min:1', 'prohibits:draw_id,category_id'],
             'category_id' => ['nullable', 'integer', 'min:1', 'prohibits:draw_id,category_event_id'],
         ]);
+        if ($regional) {
+            abort_unless(!empty($data['category_event_id']) && empty($data['draw_id']) && empty($data['category_id'])
+                && empty($data['registrations']) && empty($data['fixtures']), 403);
+            $field = CategoryEvent::findOrFail($data['category_event_id']);
+            $allowed = app(\App\Services\Performance\RegionalRatingAccess::class)->playerIds($field);
+            abort_unless($allowed && !array_diff(array_map('intval', $data['players'] ?? []), $allowed), 403);
+        }
         $status = $state->status();
         $context = isset($data['category_event_id']) ? CategoryEvent::with(['category', 'event'])->findOrFail($data['category_event_id'])
             : (isset($data['draw_id']) ? Draw::with(['categoryEvent.category', 'categoryEvent.event'])->findOrFail($data['draw_id'])

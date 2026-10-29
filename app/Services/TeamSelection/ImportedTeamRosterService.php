@@ -28,7 +28,7 @@ final class ImportedTeamRosterService
             app(\App\Services\TeamDrawAdaptationService::class)->lockEvent($event->id);
             $team = Team::query()->lockForUpdate()->findOrFail($slot->team_id);
             abort_unless($team->noProfile && $team->category()->where('event_id', $event->id)->exists()
-                && app(RegionManagerAccessService::class)->isEventManager($actor, $event), 403);
+                && app(RegionManagerAccessService::class)->canManageTeam($actor, $team, $event), 403);
             app(TeamSelectionInvitationService::class)->assertRosterEditable($team);
             $locked = NoProfileTeamPlayer::query()->lockForUpdate()->findOrFail($slot->id);
             $fail = fn (string $message) => throw ValidationException::withMessages(['player_id' => $message]);
@@ -103,7 +103,7 @@ final class ImportedTeamRosterService
             app(\App\Services\TeamDrawAdaptationService::class)->lockEvent($event->id);
             $team = Team::query()->lockForUpdate()->findOrFail($slot->team_id);
             abort_unless($team->noProfile && $team->category()->where('event_id', $event->id)->exists()
-                && app(RegionManagerAccessService::class)->isEventManager($actor, $event), 403);
+                && app(RegionManagerAccessService::class)->canManageTeam($actor, $team, $event), 403);
             app(TeamSelectionInvitationService::class)->assertRosterEditable($team);
             $locked = NoProfileTeamPlayer::query()->lockForUpdate()->findOrFail($slot->id);
             $fail = fn (string $message) => throw ValidationException::withMessages(['player_id' => $message]);

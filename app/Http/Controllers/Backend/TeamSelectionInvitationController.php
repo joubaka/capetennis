@@ -40,12 +40,9 @@ class TeamSelectionInvitationController extends Controller
     public function index(Event $event, TeamRankingImportService $service, RegionManagerAccessService $access, TeamSelectionReminderService $reminders, TeamSelectionInvitationService $invitations)
     {
         abort_unless($event->isTeam(), 404);
-        if (request()->boolean('workspace_fragment')) abort_unless($access->isEventManager(request()->user(), $event), 403);
+        abort_unless($access->canAccessWorkspace(request()->user(), $event), 403);
         if (request()->filled('selected_region')) abort_unless(EventRegion::where('event_id', $event->id)->where('region_id', request('selected_region'))->exists(), 404);
         if (request()->filled('selected_team')) abort_unless(app(\App\Services\EventTeamScope::class)->query($event)->whereKey(request('selected_team'))->when(request()->filled('selected_region'), fn ($query) => $query->where('region_id', request('selected_region')))->exists(), 404);
-        if (!$access->isEventManager(request()->user(), $event)) {
-            return $this->workspace($event, $service, $access, $reminders, $invitations);
-        }
         if (request()->boolean('workspace_fragment')) {
             $data = $this->embeddedWorkspaceData($event, $service, $access, $reminders, $invitations);
 
@@ -62,7 +59,7 @@ class TeamSelectionInvitationController extends Controller
 
     public function embeddedWorkspaceData(Event $event, TeamRankingImportService $service, RegionManagerAccessService $access, TeamSelectionReminderService $reminders, TeamSelectionInvitationService $invitations): array
     {
-        abort_unless($access->isEventManager(request()->user(), $event), 403);
+        abort_unless($access->canAccessWorkspace(request()->user(), $event), 403);
 
         return $this->workspace($event, $service, $access, $reminders, $invitations)->with('embeddedTeamsWorkspace', true)->getData();
     }
@@ -129,9 +126,6 @@ class TeamSelectionInvitationController extends Controller
             $eventRegions = $eventRegions->filter(fn (EventRegion $item) => $access->canManageRoster(request()->user(), $item))->values();
             abort_if($eventRegions->isEmpty(), 403);
         }
-        if (! $isEventManager) {
-            return redirect()->route('admin.events.teams', $event);
-        }
         $regionManagers = $eventRegions->mapWithKeys(fn (EventRegion $item) => [$item->id => $access->manager($item)]);
         $defaultRegionManagers = $isEventManager
             ? $eventRegions->mapWithKeys(fn (EventRegion $item) => [$item->id => $access->defaultManager($item)])
@@ -178,7 +172,7 @@ class TeamSelectionInvitationController extends Controller
         $defaultInvitationEventInformation = $invitations->defaultEventInformation($event);
         $reminderSummaries = [];
         $reminderHashes = [];
-        if ($isEventManager) {
+        if ($access->canAccessWorkspace(request()->user(), $event)) {
             foreach ($eventRegions as $eventRegion) {
                 $reminderSummaries[$eventRegion->id] = $reminders->summaries($event, $eventRegion);
                 foreach (['registration_clothing', 'incomplete_clothing'] as $kind) {
@@ -1414,7 +1408,7 @@ class TeamSelectionInvitationController extends Controller
     public function searchImportedPlayerProfiles(Request $request, Event $event, EventRegion $eventRegion, Team $team, NoProfileTeamPlayer $noProfileTeamPlayer)
     {
         $this->authorizeImportedRosterSlot($event, $eventRegion, $team, $noProfileTeamPlayer, $request->user());
-        abort_unless(app(RegionManagerAccessService::class)->isEventManager($request->user(), $event), 403);
+        abort_unless(app(RegionManagerAccessService::class)->canManageTeam($request->user(), $team, $event), 403);
         $data = $request->validate(['q' => ['required', 'string', 'min:2', 'max:100']]);
         $players = Player::query();
         foreach (preg_split('/\s+/u', trim($data['q']), -1, PREG_SPLIT_NO_EMPTY) ?: [] as $term) {
@@ -1446,7 +1440,7 @@ class TeamSelectionInvitationController extends Controller
     public function unlinkImportedPlayer(Request $request, Event $event, EventRegion $eventRegion, Team $team, NoProfileTeamPlayer $noProfileTeamPlayer, ImportedTeamRosterService $rosters)
     {
         $this->authorizeImportedRosterSlot($event, $eventRegion, $team, $noProfileTeamPlayer, $request->user());
-        abort_unless(app(RegionManagerAccessService::class)->isEventManager($request->user(), $event), 403);
+        abort_unless(app(RegionManagerAccessService::class)->canManageTeam($request->user(), $team, $event), 403);
         $data = $request->validate([
             'expected_player_id' => ['required', 'integer', 'min:1'],
             'expected_rank' => ['required', 'integer', 'min:1'],
@@ -1460,7 +1454,7 @@ class TeamSelectionInvitationController extends Controller
     public function relinkImportedPlayer(Request $request, Event $event, EventRegion $eventRegion, Team $team, NoProfileTeamPlayer $noProfileTeamPlayer, ImportedTeamRosterService $rosters)
     {
         $this->authorizeImportedRosterSlot($event, $eventRegion, $team, $noProfileTeamPlayer, $request->user());
-        abort_unless(app(RegionManagerAccessService::class)->isEventManager($request->user(), $event), 403);
+        abort_unless(app(RegionManagerAccessService::class)->canManageTeam($request->user(), $team, $event), 403);
         $data = $request->validate([
             'player_id' => ['required', 'integer', 'min:1', 'exists:players,id'],
             'expected_player_id' => ['required', 'integer', 'min:0'],

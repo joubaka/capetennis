@@ -26,10 +26,10 @@
 {{-- REGIONS TAB --}}
 {{-- ============================= --}}
   @if(!($rosterOnly ?? false))
-  @can('event.manage', $event)
+  @if(app(\App\Services\TeamSelection\RegionManagerAccessService::class)->canAccessWorkspace(auth()->user(), $event))
   @include('backend.adminPage.admin_show.tabs.regions')
 
-  @endcan
+  @endif
   @endif
   {{-- 🧍‍♂️ PLAYERS TAB --}}
   @include('backend.adminPage.admin_show.tabs.players') {{-- ✅ use the working version you built above --}}

@@ -10,7 +10,7 @@
 </p></div>
   @unless($rosterOnly)
   <div class="d-flex flex-wrap gap-2">
-    @if(app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(auth()->user(), $event))
+    @if(app(\App\Services\TeamSelection\RegionManagerAccessService::class)->managedRegionIds(auth()->user(), $event)->contains((int) $region->id))
       <a class="btn btn-outline-primary" href="{{ route('backend.team-selection.region-profile-matches.index', [$event, $region]) }}">Check profiles for whole region</a>
     @endif
     <div class="dropdown"><button type="button" class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">Send Emails</button><div class="dropdown-menu dropdown-menu-end">
@@ -59,7 +59,7 @@
         <span class="small text-muted">Team #{{ $team->id }} · Player order is shown by rank.</span>
         @unless($rosterOnly)
         <div class="d-flex flex-wrap gap-2">
-          @if($team->noProfile && app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(auth()->user(), $event))
+          @if($team->noProfile && app(\App\Services\TeamSelection\RegionManagerAccessService::class)->canManageTeam(auth()->user(), $team, $event))
             <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.team-selection.profile-matches.index', [$event, $team]) }}">Check existing profiles</a>
           @endif
           @can('team.players.manage', $team)

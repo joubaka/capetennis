@@ -271,11 +271,7 @@ class AuthServiceProvider extends ServiceProvider
         // Admin or convenor for the event may manage teams within that event.
 
         Gate::define('team.view', function ($user, \App\Models\Team $team) {
-            $event = optional(optional($team->category)->event);
-            if (!$event) {
-                return false;
-            }
-            return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
+            return app(\App\Services\TeamSelection\RegionManagerAccessService::class)->canManageTeam($user, $team);
         });
 
         Gate::define('team.create', function ($user, \App\Models\CategoryEvent $categoryEvent) {
@@ -287,27 +283,15 @@ class AuthServiceProvider extends ServiceProvider
         });
 
         Gate::define('team.update', function ($user, \App\Models\Team $team) {
-            $event = optional(optional($team->category)->event);
-            if (!$event) {
-                return false;
-            }
-            return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
+            return app(\App\Services\TeamSelection\RegionManagerAccessService::class)->canManageTeam($user, $team);
         });
 
         Gate::define('team.delete', function ($user, \App\Models\Team $team) {
-            $event = optional(optional($team->category)->event);
-            if (!$event) {
-                return false;
-            }
-            return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
+            return app(\App\Services\TeamSelection\RegionManagerAccessService::class)->canManageTeam($user, $team);
         });
 
         Gate::define('team.players.manage', function ($user, \App\Models\Team $team) {
-            $event = optional(optional($team->category)->event);
-            if (!$event) {
-                return false;
-            }
-            return $user->is_event_admin($event->id) || $user->is_convenor($event->id);
+            return app(\App\Services\TeamSelection\RegionManagerAccessService::class)->canManageTeam($user, $team);
         });
 
         Gate::define('team.admin', function ($user) {
