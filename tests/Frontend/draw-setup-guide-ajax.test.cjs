@@ -2,17 +2,34 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const fs=require('node:fs');
-function harness(){
+function harness(hub=false){
   const events={},requests=[];
   const element=()=>({children:[],dataset:{},attributes:{},hidden:false,textContent:'',innerHTML:'',addEventListener(name,fn){this[name]=fn;},setAttribute(k,v){this.attributes[k]=v;},removeAttribute(k){delete this.attributes[k];},appendChild(child){this.children.push(child);},prepend(child){this.children.unshift(child);},replaceChildren(){this.children=[];this.innerHTML='';},querySelector(){return null;}});
   const body=element(),host=element();host.contains=node=>node?.inside===true;host.querySelector=()=>body;
-  const document={activeElement:null,body:element(),querySelector:selector=>selector==='[data-draw-guide-modal]'?host:null,createElement:element,addEventListener(name,fn){events[name]=fn;}};
-  const window={location:{href:'https://test.local/events/1',origin:'https://test.local'},bootstrap:{Modal:{getOrCreateInstance(){return{show(){host.shown=true;},hide(){host['hidden.bs.modal']?.();}};}}},fetch(url,options){let resolve,reject;const pending=new Promise((yes,no)=>{resolve=yes;reject=no;});requests.push({url,options,resolve,reject});return pending;}};
+  const document={activeElement:null,body:element(),querySelector:selector=>selector==='[data-draw-guide-modal]'?host:selector==='[data-draw-hub]'&&hub?{}:null,createElement:element,addEventListener(name,fn){events[name]=fn;}};
+  const window={location:{href:'https://test.local/events/1',origin:'https://test.local',reload(){window.reloads=(window.reloads||0)+1;}},bootstrap:{Modal:{getOrCreateInstance(){return{show(){host.shown=true;},hide(){host['hidden.bs.modal']?.();}};}}},fetch(url,options){let resolve,reject;const pending=new Promise((yes,no)=>{resolve=yes;reject=no;});requests.push({url,options,resolve,reject});return pending;}};
   vm.runInNewContext(fs.readFileSync('public/js/draw-setup-guide.js','utf8'),{window,document,URL,AbortController,FormData:class{constructor(form){this.fields=form.fields;}}});
   const reply=(index,data,status=200,type='application/json')=>requests[index].resolve({ok:status<400,status,headers:{get:()=>type},json:async()=>data});
   return{window,document,events,host,body,requests,reply,element};
 }
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
+test('hub refreshes on closing confirmed creation, while a draw workspace does not reload',()=>{
+  for(const hub of [true,false]){
+    const app=harness(hub);
+    app.host['hidden.bs.modal']();assert.equal(app.window.reloads,undefined,'viewing setup alone is read-only');
+    app.window.DrawSetupGuide.created([{name:'New draw',url:'/guide/1'}]);
+    app.host['hidden.bs.modal']();assert.equal(app.window.reloads,hub?1:undefined);
+  }
+});
+test('hub refreshes after a confirmed category save but not after rejected validation',async()=>{
+  const app=harness(true),form=app.element();form.inside=true;form.action='https://test.local/category';form.querySelectorAll=()=>[];form.closest=()=>form;
+  const event={target:form,preventDefault(){}};
+  const rejected=app.events.submit(event);app.reply(0,{message:'Choose category'},422);await rejected;
+  app.host['hidden.bs.modal']();assert.equal(app.window.reloads,undefined);
+  const saved=app.events.submit(event);app.reply(1,{guide_url:'/guide/1'});await saved;await tick();
+  app.reply(2,{html:'<div data-draw-guide>Saved</div>'});await tick();
+  app.host['hidden.bs.modal']();assert.equal(app.window.reloads,1);
+});
 test('Ajax guide loads same-origin HTML fragment and ignores stale responses',async()=>{
   const app=harness();const first=app.window.DrawSetupGuide.open('/guide/1');await tick();
   assert.equal(app.requests.length,1);assert.equal(app.requests[0].options.headers.Accept,'application/json');

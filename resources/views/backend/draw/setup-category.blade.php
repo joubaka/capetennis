@@ -5,6 +5,7 @@
 @include('backend.partials.operational-controls')
 
 <div class="mx-auto" style="max-width:650px">
+  <a href="{{ route('headOffice.show', $draw->event_id) }}" class="btn btn-sm btn-outline-secondary mb-4">Back to draws</a>
   <a href="{{ route('draw.setup.show', $draw) }}" class="btn btn-sm btn-outline-secondary mb-4">Back to draw format</a>
   <p class="text-primary mb-1">{{ $label }}</p>
   <h3>Which category will play?</h3>

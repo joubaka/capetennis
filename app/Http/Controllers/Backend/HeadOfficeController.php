@@ -86,7 +86,10 @@ class HeadOfficeController extends Controller
       ]);
 
       $flexibleFormatIds = \App\Models\DrawFormats::where('name', 'Flexible Monrad')->pluck('id');
+      $scheduleStates = app(\App\Services\Scheduling\SchedulePublicationStatusService::class)->draws($event);
+      $event->setAttribute('draw_hub_publicly_visible', app(\App\Services\PublicTournamentVisibility::class)->eventIsVisible($event));
       foreach ($event->draws as $draw) {
+        $draw->setAttribute('schedule_publication_state', $scheduleStates->get($draw->id, ['saved' => 0, 'published' => 0, 'pending' => 0, 'status' => 'Not scheduled']));
         $draw->setRelation('event', $event);
         $draw->setAttribute('is_flexible', $draw->flexibleMonrad !== null
           || $flexibleFormatIds->contains($draw->settings?->draw_format_id));

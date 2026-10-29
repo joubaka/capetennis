@@ -271,7 +271,7 @@
       @endif
       </div>
     </div>
-    <a class="btn btn-outline-primary" data-saved-schedule-link href="{{ route('backend.event-venue-schedule.calendar', $event) }}">Saved schedule</a>
+    <div class="d-flex flex-wrap gap-2"><a class="btn btn-outline-secondary" href="{{ route('headOffice.show', $event) }}">Back to draws</a><a class="btn btn-outline-primary" data-saved-schedule-link href="{{ route('backend.event-venue-schedule.calendar', $event) }}">Saved schedule</a></div>
   </div>
 
   @if(($adaptationNotices ?? collect())->isNotEmpty())

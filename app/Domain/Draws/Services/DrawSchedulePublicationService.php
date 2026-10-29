@@ -9,18 +9,29 @@ use Illuminate\Support\Facades\DB;
 
 final class DrawSchedulePublicationService
 {
-    public function publish(Draw $draw): void
+    public function publish(Draw $draw, ?string $revision = null): void
     {
         if (! $this->hasScheduledMatch($draw)) {
             throw new \RuntimeException('Add at least one match time before publishing the schedule.');
         }
 
-        app(\App\Services\Scheduling\SchedulePublicationService::class)->publish($draw->event, ['draw_id' => $draw->id]);
+        $this->mutate($draw, false, $revision);
     }
 
-    public function unpublish(Draw $draw): void
+    public function unpublish(Draw $draw, ?string $revision = null): void
     {
-        app(\App\Services\Scheduling\SchedulePublicationService::class)->hide($draw->event, ['draw_id' => $draw->id]);
+        $this->mutate($draw, true, $revision);
+    }
+
+    private function mutate(Draw $draw, bool $hide, ?string $revision): void
+    {
+        $scope = ['draw_id' => $draw->id] + ($revision !== null ? ['revision' => $revision] : []);
+        try {
+            $service = app(\App\Services\Scheduling\SchedulePublicationService::class);
+            $hide ? $service->hide($draw->event, $scope) : $service->publish($draw->event, $scope);
+        } catch (\InvalidArgumentException $exception) {
+            throw new \RuntimeException($exception->getMessage(), 0, $exception);
+        }
     }
 
     private function hasScheduledMatch(Draw $draw): bool

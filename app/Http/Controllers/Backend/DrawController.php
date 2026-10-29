@@ -454,10 +454,12 @@ class DrawController extends Controller
   {
     $draw = Draw::findOrFail($id);
     $this->authorize('publish', $draw);
+    $data = request()->validate(['action' => ['sometimes', 'in:publish,unpublish'], 'revision' => ['sometimes', 'string', 'size:64']]);
+    $publish = isset($data['action']) ? $data['action'] === 'publish' : ! $draw->oop_published;
 
     try {
       $service = app(\App\Domain\Draws\Services\DrawSchedulePublicationService::class);
-      $draw->oop_published ? $service->unpublish($draw) : $service->publish($draw);
+      $publish ? $service->publish($draw, $data['revision'] ?? null) : $service->unpublish($draw, $data['revision'] ?? null);
       $draw->refresh();
     } catch (\RuntimeException $e) {
       return response()->json(['success' => false, 'message' => $e->getMessage()], 422);

@@ -136,7 +136,7 @@
     const reviewing = publicationReview && tab === 'matrix';
     workspace.querySelectorAll('[data-flexible-panel]').forEach(element => { element.hidden = element.dataset.flexiblePanel !== panel; });
     workspace.querySelectorAll('[data-flexible-tab]').forEach(button => {
-      const active = !reviewing && button.dataset.flexibleTab === tab;
+      const active = button.dataset.flexibleTab === tab;
       button.classList.toggle('active', active);
       button.setAttribute('aria-pressed', String(active));
     });

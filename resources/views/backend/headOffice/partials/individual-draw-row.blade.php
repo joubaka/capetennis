@@ -1,5 +1,9 @@
 @php
   $isFlexible = (bool) $draw->is_flexible;
+  $scheduleState = $draw->schedule_publication_state ?? ['saved' => (int) $draw->order_of_play_count, 'published' => $draw->oop_published ? (int) $draw->order_of_play_count : 0, 'pending' => $draw->oop_published ? 0 : (int) $draw->order_of_play_count, 'status' => $draw->oop_published ? 'Published' : ($draw->order_of_play_count > 0 ? 'Unpublished' : 'Not scheduled')];
+  $hasPublicTimes = $scheduleState['published'] > 0;
+  $timesVisible = $draw->published && ($draw->event->draw_hub_publicly_visible ?? $draw->event->published);
+  $needsSchedulePublication = $scheduleState['saved'] > 0 && ($scheduleState['pending'] > 0 || ! $hasPublicTimes);
   $drawUrl = route('backend.draw.roundrobin.show', $draw->id);
   $format = \App\Http\Controllers\Backend\DrawSetupController::OPTIONS[$draw->settings?->workflow][0]
     ?? ($isFlexible ? 'Custom Monrad' : null);
@@ -35,7 +39,7 @@
 @endphp
 <article class="draw-overview-row" data-draw-id="{{ $draw->id }}"
          data-name="{{ $draw->drawName }}" data-format="{{ $format ?? '' }}" data-published="{{ $draw->published ? '1' : '0' }}"
-         data-schedule="{{ $draw->oop_published ? '1' : '0' }}" data-has-schedule="{{ $draw->order_of_play_count > 0 ? '1' : '0' }}"
+         data-schedule="{{ $hasPublicTimes ? '1' : '0' }}" data-has-schedule="{{ $scheduleState['saved'] > 0 ? '1' : '0' }}" data-schedule-pending="{{ $needsSchedulePublication ? '1' : '0' }}"
          data-schedulable="{{ !$draw->locked && !$draw->published ? '1' : '0' }}">
   <div class="draw-overview-info">
     <label class="draw-row-selector" for="draw-select-{{ $draw->id }}">
@@ -53,9 +57,9 @@
         @endif
       </h3>
       <div class="draw-division-state"><span class="draw-publication {{ $draw->published ? 'is-published' : 'is-draft' }}"><span class="draws-status-dot" aria-hidden="true"></span>{{ $draw->published ? 'Published' : 'Draft' }}</span>
-      <span class="draw-publication {{ $draw->oop_published ? 'is-published' : 'is-draft' }}">
+      <span class="draw-publication {{ $scheduleState['status'] === 'Published' && $timesVisible ? 'is-published' : 'is-draft' }}">
         <i class="ti ti-calendar-event" aria-hidden="true"></i>
-        {{ $draw->oop_published ? 'Schedule published' : ($draw->order_of_play_count > 0 ? 'Schedule ready' : 'Schedule not ready') }}
+        {{ $scheduleState['status'] === 'Published' ? ($timesVisible ? 'Schedule published' : 'Times prepared · preview only') : $scheduleState['status'] }}{{ $hasPublicTimes && !$timesVisible && $scheduleState['status'] !== 'Published' ? ' · preview only' : '' }}
       </span>
       @if($draw->locked)<span class="draw-lock">@include('backend.headOffice.partials.draw-icon', ['icon' => 'lock']) Locked</span>@endif</div>
     </div>
@@ -108,16 +112,19 @@
       </button>
     @endcan
     @can('publish', $draw)
-      @if($draw->order_of_play_count > 0)
+      @if($scheduleState['saved'] > 0 || $hasPublicTimes)
         <button type="button"
                 class="btn draws-button {{ $draw->oop_published ? 'draws-button-secondary' : 'draw-schedule-button' }} toggle-schedule-publication"
                 data-url="{{ route('draw.toggle.publish.schedule', $draw) }}"
                 data-draw-name="{{ $draw->drawName }}"
-                data-draw-published="{{ $draw->published ? '1' : '0' }}"
-                data-published="{{ $draw->oop_published ? '1' : '0' }}">
+                data-draw-published="{{ $timesVisible ? '1' : '0' }}"
+                data-published="{{ $hasPublicTimes && !$needsSchedulePublication ? '1' : '0' }}" data-action="{{ $needsSchedulePublication ? 'publish' : 'unpublish' }}">
           <i class="ti ti-clock" aria-hidden="true"></i>
-          <span>{{ $draw->oop_published ? 'Unpublish times' : 'Publish times' }}</span>
+          <span>{{ $needsSchedulePublication ? ($hasPublicTimes ? 'Publish updates' : 'Publish times') : 'Unpublish times' }}</span>
         </button>
+        @if($hasPublicTimes && $needsSchedulePublication)
+          <button type="button" class="btn draws-button draws-button-secondary toggle-schedule-publication" data-url="{{ route('draw.toggle.publish.schedule', $draw) }}" data-draw-name="{{ $draw->drawName }}" data-draw-published="{{ $timesVisible ? '1' : '0' }}" data-published="1" data-action="unpublish">Unpublish times</button>
+        @endif
       @endif
     @endcan
     <div class="dropdown">

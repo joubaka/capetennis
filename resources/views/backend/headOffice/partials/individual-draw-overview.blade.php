@@ -1,4 +1,4 @@
-<div class="draws-workspace">
+<div class="draws-workspace" data-draw-hub>
   @include('backend.event.partials.header', [
     'eventWorkspaceActive' => 'draws',
     'eventWorkspaceIcon' => 'ti-tournament',
@@ -33,11 +33,12 @@
       $drawCount = $event->draws->count();
       $generatedCount = $event->draws->where('draw_fixtures_count', '>', 0)->count();
       $publishedCount = $event->draws->where('published', true)->count();
-      $scheduledCount = $event->draws->where('order_of_play_count', '>', 0)->count();
-      $schedulePublishedCount = $event->draws->where('oop_published', true)->count();
+      $scheduledCount = $event->draws->filter(fn ($draw) => ($draw->schedule_publication_state['saved'] ?? $draw->order_of_play_count) > 0)->count();
+      $schedulePublishedCount = $event->draws->filter(fn ($draw) => ($event->draw_hub_publicly_visible ?? $event->published) && $draw->published && ($draw->schedule_publication_state['status'] ?? '') === 'Published')->count();
+      $pendingScheduleCount = $event->draws->filter(fn ($draw) => ($draw->schedule_publication_state['pending'] ?? 0) > 0)->count();
     @endphp
-    @if($scheduledCount > $schedulePublishedCount)
-      <div class="alert alert-warning" role="status">{{ $scheduledCount - $schedulePublishedCount }} {{ Str::plural('schedule', $scheduledCount - $schedulePublishedCount) }} prepared but not public. Use Publish times beside a draw to review and publish its schedule.</div>
+    @if($pendingScheduleCount > 0)
+      <div class="alert alert-warning" role="status">{{ $pendingScheduleCount }} {{ Str::plural('schedule', $pendingScheduleCount) }} with unpublished changes. Review saved times before publishing.</div>
     @endif
     <details class="card mb-3"><summary class="p-3">Publication summary</summary>
     <section aria-labelledby="release-readiness-heading">
@@ -61,9 +62,9 @@
           <div class="col-6 col-lg-3"><div class="border rounded p-2"><small class="text-muted d-block">Schedules prepared</small><strong>{{ $scheduledCount }}/{{ $drawCount }}</strong></div></div>
           <div class="col-6 col-lg-3"><div class="border rounded p-2"><small class="text-muted d-block">Schedules published</small><strong>{{ $schedulePublishedCount }}/{{ $drawCount }}</strong></div></div>
         </div>
-        @if($scheduledCount > $schedulePublishedCount)
+        @if($pendingScheduleCount > 0)
           <div class="alert alert-warning mt-3 mb-0" role="status">
-            <strong>{{ $scheduledCount - $schedulePublishedCount }} {{ Str::plural('schedule', $scheduledCount - $schedulePublishedCount) }} prepared but not public.</strong>
+            <strong>{{ $pendingScheduleCount }} {{ Str::plural('schedule', $pendingScheduleCount) }} with unpublished changes.</strong>
             Use <em>Publish times</em> to preview time, venue and court details before releasing the draw publicly.
           </div>
         @endif

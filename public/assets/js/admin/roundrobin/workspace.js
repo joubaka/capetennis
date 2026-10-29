@@ -21,7 +21,7 @@
     const reviewing = publicationReview && area === 'results' && target === 'matrix';
     active = area;
     document.querySelectorAll('[data-workspace]').forEach(button => {
-      const selected = !reviewing && button.dataset.workspace === area;
+      const selected = button.dataset.workspace === area;
       button.classList.toggle('active', selected);
       button.setAttribute('aria-pressed', String(selected));
     });

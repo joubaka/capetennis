@@ -63,6 +63,52 @@ class ScheduleDayBatchTest extends TestCase
         $this->assertDatabaseCount('order_of_plays',0);
     }
 
+    public function test_page_selected_venue_from_another_event_draw_and_exact_courts_preview_and_apply_without_assigning_draws(): void
+    {
+        [$event,$draws,,$fixtures,$options] = $this->context();
+        $venue = Venue::forceCreate(['name'=>'Venue attached through another draw']);
+        $otherDraw = Draw::factory()->create(['event_id'=>$event->id]);
+        $otherDraw->venues()->attach($venue->id, ['num_courts'=>3]);
+        $this->assertSame(['1','2','3'], app(EventVenueScheduleService::class)->fullDayCourtLabels($event)[$venue->id]);
+        foreach (['A'=>true,'B'=>true,'Closed'=>false] as $label=>$active) {
+            DB::table('event_venue_courts')->insert(['event_id'=>$event->id,'venue_id'=>$venue->id,'label'=>$label,'active'=>$active]);
+        }
+        $options = array_replace($options, ['wave_minutes'=>90, 'venue_ids'=>[$venue->id], 'day_court_labels'=>[$venue->id=>['B']]]);
+        $this->signInAdmin($event);
+        $preview = $this->postJson(route('backend.event-venue-schedule.preview',$event),$options)->assertOk()->json();
+        $this->assertSame([], $preview['unscheduled']);
+        $this->assertCount(2, $preview['matches']);
+        foreach ($preview['matches'] as $row) {
+            $this->assertSame($venue->id, $row['venue_id']);
+            $this->assertSame('B', $row['court']);
+        }
+        $this->assertDatabaseCount('order_of_plays',0);
+        $this->postJson(route('backend.event-venue-schedule.apply',$event),array_replace($options,[
+            'day_court_labels'=>[$venue->id=>['A']], 'revision'=>$preview['revision'],
+        ]))->assertStatus(422);
+        $this->postJson(route('backend.event-venue-schedule.apply',$event),$options+['revision'=>$preview['revision']])->assertOk()->assertJsonPath('count',2);
+        foreach ($fixtures as $fixture) {
+            $this->assertDatabaseHas('order_of_plays',['fixture_id'=>$fixture->id,'venue_id'=>$venue->id,'court'=>'B']);
+        }
+        foreach ($draws as $draw) $this->assertSame(0,$draw->venues()->count());
+        $this->assertDatabaseCount('published_schedule_assignments',0);
+        $this->postJson(route('backend.event-venue-schedule.manual-assignment',$event),[
+            'fixture_id'=>$fixtures[0]->id, 'scheduled_at'=>'2026-10-31 09:00',
+            'venue_id'=>$venue->id, 'court'=>'B', 'duration'=>60, 'player_rest'=>30, 'court_gap'=>0,
+        ])->assertOk();
+
+        $this->postJson(route('backend.event-venue-schedule.preview',$event),array_replace($options,[
+            'day_court_labels'=>[$venue->id=>['Closed']],
+        ]))->assertStatus(422);
+        $foreignEvent = Event::factory()->create();
+        $foreignVenue = Venue::forceCreate(['name'=>'Another event only']);
+        Draw::factory()->create(['event_id'=>$foreignEvent->id])->venues()->attach($foreignVenue->id,['num_courts'=>2]);
+        $this->postJson(route('backend.event-venue-schedule.preview',$event),array_replace($options,[
+            'venue_ids'=>[$foreignVenue->id], 'day_court_labels'=>[$foreignVenue->id=>['1']],
+        ]))->assertStatus(422);
+        $this->assertDatabaseCount('order_of_plays',2);
+    }
+
     public function test_sequential_replanning_uses_new_finish_in_both_directions_and_default_preserves_saved_booking(): void
     {
         [$event,$draws,$venue,$fixtures,$options] = $this->context();

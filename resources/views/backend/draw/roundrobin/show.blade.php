@@ -48,12 +48,11 @@
   </div></details>
 </div>
 <nav class="rr-workspace-nav" aria-label="Draw workspace">
-  @unless($draw->isTeamDraw())<a href="{{ route('draw.setup.show', $draw) }}">1 · Format</a>@endunless
-  <button type="button" data-workspace="players">{{ $draw->isTeamDraw() ? 'Players & Groups' : '2 · Players & Positions' }}</button>
-  <button type="button" data-workspace="results">{{ $draw->isTeamDraw() ? '' : '3 · ' }}Draw &amp; Results</button>
-  <button type="button" data-workspace="schedule" data-workspace-view="{{ $draw->isTeamDraw() ? 'oop' : 'schedule' }}">{{ $draw->isTeamDraw() ? '' : '4 · ' }}Schedule</button>
-  @unless($draw->isTeamDraw())<a data-workspace-review href="{{ route('backend.draw.roundrobin.show', $draw) }}?review=publication#matrix">5 · Review &amp; publish</a>@endunless
+  @unless($draw->isTeamDraw())<a href="{{ route('draw.setup.show', $draw) }}">Format</a>@endunless
   <button type="button" data-workspace="setup">Draw settings</button>
+  <button type="button" data-workspace="players">{{ $draw->isTeamDraw() ? 'Players & Groups' : 'Players & Positions' }}</button>
+  <button type="button" data-workspace="results">Draw &amp; Results</button>
+  @if($draw->isTeamDraw())<button type="button" data-workspace="schedule" data-workspace-view="oop">Schedule</button>@endif
   <button type="button" data-workspace="rules">Rules &amp; notes</button>
 </nav>
 <div class="d-flex flex-wrap align-items-start gap-2 mb-3">

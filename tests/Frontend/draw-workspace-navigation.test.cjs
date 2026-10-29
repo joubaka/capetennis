@@ -101,11 +101,11 @@ test('legacy setup calls, explicit rules navigation and browser history preserve
   assert.equal(page.buttons.find(button => button.active).dataset.workspace, 'rules');
 });
 
-test('publication review highlights step five and ordinary navigation restores its own active step', () => {
+test('legacy publication review keeps Draw & Results active after the duplicate review tab is removed', () => {
   const page = workspace('#matrix', null, '?review=publication');
   assert.equal(page.review.active, true);
   assert.equal(page.review.attrs['aria-current'], 'step');
-  assert.equal(page.buttons.some(button => button.active), false);
+  assert.equal(page.buttons.find(button => button.active).dataset.workspace, 'results');
   page.window.RRWorkspace.open('results');
   assert.equal(page.review.active, false, 'clicking Draw & Results works even when the hash is unchanged');
   assert.equal(page.buttons.find(button => button.active).dataset.workspace, 'results');
@@ -149,7 +149,7 @@ test('Monrad publication review and normal tab changes select the correct progre
     window: {dispatchEvent() {}}});
   assert.equal(review.active, true);
   assert.equal(review.attrs['aria-current'], 'step');
-  assert.equal(buttons.some(button => button.active), false);
+  assert.equal(buttons.find(button => button.active).dataset.flexibleTab, 'matrix');
   buttons.find(button => button.dataset.flexibleTab === 'matrix').listeners.click();
   assert.equal(review.active, false);
   assert.equal(buttons.find(button => button.active).dataset.flexibleTab, 'matrix');

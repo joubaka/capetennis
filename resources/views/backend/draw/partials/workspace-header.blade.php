@@ -95,7 +95,7 @@
           </ul>
         </div>
       @endif
-      <a class="btn btn-sm btn-outline-secondary" href="{{ route('headOffice.show', $draw->event_id) }}">Back to Event</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ route('headOffice.show', $draw->event_id) }}">Back to draws</a>
   </x-slot:actions>
 </x-backend.page-header>
 @unless($draw->isTeamDraw())

@@ -30,7 +30,7 @@
 @endphp
 @include('backend.draw.partials.guide-modal')
 <div class="container-xxl py-3" data-saved-calendar>
-  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3"><div><h3 class="mb-1">Saved schedule</h3><p class="text-muted mb-0">{{ $event->name }}</p></div><a class="btn btn-outline-primary" href="{{ route('headOffice.show', $event) }}">Back to event dashboard</a></div>
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3"><div><h3 class="mb-1">Saved schedule</h3><p class="text-muted mb-0">{{ $event->name }}</p></div><a class="btn btn-outline-primary" href="{{ route('headOffice.show', $event) }}">Back to draws</a></div>
   @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
   @if($errors->any())<div class="alert alert-danger">{{ $errors->first() }}</div>@endif
   <nav class="d-flex gap-2 overflow-auto pb-2 mb-3" aria-label="Schedule days" data-schedule-day-navigation>

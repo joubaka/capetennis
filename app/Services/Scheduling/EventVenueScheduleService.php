@@ -120,7 +120,8 @@ final class EventVenueScheduleService
         if (($dayScope || $fullDay) && $draws->contains('locked', true)) throw new \InvalidArgumentException('Unlock selected draws before editing their day schedule.');
         $venueIds = $draws->flatMap(fn (Draw $draw) => $draw->venues->pluck('id'))->merge($roundSetups->flatMap(fn ($row) => $row['venue_ids']))->unique()->values();
         if ($dayScope) $venueIds = $event->venues()->pluck('venues.id')->merge($venueIds)->unique()->values();
-        if ($fullDay) $venueIds = $event->venues()->pluck('venues.id');
+        $fullDayCourts = $fullDay ? $this->fullDayCourtLabels($event) : [];
+        if ($fullDay) $venueIds = collect(array_keys($fullDayCourts));
         if (array_diff($selectedVenues, $venueIds->map(fn ($id) => (int) $id)->all())) {
             throw new \InvalidArgumentException('One or more selected venues are not assigned to the selected draws.');
         }
@@ -133,7 +134,7 @@ final class EventVenueScheduleService
         }
         $venues = Venue::whereIn('id', $venueIds)->orderBy('name')->get()->keyBy('id');
         $courtLabels = $fullDay
-            ? array_intersect_key($this->fullDayCourtLabels($event), array_flip($venues->keys()->all()))
+            ? array_intersect_key($fullDayCourts, array_flip($venues->keys()->all()))
             : $this->courtLabels($event, $draws, $venues);
         if (($dayScope || $fullDay) && isset($options['day_court_labels'])) {
             $selectedCourts = $options['day_court_labels'];
@@ -1504,7 +1505,11 @@ final class EventVenueScheduleService
 
     public function fullDayCourtLabels(Event $event): array
     {
-        return $this->courtLabels($event, $event->draws()->with('venues')->get(), $event->venues()->get()->keyBy('id'));
+        $draws = $event->draws()->with('venues')->get();
+        // Match the scheduling page's event-wide inventory, including venues
+        // attached through another draw in this event.
+        $venues = $event->venues()->get()->concat($draws->flatMap(fn ($draw) => $draw->venues))->unique('id')->keyBy('id');
+        return $this->courtLabels($event, $draws, $venues);
     }
 
     public function fullDayTies(Event $event): array

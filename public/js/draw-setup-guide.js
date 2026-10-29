@@ -3,7 +3,7 @@
   var host = document.querySelector('[data-draw-guide-modal]');
   if (!host) return;
   var body = host.querySelector('[data-draw-guide-body]');
-  var version = 0, request = null, submitting = false, currentUrl = '', returnFocus=null;
+  var version = 0, request = null, submitting = false, currentUrl = '', returnFocus=null, changed=false;
   function localUrl(value) {
     var url = new URL(value, window.location.href);
     if (url.origin !== window.location.origin) throw new Error('The setup link must belong to this site.');
@@ -75,6 +75,7 @@
       var data=await json(response);
       if (typeof data.guide_url !== 'string') throw new Error('The save could not be confirmed. Check the draw before trying again.');
       nextUrl=localUrl(data.guide_url);
+      changed=true;
     } catch(error) {
       feedback.textContent=error.message || 'The save could not be confirmed. Check your connection and the draw before trying again.';feedback.hidden=false;
       controls.forEach(function(control){if(error.fields && error.fields[control.name])control.setAttribute('aria-invalid','true');});
@@ -84,7 +85,7 @@
     if(nextUrl) open(nextUrl);
   });
   host.addEventListener('hide.bs.modal',function(event){if(submitting)event.preventDefault();});
-  host.addEventListener('hidden.bs.modal',function(){version++;if(request)request.abort();if(returnFocus && returnFocus.isConnected)returnFocus.focus();});
+  host.addEventListener('hidden.bs.modal',function(){version++;if(request)request.abort();if(changed && document.querySelector('[data-draw-hub]')){window.location.reload();return;}if(returnFocus && returnFocus.isConnected)returnFocus.focus();});
   function appendChoices(target, guides) {
     guides.forEach(function(guide){
       var url;try{url=localUrl(guide.url);}catch(error){return;}
@@ -92,9 +93,10 @@
     });
   }
   function created(guides) {
+    changed=true;
     var summary=document.querySelector('[data-draw-guide-created]');
     if(!summary){summary=document.createElement('aside');summary.dataset.drawGuideCreated='';summary.className='alert alert-success m-3';summary.setAttribute('role','status');(document.querySelector('.content-wrapper') || document.body).prepend(summary);}
-    var message=document.createElement('p');message.textContent='Draw saved. Continue setup below; the event list will update when refreshed.';summary.appendChild(message);appendChoices(summary,guides);
+    var message=document.createElement('p');message.textContent='Draw saved. Continue setup below; closing setup refreshes your draws.';summary.appendChild(message);appendChoices(summary,guides);
   }
   async function choose(guides) {
     if(submitting)return;var own=++version;if(request)request.abort();await closeCreateModal();if(own!==version)return;

@@ -120,15 +120,21 @@ class HeadOfficePublicationControlsTest extends TestCase
         $this->assertSame(1, $xpath->query('//details[@data-whole-day-publication and not(@open)]')->length);
         $this->assertSame(1, $xpath->query('//details[@data-event-draw-publication]/summary//*[@data-draw-publication-summary]')->length);
         $this->assertLessThan(strpos($html, 'data-event-draw-publication'), strpos($html, '>Manage Draws</h5>'));
-        $this->assertSame(1, substr_count($html, 'href="'.route('backend.event-venue-schedule.index', $event).'"'));
+        // The global navigation and organiser help intentionally offer the same
+        // event-wide destination. Verify each component rather than a page-wide count.
+        $scheduleUrl = route('backend.event-venue-schedule.index', $event);
+        $this->assertSame(1, $xpath->query('//nav[@aria-label="Event navigation"]/a[@href="'.$scheduleUrl.'" and normalize-space(.)="Schedule"]')->length);
+        $this->assertSame(1, $xpath->query('//section[@data-organiser-setup]//a[@href="'.$scheduleUrl.'" and normalize-space(.)="Plan schedule across all draws"]')->length);
         $this->assertSame(0, $xpath->query('//a[contains(@class, "event-workspace-action") and @href="'.route('admin.events.overview', $event).'"]')->length);
         foreach ($draws as $draw) {
-            $this->assertSame(1, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//a[@data-draw-guide-open]')->length);
+            $guideUrl = route('draw.guide.show', [$event, $draw]);
+            $card = '//details[@id="publication-draw-'.$draw->id.'"]';
+            $this->assertSame(1, $xpath->query($card.'/summary//a[@data-draw-guide-open and @href="'.$guideUrl.'"]')->length);
             $this->assertSame(1, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//button[contains(concat(" ", normalize-space(@class), " "), " toggle-publish ") and contains(@class, "d-none")]')->length);
             $this->assertSame(1, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//details[@aria-label="Draw settings"]')->length);
             $this->assertSame(1, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//details[@aria-label="Match schedule"]')->length);
             $this->assertSame(0, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//details[@aria-label="Draw settings"]//details[@aria-label="Match schedule"]')->length);
-            $this->assertSame(1, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//div[@aria-label="Draw workspace"]//a[@data-draw-guide-open]')->length);
+            $this->assertSame(1, $xpath->query($card.'//div[@aria-label="Draw workspace"]//a[@data-draw-guide-open and @href="'.$guideUrl.'"]')->length);
             $this->assertSame(1, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//details[@aria-label="Draw settings"]//button[contains(@class, "btn-add-venues")]')->length);
             $this->assertSame(0, $xpath->query('//details[@id="publication-draw-'.$draw->id.'"]//*[@data-bs-toggle="dropdown"]')->length);
         }

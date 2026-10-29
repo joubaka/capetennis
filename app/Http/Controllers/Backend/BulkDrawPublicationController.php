@@ -10,6 +10,7 @@ use App\Models\Event;
 use App\Services\Draw\FlexibleMonradService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -51,6 +52,7 @@ final class BulkDrawPublicationController extends Controller
             'draw_ids.*' => ['required', 'integer', 'distinct'],
             'operation' => ['required', Rule::in(['draws', 'schedules'])],
             'action' => ['sometimes', Rule::in(['publish', 'unpublish'])],
+            'revision' => ['sometimes', 'string', 'size:64'],
         ]);
         $action = $data['action'] ?? 'publish';
 
@@ -73,57 +75,72 @@ final class BulkDrawPublicationController extends Controller
             Gate::authorize('publish', $draws[$id]);
         }
 
-        $changed = [];
-        $unchanged = [];
-        $failed = [];
-
-        foreach ($ids as $id) {
-            $draw = $draws[$id];
-            $currentlyPublished = $data['operation'] === 'draws'
-                ? (bool) $draw->published
-                : (bool) $draw->oop_published;
-            $targetPublished = $action === 'publish';
-            $needsScoring = $data['operation'] === 'draws' && $targetPublished && $draw->isTeamDraw()
-                && ! app(\App\Services\TeamDrawScoringPublicationService::class)->state($draw)['ready'];
-            if ($currentlyPublished === $targetPublished && ! $needsScoring) {
-                $unchanged[] = $draw->id;
-                continue;
+        $mutate = function () use ($data, $event, $draws, $ids, $action, $schedulePublication, $drawPublication, $flexibleMonrad) {
+            if ($data['operation'] === 'schedules') {
+                // Match the canonical scheduler's lock order; keep the confirmed
+                // revision stable for the complete selected-draw publication.
+                \App\Models\Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
+                DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
+            }
+            if ($data['operation'] === 'schedules' && isset($data['revision'])
+                && ! hash_equals(app(\App\Services\Scheduling\SchedulePublicationService::class)->revision($event), $data['revision'])) {
+                throw ValidationException::withMessages(['revision' => 'The saved or public schedule changed. Refresh the draws before publishing.']);
             }
 
-            try {
-                if ($data['operation'] === 'schedules') {
-                    $targetPublished
-                        ? $schedulePublication->publish($draw)
-                        : $schedulePublication->unpublish($draw);
-                } elseif ($draw->usesFlexibleMonrad()) {
-                    $flexibleMonrad->publish($draw, (int) ($draw->flexibleMonrad?->revision ?? 0), $targetPublished);
-                } elseif ($targetPublished) {
-                    $drawPublication->publish($draw);
-                } else {
-                    $drawPublication->unpublish($draw);
-                }
-                $changed[] = $draw->id;
-            } catch (\RuntimeException $exception) {
-                if ($exception instanceof \Illuminate\Database\QueryException) {
-                    throw $exception;
-                }
-                $failed[] = [
-                    'id' => $draw->id,
-                    'name' => $draw->drawName,
-                    'message' => $exception->getMessage(),
-                ];
-            }
-        }
+            $changed = [];
+            $unchanged = [];
+            $failed = [];
 
-        return response()->json([
-            'success' => count($failed) === 0,
-            'operation' => $data['operation'],
-            'action' => $action,
-            'changed' => $changed,
-            'published' => $action === 'publish' ? $changed : [],
-            'unpublished' => $action === 'unpublish' ? $changed : [],
-            'unchanged' => $unchanged,
-            'failed' => $failed,
-        ] + $this->publicationState($event));
+            foreach ($ids as $id) {
+                $draw = $draws[$id];
+                $currentlyPublished = $data['operation'] === 'draws'
+                    ? (bool) $draw->published
+                    : (bool) $draw->oop_published;
+                $targetPublished = $action === 'publish';
+                $needsScoring = $data['operation'] === 'draws' && $targetPublished && $draw->isTeamDraw()
+                    && ! app(\App\Services\TeamDrawScoringPublicationService::class)->state($draw)['ready'];
+                if ($currentlyPublished === $targetPublished && ! $needsScoring && ! ($data['operation'] === 'schedules' && $targetPublished)) {
+                    $unchanged[] = $draw->id;
+                    continue;
+                }
+
+                try {
+                    if ($data['operation'] === 'schedules') {
+                        $targetPublished
+                            ? $schedulePublication->publish($draw)
+                            : $schedulePublication->unpublish($draw);
+                    } elseif ($draw->usesFlexibleMonrad()) {
+                        $flexibleMonrad->publish($draw, (int) ($draw->flexibleMonrad?->revision ?? 0), $targetPublished);
+                    } elseif ($targetPublished) {
+                        $drawPublication->publish($draw);
+                    } else {
+                        $drawPublication->unpublish($draw);
+                    }
+                    $changed[] = $draw->id;
+                } catch (\RuntimeException $exception) {
+                    if ($exception instanceof \Illuminate\Database\QueryException) {
+                        throw $exception;
+                    }
+                    $failed[] = [
+                        'id' => $draw->id,
+                        'name' => $draw->drawName,
+                        'message' => $exception->getMessage(),
+                    ];
+                }
+            }
+
+            return response()->json([
+                'success' => count($failed) === 0,
+                'operation' => $data['operation'],
+                'action' => $action,
+                'changed' => $changed,
+                'published' => $action === 'publish' ? $changed : [],
+                'unpublished' => $action === 'unpublish' ? $changed : [],
+                'unchanged' => $unchanged,
+                'failed' => $failed,
+            ] + $this->publicationState($event));
+        };
+
+        return $data['operation'] === 'schedules' ? DB::transaction($mutate) : $mutate();
     }
 }

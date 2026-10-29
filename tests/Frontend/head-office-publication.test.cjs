@@ -31,7 +31,7 @@ test('event-wide publication confirms all draws and sends sequential batches acr
   const running = ui.buttons[0].click();
   assert.equal(ui.buttons[1].disabled, true);
   await running;
-  assert.match(ui.confirmations[0], /all 201 draws across every age-group tab/);
+  assert.match(ui.confirmations[0], /201 draws across every age-group tab/);
   assert.deepEqual(ui.requests.map(request => request.payload.draw_ids.length), [200, 1]);
   assert.deepEqual(ui.requests.flatMap(request => request.payload.draw_ids), ids);
   assert.equal(ui.requests[0].payload.operation, 'draws');

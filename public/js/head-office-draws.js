@@ -1,6 +1,7 @@
 /* Event draw overview. Mutation rules remain in the existing endpoints. */
 $(function () {
   const config = window.headOfficeDraws;
+  window.addEventListener('pageshow', event => { if (event.persisted) window.location.reload(); });
   const csrf = $('meta[name="csrf-token"]').attr('content');
   const error = (xhr, fallback) => toastr.error(xhr.responseJSON?.message || fallback);
 
@@ -19,7 +20,7 @@ $(function () {
     $('#schedule-selected').prop('disabled', !$selected.filter('[data-schedulable="1"]').length);
     $('#publish-selected-draws').prop('disabled', !$selected.filter('[data-published="0"]').length);
     $('#unpublish-selected-draws').prop('disabled', !$selected.filter('[data-published="1"]').length);
-    $('#publish-selected-times').prop('disabled', !$selected.filter('[data-has-schedule="1"][data-schedule="0"]').length);
+    $('#publish-selected-times').prop('disabled', !$selected.filter('[data-schedule-pending="1"]').length);
     $('#unpublish-selected-times').prop('disabled', !$selected.filter('[data-schedule="1"]').length);
   }
 
@@ -64,7 +65,7 @@ $(function () {
     const schedule = operation === 'schedules';
     const publishing = action === 'publish';
     const selector = schedule
-      ? (publishing ? '[data-has-schedule="1"][data-schedule="0"]' : '[data-schedule="1"]')
+      ? (publishing ? '[data-schedule-pending="1"]' : '[data-schedule="1"]')
       : (publishing ? '[data-published="0"]' : '[data-published="1"]');
     const $rows = selectedRows().filter(selector);
     const ids = $rows.map(function () { return Number(this.dataset.drawId); }).get();
@@ -80,7 +81,7 @@ $(function () {
       title: verb + ' selected ' + noun + '?',
       text: publishing
         ? (schedule
-          ? ids.length + ' selected schedules will expose their times, venues and courts. Draft draws remain available only in the authorized preview.'
+          ? ids.length + ' selected schedules will publish their saved times, venues and courts. Hidden events and draft draws remain available only in the authorized preview.'
           : ids.length + ' selected draws will become visible on their public links.')
         : (schedule
           ? ids.length + ' selected schedules will hide their times, venues and courts from the public.'
@@ -89,7 +90,7 @@ $(function () {
     }).then(result => {
       if (!result.isConfirmed) return;
       const $buttons = $('.draws-bulk-buttons button').prop('disabled', true).attr('aria-busy', 'true');
-      $.post(config.bulkPublicationUrl, {_token: csrf, operation: operation, action: action, draw_ids: ids})
+      $.post(config.bulkPublicationUrl, {_token: csrf, operation: operation, action: action, draw_ids: ids, ...(schedule ? {revision: config.scheduleRevision} : {})})
         .done(function (response) {
           if (!response.failed?.length) { window.location.reload(); return; }
           const details = response.failed.map(item => item.name + ': ' + item.message).join('\n');
@@ -232,7 +233,7 @@ $(function () {
     }).then(result => {
       if (!result.isConfirmed) return;
       $button.prop('disabled', true).attr('aria-busy', 'true');
-      $.post($button.data('url'), {_token: csrf})
+      $.post($button.data('url'), {_token: csrf, action: $button.data('action'), revision: config.scheduleRevision})
         .done(function (response) {
           if (response.success === false) { toastr.error(response.message || 'Could not update match times.'); return; }
           location.reload();

@@ -1,5 +1,5 @@
 <div class="container-xxl py-3" style="max-width:1000px" data-draw-guide data-draw-guide-url="{{ $guideUrl ?? route('draw.guide.show', [$event, $draw]) }}">
-  <a href="{{ route('headOffice.show', $event) }}" class="btn btn-link px-0 mb-2">← Back to event</a>
+  <a href="{{ route('headOffice.show', $event) }}" class="btn btn-link px-0 mb-2">← Back to draws</a>
   <h1 class="h3">{{ $draw->drawName }}</h1>
   @if(!empty($scheduleDate))<a class="btn btn-outline-primary mb-3" style="min-height:44px" href="{{ route('backend.event-venue-schedule.calendar', ['event'=>$event->id,'draw_id'=>$draw->id,'date'=>$scheduleDate]) }}">Resume saved day - {{ \Carbon\Carbon::parse($scheduleDate)->format('D j M Y') }}</a>@endif
   @if(($draw->team_draw_selection['competition']['phase'] ?? null) === 'playoff')
@@ -70,7 +70,7 @@
         <a class="btn btn-outline-secondary align-self-start mt-2" href="{{ $guide['workspace'] }}">Open draw</a>
         <p class="small text-muted mt-3 mb-2">Saving keeps the programme private. Review and publish the draw and its match times separately when ready.</p>
         <a class="align-self-start" href="{{ $publicationUrl }}">Review publication controls</a>
-      <a class="align-self-start mt-3" href="{{ route('headOffice.show', $event) }}">Back to categories</a>
+      <a class="align-self-start mt-3" href="{{ route('headOffice.show', $event) }}">Back to draws</a>
     </section>
   @else
   <section class="card card-body mb-3">

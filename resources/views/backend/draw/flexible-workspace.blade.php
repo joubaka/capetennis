@@ -17,12 +17,10 @@
 @include('backend.draw.partials.workspace-header', ['workspaceSurface' => 'flexible'])
 <div id="flexible-draw-workspace" data-has-generated-draw="{{ $config['state']['generated'] ? '1' : '0' }}">
   <nav class="rr-workspace-nav mb-3" aria-label="Draw workspace">
-    <a href="{{ route('draw.setup.show', $draw) }}">1 · Format</a>
-    <button type="button" data-flexible-tab="groups">2 · Players &amp; Positions</button>
-    <button type="button" data-flexible-tab="matrix">3 · Draw &amp; Results</button>
-    <button type="button" data-flexible-tab="schedule">4 · Schedule</button>
-    <a data-workspace-review href="{{ route('backend.draw.roundrobin.show', $draw) }}?review=publication#matrix">5 · Review &amp; publish</a>
+    <a href="{{ route('draw.setup.show', $draw) }}">Format</a>
     <button type="button" data-flexible-tab="settings">Setup &amp; Rules</button>
+    <button type="button" data-flexible-tab="groups">Players &amp; Positions</button>
+    <button type="button" data-flexible-tab="matrix">Draw &amp; Results</button>
   </nav>
   <section data-flexible-panel="editor" class="fm-surface">
     <h2 class="fm-workspace-print-title">{{ $title }} · {{ $draw->event->name }}</h2>

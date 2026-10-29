@@ -21,6 +21,7 @@ window.headOfficeDraws = {
     bulkPublicationUrl: @json(route('backend.event-draws.bulk-publication', $event)),
     drawSettingsUrl: @json(route('backend.event-draws.bulk-publication', $event)),
     venueScheduleUrl: @json(route('backend.event-venue-schedule.index', $event)),
+    scheduleRevision: @json(app(\App\Services\Scheduling\SchedulePublicationService::class)->revision($event)),
 };
 </script>
 <script src="{{ asset('js/head-office-draws.js') }}?v={{ filemtime(public_path('js/head-office-draws.js')) }}"></script>

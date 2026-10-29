@@ -238,7 +238,8 @@ class DrawSetupTest extends TestCase
         $this->assertSame([2, 4, 6, 8], $draw->flexibleMonrad->draft['challenge_pairs']);
         $this->assertSame('feed_in_monrad', $draw->settings->workflow);
         $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()
-            ->assertSee('1 · Format')->assertSee('2 · Players')->assertSee('4 · Schedule');
+            ->assertSeeInOrder(['>Format</a>', 'data-flexible-tab="settings"', 'data-flexible-tab="groups"', 'data-flexible-tab="matrix"'], false)
+            ->assertDontSee('data-flexible-tab="schedule"', false)->assertDontSee('data-workspace-review', false);
         $this->get(route('draw.setup.show', $draw))->assertOk()
             ->assertSee('aria-current="page"', false)->assertSee('draw-progress-modal');
         $this->postJson(route('flexible-monrad.generate', $draw), ['revision' => 1])->assertOk();
