@@ -245,6 +245,55 @@ class HeadOfficeDrawAuthorizationTest extends TestCase
             ->eligible($draw)->pluck('registration_id')->all());
     }
 
+    public function test_two_category_draws_have_independent_rosters_fixtures_and_winners(): void
+    {
+        $category = CategoryEvent::factory()->create(['event_id' => $this->individualEvent->id]);
+        $response = $this->actingAs($this->admin)->postJson($this->individualDrawUrl(), [
+            'drawName' => 'Green A', 'second_draw_name' => 'Green B',
+            'draw_count' => 2, 'category_event_id' => $category->id,
+        ])->assertOk()->assertJsonCount(2, 'draws')->assertJsonCount(2, 'guides');
+        $draws = Draw::where('event_id', $this->individualEvent->id)->orderBy('id')->get();
+        $this->assertCount(2, $draws);
+        $winners = [];
+        foreach ($draws as $index => $draw) {
+            $this->assertSame($category->id, $draw->category_event_id);
+            $this->assertFalse((bool) $draw->published);
+            $draw->settings()->create(['workflow' => 'round_robin']);
+            $group = $draw->groups()->create(['name' => 'A']);
+            $registrations = collect(range(1, 2))->map(function () use ($category) {
+                $registration = \App\Models\Registration::factory()->create();
+                $registration->players()->attach(\App\Models\Player::factory()->create()->id);
+                $registration->categoryEvents()->attach($category->id, ['status' => 'active', 'payment_status_id' => 1]);
+                return $registration;
+            });
+            app(\App\Services\Draw\GroupAssignmentService::class)->save($draw, [
+                'groups' => [['group_id' => $group->id, 'registration_ids' => $registrations->pluck('id')->all()]],
+            ]);
+            app(\App\Services\DrawService::class)->regenerateRoundRobinFixtures($draw->fresh());
+            $fixture = $draw->drawFixtures()->sole();
+            $winner = $registrations->first()->id;
+            $fixture->update(['winner_registration' => $winner, 'match_status' => 1]);
+            $winners[] = $winner;
+            $this->assertSame([$winner], $draw->drawFixtures()->pluck('winner_registration')->all());
+            $response->assertJsonPath('guides.'.$index.'.url', route('draw.guide.show', [$this->individualEvent, $draw]));
+        }
+        $this->assertNotSame($winners[0], $winners[1]);
+        $this->assertSame(2, \App\Models\Fixture::whereIn('draw_id', $draws->pluck('id'))->count());
+        $this->assertSame([$winners[0]], $draws[0]->drawFixtures()->pluck('winner_registration')->all());
+    }
+
+    public function test_two_draw_creation_validates_both_names_count_category_and_authorization_before_writing(): void
+    {
+        $category = CategoryEvent::factory()->create(['event_id' => $this->individualEvent->id]);
+        $payload = ['drawName' => 'A', 'second_draw_name' => 'B', 'draw_count' => 2, 'category_event_id' => $category->id];
+        $this->actingAs($this->ordinaryUser)->postJson($this->individualDrawUrl(), $payload)->assertForbidden();
+        $this->actingAs($this->admin);
+        foreach ([['second_draw_name' => null], ['second_draw_name' => 'A'], ['draw_count' => 3], ['category_event_id' => $this->categoryEventId]] as $invalid) {
+            $this->postJson($this->individualDrawUrl(), array_replace($payload, $invalid))->assertUnprocessable();
+        }
+        $this->assertSame(0, Draw::where('event_id', $this->individualEvent->id)->count());
+    }
+
     public function test_new_category_selection_modes_require_one_exact_category(): void
     {
         foreach (['automatic', 'manual'] as $mode) {

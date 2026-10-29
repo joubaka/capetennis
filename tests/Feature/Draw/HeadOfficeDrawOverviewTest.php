@@ -248,7 +248,8 @@ class HeadOfficeDrawOverviewTest extends TestCase
         $this->assertSame(1, $xpath->query('//button[contains(concat(" ",normalize-space(@class)," ")," toggle-schedule-publication ")]')->length);
         $this->assertSame(1, $xpath->query('//details[@data-draw-categories and not(@open)]')->length);
         $this->assertSame(1, $xpath->query('//details[@data-draw-categories]//button[@data-create-category="502"]')->length);
-        $this->assertSame(0, $xpath->query('//details[@data-draw-categories]//button[@data-create-category="501"]')->length);
+        $this->assertSame(1, $xpath->query('//details[@data-draw-categories]//button[@data-create-category="501"]')->length);
+        $this->assertStringContainsString('Add another draw', $html);
         $this->assertSame(0, $xpath->query('//details[@data-draw-categories]//*[@data-draw-guide-open]')->length);
         $this->assertStringContainsString('12 eligible players', $html);
         $this->assertStringContainsString('1 saved draw', $html);

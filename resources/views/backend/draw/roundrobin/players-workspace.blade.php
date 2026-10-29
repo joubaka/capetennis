@@ -26,6 +26,9 @@
   <div class="alert alert-warning rr-locked-overlay {{ ($draw->locked || $draw->published) ? '' : 'd-none' }}">Assignments are read-only while the draw is published or locked.</div>
   <h5 class="mt-4 mb-1">2. Add players</h5>
   <p class="text-muted mb-3" id="rr-placement-next-step">{{ $groups->isEmpty() ? 'Create your groups first. Then choose players and add them to a group.' : 'Choose players, add them to a group, then save assignments.' }}</p>
+  @if(\App\Services\Performance\PlayerRatingBadgeService::visible())
+    <p class="small text-muted mb-3">Available ratings appear beside player names to help with seeding.</p>
+  @endif
   <div class="rr-player-layout">
     <aside class="rr-player-picker">
       <div class="rr-picker-heading"><h6 class="mb-1">Available players <span id="rr-available-count" class="badge bg-label-primary">0</span></h6><small class="text-muted">Paid, active entries for this draw</small></div>

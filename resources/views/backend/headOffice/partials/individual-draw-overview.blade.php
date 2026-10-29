@@ -161,9 +161,7 @@
           @if($categoryDraws->isNotEmpty())
             <span class="text-muted small">{{ $categoryDraws->count() }} saved {{ Str::plural('draw', $categoryDraws->count()) }}</span>
           @endif
-          @if($categoryDraws->isEmpty())
-            @can('individual-draw.create', $event)<button type="button" class="btn btn-primary" data-create-category="{{ $progressCategory->id }}" data-bs-toggle="modal" data-bs-target="#createDrawModal">Create draw</button>@endcan
-          @endif
+          @can('individual-draw.create', $event)<button type="button" class="btn btn-primary" data-create-category="{{ $progressCategory->id }}" data-bs-toggle="modal" data-bs-target="#createDrawModal">{{ $categoryDraws->isEmpty() ? 'Create draw' : 'Add another draw' }}</button>@endcan
           </div>
         </div>
       @empty
@@ -172,7 +170,7 @@
       @endforelse
       <div class="mt-3">
         @can('event-category.manage', $event)<a href="{{ route('admin.events.categories', $event) }}">Manage event categories</a>@endcan
-        <p class="small text-muted mb-0 mt-2">Create a draw, choose its format, place players, then prepare the schedule. Save each step before leaving. Draws and match times are published separately after review.</p>
+        <p class="small text-muted mb-0 mt-2">A category can have separate draws, each with its own players and winner. Choose each draw's format and place players separately, then prepare the schedules. Draws and match times are published separately after review.</p>
       </div>
       </section>
     </details>

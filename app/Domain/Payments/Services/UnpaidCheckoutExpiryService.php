@@ -68,6 +68,26 @@ class UnpaidCheckoutExpiryService
         ];
     }
 
+    /** A bounded lazy sweep for an explicitly authorised event entries view. */
+    public function expireRegistrationForEvent(int $eventId): array
+    {
+        $counts = ['expired' => 0, 'skipped' => 0];
+        $candidates = $this->candidateQuery('registration')
+            ->whereHas('items.category_event', fn ($query) => $query->where('event_id', $eventId))
+            // Prioritise recent attempts here; the scheduler fairly scans older backlog.
+            ->orderByDesc('id')->limit(250)->get();
+        foreach ($candidates as $candidate) {
+            try {
+                if ($this->expire($candidate)) $counts['expired']++;
+                else $counts['skipped']++;
+            } catch (ValidationException|\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+                $counts['skipped']++;
+                Log::warning('Event checkout expiry skipped an inconsistent lifecycle', ['event_id' => $eventId, 'order_id' => $candidate->id]);
+            }
+        }
+        return $counts;
+    }
+
     private function candidateQuery(string $kind): \Illuminate\Database\Eloquent\Builder
     {
         $model = $kind === 'registration' ? RegistrationOrder::class : TeamPaymentOrder::class;

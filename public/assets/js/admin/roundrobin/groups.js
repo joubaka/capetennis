@@ -216,6 +216,9 @@
     render();
   }
   function syncState() {
+    // Only publish acknowledged assignments, never the editable local draft.
+    root.RR_SAVED_GROUPS = groups.map(g => ({id: g.id, name: g.name, registrations: g.players.map(p => ({id: p.id}))}));
+    if (typeof root.RRSettingsGroupsChanged === 'function') root.RRSettingsGroupsChanged();
     AdminState.setGroups(
       groups.map(g => ({
         id: g.id,

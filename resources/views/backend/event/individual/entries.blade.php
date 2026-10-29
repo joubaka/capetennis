@@ -315,8 +315,9 @@
   @if(auth()->user()->hasRole('super-user') && $pendingCheckouts->isNotEmpty())
     <section class="card border-warning mb-4" id="pending-checkouts" aria-labelledby="pending-checkouts-title">
       <div class="card-header bg-label-warning">
-        <h3 class="h5 mb-1" id="pending-checkouts-title">Pending checkouts</h3>
-        <p class="small mb-0">Canonical unpaid checkout drafts are shown separately. They are not confirmed entries and private collection notes do not change their payment state.</p>
+        <h3 class="h5 mb-1" id="pending-checkouts-title">Pending checkouts and payment review</h3>
+        <p class="small mb-0">Canonical unpaid checkout drafts are shown separately from confirmed entries. Rows with recorded payment evidence or inconsistent checkout records are labelled for review. Private collection notes do not change their payment state.</p>
+        <p class="small mb-0 mt-1">Eligible unpaid checkouts expire after five minutes from PayFast handoff, when present, or checkout creation. Paid checkouts and pending or verified EFT proof are protected. Entries needing review remain visible.</p>
       </div>
       <div class="table-responsive">
         <table class="table mb-0">
@@ -324,7 +325,7 @@
             <tr>
               <th>Player</th>
               <th>Category</th>
-              <th>Created</th>
+              <th>Checkout created</th>
               <th>Canonical payment</th>
             </tr>
           </thead>
@@ -332,19 +333,20 @@
             @foreach($pendingCheckouts as $pendingCheckout)
               @php
                 $pendingPlayer = $pendingCheckout->registration?->players?->first();
+                $checkoutClock = $pendingCheckoutClocks[$pendingCheckout->id] ?? ['created_at' => null, 'review' => 'Checkout needs review'];
               @endphp
               <tr data-pending-checkout-id="{{ $pendingCheckout->id }}">
                 <td>{{ trim(($pendingPlayer?->name ?? '') . ' ' . ($pendingPlayer?->surname ?? '')) ?: 'Unknown player' }}</td>
                 <td>{{ $pendingCheckout->categoryEvent?->category?->name ?? 'Uncategorised' }}</td>
-                <td>{{ $pendingCheckout->created_at?->format('d M Y H:i') ?? '—' }}</td>
-                <td><span class="badge bg-warning text-dark">Pending</span></td>
+                <td>{{ $checkoutClock['created_at']?->format('d M Y H:i') ?? $checkoutClock['review'] }}</td>
+                <td><span class="badge text-wrap text-start text-dark {{ !empty($checkoutClock['payment_pending']) ? 'bg-warning' : 'bg-label-secondary' }}">{{ $checkoutClock['payment_label'] ?? 'Review required' }}</span></td>
               </tr>
             @endforeach
           </tbody>
         </table>
       </div>
       @if($pendingCheckouts->count() === 100)
-        <div class="card-footer small text-muted">Showing the 100 most recent pending checkouts.</div>
+        <div class="card-footer small text-muted">Showing the 100 most recent checkout records needing payment or review.</div>
       @endif
     </section>
   @endif

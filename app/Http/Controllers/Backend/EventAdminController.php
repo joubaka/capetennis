@@ -706,6 +706,8 @@ class EventAdminController extends Controller
     // Only requirement for individual
     $validated = $request->validate([
       'drawName' => 'required|string|max:255',
+      'draw_count' => ['nullable', 'integer', 'in:1,2'],
+      'second_draw_name' => ['required_if:draw_count,2', 'nullable', 'string', 'max:255', 'different:drawName'],
       'draw_type_id' => [
         'nullable',
         'integer',
@@ -743,13 +745,24 @@ class EventAdminController extends Controller
     // explicitly event-wide draws and older integrations.
     $categoryId = $validated['category_event_id'] ?? null;
 
-    // Create the draw
-    $draw = Draw::create([
-      'event_id' => $event->id,
-      'drawName' => $validated['drawName'],
-      'drawType_id' => $drawTypeId,
-      'category_event_id' => $categoryId,
-      'rounds' => 0,
+    $names = [$validated['drawName']];
+    if ((int) ($validated['draw_count'] ?? 1) === 2) {
+      $names[] = $validated['second_draw_name'];
+    }
+    $draws = \Illuminate\Support\Facades\DB::transaction(function () use ($names, $event, $drawTypeId, $categoryId) {
+      return collect($names)->map(fn ($name) => Draw::create([
+        'event_id' => $event->id,
+        'drawName' => $name,
+        'drawType_id' => $drawTypeId,
+        'category_event_id' => $categoryId,
+        'rounds' => 0,
+      ]));
+    });
+    $draw = $draws->first();
+    $useGuide = $request->user()->can('event.manage', $event) && empty($validated['category_scope']);
+    $guides = $draws->map(fn ($created) => [
+      'name' => $created->drawName,
+      'url' => $useGuide ? route('draw.guide.show', [$event, $created]) : route('draw.setup.show', $created),
     ]);
 
     \Log::debug('[createIndividualDraw] Draw created', [
@@ -759,8 +772,10 @@ class EventAdminController extends Controller
 
     return response()->json([
       'success' => true,
-      'message' => 'Draw created successfully',
+      'message' => $draws->count() === 2 ? 'Two separate draws created. Choose players for each draw separately.' : 'Draw created successfully',
       'draw' => $draw,
+      'draws' => $draws,
+      'guides' => $guides,
       'setup_url' => $request->user()->can('event.manage', $event) && empty($validated['category_scope']) ? route('draw.guide.show', [$event, $draw]) : route('draw.setup.show', $draw),
       'guide_url' => $request->user()->can('event.manage', $event) && empty($validated['category_scope']) ? route('draw.guide.show', [$event, $draw]) : null,
     ]);

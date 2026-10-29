@@ -11,6 +11,7 @@
         <button type="button" class="btn btn-outline-primary mb-3" data-ratings-refresh-retry hidden>Retry ratings update</button>
     @endif
     <p>One provisional singles rating across ages. Filter current player profiles by age group and gender, or search a player by name.</p>
+    <x-rating-explanation />
     @if($sharedCoverage && !$snapshot['reason'])<p class="small text-muted" role="status">Shared-scale coverage: {{ $sharedCoverage['connected'] }} of {{ $sharedCoverage['eligible'] }} players with eligible standard-singles results within two years are connected to the reference group. Players awaiting connecting match evidence: {{ $sharedCoverage['eligible'] - $sharedCoverage['connected'] }}.</p>@endif
     @if($connectionPlan && !$snapshot['reason'] && $connectionPlan['component_count'] > 1)
         @include('backend.player-performance.connection-plan', ['plan' => $connectionPlan])

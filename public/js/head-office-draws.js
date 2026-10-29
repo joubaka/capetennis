@@ -137,9 +137,11 @@ $(function () {
       .done(response => {
         this.reset();
         suggestedDrawName = '';
+        suggestedSecondDrawName = '';
+        syncDrawCount();
         $('#drawCategory').prop('disabled', false).prop('required', true);
         if (window.DrawSetupGuide && response.guide_url) {
-          window.DrawSetupGuide.created([{name:response.draw?.drawName || 'Saved draw',url:response.guide_url}]);
+          window.DrawSetupGuide.created(response.guides || [{name:response.draw?.drawName || 'Saved draw',url:response.guide_url}]);
           window.DrawSetupGuide.open(response.guide_url);
         } else location.assign(response.setup_url || location.href);
       })
@@ -148,9 +150,12 @@ $(function () {
   });
 
   let suggestedDrawName = '';
+  let suggestedSecondDrawName = '';
   $(document).on('click', '[data-create-category]', function () {
     $('#createDrawForm')[0].reset();
     suggestedDrawName = '';
+    suggestedSecondDrawName = '';
+    syncDrawCount();
     $('#drawCategory').prop('disabled', false).prop('required', true).val(String($(this).data('create-category'))).trigger('change');
   });
   $('#createDrawModal').on('shown.bs.modal', function () {
@@ -163,7 +168,21 @@ $(function () {
       $name.val(suggestion || '');
     }
     suggestedDrawName = suggestion || '';
+    syncDrawCount();
   });
+  function syncDrawCount() {
+    const two = $('#drawCount').val() === '2';
+    $('#secondDrawNameField').prop('hidden', !two);
+    $('#secondDrawName').prop('disabled', !two).prop('required', two);
+    const base = $('#drawName').val().trim();
+    const suggestion = base ? base + ' B' : '';
+    if (two && (!$('#secondDrawName').val().trim() || $('#secondDrawName').val() === suggestedSecondDrawName)) {
+      $('#secondDrawName').val(suggestion);
+    }
+    suggestedSecondDrawName = suggestion;
+  }
+  $('#drawCount').on('change', syncDrawCount);
+  $('#drawName').on('input', syncDrawCount);
   $('#eventWideDraw').on('change', function () {
     const combined = this.checked;
     $('#drawCategory').prop('disabled', combined).prop('required', !combined);

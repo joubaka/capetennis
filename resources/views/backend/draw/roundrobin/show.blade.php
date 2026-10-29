@@ -139,7 +139,7 @@
             {{-- Total Players --}}
             <div class="col-md-3">
               <div class="text-center p-3 border rounded">
-                <h3 class="mb-1 text-primary">
+                <h3 class="mb-1 text-primary" id="rr-overview-player-count">
                   @php
                     $totalPlayers = $groups->sum(function($group) {
                       return $group->registrations->count();
@@ -154,7 +154,7 @@
             {{-- Groups --}}
             <div class="col-md-3">
               <div class="text-center p-3 border rounded">
-                <h3 class="mb-1 text-success">{{ $groups->count() }}</h3>
+                <h3 class="mb-1 text-success" id="rr-overview-group-count">{{ $groups->count() }}</h3>
                 <small class="text-muted fw-bold">Groups</small>
               </div>
             </div>
@@ -172,7 +172,7 @@
             {{-- Total Matches --}}
             <div class="col-md-3">
               <div class="text-center p-3 border rounded">
-                <h3 class="mb-1 text-danger">
+                <h3 class="mb-1 text-danger" id="rr-overview-match-count">
                   @php
                     $totalMatches = 0;
                     foreach($groups as $group) {
@@ -192,7 +192,7 @@
           {{-- Group Breakdown --}}
           <div class="mt-3">
             <h6 class="fw-bold mb-2">Group Distribution:</h6>
-            <div class="row g-2">
+            <div class="row g-2" id="rr-overview-group-distribution">
               @foreach($groups as $group)
                 <div class="col-auto">
                   <span class="badge
@@ -355,6 +355,11 @@
 
           <hr class="my-3">
 
+          <div class="d-flex flex-wrap gap-3 mb-3">
+            <label class="form-check"><input type="checkbox" class="form-check-input" id="rr-show-disabled"><span class="form-check-label" id="rr-show-disabled-label">Show disabled playoffs</span></label>
+            <label class="form-check"><input type="checkbox" class="form-check-input" id="rr-show-future-positions"><span class="form-check-label">Show future positions</span></label>
+          </div>
+          <p class="small text-muted">Previews count saved player assignments. Preset positions and group order are preserved, including positions awaiting players.</p>
           <div class="table-responsive">
             <table class="table table-sm table-hover" id="playoff-config-table">
               <thead class="table-light">
@@ -368,64 +373,7 @@
                 </tr>
               </thead>
               <tbody id="playoff-config-body">
-                @foreach($playoffConfig as $idx => $playoff)
-                <tr data-idx="{{ $idx }}">
-                  <td>
-                    <div class="form-check form-switch">
-                      @php
-                        // Only check if playoff is explicitly enabled AND has positions configured
-                        $hasPositions = !empty($playoff['positions']);
-                        $isEnabled = ($playoff['enabled'] ?? false) && $hasPositions;
-                      @endphp
-                      <input class="form-check-input playoff-enabled" type="checkbox"
-                             {{ $isEnabled ? 'checked' : '' }}
-                             data-idx="{{ $idx }}">
-                    </div>
-                  </td>
-                  <td>
-                    <input type="text" class="form-control form-control-sm playoff-name"
-                           value="{{ $playoff['name'] }}" data-idx="{{ $idx }}" style="min-width: 150px;">
-                  </td>
-                  <td>
-                    <select class="form-select form-select-sm playoff-size" data-idx="{{ $idx }}" style="width: 80px;">
-                      @foreach([2, 4, 8, 16, 32] as $size)
-                        <option value="{{ $size }}" {{ ($playoff['size'] ?? 4) == $size ? 'selected' : '' }}>
-                          {{ $size }}
-                        </option>
-                      @endforeach
-                    </select>
-                  </td>
-                  <td>
-                    <div class="d-flex flex-wrap gap-1">
-                      @php $positions = $playoff['positions'] ?? []; @endphp
-                      @foreach(range(1, 10) as $pos)
-                        <button type="button"
-                                class="btn btn-sm position-btn {{ in_array($pos, $positions) ? 'btn-primary' : 'btn-outline-secondary' }}"
-                                data-idx="{{ $idx }}"
-                                data-pos="{{ $pos }}"
-                                title="Position #{{ $pos }} from each group">
-                          #{{ $pos }}
-                        </button>
-                      @endforeach
-                    </div>
-                    <small class="text-muted">Click to toggle positions</small>
-                  </td>
-                  <td>
-                    <small class="text-muted playoff-preview" data-idx="{{ $idx }}">
-                      @php
-                        $posCount = count($positions);
-                        $totalPlayers = $posCount * $currentBoxes;
-                      @endphp
-                      {{ $totalPlayers }} players
-                    </small>
-                  </td>
-                  <td>
-                    <button type="button" class="btn btn-sm btn-outline-danger btn-remove-playoff" data-idx="{{ $idx }}">
-                      <i class="ti ti-trash"></i>
-                    </button>
-                  </td>
-                </tr>
-                @endforeach
+                {{-- Rendered from the complete saved draft by setup-scripts. --}}
               </tbody>
             </table>
           </div>

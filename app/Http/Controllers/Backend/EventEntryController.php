@@ -25,6 +25,8 @@ use App\Services\BulkMailDispatcher;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use App\Domain\Entries\Services\EntryService;
+use App\Domain\Payments\Services\UnpaidCheckoutExpiryService;
+use App\Models\RegistrationOrderItems;
 
 class EventEntryController extends Controller
 {
@@ -36,6 +38,11 @@ class EventEntryController extends Controller
   {
     $this->authorize('event-draw.view', $event);
 
+    $showPendingCheckouts = auth()->user()->hasRole('super-user') && !$event->isInterprovincialTrials();
+    if ($showPendingCheckouts) {
+      app(UnpaidCheckoutExpiryService::class)->expireRegistrationForEvent((int) $event->id);
+    }
+
     $categoryEvents = $event->eventCategories()
       ->with([
         'category',
@@ -46,7 +53,8 @@ class EventEntryController extends Controller
       ->get();
 
     $pendingCheckouts = collect();
-    if (auth()->user()->hasRole('super-user') && !$event->isInterprovincialTrials()) {
+    $pendingCheckoutClocks = [];
+    if ($showPendingCheckouts) {
       $pendingCheckouts = CategoryEventRegistration::query()
         ->active()
         ->whereHas('categoryEvent', fn ($query) => $query->where('event_id', $event->id))
@@ -58,6 +66,34 @@ class EventEntryController extends Controller
         ->latest('id')
         ->limit(100)
         ->get();
+
+      if ($pendingCheckouts->isNotEmpty()) {
+        $items = RegistrationOrderItems::query()->where(function ($query) use ($pendingCheckouts) {
+          foreach ($pendingCheckouts as $entry) {
+            $query->orWhere(fn ($pair) => $pair->where('category_event_id', $entry->category_event_id)
+              ->where('registration_id', $entry->registration_id));
+          }
+        })->with('order:id,created_at,status,pay_status,payfast_paid,wallet_debited,payfast_pf_payment_id,wallet_transaction_id')->orderBy('id')->limit(1001)->get();
+        $grouped = $items->groupBy(fn ($item) => $item->category_event_id.':'.$item->registration_id);
+        foreach ($pendingCheckouts as $entry) {
+          $matches = $grouped->get($entry->category_event_id.':'.$entry->registration_id, collect());
+          $orderIds = $matches->pluck('order_id')->unique();
+          $order = $items->count() <= 1000 && $orderIds->count() === 1 ? $matches->first()->order : null;
+          $clock = [
+            'created_at' => $order?->created_at,
+            'review' => $items->count() > 1000 ? 'Checkout records need review'
+              : ($orderIds->count() > 1 ? 'Multiple checkouts — review required'
+              : (!$order ? 'No matching checkout — review required'
+              : (!$order->created_at ? 'Checkout time missing — review required' : null))),
+          ];
+          $clock['payment_label'] = $order?->pay_status ? 'Paid order — entry needs review'
+            : ($order?->status === 'cancelled' ? 'Cancelled checkout — entry needs review'
+            : (($order?->payfast_paid || $order?->wallet_debited || filled($order?->payfast_pf_payment_id) || filled($order?->wallet_transaction_id))
+              ? 'Payment evidence — review required' : ($clock['review'] ? 'Review required' : 'Pending')));
+          $clock['payment_pending'] = $clock['payment_label'] === 'Pending';
+          $pendingCheckoutClocks[$entry->id] = $clock;
+        }
+      }
     }
 
     $mastersBatch = $event->isMasters()
@@ -68,7 +104,7 @@ class EventEntryController extends Controller
           ->first()
       : null;
 
-    return view('backend.event.individual.entries', compact('event', 'categoryEvents', 'mastersBatch', 'pendingCheckouts'));
+    return view('backend.event.individual.entries', compact('event', 'categoryEvents', 'mastersBatch', 'pendingCheckouts', 'pendingCheckoutClocks'));
   }
 
   /**

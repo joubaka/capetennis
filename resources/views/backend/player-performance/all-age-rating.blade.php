@@ -11,8 +11,4 @@
 @if(!empty($estimate['standard_assumed_matches']))
 <p class="small">Includes {{ $estimate['standard_assumed_matches'] }} legacy matches with an assumed standard playing format. These matches lack explicit ball or court confirmation.</p>
 @endif
-<details><summary class="py-2">How the shared rating works</summary>
-    <p>Eligible played singles results connect players across recorded ages and event categories. Opponent strength, score margins and recency affect the estimate. Age, gender, finishing positions and age-specific trial baselines award no strength bonus. Entering a new age group does not reset the rating.</p>
-    <p>Results from the last two years can connect players. Recent results carry more weight, with match weight halving every six months. The reference starts from the largest group connected within the last year. Comparisons needing older links are explicitly Low confidence; a disconnected player has no shared score. Red, orange and green-ball formats are excluded. Younger categories require explicit standard-format evidence.</p>
-    <p>The scale is provisional and local to Cape Tennis. It is not a conversion to UTR or World Tennis Number. Ratings can change as opponents play or the comparison network changes.</p>
-</details>
+<x-rating-explanation />

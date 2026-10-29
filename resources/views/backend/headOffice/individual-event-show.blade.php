@@ -501,10 +501,22 @@ $(document).ready(function () {
           @endif
 
           <div class="mb-3 order-2">
+            <label for="drawCount" class="form-label fw-bold">Number of draws</label>
+            <select id="drawCount" name="draw_count" class="form-select">
+              <option value="1">One draw</option>
+              <option value="2">Two separate draws, each with a winner</option>
+            </select>
+            <div class="form-text">Choose players separately for each draw during setup.</div>
+          </div>
+          <div class="mb-3 order-2">
             <label for="drawName" class="form-label fw-bold">Draw Name</label>
             <input type="text" id="drawName" name="drawName" class="form-control"
                    placeholder="e.g. Boys U14 Main Draw" required>
             <div class="form-text">Suggested from your category. You can change it.</div>
+          </div>
+          <div class="mb-3 order-2" id="secondDrawNameField" hidden>
+            <label for="secondDrawName" class="form-label fw-bold">Second draw name</label>
+            <input type="text" id="secondDrawName" name="second_draw_name" class="form-control" maxlength="255" disabled placeholder="e.g. Green Ball B Draw">
           </div>
           @if($event->categoryEvents->isNotEmpty())
             <details class="order-3"><summary>Advanced options</summary><div class="form-check border rounded p-3 ps-5 mt-2">

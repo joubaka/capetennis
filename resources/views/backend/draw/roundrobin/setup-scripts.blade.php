@@ -13,6 +13,19 @@ let savedPlayoffs = null;
 let isSavingSettings = false;
 const rulesEditable = @json($competitionRulesEditable);
 const escapeSettingsText = value => $('<span>').text(String(value)).html().replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+const savedGroupCounts = () => (window.RR_SAVED_GROUPS || window.RR_GROUPS || []).map(group => (group.registrations || group.players || []).length);
+const assignedPlayerTotal = () => savedGroupCounts().reduce((sum, count) => sum + count, 0);
+let refreshPlayoffGroups = () => {};
+window.RRSettingsGroupsChanged = function() {
+    const counts = savedGroupCounts();
+    $('#settings-boxes').val(counts.length);
+    $('#rr-overview-player-count').text(assignedPlayerTotal());
+    $('#rr-overview-group-count').text(counts.length);
+    $('#rr-overview-match-count').text(counts.reduce((sum, count) => sum + count * (count - 1) / 2, 0));
+    $('#rr-overview-group-distribution').html((window.RR_SAVED_GROUPS || window.RR_GROUPS || []).map((group, index) => '<div class="col-auto"><span class="badge bg-primary">Group ' + escapeSettingsText(group.name) + ': ' + counts[index] + ' players</span></div>').join(''));
+    refreshPlayoffGroups();
+};
+
 function updateSettingsChanges() {
     const changes = [];
     if (($('#score-format').val() || '') !== savedScoreFormat) {
@@ -46,14 +59,6 @@ $('#drawSettingsForm').on('submit', function(event) {
         payload.playoff_config = draft;
         payload.preset_key = window.currentPresetKey || null;
     }
-    if (payload.playoff_config) {
-        const groupCounts = @json($groups->map(fn ($group) => $group->registrations->count())->values());
-        const maxPosition = Math.max(0, ...groupCounts);
-        if (draft.some(item => item.enabled && (item.positions || []).some(position => position > maxPosition))) {
-            $('#draw-settings-error').text('Choose only group positions that currently contain players before saving playoff changes.');
-            return;
-        }
-    }
     isSavingSettings = true;
     $('#draw-settings-error').text('');
     $button.prop('disabled', true).text('Saving…');
@@ -82,7 +87,10 @@ let playoffConfig = @json($playoffConfig ?? []);
 savedPlayoffs = JSON.parse(JSON.stringify(playoffConfig));
 draftPlayoffs = () => playoffConfig;
 let numGroups = {{ $currentBoxes ?? 4 }};
-let maxPositions = 10; // Default, will be updated when template is loaded
+let maxPositions = 10;
+let showDisabledPlayoffs = false;
+let showFuturePositions = false;
+const qualifierCount = positions => positions.reduce((sum, position) => sum + savedGroupCounts().filter(count => count >= position).length, 0);
 
 // Initialize saved preset key on page load
 window.currentPresetKey = '{{ $savedPresetKey ?? '' }}';
@@ -102,10 +110,10 @@ if (window.currentPresetKey) {
         maxPositions = savedMaxPos;
         console.log('✅ [INIT] Loaded saved preset:', window.currentPresetKey, '| maxPositions:', maxPositions);
     } else {
-        // Preset key doesn't match any dropdown option (old/invalid data)
+        // Presets can remain saved after the group count changes.
         console.warn('⚠️ [INIT] Saved preset key not found in dropdown:', window.currentPresetKey);
-        console.warn('⚠️ [INIT] Available keys are listed above. Please update database or clear preset_key.');
-        window.currentPresetKey = ''; // Clear invalid key
+        console.log('[INIT] Keeping the saved preset and its configuration unchanged.');
+        // Preserve saved preset identity even when it is not listed for this group count.
     }
 }
 
@@ -116,29 +124,14 @@ $(document).on('click', '.position-btn', function() {
     const pos = $btn.data('pos');
     
     // Get actual player counts
-    const groupPlayerCounts = @json($groups->map(function($g) { return $g->registrations->count(); })->toArray());
+    const groupPlayerCounts = savedGroupCounts();
     const maxPlayersInGroup = groupPlayerCounts.length > 0 ? Math.max(...groupPlayerCounts) : 0;
     
     // Check if position exists in ANY group
     const groupsWithThisPosition = groupPlayerCounts.filter(count => count >= pos).length;
     
-    // Validate position selection - only block if position doesn't exist in ANY group
-    if (pos > maxPlayersInGroup && !$btn.hasClass('btn-primary')) {
-        // Position doesn't exist in any group
-        Swal.fire({
-            title: 'Position Not Available!',
-            html: `<p>Position <strong>#${pos}</strong> doesn't exist in any group.</p>
-                   <p class="text-danger">Largest group has only <strong>${maxPlayersInGroup} players</strong>.</p>
-                   <p>You can only select positions <strong>#1 to #${maxPlayersInGroup}</strong>.</p>`,
-            icon: 'error',
-            confirmButtonText: 'OK',
-            confirmButtonColor: '#dc3545'
-        });
-        return; // Prevent selection
-    }
-    
     // Show warning if position doesn't exist in all groups (but allow selection)
-    if (groupsWithThisPosition < numGroups && !$btn.hasClass('btn-primary')) {
+    if (groupsWithThisPosition > 0 && groupsWithThisPosition < numGroups && !$btn.hasClass('btn-primary')) {
         Swal.fire({
             title: 'Partial Position Warning',
             html: `<p>Position <strong>#${pos}</strong> exists in only <strong>${groupsWithThisPosition} of ${numGroups}</strong> groups.</p>
@@ -198,6 +191,7 @@ $(document).on('input', '.playoff-name', function() {
 $(document).on('change', '.playoff-size', function() {
     const idx = $(this).data('idx');
     playoffConfig[idx].size = parseInt($(this).val());
+    updatePlayoffPreview(idx);
     updateFlowPreview();
 });
 
@@ -205,6 +199,7 @@ $(document).on('change', '.playoff-size', function() {
 $(document).on('change', '.playoff-enabled', function() {
     const idx = $(this).data('idx');
     playoffConfig[idx].enabled = $(this).is(':checked');
+    renderPlayoffTable();
     updateFlowPreview();
 });
 
@@ -271,48 +266,8 @@ $('#btn-load-preset').on('click', function() {
             // Store preset key for saving
             window.currentPresetKey = presetKey;
             
-            // ✅ AUTO-CLEANUP: Remove invalid positions based on actual players
-            const groupPlayerCounts = @json($groups->map(function($g) { return $g->registrations->count(); })->toArray());
-            const maxPlayersInGroup = groupPlayerCounts.length > 0 ? Math.max(...groupPlayerCounts) : 0;
-            
-            let cleanedCount = 0;
-            let uncheckedCount = 0;
-            
-            playoffConfig.forEach((playoff, idx) => {
-                const positions = playoff.positions || [];
-                const validPositions = positions.filter(pos => pos <= maxPlayersInGroup);
-                
-                // Track what was cleaned
-                if (validPositions.length !== positions.length) {
-                    const removed = positions.filter(pos => pos > maxPlayersInGroup);
-                    console.log(`🧹 [PRESET] Cleaned ${escapeSettingsText(playoff.name)}: removed positions`, removed);
-                    cleanedCount += removed.length;
-                    playoffConfig[idx].positions = validPositions;
-                }
-                
-                // Uncheck playoffs with no valid positions
-                if (validPositions.length === 0 && playoff.enabled) {
-                    console.log(`❌ [PRESET] Unchecked ${escapeSettingsText(playoff.name)}: no valid positions`);
-                    playoffConfig[idx].enabled = false;
-                    uncheckedCount++;
-                }
-            });
-            
-            // Show notification if cleanup happened
-            if (cleanedCount > 0 || uncheckedCount > 0) {
-                let message = 'Preset loaded! ';
-                if (cleanedCount > 0) {
-                    message += `Removed ${cleanedCount} invalid position(s). `;
-                }
-                if (uncheckedCount > 0) {
-                    message += `Unchecked ${uncheckedCount} playoff(s) with no valid positions. `;
-                }
-                message += 'Review and save when ready.';
-                toastr.info(message, 'Preset Auto-Cleaned', { timeOut: 5000 });
-            } else {
-                toastr.success('Preset loaded! Position buttons adjusted. Remember to save when done.');
-            }
-            
+            toastr.success('Preset loaded unchanged. Positions without assigned players remain available for later. Review and save when ready.');
+
             renderPlayoffTable();
             updateFlowPreview();
         }
@@ -323,7 +278,7 @@ $('#btn-load-preset').on('click', function() {
 function updatePlayoffPreview(idx) {
     const config = playoffConfig[idx];
     const posCount = (config.positions || []).length;
-    const totalPlayers = posCount * numGroups;
+    const totalPlayers = qualifierCount(config.positions || []);
     const $preview = $(`.playoff-preview[data-idx="${idx}"]`);
     const size = config.size || 4;
     
@@ -345,17 +300,18 @@ function updatePlayoffPreview(idx) {
 function renderPlayoffTable() {
     let html = '';
     // Use dynamic maxPositions (set when loading preset, default 10)
-    const positionsToShow = Math.max(maxPositions || 10, ...playoffConfig.flatMap(item => item.positions || []));
+    const positionsToShow = Math.max(1, ...savedGroupCounts(), ...(showFuturePositions ? [maxPositions || 10] : []));
     
     // Get actual player counts for validation
-    const groupPlayerCounts = @json($groups->map(function($g) { return $g->registrations->count(); })->toArray());
+    const groupPlayerCounts = savedGroupCounts();
     const minPlayersInGroup = groupPlayerCounts.length > 0 ? Math.min(...groupPlayerCounts) : 0;
     const maxPlayersInGroup = groupPlayerCounts.length > 0 ? Math.max(...groupPlayerCounts) : 0;
-    const actualTotalPlayers = {{ $totalPlayers ?? 0 }};
+    const actualTotalPlayers = assignedPlayerTotal();
     
     playoffConfig.forEach((playoff, idx) => {
+        if (!playoff.enabled && !showDisabledPlayoffs) return;
         const positions = playoff.positions || [];
-        const totalPlayers = positions.length * numGroups;
+        const totalPlayers = qualifierCount(positions);
         const size = playoff.size || 4;
         
         let statusClass = 'text-muted';
@@ -373,7 +329,7 @@ function renderPlayoffTable() {
           <td>
             <div class="form-check form-switch">
               <input class="form-check-input playoff-enabled" type="checkbox" 
-                     ${playoff.enabled && positions.length > 0 ? 'checked' : ''}
+                     ${playoff.enabled ? 'checked' : ''}
                      data-idx="${idx}">
             </div>
           </td>
@@ -390,7 +346,7 @@ function renderPlayoffTable() {
           </td>
           <td>
             <div class="d-flex flex-wrap gap-1">
-              ${Array.from({length: positionsToShow}, (_, i) => i + 1).map(pos => {
+              ${Array.from(new Set([...Array.from({length: positionsToShow}, (_, i) => i + 1), ...positions])).sort((a, b) => a - b).map(pos => {
                 const isSelected = positions.includes(pos);
                 const groupsWithPosition = groupPlayerCounts.filter(count => count >= pos).length;
                 const isFullyInvalid = pos > maxPlayersInGroup; // Doesn't exist in ANY group
@@ -405,8 +361,8 @@ function renderPlayoffTable() {
                     `Position #${pos} from each group`;
                 } else if (isFullyInvalid) {
                   btnClass = 'btn-outline-danger';
-                  tooltip = `Position #${pos} not available (max ${maxPlayersInGroup} players in largest group)`;
-                  style = 'opacity: 0.3; cursor: not-allowed;';
+                  tooltip = `Position #${pos} has no assigned players yet; keep it for later`;
+                  style = 'opacity: 0.65;';
                 } else if (isPartial) {
                   btnClass = 'btn-outline-warning';
                   tooltip = `Position #${pos} exists in ${groupsWithPosition}/${numGroups} groups (partial)`;
@@ -426,11 +382,11 @@ function renderPlayoffTable() {
               }).join('')}
             </div>
             <small class="text-muted">
-              <strong>Available:</strong> #1-${maxPlayersInGroup}
+              <strong>Assigned positions:</strong> ${maxPlayersInGroup ? `#1–#${maxPlayersInGroup}` : 'None yet'}
               ${minPlayersInGroup !== maxPlayersInGroup ? 
                 ` | <span class="text-warning">Partial: #${minPlayersInGroup + 1}-#${maxPlayersInGroup}</span>` : ''}
             </small>
-            ${actualTotalPlayers === 0 ? '<br><small class="text-danger">⚠️ No players assigned yet!</small>' : ''}
+            ${positions.some(pos => pos > maxPlayersInGroup) ? '<br><small class="text-muted">Future positions preserved; no qualifiers there yet.</small>' : ''}
           </td>
           <td>
             <small class="playoff-preview ${statusClass}" data-idx="${idx}">
@@ -444,7 +400,8 @@ function renderPlayoffTable() {
           </td>
         </tr>`;
     });
-    $('#playoff-config-body').html(html);
+    $('#playoff-config-body').html(html || '<tr><td colspan="6" class="text-muted">No enabled playoffs. Load a preset, add a playoff, or show disabled playoffs.</td></tr>');
+    $('#rr-show-disabled-label').text('Show disabled playoffs (' + playoffConfig.filter(item => !item.enabled).length + ')');
 }
 
 // Update flow preview - MASTER SYNC FUNCTION
@@ -479,7 +436,7 @@ function updateFlowPreview() {
     html += '<div class="d-flex flex-wrap gap-2">';
     playoffConfig.filter(p => p.enabled).forEach(playoff => {
         const positions = playoff.positions || [];
-        const totalPlayers = positions.length * numGroups;
+        const totalPlayers = qualifierCount(positions);
         const posText = positions.map(p => '#' + p).join(', ') || 'None';
         
         html += `
@@ -518,12 +475,12 @@ function updatePlayerAccounting() {
     const groupNames = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').slice(0, numGroups);
     
     // Use ACTUAL player count from the draw, not theoretical maximum
-    const actualTotalPlayers = {{ $totalPlayers ?? 0 }};
-    const groupPlayerCounts = @json($groups->map(function($g) { return $g->registrations->count(); })->toArray());
+    const actualTotalPlayers = assignedPlayerTotal();
+    const groupPlayerCounts = savedGroupCounts();
     
     // Calculate actual positions available (smallest group determines max valid position)
     const minPlayersInGroup = groupPlayerCounts.length > 0 ? Math.min(...groupPlayerCounts) : 0;
-    const maxValidPosition = minPlayersInGroup; // Can't use position #5 if a group only has 4 players
+    const maxValidPosition = Math.max(0, ...groupPlayerCounts);
     
     console.log('📊 [ACCOUNTING] Actual players:', actualTotalPlayers, '| Min per group:', minPlayersInGroup, '| Max valid position:', maxValidPosition);
     
@@ -610,7 +567,7 @@ function updatePlayerAccounting() {
     if (actualTotalPlayers === 0) {
         html += '<div class="alert alert-danger">';
         html += '<i class="ti ti-alert-circle me-1"></i> ';
-        html += '<strong>No Players Assigned!</strong> Please go to "Players & Groups" tab to assign players before configuring playoffs.';
+        html += '<strong>No Players Assigned!</strong> You can configure playoffs now; qualifiers appear after player assignments are saved.';
         html += '</div>';
         $accounting.html(html);
         return;
@@ -656,7 +613,7 @@ function updatePlayerAccounting() {
     html += '<h6 class="text-muted mb-2">Status</h6>';
     html += `<h2 class="mb-0">${allAccommodated ? '✓' : hasWarnings ? '⚠️' : '○'}</h2>`;
     html += `<small class="text-${allAccommodated ? 'success' : hasWarnings ? 'warning' : 'secondary'} fw-bold">`;
-    html += allAccommodated ? 'Valid' : hasWarnings ? 'Partial' : 'Incomplete';
+    html += allAccommodated ? 'Valid' : hasWarnings ? 'Partial' : 'Selected qualifiers only';
     html += '</small>';
     html += '</div></div></div>';
     
@@ -816,7 +773,7 @@ function updateSeedingChart() {
     
     enabledPlayoffs.forEach(playoff => {
         const positions = playoff.positions || [];
-        const totalPlayers = positions.length * numGroups;
+        const totalPlayers = qualifierCount(positions);
         
         // Calculate seeding for this playoff (snake order)
         let seeds = buildSnakeSeeds(positions, groupNames, playoff.group_order || null);
@@ -1140,7 +1097,7 @@ function validateDrawConfiguration() {
     const errors = [];
     
     // 1. Check if actual groups match settings
-    const actualGroups = {{ $groups->count() }};
+    const actualGroups = savedGroupCounts().length;
     const settingsGroups = {{ $currentBoxes ?? 4 }};
     
     if (actualGroups !== settingsGroups) {
@@ -1154,7 +1111,7 @@ function validateDrawConfiguration() {
     }
     
     // 2. Check total players
-    const totalPlayers = {{ $totalPlayers ?? 0 }};
+    const totalPlayers = assignedPlayerTotal();
     console.log('📊 [VALIDATION] Total players in draw:', totalPlayers);
     
     if (totalPlayers === 0) {
@@ -1175,7 +1132,7 @@ function validateDrawConfiguration() {
     }
     
     // 4. Check if groups have uneven player counts
-    const groupCounts = @json($groups->map(function($g) { return $g->registrations->count(); })->toArray());
+    const groupCounts = savedGroupCounts();
     const maxCount = Math.max(...groupCounts);
     const minCount = Math.min(...groupCounts);
     const difference = maxCount - minCount;
@@ -1193,6 +1150,7 @@ function validateDrawConfiguration() {
     console.log('📋 [VALIDATION] Draw type:', drawType);
     
     // Display warnings if any
+    $('#rr-settings-validation').remove();
     if (warnings.length > 0 || errors.length > 0) {
         displayValidationMessages(warnings, errors);
     } else {
@@ -1227,14 +1185,23 @@ function displayValidationMessages(warnings, errors) {
     }
     
     // Insert after the Draw Overview card
-    $('.card.border-info').after(html);
+    $('#settings-pane details.card.border-info').after('<div id="rr-settings-validation">' + html + '</div>');
 }
 
-document.addEventListener('rr:groups:count:changed', function(e) {
-  numGroups = e.detail.count;
-  $('#settings-boxes').val(numGroups);
-  updateFlowPreview();
+$('#rr-show-disabled').on('change', function() {
+    showDisabledPlayoffs = this.checked;
+    renderPlayoffTable();
 });
+$('#rr-show-future-positions').on('change', function() {
+    showFuturePositions = this.checked;
+    renderPlayoffTable();
+});
+refreshPlayoffGroups = function() {
+    numGroups = savedGroupCounts().length;
+    renderPlayoffTable();
+    validateDrawConfiguration();
+    updateFlowPreview();
+};
 @endunless
 })(jQuery);
 </script>
