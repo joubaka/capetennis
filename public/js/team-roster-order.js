@@ -48,6 +48,17 @@
       const rank = bySlot.get(option.dataset.rankSlotId);
       if (rank) option.textContent = option.dataset.rankPlayerName + ' · Rank ' + rank;
     });
+    const sourceRows = data.order_type === 'imported'
+      ? root.document.querySelectorAll('tr[data-slot-id]')
+      : root.document.querySelectorAll('[data-team-card-id="' + teamId + '"] tr[data-invitation-player-id]');
+    sourceRows.forEach(row => {
+      const rank = data.order_type === 'imported' ? bySlot.get(row.dataset.slotId) : byPlayer.get(row.dataset.invitationPlayerId);
+      if (!rank) return;
+      row.querySelectorAll('input[type="hidden"][name="expected_rank"], input[type="hidden"][name="expected_roster_rank"]')
+        .forEach(input => { input.value = String(rank); });
+      const badge = row.querySelector('[data-label="Rank"] .badge') || (data.order_type === 'imported' ? row.querySelector('td:first-child > .badge') : null);
+      if (badge) badge.textContent = 'Rank ' + rank;
+    });
   }
 
   function apply(form, data) {
@@ -85,6 +96,7 @@
     else root.document.querySelectorAll('[data-roster-panel]').forEach(other => {
       if (other !== panel && other.dataset.regionId === panel?.dataset.regionId) delete other.dataset.loaded;
     });
+    root.mergeTeamRoster?.();
     root.scrollTo(scrollX, scrollY);
     return true;
   }

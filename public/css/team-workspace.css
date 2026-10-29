@@ -308,4 +308,4 @@
   .roster-player-actions-modal .btn-close { min-width:44px; min-height:44px; box-sizing:border-box; }
   .roster-player-actions-modal .roster-replacement-choice label { display:inline-flex; align-items:center; gap:.5rem; min-height:44px; }
 }
-.team-player-table tr:has(.roster-replacement[open]) > td { vertical-align:top; }
+.team-player-table tr:has(.team-roster-actions > .roster-replacement[open]) > td { vertical-align:top; }

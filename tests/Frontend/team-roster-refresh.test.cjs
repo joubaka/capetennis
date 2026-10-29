@@ -67,11 +67,11 @@ test('overlapping refresh requests fetch again after the first response', async 
 function mutation() {
   const handlers = {}, buttons = [{ disabled: false }], panel = { dataset: {}, querySelectorAll() { return buttons; } };
   const feedback = { dataset: {}, setAttribute() {}, append(button) { this.retry = button; }, set textContent(value) { this.message = value; this.firstChild = { textContent: value }; } };
-  const form = { dataset: {}, elements: {}, closest() { return panel; }, getAttribute() { return '/save'; }, parentElement: { querySelector() { return feedback; } }, contains(button) { return buttons.includes(button); } };
+  const form = { dataset: {}, elements: {}, closest(selector) { return selector === '[data-roster-panel]' ? panel : null; }, querySelectorAll() { return buttons; }, getAttribute() { return '/save'; }, parentElement: { querySelector() { return feedback; } }, contains(button) { return buttons.includes(button); } };
   const document = { addEventListener(type, callback) { handlers[type] = callback; }, createElement() { return { dataset: {}, setAttribute() {}, addEventListener(type, callback) { this.click = callback; } }; } };
   let posts = 0, gets = 0, failed = true;
   const window = { refreshTeamRoster: async () => { gets++; if (failed) throw Error('refresh failed'); }, toastr: { success() {} }, location: { reload() { assert.fail('must not navigate'); } } };
-  const script = fs.readFileSync('resources/views/backend/adminPage/admin_show/_roster-script.blade.php', 'utf8').replace('<script>', '').replace('</script>', '');
+  const script = fs.readFileSync('resources/views/backend/adminPage/admin_show/_roster-script.blade.php', 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
   new Function('window', 'document', 'fetch', 'FormData', script)(window, document, async () => { posts++; return { ok: true, json: async () => ({}) }; }, class {});
   return { form, panel, buttons, feedback, submit: () => handlers.submit({ target: { closest() { return form; } }, preventDefault() {} }), counts: () => ({ posts, gets }), recover() { failed = false; } };
 }
