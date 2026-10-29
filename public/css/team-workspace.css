@@ -293,3 +293,4 @@
   .regional-roster-workspace .team-player-table td:last-child { width:auto; }
   .regional-roster-workspace .roster-row-actions { width:100%; }
 }
+.team-player-table tr:has(.roster-replacement[open]) > td { vertical-align:top; }
