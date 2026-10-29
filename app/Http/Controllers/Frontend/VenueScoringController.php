@@ -240,6 +240,70 @@ class VenueScoringController extends Controller
         return $renderer->renderDrawPack($request, $event);
     }
 
+    public function emailOrderOfPlay(Request $request, Event $event, Venue $venue): View
+    {
+        $data = $this->orderOfPlayData($request, $event, $venue);
+        $delivery = app(\App\Services\Scoring\OrderOfPlayDelivery::class);
+
+        return view('frontend.scoring.email-order-of-play', $data + [
+            'requestKey' => (string) \Illuminate\Support\Str::uuid(),
+            'reviewToken' => $delivery->reviewToken($event, $request->user(), $venue, $data['scope'], $data['rows']),
+        ]);
+    }
+
+    public function previewOrderOfPlayEmail(Request $request, Event $event, Venue $venue): \Illuminate\Http\Response
+    {
+        $data = $this->orderOfPlayData($request, $event, $venue);
+        $token = $request->validate(['review_token' => ['required', 'string', 'size:64']])['review_token'];
+        $delivery = app(\App\Services\Scoring\OrderOfPlayDelivery::class);
+        abort_unless(hash_equals($delivery->reviewToken($event, $request->user(), $venue, $data['scope'], $data['rows']), $token), 409,
+            'The order of play changed. Open Email order of play again to review the current copy.');
+
+        return response($delivery->pdf($event, $venue, $data['scope'], $data['rows']))
+            ->header('Content-Type', 'application/pdf')->header('Content-Disposition', 'inline; filename="order-of-play.pdf"')
+            ->header('Cache-Control', 'private, no-store');
+    }
+
+    public function sendOrderOfPlayEmail(Request $request, Event $event, Venue $venue): RedirectResponse|JsonResponse
+    {
+        $data = $this->orderOfPlayData($request, $event, $venue);
+        $input = $request->validate(['recipient' => ['required', 'string', 'email:rfc', 'max:254'],
+            'request_key' => ['required', 'uuid'], 'review_token' => ['required', 'string', 'size:64']]);
+        $result = app(\App\Services\Scoring\OrderOfPlayDelivery::class)->queue($event, $request->user(), $venue,
+            $data['scope'], $data['rows'], $input['recipient'], $input['request_key'], $input['review_token']);
+        if ($request->expectsJson()) return response()->json($result, $result['failed'] ? 422 : 200);
+
+        return redirect()->route('frontend.scoring.workspace', ['event' => $event, 'venue' => $venue,
+            'schedule_source' => $data['scope']['source'], 'date' => $data['scope']['date'], 'draw_ids' => $data['scope']['draw_ids']])
+            ->with($result['failed'] ? 'error' : 'success', $result['message']);
+    }
+
+    private function orderOfPlayData(Request $request, Event $event, Venue $venue): array
+    {
+        $this->authorize('event.score', $event);
+        $this->requireAssignedVenue($request, $event, $venue->id);
+        $input = $request->validate(['source' => ['required', 'in:published,working'], 'date' => ['nullable', 'date_format:Y-m-d'],
+            'draw' => ['nullable', 'integer'], 'draw_ids' => ['sometimes', 'array', 'min:1', 'max:200'],
+            'draw_ids.*' => ['required', 'integer', 'distinct']]);
+        // Reuse the scoring queue's authorized filters and published projection. The print options
+        // endpoint deliberately prints a full venue and must not silently widen this email scope.
+        $query = ['venue' => $venue->id, 'schedule_source' => $input['source'], 'date' => $input['date'] ?? null];
+        foreach (['draw', 'draw_ids'] as $key) if (isset($input[$key])) $query[$key] = $input[$key];
+        $scopedRequest = $request->duplicate($query, []);
+        $scopedRequest->setMethod('GET');
+        $data = $this->index($scopedRequest, $event)->getData();
+        abort_if($data['matches']->count() >= 500, 422, 'Select a day or draw with fewer than 500 matches before emailing.');
+        $ids = $data['selectedDraw'] ? [$data['selectedDraw']->id] : $data['draws']->pluck('id')->map(fn ($id) => (int) $id)->all();
+        sort($ids);
+        $scope = ['source' => $input['source'], 'date' => $input['date'] ?? null, 'draw_ids' => $ids];
+        $delivery = app(\App\Services\Scoring\OrderOfPlayDelivery::class);
+        abort_unless($delivery->allowed($event, $request->user(), $venue->id, $ids), 403);
+
+        return ['event' => $event, 'venue' => $venue, 'scope' => $scope,
+            'rows' => $delivery->rows($data['matches']),
+            'drawNames' => $data['draws']->whereIn('id', $ids)->pluck('drawName')->all()];
+    }
+
     public function operator(Request $request, Event $event): RedirectResponse
     {
         $this->authorize('event.score', $event);

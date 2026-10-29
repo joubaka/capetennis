@@ -2496,6 +2496,12 @@ Route::middleware('auth')->group(function () {
     ->name('frontend.scoring.workspace');
   Route::get('/events/{event}/scoring/venues/{venue}/print', [\App\Http\Controllers\Frontend\VenueScoringController::class, 'printVenue'])
     ->name('frontend.scoring.print');
+  Route::get('/events/{event}/scoring/venues/{venue}/email', [\App\Http\Controllers\Frontend\VenueScoringController::class, 'emailOrderOfPlay'])
+    ->name('frontend.scoring.email');
+  Route::get('/events/{event}/scoring/venues/{venue}/email/preview', [\App\Http\Controllers\Frontend\VenueScoringController::class, 'previewOrderOfPlayEmail'])
+    ->name('frontend.scoring.email.preview');
+  Route::post('/events/{event}/scoring/venues/{venue}/email', [\App\Http\Controllers\Frontend\VenueScoringController::class, 'sendOrderOfPlayEmail'])
+    ->middleware('throttle:10,1')->name('frontend.scoring.email.send');
   Route::post('/events/{event}/scoring/operator', [\App\Http\Controllers\Frontend\VenueScoringController::class, 'operator'])
     ->name('frontend.scoring.operator');
   Route::post('/events/{event}/scoring/fixtures/{fixture}/playing', [\App\Http\Controllers\Frontend\VenueScoringController::class, 'setFixturePlaying'])

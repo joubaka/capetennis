@@ -33,6 +33,24 @@ class RequireEventEmailReview
             abort_unless($allowed, 409, 'Player registration update is no longer authorized.');
             return null;
         }
+        if (isset($mail->data['scoring_order_of_play_log_id'])) {
+            $log = \App\Models\BulkEmailLog::find($mail->data['scoring_order_of_play_log_id']);
+            $message = $log ? app(\App\Services\Scoring\OrderOfPlayDelivery::class)->authorizedMailable($log) : null;
+            $attachments = $mail->message->getAttachments();
+            $allowed = $message && $log->status === 'sending'
+                && count($mail->message->getTo()) === 1 && $mail->message->getTo()[0]->getAddress() === $log->recipient_email
+                && ! $mail->message->getCc() && ! $mail->message->getBcc() && $mail->message->getTextBody() === null
+                && $mail->message->getSubject() === $message->subjectLine
+                && $mail->message->getHtmlBody() === $this->previewHtml($message->body)
+                && count($attachments) === 1 && $attachments[0]->getFilename() === $log->payload['filename']
+                && $attachments[0]->getMediaType().'/'.$attachments[0]->getMediaSubtype() === 'application/pdf'
+                && $attachments[0]->getBody() === base64_decode($log->payload['pdf'], true)
+                && count($mail->message->getFrom()) === 1 && $mail->message->getFrom()[0]->getAddress() === config('mail.from.address')
+                && $mail->message->getFrom()[0]->getName() === $message->fromName
+                && count($mail->message->getReplyTo()) === 1 && $mail->message->getReplyTo()[0]->getAddress() === $message->replyToAddress;
+            abort_unless($allowed, 409, 'Order of play email is no longer authorized.');
+            return null;
+        }
         if (isset($mail->data['finance_report_log_id'])) {
             $log = \App\Models\BulkEmailLog::find($mail->data['finance_report_log_id']);
             $message = $log ? app(\App\Services\EventFinanceReportDelivery::class)->authorizedMailable($log) : null;

@@ -201,6 +201,8 @@ class SendBulkEmailJob implements ShouldQueue
                 return app(\App\Services\PlayerRegistrationUpdateService::class)->authorizedMailable($log);
             case 'event_finance_report':
                 return app(\App\Services\EventFinanceReportDelivery::class)->authorizedMailable($log);
+            case 'scoring_order_of_play':
+                return app(\App\Services\Scoring\OrderOfPlayDelivery::class)->authorizedMailable($log);
             case 'team_selection_decline_notification':
                 return app(\App\Services\TeamSelection\TeamSelectionDeclineNotificationService::class)->authorizedMailable($log);
             case 'team_payment_confirmation':
