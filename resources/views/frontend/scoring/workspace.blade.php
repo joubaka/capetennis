@@ -29,8 +29,8 @@
   .scoring-hero-eyebrow { color: rgba(255, 255, 255, .72); font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
   .scoring-hero-context { color: rgba(255, 255, 255, .8); }
   .scoring-venue { display: block; color: #fff; font-size: 1.05rem; font-weight: 700; overflow-wrap: anywhere; }
-  .scoring-hero-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .5rem; }
-  .scoring-hero-actions .btn { min-height: 44px; white-space: nowrap; }
+  .scoring-hero-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .5rem; max-width: 24rem; }
+  .scoring-hero-actions .btn { min-height: 44px; max-width: 100%; white-space: normal; }
   .scoring-hero .btn-light { color: var(--ct-ink, #172e45); }
   .scoring-hero .btn-outline-light { color: #fff; border-color: rgba(255, 255, 255, .55); background: rgba(255, 255, 255, .06); }
   .scoring-hero .btn-outline-light:hover { color: var(--ct-ink, #172e45) !important; background: #fff !important; border-color: #fff !important; }
@@ -244,6 +244,9 @@
                  class="btn btn-outline-light" target="_blank" rel="noopener" aria-label="Print options for {{ $selectedVenue->name }}">
                 <i class="ti ti-printer me-1" aria-hidden="true"></i> Print options
               </a>
+              <a href="{{ route('frontend.scoring.email', ['event' => $event, 'venue' => $selectedVenue, 'source' => $scheduleSource,
+                    'date' => $scheduleDate, 'draw' => $selectedDraw?->id, 'draw_ids' => $scheduleDrawIds ?: null]) }}"
+                 class="btn btn-outline-light"><i class="ti ti-mail me-1" aria-hidden="true"></i> Email order of play</a>
             @endif
             <a href="{{ route('events.show', $event) }}" class="btn btn-light">
               <i class="ti ti-arrow-left me-1" aria-hidden="true"></i> Tournament
@@ -263,6 +266,7 @@
     @if(session('success'))
       <div class="alert alert-success">{{ session('success') }}</div>
     @endif
+    @if(session('error'))<div class="alert alert-danger" role="alert">{{ session('error') }}</div>@endif
 
     <details class="card scoring-filter-card mb-4" aria-labelledby="scoring-context-title" @if($errors->has('operator')) open @endif>
       <summary class="card-header scoring-context-summary py-3">
