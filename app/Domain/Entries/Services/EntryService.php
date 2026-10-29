@@ -16,6 +16,7 @@ use App\Models\Draw;
 use App\Models\PlayerRegistration;
 use App\Models\Registration;
 use App\Models\User;
+use App\Support\FinanceMutationScope;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -119,13 +120,13 @@ class EntryService
             }
 
             /** @var CategoryEventRegistration $entry */
-            $entry = $lockedCategoryEvent->categoryEventRegistrations()->create([
+            $entry = FinanceMutationScope::run('registration_payment_state_write', fn () => $lockedCategoryEvent->categoryEventRegistrations()->create([
                 'registration_id'   => $registration->id,
                 'user_id'           => $actingUser->id,
                 'status'            => 'active',
                 'payment_status_id' => 1,
                 'admin_payment_status' => $adminPaymentStatus,
-            ]);
+            ]));
 
             $adminTransaction = [
                 'created_at'        => now(),
@@ -321,7 +322,7 @@ class EntryService
         $categoryName = optional($entry->categoryEvent?->category)->name ?? '';
 
         DB::transaction(function () use ($entry, $actingUser, $check, $player, $eventName, $categoryName) {
-            $entry->update([
+            FinanceMutationScope::run('refund_state_write', fn () => $entry->update([
                 'status'         => EntryStateMachine::STATE_WITHDRAWN,
                 'withdrawn_at'   => now(),
                 'withdrawn_by'   => $actingUser->id,
@@ -331,7 +332,7 @@ class EntryService
                 'refund_fee'     => 0,
                 'refund_net'     => 0,
                 'refunded_at'    => null,
-            ]);
+            ]));
 
             $this->removeFromUnplayedDrawParticipation($entry, 'player');
 
@@ -379,7 +380,7 @@ class EntryService
         $categoryName = optional($entry->categoryEvent?->category)->name ?? '';
 
         DB::transaction(function () use ($entry, $actingUser, $player, $eventName, $categoryName) {
-            $entry->update([
+            FinanceMutationScope::run('refund_state_write', fn () => $entry->update([
                 'status'        => EntryStateMachine::STATE_WITHDRAWN,
                 'withdrawn_at'  => now(),
                 'withdrawn_by'  => $actingUser->id,
@@ -389,7 +390,7 @@ class EntryService
                 'refund_fee'    => 0,
                 'refund_net'    => 0,
                 'refunded_at'   => null,
-            ]);
+            ]));
 
             $this->removeFromUnplayedDrawParticipation($entry, 'admin');
 
