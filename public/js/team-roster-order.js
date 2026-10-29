@@ -58,7 +58,8 @@
       body.append(row, ...details);
     }
     const panel = form.closest('[data-roster-panel]');
-    root.document.querySelectorAll('[data-roster-panel]').forEach(other => {
+    if (root.invalidateTeamRosterPanels) root.invalidateTeamRosterPanels(panel);
+    else root.document.querySelectorAll('[data-roster-panel]').forEach(other => {
       if (other !== panel && other.dataset.regionId === panel?.dataset.regionId) delete other.dataset.loaded;
     });
     root.scrollTo(scrollX, scrollY);

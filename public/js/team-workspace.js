@@ -349,6 +349,14 @@
   // Reconcile one region from the existing authorized fragment endpoint. Keep the
   // controls, selected filters and Result Ranks draft outside this list intact.
   const rosterRefreshes = new Map();
+  window.invalidateTeamRosterPanels = function (panel) {
+    document.querySelectorAll('[data-roster-panel]').forEach(other => {
+      if (other !== panel && other.dataset.regionId === panel?.dataset.regionId) {
+        requests.get(other.dataset.rosterPanel + ':' + other.dataset.regionId)?.abort();
+        delete other.dataset.loaded;
+      }
+    });
+  };
   window.refreshTeamRoster = function (source) {
     window.restoreMergedTeamRoster?.();
     const panel = source?.closest('[data-roster-panel]') || document.querySelector('[data-roster-panel]:not([hidden])');
