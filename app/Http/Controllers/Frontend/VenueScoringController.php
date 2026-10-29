@@ -240,15 +240,15 @@ class VenueScoringController extends Controller
         return $renderer->renderDrawPack($request, $event);
     }
 
-    public function emailOrderOfPlay(Request $request, Event $event, Venue $venue): View
+    public function emailOrderOfPlay(Request $request, Event $event, Venue $venue): \Illuminate\Http\Response
     {
         $data = $this->orderOfPlayData($request, $event, $venue);
         $delivery = app(\App\Services\Scoring\OrderOfPlayDelivery::class);
 
-        return view('frontend.scoring.email-order-of-play', $data + [
+        return response()->view('frontend.scoring.email-order-of-play', $data + [
             'requestKey' => (string) \Illuminate\Support\Str::uuid(),
             'reviewToken' => $delivery->reviewToken($event, $request->user(), $venue, $data['scope'], $data['rows']),
-        ]);
+        ])->header('Cache-Control', 'private, no-store');
     }
 
     public function previewOrderOfPlayEmail(Request $request, Event $event, Venue $venue): \Illuminate\Http\Response
