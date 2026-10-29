@@ -8,9 +8,9 @@
     <p class="mb-1"><strong>{{ $event->name }}</strong> · {{ $venue->name }}</p>
     <p class="mb-1">{{ $scope['date'] ? \Carbon\Carbon::parse($scope['date'])->format('l j F Y') : 'All saved days' }} · <strong>{{ count($rows) }} {{ Str::plural('match', count($rows)) }}</strong></p>
     <p class="small text-muted">Draws: {{ implode(', ', $drawNames) }}</p>
-    <div class="alert {{ $scope['source'] === 'working' ? 'alert-warning' : 'alert-info' }}" role="status">
-      {{ $scope['source'] === 'working' ? 'Working schedule — private staff copy. Sending this PDF does not publish the schedule.' : 'Published schedule — uses the saved public match times.' }}
-      This PDF contains only the scheduled matches shown for this venue and the selected day and draws.
+    <div class="alert text-dark {{ $scope['source'] === 'working' ? 'alert-warning' : 'alert-info' }}" role="status">
+      {{ $scope['source'] === 'working' ? 'Working schedule — private staff copy. Sending does not publish match times.' : 'Published schedule — saved public match times.' }}
+      Includes the selected venue, days and draws.
     </div>
     @if($errors->any())<div class="alert alert-danger" role="alert"><ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
     @if($rows)
