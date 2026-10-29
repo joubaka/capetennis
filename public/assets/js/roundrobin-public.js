@@ -403,8 +403,8 @@
             <td class="text-center">${r.wins}</td>
             ${timed ? `<td class="text-center">${Number(r.draws || 0)}</td><td class="text-center">${Number(r.points || 0)}</td>` : ''}
             <td class="text-center">${r.losses}</td>
-            <td class="text-center">${setsPct}%</td>
-            <td class="text-center">${gamesPct}%</td>
+            <td class="text-center">${setsPct === '-' ? '—' : setsPct + '%'}</td>
+            <td class="text-center">${gamesPct === '-' ? '—' : gamesPct + '%'}</td>
             <td class="text-center">${tbBadge}</td>
           </tr>`;
       });
