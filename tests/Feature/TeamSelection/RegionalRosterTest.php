@@ -404,6 +404,99 @@ class RegionalRosterTest extends TestCase
         $this->assertFalse($manager->can('team.players.manage', $team));
     }
 
+    public function test_imported_empty_place_accepts_name_without_creating_profile_or_financial_records(): void
+    {
+        Queue::fake(); Mail::fake();
+        [$event, $region, $team, $manager] = $this->roster(true);
+        $placeholder = TeamPlayer::create(['team_id' => $team->id, 'rank' => 2, 'player_id' => 0, 'pay_status' => 0]);
+        $users = User::count();
+        $this->actingAs($manager);
+        $url = route('backend.team.addPlayers');
+        $payload = ['event_id' => $event->id, 'team_id' => $team->id, 'target_rank' => 2, 'name' => 'New', 'surname' => 'Unprofiled'];
+        $this->postJson($url, $payload)->assertOk();
+        $this->postJson($url, $payload)->assertUnprocessable();
+        $this->postJson($url, array_replace($payload, ['target_rank' => 3, 'name' => ' new ', 'surname' => ' UNPROFILED ']))->assertUnprocessable();
+        $this->assertDatabaseHas('no_profile_team_players', ['team_id' => $team->id, 'rank' => 2, 'name' => 'New', 'surname' => 'Unprofiled', 'pay_status' => 0]);
+        $this->assertDatabaseCount('no_profile_team_players', 1);
+        $this->assertSame(0, (int) $placeholder->fresh()->player_id);
+        $this->assertSame(0, (int) $placeholder->fresh()->pay_status);
+        $this->assertDatabaseCount('players', 0);
+        $this->assertDatabaseCount('users', $users);
+        $this->assertDatabaseCount('user_players', 0);
+        $this->assertDatabaseCount('team_payment_orders', 0);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->get(route('admin.events.teams', [$event, 'roster_region' => $team->region_id]))->assertOk()
+            ->assertSee('New Unprofiled')->assertSee('Player without a profile')->assertSee('Existing player profile');
+        Queue::assertNothingPushed(); Mail::assertNothingSent();
+    }
+
+    public function test_imported_add_supports_existing_profile_and_named_reserve_without_fake_profiles(): void
+    {
+        Queue::fake(); Mail::fake();
+        [$event, $region, $team, $manager] = $this->roster(true);
+        $player = Player::factory()->create(['name' => 'Existing', 'surname' => 'Profile']);
+        $this->actingAs($manager);
+        $url = route('backend.team.addPlayers');
+        $base = ['event_id' => $event->id, 'team_id' => $team->id];
+        $this->postJson($url, $base + ['player_id' => $player->id])->assertOk();
+        $this->assertDatabaseHas('no_profile_team_players', ['team_id' => $team->id, 'rank' => 1, 'player_profile' => $player->id, 'name' => 'Existing', 'surname' => 'Profile', 'pay_status' => 0]);
+        $this->assertDatabaseHas('team_players', ['team_id' => $team->id, 'rank' => 1, 'player_id' => $player->id, 'pay_status' => 0]);
+        $this->postJson($url, $base + ['name' => 'Named', 'surname' => 'Reserve', 'reserve' => 1])->assertOk();
+        $this->assertDatabaseHas('no_profile_team_players', ['team_id' => $team->id, 'rank' => 5, 'name' => 'Named', 'surname' => 'Reserve', 'pay_status' => 0]);
+        $this->assertDatabaseCount('players', 1);
+        $this->assertDatabaseCount('no_profile_team_players', 2);
+        $this->assertDatabaseCount('team_payment_orders', 0);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        Queue::assertNothingPushed(); Mail::assertNothingSent();
+    }
+
+    public function test_named_fill_rejects_foreign_scope_mixed_identity_and_profile_only_teams(): void
+    {
+        [$event, $region, $team, $manager] = $this->roster(true);
+        [$foreignEvent, $foreignRegion, $foreignTeam] = $this->roster(true);
+        $this->actingAs($manager);
+        $url = route('backend.team.addPlayers');
+        $payload = ['event_id' => $event->id, 'team_id' => $team->id, 'target_rank' => 2, 'name' => 'No', 'surname' => 'Profile'];
+        $this->postJson($url, array_replace($payload, ['event_id' => $foreignEvent->id]))->assertNotFound();
+        $this->postJson($url, array_replace($payload, ['event_id' => $foreignEvent->id, 'team_id' => $foreignTeam->id]))->assertForbidden();
+        $this->postJson($url, $payload + ['player_id' => Player::factory()->create()->id])->assertUnprocessable();
+        $this->postJson($url, $payload + ['reserve_slot_id' => 1, 'expected_reserve_rank' => 5])->assertUnprocessable();
+        $team->update(['noProfile' => 0]);
+        $this->postJson($url, $payload)->assertUnprocessable();
+        $this->postJson($url, array_diff_key($payload, ['target_rank' => true]))->assertUnprocessable();
+        $this->assertDatabaseCount('no_profile_team_players', 0);
+        $this->assertDatabaseCount('team_players', 0);
+        $this->assertDatabaseCount('team_payment_orders', 0);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
+    public function test_one_player_actions_menu_keeps_change_remove_and_name_controls_with_order_outside(): void
+    {
+        [$event, $region, $team, $manager] = $this->roster(true);
+        $raw = NoProfileTeamPlayer::create(['team_id' => $team->id, 'rank' => 1, 'name' => 'Menu', 'surname' => 'Player', 'pay_status' => 0]);
+        $this->actingAs($manager);
+        $response = $this->get(route('admin.events.teams', [$event, 'roster_region' => $team->region_id]))->assertOk();
+        $document = new \DOMDocument();
+        $document->loadHTML($response->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING);
+        $xpath = new \DOMXPath($document);
+        $menus = $xpath->query('//details[@data-roster-player-actions]');
+        $this->assertSame(1, $menus->length);
+        $menu = $menus->item(0);
+        $this->assertStringContainsString('Player actions', $xpath->query('./summary', $menu)->item(0)->textContent);
+        $actions = [];
+        foreach ($xpath->query('.//form', $menu) as $form) $actions[] = $form->getAttribute('action');
+        $this->assertContains(route('backend.team.changePlayer'), $actions);
+        $this->assertContains(route('backend.team.removePlayer'), $actions);
+        $this->assertContains(route('backend.team.editPlayerName'), $actions);
+        $this->assertNotContains(route('team.order.player.list'), $actions);
+        $this->assertSame(2, $xpath->query('//form[@action="'.route('team.order.player.list').'"]')->length);
+        $this->assertSame(1, $xpath->query('.//*[@data-team-roster-remove-confirm and @hidden]', $menu)->length);
+        $slot = (new TeamPlayer(['team_id' => $team->id, 'rank' => 1, 'player_id' => 0, 'pay_status' => 0]))->setRelation('noProfile', $raw);
+        $legacy = view('backend.adminPage.admin_show._roster-actions', ['event' => $event, 'team' => $team, 'slot' => $slot, 'name' => 'Menu Player', 'compactRoster' => false])->render();
+        $this->assertStringNotContainsString('data-roster-player-actions', $legacy);
+        foreach (['Move up', 'Move down', 'Change player', 'Change name', 'Confirm remove'] as $label) $this->assertStringContainsString($label, $legacy);
+    }
+
     private function rosterChange(Team $team, array $payload)
     {
         $route = match ($payload['action']) { 'add' => 'backend.team.addPlayers', 'move' => 'team.order.player.list', default => 'backend.team.removePlayer' };

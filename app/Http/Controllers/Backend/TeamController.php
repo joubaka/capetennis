@@ -1012,16 +1012,21 @@ class TeamController extends Controller
         if ($request->has('target_rank')) {
           $data = $request->validate([
             'target_rank' => ['required', 'integer', 'min:1'],
-            'reserve_slot_id' => ['nullable', 'integer', 'min:1', 'required_without:player_id', 'prohibits:player_id'],
+            'reserve_slot_id' => ['nullable', 'integer', 'min:1', $team->noProfile ? 'required_without_all:player_id,name,surname' : 'required_without:player_id', 'prohibits:player_id,name,surname'],
             'expected_reserve_rank' => ['required_with:reserve_slot_id', 'integer', 'min:1'],
-            'player_id' => ['nullable', 'integer', 'min:1', 'required_without:reserve_slot_id', 'prohibits:reserve_slot_id'],
-          ]);
+            'player_id' => ['nullable', 'integer', 'min:1', $team->noProfile ? 'required_without_all:reserve_slot_id,name,surname' : 'required_without:reserve_slot_id', 'prohibits:reserve_slot_id,name,surname'],
+          ] + ($team->noProfile ? [
+            'name' => ['required_without_all:player_id,reserve_slot_id', 'nullable', 'string', 'max:100', 'prohibits:player_id,reserve_slot_id'],
+            'surname' => ['required_without_all:player_id,reserve_slot_id', 'nullable', 'string', 'max:100', 'prohibits:player_id,reserve_slot_id'],
+          ] : ['name' => ['prohibited'], 'surname' => ['prohibited']]));
           app(\App\Services\TeamRosterService::class)->fillEmptyPlace($event, $region, $team, $request->user(), $data);
 
           return response()->json(['success' => true, 'message' => 'Player added to Rank '.$data['target_rank'].'.']);
         }
         $data = $request->validate($team->noProfile
-          ? ['name' => ['required', 'string', 'max:100'], 'surname' => ['required', 'string', 'max:100']]
+          ? ['player_id' => ['nullable', 'integer', 'min:1', 'exists:players,id', 'prohibits:name,surname'],
+            'name' => ['required_without:player_id', 'nullable', 'string', 'max:100', 'prohibits:player_id'],
+            'surname' => ['required_without:player_id', 'nullable', 'string', 'max:100', 'prohibits:player_id']]
           : ['player_ids' => ['required', 'array', 'min:1', 'max:50'], 'player_ids.*' => ['required', 'integer', 'distinct', 'exists:players,id']]);
         $data += $request->validate(['reserve' => ['sometimes', 'boolean']]);
         DB::transaction(function () use ($team, $event, $region, $request, $data) {

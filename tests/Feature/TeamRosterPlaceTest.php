@@ -116,8 +116,8 @@ class TeamRosterPlaceTest extends TestCase
         NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 1, 'name' => 'Current', 'surname' => 'Player', 'pay_status' => 0]);
         NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 4, 'name' => 'Queued', 'surname' => 'Reserve', 'pay_status' => 0]);
         $panel = $this->get(route('admin.events.teams', $this->event).'?roster_region='.$this->team->region_id)->assertOk()
-            ->assertSee('More actions for empty Rank 2')->assertSee('More actions for empty Rank 3')->assertSee('Change name')
-            ->assertSeeInOrder(['Team reserves', 'Add Queued Reserve', 'Find a database player'])
+            ->assertSee('Add player to Rank 2')->assertSee('Add player to Rank 3')->assertSee('Change name')
+            ->assertSeeInOrder(['Choose a team reserve', 'Add Queued Reserve', 'Existing player profile', 'Player without a profile'])
             ->assertSee('name="target_rank" value="2"', false);
         if (getenv('CT_ROSTER_PLACE_QA') === '1') {
             file_put_contents(storage_path('framework/testing/qa-roster-panel.html'), $panel->getContent());
@@ -134,7 +134,7 @@ class TeamRosterPlaceTest extends TestCase
         $import = EventSelectionRosterImport::create(['event_id' => $this->event->id, 'finalization_id' => $final->id, 'region_id' => $this->team->region_id, 'imported_by' => $this->actor->id, 'groups' => $snapshot, 'imported_at' => now()]);
         $this->fill(['reserve_slot_id' => $reserve->id, 'expected_reserve_rank' => 4])->assertOk();
         $this->assertSame(2, (int) $reserve->fresh()->rank);
-        $this->assertSame($snapshot, $import->fresh()->groups);
+        $this->assertEquals($snapshot, $import->fresh()->groups);
         app(SelectedTeamRosterStatus::class)->assertMainSlot($this->event, $this->team, $reserve->fresh());
         $this->assertDatabaseHas('team_roster_promotions', ['event_id' => $this->event->id, 'team_id' => $this->team->id, 'no_profile_slot_id' => $reserve->id, 'source_rank' => 4, 'target_rank' => 2, 'actor_id' => $this->actor->id]);
         $this->assertDatabaseCount('no_profile_team_players', 1);
@@ -219,27 +219,32 @@ class TeamRosterPlaceTest extends TestCase
         $this->assertDatabaseCount('team_roster_promotions', 0);
     }
 
-    public function test_fill_rejects_other_team_reserves_regional_only_actor_managed_selection_and_competition_history(): void
+    public function test_fill_requires_team_scope_and_preserves_selection_and_competition_guards(): void
     {
         $otherTeam = Team::factory()->create(['region_id' => $this->team->region_id, 'category_event_id' => $this->team->category_event_id, 'noProfile' => true, 'num_team_members' => 3]);
         $foreign = NoProfileTeamPlayer::create(['team_id' => $otherTeam->id, 'rank' => 4, 'name' => 'Other', 'surname' => 'Reserve', 'pay_status' => 0]);
         $this->fill(['reserve_slot_id' => $foreign->id, 'expected_reserve_rank' => 4])->assertUnprocessable();
         $player = Player::factory()->create();
+        $this->actingAs(User::factory()->create())->fill(['player_id' => $player->id])->assertForbidden();
         $manager = User::factory()->create();
         $eventRegion = \App\Models\EventRegion::where('event_id', $this->event->id)->where('region_id', $this->team->region_id)->firstOrFail();
         \App\Models\EventRegionManager::create(['event_id' => $this->event->id, 'event_region_id' => $eventRegion->id, 'region_id' => $this->team->region_id, 'user_id' => $manager->id]);
-        $this->actingAs($manager)->fill(['player_id' => $player->id])->assertForbidden();
+        $this->actingAs($manager)->fill(['player_id' => $player->id], 1)->assertOk();
+        $this->assertDatabaseHas('no_profile_team_players', ['team_id' => $this->team->id, 'rank' => 1, 'player_profile' => $player->id]);
         $this->actingAs($this->actor);
+        $probePlayer = Player::factory()->create();
         $import = \App\Models\TeamSelectionImport::create(['event_id' => $this->event->id, 'region_id' => $this->team->region_id, 'source_id' => 1, 'series_id' => 1, 'ranking_run_id' => 'place-restriction', 'status' => 'draft']);
         \App\Models\TeamSelectionInvitation::create(['import_id' => $import->id, 'event_id' => $this->event->id, 'region_id' => $this->team->region_id, 'team_id' => $this->team->id, 'player_id' => $player->id, 'ranking_list_id' => 1, 'ranking_position' => 1, 'queue_position' => 1]);
-        $this->fill(['player_id' => $player->id])->assertUnprocessable();
+        $this->fill(['player_id' => $probePlayer->id])->assertUnprocessable()
+            ->assertJsonPath('errors.roster.0', 'Use the selection workflow for this team.');
         $import->update(['status' => 'cancelled']);
         $draw = \App\Models\Draw::factory()->create(['event_id' => $this->event->id]);
         $fixture = \App\Models\TeamFixture::create(['draw_id' => $draw->id, 'fixture_type' => 1, 'match_nr' => 1, 'round_nr' => 1, 'numSets' => 3]);
         \App\Models\TeamFixturePlayer::create(['team_fixture_id' => $fixture->id, 'team1_id' => 0, 'team2_id' => 0]);
-        $this->fill(['player_id' => $player->id])->assertUnprocessable();
+        $this->fill(['player_id' => $probePlayer->id])->assertUnprocessable()
+            ->assertJsonPath('errors.roster.0', 'The competition has fixture history. Ask the event administrator to change this roster.');
         $this->assertDatabaseCount('team_roster_promotions', 0);
-        $this->assertDatabaseCount('no_profile_team_players', 1);
+        $this->assertDatabaseCount('no_profile_team_players', 2);
     }
 
     public function test_change_name_preserves_unlinked_identity_and_rejects_stale_retry(): void

@@ -287,4 +287,12 @@
 .roster-replacement-choice legend { float:none; width:100%; font-size:.875rem; }
 .roster-replacement-form fieldset { min-width:0; }
 .roster-replacement-form .form-label { font-size:.875rem; }
+.roster-player-editor { min-width:0; max-width:100%; }
+.roster-player-editor > summary { list-style:none; cursor:pointer; }
+.roster-player-editor > summary::-webkit-details-marker { display:none; }
+.roster-player-editor[open] { flex-basis:100%; width:100%; }
+.roster-player-form { max-width:42rem; padding:1rem; border:1px solid var(--roster-border); border-radius:.5rem; background:#f7faff; }
+.roster-player-form fieldset { min-width:0; }
+.roster-player-form > button, .roster-player-form form > button { margin-top:.5rem; }
+.roster-player-form .select2-container { max-width:100%; }
 .team-player-table tr:has(.roster-replacement[open]) > td { vertical-align:top; }

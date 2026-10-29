@@ -139,7 +139,7 @@
               @endif
               @if($rosterLocked && !$rosterOnly && $slot->exists && $player && $paid)
                 @role('super-user')
-                  <details class="roster-more-actions"><summary class="btn btn-sm btn-outline-secondary roster-icon-control" aria-label="More actions for {{ $name }}" title="More actions"><i class="ti ti-dots" aria-hidden="true"></i></summary>
+                  <details class="roster-more-actions" data-roster-player-actions><summary class="btn btn-sm btn-outline-secondary" aria-label="Player actions for {{ $name }}">Player actions <i class="ti ti-chevron-down" aria-hidden="true"></i></summary>
                     <div class="roster-more-panel"><a class="btn btn-sm btn-outline-warning" href="{{ route('backend.team.withdrawal.show', [$event, $team, $slot]) }}">Review withdrawal / refund</a></div>
                   </details>
                 @endrole

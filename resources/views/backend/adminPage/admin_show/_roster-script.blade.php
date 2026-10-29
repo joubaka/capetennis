@@ -26,7 +26,7 @@ if (!window.teamRosterControls) {
   // Roster fragments are loaded and replaced dynamically. Initialize when
   // their replacement panel opens, including panels added after page load.
   document.addEventListener('toggle', event => {
-    if (event.target.matches?.('details.roster-replacement') && event.target.open) initReplacementSelects(event.target);
+    if (event.target.matches?.('details.roster-replacement, details.roster-player-editor') && event.target.open) initReplacementSelects(event.target);
   }, true);
   document.addEventListener('click', event => {
     const toggle = event.target.closest('[data-team-roster-remove-toggle]');

@@ -58,9 +58,10 @@ class TeamRosterService
                 if ($team->noProfile) {
                     $mirror = TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('rank', $rank)->lockForUpdate()->get();
                     if ($mirror->count() > 1 || $mirror->contains(fn ($slot) => $slot->pay_status || (int) $slot->player_id > 0)) $this->fail('This roster needs administrator review.');
+                    $player = !empty($data['player_id']) ? Player::query()->lockForUpdate()->findOrFail($data['player_id']) : null;
+                    if ($player) { $data['name'] = $player->name; $data['surname'] = $player->surname; }
                     $duplicate = $this->hasDuplicateRawName($slots, $data['name'], $data['surname']);
                     if ($duplicate) $this->fail('This player is already on the team.');
-                    $player = !empty($data['player_id']) ? Player::query()->lockForUpdate()->findOrFail($data['player_id']) : null;
                     if ($player) {
                         try { app(PlayerEligibilityService::class)->assertEligible($player, $event); }
                         catch (\RuntimeException $exception) { $this->fail($exception->getMessage()); }
@@ -272,6 +273,10 @@ class TeamRosterService
                 activity('team-roster')->performedOn($team)->causedBy($actor)->withProperties([
                     'event_id' => $event->id, 'source_slot_id' => $source->id, 'source_rank' => $sourceRank, 'target_rank' => $rank, 'player_id' => $playerId,
                 ])->log('promoted team reserve into empty numbered place');
+            } elseif ($team->noProfile && empty($data['player_id'])) {
+                $this->change($event, $region, $team, $actor, 'add', [
+                    'name' => $data['name'], 'surname' => $data['surname'], '_replacement_rank' => $rank,
+                ]);
             } else {
                 $player = Player::query()->lockForUpdate()->findOrFail($data['player_id']);
                 if ($team->noProfile) {
