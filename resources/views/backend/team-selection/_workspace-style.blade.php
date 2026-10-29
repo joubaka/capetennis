@@ -1,6 +1,15 @@
 <style>
   [data-embedded-teams-selection] > .region-selection-container { padding:0; max-width:none; }
   [data-embedded-teams-selection] .regional-team-card > .collapse > .nav-tabs { display:none; }
+  [data-embedded-teams-selection] [data-event-roster-email-action] { display:none !important; }
+  [data-embedded-teams-selection] [data-region-task="messages"] { display:none !important; }
+  [data-embedded-teams-selection] .region-task-panel[id$="-messages"] { display:none; }
+  #tab-communications [data-event-roster-email-action] { display:flex !important; }
+  #tab-communications .region-task-tabs,
+  #tab-communications .regional-help,
+  #tab-communications .region-task-panel { display:none; }
+  #tab-communications .region-workspace-card > .card-header > :not(:first-child) { display:none !important; }
+  #tab-communications .region-task-panel[id$="-messages"] { display:block; opacity:1; }
   .region-workspace-card { border: 0; box-shadow: 0 .35rem 1.25rem rgba(31, 57, 104, .09); overflow: visible; }
   .region-workspace-card > .card-header { background: linear-gradient(115deg, #12345f, #1f5c9d); color: #fff; --bs-heading-color: #fff; border-radius: var(--bs-card-border-radius, .5rem) var(--bs-card-border-radius, .5rem) 0 0; }
   .region-workspace-card > .card-header h5 { color: #fff; font-weight: 700; text-shadow: 0 1px 1px rgba(0,0,0,.18); }

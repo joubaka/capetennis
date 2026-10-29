@@ -31,7 +31,16 @@
   let selectionRequest;
 
   function selectedTeam() { return document.querySelector('[data-workspace-team]')?.value || ''; }
-  function activeMode() { return ['players', 'order', 'invitations', 'regions', 'result-rank'].find(mode => document.getElementById('tab-' + mode)?.classList.contains('active')) || 'players'; }
+  function consumeMessagesLink(url, requestedTab, legacySelection) {
+    const messagesRequested = legacySelection?.[2] === 'messages' || url.searchParams.get('selection_task') === 'messages';
+    if (!messagesRequested) return requestedTab;
+    const tab = !requestedTab || ['players', 'invitations'].includes(requestedTab) ? 'communications' : requestedTab;
+    url.searchParams.delete('selection_task');
+    url.searchParams.set('roster_tab', tab);
+    url.hash = 'tab-' + tab;
+    return tab;
+  }
+  function activeMode() { return ['players', 'order', 'communications', 'invitations', 'regions', 'result-rank'].find(mode => document.getElementById('tab-' + mode)?.classList.contains('active')) || 'players'; }
   function syncSelectionContext() {
     window.syncTeamSelectionContext?.({regionId: $('[data-roster-region]').val(), teamId: selectedTeam(), mode: activeMode(), task: new URL(window.location.href).searchParams.get('selection_task')});
   }
@@ -44,9 +53,14 @@
     const endpoint = document.querySelector('[data-team-context]')?.dataset.selectionUrl;
     if (!host || !endpoint) return Promise.resolve();
     const useOrder = selectionUsesOrder();
+    const useCommunications = activeMode() === 'communications';
     if (useOrder) window.restoreMergedTeamRoster?.();
     const tools = document.querySelector('[data-merged-selection-tools]');
-    if (!useOrder && tools) { document.getElementById('tab-players')?.append(tools); tools.append(host); }
+    if (useCommunications) {
+      if (tools) document.getElementById('tab-players')?.append(tools);
+      document.getElementById('tab-communications')?.append(host);
+    }
+    else if (!useOrder && tools) { document.getElementById('tab-players')?.append(tools); tools.append(host); }
     else document.getElementById(useOrder ? 'tab-order' : 'tab-players')?.append(host);
     host.hidden = false;
     document.querySelectorAll('#tab-order [data-roster-panel]').forEach(panel => { if (useOrder) panel.hidden = true; });
@@ -409,8 +423,8 @@
     syncRegionOrganizer(regionId);
     const host = document.querySelector('[data-central-selection-host]');
     if (activeMode() !== 'players') window.restoreMergedTeamRoster?.();
-    if (host) host.hidden = activeMode() !== 'players' && !selectionUsesOrder();
-    if (selectionUsesOrder()) loadSelection();
+    if (host) host.hidden = !['players', 'communications'].includes(activeMode()) && !selectionUsesOrder();
+    if (activeMode() === 'communications' || selectionUsesOrder()) loadSelection();
     else if ($('#tab-order').hasClass('active')) loadPanel('order', regionId);
     else if ($('#tab-players').hasClass('active')) {
       const roster = loadPanel('players', regionId);
@@ -445,8 +459,10 @@
     $('[data-roster-region]').val(regionId);
     $('[data-workspace-team]').val(url.searchParams.get('selected_team') || '');
     const requestedTab = url.searchParams.get('roster_tab') || (legacySelection ? 'invitations' : document.querySelector('[data-team-context]')?.dataset.defaultMode);
-    const tab = requestedTab === 'invitations' ? 'players' : requestedTab;
-    const button = document.querySelector('.team-admin-workspace [data-bs-target="#tab-' + (['regions', 'order', 'invitations', 'result-rank'].includes(tab) ? tab : 'players') + '"]');
+    const normalizedTab = consumeMessagesLink(url, requestedTab, legacySelection);
+    window.history.replaceState({}, '', url);
+    const tab = normalizedTab === 'invitations' ? 'players' : normalizedTab;
+    const button = document.querySelector('.team-admin-workspace [data-bs-target="#tab-' + (['regions', 'order', 'communications', 'invitations', 'result-rank'].includes(tab) ? tab : 'players') + '"]');
     if (button) bootstrap.Tab.getOrCreateInstance(button).show();
     selectRegion(regionId);
     initCategorySelect();

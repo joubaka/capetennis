@@ -16,7 +16,7 @@ function harness({ endpoint = '/selection?workspace_fragment=1', managed = '1', 
   const host = { children: [], parent: null, hidden: false, querySelector() { return state.root ? {} : null; }, setAttribute() {}, removeAttribute() {},
     set innerHTML(value) { state.root = value.includes('data-embedded-teams-selection'); },
     replaceChildren() { state.root = false; this.children = []; }, append(node) { this.children.push(node); } };
-  const panels = Object.fromEntries(['players', 'order', 'invitations', 'regions', 'result-rank'].map(name => ['tab-' + name, { classList: { contains: () => name === mode }, append(node) { node.parent = name; } }]));
+  const panels = Object.fromEntries(['players', 'order', 'communications', 'invitations', 'regions', 'result-rank'].map(name => ['tab-' + name, { classList: { contains: () => name === mode }, append(node) { node.parent = name; } }]));
   const window = { location: { href: 'http://localhost/backend/team-selection/events/242?selected_team=841&workspace=invitations' } };
   const document = {
     querySelector(selector) { return selector === '[data-workspace-team]' ? team : selector === '[data-team-context]' ? context : selector === '[data-central-selection-host]' ? host : null; },
@@ -31,7 +31,7 @@ function harness({ endpoint = '/selection?workspace_fragment=1', managed = '1', 
   const fetch = async () => { state.requests++; await Promise.resolve(); return { ok: !state.fail, status: state.fail ? 403 : 200, json: async () => ({ html: '<div data-embedded-teams-selection></div>', style: '<style></style>', script: '<script></script>' }) }; };
   const $ = () => ({ val: () => state.region });
   const sandbox = { window, document, fetch, $, URL, Promise };
-  vm.runInNewContext('let selectionRequest;\n' + ['selectedTeam', 'activeMode', 'syncSelectionContext', 'selectionUsesOrder', 'loadSelection', 'syncTeamOptions', 'workspaceUrl'].map(extract).join('\n'), sandbox);
+  vm.runInNewContext('let selectionRequest;\n' + ['selectedTeam', 'consumeMessagesLink', 'activeMode', 'syncSelectionContext', 'selectionUsesOrder', 'loadSelection', 'syncTeamOptions', 'workspaceUrl'].map(extract).join('\n'), sandbox);
   return { ...sandbox, state, team, host, context };
 }
 
@@ -39,6 +39,31 @@ test('regional managed teams keep canonical ordering without invitation capabili
   const h = harness({ endpoint: '' });
   assert.equal(h.selectionUsesOrder(), false);
   assert.equal(h.state.requests, 0);
+});
+
+test('communications loads the existing authorized forms into its own panel once', async () => {
+  const h = harness({ mode: 'communications' });
+  assert.equal(h.activeMode(), 'communications');
+  await h.loadSelection();
+  assert.equal(h.host.parent, 'communications');
+  assert.equal(h.host.hidden, false);
+  await h.loadSelection();
+  assert.equal(h.state.requests, 1);
+  assert.equal(h.state.initialized, 1);
+});
+
+test('legacy Messages links are consumed so a later Players reload stays on Players', () => {
+  const h = harness();
+  const url = new URL('http://localhost/teams?roster_tab=players&selection_task=messages&selected_region=127');
+  assert.equal(h.consumeMessagesLink(url, 'players', null), 'communications');
+  assert.equal(url.searchParams.has('selection_task'), false);
+  assert.equal(url.searchParams.get('selected_region'), '127');
+  url.searchParams.set('roster_tab', 'players');
+  url.hash = 'tab-players';
+  assert.equal(h.consumeMessagesLink(url, 'players', null), 'players');
+  const legacy = new URL('http://localhost/teams#region-12/messages');
+  assert.equal(h.consumeMessagesLink(legacy, 'invitations', ['#region-12/messages', '12', 'messages']), 'communications');
+  assert.equal(legacy.hash, '#tab-communications');
 });
 
 test('lazy invitations share one request and one initializer while preserving selected managed team order', async () => {

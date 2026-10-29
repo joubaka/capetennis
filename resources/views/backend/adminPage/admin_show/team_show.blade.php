@@ -38,7 +38,13 @@
   @include('backend.adminPage.admin_show.tabs.player-order') {{-- ✅ use your working version --}}
 
   @unless($rosterOnly ?? false)
-    <details class="mt-4 border rounded p-3" data-merged-selection-tools><summary class="fw-semibold">Campaigns, messages &amp; settings</summary>
+    @if(app(\App\Services\TeamSelection\RegionManagerAccessService::class)->canAccessWorkspace(auth()->user(), $event))
+    <div class="tab-pane fade" id="tab-communications" role="tabpanel" aria-labelledby="communications-tab">
+      <h3 class="h5">Communications</h3>
+      <p class="text-muted small">Contact selected players and publish announcements for the selected region.</p>
+    </div>
+    @endif
+    <details class="mt-4 border rounded p-3" data-merged-selection-tools><summary class="fw-semibold">Campaigns &amp; settings</summary>
       <div data-central-selection-host>
         @if(isset($embeddedTeamSelection))
           @include('backend.team-selection._workspace-style', $embeddedTeamSelection)

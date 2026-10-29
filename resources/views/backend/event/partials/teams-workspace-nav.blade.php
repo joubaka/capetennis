@@ -4,6 +4,7 @@
   $teamsWorkspaceItems = [
     'players' => [($rosterOnly ?? false) ? 'Players' : 'Players & invitations', 'ti-users', 'tab-players'],
     'order' => ['Player order', 'ti-list-numbers', 'tab-order'],
+    'communications' => ['Communications', 'ti-mail', 'tab-communications'],
     'setup' => ['Setup', 'ti-settings', 'tab-regions'],
     'results' => ['Result ranks', 'ti-award', 'tab-result-rank'],
   ];
@@ -20,11 +21,12 @@
 <nav class="teams-workspace-nav nav tabs-wrap" aria-label="Teams workspace" data-teams-workspace>
   @foreach($teamsWorkspaceItems as $key => [$label, $icon, $panel])
     @continue(($rosterOnly ?? false) && !in_array($key, ['players', 'order']))
+    @continue($key === 'communications' && !app(\App\Services\TeamSelection\RegionManagerAccessService::class)->canAccessWorkspace(auth()->user(), $event))
     @if(($key !== 'invitations' || $teamsWorkspaceCanInvite) && ($key !== 'results' || auth()->user()?->can('event.manage', $event)) && ($key !== 'setup' || app(\App\Services\TeamSelection\RegionManagerAccessService::class)->canAccessWorkspace(auth()->user(), $event)))
       @if($key === 'setup')<details class="teams-workspace-more"><summary class="teams-workspace-link">Setup &amp; history</summary><div class="d-flex flex-wrap">@endif
       <a class="teams-workspace-link {{ $teamsWorkspaceRoster && $panel ? 'nav-link' : '' }} {{ ($teamsWorkspaceRoster ? $key === 'players' : $key === 'invitations') ? 'active' : '' }}"
          href="{{ route('admin.events.teams', [$event, 'roster_tab' => match($key) { 'setup' => 'regions', 'results' => 'result-rank', default => $key }]).'#'.$panel }}"
-         @if($teamsWorkspaceRoster && $panel) data-bs-toggle="tab" data-bs-target="#{{ $panel }}" data-teams-panel="{{ $panel }}" id="{{ match($key) { 'players' => 'players-tab', 'invitations' => 'invitations-tab', 'order' => 'order-tab', 'results' => 'result-rank-button', default => 'regions-tab' } }}" role="tab" aria-controls="{{ $panel }}" aria-selected="{{ $key === 'players' ? 'true' : 'false' }}"
+         @if($teamsWorkspaceRoster && $panel) data-bs-toggle="tab" data-bs-target="#{{ $panel }}" data-teams-panel="{{ $panel }}" id="{{ match($key) { 'players' => 'players-tab', 'invitations' => 'invitations-tab', 'order' => 'order-tab', 'communications' => 'communications-tab', 'results' => 'result-rank-button', default => 'regions-tab' } }}" role="tab" aria-controls="{{ $panel }}" aria-selected="{{ $key === 'players' ? 'true' : 'false' }}"
 @endif
 
          @if($teamsWorkspaceRoster ? $key === 'players' : $key === 'invitations') aria-current="page"

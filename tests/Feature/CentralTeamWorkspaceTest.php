@@ -57,6 +57,22 @@ class CentralTeamWorkspaceTest extends TestCase
             ->assertSee('data-roster-player-id="'.$linkedRaw->player_profile.'" data-roster-imported-id="'.$linkedRaw->id.'"', false);
     }
 
+    public function test_communications_has_a_top_level_panel_with_existing_region_scoped_mail_tools(): void
+    {
+        $this->get(route('admin.events.teams', [$this->event, 'roster_tab' => 'communications', 'selected_region' => $this->eventRegion->region_id]))
+            ->assertOk()->assertSee('id="communications-tab"', false)
+            ->assertSee('data-bs-target="#tab-communications"', false)
+            ->assertSee('id="tab-communications"', false)
+            ->assertDontSee('confidential-roster@example.test');
+        $fragment = $this->getJson(route('backend.team-selection.index', [$this->event, 'workspace_fragment' => 1]))->assertOk();
+        $this->assertStringContainsString('Regional announcements', $fragment->json('html'));
+        $this->assertStringContainsString('Email selected players across regions', $fragment->json('html'));
+        $this->assertStringContainsString(route('backend.team-selection.announcements.store', [$this->event, $this->eventRegion]), $fragment->json('html'));
+        $this->assertStringContainsString('#tab-communications .region-task-panel[id$="-messages"]', $fragment->json('style'));
+        $this->assertDatabaseCount('team_selection_region_announcements', 0);
+        $this->assertDatabaseCount('team_payment_orders', 0);
+    }
+
     public function test_legacy_invitation_url_renders_same_shell_and_preserves_all_real_tools_without_duplicate_ids(): void
     {
         $url = route('backend.team-selection.index', [$this->event, 'selected_region' => $this->eventRegion->region_id, 'selected_team' => $this->team->id]);

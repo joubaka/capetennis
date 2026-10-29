@@ -12,6 +12,7 @@
   const workspaceStateKey = 'team-selection-workspace-{{ $event->id }}';
   const regionSelect = document.querySelector('[data-region-select]');
   const openWorkspace = function (regionId, taskKey, updateLocation = true) {
+    if (embeddedWorkspace && taskKey === 'messages') taskKey = 'teams';
     const regionTab = document.querySelector(`[data-bs-target="#region-panel-${regionId}"]`);
     const taskTab = document.querySelector(`#region-${regionId}-${taskKey}-tab`);
     if (!taskTab || !window.bootstrap?.Tab) return;
