@@ -242,6 +242,7 @@
               </div>
               <div class="tab-pane fade show active region-task-panel" id="region-{{ $eventRegion->id }}-teams" role="tabpanel" aria-labelledby="region-{{ $eventRegion->id }}-teams-tab" tabindex="0">
 
+            @unless($embeddedTeamsWorkspace ?? false)
             <div class="border rounded p-3 mb-3">
               <div class="d-flex flex-wrap justify-content-between gap-2 align-items-start">
                 <div><small class="text-muted d-block">Regional organizer</small><strong>{{ $regionManager?->name ?: trim(($regionManager?->userName ?? '').' '.($regionManager?->userSurname ?? '')) ?: $regionManager?->email ?: 'Not assigned' }}</strong>@if($regionManager?->email)<div class="small text-muted">{{ $regionManager->email }} · player profile not required</div>@endif</div>
@@ -261,6 +262,7 @@
               @endif
             </div>
 
+            @endunless
             <div class="regional-readonly rounded p-3 mb-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
               <div><strong>Manage your teams</strong><div class="small text-muted">Choose <strong>Show team</strong> below to see players. @if($activeImport)Use <strong>Change player</strong> to replace an unpaid player.@else Use the player row to correct a name or email.@endif Open <strong>Player order</strong> to move players up or down.</div></div>
               <div class="d-flex flex-wrap gap-2 align-items-center">

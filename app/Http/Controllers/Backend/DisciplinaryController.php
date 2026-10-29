@@ -103,6 +103,7 @@ class DisciplinaryController extends Controller
     public function editViolation(int $id)
     {
         $violation      = PlayerViolation::with('violationType')->findOrFail($id);
+        abort_if($violation->disciplinary_case_id !== null, 403, 'Panel-confirmed violations may only be changed through an appeal.');
         $violationTypes = ViolationType::active()->orderBy('name')->get();
         $events         = Event::orderByDesc('id')->take(50)->get();
 
@@ -115,6 +116,7 @@ class DisciplinaryController extends Controller
     public function updateViolation(Request $request, int $id)
     {
         $violation = PlayerViolation::findOrFail($id);
+        abort_if($violation->disciplinary_case_id !== null, 403, 'Panel-confirmed violations may only be changed through an appeal.');
 
         $validated = $request->validate([
             'violation_type_id' => 'required|exists:violation_types,id',
@@ -141,6 +143,7 @@ class DisciplinaryController extends Controller
     public function destroyViolation(int $id)
     {
         $violation = PlayerViolation::findOrFail($id);
+        abort_if($violation->disciplinary_case_id !== null, 403, 'Panel-confirmed violations may only be changed through an appeal.');
         $playerId  = $violation->player_id;
         $violation->delete();
 

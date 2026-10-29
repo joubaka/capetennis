@@ -191,6 +191,9 @@
                             </td>
                             <td>{{ Str::limit($v->notes, 60) }}</td>
                             <td>
+                                @if($v->disciplinary_case_id)
+                                    <a href="{{ route('backend.disciplinary.cases.show', $v->disciplinary_case_id) }}" class="btn btn-sm btn-outline-primary">View case</a>
+                                @else
                                 <div class="d-flex gap-1">
                                     <a href="{{ route('backend.disciplinary.violation.edit', $v->id) }}"
                                        class="btn btn-sm btn-outline-warning" title="Edit">
@@ -205,6 +208,7 @@
                                         </button>
                                     </form>
                                 </div>
+                                @endif
                             </td>
                         </tr>
                     @empty

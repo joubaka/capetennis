@@ -675,6 +675,15 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::delete('/violation-type/{violationType}', [DisciplineSettingsController::class, 'destroyViolationType'])->name('backend.disciplinary.violation-type.destroy');
   });
 
+  Route::prefix('player-performance/membership-preview')->middleware('role:super-user')->name('backend.player-performance.membership-preview.')->group(function () {
+    Route::get('/', [\App\Http\Controllers\Backend\PlayerMembershipPreviewController::class, 'directory'])->name('directory');
+    Route::get('/leaderboard', [\App\Http\Controllers\Backend\PlayerMembershipPreviewController::class, 'leaderboard'])->name('leaderboard');
+    Route::get('/membership', [\App\Http\Controllers\Backend\PlayerMembershipPreviewController::class, 'membership'])->name('membership');
+    Route::get('/alerts', [\App\Http\Controllers\Backend\PlayerMembershipPreviewController::class, 'alerts'])->name('alerts');
+    Route::get('/compare', [\App\Http\Controllers\Backend\PlayerMembershipPreviewController::class, 'compare'])->name('compare');
+    Route::get('/players/{player}', [\App\Http\Controllers\Backend\PlayerMembershipPreviewController::class, 'detail'])->whereNumber('player')->name('detail');
+  });
+
   Route::get('player-performance/name-ratings', \App\Http\Controllers\Backend\PlayerRatingBadgeController::class)->middleware('role:super-user')->name('backend.player-performance.badges');
   Route::get('player-performance/ratings', [\App\Http\Controllers\Backend\PlayerRatingLeaderboardController::class, 'site'])->middleware('role:super-user')->name('backend.player-performance.ratings');
   Route::get('player-performance/masters-review', [\App\Http\Controllers\Backend\MastersQualificationReviewController::class, 'index'])->middleware('role:super-user')->name('backend.player-performance.masters-review');

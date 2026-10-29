@@ -7,8 +7,12 @@ use App\Models\User;
 
 class DisciplinaryCasePolicy
 {
-    public function before(User $user): ?bool
+    public function before(User $user, string $ability, ?DisciplinaryCase $case = null): ?bool
     {
+        if (in_array($ability, ['viewPanelEvidence', 'decide'], true) && $case
+            && in_array((int) $case->player_id, $user->ownedPlayerIds(), true)) {
+            return false;
+        }
         return $user->hasRole('super-user') ? true : null;
     }
 
@@ -16,7 +20,7 @@ class DisciplinaryCasePolicy
     {
         return $user->is_event_admin($case->event_id)
             || $case->reported_by === $user->id
-            || $case->assignments()->where('user_id', $user->id)->whereNull('recused_at')->exists()
+            || $case->assignments()->where('user_id', $user->id)->whereNull('recused_at')->where('conflict_declared', false)->exists()
             || in_array((int) $case->player_id, $user->ownedPlayerIds(), true);
     }
 
@@ -27,9 +31,20 @@ class DisciplinaryCasePolicy
 
     public function decide(User $user, DisciplinaryCase $case): bool
     {
+        if (in_array((int) $case->player_id, $user->ownedPlayerIds(), true)) {
+            return false;
+        }
         return $case->assignments()->where('user_id', $user->id)
             ->where('role', 'chair')->whereNull('recused_at')
             ->where('conflict_declared', false)->exists();
+    }
+
+    public function viewPanelEvidence(User $user, DisciplinaryCase $case): bool
+    {
+        return ! in_array((int) $case->player_id, $user->ownedPlayerIds(), true)
+            && ($user->is_event_admin($case->event_id)
+                || $case->assignments()->where('user_id', $user->id)->whereNull('recused_at')
+                    ->where('conflict_declared', false)->exists());
     }
 
     public function respond(User $user, DisciplinaryCase $case): bool

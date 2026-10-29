@@ -26,7 +26,8 @@ class DisciplinaryCaseController extends Controller
         if (! $user->hasRole('super-user')) {
             $query->where(function ($q) use ($user) {
                 $q->whereHas('event.admins', fn ($admins) => $admins->where('users.id', $user->id))
-                    ->orWhereHas('assignments', fn ($assignments) => $assignments->where('user_id', $user->id));
+                    ->orWhereHas('assignments', fn ($assignments) => $assignments->where('user_id', $user->id)
+                        ->whereNull('recused_at')->where('conflict_declared', false));
             });
         }
         if ($request->filled('event_id')) $query->where('event_id', $request->integer('event_id'));
@@ -89,6 +90,9 @@ class DisciplinaryCaseController extends Controller
         $this->authorize('view', $case);
         $case->load(['event', 'player.users', 'reporter', 'charges.violationType', 'evidence.submitter',
             'assignments.user', 'decisions.sanctions', 'appeals', 'timeline.actor']);
+        if (! auth()->user()->can('viewPanelEvidence', $case)) {
+            $case->setRelation('evidence', $case->evidence->where('visibility', 'parties')->values());
+        }
         $panelCandidates = User::role(['admin', 'super-user'])->orderBy('name')->get();
         return view('backend.disciplinary.cases.show', compact('case', 'panelCandidates'));
     }
@@ -160,6 +164,9 @@ class DisciplinaryCaseController extends Controller
     {
         $this->authorize('view', $case);
         abort_unless($evidence->disciplinary_case_id === $case->id && $evidence->file_path, 404);
+        if ($evidence->visibility !== 'parties') {
+            $this->authorize('viewPanelEvidence', $case);
+        }
         return Storage::download($evidence->file_path, $evidence->original_name);
     }
 
@@ -167,7 +174,7 @@ class DisciplinaryCaseController extends Controller
     {
         abort_unless($request->user()->hasRole('super-user'), 403);
         $data = $request->validate([
-            'outcome' => ['required', Rule::in(['confirmed', 'varied', 'overturned'])],
+            'outcome' => ['required', Rule::in(['confirmed', 'overturned'])],
             'reasons' => ['required', 'string', 'min:20', 'max:20000'],
         ]);
         $this->service->decideAppeal($appeal, $request->user(), $data['outcome'], $data['reasons']);

@@ -42,6 +42,7 @@
       <span class="roster-team-title"><strong>{{ $team->name }}</strong><span class="small text-muted">{{ $team->category?->category?->name ?? 'Category not set' }} · {{ $occupiedSlots->count() }}/{{ $team->num_team_members }} places @unless($rosterOnly)· {{ $occupiedSlots->where('pay_status', '!=', 1)->count() }} unpaid · {{ $reserveCount }} reserves
 @endunless
 </span></span>
+      @if($rosterOnly)<span class="roster-disclosure" aria-hidden="true">⌄</span>@endif
       @unless($rosterOnly)
       <span class="d-flex flex-wrap gap-2 align-items-center">@if($rankingManaged)<span class="badge bg-label-info">Ranking-managed</span>
 @endif

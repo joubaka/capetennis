@@ -1,0 +1,1 @@
+<p class="mp-subtle"><strong>{{ $player['profile_freshness'] ?? 'Profile update date unavailable' }}</strong>@if($player['profile_updated_date'] ?? null) · {{ $player['profile_updated_date'] }}@endif<br>Informational only; this is not identity verification or a leaderboard requirement.</p>

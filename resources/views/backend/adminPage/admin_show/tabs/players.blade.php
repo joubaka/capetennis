@@ -3,6 +3,7 @@
 @else
 @php($regionsInEvent = $event->regions ?? collect())
 <div class="tab-pane fade show active" id="tab-players" role="tabpanel" aria-labelledby="players-tab">
+  @unless($rosterOnly ?? false)
   <div class="roster-toolbar">
     <div class="roster-filters">
       <div><label class="form-label" for="roster-search">Find a player or team</label><input id="roster-search" class="form-control" type="search" placeholder="{{ ($rosterOnly ?? false) ? 'Name or team' : 'Name, team, email or cell' }}" data-roster-search></div>
@@ -32,6 +33,7 @@
 @endunless
 
   </div>
+  @endunless
   @forelse($regionsInEvent as $k => $region)
     <section id="players-region-{{ $region->id }}" data-roster-panel="players" data-region-id="{{ $region->id }}" @if($rosterOnly ?? false)data-loaded="true"
 @endif

@@ -84,6 +84,23 @@ class CentralTeamWorkspaceTest extends TestCase
         }
     }
 
+    public function test_organizer_assignment_is_available_above_roster_without_loading_campaigns(): void
+    {
+        $manager = User::factory()->create(['name' => 'Synthetic regional organizer']);
+        EventRegionManager::create(['event_id' => $this->event->id, 'event_region_id' => $this->eventRegion->id, 'region_id' => $this->eventRegion->region_id, 'user_id' => $manager->id]);
+        $page = $this->get(route('admin.events.teams', $this->event))->assertOk();
+        $page->assertSee('Regional organizer')->assertSee('Synthetic regional organizer')->assertSee('Change organizer')
+            ->assertSee('data-region-organizer="'.$this->eventRegion->region_id.'"', false)
+            ->assertSee(route('backend.team-selection.manager.assign', [$this->event, $this->eventRegion]), false)
+            ->assertDontSee('data-embedded-teams-selection', false);
+        $this->assertLessThan(strpos($page->getContent(), 'id="tab-players"'), strpos($page->getContent(), 'data-region-organizers'));
+        $embedded = $this->get(route('backend.team-selection.index', $this->event))->assertOk();
+        $this->assertSame(1, substr_count($embedded->getContent(), 'action="'.route('backend.team-selection.manager.assign', [$this->event, $this->eventRegion]).'"'));
+        $this->actingAs($manager)->get(route('admin.events.teams', $this->event))->assertOk()
+            ->assertDontSee('data-region-organizers', false)->assertDontSee('data-organizer-user', false);
+        $this->assertDatabaseCount('event_region_managers', 1);
+    }
+
     public function test_lazy_invitation_contract_is_private_event_bound_and_does_not_mutate_records(): void
     {
         $url = route('backend.team-selection.index', [$this->event, 'workspace_fragment' => 1, 'selected_region' => $this->eventRegion->region_id, 'selected_team' => $this->team->id]);
@@ -107,6 +124,37 @@ class CentralTeamWorkspaceTest extends TestCase
         $this->get(route('admin.events.teams', $this->event))->assertOk()->assertSee('North region')->assertDontSee('South private region')
             ->assertDontSee('confidential-roster@example.test')->assertDontSee('id="tab-invitations"', false)->assertDontSee('data-embedded-teams-selection', false);
         $this->getJson(route('backend.team-selection.index', [$this->event, 'workspace_fragment' => 1]))->assertForbidden();
+    }
+
+    public function test_regional_layout_keeps_replacement_choices_and_private_admin_tools_separate(): void
+    {
+        $manager = User::factory()->create();
+        EventRegionManager::create(['event_id' => $this->event->id, 'event_region_id' => $this->eventRegion->id, 'region_id' => $this->eventRegion->region_id, 'user_id' => $manager->id]);
+        $profileTeam = Team::where('name', 'North Profiles')->firstOrFail();
+        TeamPlayer::create(['team_id' => $profileTeam->id, 'rank' => 2, 'player_id' => Player::factory()->create(['name' => 'Paid', 'surname' => 'Synthetic'])->id, 'pay_status' => 1]);
+        $this->actingAs($manager);
+        $page = $this->get(route('admin.events.teams', $this->event))->assertOk();
+        $page->assertSee('regional-roster-workspace')->assertSee('Change player')->assertSee('Existing player profile')
+            ->assertSee('Player without a profile')->assertSee('data-regional-search', false)
+            ->assertDontSee('confidential-roster@example.test')->assertDontSee('South private region')
+            ->assertDontSee('data-region-organizers', false)->assertDontSee('data-team-email-open', false)
+            ->assertDontSee('data-roster-filter="payment"', false)->assertDontSee('name="refund_action"', false);
+        $previous = libxml_use_internal_errors(true);
+        $document = new \DOMDocument;
+        $document->loadHTML($page->getContent());
+        libxml_clear_errors(); libxml_use_internal_errors($previous);
+        $xpath = new \DOMXPath($document);
+        $this->assertSame(1, $xpath->query('//*[@id="roster-search"]')->length);
+        $this->assertSame(0, $xpath->query('//details[contains(@class,"roster-more-actions")]//details[contains(@class,"roster-replacement")]')->length);
+        $this->assertSame(0, $xpath->query('//tr[td/strong[text()="Paid Synthetic"]]//*[@data-replacement-type]')->length);
+        $this->assertSame(0, $xpath->query('//*[@data-roster-team="'.$profileTeam->id.'"]//*[@data-replacement-fields="name"]')->length);
+        $this->assertGreaterThan(0, $xpath->query('//*[@data-roster-team="'.$this->team->id.'"]//fieldset[@data-replacement-fields="name" and @hidden and @disabled]')->length);
+        $this->assertDatabaseCount('event_region_managers', 1);
+        $this->assertDatabaseCount('team_payment_orders', 0);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        if (getenv('CT_REGIONAL_LAYOUT_QA') === '1') {
+            file_put_contents(storage_path('framework/testing/qa-regional-layout.html'), $page->getContent());
+        }
     }
 
     public function test_custom_team_event_type_uses_same_central_shell_and_preserves_validation_input(): void

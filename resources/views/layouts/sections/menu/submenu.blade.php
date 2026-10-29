@@ -15,6 +15,7 @@
 <ul class="menu-sub">
   @if (isset($menu))
     @foreach ($menu as $submenu)
+    @continue(($submenu->localOnly ?? false) && !app()->environment('local'))
 
     {{-- active menu method --}}
     @php

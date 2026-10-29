@@ -48,7 +48,7 @@
 @endif
 
               </td>
-              <td data-label="Rank"><span class="badge bg-label-primary">{{ $rank }}</span>@if($team->workspaceSlots->firstWhere('rank', $rank)?->selected_team_reserve)<span class="badge bg-label-warning ms-1">Reserve</span>
+              <td data-label="Rank"><span class="badge bg-label-primary">{{ $rank }}</span>@if($team->workspaceSlots?->firstWhere('rank', $rank)?->selected_team_reserve)<span class="badge bg-label-warning ms-1">Reserve</span>
 @endif
 </td>
               <td data-label="Player">{{ $name }}</td>
@@ -66,3 +66,4 @@
     </div>
   </details>
 @empty <div class="alert alert-light border">No teams in this region.</div> @endforelse
+

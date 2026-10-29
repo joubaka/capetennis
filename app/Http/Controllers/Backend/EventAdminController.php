@@ -163,6 +163,13 @@ class EventAdminController extends Controller
     $administrator = $event->event_admins->contains('user_id', Auth::id());
     $data = compact('event', 'teamSelectionInvitations', 'allCategories', 'regions', 'players', 'administrator', 'eventRegions', 'rosterOnly', 'isRegionalPreview', 'previewRegion');
     $data['centralTeamWorkspace'] = true;
+    if (!$rosterOnly) {
+      $eventRegions->loadMissing('managerAssignment.user');
+      $data['organizerRegions'] = $eventRegions->map(function ($eventRegion) use ($access) {
+        $defaults = $access->defaultManagerCandidates($eventRegion);
+        return ['scope' => $eventRegion, 'manager' => $eventRegion->managerAssignment ? $eventRegion->managerAssignment->user : ($defaults->count() === 1 ? $defaults->first() : null), 'defaults' => $defaults];
+      });
+    }
     if (!$rosterOnly && !request()->boolean('workspace') && (request()->routeIs('backend.team-selection.index') || request('roster_tab') === 'invitations' || session()->hasOldInput()
       || (request('roster_tab') === 'order' && $teamSelectionInvitations->has((int) request('selected_team'))))) {
       $data['embeddedTeamSelection'] = app()->call([app(TeamSelectionInvitationController::class), 'embeddedWorkspaceData'], ['event' => $event]);

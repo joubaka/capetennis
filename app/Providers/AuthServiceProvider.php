@@ -43,7 +43,12 @@ class AuthServiceProvider extends ServiceProvider
         $this->registerPolicies();
 
         // Implicitly grant "Super-Admin" role all permission checks using can()
-        Gate::before(function ($user, $ability) {
+        Gate::before(function ($user, $ability, $arguments) {
+            // A disciplinary conflict must also bind a Super Admin's own case.
+            if (($arguments[0] ?? null) instanceof DisciplinaryCase
+                && in_array($ability, ['viewPanelEvidence', 'decide'], true)) {
+                return null;
+            }
             if ($user->hasRole('super-user')) {
                 return true;
             }

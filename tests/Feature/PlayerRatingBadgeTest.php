@@ -78,6 +78,45 @@ class PlayerRatingBadgeTest extends TestCase
         $this->assertStringContainsString('Only compare players in this cohort and group', $html);
     }
 
+    public function test_super_admin_sees_ratings_for_every_unlinked_event_player(): void
+    {
+        $this->superAdmin();
+        $draw = $this->draw();
+        $players = Player::factory()->count(2)->create();
+        $snapshot = [];
+        foreach ($players as $player) {
+            $registration = Registration::factory()->create();
+            $registration->players()->attach($player);
+            CategoryEventRegistration::factory()->create([
+                'category_event_id' => $draw->category_event_id,
+                'registration_id' => $registration->id,
+                'payment_status_id' => 1,
+                'user_id' => User::factory()->create()->id,
+                'status' => 'active',
+            ]);
+            $snapshot += $this->snapshot($player->id);
+        }
+        $this->assertDatabaseCount('user_players', 0);
+        $this->partialMock(PlayerSharedAbilityService::class)->shouldReceive('badgeSnapshot')->andReturn($snapshot);
+
+        $html = view('frontend.event.eventTypes.individual', [
+            'event' => $draw->event,
+            'eventCats' => collect([$draw->categoryEvent->fresh(['categoryEventRegistrations.registration.players', 'category'])]),
+            'canWithdraw' => false, 'sDate' => null, 'eDate' => null,
+            'formatEntryLine' => null, 'formatWithdrawalLine' => null,
+        ])->render();
+        $this->assertSame(2, substr_count($html, 'class="badge player-rating-badge'));
+        $this->assertStringNotContainsString('move-category-btn', $html);
+
+        $response = $this->getJson(route('backend.player-performance.badges').'?'.http_build_query([
+            'players' => $players->modelKeys(), 'category_event_id' => $draw->category_event_id,
+        ]))->assertOk();
+        foreach ($players as $player) {
+            $response->assertJsonPath('ratings.p:'.$player->id.'.0.label', '54.8');
+        }
+        $this->assertDatabaseCount('user_players', 0);
+    }
+
     public function test_legacy_and_cross_event_category_reference_use_actual_draw_context(): void
     {
         $this->superAdmin();

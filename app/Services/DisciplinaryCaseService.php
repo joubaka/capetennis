@@ -50,7 +50,7 @@ class DisciplinaryCaseService
 
             $case->update(['case_number' => sprintf('CTD-%s-%06d', now()->format('Y'), $case->id)]);
 
-            $violationType = ViolationType::find($data['violation_type_id']);
+            $violationType = ViolationType::find($data['violation_type_id'] ?? null);
             $case->charges()->create([
                 'violation_type_id' => $violationType?->id,
                 'rule_code' => $data['rule_code'] ?? null,
@@ -141,33 +141,47 @@ class DisciplinaryCaseService
     public function appointPanel(DisciplinaryCase $case, User $actor, array $members): void
     {
         $this->assertSystemEnabled();
-        if (count($members) < self::PANEL_QUORUM) {
-            throw ValidationException::withMessages(['panel' => 'At least three independent panel members are required.']);
-        }
-        if (collect($members)->pluck('user_id')->duplicates()->isNotEmpty()) {
-            throw ValidationException::withMessages(['panel' => 'A panel member may only be appointed once.']);
-        }
-        if (collect($members)->where('role', 'chair')->count() !== 1) {
-            throw ValidationException::withMessages(['panel' => 'Exactly one panel chair is required.']);
-        }
-        if (collect($members)->contains(fn ($member) => (int) $member['user_id'] === (int) $case->reported_by)) {
-            throw ValidationException::withMessages(['panel' => 'The incident reporter may not sit on the panel.']);
-        }
-        $memberIds = collect($members)->pluck('user_id')->map(fn ($id) => (int) $id)->all();
-        $eligibleCount = User::whereIn('id', $memberIds)
-            ->whereHas('roles', fn ($q) => $q->whereIn('name', ['admin', 'super-user']))->count();
-        if ($eligibleCount !== count($memberIds)) {
-            throw ValidationException::withMessages(['panel' => 'Every panel member must be an authorized disciplinary administrator.']);
-        }
-
         DB::transaction(function () use ($case, $actor, $members) {
-            $case->assignments()->delete();
+            $case = DisciplinaryCase::lockForUpdate()->findOrFail($case->id);
+            $this->assertPanelStage($case);
+            if (count($members) < self::PANEL_QUORUM) {
+                throw ValidationException::withMessages(['panel' => 'At least three independent panel members are required.']);
+            }
+            if (collect($members)->pluck('user_id')->duplicates()->isNotEmpty()) {
+                throw ValidationException::withMessages(['panel' => 'A panel member may only be appointed once.']);
+            }
+            if (collect($members)->where('role', 'chair')->count() !== 1) {
+                throw ValidationException::withMessages(['panel' => 'Exactly one panel chair is required.']);
+            }
+            if (collect($members)->contains(fn ($member) => (int) $member['user_id'] === (int) $case->reported_by)) {
+                throw ValidationException::withMessages(['panel' => 'The incident reporter may not sit on the panel.']);
+            }
+            $memberIds = collect($members)->pluck('user_id')->map(fn ($id) => (int) $id)->all();
+            $eligibleUsers = User::whereIn('id', $memberIds)
+                ->whereHas('roles', fn ($q) => $q->whereIn('name', ['admin', 'super-user']))->get();
+            if ($eligibleUsers->count() !== count($memberIds)) {
+                throw ValidationException::withMessages(['panel' => 'Every panel member must be an authorized disciplinary administrator.']);
+            }
+            $this->assertIndependentPanel($case, $eligibleUsers);
+
+            $existing = $case->assignments()->lockForUpdate()->get()->keyBy('user_id');
             foreach ($members as $member) {
-                DisciplinaryCaseAssignment::create([
+                $assignment = $existing->get((int) $member['user_id']);
+                if ($assignment && ($assignment->recused_at || $assignment->conflict_declared)) {
+                    throw ValidationException::withMessages(['panel' => 'A recused or retired member cannot be reappointed to this case.']);
+                }
+            }
+            foreach ($existing as $assignment) {
+                if (! in_array((int) $assignment->user_id, $memberIds, true) && ! $assignment->recused_at) {
+                    $assignment->update(['recused_at' => now()]);
+                    $this->log($case, $actor, 'panel.member_retired', metadata: ['assignment_id' => $assignment->id]);
+                }
+            }
+            foreach ($members as $member) {
+                $case->assignments()->updateOrCreate(['user_id' => $member['user_id']], [
                     'disciplinary_case_id' => $case->id,
-                    'user_id' => $member['user_id'],
                     'role' => $member['role'],
-                    'accepted_at' => now(),
+                    'accepted_at' => $existing->get((int) $member['user_id'])?->accepted_at ?? now(),
                 ]);
             }
             if ($case->status === DisciplinaryCase::STATUS_AWAITING_RESPONSE && $case->response_due_at?->isPast()) {
@@ -182,14 +196,22 @@ class DisciplinaryCaseService
     public function declareConflict(DisciplinaryCaseAssignment $assignment, User $actor, bool $conflict, ?string $notes): void
     {
         $this->assertSystemEnabled();
-        $assignment->update([
-            'conflict_declared' => $conflict,
-            'conflict_notes' => $notes,
-            'recused_at' => $conflict ? now() : null,
-        ]);
-        $this->log($assignment->disciplinaryCase, $actor, $conflict ? 'panel.member_recused' : 'panel.no_conflict_declared', metadata: [
-            'assignment_id' => $assignment->id,
-        ]);
+        DB::transaction(function () use ($assignment, $actor, $conflict, $notes) {
+            $case = DisciplinaryCase::lockForUpdate()->findOrFail($assignment->disciplinary_case_id);
+            $this->assertPanelStage($case);
+            $assignment = DisciplinaryCaseAssignment::lockForUpdate()->findOrFail($assignment->id);
+            if ((int) $assignment->user_id !== (int) $actor->id || $assignment->recused_at || $assignment->conflict_declared) {
+                throw ValidationException::withMessages(['panel' => 'Only an active member may declare a conflict; recusal cannot be reversed.']);
+            }
+            $assignment->update([
+                'conflict_declared' => $conflict,
+                'conflict_notes' => $notes,
+                'recused_at' => $conflict ? now() : null,
+            ]);
+            $this->log($case, $actor, $conflict ? 'panel.member_recused' : 'panel.no_conflict_declared', metadata: [
+                'assignment_id' => $assignment->id,
+            ]);
+        });
     }
 
     public function finalizeDecision(DisciplinaryCase $case, User $chair, array $data): DisciplinaryDecision
@@ -206,6 +228,7 @@ class DisciplinaryCaseService
 
             $panel = $case->assignments()->with('user')->whereNull('recused_at')
                 ->where('conflict_declared', false)->get();
+            $this->assertIndependentPanel($case, $panel->pluck('user'));
             if ($panel->count() < self::PANEL_QUORUM || ! $panel->contains(fn ($a) => $a->role === 'chair' && $a->user_id === $chair->id)) {
                 throw ValidationException::withMessages(['panel' => 'A conflict-free panel of at least three, including the appointed chair, is required.']);
             }
@@ -265,6 +288,10 @@ class DisciplinaryCaseService
     {
         $this->assertSystemEnabled();
         return DB::transaction(function () use ($case, $actor, $grounds) {
+            $case = DisciplinaryCase::lockForUpdate()->findOrFail($case->id);
+            if ($case->status !== DisciplinaryCase::STATUS_DECIDED || ! $case->decisions()->exists() || $case->appeals()->exists()) {
+                throw ValidationException::withMessages(['appeal' => 'Only a decided case without a previous appeal may be appealed.']);
+            }
             if (! $case->finalized_at || $case->finalized_at->lt(now()->subDays(self::APPEAL_DAYS))) {
                 throw ValidationException::withMessages(['appeal' => 'The appeal deadline has passed.']);
             }
@@ -287,9 +314,13 @@ class DisciplinaryCaseService
     public function decideAppeal(DisciplinaryAppeal $appeal, User $actor, string $outcome, string $reasons): void
     {
         $this->assertSystemEnabled();
+        if (! in_array($outcome, ['confirmed', 'overturned'], true)) {
+            throw ValidationException::withMessages(['outcome' => 'Confirm or overturn the decision. Varying sanctions is not supported.']);
+        }
         DB::transaction(function () use ($appeal, $actor, $outcome, $reasons) {
+            $case = DisciplinaryCase::lockForUpdate()->findOrFail($appeal->disciplinary_case_id);
             $appeal = DisciplinaryAppeal::lockForUpdate()->findOrFail($appeal->id);
-            if ($appeal->status !== 'submitted') {
+            if ($appeal->status !== 'submitted' || $case->status !== DisciplinaryCase::STATUS_APPEALED) {
                 throw ValidationException::withMessages(['appeal' => 'This appeal has already been decided.']);
             }
             $appeal->update([
@@ -298,7 +329,6 @@ class DisciplinaryCaseService
                 'decided_by' => $actor->id,
                 'decided_at' => now(),
             ]);
-            $case = $appeal->disciplinaryCase;
             if ($outcome === 'overturned') {
                 $case->sanctions()->whereNull('revoked_at')->update([
                     'revoked_at' => now(), 'revoked_by' => $actor->id, 'revocation_reason' => $reasons,
@@ -367,6 +397,23 @@ class DisciplinaryCaseService
     {
         if (! SiteSetting::disciplinarySystemEnabled()) {
             throw new \RuntimeException('The disciplinary case system is currently disabled by the Super Admin.');
+        }
+    }
+
+    private function assertPanelStage(DisciplinaryCase $case): void
+    {
+        if (! in_array($case->status, [DisciplinaryCase::STATUS_AWAITING_RESPONSE, DisciplinaryCase::STATUS_PANEL_REVIEW], true)) {
+            throw ValidationException::withMessages(['panel' => 'Panel membership can only change during response or panel review.']);
+        }
+    }
+
+    private function assertIndependentPanel(DisciplinaryCase $case, $users): void
+    {
+        foreach ($users as $user) {
+            if (! $user || (int) $user->id === (int) $case->reported_by
+                || in_array((int) $case->player_id, $user->ownedPlayerIds(), true)) {
+                throw ValidationException::withMessages(['panel' => 'The reporter and accounts linked to the accused player may not sit on the panel.']);
+            }
         }
     }
 

@@ -3,6 +3,49 @@
 @php($replacementPaid = (int) $slot->pay_status === 1 || (int) ($identity?->pay_status ?? 0) === 1)
 @if($identity && ($team->noProfile || (int) $identity->player_id > 0))
 <div class="team-roster-actions">
+  @if(!$replacementPaid || auth()->user()->hasRole('super-user'))
+    <details class="roster-replacement">
+      <summary class="btn btn-sm btn-outline-primary">Change player</summary>
+    <form method="POST" action="{{ route('backend.team.changePlayer') }}" class="mt-2 roster-replacement-form" data-team-roster-change>
+        @csrf
+        <input type="hidden" name="team_id" value="{{ $team->id }}"><input type="hidden" name="event_id" value="{{ $event->id }}">
+        <input type="hidden" name="slot_id" value="{{ $identity->id }}"><input type="hidden" name="expected_rank" value="{{ $identity->rank }}">
+        <input type="hidden" name="expected_player_id" value="{{ $team->noProfile ? (int) $identity->player_profile : $identity->player_id }}">
+        @if($team->noProfile && !$replacementPaid)
+          <fieldset class="roster-replacement-choice mb-3">
+            <legend class="form-label">Replacement type</legend>
+            <label><input type="radio" name="replacement_type" value="profile" checked data-replacement-type> Existing player profile</label>
+            <label><input type="radio" name="replacement_type" value="name" data-replacement-type> Player without a profile</label>
+          </fieldset>
+        @endif
+        <fieldset data-replacement-fields="profile">
+          <legend class="visually-hidden">Existing player profile</legend>
+          <label class="form-label w-100">Find player in database<input class="form-control" type="search" minlength="2" placeholder="Type a first name or surname" data-team-roster-search="{{ route('backend.team.availablePlayers', ['team_id' => $team->id, 'event_id' => $event->id]) }}"></label>
+          <label class="form-label w-100">Replacement player<select class="form-select" name="player_id" required data-team-roster-results><option value="">Search for a player first</option></select></label>
+        </fieldset>
+        @if($team->noProfile && !$replacementPaid)
+          <fieldset data-replacement-fields="name" hidden disabled>
+            <legend class="visually-hidden">Player without a profile</legend>
+            <p class="small text-muted">Enter the replacement player's name.</p>
+            <label class="form-label w-100">First name<input class="form-control" name="name" required maxlength="100"></label>
+            <label class="form-label w-100">Surname<input class="form-control" name="surname" required maxlength="100"></label>
+          </fieldset>
+        @endif
+        @if($replacementPaid)
+          <label class="form-label w-100">Original player's payment<select class="form-select" name="refund_action" required>
+            <option value="">Choose refund or waiver</option>
+            <option value="refund">Refund original payer's wallet</option>
+            <option value="waive">Waive refund — no money returned</option>
+          </select></label>
+          <label class="form-label w-100">Reason<textarea class="form-control" name="reason" required maxlength="1000"></textarea></label>
+          <p class="small text-muted">Refunds follow the current fee and withdrawal deadline policy. The replacement starts unpaid. Original payment history stays with the original payer and player.</p>
+        @endif
+        <button class="btn btn-primary">Save player</button>
+        <p class="small text-muted mt-1">The current player stays in place until you save.</p>
+      </form>
+    </details>
+  @endif
+
   @foreach(['up' => 'Move up', 'down' => 'Move down', 'remove' => 'Remove'] as $direction => $label)
     @if($compactRoster && $direction === 'remove')
       <details class="roster-more-actions">
@@ -27,37 +70,6 @@
       @endif
     </form>
   @endforeach
-  @if(!$replacementPaid || auth()->user()->hasRole('super-user'))
-    <details>
-      <summary class="btn btn-sm btn-outline-secondary">Change player</summary>
-    <form method="POST" action="{{ route('backend.team.changePlayer') }}" class="mt-2" data-team-roster-change>
-        @csrf
-        <input type="hidden" name="team_id" value="{{ $team->id }}"><input type="hidden" name="event_id" value="{{ $event->id }}">
-        <input type="hidden" name="slot_id" value="{{ $identity->id }}"><input type="hidden" name="expected_rank" value="{{ $identity->rank }}">
-        <input type="hidden" name="expected_player_id" value="{{ $team->noProfile ? (int) $identity->player_profile : $identity->player_id }}">
-        <label class="form-label w-100">Find player in database<input class="form-control" type="search" minlength="2" placeholder="Type a first name or surname" data-team-roster-search="{{ route('backend.team.availablePlayers', ['team_id' => $team->id, 'event_id' => $event->id]) }}"></label>
-        <label class="form-label w-100">Replacement player<select class="form-select" name="player_id" @if(!$team->noProfile || $replacementPaid) required @endif data-team-roster-results><option value="">Search for a player first</option></select></label>
-        @if($team->noProfile && !$replacementPaid)
-          <details class="mb-2"><summary>Or use a name without a profile</summary>
-            <p class="small text-muted">Leave the database player empty when entering a name.</p>
-            <label class="form-label w-100">First name<input class="form-control" name="name" maxlength="100"></label>
-            <label class="form-label w-100">Surname<input class="form-control" name="surname" maxlength="100"></label>
-          </details>
-        @endif
-        @if($replacementPaid)
-          <label class="form-label w-100">Original player's payment<select class="form-select" name="refund_action" required>
-            <option value="">Choose refund or waiver</option>
-            <option value="refund">Refund original payer's wallet</option>
-            <option value="waive">Waive refund — no money returned</option>
-          </select></label>
-          <label class="form-label w-100">Reason<textarea class="form-control" name="reason" required maxlength="1000"></textarea></label>
-          <p class="small text-muted">Refunds follow the current fee and withdrawal deadline policy. The replacement starts unpaid. Original payment history stays with the original payer and player.</p>
-        @endif
-        <button class="btn btn-primary">Save player</button>
-        <p class="small text-muted mt-1">The current player stays in place until you save.</p>
-      </form>
-    </details>
-  @endif
   @if($team->noProfile && (int) $identity->player_profile === 0)
     <details>
       <summary class="btn btn-sm btn-outline-secondary">Change name</summary>

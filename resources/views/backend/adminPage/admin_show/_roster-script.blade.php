@@ -11,6 +11,15 @@ if (!window.teamRosterControls) {
     confirmation.hidden = !!cancel; trigger.setAttribute('aria-expanded', toggle ? 'true' : 'false');
     if (toggle) confirmation.querySelector('button').focus(); else trigger.focus();
   });
+  document.addEventListener('change', event => {
+    const choice = event.target.closest('[data-replacement-type]');
+    if (!choice) return;
+    clearTimeout(searchTimer); searchRequest?.abort();
+    choice.form.querySelectorAll('[data-replacement-fields]').forEach(fields => {
+      const active = fields.dataset.replacementFields === choice.value;
+      fields.hidden = !active; fields.disabled = !active;
+    });
+  });
   document.addEventListener('input', event => {
     const input = event.target.closest('[data-team-roster-search]'); if (!input) return;
     clearTimeout(searchTimer); searchRequest?.abort();
@@ -24,6 +33,7 @@ if (!window.teamRosterControls) {
         const response = await fetch(url, {headers:{Accept:'application/json'}, signal:searchRequest.signal});
         if (!response.ok) throw new Error('Player search could not be loaded. Please try again.');
         const data = await response.json();
+        if (select.closest('fieldset')?.disabled) return;
         select.replaceChildren(new Option(data.players.length ? 'Choose a player' : 'No players found', ''));
         data.players.forEach(player => select.add(new Option(player.name, player.id)));
       } catch (error) { if (error.name !== 'AbortError') select.replaceChildren(new Option(error.message, '')); }

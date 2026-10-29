@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\DisciplinarySanction;
 use App\Models\Event;
 use App\Models\Player;
+use App\Models\PlayerSuspension;
 use RuntimeException;
 use App\Models\RegistrationOrder;
 
@@ -18,7 +19,7 @@ class PlayerEligibilityService
         return DisciplinarySanction::query()
             ->effective()
             ->where('player_id', $playerId)
-            ->whereIn('type', ['suspension', 'disqualification', 'interim_restriction'])
+            ->whereIn('type', ['suspension', 'disqualification', 'event_disqualification', 'interim_restriction'])
             ->where(function ($query) use ($eventModel) {
                 $query->where('scope', 'global');
                 if ($eventModel) {
@@ -34,6 +35,11 @@ class PlayerEligibilityService
 
     public function assertEligible(Player|int $player, Event|int $event): void
     {
+        $legacySuspension = PlayerSuspension::where('player_id', $player instanceof Player ? $player->id : $player)
+            ->active()->where('starts_at', '<=', today())->first();
+        if ($legacySuspension) {
+            throw new RuntimeException('Player is not eligible for this event due to an active suspension until '.$legacySuspension->ends_at->format('d M Y').'.');
+        }
         $restriction = $this->activeRestrictions($player, $event)->first();
         if (! $restriction) {
             return;

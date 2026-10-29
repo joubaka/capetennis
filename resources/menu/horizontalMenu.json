@@ -19,7 +19,7 @@
     {
       "name": "Super Admin",
       "icon": "menu-icon tf-icons ti ti-shield-check",
-      "slug": "superadmin",
+      "slug": ["superadmin", "backend.player-performance.membership-preview"],
       "type": "admin",
       "menuLevel" : "super",
       "submenu": [
@@ -34,6 +34,13 @@
           "name": "Player ratings",
           "icon": "circle",
           "slug": "backend.player-performance.ratings"
+        },
+        {
+          "url": "backend/player-performance/membership-preview",
+          "name": "Player Plus preview · R499",
+          "icon": "circle",
+          "localOnly": true,
+          "slug": ["backend.player-performance.membership-preview.directory", "backend.player-performance.membership-preview.leaderboard", "backend.player-performance.membership-preview.detail", "backend.player-performance.membership-preview.compare", "backend.player-performance.membership-preview.membership", "backend.player-performance.membership-preview.alerts"]
         },
         {
           "url": "backend/superadmin",

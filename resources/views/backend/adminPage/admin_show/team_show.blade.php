@@ -13,7 +13,7 @@
 
 
 
-<div class="team-admin-workspace" data-backend-wide>
+<div class="team-admin-workspace {{ ($rosterOnly ?? false) ? 'regional-roster-workspace' : '' }}" data-backend-wide>
   <div class="nav-tabs-shadow mb-4">
 
       @include('backend.event.partials.teams-workspace-nav', ['teamsWorkspaceRoster' => true])

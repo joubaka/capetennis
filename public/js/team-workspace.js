@@ -90,6 +90,22 @@
     if (select.selectedOptions[0]?.disabled) select.value = '';
   }
 
+  function syncRegionOrganizer(regionId) {
+    document.querySelectorAll('[data-region-organizer]').forEach(panel => {
+      panel.hidden = panel.dataset.regionOrganizer !== String(regionId);
+      if (panel.hidden) panel.querySelector('[data-organizer-editor]')?.removeAttribute('open');
+    });
+    if (!$.fn.select2) return;
+    document.querySelectorAll('[data-region-organizer]:not([hidden]) [data-organizer-user]').forEach(select => {
+      if ($(select).hasClass('select2-hidden-accessible')) return;
+      $(select).select2({
+        width: '100%', placeholder: 'Search by name or email…', allowClear: true, minimumInputLength: 2,
+        ajax: { url: select.dataset.searchUrl, dataType: 'json', delay: 250,
+          data: params => ({q: params.term}), processResults: data => data, cache: true }
+      });
+    });
+  }
+
   function continueSelectionPreview() {
     if (!previewPendingUrl || saveRequestBusy) return;
     if (autosavePaused && !draftFinalized) { previewPendingUrl = null; $('[data-selection-preview]').prop('disabled', false); return; }
@@ -379,6 +395,7 @@
     if (![...select.options].some(option => option.value === String(regionId))) regionId = select.value;
     $('[data-roster-region], [data-order-region]').val(regionId);
     syncTeamOptions();
+    syncRegionOrganizer(regionId);
     const host = document.querySelector('[data-central-selection-host]');
     if (activeMode() !== 'players') window.restoreMergedTeamRoster?.();
     if (host) host.hidden = activeMode() !== 'players' && !selectionUsesOrder();

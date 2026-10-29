@@ -1,0 +1,1 @@
+<p class="mp-footer">@if($as_of)Saved results through {{ $as_of }} · {{ $built_at }}.<br>@endif Preview only. Ratings are estimates, not calibrated win probabilities or official selection positions. Opening these pages does not recalculate ratings.</p>
