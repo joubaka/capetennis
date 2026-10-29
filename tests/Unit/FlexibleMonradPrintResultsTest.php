@@ -11,10 +11,14 @@ class FlexibleMonradPrintResultsTest extends TestCase
     {
         return ['players' => [['id' => 1, 'name' => 'Alex Example'], ['id' => 2, 'name' => 'Sam Example']],
             'matches' => ['final' => array_replace([
-                'section' => 'Main draw', 'round' => 1, 'label' => 'Final', 'number' => 7,
+                'section' => 'Main draw', 'round' => 2, 'label' => 'Final', 'number' => 7,
                 'sources' => [['type' => 'winner', 'match' => 'qualifier'], ['type' => 'player']],
                 'players' => [null, 2], 'sets' => [], 'winner' => null,
-            ], $changes)], 'positions' => [['position' => 1, 'player' => null], ['position' => 2, 'player' => null]]];
+            ], $changes), 'qualifier' => [
+                'section' => 'Main draw', 'round' => 1, 'label' => 'Semifinal', 'number' => 3,
+                'sources' => [['type' => 'player'], ['type' => 'player']],
+                'players' => [1, 2], 'sets' => [], 'winner' => null,
+            ]], 'positions' => [['position' => 1, 'player' => null], ['position' => 2, 'player' => null]]];
     }
 
     public function test_unplayed_print_results_are_empty_but_feeder_labels_are_preserved(): void
@@ -23,7 +27,7 @@ class FlexibleMonradPrintResultsTest extends TestCase
         $this->assertSame(['', ''], $layout['boards'][0]['cards'][0]['scores']);
         $this->assertSame('', $layout['boards'][0]['endpoints'][0]['name']);
         $this->assertSame(['', ''], array_column($layout['positions'], 'name'));
-        $this->assertSame('Winner of Match ?', $layout['boards'][0]['cards'][0]['participants'][0]['label']);
+        $this->assertSame('Winner of Match 3', $layout['boards'][0]['cards'][0]['participants'][0]['label']);
         $this->assertSame('Sam Example', $layout['boards'][0]['cards'][0]['participants'][1]['label']);
     }
 
