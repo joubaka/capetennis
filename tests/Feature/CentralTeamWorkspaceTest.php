@@ -116,29 +116,30 @@ class CentralTeamWorkspaceTest extends TestCase
         $this->assertDatabaseCount('wallet_transactions', 0);
     }
 
-    public function test_regional_actor_retains_minimal_roster_and_cannot_load_hidden_invitation_data(): void
+    public function test_regional_actor_uses_admin_workspace_with_only_assigned_region_data(): void
     {
         $manager = User::factory()->create();
         EventRegionManager::create(['event_id' => $this->event->id, 'event_region_id' => $this->eventRegion->id, 'region_id' => $this->eventRegion->region_id, 'user_id' => $manager->id]);
         $this->actingAs($manager);
         $this->get(route('admin.events.teams', $this->event))->assertOk()->assertSee('North region')->assertDontSee('South private region')
             ->assertDontSee('confidential-roster@example.test')->assertDontSee('id="tab-invitations"', false)->assertDontSee('data-embedded-teams-selection', false);
-        $this->getJson(route('backend.team-selection.index', [$this->event, 'workspace_fragment' => 1]))->assertForbidden();
+        $this->getJson(route('backend.team-selection.index', [$this->event, 'workspace_fragment' => 1]))->assertOk()
+            ->assertSee('North region')->assertDontSee('South private region');
     }
 
-    public function test_regional_layout_keeps_replacement_choices_and_private_admin_tools_separate(): void
+    public function test_regional_layout_shares_admin_contacts_payment_and_ordinary_team_controls(): void
     {
         $manager = User::factory()->create();
         EventRegionManager::create(['event_id' => $this->event->id, 'event_region_id' => $this->eventRegion->id, 'region_id' => $this->eventRegion->region_id, 'user_id' => $manager->id]);
         $profileTeam = Team::where('name', 'North Profiles')->firstOrFail();
         TeamPlayer::create(['team_id' => $profileTeam->id, 'rank' => 2, 'player_id' => Player::factory()->create(['name' => 'Paid', 'surname' => 'Synthetic'])->id, 'pay_status' => 1]);
         $this->actingAs($manager);
-        $page = $this->get(route('admin.events.teams', $this->event))->assertOk();
-        $page->assertSee('regional-roster-workspace')->assertSee('Change player')->assertSee('Existing player profile')
-            ->assertSee('Player without a profile')->assertSee('data-regional-search', false)
+        $page = $this->get(route('admin.events.teams', [$this->event, 'roster_region' => $this->eventRegion->region_id]))->assertOk();
+        $page->assertSee('Change player')->assertSee('Existing player profile')
+            ->assertSee('Player without a profile')->assertSee('Contact')->assertSee('Payment')
             ->assertSee('Team #'.$this->team->id.' · Player order is shown by rank.')
             ->assertSee('data-roster-player-column', false)
-            ->assertDontSee('confidential-roster@example.test')->assertDontSee('South private region')
+            ->assertSee('confidential-roster@example.test')->assertDontSee('South private region')
             ->assertDontSee('data-region-organizers', false)->assertDontSee('data-team-email-open', false)
             ->assertDontSee('data-roster-filter="payment"', false)->assertDontSee('name="refund_action"', false);
         $previous = libxml_use_internal_errors(true);
@@ -146,7 +147,7 @@ class CentralTeamWorkspaceTest extends TestCase
         $document->loadHTML($page->getContent());
         libxml_clear_errors(); libxml_use_internal_errors($previous);
         $xpath = new \DOMXPath($document);
-        $this->assertSame(1, $xpath->query('//*[@id="roster-search"]')->length);
+        $this->assertSame(0, $xpath->query('//*[@id="roster-search"]')->length);
         $this->assertSame(0, $xpath->query('//details[contains(@class,"roster-more-actions")]//details[contains(@class,"roster-replacement")]')->length);
         $this->assertSame(0, $xpath->query('//tr[td/strong[text()="Paid Synthetic"]]//*[@data-replacement-type]')->length);
         $this->assertSame(0, $xpath->query('//*[@data-roster-team="'.$profileTeam->id.'"]//*[@data-replacement-fields="name"]')->length);
@@ -157,6 +158,48 @@ class CentralTeamWorkspaceTest extends TestCase
         if (getenv('CT_REGIONAL_LAYOUT_QA') === '1') {
             file_put_contents(storage_path('framework/testing/qa-regional-layout.html'), $page->getContent());
         }
+    }
+
+    public function test_regional_team_setup_and_exports_reject_foreign_regions_and_events(): void
+    {
+        $manager = User::factory()->create();
+        EventRegionManager::create(['event_id' => $this->event->id, 'event_region_id' => $this->eventRegion->id, 'region_id' => $this->eventRegion->region_id, 'user_id' => $manager->id]);
+        $this->actingAs($manager);
+        $south = Team::where('name', 'South Team')->firstOrFail();
+        $this->get(route('admin.events.teams', [$this->event, 'roster_region' => $south->region_id]))->assertNotFound();
+        $this->patchJson(route('backend.team.name.update', [$this->event, $this->team]), ['name' => 'Regional renamed'])->assertOk();
+        $this->patchJson(route('backend.team.name.update', [$this->event, $south]), ['name' => 'Forbidden'])->assertForbidden();
+        $otherEvent = Event::factory()->create(['eventType' => 3]);
+        $otherCategory = CategoryEvent::factory()->create(['event_id' => $otherEvent->id]);
+        $this->postJson(route('team.change.category', $this->team), ['team' => $this->team->id, 'data' => $otherCategory->id])->assertForbidden();
+        $payload = ['event_id' => $this->event->id, 'category_event_id' => $this->team->category_event_id, 'region_id' => $this->team->region_id, 'team_name' => 'Regional new team', 'num_players' => 2];
+        $before = Team::count();
+        $this->postJson(route('team.addToRegion'), $payload + ['published' => false])->assertOk();
+        $this->postJson(route('team.addToRegion'), array_replace($payload, ['region_id' => $south->region_id]))->assertForbidden();
+        $this->postJson(route('team.addToRegion'), array_replace($payload, ['category_event_id' => $otherCategory->id]))->assertNotFound();
+        $this->assertSame($before + 1, Team::count());
+        $this->assertSame('South Team', $south->fresh()->name);
+        $this->assertSame($this->event->id, $this->team->fresh()->category->event_id);
+        $order = \App\Models\TeamPaymentOrder::create(['team_id' => $this->team->id, 'event_id' => $this->event->id, 'player_id' => Player::factory()->create()->id, 'user_id' => $manager->id, 'total_amount' => 100, 'wallet_reserved' => 0, 'payfast_amount_due' => 100, 'pay_status' => true]);
+        $deleteRoute = app('router')->getRoutes()->getByName('team.destroy');
+        $this->assertNotNull($deleteRoute);
+        $this->deleteJson(route('team.destroy', $this->team->id))->assertConflict();
+        $this->assertNotNull($this->team->fresh());
+        $this->assertSame(100.0, (float) $order->fresh()->total_amount);
+        $clothingTeam = Team::where('name', 'North Profiles')->firstOrFail();
+        $clothing = \App\Models\ClothingOrder::create(['team_id' => $clothingTeam->id, 'event_id' => $this->event->id, 'player_id' => Player::factory()->create()->id, 'user_id' => $manager->id, 'subtotal' => 100, 'total' => 100, 'pay_status' => 1]);
+        $this->deleteJson(route('team.destroy', $clothingTeam->id))->assertConflict();
+        $this->assertNotNull($clothingTeam->fresh());
+        $this->assertSame($clothingTeam->id, (int) $clothing->fresh()->team_id);
+        \Maatwebsite\Excel\Facades\Excel::fake();
+        $this->get(route('event.players.exportExcel', $this->event->id))->assertOk();
+        \Maatwebsite\Excel\Facades\Excel::assertDownloaded('event_players_'.$this->event->id.'.xlsx', function ($export) use ($south) {
+            $event = $export->view()->getData()['event'];
+            $this->assertSame([$this->eventRegion->region_id], $event->regions->pluck('id')->all());
+            $this->assertFalse($event->regions->flatMap->teams->contains('id', $south->id));
+            return true;
+        });
+        $this->get(route('event.players.exportExcel', $otherEvent->id))->assertForbidden();
     }
 
     public function test_custom_team_event_type_uses_same_central_shell_and_preserves_validation_input(): void

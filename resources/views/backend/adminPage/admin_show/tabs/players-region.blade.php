@@ -14,10 +14,15 @@
       <a class="btn btn-outline-primary" href="{{ route('backend.team-selection.region-profile-matches.index', [$event, $region]) }}">Check profiles for whole region</a>
     @endif
     <div class="dropdown"><button type="button" class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">Send Emails</button><div class="dropdown-menu dropdown-menu-end">
-    <button type="button" class="dropdown-item emailRegionBtn" data-regionid="{{ $region->id }}" data-regionname="{{ $region->region_name }}">Players in this region</button>
-    <button type="button" class="dropdown-item emailUnpaidRegionBtn" data-regionid="{{ $region->id }}" data-regionname="{{ $region->region_name }}">Unpaid players in this region</button>
+    @if($regionalScoped ?? false)
+      <a class="dropdown-item" href="{{ route('backend.event-communications.index', [$event, 'compose_scope' => 'region', 'region_id' => $region->id]) }}">Players in this region</a>
+      <a class="dropdown-item" href="{{ route('backend.event-communications.index', [$event, 'compose_scope' => 'region', 'region_id' => $region->id, 'compose_filter' => 'not_registered']) }}">Unpaid players in this region</a>
+    @else
+      <button type="button" class="dropdown-item emailRegionBtn" data-regionid="{{ $region->id }}" data-regionname="{{ $region->region_name }}">Players in this region</button>
+      <button type="button" class="dropdown-item emailUnpaidRegionBtn" data-regionid="{{ $region->id }}" data-regionname="{{ $region->region_name }}">Unpaid players in this region</button>
+    @endif
   </div></div>
-    <div class="dropdown"><button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-label="Clothing for {{ $region->region_name }}">Clothing</button><div class="dropdown-menu dropdown-menu-end"><a class="dropdown-item" href="{{ route('backend.region.clothing.edit', ['region' => $region->id, 'event_id' => $event->id]) }}">Clothing setup</a><a class="dropdown-item" href="{{ route('backend.region.clothing.orders', ['region' => $region->id, 'event_id' => $event->id]) }}">Clothing orders</a></div></div>
+    <div class="dropdown"><button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-label="Clothing for {{ $region->region_name }}">Clothing</button><div class="dropdown-menu dropdown-menu-end"><a class="dropdown-item" href="{{ ($regionalScoped ?? false) ? route('backend.event.clothing.index', [$event, 'region_id' => $region->id]) : route('backend.region.clothing.edit', ['region' => $region->id, 'event_id' => $event->id]) }}">Clothing setup</a><a class="dropdown-item" href="{{ route('backend.region.clothing.orders', ['region' => $region->id, 'event_id' => $event->id]) }}">Clothing orders</a></div></div>
   </div>
 
 @endunless
@@ -63,7 +68,7 @@
             <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.team-selection.profile-matches.index', [$event, $team]) }}">Check existing profiles</a>
           @endif
           @can('team.players.manage', $team)
-            <button type="button" class="btn btn-sm btn-outline-secondary emailTeamBtn" data-teamid="{{ $team->id }}" data-teamname="{{ $team->name }}">Send team email</button>
+            @if($regionalScoped ?? false)<a class="btn btn-sm btn-outline-secondary" href="{{ route('backend.event-communications.index', [$event, 'compose_scope' => 'team', 'team_id' => $team->id]) }}">Send team email</a>@else<button type="button" class="btn btn-sm btn-outline-secondary emailTeamBtn" data-teamid="{{ $team->id }}" data-teamname="{{ $team->name }}">Send team email</button>@endif
 
 @endcan
 
@@ -142,7 +147,7 @@
 
               @unless($rosterOnly)
               @can('team.players.manage', $team)
-                @if($player)<button type="button" class="btn btn-sm btn-outline-secondary emailPlayer" data-playerid="{{ $player->id }}" data-name="{{ $name }}">Send email</button>@else<span class="small text-muted">{{ $np ? 'Manage imported player in selection' : 'No player assigned' }}</span>
+                @if($player)@if($regionalScoped ?? false)<a class="btn btn-sm btn-outline-secondary" href="{{ route('backend.event-communications.index', [$event, 'compose_scope' => 'individual', 'individual_key' => 'player:'.$player->id]) }}">Send email</a>@else<button type="button" class="btn btn-sm btn-outline-secondary emailPlayer" data-playerid="{{ $player->id }}" data-name="{{ $name }}">Send email</button>@endif @else<span class="small text-muted">{{ $np ? 'Manage imported player in selection' : 'No player assigned' }}</span>
 @endif
 
 

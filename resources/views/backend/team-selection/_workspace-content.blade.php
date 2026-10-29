@@ -635,7 +635,7 @@
                     <span class="badge bg-label-secondary">Declined: {{ $activeImport->invitations->where('status', 'declined')->count() }}</span>
                   </div>
                   @if($activeImport->status === 'sent' && $canManageRegion)
-                    <button type="button" class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="filtered" data-unanswered-invitations="1" data-recipient="Players awaiting a response in this region" @disabled($unansweredInvitations->isEmpty())>Email players awaiting response</button>
+                    @if($isEventManager)<button type="button" class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#roster-email-{{ $eventRegion->id }}" data-target-type="filtered" data-unanswered-invitations="1" data-recipient="Players awaiting a response in this region" @disabled($unansweredInvitations->isEmpty())>Email players awaiting response</button>@else<a class="btn btn-primary mb-3" href="{{ route('backend.event-communications.index', [$event, 'compose_scope' => 'region', 'region_id' => $eventRegion->region_id, 'compose_filter' => 'not_registered']) }}">Email unregistered players</a>@endif
                     @if($unansweredInvitations->isEmpty())<p class="small text-muted">No sent invitations are awaiting a response.</p>@endif
                   @elseif($activeImport->status !== 'sent')
                     <button type="button" class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#prepare-invitations-{{ $activeImport->id }}">Prepare and send invitations</button>
@@ -742,7 +742,7 @@
                   @if($usesRegionalClothing)<button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#final-team-reminders-{{ $eventRegion->id }}" data-reminder-open-kind="incomplete_clothing"><i class="ti ti-shirt me-1"></i>Incomplete clothing reminder</button>@endif
                 @endif
                 @if($usesRegionalClothing)
-                  <a href="{{ route('backend.region.clothing.edit', ['region' => $eventRegion->region_id, 'event_id' => $event->id]) }}" class="btn btn-outline-primary"><i class="ti ti-shirt me-1"></i>Clothing setup</a>
+                  <a href="{{ $isEventManager ? route('backend.region.clothing.edit', ['region' => $eventRegion->region_id, 'event_id' => $event->id]) : route('backend.event.clothing.index', [$event, 'region_id' => $eventRegion->region_id]) }}" class="btn btn-outline-primary"><i class="ti ti-shirt me-1"></i>Clothing setup</a>
                 @endif
               </div>
             </div>

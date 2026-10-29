@@ -12,7 +12,7 @@
   <div class="card-header d-flex justify-content-between align-items-center flex-wrap">
     <div>@if($clothingEvent ?? null)<p class="text-muted mb-1">{{ $clothingEvent->name }}</p>@else<p class="text-muted mb-1">All events in this region</p>@endif<h5 class="mb-0 text-uppercase">Clothing Orders — {{ $region->region_name ?? '' }}</h5></div>
     <div class="btn-group mt-2 mt-md-0">
-      <a href="{{ route('backend.region.clothing.edit', array_filter(['region' => $region, 'event_id' => request()->integer('event_id') ?: null])) }}" class="btn btn-sm btn-outline-secondary">Back to clothing</a>
+      <a href="{{ auth()->user()->can('region-clothing.manage', $region) ? route('backend.region.clothing.edit', array_filter(['region' => $region, 'event_id' => request()->integer('event_id') ?: null])) : route('backend.event.clothing.index', $clothingEvent) }}" class="btn btn-sm btn-outline-secondary">Back to clothing</a>
       <a href="{{ route('export.pdf.clothing.order', array_filter(['id' => $region->id, 'event_id' => request()->integer('event_id') ?: null])) }}" download="clothing_orders.pdf" data-clothing-download="PDF" class="btn btn-sm btn-outline-danger">
         <i class="ti ti-file-text"></i> Print / PDF
       </a>

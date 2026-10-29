@@ -40,6 +40,30 @@ class EventCommunicationController extends Controller
         $search = mb_substr(trim((string) $request->query('search', '')), 0, 100);
         $teamAudience = $event->isTeam() || $event->isInterprovincialTrials();
         $individuals = $service->individualOptions($event, $request->user(), $search);
+        $composeOptions = null;
+        if ($request->has('compose_scope')) {
+            $target = $request->validate([
+                'compose_scope' => 'required|in:region,team,individual',
+                'region_id' => 'required_if:compose_scope,region|nullable|integer',
+                'team_id' => 'required_if:compose_scope,team|nullable|integer',
+                'individual_key' => 'required_if:compose_scope,individual|nullable|string|max:80',
+                'compose_filter' => 'nullable|in:all,not_registered',
+            ]);
+            $composeOptions = ['scope' => $target['compose_scope'], 'filter' => $target['compose_filter'] ?? 'all', 'recipients' => 'players'];
+            if ($target['compose_scope'] === 'region') {
+                abort_unless($regions->contains('region_id', (int) $target['region_id']), 404);
+                $composeOptions['region_id'] = (int) $target['region_id'];
+            } elseif ($target['compose_scope'] === 'team') {
+                $team = app(\App\Services\EventTeamScope::class)->query($event)->whereIn('region_id', $regions->pluck('region_id'))->findOrFail($target['team_id']);
+                $composeOptions['team_ids'] = [$team->id];
+            } else {
+                $individual = $service->entries($event, $request->user())->firstWhere('key', $target['individual_key']);
+                abort_unless($individual, 404);
+                $composeOptions['individual_key'] = $individual['key'];
+                $search = $individual['name'];
+                $individuals = collect([['key' => $individual['key'], 'name' => $individual['name']]]);
+            }
+        }
         $batches = EventCommunicationBatch::where('event_id', $event->id)->where('created_by', $request->user()->id)->when(! $canRankingMail, fn ($q) => $q->where(fn ($q) => $q->whereNull('options->scope')->orWhere('options->scope', '!=', 'rankings'))->whereNull('options->ranking_origin_id'))->latest()->paginate(15);
         $batch = $request->filled('batch') ? EventCommunicationBatch::where('event_id', $event->id)->where('created_by', $request->user()->id)->findOrFail($request->query('batch')) : $batches->first();
         if ($batch) $service->authorizeRankingBatch($batch, $request->user());
@@ -74,7 +98,7 @@ class EventCommunicationController extends Controller
         $reportContext = ['report_scope' => $scope];
         if ($batch && $request->filled('batch')) $reportContext['batch'] = $batch->id;
 
-        return view('backend.event.communications.index', compact('event', 'regions', 'teams', 'individuals', 'batches', 'batch', 'summary', 'logs', 'search', 'drafts', 'invitationLogs', 'invitationSummary', 'canRankingMail', 'rankingLists', 'teamAudience', 'historyReport', 'reportContext', 'wrapUp'));
+        return view('backend.event.communications.index', compact('event', 'regions', 'teams', 'individuals', 'batches', 'batch', 'summary', 'logs', 'search', 'drafts', 'invitationLogs', 'invitationSummary', 'canRankingMail', 'rankingLists', 'teamAudience', 'historyReport', 'reportContext', 'wrapUp', 'composeOptions'));
     }
 
     public function reviewDraft(Request $request, Event $event, EventCommunicationBatch $draft, EventCommunicationService $service)

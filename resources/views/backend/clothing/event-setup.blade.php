@@ -32,7 +32,7 @@
         </div>
         <div class="col-12 col-lg-auto">
           <div class="d-flex flex-wrap gap-2 clothing-summary" aria-label="Clothing setup summary">
-            <span class="badge bg-label-primary"><strong>{{ $selectedRegions->count() }}</strong> of {{ $visibleRegions->count() }} regions selected</span>
+            @if($isEventManager)<span class="badge bg-label-primary"><strong>{{ $selectedRegions->count() }}</strong> of {{ $visibleRegions->count() }} regions selected</span>@endif
             <span class="badge bg-label-info"><strong>{{ $readyRegions->count() }}</strong> catalogues prepared</span>
             <span class="badge bg-label-success"><strong>{{ $openRegions->count() }}</strong> ordering open</span>
             <span class="badge bg-label-secondary"><strong>{{ $selectedRegions->count() - $openRegions->count() }}</strong> ordering closed</span>
@@ -43,6 +43,7 @@
     </div>
   </div>
 
+  @if($isEventManager)
   <div class="card mb-4">
     <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-3">
       <div>
@@ -77,6 +78,7 @@
     </div>
   </form>
   </div>
+  @endif
 
   <section aria-labelledby="catalogue-heading">
     <div class="d-flex gap-3 align-items-start mb-3 px-1">
@@ -113,7 +115,7 @@
           <h2 class="accordion-header" id="clothing-region-heading-{{ $region->id }}">
             <button class="accordion-button collapsed gap-3" type="button" data-bs-toggle="collapse" data-bs-target="#clothing-region-{{ $region->id }}" aria-expanded="false" aria-controls="clothing-region-{{ $region->id }}">
               <span class="flex-grow-1 text-start">
-                <span class="d-block fw-semibold text-body mb-1">{{ $usesOnlineClothing ? 'Edit catalogue & ordering' : 'Catalogue details' }}</span>
+                <span class="d-block fw-semibold text-body mb-1">{{ $usesOnlineClothing && $isEventManager ? 'Edit catalogue & ordering' : 'Catalogue details' }}</span>
                 <span class="d-block text-muted fw-normal small">{{ $items->count() }} {{ Str::plural('item', $items->count()) }} · {{ $sizeCount }} size {{ Str::plural('option', $sizeCount) }}{{ $usesOnlineClothing && $items->isEmpty() ? ' · Needs setup' : '' }}</span>
               </span>
             </button>
@@ -143,17 +145,20 @@
               @endif
 
               <div class="d-flex flex-wrap gap-2 region-actions">
-                @if($usesOnlineClothing)
+                @if($usesOnlineClothing && auth()->user()->can('region-clothing.manage', $region))
                   <a class="btn btn-primary" href="{{ route('backend.region.clothing.edit', array_filter(['region' => $region->id, 'source_region' => $recommended?->id, 'event_id' => $event->id])) }}"><i class="ti ti-settings me-1"></i>{{ $items->isEmpty() ? 'Set up clothing' : 'Manage clothing & prices' }}</a>
                 @endif
                 <a class="btn btn-outline-secondary" href="{{ route('backend.region.clothing.orders', ['region' => $region, 'event_id' => $event->id]) }}"><i class="ti ti-list me-1"></i>Paid orders</a>
-                @if($usesOnlineClothing && $items->isNotEmpty())
+                @if($usesOnlineClothing && $items->isNotEmpty() && auth()->user()->can('region-clothing.manage', $region))
                   <form method="POST" action="{{ route('backend.region.clothing.toggle', $region) }}">
                     @csrf @method('PATCH')
                     <button class="btn btn-{{ $region->clothing_order ? 'outline-danger' : 'success' }}" @disabled(!$region->clothing_order && $notReady->isNotEmpty())><i class="ti ti-{{ $region->clothing_order ? 'lock' : 'shopping-cart' }} me-1"></i>{{ $region->clothing_order ? 'Close ordering' : 'Open ordering' }}</button>
                   </form>
                 @endif
               </div>
+              @cannot('region-clothing.manage', $region)
+                <p class="text-muted small mt-3 mb-0">The clothing catalogue and ordering settings are shared across events. Ask an event administrator to change them.</p>
+              @endcannot
             </div>
           </div>
         </div>

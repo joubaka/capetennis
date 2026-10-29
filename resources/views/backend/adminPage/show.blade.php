@@ -74,7 +74,7 @@
 
 @endif
 
-  @include('backend.event.partials.header', ['eventWorkspaceRegionalOnly' => $rosterOnly ?? false, 'eventWorkspaceActive' => 'entries', 'eventWorkspaceShowHome' => !($rosterOnly ?? false)])
+  @include('backend.event.partials.header', ['eventWorkspaceRegionalOnly' => $regionalScoped ?? $rosterOnly ?? false, 'eventWorkspaceActive' => 'entries', 'eventWorkspaceShowHome' => !($regionalScoped ?? $rosterOnly ?? false)])
 
 
 

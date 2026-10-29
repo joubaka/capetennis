@@ -169,9 +169,11 @@ class PaidClothingOrdersExportTest extends TestCase
         $this->order($event, $region, true, 'Assigned shirt');
         $this->order($otherEvent, $region, true, 'Other event private shirt');
         $this->actingAs($manager)->get(route('backend.event.clothing.index', $event))->assertOk()
-            ->assertSee('Edit regions')->assertDontSee('Private clothing region');
-        $this->patch(route('backend.event.clothing.regions.update', $event), ['region_ids' => [$region->id]])->assertRedirect();
+            ->assertDontSee('Edit regions')->assertDontSee('Private clothing region');
+        $this->patch(route('backend.event.clothing.regions.update', $event), ['region_ids' => [$region->id]])->assertForbidden();
         $this->assertSame(1, (int) $otherRegion->fresh()->clothing_admin);
+        $this->get(route('backend.region.clothing.edit', ['region' => $region, 'event_id' => $event->id]))->assertForbidden();
+        $this->patch(route('backend.region.clothing.toggle', $region))->assertForbidden();
         $this->patch(route('backend.event.clothing.regions.update', $event), ['region_ids' => [$otherRegion->id]])->assertForbidden();
         $this->get(route('backend.region.clothing.orders', ['region' => $region, 'event_id' => $event->id]))->assertOk()
             ->assertSee('Assigned shirt')->assertDontSee('Other event private shirt');

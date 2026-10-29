@@ -111,8 +111,8 @@ class AuthServiceProvider extends ServiceProvider
                 ->with('events')
                 ->where('region_id', $region->id)
                 ->get()
-                ->contains(fn ($eventRegion) => app(\App\Services\TeamSelection\RegionManagerAccessService::class)
-                    ->canManage($user, $eventRegion));
+                ->contains(fn ($eventRegion) => $eventRegion->events && app(\App\Services\TeamSelection\RegionManagerAccessService::class)
+                    ->isEventManager($user, $eventRegion->events));
         });
 
         // A deliberately narrow ability for shared, telephone-based venue scoring.

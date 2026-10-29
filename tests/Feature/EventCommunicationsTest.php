@@ -48,11 +48,15 @@ class EventCommunicationsTest extends TestCase
         $manager = User::factory()->create();
         $assignment = EventRegionManager::create(['event_id' => $this->event->id, 'region_id' => $this->team->region_id, 'event_region_id' => $this->eventRegion->id, 'user_id' => $manager->id]);
         $otherRegion = TeamRegion::create(['region_name' => 'Private second region']);
-        EventRegion::create(['event_id' => $this->event->id, 'region_id' => $otherRegion->id]);
+        DB::table('event_regions')->insert(['event_id' => $this->event->id, 'region_id' => $otherRegion->id]);
         $otherTeam = Team::factory()->create(['category_event_id' => $this->team->category_event_id, 'region_id' => $otherRegion->id]);
         $otherPlayer = Player::factory()->create(['email' => 'hidden-region@example.test', 'userId' => null]);
         TeamPlayer::create(['team_id' => $otherTeam->id, 'player_id' => $otherPlayer->id, 'rank' => 1, 'pay_status' => 0]);
         $this->actingAs($manager);
+        $this->get(route('backend.event-communications.index', ['event' => $this->event, 'compose_scope' => 'individual', 'individual_key' => 'player:'.$this->player->id]))
+            ->assertOk()->assertViewHas('composeOptions', fn ($options) => $options['individual_key'] === 'player:'.$this->player->id);
+        $this->get(route('backend.event-communications.index', ['event' => $this->event, 'compose_scope' => 'team', 'team_id' => $otherTeam->id]))->assertNotFound();
+        $this->get(route('backend.event-communications.index', ['event' => $this->event, 'compose_scope' => 'individual', 'individual_key' => 'player:'.$otherPlayer->id]))->assertNotFound();
         $payload = ['target_type' => 'team', 'to' => 'All players in team', 'team_id' => $this->team->id,
             'event_id' => $this->event->id, 'emailSubject' => 'Own team update', 'message' => 'Review this message.'];
         $this->postJson(route('email.send'), $payload)->assertOk()->assertJsonPath('review_required', true);

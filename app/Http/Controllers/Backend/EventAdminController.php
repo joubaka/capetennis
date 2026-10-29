@@ -155,11 +155,11 @@ class EventAdminController extends Controller
       $orderLocked = TeamFixture::whereHas('draw', fn ($query) => $query->where('event_id', $event->id))->exists()
         || \App\Models\TeamTie::whereHas('draw', fn ($query) => $query->where('event_id', $event->id))->exists();
       return view('backend.adminPage.admin_show.tabs.'.(($data['panel'] ?? 'players') === 'order' ? 'order-region' : 'players-region'),
-        compact('event', 'region', 'teamSelectionInvitations', 'orderLocked', 'rosterOnly'));
+        compact('event', 'region', 'teamSelectionInvitations', 'orderLocked', 'rosterOnly', 'regionalScoped'));
     }
 
     $allCategories = Category::orderBy('name')->get();
-    $regions = TeamRegion::orderBy('region_name')->get();
+    $regions = TeamRegion::query()->when($regionalScoped, fn ($query) => $query->whereIn('id', $eventRegions->pluck('region_id')))->orderBy('region_name')->get();
     $players = collect();
     $administrator = $event->event_admins->contains('user_id', Auth::id());
     $data = compact('event', 'teamSelectionInvitations', 'allCategories', 'regions', 'players', 'administrator', 'eventRegions', 'rosterOnly', 'regionalScoped', 'isRegionalPreview', 'previewRegion');

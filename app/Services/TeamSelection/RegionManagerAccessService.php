@@ -26,7 +26,7 @@ final class RegionManagerAccessService
         $event = $eventRegion->relationLoaded('events') ? $eventRegion->events : $eventRegion->events()->first();
 
         return $event && ($this->isEventManager($user, $event)
-            || (int) $this->manager($eventRegion)?->id === (int) $user->id);
+            || ($event->isTeam() && (int) $this->manager($eventRegion)?->id === (int) $user->id));
     }
 
     public function canManageRoster(User $user, EventRegion $eventRegion): bool

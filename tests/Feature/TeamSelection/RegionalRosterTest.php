@@ -30,12 +30,13 @@ class RegionalRosterTest extends TestCase
         $this->assertDatabaseCount('team_payment_orders', 0);
     }
 
-    public function test_regional_player_list_only_has_three_jobs_and_event_admin_keeps_existing_workspace(): void
+    public function test_regional_player_list_uses_shared_lazy_admin_workspace(): void
     {
         [$event, $region, $team, $manager] = $this->roster();
         $this->actingAs($manager)->get(route('admin.events.teams', $event))->assertOk()
-            ->assertViewIs('backend.adminPage.show')->assertSee('Add player')
-            ->assertDontSee('Publish all teams')->assertDontSee('Clothing setup')->assertDontSee('Event email log');
+            ->assertViewIs('backend.adminPage.show')->assertSee('Players &amp; invitations', false)
+            ->assertSee('Setup &amp; history', false)->assertDontSee('data-region-organizers', false);
+        $this->get(route('admin.events.teams', [$event, 'roster_region' => $team->region_id]))->assertOk()->assertSee('Add player');
         EventAdmin::create(['event_id' => $event->id, 'user_id' => $manager->id]);
         $this->get(route('admin.events.teams', $event))->assertOk()->assertViewIs('backend.adminPage.show');
     }
@@ -98,11 +99,12 @@ class RegionalRosterTest extends TestCase
         app(\App\Domain\Payments\Services\TeamPaymentService::class)->updateTeamPlayerSlot($slot, ['pay_status' => 1]);
         $this->actingAs($manager)->rosterChange($team, ['action' => 'remove', 'slot_id' => $slot->id, 'expected_player_id' => $slot->player_id, 'expected_rank' => 1])->assertUnprocessable();
         $this->assertSame(1, (int) $slot->fresh()->pay_status);
-        $this->assertFalse(app(RegionManagerAccessService::class)->canManage($manager, $region));
+        $this->assertTrue(app(RegionManagerAccessService::class)->canManage($manager, $region));
         $this->assertTrue(app(RegionManagerAccessService::class)->canManageRoster($manager, $region));
         $this->put(route('backend.team-selection.manager.assign', [$event, $region]), ['manager_user_id' => $manager->id])->assertForbidden();
-        $this->post(route('backend.team-selection.teams.publish-all', [$event, $region]))->assertForbidden();
-        $this->get(route('backend.event-communications.index', $event))->assertForbidden();
+        $this->post(route('backend.team-selection.teams.publish-all', [$event, $region]))->assertOk();
+        $this->post(route('backend.team-selection.teams.publish-all', [$event, $otherRegion]))->assertNotFound();
+        $this->get(route('backend.event-communications.index', $event))->assertOk();
         $this->get(route('admin.events.teams', $event))->assertOk()->assertDontSee('name="refund_action"', false);
         \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
         $manager->assignRole('super-user');
@@ -173,7 +175,7 @@ class RegionalRosterTest extends TestCase
         $old = NoProfileTeamPlayer::create(['team_id' => $team->id, 'name' => 'Imported', 'surname' => 'Original', 'rank' => 2, 'player_profile' => $player->id, 'pay_status' => 0]);
         $sibling = NoProfileTeamPlayer::create(['team_id' => $team->id, 'name' => 'Sibling', 'surname' => 'Player', 'rank' => 3, 'pay_status' => 0]);
         $mirror = app(\App\Domain\Payments\Services\TeamPaymentService::class)->createUnpaidTeamPlayerSlot($team, $player, 2);
-        $this->actingAs($manager)->get(route('admin.events.teams', $event))->assertOk()->assertSee('Linked Actual')->assertDontSee('Imported Original')->assertSee('Change player');
+        $this->actingAs($manager)->get(route('admin.events.teams', [$event, 'roster_region' => $team->region_id]))->assertOk()->assertSee('Linked Actual')->assertDontSee('Imported Original')->assertSee('Change player');
         $this->assertSame($player->id, (int) $old->fresh()->player_profile);
         $payload = ['team_id' => $team->id, 'event_id' => $event->id, 'slot_id' => $old->id, 'expected_rank' => 2, 'expected_player_id' => $player->id, 'name' => 'New', 'surname' => 'Player'];
         $this->postJson(route('backend.team.changePlayer'), $payload)->assertOk();
@@ -187,7 +189,7 @@ class RegionalRosterTest extends TestCase
         $this->assertSame(2, NoProfileTeamPlayer::where('team_id', $team->id)->count());
         $this->assertNotNull($player->fresh());
         $this->postJson(route('backend.team.changePlayer'), $payload)->assertNotFound();
-        $this->get(route('admin.events.teams', $event))->assertOk()->assertSee('New Player')->assertDontSee('Linked Actual')->assertDontSee('Imported Original');
+        $this->get(route('admin.events.teams', [$event, 'roster_region' => $team->region_id]))->assertOk()->assertSee('New Player')->assertDontSee('Linked Actual')->assertDontSee('Imported Original');
         $this->assertSame(1, DB::table('activity_log')->where('description', 'changed team roster player')->count());
         Queue::assertNothingPushed(); Mail::assertNothingSent();
     }
@@ -201,7 +203,7 @@ class RegionalRosterTest extends TestCase
         $mirror = app(\App\Domain\Payments\Services\TeamPaymentService::class)->createUnpaidTeamPlayerSlot($team, $old, 2);
         $order = TeamPaymentOrder::create(['team_id' => $team->id, 'event_id' => $event->id, 'player_id' => $old->id, 'user_id' => $manager->id, 'total_amount' => 100, 'wallet_reserved' => 40, 'payfast_amount_due' => 60, 'pay_status' => false]);
         $payload = ['team_id' => $team->id, 'event_id' => $event->id, 'slot_id' => $slot->id, 'expected_rank' => 2, 'expected_player_id' => $old->id, 'player_id' => $replacement->id];
-        $this->actingAs($manager)->get(route('admin.events.teams', $event))->assertOk()->assertSee('Find player in database');
+        $this->actingAs($manager)->get(route('admin.events.teams', [$event, 'roster_region' => $team->region_id]))->assertOk()->assertSee('Find player in database');
         $this->postJson(route('backend.team.changePlayer'), $payload)->assertOk();
         $this->assertDatabaseHas('no_profile_team_players', ['team_id' => $team->id, 'rank' => 2, 'player_profile' => $replacement->id, 'pay_status' => 0]);
         $this->assertSame($replacement->id, (int) $mirror->fresh()->player_id);
@@ -282,7 +284,7 @@ class RegionalRosterTest extends TestCase
         $mirror = $payments->createUnpaidTeamPlayerSlot($team, Player::factory()->create(), 2);
         $payments->updateTeamPlayerSlot($mirror, ['player_id' => 0]);
         $beforeMirror = $mirror->fresh()->getAttributes();
-        $this->actingAs($manager)->get(route('admin.events.teams', $event))->assertOk()->assertSee('Change name')->assertSee('Save name')->assertSee('value="Typoo"', false);
+        $this->actingAs($manager)->get(route('admin.events.teams', [$event, 'roster_region' => $team->region_id]))->assertOk()->assertSee('Change name')->assertSee('Save name')->assertSee('value="Typoo"', false);
         $payload = ['event_id' => $event->id, 'team_id' => $team->id, 'slot_id' => $slot->id, 'expected_rank' => 2,
             'expected_player_id' => 0, 'expected_name' => 'Typoo', 'expected_surname' => 'Unlinked', 'name' => '  Typo  ', 'surname' => 'Unlinked'];
         $this->postJson(route('backend.team.editPlayerName'), $payload)->assertOk();
@@ -364,16 +366,16 @@ class RegionalRosterTest extends TestCase
         Queue::assertNothingPushed(); Mail::assertNothingSent();
     }
 
-    public function test_regional_capacity_is_enforced_while_event_admin_retains_append_override(): void
+    public function test_regional_and_event_admin_share_roster_append_behavior(): void
     {
         [$event, $region, $team, $manager] = $this->roster(true);
         $team->update(['num_team_members' => 1]);
         NoProfileTeamPlayer::create(['team_id' => $team->id, 'rank' => 1, 'name' => 'Existing', 'surname' => 'Player', 'pay_status' => 0]);
         $payload = ['event_id' => $event->id, 'team_id' => $team->id, 'name' => 'Extra', 'surname' => 'Player'];
-        $this->actingAs($manager)->postJson(route('backend.team.addPlayers'), $payload)->assertUnprocessable();
-        $this->assertSame(1, NoProfileTeamPlayer::where('team_id', $team->id)->count());
+        $this->actingAs($manager)->postJson(route('backend.team.addPlayers'), $payload)->assertOk();
+        $this->assertSame(2, NoProfileTeamPlayer::where('team_id', $team->id)->count());
         EventAdmin::create(['event_id' => $event->id, 'user_id' => $manager->id]);
-        $this->postJson(route('backend.team.addPlayers'), $payload)->assertOk();
+        $this->postJson(route('backend.team.addPlayers'), $payload)->assertUnprocessable();
         $this->assertSame(2, NoProfileTeamPlayer::where('team_id', $team->id)->count());
         $this->assertSame(2, (int) NoProfileTeamPlayer::where('team_id', $team->id)->where('name', 'Extra')->sole()->rank);
         $this->assertSame(0, TeamPaymentOrder::count());

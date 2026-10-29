@@ -17,7 +17,7 @@
 @if($errors->any())<div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>@endif
 <form method="post" action="{{ route('backend.event-communications.preview', $event) }}" data-mail-compose class="card card-body mb-4">@csrf
 @php
-$composeOptions = session('compose_options', []);
+$composeOptions = $composeOptions ?? session('compose_options', []);
 if ($wrapUp) $composeOptions = $wrapUp['options'] ?? ['scope' => $teamAudience ? 'all' : 'registrations', 'filter' => $event->isTeam() ? 'all' : 'paid', 'recipients' => 'players'];
 @endphp
 @if($wrapUp)

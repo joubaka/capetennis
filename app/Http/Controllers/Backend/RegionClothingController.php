@@ -35,7 +35,7 @@ class RegionClothingController extends Controller
     $visibleRegions = $isEventManager
       ? $event->regions
       : $event->regions->whereIn('id', $manageableRegionIds)->values();
-    $sourceRegions = $this->clothingSourceRegions();
+    $sourceRegions = $isEventManager ? $this->clothingSourceRegions() : collect();
     $recommendedSources = $visibleRegions->mapWithKeys(function (TeamRegion $region) use ($sourceRegions) {
       $recommended = $sourceRegions
         ->where('id', '!=', $region->id)
@@ -73,9 +73,7 @@ class RegionClothingController extends Controller
   public function updateEventRegions(Request $request, Event $event)
   {
     abort_unless($event->isTeam(), 404);
-    $access = app(RegionManagerAccessService::class);
-    $managedRegionIds = $access->managedRegionIds($request->user(), $event);
-    abort_if($managedRegionIds->isEmpty(), 403);
+    $this->authorize('event-draw.view', $event);
 
     $data = $request->validate([
       'region_ids' => ['nullable', 'array'],
@@ -87,8 +85,6 @@ class RegionClothingController extends Controller
     if ($selectedIds->diff($eventRegionIds->map(fn ($id) => (int) $id))->isNotEmpty()) {
       abort(422, 'A selected region does not belong to this event.');
     }
-    abort_if($selectedIds->diff($managedRegionIds)->isNotEmpty(), 403);
-    $eventRegionIds = $eventRegionIds->intersect($managedRegionIds);
 
     DB::transaction(function () use ($eventRegionIds, $selectedIds): void {
       TeamRegion::query()->whereIn('id', $eventRegionIds)->get()->each(function (TeamRegion $region) use ($selectedIds): void {
@@ -397,7 +393,7 @@ class RegionClothingController extends Controller
 
   public function changeOrderSize(Request $request, TeamRegion $region, Event $event, \App\Models\ClothingOrder $order, \App\Models\ClothingOrderItem $orderItem, \App\Services\Clothing\ClothingOrderSizeService $sizes)
   {
-    $this->authorize('region-clothing.manage', $region);
+    $this->authorizeEventOrders($request, $region, $event->id);
     $data = $request->validate([
       'size_id' => ['required', 'integer', 'min:1'],
       'expected_size_id' => ['required', 'integer', 'min:0'],
@@ -412,13 +408,11 @@ class RegionClothingController extends Controller
 
   public function orders(Request $request, TeamRegion $region)
   {
-    $this->authorize('region-clothing.manage', $region);
-
     $eventId = $request->validate([
       'event_id' => ['nullable', 'integer', 'exists:events,id'],
     ])['event_id'] ?? null;
 
-    abort_if(! $eventId && ! $request->user()->hasRole('super-user'), 403);
+    $this->authorizeEventOrders($request, $region, $eventId);
 
     if ($eventId) {
       $eventRegion = EventRegion::query()
@@ -477,6 +471,16 @@ class RegionClothingController extends Controller
     })->values();
 
     return view('backend.clothing.clothing-index', compact('region', 'clothings', 'clothingFinancials', 'clothingEvent', 'clothingDeadline', 'orderSort'));
+  }
+
+  private function authorizeEventOrders(Request $request, TeamRegion $region, ?int $eventId): void
+  {
+    if (!$eventId) {
+      abort_unless($request->user()->hasRole('super-user'), 403);
+      return;
+    }
+    $scope = EventRegion::with('events')->where('event_id', $eventId)->where('region_id', $region->id)->firstOrFail();
+    abort_unless(app(RegionManagerAccessService::class)->canManage($request->user(), $scope), 403);
   }
 
 

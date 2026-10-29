@@ -23,12 +23,12 @@
     </div></details>
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
       <div class="d-flex flex-wrap gap-2"><div class="dropdown"><button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Tools</button><div class="dropdown-menu"><button type="button" class="dropdown-item" data-roster-expand="true">Expand all</button><button type="button" class="dropdown-item" data-roster-expand="false">Collapse all</button><button type="button" class="dropdown-item" data-workspace-refresh>Refresh roster</button>
-<span class="dropdown-item-text small text-muted">Export event roster - all regions - occupied places only</span><a class="dropdown-item" href="{{ route('event.players.exportPdf', $event->id) }}" target="_blank" rel="noopener">Download PDF</a><a class="dropdown-item" href="{{ route('event.players.exportExcel', $event->id) }}">Download Excel</a></div></div><button type="button" class="btn btn-outline-secondary" data-roster-clear>Clear filters</button></div>
+<span class="dropdown-item-text small text-muted">{{ ($regionalScoped ?? false) ? 'Export assigned region roster - occupied places only' : 'Export event roster - all regions - occupied places only' }}</span><a class="dropdown-item" href="{{ route('event.players.exportPdf', $event->id) }}" target="_blank" rel="noopener">Download PDF</a><a class="dropdown-item" href="{{ route('event.players.exportExcel', $event->id) }}">Download Excel</a></div></div><button type="button" class="btn btn-outline-secondary" data-roster-clear>Clear filters</button></div>
       <div class="d-flex flex-wrap gap-2">
-        <a class="btn btn-outline-secondary" href="{{ route('backend.event-mail-log.index', $event) }}">Email history</a>
+        <a class="btn btn-outline-secondary" href="{{ route(($regionalScoped ?? false) ? 'backend.event-communications.index' : 'backend.event-mail-log.index', $event) }}">Email history</a>
       </div>
     </div>
-    <p class="small text-muted mt-2 mb-0">Filters apply to the selected region. Exports cover the whole event; reserves stay in the selection queue.</p>
+    <p class="small text-muted mt-2 mb-0">Filters apply to the selected region. {{ ($regionalScoped ?? false) ? 'Exports include only your assigned regions' : 'Exports cover the whole event' }}; reserves stay in the selection queue.</p>
 
 @endunless
 

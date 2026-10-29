@@ -193,7 +193,7 @@ class ClothingOrderController extends Controller
   public function exportPdf(Request $request, $id)
   {
     $region = TeamRegion::findOrFail($id);
-    $this->authorize('region-clothing.manage', $region);
+    $this->authorizeEventOrdersExport($request, $region);
     $clothings = $this->paidOrdersForRegion($request, $region)->get();
 
     //dd($clothings[0]);
@@ -208,12 +208,23 @@ class ClothingOrderController extends Controller
   public function exportExcel(Request $request, $id)
   {
     $region = TeamRegion::findOrFail($id);
-    $this->authorize('region-clothing.manage', $region);
+    $this->authorizeEventOrdersExport($request, $region);
     $clothings = $this->paidOrdersForRegion($request, $region)->get();
 
 
     // Pass data to the export class
     return Excel::download(new ClothingOrdersExport($clothings), 'clothing_orders.xlsx');
+  }
+
+  private function authorizeEventOrdersExport(Request $request, TeamRegion $region): void
+  {
+    $data = $request->validate(['event_id' => ['nullable', 'integer', 'exists:events,id']]);
+    if (empty($data['event_id'])) {
+      abort_unless($request->user()->hasRole('super-user'), 403);
+      return;
+    }
+    $scope = EventRegion::with('events')->where('event_id', $data['event_id'])->where('region_id', $region->id)->firstOrFail();
+    abort_unless(app(\App\Services\TeamSelection\RegionManagerAccessService::class)->canManage($request->user(), $scope), 403);
   }
 
   private function paidOrdersForRegion(Request $request, TeamRegion $region)
