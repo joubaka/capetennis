@@ -46,8 +46,14 @@ class EntryFinanceMutationScopeTest extends TestCase
         $owner = User::factory()->create();
         $entries = CategoryEventRegistration::factory()->count(2)->create([
             'user_id' => $owner->id, 'payment_status_id' => 1,
-            'refund_status' => null, 'refund_gross' => null, 'refund_fee' => null, 'refund_net' => null,
         ]);
+        // Newly created admin entries have database refund defaults that have
+        // not yet been hydrated onto the in-memory model.
+        foreach ($entries as $entry) {
+            $entry->setRawAttributes(array_diff_key($entry->getAttributes(), array_flip([
+                'refund_status', 'refund_gross', 'refund_fee', 'refund_net',
+            ])), true);
+        }
         Log::spy();
 
         app(EntryService::class)->withdrawEntry($entries[0], $owner);
