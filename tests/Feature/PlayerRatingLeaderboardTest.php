@@ -22,7 +22,7 @@ class PlayerRatingLeaderboardTest extends TestCase
         $this->saved([$match->id => [$this->estimate(61, 'first', 'u11 girls'), $this->estimate(72, 'second', 'u12 girls')]]);
         $response = $this->get(route('backend.player-performance.ratings', ['age_group' => 'u12', 'gender' => 'girls']))->assertOk()
             ->assertHeader('Cache-Control', 'no-store, private')->assertSee('Find This')->assertDontSee('Wrong Gender')->assertDontSee('Wrong Age')
-            ->assertSee('61.0/100')->assertSee('u11 girls')->assertSee('72.0/100')->assertSee('u12 girls')->assertSee('not rating ranks');
+            ->assertSee('61.0/100')->assertSee('u11 girls')->assertSee('72.0/100')->assertSee('u12 girls')->assertSee('highest to lowest rating');
         $this->assertSame(1, $response->viewData('players')->total());
         $this->get(route('backend.player-performance.ratings', ['search' => 'This Find']))->assertOk()->assertSee('Find This')->assertDontSee('Wrong Gender');
         $this->getJson(route('backend.player-performance.ratings', ['age_group' => 'u99']))->assertUnprocessable();
@@ -47,7 +47,7 @@ class PlayerRatingLeaderboardTest extends TestCase
         foreach (range(1, 27) as $i) {
             Player::factory()->create(['name' => 'Paged', 'surname' => sprintf('Row%02d', $i), 'dateOfBirth' => '2013-01-01', 'gender' => 1]);
         }
-        $response = $this->get($url.'?age_group=u13&gender=boys&page=2')->assertOk()->assertSee('Paged Row26')->assertDontSee('Paged Row01')->assertSee('start="26"', false);
+        $response = $this->get($url.'?age_group=u13&gender=boys&page=2')->assertOk()->assertSee('Paged Row26')->assertDontSee('Paged Row01')->assertSee('data-rating-position="26"', false);
         $this->assertSame(27, $response->viewData('players')->total());
     }
 
@@ -58,7 +58,58 @@ class PlayerRatingLeaderboardTest extends TestCase
         $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn(['reason' => 'Unavailable', 'built_at' => 'Not yet updated', 'snapshot_stale' => true]);
         $this->mock(PlayerSharedAbilityService::class)->shouldNotReceive('badgeSnapshot');
         $this->get(route('backend.player-performance.ratings'))->assertOk()->assertSee('Visible Profile')->assertSee('Ratings are currently unavailable')->assertSee('Rating unavailable')
-            ->assertSee('This page will refresh automatically')->assertSee('Retry ratings update')->assertSee('CTLeaderboardRefresh')->assertSee('player-ratings-leaderboard-refresh.js');
+            ->assertSee('This page will refresh automatically')->assertSee('Retry ratings update')->assertSee('CTLeaderboardRefresh')->assertSee('player-ratings-leaderboard-refresh.js')->assertDontSee('data-rating-position=', false);
+    }
+
+    public function test_current_age_gender_rating_order_uses_canonical_headline_and_resets_positions(): void
+    {
+        $this->travelTo(\Carbon\CarbonImmutable::parse('2026-10-29', 'Africa/Johannesburg'));
+        $this->admin();
+        $players = [];
+        foreach (['Unrated', 'Nine', 'Eighty', 'Hundred', 'Zero', 'Tie Alpha', 'Tie Zulu', 'Headline'] as $name) {
+            $players[$name] = Player::factory()->create(['name' => $name, 'surname' => $name, 'dateOfBirth' => '2014-01-01', 'gender' => 1]);
+        }
+        $girl = Player::factory()->create(['name' => 'Girl', 'surname' => 'First', 'dateOfBirth' => '2014-01-01', 'gender' => 2]);
+        $older = Player::factory()->create(['name' => 'Older', 'surname' => 'First', 'dateOfBirth' => '2013-01-01', 'gender' => 1]);
+        $ratings = [];
+        foreach (['Nine' => 9, 'Eighty' => 80, 'Hundred' => 100, 'Zero' => 0, 'Tie Alpha' => 80, 'Tie Zulu' => 80] as $name => $score) {
+            $ratings[$players[$name]->id] = [$this->estimate($score)];
+        }
+        $ratings[$girl->id] = [$this->estimate(90, 'girls', 'u12 girls')];
+        $ratings[$older->id] = [$this->estimate(70, 'older', 'u13 boys')];
+        $ratings[$players['Headline']->id] = [
+            $this->estimate(99, 'old', 'u12 boys'),
+            array_replace($this->estimate(60, 'recent', 'u11 boys'), ['last_played' => '2026-10-01']),
+            array_replace($this->estimate(50, 'recent', 'u10 boys'), ['last_played' => '2026-10-01']),
+        ];
+        $this->saved($ratings);
+        $response = $this->get(route('backend.player-performance.ratings'))->assertOk();
+        $rows = $response->viewData('players')->getCollection();
+        $boys = $rows->where('age_key', 'u12')->where('gender_key', 'boys')->values();
+        $this->assertSame(['Hundred Hundred', 'Eighty Eighty', 'Tie Alpha Tie Alpha', 'Tie Zulu Tie Zulu', 'Headline Headline', 'Nine Nine', 'Zero Zero', 'Unrated Unrated'], $boys->pluck('name')->all());
+        $this->assertSame(range(1, 8), $boys->pluck('position')->all());
+        $this->assertSame(50.0, $boys->firstWhere('name', 'Headline Headline')['rating']['score']);
+        $this->assertSame('u10 boys', $boys->firstWhere('name', 'Headline Headline')['rating']['cohort']);
+        $this->assertSame(1, $rows->firstWhere('id', $girl->id)['position']);
+        $this->assertSame(1, $rows->firstWhere('id', $older->id)['position']);
+        $response->assertSee('U12 (12) · Boys')->assertSee('U12 (12) · Girls')->assertSee('U13 (13) · Boys');
+    }
+
+    public function test_current_group_order_is_calculated_before_paging_and_search(): void
+    {
+        $this->travelTo(\Carbon\CarbonImmutable::parse('2026-10-29', 'Africa/Johannesburg'));
+        $this->admin();
+        $ratings = [];
+        foreach (range(1, 28) as $i) {
+            $player = Player::factory()->create(['name' => 'Ranked', 'surname' => sprintf('%02d', $i), 'dateOfBirth' => '2014-01-01', 'gender' => 1]);
+            $ratings[$player->id] = [$this->estimate($i)];
+        }
+        $this->saved($ratings);
+        $url = route('backend.player-performance.ratings', ['age_group' => 'u12', 'gender' => 'boys']);
+        $response = $this->get($url.'&page=2')->assertOk()->assertSeeInOrder(['Ranked 03', 'Ranked 02', 'Ranked 01'])->assertDontSee('Ranked 28');
+        $this->assertSame([26, 27, 28], $response->viewData('players')->getCollection()->pluck('position')->all());
+        $searched = $this->get($url.'&search=Ranked%2002')->assertOk();
+        $this->assertSame([27], $searched->viewData('players')->getCollection()->pluck('position')->all());
     }
 
     private function admin(): void
