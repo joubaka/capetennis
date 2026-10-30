@@ -444,6 +444,11 @@ class EntryService
             return;
         }
 
+        $participationIds = app(\App\Services\Draw\AlternateReplacementService::class)
+            ->withdrawalIdentities($drawIds, collect([$registrationId]));
+        DB::table('draw_registrations')->whereIn('draw_id', $drawIds)
+            ->whereIn('registration_id', $participationIds->reject(fn ($id) => $id === $registrationId))->delete();
+
         // A player withdrawn from an already-published Flexible Monrad
         // draw remains part of that published bracket's audit trail. Store the
         // decision context before normal roster cleanup so the draw can offer
@@ -486,7 +491,7 @@ class EntryService
         if ($drawGroupIds->isNotEmpty()) {
             DB::table('draw_group_registrations')
                 ->whereIn('draw_group_id', $drawGroupIds)
-                ->where('registration_id', $registrationId)
+                ->whereIn('registration_id', $participationIds)
                 ->delete();
         }
 
@@ -506,9 +511,9 @@ class EntryService
         $affectedFixtureIds = DB::table('fixtures')
             ->whereIn('draw_id', $directCleanupDrawIds)
             ->whereNull('winner_registration')
-            ->where(function ($query) use ($registrationId) {
-                $query->where('registration1_id', $registrationId)
-                    ->orWhere('registration2_id', $registrationId);
+            ->where(function ($query) use ($participationIds) {
+                $query->whereIn('registration1_id', $participationIds)
+                    ->orWhereIn('registration2_id', $participationIds);
             })
             ->pluck('id');
 
@@ -519,13 +524,13 @@ class EntryService
         DB::table('fixtures')
             ->whereIn('id', $affectedFixtureIds)
             ->whereNull('winner_registration')
-            ->where('registration1_id', $registrationId)
+            ->whereIn('registration1_id', $participationIds)
             ->update(['registration1_id' => null]);
 
         DB::table('fixtures')
             ->whereIn('id', $affectedFixtureIds)
             ->whereNull('winner_registration')
-            ->where('registration2_id', $registrationId)
+            ->whereIn('registration2_id', $participationIds)
             ->update(['registration2_id' => null]);
 
         $orphanedFixtureIds = DB::table('fixtures')

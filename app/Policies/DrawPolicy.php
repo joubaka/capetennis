@@ -115,6 +115,11 @@ class DrawPolicy
         return ! $draw->locked && $this->canManage($user, $draw);
     }
 
+    public function replaceAlternate(User $user, Draw $draw): bool
+    {
+        return ! $draw->locked && ! $draw->isTeamDraw() && ! $draw->usesFlexibleMonrad() && $this->canManage($user, $draw);
+    }
+
     /**
      * Edit match format and tournament rules until the first result exists.
      * Publication is a visibility boundary, not the start-of-play boundary.

@@ -18,6 +18,8 @@
 <style>
   .card-header h3 { font-size: 1.25rem; font-weight: 600; }
   .list-unstyled li span.fw-semibold { min-width: 120px; display: inline-block; }
+  .payment-preview td { vertical-align: top; }
+  .payment-preview .payment-reference { overflow-wrap: anywhere; }
 </style>
 @endsection
 
@@ -120,6 +122,56 @@
 
   {{-- ================= WALLET TRANSACTIONS ================= --}}
   <div class="col-xl-8 col-lg-7 col-md-7">
+    <div class="card mb-4">
+      <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <h3 class="m-0"><i class="ti ti-file-invoice me-1"></i> Payment statement</h3>
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-sm btn-primary" href="{{ route('superadmin.account-statements.show', $user) }}">Full statement</a>
+          <a class="btn btn-sm btn-outline-primary" href="{{ route('superadmin.account-statements.show', ['user' => $user, 'format' => 'pdf']) }}">PDF</a>
+          <a class="btn btn-sm btn-outline-secondary" href="{{ route('superadmin.account-statements.show', ['user' => $user, 'format' => 'csv']) }}">CSV</a>
+        </div>
+      </div>
+      <div class="card-body">
+        <p class="text-muted small">All-time entry fees, clothing payments and completed refunds paid by this account, including payments for players who are not linked here.</p>
+        @if($statementNotice)
+          <div class="alert alert-info mb-0">{{ $statementNotice }}</div>
+        @else
+          <div class="row g-3 mb-3">
+            @foreach(['paid' => 'Recorded payments', 'refunded' => 'Completed refunds / credits', 'net' => 'Net payments'] as $key => $label)
+              <div class="col-12 col-sm-4"><div class="border rounded p-3 h-100"><div class="text-muted small">{{ $label }}</div><strong>R {{ number_format($statement[$key] / 100, 2) }}</strong></div></div>
+            @endforeach
+          </div>
+          <p class="small text-muted">{{ $statement['rows']->count() }} payment / refund records. These totals are separate from the wallet balance and are not an outstanding-fee statement.</p>
+          @foreach($statement['warnings'] as $warning)<div class="alert alert-warning small">{{ $warning }}</div>@endforeach
+          <h4 class="h6">Latest payments and refunds</h4>
+          <div class="table-responsive">
+            <table class="table table-sm payment-preview">
+              <thead><tr><th>Date / reference</th><th>Player / event</th><th class="text-end">Paid (R)</th><th class="text-end">Refunded (R)</th></tr></thead>
+              <tbody>
+                @forelse($statement['rows']->sortByDesc('date')->take(10) as $row)
+                  <tr><td><span class="text-nowrap">{{ substr($row['date'], 0, 10) }}</span><br>{{ $row['method'] }}<br><small class="payment-reference">{{ $row['reference'] }}</small><br><small>{{ $row['checkout'] }}</small></td>
+                    <td>@foreach($row['details'] as $detail)<div class="mb-2"><strong>{{ $detail['player'] }}</strong><br>{{ $detail['event'] }}</div>@endforeach</td>
+                    <td class="text-end text-nowrap">{{ number_format($row['paid'] / 100, 2) }}</td><td class="text-end text-nowrap">{{ number_format($row['refunded'] / 100, 2) }}</td></tr>
+                @empty
+                  <tr><td colspan="4" class="text-muted text-center py-3">No recorded payments or completed refunds for this account.</td></tr>
+                @endforelse
+              </tbody>
+            </table>
+          </div>
+          @if($statement['rows']->count() > 10)<p class="small text-muted">Showing the latest 10 records. Open the full statement for all records and filters.</p>@endif
+          @if($statement['historicalRows']->isNotEmpty())
+            <div class="border-top pt-3 mt-3">
+              <h4 class="h6">Historical paid records ({{ $statement['historicalRows']->count() }})</h4>
+              <p class="small text-muted">Excluded from the totals above: payment evidence is incomplete. Listed fees are references, not proof of payment. The full statement shows available dates, captured fees and fee references.</p>
+              @foreach($statement['historicalRows']->take(5) as $record)
+                <div class="small mb-2"><strong>{{ $record['checkout'] }}</strong> · {{ $record['reference'] }}<br>@foreach($record['details'] as $detail){{ $detail['player'] }} · {{ $detail['event'] }}@if(!$loop->last)<br>@endif @endforeach</div>
+              @endforeach
+              @if($statement['historicalRows']->count() > 5)<p class="small text-muted mb-0">Showing 5 historical records. Open the full statement for all records.</p>@endif
+            </div>
+          @endif
+        @endif
+      </div>
+    </div>
     <div class="card">
       <div class="card-header d-flex justify-content-between align-items-center">
         <h3 class="m-0"><i class="ti ti-wallet me-1"></i> Wallet Transactions</h3>

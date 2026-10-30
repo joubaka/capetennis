@@ -112,6 +112,16 @@
   function mount(options) {
     const doc=options.document || document, get=id=>doc.getElementById(id);
     const state=createState(options.draws,options.venues,options.dates);
+    let preparationResume=null;
+    const resumeKey=options.eventId ? 'cape-schedule-playoff-preparation:'+options.eventId : null;
+    try {
+      if(resumeKey){preparationResume=JSON.parse(doc.defaultView?.sessionStorage?.getItem(resumeKey)||'null');doc.defaultView?.sessionStorage?.removeItem(resumeKey);}
+      if(preparationResume && Date.now()-preparationResume.createdAt<300000 && state.dates.includes(preparationResume.payload?.full_day_scope)){
+        const prior=preparationResume.payload;
+        options.initialDay=prior.full_day_scope;options.initialDrawIds=prior.draw_ids;
+        options.savedByDay={...options.savedByDay,[prior.full_day_scope]:prior};
+      }else preparationResume=null;
+    } catch(error){preparationResume=null;}
     const escape=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
     const label=date=>new Date(date+'T12:00:00').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
     const status=(message,error=false)=>{get('day-batch-status').textContent=message;get('day-batch-status').className='mt-3 '+(error?'text-danger':'text-muted');if(error)options.notify?.(message,'danger');};
@@ -120,6 +130,9 @@
     (options.initialDrawIds||[]).forEach(id=>state.selectDraw(id,true));
     const saved=()=>options.savedByDay?.[state.day];
     const renderDraws=()=>{
+      const preparationRows=[...(get('prepare-playoff-form')?.querySelectorAll('[data-playoff-draw]')||[])];
+      preparationRows.forEach(row=>{const selected=state.selectedDrawIds.includes(Number(row.dataset.playoffDraw));row.hidden=!selected;const input=row.querySelector('input');input.disabled=!selected||row.dataset.playoffProtected==='1';input.checked=!input.disabled;});
+      const preparationNotice=get('pending-playoff-rounds');if(preparationNotice)preparationNotice.hidden=!preparationRows.some(row=>!row.hidden);
       get('day-batch-draws').innerHTML=state.draws.map(draw=>`<label class="col-12 col-md-6 d-flex gap-2 align-items-center"><input type="checkbox" class="form-check-input mt-0 day-batch-draw" value="${Number(draw.id)}" ${state.selectedDrawIds.includes(Number(draw.id))?'checked':''} ${state.ready(draw)?'':'disabled'}><span>${escape(draw.name)}${draw.locked?' (locked)':state.ready(draw)?'':' (generate matches first)'}</span></label>`).join('');
       get('day-batch-order').innerHTML=state.selectedDrawIds.length?'<div class="small fw-semibold mb-1">Selected draw order</div>'+state.selectedDrawIds.map((id,index)=>`<div class="d-flex gap-2 align-items-center mb-1"><span class="flex-grow-1">${index+1}. ${escape(state.draws.find(draw=>Number(draw.id)===id)?.name)}</span><button type="button" class="btn btn-sm btn-outline-secondary" data-day-draw-move="${id}" data-direction="up" ${index?'':'disabled'} aria-label="Move draw up">Up</button><button type="button" class="btn btn-sm btn-outline-secondary" data-day-draw-move="${id}" data-direction="down" ${index<state.selectedDrawIds.length-1?'':'disabled'} aria-label="Move draw down">Down</button></div>`).join(''):'';
       get('day-batch-next-courts').disabled=!state.selectedDrawIds.length;
@@ -173,6 +186,10 @@
     };
     get('day-batch-date').innerHTML=state.dates.map(date=>`<option value="${date}" ${date===state.day?'selected':''}>${escape(label(date))}</option>`).join('');
     state.restore(saved());applySavedControls();renderDraws();renderVenues();renderRounds();
+    if(preparationResume){get('day-batch-courts-step').hidden=false;get('day-batch-rounds-step').hidden=false;get('day-batch-limit').checked=Boolean(preparationResume.payload.limit_daily_matches);}
+    get('prepare-playoff-form')?.addEventListener('submit',()=>{
+      try{if(resumeKey)doc.defaultView?.sessionStorage?.setItem(resumeKey,JSON.stringify({createdAt:Date.now(),payload:buildPayload(state,readOptions())}));}catch(error){/* Preparation remains available when browser storage is unavailable. */}
+    });
     get('day-batch-all').addEventListener('click',()=>{state.selectAll();renderDraws();renderRounds();changed();});
     get('day-batch-clear').addEventListener('click',()=>{state.clear();renderDraws();renderRounds();changed();});
     get('day-batch-workflow').addEventListener('change',event=>{

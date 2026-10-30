@@ -460,6 +460,19 @@ class TeamController extends Controller
         $player = \App\Models\Player::findOrFail($playerId);
         $event = \App\Models\Event::findOrFail($eventId);
 
+        // Resolve the submitted checkout before invitation acceptance or expiry can mutate it.
+        if ($request->isMethod('post')) {
+          $request->validate(['custom_int5' => ['required', 'integer', 'min:1']]);
+          $order = TeamPaymentOrder::findOrFail($request->integer('custom_int5'));
+          abort_unless((int) $order->user_id === (int) $user->id
+            && (int) $order->event_id === (int) $event->id
+            && (int) $order->team_id === (int) $team->id
+            && (int) $order->effective_player_id === (int) $player->id, 403);
+          if ($order->withdrawn_at) {
+            return redirect()->route('events.show', $event)->withErrors(['payment' => 'This checkout was cancelled or restarted. Start registration again from the event.']);
+          }
+        }
+
         try {
           app(ExternalTeamRosterService::class)->assertSelectedRole($event, $team, $player);
           app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)
@@ -483,17 +496,7 @@ class TeamController extends Controller
 
         // create or load TeamPaymentOrder (unique constraint prevents duplicates)
         try {
-          if ($request->isMethod('post')) {
-            $request->validate(['custom_int5' => ['required', 'integer', 'min:1']]);
-            $order = TeamPaymentOrder::findOrFail($request->integer('custom_int5'));
-            abort_unless((int) $order->user_id === (int) $user->id
-              && (int) $order->event_id === (int) $event->id
-              && (int) $order->team_id === (int) $team->id
-              && (int) $order->effective_player_id === (int) $player->id, 403);
-            if ($order->withdrawn_at) {
-              return redirect()->route('events.show', $event)->withErrors(['payment' => 'This checkout was cancelled or restarted. Start registration again from the event.']);
-            }
-          } else {
+          if (!$request->isMethod('post')) {
             $order = app(TeamPaymentService::class)->ensureOrder($user, $team, $player, $event, $total);
           }
         } catch (\Illuminate\Validation\ValidationException $exception) {
@@ -511,6 +514,14 @@ class TeamController extends Controller
             ]),
             'message' => $busyMessage,
           ]);
+        }
+        try {
+          app(\App\Domain\Payments\Services\UnpaidCheckoutExpiryService::class)->assertAvailable($order);
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+          return redirect()->route('events.show', $event)->withErrors($exception->errors())
+            ->with('info', $order->fresh()?->withdrawn_at
+              ? 'Select the player on this event and start registration again to open a fresh checkout.'
+              : 'This checkout could not be restarted safely. Contact the tournament administrator. If you have already paid, do not pay again.');
         }
         $selectionInvitation = app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->attachOrder($order);
 
@@ -541,7 +552,7 @@ class TeamController extends Controller
           try {
             $order = app(TeamPaymentService::class)->recordPayfastHandoff($order, $user, $payfastDue);
           } catch (\Illuminate\Validation\ValidationException $exception) {
-            return redirect()->back()->withErrors($exception->errors());
+            return redirect()->route('events.show', $event)->withErrors($exception->errors());
           }
         }
 

@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\AccountStatementService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\DB;
 use App\Support\Audit\AuditWriter;
 use Spatie\Permission\Models\Role;
@@ -117,15 +119,26 @@ class UserController extends Controller
   /**
    * Display the specified user's profile, wallet & transactions.
    */
-  public function show(User $user)
+  public function show(Request $request, User $user, AccountStatementService $statements)
   {
+    abort_unless($request->user()?->hasRole('super-user'), 403);
     $user->load(['wallet', 'players', 'roles']);
 
     $wallet       = $user->wallet;
     $transactions = $wallet ? $wallet->transactions()->latest()->orderByDesc('id')->paginate(25) : collect();
     $players      = collect(); // Player selection uses the bounded, private-safe search endpoint.
 
-    return view('backend.user.show', compact('user', 'wallet', 'transactions', 'players'));
+    $statement = null;
+    $statementNotice = null;
+    try {
+      $statement = $statements->build($user, now()->startOfYear()->toDateString(), now()->toDateString(), allTime: true);
+    } catch (ValidationException $exception) {
+      // Large accounts retain their profile and ledger; the statement screen supports narrower periods.
+      $statementNotice = 'This account has too many records for an all-time preview. Open the payment statement and choose a shorter date range.';
+    }
+
+    return response()->view('backend.user.show', compact('user', 'wallet', 'transactions', 'players', 'statement', 'statementNotice'))
+      ->header('Cache-Control', 'private, no-store');
   }
 
   /**

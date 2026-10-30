@@ -251,14 +251,15 @@
         var rows = Object.values(standings[group.id]);
         html += '<div class="page-break"></div>';
         html += '<h3 style="font-size:14px; margin:16px 0 6px;">Box ' + escapeHtml(group.name) + ' — Standings</h3>';
-        html += '<table class="standings-table"><thead><tr><th>#</th><th>Player</th><th>W</th><th>L</th><th>Sets %</th><th>Games %</th><th>TB</th></tr></thead><tbody>';
+        if (rows[0] && rows[0].group_result_status) html += '<p>' + (rows[0].group_result_status === 'complete' ? 'Separate group competition — final standings.' : rows[0].group_result_status === 'tied' ? 'Group winner pending: leading tie unresolved.' : 'Group winner pending: complete every group match.') + '</p>';
+      html += '<table class="standings-table"><thead><tr><th>#</th><th>Player</th><th>W</th><th>L</th><th>Sets %</th><th>Games %</th><th>TB</th></tr></thead><tbody>';
         rows.forEach(function(r, i) {
           var totalSets = r.sets_won + r.sets_lost;
           var setsPct = totalSets > 0 ? ((r.sets_won / totalSets) * 100).toFixed(0) + '%' : '-';
           var totalGames = (r.games_won || 0) + (r.games_lost || 0);
           var gamesPct = totalGames > 0 ? (((r.games_won || 0) / totalGames) * 100).toFixed(0) + '%' : '-';
           var tb = r.tiebreak || '';
-          html += '<tr><td>' + (i + 1) + '</td><td>' + escapeHtml(r.player) + '</td><td>' + r.wins + '</td><td>' + r.losses + '</td><td>' + setsPct + '</td><td>' + gamesPct + '</td><td>' + escapeHtml(tb) + '</td></tr>';
+          html += '<tr><td>' + (i + 1) + '</td><td>' + escapeHtml(r.player) + (r.group_winner ? ' — Group winner' : '') + '</td><td>' + r.wins + '</td><td>' + r.losses + '</td><td>' + setsPct + '</td><td>' + gamesPct + '</td><td>' + escapeHtml(tb) + '</td></tr>';
         });
         html += '</tbody></table>';
       });
@@ -617,7 +618,8 @@
 
     sortedGroups.forEach(function(group) {
       if (!standings[group.id]) return;
-      var rows = Object.values(standings[group.id]).sort(function(a, b) {
+      var rows = Object.values(standings[group.id]);
+      if (!(rows[0] && rows[0].group_result_status)) rows.sort(function(a, b) {
         if (a.wins !== b.wins) return b.wins - a.wins;
         var aTotalSets = a.sets_won + a.sets_lost;
         var bTotalSets = b.sets_won + b.sets_lost;
@@ -632,6 +634,7 @@
         return 0;
       });
       html += '<h3 style="font-size:14px; margin:16px 0 6px;">Box ' + escapeHtml(group.name) + ' — Standings</h3>';
+      if (rows[0] && rows[0].group_result_status) html += '<p>' + (rows[0].group_result_status === 'complete' ? 'Separate group competition — final standings.' : rows[0].group_result_status === 'tied' ? 'Group winner pending: leading tie unresolved.' : 'Group winner pending: complete every group match.') + '</p>';
       html += '<table class="standings-table"><thead><tr><th>#</th><th>Player</th><th>W</th><th>L</th><th>Sets %</th><th>Games %</th><th>TB</th></tr></thead><tbody>';
       rows.forEach(function(r, i) {
         var totalSets = r.sets_won + r.sets_lost;
@@ -639,7 +642,7 @@
         var totalGames = (r.games_won || 0) + (r.games_lost || 0);
         var gamesPct = totalGames > 0 ? (((r.games_won || 0) / totalGames) * 100).toFixed(0) + '%' : '-';
         var tb = r.tiebreak || '';
-        html += '<tr><td>' + (i + 1) + '</td><td>' + escapeHtml(r.player) + '</td><td>' + r.wins + '</td><td>' + r.losses + '</td><td>' + setsPct + '</td><td>' + gamesPct + '</td><td>' + escapeHtml(tb) + '</td></tr>';
+        html += '<tr><td>' + (i + 1) + '</td><td>' + escapeHtml(r.player) + (r.group_winner ? ' — Group winner' : '') + '</td><td>' + r.wins + '</td><td>' + r.losses + '</td><td>' + setsPct + '</td><td>' + gamesPct + '</td><td>' + escapeHtml(tb) + '</td></tr>';
       });
       html += '</tbody></table>';
     });

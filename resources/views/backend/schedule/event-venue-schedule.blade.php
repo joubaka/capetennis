@@ -3148,6 +3148,7 @@
     document.getElementById('programme-daily-limit').checked = Boolean(config.limit_daily_matches);
   };
   dayBatchState = CapeDayBatch.mount({
+    eventId:@json($event->id),
     notify,
     draws:@json($draws->values()), venues:@json($venues->values()), dates:@json($programmeDates),
     initialDay:@json($planningDate), initialDrawIds:@json(request()->has('draw_ids') ? $draws->filter(fn($draw) => $draw['selected'] && !$draw['locked'])->pluck('id')->values() : []),

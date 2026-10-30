@@ -11,6 +11,20 @@ class Registration extends Model
 
   protected $guarded = [];
 
+  protected $casts = ['competition_replacement' => 'array'];
+
+  /** Annotate only this draw-only competition identity, never the shared player profile. */
+  public function getPlayersAttribute()
+  {
+    $players = $this->relationLoaded('players') ? $this->getRelation('players') : $this->getRelationshipFromMethod('players');
+    if (!($this->competition_replacement['show_alternate'] ?? false)) return $players;
+    return $players->map(function ($player) {
+      $copy = clone $player;
+      $copy->surname = $player->surname.' (alternate)';
+      return $copy;
+    });
+  }
+
   /* ---------- Players on this registration (singles/doubles/teams) ---------- */
   public function players()
   {
@@ -97,7 +111,7 @@ class Registration extends Model
     // Use already-loaded relation if available to avoid extra queries
     $players = $this->relationLoaded('players')
       ? $this->players->sortBy('surname')->sortBy('name')
-      : $this->playersOrdered()->get(['name', 'surname']);
+      : $this->players;
 
     if ($players->isEmpty())
       return 'Unassigned';

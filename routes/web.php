@@ -1394,6 +1394,8 @@ Route::delete(
   Route::get('events/{event}/draws/{draw}/continue', [\App\Http\Controllers\Backend\DrawSetupGuideController::class, 'show'])->name('draw.guide.show');
   Route::post('events/{event}/draws/{draw}/continue/category', [\App\Http\Controllers\Backend\DrawSetupGuideController::class, 'category'])->name('draw.guide.category');
   Route::post('events/{event}/draws/{draw}/continue/generate-team', [\App\Http\Controllers\Backend\DrawSetupGuideController::class, 'generateTeam'])->name('draw.guide.generate-team');
+  Route::get('draw/{draw}/alternate', [\App\Http\Controllers\Backend\DrawAlternateController::class, 'show'])->name('draw.alternate.show');
+  Route::post('draw/{draw}/alternate', [\App\Http\Controllers\Backend\DrawAlternateController::class, 'store'])->name('draw.alternate.store');
   Route::get('draw/{draw}/setup', [\App\Http\Controllers\Backend\DrawSetupController::class, 'show'])->name('draw.setup.show');
   Route::post('draw/{draw}/setup', [\App\Http\Controllers\Backend\DrawSetupController::class, 'store'])->name('draw.setup.store');
   Route::get('draw/{draw}/flexible-monrad', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'show'])->name('flexible-monrad.show');

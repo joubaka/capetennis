@@ -162,6 +162,26 @@ final class StandingsService
     // PRIVATE HELPERS
     // ------------------------------------------------------------------
 
+    /** Whether the first canonical standings row is separated by the configured tiebreaks. */
+    public function hasUniqueLeader(Draw $draw, array $rows, Collection $fixtures): bool
+    {
+        if (! $rows) return false;
+        $timed = $draw->settings?->score_format === TennisScoreFormat::TIMED;
+        $metric = $timed ? 'points' : 'wins';
+        $top = $rows[0];
+        $equalWins = array_values(array_filter($rows, fn ($row) => ($row[$metric] ?? 0) === ($top[$metric] ?? 0)));
+        if (count($equalWins) === 1) return true;
+        $headToHead = $this->headToHeadResolver($fixtures);
+        // Timed standings use head-to-head first for a two-player points tie.
+        if ($timed && count($equalWins) === 2 && $headToHead($equalWins[0]['reg_id'], $equalWins[1]['reg_id'])) return true;
+        $ratio = fn ($row, $won, $lost) => ($total = ($row[$won] ?? 0) + ($row[$lost] ?? 0)) ? ($row[$won] ?? 0) / $total : 0;
+        $equals = array_values(array_filter($equalWins, fn ($row) => abs($ratio($row, 'sets_won', 'sets_lost') - $ratio($top, 'sets_won', 'sets_lost')) <= 0.0001
+            && abs($ratio($row, 'games_won', 'games_lost') - $ratio($top, 'games_won', 'games_lost')) <= 0.0001));
+        if (count($equals) === 1) return true;
+        if (count($equals) !== 2) return false;
+        return $headToHead($equals[0]['reg_id'], $equals[1]['reg_id']) !== null;
+    }
+
     /** Tally sets and games from a single fixture's results. */
     private function tallyFixture($fx): array
     {

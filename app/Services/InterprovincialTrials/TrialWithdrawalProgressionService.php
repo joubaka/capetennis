@@ -17,6 +17,7 @@ class TrialWithdrawalProgressionService
             }
             // Keep completed history and award each remaining reachable match as a loss.
             $withdrawn = $category->categoryEventRegistrations()->where('status', 'withdrawn')->pluck('registration_id')->map(fn ($id) => (int) $id);
+            $withdrawn = app(\App\Services\Draw\AlternateReplacementService::class)->withdrawalIdentities(collect([$draw->id]), $withdrawn);
             do {
                 $progressed = false;
                 $fixtures = Fixture::where('draw_id', $draw->id)->whereIn('match_status', [0, 2])
@@ -43,7 +44,8 @@ class TrialWithdrawalProgressionService
                 }
             } while ($progressed);
             app(\App\Domain\Draws\Services\ByeAdvancementService::class)->advance($draw);
-            $draw->registrations()->detach($entry->registration_id);
+            $draw->registrations()->detach(app(\App\Services\Draw\AlternateReplacementService::class)
+                ->withdrawalIdentities(collect([$draw->id]), collect([(int) $entry->registration_id])));
         }
         app(TrialRefreshQueue::class)->remember((int) $category->event_id, true, (int) $category->id);
     }

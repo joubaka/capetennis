@@ -4,6 +4,19 @@
     <a href="{{ route('draw.setup.show', $draw) }}" class="btn btn-sm btn-outline-secondary">Draw format</a>
   </div>
   <p class="mb-3" id="rr-category-scope"><strong>Player category:</strong> <span id="rr-category-name">{{ $draw->categoryEvent?->category?->name ?? 'All event categories' }}</span></p>
+  <form method="POST" action="{{ route('draw.setup.store', $draw) }}" class="card card-body mb-3">
+    @csrf
+    <fieldset @disabled($draw->locked || $draw->published || $draw->oop_published || $draw->drawFixtures->contains(fn ($fixture) => $fixture->stage !== 'RR'))>
+      <legend class="h6">How should these groups compete?</legend>
+      <label class="form-check mb-2"><input class="form-check-input" type="radio" name="workflow" value="round_robin_playoffs" @checked(!$draw->isRoundRobinOnly())><span class="form-check-label">One category competition — groups feed shared playoffs for one overall winner.</span></label>
+      <label class="form-check mb-2"><input class="form-check-input" type="radio" name="workflow" value="round_robin" @checked($draw->isRoundRobinOnly())><span class="form-check-label">Separate group competitions — each group has its own winner in this category, with no cross-group playoffs.</span></label>
+      <p class="small text-muted">Both options keep the same event, category and entries. Group winners are confirmed only after every group match is complete and the leading tie is resolved.</p>
+      <button class="btn btn-sm btn-outline-primary" type="submit">Save competition option</button>
+    </fieldset>
+    @if($draw->drawFixtures->contains(fn ($fixture) => $fixture->stage !== 'RR'))
+      <p class="small text-warning mt-2 mb-0">Playoff matches already exist. Use Draw format to review a reset before changing this option.</p>
+    @endif
+  </form>
   <section class="card card-body mb-3 rr-group-setup" aria-labelledby="rr-group-setup-title">
     <div><h5 class="mb-1" id="rr-group-setup-title">{{ $groups->isEmpty() ? '1. Create groups' : '1. Groups' }}</h5><p class="text-muted mb-0">Choose how many groups you need. Each player plays everyone in their group.</p></div>
     <div class="rr-group-count-controls">

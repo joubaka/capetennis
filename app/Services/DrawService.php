@@ -202,7 +202,7 @@ class DrawService
     // ---------------------------------------------------------------------
     // STANDINGS
     // ---------------------------------------------------------------------
-    $standings = $this->buildStandingsFromFixtures($draw);
+    $standings = app(\App\Services\Draw\RoundRobinGroupResultService::class)->annotate($draw, $this->buildStandingsFromFixtures($draw));
 
     Log::info("✅ [RR HUB] READY");
 

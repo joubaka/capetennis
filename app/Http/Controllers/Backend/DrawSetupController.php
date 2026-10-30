@@ -100,15 +100,15 @@ class DrawSetupController extends Controller
             $preserveStarts = in_array($draw->settings?->workflow, ['monrad', 'feed_in_monrad'], true)
                 && in_array($data['workflow'], ['monrad', 'feed_in_monrad'], true);
             $retainedDraft = $preserveStarts ? $draw->flexibleMonrad?->draft : null;
-            $isRoundRobinPlayoffUpgrade = in_array($draw->settings?->workflow, [null, 'round_robin'], true)
-                && $data['workflow'] === 'round_robin_playoffs'
+            $isSafeRoundRobinChange = in_array($draw->settings?->workflow, [null, 'round_robin', 'round_robin_playoffs'], true)
+                && in_array($data['workflow'], ['round_robin', 'round_robin_playoffs'], true)
                 && ! $draw->drawFixtures()->where('stage', '!=', 'RR')->exists()
                 && empty($draw->flexibleMonrad?->draft['slots'])
                 && ! $draw->flexibleMonrad?->graph;
             $hasExistingFormatState = $draw->drawFixtures()->exists() || $draw->groups()->exists()
                 || ! empty($draw->flexibleMonrad?->draft['slots']) || ! empty($draw->flexibleMonrad?->graph);
             $resetCounts = null;
-            if (! $isRoundRobinPlayoffUpgrade && $hasExistingFormatState) {
+            if (! $isSafeRoundRobinChange && $hasExistingFormatState) {
                 abort_unless((bool) ($data['reset_existing'] ?? false), 409,
                     'Confirm that changing format will remove this draw’s fixtures, scheduled times and group placements.');
                 $resetCounts = $resetter->reset($draw);

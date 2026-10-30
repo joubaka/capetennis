@@ -47,7 +47,10 @@ class RoundRobinPlayoffSchedulingTest extends TestCase
     {
         [$event, $draw] = $this->scenario();
         $url = route('backend.event-venue-schedule.index', ['event' => $event->id, 'draw_ids' => [$draw->id]]);
-        $this->get($url)->assertOk()->assertSee('Prepare playoff fixtures');
+        $page = $this->get($url)->assertOk()->assertSee('Prepare playoff fixtures')->assertSee('Playoff rounds are not prepared yet');
+        $html = $page->getContent();
+        $this->assertLessThan(strpos($html, 'id="pending-playoff-rounds"'), strpos($html, 'id="day-batch-rounds-step"'));
+        $this->assertLessThan(strpos($html, 'id="day-batch-rounds"'), strpos($html, 'id="pending-playoff-rounds"'));
         $this->assertSame(12, $draw->drawFixtures()->count());
         $post = route('backend.event-venue-schedule.prepare-playoffs', $event);
         $this->post($post, ['draw_ids' => [$draw->id]])->assertRedirect($url);

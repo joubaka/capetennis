@@ -1,3 +1,4 @@
+@include('backend.draw.partials.alternate-button')
 @php
   $workspaceUrl = route('backend.draw.roundrobin.show', $draw);
   $flexibleWorkspace = $draw->usesFlexibleMonrad();

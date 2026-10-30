@@ -81,7 +81,7 @@ test('booking updates distinguish team and individual IDs and retain same-day ma
  assert.ok(s.selectedFixtures.get('1:1').has('individual:2'));
 });
 
-function mounted() {
+function mounted(overrides={}) {
  const elements=new Map(),sections=new Map();
  const field=(value='')=>({value,checked:false});
  venues.forEach(venue=>{
@@ -96,7 +96,7 @@ function mounted() {
   if(!elements.has(id)){
    const element={value:'',checked:false,listeners:{},addEventListener(name,fn){this.listeners[name]=fn;},scrollIntoView(){},
    querySelector(selector){const match=selector.match(/data-day-venue="(\d+)"/);return match?sections.get(Number(match[1])):null;},
-   querySelectorAll(selector){return selector.includes('data-day-venue')?[...sections.values()]:[];}};
+   querySelectorAll(selector){return selector==='[data-playoff-draw]' ? (overrides.playoffRows||[]) : selector.includes('data-day-venue')?[...sections.values()]:[];}};
    let html='';
    Object.defineProperty(element,'innerHTML',{get:()=>html,set:value=>{
     html=value;
@@ -113,9 +113,34 @@ function mounted() {
   return elements.get(id);
  };
  const saved={full_day_scope:days[0],draw_ids:[1],draw_order:[1],draw_rounds:[{draw_id:1,rounds:[1]}],selected_fixture_keys:['individual:1','individual:2'],day_court_labels:{7:['1','2']},duration:60,player_rest:30,court_gap:5,start:days[0]+' 08:00:00',end:days[0]+' 18:00:00'};
- const s=mount({document:{getElementById:get},draws,venues,dates:days,initialDrawIds:[1],savedByDay:{[days[0]]:saved}});
+ const s=mount({document:{getElementById:get,defaultView:overrides.defaultView},draws,venues,dates:days,initialDrawIds:[1],savedByDay:{[days[0]]:saved},...overrides});
  return {s,get,sections,change(input){get('day-batch-workflow').listeners.change({target:input});}};
 }
+test('preparing playoffs resumes day, courts, rounds and timing once without carrying replanning consent',()=>{
+ const storage=new Map();
+ const defaultView={sessionStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)}};
+ const first=mounted({eventId:258,defaultView});
+ first.get('day-batch-duration').value='45';first.get('day-batch-rest').value='20';first.get('day-batch-limit').checked=true;
+ first.get('day-batch-replan').checked=true;
+ first.get('prepare-playoff-form').listeners.submit();
+ assert.equal(storage.size,1);
+ const second=mounted({eventId:258,defaultView});
+ assert.equal(second.s.day,days[0]);assert.deepEqual([...second.s.courts.get(7)],['1','2']);
+ assert.equal(second.get('day-batch-duration').value,45);assert.equal(second.get('day-batch-rest').value,20);
+ assert.equal(second.get('day-batch-limit').checked,true);assert.equal(second.get('day-batch-replan').checked,false);
+ assert.equal(second.get('day-batch-rounds-step').hidden,false);assert.equal(storage.size,0);
+});
+test('playoff preparation only submits currently selected unprotected draws',()=>{
+ const rows=[1,2].map(id=>{const input={};return {input,dataset:{playoffDraw:String(id),playoffProtected:'0'},querySelector:()=>input};});
+ const app=mounted({playoffRows:rows});
+ assert.equal(rows[0].input.checked,true);assert.equal(rows[1].input.disabled,true);assert.equal(rows[1].hidden,true);
+ app.change({value:'2',checked:true,matches:selector=>selector==='.day-batch-draw'});
+ assert.equal(rows[1].input.checked,true);assert.equal(rows[1].hidden,false);
+ app.change({value:'1',checked:false,matches:selector=>selector==='.day-batch-draw'});
+ assert.equal(rows[0].input.checked,false);assert.equal(rows[0].input.disabled,true);
+ app.change({value:'2',checked:false,matches:selector=>selector==='.day-batch-draw'});
+ assert.equal(app.get('pending-playoff-rounds').hidden,true);
+});
 test('selecting another venue preserves edited venue hours and court groups',()=>{
  const app=mounted(),a=app.sections.get(7);
  a.fields['.day-batch-venue-open'].value='09:15';a.fields['.day-batch-venue-close'].value='17:00';a.fields['.day-batch-split'].checked=true;

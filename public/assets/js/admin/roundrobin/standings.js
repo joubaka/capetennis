@@ -108,6 +108,7 @@
       var timed = root.RR_SCORE_FORMAT === 'timed';
       var rankingValue = function(row) { return timed ? Number(row.points || 0) : Number(row.wins || 0); };
 
+      if (!(rows[0] && rows[0].group_result_status)) {
       // Sort by wins then resolve ties
       rows.sort(function (a, b) { return rankingValue(b) - rankingValue(a); });
 
@@ -120,6 +121,11 @@
         i = j;
       }
       rows = final;
+      }
+      if (rows[0] && rows[0].group_result_status) {
+        var message = rows[0].group_result_status === 'complete' ? 'Separate group competition — final standings.' : rows[0].group_result_status === 'tied' ? 'Group winner pending: leading tie unresolved.' : 'Group winner pending: complete every group match.';
+        $wrapper.append($('<p class="small text-muted mt-3">').text(message));
+      }
 
       var html = [
         '<h6 class="fw-bold mt-4">Box ' + group.name + '</h6>',
@@ -144,13 +150,13 @@
         var tb         = r.tiebreak || '';
         var tbBadge    = tb ? '<span class="badge bg-warning text-dark" style="font-size:10px;">' + tb + '</span>' : '';
 
-        var rowCls = idx === 0
+        var rowCls = (r.group_winner || (!r.group_result_status && idx === 0))
           ? 'table-success fw-bold'
           : idx === rows.length - 1 ? 'table-danger' : 'table-light';
 
         html += '<tr class="' + rowCls + '">' +
           '<td>' + (idx + 1) + '</td>' +
-          '<td>' + r.player + '</td>' +
+          '<td>' + $('<span>').text(r.player).html() + (r.group_winner ? ' <span class="badge bg-success">Group winner</span>' : '') + '</td>' +
           '<td class="text-center">' + r.wins + '</td>' +
           (timed ? '<td class="text-center">' + Number(r.draws || 0) + '</td><td class="text-center">' + Number(r.points || 0) + '</td>' : '') +
           '<td class="text-center">' + r.losses + '</td>' +

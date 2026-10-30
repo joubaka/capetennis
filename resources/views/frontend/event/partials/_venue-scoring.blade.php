@@ -1,14 +1,14 @@
 @can('event.score', $event)
   @once
     <style>
-      .event-venue-scoring { padding: 16px; border: 1px solid #d5e1ef; border-radius: 10px; background: #f5f8fc; color: #173f7a; }
-      .event-venue-scoring-intro { margin-bottom: 14px; }
+      .event-venue-scoring { padding: 16px; border: 0; border-radius: 8px; background: #f2f6fb; color: #173f7a; }
+      .event-venue-scoring-intro { margin-bottom: 12px; }
       .event-venue-scoring-intro p { color: #52647a; line-height: 1.5; }
       .event-venue-scoring-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 10px; }
-      .event-venue-scoring-link.btn { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 48px; padding: 12px; border: 1px solid #b9cde5; border-radius: 8px; background: #fff; color: #173f7a; text-align: left; white-space: normal; font-weight: 600; line-height: 1.4; }
+      .event-venue-scoring-link.btn { display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 48px; padding: 12px; border: 1px solid transparent; border-radius: 6px; background: #fff; color: #173f7a; text-align: left; white-space: normal; font-weight: 600; line-height: 1.5; }
       .event-venue-scoring-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
       .event-venue-scoring-link > .ti { flex-shrink: 0; font-size: 1.125rem; }
-      .event-venue-scoring-count { flex-shrink: 0; min-width: 32px; padding: 5px 8px; border-radius: 5px; background: #e8eff8; color: #173f7a; text-align: center; font-size: .8125rem; }
+      .event-venue-scoring-link > .event-venue-scoring-arrow { font-size: 1rem; }
       .event-venue-scoring-link.btn:hover, .event-venue-scoring-link.btn:focus-visible { border-color: #173f7a; background: #173f7a; color: #fff; }
       .event-venue-scoring-link.btn:focus-visible { outline: 3px solid #6b9cd3; outline-offset: 3px; }
     </style>
@@ -16,9 +16,9 @@
   <section class="event-venue-scoring mb-4" aria-label="Score fixtures by venue">
       <div class="event-venue-scoring-intro">
         <h6 class="mb-1 fw-bold">
-          <i class="ti ti-scoreboard me-1" aria-hidden="true"></i> Score fixtures by venue
+          <i class="ti ti-clipboard-check me-1" aria-hidden="true"></i> Score fixtures by venue
         </h6>
-        <p class="small mb-0">Choose a venue to see its fixture queue and enter or correct scores.</p>
+        <p class="small mb-0">Choose a venue to enter or update match scores.</p>
       </div>
 
       @if(($scoringVenues ?? collect())->isNotEmpty())
@@ -31,6 +31,7 @@
                 <span class="d-block small fw-normal mt-1">{{ \Carbon\Carbon::parse($scoringVenue->scoring_date ?? now(config('app.timezone'))->toDateString())->format('l') }}: {{ $scoringVenue->today_scored_count ?? 0 }} of {{ $scoringVenue->today_fixture_count ?? 0 }} scored</span>
                 <span class="d-block small fw-normal">{{ $scoringVenue->fixture_count }} scheduled total</span>
               </span>
+              <i class="ti ti-chevron-right event-venue-scoring-arrow" aria-hidden="true"></i>
             </a>
           @endforeach
         </div>

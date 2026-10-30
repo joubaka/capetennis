@@ -1,3 +1,4 @@
+@include('backend.draw.partials.alternate-button')
 <div class="container-xxl py-3" style="max-width:1000px" data-draw-guide data-draw-guide-url="{{ $guideUrl ?? route('draw.guide.show', [$event, $draw]) }}">
   <a href="{{ route('headOffice.show', $event) }}" class="btn btn-link px-0 mb-2">← Back to draws</a>
   <h1 class="h3">{{ $draw->drawName }}</h1>
