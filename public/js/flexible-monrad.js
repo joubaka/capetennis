@@ -388,6 +388,7 @@
     if (source.base_position) return `Base position ${source.base_position}`;
     if (source.type === 'player') return 'Direct entry';
     if (source.type === 'bye') return 'Bye';
+    if (config.readOnly && ['winner', 'loser'].includes(source.type)) return '';
     return `${source.type === 'winner' ? 'Winner' : 'Loser'} of Match ${state.matches[source.original_match || source.match]?.number ?? '?'}`;
   }
   function scheduleParts(schedule) {
