@@ -25,14 +25,15 @@ final class FlexibleMonradService
         $additional = FlexibleMonradDraw::where('draw_id', $draw->id)->first()?->draft['additional_registration_ids'] ?? [];
         $aliases = $draw->registrations()->with('players')
             ->where('competition_replacement->draw_id', $draw->id)->get();
-        $sources = $this->paidEntries($draw, true)->with('players')
+        $sources = $this->categoryEntries($draw, true)->with('players')
             ->whereIn('registrations.id', $aliases->map(fn ($alias) => $alias->competition_replacement['source_registration_id'] ?? null)->filter())->get()->keyBy('id');
-        $privateSources = $this->paidEntries($draw, true, false)->with('players')
+        $privateSources = $this->categoryEntries($draw, true, false)->with('players')
             ->whereIn('registrations.id', $aliases->filter(fn ($alias) => ($alias->competition_replacement['entry_mode'] ?? null) === 'private')
                 ->map(fn ($alias) => $alias->competition_replacement['source_registration_id'] ?? null)->filter())->get()->keyBy('id');
         $activeAliases = $aliases->filter(function ($alias) use ($draw, $sources, $privateSources) {
             $private = ($alias->competition_replacement['entry_mode'] ?? null) === 'private'
-                && (int) ($alias->competition_replacement['category_event_id'] ?? 0) === (int) $draw->category_event_id;
+                && (int) ($alias->competition_replacement['category_event_id'] ?? 0) === (int) $draw->category_event_id
+                && (int) $draw->categoryEvent?->event_id === (int) $draw->event_id;
             $sourceId = $alias->competition_replacement['source_registration_id'] ?? null;
             if (!$sourceId) return ($private || !$draw->event->isInterprovincialTrials()) && !$alias->categoryEvents()->exists()
                 && $alias->players->count() === 1;
@@ -42,13 +43,13 @@ final class FlexibleMonradService
         });
         $sourceIds = $activeAliases->map(fn ($alias) => $alias->competition_replacement['source_registration_id'] ?? null)->filter()->all();
         return Registration::with('players')->whereNotIn('registrations.id', $sourceIds)->where(fn ($entries) => $entries
-            ->whereIn('registrations.id', $this->paidEntries($draw)->select('registrations.id'))
+            ->whereIn('registrations.id', $this->categoryEntries($draw)->select('registrations.id'))
             ->orWhereIn('registrations.id', $activeAliases->pluck('id'))
             ->orWhere(fn ($extra) => $extra->whereIn('registrations.id', $additional)
                 ->whereNull('competition_replacement')->whereDoesntHave('categoryEvents')));
     }
 
-    private function paidEntries(Draw $draw, bool $allowLegacyNullStatus = false, bool $requirePaid = true)
+    private function categoryEntries(Draw $draw, bool $allowLegacyNullStatus = false, bool $requirePaid = true)
     {
         return Registration::query()->whereHas('categoryEvents', fn ($q) => $q
             ->where('category_events.id', $draw->category_event_id)

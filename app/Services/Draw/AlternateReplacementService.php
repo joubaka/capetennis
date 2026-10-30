@@ -45,6 +45,7 @@ final class AlternateReplacementService
                 ? FlexibleMonradDraw::where('draw_id', $draw->id)->lockForUpdate()->first() : null;
             abort_if($draw->usesFlexibleMonrad() && !$flexible?->graph, 409, 'Generate and review this draw before replacing a player.');
             abort_unless($draw->category_event_id, 422, 'Choose a player category for this draw first.');
+            abort_unless((int) $draw->categoryEvent?->event_id === (int) $draw->event_id, 422, 'The draw category does not belong to this event.');
             $old = $draw->registrations()->where('registrations.id', $outgoing)->with('players')->first();
             abort_unless($old && $old->players->count() === 1, 422, 'Choose a current singles player in this draw.');
             $player = Player::query()->lockForUpdate()->findOrFail($playerId);

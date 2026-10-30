@@ -157,13 +157,12 @@ class AlternateReplacementTest extends TestCase
         $this->assertNull($draw->fresh()->team_draw_selection);
     }
 
-    public function test_trials_require_existing_active_paid_entry_and_leave_it_untouched(): void
+    public function test_trials_existing_paid_entry_stays_untouched_and_inactive_entries_remain_blocked(): void
     {
         [$draw, $old, $player] = $this->setupDraw();
         $type = DB::table('eventtypes')->insertGetId(['name' => 'Interpro Trials', 'type' => \App\Models\EventType::INDIVIDUAL, 'code' => \App\Models\EventType::INTERPROVINCIAL_TRIALS_CODE]);
         $draw->event->update(['eventType' => $type]);
         $input = ['outgoing_registration_id' => $old->id, 'player_id' => $player->id];
-        $this->postJson(route('draw.alternate.store', $draw), $input)->assertUnprocessable();
         $reg = Registration::factory()->create();
         $reg->players()->attach($player->id);
         $entry = \App\Models\CategoryEventRegistration::factory()->create(['category_event_id' => $draw->category_event_id, 'registration_id' => $reg->id, 'payment_status_id' => 1]);
@@ -420,5 +419,50 @@ class AlternateReplacementTest extends TestCase
         $this->assertSame($schedule, DB::table('order_of_plays')->get()->map(fn ($row) => (array) $row)->all());
         $this->assertSame($old->id, $firstFixture->fresh()->registration2_id);
         $this->assertDatabaseMissing('draw_audit_logs', ['draw_id' => $draw->id, 'action' => 'players_swapped']);
+    }
+
+    public function test_trials_private_alternate_needs_no_paid_entry_and_survives_resolution_and_swap_without_financial_changes(): void
+    {
+        foreach (['no_entry', 'unpaid_entry'] as $mode) {
+            [$draw, $old, $player, $record, $entry] = $this->setupFeedIn();
+            if ($mode === 'no_entry') $entry->forceDelete();
+            else $entry->update(['payment_status_id' => 2]);
+            $tables = ['category_event_registrations', 'registration_orders', 'registration_order_items', 'transactions_pf', 'wallet_transactions', 'user_players'];
+            $before = [];
+            foreach ($tables as $table) $before[$table] = DB::table($table)->get()->map(fn ($row) => (array) $row)->all();
+            $this->get(route('draw.alternate.show', $draw))->assertOk()->assertSee('An in-app paid entry is not required.');
+            $this->post(route('draw.alternate.store', $draw), ['outgoing_registration_id' => $old->id, 'player_id' => $player->id])
+                ->assertRedirect()->assertSessionHasNoErrors();
+            $incoming = $draw->registrations()->whereHas('players', fn ($q) => $q->whereKey($player->id))->sole();
+            $this->assertSame('private', $incoming->competition_replacement['entry_mode']);
+            $this->assertSame((int) $draw->category_event_id, $incoming->competition_replacement['category_event_id']);
+            $this->assertSame($mode === 'no_entry' ? null : $entry->registration_id, $incoming->competition_replacement['source_registration_id']);
+            $state = app(\App\Services\Draw\FlexibleMonradService::class)->state($draw->fresh());
+            $this->assertFalse($state['players']->firstWhere('id', $incoming->id)['withdrawn']);
+            app(\App\Services\Draw\FlexibleMonradService::class)->reconcileWithdrawals($draw->fresh(), $record->fresh()->revision);
+            $target = $record->fresh()->draft['slots']['bbaa']['id'];
+            $this->postJson(route('flexible-monrad.players.swap', $draw), ['first_registration_id' => $incoming->id,
+                'second_registration_id' => $target, 'revision' => $record->fresh()->revision])->assertOk();
+            $state = app(\App\Services\Draw\FlexibleMonradService::class)->state($draw->fresh());
+            $this->assertFalse($state['players']->firstWhere('id', $incoming->id)['withdrawn']);
+            $this->assertSame($incoming->id, $record->fresh()->draft['slots']['bbaa']['id']);
+            foreach ($tables as $table) $this->assertSame($before[$table], DB::table($table)->get()->map(fn ($row) => (array) $row)->all(), $table.' changed during private replacement');
+        }
+    }
+
+    public function test_private_trial_alias_marker_cannot_bypass_its_category_or_draw_boundary(): void
+    {
+        [$draw, $old, $player, $record, $entry] = $this->setupFeedIn();
+        $entry->forceDelete();
+        $this->post(route('draw.alternate.store', $draw), ['outgoing_registration_id' => $old->id, 'player_id' => $player->id])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $incoming = $draw->registrations()->whereHas('players', fn ($q) => $q->whereKey($player->id))->sole();
+        $metadata = $incoming->competition_replacement;
+        foreach ([['category_event_id' => CategoryEvent::factory()->create()->id], ['draw_id' => Draw::factory()->create()->id], ['entry_mode' => null]] as $override) {
+            $incoming->update(['competition_replacement' => array_replace($metadata, $override)]);
+            $state = app(\App\Services\Draw\FlexibleMonradService::class)->state($draw->fresh());
+            $this->assertTrue($state['players']->firstWhere('id', $incoming->id)['withdrawn']);
+        }
+        $this->assertDatabaseCount('wallet_transactions', 0);
     }
 }
