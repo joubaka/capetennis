@@ -8,21 +8,29 @@
   .event-play-section-title { color: #243b55; font-size: .9375rem; font-weight: 700; margin-bottom: 12px; }
   .event-play-group-title { margin: 18px 0 8px; color: #617287; font-size: .8125rem; font-weight: 600; }
   .event-published-draw-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 10px; }
-  .event-published-draw-row { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; border: 1px solid #dce4ee; border-radius: 8px; padding: 6px; }
-  .event-published-draw-link.btn { display: flex; flex: 1 1 180px; flex-direction: column; align-items: flex-start; gap: 5px; padding: 10px; color: #173f7a; background: transparent; border: 0; border-radius: 5px; box-shadow: none; font-size: .9375rem; font-weight: 600; line-height: 1.5; min-height: 44px; min-width: 0; white-space: normal; text-align: left; }
-  .event-published-draw-link.btn:hover { background: #f2f6fb; color: #123366; }
-  .event-published-draw-name { overflow-wrap: anywhere; }
-  .event-published-draw-time { color: #526b60; font-size: .8125rem; font-weight: 400; }
-  .event-play-card .event-draw-score { min-height: 44px; padding: 10px 12px; color: #344d69; border: 1px solid #dce4ee; background: #f7f9fc; box-shadow: none; font-size: .8125rem; white-space: normal; }
-  .event-play-card .event-draw-score:hover { background: #eaf0f7; color: #173f7a; }
+  .event-published-draw-row { --draw-accent: #344d69; --draw-tint: #edf2f7; --draw-edge: #cbd5e1; display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--draw-edge); border-left: 5px solid var(--draw-accent); border-radius: 10px; overflow: hidden; background: #fff; }
+  .event-published-draw-row.draw-cobalt { --draw-accent: #184a9c; --draw-tint: #edf3ff; --draw-edge: #bfd0ed; }
+  .event-published-draw-row.draw-plum { --draw-accent: #733b83; --draw-tint: #f7effa; --draw-edge: #dbc5e2; }
+  .event-published-draw-row.draw-teal { --draw-accent: #11665e; --draw-tint: #eaf7f4; --draw-edge: #b9dbd4; }
+  .event-play-card .event-published-draw-link.btn { display: flex; flex: 1; flex-direction: column; align-items: flex-start; gap: 10px; padding: 16px; color: var(--draw-accent); background: var(--draw-tint); border: 0; border-radius: 0; font-size: .9375rem; font-weight: 600; line-height: 1.5; min-height: 44px; min-width: 0; width: 100%; white-space: normal; text-align: left; }
+  .event-play-card .event-published-draw-link.btn:hover { color: var(--draw-accent); background: var(--draw-tint); filter: brightness(.97); }
+  .event-draw-category { display: inline-flex; border: 1px solid var(--draw-edge); border-radius: 20px; padding: 2px 9px; background: #fff; font-size: .6875rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .event-published-draw-name { overflow-wrap: anywhere; font-size: 1.125rem; font-weight: 700; line-height: 1.35; }
+  .event-published-draw-time { color: #40536b; font-size: .8125rem; font-weight: 400; }
+  .event-draw-open { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; margin-top: 4px; font-size: .8125rem; font-weight: 700; }
+  .event-draw-footer { display: flex; justify-content: flex-end; padding: 4px 10px; border-top: 1px solid var(--draw-edge); }
+  .event-play-card .event-draw-score { min-height: 44px; padding: 10px 8px; color: var(--draw-accent); border: 0; background: transparent; font-size: .8125rem; white-space: normal; }
+  .event-play-card .event-draw-score:hover { background: var(--draw-tint); color: var(--draw-accent); }
   .event-play-card .event-published-draw-link.btn, .event-play-card .event-draw-score.btn { box-shadow: none; }
   .event-play-card a:focus-visible { outline: 3px solid #6b9cd3; outline-offset: 3px; }
+  .event-play-card .event-published-draw-row a:focus-visible { outline: 3px solid var(--draw-accent); outline-offset: -4px; }
   .event-play-venues { border-top: 1px solid #e6ebf2; padding-top: 20px; }
   .event-play-venue { padding: 14px 16px; border-radius: 8px; background: #f7f9fc; }
   .event-play-venue-name { color: #344d69; font-size: .875rem; font-weight: 600; margin-bottom: 10px; overflow-wrap: anywhere; }
   .event-play-venue .btn { min-height: 44px; display: inline-flex; align-items: center; font-size: .8125rem; white-space: normal; text-align: left; }
+  .event-play-card .event-play-order.btn { color: #155e57; border-color: #377d74; background: #fff; }
+  .event-play-card .event-play-order.btn:hover { color: #fff; border-color: #155e57; background: #155e57; }
   @media (max-width: 575.98px) { .event-play-card > .card-header { padding: 18px 18px 0; } .event-play-card > .card-header + .card-body { padding: 18px; } }
-  @media (max-width: 399.98px) { .event-published-draw-row { flex-direction: column; align-items: stretch; } .event-published-draw-link.btn { flex-basis: auto; } .event-play-card .event-draw-score { display: flex; align-items: center; justify-content: center; width: 100%; } }
 </style>
 @endonce
 <div class="card event-play-card mb-4">
@@ -89,29 +97,44 @@
       @foreach($draws as $draw)
         @php
           $publishedDays = $publishedDayLabels->get($draw->id, '');
+          // Visual identity follows wording already visible in the draw name only.
+          $drawCategory = preg_match('/\b(boys?|girls?|mixed|men|women)\b/i', $draw->drawName, $categoryMatch)
+              ? strtolower($categoryMatch[1]) : null;
+          $drawPalette = match ($drawCategory) {
+              'boy', 'boys', 'men' => 'cobalt',
+              'girl', 'girls', 'women' => 'plum',
+              'mixed' => 'teal',
+              default => 'neutral',
+          };
         @endphp
-        <div class="event-published-draw-row">
+        <article class="event-published-draw-row draw-{{ $drawPalette }}">
           <a href="{{ $draw->usesFlexibleMonrad() ? route('public.flexible-monrad.show', $draw) : route('frontend.fixtures.index', $draw->id) }}"
              class="btn btn-sm event-published-draw-link">
+            @if($drawCategory)
+              <span class="event-draw-category">{{ ucfirst($drawCategory) }}</span>
+            @endif
             <span class="event-published-draw-name">{{ $draw->drawName }}</span>
             @if($publishedDays !== '')
               <span class="event-published-draw-time">
                 <i class="ti ti-clock me-1" aria-hidden="true"></i>{{ $publishedDays }}
               </span>
             @endif
+            <span class="event-draw-open">View draw<i class="ti ti-arrow-right" aria-hidden="true"></i></span>
           </a>
           @php
 
             $canScoreEvent = $canScoreEvent ?? (auth()->check() && auth()->user()->can('event.score', $event));
           @endphp
           @if($canScoreEvent)
+            <div class="event-draw-footer">
             <a href="{{ route('frontend.scoring.workspace', ['event' => $event, 'draw' => $draw->id]) }}"
                class="btn btn-sm event-draw-score"
                title="Score {{ $draw->drawName }}">
               <i class="ti ti-clipboard-check me-1" aria-hidden="true"></i>Score draw<span class="visually-hidden">: {{ $draw->drawName }}</span>
             </a>
+            </div>
           @endif
-        </div>
+        </article>
       @endforeach
     </div>
   @empty
@@ -130,7 +153,7 @@
             <div class="d-flex flex-wrap gap-2">
               <a class="btn btn-outline-primary" href="{{ route('fixtures.venue', [$event->id, $venueId]) }}">View fixtures<span class="visually-hidden">: {{ $venueRows->first()['venue_name'] }}</span></a>
               @foreach($venueRows->pluck('scheduled_at')->map(fn ($time) => \Carbon\Carbon::parse($time)->toDateString())->unique()->sort() as $venueDate)
-                <a class="btn btn-outline-secondary" href="{{ route('fixtures.order', [$event->id, $venueId, $venueDate]) }}">{{ \Carbon\Carbon::parse($venueDate)->format('D j M') }} order of play<span class="visually-hidden">: {{ $venueRows->first()['venue_name'] }}</span></a>
+                <a class="btn btn-outline-secondary event-play-order" href="{{ route('fixtures.order', [$event->id, $venueId, $venueDate]) }}">{{ \Carbon\Carbon::parse($venueDate)->format('D j M') }} order of play<span class="visually-hidden">: {{ $venueRows->first()['venue_name'] }}</span></a>
               @endforeach
             </div>
           </div>
