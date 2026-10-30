@@ -14,7 +14,7 @@ function editor(counts = [4, 3], config = [{name: 'Main', slug: 'main', enabled:
       html(value) { if (value === undefined) return selector === '<span>' ? (text.get(selector) || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;') : html.get(selector); html.set(selector, value); return this; },
       val(value) { if (value === undefined) return values.get(selector) || ''; values.set(selector, String(value)); return this; }, prop(key, value) { return value === undefined ? false : this; }, each() { return this; }, ready() { return this; },
       remove() { html.delete(selector); return this; }, after(value) { html.set(selector, value); return this; },
-      find() { return this; }, data(key) { return data.get(key); }
+      find() { return this; }, data(key, value) { if (value === undefined) return data.get(key); data.set(key, value); return this; }
     };
     return node;
   }

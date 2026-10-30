@@ -122,6 +122,34 @@ let showDisabledPlayoffs = false;
 let showFuturePositions = false;
 const qualifierCount = positions => positions.reduce((sum, position) => sum + savedGroupCounts().filter(count => count >= position).length, 0);
 
+function allPlayersPlayoffConfig(groupCount, maxGroupSize) {
+    const positionsPerPlayoff = groupCount === 1 ? 2 : 1;
+    let size = 2;
+    while (size < groupCount) size *= 2;
+    const names = ['Main Draw', 'Plate', 'Consolation', 'Bowl', 'Shield', 'Spoon'];
+    const slugs = ['main', 'plate', 'cons', 'bowl', 'shield', 'spoon'];
+    const config = [];
+    for (let position = 1; position <= maxGroupSize; position += positionsPerPlayoff) {
+        const index = config.length;
+        const last = Math.min(position + positionsPerPlayoff - 1, maxGroupSize);
+        config.push({name: (names[index] || 'Playoff') + ' (' + ((position - 1) * groupCount + 1) + '-' + (last * groupCount) + ')',
+            slug: slugs[index] || 'p' + (index + 1), size,
+            positions: Array.from({length: last - position + 1}, (_, offset) => position + offset), enabled: true});
+    }
+    return config;
+}
+
+function refreshAllPlayersPreset() {
+    const counts = savedGroupCounts();
+    const max = Math.max(0, ...counts);
+    const total = assignedPlayerTotal();
+    const $option = $('#preset-selector option[data-all-players]');
+    $option.text('All round-robin players (' + total + ' players)').prop('disabled', total === 0)
+        .data('groups', counts.length || numGroups).data('max-positions', max)
+        .data('config', allPlayersPlayoffConfig(counts.length || numGroups, max));
+}
+refreshAllPlayersPreset();
+
 // Initialize saved preset key on page load
 window.currentPresetKey = '{{ $savedPresetKey ?? '' }}';
 
@@ -1229,6 +1257,7 @@ $('#rr-show-future-positions').on('change', function() {
 });
 refreshPlayoffGroups = function() {
     numGroups = savedGroupCounts().length;
+    refreshAllPlayersPreset();
     const unused = item => !item.enabled || (assignedPlayerTotal() > 0 && qualifierCount(item.positions || []) === 0);
     const describe = item => '<li>' + escapeSettingsText(item.name) + ' — ' +
         (item.enabled ? (unused(item) ? 'Awaiting qualifying positions' : 'Enabled') : 'Disabled') + ', ' + item.size +

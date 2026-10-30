@@ -283,6 +283,37 @@ class DrawSetting extends Model
       ];
     }
 
+    /** Cover every saved group position, without changing any stored configuration. */
+    public static function allPlayersPreset(int $numGroups, int $maxGroupSize): array
+    {
+      if ($numGroups < 1 || $numGroups > 26 || $maxGroupSize < 0) {
+        throw new \InvalidArgumentException('Use 1 to 26 groups and a non-negative group size.');
+      }
+
+      $positionsPerPlayoff = $numGroups === 1 ? 2 : 1;
+      $size = 2;
+      while ($size < $numGroups) $size *= 2;
+      $names = ['Main Draw', 'Plate', 'Consolation', 'Bowl', 'Shield', 'Spoon'];
+      $slugs = ['main', 'plate', 'cons', 'bowl', 'shield', 'spoon'];
+      $config = [];
+      for ($position = 1; $position <= $maxGroupSize; $position += $positionsPerPlayoff) {
+        $index = count($config);
+        $lastPosition = min($position + $positionsPerPlayoff - 1, $maxGroupSize);
+        $firstPlace = ($position - 1) * $numGroups + 1;
+        $lastPlace = $lastPosition * $numGroups;
+        $config[] = [
+          'name' => ($names[$index] ?? 'Playoff').' ('.$firstPlace.'-'.$lastPlace.')',
+          'slug' => $slugs[$index] ?? 'p'.($index + 1),
+          'size' => $size,
+          'positions' => range($position, $lastPosition),
+          'enabled' => true,
+        ];
+      }
+
+      return ['name' => 'All round-robin players (every saved group position)',
+        'groups' => $numGroups, 'max_positions' => $maxGroupSize, 'config' => $config];
+    }
+
     /**
      * Get the playoff config or default
      */

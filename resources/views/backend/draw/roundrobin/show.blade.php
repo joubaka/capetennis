@@ -232,6 +232,11 @@
           @php
             $playoffConfig = optional($draw->settings)->playoff_config ?? \App\Models\DrawSetting::defaultPlayoffConfig($currentBoxes);
             $presetTemplates = \App\Models\DrawSetting::getPresetTemplates();
+            $allPlayerCounts = $groups->map(fn ($group) => $group->groupRegistrations->count());
+            $allPlayersPresetKey = 'all_round_robin_players';
+            $allPlayersPreset = \App\Models\DrawSetting::allPlayersPreset($currentBoxes, (int) ($allPlayerCounts->max() ?? 0));
+            $allPlayersPreset['name'] = 'All round-robin players ('.$allPlayerCounts->sum().' players)';
+            $presetTemplates[$allPlayersPresetKey] = $allPlayersPreset;
             $savedPresetKey = optional($draw->settings)->preset_key; // Get saved preset key
 
             // Merge group_order from preset template into stored playoff_config entries.
@@ -372,6 +377,7 @@
                                 data-config='@json($preset['config'])'
                                 data-groups="{{ $preset['groups'] ?? 4 }}"
                                 data-max-positions="{{ $preset['max_positions'] ?? 10 }}"
+                                @if($key === $allPlayersPresetKey) data-all-players="true" @disabled($allPlayerCounts->sum() === 0) @endif
                                 {{ $savedPresetKey === $key ? 'selected' : '' }}>
                           {{ $preset['name'] }}
                         </option>
@@ -387,9 +393,10 @@
               </div>
               <small class="text-muted">
                 Showing presets for {{ $currentBoxes }} group{{ $currentBoxes > 1 ? 's' : '' }}. Change group count in Players &amp; Groups to see other presets.
+                <br>Choose <strong>All round-robin players</strong> to include every saved group position. After changing group assignments, load this preset again and save to update the playoffs. Assign players first if the option is disabled.
                 @if($savedPresetKey)
                   <br><span class="badge bg-success mt-1">
-                    <i class="ti ti-check me-1"></i> Currently using: {{ $presetTemplates[$savedPresetKey]['name'] ?? $savedPresetKey }}
+                    <i class="ti ti-check me-1"></i> Currently using: {{ $savedPresetKey === $allPlayersPresetKey ? 'All round-robin players (saved configuration)' : ($presetTemplates[$savedPresetKey]['name'] ?? $savedPresetKey) }}
                   </span>
                 @endif
               </small>
