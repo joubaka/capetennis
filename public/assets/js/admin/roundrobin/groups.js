@@ -319,6 +319,20 @@
     if (dirty()) discard();
     const count = Number($('#groups-tab-boxes').val());
     if (count === groups.length) return;
+    if ($('#rr-apply-group-count').attr('data-has-fixtures') === '1') {
+      const review = await Swal.fire({
+        title: 'Rebuild groups?',
+        text: 'Matches already exist. Review a reset before changing group count. This removes unplayed fixtures, scheduled times and group placements; recorded results are protected.',
+        showCancelButton: true,
+        confirmButtonText: 'Review groups & playoffs'
+      });
+      if (review.isConfirmed) {
+        const url = new URL($('#rr-apply-group-count').attr('data-setup-url'), root.location.href);
+        url.searchParams.set('groups', count);
+        root.location.assign(url.href);
+      }
+      return;
+    }
     const removed = groups.slice(count),
       moved = removed.reduce((n, g) => n + g.players.length, 0);
     const result = await Swal.fire({

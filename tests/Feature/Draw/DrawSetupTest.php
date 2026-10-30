@@ -68,6 +68,77 @@ class DrawSetupTest extends TestCase
         $this->putJson(route('flexible-monrad.save', $draw), ['revision' => 0, 'draft' => ['size' => 4, 'slots' => []]])->assertConflict();
     }
 
+    public function test_group_question_builds_matching_playoff_suggestions_before_player_placement(): void
+    {
+        foreach ([1 => [2, [1, 2]], 3 => [4, [1]], 5 => [8, [1]]] as $count => [$size, $positions]) {
+            $draw = $this->draw();
+            $this->get(route('draw.setup.show', $draw))->assertOk()
+                ->assertSee('How many groups do you want?')->assertSee('Continue to groups');
+            $this->post(route('draw.setup.store', $draw), ['workflow' => 'round_robin_playoffs', 'groups' => $count])
+                ->assertRedirect(route('backend.draw.roundrobin.show', $draw).'#settings');
+            $draw->refresh();
+            $this->assertSame($count, $draw->groups()->count());
+            $this->assertEquals($count, $draw->settings->boxes);
+            $this->assertSame($size, $draw->settings->playoff_config[0]['size']);
+            $this->assertSame($positions, $draw->settings->playoff_config[0]['positions']);
+            $this->assertSame(0, $draw->drawFixtures()->count());
+        }
+    }
+
+    public function test_changing_group_count_uses_confirmed_reset_and_preserves_other_draws_and_roster(): void
+    {
+        $draw = $this->draw();
+        $draw->settings()->create(['workflow' => 'round_robin_playoffs', 'boxes' => 4]);
+        foreach (range('A', 'D') as $name) $draw->groups()->create(['name' => $name]);
+        $registration = Registration::factory()->create();
+        $draw->registrations()->attach($registration->id);
+        $fixture = Fixture::factory()->create(['draw_id' => $draw->id, 'draw_group_id' => $draw->groups()->first()->id, 'stage' => 'RR']);
+        $other = Draw::factory()->create();
+        $otherFixture = Fixture::factory()->create(['draw_id' => $other->id]);
+        $payload = ['workflow' => 'round_robin_playoffs', 'groups' => 3];
+        $this->postJson(route('draw.setup.store', $draw), $payload)->assertConflict();
+        $this->assertDatabaseHas('fixtures', ['id' => $fixture->id]);
+        $this->post(route('draw.setup.store', $draw), $payload + ['reset_existing' => 1])->assertRedirect();
+        $this->assertSame(3, $draw->groups()->count());
+        $this->assertSame(0, $draw->drawFixtures()->count());
+        $this->assertSame([$registration->id], $draw->registrations()->pluck('registrations.id')->all());
+        $this->assertDatabaseHas('fixtures', ['id' => $otherFixture->id]);
+        $this->post(route('draw.setup.store', $draw), $payload)->assertRedirect();
+        $this->assertSame(3, $draw->groups()->count());
+    }
+
+    public function test_group_rebuild_protects_results_and_published_schedules(): void
+    {
+        $draw = $this->draw();
+        $draw->settings()->create(['workflow' => 'round_robin_playoffs']);
+        $group = $draw->groups()->create(['name' => 'A']);
+        $fixture = Fixture::factory()->create(['draw_id' => $draw->id, 'draw_group_id' => $group->id, 'stage' => 'RR']);
+        $payload = ['workflow' => 'round_robin_playoffs', 'groups' => 2, 'reset_existing' => 1];
+        $draw->update(['oop_published' => 1]);
+        $this->postJson(route('draw.setup.store', $draw), $payload)->assertConflict();
+        $draw->update(['oop_published' => 0]);
+        DB::table('fixture_results')->insert(['fixture_id' => $fixture->id, 'set_nr' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        $this->postJson(route('draw.setup.store', $draw), $payload)->assertConflict();
+        $this->assertDatabaseHas('fixtures', ['id' => $fixture->id]);
+        $this->assertSame(1, $draw->groups()->count());
+        $this->postJson(route('draw.setup.store', $draw), array_replace($payload, ['groups' => 27]))->assertUnprocessable();
+    }
+
+    public function test_playoff_suggestion_cannot_change_rules_after_a_result_in_the_same_event(): void
+    {
+        $draw = $this->draw();
+        $draw->settings()->create(['workflow' => 'round_robin']);
+        $draw->groups()->create(['name' => 'A']);
+        $sibling = Draw::factory()->create(['event_id' => $draw->event_id]);
+        $fixture = Fixture::factory()->create(['draw_id' => $sibling->id]);
+        DB::table('fixture_results')->insert(['fixture_id' => $fixture->id, 'set_nr' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        $this->postJson(route('draw.setup.store', $draw), [
+            'workflow' => 'round_robin_playoffs', 'groups' => 1,
+        ])->assertConflict();
+        $this->assertSame('round_robin', $draw->fresh()->settings->workflow);
+        $this->assertSame(1, $draw->groups()->count());
+    }
+
     public function test_round_robin_only_uses_group_workspace_without_playoff_controls_or_mutations(): void
     {
         $draw = $this->draw();

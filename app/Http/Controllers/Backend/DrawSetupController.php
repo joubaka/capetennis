@@ -57,6 +57,7 @@ class DrawSetupController extends Controller
             'workflow' => 'required|in:'.implode(',', array_keys(self::OPTIONS)),
             'category_event_id' => ['nullable', 'integer', Rule::exists('category_events', 'id')->where('event_id', $draw->event_id)],
             'reset_existing' => ['nullable', 'boolean'],
+            'groups' => ['nullable', 'integer', 'min:1', 'max:26'],
             'challenge_playoffs' => ['sometimes', 'boolean'],
             'challenge_pairs' => [Rule::requiredIf(fn () => $request->input('workflow') === 'feed_in_monrad' && $request->boolean('challenge_playoffs')), 'nullable', 'array', 'min:1', 'max:31'],
             'challenge_pairs.*' => ['integer', 'distinct', Rule::in(range(2, 62, 2))],
@@ -82,6 +83,9 @@ class DrawSetupController extends Controller
             abort_if($draw->isTeamDraw(), 422, 'Use the team draw setup for team fixtures.');
             $challengePlayoffs = $data['workflow'] === 'feed_in_monrad' && (bool) ($data['challenge_playoffs'] ?? false);
             $sameWorkflow = $draw->settings?->workflow === $data['workflow'];
+            $roundRobin = in_array($data['workflow'], ['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'], true);
+            $groupCount = $roundRobin && isset($data['groups']) ? (int) $data['groups'] : null;
+            $groupsChanged = $groupCount !== null && $draw->groups()->count() !== $groupCount;
             $currentChallenges = $draw->settings?->workflow === 'feed_in_monrad' && (bool) ($draw->settings?->playoff_config['challenge_playoffs'] ?? false);
             $challengePairs = $challengePlayoffs ? array_map('intval', $data['challenge_pairs'] ?? []) : [];
             sort($challengePairs);
@@ -97,7 +101,9 @@ class DrawSetupController extends Controller
                 throw \Illuminate\Validation\ValidationException::withMessages(['challenge_pairs' => 'Select at least one challenge pair present in this field.']);
             }
             $sameChallenges = $currentChallenges === $challengePlayoffs;
-            if ($sameWorkflow && $sameChallenges && $currentPairs === $challengePairs) return;
+            if ($sameWorkflow && $sameChallenges && $currentPairs === $challengePairs && ! $groupsChanged) return;
+            abort_if($draw->event?->hasRecordedResults(), 409,
+                'Draw format and group rules cannot change after the first tournament result has been recorded.');
             $preserveStarts = in_array($draw->settings?->workflow, ['monrad', 'feed_in_monrad'], true)
                 && in_array($data['workflow'], ['monrad', 'feed_in_monrad'], true);
             $retainedDraft = $preserveStarts ? $draw->flexibleMonrad?->draft : null;
@@ -110,7 +116,7 @@ class DrawSetupController extends Controller
             $hasExistingFormatState = $draw->drawFixtures()->exists() || $draw->groups()->exists()
                 || ! empty($draw->flexibleMonrad?->draft['slots']) || ! empty($draw->flexibleMonrad?->graph);
             $resetCounts = null;
-            if (! $isSafeRoundRobinChange && $hasExistingFormatState) {
+            if ((! $isSafeRoundRobinChange || $groupsChanged) && $hasExistingFormatState) {
                 abort_unless((bool) ($data['reset_existing'] ?? false), 409,
                     'Confirm that changing format will remove this draw’s fixtures, scheduled times and group placements.');
                 $resetCounts = $resetter->reset($draw);
@@ -123,6 +129,24 @@ class DrawSetupController extends Controller
             $settings = ['workflow' => $data['workflow']];
             if ($resetCounts) {
                 $settings += ['boxes' => null, 'playoff_size' => null, 'playoff_config' => null, 'preset_key' => null];
+            }
+            if ($groupCount !== null) {
+                $settings['boxes'] = $groupCount;
+                if ($data['workflow'] === 'round_robin_playoffs' && ($groupsChanged || ! $sameWorkflow || $resetCounts)) {
+                    // One qualifier per group (top two for a single group) gives
+                    // a bracket that fits every group, including non-powers of two.
+                    $qualifiers = max(2, $groupCount);
+                    $size = collect([2, 4, 8, 16, 32])->first(fn ($size) => $size >= $qualifiers);
+                    $settings['playoff_config'] = [[
+                        'name' => 'Championship', 'slug' => 'main', 'size' => $size,
+                        'positions' => $groupCount === 1 ? [1, 2] : [1], 'enabled' => true,
+                    ]];
+                    $settings['playoff_size'] = $size;
+                    $settings['preset_key'] = null;
+                }
+                for ($index = 0; $index < $groupCount; $index++) {
+                    $draw->groups()->firstOrCreate(['name' => chr(65 + $index)]);
+                }
             }
             if ($data['workflow'] === 'feed_in_monrad') {
                 $settings['playoff_config'] = array_replace($resetCounts ? [] : ($draw->settings?->playoff_config ?? []),

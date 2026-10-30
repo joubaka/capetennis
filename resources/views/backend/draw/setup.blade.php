@@ -38,7 +38,7 @@
     </div>
   @endif
   <form method="POST" action="{{ route('draw.setup.store', $draw) }}" id="draw-format-form"
-    data-current-workflow="{{ $draw->settings?->workflow }}" data-current-challenges="{{ ($draw->settings?->playoff_config['challenge_playoffs'] ?? false) ? '1' : '0' }}" data-current-pairs='@json($selectedChallengePairs)' data-has-format-state="{{ $resetSummary['has_format_state'] ? '1' : '0' }}">
+    data-current-workflow="{{ $draw->settings?->workflow }}" data-current-groups="{{ $draw->groups()->count() }}" data-current-challenges="{{ ($draw->settings?->playoff_config['challenge_playoffs'] ?? false) ? '1' : '0' }}" data-current-pairs='@json($selectedChallengePairs)' data-has-format-state="{{ $resetSummary['has_format_state'] ? '1' : '0' }}">
     @csrf
     <fieldset @disabled($draw->locked || $draw->published || $draw->oop_published || $resetSummary['results'] > 0)>
       <legend class="visually-hidden">Draw format</legend>
@@ -69,6 +69,17 @@
           </div>
         @endforeach
       </div>
+      <section id="format-group-question" class="card card-body mb-4" hidden>
+        <h4>How many groups do you want?</h4>
+        <p>Choose the groups first. Next, review scoring and the suggested playoffs, then place your players.</p>
+        <label for="format-group-count" class="form-label">Number of groups</label>
+        <select id="format-group-count" name="groups" class="form-select mb-2" disabled>
+          @foreach(range(1, 26) as $count)
+            <option value="{{ $count }}" @selected((int) old('groups', request('groups', $draw->groups()->count() ?: 1)) === $count)>{{ $count }}</option>
+          @endforeach
+        </select>
+        <p id="format-playoff-suggestion" class="small text-muted mb-0" role="status"></p>
+      </section>
       @if($resetSummary['has_format_state'])
         <p class="text-muted">Switching between Monrad and Feed-in Monrad preserves the bracket size, player starting positions and explicit byes. Fixtures and scheduled times still reset.</p>
         <label class="form-check border rounded p-3 mb-3" for="confirm-format-reset">
@@ -107,11 +118,38 @@
   const form = document.getElementById('draw-format-form');
   const option = document.getElementById('challenge-playoffs');
   const pairs = document.getElementById('challenge-pair-options');
+  const groups = document.getElementById('format-group-question');
+  const count = document.getElementById('format-group-count');
+  const submit = form.querySelector('button[type="submit"]');
+  const describeGroups = () => {
+    const workflow = form.querySelector('[name="workflow"]:checked')?.value;
+    const n = Number(count.value);
+    document.getElementById('format-playoff-suggestion').textContent = workflow === 'round_robin_playoffs'
+      ? (n === 1 ? 'Suggested: the top two players play a championship final.' : `Suggested: each group winner qualifies for a ${2 ** Math.ceil(Math.log2(n))}-place championship bracket. Unused places are byes.`) + ' You can change qualifiers and add placement playoffs in the next step.'
+      : workflow === 'round_robin_round_robin' ? 'Equal finishing positions will enter second-stage groups after the first round robin.' : 'Final standings decide each group; no playoffs are created.';
+  };
   const refresh = () => {
     option.disabled = form.querySelector('[name="workflow"]:checked')?.value !== 'feed_in_monrad';
     pairs.hidden = option.disabled || !option.checked;
     pairs.querySelectorAll('input').forEach(input => { input.disabled = pairs.hidden; });
+    groups.hidden = true;
+    count.disabled = true;
+    submit.textContent = ['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'].includes(form.querySelector('[name="workflow"]:checked')?.value)
+      ? 'Continue to groups →' : '{{ $resetSummary['has_format_state'] ? 'Change format and reset draw' : 'Continue to players →' }}';
   };
+  count.addEventListener('change', describeGroups);
+  form.addEventListener('submit', event => {
+    const workflow = form.querySelector('[name="workflow"]:checked')?.value;
+    if (['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'].includes(workflow) && groups.hidden) {
+      event.preventDefault();
+      groups.hidden = false;
+      count.disabled = false;
+      describeGroups();
+      submit.textContent = 'Save groups & review scoring' + (workflow === 'round_robin_playoffs' ? ' & playoffs →' : ' →');
+      groups.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      count.focus();
+    }
+  });
   form.querySelectorAll('[name="workflow"]').forEach(input => input.addEventListener('change', refresh));
   option.addEventListener('change', refresh);
   refresh();
@@ -121,11 +159,14 @@
 <script>
 document.getElementById('draw-format-form')?.addEventListener('submit', event => {
   const form = event.currentTarget;
+  if (event.defaultPrevented) return;
   const selected = form.querySelector('input[name="workflow"]:checked')?.value;
   const challenges = selected === 'feed_in_monrad' && form.querySelector('#challenge-playoffs').checked;
   const pairs = challenges ? [...form.querySelectorAll('[name="challenge_pairs[]"]:checked')].map(input => Number(input.value)).sort((a, b) => a - b) : [];
   const previousPairs = JSON.parse(form.dataset.currentPairs || '[]').map(Number).sort((a, b) => a - b);
-  if (!selected || (selected === form.dataset.currentWorkflow && challenges === (form.dataset.currentChallenges === '1') && JSON.stringify(pairs) === JSON.stringify(previousPairs))) return;
+  const groupCount = form.querySelector('[name="groups"]');
+  const sameGroups = groupCount.disabled || Number(groupCount.value) === Number(form.dataset.currentGroups);
+  if (!selected || (sameGroups && selected === form.dataset.currentWorkflow && challenges === (form.dataset.currentChallenges === '1') && JSON.stringify(pairs) === JSON.stringify(previousPairs))) return;
   const confirmation = document.getElementById('confirm-format-reset');
   if (!confirmation?.checked) {
     event.preventDefault();
@@ -149,7 +190,7 @@ document.getElementById('confirm-format-reset')?.addEventListener('change', even
   <h2 id="draw-progress-title" class="h5">Updating draw…</h2>
   <p id="draw-progress-description" class="mb-0" role="status" aria-live="polite">Please wait while we save the draw setup. This can take a moment.</p>
 </dialog>
-<style>#draw-progress-modal::backdrop{background:rgba(15,23,42,.55)}</style>
+<style>#draw-progress-modal::backdrop{background:rgba(15,23,42,.55)}#format-group-question[hidden]{display:none!important}</style>
 <script>
 (() => {
   const form = document.getElementById('draw-format-form');

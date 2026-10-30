@@ -19,7 +19,11 @@
     @endif
   </form>
   <section class="card card-body mb-3 rr-group-setup" aria-labelledby="rr-group-setup-title">
-    <div><h5 class="mb-1" id="rr-group-setup-title">{{ $groups->isEmpty() ? '1. Create groups' : '1. Groups' }}</h5><p class="text-muted mb-0">Choose how many groups you need. Each player plays everyone in their group.</p></div>
+    <div><h5 class="mb-1" id="rr-group-setup-title">{{ $groups->isEmpty() ? '1. Create groups' : '1. Groups' }}</h5><p class="text-muted mb-0">Choose how many groups you need. Each player plays everyone in their group.</p>
+      @if($draw->drawFixtures->isNotEmpty())
+        <p class="small mt-2 mb-0">Matches already exist. <a href="{{ route('draw.setup.show', $draw) }}">Change format or rebuild groups</a> to review a reset and choose the new group count before playoff setup. Recorded results are protected.</p>
+      @endif
+    </div>
     <div class="rr-group-count-controls">
       <label for="groups-tab-boxes" class="mb-0">Number of groups</label>
       <div class="d-flex gap-2">
@@ -28,7 +32,7 @@
           <option value="{{ $n }}" @selected($n === $currentBoxes)>{{ $n }}</option>
         @endforeach
       </select>
-      <button type="button" id="rr-apply-group-count" class="btn {{ $groups->isEmpty() ? 'btn-primary' : 'btn-outline-secondary' }}">{{ $groups->isEmpty() ? 'Create groups' : 'Update groups' }}</button>
+      <button type="button" id="rr-apply-group-count" data-has-fixtures="{{ $draw->drawFixtures->isNotEmpty() ? '1' : '0' }}" data-setup-url="{{ route('draw.setup.show', $draw) }}" class="btn {{ $groups->isEmpty() ? 'btn-primary' : 'btn-outline-secondary' }}">{{ $groups->isEmpty() ? 'Create groups' : 'Update groups' }}</button>
       </div>
     </div>
   </section>
