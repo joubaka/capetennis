@@ -70,6 +70,16 @@ class FlexibleMonradController extends Controller
         return response()->json($this->monrad->state($draw->fresh()));
     }
 
+    public function swapPlayers(Request $request, Draw $draw)
+    {
+        $this->authorize('replaceAlternate', $draw);
+        $data = $request->validate(['first_registration_id' => 'required|integer|min:1',
+            'second_registration_id' => 'required|integer|min:1|different:first_registration_id', 'revision' => 'required|integer|min:0']);
+        app(\App\Services\Draw\AlternateReplacementService::class)->swapPositions($draw,
+            $data['first_registration_id'], $data['second_registration_id'], $data['revision']);
+        return response()->json($this->monrad->state($draw->fresh()));
+    }
+
     public function searchPlayers(Request $request, Draw $draw)
     {
         $this->authorize('addSystemPlayer', $draw);
@@ -203,12 +213,14 @@ class FlexibleMonradController extends Controller
             'canAddPlayer' => ! $public && (auth()->user()->hasRole('super-user') || auth()->user()->is_event_admin($draw->event_id)),
             'paidEntryRequired' => ! $public && $draw->event->isInterprovincialTrials(),
             'canScore' => ! $public && auth()->user()->can('saveScore', $draw),
+            'canSwap' => ! $public && auth()->user()->can('replaceAlternate', $draw),
             'canPublish' => ! $public && auth()->user()->can('publish', $draw),
             'canPrepareWithdrawalRedraw' => ! $public && auth()->user()->can('prepareWithdrawalRedraw', $draw),
             'backUrl' => $public ? null : route('backend.draw.roundrobin.show', $draw),
             'publicUrl' => route('public.flexible-monrad.show', $draw),
             'urls' => $public ? [] : [
                 'save' => route('flexible-monrad.save', $draw), 'generate' => route('flexible-monrad.generate', $draw),
+                'swapPlayers' => route('flexible-monrad.players.swap', $draw),
                 'searchPlayers' => route('flexible-monrad.players.search', $draw),
                 'addPlayer' => route('flexible-monrad.players.add', $draw),
                 'publish' => route('flexible-monrad.publish', $draw),

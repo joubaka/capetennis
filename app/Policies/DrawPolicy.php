@@ -117,7 +117,7 @@ class DrawPolicy
 
     public function replaceAlternate(User $user, Draw $draw): bool
     {
-        return ! $draw->locked && ! $draw->isTeamDraw() && ! $draw->usesFlexibleMonrad() && $this->canManage($user, $draw);
+        return ! $draw->locked && ! $draw->isTeamDraw() && $this->canManage($user, $draw);
     }
 
     /**

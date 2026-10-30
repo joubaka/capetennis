@@ -33,8 +33,18 @@ class DrawAlternateController extends Controller
     public function store(Request $request, Draw $draw, AlternateReplacementService $service)
     {
         $this->authorize('replaceAlternate', $draw);
-        $data = $request->validate(['outgoing_registration_id' => 'required|integer', 'player_id' => 'required|integer|exists:players,id', 'show_alternate' => 'nullable|boolean']);
-        $service->replace($draw, $data['outgoing_registration_id'], $data['player_id'], $request->boolean('show_alternate'), $request->user()->id);
+        $data = $request->validate(['outgoing_registration_id' => 'required|integer', 'player_id' => 'required|integer|exists:players,id', 'show_alternate' => 'nullable|boolean', 'q' => 'nullable|string|max:100']);
+        try {
+            $service->replace($draw, $data['outgoing_registration_id'], $data['player_id'], $request->boolean('show_alternate'), $request->user()->id);
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $exception) {
+            if ($request->expectsJson() || !in_array($exception->getStatusCode(), [409, 422], true)) {
+                throw $exception;
+            }
+
+            return redirect()->route('draw.alternate.show', ['draw' => $draw, 'q' => $data['q'] ?? null])
+                ->withErrors(['replacement' => $exception->getMessage()])
+                ->withInput($request->only(['outgoing_registration_id', 'player_id', 'show_alternate']));
+        }
         return redirect()->route('draw.alternate.show', $draw)->with('success', 'Alternate saved. The player’s positions now use the alternate, with the same match times and courts.');
     }
 }

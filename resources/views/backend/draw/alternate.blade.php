@@ -17,6 +17,7 @@
   </form>
   <form method="POST" action="{{ route('draw.alternate.store', $draw) }}">
     @csrf
+    <input type="hidden" name="q" value="{{ $query }}">
     <label for="outgoing-registration" class="form-label">Current player to replace</label>
     <select id="outgoing-registration" name="outgoing_registration_id" class="form-select mb-3" required>
       <option value="">Choose current player</option>
@@ -28,9 +29,10 @@
     <label for="alternate-player" class="form-label">Incoming alternate</label>
     <select id="alternate-player" name="player_id" class="form-select mb-3" required>
       <option value="">{{ $query ? 'Choose search result' : 'Search for the alternate above' }}</option>
-      @foreach($players as $player)<option value="{{ $player->id }}">{{ $player->full_name }}{{ $player->dateOfBirth ? ' · '.\Carbon\Carbon::parse($player->dateOfBirth)->format('Y') : '' }}</option>@endforeach
+      @foreach($players as $player)<option value="{{ $player->id }}" @selected(old('player_id') == $player->id)>{{ $player->full_name }}{{ $player->dateOfBirth ? ' · '.\Carbon\Carbon::parse($player->dateOfBirth)->format('Y') : '' }}</option>@endforeach
     </select>
     @if($query && $players->isEmpty())<p role="status">No matching players found.</p>@endif
+    <input type="hidden" name="show_alternate" value="0">
     <label class="form-check mb-3"><input class="form-check-input" type="checkbox" name="show_alternate" value="1" @checked(old('show_alternate', true))><span class="form-check-label">Show “(alternate)” next to the incoming player’s name</span></label>
     <button class="btn btn-primary" @disabled($players->isEmpty())>Replace player with alternate</button>
   </form>

@@ -2,7 +2,7 @@
 
 namespace App\Services\Draw;
 
-use App\Models\{Draw, FixtureResult, Player, Registration};
+use App\Models\{Draw, FixtureResult, FlexibleMonradDraw, Player, Registration};
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -41,7 +41,9 @@ final class AlternateReplacementService
         return DB::transaction(function () use ($draw, $outgoing, $playerId, $label, $actor) {
             $draw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
             abort_if($draw->locked || $draw->isTeamDraw(), 409, 'Choose an unlocked singles draw.');
-            abort_if($draw->usesFlexibleMonrad(), 409, 'Alternates for Flexible Monrad require its placement editor.');
+            $flexible = $draw->usesFlexibleMonrad()
+                ? FlexibleMonradDraw::where('draw_id', $draw->id)->lockForUpdate()->first() : null;
+            abort_if($draw->usesFlexibleMonrad() && !$flexible?->graph, 409, 'Generate and review this draw before replacing a player.');
             abort_unless($draw->category_event_id, 422, 'Choose a player category for this draw first.');
             $old = $draw->registrations()->where('registrations.id', $outgoing)->with('players')->first();
             abort_unless($old && $old->players->count() === 1, 422, 'Choose a current singles player in this draw.');
@@ -73,6 +75,11 @@ final class AlternateReplacementService
             }
             abort_if($draw->registrations()->whereHas('players', fn ($q) => $q->where('players.id', $playerId))->exists(), 422, 'This player is already in the draw.');
             $fixtures = $draw->drawFixtures()->with('fixtureResults')->lockForUpdate()->get();
+            if ($flexible) {
+                $this->assertMappedReplacement($flexible, $fixtures, $outgoing);
+                abort_unless(app(FlexibleMonradService::class)->eligible($draw)->whereKey($outgoing)->exists(),
+                    409, 'This player is no longer active in the draw. Use the withdrawal workflow.');
+            }
             abort_if($this->hasStarted($draw, $outgoing, $fixtures, true), 409, 'An alternate cannot join after this player’s first match has started.');
             $remaining = $fixtures;
             abort_unless($remaining->contains(fn ($fx) => in_array($outgoing, [(int) $fx->registration1_id, (int) $fx->registration2_id], true)), 422, 'This player has no unstarted matches remaining.');
@@ -80,6 +87,15 @@ final class AlternateReplacementService
             $incoming = Registration::create(['competition_replacement' => ['draw_id' => $draw->id, 'show_alternate' => $label,
                 'source_registration_id' => $sourceEntry?->registration_id]]);
             $incoming->players()->attach($playerId);
+            if ($flexible) {
+                $draft = $this->replacePlayerSources($flexible->draft, $outgoing, $incoming->id);
+                $graph = $this->replacePlayerSources($flexible->graph, $outgoing, $incoming->id);
+                $graph['players'] = array_map(fn ($id) => (int) $id === $outgoing ? $incoming->id : $id, $graph['players']);
+                if (isset($draft['additional_registration_ids'])) {
+                    $draft['additional_registration_ids'] = array_values(array_diff($draft['additional_registration_ids'], [$outgoing]));
+                }
+                $flexible->fill(['draft' => $draft, 'graph' => $graph, 'revision' => $flexible->revision + 1])->save();
+            }
             $history = $draw->team_draw_selection ?? [];
             $history['singles_alternates'][] = ['outgoing_registration_id' => $outgoing, 'incoming_registration_id' => $incoming->id,
                 'player_id' => $playerId, 'actor_id' => $actor, 'replaced_at' => now()->toIso8601String(), 'show_alternate' => $label];
@@ -95,6 +111,91 @@ final class AlternateReplacementService
             }
             \App\Models\DrawAuditLog::record($draw->id, 'alternate_replaced', null, end($history['singles_alternates']) + ['fixture_ids' => $fixtures->pluck('id')->all()]);
             return $incoming;
+        }, 3);
+    }
+
+    private function assertMappedReplacement(FlexibleMonradDraw $record, $fixtures, int $outgoing): void
+    {
+        $graph = $record->graph;
+        $map = $record->fixture_map ?? [];
+        $nodes = $graph['nodes'] ?? [];
+        $players = array_map('intval', $graph['players'] ?? []);
+        $slots = $record->draft['slots'] ?? [];
+        abort_unless(is_array($nodes) && $nodes && is_array($map)
+            && count(array_diff(array_keys($nodes), array_keys($map))) === 0
+            && count(array_diff(array_keys($map), array_keys($nodes))) === 0
+            && count(array_unique($map)) === count($map)
+            && count(array_diff(array_map('intval', $map), $fixtures->pluck('id')->all())) === 0
+            && count($map) === $fixtures->count()
+            && count(array_keys($players, $outgoing, true)) === 1
+            && collect($slots)->contains(fn ($slot) => ($slot['type'] ?? null) === 'player' && (int) ($slot['id'] ?? 0) === $outgoing)
+            && collect($nodes)->contains(fn ($node) => collect($node['sources'] ?? [])->contains(fn ($source) => ($source['type'] ?? null) === 'player' && (int) ($source['id'] ?? 0) === $outgoing)),
+            409, 'This draw’s saved positions and fixtures are incomplete. Restore the draw before replacing a player.');
+        abort_if(in_array($outgoing, array_map('intval', $graph['withdrawn'] ?? []), true)
+            || in_array($outgoing, array_map('intval', array_keys($graph['late_withdrawals'] ?? [])), true),
+            409, 'This player has already been withdrawn from the draw. Use the withdrawal workflow.');
+    }
+
+    /** Replace only explicitly typed player sources; numbers such as match IDs and ranks are untouched. */
+    private function replacePlayerSources(array $value, int $outgoing, int $incoming): array
+    {
+        return $this->mapPlayerSources($value, [$outgoing => $incoming]);
+    }
+
+    private function mapPlayerSources(array $value, array $ids): array
+    {
+        if (($value['type'] ?? null) === 'player' && isset($ids[(int) ($value['id'] ?? 0)])) $value['id'] = $ids[(int) $value['id']];
+        foreach ($value as $key => $child) {
+            if (is_array($child)) $value[$key] = $this->mapPlayerSources($child, $ids);
+        }
+        return $value;
+    }
+
+    /** Swap identities in place; match IDs and all saved time/court assignments stay intact. */
+    public function swapPositions(Draw $draw, int $first, int $second, int $revision): void
+    {
+        DB::transaction(function () use ($draw, $first, $second, $revision) {
+            // Match the canonical scheduler's serialization before validating retained bookings.
+            DB::table('venues')->orderBy('id')->limit(1)->lockForUpdate()->get();
+            $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
+            DB::table('events')->where('id', $draw->event_id)->lockForUpdate()->get();
+            abort_if($draw->locked || $draw->isTeamDraw(), 409, 'Choose an unlocked singles draw.');
+            abort_unless($first !== $second, 422, 'Choose two different players to swap.');
+            $record = FlexibleMonradDraw::where('draw_id', $draw->id)->lockForUpdate()->first();
+            abort_unless($record?->graph, 409, 'Generate the draw before swapping players.');
+            abort_unless($record->revision === $revision, 409, 'The draw changed. Reload it before swapping players.');
+            $fixtures = $draw->drawFixtures()->with(['fixtureResults', 'orderOfPlay'])->lockForUpdate()->get();
+            foreach ([$first, $second] as $id) {
+                $this->assertMappedReplacement($record, $fixtures, $id);
+                abort_unless($draw->registrations()->where('registrations.id', $id)->exists()
+                    && app(FlexibleMonradService::class)->eligible($draw)->whereKey($id)->exists(),
+                    422, 'Choose two active players in this draw.');
+                abort_if($this->hasStarted($draw, $id, $fixtures, true), 409, 'Players cannot be swapped after either player’s first match has started.');
+            }
+            $ids = [$first => $second, $second => $first];
+            $graph = $this->mapPlayerSources($record->graph, $ids);
+            $graph['players'] = array_map(fn ($id) => $ids[(int) $id] ?? $id, $graph['players']);
+            $record->fill(['draft' => $this->mapPlayerSources($record->draft, $ids), 'graph' => $graph, 'revision' => $revision + 1])->save();
+            foreach ($fixtures as $fixture) {
+                foreach (['registration1_id', 'registration2_id', 'hint_registration1_id', 'hint_registration2_id', 'winner_registration'] as $field) {
+                    if (isset($ids[(int) $fixture->$field])) $fixture->$field = $ids[(int) $fixture->$field];
+                }
+                if ($fixture->isDirty()) $fixture->save();
+            }
+            $draw = $draw->fresh();
+            $matches = (array) app(FlexibleMonradService::class)->state($draw)['matches'];
+            $possible = \App\Domain\Draws\Services\ScheduleAvailability::participants($matches);
+            $affected = collect($matches)->filter(fn ($match, $key) => array_intersect([$first, $second], $possible[$key] ?? []))->pluck('id');
+            $bookings = \App\Models\OrderOfPlay::whereIn('fixture_id', $affected)->whereNotNull('time')->lockForUpdate()->get();
+            foreach ($bookings as $booking) {
+                $fixture = $fixtures->firstWhere('id', $booking->fixture_id)->fresh();
+                $conflict = app(\App\Domain\Draws\Services\ScheduleConflictService::class)->conflict($draw, $fixture,
+                    (int) $booking->venue_id, (string) $booking->court, (string) $booking->time,
+                    (int) ($booking->duration_minutes ?: 75), null, (int) ($booking->gap_minutes ?? 0));
+                if ($conflict) throw ValidationException::withMessages(['swap' => $conflict]);
+            }
+            \App\Models\DrawAuditLog::record($draw->id, 'players_swapped', null,
+                ['registration_ids' => [$first, $second], 'revision' => $record->revision, 'fixture_ids' => $affected->all()]);
         }, 3);
     }
 

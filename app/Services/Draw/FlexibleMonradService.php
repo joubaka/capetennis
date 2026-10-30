@@ -23,17 +23,37 @@ final class FlexibleMonradService
     {
         // Category membership is authoritative even if an old draw pivot still exists.
         $additional = FlexibleMonradDraw::where('draw_id', $draw->id)->first()?->draft['additional_registration_ids'] ?? [];
-        return Registration::with('players')->where(fn ($entries) => $entries->whereHas('categoryEvents', fn ($q) => $q
+        $aliases = $draw->registrations()->with('players')
+            ->where('competition_replacement->draw_id', $draw->id)->get();
+        $sources = $this->paidEntries($draw, true)->with('players')
+            ->whereIn('registrations.id', $aliases->map(fn ($alias) => $alias->competition_replacement['source_registration_id'] ?? null)->filter())->get()->keyBy('id');
+        $activeAliases = $aliases->filter(function ($alias) use ($draw, $sources) {
+            $sourceId = $alias->competition_replacement['source_registration_id'] ?? null;
+            if (!$sourceId) return !$draw->event->isInterprovincialTrials() && !$alias->categoryEvents()->exists();
+            $source = $sources->get($sourceId);
+            return $source && $source->players->count() === 1 && $alias->players->count() === 1
+                && (int) $source->players->first()->id === (int) $alias->players->first()->id;
+        });
+        $sourceIds = $activeAliases->map(fn ($alias) => $alias->competition_replacement['source_registration_id'] ?? null)->filter()->all();
+        return Registration::with('players')->whereNotIn('registrations.id', $sourceIds)->where(fn ($entries) => $entries
+            ->whereIn('registrations.id', $this->paidEntries($draw)->select('registrations.id'))
+            ->orWhereIn('registrations.id', $activeAliases->pluck('id'))
+            ->orWhere(fn ($extra) => $extra->whereIn('registrations.id', $additional)
+                ->whereNull('competition_replacement')->whereDoesntHave('categoryEvents')));
+    }
+
+    private function paidEntries(Draw $draw, bool $allowLegacyNullStatus = false)
+    {
+        return Registration::query()->whereHas('categoryEvents', fn ($q) => $q
             ->where('category_events.id', $draw->category_event_id)
             ->where('category_events.event_id', $draw->event_id)
-            ->whereNotIn('category_event_registrations.status', [
+            ->where(fn ($status) => $status->whereNotIn('category_event_registrations.status', [
                 'withdrawn', 'withdrawn_pending_refund', 'withdrawn_refunded',
                 'refund_requested', 'refunded', 'cancelled',
-            ])
+            ])->when($allowLegacyNullStatus, fn ($status) => $status->orWhereNull('category_event_registrations.status')))
             ->where('category_event_registrations.payment_status_id', 1)
             ->whereNull('category_event_registrations.withdrawn_at')
-            ->whereNull('category_event_registrations.deleted_at'))
-            ->orWhere(fn ($extra) => $extra->whereIn('registrations.id', $additional)->whereDoesntHave('categoryEvents')));
+            ->whereNull('category_event_registrations.deleted_at'));
     }
 
     public function addSystemPlayer(Draw $draw, int $playerId, int $revision, bool $addPaidEntry = false): void
@@ -364,6 +384,9 @@ final class FlexibleMonradService
                 'withdrawn' => in_array($r->id, $withdrawn, true),
                 'late_withdrawal' => in_array($r->id, $lateWithdrawals, true)])->values();
         $fixtures = $draw->drawFixtures()->where('stage', 'FM')->with(['fixtureResults', 'oop.venue'])->get()->keyBy('id');
+        $starts = DrawAuditLog::where('draw_id', $draw->id)->where('action', 'match_started')->pluck('fixture_id');
+        $swappable = $players->filter(fn ($player) => $player['eligible'] && !$player['withdrawn']
+            && !app(AlternateReplacementService::class)->hasStarted($draw, (int) $player['id'], $fixtures, false, $starts))->pluck('id')->all();
         $reconciledWithdrawals = array_map('intval', $record?->graph['withdrawn'] ?? []);
         $pendingWithdrawals = array_values(array_diff($withdrawn, $reconciledWithdrawals));
         // Until an organiser chooses redraw or continuation, retain both names
@@ -400,7 +423,7 @@ final class FlexibleMonradService
                 ? \App\Domain\Draws\Services\TennisScoreFormat::rules($draw->settings->score_format)
                 : ($draw->settings?->requiresFullSets() === false ? 'Custom set scores allowed.' : 'Enter completed sets using the configured match format.'),
             'generated' => (bool) $record?->graph, 'published' => (bool) $draw->published, 'locked' => (bool) $draw->locked,
-            'players' => $players, 'matches' => (object) $matches, 'positions' => $progression['positions'],
+            'players' => $players, 'swappable_registration_ids' => $swappable, 'matches' => (object) $matches, 'positions' => $progression['positions'],
             'has_withdrawals' => (bool) $withdrawn,
             'withdrawals_pending' => (bool) array_diff($withdrawn, $record?->graph['withdrawn'] ?? [])];
     }

@@ -143,6 +143,43 @@
     });
     button.addEventListener('dragend', clearDrag);
   }
+  let swapDraggedPlayer = null;
+  const canSwapPlayer = (id, match) => !!(config.canSwap && !config.readOnly && state.generated && !state.locked && !busy
+    && !match.displayOnly && !match.pending_withdrawal_players?.some(Boolean)
+    && state.swappable_registration_ids?.some(player => Number(player) === Number(id)));
+  function generatedPlayerDrag(label, id, match) {
+    if (!id || !canSwapPlayer(id, match)) return;
+    label.draggable = true;
+    label.title = 'Drag onto another player to swap positions';
+    label.addEventListener('dragstart', event => {
+      if (!canSwapPlayer(id, match)) { event.preventDefault(); return; }
+      event.stopPropagation();
+      swapDraggedPlayer = Number(id);
+      event.dataTransfer.setData('application/x-cape-tennis-player-swap', String(id));
+      event.dataTransfer.effectAllowed = 'move';
+    });
+    label.addEventListener('dragend', () => { swapDraggedPlayer = null; });
+    label.addEventListener('dragover', event => {
+      if (swapDraggedPlayer === null || swapDraggedPlayer === Number(id) || !canSwapPlayer(id, match)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = 'move';
+    });
+    label.addEventListener('drop', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const first = swapDraggedPlayer;
+      swapDraggedPlayer = null;
+      if (first === null || first === Number(id) || !canSwapPlayer(id, match)) return;
+      run(async () => {
+        state = await request(config.urls.swapPlayers, {first_registration_id: first, second_registration_id: Number(id), revision: state.revision});
+        draft = clone(state.draft);
+        history = [];
+        dirty = false;
+        message('Players swapped. The schedule now shows the updated players at the same times and courts.');
+      });
+    });
+  }
   function allowReturnToList(event) {
     if (!editable() || draggedPlayer === null || !assignedPath(draggedPlayer)) return;
     event.preventDefault();
@@ -425,6 +462,7 @@
               ? playerNameNode(withdrawnId, 'fm-slot-name fm-player-identity-withdrawal')
               : el('span', 'fm-slot-name fm-source-name', match.byes?.[slot] ? 'Bye' : (match.vacant?.[slot] ? 'Bye (inactive)' : sourceLabel(match.sources[slot])));
             line.append(label);
+            generatedPlayerDrag(label, id, match);
             if (match.sets.length) line.append(el('strong', '', match.sets.map(s => s[slot]).join(' ')));
             line.title = label.textContent + ' · ' + sourceLabel(match.sources[slot]);
             card.append(line);
@@ -504,6 +542,7 @@
     });
   }
   function render() {
+    $('fm-swap-help').hidden = !config.canSwap || config.readOnly || !state.generated || state.locked;
     document.querySelectorAll('[data-draw-next-schedule]').forEach(section => { section.hidden = !state.generated; });
     $('fm-app').dataset.dirty = String(dirty || busy);
     // PHP encodes an empty associative array as []; always edit a keyed object.

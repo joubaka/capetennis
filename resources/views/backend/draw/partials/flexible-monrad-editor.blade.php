@@ -6,6 +6,7 @@
   </p></div><span id="fm-status" class="fm-badge">Draft</span></div>
   @endunless
   <div id="fm-message" role="status" aria-live="polite"></div>
+  <p id="fm-swap-help" class="fm-help" hidden>Drag a player’s name onto another player’s name to swap their draw positions. Match times and courts stay the same; the schedule updates with the players.</p>
   <p id="fm-withdrawn" class="fm-rule" hidden></p>
   <div class="fm-toolbar" id="fm-toolbar">
     <label>Starting bracket <select id="fm-size"><option>4</option><option>8</option><option>16</option><option>32</option><option>64</option></select></label>
