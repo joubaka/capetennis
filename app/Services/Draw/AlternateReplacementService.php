@@ -55,8 +55,17 @@ final class AlternateReplacementService
                 ]))
                 ->whereHas('registration.players', fn ($q) => $q->whereKey($playerId))->lockForUpdate()->first();
             $paidEntry = $sourceEntry !== null;
-            abort_if($draw->event->isInterprovincialTrials() && !$paidEntry, 422, 'Trials alternates must already have an active paid entry in this category. Use the existing Entries workflow first.');
-            abort_if(!$paidEntry && Registration::whereHas('players', fn ($q) => $q->whereKey($playerId))
+            if (!$sourceEntry) {
+                $entries = \App\Models\CategoryEventRegistration::withTrashed()
+                    ->where('category_event_id', $draw->category_event_id)
+                    ->whereHas('categoryEvent', fn ($q) => $q->where('event_id', $draw->event_id))
+                    ->whereHas('registration.players', fn ($q) => $q->whereKey($playerId))->lockForUpdate()->get();
+                $active = $entries->filter(fn ($entry) => !$entry->deleted_at && !$entry->withdrawn_at
+                    && !in_array($entry->status, ['withdrawn', 'withdrawn_pending_refund', 'withdrawn_refunded', 'refund_requested', 'refunded', 'cancelled'], true));
+                abort_if($entries->isNotEmpty() && $active->count() !== 1, 422, 'Manage this player’s existing category entry before selecting them as an alternate.');
+                $sourceEntry = $active->first();
+            }
+            abort_if(!$sourceEntry && Registration::whereHas('players', fn ($q) => $q->whereKey($playerId))
                 ->whereHas('categoryEvents', fn ($q) => $q->where('category_events.id', $draw->category_event_id))->exists(),
                 422, 'Manage this player’s existing category entry before selecting them as an alternate.');
             try {
@@ -84,7 +93,8 @@ final class AlternateReplacementService
             $remaining = $fixtures;
             abort_unless($remaining->contains(fn ($fx) => in_array($outgoing, [(int) $fx->registration1_id, (int) $fx->registration2_id], true)), 422, 'This player has no unstarted matches remaining.');
             // A competition identity only: no paid entry, payer, account link, or financial state is created.
-            $incoming = Registration::create(['competition_replacement' => ['draw_id' => $draw->id, 'show_alternate' => $label,
+            $incoming = Registration::create(['competition_replacement' => ['draw_id' => $draw->id, 'category_event_id' => $draw->category_event_id,
+                'entry_mode' => $paidEntry ? 'existing_entry' : 'private', 'show_alternate' => $label,
                 'source_registration_id' => $sourceEntry?->registration_id]]);
             $incoming->players()->attach($playerId);
             if ($flexible) {

@@ -27,10 +27,16 @@ final class FlexibleMonradService
             ->where('competition_replacement->draw_id', $draw->id)->get();
         $sources = $this->paidEntries($draw, true)->with('players')
             ->whereIn('registrations.id', $aliases->map(fn ($alias) => $alias->competition_replacement['source_registration_id'] ?? null)->filter())->get()->keyBy('id');
-        $activeAliases = $aliases->filter(function ($alias) use ($draw, $sources) {
+        $privateSources = $this->paidEntries($draw, true, false)->with('players')
+            ->whereIn('registrations.id', $aliases->filter(fn ($alias) => ($alias->competition_replacement['entry_mode'] ?? null) === 'private')
+                ->map(fn ($alias) => $alias->competition_replacement['source_registration_id'] ?? null)->filter())->get()->keyBy('id');
+        $activeAliases = $aliases->filter(function ($alias) use ($draw, $sources, $privateSources) {
+            $private = ($alias->competition_replacement['entry_mode'] ?? null) === 'private'
+                && (int) ($alias->competition_replacement['category_event_id'] ?? 0) === (int) $draw->category_event_id;
             $sourceId = $alias->competition_replacement['source_registration_id'] ?? null;
-            if (!$sourceId) return !$draw->event->isInterprovincialTrials() && !$alias->categoryEvents()->exists();
-            $source = $sources->get($sourceId);
+            if (!$sourceId) return ($private || !$draw->event->isInterprovincialTrials()) && !$alias->categoryEvents()->exists()
+                && $alias->players->count() === 1;
+            $source = $sources->get($sourceId) ?? ($private ? $privateSources->get($sourceId) : null);
             return $source && $source->players->count() === 1 && $alias->players->count() === 1
                 && (int) $source->players->first()->id === (int) $alias->players->first()->id;
         });
@@ -42,7 +48,7 @@ final class FlexibleMonradService
                 ->whereNull('competition_replacement')->whereDoesntHave('categoryEvents')));
     }
 
-    private function paidEntries(Draw $draw, bool $allowLegacyNullStatus = false)
+    private function paidEntries(Draw $draw, bool $allowLegacyNullStatus = false, bool $requirePaid = true)
     {
         return Registration::query()->whereHas('categoryEvents', fn ($q) => $q
             ->where('category_events.id', $draw->category_event_id)
@@ -51,7 +57,7 @@ final class FlexibleMonradService
                 'withdrawn', 'withdrawn_pending_refund', 'withdrawn_refunded',
                 'refund_requested', 'refunded', 'cancelled',
             ])->when($allowLegacyNullStatus, fn ($status) => $status->orWhereNull('category_event_registrations.status')))
-            ->where('category_event_registrations.payment_status_id', 1)
+            ->when($requirePaid, fn ($query) => $query->where('category_event_registrations.payment_status_id', 1))
             ->whereNull('category_event_registrations.withdrawn_at')
             ->whereNull('category_event_registrations.deleted_at'));
     }

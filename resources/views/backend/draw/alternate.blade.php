@@ -7,7 +7,7 @@
   <p><strong>{{ $draw->drawName }}</strong></p>
   <p>The alternate takes over the selected player’s positions before the first point of that player’s first match. A bye does not count as a played match. Matches elsewhere in the draw, including the opponent’s feeder match, do not prevent a replacement. Event entries and payments stay unchanged.</p>
   <p class="small text-muted">Cutoff follows <a href="https://www.itftennis.com/media/16911/2026-itf-world-tennis-tour-juniors-regulations.pdf" target="_blank" rel="noopener">ITF Juniors 2026, regulation 48(b)(iii)(d)</a>. The organiser must separately verify alternate/lucky-loser order and sign-in requirements.</p>
-  @if($draw->event->isInterprovincialTrials())<p class="alert alert-info">Trials alternates must already have an active paid entry in this category. Add or resolve their entry through the existing Entries workflow first.</p>@endif
+  <p class="alert alert-info">Alternates are managed privately for this draw. An in-app paid entry is not required. Replacing a player does not create an event entry or record a payment.</p>
   @if(session('success'))<div class="alert alert-success" role="status">{{ session('success') }}</div>@endif
   @if($errors->any())<div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>@endif
   <form method="GET" class="mb-4">
