@@ -447,6 +447,14 @@ class AlternateReplacementTest extends TestCase
             $this->assertFalse($state['players']->firstWhere('id', $incoming->id)['withdrawn']);
             $this->assertSame($incoming->id, $record->fresh()->draft['slots']['bbaa']['id']);
             foreach ($tables as $table) $this->assertSame($before[$table], DB::table($table)->get()->map(fn ($row) => (array) $row)->all(), $table.' changed during private replacement');
+            if ($mode === 'unpaid_entry') {
+                $entry->update(['status' => 'withdrawn', 'withdrawn_at' => now()]);
+                app(\App\Services\InterprovincialTrials\TrialWithdrawalProgressionService::class)->resolve($entry->fresh());
+                $this->assertContains($incoming->id, $record->fresh()->graph['withdrawn']);
+                $this->assertFalse($draw->registrations()->where('registrations.id', $incoming->id)->exists());
+                $this->assertSame(2, (int) $entry->fresh()->payment_status_id);
+                $this->assertDatabaseCount('wallet_transactions', 0);
+            }
         }
     }
 
