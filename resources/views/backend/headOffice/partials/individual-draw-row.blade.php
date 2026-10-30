@@ -81,7 +81,9 @@
       </span>
   </div>
   <div class="draw-overview-actions">
-    @can('event.manage', $draw->event)<a data-draw-guide-open class="btn draws-button draw-open-button" href="{{ route('draw.guide.show', [$draw->event_id, $draw]) }}">Continue setup</a>@endcan
+    @can('event.manage', $draw->event)
+      @if(!$draw->setup_complete)<a data-draw-guide-open class="btn draws-button draw-open-button" href="{{ route('draw.guide.show', [$draw->event_id, $draw]) }}">Continue setup</a>@endif
+    @endcan
     <a class="btn draws-button draw-open-button" href="{{ $drawUrl }}">Open draw @include('backend.headOffice.partials.draw-icon', ['icon' => 'arrow'])</a>
     <a class="btn draws-button draw-schedule-button" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]) }}">@include('backend.headOffice.partials.draw-icon', ['icon' => 'calendar']) <span>Schedule</span></a>
     @if($draw->settings?->workflow === 'round_robin_playoffs')
@@ -131,6 +133,9 @@
       <button type="button" class="btn draws-button draw-more-button" data-bs-toggle="dropdown"
               aria-expanded="false" aria-label="More actions for {{ $draw->drawName }}">@include('backend.headOffice.partials.draw-icon', ['icon' => 'dots'])</button>
       <ul class="dropdown-menu dropdown-menu-end">
+        @can('event.manage', $draw->event)
+          @if($draw->setup_complete)<li><a data-draw-guide-open class="dropdown-item" href="{{ route('draw.guide.show', [$draw->event_id, $draw]) }}">Review setup</a></li>@endif
+        @endcan
         <li><a class="dropdown-item" href="{{ $drawUrl }}#settings"><i class="ti ti-settings me-2" aria-hidden="true"></i>Draw settings</a></li>
         <li><a class="dropdown-item" href="{{ $drawUrl }}#groups">Players</a></li>
         <li><a class="dropdown-item" href="{{ $drawUrl }}#print">Print this draw</a></li>

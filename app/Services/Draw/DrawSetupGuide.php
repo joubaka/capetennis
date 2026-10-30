@@ -2,13 +2,115 @@
 
 namespace App\Services\Draw;
 
-use App\Models\Draw;
+use App\Models\{Draw, DrawGroup, Fixture, OrderOfPlay};
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 /** Read-only progress derived from the current tournament records. */
 final class DrawSetupGuide
 {
+    /** Compact event-scoped overview; no full workspace rendering, scoring or withdrawal reconciliation. */
+    public function overview(Collection $draws, Collection $scheduleStates): Collection
+    {
+        $draws = $draws->reject(fn ($draw) => $draw->isTeamDraw());
+        if ($draws->isEmpty()) return collect();
+        $fixtures = Fixture::whereIn('draw_id', $draws->pluck('id'))
+            ->select(['id', 'draw_id', 'draw_group_id', 'stage', 'registration1_id', 'registration2_id', 'winner_registration'])
+            ->withCount('fixtureResults')->get()->groupBy('draw_id');
+        $schedules = OrderOfPlay::query()->leftJoin('venues', 'venues.id', '=', 'order_of_plays.venue_id')
+            ->whereIn('fixture_id', $fixtures->flatten(1)->pluck('id'))
+            ->get(['fixture_id', 'time', 'court', 'venue_id', 'venues.name as venue_name'])->keyBy('fixture_id');
+        $roundRobinIds = $draws->filter(fn ($draw) => in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs'], true))->pluck('id');
+        $groups = $roundRobinIds->isEmpty() ? collect() : DrawGroup::whereIn('draw_id', $roundRobinIds)->with('groupRegistrations')->get()->groupBy('draw_id');
+
+        return $draws->mapWithKeys(function (Draw $draw) use ($fixtures, $schedules, $groups, $scheduleStates) {
+            $matches = $fixtures->get($draw->id, collect());
+            $participants = (int) $draw->registrations_count;
+            $warnings = [];
+            $pendingWithdrawals = 0;
+            if ($draw->usesFlexibleMonrad()) {
+                $record = $draw->flexibleMonrad;
+                $graph = $record?->graph;
+                $participants = collect($record?->draft['slots'] ?? [])->where('type', 'player')->count();
+                $playable = collect();
+                if ($graph && !$this->overviewGraphValid($graph, $record->fixture_map ?? [])) {
+                    $warnings[] = 'Generated match records need recovery in the draw workspace.';
+                    $graph = null;
+                }
+                if ($graph) {
+                    $map = $record->fixture_map ?? [];
+                    $byId = $matches->keyBy('id');
+                    $input = [];
+                    foreach ($map as $key => $id) {
+                        $fixture = $byId->get($id);
+                        if (!$fixture) { $warnings[] = 'Generated match records need recovery in the draw workspace.'; continue; }
+                        $input[$key] = ['players' => [$fixture->registration1_id ? (int) $fixture->registration1_id : null,
+                            $fixture->registration2_id ? (int) $fixture->registration2_id : null],
+                            'winner' => $fixture->winner_registration ? (int) $fixture->winner_registration : null, 'played' => $fixture->fixture_results_count > 0];
+                    }
+                    if (count($map) !== $matches->count() || array_diff(array_keys($graph['nodes'] ?? []), array_keys($map))) $warnings[] = 'Generated match records need review.';
+                    if (!$warnings) {
+                        try {
+                            $progression = app(FlexibleMonradProgression::class)->resolve($graph, $input, $graph['withdrawn'] ?? []);
+                            $playable = collect($progression['matches'])->reject(fn ($match) => $match['automatic'])->map(fn ($match, $key) => $map[$key]);
+                        } catch (\LogicException $exception) {
+                            $warnings[] = 'Generated match records need recovery in the draw workspace.';
+                        }
+                    }
+                    $active = app(FlexibleMonradService::class)->activeRegistrationIds($draw, $graph['players'] ?? []);
+                    $pendingWithdrawals = count(array_diff($graph['players'] ?? [], $active, $graph['withdrawn'] ?? []));
+                    if ($pendingWithdrawals) $warnings[] = 'Review withdrawn players in the draw before continuing.';
+                }
+                $scheduled = $playable->filter(function ($id) use ($schedules) {
+                    $slot = $schedules->get($id);
+                    return $slot?->time && !empty($slot->court) && !empty($slot->venue_name);
+                })->count();
+            } else {
+                $playable = $matches->reject(fn ($fixture) => $fixture->winner_registration && (!$fixture->registration1_id || !$fixture->registration2_id));
+                $scheduled = $playable->filter(function ($fixture) use ($schedules) {
+                    $slot = $schedules->get($fixture->id);
+                    return $slot?->time && $slot->venue_id && trim((string) $slot->court) !== '';
+                })->count();
+            }
+            if (in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs'], true)
+                && app(GroupAssignmentService::class)->fixturesNeedRegeneration($draw, $matches->where('stage', 'RR'), $groups->get($draw->id, collect()))) $warnings[] = 'Saved groups differ from the generated matches.';
+            $generated = $matches->isNotEmpty() && $playable->isNotEmpty();
+            $category = (int) $draw->categoryEvent?->event_id === (int) $draw->event_id;
+            $eventWide = !$draw->category_event_id && in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs'], true);
+            $format = (bool) $draw->settings?->workflow || $generated || $draw->groups_count > 0 || $draw->settings?->draw_format_id;
+            $scheduleComplete = $generated && $scheduled === $playable->count();
+            $publication = $scheduleStates->get($draw->id, []);
+            $snapshotCurrent = ($publication['saved'] ?? 0) > 0 && ($publication['pending'] ?? 1) === 0
+                && ($publication['saved'] ?? 0) === ($publication['published'] ?? -1);
+            $flags = $this->completionFlags($draw, $category || $eventWide || $participants > 0 || $generated,
+                (bool) $format, $generated, $warnings, $scheduleComplete, $snapshotCurrent);
+            $complete = !in_array(false, $flags, true) && !($draw->team_scoring_rules['undecided'] ?? false);
+            return [$draw->id => ['complete' => $complete, 'pending_withdrawals' => $pendingWithdrawals]];
+        });
+    }
+
+    private function overviewGraphValid(mixed $graph, mixed $map): bool
+    {
+        if (!is_array($graph) || !is_array($map) || !is_array($graph['nodes'] ?? null) || !is_array($graph['players'] ?? null)
+            || !is_array($graph['positions'] ?? null) || !is_array($graph['withdrawn'] ?? [])
+            || !is_array($graph['base_positions'] ?? [])) return false;
+        $sourceValid = fn ($source) => is_array($source) && (($source['type'] ?? null) === 'player'
+            ? is_numeric($source['id'] ?? null)
+            : in_array($source['type'] ?? null, ['winner', 'loser'], true) && is_string($source['match'] ?? null) && isset($graph['nodes'][$source['match']]));
+        return collect($map)->every(fn ($id) => is_numeric($id))
+            && collect($graph['players'])->every(fn ($id) => is_numeric($id))
+            && collect($graph['nodes'])->every(fn ($node) => is_array($node) && is_array($node['sources'] ?? null)
+                && count($node['sources']) === 2 && collect($node['sources'])->every($sourceValid))
+            && collect($graph['positions'])->every($sourceValid) && collect($graph['base_positions'] ?? [])->every($sourceValid);
+    }
+
+    private function completionFlags(Draw $draw, bool $participantsReady, bool $formatReady, bool $generated, array $warnings, bool $scheduleComplete, bool $snapshotCurrent): array
+    {
+        return [true, $participantsReady, $formatReady, $generated && !$warnings, $scheduleComplete,
+            $generated && $scheduleComplete && $snapshotCurrent && !$warnings && $draw->published && $draw->oop_published];
+    }
+
     public function state(Draw $draw): array
     {
         $team = $draw->isTeamDraw();
@@ -58,13 +160,15 @@ final class DrawSetupGuide
         $eventWide = !$team && !$draw->category_event_id && in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs'], true);
         $scheduleComplete = $generated && $scheduled === $playable->count();
         $snapshotCurrent = $scheduleComplete && $this->snapshotCurrent($draw);
+        $flags = $this->completionFlags($draw, $category || $eventWide || (!$team && ($participants > 0 || $generated)),
+            (bool) $format, $generated, $warnings, $scheduleComplete, $snapshotCurrent);
         $steps = [
-            ['label' => 'Competition', 'complete' => true, 'detail' => $team ? 'Team tie' : 'Individual singles', 'url' => route('headOffice.show', $draw->event_id)],
-            ['label' => 'Participants', 'complete' => $category || $eventWide || (!$team && ($participants > 0 || $generated)), 'detail' => $category ? ($draw->categoryEvent?->category?->name ?? 'Category selected') : ($eventWide ? 'Players from multiple event categories.' : 'Choose the players or category for this draw.'), 'url' => $team ? route('draws.manage', $draw) : $workspace.'#groups'],
-            ['label' => 'Competition format', 'complete' => $format, 'detail' => $team ? 'Use the saved team tie format.' : (\App\Http\Controllers\Backend\DrawSetupController::OPTIONS[$draw->settings?->workflow][0] ?? ($format ? 'Existing draw format. Review it in the workspace.' : 'Choose how this draw will run.')), 'url' => $team ? route('draws.manage', $draw) : route('draw.setup.show', $draw)],
-            ['label' => 'Match setup', 'complete' => $generated && !$warnings, 'detail' => $generated ? $playable->count().' playable matches generated. Review pairings and positions.' : ($team ? 'Review the selected teams and create their ties.' : 'Place players and generate the draw. Monrad supports 4, 8, 16, 32 or 64 positions.'), 'url' => $workspace],
-            ['label' => 'Programme & schedule', 'complete' => $scheduleComplete, 'detail' => $scheduled.' / '.$playable->count().' playable matches have a time, venue and court.', 'url' => route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]])],
-            ['label' => 'Review & publish', 'complete' => $generated && $scheduleComplete && $snapshotCurrent && !$warnings && $draw->published && $draw->oop_published, 'detail' => $draw->oop_published && !$snapshotCurrent ? 'Saved match times differ from the published schedule. Review and publish the updates explicitly.' : 'Review the draw and match times, then publish each explicitly.', 'url' => $workspace],
+            ['label' => 'Competition', 'complete' => $flags[0], 'detail' => $team ? 'Team tie' : 'Individual singles', 'url' => route('headOffice.show', $draw->event_id)],
+            ['label' => 'Participants', 'complete' => $flags[1], 'detail' => $category ? ($draw->categoryEvent?->category?->name ?? 'Category selected') : ($eventWide ? 'Players from multiple event categories.' : 'Choose the players or category for this draw.'), 'url' => $team ? route('draws.manage', $draw) : $workspace.'#groups'],
+            ['label' => 'Competition format', 'complete' => $flags[2], 'detail' => $team ? 'Use the saved team tie format.' : (\App\Http\Controllers\Backend\DrawSetupController::OPTIONS[$draw->settings?->workflow][0] ?? ($format ? 'Existing draw format. Review it in the workspace.' : 'Choose how this draw will run.')), 'url' => $team ? route('draws.manage', $draw) : route('draw.setup.show', $draw)],
+            ['label' => 'Match setup', 'complete' => $flags[3], 'detail' => $generated ? $playable->count().' playable matches generated. Review pairings and positions.' : ($team ? 'Review the selected teams and create their ties.' : 'Place players and generate the draw. Monrad supports 4, 8, 16, 32 or 64 positions.'), 'url' => $workspace],
+            ['label' => 'Programme & schedule', 'complete' => $flags[4], 'detail' => $scheduled.' / '.$playable->count().' playable matches have a time, venue and court.', 'url' => route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]])],
+            ['label' => 'Review & publish', 'complete' => $flags[5], 'detail' => $draw->oop_published && !$snapshotCurrent ? 'Saved match times differ from the published schedule. Review and publish the updates explicitly.' : 'Review the draw and match times, then publish each explicitly.', 'url' => $workspace],
         ];
         if ($competition) {
             $steps[1]['detail'] = $competition['group'].' · combined boys and girls regional sides.';
@@ -84,7 +188,8 @@ final class DrawSetupGuide
             $steps[5]['complete'] = false;
         }
         $next = collect($steps)->search(fn ($step) => !$step['complete']);
-        return compact('steps', 'warnings', 'team', 'participants', 'generated', 'scheduleComplete', 'workspace', 'competition', 'linkedPlayoff', 'sourceDraw') + ['next' => $next === false ? 5 : $next];
+        $complete = $next === false;
+        return compact('steps', 'warnings', 'team', 'participants', 'generated', 'scheduleComplete', 'workspace', 'competition', 'linkedPlayoff', 'sourceDraw', 'complete') + ['next' => $next === false ? 5 : $next];
     }
 
     private function snapshotCurrent(Draw $draw): bool

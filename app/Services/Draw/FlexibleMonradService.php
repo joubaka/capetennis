@@ -49,6 +49,12 @@ final class FlexibleMonradService
                 ->whereNull('competition_replacement')->whereDoesntHave('categoryEvents')));
     }
 
+    /** Read-only roster membership without building the full workspace state. */
+    public function activeRegistrationIds(Draw $draw, array $ids): array
+    {
+        return $this->activeEntries($draw)->whereIn('registrations.id', $ids)->pluck('registrations.id')->all();
+    }
+
     private function categoryEntries(Draw $draw, bool $allowLegacyNullStatus = false, bool $requirePaid = true)
     {
         return Registration::query()->whereHas('categoryEvents', fn ($q) => $q
@@ -450,7 +456,7 @@ final class FlexibleMonradService
 
     private function withdrawn(Draw $draw, array $graph): array
     {
-        $active = $this->activeEntries($draw)->whereIn('registrations.id', $graph['players'])->pluck('registrations.id')->all();
+        $active = $this->activeRegistrationIds($draw, $graph['players']);
         // A reconciled withdrawal cannot silently re-enter an already played graph.
         return array_values(array_unique(array_merge($graph['withdrawn'] ?? [], array_diff($graph['players'], $active))));
     }

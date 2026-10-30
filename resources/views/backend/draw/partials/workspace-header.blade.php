@@ -20,7 +20,7 @@
       @can('replaceAlternate', $draw)
         <a class="btn btn-sm btn-outline-secondary" href="{{ route('draw.alternate.show', $draw) }}">Replace with alternate</a>
       @endcan
-      @can('event.manage', $draw->event)<a data-draw-guide-open class="btn btn-sm btn-outline-secondary" href="{{ route('draw.guide.show', [$draw->event_id, $draw]) }}">Continue setup</a>@endcan
+      @can('event.manage', $draw->event)<a data-draw-guide-open class="btn btn-sm btn-outline-secondary" href="{{ route('draw.guide.show', [$draw->event_id, $draw]) }}">Review setup</a>@endcan
       @if(!empty($rankingReference))
         <div class="dropdown draw-ranking-reference">
           <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
