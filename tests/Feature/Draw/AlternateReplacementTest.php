@@ -305,6 +305,13 @@ class AlternateReplacementTest extends TestCase
         $this->postJson(route('draw.alternate.store', $draw), $input)->assertConflict()
             ->assertJsonPath('message', 'This player is no longer active in the draw. Use the withdrawal workflow.');
         $this->assertSame($count, Registration::count());
+        $graph = $record->graph;
+        $graph['players'] = 'invalid legacy snapshot';
+        $record->update(['graph' => $graph]);
+        $this->postJson(route('draw.alternate.store', $draw), $input)->assertConflict()
+            ->assertJsonPath('message', 'This draw’s saved positions and fixtures are incomplete. Restore the draw before replacing a player.');
+        $this->assertSame($graph, $record->fresh()->graph);
+        $this->assertSame($count, Registration::count());
     }
 
     public function test_feed_in_replacement_cannot_use_foreign_or_different_player_entry_as_active_source(): void

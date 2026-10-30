@@ -118,6 +118,11 @@ final class AlternateReplacementService
     {
         $graph = $record->graph;
         $map = $record->fixture_map ?? [];
+        $message = 'This draw’s saved positions and fixtures are incomplete. Restore the draw before replacing a player.';
+        abort_unless(is_array($graph) && is_array($map) && is_array($graph['nodes'] ?? null)
+            && is_array($graph['players'] ?? null) && is_array($record->draft['slots'] ?? null)
+            && collect($map)->every(fn ($id) => is_numeric($id) && (int) $id > 0)
+            && collect($graph['players'])->every(fn ($id) => is_numeric($id) && (int) $id > 0), 409, $message);
         $nodes = $graph['nodes'] ?? [];
         $players = array_map('intval', $graph['players'] ?? []);
         $slots = $record->draft['slots'] ?? [];
@@ -130,7 +135,7 @@ final class AlternateReplacementService
             && count(array_keys($players, $outgoing, true)) === 1
             && collect($slots)->contains(fn ($slot) => ($slot['type'] ?? null) === 'player' && (int) ($slot['id'] ?? 0) === $outgoing)
             && collect($nodes)->contains(fn ($node) => collect($node['sources'] ?? [])->contains(fn ($source) => ($source['type'] ?? null) === 'player' && (int) ($source['id'] ?? 0) === $outgoing)),
-            409, 'This draw’s saved positions and fixtures are incomplete. Restore the draw before replacing a player.');
+            409, $message);
         abort_if(in_array($outgoing, array_map('intval', $graph['withdrawn'] ?? []), true)
             || in_array($outgoing, array_map('intval', array_keys($graph['late_withdrawals'] ?? [])), true),
             409, 'This player has already been withdrawn from the draw. Use the withdrawal workflow.');
