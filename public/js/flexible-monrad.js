@@ -663,7 +663,7 @@
         ['Match', String(match.number)],
         ['Players', players],
         ['Date', schedule.date || ''],
-        ['Time', schedule.time ? schedule.time + (visibleSchedule.preview === true ? ' (Preview)' : '') : ''],
+        ['Time', schedule.time ? schedule.time + (visibleSchedule?.preview === true ? ' (Preview)' : '') : ''],
         ['Venue', visibleSchedule?.venue || ''],
         ['Court', visibleSchedule?.court ? `Court ${visibleSchedule.court}` : ''],
       ];

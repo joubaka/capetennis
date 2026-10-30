@@ -23,7 +23,7 @@ test('Monrad public timetable excludes courts while organiser timetable retains 
     const el = (tag, css, text) => ({tag, text, dataset: {}, children: [], append(node) { this.children.push(node); }});
     new Function('$', 'el', 'state', 'config', 'matchParticipantLabel', 'scheduleParts', body(source, 'renderTimetable'))(
       () => root, el,
-      {matches: {one: {number: 1, players: [1, 2], schedule: {venue: 'Hermanus High School', court: 'PUBLIC-COURT-SENTINEL'}}}},
+      {matches: {one: {number: 1, players: [1, 2], schedule: {time: '2026-10-09 09:15:00', venue: 'Hermanus High School', court: 'PUBLIC-COURT-SENTINEL'}}}},
       {readOnly}, (match, slot) => `Player ${slot + 1}`, () => ({date: 'Fri 9 Oct', time: '09:15'})
     );
     return JSON.stringify(root);

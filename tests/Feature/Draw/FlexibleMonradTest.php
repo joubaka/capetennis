@@ -457,6 +457,17 @@ class FlexibleMonradTest extends TestCase
         $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
         $this->assertStringContainsString('private', $response->headers->get('Cache-Control'));
 
+        $otherSlot = \App\Models\OrderOfPlay::where('fixture_id', $record->fixture_map['main_b'])->sole();
+        $otherSlot->update(['court' => '7']);
+        $courtPreview = $this->get(route('public.flexible-monrad.show', $draw))->assertOk();
+        $courtMatch = collect($courtPreview->viewData('config')['state']['matches'])->firstWhere('id', $otherSlot->fixture_id);
+        $this->assertTrue($courtMatch['schedule']['preview']);
+        $sameNameVenue = DB::table('venues')->insertGetId(['name' => 'Shared courts', 'event_id' => $draw->event_id]);
+        $otherSlot->update(['court' => '1', 'venue_id' => $sameNameVenue]);
+        $venuePreview = $this->get(route('public.flexible-monrad.show', $draw))->assertOk();
+        $venueMatch = collect($venuePreview->viewData('config')['state']['matches'])->firstWhere('id', $otherSlot->fixture_id);
+        $this->assertTrue($venueMatch['schedule']['preview']);
+
         foreach ([$admin, User::factory()->create(), null] as $viewer) {
             if ($viewer) $this->actingAs($viewer); else auth()->logout();
             $public = $this->get(route('public.flexible-monrad.show', $draw))->assertOk();
