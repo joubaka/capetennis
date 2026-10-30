@@ -17,10 +17,10 @@
 @include('backend.draw.partials.workspace-header', ['workspaceSurface' => 'flexible'])
 <div id="flexible-draw-workspace" data-has-generated-draw="{{ $config['state']['generated'] ? '1' : '0' }}">
   <nav class="rr-workspace-nav mb-3" aria-label="Draw workspace">
-    <a href="{{ route('draw.setup.show', $draw) }}">Format</a>
-    <button type="button" data-flexible-tab="settings">Setup &amp; Rules</button>
     <button type="button" data-flexible-tab="groups">Players &amp; Positions</button>
     <button type="button" data-flexible-tab="matrix">Draw &amp; Results</button>
+    <button type="button" data-flexible-tab="schedule">Schedule</button>
+    <button type="button" data-flexible-tab="settings">Settings</button>
   </nav>
   <section data-flexible-panel="editor" class="fm-surface">
     <h2 class="fm-workspace-print-title">{{ $title }} · {{ $draw->event->name }}</h2>
@@ -45,7 +45,7 @@
   </section>
   <section data-flexible-panel="settings" class="card" hidden>
     <div class="card-body">
-      <h2 class="h5">Setup &amp; Rules</h2>
+      <h2 class="h5">Settings</h2>
       @can('update', $draw)
         <form method="POST" action="{{ route('draws.update', $draw) }}" class="mb-3">
           @csrf

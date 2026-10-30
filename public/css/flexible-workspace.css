@@ -17,6 +17,8 @@
 .rr-workspace-nav a { white-space: normal; }
 #flexible-draw-workspace [hidden] { display: none !important; }
 #flexible-draw-workspace .fm-surface { border-radius: 12px; }
+/* The header proxy retains the editor's revision-aware handler and hidden/disabled lifecycle. */
+#flexible-draw-workspace #fm-publish { display: none !important; }
 .fm-workspace-print-title { display: none; }
 #fm-timetable { overflow-x: auto; }
 #fm-timetable table { width: 100%; border-collapse: collapse; font-size: 14px; }

@@ -631,7 +631,12 @@
       link.hidden = !state.published && link.dataset.workspaceSchedulePublished !== '1';
       link.textContent = state.published ? 'Public view' : 'Preview times';
     });
-    document.querySelectorAll('[data-workspace-status]').forEach(label => { label.textContent = state.locked ? 'Locked' : state.published ? 'Published' : dirty ? 'Unsaved draft' : 'Draft'; });
+    document.querySelectorAll('[data-workspace-draw-status]').forEach(label => {
+      label.textContent = `Draw: ${state.published ? 'published' : 'unpublished'}`;
+      label.classList.toggle('bg-label-success', Boolean(state.published));
+      label.classList.toggle('bg-label-secondary', !state.published);
+    });
+    document.querySelectorAll('[data-workspace-lock-status]').forEach(label => { label.hidden = !state.locked; });
     // Fit the complete diagram to landscape paper; vertical pagination stays native.
     $('fm-board').style.setProperty('--ct-print-scale', Math.min(1, 980 / (parseFloat($('fm-board').style.width) || $('fm-board').offsetWidth || 980)));
   }
@@ -1051,9 +1056,9 @@
         state = await request(config.urls.publish, { revision: state.revision, published: !state.published });
         const text = state.published ? 'Draw published. Schedule publication is unchanged.' : 'Draw unpublished. Schedule publication is unchanged.';
         message(text);
-        document.querySelectorAll('[data-publication-status]').forEach(label => { label.textContent = text; label.classList.remove('text-danger'); });
+        document.querySelectorAll('[data-publication-status], [data-share-status]').forEach(label => { label.textContent = text; label.classList.remove('text-danger'); });
       } catch (error) {
-        document.querySelectorAll('[data-publication-status]').forEach(label => { label.textContent = error.message; label.classList.add('text-danger'); });
+        document.querySelectorAll('[data-publication-status], [data-share-status]').forEach(label => { label.textContent = error.message; label.classList.add('text-danger'); });
         throw error;
       }
     })

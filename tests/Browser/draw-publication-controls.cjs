@@ -16,7 +16,7 @@ test('draw and scheduler publication controls fit narrow screens and keep public
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     const css = ['public/assets/vendor/css/core.css', 'public/assets/vendor/css/theme-default.css',
-      'public/css/backend-workspace.css', 'public/css/mobile-workspace.css'].map(read).join('\n');
+      'public/css/backend-workspace.css', 'public/css/mobile-workspace.css', 'public/css/draw-workspace-navigation.css'].map(read).join('\n');
     for (const surface of ['header', 'scheduler']) {
       const markup = read(`storage/app/testing/draw-publication-${surface}.html`).replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
       for (const width of [320, 390, 430, 768, 1280]) {
@@ -37,12 +37,21 @@ test('draw and scheduler publication controls fit narrow screens and keep public
             return {ok: true, json: async () => ({published: true, revision: 3, oop_published: true})};
           };
         });
+        await page.addScriptTag({path: path.join(root, 'public/assets/vendor/libs/popper/popper.js')});
+        await page.addScriptTag({path: path.join(root, 'public/assets/vendor/js/bootstrap.js')});
         await page.addScriptTag({path: path.join(root, 'public/js/draw-workspace-navigation.js')});
+        if (surface === 'header') {
+          await page.getByRole('button', {name: 'Publish', exact: true}).click();
+          assert.equal(await page.getByRole('button', {name: 'Switch draw', exact: true}).count(), 1);
+          assert.equal(await page.getByRole('link', {name: 'Previous draw', exact: true}).count(), 0);
+          assert.equal(await page.getByRole('link', {name: 'Next draw', exact: true}).count(), 0);
+        } else {
+          assert.equal(await page.getByRole('link', {name: 'Previous draw', exact: true}).count(), 1);
+          assert.equal(await page.getByRole('link', {name: 'Next draw', exact: true}).count(), 1);
+        }
         assert.equal(await page.locator('[data-draw-publication]').count(), 1);
         assert.equal(await page.getByRole('button', {name: 'Publish draw', exact: true}).count(), 1);
         assert.equal(await page.getByRole('button', {name: 'Publish schedule', exact: true}).count(), 1);
-        assert.equal(await page.getByRole('link', {name: 'Previous draw', exact: true}).count(), 1);
-        assert.equal(await page.getByRole('link', {name: 'Next draw', exact: true}).count(), 1);
         assert.deepEqual(await page.evaluate(() => {
           const failures = [];
           if (document.documentElement.scrollWidth > innerWidth) failures.push('page overflow');
@@ -66,16 +75,26 @@ test('draw and scheduler publication controls fit narrow screens and keep public
           assert.deepEqual(body, {revision: 2, published: true});
           assert.equal(await schedule.getAttribute('aria-pressed'), 'false');
         }
+        if (surface === 'header' && !(await schedule.isVisible())) await page.getByRole('button', {name: 'Publish', exact: true}).click();
         await schedule.click();
         const publishedSchedule = page.getByRole('button', {name: 'Unpublish schedule', exact: true});
         await publishedSchedule.waitFor();
         const requestsBeforeFailure = await page.evaluate(() => requests.length);
         await page.evaluate(() => {window.failPublication = true;});
         await publishedSchedule.click();
-        await page.getByText('Publication test failure. Please retry.', {exact: true}).waitFor();
+        await page.getByText('Publication test failure. Please retry.', {exact: true}).first().waitFor();
         assert.equal(await publishedSchedule.getAttribute('aria-pressed'), 'true');
         assert.equal(await publishedSchedule.isEnabled(), true);
         assert.equal(await page.evaluate(() => requests.length), requestsBeforeFailure + 1, 'failure does not silently retry');
+        if (surface === 'header') {
+          await page.locator('summary').filter({hasText: 'More tools'}).click();
+          const alternate = page.getByRole('link', {name: 'Replace with alternate', exact: true});
+          await alternate.waitFor();
+          const bounds = await alternate.boundingBox();
+          assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width + 1, `tools fit at ${width}px`);
+          assert.equal(await page.locator('[data-workspace-draw-status]').textContent(), 'Draw: unpublished');
+          assert.equal(await page.locator('[data-workspace-schedule-status]').textContent(), 'Schedule: published');
+        }
       }
     }
     assert.deepEqual(errors, []);

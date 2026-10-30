@@ -27,6 +27,27 @@
 }
 .rr-workspace-nav > :focus-visible { outline: 2px solid #5144c7; outline-offset: 2px; }
 .draw-workspace-header [hidden] { display: none !important; }
+.draw-workspace-header { align-items: flex-start; }
+.draw-workspace-header .ct-page-actions { justify-content: flex-end; gap: 8px; }
+.draw-workspace-header .ct-page-meta { gap: 6px; }
+.draw-workspace-publication > .dropdown-menu { width: 260px; max-width: calc(100vw - 32px); }
+.draw-workspace-publication .dropdown-menu > button { display: block; width: 100%; text-align: left; margin-bottom: 8px; white-space: normal; min-height: 40px; }
+.draw-workspace-publication [data-publication-status] { display: block; padding: 4px 3px; font-size: 12px; line-height: 1.4; }
+.draw-workspace-tools { position: relative; }
+.draw-workspace-tools > summary { list-style: none; }
+.draw-workspace-tools > summary::-webkit-details-marker { display: none; }
+.draw-workspace-tools > summary::after { content: '▾'; margin-left: 8px; font-size: 10px; }
+.draw-workspace-tools-panel { position: absolute; top: calc(100% + 8px); right: 0; z-index: 1050; width: 280px; max-width: calc(100vw - 32px); max-height: 70vh; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; border: 1px solid #d9e1e9; border-radius: 10px; background: #fff; box-shadow: 0 12px 30px #25324b20; }
+.draw-workspace-tools-panel > .btn, .draw-workspace-tools-panel .draw-ranking-reference > button { width: 100%; min-height: 40px; text-align: left; }
+.draw-workspace-tools-panel .draw-ranking-menu { position: static !important; width: 100%; max-width: 100%; transform: none !important; margin-top: 8px !important; }
+.draw-workspace-tools-panel .draw-ranking-heading, .draw-workspace-tools-panel .draw-ranking-footer { flex-wrap: wrap; }
+@media (max-width: 600px) {
+  .draw-workspace-header .ct-page-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); justify-content: stretch; width: 100%; }
+  .draw-workspace-header .ct-page-actions > *, .draw-workspace-header .ct-page-actions > .dropdown > button, .draw-workspace-header .ct-page-actions > details > summary { width: 100%; }
+  .draw-workspace-header .ct-page-actions > [data-draw-next-schedule] { grid-column: 1 / -1; }
+  .draw-workspace-tools-panel { position: fixed; top: auto; left: 16px; right: 16px; width: auto; max-width: none; margin-top: 8px; }
+  .draw-workspace-publication > .dropdown-menu { inset: calc(100% + 8px) auto auto 0 !important; transform: none !important; }
+}
 @media (max-width: 600px) {
   .rr-workspace-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rr-workspace-nav > button, .rr-workspace-nav > a { padding: 12px 8px; font-size: 13px; }

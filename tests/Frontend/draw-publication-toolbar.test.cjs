@@ -13,9 +13,10 @@ function control(dataset = {}, textContent = '') {
     closest() {return {querySelector: () => status};}, status,
   };
 }
-function page({draws = [], schedules = [], proxies = [], links = [], editor = null, fetch = async () => {throw Error('Unexpected request');}, hash = '#schedule'} = {}) {
+function page({draws = [], schedules = [], proxies = [], links = [], drawBadges = [], scheduleBadges = [], editor = null, fetch = async () => {throw Error('Unexpected request');}, hash = '#schedule'} = {}) {
   const map = {'[data-workspace-publish-draw]': draws, '[data-workspace-publish-schedule]': schedules,
-    '[data-workspace-publish-draw-proxy]': proxies, '[data-workspace-switch]': links};
+    '[data-workspace-publish-draw-proxy]': proxies, '[data-workspace-switch]': links,
+    '[data-workspace-draw-status]': drawBadges, '[data-workspace-schedule-status]': scheduleBadges};
   const context = {URLSearchParams, location: {search: '', hash}, document: {
     querySelectorAll: selector => map[selector] || [],
     querySelector: selector => selector === 'meta[name="csrf-token"]' ? {content: 'csrf'} : null,
@@ -24,7 +25,7 @@ function page({draws = [], schedules = [], proxies = [], links = [], editor = nu
   vm.runInNewContext(source, context);
   return context;
 }
-test('previous and next draw keep recognized workspace context only', () => {
+test('switch draw links keep recognized workspace context only', () => {
   for (const [hash, expected] of [['#schedule', 'schedule'], ['#matrix', 'matrix'], ['#unknown', undefined]]) {
     const links = [control(), control()]; page({links, hash});
     links.forEach(link => link.listeners.click());
@@ -41,7 +42,8 @@ test('standalone flexible publication sends rendered revision and keeps schedule
   const draw = control({workspacePublishDraw: '/draw/19/flexible/publish', flexibleRevision: '2', published: '0'}, 'Publish draw');
   const schedule = control({workspacePublishSchedule: '/draw/19/schedule'}, 'Publish schedule');
   let request;
-  page({draws: [draw], schedules: [schedule], fetch: async (url, options) => {
+  const drawBadge = control({}, 'Draw: unpublished'), scheduleBadge = control({}, 'Schedule: published');
+  page({draws: [draw], schedules: [schedule], drawBadges: [drawBadge], scheduleBadges: [scheduleBadge], fetch: async (url, options) => {
     request = {url, body: JSON.parse(options.body)};
     return {ok: true, json: async () => ({published: true, revision: 3})};
   }});
@@ -49,6 +51,7 @@ test('standalone flexible publication sends rendered revision and keeps schedule
   assert.deepEqual(request, {url: '/draw/19/flexible/publish', body: {revision: 2, published: true}});
   assert.equal(draw.dataset.flexibleRevision, '3'); assert.equal(draw.attrs['aria-pressed'], 'true');
   assert.equal(draw.textContent, 'Unpublish draw'); assert.equal(schedule.textContent, 'Publish schedule');
+  assert.equal(drawBadge.textContent, 'Draw: published'); assert.equal(scheduleBadge.textContent, 'Schedule: published');
 });
 test('stale publication does not retry with a fresh revision or change displayed state', async () => {
   const draw = control({workspacePublishDraw: '/flexible/publish', flexibleRevision: '2', published: '0'}, 'Publish draw');
@@ -63,13 +66,15 @@ test('schedule publication synchronizes duplicate controls and blocks duplicate 
   const second = control({workspacePublishSchedule: '/draw/19/schedule'}, 'Publish schedule');
   const foreign = control({workspacePublishSchedule: '/draw/20/schedule'}, 'Publish schedule');
   let resolve, calls = 0;
-  page({schedules: [first, second, foreign], fetch: () => {calls++; return new Promise(done => {resolve = done;});}});
+  const drawBadge = control({}, 'Draw: unpublished'), scheduleBadge = control({}, 'Schedule: unpublished');
+  page({schedules: [first, second, foreign], drawBadges: [drawBadge], scheduleBadges: [scheduleBadge], fetch: () => {calls++; return new Promise(done => {resolve = done;});}});
   const pending = first.listeners.click();
   assert.equal(first.disabled, true); assert.equal(second.disabled, true); assert.equal(foreign.disabled, false);
   await second.listeners.click(); assert.equal(calls, 1);
   resolve({ok: true, json: async () => ({oop_published: true, preview_only: true})}); await pending;
   assert.equal(first.textContent, 'Unpublish schedule'); assert.equal(second.attrs['aria-pressed'], 'true');
   assert.equal(foreign.textContent, 'Publish schedule'); assert.equal(first.disabled, false);
+  assert.equal(drawBadge.textContent, 'Draw: unpublished'); assert.equal(scheduleBadge.textContent, 'Schedule: published');
 });
 test('flexible editor state keeps the visible draw toggle synchronized', () => {
   const editorSource = fs.readFileSync('public/js/flexible-monrad.js', 'utf8');

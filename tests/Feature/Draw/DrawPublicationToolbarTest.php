@@ -34,7 +34,7 @@ class DrawPublicationToolbarTest extends TestCase
         return [$event, $draw->fresh(), $actor];
     }
 
-    public function test_feed_in_toolbar_has_visible_independent_toggles_and_same_event_draw_navigation(): void
+    public function test_feed_in_header_groups_independent_toggles_and_same_event_draw_navigation(): void
     {
         [$event, $draw] = $this->scenario();
         $next = Draw::factory()->create(['event_id' => $event->id, 'drawName' => 'U/19 Girls']);
@@ -45,12 +45,22 @@ class DrawPublicationToolbarTest extends TestCase
         $this->assertStringContainsString('data-workspace-publish-draw-proxy', $html);
         $this->assertStringContainsString('data-workspace-publish-schedule', $html);
         $this->assertLessThan(strpos($html, 'data-individual-draw-tools'), strpos($html, 'data-draw-publication'));
-        $this->assertStringContainsString('Draw 2 of 3', $html);
+        $this->assertStringContainsString('data-publication-review-toggle', $html);
+        $this->assertStringContainsString('Draw: unpublished', $html);
+        $this->assertStringContainsString('Schedule: unpublished', $html);
+        $this->assertStringContainsString('>Switch draw</button>', $html);
+        $this->assertStringNotContainsString('Previous draw', $html);
+        $this->assertStringNotContainsString('Next draw', $html);
+        $this->assertStringNotContainsString('Step 4 of 5', $html);
+        $this->assertStringNotContainsString('Draw 2 of 3', $html);
+        $this->assertStringContainsString('data-draw-next-schedule', $html);
+        $this->assertGreaterThan(strpos($html, 'data-individual-draw-tools'), strpos($html, 'Replace with alternate'));
         foreach ([$previous, $next] as $other) $this->assertStringContainsString(route('backend.draw.roundrobin.show', $other), $html);
         $this->assertStringNotContainsString('PRIVATE FOREIGN DRAW', $html);
         $scheduler = view('backend.schedule.partials.draw-controls', ['event' => $event, 'guideSelection' => collect([$draw]), 'planningDate' => '2026-10-30'])->render();
         $this->assertStringContainsString(route('flexible-monrad.publish', $draw), $scheduler);
         $this->assertStringContainsString('data-flexible-revision="2"', $scheduler);
+        $this->assertStringNotContainsString('data-publication-review-toggle', $scheduler);
         $this->assertStringContainsString('date=2026-10-30', $scheduler);
         $this->assertStringNotContainsString('PRIVATE FOREIGN DRAW', $scheduler);
         $this->assertFalse((bool) $draw->fresh()->published);
@@ -62,7 +72,7 @@ class DrawPublicationToolbarTest extends TestCase
         }
     }
 
-    public function test_first_and_last_draw_navigation_have_disabled_boundaries_and_unauthorized_users_have_no_publish_controls(): void
+    public function test_single_switch_replaces_boundary_controls_and_unauthorized_users_have_no_publish_controls(): void
     {
         [$event, $first] = $this->scenario();
         $first->update(['drawName' => 'A draw']);
@@ -70,14 +80,28 @@ class DrawPublicationToolbarTest extends TestCase
         foreach ([$first, $last] as $draw) {
             $draw->setRelation('event', $event->fresh());
             $html = view('backend.draw.partials.workspace-header', compact('draw'))->render();
-            $this->assertStringContainsString('aria-disabled="true"', $html);
-            $this->assertStringContainsString($draw->id === $first->id ? 'Draw 1 of 2' : 'Draw 2 of 2', $html);
+            $this->assertSame(1, substr_count($html, '>Switch draw</button>'));
+            $this->assertStringNotContainsString('Previous draw', $html);
+            $this->assertStringNotContainsString('Next draw', $html);
+            $this->assertStringNotContainsString('Draw 1 of 2', $html);
         }
         $this->actingAs(User::factory()->create()->assignRole('admin'));
         $html = view('backend.draw.partials.publication-controls', ['publicationDraw' => $first])->render();
         $this->assertStringNotContainsString('data-workspace-publish', $html);
         $this->postJson(route('flexible-monrad.publish', $first), ['revision' => 2, 'published' => true])->assertForbidden();
         $this->postJson(route('draw.toggle.publish.schedule', $first))->assertForbidden();
+    }
+
+    public function test_locked_header_keeps_draw_and_schedule_publication_status_separate(): void
+    {
+        [, $draw] = $this->scenario();
+        $draw->update(['locked' => true, 'published' => false, 'oop_published' => true]);
+        $html = view('backend.draw.partials.workspace-header', ['draw' => $draw, 'workspaceSurface' => 'flexible'])->render();
+        $this->assertStringContainsString('data-workspace-draw-status>Draw: unpublished', $html);
+        $this->assertStringContainsString('data-workspace-schedule-status>Schedule: published', $html);
+        $this->assertStringContainsString('data-workspace-lock-status >Locked', $html);
+        $this->assertFalse((bool) $draw->fresh()->published);
+        $this->assertTrue((bool) $draw->fresh()->oop_published);
     }
 
     public function test_canonical_flexible_publication_remains_revision_guarded_and_independent_of_saved_schedule(): void

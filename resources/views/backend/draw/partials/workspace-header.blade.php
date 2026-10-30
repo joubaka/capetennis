@@ -1,24 +1,26 @@
-@include('backend.draw.partials.alternate-button')
 @php
   $workspaceUrl = route('backend.draw.roundrobin.show', $draw);
   $flexibleWorkspace = $draw->usesFlexibleMonrad();
   $workspacePublicationSurface = $workspaceSurface ?? ($flexibleWorkspace ? 'flexible' : 'standalone');
   $workspaceDraws = $draw->event->draws->where('event_id', $draw->event_id)->sort(fn ($left, $right) => strnatcasecmp($left->drawName, $right->drawName) ?: $left->id <=> $right->id)->values();
-  $workspaceDrawIndex = $workspaceDraws->search(fn ($item) => $item->id === $draw->id);
-  $workspacePrevious = $workspaceDrawIndex > 0 ? $workspaceDraws[$workspaceDrawIndex - 1] : null;
-  $workspaceNext = $workspaceDrawIndex !== false && $workspaceDrawIndex < $workspaceDraws->count() - 1 ? $workspaceDraws[$workspaceDrawIndex + 1] : null;
 @endphp
 <x-backend.page-header :title="$draw->drawName" :subtitle="$draw->event->name" eyebrow="Draw workspace" icon="ti-tournament" class="draw-workspace-header" data-backend-wide data-workspace-context="{{ $workspaceContext ?? '' }}">
   <x-slot:meta>
-    <span class="badge bg-label-secondary" data-workspace-status>{{ $draw->locked ? 'Locked' : ($draw->published ? 'Published' : 'Draft') }}</span>
+    <span class="badge {{ $draw->published ? 'bg-label-success' : 'bg-label-secondary' }}" data-workspace-draw-status>Draw: {{ $draw->published ? 'published' : 'unpublished' }}</span>
+    <span class="badge {{ $draw->oop_published ? 'bg-label-success' : 'bg-label-secondary' }}" data-workspace-schedule-status>Schedule: {{ $draw->oop_published ? 'published' : 'unpublished' }}</span>
+    <span class="badge bg-label-warning" data-workspace-lock-status @if(!$draw->locked) hidden @endif>Locked</span>
     <span class="small text-muted" role="status" data-share-status></span>
   </x-slot:meta>
   <x-slot:actions>
-      @can('event.manage', $draw->event)<a data-draw-guide-open class="btn btn-sm btn-primary" href="{{ route('draw.guide.show', [$draw->event_id, $draw]) }}">Continue setup</a>@endcan
-      @include('backend.draw.partials.publication-controls', ['publicationDraw' => $draw, 'publicationSurface' => $workspacePublicationSurface])
-      @unless($draw->isTeamDraw())
-        <details data-individual-draw-tools @if(request('review') === 'publication') open @endif><summary class="btn btn-sm btn-outline-secondary">More tools</summary><div class="d-flex flex-wrap gap-2 pt-2">
-      @endunless
+      @can('event.manage', $draw->event)
+        <a class="btn btn-sm btn-primary" data-draw-next-schedule @if(!$draw->isTeamDraw() && !$draw->drawFixtures()->exists()) hidden @endif href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]) }}">Schedule matches</a>
+      @endcan
+      @include('backend.draw.partials.publication-controls', ['publicationDraw' => $draw, 'publicationSurface' => $workspacePublicationSurface, 'publicationDropdown' => true])
+      <details class="draw-workspace-tools" data-individual-draw-tools><summary class="btn btn-sm btn-outline-secondary">More tools</summary><div class="draw-workspace-tools-panel">
+      @can('replaceAlternate', $draw)
+        <a class="btn btn-sm btn-outline-secondary" href="{{ route('draw.alternate.show', $draw) }}">Replace with alternate</a>
+      @endcan
+      @can('event.manage', $draw->event)<a data-draw-guide-open class="btn btn-sm btn-outline-secondary" href="{{ route('draw.guide.show', [$draw->event_id, $draw]) }}">Continue setup</a>@endcan
       @if(!empty($rankingReference))
         <div class="dropdown draw-ranking-reference">
           <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
@@ -71,24 +73,17 @@
         @can('lockToggle', $draw)
           <button type="button" class="btn btn-sm {{ $draw->locked ? 'btn-danger' : 'btn-outline-secondary' }}" id="btn-toggle-lock"><span id="lock-label">{{ $draw->locked ? 'Unlock' : 'Lock' }}</span></button>
         @endcan
-        <span id="badge-locked" class="d-none"></span><span id="badge-published" class="d-none"></span>
+        <span id="badge-locked" class="d-none" hidden></span><span id="badge-published" class="d-none" hidden></span>
       @endif
       @if($flexibleWorkspace)
         @can('lockToggle', $draw)
           <button type="button" class="btn btn-sm btn-outline-secondary" data-workspace-lock="{{ route('backend.draw.toggle-lock', $draw) }}">{{ $draw->locked ? 'Unlock draw' : 'Lock draw' }}</button>
         @endcan
       @endif
-      @unless($draw->isTeamDraw())
-        </div></details>
-      @endunless
+      </div></details>
       @if($workspaceDraws->count() > 1)
-        <nav class="d-flex flex-wrap align-items-center gap-2" aria-label="Draw navigation">
-          @if($workspacePrevious)<a class="btn btn-sm btn-outline-primary" href="{{ route('backend.draw.roundrobin.show', $workspacePrevious) }}" data-workspace-switch title="{{ $workspacePrevious->drawName }}">Previous draw</a>@else<span class="btn btn-sm btn-outline-secondary disabled" aria-disabled="true">Previous draw</span>@endif
-          <span class="small text-muted">Draw {{ $workspaceDrawIndex + 1 }} of {{ $workspaceDraws->count() }}</span>
-          @if($workspaceNext)<a class="btn btn-sm btn-outline-primary" href="{{ route('backend.draw.roundrobin.show', $workspaceNext) }}" data-workspace-switch title="{{ $workspaceNext->drawName }}">Next draw</a>@else<span class="btn btn-sm btn-outline-secondary disabled" aria-disabled="true">Next draw</span>@endif
-        </nav>
         <div class="dropdown">
-          <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown">Switch Draw ({{ $workspaceDraws->count() }})</button>
+          <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Switch draw</button>
           <ul class="dropdown-menu dropdown-menu-end">
             @foreach($workspaceDraws as $otherDraw)
               <li><a class="dropdown-item {{ $otherDraw->id === $draw->id ? 'active' : '' }}" href="{{ route('backend.draw.roundrobin.show', $otherDraw) }}" data-workspace-switch>{{ $otherDraw->drawName }}</a></li>
@@ -99,16 +94,6 @@
       <a class="btn btn-sm btn-outline-secondary" href="{{ route('headOffice.show', $draw->event_id) }}">Back to draws</a>
   </x-slot:actions>
 </x-backend.page-header>
-@unless($draw->isTeamDraw())
-  @can('event.manage', $draw->event)
-    <section class="alert alert-info" data-draw-next-schedule @if(!$draw->drawFixtures()->exists()) hidden @endif aria-label="Next step: schedule matches">
-      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
-      <div><strong>Step 4 of 5 · Schedule</strong><p class="mb-0">Review the generated draw, then set match times, venues and courts.</p></div>
-      <a class="btn btn-primary" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]) }}">Schedule matches</a>
-      </div>
-    </section>
-  @endcan
-@endunless
 @once
   <link rel="stylesheet" href="{{ asset('css/draw-workspace-navigation.css') }}?v={{ filemtime(public_path('css/draw-workspace-navigation.css')) }}">
   <script src="{{ asset('js/draw-workspace-navigation.js') }}?v={{ filemtime(public_path('js/draw-workspace-navigation.js')) }}" defer></script>

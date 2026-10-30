@@ -12,16 +12,24 @@
   const status = document.querySelector('[data-share-status]');
   const publicationStatus = (button, message, failed = false) => {
     const target = button.closest('[data-draw-publication]')?.querySelector('[data-publication-status]') || status;
-    if (!target) return;
-    target.textContent = message;
-    target.classList.toggle('text-danger', failed);
-    target.classList.toggle('text-muted', !failed);
+    [...new Set([target, status].filter(Boolean))].forEach(label => {
+      label.textContent = message;
+      label.classList.toggle('text-danger', failed);
+      label.classList.toggle('text-muted', !failed);
+    });
   };
   const paintPublication = (button, published, kind) => {
     button.textContent = `${published ? 'Unpublish' : 'Publish'} ${kind}`;
     button.setAttribute('aria-pressed', String(published));
     button.classList.toggle('btn-success', published);
     button.classList.toggle('btn-outline-primary', !published);
+  };
+  const paintPublicationBadge = (kind, published) => {
+    document.querySelectorAll(`[data-workspace-${kind}-status]`).forEach(label => {
+      label.textContent = `${kind === 'draw' ? 'Draw' : 'Schedule'}: ${published ? 'published' : 'unpublished'}`;
+      label.classList.toggle('bg-label-success', published);
+      label.classList.toggle('bg-label-secondary', !published);
+    });
   };
   document.querySelectorAll('[data-workspace-publish-draw-proxy]').forEach(button => button.addEventListener('click', () => {
     const editorButton = document.getElementById('fm-publish');
@@ -42,7 +50,7 @@
       button.dataset.published = data.published ? '1' : '0';
       if (flexible) button.dataset.flexibleRevision = String(data.revision);
       paintPublication(button, Boolean(data.published), 'draw');
-      document.querySelectorAll('[data-workspace-status]').forEach(label => { label.textContent = data.published ? 'Published' : 'Draft'; });
+      paintPublicationBadge('draw', Boolean(data.published));
       document.querySelectorAll('[data-share-draw]').forEach(item => { item.disabled = !data.published; });
       document.querySelectorAll('[data-workspace-public]').forEach(link => {
         link.dataset.workspaceDrawPublished = data.published ? '1' : '0';
@@ -81,6 +89,7 @@
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'Publication failed.');
       siblings.forEach(item => paintPublication(item, Boolean(data.oop_published), 'schedule'));
+      paintPublicationBadge('schedule', Boolean(data.oop_published));
       document.querySelectorAll('[data-workspace-public]').forEach(link => {
         link.dataset.workspaceSchedulePublished = data.oop_published ? '1' : '0';
         link.hidden = link.dataset.workspaceDrawPublished !== '1' && !data.oop_published;

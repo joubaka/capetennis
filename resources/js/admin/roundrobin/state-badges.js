@@ -16,6 +16,12 @@
 
   // ─── Apply badge state ────────────────────────────────────────────
   function applyDrawState(locked, published) {
+    document.querySelectorAll('[data-workspace-lock-status]').forEach(function (label) { label.hidden = !locked; });
+    document.querySelectorAll('[data-workspace-draw-status]').forEach(function (label) {
+      label.textContent = 'Draw: ' + (published ? 'published' : 'unpublished');
+      label.classList.toggle('bg-label-success', !!published);
+      label.classList.toggle('bg-label-secondary', !published);
+    });
     var $lb = $('#badge-locked');
     if (locked) {
       $lb.removeClass('d-none').addClass('bg-danger')
