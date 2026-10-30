@@ -38,7 +38,9 @@ class FlexibleMonradController extends Controller
         }
         abort_unless($draw->flexibleMonrad?->graph, 404);
         $response = response($this->page($draw, true));
-        if (! $draw->published) $response->headers->set('Cache-Control', 'private, no-store, max-age=0');
+        if (! $draw->published || auth()->user()?->hasRole('super-user')) {
+            $response->headers->set('Cache-Control', 'private, no-store, max-age=0');
+        }
         return $response;
     }
 
@@ -170,6 +172,14 @@ class FlexibleMonradController extends Controller
             $state['players'] = $state['players']->whereIn('id', $ids)->values();
             unset($state['revision']);
             $fixtures = $draw->drawFixtures()->with('orderOfPlay.venue')->get();
+            $workingSchedules = auth()->user()?->hasRole('super-user')
+                ? $fixtures->mapWithKeys(function ($fixture) use ($draw) {
+                    $slot = $fixture->orderOfPlay;
+                    return $slot?->time && (int) $slot->draw_id === (int) $draw->id
+                        ? [$fixture->id => ['schedule' => ['time' => $slot->time, 'court' => $slot->court, 'venue' => $slot->venue?->name],
+                            'venue_id' => (int) $slot->venue_id]]
+                        : [];
+                }) : collect();
             if (! $draftPreview) app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($fixtures);
             $fixtures = $fixtures->keyBy('id');
             foreach ($state['matches'] as &$match) {
@@ -198,6 +208,21 @@ class FlexibleMonradController extends Controller
                     unset($match);
                 }
             }
+            // Overlay working times only for super-admins, after the ordinary public projection.
+            // Comparing with that projection also labels times hidden by public visibility rules.
+            foreach ($state['matches'] as &$match) {
+                $working = $workingSchedules->get((int) $match['id']);
+                if ($working) {
+                    $published = $match['schedule'] ?? null;
+                    $publishedVenueId = (int) $fixtures->get((int) $match['id'])?->orderOfPlay?->venue_id;
+                    $match['schedule'] = $working['schedule'];
+                    $match['schedule_hidden'] = false;
+                    if ($draftPreview || $published !== $working['schedule'] || $publishedVenueId !== $working['venue_id']) {
+                        $match['schedule']['preview'] = true;
+                    }
+                }
+            }
+            unset($match);
         }
         if (! $public) $draw->loadMissing('event.draws', 'event.series', 'categoryEvent.category');
         return view($public ? 'backend.draw.flexible-monrad' : 'backend.draw.flexible-workspace', [
@@ -209,6 +234,7 @@ class FlexibleMonradController extends Controller
             'notes' => $draw->settings?->notes ?? [],
             'setupUrl' => $public ? null : route('draw.setup.show', $draw),
             'demo' => false, 'readOnly' => $public,
+            'canPreviewSchedule' => $public && (auth()->user()?->hasRole('super-user') ?? false),
             'canEdit' => ! $public && auth()->user()->can('view', $draw),
             'canAddPlayer' => ! $public && (auth()->user()->hasRole('super-user') || auth()->user()->is_event_admin($draw->event_id)),
             'paidEntryRequired' => ! $public && $draw->event->isInterprovincialTrials(),

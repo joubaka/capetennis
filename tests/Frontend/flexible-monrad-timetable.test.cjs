@@ -42,3 +42,12 @@ test('scheduled timetable retains date time venue and admin court, with venue in
   assert.equal(publicRows[0].children.length, 5);
   assert.equal(publicRows[0].children[4].text, 'Bloemhof');
 });
+
+test('private schedule preview is marked immediately after the time in bracket and timetable', () => {
+  const schedule = {time: '2026-10-31 08:30:00', venue: 'Bloemhof', court: '2', preview: true};
+  const {rows, context} = timetable([{number: 1, players: [1, 2], schedule}]);
+  assert.equal(rows[0].children[3].text, '08:30 (Preview)');
+  context.schedule = schedule;
+  assert.match(vm.runInContext('scheduleLabel(schedule, true)', context), /08:30 \(Preview\) · Bloemhof/);
+  assert.doesNotMatch(vm.runInContext('scheduleLabel({...schedule, preview: false}, true)', context), /Preview/);
+});

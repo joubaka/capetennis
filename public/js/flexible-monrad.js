@@ -406,7 +406,8 @@
   function scheduleLabel(schedule, includeVenue = false) {
     const parts = scheduleParts(schedule);
     if (!parts.date) return '';
-    return [parts.time ? `${parts.date} ${parts.time}` : parts.date, includeVenue ? schedule.venue : null, !config.readOnly && schedule.court ? `Court ${schedule.court}` : null]
+    const preview = schedule.preview === true ? ' (Preview)' : '';
+    return [(parts.time ? `${parts.date} ${parts.time}` : parts.date) + preview, includeVenue ? schedule.venue : null, !config.readOnly && schedule.court ? `Court ${schedule.court}` : null]
       .filter(Boolean).join(' · ');
   }
   function matchParticipantLabel(match, slot) {
@@ -662,7 +663,7 @@
         ['Match', String(match.number)],
         ['Players', players],
         ['Date', schedule.date || ''],
-        ['Time', schedule.time || ''],
+        ['Time', schedule.time ? schedule.time + (visibleSchedule.preview === true ? ' (Preview)' : '') : ''],
         ['Venue', visibleSchedule?.venue || ''],
         ['Court', visibleSchedule?.court ? `Court ${visibleSchedule.court}` : ''],
       ];

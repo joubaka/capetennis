@@ -433,6 +433,62 @@ class FlexibleMonradTest extends TestCase
         $this->get(route('public.flexible-monrad.show', $draw))->assertForbidden();
     }
 
+    public function test_super_user_sees_private_saved_times_on_the_public_bracket_without_publishing_or_leaking_them(): void
+    {
+        [$draw, $record] = $this->setupScheduledDraw();
+        $admin = auth()->user();
+        $draw->update(['published' => true]);
+        $publication = app(\App\Services\Scheduling\SchedulePublicationService::class);
+        $publication->publish($draw->event, ['draw_id' => $draw->id]);
+        $fixtureId = $record->fixture_map['main_a'];
+        $slot = \App\Models\OrderOfPlay::where('fixture_id', $fixtureId)->sole();
+        $slot->update(['time' => '2026-09-06 14:45:00', 'court' => '8']);
+        $before = DB::table('published_schedule_assignments')->get()->toJson();
+        Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        $super = User::factory()->create()->assignRole('super-user');
+
+        $response = $this->actingAs($super)->get(route('public.flexible-monrad.show', $draw))->assertOk();
+        $matches = $response->viewData('config')['state']['matches'];
+        $match = collect($matches)->firstWhere('id', $fixtureId);
+        $this->assertSame('2026-09-06 14:45:00', $match['schedule']['time']);
+        $this->assertTrue($match['schedule']['preview']);
+        $unchanged = collect($matches)->firstWhere('id', $record->fixture_map['main_b']);
+        $this->assertArrayNotHasKey('preview', $unchanged['schedule']);
+        $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
+        $this->assertStringContainsString('private', $response->headers->get('Cache-Control'));
+
+        foreach ([$admin, User::factory()->create(), null] as $viewer) {
+            if ($viewer) $this->actingAs($viewer); else auth()->logout();
+            $public = $this->get(route('public.flexible-monrad.show', $draw))->assertOk();
+            $public->assertDontSee('2026-09-06 14:45:00')->assertDontSee('"preview":true', false);
+            $publicMatch = collect($public->viewData('config')['state']['matches'])->firstWhere('id', $fixtureId);
+            $this->assertSame('2026-09-05 08:00:00', $publicMatch['schedule']['time']);
+        }
+        $this->assertSame($before, DB::table('published_schedule_assignments')->get()->toJson());
+        $this->assertSame('2026-09-06 14:45:00', $slot->fresh()->time);
+    }
+
+    public function test_super_user_preview_works_when_no_times_are_published_and_rejects_foreign_draw_slots(): void
+    {
+        [$draw, $record] = $this->setupScheduledDraw();
+        $draw->update(['published' => true, 'oop_published' => false]);
+        Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        $this->actingAs(User::factory()->create()->assignRole('super-user'));
+        $url = route('public.flexible-monrad.show', $draw);
+        $response = $this->get($url)->assertOk()->assertSee('id="fm-timetable"', false);
+        $match = collect($response->viewData('config')['state']['matches'])->firstWhere('id', $record->fixture_map['main_a']);
+        $this->assertTrue($match['schedule']['preview']);
+        $this->assertFalse($match['schedule_hidden']);
+        $foreign = Draw::factory()->create();
+        \App\Models\OrderOfPlay::where('fixture_id', $record->fixture_map['main_a'])
+            ->update(['draw_id' => $foreign->id, 'time' => '2026-09-07 17:43:00']);
+        $this->get($url)->assertOk()->assertDontSee('2026-09-07 17:43:00');
+        auth()->logout();
+        $this->get($url)->assertOk()->assertDontSee('2026-09-05 08:00:00')->assertDontSee('"preview":true', false);
+        $this->assertDatabaseCount('published_schedule_assignments', 0);
+        $this->assertFalse((bool) $draw->fresh()->oop_published);
+    }
+
     public function test_workspace_shows_the_active_series_ranking_for_the_draw_category(): void
     {
         [$draw, $draft] = $this->setupDraw();

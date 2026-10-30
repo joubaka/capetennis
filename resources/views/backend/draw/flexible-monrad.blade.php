@@ -26,7 +26,7 @@
       Find your name, then confirm the date, time, venue and court.
       Dates, times and venues stay blank until the schedule is available.
     </p>
-    @if($draw->oop_published)
+    @if($draw->oop_published || ($config['canPreviewSchedule'] ?? false))
       <div id="fm-timetable"></div>
     @else
       <div class="fm-public-schedule-pending" role="status">
