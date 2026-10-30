@@ -34,6 +34,9 @@ final class DrawRulesService
         if ($roundRobin) {
             $add('round_robin', 'Round Robin scoring rules', $timed ? 'Players play the other players in their group for the saved match duration. Most games wins; equal games are a draw. Standings award 2 points for a win, 1 for a draw and 0 for a loss. Existing head-to-head, sets percentage and games percentage tiebreaks apply within equal-points groups.' : 'Players play the other players in their group. Standings are ordered by matches won, then percentage of sets won, then percentage of games won, then head-to-head. Players still tied remain equal until the tie is resolved.');
         }
+        if ($draw->isTwoStageRoundRobin()) {
+            $add('second_round_robin', 'Two-stage round robin', 'Complete every first-stage match and resolve all tied positions before confirming progression. All first-place finishers enter second-stage Group 1, all second-place finishers Group 2, and so on. Results start afresh in each second-stage group. Group 1 determines the highest final positions, followed by Group 2 and the remaining groups. First-stage results and memberships are frozen after progression. Second-stage fixtures become available for scheduling after progression.');
+        }
         if ($roundRobin && ! $draw->isRoundRobinOnly()) {
             $brackets = collect($settings?->playoff_config ?? [])->filter(fn ($bracket) => is_array($bracket) && ($bracket['enabled'] ?? false));
             if ($brackets->isNotEmpty()) {

@@ -11,6 +11,8 @@ use App\Models\Player;
 use App\Services\InterprovincialTrials\InvitationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Crypt;
+use App\Services\InterprovincialTrials\PreviousResultsNominationService;
 
 class InterprovincialTrialInvitationController extends Controller
 {
@@ -115,9 +117,21 @@ class InterprovincialTrialInvitationController extends Controller
             'batch_status' => $batch?->status,
             'state_counts' => $stateCounts,
         ];
+        $request->validate(['source_search' => ['nullable', 'string', 'max:100']]);
+        $sourceSearch = trim((string) $request->query('source_search', ''));
+        $sourceCategories = CategoryEvent::with(['category', 'event'])
+            ->whereHas('event', fn ($query) => $query->where('start_date', '<', $event->start_date)
+                ->when($sourceSearch !== '', function ($query) use ($sourceSearch) {
+                    foreach (preg_split('/\s+/u', $sourceSearch, -1, PREG_SPLIT_NO_EMPTY) as $term) {
+                        $query->whereRaw("name LIKE ? ESCAPE '!'", ['%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $term).'%']);
+                    }
+                })
+                ->when(! $request->user()->hasRole('super-user'), fn ($query) => $query->whereExists(fn ($admins) => $admins
+                    ->selectRaw('1')->from('event_admins')->whereColumn('event_admins.event_id', 'events.id')->where('user_id', $request->user()->id))))
+            ->orderByDesc('id')->limit(200)->get();
         return view('backend.interprovincial-trials.invitations', compact(
             'event', 'batch', 'readiness', 'latestInvitationsByNomination', 'nominationPresentations',
-            'nominationFilterGroups', 'historicalInvitations', 'nominations'
+            'nominationFilterGroups', 'historicalInvitations', 'nominations', 'sourceCategories'
         ));
     }
 
@@ -133,7 +147,7 @@ class InterprovincialTrialInvitationController extends Controller
         abort_if(mb_strlen($search) < 2, 422, 'Enter at least two characters.');
 
         $players = Player::query()
-            ->select('id', 'name', 'surname')
+            ->select('id', 'name', 'surname', 'dateOfBirth', 'gender')
             ->where(function ($query) use ($terms): void {
                 foreach ($terms as $term) {
                     $literalTerm = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $term);
@@ -147,12 +161,14 @@ class InterprovincialTrialInvitationController extends Controller
             ->orderBy('surname')
             ->orderBy('name')
             ->orderBy('id')
-            ->paginate(20, ['id', 'name', 'surname'], 'page', (int) ($data['page'] ?? 1));
+            ->paginate(20, ['id', 'name', 'surname', 'dateOfBirth', 'gender'], 'page', (int) ($data['page'] ?? 1));
 
         return response()->json([
             'results' => $players->getCollection()->map(fn (Player $player): array => [
                 'id' => $player->id,
-                'text' => trim($player->name.' '.$player->surname).' — Profile #'.$player->id,
+                'text' => trim($player->name.' '.$player->surname).' — Profile #'.$player->id
+                    .($player->dateOfBirth ? ' · Born '.substr($player->dateOfBirth, 0, 4) : '')
+                    .(in_array((string) $player->gender, ['1', '2'], true) ? ' · '.((string) $player->gender === '1' ? 'Male' : 'Female') : ''),
             ])->values(),
             'pagination' => ['more' => $players->currentPage() < 10 && $players->hasMorePages()],
         ]);
@@ -181,7 +197,8 @@ class InterprovincialTrialInvitationController extends Controller
             return $added;
         });
         $alreadyNominated = $playerIds->count() - $added;
-        $message = "{$added} nomination(s) added; {$alreadyNominated} already nominated. Send invitations when the list is complete.";
+        $visibility = $categoryEvent->nominations_published ? 'This category is public; added names are visible.' : 'Saved privately.';
+        $message = "{$added} nomination(s) added; {$alreadyNominated} already nominated. {$visibility} Publishing names and sending emails are separate optional steps.";
 
         if ($request->expectsJson()) {
             return response()->json($this->categoryNominationPayload($categoryEvent, $message, $added, $alreadyNominated));
@@ -197,6 +214,37 @@ class InterprovincialTrialInvitationController extends Controller
         $data = $request->validate(['category_event_id' => ['required', 'integer', 'exists:category_events,id']]);
 
         return $this->nominate($request, $event, CategoryEvent::findOrFail($data['category_event_id']));
+    }
+
+    public function previewPreviousResults(Request $request, Event $event, PreviousResultsNominationService $service)
+    {
+        $this->authorizeEvent($event);
+        $mapping = $request->validate([
+            'source_category_event_id' => ['required', 'integer', 'exists:category_events,id'],
+            'category_event_id' => ['required', 'integer', 'exists:category_events,id'],
+            'cutoff' => ['required', 'integer', 'min:1', 'max:50'],
+            'age_group_year' => ['required', 'integer', 'min:2000', 'max:2100'],
+        ]);
+        $source = CategoryEvent::with('event')->findOrFail($mapping['source_category_event_id']);
+        $this->authorize('event.manage', $source->event);
+        $preview = $service->preview($event, $mapping);
+        $existing = EventNomination::where('event_id', $event->id)->where('category_event_id', $preview['category_event_id'])->pluck('player_id');
+        $token = Crypt::encryptString(json_encode(['event_id' => $event->id, 'actor_id' => $request->user()->id,
+            'expires' => now()->addMinutes(20)->timestamp, 'mapping' => $mapping, 'fingerprint' => hash('sha256', json_encode($preview))]));
+        return response()->json(['preview' => $preview, 'token' => $token, 'existing_player_ids' => $existing]);
+    }
+
+    public function importPreviousResults(Request $request, Event $event, PreviousResultsNominationService $service)
+    {
+        $this->authorizeEvent($event);
+        $request->validate(['token' => ['required', 'string', 'max:10000']]);
+        try { $review = json_decode(Crypt::decryptString($request->token), true, flags: JSON_THROW_ON_ERROR); }
+        catch (\Throwable) { abort(422, 'Invalid preview. Preview the selection again.'); }
+        abort_unless((int) $review['event_id'] === (int) $event->id && (int) $review['actor_id'] === (int) $request->user()->id && $review['expires'] >= now()->timestamp, 422, 'Preview expired or belongs to another event or organiser.');
+        $source = CategoryEvent::with('event')->findOrFail($review['mapping']['source_category_event_id']);
+        $this->authorize('event.manage', $source->event);
+        $result = $service->save($event, $review['mapping'], $review['fingerprint']);
+        return response()->json($result + ['message' => "{$result['added']} nomination(s) added; {$result['already_nominated']} already nominated. Saved privately. No emails sent."]);
     }
 
     public function nominateWithoutProfile(Request $request, Event $event)
@@ -327,6 +375,7 @@ class InterprovincialTrialInvitationController extends Controller
 
         return [
             'message' => $message,
+            'total' => EventNomination::where('event_id', $categoryEvent->event_id)->count(),
             'added' => $added,
             'already_nominated' => $alreadyNominated,
             'category_event_id' => $categoryEvent->id,

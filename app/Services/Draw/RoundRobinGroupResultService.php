@@ -11,6 +11,28 @@ final class RoundRobinGroupResultService
 {
     public function annotate(Draw $draw, array $standings): array
     {
+        if ($draw->isTwoStageRoundRobin()) {
+            $offset = 0;
+            foreach ($draw->groups->sortBy(fn ($group) => sprintf('%d_%04d_%010d', $group->round_robin_phase, $group->qualifying_position ?? 0, $group->id)) as $group) {
+                $rows = array_values($standings[$group->id] ?? []);
+                $fixtures = $draw->drawFixtures->where('draw_group_id', $group->id)->where('stage', 'RR');
+                $complete = app(TwoStageRoundRobinService::class)->complete($draw, $group, $fixtures);
+                $tied = ! app(TwoStageRoundRobinService::class)->positionsResolved($draw, $rows, $fixtures);
+                $second = (int) $group->round_robin_phase === 2;
+                foreach ($rows as $index => &$row) {
+                    $row['group_result_status'] = ! $complete ? 'incomplete' : ($tied ? 'tied' : 'complete');
+                    $row['group_winner'] = $second && $complete && ! $tied && $index === 0;
+                    $row['display_position'] = $second ? ($complete && ! $tied ? $offset + $index + 1 : '—') : $index + 1;
+                    $row['group_result_message'] = $second
+                        ? ($complete && ! $tied ? 'Stage 2 — final positions.' : 'Stage 2 — final positions pending complete results and resolved ties.')
+                        : 'Stage 1 — equal finishing positions qualify together for stage 2.';
+                }
+                unset($row);
+                $standings[$group->id] = $rows;
+                if ($second) $offset += count($rows);
+            }
+            return $standings;
+        }
         if (! $draw->isRoundRobinOnly()) return $standings;
 
         foreach ($draw->groups as $group) {

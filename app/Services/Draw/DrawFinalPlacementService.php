@@ -14,6 +14,25 @@ final class DrawFinalPlacementService
 
     public function forDraw(Draw $draw): Collection
     {
+        if ($draw->isTwoStageRoundRobin()) {
+            $draw->loadMissing(['groups.groupRegistrations.registration.players', 'drawFixtures.fixtureResults']);
+            $standings = app(\App\Domain\Draws\Services\StandingsService::class)->forDraw($draw);
+            $rows = collect();
+            $offset = 0;
+            foreach ($draw->groups->where('round_robin_phase', 2)->sortBy('qualifying_position') as $group) {
+                $fixtures = $draw->drawFixtures->where('draw_group_id', $group->id)->where('stage', 'RR');
+                $groupRows = collect($standings[$group->id] ?? []);
+                $complete = app(TwoStageRoundRobinService::class)->complete($draw, $group, $fixtures)
+                    && app(TwoStageRoundRobinService::class)->positionsResolved($draw, $groupRows->all(), $fixtures);
+                foreach ($groupRows as $index => $standing) {
+                    $position = $offset + $index + 1;
+                    $registration = $group->groupRegistrations->firstWhere('registration_id', $standing['reg_id'])?->registration;
+                    $rows->push($complete && $registration ? $this->resolved($position, $registration) : $this->awaiting($position));
+                }
+                $offset += $groupRows->count();
+            }
+            return $rows;
+        }
         $draw->loadMissing([
             'settings',
             'drawFixtures.registration1.players',

@@ -373,28 +373,34 @@ final class EngineRouter
      */
     public function rollbackFixture(Fixture $fixture, callable $legacyFn): void
     {
-        abort_if($fixture->stage === 'FM', 409, 'Use the Flexible Monrad editor to correct this result.');
-        if ($this->isLegacy()) {
-            $legacyFn($fixture);
-            PlatformAuditLogger::log(PlatformAuditLogger::PROGRESSION_RESET, $fixture,
-                null, null, ['engine_mode' => 'legacy', 'draw_id' => $fixture->draw_id]);
-            return;
-        }
-
-        $this->runCanonicalWithFallback(
-            operation: 'rollback',
-            drawId:    $fixture->draw_id,
-            canonical: function () use ($fixture) {
-                $this->progression->rollback($fixture);
-            },
-            legacy: function () use ($fixture, $legacyFn) {
+        \Illuminate\Support\Facades\DB::transaction(function () use ($fixture, $legacyFn) {
+            $draw = Draw::whereKey($fixture->draw_id)->lockForUpdate()->firstOrFail();
+            $fixture->setRelation('draw', $draw);
+            if ($draw->isTwoStageRoundRobin()) \App\Domain\Draws\Guards\DrawGuard::requireMutable($draw, 'roll back progression for');
+            \App\Services\Draw\TwoStageRoundRobinService::assertScoreMutable($fixture);
+            abort_if($fixture->stage === 'FM', 409, 'Use the Flexible Monrad editor to correct this result.');
+            if ($this->isLegacy()) {
                 $legacyFn($fixture);
-            },
-            compare: null
-        );
+                PlatformAuditLogger::log(PlatformAuditLogger::PROGRESSION_RESET, $fixture,
+                    null, null, ['engine_mode' => 'legacy', 'draw_id' => $fixture->draw_id]);
+                return;
+            }
 
-        PlatformAuditLogger::log(PlatformAuditLogger::PROGRESSION_RESET, $fixture,
-            null, null, ['engine_mode' => $this->mode, 'draw_id' => $fixture->draw_id]);
+            $this->runCanonicalWithFallback(
+                operation: 'rollback',
+                drawId:    $fixture->draw_id,
+                canonical: function () use ($fixture) {
+                    $this->progression->rollback($fixture);
+                },
+                legacy: function () use ($fixture, $legacyFn) {
+                    $legacyFn($fixture);
+                },
+                compare: null
+            );
+
+            PlatformAuditLogger::log(PlatformAuditLogger::PROGRESSION_RESET, $fixture,
+                null, null, ['engine_mode' => $this->mode, 'draw_id' => $fixture->draw_id]);
+        });
     }
 
     // ------------------------------------------------------------------

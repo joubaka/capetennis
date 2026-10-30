@@ -21,7 +21,7 @@ final class DrawSetupGuide
         $schedules = OrderOfPlay::query()->leftJoin('venues', 'venues.id', '=', 'order_of_plays.venue_id')
             ->whereIn('fixture_id', $fixtures->flatten(1)->pluck('id'))
             ->get(['fixture_id', 'time', 'court', 'venue_id', 'venues.name as venue_name'])->keyBy('fixture_id');
-        $roundRobinIds = $draws->filter(fn ($draw) => in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs'], true))->pluck('id');
+        $roundRobinIds = $draws->filter(fn ($draw) => in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'], true))->pluck('id');
         $groups = $roundRobinIds->isEmpty() ? collect() : DrawGroup::whereIn('draw_id', $roundRobinIds)->with('groupRegistrations')->get()->groupBy('draw_id');
 
         return $draws->mapWithKeys(function (Draw $draw) use ($fixtures, $schedules, $groups, $scheduleStates) {
@@ -73,11 +73,11 @@ final class DrawSetupGuide
                     return $slot?->time && $slot->venue_id && trim((string) $slot->court) !== '';
                 })->count();
             }
-            if (in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs'], true)
+            if (in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'], true)
                 && app(GroupAssignmentService::class)->fixturesNeedRegeneration($draw, $matches->where('stage', 'RR'), $groups->get($draw->id, collect()))) $warnings[] = 'Saved groups differ from the generated matches.';
             $generated = $matches->isNotEmpty() && $playable->isNotEmpty();
             $category = (int) $draw->categoryEvent?->event_id === (int) $draw->event_id;
-            $eventWide = !$draw->category_event_id && in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs'], true);
+            $eventWide = !$draw->category_event_id && in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'], true);
             $format = (bool) $draw->settings?->workflow || $generated || $draw->groups_count > 0 || $draw->settings?->draw_format_id;
             $scheduleComplete = $generated && $scheduled === $playable->count();
             $publication = $scheduleStates->get($draw->id, []);
@@ -152,12 +152,12 @@ final class DrawSetupGuide
             $scheduled = $playable->filter(fn ($fixture) => $fixture->orderOfPlay?->time && $fixture->orderOfPlay?->venue_id && trim((string) $fixture->orderOfPlay?->court) !== '')->count();
         }
         $generated = $fixtures->isNotEmpty() && $playable->isNotEmpty();
-        if (!$team && in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs'], true)
+        if (!$team && in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'], true)
             && app(GroupAssignmentService::class)->fixturesNeedRegeneration($draw)) {
             $warnings[] = 'Saved groups differ from the generated matches. Review the saved groups and existing matches in player setup before continuing.';
         }
         $format = $format || $generated || (!$team && ($draw->groups()->exists() || $draw->settings?->draw_format_id));
-        $eventWide = !$team && !$draw->category_event_id && in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs'], true);
+        $eventWide = !$team && !$draw->category_event_id && in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'], true);
         $scheduleComplete = $generated && $scheduled === $playable->count();
         $snapshotCurrent = $scheduleComplete && $this->snapshotCurrent($draw);
         $flags = $this->completionFlags($draw, $category || $eventWide || (!$team && ($participants > 0 || $generated)),
@@ -170,6 +170,9 @@ final class DrawSetupGuide
             ['label' => 'Programme & schedule', 'complete' => $flags[4], 'detail' => $scheduled.' / '.$playable->count().' playable matches have a time, venue and court.', 'url' => route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]])],
             ['label' => 'Review & publish', 'complete' => $flags[5], 'detail' => $draw->oop_published && !$snapshotCurrent ? 'Saved match times differ from the published schedule. Review and publish the updates explicitly.' : 'Review the draw and match times, then publish each explicitly.', 'url' => $workspace],
         ];
+        if ($draw->isTwoStageRoundRobin()) {
+            $steps[4]['detail'] .= ' Schedule stage 1 first. Stage 2 matches appear after confirmed progression from the completed first-stage standings.';
+        }
         if ($competition) {
             $steps[1]['detail'] = $competition['group'].' · combined boys and girls regional sides.';
             $steps[2]['detail'] = ($competition['phase'] ?? null) === 'playoff' ? 'Placement playoffs from confirmed group standings.' : 'One round-robin group followed by 1st/2nd and 3rd/4th playoffs.';

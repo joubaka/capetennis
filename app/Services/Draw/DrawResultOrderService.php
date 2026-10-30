@@ -77,6 +77,13 @@ final class DrawResultOrderService
     /** @return Collection<int, int> */
     private function forDraw(Draw $draw): Collection
     {
+        if ($draw->isTwoStageRoundRobin()) {
+            $placements = $this->placements->forDraw($draw);
+            // A plain ordered list has no position gaps. Do not promote a
+            // completed lower group into the still-undecided top positions.
+            if ($placements->isEmpty() || $placements->contains(fn ($row) => $row['status'] !== 'resolved')) return collect();
+            return $placements->sortBy('position')->pluck('registration_id')->values();
+        }
         if ($draw->flexibleMonrad?->graph) {
             $state = $this->flexibleMonrad->state($draw);
             if (($state['challenge_playoffs'] ?? false) && ! $state['positions_complete']) return collect();

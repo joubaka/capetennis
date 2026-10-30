@@ -11,6 +11,12 @@ use App\Domain\Draws\Services\{ScheduleAvailability, ScheduleConflictService};
 
 class ScheduleEngine
 {
+  private function secondRoundRobinRest(Draw $draw): int
+  {
+    if (! $draw->isTwoStageRoundRobin()) return 0;
+    $options = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $draw->event_id)->value('options'), true) ?: [];
+    return max(0, (int) ($options['player_rest'] ?? 30));
+  }
   /**
    * @throws \RuntimeException if the draw is locked or published
    */
@@ -121,6 +127,18 @@ class ScheduleEngine
       foreach ([$fixture->parent_fixture_id, $fixture->loser_parent_fixture_id] as $target) {
         if ($target && isset($fixtures[$target])) $feeders[$target][$fixture->id] = $fixture->id;
       }
+      foreach ([$fixture->registration1_source_group_id, $fixture->registration2_source_group_id] as $sourceGroup) {
+        if (! $sourceGroup) continue;
+        foreach ($fixtures->where('draw_group_id', $sourceGroup)->where('stage', 'RR') as $source) {
+          $feeders[$fixture->id][$source->id] = $source->id;
+        }
+      }
+    }
+    if ($fixtures->first()?->draw?->isTwoStageRoundRobin()) {
+      $first = $fixtures->filter(fn ($fixture) => (int) $fixture->drawGroup?->round_robin_phase === 1);
+      foreach ($fixtures->filter(fn ($fixture) => (int) $fixture->drawGroup?->round_robin_phase === 2) as $target) {
+        foreach ($first as $source) $feeders[$target->id][$source->id] = $source->id;
+      }
     }
     return $feeders;
   }
@@ -154,7 +172,9 @@ class ScheduleEngine
       $feeders = $this->feederMap($all);
       $participants = ScheduleAvailability::legacyParticipants($all);
       $ids = $fixtures->flatMap(fn ($f) => $participants[$f->id])->all();
-      $calendar = ScheduleAvailability::load(array_keys($venues), $ids, $fixtures->pluck('id')->all(), $draw);
+      $participantRest = $this->secondRoundRobinRest($draw);
+      $calendar = ScheduleAvailability::load(array_keys($venues), $ids, $fixtures->pluck('id')->all(), $draw, $draw->isTwoStageRoundRobin() ? $participantRest : null);
+      $participantMinutes = $duration + ($draw->isTwoStageRoundRobin() ? $participantRest : $gap);
       $dailyLimit = \App\Services\Scheduling\DailyMatchLimit::configured($draw->event,
         $fixtures->pluck('id')->map(fn ($id) => 'individual:'.$id)->all());
       $pending = $fixtures->all();
@@ -169,7 +189,7 @@ class ScheduleEngine
           }
         } elseif (! isset($pending[$id])) {
           $slot = $fixture->orderOfPlay;
-          if ($slot?->time) $finished[$id] = Carbon::parse($slot->time)->addMinutes($slot->occupiedMinutes());
+          if ($slot?->time) $finished[$id] = Carbon::parse($slot->time)->addMinutes(max($slot->occupiedMinutes(), (int) ($slot->duration_minutes ?: 75) + $participantRest));
           elseif ($fixture->fixtureResults->isNotEmpty()) $finished[$id] = $start->copy();
         }
       }
@@ -186,14 +206,14 @@ class ScheduleEngine
           $best = null;
           foreach ($venues as $venueId => $venue) {
             foreach ($venue['courts'] as $court) {
-              $at = $calendar->nextAvailable($release, $duration + $gap, (int) $venueId, (string) $court, $registrations);
+              $at = $calendar->nextAvailableForMatch($release, $duration + $gap, $participantMinutes, (int) $venueId, (string) $court, $registrations);
               if ($best === null || $at->lt($best['time'])) $best = ['venue' => $venueId, 'court' => $court, 'time' => $at];
             }
           }
           if ($best === null) throw new \InvalidArgumentException('Assign at least one court before scheduling.');
           if ($dailyLimit && ($error = $dailyLimit->error('individual:'.$fixtureId, $best['time']->toDateString()))) throw new \InvalidArgumentException($error);
           $dailyLimit?->reserve('individual:'.$fixtureId, $best['time']->toDateString());
-          $finished[$fixtureId] = $best['time']->copy()->addMinutes($duration + $gap);
+          $finished[$fixtureId] = $best['time']->copy()->addMinutes($duration + max($gap, $participantRest));
           foreach ([$fixture->parent_fixture_id, $fixture->loser_parent_fixture_id] as $target) {
             if ($target && ! isset($fixtures[$target]) && isset($all[$target]) && $all[$target]->orderOfPlay?->time
               && $finished[$fixtureId]->gt(Carbon::parse($all[$target]->orderOfPlay->time))) {
@@ -205,7 +225,7 @@ class ScheduleEngine
             'time' => $best['time']->format('Y-m-d H:i:s'), 'duration_minutes' => $duration, 'gap_minutes' => $gap, 'round_number' => $fixture->round,
           ]);
           $fixture->update(['scheduled' => 1]);
-          $calendar->reserve((int) $best['venue'], (string) $best['court'], $best['time'], $duration + $gap,
+          $calendar->reserveWithRest((int) $best['venue'], (string) $best['court'], $best['time'], $duration + $gap, $participantMinutes,
             array_filter([$fixture->registration1_id, $fixture->registration2_id]));
           unset($pending[$fixtureId]);
         }
@@ -217,6 +237,7 @@ class ScheduleEngine
 
   public function dependencyConflict(Draw $draw, Fixture $fixture, ?string $start, int $duration, ?int $participantRest = null): ?string
   {
+    if ($draw->isTwoStageRoundRobin()) $participantRest ??= $this->secondRoundRobinRest($draw);
     $all = $draw->drawFixtures()->with(['orderOfPlay', 'fixtureResults'])->get()->keyBy('id');
     $feeders = $this->feederMap($all);
     $ancestors = [];
@@ -280,6 +301,7 @@ class ScheduleEngine
             abort_if($fixture->fixtureResults()->exists() || (int) $fixture->match_status !== 0, 409, 'A match with play or results cannot be rescheduled.');
       $duration ??= (int) ($fixture->orderOfPlay?->duration_minutes ?: 75);
       $timing = app(\App\Services\Scheduling\MatchTimingService::class)->forDraw($draw, $duration, $courtGap ?? (int) ($fixture->orderOfPlay?->gap_minutes ?? 0));
+      if ($draw->isTwoStageRoundRobin()) $participantRest ??= $this->secondRoundRobinRest($draw);
       $duration = $timing['duration_minutes'];
       $courtGap = $timing['court_gap_minutes'];
       if ($start) {

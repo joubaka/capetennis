@@ -13,7 +13,7 @@ final class TeamRoundRobinMatrixService
         $phase = $draw->team_draw_selection['competition']['phase'] ?? null;
         $roundRobin = $phase === 'round_robin'
             || ($draw->team_format_snapshot['pairing_format'] ?? null) === 'round_robin'
-            || in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs'], true)
+            || in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'], true)
             || preg_match('/round[ -]?robin/i', $draw->draw_types?->drawTypeName ?? '') === 1;
         return $draw->isTeamDraw()
             && $phase !== 'playoff' && $roundRobin

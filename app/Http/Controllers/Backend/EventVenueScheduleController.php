@@ -60,6 +60,9 @@ final class EventVenueScheduleController extends Controller
         $eventDraws->loadCount(['drawFixtures as playoff_fixture_count' => fn ($query) => $query->where('stage', '!=', 'RR')]);
         $pendingPlayoffDraws = $eventDraws->filter(fn ($draw) => $draw->settings?->workflow === 'round_robin_playoffs'
             && (int) $draw->playoff_fixture_count === 0 && (! $selectionSupplied || $requestedDrawIds->contains((int) $draw->id)));
+        $pendingSecondRoundRobinDraws = $eventDraws->filter(fn ($draw) => $draw->isTwoStageRoundRobin()
+            && ! $draw->groups()->where('round_robin_phase', 2)->exists()
+            && (! $selectionSupplied || $requestedDrawIds->contains((int) $draw->id)));
         $eventVenues = $event->venues()->get();
         $drawVenues = $eventDraws->flatMap(fn ($draw) => $draw->venues);
 
@@ -191,7 +194,7 @@ final class EventVenueScheduleController extends Controller
         })->filter(fn ($notice) => $notice['pending_count'] > 0 || $notice['review_required'])->values();
 
         return view('backend.schedule.event-venue-schedule', compact(
-            'event', 'draws', 'venues', 'allVenues', 'announcementDraft', 'scheduleDraft', 'adaptationNotices', 'planningDate', 'planningScope', 'pendingPlayoffDraws'
+            'event', 'draws', 'venues', 'allVenues', 'announcementDraft', 'scheduleDraft', 'adaptationNotices', 'planningDate', 'planningScope', 'pendingPlayoffDraws', 'pendingSecondRoundRobinDraws'
         ));
     }
 

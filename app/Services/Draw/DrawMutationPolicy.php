@@ -48,13 +48,14 @@ class DrawMutationPolicy
     /** Can group assignments be saved or rearranged? */
     public function canEditAssignments(): bool
     {
-        return ! $this->draw->locked && ! $this->draw->published;
+        return ! $this->draw->locked && ! $this->draw->published
+            && ! ($this->draw->isTwoStageRoundRobin() && $this->draw->groups()->where('round_robin_phase', 2)->exists());
     }
 
     /** Can round-robin fixtures be regenerated (destructive)? */
     public function canGenerateFixtures(): bool
     {
-        return ! $this->draw->locked && ! $this->draw->published;
+        return $this->canEditAssignments();
     }
 
     /** Can bracket playoff be generated/regenerated? */

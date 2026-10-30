@@ -20,7 +20,7 @@ final class DrawReadinessService
             : $fixture->fixtureResults()->exists())->count();
 
         $formatConfigured = $isTeamDraw || in_array($draw->settings?->workflow, [
-            'round_robin', 'round_robin_playoffs', 'playoffs', 'monrad', 'custom_monrad', 'feed_in_monrad',
+            'round_robin', 'round_robin_playoffs', 'round_robin_round_robin', 'playoffs', 'monrad', 'custom_monrad', 'feed_in_monrad',
         ], true);
 
         $checks = [

@@ -32,6 +32,15 @@
     <section id="day-batch-rounds-step" class="border-top pt-3 mt-3" hidden>
       <h5>3. Choose rounds for this day</h5>
       <p class="small text-muted">Choose rounds, then preview the selected matches. Expand a round to choose individual matches. Earlier qualifying matches need saved times.</p>
+      @if(($pendingSecondRoundRobinDraws ?? collect())->isNotEmpty())
+        <div class="alert alert-info mb-3" id="pending-second-round-robin">
+          <h6>Second round-robin stages await progression</h6>
+          <p class="small">Schedule the first stage now. After its results are complete, review and confirm progression in the draw to make the second-stage matches available here.</p>
+          @foreach($pendingSecondRoundRobinDraws as $pendingDraw)
+            <a class="d-block" href="{{ route('backend.draw.roundrobin.show', $pendingDraw) }}">{{ $pendingDraw->drawName }} — review progression</a>
+          @endforeach
+        </div>
+      @endif
       @if($pendingPlayoffDraws->isNotEmpty())
         <div class="alert alert-info mb-3" id="pending-playoff-rounds">
           <h6>Playoff rounds are not prepared yet</h6>

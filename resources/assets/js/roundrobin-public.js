@@ -357,7 +357,7 @@
       rows = final;
       }
       if (rows[0] && rows[0].group_result_status) {
-        const message = rows[0].group_result_status === 'complete' ? 'Separate group competition — final standings.' : rows[0].group_result_status === 'tied' ? 'Group winner pending: leading tie unresolved.' : 'Group winner pending: complete every group match.';
+        const message = rows[0].group_result_message || (rows[0].group_result_status === 'complete' ? 'Separate group competition — final standings.' : rows[0].group_result_status === 'tied' ? 'Group winner pending: leading tie unresolved.' : 'Group winner pending: complete every group match.');
         wrapper.append($('<p class="small text-muted mt-3">').text(message));
       }
 
@@ -396,7 +396,7 @@
 
         html += `
           <tr class="${rowClass}">
-            <td>${i + 1}</td>
+            <td>${r.display_position ?? (i + 1)}</td>
             <td>${escapeHtml(r.player)}${r.group_winner ? ' <span class="badge bg-success">Group winner</span>' : ''}</td>
             <td class="text-center">${r.wins}</td>
             ${timed ? `<td class="text-center">${Number(r.draws || 0)}</td><td class="text-center">${Number(r.points || 0)}</td>` : ''}

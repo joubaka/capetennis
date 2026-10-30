@@ -14,7 +14,17 @@ class DrawGroup extends Model
     'name',
     'color',
     'category_slug',
+    'round_robin_phase',
+    'qualifying_position',
   ];
+
+  protected $casts = ['round_robin_phase' => 'integer', 'qualifying_position' => 'integer'];
+
+  public function presentationName(): string
+  {
+    return (int) $this->round_robin_phase === 1 && $this->draw?->isTwoStageRoundRobin()
+      ? 'Stage 1 · Group '.$this->name : (string) $this->name;
+  }
 
   // -------------------------------------------------------------
   // REGISTRATIONS INSIDE THIS GROUP

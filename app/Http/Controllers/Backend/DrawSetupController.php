@@ -14,6 +14,7 @@ class DrawSetupController extends Controller
     public const OPTIONS = [
         'round_robin' => ['Round robin only', 'Everyone plays within their group. Final standings decide the result; there are no playoffs.'],
         'round_robin_playoffs' => ['Round robin → playoffs', 'Build groups first, then choose how players advance to playoffs.'],
+        'round_robin_round_robin' => ['Round robin → round robin', 'Play in groups, then regroup equal finishing positions for a second round robin.'],
         'playoffs' => ['Playoffs only', 'Start with a knockout bracket. Winners advance; no placement matches.'],
         'monrad' => ['Monrad only', 'Start everyone in the opening round. Winners and losers play for finishing positions.'],
         'feed_in_monrad' => ['Feed-in Monrad', 'Start everyone in the opening round. Earlier-round losers play through a feed-in draw against later-round losers, with matches for every finishing position.'],
@@ -60,7 +61,7 @@ class DrawSetupController extends Controller
             'challenge_pairs' => [Rule::requiredIf(fn () => $request->input('workflow') === 'feed_in_monrad' && $request->boolean('challenge_playoffs')), 'nullable', 'array', 'min:1', 'max:31'],
             'challenge_pairs.*' => ['integer', 'distinct', Rule::in(range(2, 62, 2))],
         ]);
-        if (! $draw->category_event_id && ! in_array($data['workflow'], ['round_robin', 'round_robin_playoffs'], true) && empty($data['category_event_id'])) {
+        if (! $draw->category_event_id && ! in_array($data['workflow'], ['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'], true) && empty($data['category_event_id'])) {
             return view('backend.draw.setup-category', [
                 'draw' => $draw, 'workflow' => $data['workflow'], 'label' => self::OPTIONS[$data['workflow']][0],
                 'challengePlayoffs' => $data['workflow'] === 'feed_in_monrad' && (bool) ($data['challenge_playoffs'] ?? false),
@@ -100,8 +101,9 @@ class DrawSetupController extends Controller
             $preserveStarts = in_array($draw->settings?->workflow, ['monrad', 'feed_in_monrad'], true)
                 && in_array($data['workflow'], ['monrad', 'feed_in_monrad'], true);
             $retainedDraft = $preserveStarts ? $draw->flexibleMonrad?->draft : null;
-            $isSafeRoundRobinChange = in_array($draw->settings?->workflow, [null, 'round_robin', 'round_robin_playoffs'], true)
-                && in_array($data['workflow'], ['round_robin', 'round_robin_playoffs'], true)
+            $isSafeRoundRobinChange = in_array($draw->settings?->workflow, [null, 'round_robin', 'round_robin_playoffs', 'round_robin_round_robin'], true)
+                && in_array($data['workflow'], ['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'], true)
+                && ! $draw->groups()->where('round_robin_phase', 2)->exists()
                 && ! $draw->drawFixtures()->where('stage', '!=', 'RR')->exists()
                 && empty($draw->flexibleMonrad?->draft['slots'])
                 && ! $draw->flexibleMonrad?->graph;
@@ -114,7 +116,7 @@ class DrawSetupController extends Controller
                 $resetCounts = $resetter->reset($draw);
                 $draw->unsetRelation('flexibleMonrad');
             }
-            if (! $draw->category_event_id && ! in_array($data['workflow'], ['round_robin', 'round_robin_playoffs'], true)) {
+            if (! $draw->category_event_id && ! in_array($data['workflow'], ['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'], true)) {
                 abort_if($draw->registrations()->reorder()->exists(), 409, 'Choose a new empty draw before changing its player category.');
                 $draw->update(['category_event_id' => $data['category_event_id']]);
             }
@@ -127,7 +129,7 @@ class DrawSetupController extends Controller
                     ['challenge_playoffs' => $challengePlayoffs, 'challenge_pairs' => $challengePairs]);
             }
             $draw->settings()->updateOrCreate(['draw_id' => $draw->id], $settings);
-            if (in_array($data['workflow'], ['round_robin', 'round_robin_playoffs'], true)) {
+            if (in_array($data['workflow'], ['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'], true)) {
                 $draw->flexibleMonrad()->delete(); // Only an empty, ungenerated draft can reach here.
                 $draw->settings()->update(['draw_format_id' => \App\Models\DrawFormats::where('name', 'Round Robin')->value('id')]);
             } else {
@@ -143,6 +145,11 @@ class DrawSetupController extends Controller
             }
             DrawAuditLog::record($draw->id, 'workflow_selected', null, $data + ['reset_counts' => $resetCounts]);
         });
-        return redirect()->route('backend.draw.roundrobin.show', $draw);
+        $destination = route('backend.draw.roundrobin.show', $draw);
+        if (in_array($data['workflow'], ['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'], true)) {
+            $destination .= '#settings';
+        }
+
+        return redirect()->to($destination);
     }
 }

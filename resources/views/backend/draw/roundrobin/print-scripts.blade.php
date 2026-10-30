@@ -146,7 +146,7 @@
       var w1 = fx.winner && fx.r1_id ? (Number(fx.winner) === Number(fx.r1_id) ? ' class="fw-bold text-success"' : (Number(fx.winner) === Number(fx.r2_id) ? ' class="text-danger"' : '')) : '';
       var w2 = fx.winner && fx.r2_id ? (Number(fx.winner) === Number(fx.r2_id) ? ' class="fw-bold text-success"' : (Number(fx.winner) === Number(fx.r1_id) ? ' class="text-danger"' : '')) : '';
       var stage = fx.stage || 'RR';
-      var stageLabel = stageLabels[stage] || stage;
+      var stageLabel = fx.stage_label || stageLabels[stage] || stage;
       var score = escapeHtml(fx.score || '');
       var home = escapeHtml(fx.home || '---');
       var away = escapeHtml(fx.away || '---');
@@ -179,7 +179,7 @@
     if (!groups.length) { toastr.warning('No groups/matrix data available.'); return; }
 
     // Sort groups alphabetically (A, B, C, D …)
-    var sortedGroups = groups.slice().sort(function(a, b) { return (a.name || '').localeCompare(b.name || ''); });
+    var sortedGroups = groups.slice().sort(function(a, b) { return Number(a.round_robin_phase || 1) - Number(b.round_robin_phase || 1) || Number(a.qualifying_position || 0) - Number(b.qualifying_position || 0) || (a.name || '').localeCompare(b.name || ''); });
 
     // Global pass: find longest name and most columns across ALL groups
     var globalMaxLen = 6;
@@ -251,7 +251,7 @@
         var rows = Object.values(standings[group.id]);
         html += '<div class="page-break"></div>';
         html += '<h3 style="font-size:14px; margin:16px 0 6px;">Box ' + escapeHtml(group.name) + ' — Standings</h3>';
-        if (rows[0] && rows[0].group_result_status) html += '<p>' + (rows[0].group_result_status === 'complete' ? 'Separate group competition — final standings.' : rows[0].group_result_status === 'tied' ? 'Group winner pending: leading tie unresolved.' : 'Group winner pending: complete every group match.') + '</p>';
+        if (rows[0] && rows[0].group_result_status) html += '<p>' + (rows[0].group_result_message ? escapeHtml(rows[0].group_result_message) : rows[0].group_result_status === 'complete' ? 'Separate group competition — final standings.' : rows[0].group_result_status === 'tied' ? 'Group winner pending: leading tie unresolved.' : 'Group winner pending: complete every group match.') + '</p>';
       html += '<table class="standings-table"><thead><tr><th>#</th><th>Player</th><th>W</th><th>L</th><th>Sets %</th><th>Games %</th><th>TB</th></tr></thead><tbody>';
         rows.forEach(function(r, i) {
           var totalSets = r.sets_won + r.sets_lost;
@@ -259,7 +259,7 @@
           var totalGames = (r.games_won || 0) + (r.games_lost || 0);
           var gamesPct = totalGames > 0 ? (((r.games_won || 0) / totalGames) * 100).toFixed(0) + '%' : '-';
           var tb = r.tiebreak || '';
-          html += '<tr><td>' + (i + 1) + '</td><td>' + escapeHtml(r.player) + (r.group_winner ? ' — Group winner' : '') + '</td><td>' + r.wins + '</td><td>' + r.losses + '</td><td>' + setsPct + '</td><td>' + gamesPct + '</td><td>' + escapeHtml(tb) + '</td></tr>';
+          html += '<tr><td>' + (r.display_position ?? (i + 1)) + '</td><td>' + escapeHtml(r.player) + (r.group_winner ? ' — Group winner' : '') + '</td><td>' + r.wins + '</td><td>' + r.losses + '</td><td>' + setsPct + '</td><td>' + gamesPct + '</td><td>' + escapeHtml(tb) + '</td></tr>';
         });
         html += '</tbody></table>';
       });
@@ -278,7 +278,7 @@
     var html = '<h1>' + escapeHtml(drawName) + '</h1>';
 
     // ---- MATRIX SECTION ----
-    var sortedGroups = groups.slice().sort(function(a, b) { return (a.name || '').localeCompare(b.name || ''); });
+    var sortedGroups = groups.slice().sort(function(a, b) { return Number(a.round_robin_phase || 1) - Number(b.round_robin_phase || 1) || Number(a.qualifying_position || 0) - Number(b.qualifying_position || 0) || (a.name || '').localeCompare(b.name || ''); });
 
     // Use same column sizing logic as standalone print matrix
     var globalMaxLen = 6;
@@ -355,7 +355,7 @@
         var w1 = fx.winner && fx.r1_id ? (Number(fx.winner) === Number(fx.r1_id) ? ' class="fw-bold text-success"' : (Number(fx.winner) === Number(fx.r2_id) ? ' class="text-danger"' : '')) : '';
         var w2 = fx.winner && fx.r2_id ? (Number(fx.winner) === Number(fx.r2_id) ? ' class="fw-bold text-success"' : (Number(fx.winner) === Number(fx.r1_id) ? ' class="text-danger"' : '')) : '';
         var stage = fx.stage || 'RR';
-        var stageLabel = stageLabels[stage] || stage;
+        var stageLabel = fx.stage_label || stageLabels[stage] || stage;
         var score = escapeHtml(fx.score || '');
         var home = escapeHtml(fx.home || '---');
         var away = escapeHtml(fx.away || '---');
@@ -541,7 +541,7 @@
     var fixtures = window.RR_FIXTURES || {};
     if (!groups.length) return '';
 
-    var sortedGroups = groups.slice().sort(function(a, b) { return (a.name || '').localeCompare(b.name || ''); });
+    var sortedGroups = groups.slice().sort(function(a, b) { return Number(a.round_robin_phase || 1) - Number(b.round_robin_phase || 1) || Number(a.qualifying_position || 0) - Number(b.qualifying_position || 0) || (a.name || '').localeCompare(b.name || ''); });
     var globalMaxLen = 6;
     var globalMaxCols = 0;
     sortedGroups.forEach(function(g) {
@@ -613,7 +613,7 @@
     var standings = window.RR_STANDINGS || {};
     if (!groups.length) return '';
 
-    var sortedGroups = groups.slice().sort(function(a, b) { return (a.name || '').localeCompare(b.name || ''); });
+    var sortedGroups = groups.slice().sort(function(a, b) { return Number(a.round_robin_phase || 1) - Number(b.round_robin_phase || 1) || Number(a.qualifying_position || 0) - Number(b.qualifying_position || 0) || (a.name || '').localeCompare(b.name || ''); });
     var html = '';
 
     sortedGroups.forEach(function(group) {
@@ -634,7 +634,7 @@
         return 0;
       });
       html += '<h3 style="font-size:14px; margin:16px 0 6px;">Box ' + escapeHtml(group.name) + ' — Standings</h3>';
-      if (rows[0] && rows[0].group_result_status) html += '<p>' + (rows[0].group_result_status === 'complete' ? 'Separate group competition — final standings.' : rows[0].group_result_status === 'tied' ? 'Group winner pending: leading tie unresolved.' : 'Group winner pending: complete every group match.') + '</p>';
+      if (rows[0] && rows[0].group_result_status) html += '<p>' + (rows[0].group_result_message ? escapeHtml(rows[0].group_result_message) : rows[0].group_result_status === 'complete' ? 'Separate group competition — final standings.' : rows[0].group_result_status === 'tied' ? 'Group winner pending: leading tie unresolved.' : 'Group winner pending: complete every group match.') + '</p>';
       html += '<table class="standings-table"><thead><tr><th>#</th><th>Player</th><th>W</th><th>L</th><th>Sets %</th><th>Games %</th><th>TB</th></tr></thead><tbody>';
       rows.forEach(function(r, i) {
         var totalSets = r.sets_won + r.sets_lost;
@@ -642,7 +642,7 @@
         var totalGames = (r.games_won || 0) + (r.games_lost || 0);
         var gamesPct = totalGames > 0 ? (((r.games_won || 0) / totalGames) * 100).toFixed(0) + '%' : '-';
         var tb = r.tiebreak || '';
-        html += '<tr><td>' + (i + 1) + '</td><td>' + escapeHtml(r.player) + (r.group_winner ? ' — Group winner' : '') + '</td><td>' + r.wins + '</td><td>' + r.losses + '</td><td>' + setsPct + '</td><td>' + gamesPct + '</td><td>' + escapeHtml(tb) + '</td></tr>';
+        html += '<tr><td>' + (r.display_position ?? (i + 1)) + '</td><td>' + escapeHtml(r.player) + (r.group_winner ? ' — Group winner' : '') + '</td><td>' + r.wins + '</td><td>' + r.losses + '</td><td>' + setsPct + '</td><td>' + gamesPct + '</td><td>' + escapeHtml(tb) + '</td></tr>';
       });
       html += '</tbody></table>';
     });
@@ -663,7 +663,7 @@
       var w1 = fx.winner && fx.r1_id ? (Number(fx.winner) === Number(fx.r1_id) ? ' class="fw-bold text-success"' : (Number(fx.winner) === Number(fx.r2_id) ? ' class="text-danger"' : '')) : '';
       var w2 = fx.winner && fx.r2_id ? (Number(fx.winner) === Number(fx.r2_id) ? ' class="fw-bold text-success"' : (Number(fx.winner) === Number(fx.r1_id) ? ' class="text-danger"' : '')) : '';
       var stage = fx.stage || 'RR';
-      var stageLabel = stageLabels[stage] || stage;
+      var stageLabel = fx.stage_label || stageLabels[stage] || stage;
       var score = escapeHtml(fx.score || '');
       var home = escapeHtml(fx.home || '---');
       var away = escapeHtml(fx.away || '---');

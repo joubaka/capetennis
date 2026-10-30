@@ -1,16 +1,17 @@
 <div class="tab-pane fade" id="groups-pane" role="tabpanel" aria-labelledby="groups-tab">
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-    <span class="small text-muted">Step 2 of 5 · Players &amp; Positions · {{ $draw->isRoundRobinOnly() ? 'Round robin only' : 'Round robin → playoffs' }}</span>
+    <span class="small text-muted">Step 2 of 5 · Players &amp; Positions · {{ $draw->roundRobinLabel() }}</span>
     <a href="{{ route('draw.setup.show', $draw) }}" class="btn btn-sm btn-outline-secondary">Draw format</a>
   </div>
   <p class="mb-3" id="rr-category-scope"><strong>Player category:</strong> <span id="rr-category-name">{{ $draw->categoryEvent?->category?->name ?? 'All event categories' }}</span></p>
   <form method="POST" action="{{ route('draw.setup.store', $draw) }}" class="card card-body mb-3">
     @csrf
-    <fieldset @disabled($draw->locked || $draw->published || $draw->oop_published || $draw->drawFixtures->contains(fn ($fixture) => $fixture->stage !== 'RR'))>
+    <fieldset @disabled($draw->locked || $draw->published || $draw->oop_published || ($draw->isTwoStageRoundRobin() && $draw->groups->contains('round_robin_phase', 2)) || $draw->drawFixtures->contains(fn ($fixture) => $fixture->stage !== 'RR'))>
       <legend class="h6">How should these groups compete?</legend>
       <label class="form-check mb-2"><input class="form-check-input" type="radio" name="workflow" value="round_robin_playoffs" @checked(!$draw->isRoundRobinOnly())><span class="form-check-label">One category competition — groups feed shared playoffs for one overall winner.</span></label>
-      <label class="form-check mb-2"><input class="form-check-input" type="radio" name="workflow" value="round_robin" @checked($draw->isRoundRobinOnly())><span class="form-check-label">Separate group competitions — each group has its own winner in this category, with no cross-group playoffs.</span></label>
-      <p class="small text-muted">Both options keep the same event, category and entries. Group winners are confirmed only after every group match is complete and the leading tie is resolved.</p>
+      <label class="form-check mb-2"><input class="form-check-input" type="radio" name="workflow" value="round_robin" @checked($draw->settings?->workflow === 'round_robin')><span class="form-check-label">Separate group competitions — each group has its own winner in this category, with no cross-group playoffs.</span></label>
+      <label class="form-check mb-2"><input class="form-check-input" type="radio" name="workflow" value="round_robin_round_robin" @checked($draw->isTwoStageRoundRobin())><span class="form-check-label">Round robin → round robin — equal finishing positions enter new groups for final positions.</span></label>
+      <p class="small text-muted">These options keep the same event, category and entries. Complete the group matches and resolve tied qualifying positions before progressing.</p>
       <button class="btn btn-sm btn-outline-primary" type="submit">Save competition option</button>
     </fieldset>
     @if($draw->drawFixtures->contains(fn ($fixture) => $fixture->stage !== 'RR'))

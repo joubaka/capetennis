@@ -74,6 +74,11 @@ class TrialProgrammeService
                 $ids = $entries->pluck('registration_id')->map(fn ($id) => (int) $id)->sort()->values()->all();
                 $hasUnresolvedTie = false;
                 foreach ($draws as $draw) {
+                    if ($draw->isTwoStageRoundRobin()) {
+                        $placements = app(\App\Services\Draw\DrawFinalPlacementService::class)->forDraw($draw);
+                        $hasUnresolvedTie = $hasUnresolvedTie || $placements->isEmpty()
+                            || $placements->contains(fn ($row) => $row['status'] !== 'resolved');
+                    }
                     if ($draw->isRoundRobinOnly() && $draw->groups->count() === 1) {
                         $standingRows = app(\App\Domain\Draws\Services\StandingsService::class)->forGroup($draw->groups->sole(), $draw->drawFixtures);
                         $hasUnresolvedTie = $hasUnresolvedTie || collect($standingRows)->contains(fn ($row) => ($row['tiebreak'] ?? '') === '=');

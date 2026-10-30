@@ -105,7 +105,8 @@
     </div>
   </div></div>
 
-  <div class="card mb-4"><div class="card-header"><h5 class="mb-0">1. Nominate an existing player</h5></div><div class="card-body">
+  @include('backend.interprovincial-trials._previous-results-nominations')
+  <div class="card mb-4"><div class="card-header"><h5 class="mb-0">Nominate existing players</h5></div><div class="card-body">
     <form method="POST" action="{{ route('backend.interprovincial-trials.nominations.bulk-store', $event) }}" id="nomination-form" class="row g-3">
       @csrf
       <div class="col-lg-6">
@@ -118,14 +119,16 @@
         <select class="form-select" id="nomination-category" name="category_event_id" required>
           <option value="">Choose a category</option>
           @foreach($event->categoryEvents as $categoryEvent)
-            <option value="{{ $categoryEvent->id }}">{{ $categoryEvent->category?->name ?? 'Category' }}</option>
+            <option value="{{ $categoryEvent->id }}" data-published="{{ (int) $categoryEvent->nominations_published }}">{{ $categoryEvent->category?->name ?? 'Category' }}</option>
           @endforeach
         </select>
       </div>
       <div class="col-lg-2 d-flex align-items-end">
-        <button class="btn btn-primary w-100" type="submit" {{ $event->categoryEvents->isEmpty() ? 'disabled' : '' }}>Add nominations</button>
+        <button class="btn btn-primary w-100" type="submit" {{ $event->categoryEvents->isEmpty() ? 'disabled' : '' }}>Review nominations</button>
       </div>
       <div class="col-12"><div id="nomination-feedback" class="small" role="status" aria-live="polite"></div></div>
+      <div class="col-12"><span id="nomination-selected-count">0 players selected</span></div>
+      <div class="col-12 d-none" id="nomination-review"><strong id="nomination-review-category"></strong><p id="nomination-review-visibility"></p><ul id="nomination-review-names"></ul><button type="button" id="nomination-save" class="btn btn-primary">Save nominations</button></div>
     </form>
     <details class="mt-3" @if($errors->hasAny(['nominee_name', 'nominee_surname', 'nominee_email'])) open @endif>
       <summary class="fw-semibold">Add a player without a profile</summary>
@@ -150,7 +153,7 @@
       <button type="button" class="btn btn-outline-primary" data-send-preview-mode="not_registered"><i class="ti ti-mail-forward me-1"></i>Review emails for players not registered</button>
     </div>
     </details>
-    <p class="text-muted small mb-2">Showing {{ $nominations->firstItem() ?? 0 }}–{{ $nominations->lastItem() ?? 0 }} of {{ $nominations->total() }} nominations. Filters apply to this page.</p>
+    <p id="nomination-range" class="text-muted small mb-2">Showing {{ $nominations->firstItem() ?? 0 }}–{{ $nominations->lastItem() ?? 0 }} of {{ $nominations->total() }} nominations. Filters apply to this page.</p>
     <div class="interpro-filter-bar mb-3" aria-label="Filter nominated players on this page">
       @foreach($nominationFilterGroups as $filter)
         <button type="button" class="btn btn-sm btn-outline-primary {{ $filter['key'] === 'all' ? 'active' : '' }}" data-nomination-filter="{{ $filter['key'] }}" aria-pressed="{{ $filter['key'] === 'all' ? 'true' : 'false' }}">
@@ -230,6 +233,45 @@ $(function () {
   const form = document.getElementById('nomination-form');
   const feedback = document.getElementById('nomination-feedback');
   const csrf = form.querySelector('input[name="_token"]').value;
+  const resultsForm = document.getElementById('previous-results-form');
+  const resultsFeedback = document.getElementById('previous-results-feedback');
+  const resultsReview = document.getElementById('previous-results-review');
+  let resultsToken = null;
+  let resultsGeneration = 0;
+  const invalidateResultsReview = () => { resultsGeneration++; resultsToken = null; resultsReview.classList.add('d-none'); };
+  resultsForm.addEventListener('input', invalidateResultsReview);
+  resultsForm.addEventListener('change', invalidateResultsReview);
+  const resultsRequest = async (url, payload) => {
+    const response = await fetch(url, {method:'POST', headers:{'X-CSRF-TOKEN':csrf, Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const data = await response.json();
+    if (!response.ok) throw new Error(Object.values(data.errors || {}).flat()[0] || data.message || 'Unable to load previous results.');
+    return data;
+  };
+  resultsForm.addEventListener('submit', async event => {
+    event.preventDefault(); resultsToken = null; resultsReview.classList.add('d-none'); resultsFeedback.textContent = 'Checking saved final positions…';
+    const generation = ++resultsGeneration;
+    const button = resultsForm.querySelector('button'); button.disabled = true;
+    try {
+      const data = await resultsRequest(@json(route('backend.interprovincial-trials.nominations.previous-results.preview', $event)), Object.fromEntries(new FormData(resultsForm)));
+      if (generation !== resultsGeneration) { resultsFeedback.textContent = 'Selection changed. Preview the updated selection.'; return; }
+      const preview = data.preview; resultsToken = data.token;
+      document.getElementById('previous-results-summary').textContent = `${preview.source_event} (${preview.source_date}) · ${preview.source_category} · age-group year ${preview.age_group_year} → ${preview.category}. Review all ${preview.rows.length} profiles. Saving keeps names private and sends no emails.`;
+      document.getElementById('previous-results-rows').innerHTML = preview.rows.map(row => `<tr><td>${row.rank}</td><td>${escapeHtml(row.name)}</td><td>#${row.player_id}</td><td>${data.existing_player_ids.map(Number).includes(row.player_id) ? 'Already nominated — skip' : 'Add privately'}</td></tr>`).join('');
+      resultsFeedback.textContent = ''; resultsReview.classList.remove('d-none');
+    } catch(error) { resultsFeedback.textContent = error.message; }
+    finally { button.disabled = false; }
+  });
+  document.getElementById('previous-results-save').addEventListener('click', async function () {
+    if (!resultsToken) return;
+    this.disabled = true;
+    try {
+      const data = await resultsRequest(@json(route('backend.interprovincial-trials.nominations.previous-results.store', $event)), {token:resultsToken});
+      resultsFeedback.textContent = data.message; resultsToken = null; resultsReview.classList.add('d-none');
+      // Reload authoritative totals and both category tables after an import.
+      window.location.reload();
+    } catch(error) { resultsFeedback.textContent = error.message; }
+    finally { this.disabled = false; }
+  });
 
   const refreshNominationFilters = () => {
     const rows = Array.from(document.querySelectorAll('[data-nomination-row]'));
@@ -328,6 +370,8 @@ $(function () {
   };
 
   const rebuildCategory = data => {
+    if (data.total > 100 || @json($nominations->currentPage()) > 1) { window.location.reload(); return; }
+    document.getElementById('nomination-range').textContent = `Showing ${data.total ? 1 : 0}–${data.total} of ${data.total} nominations. Filters apply to this page.`;
     if ((data.pagination?.last_page || 1) > 1) {
       window.location.reload();
       return;
@@ -343,9 +387,8 @@ $(function () {
       empty.dataset.emptyNominations = '';
       empty.textContent = 'No players nominated yet.';
       list.appendChild(empty);
-    } else {
-      refreshNominationFilters();
     }
+    refreshNominationFilters();
   };
   player.select2({
     width: '100%',
@@ -377,8 +420,25 @@ $(function () {
     }, 0);
   });
 
-  $(form).on('submit', async function (event) {
+  const invalidateReview = () => {
+    const selectedCount = (player.val() || []).length;
+    document.getElementById('nomination-selected-count').textContent = `${selectedCount} player${selectedCount === 1 ? '' : 's'} selected`;
+    document.getElementById('nomination-review').classList.add('d-none');
+  };
+  player.on('change', invalidateReview);
+  document.getElementById('nomination-category').addEventListener('change', invalidateReview);
+  $(form).on('submit', function (event) {
     event.preventDefault();
+    const category = document.getElementById('nomination-category').selectedOptions[0];
+    document.getElementById('nomination-review-category').textContent = category.textContent;
+    document.getElementById('nomination-review-visibility').textContent = category.dataset.published === '1'
+      ? 'Warning: this category is published. Saving will immediately make these names public. No emails will be sent.'
+      : 'These nominations will be saved privately. No emails will be sent.';
+    document.getElementById('nomination-review-names').innerHTML = player.select2('data').map(row => `<li>${escapeHtml(row.text)}</li>`).join('');
+    document.getElementById('nomination-review').classList.remove('d-none');
+  });
+  document.getElementById('nomination-save').addEventListener('click', async function () {
+    this.disabled = true;
     showFeedback('Adding nominations…');
     try {
       const response = await fetch(form.action, { method: 'POST', headers: { Accept: 'application/json' }, body: new FormData(form) });
@@ -389,7 +449,7 @@ $(function () {
       showFeedback(data.message);
     } catch (error) {
       showFeedback(error.message || 'Nominations could not be added.', true);
-    }
+    } finally { this.disabled = false; }
   });
 
   document.addEventListener('submit', async event => {

@@ -95,7 +95,22 @@ class Draw extends Model
 
     public function isRoundRobinOnly(): bool
     {
-        return $this->settings?->workflow === 'round_robin';
+        return in_array($this->settings?->workflow, ['round_robin', 'round_robin_round_robin'], true);
+    }
+    public function isTwoStageRoundRobin(): bool
+    {
+        return $this->settings?->workflow === 'round_robin_round_robin';
+    }
+
+    public function hasRoundRobinProgression(): bool
+    {
+        return in_array($this->settings?->workflow, ['round_robin_playoffs', 'round_robin_round_robin'], true);
+    }
+
+    public function roundRobinLabel(): string
+    {
+        return $this->isTwoStageRoundRobin() ? 'Round robin → round robin'
+            : ($this->isRoundRobinOnly() ? 'Round robin only' : 'Round robin → playoffs');
     }
     public function event()
     {

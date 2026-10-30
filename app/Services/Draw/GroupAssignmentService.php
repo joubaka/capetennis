@@ -53,7 +53,7 @@ final class GroupAssignmentService
 
     public function revision(Draw $draw): string
     {
-        $groups = $draw->groups()->orderBy('id')->get()->map(fn ($group) => [
+        $groups = $draw->groups()->where('round_robin_phase', 1)->orderBy('id')->get()->map(fn ($group) => [
             'id' => $group->id,
             'name' => $group->name,
             'players' => $group->groupRegistrations()->get(['registration_id', 'seed'])->toArray(),
@@ -74,6 +74,8 @@ final class GroupAssignmentService
 
         return DB::transaction(function () use ($draw, $data) {
             $draw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
+            abort_if($draw->isTwoStageRoundRobin() && $draw->groups()->where('round_robin_phase', 2)->exists(), 409,
+                'Group membership is frozen after progression to the second round robin.');
             abort_if($draw->locked || $draw->published, 403, 'This draw cannot be rearranged.');
             $revision = $this->revision($draw);
             abort_if(isset($data['revision']) && ! hash_equals($revision, $data['revision']), 409,

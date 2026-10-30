@@ -61,6 +61,7 @@ final class DrawGuard
      */
     public static function requireScoreable(Fixture $fixture): void
     {
+        \App\Services\Draw\TwoStageRoundRobinService::assertScoreMutable($fixture);
         $draw = $fixture->draw ?? Draw::find($fixture->draw_id);
 
         if ($draw && $draw->locked) {

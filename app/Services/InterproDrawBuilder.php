@@ -850,6 +850,9 @@ class InterproDrawBuilder
   private function buildStandingsFromFixtures(Draw $draw): array
   {
     $timed = $draw->settings?->score_format === \App\Domain\Draws\Services\TennisScoreFormat::TIMED;
+    if ($draw->isTwoStageRoundRobin() && ! $timed) {
+      return app(\App\Domain\Draws\Services\StandingsService::class)->forDraw($draw);
+    }
     $rankingMetric = $timed ? 'points' : 'wins';
     $standings = [];
 
@@ -1729,6 +1732,10 @@ class InterproDrawBuilder
     Log::info("🎾 [RR Save] Saving RR score for fixture {$fixture->id}");
 
     DB::transaction(function () use ($fixture, $sets) {
+      $lockedDraw = \App\Models\Draw::whereKey($fixture->draw_id)->lockForUpdate()->firstOrFail();
+      $fixture->setRelation('draw', $lockedDraw);
+      if ($lockedDraw->isTwoStageRoundRobin()) \App\Domain\Draws\Guards\DrawGuard::requireScoreable($fixture);
+      \App\Services\Draw\TwoStageRoundRobinService::assertScoreMutable($fixture);
       Fixture::whereKey($fixture->id)->lockForUpdate()->firstOrFail();
       $fixture->refresh();
       if ($fixture->draw?->settings?->score_format === \App\Domain\Draws\Services\TennisScoreFormat::TIMED) {

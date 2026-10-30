@@ -11,6 +11,7 @@ final class DrawRecoveryImpactService
 {
     public function preview(Draw $draw, Fixture $source): array
     {
+        TwoStageRoundRobinService::assertScoreMutable($source);
         abort_unless((int) $source->draw_id === (int) $draw->id, 422, 'The source fixture does not belong to this draw.');
         abort_unless($source->stage === 'RR', 422, 'This recovery operation starts from a round-robin result.');
 
@@ -48,6 +49,7 @@ final class DrawRecoveryImpactService
 
     public function assertSafeOrdinaryCorrection(Fixture $fixture): void
     {
+        TwoStageRoundRobinService::assertScoreMutable($fixture);
         $dependents = $this->dependents($fixture);
         if ($fixture->stage === 'RR') {
             $fixedBracket = $dependents->first(fn (Fixture $dependent) =>

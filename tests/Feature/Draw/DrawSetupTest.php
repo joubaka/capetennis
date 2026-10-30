@@ -53,7 +53,7 @@ class DrawSetupTest extends TestCase
         $this->assertDatabaseCount('flexible_monrad_draws', 0);
         $this->assertSame(0, $draw->groups()->count());
         $this->post(route('draw.setup.store', $draw), ['workflow' => 'round_robin_playoffs'])
-            ->assertRedirect(route('backend.draw.roundrobin.show', $draw));
+            ->assertRedirect(route('backend.draw.roundrobin.show', $draw).'#settings');
         $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()->assertSee('Players &amp; Groups', false);
         $publicDraw = $this->get(route('public.roundrobin.show', $draw))->assertOk();
         $publicBracket = $this->get(route('public.roundrobin.main-bracket', $draw))->assertOk();
@@ -73,7 +73,7 @@ class DrawSetupTest extends TestCase
         $draw = $this->draw();
 
         $this->post(route('draw.setup.store', $draw), ['workflow' => 'round_robin'])
-            ->assertRedirect(route('backend.draw.roundrobin.show', $draw));
+            ->assertRedirect(route('backend.draw.roundrobin.show', $draw).'#settings');
 
         $this->assertSame('round_robin', $draw->fresh()->settings->workflow);
         $this->assertTrue($draw->fresh()->isRoundRobinOnly());
@@ -96,6 +96,27 @@ class DrawSetupTest extends TestCase
             ->assertUnprocessable()
             ->assertJsonPath('message', 'Playoff settings are not available for a round-robin-only draw.');
         $this->assertSame(0, $draw->drawFixtures()->where('stage', '!=', 'RR')->count());
+    }
+
+    public function test_changing_round_robin_format_returns_to_required_setup_review(): void
+    {
+        $draw = $this->draw();
+        $draw->settings()->create(['workflow' => 'round_robin']);
+
+        $this->post(route('draw.setup.store', $draw), ['workflow' => 'round_robin_playoffs'])
+            ->assertRedirect(route('backend.draw.roundrobin.show', $draw).'#settings');
+
+        $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()
+            ->assertSee('Required setup after choosing a draw format')
+            ->assertSee('Choose the match scoring format below.')
+            ->assertSee('Check the enabled playoffs and which group positions qualify.');
+
+        $this->post(route('draw.setup.store', $draw), ['workflow' => 'round_robin'])
+            ->assertRedirect(route('backend.draw.roundrobin.show', $draw).'#settings');
+
+        $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()
+            ->assertSee('Required setup after choosing a draw format')
+            ->assertDontSee('Check the enabled playoffs and which group positions qualify.');
     }
 
     public function test_direct_formats_persist_resume_and_generate_the_correct_matches(): void

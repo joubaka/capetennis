@@ -107,7 +107,7 @@ class RoundRobinController extends Controller
         'drawFixtures.groupRegistration2',
       ]);
 
-      $groups = $draw->groups()->orderBy('name')->get();
+      $groups = $draw->groups()->orderBy('round_robin_phase')->orderBy('qualifying_position')->orderBy('name')->get();
 
       // ---------------------------------------------------------
       // DEEP FIXTURE DEBUG LOG
@@ -200,7 +200,9 @@ class RoundRobinController extends Controller
 
         return [
           'id' => $g->id,
-          'name' => $g->name,
+          'name' => $g->presentationName(),
+          'round_robin_phase' => $g->round_robin_phase,
+          'qualifying_position' => $g->qualifying_position,
           'registrations' => $g->groupRegistrations->map(function ($gr) {
             $reg = $gr->registration;
             $player = $reg?->players?->first();
@@ -267,12 +269,14 @@ class RoundRobinController extends Controller
     $engine = new \App\Services\BracketEngine($draw);
     $svgData = $engine->build();
 
-    $groups = $draw->groups()->orderBy('name')->get();
+    $groups = $draw->groups()->orderBy('round_robin_phase')->orderBy('qualifying_position')->orderBy('name')->get();
 
     $groupsJson = $groups->map(function ($g) {
       return [
         'id' => $g->id,
-        'name' => $g->name,
+        'name' => $g->presentationName(),
+          'round_robin_phase' => $g->round_robin_phase,
+          'qualifying_position' => $g->qualifying_position,
         'registrations' => $g->groupRegistrations->map(function ($gr) {
           $reg = $gr->registration;
           $player = $reg?->players?->first();
@@ -750,6 +754,11 @@ class RoundRobinController extends Controller
     $this->authorize('progress', $draw);
     $draw->loadMissing(['settings', 'groups', 'event']);
 
+    if ($draw->isTwoStageRoundRobin()) {
+      return response()->json(['success' => true, 'draw' => ['id' => $draw->id, 'name' => $draw->drawName],
+        'review' => app(\App\Services\Draw\TwoStageRoundRobinService::class)->review($draw)]);
+    }
+
     if ($draw->settings?->workflow !== 'round_robin_playoffs') {
       return response()->json([
         'success' => false,
@@ -788,6 +797,12 @@ class RoundRobinController extends Controller
 
     $this->authorize('progress', $draw);
     $draw->loadMissing(['settings', 'groups', 'event']);
+
+    if ($draw->isTwoStageRoundRobin()) {
+      $result = app(\App\Services\Draw\TwoStageRoundRobinService::class)->progress($draw, $request->all());
+      return response()->json(['success' => true, 'progress' => $result,
+        'message' => $result['created'] ? 'Created '.$result['created'].' second-stage matches. Schedule the second round robin next.' : 'The second round robin has already been created.']);
+    }
 
     if ($draw->settings?->workflow !== 'round_robin_playoffs') {
       return response()->json([
@@ -1676,7 +1691,7 @@ class RoundRobinController extends Controller
 
     // A planning preview must never create fixtures or resolve real qualifiers.
     if (!$draw->isTeamDraw() && !$draw->drawFixtures()->where('stage', '!=', 'RR')->exists()) {
-      $groups = $draw->groups()->orderBy('name')->get();
+      $groups = $draw->groups()->orderBy('round_robin_phase')->orderBy('qualifying_position')->orderBy('name')->get();
       if ($draw->isRoundRobinOnly()) {
         return view('backend.draw.roundrobin.bracket-planning', [
           'draw' => $draw, 'svgData' => null,
@@ -1910,7 +1925,7 @@ class RoundRobinController extends Controller
   {
     $this->authorize('view', $draw);
 
-    $groups = $draw->groups()
+    $groups = $draw->groups()->where('round_robin_phase', 1)
       ->with(['registrations.players'])
       ->orderBy('name')
       ->get()

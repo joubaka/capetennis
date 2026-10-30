@@ -189,6 +189,8 @@ class ManageDrawController extends Controller
 
   private function resizeGroups(Draw $draw, int $count, ?int $moveTo = null)
   {
+    abort_if($draw->isTwoStageRoundRobin() && $draw->groups()->where('round_robin_phase', 2)->exists(), 409,
+      'Group membership is frozen after progression to the second round robin.');
     $groups = $draw->groups()->orderBy('name')->get();
     if ($groups->count() === $count) return $groups;
     if ($draw->drawFixtures()->whereHas('fixtureResults')->exists()) {

@@ -29,13 +29,22 @@
       : ($roundRobinRemaining > 0
         ? $roundRobinRemaining.' '.Str::plural('result', $roundRobinRemaining).' left'
         : ($playoffFixtureCount > 0 ? 'Refresh playoffs' : 'Review & progress')));
+  if ($draw->isTwoStageRoundRobin()) {
+    $sourceIds = $draw->groups()->where('round_robin_phase', 1)->pluck('id');
+    $roundRobinTotal = $draw->drawFixtures()->where('stage', 'RR')->whereIn('draw_group_id', $sourceIds)->count();
+    $roundRobinCompleted = $draw->drawFixtures()->where('stage', 'RR')->whereIn('draw_group_id', $sourceIds)->whereHas('fixtureResults')->count();
+    $roundRobinRemaining = max(0, $roundRobinTotal - $roundRobinCompleted);
+    $secondCreated = $draw->groups()->where('round_robin_phase', 2)->exists();
+    $progressReady = !$draw->locked && !$secondCreated && $roundRobinTotal > 0 && $roundRobinRemaining === 0;
+    $progressLabel = $secondCreated ? 'Stage 2 created' : ($progressReady ? 'Review & progress' : 'Stage 1 incomplete');
+  }
   $progressHelp = $draw->locked
     ? 'Unlock this draw before progressing it.'
     : ($roundRobinTotal === 0
       ? 'Create the round-robin fixtures before progressing this draw.'
       : ($roundRobinRemaining > 0
         ? 'Complete all round-robin results first. '.$roundRobinRemaining.' of '.$roundRobinTotal.' matches still need a result.'
-        : 'Review and confirm the final standings before creating the playoffs.'));
+        : ($draw->isTwoStageRoundRobin() ? 'Review and confirm the first-stage standings before creating the second round robin.' : 'Review and confirm the final standings before creating the playoffs.')));
 @endphp
 <article class="draw-overview-row" data-draw-id="{{ $draw->id }}"
          data-name="{{ $draw->drawName }}" data-format="{{ $format ?? '' }}" data-published="{{ $draw->published ? '1' : '0' }}"
@@ -66,7 +75,7 @@
   </div>
   <div class="draw-format-cell"><span class="draw-column-label">Format</span><span class="{{ $format ? 'draw-format-name' : 'draw-format-unset' }}">{{ $format ?? 'Not specified' }}</span></div>
   <div class="draw-match-cell"><span class="draw-column-label">Matches</span><span class="draw-match-count" aria-label="{{ $draw->draw_fixtures_count }} {{ Str::plural('match', $draw->draw_fixtures_count) }}">{{ $draw->draw_fixtures_count }}</span>
-    @if($draw->settings?->workflow === 'round_robin_playoffs' && $roundRobinTotal > 0)
+    @if($draw->hasRoundRobinProgression() && $roundRobinTotal > 0)
       <span class="d-block small text-muted">{{ $roundRobinCompleted }}/{{ $roundRobinTotal }} RR results</span>
     @endif
   </div>
@@ -86,7 +95,7 @@
     @endcan
     <a class="btn draws-button draw-open-button" href="{{ $drawUrl }}">Open draw @include('backend.headOffice.partials.draw-icon', ['icon' => 'arrow'])</a>
     <a class="btn draws-button draw-schedule-button" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]) }}">@include('backend.headOffice.partials.draw-icon', ['icon' => 'calendar']) <span>Schedule</span></a>
-    @if($draw->settings?->workflow === 'round_robin_playoffs')
+    @if($draw->hasRoundRobinProgression())
       @can('progress', $draw)
         <button type="button" class="btn draws-button draws-button-primary progress-draw"
                 data-url="{{ route('backend.draw.progress', $draw) }}"

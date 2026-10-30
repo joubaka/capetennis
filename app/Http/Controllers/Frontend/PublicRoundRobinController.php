@@ -68,7 +68,9 @@ class PublicRoundRobinController extends Controller
     $groupsJson = $draw->groups->map(function ($g) {
       return [
         'id' => $g->id,
-        'name' => $g->name,
+        'name' => $g->presentationName(),
+          'round_robin_phase' => $g->round_robin_phase,
+          'qualifying_position' => $g->qualifying_position,
         'registrations' => $g->groupRegistrations->map(function ($gr) {
           $reg = $gr->registration;
           $player = $reg?->players?->first();

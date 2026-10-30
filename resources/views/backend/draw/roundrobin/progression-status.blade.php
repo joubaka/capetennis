@@ -1,4 +1,23 @@
-@if($draw->settings?->workflow === 'round_robin_playoffs')
+@if($draw->isTwoStageRoundRobin())
+  @php
+    $firstStageIds = $draw->groups->where('round_robin_phase', 1)->pluck('id');
+    $firstMatches = $draw->drawFixtures->where('stage', 'RR')->whereIn('draw_group_id', $firstStageIds);
+    $firstComplete = $firstMatches->filter(fn ($fixture) => $fixture->fixtureResults->isNotEmpty())->count();
+    $secondCreated = $draw->groups->contains('round_robin_phase', 2);
+  @endphp
+  <section class="card card-body my-3 no-print" aria-labelledby="rr-second-stage-heading">
+    <h6 id="rr-second-stage-heading">Stage 1 → Stage 2 round robin</h6>
+    @if($secondCreated)
+      <p class="mb-0">Stage 2 groups and matches are ready. First-stage results and membership are frozen. Schedule and score the second-stage matches to determine final positions.</p>
+    @else
+      <p>{{ $firstComplete }} of {{ $firstMatches->count() }} first-stage results recorded. Complete every match and resolve tied positions, then review and confirm each group.</p>
+      @can('progress', $draw)
+        <button type="button" class="btn btn-primary align-self-start progress-draw" data-url="{{ route('backend.draw.progress', $draw) }}" data-review-url="{{ route('backend.draw.progress-review', $draw) }}" data-draw-name="{{ $draw->drawName }}" @disabled($draw->locked || $firstMatches->isEmpty() || $firstComplete !== $firstMatches->count())>Review &amp; progress to second round robin</button>
+      @endcan
+    @endif
+    <details class="mt-3"><summary>Qualification and progression rules</summary><p class="small mt-2 mb-0">All first-place finishers enter Stage 2 Group 1, all second-place finishers Group 2, and so on. Each group starts with fresh scores. Group 1 determines the highest final positions, followed by Group 2 and the remaining groups. Second-stage matches become available for scheduling after progression.</p></details>
+  </section>
+@elseif($draw->settings?->workflow === 'round_robin_playoffs')
   @php
     $progressTotal = $draw->drawFixtures()->where('stage', 'RR')->count();
     $progressComplete = $draw->drawFixtures()->where('stage', 'RR')->whereHas('fixtureResults')->count();

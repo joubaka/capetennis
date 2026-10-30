@@ -1,6 +1,6 @@
 @extends('layouts/contentNavbarLayout')
 
-@section('title', ($draw->isRoundRobinOnly() ? 'Round Robin' : 'Round Robin & Playoffs') . ' — ' . ($draw->drawName ?? 'Draw'))
+@section('title', ($draw->isTwoStageRoundRobin() ? 'Round Robin → Round Robin' : ($draw->isRoundRobinOnly() ? 'Round Robin' : 'Round Robin & Playoffs')) . ' — ' . ($draw->drawName ?? 'Draw'))
 
 @section('content')
 <link rel="stylesheet" href="{{ asset('css/public-draw.css') }}?v={{ filemtime(public_path('css/public-draw.css')) }}">
@@ -170,6 +170,10 @@
      data-draw-id="{{ $draw->id }}">
 
   @include('frontend.draw.partials.public-header')
+
+  @if($draw->isTwoStageRoundRobin())
+    <p class="alert alert-info">Round robin → round robin. Equal first-stage finishing positions qualify into second-stage groups. Results start afresh; Stage 2 Group 1 decides the highest final positions, followed by Group 2 and the remaining groups.</p>
+  @endif
 
   {{-- ============================
        TAB NAVIGATION

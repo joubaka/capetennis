@@ -4,7 +4,7 @@ $(document).ready(function () {
         return $('<div>').text(value == null ? '' : String(value)).html();
     }
 
-    function progressGroupHtml(group, checkboxId) {
+    function progressGroupHtml(group, checkboxId, destination) {
         var rows = group.standings.map(function (row) {
             var tiebreak = row.tiebreak
                 ? '<span class="badge bg-label-info">' + escapeProgressReviewHtml(row.tiebreak) + '</span>'
@@ -22,7 +22,7 @@ $(document).ready(function () {
                 + '</tr>';
         }).join('');
 
-        return '<p class="text-muted mb-3">Check the final order carefully. These positions will be used to place players into the playoffs.</p>'
+        return '<p class="text-muted mb-3">Check the final order carefully. These positions will be used to place players into the ' + escapeProgressReviewHtml(destination) + '.</p>'
             + '<div class="table-responsive border rounded mb-3">'
             + '<table class="table table-sm table-striped align-middle mb-0">'
             + '<thead><tr><th class="text-center">Pos</th><th class="text-start">Player / team</th><th class="text-center">P</th>'
@@ -38,7 +38,7 @@ $(document).ready(function () {
     $(document).on('click', '.progress-draw', async function () {
         var $button = $(this);
         if (window.RRGroups && (window.RRGroups.isDirty() || window.RRGroups.isBusy())) {
-            toastr.warning('Save your player assignments before reviewing playoff progression.');
+            toastr.warning('Save your player assignments before reviewing progression.');
             return;
         }
         $button.prop('disabled', true).attr('aria-busy', 'true');
@@ -53,6 +53,7 @@ $(document).ready(function () {
         try {
             var response = await $.get($button.data('review-url'));
             var review = response.review;
+            var destination = review.destination || 'playoffs';
             var groups = review.groups || [];
 
             if (!groups.length) {
@@ -67,7 +68,7 @@ $(document).ready(function () {
                 var isLast = step === groups.length - 1;
                 var result = await Swal.fire({
                     titleText: 'Confirm ' + group.name,
-                    html: progressGroupHtml(group, checkboxId),
+                    html: progressGroupHtml(group, checkboxId, destination),
                     icon: 'question',
                     width: 960,
                     progressSteps: groups.map(function (_, index) { return String(index + 1); }),
@@ -76,7 +77,7 @@ $(document).ready(function () {
                     showDenyButton: step > 0,
                     denyButtonText: 'Back',
                     cancelButtonText: 'Cancel',
-                    confirmButtonText: isLast ? 'Confirm & progress to playoffs' : 'Confirm & next group',
+                    confirmButtonText: isLast ? 'Confirm & progress to ' + destination : 'Confirm & next group',
                     focusConfirm: false,
                     preConfirm: function () {
                         if (!document.getElementById(checkboxId).checked) {

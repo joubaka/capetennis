@@ -18,7 +18,7 @@
   const dirty = () => snapshot() !== baseline;
   const editable = () => !!root.RR_CAN_ASSIGN && !root.RR_DRAW_LOCKED && !root.RR_DRAW_PUBLISHED;
   const normalise = raw =>
-    (raw || []).map(g => ({
+    (raw || []).filter(g => Number(g.round_robin_phase || 1) === 1).map(g => ({
       id: Number(g.id),
       name: g.name,
       players: (g.players || g.registrations || []).map(p => ({
@@ -220,8 +220,9 @@
       groups.map(g => ({
         id: g.id,
         name: g.name,
+        round_robin_phase: 1,
         registrations: g.players.map((p, index) => ({ id: p.id, display_name: p.name, seed: index + 1 }))
-      }))
+      })).concat((root.RR_GROUPS || []).filter(g => Number(g.round_robin_phase || 1) === 2))
     );
   }
   async function save() {

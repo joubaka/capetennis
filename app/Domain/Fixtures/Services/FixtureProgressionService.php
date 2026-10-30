@@ -65,10 +65,11 @@ final class FixtureProgressionService
      */
     public function rollback(Fixture $fixture): void
     {
-        $draw = $this->loadDraw($fixture);
-        DrawGuard::requireMutable($draw, 'roll back progression for');
-
         DB::transaction(function () use ($fixture) {
+            $draw = Draw::whereKey($fixture->draw_id)->lockForUpdate()->firstOrFail();
+            $fixture->setRelation('draw', $draw);
+            \App\Services\Draw\TwoStageRoundRobinService::assertScoreMutable($fixture);
+            DrawGuard::requireMutable($draw, 'roll back progression for');
             $this->rollbackWinnerSlot($fixture);
             $this->rollbackLoserSlot($fixture);
             $this->clearFixtureResult($fixture);

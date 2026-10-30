@@ -1412,6 +1412,11 @@ final class EventVenueScheduleService
         }
         $nodes = [];
         foreach ($fixtures as $fixture) {
+            if ($draw->isTwoStageRoundRobin() && (int) $fixture->drawGroup?->round_robin_phase === 2) {
+                foreach ($fixtures as $source) {
+                    if ((int) $source->drawGroup?->round_robin_phase === 1) $feeders[$fixture->id][] = $source->id;
+                }
+            }
             $automatic = $fixture->fixtureResults->isEmpty() && (! $fixture->registration1_id || ! $fixture->registration2_id)
                 && ($fixture->winner_registration || (empty($feeders[$fixture->id])
                     && (int) $fixture->bracket_id === 1 && (int) $fixture->round === 1));
@@ -1421,7 +1426,7 @@ final class EventVenueScheduleService
             $nodes[$fixture->id] = $this->node($draw, $fixture, $dependencies,
                 $participants[$fixture->id] ?? [], $automatic, ($fixture->fixtureResults->isNotEmpty() || (int) $fixture->match_status !== 0), $labels);
         }
-        if ($draw->settings?->workflow === 'round_robin_playoffs') {
+        if ($draw->hasRoundRobinProgression()) {
             foreach (array_keys($nodes) as $id) $nodes[$id]['venue_round'] = $this->wave($id, $nodes);
             if ($programme) foreach (array_keys($nodes) as $id) $nodes[$id]['round'] = $nodes[$id]['venue_round'];
         }
@@ -1661,7 +1666,7 @@ final class EventVenueScheduleService
             $key = ($node['fixture_kind'] ?? 'individual').':'.$node['fixture']->id;
             if (! isset($byKey[$key])) continue;
             $label = $draw->isTeamDraw() ? ($node['fixture']->rubber_name ?: $node['fixture']->rubber_code ?: 'Team matches')
-                : ($draw->settings?->workflow === 'round_robin_playoffs' ? ($node['stage'] === 'RR' ? 'Round robin' : $node['stage'].' playoffs') : 'Draw matches');
+                : ($draw->hasRoundRobinProgression() ? ($node['stage'] === 'RR' ? ($draw->isTwoStageRoundRobin() ? 'Round robin stage '.(int) $node['fixture']->drawGroup?->round_robin_phase : 'Round robin') : $node['stage'].' playoffs') : 'Draw matches');
             $round = $node['round'];
             $groups[$round][$label] ??= ['label' => $label, 'count' => 0, 'matches' => []];
             $groups[$round][$label]['count']++; $groups[$round][$label]['matches'][] = $byKey[$key];
@@ -1678,7 +1683,7 @@ final class EventVenueScheduleService
             ->concat(TeamFixture::whereIn('draw_id', $teamIds)->selectRaw('draw_id, round_nr as round')->distinct()->get());
         $available = $rows->groupBy('draw_id')->map(fn ($rounds) => $rounds->pluck('round')->map(fn ($round) => max(1, (int) $round))
             ->unique()->sort()->values()->all())->all();
-        foreach ($draws->filter(fn ($draw) => $programme && ($draw->usesFlexibleMonrad() || $draw->settings?->workflow === 'round_robin_playoffs')) as $draw) {
+        foreach ($draws->filter(fn ($draw) => $programme && ($draw->usesFlexibleMonrad() || $draw->hasRoundRobinProgression())) as $draw) {
             $draw->loadMissing('drawFixtures.fixtureResults');
             $available[$draw->id] = collect($this->nodesForDraw($draw, Carbon::now(), 90, true))
                 ->pluck('round')->unique()->sort()->values()->all();

@@ -316,6 +316,7 @@ class DrawApiController extends Controller
 
         DB::transaction(function () use ($draw, $validated, $venueId) {
                 DB::table('venues')->orderBy('id')->limit(1)->lockForUpdate()->get();
+                if ($draw->isTwoStageRoundRobin()) Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
                 DB::table('events')->where('id', $draw->event_id)->lockForUpdate()->get();
                 $ownIds = $draw->drawFixtures()->whereIn('id', collect($validated['items'])->pluck('fixture_id'))->pluck('id');
                 $dailyLimit = \App\Services\Scheduling\DailyMatchLimit::configured($draw->event,
@@ -337,6 +338,26 @@ class DrawApiController extends Controller
                         $timeValue = (strlen($rawTime) <= 8)
                             ? now()->toDateString() . ' ' . $rawTime
                             : $rawTime;
+                    }
+
+                    if ($draw->isTwoStageRoundRobin()) {
+                        $existing = $fixture->orderOfPlay;
+                        $itemVenue = (int) ($item['venue_id'] ?? $venueId);
+                        $itemCourt = (string) ($item['court'] ?? '');
+                        if ($fixture->fixtureResults()->exists()) {
+                            abort_unless($existing && (int) $existing->venue_id === $itemVenue
+                                && (string) $existing->court === $itemCourt
+                                && (string) $existing->time === ($timeValue ? Carbon::parse($timeValue)->format('Y-m-d H:i:s') : ''), 409,
+                                'Played first-stage matches must retain their saved assignments.');
+                            continue;
+                        }
+                        try {
+                            app(\App\Services\ScheduleEngine::class)->saveFixture($draw, $fixture->id, $timeValue,
+                                $itemVenue, $itemCourt, (int) ($item['duration_minutes'] ?? $existing?->duration_minutes ?? 75));
+                        } catch (\InvalidArgumentException $exception) {
+                            throw \Illuminate\Validation\ValidationException::withMessages(['items' => $exception->getMessage()]);
+                        }
+                        continue;
                     }
 
                     \App\Models\OrderOfPlay::updateOrCreate(

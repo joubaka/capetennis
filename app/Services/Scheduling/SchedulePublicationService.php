@@ -121,7 +121,7 @@ final class SchedulePublicationService
         $publicRows = $rows->groupBy('draw_id')->flatMap(function ($rows, $drawId) use ($draws) {
             if (! $draws[$drawId]->settings?->showsFirstMatchOnly()) return $rows;
             $seen = []; $visible = [];
-            $rr = in_array($draws[$drawId]->settings?->workflow, ['round_robin', 'round_robin_playoffs'], true)
+            $rr = in_array($draws[$drawId]->settings?->workflow, ['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'], true)
                 || $rows->contains(fn ($row) => $row['fixture_kind'] === 'individual' && (strtoupper((string) $row['_fixture']->stage) === 'RR' || $row['_fixture']->draw_group_id !== null));
             foreach ($rows as $row) {
                 $fixture = $row['_fixture'];

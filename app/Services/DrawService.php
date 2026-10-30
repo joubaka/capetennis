@@ -179,7 +179,10 @@ class DrawService
           'match_nr' => $fx->match_nr,
           'play_order' => $fx->play_order,
           'group_id' => $fx->draw_group_id,
-          'group_name' => $fx->drawGroup?->name,
+          'group_name' => $fx->drawGroup?->presentationName(),
+          'round_robin_phase' => (int) ($fx->drawGroup?->round_robin_phase ?? 1),
+          'stage_label' => $fx->stage === 'RR' && $fx->draw?->isTwoStageRoundRobin()
+            ? $fx->drawGroup?->presentationName() : null,
           'playoff_type' => $fx->playoff_type,
 
           'home' => $fx->registration1?->display_name ?? 'TBD',
@@ -584,6 +587,7 @@ class DrawService
   // ============================================================
   private function buildStandingsFromFixtures(Draw $draw): array
   {
+    if ($draw->isTwoStageRoundRobin()) return $this->canonicalStandings->forDraw($draw);
     return $this->engine->forDraw($draw)->standings(
       $draw,
       fn(Draw $d) => $this->buildStandingsFromFixturesLegacy($d)
@@ -1512,6 +1516,10 @@ class DrawService
     Log::info("🎾 [RR Save] Saving RR score for fixture {$fixture->id}");
 
     DB::transaction(function () use ($fixture, $sets) {
+      $lockedDraw = \App\Models\Draw::whereKey($fixture->draw_id)->lockForUpdate()->firstOrFail();
+      $fixture->setRelation('draw', $lockedDraw);
+      if ($lockedDraw->isTwoStageRoundRobin()) \App\Domain\Draws\Guards\DrawGuard::requireScoreable($fixture);
+      \App\Services\Draw\TwoStageRoundRobinService::assertScoreMutable($fixture);
       Fixture::whereKey($fixture->id)->lockForUpdate()->firstOrFail();
       $fixture->refresh();
       if ($fixture->draw?->settings?->score_format === \App\Domain\Draws\Services\TennisScoreFormat::TIMED) {

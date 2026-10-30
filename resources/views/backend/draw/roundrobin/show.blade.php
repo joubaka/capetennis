@@ -31,7 +31,7 @@
 @include('backend.draw.partials.workspace-header', ['workspaceSurface' => 'roundrobin'])
 @include('backend.draw.roundrobin.progression-status')
 
-@if(!$draw->isTeamDraw() && in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs'], true) && app(\App\Services\Draw\GroupAssignmentService::class)->fixturesNeedRegeneration($draw))
+@if(!$draw->isTeamDraw() && in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'], true) && app(\App\Services\Draw\GroupAssignmentService::class)->fixturesNeedRegeneration($draw))
   <div class="alert alert-warning" role="alert">
     <strong>Saved groups differ from the generated matches.</strong>
     Review the saved groups and existing matches before continuing.
@@ -122,6 +122,24 @@
 
     {{-- SETTINGS TAB --}}
     <div class="tab-pane fade" id="settings-pane" role="tabpanel">
+      @if($competitionRulesEditable && !$draw->isTeamDraw())
+        <section class="alert alert-primary border border-primary mb-3" aria-labelledby="draw-setup-review-heading">
+          <h5 id="draw-setup-review-heading" class="alert-heading">Required setup after choosing a draw format</h5>
+          <p class="mb-2">Review these settings before creating matches. Changing the draw format does not confirm your scoring or qualification rules.</p>
+          <ol class="mb-3 ps-3">
+            <li>Check the number of groups and the players in each group.</li>
+            <li>Choose the match scoring format below.</li>
+            @unless($roundRobinOnly)
+              <li>Check the enabled playoffs and which group positions qualify.</li>
+            @endunless
+            <li>Save any changes before continuing to players and matches.</li>
+          </ol>
+          <div class="d-flex flex-wrap gap-2">
+            <button type="button" class="btn btn-primary" data-review-draw-settings>Review scoring{{ $roundRobinOnly ? '' : ' & playoffs' }}</button>
+            <button type="button" class="btn btn-outline-primary" data-open-workspace="players">Review players &amp; groups</button>
+          </div>
+        </section>
+      @endif
       @if(!$competitionRulesEditable)
         <div class="alert alert-warning" role="status">Match format and playoff rules are locked because this draw is locked or its first result has been recorded.</div>
       @elseif($draw->published)
@@ -1085,8 +1103,8 @@
 <script>
     window.RR_ROSTER = @json($eligibleRoster);
     window.RR_ASSIGNMENT_REVISION = @json($assignmentService->revision($draw));
-    window.RR_CAN_ASSIGN = @json(auth()->user()->can('modifyGroups', $draw));
-    window.RR_CAN_GENERATE = @json(auth()->user()->can('generateFixtures', $draw));
+    window.RR_CAN_ASSIGN = @json(auth()->user()->can('modifyGroups', $draw) && \App\Services\Draw\DrawMutationPolicy::for($draw)->canEditAssignments());
+    window.RR_CAN_GENERATE = @json(auth()->user()->can('generateFixtures', $draw) && \App\Services\Draw\DrawMutationPolicy::for($draw)->canGenerateFixtures());
     window.RR_CAN_SCORE = @json(auth()->user()->can('saveScore', $draw));
     window.RR_CAN_SCHEDULE = @json(auth()->user()->can('modifySchedule', $draw));
     window.RR_CAN_EDIT_COMPETITION_RULES = @json($competitionRulesEditable);

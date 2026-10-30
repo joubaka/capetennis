@@ -223,6 +223,11 @@ class FixtureController extends Controller
     }
 
     return DB::transaction(function () use ($request, $fixtureForAuth, $drawForAuth) {
+      if ($request->type !== 'team') {
+        $lockedDraw = Draw::whereKey($drawForAuth->id)->lockForUpdate()->firstOrFail();
+        $fixtureForAuth->setRelation('draw', $lockedDraw);
+        if ($lockedDraw->isTwoStageRoundRobin()) DrawGuard::requireScoreable($fixtureForAuth);
+      }
     $locked = $fixtureForAuth->newQuery()->lockForUpdate()->findOrFail($fixtureForAuth->id);
     abort_if((int) $locked->draw_id !== (int) $drawForAuth->id, 409, 'Fixture draw changed.');
     $responce = null;

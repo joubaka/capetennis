@@ -1,5 +1,9 @@
 <script>
 (function($) {
+$('[data-review-draw-settings]').on('click', function() {
+    document.getElementById('drawSettingsForm').scrollIntoView({block: 'start'});
+    document.getElementById('score-format').focus({preventScroll: true});
+});
 $('#score-format').on('change', function() {
     const option = this.options[this.selectedIndex];
     $('#score-format-help').text(option.dataset.description || '');

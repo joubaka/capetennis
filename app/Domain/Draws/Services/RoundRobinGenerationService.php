@@ -62,6 +62,8 @@ final class RoundRobinGenerationService
 
     public static function assertRegenerable(Draw $draw): void
     {
+        abort_if($draw->isTwoStageRoundRobin() && $draw->groups()->where('round_robin_phase', 2)->exists(), 409,
+            'Both round-robin stages must be preserved after progression.');
         DrawGuard::requireMutable($draw, 'regenerate RR fixtures for');
         DrawGuard::requireUnpublished($draw, 'regenerate RR fixtures for');
         if ($draw->oop_published || DB::table('published_schedule_assignments')
@@ -88,7 +90,7 @@ final class RoundRobinGenerationService
      * Generate all RR fixtures for one group using the circle-rotation algorithm.
      * Returns the next available match number.
      */
-    private function generateGroupFixtures(Draw $draw, $group, int $matchNr): int
+    public function generateGroupFixtures(Draw $draw, $group, int $matchNr): int
     {
         $registrations = $group->groupRegistrations
             ->sortBy(fn($r) => $r->seed ?? PHP_INT_MAX)

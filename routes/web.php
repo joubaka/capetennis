@@ -496,6 +496,8 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::get('events/{event}/invitations', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'index'])->name('invitations.index');
     Route::get('events/{event}/players', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'players'])
       ->middleware('throttle:30,1')->name('players.index');
+    Route::post('events/{event}/nominations/previous-results/preview', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'previewPreviousResults'])->middleware('throttle:30,1')->name('nominations.previous-results.preview');
+    Route::post('events/{event}/nominations/previous-results', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'importPreviousResults'])->middleware('throttle:30,1')->name('nominations.previous-results.store');
     Route::post('events/{event}/nominations', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'nominateForCategory'])->name('nominations.bulk-store');
     Route::post('events/{event}/nominations/no-profile', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'nominateWithoutProfile'])->name('nominations.no-profile');
     Route::put('events/{event}/categories/{categoryEvent}/nominations/{nomination}/email', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'updateNomineeEmail'])->name('nominations.email');

@@ -65,15 +65,119 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
 
     public function test_review_ui_separates_public_names_from_email_delivery(): void
     {
+        if (getenv('NOMINATION_WORKFLOW_QA') === '1') {
+            $this->previousResultsFixture();
+        }
         $response = $this->actingAs($this->admin)->get(route('backend.interprovincial-trials.invitations.index', $this->event))
             ->assertOk()->assertSee('It does not send emails.')->assertSee('Send reviewed emails')
             ->assertDontSee('Queue reviewed emails')->assertSee('interpro-preview-proof');
+        if (getenv('NOMINATION_WORKFLOW_QA') === '1') {
+            $directory = storage_path('app/testing');
+            if (!is_dir($directory)) { mkdir($directory, 0777, true); }
+            file_put_contents($directory.'/nomination-workflow.html', $response->getContent());
+        }
         $this->assertDatabaseCount('interprovincial_trial_invitations', 0);
         if (getenv('BATCH2326_QA') === '1') {
             $path = storage_path('app/batches2326-qa');
             if (!is_dir($path)) { mkdir($path, 0777, true); }
             file_put_contents($path.'/trials.html', $response->getContent());
         }
+    }
+
+    private function previousResultsFixture(): array
+    {
+        $source = Event::factory()->create(['eventType' => $this->event->eventType, 'start_date' => now()->subYear()]);
+        DB::table('event_admins')->insert(['event_id' => $source->id, 'user_id' => $this->admin->id]);
+        $category = CategoryEvent::factory()->create(['event_id' => $source->id]);
+        $players = Player::factory()->count(2)->create();
+        foreach ($players as $index => $player) {
+            $registration = Registration::factory()->create();
+            $registration->players()->attach($player->id);
+            $registration->categoryEvents()->attach($category->id);
+            DB::table('category_results')->insert(['event_id' => $source->id, 'category_id' => $category->category_id,
+                'registration_id' => $registration->id, 'position' => $index + 1]);
+        }
+        return [$source, $category, $players, ['source_category_event_id' => $category->id,
+            'category_event_id' => $this->category->id, 'cutoff' => 2, 'age_group_year' => 2026]];
+    }
+
+    public function test_previous_results_preview_and_private_import_are_exact_and_idempotent_without_side_effects(): void
+    {
+        Bus::fake();
+        [$source, $category, $players, $mapping] = $this->previousResultsFixture();
+        $registrations = Registration::count();
+        $preview = $this->actingAs($this->admin)->postJson(route('backend.interprovincial-trials.nominations.previous-results.preview', $this->event), $mapping)
+            ->assertOk()->assertJsonPath('preview.age_group_year', 2026)->assertJsonPath('preview.rows.0.player_id', $players[0]->id)
+            ->assertJsonPath('preview.rows.1.rank', 2);
+        $this->assertDatabaseCount('event_nominations', 0);
+        $url = route('backend.interprovincial-trials.nominations.previous-results.store', $this->event);
+        $this->postJson($url, ['token' => $preview->json('token')])->assertOk()->assertJsonPath('added', 2);
+        $this->postJson($url, ['token' => $preview->json('token')])->assertOk()->assertJsonPath('added', 0)->assertJsonPath('already_nominated', 2);
+        $this->assertEqualsCanonicalizing($players->pluck('id')->all(), EventNomination::pluck('player_id')->all());
+        $this->assertFalse((bool) $this->category->fresh()->nominations_published);
+        $this->assertSame($registrations, Registration::count());
+        $this->assertDatabaseCount('registration_orders', 0);
+        $this->assertDatabaseCount('interprovincial_trial_invitations', 0);
+        Bus::assertNothingDispatched();
+    }
+
+    public function test_previous_results_reject_missing_ambiguous_stale_and_public_destinations(): void
+    {
+        [$source, $category, $players, $mapping] = $this->previousResultsFixture();
+        $previewUrl = route('backend.interprovincial-trials.nominations.previous-results.preview', $this->event);
+        $storeUrl = route('backend.interprovincial-trials.nominations.previous-results.store', $this->event);
+        $preview = $this->actingAs($this->admin)->postJson($previewUrl, $mapping)->assertOk();
+        $players[0]->update(['name' => 'Changed']);
+        $this->postJson($storeUrl, ['token' => $preview->json('token')])->assertUnprocessable();
+        $preview = $this->postJson($previewUrl, $mapping)->assertOk();
+        $this->category->update(['nominations_published' => true]);
+        $this->postJson($storeUrl, ['token' => $preview->json('token')])->assertUnprocessable();
+        $this->assertTrue((bool) $this->category->fresh()->nominations_published);
+        $this->category->update(['nominations_published' => false]);
+        DB::table('category_results')->where('event_id', $source->id)->where('position', 2)->delete();
+        $this->postJson($previewUrl, $mapping)->assertUnprocessable()->assertJsonValidationErrors('source_category_event_id');
+        DB::table('category_results')->where('event_id', $source->id)->delete();
+        $this->postJson($previewUrl, $mapping)->assertUnprocessable();
+        $this->assertDatabaseCount('event_nominations', 0);
+    }
+
+    public function test_previous_results_reauthorize_both_events_and_bind_preview_to_actor_event_and_expiry(): void
+    {
+        [$source, $category, $players, $mapping] = $this->previousResultsFixture();
+        $previewUrl = route('backend.interprovincial-trials.nominations.previous-results.preview', $this->event);
+        $storeUrl = route('backend.interprovincial-trials.nominations.previous-results.store', $this->event);
+        $preview = $this->actingAs($this->admin)->postJson($previewUrl, $mapping)->assertOk();
+        DB::table('event_admins')->where('event_id', $source->id)->delete();
+        $this->postJson($previewUrl, $mapping)->assertForbidden();
+        $this->postJson($storeUrl, ['token' => $preview->json('token')])->assertForbidden();
+        DB::table('event_admins')->insert(['event_id' => $source->id, 'user_id' => $this->admin->id]);
+        $other = User::factory()->create()->assignRole('super-user');
+        $this->actingAs($other)->postJson($storeUrl, ['token' => $preview->json('token')])->assertUnprocessable();
+        $this->actingAs($this->admin)->postJson($storeUrl, ['token' => 'invalid'])->assertUnprocessable();
+        $otherEvent = Event::factory()->create(['eventType' => $this->event->eventType]);
+        $otherCategory = CategoryEvent::factory()->create(['event_id' => $otherEvent->id]);
+        $this->postJson($previewUrl, array_replace($mapping, ['category_event_id' => $otherCategory->id]))->assertNotFound();
+        $this->travel(21)->minutes();
+        $this->postJson($storeUrl, ['token' => $preview->json('token')])->assertUnprocessable();
+        $this->assertDatabaseCount('event_nominations', 0);
+    }
+
+    public function test_previous_results_reject_ambiguous_ranks_profiles_and_removed_memberships(): void
+    {
+        [$source, $category, $players, $mapping] = $this->previousResultsFixture();
+        $url = route('backend.interprovincial-trials.nominations.previous-results.preview', $this->event);
+        $this->actingAs($this->admin);
+        DB::table('category_results')->where('event_id', $source->id)->where('position', 2)->update(['position' => 1]);
+        $this->postJson($url, $mapping)->assertUnprocessable();
+        DB::table('category_results')->where('event_id', $source->id)->orderByDesc('id')->limit(1)->update(['position' => 2]);
+        $registrationId = DB::table('category_results')->where('event_id', $source->id)->where('position', 1)->value('registration_id');
+        $registration = Registration::findOrFail($registrationId);
+        $registration->players()->attach($players[1]->id);
+        $this->postJson($url, $mapping)->assertUnprocessable();
+        $registration->players()->detach($players[1]->id);
+        DB::table('category_event_registrations')->where('category_event_id', $category->id)->where('registration_id', $registrationId)->update(['deleted_at' => now()]);
+        $this->postJson($url, $mapping)->assertUnprocessable();
+        $this->assertDatabaseCount('event_nominations', 0);
     }
 
     public function test_registration_window_ignores_stored_lifecycle_status(): void
@@ -374,7 +478,9 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
 
         $this->actingAs($this->admin)->get(route('backend.interprovincial-trials.invitations.index', $this->event))
             ->assertOk()
-            ->assertSee('Nominate an existing player')
+            ->assertSee('Nominate existing players')
+            ->assertSee('Add nominees from previous trials results')
+            ->assertSee('Review nominations')
             ->assertSee('id="nomination-player"', false)
             ->assertSee('id="nomination-category"', false)
             ->assertSee('name="player_ids[]"', false)
@@ -403,9 +509,9 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
 
         $store = route('backend.interprovincial-trials.nominations.store', [$this->event, $this->category]);
         $this->actingAs($this->admin)->post($store, ['player_ids' => [$player->id]])
-            ->assertRedirect()->assertSessionHas('success', '1 nomination(s) added; 0 already nominated. Send invitations when the list is complete.');
+            ->assertRedirect()->assertSessionHas('success', '1 nomination(s) added; 0 already nominated. Saved privately. Publishing names and sending emails are separate optional steps.');
         $this->actingAs($this->admin)->post($store, ['player_ids' => [$player->id]])
-            ->assertRedirect()->assertSessionHas('success', '0 nomination(s) added; 1 already nominated. Send invitations when the list is complete.');
+            ->assertRedirect()->assertSessionHas('success', '0 nomination(s) added; 1 already nominated. Saved privately. Publishing names and sending emails are separate optional steps.');
         $this->assertDatabaseCount('event_nominations', 1);
     }
 
@@ -1103,7 +1209,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
                 ->assertOk()
                 ->assertJsonCount(1, 'results')
                 ->assertJsonPath('results.0.id', $fullName->id)
-                ->assertJsonPath('results.0.text', 'Jean Joubert — Profile #'.$fullName->id);
+                ->assertJsonPath('results.0.text', fn ($text) => str_starts_with($text, 'Jean Joubert — Profile #'.$fullName->id));
         }
         $this->actingAs($this->admin)->getJson($endpoint.'?q='.urlencode('jean missing'))
             ->assertOk()
@@ -1121,7 +1227,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $literalResponse->assertOk()
             ->assertJsonCount(1, 'results')
             ->assertJsonPath('results.0.id', $literal->id)
-            ->assertJsonPath('results.0.text', 'Literal%_Token Picker — Profile #'.$literal->id)
+            ->assertJsonPath('results.0.text', fn ($text) => str_starts_with($text, 'Literal%_Token Picker — Profile #'.$literal->id))
             ->assertJsonMissing(['email' => 'private-picker@example.test']);
         $this->assertSame(['id', 'text'], array_keys($literalResponse->json('results.0')));
         $this->actingAs($this->admin)->getJson($endpoint.'?q='.urlencode('!Bang'))
@@ -1175,7 +1281,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $this->actingAs($this->admin)->post($store, [
             'player_ids' => [$existing->id, $first->id, $first->id, $second->id],
         ])->assertRedirect()
-            ->assertSessionHas('success', '2 nomination(s) added; 1 already nominated. Send invitations when the list is complete.');
+            ->assertSessionHas('success', '2 nomination(s) added; 1 already nominated. Saved privately. Publishing names and sending emails are separate optional steps.');
         $this->assertDatabaseCount('event_nominations', 3);
 
         $third = Player::factory()->create();
@@ -1677,7 +1783,8 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
             ->assertDontSee('other-event@example.test');
 
         $response->assertSee('Review emails for newly nominated')->assertSee('Review emails for players not registered')
-            ->assertSee('interpro-send-preview-modal')->assertDontSee('<table', false)
+            ->assertSee('interpro-send-preview-modal')
+            ->assertSee('<div class="border rounded overflow-hidden interpro-nomination-table" role="table"', false)
             ->assertDontSee(route('backend.interprovincial-trials.invitations.send-current', $this->event), false)
             ->assertDontSee('data-send-invitations', false);
         foreach ($before as $table => $count) {

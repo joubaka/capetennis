@@ -123,7 +123,7 @@
       rows = final;
       }
       if (rows[0] && rows[0].group_result_status) {
-        var message = rows[0].group_result_status === 'complete' ? 'Separate group competition — final standings.' : rows[0].group_result_status === 'tied' ? 'Group winner pending: leading tie unresolved.' : 'Group winner pending: complete every group match.';
+        var message = rows[0].group_result_message || (rows[0].group_result_status === 'complete' ? 'Separate group competition — final standings.' : rows[0].group_result_status === 'tied' ? 'Group winner pending: leading tie unresolved.' : 'Group winner pending: complete every group match.');
         $wrapper.append($('<p class="small text-muted mt-3">').text(message));
       }
 
@@ -155,7 +155,7 @@
           : idx === rows.length - 1 ? 'table-danger' : 'table-light';
 
         html += '<tr class="' + rowCls + '">' +
-          '<td>' + (idx + 1) + '</td>' +
+          '<td>' + (r.display_position ?? (idx + 1)) + '</td>' +
           '<td>' + $('<span>').text(r.player).html() + (r.group_winner ? ' <span class="badge bg-success">Group winner</span>' : '') + '</td>' +
           '<td class="text-center">' + r.wins + '</td>' +
           (timed ? '<td class="text-center">' + Number(r.draws || 0) + '</td><td class="text-center">' + Number(r.points || 0) + '</td>' : '') +
