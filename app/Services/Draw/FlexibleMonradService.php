@@ -318,7 +318,7 @@ final class FlexibleMonradService
                 } else {
                     app(FlexibleMonradScoreValidator::class)->validate(
                         $sets,
-                        (int) ($settings?->num_sets ?: 1),
+                        (int) ($settings?->num_sets ?: 3),
                         $settings?->requiresFullSets() ?? true,
                     );
                 }
@@ -429,9 +429,9 @@ final class FlexibleMonradService
             'challenge_playoffs' => (bool) ($record?->graph['challenge_playoffs'] ?? $draft['challenge_playoffs'] ?? false),
             'base_positions' => $progression['base_positions'] ?? [],
             'positions_complete' => $progression['positions_complete'] ?? false,
-            'best_of' => (int) ($draw->settings?->num_sets ?: 1),
+            'best_of' => (int) ($draw->settings?->num_sets ?: 3),
             'score_max_sets' => $draw->settings?->score_format
-                ? \App\Domain\Draws\Services\TennisScoreFormat::maxSets($draw->settings->score_format) : (int) ($draw->settings?->num_sets ?: 1),
+                ? \App\Domain\Draws\Services\TennisScoreFormat::maxSets($draw->settings->score_format) : (int) ($draw->settings?->num_sets ?: 3),
             'score_guidance' => $draw->settings?->score_format
                 ? \App\Domain\Draws\Services\TennisScoreFormat::rules($draw->settings->score_format)
                 : ($draw->settings?->requiresFullSets() === false ? 'Custom set scores allowed.' : 'Enter completed sets using the configured match format.'),

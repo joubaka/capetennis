@@ -34,6 +34,7 @@ class FlexibleMonradChallengeTest extends TestCase
         }
         $pairs = array_values(array_filter(range(2, 62, 2), fn ($upper) => $upper < $count));
         $this->post(route('draw.setup.store', $draw), ['workflow' => 'feed_in_monrad', 'challenge_playoffs' => true, 'challenge_pairs' => $pairs])->assertRedirect();
+        $draw->settings()->update(['num_sets' => 1]);
         $this->putJson(route('flexible-monrad.save', $draw), ['revision' => 1,
             'draft' => ['size' => $size, 'slots' => $slots, 'challenge_playoffs' => false]])->assertOk();
         $this->postJson(route('flexible-monrad.generate', $draw), ['revision' => 2])->assertOk();

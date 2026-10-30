@@ -283,7 +283,7 @@ class DrawSetupTest extends TestCase
             $ready = collect((array) $state['matches'])->first(fn ($match) => ! $match['sets']
                 && ! $match['automatic'] && count(array_filter($match['players'])) === 2);
             $this->assertNotNull($ready);
-            $service->score($draw, $ready['id'], [[6, 2]], $state['revision'], false);
+            $service->score($draw, $ready['id'], [[6, 2], [6, 2]], $state['revision'], false);
         }
         $state = $service->state($draw->fresh());
         $this->assertCount(16, array_unique(array_column($state['positions'], 'player')));
@@ -378,7 +378,7 @@ class DrawSetupTest extends TestCase
         $this->postJson(route('flexible-monrad.generate', $draw), ['revision' => 1])->assertOk();
         $state = app(FlexibleMonradService::class)->state($draw->fresh());
         $ready = collect((array) $state['matches'])->first(fn ($match) => ! $match['automatic'] && count(array_filter($match['players'])) === 2);
-        app(FlexibleMonradService::class)->score($draw, $ready['id'], [[6, 2]], $state['revision'], false);
+        app(FlexibleMonradService::class)->score($draw, $ready['id'], [[6, 2], [6, 2]], $state['revision'], false);
         $before = $draw->fresh()->flexibleMonrad->draft;
         $this->postJson(route('draw.setup.store', $draw), ['workflow' => 'feed_in_monrad', 'reset_existing' => true])->assertConflict();
         $this->assertEquals($before, $draw->fresh()->flexibleMonrad->draft);

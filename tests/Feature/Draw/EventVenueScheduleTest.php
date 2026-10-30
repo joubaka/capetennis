@@ -344,7 +344,7 @@ class EventVenueScheduleTest extends TestCase
         $this->assertSame(['Loser of Match 1', 'Loser of Match 2'],
             $matches[$record->fixture_map['place_3']]['participants']);
 
-        $record = $service->score($draw, $record->fixture_map['main_a'], [[6, 2]], $record->revision, false);
+        $record = $service->score($draw, $record->fixture_map['main_a'], [[6, 2], [6, 2]], $record->revision, false);
         $partlyResolved = app(EventVenueScheduleService::class)
             ->preview($event->fresh(), $this->schedulingOptions());
         $finalParticipants = collect($partlyResolved['matches'])

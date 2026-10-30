@@ -21,7 +21,7 @@ class FlexibleMonradTest extends TestCase
         $event = Event::factory()->create();
         $category = CategoryEvent::factory()->create(['event_id' => $event->id]);
         $draw = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => $category->id]);
-        $draw->settings()->create(['workflow' => 'custom_monrad']);
+        $draw->settings()->create(['workflow' => 'custom_monrad', 'num_sets' => 1]);
         Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
         $admin = User::factory()->create()->assignRole('admin');
         DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
@@ -1498,6 +1498,55 @@ class FlexibleMonradTest extends TestCase
         $revision = $record->fresh()->revision;
         $remove($a)->assertOk();
         $this->assertSame($revision, $record->fresh()->revision);
+    }
+
+    public function test_missing_match_length_defaults_to_best_of_three_in_state_and_scoring(): void
+    {
+        [$draw, $draft] = $this->setupDraw();
+        $draw->settings()->update(['num_sets' => null]);
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $record = $service->generate($draw, 1);
+        $fixture = Fixture::findOrFail($record->fixture_map['main_a']);
+        $url = route('flexible-monrad.score', [$draw, $fixture]);
+
+        $state = $service->state($draw->fresh());
+        $this->assertSame(3, $state['best_of']);
+        $this->assertSame(3, $state['score_max_sets']);
+        $this->putJson($url, ['revision' => $record->revision, 'sets' => [[1, 6]]])
+            ->assertUnprocessable();
+        $this->assertNull($fixture->fresh()->winner_registration);
+        $this->assertSame(0, $fixture->fixtureResults()->count());
+        $this->assertSame($record->revision, $record->fresh()->revision);
+
+        $this->putJson($url, ['revision' => $record->revision, 'sets' => [[1, 6], [1, 6]]])
+            ->assertOk();
+        $this->assertSame($fixture->registration2_id, $fixture->fresh()->winner_registration);
+        $this->assertSame(2, $fixture->fixtureResults()->count());
+        $this->assertNull($draw->fresh()->settings->num_sets);
+        $final = Fixture::findOrFail($record->fixture_map['main_final']);
+        $this->assertContains($fixture->registration2_id, [$final->registration1_id, $final->registration2_id]);
+    }
+
+    public function test_explicit_one_set_match_length_is_preserved_in_state_and_scoring(): void
+    {
+        [$draw, $draft] = $this->setupDraw();
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $record = $service->generate($draw, 1);
+        $fixture = Fixture::findOrFail($record->fixture_map['main_a']);
+        $url = route('flexible-monrad.score', [$draw, $fixture]);
+
+        $state = $service->state($draw->fresh());
+        $this->assertSame(1, $state['best_of']);
+        $this->assertSame(1, $state['score_max_sets']);
+        $this->putJson($url, ['revision' => $record->revision, 'sets' => [[1, 6], [1, 6]]])
+            ->assertUnprocessable();
+        $this->assertSame(0, $fixture->fixtureResults()->count());
+        $this->putJson($url, ['revision' => $record->revision, 'sets' => [[1, 6]]])
+            ->assertOk();
+        $this->assertSame($fixture->registration2_id, $fixture->fresh()->winner_registration);
+        $this->assertSame(1, $fixture->fixtureResults()->count());
     }
 
     public function test_monrad_scoring_requires_completed_sets_and_configured_match_length(): void
