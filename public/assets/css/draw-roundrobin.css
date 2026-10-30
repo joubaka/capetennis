@@ -147,6 +147,31 @@
   .rr-mobile-versus { color: #8491a5; font-size: 11px; font-weight: 500; }
   .rr-mobile-status { display: block; margin-top: 6px; color: #14796e; font-size: 12px; }
 
+  /* The public grid has plain schedule text rather than score-entry buttons. */
+  .rr-public-view .rr-public-matrices,
+  .rr-public-view .rr-group-section { min-width: 0; }
+  .rr-public-view .rr-matrix-table {
+    width: 100% !important;
+    min-width: var(--rr-matrix-width) !important;
+  }
+  .rr-public-view .rr-matrix-player-column { width: 220px; }
+  .rr-public-view .rr-matrix-table :is(td, th) {
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
+  .rr-public-view .rr-matrix-table td {
+    height: auto !important;
+    padding: 10px 8px !important;
+    line-height: 1.4;
+  }
+  .rr-public-view .rr-public-match-time,
+  .rr-public-view .rr-public-match-venue { display: block; }
+  .rr-public-view .rr-public-match-time { color: #27435d; }
+  .rr-public-view .rr-public-match-time strong { color: #0d675e; }
+  .rr-public-view .rr-public-match-venue { margin-top: 3px; font-size: 11px; color: #617286; }
+  .rr-public-view .rr-mobile-players > span { min-width: 0; overflow-wrap: anywhere; }
+  .rr-public-view .rr-mobile-status { overflow-wrap: anywhere; }
+
   /* ==============================================
    SCORE COLORS
    ============================================== */

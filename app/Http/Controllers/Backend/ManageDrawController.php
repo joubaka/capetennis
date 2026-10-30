@@ -157,7 +157,12 @@ class ManageDrawController extends Controller
                 $this->resizeGroups($draw, (int) $updateData['boxes'], $data['move_to_group_id'] ?? null);
             }
             if ($drawData) $draw->update($drawData);
+            $replacePlayoffs = array_key_exists('playoff_config', $updateData)
+                && app(\App\Services\Draw\AutomaticPlayoffPreparationService::class)->replaceUnbookedPlaceholders($draw, $updateData['playoff_config']);
             $draw->settings()->updateOrCreate(['draw_id' => $draw->id], $updateData);
+            if (array_key_exists('playoff_config', $updateData)) {
+                app(\App\Services\Draw\AutomaticPlayoffPreparationService::class)->prepare($draw, $replacePlayoffs);
+            }
         });
 
         // Refresh the draw to get updated settings
@@ -254,6 +259,7 @@ class ManageDrawController extends Controller
         'Playoff rules cannot be changed after the first result has been recorded.'
       );
 
+      $replacePlayoffs = app(\App\Services\Draw\AutomaticPlayoffPreparationService::class)->replaceUnbookedPlaceholders($lockedDraw, $validated['playoff_config']);
       $lockedDraw->settings()->updateOrCreate(
         ['draw_id' => $lockedDraw->id],
         [
@@ -261,6 +267,7 @@ class ManageDrawController extends Controller
           'preset_key' => $validated['preset_key'] ?? null,
         ]
       );
+      app(\App\Services\Draw\AutomaticPlayoffPreparationService::class)->prepare($lockedDraw, $replacePlayoffs);
     });
 
     \Log::info("✅ [updatePlayoffConfig] Playoff config saved successfully");

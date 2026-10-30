@@ -132,7 +132,7 @@
     console.log('🔹 Rendering public matrix');
 
     const wrapper = $('#rr-matrix-wrapper');
-    wrapper.empty().addClass('rr-matrix-scroll');
+    wrapper.empty();
 
     if (!RR_GROUPS.length) {
       wrapper.html('<div class="text-muted text-center py-4">No groups are available for this draw.</div>');
@@ -158,8 +158,9 @@
         <span class="rr-group-meta">${players.length} players · ${fixtures.length} matches · ${completed} completed</span>
       </div>
       <div class="rr-matrix-scroll rr-matrix-table-shell">
-        <table class="table table-bordered table-sm rr-matrix-table">
+        <table class="table table-bordered table-sm rr-matrix-table" style="--rr-matrix-width: ${220 + players.length * 190}px">
           <caption class="visually-hidden">Round robin results for Box ${escapeHtml(group.name)}</caption>
+          <colgroup><col class="rr-matrix-player-column"><col span="${players.length}"></colgroup>
           <thead>
             <tr>
               <th scope="col" aria-label="Player"></th>
@@ -196,7 +197,14 @@
             ? 'Followed by'
             : (fx.time ? formatDayTimeVenue(fx) : '');
 
-          html += `<td class="text-center rr-match-cell ${outcome}">${escapeHtml(score || time || '—')}</td>`;
+          const schedule = formatScheduleParts(fx);
+          const venue = fx.venue_name || fx.venue_title || fx.venue || '';
+          const cellContent = score
+            ? escapeHtml(score)
+            : (time && fx.schedule_hidden !== true
+              ? `<span class="rr-public-match-time">${escapeHtml(schedule.date)} <strong>${escapeHtml(schedule.time)}</strong></span>${venue ? `<span class="rr-public-match-venue">${escapeHtml(venue)}</span>` : ''}`
+              : escapeHtml(time || '—'));
+          html += `<td class="text-center rr-match-cell ${outcome}">${cellContent}</td>`;
         });
 
         html += `</tr>`;
@@ -244,9 +252,19 @@
       return;
     }
 
-    // The backend already returns the organiser's canonical play_order.
-    // Keep that sequence instead of regrouping matches in the browser.
-    const sorted = RR_OOP.slice();
+    // The public schedule reads chronologically across group matches and playoffs.
+    // Hidden/unreleased times must not affect the visible ordering.
+    const timestamp = fx => {
+      if (!fx.time || fx.schedule_hidden === true) return Number.POSITIVE_INFINITY;
+      const value = new Date(String(fx.time).replace(' ', 'T')).getTime();
+      return Number.isNaN(value) ? Number.POSITIVE_INFINITY : value;
+    };
+    const sorted = RR_OOP.slice().sort((a, b) => {
+      const first = timestamp(a), second = timestamp(b);
+      if (first !== second) return first < second ? -1 : 1;
+      return (Number(a.match_nr) || 0) - (Number(b.match_nr) || 0)
+        || (Number(a.id) || 0) - (Number(b.id) || 0);
+    });
 
     let html = '';
 
@@ -450,10 +468,14 @@
   $(document).ready(init);
 
   $(document).ready(function () {
-    if (['#schedule', '#oop', '#match-times'].includes(window.location.hash)) {
+    if (['', '#schedule', '#oop', '#match-times'].includes(window.location.hash)) {
       document.getElementById('oop-tab')?.click();
-    } else if (['', '#draw', '#matrix'].includes(window.location.hash)) {
+    } else if (['#draw', '#matrix'].includes(window.location.hash)) {
       document.getElementById('matrix-tab')?.click();
+    } else if (window.location.hash === '#standings') {
+      document.getElementById('standings-tab')?.click();
+    } else if (['#playoffs', '#main-bracket'].includes(window.location.hash)) {
+      document.getElementById('main-bracket-tab')?.click();
     }
   });
 

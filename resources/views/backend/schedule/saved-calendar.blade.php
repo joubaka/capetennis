@@ -25,6 +25,7 @@
 @endsection
 @section('content')
 @php
+  $pendingPlayoffs = $pendingPlayoffs ?? collect();
   $planningDraws = !empty($scope['draw_id']) ? $draws->where('id', (int) $scope['draw_id']) : $draws;
   $teamPlanning = $planningDraws->contains(fn ($draw) => $draw->isTeamDraw()) || ($planningDraws->isEmpty() && $event->isTeam());
 @endphp
@@ -81,7 +82,19 @@
     <div class="col-12 col-md-2"><button class="btn btn-outline-primary w-100">Show schedule</button></div>
   </div></form>
   </details>
-  <div class="d-flex flex-wrap justify-content-between gap-2 small text-muted mb-2"><span>{{ $savedCount }} saved matches in this view - showing {{ $rows->count() }}</span><span>{{ $unscheduledCount }} matches without a day or time{{ !empty($scope['draw_id']) ? ' in this draw' : ' across the event' }}</span></div>
+  <div class="d-flex flex-wrap justify-content-between gap-2 small text-muted mb-2"><span>{{ $savedCount }} saved matches in this view - showing {{ $rows->count() }}</span><span>{{ $unscheduledCount }} existing matches without a day or time{{ !empty($scope['draw_id']) ? ' in this draw' : ' across the event' }}</span></div>
+  @if($pendingPlayoffs->isNotEmpty())
+    <div class="alert alert-warning" role="status">
+      <strong>Playoff preparation is still needed.</strong> The booking count covers existing fixtures only.
+      <ul class="mb-0 mt-2">@foreach($pendingPlayoffs as $pending)
+        <li>{{ $pending['draw_name'] }}: {{ count($pending['missing_stages']) }} configured playoff stage(s) have no fixtures.
+          <a href="{{ $pending['partly_prepared'] ? route('backend.draw.roundrobin.show', $pending['draw_id']).'#settings' : route('backend.event-venue-schedule.index', ['event' => $event->id, 'draw_ids' => [$pending['draw_id']]]) }}">{{ $pending['partly_prepared'] ? 'Review playoff setup' : 'Prepare playoffs in scheduling' }}</a>
+        </li>
+      @endforeach</ul>
+    </div>
+  @elseif($unscheduledCount === 0)
+    <p class="small text-success">All existing unfinished matches have saved times. Playoff player identities may still be undecided.</p>
+  @endif
   <div class="card"><div class="table-responsive"><table class="table calendar-table mb-0"><caption class="visually-hidden">Saved matches for the selected day and filters</caption><thead><tr><th scope="col">Time</th><th scope="col">Venue / court</th><th scope="col">Draw / match</th><th scope="col">Participants</th><th scope="col">Public visibility</th></tr></thead><tbody>
     @forelse($rows as $row)<tr id="match-{{ str_replace(':','-',$row['fixture_key']) }}"><td class="text-nowrap" data-label="Time"><div>{{ $date === 'all' ? substr($row['scheduled_at'],0,16) : substr($row['scheduled_at'],11,5) }}</div></td><td data-label="Venue / court"><div>{{ $row['venue_name'] }}<div class="small text-muted">Court {{ $row['court'] }}</div></div></td><td data-label="Draw / match"><div>{{ $row['draw_name'] }}
       @if(!empty($row['match_type']))<div class="fw-semibold">{{ $row['match_type'] }}</div>@endif

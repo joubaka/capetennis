@@ -1838,7 +1838,7 @@ class RoundRobinController extends Controller
       $this->authorize('generateFixtures', $draw);
 
       $scoredFixtures = $draw->drawFixtures()
-        ->whereHas('fixtureResults')
+        ->withRecordedResult()
         ->count();
 
       if ($scoredFixtures > 0) {
@@ -1855,27 +1855,9 @@ class RoundRobinController extends Controller
       ]);
 
       try {
-        DB::transaction(function () use ($draw, $request) {
-          $fresh = Draw::query()->lockForUpdate()->findOrFail($draw->id);
-          abort_if($fresh->locked || $fresh->published, 403);
-          if ($request->filled('revision') && !hash_equals(app(\App\Services\Draw\GroupAssignmentService::class)->revision($fresh), $request->string('revision')->toString())) {
-            throw new \RuntimeException('Assignments changed. Reload players before generating fixtures.');
-          }
-          if ($fresh->drawFixtures()->whereHas('fixtureResults')->exists()) {
-            throw new \RuntimeException('Scored fixtures cannot be regenerated.');
-          }
-          $deletedRR = $draw->drawFixtures()->where('stage', 'RR')->delete();
-          $deletedBracket = $draw->drawFixtures()->where('stage', '!=', 'RR')->delete();
-
-          Log::info("🗑 [regenerateRR] Deleted existing fixtures", [
-            'deleted_rr' => $deletedRR,
-            'deleted_bracket' => $deletedBracket,
-          ]);
-
-          $this->builder->regenerateRoundRobinFixtures($draw);
-        });
-
-        DrawAuditLog::record($draw->id, 'rr_regenerated');
+        $draw = app(\App\Services\Draw\RoundRobinRebuildService::class)->rebuild(
+          $draw, $request->filled('revision') ? $request->string('revision')->toString() : null
+        );
 
         // Reload to get count
         $draw->load('drawFixtures');

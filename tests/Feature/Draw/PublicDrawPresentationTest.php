@@ -46,15 +46,15 @@ class PublicDrawPresentationTest extends TestCase
         $this->assertStringContainsString('Draw not published', $html);
         $this->assertStringContainsString('Manage this draw', $html);
         $this->assertStringContainsString('Schedule', $html);
-        $this->assertMatchesRegularExpression('/id="matrix-tab"[\s\S]*?aria-selected="true"/', $html);
-        $this->assertMatchesRegularExpression('/class="tab-pane fade show active"\s+id="matrix-pane"/', $html);
-        $this->assertMatchesRegularExpression('/id="oop-tab"[\s\S]*?aria-selected="false"/', $html);
-        $this->assertMatchesRegularExpression('/class="tab-pane fade"\s+id="oop-pane"/', $html);
-        $this->assertStringContainsString('Find your name, then confirm the date, time, venue and court.', $html);
+        $this->assertMatchesRegularExpression('/id="matrix-tab"[\s\S]*?aria-selected="false"/', $html);
+        $this->assertMatchesRegularExpression('/class="tab-pane fade"\s+id="matrix-pane"/', $html);
+        $this->assertMatchesRegularExpression('/id="oop-tab"[\s\S]*?aria-selected="true"/', $html);
+        $this->assertMatchesRegularExpression('/class="tab-pane fade show active"\s+id="oop-pane"/', $html);
+        $this->assertStringContainsString('Find your name, then confirm the date, time and venue.', $html);
         $this->assertStringContainsString('<th class="text-center">Match</th>', $html);
         $this->assertStringContainsString('<th class="text-center">Date</th>', $html);
         $this->assertStringContainsString('<th>Venue</th>', $html);
-        $this->assertStringContainsString('<th class="text-center">Court</th>', $html);
+        $this->assertStringNotContainsString('<th class="text-center">Court</th>', $html);
         $this->assertStringContainsString('roundrobin-public.js?v=', $html);
         $this->assertStringContainsString('draw-roundrobin.css?v=', $html);
         $this->assertStringNotContainsString('width: 24px !important', $html);
@@ -62,25 +62,24 @@ class PublicDrawPresentationTest extends TestCase
         $this->assertStringNotContainsString('<span class="badge bg-label-success">Draw published</span>', $html);
     }
 
-    public function test_public_script_preserves_backend_order_and_renders_court(): void
+    public function test_public_script_orders_schedule_by_time_and_preserves_public_venue_only_display(): void
     {
-        $script = file_get_contents(public_path('assets/js/roundrobin-public.js'));
+        $script = str_replace("\r\n", "\n", file_get_contents(public_path('assets/js/roundrobin-public.js')));
 
-        $this->assertStringContainsString('const sorted = RR_OOP.slice();', $script);
+        $this->assertStringContainsString('const sorted = RR_OOP.slice().sort(', $script);
         $this->assertStringContainsString('data-label="Match"', $script);
         $this->assertStringContainsString('data-label="Date"', $script);
         $this->assertStringContainsString('data-label="Time"', $script);
         $this->assertStringContainsString('data-label="Venue"', $script);
-        $this->assertStringContainsString('data-label="Court"', $script);
-        $this->assertStringContainsString("'Court ' + fx.court", $script);
+        $this->assertStringNotContainsString('data-label="Court"', $script);
+        $this->assertStringNotContainsString("'Court ' + fx.court", $script);
         $this->assertStringContainsString("const followedBy = 'Followed by';", $script);
         $this->assertStringContainsString("fx.schedule_hidden === true\n            ? 'Followed by'", $script);
         $this->assertStringContainsString("data-label=\"Date\" class=\"text-center\">\${escapeHtml(schedule.date || '—')}", $script);
         $this->assertStringContainsString("data-label=\"Time\" class=\"text-center\">\${escapeHtml(scheduleHidden ? followedBy", $script);
         $this->assertStringContainsString("data-label=\"Venue\">\${escapeHtml(fx.venue_name", $script);
-        $this->assertStringContainsString("data-label=\"Court\" class=\"text-center\">\${escapeHtml(scheduleHidden ? ''", $script);
         $this->assertStringNotContainsString('if (a.round !== b.round)', $script);
-        $this->assertStringContainsString("wrapper.empty().addClass('rr-matrix-scroll');", $script);
+        $this->assertStringContainsString('wrapper.empty();', $script);
         $this->assertStringContainsString('rr-matrix-table-shell', $script);
         $this->assertStringContainsString('rr-mobile-match-list', $script);
         $this->assertStringContainsString("url.searchParams.set('_fresh', Date.now().toString());", $script);

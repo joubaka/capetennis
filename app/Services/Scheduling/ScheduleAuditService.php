@@ -13,7 +13,9 @@ final class ScheduleAuditService
     public function audit(Event $event, array $scope = []): array
     {
         $draws = $event->draws()->get()->keyBy('id');
-        $totalFixtures = Fixture::whereIn('draw_id', $draws->keys())->count() + TeamFixture::whereIn('draw_id', $draws->keys())->count();
+        $orphanQuery = DB::table('order_of_plays')->whereIn('draw_id', $draws->keys())->whereNotNull('time')
+            ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('fixtures')->whereColumn('fixtures.id', 'order_of_plays.fixture_id'));
+        $totalFixtures = Fixture::whereIn('draw_id', $draws->keys())->count() + TeamFixture::whereIn('draw_id', $draws->keys())->count() + (clone $orphanQuery)->count();
         if ($totalFixtures > 20000) return ['scope' => $scope, 'checked' => 0, 'compared_event_matches' => 0, 'external_bookings' => 0, 'errors' => 0, 'warnings' => 1, 'unscheduled' => 0, 'rest_minutes' => 0, 'court_gap_minutes' => 0, 'issues' => [], 'omitted_issues' => 0, 'incomplete' => true, 'coverage' => 'Audit inconclusive: this event exceeds the 20,000-fixture safety limit. No bookings were checked.'];
         $individual = Fixture::withoutEagerLoads()->with(['orderOfPlay', 'registration1.players', 'registration2.players'])
             ->whereIn('draw_id', $draws->keys())->withCount('fixtureResults')->get();
@@ -38,6 +40,16 @@ final class ScheduleAuditService
             $row = $this->row($fixture, $draws[$fixture->draw_id]->drawName, $isTeam, true);
             $rows[$row['key']] = $row;
         }
+        foreach ((clone $orphanQuery)->orderBy('id')->get() as $booking) {
+            $start = Carbon::parse($booking->time);
+            $rows['orphan:'.$booking->id] = ['key' => 'orphan:'.$booking->id, 'orphan' => true,
+                'draw' => (int) $booking->draw_id, 'round' => 0,
+                'label' => $draws[$booking->draw_id]->drawName.' · saved court reservation #'.$booking->id,
+                'start' => $start, 'end' => $start->copy()->addMinutes($booking->duration_minutes > 0 ? (int) $booking->duration_minutes : 75),
+                'raw_duration' => (int) $booking->duration_minutes, 'saved_gap' => max(0, (int) $booking->gap_minutes),
+                'venue' => (int) $booking->venue_id, 'court' => (string) $booking->court,
+                'players' => [], 'expected_players' => 0, 'teams' => [], 'own' => true];
+        }
         $venueNames = Venue::whereIn('id', array_unique(array_column($rows, 'venue')))->pluck('name', 'id');
         foreach ($rows as &$row) $row['venue_name'] = $venueNames[$row['venue']] ?? 'Venue unassigned';
         unset($row);
@@ -55,14 +67,18 @@ final class ScheduleAuditService
             if (count($issues) >= 200) return;
             $issues[] = ['severity' => $severity, 'code' => $code, 'message' => $message, 'matches' => array_map(fn ($row) => [
                 'label' => $row['label'], 'time' => $row['start']->format('Y-m-d H:i').'–'.$row['end']->format('H:i').' · '.$row['venue_name'].' / Court '.$row['court'],
-                'url' => route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $row['start']->toDateString(), 'focus' => $row['key']]).'#match-'.str_replace(':', '-', $row['key']),
+                'url' => !empty($row['orphan'])
+                    ? route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $row['start']->toDateString(), 'draw_id' => $row['draw']])
+                    : route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $row['start']->toDateString(), 'focus' => $row['key']]).'#match-'.str_replace(':', '-', $row['key']),
             ], $own), 'external' => count($own) !== count($bookings)];
         };
         $programmeFixtureRounds = [];
         foreach ($rows as $row) {
+            if (!empty($row['orphan'])) $add('error', 'orphan_reservation', 'A saved court reservation has no matching fixture. Review the draw before rebuilding or rescheduling.', [$row]);
             if (! $row['venue'] || ! trim($row['court'])) $add('error', 'missing_location', 'A saved match is missing its venue or court.', [$row]);
             if ($row['raw_duration'] < 1) $add('warning', 'missing_duration', 'Match duration is missing or invalid; overlap checks use the scheduling default.', [$row]);
             if (count($row['players']) < $row['expected_players']) $add('warning', 'unknown_players', 'Player identities are unresolved; player overlap checks cannot fully verify this match.', [$row]);
+            if (!empty($row['orphan'])) continue;
             $programmeKey = $draft['individual_programme_by_draw'][(string) $row['draw']] ?? null;
             $programme = $programmeKey ? ($draft['programme_settings'][$programmeKey]['programme'] ?? $draft['programme'] ?? []) : ($draft['programme'] ?? []);
             $fixtureId = (int) explode(':', $row['key'])[1];
@@ -82,8 +98,9 @@ final class ScheduleAuditService
         $incomplete = false;
         if ($rows) {
             $longest = max(120, (int) DB::table('order_of_plays')->whereNotNull('time')->max('duration_minutes'), (int) DB::table('team_fixtures')->whereNotNull('scheduled_at')->max('duration_min'));
-            $start = collect($rows)->min(fn ($row) => $row['start'])->copy()->subMinutes($longest + $rest + $gap);
-            $end = collect($rows)->max(fn ($row) => $row['end'])->copy()->addMinutes($rest + $gap);
+            $savedGap = max($gap, (int) DB::table('order_of_plays')->whereNotNull('time')->max('gap_minutes'), (int) DB::table('team_fixtures')->whereNotNull('scheduled_at')->max('gap_minutes'));
+            $start = collect($rows)->min(fn ($row) => $row['start'])->copy()->subMinutes($longest + $rest + $savedGap);
+            $end = collect($rows)->max(fn ($row) => $row['end'])->copy()->addMinutes($rest + $savedGap);
             $venues = array_unique(array_filter(array_column($rows, 'venue')));
             $players = array_unique(array_merge(...array_column($rows, 'players')));
             $noProfiles = collect($players)->filter(fn ($id) => str_starts_with($id, 'no-profile:'))->map(fn ($id) => (int) substr($id, 11))->all();
@@ -114,8 +131,10 @@ final class ScheduleAuditService
         }
         $comparisons = 0;
         foreach ($courts as $bookings) {
-            if (! $this->pairs($bookings, $gap, $comparisons, function ($before, $after, $minutes) use ($add, $gap) {
+            $padding = max($gap, max(array_column($bookings, 'saved_gap')));
+            if (! $this->pairs($bookings, $padding, $comparisons, function ($before, $after, $minutes) use ($add, $gap) {
             if ($minutes < 0) $add('error', 'court_overlap', 'Two saved bookings overlap on the same physical court.', [$before, $after]);
+            elseif ($minutes < $before['saved_gap']) $add('error', 'court_turnaround', 'A match starts before the preceding booking’s saved '.$before['saved_gap'].'-minute changeover finishes.', [$before, $after]);
             elseif ($minutes < $gap) $add('warning', 'court_gap', 'The saved court turnaround gap is shorter than '.$gap.' minutes.', [$before, $after]);
             })) { $incomplete = true; break; }
         }
@@ -161,11 +180,18 @@ final class ScheduleAuditService
                 }
             }
         }
-        $checked = count(array_filter($rows, fn ($row) => $row['own'] && $this->inScope($row, $scope)));
+        $pendingPlayoffs = app(PlayoffScheduleReadinessService::class)->pending($draws->when(!empty($scope['draw_id']), fn ($items) => $items->where('id', (int) $scope['draw_id'])));
+        foreach ($pendingPlayoffs as $pending) {
+            $counts['warnings']++;
+            if (count($issues) < 200) $issues[] = ['severity' => 'warning', 'code' => 'playoffs_not_prepared',
+                'message' => $pending['draw_name'].': '.count($pending['missing_stages']).' configured playoff stage(s) have no fixtures. Booking coverage is incomplete.',
+                'matches' => [], 'external' => false];
+        }
+        $checked = count(array_filter($rows, fn ($row) => $row['own'] && empty($row['orphan']) && $this->inScope($row, $scope)));
         return ['scope' => $scope, 'checked' => $checked, 'compared_event_matches' => count($rows) - $externalCount, 'external_bookings' => $externalCount,
             'errors' => $counts['errors'], 'warnings' => $counts['warnings'], 'unscheduled' => $unscheduled, 'rest_minutes' => $rest, 'court_gap_minutes' => $gap,
             'issues' => $issues, 'omitted_issues' => $counts['errors'] + $counts['warnings'] - count($issues),
-            'incomplete' => $incomplete, 'coverage' => 'Saved event matches and nearby outside-event bookings sharing a court or resolved player. Unresolved players and unrecorded bookings cannot be fully checked. Undated matches are counted across the selected draw or event, regardless of day/venue filters.'];
+            'incomplete' => $incomplete, 'coverage' => 'Saved event matches, court reservations without matching fixtures and nearby outside-event bookings sharing a court or resolved player. Unresolved players and unrecorded bookings cannot be fully checked. Undated matches and unprepared playoffs are counted across the selected draw or event, regardless of day/venue filters.'];
     }
 
     private function row(Fixture|TeamFixture $fixture, string $drawName, bool $team, bool $own): array
@@ -178,7 +204,7 @@ final class ScheduleAuditService
         $expected = $team ? 2 * (int) ($fixture->player_count_per_team ?: ($fixture->isDoubles() ? 2 : 1)) : max(2, 2 * max(count($fixture->registration1?->players ?? []), count($fixture->registration2?->players ?? [])));
         return ['key' => ($team ? 'team:' : 'individual:').$fixture->id, 'draw' => (int) $fixture->draw_id,
             'round' => (int) ($team ? $fixture->round_nr : $fixture->round), 'label' => $drawName.' · Round '.($team ? $fixture->round_nr : $fixture->round).($team && $fixture->tie_nr ? ' · Tie '.$fixture->tie_nr : '').' · Match '.$fixture->match_nr.' ('.($team ? 'team' : 'individual').' #'.$fixture->id.')',
-            'start' => $start, 'end' => $start->copy()->addMinutes($raw > 0 ? $raw : ($team ? 120 : 75)), 'raw_duration' => $raw,
+            'start' => $start, 'end' => $start->copy()->addMinutes($raw > 0 ? $raw : ($team ? 120 : 75)), 'raw_duration' => $raw, 'saved_gap' => max(0, (int) $slot->gap_minutes),
             'venue' => (int) $slot->venue_id, 'court' => (string) ($team ? $fixture->court_label : $slot->court), 'players' => $players, 'expected_players' => $expected, 'teams' => $team ? ($fixture->teamTie ? array_filter([$fixture->teamTie->home_team_id ? 'team:'.$fixture->teamTie->home_team_id : null, $fixture->teamTie->away_team_id ? 'team:'.$fixture->teamTie->away_team_id : null]) : array_map(fn ($id) => 'region:'.$id, array_filter([$fixture->region1, $fixture->region2]))) : [], 'own' => $own];
     }
 

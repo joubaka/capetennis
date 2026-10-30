@@ -13,6 +13,40 @@ class ScheduleAuditTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_saved_court_turnaround_is_checked_separately_from_playing_time(): void
+    {
+        [$event, $draw, $venue] = $this->scenario();
+        DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)
+            ->update(['options' => json_encode(['player_rest' => 0, 'court_gap' => 0])]);
+        $player = Player::factory()->create();
+        $first = $this->team($draw, $venue, '2026-10-10 08:00:00', '1', $player);
+        $first->update(['duration_min' => 20, 'gap_minutes' => 5]);
+        $second = $this->team($draw, $venue, '2026-10-10 08:20:00', '1', $player);
+        $second->update(['duration_min' => 20]);
+        $codes = array_column(app(ScheduleAuditService::class)->audit($event)['issues'], 'code');
+        $this->assertContains('court_turnaround', $codes);
+        $this->assertNotContains('player_overlap', $codes);
+        $this->assertNotContains('player_rest', $codes);
+        $second->update(['scheduled_at' => '2026-10-10 08:25:00']);
+        $this->assertNotContains('court_turnaround', array_column(app(ScheduleAuditService::class)->audit($event)['issues'], 'code'));
+    }
+
+    public function test_missing_fixture_reservation_is_reported_and_still_blocks_its_court_without_mutation(): void
+    {
+        [$event, $draw, $venue] = $this->scenario();
+        $this->team($draw, $venue, '2026-10-10 08:00:00', '1');
+        $id = DB::table('order_of_plays')->insertGetId(['draw_id' => $draw->id, 'fixture_id' => 9999999,
+            'venue_id' => $venue->id, 'court' => '1', 'time' => '2026-10-10 08:00:00',
+            'duration_minutes' => 20, 'gap_minutes' => 5]);
+        $report = app(ScheduleAuditService::class)->audit($event);
+        $codes = array_column($report['issues'], 'code');
+        $this->assertContains('orphan_reservation', $codes);
+        $this->assertContains('court_overlap', $codes);
+        $this->assertDatabaseHas('order_of_plays', ['id' => $id, 'fixture_id' => 9999999]);
+        $foreign = Event::factory()->create();
+        $this->assertNotContains('orphan_reservation', array_column(app(ScheduleAuditService::class)->audit($foreign)['issues'], 'code'));
+    }
+
     private function scenario(): array
     {
         $event = Event::factory()->create();

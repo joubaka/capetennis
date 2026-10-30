@@ -1171,12 +1171,15 @@ class DrawController extends Controller
     $engine = app(EngineRouter::class);
 
     try {
-      $engine->forDraw($draw)->generateRoundRobin($draw, function (Draw $d) {
-        $builder = new DrawBuilder($d);
-        $builder->generateRoundRobinFixtures($d);
+      $preparedPlayoffs = \Illuminate\Support\Facades\DB::transaction(function () use ($engine, $draw) {
+        $engine->forDraw($draw)->generateRoundRobin($draw, function (Draw $d) {
+          $builder = new DrawBuilder($d);
+          $builder->generateRoundRobinFixtures($d);
+        });
+        return app(\App\Services\Draw\AutomaticPlayoffPreparationService::class)->prepare($draw);
       });
 
-      return response()->json(['message' => 'Round Robin fixtures generated successfully.']);
+      return response()->json(['message' => 'Round Robin fixtures generated successfully.', 'prepared_playoffs' => $preparedPlayoffs]);
     } catch (ValidationException $e) {
       throw $e;
     } catch (\Throwable $e) {

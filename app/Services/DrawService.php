@@ -1118,10 +1118,13 @@ class DrawService
 
   public function regenerateRoundRobinFixtures(Draw $draw): void
   {
-    $this->engine->forDraw($draw)->generateRoundRobin(
-      $draw,
-      fn(Draw $d) => $this->generateRoundRobinFixtures($d)
-    );
+    DB::transaction(function () use ($draw) {
+      $this->engine->forDraw($draw)->generateRoundRobin(
+        $draw,
+        fn(Draw $d) => $this->generateRoundRobinFixtures($d)
+      );
+      app(\App\Services\Draw\AutomaticPlayoffPreparationService::class)->prepare($draw);
+    });
   }
 
   public function saveRetirement(Fixture $fixture, array $sets, int $retiredRegistrationId): void

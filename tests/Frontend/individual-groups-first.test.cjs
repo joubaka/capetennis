@@ -16,6 +16,7 @@ function workspace(groups = [], locked = false, {confirm = false, failRequest = 
       html(value) { if (value === undefined) return selector === '<div>' ? elementText : values.get(`${selector}:html`) || ''; values.set(`${selector}:html`, value); return chain; },
       val(value) { if (value === undefined) return values.get(selector) || ''; values.set(selector, value); return chain; },
       prop(key, value) { props.set(`${selector}:${key}`, value); return chain; },
+      attr(key, value) { if (value === undefined) return values.get(`${selector}:attr:${key}`); values.set(`${selector}:attr:${key}`, value); return chain; },
       toggle() { return chain; }, toggleClass(name, value) { props.set(`${selector}:class:${name}`, value); return chain; }, each() { return chain; }
     };
     return chain;

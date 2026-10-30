@@ -166,7 +166,7 @@
 </style>
 
 
-<div id="round-robin-app" 
+<div id="round-robin-app" class="rr-public-view"
      data-draw-id="{{ $draw->id }}">
 
   @include('frontend.draw.partials.public-header')
@@ -181,21 +181,21 @@
  <ul class="nav nav-tabs ct-public-draw-nav" id="rrTabs" role="tablist">
 
   <li class="nav-item" role="presentation">
-    <button class="nav-link"
+    <button class="nav-link active"
             id="oop-tab"
             data-bs-toggle="tab"
             data-bs-target="#oop-pane"
-            type="button" role="tab" aria-controls="oop-pane" aria-selected="false">
+            type="button" role="tab" aria-controls="oop-pane" aria-selected="true">
       Schedule
     </button>
   </li>
 
   <li class="nav-item" role="presentation">
-    <button class="nav-link active"
+    <button class="nav-link"
             id="matrix-tab"
             data-bs-toggle="tab"
             data-bs-target="#matrix-pane"
-            type="button" role="tab" aria-controls="matrix-pane" aria-selected="true">
+            type="button" role="tab" aria-controls="matrix-pane" aria-selected="false">
       Draw
     </button>
   </li>
@@ -233,7 +233,7 @@
     {{-- ============================
          TAB 1 — MATRIX + STANDINGS
        ============================ --}}
-    <div class="tab-pane fade show active"
+    <div class="tab-pane fade"
          id="matrix-pane" 
          role="tabpanel" aria-labelledby="matrix-tab">
       <div class="row"> 
@@ -244,7 +244,7 @@
           <small class="text-muted">Who plays who + results</small>
         </div>
         <div class="card-body p-0">
-        <div id="rr-matrix-wrapper" class="rr-all-boxes-scroll p-2">
+        <div id="rr-matrix-wrapper" class="rr-public-matrices p-2">
 
             <div class="text-center text-muted py-5" id="rr-matrix-loading">
               <div class="spinner-border spinner-border-sm"></div>
@@ -264,7 +264,7 @@
     {{-- ============================
          TAB 2 — ORDER OF PLAY
        ============================ --}}
-    <div class="tab-pane fade"
+    <div class="tab-pane fade show active"
          id="oop-pane" 
          role="tabpanel" aria-labelledby="oop-tab">
        <div class="col-12">

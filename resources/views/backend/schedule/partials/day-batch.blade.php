@@ -45,8 +45,8 @@
       @endif
       @if($pendingPlayoffDraws->isNotEmpty())
         <div class="alert alert-info mb-3" id="pending-playoff-rounds">
-          <h6>Playoff rounds are not prepared yet</h6>
-          <p class="small">Prepare the configured playoff matches to add their rounds below. Qualifiers remain undecided until the group results are complete.</p>
+          <h6>Add playoffs to the scheduling list</h6>
+          <p class="small">Select the draws below, then click Prepare playoff fixtures. Their playoff rounds will appear below for scheduling, even before round-robin results are complete. Players remain undecided until they qualify.</p>
           <form id="prepare-playoff-form" method="POST" action="{{ route('backend.event-venue-schedule.prepare-playoffs', $event) }}">
             @csrf
             @foreach($pendingPlayoffDraws as $playoffDraw)

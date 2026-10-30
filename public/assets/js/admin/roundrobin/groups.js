@@ -399,7 +399,7 @@
         (existing
           ? '<p class="text-danger">This replaces ' +
             existing +
-            ' existing fixtures, including playoff fixtures. Their schedule will need to be reviewed. Scored fixtures cannot be replaced.</p>'
+            ' existing fixtures, including playoff fixtures, and releases their saved court bookings. Your saved groups and event entries are kept. Recorded results cannot be replaced. Schedule the rebuilt matches again before publishing their times.</p>'
           : ''),
       showCancelButton: true,
       confirmButtonText: existing ? 'Regenerate fixtures' : 'Generate fixtures'
@@ -417,7 +417,7 @@
         data: { revision: revision }
       });
       await root.RRWorkspace.refreshHub();
-      announce('Fixtures generated. Review the matrix, then schedule your matches.');
+      announce('Fixtures generated from your saved groups. Review the matchups, then prepare any playoffs and schedule the matches. Match times are published separately.');
       root.RRWorkspace.open('results');
     } catch (error) {
       AdminToast.error(error.message);

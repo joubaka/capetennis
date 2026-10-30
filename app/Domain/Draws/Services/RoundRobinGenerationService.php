@@ -74,7 +74,7 @@ final class RoundRobinGenerationService
         }
         $draw->drawFixtures()->lockForUpdate()->get(['id']);
         if ($draw->drawFixtures()->where(function ($query) {
-            $query->whereHas('fixtureResults')->orWhereIn('match_status', [1, 2]);
+            $query->withRecordedResult()->orWhereIn('match_status', [1, 2, 4]);
         })->exists()) {
             throw \Illuminate\Validation\ValidationException::withMessages([
                 'draw' => 'Recorded results must be preserved. Round Robin fixtures cannot be regenerated.',

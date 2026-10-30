@@ -310,8 +310,11 @@ final class EventVenueScheduleController extends Controller
         $unscheduledCount = Fixture::whereIn('draw_id', $drawIds)->when(! empty($scope['draw_id']), fn ($q) => $q->where('draw_id', $scope['draw_id']))
             ->where('match_status', 0)->whereDoesntHave('fixtureResults')->whereDoesntHave('orderOfPlay', fn ($q) => $q->whereNotNull('time'))->count()
             + TeamFixture::whereIn('draw_id', $drawIds)->when(! empty($scope['draw_id']), fn ($q) => $q->where('draw_id', $scope['draw_id']))->where('match_status', 0)->whereDoesntHave('fixtureResults')->whereNull('scheduled_at')->count();
+        $pendingPlayoffs = app(\App\Services\Scheduling\PlayoffScheduleReadinessService::class)->pending(
+            $draws->when(!empty($scope['draw_id']), fn ($items) => $items->where('id', (int) $scope['draw_id']))
+        );
         $revision = $publication->revision($event);
-        return view('backend.schedule.saved-calendar', compact('event', 'scope', 'days', 'date', 'rows', 'retained', 'venues', 'draws', 'revision', 'unscheduledCount', 'dailySavedCounts', 'publicationCounts', 'savedCount', 'retainedCount', 'savedPages', 'retainedPages'));
+        return view('backend.schedule.saved-calendar', compact('event', 'scope', 'days', 'date', 'rows', 'retained', 'venues', 'draws', 'revision', 'unscheduledCount', 'pendingPlayoffs', 'dailySavedCounts', 'publicationCounts', 'savedCount', 'retainedCount', 'savedPages', 'retainedPages'));
     }
 
     public function editDay(Request $request, Event $event, EventVenueScheduleService $scheduler,
