@@ -162,7 +162,7 @@ final class BracketRenderService
             'away'       => $this->playerName($fx->registration2),
             'home_id'    => $fx->registration1_id,
             'away_id'    => $fx->registration2_id,
-            'score'      => $fx->isWalkover() ? 'W/O' : implode(', ', array_map(fn($s) => "{$s['s1']}-{$s['s2']}", $sets)),
+            'score'      => $fx->isWalkover() ? 'W/O' : implode(', ', array_map(fn($s) => "{$s['s1']}-{$s['s2']}", $sets)) . ($fx->isRetired() ? ' RET' : ''),
             'winner_id'  => $fx->winner_registration,
             'time'       => optional($oop)->time ?? '',
             'court'      => optional($oop)->court ?? '',
@@ -183,10 +183,15 @@ final class BracketRenderService
             $s1 = (int) $result->registration1_score;
             $s2 = (int) $result->registration2_score;
             $sets[] = ['s1' => $s1, 's2' => $s2];
+            if ($fx->isRetired() && !$result->winner_registration) continue;
             if ($s1 > $s2) $homeScore++;
             else            $awayScore++;
         }
 
+        if ($fx->isRetired()) {
+            return [$sets, implode(' ', array_column($sets, 's1')) . ($fx->retiredRegistrationId() === (int) $fx->registration1_id ? ' RET' : ''),
+                implode(' ', array_column($sets, 's2')) . ($fx->retiredRegistrationId() === (int) $fx->registration2_id ? ' RET' : '')];
+        }
         return [$sets, $homeScore, $awayScore];
     }
 

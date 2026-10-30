@@ -35,7 +35,7 @@ test('changing a tied playoff to an unequal score clears the stale deciding winn
   const inputs = [{value: '3'}, {value: '3'}];
   const decidingPanel = {hidden: true}, decidingWinner = {disabled: true, value: '22'};
   const active = {...match, stage: 'MAIN'};
-  const state = {active, decidingPanel, decidingWinner,
+  const state = {active, decidingPanel, decidingWinner, resultType: {value: 'played'},
     modalElement: {querySelector() {return {querySelectorAll() {return inputs;}};}}};
   const sync = source.slice(source.indexOf('  function syncTimedDecision('), source.indexOf("  modalElement.querySelector('[data-set-score-grid]').addEventListener"));
   const refresh = vm.runInNewContext(helpers + sync + '\nsyncTimedDecision', state);

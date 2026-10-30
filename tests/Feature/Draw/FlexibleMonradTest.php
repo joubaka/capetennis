@@ -36,6 +36,53 @@ class FlexibleMonradTest extends TestCase
         return [$draw, ['size' => 4, 'slots' => $slots], $players];
     }
 
+    public function test_retirement_preserves_score_and_opponent_winner_then_clear_and_correct(): void
+    {
+        [$draw, $draft] = $this->setupDraw();
+        $draw->settings()->update(['num_sets' => 3, 'score_format' => 'best_of_3_full']);
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $record = $service->generate($draw, 1);
+        $fixture = Fixture::findOrFail($record->fixture_map['main_a']);
+        $url = route('flexible-monrad.score', [$draw, $fixture->id]);
+        $payload = ['revision' => 2, 'retired_registration_id' => $fixture->registration1_id, 'sets' => [[6, 4], [3, 2]]];
+        $this->putJson($url, $payload)->assertOk()->assertJsonPath('matches.main_a.retired', true)
+            ->assertJsonPath('matches.main_a.retired_registration_id', $fixture->registration1_id)
+            ->assertJsonPath('matches.main_a.winner', $fixture->registration2_id)->assertJsonPath('revision', 3);
+        $this->assertTrue($fixture->fresh()->isRetired());
+        $this->assertSame('6-4 3-2 RET', $fixture->fresh()->score);
+        $this->putJson($url, array_replace($payload, ['revision' => 3]))->assertOk()->assertJsonPath('revision', 3);
+        $this->putJson($url, ['revision' => 3, 'sets' => [[4, 6], [2, 6]]])->assertOk()->assertJsonPath('matches.main_a.retired', false);
+        $this->assertFalse($fixture->fresh()->isRetired());
+        $this->putJson($url, array_replace($payload, ['revision' => 4]))->assertOk();
+        $this->putJson($url, ['revision' => 5, 'sets' => null])->assertOk()->assertJsonPath('matches.main_a.retired', false);
+        $this->assertNull($fixture->fresh()->winner_registration);
+        $this->assertSame(0, $fixture->fixtureResults()->count());
+    }
+
+    public function test_retirement_rejects_invalid_scores_and_requires_reset_of_later_retirements(): void
+    {
+        [$draw, $draft] = $this->setupDraw();
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $record = $service->generate($draw, 1);
+        $first = Fixture::findOrFail($record->fixture_map['main_a']);
+        $url = route('flexible-monrad.score', [$draw, $first->id]);
+        $this->putJson($url, ['revision' => 2, 'retired_registration_id' => Registration::factory()->create()->id, 'sets' => [[3, 2]]])->assertUnprocessable();
+        $this->putJson($url, ['revision' => 2, 'retired_registration_id' => $first->registration1_id, 'walkover_winner_id' => $first->registration2_id, 'sets' => [[3, 2]]])->assertUnprocessable();
+        foreach (['main_a', 'main_b', 'main_final'] as $key) {
+            $fixture = Fixture::findOrFail($record->fixture_map[$key]);
+            $this->putJson(route('flexible-monrad.score', [$draw, $fixture->id]),
+                ['revision' => $record->fresh()->revision, 'retired_registration_id' => $fixture->registration1_id, 'sets' => [[3, 2]]])->assertOk();
+        }
+        $payload = ['revision' => $record->fresh()->revision, 'retired_registration_id' => $first->registration2_id, 'sets' => [[3, 2]]];
+        $this->putJson($url, $payload)->assertConflict();
+        $this->putJson($url, $payload + ['reset_dependents' => true])->assertOk();
+        $final = Fixture::findOrFail($record->fixture_map['main_final']);
+        $this->assertFalse($final->isRetired());
+        $this->assertSame(0, $final->fixtureResults()->count());
+    }
+
     public function test_manual_walkover_preserves_players_advances_both_paths_and_can_be_cleared(): void
     {
         [$draw, $draft] = $this->setupDraw();

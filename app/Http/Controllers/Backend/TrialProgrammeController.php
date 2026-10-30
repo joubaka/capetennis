@@ -28,7 +28,7 @@ class TrialProgrammeController extends Controller
             ->withCount(['categoryEventRegistrations as paid_count' => fn ($q) => $q->where('payment_status_id', 1)])
             ->get()->map(function ($category) use ($event, $programme) {
                 $fixtures = $category->draws->flatMap->drawFixtures;
-                $unresolved = $fixtures->filter(fn ($fixture) => !in_array((int) $fixture->match_status, [1, 3, 5], true)
+                $unresolved = $fixtures->filter(fn ($fixture) => !in_array((int) $fixture->match_status, [1, 3, \App\Domain\Draws\Enums\FixtureState::STATUS_RETIRED, 5], true)
                     || ((int) $fixture->match_status !== 5 && !in_array((int) $fixture->winner_registration, array_filter([(int) $fixture->registration1_id, (int) $fixture->registration2_id]), true)))->count();
                 $message = !$category->paid_count ? 'No paid registrations yet.'
                     : ($fixtures->isEmpty() ? 'Draw and matches not ready.'

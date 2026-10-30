@@ -72,6 +72,22 @@ class Fixture extends Model
       ->where(fn ($winner) => $winner->whereColumn('winner_registration', 'registration1_id')->orWhereColumn('winner_registration', 'registration2_id'))));
   }
 
+  /** Retirement is terminal, independently of the retained score leader. */
+  public function isRetired(): bool
+  {
+    return (int) $this->match_status === \App\Domain\Draws\Enums\FixtureState::STATUS_RETIRED
+      && (int) $this->registration1_id > 0 && (int) $this->registration2_id > 0
+      && (int) $this->registration1_id !== (int) $this->registration2_id
+      && in_array((int) $this->winner_registration, [(int) $this->registration1_id, (int) $this->registration2_id], true);
+  }
+
+  public function retiredRegistrationId(): ?int
+  {
+    if (!$this->isRetired()) return null;
+    return (int) $this->winner_registration === (int) $this->registration1_id
+      ? (int) $this->registration2_id : (int) $this->registration1_id;
+  }
+
   /** A recorded walkover has two entrants and no played set scores. */
   public function isWalkover(): bool
   {
@@ -169,7 +185,7 @@ class Fixture extends Model
     return $this->fixtureResults
       ->sortBy('set_nr')
       ->map(fn($s) => $s->registration1_score . '-' . $s->registration2_score)
-      ->implode(' ');
+      ->implode(' ') . ($this->isRetired() ? ' RET' : '');
   }
 
   public function getWinnerIdAttribute()

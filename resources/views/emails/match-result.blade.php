@@ -4,6 +4,8 @@
 <p>{{ implode(' / ', $notification->snapshot['home_names']) }} versus {{ implode(' / ', $notification->snapshot['away_names']) }}</p>
 @if(($notification->snapshot['result_type'] ?? null) === 'walkover')
 <p>Result: {{ implode(' / ', $notification->snapshot['winner_names']) }} won by walkover (W/O).</p>
+@elseif(($notification->snapshot['result_type'] ?? null) === 'retired')
+<p>Result: {{ collect($notification->snapshot['sets'])->map(fn ($set) => implode('–', $set))->implode(', ') }} RET. {{ implode(' / ', $notification->snapshot['winner_names']) }} won by retirement.</p>
 @else
 <p>Result: {{ collect($notification->snapshot['sets'])->map(fn ($set) => implode('–', $set))->implode(', ') }}</p>
 @endif

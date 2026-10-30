@@ -462,6 +462,19 @@ class PlayerPerformancePilotTest extends TestCase
         $this->assertNull($service->forPlayer($player, $asOf)['headline']);
     }
 
+    public function test_retirement_is_excluded_from_rating_evidence_even_with_completed_looking_scores(): void
+    {
+        $field = $this->field(Category::factory()->create(['name' => 'u10 Boys']), [1,2], ['results_published' => false]);
+        $player = $field['rows'][0]['players']->first();
+        $this->match($field, [[3,2]], ['match_status' => \App\Domain\Draws\Enums\FixtureState::STATUS_RETIRED]);
+        $this->match($field, [[6,4]], ['match_status' => \App\Domain\Draws\Enums\FixtureState::STATUS_RETIRED]);
+        $service = app(PlayerPerformancePilotService::class);
+        $asOf = CarbonImmutable::parse('2026-10-06');
+        $this->assertNull($service->forPlayer($player, $asOf)['headline']);
+        $this->match($field, [[6,4]], ['match_status' => 1]);
+        $this->assertSame(1, $service->forPlayer($player, $asOf)['headline']['match_count']);
+    }
+
     public function test_legacy_partial_rr_and_unrecorded_bye_winner_are_excluded(): void
     {
         $field = $this->field(Category::factory()->create(['name' => 'u10 Boys']), [1,2], ['results_published' => false]);

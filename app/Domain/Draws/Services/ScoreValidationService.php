@@ -57,6 +57,66 @@ final class ScoreValidationService
         return ['valid' => true, 'message' => null];
     }
 
+    /** A retirement retains completed sets and the score in the final, unfinished set. */
+    public function validateRetirement(Fixture $fixture, array $sets): array
+    {
+        $format = $this->retirementFormat($fixture);
+        if ($sets === [] || !array_is_list($sets) || count($sets) > $format['max_sets']) {
+            return $this->failure('Enter the score reached before retirement, within the configured set count.');
+        }
+        $wins = [0, 0];
+        foreach ($sets as $index => $set) {
+            if (!is_array($set) || !array_is_list($set) || count($set) !== 2) return $this->failure('Each set needs two whole-number scores.');
+            [$home, $away] = array_map(fn ($value) => filter_var($value, FILTER_VALIDATE_INT), array_values($set));
+            if ($home === false || $away === false || min($home, $away) < 0 || max($home, $away) > 999) {
+                return $this->failure('Retirement scores must be whole numbers from 0 to 999.');
+            }
+            $type = $format['set_types'][$index] ?? end($format['set_types']);
+            $complete = $type !== 'timed' && $type !== 'custom' && $this->setError($type, $home, $away) === null;
+            if ($index < count($sets) - 1 && !$complete && !($type === 'custom' && $home !== $away)) {
+                return $this->failure('Only the final set may be unfinished when a player retires.');
+            }
+            if (!$this->reachableRetirementScore($type, $home, $away)) {
+                return $this->failure('The retirement score goes beyond a valid score for this set.');
+            }
+            if ($complete || ($type === 'custom' && $index < count($sets) - 1)) $wins[$home > $away ? 0 : 1]++;
+            if ($type !== 'timed' && max($wins) >= $format['wins_needed']) {
+                return $this->failure('This match was already completed. Record a played result instead of retirement.');
+            }
+        }
+        return ['valid' => true, 'message' => null];
+    }
+
+    /** Count only completed sets in retirement standings, never the unfinished score. */
+    public function retirementSetComplete(Fixture $fixture, int $index, int $home, int $away, int $setCount): bool
+    {
+        $format = $this->retirementFormat($fixture);
+        $type = $format['set_types'][$index] ?? end($format['set_types']);
+        return $type === 'custom' ? $index < $setCount - 1 && $home !== $away
+            : ($type !== 'timed' && $this->setError($type, $home, $away) === null);
+    }
+
+    private function retirementFormat(Fixture $fixture): array
+    {
+        $settings = $fixture->draw?->settings;
+        $key = (string) ($settings?->score_format ?? '');
+        if (in_array($key, TennisScoreFormat::keys(), true)) return TennisScoreFormat::get($key);
+        $max = max(1, min(5, (int) ($settings?->num_sets ?: 3)));
+        return ['max_sets' => $max, 'wins_needed' => (int) ceil($max / 2),
+            'set_types' => array_fill(0, $max, ($settings?->requiresFullSets() ?? true) ? 'full' : 'custom')];
+    }
+
+    private function reachableRetirementScore(string $type, int $home, int $away): bool
+    {
+        [$high, $low] = [max($home, $away), min($home, $away)];
+        if (in_array($type, ['timed', 'custom'], true)) return true;
+        if (str_starts_with($type, 'target')) return $high <= (int) substr($type, 6) && $low < (int) substr($type, 6);
+        if ($type === 'match_tiebreak') return $high <= 10 || $high - $low <= 2;
+        $target = $type === 'pro8' ? 8 : 6;
+        return $high < $target || ($high === $target && $low <= $target)
+            || ($high === $target + 1 && in_array($low, [$target - 1, $target], true));
+    }
+
     private function validateTimed(Fixture $fixture, array $sets, ?int $decidingPointWinnerId): array
     {
         if (count($sets) !== 1 || ! is_array($sets[0]) || count($sets[0]) !== 2) {

@@ -370,6 +370,7 @@
           $draw = $match->draw;
           $isTimed = !$isTeamFixture && $draw->settings?->score_format === 'timed';
           $isWalkover = !$isTeamFixture && $match->isWalkover();
+          $isRetired = !$isTeamFixture && $match->isRetired();
           $hasScore = $match->fixtureResults->isNotEmpty() || $isWalkover;
           $isPlaying = !$hasScore && (int) ($match->match_status ?? 0) === \App\Domain\Draws\Enums\FixtureState::STATUS_PARTIAL;
           $isFlexible = !$isTeamFixture && $draw->usesFlexibleMonrad();
@@ -457,7 +458,7 @@
                 </div>
               </div>
               <div class="match-score {{ $hasScore ? '' : 'is-empty' }}">
-                {{ $isWalkover ? 'W/O' : ($hasScore ? $sets->map(fn($set) => $set[0].'–'.$set[1])->implode('  ') : 'Not scored') }}
+                {{ $isWalkover ? 'W/O' : ($hasScore ? $sets->map(fn($set) => $set[0].'–'.$set[1])->implode('  ').($isRetired ? ' RET' : '') : 'Not scored') }}
               </div>
               @if($canWrite && $hasPlayers)
               <div class="match-actions">
@@ -479,6 +480,7 @@
                       data-home-registration="{{ $isTeamFixture ? '' : $match->registration1_id }}" data-away-registration="{{ $isTeamFixture ? '' : $match->registration2_id }}"
                       data-deciding-winner="{{ $isTimed && $hasScore ? ($winnerRegistration ?? '') : '' }}"
                       data-walkover-winner="{{ $isWalkover ? $match->winner_registration : '' }}"
+                      data-retired-registration="{{ $isRetired ? ($match->winner_registration == $match->registration1_id ? $match->registration2_id : $match->registration1_id) : '' }}"
                       data-match-minutes="{{ $isTimed ? $draw->settings->match_duration_minutes : '' }}"
                       data-changeover-minutes="{{ $isTimed ? $draw->settings->changeover_minutes : '' }}"
                       data-num-sets="{{ $draw->settings?->score_format ? \App\Domain\Draws\Services\TennisScoreFormat::maxSets($draw->settings->score_format) : max(1, min(5, (int) ($draw->settings?->num_sets ?: 3))) }}"
@@ -554,6 +556,7 @@
           <select id="score-result-type" class="form-select">
             <option value="played">Played match</option>
             <option value="walkover">Walkover (W/O)</option>
+            <option value="retired">Retired (RET)</option>
           </select>
         </div>
         <div id="score-walkover-panel" class="mb-3" hidden>
@@ -562,6 +565,13 @@
             <option value="">Choose the winner</option>
           </select>
           <p class="small text-muted mt-2 mb-0">The selected player advances without set scores. This applies to this match only.</p>
+        </div>
+        <div id="score-retired-panel" class="mb-3" hidden>
+          <label class="form-label" for="score-retired-player">Who retired?</label>
+          <select id="score-retired-player" class="form-select" disabled>
+            <option value="">Choose the player</option>
+          </select>
+          <p class="small text-muted mt-2 mb-0">Enter the score when play stopped, including any unfinished set. The opponent wins this match.</p>
         </div>
         @include('shared.scoring.set-grid', ['scoreGridPrefix' => 'score'])
         <div id="score-deciding-point" class="mt-3" hidden>
@@ -596,6 +606,9 @@ document.addEventListener('DOMContentLoaded', function () {
   const resultType = document.getElementById('score-result-type');
   const walkoverPanel = document.getElementById('score-walkover-panel');
   const walkoverWinner = document.getElementById('score-walkover-winner');
+  const retiredPanel = document.getElementById('score-retired-panel');
+  const retiredPlayer = document.getElementById('score-retired-player');
+  const scoreGuidance = document.getElementById('score-entry-guidance');
   let active = null;
   let workspaceRequestSequence = 0;
 
@@ -605,7 +618,14 @@ document.addEventListener('DOMContentLoaded', function () {
       && sets.length === 1 && sets[0][0] === sets[0][1];
   }
 
-  function venueScorePayload(match, sets, decidingId, walkoverId) {
+  function venueScorePayload(match, sets, decidingId, walkoverId, retiredId) {
+    if (retiredId !== undefined) {
+      const id = Number(retiredId);
+      if (walkoverId !== undefined || match.engine === 'team' || !Number.isSafeInteger(id) || !id || ![Number(match.homeRegistration), Number(match.awayRegistration)].includes(id)) {
+        throw new Error('Choose the player who retired from this match.');
+      }
+      return {sets: sets, retired_registration_id: id};
+    }
     if (walkoverId !== undefined) {
       const id = Number(walkoverId);
       if (match.engine === 'team' || !Number.isSafeInteger(id) || !id || ![Number(match.homeRegistration), Number(match.awayRegistration)].includes(id)) {
@@ -627,7 +647,7 @@ document.addEventListener('DOMContentLoaded', function () {
   function syncTimedDecision() {
     const values = Array.from(modalElement.querySelector('[data-score-row]').querySelectorAll('input')).map(input => input.value.trim());
     const complete = values.every(value => /^\d+$/.test(value));
-    const required = complete && venueNeedsDecidingPoint(active, [values.map(Number)]);
+    const required = resultType.value === 'played' && complete && venueNeedsDecidingPoint(active, [values.map(Number)]);
     decidingPanel.hidden = !required;
     decidingWinner.disabled = !required;
     if (!required) decidingWinner.value = '';
@@ -636,6 +656,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function syncResultType() {
     const walkover = active?.engine !== 'team' && resultType.value === 'walkover';
+    const retired = active?.engine !== 'team' && resultType.value === 'retired';
+    retiredPanel.hidden = !retired;
+    retiredPlayer.disabled = !retired;
+    retiredPlayer.required = retired;
     walkoverPanel.hidden = !walkover;
     walkoverWinner.disabled = !walkover;
     walkoverWinner.required = walkover;
@@ -644,9 +668,10 @@ document.addEventListener('DOMContentLoaded', function () {
     grid.querySelectorAll('[data-score-row]').forEach(row => {
       row.querySelectorAll('input').forEach(input => { input.disabled = walkover || row.hidden; });
     });
-    saveButton.textContent = walkover ? 'Save walkover' : 'Save score';
+    saveButton.textContent = walkover ? 'Save walkover' : (retired ? 'Save retired result' : 'Save score');
+    scoreGuidance.textContent = retired ? 'Enter the score when play stopped' : (walkover ? 'Choose the walkover winner' : scoreGuidance.dataset.played);
     syncTimedDecision();
-    if (walkover) {
+    if (walkover || retired) {
       decidingPanel.hidden = true;
       decidingWinner.disabled = true;
       decidingWinner.value = '';
@@ -772,6 +797,7 @@ document.addEventListener('DOMContentLoaded', function () {
           ? 'Custom set scores allowed'
           : (active.scoreGuidance || 'Enter completed sets');
       document.getElementById('score-match-title').textContent = active.home + ' vs ' + active.away;
+      scoreGuidance.dataset.played = scoreGuidance.textContent;
       const scores = JSON.parse(active.scores || '[]');
       CTSetScoreGrid.populate(modalElement.querySelector('[data-set-score-grid]'), {
         names: [active.home, active.away], maxSets: active.scoreFormat === 'timed' ? 1 : (active.numSets || 3), scores: scores
@@ -786,12 +812,14 @@ document.addEventListener('DOMContentLoaded', function () {
       });
       decidingWinner.replaceChildren(new Option('Choose the winner', ''), new Option(active.home, active.homeRegistration), new Option(active.away, active.awayRegistration));
       document.getElementById('score-result-type-panel').hidden = active.engine === 'team';
-      resultType.value = active.walkoverWinner ? 'walkover' : 'played';
+      resultType.value = active.retiredRegistration ? 'retired' : (active.walkoverWinner ? 'walkover' : 'played');
       walkoverWinner.replaceChildren(new Option('Choose the winner', ''), new Option(active.home, active.homeRegistration), new Option(active.away, active.awayRegistration));
       walkoverWinner.value = active.walkoverWinner || '';
+      retiredPlayer.replaceChildren(new Option('Choose the player', ''), new Option(active.home, active.homeRegistration), new Option(active.away, active.awayRegistration));
+      retiredPlayer.value = active.retiredRegistration || '';
       syncResultType();
       syncTimedDecision();
-      if (!decidingPanel.hidden) decidingWinner.value = active.decidingWinner || '';
+      if (!decidingPanel.hidden && resultType.value === 'played') decidingWinner.value = active.decidingWinner || '';
       clearButton.classList.toggle('d-none', scores.length === 0 && !active.walkoverWinner);
       modal.show();
       return;
@@ -841,7 +869,14 @@ document.addEventListener('DOMContentLoaded', function () {
       }
       return [values.map(Number)];
     }
-    return CTSetScoreGrid.read(modalElement.querySelector('[data-set-score-grid]'));
+    try {
+      return CTSetScoreGrid.read(modalElement.querySelector('[data-set-score-grid]'));
+    } catch (failure) {
+      if (resultType.value === 'retired' && failure.message === 'Enter at least one completed set.') {
+        throw new Error('Enter the score when play stopped. Use 0–0 if no games were completed.');
+      }
+      throw failure;
+    }
   }
 
   async function request(url, method, body) {
@@ -868,8 +903,9 @@ document.addEventListener('DOMContentLoaded', function () {
     saveButton.disabled = true;
     try {
       const walkover = active.engine !== 'team' && resultType.value === 'walkover';
+      const retired = active.engine !== 'team' && resultType.value === 'retired';
       const sets = walkover ? [] : setsFromForm();
-      const scorePayload = venueScorePayload(active, sets, decidingWinner.value, walkover ? walkoverWinner.value : undefined);
+      const scorePayload = venueScorePayload(active, sets, decidingWinner.value, walkover ? walkoverWinner.value : undefined, retired ? retiredPlayer.value : undefined);
       if (active.engine === 'flexible') {
         try {
           await request(active.store, 'PUT', {...scorePayload, revision: Number(active.revision)});

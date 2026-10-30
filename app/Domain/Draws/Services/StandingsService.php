@@ -191,6 +191,7 @@ final class StandingsService
             $s2 = (int) $set->registration2_score;
             $homeGames += $s1;
             $awayGames += $s2;
+            if ($fx->isRetired() && !$set->winner_registration) continue;
             if ($s1 > $s2) {
                 $homeSets++;
             } else {

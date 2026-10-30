@@ -54,13 +54,18 @@
   <h2 id="fm-score-title">Enter result</h2><p id="fm-score-players"></p>
   <p class="fm-help" id="fm-score-format">Enter completed sets.</p>
   <label for="fm-result-type">Result type</label>
-  <select id="fm-result-type" class="form-select mb-3"><option value="played">Played match</option><option value="walkover">Walkover (W/O)</option></select>
+  <select id="fm-result-type" class="form-select mb-3"><option value="played">Played match</option><option value="walkover">Walkover (W/O)</option><option value="retired">Retired (RET)</option></select>
   <div id="fm-walkover-panel" hidden>
     <label for="fm-walkover-winner">Walkover winner</label>
     <select id="fm-walkover-winner" class="form-select"></select>
     <p class="fm-help">Record a walkover without set scores. Both players remain in the draw.</p>
   </div>
   @include('shared.scoring.set-grid', ['scoreGridPrefix' => 'fm-score'])
+  <div id="fm-retired-panel" hidden>
+    <label for="fm-retired-player">Who retired?</label>
+    <select id="fm-retired-player" class="form-select"></select>
+    <p class="fm-help">Enter the score when play stopped, including any unfinished set. The opponent wins this match.</p>
+  </div>
   <p id="fm-score-error" role="alert"></p>
   <label id="fm-reset-label" hidden><input type="checkbox" id="fm-reset"> Reset the affected later results listed above</label>
   <div class="fm-dialog-actions"><button type="button" id="fm-score-save" class="fm-primary">Save result</button><button type="button" id="fm-score-delete">Delete result</button></div>

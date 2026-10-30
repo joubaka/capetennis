@@ -61,7 +61,7 @@ class TrialProgrammeService
                 $draws = $category->draws()->with(['drawFixtures.fixtureResults', 'groups.groupRegistrations', 'registrations', 'flexibleMonrad', 'settings'])->get();
                 $fixtures = $draws->flatMap->drawFixtures;
                 if ($draws->isEmpty() || $fixtures->isEmpty() || $fixtures->contains(function ($fixture) {
-                    if (! in_array((int) $fixture->match_status, [1, 3, 5], true)) {
+                    if (! in_array((int) $fixture->match_status, [1, 3, \App\Domain\Draws\Enums\FixtureState::STATUS_RETIRED, 5], true)) {
                         return true;
                     }
                     return (int) $fixture->match_status !== 5 && ! in_array((int) $fixture->winner_registration,

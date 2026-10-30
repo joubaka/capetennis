@@ -654,6 +654,7 @@ class DrawService
       foreach ($fx->fixtureResults as $set) {
         $homeGames += (int) $set->registration1_score;
         $awayGames += (int) $set->registration2_score;
+        if ($fx->isRetired() && !$set->winner_registration) continue;
         if ($set->registration1_score > $set->registration2_score) {
           $homeSets++;
         } else {
@@ -849,7 +850,7 @@ class DrawService
       if ($fx?->isWalkover()) return 'W/O';
       if (!$fx || !$fx->fixtureResults->count())
         return '';
-      return $fx->fixtureResults->pluck('score_line')->join(', ');
+      return $fx->fixtureResults->pluck('score_line')->join(', ') . ($fx->isRetired() ? ' RET' : '');
     };
 
     return [
@@ -1123,6 +1124,52 @@ class DrawService
     );
   }
 
+  public function saveRetirement(Fixture $fixture, array $sets, int $retiredRegistrationId): void
+  {
+    DB::transaction(function () use ($fixture, $sets, $retiredRegistrationId) {
+      $draw = Draw::whereKey($fixture->draw_id)->lockForUpdate()->firstOrFail();
+      $fixture = Fixture::with('fixtureResults')->lockForUpdate()->findOrFail($fixture->id);
+      $fixture->setRelation('draw', $draw);
+      \App\Domain\Draws\Guards\DrawGuard::requireScoreable($fixture);
+      abort_if($fixture->stage === 'FM', 409, 'Use Flexible Monrad to record this result.');
+      abort_unless($fixture->registration1_id && $fixture->registration2_id
+        && (int) $fixture->registration1_id !== (int) $fixture->registration2_id
+        && in_array($retiredRegistrationId, [(int) $fixture->registration1_id, (int) $fixture->registration2_id], true), 422,
+        'Choose one of the two current players as the retired player.');
+      $validator = app(\App\Domain\Draws\Services\ScoreValidationService::class);
+      $validation = $validator->validateRetirement($fixture, $sets);
+      abort_unless($validation['valid'], 422, $validation['message']);
+      $sets = array_map(fn ($set) => array_map('intval', $set), $sets);
+      $winner = $retiredRegistrationId === (int) $fixture->registration1_id ? (int) $fixture->registration2_id : (int) $fixture->registration1_id;
+      $before = ['winner' => $fixture->winner_registration, 'walkover' => $fixture->isWalkover(), 'retired_registration_id' => $fixture->retiredRegistrationId(),
+        'sets' => $fixture->fixtureResults->sortBy('set_nr')->map(fn ($set) => [(int) $set->registration1_score, (int) $set->registration2_score])->values()->all()];
+      if ($fixture->isRetired() && (int) $fixture->winner_registration === $winner && $before['sets'] === $sets) return;
+      if ($fixture->stage === 'RR' && ($before['sets'] !== [] || $fixture->isWalkover())) $this->assertDownstreamFixturesAreUnscored($fixture);
+      if ($fixture->winner_registration && (int) $fixture->winner_registration !== $winner) {
+        $this->assertDownstreamFixturesAreUnscored($fixture);
+        if ($fixture->stage !== 'RR') $this->engine->forDraw($draw)->rollbackFixture(
+          $fixture, fn (Fixture $fx) => $this->canonicalProgression->rollback($fx));
+      }
+      $fixture->fixtureResults()->delete();
+      foreach ($sets as $index => [$home, $away]) {
+        $complete = $validator->retirementSetComplete($fixture, $index, $home, $away, count($sets));
+        $fixture->fixtureResults()->create(['set_nr' => $index + 1, 'registration1_score' => $home, 'registration2_score' => $away,
+          'winner_registration' => $complete ? ($home > $away ? $fixture->registration1_id : $fixture->registration2_id) : null,
+          'loser_registration' => $complete ? ($home > $away ? $fixture->registration2_id : $fixture->registration1_id) : null]);
+      }
+      $fixture->unsetRelation('fixtureResults');
+      $fixture->update(['winner_registration' => $winner, 'match_status' => \App\Domain\Draws\Enums\FixtureState::STATUS_RETIRED]);
+      if ($fixture->stage !== 'RR') {
+        $this->engine->forDraw($draw)->advanceFixture($fixture, $winner, $retiredRegistrationId,
+          fn (Fixture $fx, int $w, int $l) => $this->autoAdvanceBracket($fx, $w, $l));
+        $this->engine->forDraw($draw)->advanceByes($draw, fn (Draw $d) => $this->canonicalByes->advance($d));
+      }
+      \App\Models\DrawAuditLog::record($draw->id, 'retirement_saved', $fixture->id,
+        ['before' => $before, 'sets' => $sets, 'retired_registration_id' => $retiredRegistrationId, 'winner' => $winner]);
+      app(MatchResultNotificationService::class)->record($fixture);
+    });
+  }
+
   public function saveWalkover(Fixture $fixture, int $winner): void
   {
     DB::transaction(function () use ($fixture, $winner) {
@@ -1139,7 +1186,7 @@ class DrawService
       if ($fixture->stage === 'RR' && ($fixture->fixtureResults->isNotEmpty() || $fixture->isWalkover())) {
         $this->assertDownstreamFixturesAreUnscored($fixture);
       }
-      $before = ['winner' => $fixture->winner_registration, 'walkover' => $fixture->isWalkover(),
+      $before = ['winner' => $fixture->winner_registration, 'walkover' => $fixture->isWalkover(), 'retired_registration_id' => $fixture->retiredRegistrationId(),
         'sets' => $fixture->fixtureResults->map(fn ($set) => [$set->registration1_score, $set->registration2_score])->all()];
       if ($fixture->winner_registration && (int) $fixture->winner_registration !== $winner) {
         $this->assertDownstreamFixturesAreUnscored($fixture);

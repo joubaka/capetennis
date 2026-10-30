@@ -99,7 +99,7 @@ final class TwoStageRoundRobinService
             $key = implode(':', $pair);
             $sets = $fixture->fixtureResults->map(fn ($set) => [(int) $set->registration1_score, (int) $set->registration2_score])->all();
             if ($pair[0] === $pair[1] || ! $ids->contains($pair[0]) || ! $ids->contains($pair[1]) || isset($pairs[$key])
-                || (!$fixture->isWalkover() && ! app(ScoreValidationService::class)->validate($fixture, $sets)['valid'])) return false;
+                || (!$fixture->isWalkover() && !$fixture->isRetired() && ! app(ScoreValidationService::class)->validate($fixture, $sets)['valid'])) return false;
             $pairs[$key] = true;
         }
         return true;

@@ -73,7 +73,7 @@ class DrawApiController extends Controller
 
         if ($request->filled('walkover_winner_id')) {
             $data = $request->validate(['walkover_winner_id' => 'required|integer|min:1', 'sets' => 'prohibited',
-                'deciding_point_winner_id' => 'prohibited']);
+                'deciding_point_winner_id' => 'prohibited', 'retired_registration_id' => 'prohibited']);
             $this->service->saveWalkover($fixture, (int) $data['walkover_winner_id']);
             return response()->json(['success' => true, 'result' => 'W/O']);
         }
@@ -81,13 +81,20 @@ class DrawApiController extends Controller
         $validated = $request->validate([
             'sets'   => 'required|array|min:1',
             'sets.*' => ['required', 'string', 'regex:/^\d+-\d+$/'],
+            'retired_registration_id' => 'nullable|integer|min:1',
         ]);
 
         $validSets = array_map(function ($set) {
             [$a, $b] = array_map('intval', explode('-', $set));
             return [$a, $b];
         }, $validated['sets']);
+        if (isset($validated['retired_registration_id'])) {
+            $request->validate(['deciding_point_winner_id' => 'prohibited', 'walkover_winner_id' => 'prohibited']);
+            $this->service->saveRetirement($fixture, $validSets, (int) $validated['retired_registration_id']);
+            return response()->json(['success' => true, 'result' => 'RET']);
+        }
         $previousWalkover = $fixture->isWalkover();
+        $previousRetiredRegistrationId = $fixture->retiredRegistrationId();
         $previousWinner = $fixture->winner_registration;
         $previousSets = $fixture->fixtureResults()->orderBy('set_nr')->get()->map(fn ($result) => [
             (int) $result->registration1_score,
@@ -104,7 +111,7 @@ class DrawApiController extends Controller
         $wins1 = count(array_filter($validSets, fn ($set) => $set[0] > $set[1]));
         $wins2 = count(array_filter($validSets, fn ($set) => $set[1] > $set[0]));
         $newWinner = app(\App\Services\IndividualMatchOutcomeService::class)->winnerFromSets($fixture, $validSets, $decidingPointWinnerId);
-        if (($fixture->stage === 'RR' && $fixture->isWalkover()) || (($previousSets !== [] || $fixture->isWalkover()) && (int) $fixture->winner_registration !== (int) $newWinner)) {
+        if (($fixture->stage === 'RR' && ($fixture->isWalkover() || $fixture->isRetired())) || (($previousSets !== [] || $fixture->isWalkover()) && (int) $fixture->winner_registration !== (int) $newWinner)) {
             app(\App\Services\Draw\DrawRecoveryImpactService::class)->assertSafeOrdinaryCorrection($fixture);
         }
 
@@ -125,7 +132,7 @@ class DrawApiController extends Controller
         DrawAuditLog::record($draw->id, $previousSets ? 'score_corrected' : 'score_saved', $fixture->id, [
             'stage' => $fixture->stage,
             'previous_sets' => $previousSets,
-            'previous_walkover' => $previousWalkover, 'previous_winner' => $previousWinner,
+            'previous_walkover' => $previousWalkover, 'previous_winner' => $previousWinner, 'previous_retired_registration_id' => $previousRetiredRegistrationId,
             'sets'  => $validSets,
           'deciding_point_winner_id' => $decidingPointWinnerId,
         ]);
@@ -157,6 +164,7 @@ class DrawApiController extends Controller
         // Load results before the transaction clears them
         $fixture->loadMissing('fixtureResults');
         $previousWalkover = $fixture->isWalkover();
+        $previousRetiredRegistrationId = $fixture->retiredRegistrationId();
         $previousWinner = $fixture->winner_registration;
         $previousSets = $fixture->fixtureResults->sortBy('set_nr')->map(fn ($result) => [
             (int) $result->registration1_score,
@@ -175,7 +183,7 @@ class DrawApiController extends Controller
         DrawAuditLog::record($draw->id, 'score_deleted', $fixture->id, [
             'stage' => $fixture->stage,
             'previous_sets' => $previousSets,
-            'previous_walkover' => $previousWalkover, 'previous_winner' => $previousWinner,
+            'previous_walkover' => $previousWalkover, 'previous_winner' => $previousWinner, 'previous_retired_registration_id' => $previousRetiredRegistrationId,
         ]);
 
         // Return fresh hub data so RR state updates correctly

@@ -11,6 +11,23 @@ use PHPUnit\Framework\TestCase;
 
 class ScoreValidationServiceTest extends TestCase
 {
+    public function test_retirement_keeps_zero_tied_and_partial_scores_but_rejects_impossible_or_finished_matches(): void
+    {
+        $validator = new ScoreValidationService();
+        $fixture = $this->fixtureFor(TennisScoreFormat::BEST_OF_3_FULL);
+        foreach ([[[0, 0]], [[3, 3]], [[6, 4]], [[6, 4], [3, 2]], [[6, 4], [4, 6], [6, 6]]] as $sets) {
+            $this->assertTrue($validator->validateRetirement($fixture, $sets)['valid']);
+        }
+        foreach ([[], [[3, 2], [0, 0]], [[6, 4], [6, 4]], [[6, 4], [9, 1]], [[-1, 0]], [[1.5, 0]]] as $sets) {
+            $this->assertFalse($validator->validateRetirement($fixture, $sets)['valid']);
+        }
+        $this->assertTrue($validator->validateRetirement($this->fixtureFor(TennisScoreFormat::MATCH_TIEBREAK_10), [[10, 10]])['valid']);
+        $this->assertFalse($validator->validateRetirement($this->fixtureFor(TennisScoreFormat::MATCH_TIEBREAK_10), [[12, 8]])['valid']);
+        $this->assertTrue($validator->validateRetirement($this->fixtureFor(TennisScoreFormat::SHORT_SET_4), [[3, 3]])['valid']);
+        $this->assertFalse($validator->validateRetirement($this->fixtureFor(TennisScoreFormat::SHORT_SET_4), [[4, 3]])['valid']);
+        $this->assertTrue($validator->validateRetirement($this->fixtureFor(TennisScoreFormat::TIMED), [[0, 0]])['valid']);
+    }
+
     private function fixtureFor(string $format): Fixture
     {
         $draw = (new Draw())->setRelation('settings', new DrawSetting(['score_format' => $format]));

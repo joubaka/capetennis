@@ -32,6 +32,8 @@ test('switching back to played scores restores only visible set inputs', () => {
   const sync = source.slice(source.indexOf('  function syncResultType('), source.indexOf("  resultType.addEventListener('change'"));
   const refresh = vm.runInNewContext(sync + '\nsyncResultType', {
     active: match, resultType, walkoverPanel, walkoverWinner, decidingPanel, decidingWinner, saveButton,
+    retiredPanel: {}, retiredPlayer: {},
+    scoreGuidance: {dataset: {played: 'Enter completed sets'}},
     modalElement: {querySelector: () => grid}, syncTimedDecision() {}
   });
   refresh();
@@ -45,4 +47,15 @@ test('switching back to played scores restores only visible set inputs', () => {
   assert.equal(walkoverWinner.disabled, true);
   assert.ok(rows[0].inputs.every(input => !input.disabled));
   assert.ok(rows[1].inputs.every(input => input.disabled));
+});
+
+test('retirement keeps partial scores and submits the retiring participant without a deciding-point override', () => {
+  for (const engine of ['standard', 'flexible']) {
+    const payload = scoring.venueScorePayload({...match, engine}, [[6, 4], [2, 3]], '11', undefined, '11');
+    assert.deepEqual(JSON.parse(JSON.stringify(payload)), {sets: [[6, 4], [2, 3]], retired_registration_id: 11});
+    assert.throws(() => scoring.venueScorePayload({...match, engine}, [[2, 3]], '', undefined, ''), /player who retired/);
+    assert.throws(() => scoring.venueScorePayload({...match, engine}, [[2, 3]], '', undefined, '99'), /player who retired/);
+  }
+  assert.throws(() => scoring.venueScorePayload({...match, engine: 'team'}, [[2, 3]], '', undefined, '11'), /player who retired/);
+  assert.throws(() => scoring.venueScorePayload(match, [[2, 3]], '', '22', '11'), /player who retired/);
 });

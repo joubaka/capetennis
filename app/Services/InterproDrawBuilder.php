@@ -243,6 +243,7 @@ class InterproDrawBuilder
       foreach ($fx->fixtureResults as $set) {
         $homeGames += (int) $set->registration1_score;
         $awayGames += (int) $set->registration2_score;
+        if ($fx->isRetired() && !$set->winner_registration) continue;
         if ($set->registration1_score > $set->registration2_score) {
           $homeSets++;
         } elseif ($set->registration1_score < $set->registration2_score) {
@@ -411,6 +412,7 @@ class InterproDrawBuilder
       $awaySets = 0;
 
       foreach ($fx->fixtureResults as $set) {
+        if ($fx->isRetired() && !$set->winner_registration) continue;
         if ($set->registration1_score > $set->registration2_score) {
           $homeSets++;
         } elseif ($set->registration1_score < $set->registration2_score) {
@@ -929,6 +931,7 @@ class InterproDrawBuilder
       foreach ($fx->fixtureResults as $set) {
         $homeGames += (int) $set->registration1_score;
         $awayGames += (int) $set->registration2_score;
+        if ($fx->isRetired() && !$set->winner_registration) continue;
         if ($set->registration1_score > $set->registration2_score) {
           $homeSets++;
         } elseif ($set->registration1_score < $set->registration2_score) {
@@ -1200,7 +1203,7 @@ class InterproDrawBuilder
       if ($fx?->isWalkover()) return 'W/O';
       if (!$fx || !$fx->fixtureResults->count())
         return '';
-      return $fx->fixtureResults->pluck('score_line')->join(', ');
+      return $fx->fixtureResults->pluck('score_line')->join(', ') . ($fx->isRetired() ? ' RET' : '');
     };
 
     return [

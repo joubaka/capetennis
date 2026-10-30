@@ -388,7 +388,6 @@
     if (source.base_position) return `Base position ${source.base_position}`;
     if (source.type === 'player') return 'Direct entry';
     if (source.type === 'bye') return 'Bye';
-    if (config.readOnly && ['winner', 'loser'].includes(source.type)) return '';
     return `${source.type === 'winner' ? 'Winner' : 'Loser'} of Match ${state.matches[source.original_match || source.match]?.number ?? '?'}`;
   }
   function scheduleParts(schedule) {
@@ -466,6 +465,7 @@
             line.append(label);
             generatedPlayerDrag(label, id, match);
             if (match.sets.length) line.append(el('strong', '', match.sets.map(s => s[slot]).join(' ')));
+            if (config.readOnly && !id && ['winner', 'loser'].includes(match.sources[slot].type)) label.classList.add('fm-feeder-name');
             line.title = label.textContent + ' · ' + sourceLabel(match.sources[slot]);
             card.append(line);
           });
@@ -486,6 +486,7 @@
           }
           else if (match.challenge_status === 'pending') card.append(el('div', 'fm-match-note fm-pending-result', 'Awaiting all base results · provisional'));
           else if (match.walkover) card.append(el('div', 'fm-match-note', 'W/O · walkover'));
+          else if (match.retired_registration_id) card.append(el('div', 'fm-match-note', 'RET · ' + name(match.retired_registration_id) + ' retired'));
           else if (match.automatic) card.append(el('div', 'fm-match-note', match.automatic === 'walkover'
             ? (match.withdrawn_players?.some(Boolean) ? 'Late withdrawal · opponent advances' : match.byes?.some(Boolean) ? 'Bye · opponent advances' : 'Walkover · no score played')
             : 'Closed · no active players'));
@@ -708,7 +709,7 @@
             `Match ${match.number}`,
             match.label,
             ...match.players.map((id, i) => matchParticipantLabel(match, i)),
-            match.walkover ? 'W/O' : match.automatic === 'walkover' ? 'Walkover' : match.automatic === 'void' ? 'Closed — no active players' : match.sets.map(s => s.join('-')).join(', '),
+            match.walkover ? 'W/O' : match.automatic === 'walkover' ? 'Walkover' : match.automatic === 'void' ? 'Closed — no active players' : match.sets.map(s => s.join('-')).join(', ') + (match.retired_registration_id ? ' RET' : ''),
             match.schedule_hidden !== true && match.schedule?.time ? scheduleLabel(match.schedule, true) : ''
           ]);
       });
@@ -846,6 +847,8 @@
   });
   function syncWalkoverEntry() {
     const walkover = $('fm-result-type').value === 'walkover';
+    $('fm-score-format').textContent = $('fm-result-type').value === 'retired' ? 'Enter the score when play stopped, including any unfinished set.' : (walkover ? 'Choose the walkover winner. No set scores are recorded.' : (state.score_guidance || `Best of ${state.best_of || 1}: enter completed sets.`));
+    $('fm-retired-panel').hidden = $('fm-result-type').value !== 'retired';
     $('fm-walkover-panel').hidden = !walkover;
     const grid = $('fm-score-dialog').querySelector('[data-set-score-grid]');
     grid.hidden = walkover;
@@ -861,9 +864,11 @@
     CTSetScoreGrid.populate($('fm-score-dialog').querySelector('[data-set-score-grid]'), {
       names: match.players.map(name), maxSets: state.score_max_sets || state.best_of || 1, scores: match.sets
     });
-    $('fm-result-type').value = match.walkover ? 'walkover' : 'played';
+    $('fm-result-type').value = match.retired_registration_id ? 'retired' : (match.walkover ? 'walkover' : 'played');
     $('fm-walkover-winner').replaceChildren(new Option('Choose the winner', ''), ...match.players.map(id => new Option(name(id), id)));
     $('fm-walkover-winner').value = match.walkover ? match.winner : '';
+    $('fm-retired-player').replaceChildren(new Option('Choose the player', ''), ...match.players.map(id => new Option(name(id), id)));
+    $('fm-retired-player').value = match.retired_registration_id || '';
     syncWalkoverEntry();
     $('fm-score-error').textContent = '';
     $('fm-reset').checked = false;
@@ -891,17 +896,22 @@
     const match = state.matches[scoreKey];
     let sets = null;
     const walkoverWinner = !remove && $('fm-result-type').value === 'walkover' ? Number($('fm-walkover-winner').value) : null;
+    const retiredPlayer = !remove && $('fm-result-type').value === 'retired' ? Number($('fm-retired-player').value) : null;
+    if (retiredPlayer !== null && !match.players.includes(retiredPlayer)) {
+      $('fm-score-error').textContent = 'Choose the player who retired.';
+      return;
+    }
     if (!remove && $('fm-result-type').value === 'walkover' && !match.players.includes(walkoverWinner)) {
       $('fm-score-error').textContent = 'Choose the walkover winner.';
       return;
     }
     if (!remove && walkoverWinner === null) {
       try { sets = CTSetScoreGrid.read($('fm-score-dialog').querySelector('[data-set-score-grid]')); }
-      catch (error) { $('fm-score-error').textContent = error.message; return; }
+      catch (error) { $('fm-score-error').textContent = retiredPlayer !== null && error.message === 'Enter at least one completed set.' ? 'Enter the score when play stopped. Use 0–0 if no games were completed.' : error.message; return; }
     }
     busy = true;
     try {
-      if (sets && config.demo) {
+      if (sets && config.demo && retiredPlayer === null) {
         const bestOf = state.best_of || 1;
         const needed = Math.floor(bestOf / 2) + 1;
         const wins = [0, 0];
@@ -915,7 +925,7 @@
         if (Math.max(...wins) !== needed) throw Error(`This match needs ${needed} set wins to finish.`);
       }
       if (config.demo) {
-        const winner = walkoverWinner || (sets ? match.players[sets.filter(s => s[0] > s[1]).length > sets.length / 2 ? 0 : 1] : null);
+        const winner = retiredPlayer ? match.players.find(id => id !== retiredPlayer) : (walkoverWinner || (sets ? match.players[sets.filter(s => s[0] > s[1]).length > sets.length / 2 ? 0 : 1] : null));
         if (match.winner && match.winner !== winner) {
           const changed = new Set([scoreKey]);
           let more = true;
@@ -940,17 +950,19 @@
               state.matches[k].sets = [];
               state.matches[k].winner = null;
               state.matches[k].walkover = false;
+              state.matches[k].retired_registration_id = null;
             }
           });
         }
         match.walkover = !!walkoverWinner;
+        match.retired_registration_id = retiredPlayer;
         match.sets = sets || [];
         match.winner = winner;
         demoResolve();
       } else
         state = await request(
           config.urls.score.replace('__FIXTURE__', match.id),
-          { revision: state.revision, sets, walkover_winner_id: walkoverWinner, reset_dependents: $('fm-reset').checked },
+          { revision: state.revision, sets, walkover_winner_id: walkoverWinner, retired_registration_id: retiredPlayer, reset_dependents: $('fm-reset').checked },
           'PUT'
         );
       $('fm-score-dialog').close();

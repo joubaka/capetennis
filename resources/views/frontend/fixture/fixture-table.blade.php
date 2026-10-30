@@ -115,7 +115,7 @@ $fxWinnerClasses = fn ($fx) => \App\Support\ResultPresentation::classes($fx);
             <div class="public-match-versus">vs</div>
             <div class="{{ $awayClass }}">@if($fx instanceof \App\Models\TeamFixture)@include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['away']])@else<x-player-name :players="$fx->registration2?->players ?? []" :context="$draw" separator=" + " />@endif<x-result-label :outcome="$awayClass" /></div>
           </div>
-          <div class="public-match-score">Match {{ $fx->match_nr }} · @forelse($fx->fixtureResults as $r){{ $fxScoreDisplay($r) }}@if(!$loop->last), @endif @empty {{ $fx instanceof \App\Models\Fixture && $fx->isWalkover() ? 'W/O' : 'No score yet' }} @endforelse</div>
+          <div class="public-match-score">Match {{ $fx->match_nr }} · @forelse($fx->fixtureResults as $r){{ $fxScoreDisplay($r) }}@if(!$loop->last), @endif @empty {{ $fx instanceof \App\Models\Fixture && $fx->isWalkover() ? 'W/O' : 'No score yet' }} @endforelse @if($fx instanceof \App\Models\Fixture && $fx->isRetired()) RET @endif</div>
         </article>
       @empty
         <p class="text-muted mb-0">No matches found.</p>
@@ -185,6 +185,7 @@ $fxWinnerClasses = fn ($fx) => \App\Support\ResultPresentation::classes($fx);
                 @empty
                     <span class="text-muted">{{ $fx instanceof \App\Models\Fixture && $fx->isWalkover() ? 'W/O' : 'No score' }}</span>
                 @endforelse
+                @if($fx instanceof \App\Models\Fixture && $fx->isRetired()) <span class="badge bg-label-warning">RET</span> @endif
             </td>
 
             {{-- TIME --}}
@@ -212,7 +213,7 @@ $fxWinnerClasses = fn ($fx) => \App\Support\ResultPresentation::classes($fx);
                     {{ $fxScoreDisplay($r) }}
                 @empty
                     {{ $fx instanceof \App\Models\Fixture && $fx->isWalkover() ? 'W/O' : 'No score' }}
-                @endforelse<br>
+                @endforelse @if($fx instanceof \App\Models\Fixture && $fx->isRetired()) RET @endif<br>
 
                 <strong>Venue:</strong> {{ optional($fx->venue)->name ?? '—' }}<br>
                 <strong>{{ $notBeforeTimes ? 'NB: NOT BEFORE time:' : 'Time:' }}</strong>

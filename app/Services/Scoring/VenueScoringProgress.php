@@ -20,8 +20,8 @@ final class VenueScoringProgress
             ->when($venueId !== null, fn ($query) => $query->where('order_of_plays.venue_id', $venueId))
             ->selectRaw('order_of_plays.venue_id, COUNT(DISTINCT fixtures.id) AS total,
                 COUNT(DISTINCT CASE WHEN DATE(order_of_plays.time) = ? THEN fixtures.id END) AS today_total,
-                COUNT(DISTINCT CASE WHEN DATE(order_of_plays.time) = ? AND fixtures.match_status = ? THEN fixtures.id END) AS today_scored',
-                [$date, $date, FixtureState::STATUS_COMPLETED])
+                COUNT(DISTINCT CASE WHEN DATE(order_of_plays.time) = ? AND fixtures.match_status IN (?, ?) THEN fixtures.id END) AS today_scored',
+                [$date, $date, FixtureState::STATUS_COMPLETED, FixtureState::STATUS_RETIRED])
             ->groupBy('order_of_plays.venue_id')->get()->keyBy('venue_id');
         $team = TeamFixture::query()->whereIn('draw_id', $drawIds)->whereNotNull('scheduled_at')->whereNotNull('venue_id')
             ->when($venueId !== null, fn ($query) => $query->where('venue_id', $venueId))

@@ -280,9 +280,9 @@ final class FlexibleMonradService
         });
     }
 
-    public function score(Draw $draw, int $fixtureId, ?array $sets, int $revision, bool $resetDependents, ?int $decidingPointWinnerId = null, ?int $walkoverWinnerId = null): FlexibleMonradDraw
+    public function score(Draw $draw, int $fixtureId, ?array $sets, int $revision, bool $resetDependents, ?int $decidingPointWinnerId = null, ?int $walkoverWinnerId = null, ?int $retiredRegistrationId = null): FlexibleMonradDraw
     {
-        return DB::transaction(function () use ($draw, $fixtureId, $sets, $revision, $resetDependents, $decidingPointWinnerId, $walkoverWinnerId) {
+        return DB::transaction(function () use ($draw, $fixtureId, $sets, $revision, $resetDependents, $decidingPointWinnerId, $walkoverWinnerId, $retiredRegistrationId) {
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
             abort_if($draw->locked, 409, 'The draw is locked.');
             $record = FlexibleMonradDraw::where('draw_id', $draw->id)->firstOrFail();
@@ -293,22 +293,30 @@ final class FlexibleMonradService
             $fixtures = $draw->drawFixtures()->with('fixtureResults')->get()->keyBy('id');
             $fixture = $fixtures->get($fixtureId);
             abort_unless($fixture, 404);
-            if ($sets !== null || $walkoverWinnerId !== null) {
+            if ($sets !== null || $walkoverWinnerId !== null || $retiredRegistrationId !== null) {
                 if (isset($record->graph['nodes'][$key]['challenge_positions'])) {
                     $challenge = $this->progression($record, $fixtures, $this->withdrawn($draw, $record->graph))['matches'][$key];
                     abort_unless(in_array($challenge['challenge_status'], ['ready', 'completed'], true)
                         && ! array_intersect(array_filter($challenge['players']), $this->withdrawn($draw, $record->graph)), 422,
                         $challenge['skip_reason'] ?? 'Complete every base match before scoring challenge play-offs.');
                 }
-                abort_unless($fixture->registration1_id && $fixture->registration2_id, 422,
+                abort_unless($fixture->registration1_id && $fixture->registration2_id && (int) $fixture->registration1_id !== (int) $fixture->registration2_id, 422,
                     'Both active players must qualify before entering a score. Withdrawals advance by walkover.');
             }
             if ($walkoverWinnerId !== null) {
-                abort_unless($sets === null && $decidingPointWinnerId === null
+                abort_unless($sets === null && $decidingPointWinnerId === null && $retiredRegistrationId === null
                     && in_array($walkoverWinnerId, [(int) $fixture->registration1_id, (int) $fixture->registration2_id], true), 422,
                     'Choose a current player as the walkover winner without set scores.');
             }
-            if ($sets !== null) {
+            if ($retiredRegistrationId !== null) {
+                abort_unless($sets !== null && $walkoverWinnerId === null && $decidingPointWinnerId === null
+                    && in_array($retiredRegistrationId, [(int) $fixture->registration1_id, (int) $fixture->registration2_id], true), 422,
+                    'Choose a current player who retired and enter the score reached.');
+                $fixture->setRelation('draw', $draw);
+                $validation = app(\App\Domain\Draws\Services\ScoreValidationService::class)->validateRetirement($fixture, $sets);
+                abort_unless($validation['valid'], 422, $validation['message']);
+            }
+            if ($sets !== null && $retiredRegistrationId === null) {
                 $settings = $draw->settings;
                 if ($settings?->score_format) {
                     $draw->setRelation('settings', $settings);
@@ -330,16 +338,18 @@ final class FlexibleMonradService
             }
             if ($sets !== null) $sets = array_map(fn ($set) => array_map('intval', $set), $sets);
             $newWinner = $sets === null ? $walkoverWinnerId : app(\App\Services\IndividualMatchOutcomeService::class)->winnerFromSets($fixture, $sets, $decidingPointWinnerId);
+            if ($retiredRegistrationId !== null) $newWinner = $retiredRegistrationId === (int) $fixture->registration1_id ? (int) $fixture->registration2_id : (int) $fixture->registration1_id;
             // Legacy flexible draws without an explicit format retain their agreed set-count validator.
-            if ($sets !== null && ! $draw->settings?->score_format) {
+            if ($sets !== null && $retiredRegistrationId === null && ! $draw->settings?->score_format) {
                 $newWinner = count(array_filter($sets, fn ($set) => $set[0] > $set[1])) > count($sets) / 2
                     ? $fixture->registration1_id : $fixture->registration2_id;
             }
             $previousWinner = $fixture->winner_registration;
             $previousWalkover = $fixture->isWalkover();
+            $previousRetiredRegistrationId = $fixture->retiredRegistrationId();
             $old = $fixture->fixtureResults->sortBy('set_nr')->map(fn ($r) => [(int) $r->registration1_score, (int) $r->registration2_score])->values()->all();
             if ($old === ($sets ?? []) && (int) $newWinner === (int) $fixture->winner_registration
-                && $fixture->isWalkover() === ($walkoverWinnerId !== null)) {
+                && $fixture->isWalkover() === ($walkoverWinnerId !== null) && $fixture->retiredRegistrationId() === $retiredRegistrationId) {
                 if ($reconciled) $record->increment('revision');
                 return $record;
             }
@@ -355,7 +365,7 @@ final class FlexibleMonradService
                     $next = $fixtures[$record->fixture_map[$child]];
                     if ($next->fixtureResults->isNotEmpty() || $next->isWalkover()) {
                         $resetResults[] = ['fixture_id' => $next->id, 'winner' => $next->winner_registration,
-                            'players' => [$next->registration1_id, $next->registration2_id], 'walkover' => $next->isWalkover(),
+                            'players' => [$next->registration1_id, $next->registration2_id], 'walkover' => $next->isWalkover(), 'retired_registration_id' => $next->retiredRegistrationId(),
                             'sets' => $next->fixtureResults->sortBy('set_nr')->map(fn ($r) => [$r->registration1_score, $r->registration2_score])->values()->all()];
                     }
                     $next->fixtureResults()->delete();
@@ -364,15 +374,16 @@ final class FlexibleMonradService
             }
             $fixture->fixtureResults()->delete();
             foreach ($sets ?? [] as $i => [$a, $b]) {
+                $complete = $retiredRegistrationId === null || app(\App\Domain\Draws\Services\ScoreValidationService::class)->retirementSetComplete($fixture, $i, $a, $b, count($sets));
                 $fixture->fixtureResults()->create(['set_nr' => $i + 1,
                     'registration1_score' => $a, 'registration2_score' => $b,
-                    'winner_registration' => (int) $a === (int) $b ? null : ($a > $b ? $fixture->registration1_id : $fixture->registration2_id),
-                    'loser_registration' => (int) $a === (int) $b ? null : ($a > $b ? $fixture->registration2_id : $fixture->registration1_id)]);
+                    'winner_registration' => !$complete || (int) $a === (int) $b ? null : ($a > $b ? $fixture->registration1_id : $fixture->registration2_id),
+                    'loser_registration' => !$complete || (int) $a === (int) $b ? null : ($a > $b ? $fixture->registration2_id : $fixture->registration1_id)]);
             }
-            $fixture->update(['winner_registration' => $newWinner, 'match_status' => $walkoverWinnerId !== null ? 3 : ($newWinner ? 1 : 0)]);
+            $fixture->update(['winner_registration' => $newWinner, 'match_status' => $retiredRegistrationId !== null ? \App\Domain\Draws\Enums\FixtureState::STATUS_RETIRED : ($walkoverWinnerId !== null ? 3 : ($newWinner ? 1 : 0))]);
             $this->resolve($record);
             $record->increment('revision');
-            DrawAuditLog::record($draw->id, 'monrad_score_changed', $fixtureId, ['before' => $old, 'previous_winner' => $previousWinner, 'previous_walkover' => $previousWalkover, 'after' => $sets, 'walkover_winner_id' => $walkoverWinnerId, 'deciding_point_winner_id' => $decidingPointWinnerId,
+            DrawAuditLog::record($draw->id, 'monrad_score_changed', $fixtureId, ['before' => $old, 'previous_winner' => $previousWinner, 'previous_walkover' => $previousWalkover, 'previous_retired_registration_id' => $previousRetiredRegistrationId, 'after' => $sets, 'walkover_winner_id' => $walkoverWinnerId, 'retired_registration_id' => $retiredRegistrationId, 'deciding_point_winner_id' => $decidingPointWinnerId,
                 'reset_matches' => $changedWinner ? $affected : [], 'reset_results' => $resetResults, 'revision' => $record->revision]);
             app(\App\Services\MatchResultNotificationService::class)->record($fixture);
             return $record->refresh();
@@ -418,7 +429,7 @@ final class FlexibleMonradService
         foreach ($record?->graph['nodes'] ?? [] as $key => $node) {
             $fx = $fixtures->get($record->fixture_map[$key]);
             if (! $fx) continue;
-            $matches[$key] = $node + $progression['matches'][$key] + ['id' => $fx->id, 'number' => $fx->match_nr, 'walkover' => $fx->isWalkover(),
+            $matches[$key] = $node + $progression['matches'][$key] + ['id' => $fx->id, 'number' => $fx->match_nr, 'walkover' => $fx->isWalkover(), 'retired' => $fx->isRetired(), 'retired_registration_id' => $fx->retiredRegistrationId(),
                 'pending_withdrawal_players' => array_map(fn ($id) => in_array((int) $id, $pendingWithdrawals, true) ? (int) $id : null,
                     $progression['matches'][$key]['players']),
                 'schedule' => $fx->oop ? ['time' => $fx->oop->time, 'court' => $fx->oop->court, 'venue' => $fx->oop->venue?->name] : null,

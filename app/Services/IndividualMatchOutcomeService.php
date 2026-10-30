@@ -9,7 +9,7 @@ final class IndividualMatchOutcomeService
 {
     public function winner(Fixture $fixture): ?int
     {
-        if ($fixture->isWalkover()) return (int) $fixture->winner_registration;
+        if ($fixture->isWalkover() || $fixture->isRetired()) return (int) $fixture->winner_registration;
         $sets = $fixture->fixtureResults->sortBy('set_nr')->unique('set_nr')
             ->map(fn ($set) => [(int) $set->registration1_score, (int) $set->registration2_score])->values()->all();
         $decidingWinner = $fixture->draw?->settings?->score_format === TennisScoreFormat::TIMED

@@ -7,7 +7,7 @@ const {chromium} = require('playwright');
 const root = path.resolve(__dirname, '../..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
-test('walkover result selector works on phone and desktop without submitting scores', async () => {
+test('walkover and retirement results work on phone and desktop with the correct score payloads', async () => {
   const browser = await chromium.launch({headless: true, channel: 'msedge'});
   try {
     const source = read('resources/views/frontend/scoring/workspace.blade.php');
@@ -49,6 +49,19 @@ test('walkover result selector works on phone and desktop without submitting sco
       await page.locator('#score-save').click();
       await page.waitForFunction(() => savedBodies.length === 1);
       assert.deepEqual(await page.evaluate(() => savedBodies[0]), {walkover_winner_id: 22});
+      await page.locator('#score-result-type').selectOption('retired');
+      assert.equal(await page.locator('[data-set-score-grid]').isVisible(), true);
+      await page.locator('[data-score-row]').nth(0).locator('input').nth(0).fill('6');
+      await page.locator('[data-score-row]').nth(0).locator('input').nth(1).fill('4');
+      await page.locator('[data-score-row]').nth(1).locator('input').nth(0).fill('2');
+      await page.locator('[data-score-row]').nth(1).locator('input').nth(1).fill('3');
+      await page.locator('#score-save').click();
+      assert.equal(await page.evaluate(() => savedBodies.length), 1);
+      await page.locator('#score-retired-player').selectOption('11');
+      await page.locator('#score-save').click();
+      await page.waitForFunction(() => savedBodies.length === 2);
+      assert.deepEqual(await page.evaluate(() => savedBodies[1]), {sets: ['6-4', '2-3'], retired_registration_id: 11});
+      await page.screenshot({path: path.join(root, `storage/framework/testing/retired-result-${width}.png`)});
       await page.locator('#score-result-type').selectOption('played');
       assert.equal(await page.locator('[data-set-score-grid]').isVisible(), true);
       assert.equal(await page.locator('#score-walkover-winner').isVisible(), false);

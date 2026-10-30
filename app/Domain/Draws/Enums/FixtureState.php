@@ -10,6 +10,7 @@ namespace App\Domain\Draws\Enums;
  *   1 = completed (manual score)
  *   2 = in-progress / partially scored
  *   3 = BYE / walkover (auto-advanced)
+ *   4 = completed by retirement (score retained)
  *   5 = double-BYE
  */
 enum FixtureState: string
@@ -26,6 +27,7 @@ enum FixtureState: string
     public const STATUS_COMPLETED  = 1;
     public const STATUS_PARTIAL    = 2;
     public const STATUS_BYE        = 3;
+    public const STATUS_RETIRED    = 4;
     public const STATUS_DOUBLE_BYE = 5;
 
     /**
@@ -38,7 +40,7 @@ enum FixtureState: string
             : $fixture->orderOfPlay()->whereNotNull('time')->exists();
 
         return match ((int) ($fixture->match_status ?? 0)) {
-            self::STATUS_COMPLETED              => self::Completed,
+            self::STATUS_COMPLETED, self::STATUS_RETIRED => self::Completed,
             self::STATUS_BYE, self::STATUS_DOUBLE_BYE => self::Bye,
             self::STATUS_PARTIAL                => self::Live,
             default                             => $scheduled ? self::Scheduled : self::Pending,
@@ -49,7 +51,7 @@ enum FixtureState: string
     public static function fromInt(int $status): self
     {
         return match ($status) {
-            self::STATUS_COMPLETED              => self::Completed,
+            self::STATUS_COMPLETED, self::STATUS_RETIRED => self::Completed,
             self::STATUS_BYE, self::STATUS_DOUBLE_BYE => self::Bye,
             self::STATUS_PARTIAL                => self::Live,
             default                             => self::Pending,
