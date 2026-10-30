@@ -39,6 +39,8 @@
       }
     };
     state.selectAll = () => draws.filter(state.ready).forEach(draw=>state.selectDraw(draw.id,true));
+    state.selectionCounts = () => state.selectedDrawIds.map(id => ({id, name:draws.find(draw=>Number(draw.id)===id)?.name || '',
+      count:[...(state.selectedRounds.get(id)||[])].reduce((sum,round)=>sum+(state.selectedFixtures.get(id+':'+round)?.size||0),0)}));
     state.clear = () => [...state.selectedDrawIds].forEach(id=>state.selectDraw(id,false));
     state.moveDraw = (id, direction) => {
       const index=state.selectedDrawIds.indexOf(Number(id));
@@ -129,6 +131,9 @@
     if(options.initialDay && state.dates.includes(options.initialDay))state.setDay(options.initialDay);
     (options.initialDrawIds||[]).forEach(id=>state.selectDraw(id,true));
     const saved=()=>options.savedByDay?.[state.day];
+    const renderCounts=()=>{const counts=state.selectionCounts();get('day-batch-selection-count').textContent=counts.length
+      ? counts.map(row=>`${row.name}: ${row.count}`).join(' · ')+` · Total: ${counts.reduce((sum,row)=>sum+row.count,0)} selected matches`
+      : 'No matches selected.';};
     const renderDraws=()=>{
       const preparationRows=[...(get('prepare-playoff-form')?.querySelectorAll('[data-playoff-draw]')||[])];
       preparationRows.forEach(row=>{const selected=state.selectedDrawIds.includes(Number(row.dataset.playoffDraw));row.hidden=!selected;const input=row.querySelector('input');input.disabled=!selected||row.dataset.playoffProtected==='1';input.checked=!input.disabled;});
@@ -145,13 +150,19 @@
       }).join(''):'<div class="alert alert-info">No event venues are available yet. Use Add or edit event venues &amp; courts above, then choose the courts for this day.</div>';
     };
     const renderRounds=()=>{
+      const container=get('day-batch-rounds');
+      const opened=new Set([...container.querySelectorAll('details[data-day-round-panel][open]')].map(panel=>panel.dataset.dayRoundPanel));
+      const active=doc.activeElement;
+      const focus=active && container.contains?.(active) ? {kind:['round','group','fixture'].find(kind=>active.matches?.('.day-batch-'+kind)),draw:active.dataset?.draw,round:active.dataset?.round,value:active.value} : null;
       get('day-batch-rounds').innerHTML=state.selectedDrawIds.map(id=>{
         const draw=state.draws.find(draw=>Number(draw.id)===id);
         return `<section class="mb-3"><h6>${escape(draw.name)}</h6>${rounds(draw).map(round=>{
           const checked=state.selectedRounds.get(id)?.has(round),groups=details(draw)[round];
-          return `<div class="border rounded p-2 mb-2"><label class="fw-semibold"><input type="checkbox" class="form-check-input me-2 day-batch-round" data-draw="${id}" value="${round}" ${checked?'checked':''}>Round ${round}</label><ul class="small mb-1">${groups.map(group=>`<li>${escape(group.label)}: ${Number(group.count)} ${Number(group.count)===1?'match':'matches'}</li>`).join('')}</ul>${checked?`<details><summary class="small">Choose position groups or specific matches</summary>${groups.map((group,index)=>{const eligible=(group.matches||[]).filter(state.eligible),selected=state.selectedFixtures.get(id+':'+round)||new Set();return `<div class="border-top mt-2 pt-2"><label class="small fw-semibold"><input type="checkbox" class="form-check-input me-1 day-batch-group" data-draw="${id}" data-round="${round}" value="${index}" ${eligible.length&&eligible.every(match=>selected.has(match.key))?'checked':''} ${eligible.length?'':'disabled'}>${escape(group.label)}</label><div class="d-flex flex-wrap gap-3 mt-1">${(group.matches||[]).map(match=>`<label class="small"><input type="checkbox" class="form-check-input me-1 day-batch-fixture" data-draw="${id}" data-round="${round}" value="${escape(match.key)}" ${selected.has(match.key)?'checked':''} ${state.eligible(match)?'':'disabled'}>Match ${Number(match.number)}${match.scheduled_at?` (${escape(match.scheduled_at.slice(0,16))}${state.eligible(match)?' · kept unless replanning':' · another day, kept'})`:''}</label>`).join('')}</div></div>`;}).join('')}</details>`:''}</div>`;
+          return `<div class="border rounded p-2 mb-2"><label class="fw-semibold"><input type="checkbox" class="form-check-input me-2 day-batch-round" data-draw="${id}" value="${round}" ${checked?'checked':''}>${escape(groups.map(group=>group.label).join(' / '))} <span class="small text-muted">(Round ${round})</span></label><ul class="small mb-1">${groups.map(group=>`<li>${escape(group.label)}: ${Number(group.count)} ${Number(group.count)===1?'match':'matches'}</li>`).join('')}</ul>${checked?`<details data-day-round-panel="${id}:${round}" ${opened.has(id+':'+round)?'open':''}><summary class="small">Choose position groups or specific matches</summary>${groups.map((group,index)=>{const eligible=(group.matches||[]).filter(state.eligible),selected=state.selectedFixtures.get(id+':'+round)||new Set();return `<div class="border-top mt-2 pt-2"><label class="small fw-semibold"><input type="checkbox" class="form-check-input me-1 day-batch-group" data-draw="${id}" data-round="${round}" value="${index}" ${eligible.length&&eligible.every(match=>selected.has(match.key))?'checked':''} ${eligible.length?'':'disabled'}>${escape(group.label)}</label><div class="d-flex flex-wrap gap-3 mt-1">${(group.matches||[]).map(match=>`<label class="small"><input type="checkbox" class="form-check-input me-1 day-batch-fixture" data-draw="${id}" data-round="${round}" value="${escape(match.key)}" ${selected.has(match.key)?'checked':''} ${state.eligible(match)?'':'disabled'}>Match ${Number(match.number)}${match.scheduled_at?` (${escape(match.scheduled_at.slice(0,16))}${state.eligible(match)?' · kept unless replanning':' · another day, kept'})`:''}</label>`).join('')}</div></div>`;}).join('')}</details>`:''}</div>`;
         }).join('')}</section>`;
       }).join('');
+      if(focus?.kind) [...container.querySelectorAll('.day-batch-'+focus.kind)].find(input=>input.dataset.draw===focus.draw && input.dataset.round===focus.round && input.value===focus.value)?.focus({preventScroll:true});
+      renderCounts();
     };
     const applySavedControls=()=>{
       get('day-batch-replan').checked=false;
@@ -186,6 +197,7 @@
     };
     get('day-batch-date').innerHTML=state.dates.map(date=>`<option value="${date}" ${date===state.day?'selected':''}>${escape(label(date))}</option>`).join('');
     state.restore(saved());applySavedControls();renderDraws();renderVenues();renderRounds();
+    if(options.replanSaved){get('day-batch-replan').checked=true;get('day-batch-courts-step').hidden=false;get('day-batch-rounds-step').hidden=false;}
     if(preparationResume){get('day-batch-courts-step').hidden=false;get('day-batch-rounds-step').hidden=false;get('day-batch-limit').checked=Boolean(preparationResume.payload.limit_daily_matches);}
     get('prepare-playoff-form')?.addEventListener('submit',()=>{
       try{if(resumeKey)doc.defaultView?.sessionStorage?.setItem(resumeKey,JSON.stringify({createdAt:Date.now(),payload:buildPayload(state,readOptions())}));}catch(error){/* Preparation remains available when browser storage is unavailable. */}
@@ -203,7 +215,7 @@
         input.closest('[data-day-venue]').querySelectorAll('.day-batch-court').forEach(court=>{court.checked=input.checked;});
       }
       else if(input.matches('.day-batch-round')){state.selectRound(input.dataset.draw,input.value,input.checked);renderRounds();}
-      else if(input.matches('.day-batch-fixture')){state.selectFixture(input.dataset.draw,input.dataset.round,input.value,input.checked);}
+      else if(input.matches('.day-batch-fixture')){state.selectFixture(input.dataset.draw,input.dataset.round,input.value,input.checked);renderRounds();}
       else if(input.matches('.day-batch-group')){state.selectGroup(input.dataset.draw,input.dataset.round,input.value,input.checked);renderRounds();}
       changed();
     });

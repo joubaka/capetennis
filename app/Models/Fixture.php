@@ -63,6 +63,25 @@ class Fixture extends Model
     'away_rank_nr',
   ];
 
+  /** Query recorded results, including walkovers with no played sets. */
+  public function scopeWithRecordedResult(\Illuminate\Database\Eloquent\Builder $query): void
+  {
+    $query->where(fn ($result) => $result->whereHas('fixtureResults')->orWhere(fn ($walkover) => $walkover
+      ->where('match_status', 3)->where('registration1_id', '>', 0)->where('registration2_id', '>', 0)
+      ->whereColumn('registration1_id', '!=', 'registration2_id')
+      ->where(fn ($winner) => $winner->whereColumn('winner_registration', 'registration1_id')->orWhereColumn('winner_registration', 'registration2_id'))));
+  }
+
+  /** A recorded walkover has two entrants and no played set scores. */
+  public function isWalkover(): bool
+  {
+    return (int) $this->match_status === 3
+      && (int) $this->registration1_id > 0 && (int) $this->registration2_id > 0
+      && (int) $this->registration1_id !== (int) $this->registration2_id
+      && in_array((int) $this->winner_registration, [(int) $this->registration1_id, (int) $this->registration2_id], true)
+      && ($this->relationLoaded('fixtureResults') ? $this->fixtureResults->isEmpty() : !$this->fixtureResults()->exists());
+  }
+
   // ============================================================
   // DRAW RELATIONSHIPS
   // ============================================================
@@ -142,6 +161,7 @@ class Fixture extends Model
   }
   public function getScoreAttribute()
   {
+    if ($this->isWalkover()) return 'W/O';
     if ($this->fixtureResults->isEmpty()) {
       return null;
     }
@@ -154,7 +174,7 @@ class Fixture extends Model
 
   public function getWinnerIdAttribute()
   {
-    if ($this->fixtureResults->isEmpty()) {
+    if ($this->fixtureResults->isEmpty() && !$this->isWalkover()) {
       return null;
     }
 

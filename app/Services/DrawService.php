@@ -639,7 +639,7 @@ class DrawService
 
       // Use fixture-level match winner (set during score save)
       $winner = app(IndividualMatchOutcomeService::class)->winner($fx);
-      if (!$winner || $fx->fixtureResults->isEmpty()) continue;
+      if (!$winner || ($fx->fixtureResults->isEmpty() && !$fx->isWalkover())) continue;
 
       $home = $fx->registration1_id;
       $away = $fx->registration2_id;
@@ -846,6 +846,7 @@ class DrawService
     };
 
     $score = function ($fx) {
+      if ($fx?->isWalkover()) return 'W/O';
       if (!$fx || !$fx->fixtureResults->count())
         return '';
       return $fx->fixtureResults->pluck('score_line')->join(', ');
@@ -1122,6 +1123,44 @@ class DrawService
     );
   }
 
+  public function saveWalkover(Fixture $fixture, int $winner): void
+  {
+    DB::transaction(function () use ($fixture, $winner) {
+      $draw = Draw::whereKey($fixture->draw_id)->lockForUpdate()->firstOrFail();
+      $fixture = Fixture::with('fixtureResults')->lockForUpdate()->findOrFail($fixture->id);
+      $fixture->setRelation('draw', $draw);
+      \App\Domain\Draws\Guards\DrawGuard::requireScoreable($fixture);
+      abort_if($fixture->stage === 'FM', 409, 'Use Flexible Monrad to record this result.');
+      abort_unless($fixture->registration1_id && $fixture->registration2_id
+        && (int) $fixture->registration1_id !== (int) $fixture->registration2_id
+        && in_array($winner, [(int) $fixture->registration1_id, (int) $fixture->registration2_id], true), 422,
+        'Choose one of the two qualified players as the walkover winner.');
+      if ($fixture->isWalkover() && (int) $fixture->winner_registration === $winner) return;
+      if ($fixture->stage === 'RR' && ($fixture->fixtureResults->isNotEmpty() || $fixture->isWalkover())) {
+        $this->assertDownstreamFixturesAreUnscored($fixture);
+      }
+      $before = ['winner' => $fixture->winner_registration, 'walkover' => $fixture->isWalkover(),
+        'sets' => $fixture->fixtureResults->map(fn ($set) => [$set->registration1_score, $set->registration2_score])->all()];
+      if ($fixture->winner_registration && (int) $fixture->winner_registration !== $winner) {
+        $this->assertDownstreamFixturesAreUnscored($fixture);
+        if ($fixture->stage !== 'RR') $this->engine->forDraw($draw)->rollbackFixture(
+          $fixture, fn (Fixture $fx) => $this->canonicalProgression->rollback($fx));
+      }
+      $fixture->fixtureResults()->delete();
+      $fixture->unsetRelation('fixtureResults');
+      $fixture->update(['winner_registration' => $winner, 'match_status' => 3]);
+      $loser = $winner === (int) $fixture->registration1_id ? (int) $fixture->registration2_id : (int) $fixture->registration1_id;
+      if ($fixture->stage !== 'RR') {
+        $this->engine->forDraw($draw)->advanceFixture($fixture, $winner, $loser,
+          fn (Fixture $fx, int $w, int $l) => $this->autoAdvanceBracket($fx, $w, $l));
+        $this->engine->forDraw($draw)->advanceByes($draw, fn (Draw $d) => $this->canonicalByes->advance($d));
+      }
+      \App\Models\DrawAuditLog::record($draw->id, 'walkover_saved', $fixture->id,
+        ['before' => $before, 'winner' => $winner]);
+      app(MatchResultNotificationService::class)->record($fixture);
+    });
+  }
+
   public function saveBracketScore(Fixture $fixture, array $sets, ?int $decidingPointWinnerId = null): array
   {
     abort_if($fixture->stage === 'FM', 409, 'Use the Flexible Monrad editor to score this match.');
@@ -1311,7 +1350,7 @@ class DrawService
       'loser_parent_fixture_id' => $fixture->loser_parent_fixture_id,
     ]);
 
-    if ($fixture->fixtureResults->count() == 0) {
+    if ($fixture->fixtureResults->count() == 0 && !$fixture->isWalkover()) {
       Log::warning("❗ [Advance] Fixture {$fixture->id} has no results — SKIPPING loser feed");
       return;
     }

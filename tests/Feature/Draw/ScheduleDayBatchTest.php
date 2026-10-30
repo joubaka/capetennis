@@ -45,6 +45,83 @@ class ScheduleDayBatchTest extends TestCase
         return [$event,$draws,$venue,$fixtures,$options];
     }
 
+    public function test_saved_day_replan_loads_exact_current_bookings_across_draws_without_mutation(): void
+    {
+        [$event,$draws,$venue,$fixtures,$options] = $this->context();
+        $this->signInAdmin($event);
+        $service = app(EventVenueScheduleService::class);
+        $options = array_replace($options, ['duration'=>75,'player_rest'=>45,'draw_order'=>$draws->pluck('id')->reverse()->values()->all()]);
+        $preview = $service->preview($event, $options);
+        $service->apply($event, $options, $preview['revision']);
+        $extra = Fixture::factory()->create(['draw_id'=>$draws[0]->id,'round'=>1,'match_nr'=>2,'bracket_id'=>1]);
+        $otherDay = Fixture::factory()->create(['draw_id'=>$draws[1]->id,'round'=>1,'match_nr'=>3,'bracket_id'=>1]);
+        OrderOfPlay::create(['draw_id'=>$draws[1]->id,'fixture_id'=>$otherDay->id,'time'=>'2026-10-31 09:00','venue_id'=>$venue->id,'court'=>'1','duration_minutes'=>75]);
+        $bookingColumns = ['id','fixture_id','draw_id','time','venue_id','court','duration_minutes'];
+        $before = DB::table('order_of_plays')->orderBy('id')->get($bookingColumns)->toJson();
+        $response = $this->get(route('backend.event-venue-schedule.index', ['event'=>$event->id,'date'=>'2026-10-30','replan_saved'=>1]))->assertOk();
+        $saved = $response->viewData('savedDayReplan');
+        $this->assertEqualsCanonicalizing($options['selected_fixture_keys'], $saved['selected_fixture_keys']);
+        $this->assertSame($options['draw_order'], $saved['draw_order']);
+        $this->assertSame(75, $saved['duration']);
+        $this->assertSame(45, $saved['player_rest']);
+        $this->assertTrue($saved['reschedule_existing']);
+        $this->assertNotContains('individual:'.$extra->id, $saved['selected_fixture_keys']);
+        $this->assertNotContains('individual:'.$otherDay->id, $saved['selected_fixture_keys']);
+        $scoped = $this->get(route('backend.event-venue-schedule.index', ['event'=>$event->id,'date'=>'2026-10-30','draw_id'=>$draws[0]->id,'replan_saved'=>1]))->assertOk()->viewData('savedDayReplan');
+        $this->assertSame(['individual:'.$fixtures[0]->id], $scoped['selected_fixture_keys']);
+        $otherVenue = Venue::forceCreate(['name'=>'Second event venue']);
+        $event->venues()->attach($otherVenue->id, ['num_courts'=>2]);
+        OrderOfPlay::where('fixture_id',$fixtures[1]->id)->update(['venue_id'=>$otherVenue->id]);
+        $venueScoped = $this->get(route('backend.event-venue-schedule.index', ['event'=>$event->id,'date'=>'2026-10-30','venue_id'=>$venue->id,'replan_saved'=>1]))->assertOk()->viewData('savedDayReplan');
+        $this->assertSame(['individual:'.$fixtures[0]->id], $venueScoped['selected_fixture_keys']);
+        $this->assertSame([$venue->id], array_keys($venueScoped['day_court_labels']));
+        $this->assertSame(['1','2'], $venueScoped['day_court_labels'][$venue->id], 'Keep selected daily courts even when only one court has a booking in this filter.');
+        OrderOfPlay::where('fixture_id',$fixtures[1]->id)->update(['venue_id'=>$venue->id]);
+        $this->assertSame($before, DB::table('order_of_plays')->orderBy('id')->get($bookingColumns)->toJson());
+        $this->assertDatabaseCount('published_schedule_assignments',0);
+    }
+
+    public function test_saved_twenty_four_match_set_survives_eight_ten_eight_court_replans(): void
+    {
+        [$event,$draws,$venue,$fixtures,$options] = $this->context();
+        $event->venues()->updateExistingPivot($venue->id,['num_courts'=>10]);
+        foreach ($draws as $draw) for ($number=2;$number<=12;$number++) {
+            $fixtures->push(Fixture::factory()->create(['draw_id'=>$draw->id,'round'=>1,'match_nr'=>$number,'bracket_id'=>1,
+                'registration1_id'=>Registration::factory()->create()->id,'registration2_id'=>Registration::factory()->create()->id]));
+        }
+        $options['selected_fixture_keys']=$fixtures->map(fn ($fixture)=>'individual:'.$fixture->id)->all();
+        $this->signInAdmin($event);
+        $service=app(EventVenueScheduleService::class);
+        foreach ([8,10,8] as $courts) {
+            $options['day_court_labels']=[$venue->id=>array_map('strval',range(1,$courts))];
+            $options['reschedule_existing']=true;
+            $preview=$service->preview($event,$options);
+            $this->assertCount(24,$preview['matches']);
+            $this->assertSame([],$preview['unscheduled']);
+            $service->apply($event,$options,$preview['revision']);
+            $loaded=$this->get(route('backend.event-venue-schedule.index',['event'=>$event->id,'date'=>'2026-10-30','replan_saved'=>1]))->assertOk()->viewData('savedDayReplan');
+            $this->assertEqualsCanonicalizing($options['selected_fixture_keys'],$loaded['selected_fixture_keys']);
+            $this->assertCount($courts,$loaded['day_court_labels'][$venue->id]);
+            $this->assertDatabaseCount('order_of_plays',24);
+            $this->assertDatabaseCount('published_schedule_assignments',0);
+        }
+    }
+
+    public function test_saved_day_replan_requires_a_day_and_authorized_event_owned_scope(): void
+    {
+        [$event] = $this->context();
+        $this->signInAdmin($event);
+        $this->getJson(route('backend.event-venue-schedule.index', ['event'=>$event->id,'replan_saved'=>1]))->assertStatus(422);
+        $foreignDraw = Draw::factory()->create();
+        $foreignVenue = Venue::forceCreate(['name'=>'Foreign courts']);
+        foreach (['draw_id'=>$foreignDraw->id,'venue_id'=>$foreignVenue->id] as $key=>$value) {
+            $this->getJson(route('backend.event-venue-schedule.index', ['event'=>$event->id,'date'=>'2026-10-30','replan_saved'=>1,$key=>$value]))->assertStatus(422);
+        }
+        $this->actingAs(User::factory()->create())->get(route('backend.event-venue-schedule.index', ['event'=>$event->id,'date'=>'2026-10-30','replan_saved'=>1]))->assertForbidden();
+        $this->assertDatabaseCount('order_of_plays',0);
+        $this->assertDatabaseCount('published_schedule_assignments',0);
+    }
+
     public function test_mixed_uses_available_courts_but_sequential_waits_for_match_finish_not_unrelated_player_rest(): void
     {
         [$event,$draws,,$fixtures,$options] = $this->context();

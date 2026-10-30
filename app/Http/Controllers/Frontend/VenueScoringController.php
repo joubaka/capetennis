@@ -171,12 +171,14 @@ class VenueScoringController extends Controller
             ->sort(fn ($left, $right): int => $this->venueMatchOrder->compare($left, $right))
             ->values();
 
-        $completed = $matches->filter(fn ($match) => $match->fixtureResults->isNotEmpty())->count();
+        $completed = $matches->filter(fn ($match) => $match->fixtureResults->isNotEmpty()
+            || ($match instanceof Fixture && $match->isWalkover()))->count();
         $ready = $matches->filter(fn ($match) => $match instanceof Fixture
             ? ($match->registration1_id && $match->registration2_id)
             : ($match->fixturePlayers->isNotEmpty() || ($match->homeTeam && $match->awayTeam)))->count();
         $nextMatches = $matches->filter(fn ($match) =>
             $match->fixtureResults->isEmpty()
+            && !($match instanceof Fixture && $match->isWalkover())
             && (int) ($match->match_status ?? 0) !== FixtureState::STATUS_PARTIAL
             && $this->scheduledTime($match) !== PHP_INT_MAX
             && $this->hasKnownParticipants($match)
@@ -327,7 +329,7 @@ class VenueScoringController extends Controller
 
             abort_unless((int) $fixture->draw?->event_id === (int) $event->id, 404);
             abort_if($fixture->draw->locked, 403, 'Draw is locked.');
-            abort_if($fixture->fixtureResults->isNotEmpty(), 422, 'A completed match cannot be moved on or off court.');
+            abort_if($fixture->fixtureResults->isNotEmpty() || $fixture->isWalkover(), 422, 'A completed match cannot be moved on or off court.');
             if ($playing) {
                 abort_unless($fixture->registration1_id && $fixture->registration2_id, 422, 'Both players must be known before the match can start.');
             }

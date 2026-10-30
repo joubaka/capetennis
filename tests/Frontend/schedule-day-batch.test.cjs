@@ -156,6 +156,24 @@ test('changing day never carries an earlier opt-in to replan saved matches',()=>
  app.change({id:'day-batch-date',value:days[1],matches:()=>false});
  assert.equal(app.get('day-batch-replan').checked,false);
 });
+
+test('saved-day replan opens exact selection and settings without unscheduled matches or implicit date takeover',()=>{
+ const app=mounted({replanSaved:true});
+ assert.equal(app.get('day-batch-replan').checked,true);
+ assert.equal(app.get('day-batch-courts-step').hidden,false);
+ assert.equal(app.get('day-batch-rounds-step').hidden,false);
+ assert.match(app.get('day-batch-selection-count').textContent,/Boys: 2.*Total: 2 selected matches/);
+ assert.deepEqual(app.s.selectionCounts(),[{id:1,name:'Boys',count:2}]);
+ const original=buildPayload(app.s).selected_fixture_keys;
+ for(const count of [8,10,8]){
+  const s=createState(structuredClone(draws),[{id:7,court_labels:Array.from({length:10},(_,i)=>String(i+1))}],days);
+  s.selectDraw(1,true);s.restore({full_day_scope:days[0],draw_ids:[1],draw_rounds:[{draw_id:1,rounds:[1]}],selected_fixture_keys:original,day_court_labels:{7:Array.from({length:count},(_,i)=>String(i+1))}});
+  assert.deepEqual(buildPayload(s).selected_fixture_keys,original);
+  assert.equal(buildPayload(s).day_court_labels[7].length,count);
+ }
+ app.change({id:'day-batch-date',value:days[1],matches:()=>false});
+ assert.equal(app.get('day-batch-replan').checked,false);
+});
 test('normal day preview reveals review even after legacy selection hides advanced controls',async()=>{
  const source=fs.readFileSync('resources/views/backend/schedule/event-venue-schedule.blade.php','utf8');
  const start=source.indexOf('    onPreview:async config => {');

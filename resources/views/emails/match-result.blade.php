@@ -2,7 +2,11 @@
 <h1>{{ $notification->revision > 1 ? 'Corrected match result' : 'A new match result has been entered' }}</h1>
 <p>Event: {{ $notification->snapshot['event'] }}<br>Draw: {{ $notification->snapshot['draw'] }}</p>
 <p>{{ implode(' / ', $notification->snapshot['home_names']) }} versus {{ implode(' / ', $notification->snapshot['away_names']) }}</p>
+@if(($notification->snapshot['result_type'] ?? null) === 'walkover')
+<p>Result: {{ implode(' / ', $notification->snapshot['winner_names']) }} won by walkover (W/O).</p>
+@else
 <p>Result: {{ collect($notification->snapshot['sets'])->map(fn ($set) => implode('–', $set))->implode(', ') }}</p>
+@endif
 <p><a href="{{ route('frontend.fixtures.index', $notification->snapshot['draw_id']) }}">View the match result</a></p>
 <p>Please check that this result is correct. If anything is wrong, contact the convener at the court.</p>
 @if($replyTo)

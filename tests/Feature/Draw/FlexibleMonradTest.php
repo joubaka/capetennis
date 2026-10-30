@@ -36,6 +36,48 @@ class FlexibleMonradTest extends TestCase
         return [$draw, ['size' => 4, 'slots' => $slots], $players];
     }
 
+    public function test_manual_walkover_preserves_players_advances_both_paths_and_can_be_cleared(): void
+    {
+        [$draw, $draft] = $this->setupDraw();
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $record = $service->generate($draw, 1);
+        $fixture = Fixture::findOrFail($record->fixture_map['main_a']);
+        $url = route('flexible-monrad.score', [$draw, $fixture->id]);
+        $this->putJson($url, ['revision' => 2, 'walkover_winner_id' => Registration::factory()->create()->id])->assertUnprocessable();
+        $payload = ['revision' => 2, 'walkover_winner_id' => $fixture->registration2_id];
+        $this->putJson($url, $payload)->assertOk()->assertJsonPath('matches.main_a.walkover', true)
+            ->assertJsonPath('matches.main_a.automatic', null)->assertJsonPath('revision', 3);
+        $this->assertTrue($fixture->fresh()->isWalkover());
+        $this->assertSame(0, $fixture->fixtureResults()->count());
+        $matches = (array) $service->state($draw->fresh())['matches'];
+        $this->assertContains((int) $fixture->registration2_id, array_map('intval', $matches['main_final']['players']));
+        $payload['revision'] = 3;
+        $this->putJson($url, $payload)->assertOk()->assertJsonPath('revision', 3);
+        $this->postJson(route('flexible-monrad.reopen', $draw), ['revision' => 3])->assertConflict();
+        $this->putJson($url, ['revision' => 3, 'sets' => null])->assertOk()->assertJsonPath('matches.main_a.walkover', false);
+        $this->assertNull($fixture->fresh()->winner_registration);
+    }
+
+    public function test_manual_walkover_corrections_require_confirmation_to_reset_later_walkovers(): void
+    {
+        [$draw, $draft] = $this->setupDraw();
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $record = $service->generate($draw, 1);
+        foreach (['main_a', 'main_b', 'main_final'] as $key) {
+            $fixture = Fixture::findOrFail($record->fixture_map[$key]);
+            $this->putJson(route('flexible-monrad.score', [$draw, $fixture->id]),
+                ['revision' => $record->fresh()->revision, 'walkover_winner_id' => $fixture->registration1_id])->assertOk();
+        }
+        $first = Fixture::findOrFail($record->fixture_map['main_a']);
+        $payload = ['revision' => $record->fresh()->revision, 'walkover_winner_id' => $first->registration2_id];
+        $url = route('flexible-monrad.score', [$draw, $first->id]);
+        $this->putJson($url, $payload)->assertConflict();
+        $this->putJson($url, $payload + ['reset_dependents' => true])->assertOk();
+        $this->assertFalse(Fixture::findOrFail($record->fixture_map['main_final'])->isWalkover());
+    }
+
     public function test_timed_deciding_point_is_separate_from_equal_games_and_propagates_the_selected_winner(): void
     {
         [$draw, $draft] = $this->setupDraw();

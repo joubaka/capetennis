@@ -484,6 +484,7 @@
             card.append(note);
           }
           else if (match.challenge_status === 'pending') card.append(el('div', 'fm-match-note fm-pending-result', 'Awaiting all base results · provisional'));
+          else if (match.walkover) card.append(el('div', 'fm-match-note', 'W/O · walkover'));
           else if (match.automatic) card.append(el('div', 'fm-match-note', match.automatic === 'walkover'
             ? (match.withdrawn_players?.some(Boolean) ? 'Late withdrawal · opponent advances' : match.byes?.some(Boolean) ? 'Bye · opponent advances' : 'Walkover · no score played')
             : 'Closed · no active players'));
@@ -706,7 +707,7 @@
             `Match ${match.number}`,
             match.label,
             ...match.players.map((id, i) => matchParticipantLabel(match, i)),
-            match.automatic === 'walkover' ? 'Walkover' : match.automatic === 'void' ? 'Closed — no active players' : match.sets.map(s => s.join('-')).join(', '),
+            match.walkover ? 'W/O' : match.automatic === 'walkover' ? 'Walkover' : match.automatic === 'void' ? 'Closed — no active players' : match.sets.map(s => s.join('-')).join(', '),
             match.schedule_hidden !== true && match.schedule?.time ? scheduleLabel(match.schedule, true) : ''
           ]);
       });
@@ -842,6 +843,14 @@
       if (sequence === playerSearchSequence) $('fm-system-player-error').textContent = error.message;
     }
   });
+  function syncWalkoverEntry() {
+    const walkover = $('fm-result-type').value === 'walkover';
+    $('fm-walkover-panel').hidden = !walkover;
+    const grid = $('fm-score-dialog').querySelector('[data-set-score-grid]');
+    grid.hidden = walkover;
+    grid.querySelectorAll('input').forEach(input => { input.disabled = walkover || input.closest('[data-score-row]')?.hidden; });
+  }
+  $('fm-result-type').addEventListener('change', syncWalkoverEntry);
   function openScore(key) {
     scoreKey = key;
     const match = state.matches[key];
@@ -851,11 +860,15 @@
     CTSetScoreGrid.populate($('fm-score-dialog').querySelector('[data-set-score-grid]'), {
       names: match.players.map(name), maxSets: state.score_max_sets || state.best_of || 1, scores: match.sets
     });
+    $('fm-result-type').value = match.walkover ? 'walkover' : 'played';
+    $('fm-walkover-winner').replaceChildren(new Option('Choose the winner', ''), ...match.players.map(id => new Option(name(id), id)));
+    $('fm-walkover-winner').value = match.walkover ? match.winner : '';
+    syncWalkoverEntry();
     $('fm-score-error').textContent = '';
     $('fm-reset').checked = false;
     $('fm-reset-label').hidden = true;
     $('fm-score-dialog').showModal();
-    $('fm-score-dialog').querySelector('.score-input:not(:disabled)').focus();
+    (match.walkover ? $('fm-walkover-winner') : $('fm-score-dialog').querySelector('.score-input:not(:disabled)')).focus();
   }
   function demoResolve() {
     const resolve = source => {
@@ -876,7 +889,12 @@
     if (busy) return;
     const match = state.matches[scoreKey];
     let sets = null;
-    if (!remove) {
+    const walkoverWinner = !remove && $('fm-result-type').value === 'walkover' ? Number($('fm-walkover-winner').value) : null;
+    if (!remove && $('fm-result-type').value === 'walkover' && !match.players.includes(walkoverWinner)) {
+      $('fm-score-error').textContent = 'Choose the walkover winner.';
+      return;
+    }
+    if (!remove && walkoverWinner === null) {
       try { sets = CTSetScoreGrid.read($('fm-score-dialog').querySelector('[data-set-score-grid]')); }
       catch (error) { $('fm-score-error').textContent = error.message; return; }
     }
@@ -896,7 +914,7 @@
         if (Math.max(...wins) !== needed) throw Error(`This match needs ${needed} set wins to finish.`);
       }
       if (config.demo) {
-        const winner = sets ? match.players[sets.filter(s => s[0] > s[1]).length > sets.length / 2 ? 0 : 1] : null;
+        const winner = walkoverWinner || (sets ? match.players[sets.filter(s => s[0] > s[1]).length > sets.length / 2 ? 0 : 1] : null);
         if (match.winner && match.winner !== winner) {
           const changed = new Set([scoreKey]);
           let more = true;
@@ -920,16 +938,18 @@
             if (k !== scoreKey) {
               state.matches[k].sets = [];
               state.matches[k].winner = null;
+              state.matches[k].walkover = false;
             }
           });
         }
+        match.walkover = !!walkoverWinner;
         match.sets = sets || [];
         match.winner = winner;
         demoResolve();
       } else
         state = await request(
           config.urls.score.replace('__FIXTURE__', match.id),
-          { revision: state.revision, sets, reset_dependents: $('fm-reset').checked },
+          { revision: state.revision, sets, walkover_winner_id: walkoverWinner, reset_dependents: $('fm-reset').checked },
           'PUT'
         );
       $('fm-score-dialog').close();

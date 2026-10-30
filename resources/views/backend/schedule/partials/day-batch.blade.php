@@ -4,6 +4,7 @@
     <p class="small text-muted">Choose one or more draws to plan this day.</p>
     <div class="d-flex flex-wrap gap-2 mb-3"><button type="button" class="btn btn-sm btn-outline-primary" id="day-batch-all">Select all ready draws</button><button type="button" class="btn btn-sm btn-outline-secondary" id="day-batch-clear">Clear selection</button></div>
     <div id="day-batch-draws" class="row g-2 mb-3"></div>
+    <p id="day-batch-selection-count" class="small fw-semibold" role="status" aria-live="polite"></p>
     <details class="mb-3 day-batch-order-options">
       <summary>Draw order (optional)</summary>
       <div class="pt-3">
@@ -18,8 +19,8 @@
     <section id="day-batch-courts-step" class="border-top pt-3 mt-3" hidden>
       <h5>2. Set up courts for this day</h5>
       <div class="row g-3 mb-3"><div class="col-md-4"><label class="form-label" for="day-batch-date">Playing day</label><select id="day-batch-date" class="form-select"></select></div><div class="col-6 col-md-4"><label class="form-label" for="day-batch-start">Starts</label><input id="day-batch-start" class="form-control" type="time" value="08:00" required></div><div class="col-6 col-md-4"><label class="form-label" for="day-batch-end">Finishes</label><input id="day-batch-end" class="form-control" type="time" value="18:00" required></div></div>
-      <p class="small">Choose the event courts available for this day. Saved times stay in place unless you choose to replan.</p>
-      <button type="button" class="btn btn-sm btn-outline-primary mb-3" data-bs-toggle="modal" data-bs-target="#venue-management-modal">Add or edit event venues &amp; courts</button>
+      <p class="small">Tick only the courts available this day. Unticking a court does not remove it from the venue. Saved times stay in place unless you choose to replan.</p>
+      <button type="button" class="btn btn-sm btn-outline-secondary mb-3" data-bs-toggle="modal" data-bs-target="#venue-management-modal">Advanced: edit venue inventory</button>
       <div id="day-batch-venues" class="mb-3"></div>
       <div class="row g-3 mb-3"><div class="col-6 col-md-4"><label class="form-label" for="day-batch-duration">Match minutes</label><input id="day-batch-duration" class="form-control" type="number" min="15" max="480" value="{{ $scheduleDraft['duration'] }}" required></div><div class="col-6 col-md-4"><label class="form-label" for="day-batch-rest">Player rest minutes</label><input id="day-batch-rest" class="form-control" type="number" min="0" max="480" value="{{ $scheduleDraft['player_rest'] }}" required></div><div class="col-6 col-md-4"><label class="form-label" for="day-batch-gap">Court gap minutes</label><input id="day-batch-gap" class="form-control" type="number" min="0" max="120" value="{{ $scheduleDraft['court_gap'] }}" required></div></div>
       <label class="d-block mb-2"><input id="day-batch-limit" class="form-check-input me-2" type="checkbox" @checked($scheduleDraft['limit_daily_matches'])>Optional: maximum 3 matches per player per day, including conditional play-offs</label>
@@ -31,6 +32,7 @@
 
     <section id="day-batch-rounds-step" class="border-top pt-3 mt-3" hidden>
       <h5>3. Choose rounds for this day</h5>
+      @if($savedDayReplan ?? false)<p class="alert alert-info">Loaded only this selection's saved matches for {{ \Carbon\Carbon::parse($planningDate)->format('D j M') }}. Unscheduled matches are not added. Played matches and locked draws stay fixed. Changes remain private until published.</p>@endif
       <p class="small text-muted">Choose rounds, then preview the selected matches. Expand a round to choose individual matches. Earlier qualifying matches need saved times.</p>
       @if(($pendingSecondRoundRobinDraws ?? collect())->isNotEmpty())
         <div class="alert alert-info mb-3" id="pending-second-round-robin">

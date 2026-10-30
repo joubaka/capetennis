@@ -53,6 +53,13 @@
   <form method="dialog"><button class="fm-close" aria-label="Close score entry">×</button></form>
   <h2 id="fm-score-title">Enter result</h2><p id="fm-score-players"></p>
   <p class="fm-help" id="fm-score-format">Enter completed sets.</p>
+  <label for="fm-result-type">Result type</label>
+  <select id="fm-result-type" class="form-select mb-3"><option value="played">Played match</option><option value="walkover">Walkover (W/O)</option></select>
+  <div id="fm-walkover-panel" hidden>
+    <label for="fm-walkover-winner">Walkover winner</label>
+    <select id="fm-walkover-winner" class="form-select"></select>
+    <p class="fm-help">Record a walkover without set scores. Both players remain in the draw.</p>
+  </div>
   @include('shared.scoring.set-grid', ['scoreGridPrefix' => 'fm-score'])
   <p id="fm-score-error" role="alert"></p>
   <label id="fm-reset-label" hidden><input type="checkbox" id="fm-reset"> Reset the affected later results listed above</label>

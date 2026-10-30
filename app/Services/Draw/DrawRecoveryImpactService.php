@@ -17,7 +17,7 @@ final class DrawRecoveryImpactService
 
         $playoffs = $draw->drawFixtures()->where('stage', '!=', 'RR')
             ->with(['fixtureResults', 'orderOfPlay'])->orderBy('round')->orderBy('match_nr')->get();
-        $scored = $playoffs->filter(fn (Fixture $fixture) => $fixture->fixtureResults->isNotEmpty());
+        $scored = $playoffs->filter(fn (Fixture $fixture) => $fixture->fixtureResults->isNotEmpty() || $fixture->isWalkover());
         $scheduled = $playoffs->filter(fn (Fixture $fixture) => $fixture->orderOfPlay !== null);
 
         return [
@@ -60,7 +60,7 @@ final class DrawRecoveryImpactService
                 'The round robin has a generated playoff bracket. Open tournament recovery so it can be snapshotted and rebuilt from corrected standings.');
         }
         $played = $dependents->first(fn (Fixture $dependent) =>
-            $dependent->fixtureResults->isNotEmpty()
+            $dependent->fixtureResults->isNotEmpty() || $dependent->isWalkover()
             || ((int) $dependent->match_status === 1 && $dependent->winner_registration !== null)
         );
 

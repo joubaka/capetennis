@@ -91,7 +91,7 @@ final class StandingsService
         (new \Illuminate\Database\Eloquent\Collection($groupFixtures->all()))->loadMissing('draw.settings');
 
         foreach ($groupFixtures as $fx) {
-            if ($fx->fixtureResults->isEmpty()) {
+            if ($fx->fixtureResults->isEmpty() && !$fx->isWalkover()) {
                 continue;
             }
 

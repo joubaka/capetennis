@@ -53,7 +53,7 @@ final class FlexibleMonradProgression
         $complete = ! array_filter($matches, fn ($match) => ! $match['resolved']);
         $playedPairs = [];
         foreach ($graph['nodes'] as $key => $node) {
-            if (isset($node['challenge_positions']) || ! ($fixtures[$key]['played'] ?? false)) continue;
+            if (isset($node['challenge_positions']) || ! ($fixtures[$key]['played'] ?? false) || ($fixtures[$key]['walkover'] ?? false)) continue;
             $pair = array_filter($fixtures[$key]['players']);
             if (count($pair) !== 2) continue;
             sort($pair);

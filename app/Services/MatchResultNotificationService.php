@@ -70,7 +70,8 @@ final class MatchResultNotificationService
         if (!$players && !$imported) return null;
         return ['event' => $fixture->draw->event->name, 'draw' => $fixture->draw->drawName, 'draw_id' => $fixture->draw_id,
             'player_ids' => $players, 'imported_ids' => $imported, 'home_names' => $homeNames, 'away_names' => $awayNames,
-            'sets' => $sets];
+            'sets' => $sets] + ($fixture instanceof Fixture && $fixture->isWalkover()
+                ? ['result_type' => 'walkover', 'winner_names' => (int) $fixture->winner_registration === (int) $fixture->registration1_id ? $homeNames : $awayNames] : []);
     }
 
     public function recipients(array $playerIds, array $importedIds = []): array

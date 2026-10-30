@@ -348,7 +348,7 @@
         <p class="small text-muted mb-0">Start play, enter results, or review completed matches.</p>
       </div>
       <div class="scoring-queue-summary" aria-live="polite">
-        <strong id="score-visible-count">{{ $matches->filter(fn($match) => $match->fixtureResults->isEmpty())->count() }}</strong>
+        <strong id="score-visible-count">{{ $matches->filter(fn($match) => $match->fixtureResults->isEmpty() && !($match instanceof \App\Models\Fixture && $match->isWalkover()))->count() }}</strong>
         <span id="score-visible-label">outstanding</span>
         <span> · {{ $ready }} ready to score</span>
       </div>
@@ -369,7 +369,8 @@
           $isTeamFixture = $match instanceof \App\Models\TeamFixture;
           $draw = $match->draw;
           $isTimed = !$isTeamFixture && $draw->settings?->score_format === 'timed';
-          $hasScore = $match->fixtureResults->isNotEmpty();
+          $isWalkover = !$isTeamFixture && $match->isWalkover();
+          $hasScore = $match->fixtureResults->isNotEmpty() || $isWalkover;
           $isPlaying = !$hasScore && (int) ($match->match_status ?? 0) === \App\Domain\Draws\Enums\FixtureState::STATUS_PARTIAL;
           $isFlexible = !$isTeamFixture && $draw->usesFlexibleMonrad();
 
@@ -456,7 +457,7 @@
                 </div>
               </div>
               <div class="match-score {{ $hasScore ? '' : 'is-empty' }}">
-                {{ $hasScore ? $sets->map(fn($set) => $set[0].'–'.$set[1])->implode('  ') : 'Not scored' }}
+                {{ $isWalkover ? 'W/O' : ($hasScore ? $sets->map(fn($set) => $set[0].'–'.$set[1])->implode('  ') : 'Not scored') }}
               </div>
               @if($canWrite && $hasPlayers)
               <div class="match-actions">
@@ -477,6 +478,7 @@
                       data-score-format="{{ $isTimed ? 'timed' : '' }}" data-stage="{{ $isTeamFixture ? '' : $match->stage }}"
                       data-home-registration="{{ $isTeamFixture ? '' : $match->registration1_id }}" data-away-registration="{{ $isTeamFixture ? '' : $match->registration2_id }}"
                       data-deciding-winner="{{ $isTimed && $hasScore ? ($winnerRegistration ?? '') : '' }}"
+                      data-walkover-winner="{{ $isWalkover ? $match->winner_registration : '' }}"
                       data-match-minutes="{{ $isTimed ? $draw->settings->match_duration_minutes : '' }}"
                       data-changeover-minutes="{{ $isTimed ? $draw->settings->changeover_minutes : '' }}"
                       data-num-sets="{{ $draw->settings?->score_format ? \App\Domain\Draws\Services\TennisScoreFormat::maxSets($draw->settings->score_format) : max(1, min(5, (int) ($draw->settings?->num_sets ?: 3))) }}"
@@ -547,6 +549,20 @@
       </div>
       <div class="modal-body">
         <div id="score-entry-error" class="alert alert-danger d-none" role="alert"></div>
+        <div id="score-result-type-panel" class="mb-3">
+          <label class="form-label" for="score-result-type">Result type</label>
+          <select id="score-result-type" class="form-select">
+            <option value="played">Played match</option>
+            <option value="walkover">Walkover (W/O)</option>
+          </select>
+        </div>
+        <div id="score-walkover-panel" class="mb-3" hidden>
+          <label class="form-label" for="score-walkover-winner">Walkover winner</label>
+          <select id="score-walkover-winner" class="form-select" disabled>
+            <option value="">Choose the winner</option>
+          </select>
+          <p class="small text-muted mt-2 mb-0">The selected player advances without set scores. This applies to this match only.</p>
+        </div>
         @include('shared.scoring.set-grid', ['scoreGridPrefix' => 'score'])
         <div id="score-deciding-point" class="mt-3" hidden>
           <label class="form-label" for="score-deciding-winner">Who won the deciding point?</label>
@@ -577,6 +593,9 @@ document.addEventListener('DOMContentLoaded', function () {
   const saveButton = document.getElementById('score-save');
   const decidingPanel = document.getElementById('score-deciding-point');
   const decidingWinner = document.getElementById('score-deciding-winner');
+  const resultType = document.getElementById('score-result-type');
+  const walkoverPanel = document.getElementById('score-walkover-panel');
+  const walkoverWinner = document.getElementById('score-walkover-winner');
   let active = null;
   let workspaceRequestSequence = 0;
 
@@ -586,7 +605,14 @@ document.addEventListener('DOMContentLoaded', function () {
       && sets.length === 1 && sets[0][0] === sets[0][1];
   }
 
-  function venueScorePayload(match, sets, decidingId) {
+  function venueScorePayload(match, sets, decidingId, walkoverId) {
+    if (walkoverId !== undefined) {
+      const id = Number(walkoverId);
+      if (match.engine === 'team' || !Number.isSafeInteger(id) || !id || ![Number(match.homeRegistration), Number(match.awayRegistration)].includes(id)) {
+        throw new Error('Choose the walkover winner from this match.');
+      }
+      return {walkover_winner_id: id};
+    }
     const payload = {sets: sets};
     if (venueNeedsDecidingPoint(match, sets)) {
       const id = Number(decidingId);
@@ -607,6 +633,26 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!required) decidingWinner.value = '';
   }
   modalElement.querySelector('[data-set-score-grid]').addEventListener('input', syncTimedDecision);
+
+  function syncResultType() {
+    const walkover = active?.engine !== 'team' && resultType.value === 'walkover';
+    walkoverPanel.hidden = !walkover;
+    walkoverWinner.disabled = !walkover;
+    walkoverWinner.required = walkover;
+    const grid = modalElement.querySelector('[data-set-score-grid]');
+    grid.hidden = walkover;
+    grid.querySelectorAll('[data-score-row]').forEach(row => {
+      row.querySelectorAll('input').forEach(input => { input.disabled = walkover || row.hidden; });
+    });
+    saveButton.textContent = walkover ? 'Save walkover' : 'Save score';
+    syncTimedDecision();
+    if (walkover) {
+      decidingPanel.hidden = true;
+      decidingWinner.disabled = true;
+      decidingWinner.value = '';
+    }
+  }
+  resultType.addEventListener('change', syncResultType);
 
   function currentFilter() {
     return document.querySelector('[data-score-filter][aria-pressed="true"]')?.dataset.scoreFilter || 'outstanding';
@@ -739,9 +785,14 @@ document.addEventListener('DOMContentLoaded', function () {
         });
       });
       decidingWinner.replaceChildren(new Option('Choose the winner', ''), new Option(active.home, active.homeRegistration), new Option(active.away, active.awayRegistration));
+      document.getElementById('score-result-type-panel').hidden = active.engine === 'team';
+      resultType.value = active.walkoverWinner ? 'walkover' : 'played';
+      walkoverWinner.replaceChildren(new Option('Choose the winner', ''), new Option(active.home, active.homeRegistration), new Option(active.away, active.awayRegistration));
+      walkoverWinner.value = active.walkoverWinner || '';
+      syncResultType();
       syncTimedDecision();
       if (!decidingPanel.hidden) decidingWinner.value = active.decidingWinner || '';
-      clearButton.classList.toggle('d-none', scores.length === 0);
+      clearButton.classList.toggle('d-none', scores.length === 0 && !active.walkoverWinner);
       modal.show();
       return;
     }
@@ -816,8 +867,9 @@ document.addEventListener('DOMContentLoaded', function () {
     error.classList.add('d-none');
     saveButton.disabled = true;
     try {
-      const sets = setsFromForm();
-      const scorePayload = venueScorePayload(active, sets, decidingWinner.value);
+      const walkover = active.engine !== 'team' && resultType.value === 'walkover';
+      const sets = walkover ? [] : setsFromForm();
+      const scorePayload = venueScorePayload(active, sets, decidingWinner.value, walkover ? walkoverWinner.value : undefined);
       if (active.engine === 'flexible') {
         try {
           await request(active.store, 'PUT', {...scorePayload, revision: Number(active.revision)});
@@ -833,7 +885,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
         await request(active.store, 'POST', teamPayload);
       } else {
-        await request(active.store, 'POST', {...scorePayload, sets: sets.map(set => set[0] + '-' + set[1])});
+        await request(active.store, 'POST', walkover ? scorePayload : {...scorePayload, sets: sets.map(set => set[0] + '-' + set[1])});
       }
       modal.hide();
       active = null;

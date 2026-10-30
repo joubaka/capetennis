@@ -907,7 +907,7 @@ class InterproDrawBuilder
       }
 
       $last = $fx->fixtureResults->sortBy('set_nr')->last();
-      if (!$last) {
+      if (!$last && !$fx->isWalkover()) {
         continue;
       }
 
@@ -1197,6 +1197,7 @@ class InterproDrawBuilder
     };
 
     $score = function ($fx) {
+      if ($fx?->isWalkover()) return 'W/O';
       if (!$fx || !$fx->fixtureResults->count())
         return '';
       return $fx->fixtureResults->pluck('score_line')->join(', ');

@@ -65,11 +65,11 @@ final class FlexibleMonradPdfLayout
                     'winner' => $match['winner'] ?? null,
                     'player_ids' => $match['players'] ?? [null, null],
                     'schedule' => $this->scheduleLabel($match['schedule'] ?? null),
-                    'note' => isset($match['skip_reason']) ? (str_contains($match['skip_reason'], 'already played') ? 'Skipped - already played' : 'Skipped - player unavailable') : match ($match['automatic'] ?? null) {
+                    'note' => ($match['walkover'] ?? false) ? 'W/O - Walkover' : (isset($match['skip_reason']) ? (str_contains($match['skip_reason'], 'already played') ? 'Skipped - already played' : 'Skipped - player unavailable') : match ($match['automatic'] ?? null) {
                         'walkover' => 'Walkover',
                         'void' => 'Closed - no active players',
                         default => null,
-                    },
+                    }),
                 ];
             }
 

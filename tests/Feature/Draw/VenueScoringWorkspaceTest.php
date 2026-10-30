@@ -26,6 +26,21 @@ class VenueScoringWorkspaceTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_walkover_is_completed_and_cannot_be_marked_on_court(): void
+    {
+        [$event, $draw, $venue, $fixture] = $this->scheduledFixture('Walkover Venue');
+        $fixture->update(['winner_registration' => $fixture->registration1_id, 'match_status' => 3]);
+        $this->actingAs($this->scorerFor($event));
+        $response = $this->get(route('frontend.scoring.workspace', [
+            'event' => $event, 'venue' => $venue->id, 'schedule_source' => 'working',
+        ]))->assertOk()->assertSee('W/O')->assertSee('data-score-state="completed"', false);
+        $this->assertSame(1, $response->viewData('completed'));
+        $this->assertCount(0, $response->viewData('nextMatches'));
+        $this->postJson(route('frontend.scoring.fixtures.playing', [$event, $fixture]), ['playing' => true])->assertUnprocessable();
+        $this->assertTrue($fixture->fresh()->isWalkover());
+        $this->assertDatabaseCount('fixture_results', 0);
+    }
+
     public function test_unresolved_monrad_queue_shows_qualification_paths_without_enabling_scoring(): void
     {
         [$event, $draw, $venue, $opening] = $this->scheduledFixture('Feeder Venue');

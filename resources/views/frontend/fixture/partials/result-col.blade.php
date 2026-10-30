@@ -5,5 +5,5 @@
     {{ $r->team1_score }} - {{ $r->team2_score }}
   </span>
 @empty
-  <span class="text-muted">No score</span>
+  <span class="text-muted">{{ $fixture instanceof \App\Models\Fixture && $fixture->isWalkover() ? 'W/O' : 'No score' }}</span>
 @endforelse

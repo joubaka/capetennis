@@ -872,7 +872,7 @@ class RoundRobinController extends Controller
 
         $progression = app(\App\Domain\Fixtures\Services\FixtureProgressionService::class);
         foreach ($fixtures as $fixture) {
-          if ($fixture->fixtureResults->isEmpty() || ! $fixture->winner_registration
+          if (($fixture->fixtureResults->isEmpty() && !$fixture->isWalkover()) || ! $fixture->winner_registration
               || ! $fixture->registration1_id || ! $fixture->registration2_id) {
             continue;
           }
@@ -933,7 +933,7 @@ class RoundRobinController extends Controller
   {
     $roundRobin = $draw->drawFixtures()->where('stage', 'RR');
     $total = (clone $roundRobin)->count();
-    $completed = (clone $roundRobin)->whereHas('fixtureResults')->count();
+    $completed = (clone $roundRobin)->withRecordedResult()->count();
     $remaining = max(0, $total - $completed);
 
     return [

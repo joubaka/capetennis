@@ -248,7 +248,11 @@
     'eventWorkspaceSubtitle' => 'Event venue schedule',
   ])
 @if($planningDate)
+  @if($savedDayReplan ?? false)
+  <div class="alert alert-info mb-3">Replan saved matches — {{ \Carbon\Carbon::parse($planningDate)->format('D j M Y') }}{{ !empty($planningScope['draw_id']) ? ' · selected draw' : '' }}{{ !empty($planningScope['venue_id']) ? ' · selected venue' : '' }}. Only this selection's saved matches are loaded. Other days stay fixed; revised times stay private until published.</div>
+  @else
   <div class="alert alert-info mb-3">Add matches - {{ \Carbon\Carbon::parse($planningDate)->format('D j M Y') }}{{ !empty($planningScope['draw_id']) ? ' · selected draw' : '' }}{{ !empty($planningScope['venue_id']) ? ' · selected venue' : '' }}. This batch uses only this day and preserves existing saved times. Use Edit saved times from the calendar to change existing bookings.</div>
+  @endif
 @endif
   @if($planningDate)<a class="btn btn-outline-primary mb-3" href="{{ route('backend.event-venue-schedule.calendar', ['event'=>$event->id,'date'=>$planningDate] + ($guideSelection->count() === 1 ? ['draw_id'=>$guideSelection->first()->id] : []) + (!empty($planningScope['origin_draw_id']) ? ['origin_draw_id'=>$planningScope['origin_draw_id']] : [])) }}">Back to this saved day</a>@endif
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
@@ -887,7 +891,7 @@
 @endsection
 
 @section('page-script')
-<script src="{{ asset('js/schedule-day-batch.js') }}"></script>
+<script src="{{ asset('js/schedule-day-batch.js') }}?v={{ filemtime(public_path('js/schedule-day-batch.js')) }}"></script>
 <script src="{{ asset('js/schedule-move-conflicts.js') }}"></script>
 <script src="{{ asset('js/schedule-timeline.js') }}"></script>
 <script>
@@ -3151,7 +3155,8 @@
     eventId:@json($event->id),
     notify,
     draws:@json($draws->values()), venues:@json($venues->values()), dates:@json($programmeDates),
-    initialDay:@json($planningDate), initialDrawIds:@json(request()->has('draw_ids') ? $draws->filter(fn($draw) => $draw['selected'] && !$draw['locked'])->pluck('id')->values() : []),
+    initialDay:@json($planningDate), initialDrawIds:@json($savedDayReplan['draw_ids'] ?? (request()->has('draw_ids') ? $draws->filter(fn($draw) => $draw['selected'] && !$draw['locked'])->pluck('id')->values() : [])),
+    replanSaved:@json((bool) ($savedDayReplan ?? false)),
     savedByDay:@json($scheduleDraft['day_batch_settings'] ?? []),
     getConfig:() => ({}),
     onChange:() => { dayBatchPayload = null; payload = null; invalidatePreview('Selection changed. Preview the selected rounds again.'); workspace.classList.remove('day-batch-review'); },

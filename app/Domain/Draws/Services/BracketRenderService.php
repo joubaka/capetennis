@@ -162,7 +162,7 @@ final class BracketRenderService
             'away'       => $this->playerName($fx->registration2),
             'home_id'    => $fx->registration1_id,
             'away_id'    => $fx->registration2_id,
-            'score'      => implode(', ', array_map(fn($s) => "{$s['s1']}-{$s['s2']}", $sets)),
+            'score'      => $fx->isWalkover() ? 'W/O' : implode(', ', array_map(fn($s) => "{$s['s1']}-{$s['s2']}", $sets)),
             'winner_id'  => $fx->winner_registration,
             'time'       => optional($oop)->time ?? '',
             'court'      => optional($oop)->court ?? '',
@@ -174,6 +174,7 @@ final class BracketRenderService
      */
     private function scoreSummary(Fixture $fx): array
     {
+        if ($fx->isWalkover()) return [[], (int) $fx->winner_registration === (int) $fx->registration1_id ? 'W/O' : '', (int) $fx->winner_registration === (int) $fx->registration2_id ? 'W/O' : ''];
         $sets       = [];
         $homeScore  = 0;
         $awayScore  = 0;

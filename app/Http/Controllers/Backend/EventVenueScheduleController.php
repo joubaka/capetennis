@@ -157,6 +157,41 @@ final class EventVenueScheduleController extends Controller
         }
         $planningScope = $this->calendarScope($request, $event);
         $planningDate = $request->validate(['date' => ['nullable', 'date_format:Y-m-d']])['date'] ?? null;
+        $replanSaved = $request->validate(['replan_saved' => ['sometimes', 'boolean']])['replan_saved'] ?? false;
+        abort_if($replanSaved && ! $planningDate, 422, 'Choose one saved playing day to replan.');
+        $savedDayReplan = null;
+        if ($replanSaved) {
+            $savedRows = app(\App\Services\Scheduling\SchedulePublicationService::class)->workingRows($event)
+                ->filter(fn ($row) => substr($row['scheduled_at'], 0, 10) === $planningDate
+                    && (empty($planningScope['draw_id']) || (int) $row['draw_id'] === (int) $planningScope['draw_id'])
+                    && (! $selectionSupplied || $requestedDrawIds->contains((int) $row['draw_id']))
+                    && (empty($planningScope['venue_id']) || (int) $row['venue_id'] === (int) $planningScope['venue_id']));
+            abort_if($savedRows->isEmpty(), 422, 'There are no saved matches in this day and selection.');
+            $keys = $savedRows->pluck('fixture_key')->all();
+            $selectedRounds = $draws->map(function ($draw) use ($keys) {
+                $rounds = collect($draw['day_round_details'])->filter(fn ($groups) => collect($groups)
+                    ->flatMap(fn ($group) => $group['matches'] ?? [])->contains(fn ($match) => in_array($match['key'], $keys, true)))->keys()->map(fn ($round) => (int) $round)->all();
+                return ['draw_id' => $draw['id'], 'rounds' => $rounds];
+            })->filter(fn ($row) => $row['rounds'])->values();
+            $savedDayReplan = array_replace($storedScheduleDraft['day_batch_settings'][$planningDate] ?? $storedScheduleDraft, [
+                'full_day_scope' => $planningDate, 'draw_ids' => $selectedRounds->pluck('draw_id')->all(),
+                'draw_order' => $selectedRounds->pluck('draw_id')->all(), 'draw_rounds' => $selectedRounds->all(),
+                'selected_fixture_keys' => $keys, 'reschedule_existing' => true,
+            ]);
+            $priorOrder = $storedScheduleDraft['day_batch_settings'][$planningDate]['draw_order'] ?? $storedScheduleDraft['draw_order'] ?? [];
+            $savedDayReplan['draw_order'] = collect($priorOrder)->map(fn ($id) => (int) $id)
+                ->filter(fn ($id) => in_array($id, $savedDayReplan['draw_ids'], true))
+                ->concat($savedDayReplan['draw_ids'])->unique()->values()->all();
+            // Daily court availability is independent of the venue's physical court inventory.
+            $savedCourts = $savedDayReplan['day_court_labels'] ?? [];
+            $savedDayReplan['day_court_labels'] = $savedRows->groupBy('venue_id')->mapWithKeys(fn ($rows, $id) => [
+                $id => isset($savedCourts[$id])
+                    ? $savedCourts[$id] : $rows->pluck('court')->map(fn ($court) => (string) $court)->unique()->values()->all(),
+            ])->all();
+            $savedDayReplan['start'] = $planningDate.' '.substr($savedDayReplan['start'] ?? '2000-01-01 08:00', 11, 5);
+            $savedDayReplan['end'] = $planningDate.' '.substr($savedDayReplan['end'] ?? '2000-01-01 18:00', 11, 5);
+            $scheduleDraft['day_batch_settings'][$planningDate] = $savedDayReplan;
+        }
         if ($planningDate) {
             $scheduleDraft['start'] = $planningDate.'T08:00';
             $scheduleDraft['end'] = $planningDate.'T18:00';
@@ -194,7 +229,7 @@ final class EventVenueScheduleController extends Controller
         })->filter(fn ($notice) => $notice['pending_count'] > 0 || $notice['review_required'])->values();
 
         return view('backend.schedule.event-venue-schedule', compact(
-            'event', 'draws', 'venues', 'allVenues', 'announcementDraft', 'scheduleDraft', 'adaptationNotices', 'planningDate', 'planningScope', 'pendingPlayoffDraws', 'pendingSecondRoundRobinDraws'
+            'event', 'draws', 'venues', 'allVenues', 'announcementDraft', 'scheduleDraft', 'adaptationNotices', 'planningDate', 'planningScope', 'pendingPlayoffDraws', 'pendingSecondRoundRobinDraws', 'savedDayReplan'
         ));
     }
 

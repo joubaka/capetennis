@@ -115,7 +115,7 @@ $fxWinnerClasses = fn ($fx) => \App\Support\ResultPresentation::classes($fx);
             <div class="public-match-versus">vs</div>
             <div class="{{ $awayClass }}">@if($fx instanceof \App\Models\TeamFixture)@include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['away']])@else<x-player-name :players="$fx->registration2?->players ?? []" :context="$draw" separator=" + " />@endif<x-result-label :outcome="$awayClass" /></div>
           </div>
-          <div class="public-match-score">Match {{ $fx->match_nr }} · @forelse($fx->fixtureResults as $r){{ $fxScoreDisplay($r) }}@if(!$loop->last), @endif @empty No score yet @endforelse</div>
+          <div class="public-match-score">Match {{ $fx->match_nr }} · @forelse($fx->fixtureResults as $r){{ $fxScoreDisplay($r) }}@if(!$loop->last), @endif @empty {{ $fx instanceof \App\Models\Fixture && $fx->isWalkover() ? 'W/O' : 'No score yet' }} @endforelse</div>
         </article>
       @empty
         <p class="text-muted mb-0">No matches found.</p>
@@ -183,7 +183,7 @@ $fxWinnerClasses = fn ($fx) => \App\Support\ResultPresentation::classes($fx);
                         {{ $fxScoreDisplay($r) }}
                     </span>
                 @empty
-                    <span class="text-muted">No score</span>
+                    <span class="text-muted">{{ $fx instanceof \App\Models\Fixture && $fx->isWalkover() ? 'W/O' : 'No score' }}</span>
                 @endforelse
             </td>
 
@@ -211,7 +211,7 @@ $fxWinnerClasses = fn ($fx) => \App\Support\ResultPresentation::classes($fx);
                 @forelse($fx->fixtureResults as $r)
                     {{ $fxScoreDisplay($r) }}
                 @empty
-                    No score
+                    {{ $fx instanceof \App\Models\Fixture && $fx->isWalkover() ? 'W/O' : 'No score' }}
                 @endforelse<br>
 
                 <strong>Venue:</strong> {{ optional($fx->venue)->name ?? '—' }}<br>

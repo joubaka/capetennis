@@ -272,7 +272,7 @@ class Event extends Model
   {
     return $this->draws()
       ->where(function ($query) {
-        $query->whereHas('drawFixtures.fixtureResults')
+        $query->whereHas('drawFixtures', fn ($fixtures) => $fixtures->withRecordedResult())
           ->orWhereHas('fixtures.fixtureResults');
       })
       ->exists();

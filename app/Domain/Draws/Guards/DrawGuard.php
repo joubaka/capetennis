@@ -83,7 +83,7 @@ final class DrawGuard
             ? $fixture->fixtureResults->isNotEmpty()
             : $fixture->fixtureResults()->exists();
 
-        if (! $hasResult) {
+        if (! $hasResult && ! $fixture->isWalkover()) {
             throw new DrawMutationException(
                 "Cannot {$operation} fixture #{$fixture->id}: no results recorded."
             );
