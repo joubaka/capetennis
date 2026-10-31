@@ -926,6 +926,40 @@ class VenueScoringWorkspaceTest extends TestCase
         return $user;
     }
 
+    public function test_playoff_prompt_readiness_counts_the_whole_draw_and_only_exposes_authorized_pending_draws(): void
+    {
+        [$event, $draw, $venue, $fixture] = $this->scheduledFixture('Prompt venue');
+        $draw->settings()->updateOrCreate([], ['workflow' => 'round_robin_playoffs']);
+        [, , , $otherVenueFixture] = $this->scheduledFixture('Elsewhere', $event, $draw);
+        FixtureResult::factory()->create(['fixture_id' => $fixture->id]);
+        $url = route('frontend.scoring.workspace', ['event' => $event, 'venue' => $venue->id]);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $page = $this->actingAs($admin)->get($url)->assertOk();
+        $state = $page->viewData('playoffProgression')->get($draw->id);
+        $this->assertSame(2, $state['total']);
+        $this->assertSame(1, $state['completed']);
+        $this->assertTrue($state['pending']);
+        $page->assertDontSee('Review &amp; progress to playoffs', false);
+
+        FixtureResult::factory()->create(['fixture_id' => $otherVenueFixture->id]);
+        $readyPage = $this->get($url)->assertOk()->assertSee('Review &amp; progress to playoffs', false);
+        $html = $readyPage->getContent();
+        $this->assertLessThan(strpos($html, '/js/draw-progression.js'), strpos($html, '/assets/vendor/libs/jquery/jquery.js'));
+        if (getenv('CT_SCORING_PROGRESS_SNAPSHOT')) file_put_contents(getenv('CT_SCORING_PROGRESS_SNAPSHOT'), $html);
+        $this->actingAs($this->scorerFor($event))->get($url)->assertOk()
+            ->assertViewHas('playoffProgression', fn ($states) => $states->isEmpty())
+            ->assertDontSee('Review &amp; progress to playoffs', false);
+
+        $this->actingAs($admin);
+        Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'MAIN',
+            'registration1_id' => $fixture->registration1_id, 'registration2_id' => $fixture->registration2_id]);
+        $this->get($url)->assertOk()->assertDontSee('Review &amp; progress to playoffs', false)
+            ->assertViewHas('playoffProgression', fn ($states) => !$states->get($draw->id)['pending']);
+        $draw->update(['locked' => true]);
+        $this->get($url)->assertOk()->assertViewHas('playoffProgression', fn ($states) => $states->isEmpty());
+    }
+
     private function scheduledFixture(
         string $venueName,
         ?Event $event = null,

@@ -3,6 +3,7 @@
 @section('title', 'Venue scoring — ' . $event->name)
 
 @section('page-style')
+<link rel="stylesheet" href="{{ asset('assets/vendor/libs/sweetalert2/sweetalert2.css') }}">
 <style>
   .scoring-shell { max-width: 1280px; margin-inline: auto; }
   .scoring-shell.is-refreshing { opacity: .65; pointer-events: none; }
@@ -158,9 +159,18 @@
 
 <div class="container-xxl py-3 py-md-4">
   <div class="scoring-shell"
+       data-playoff-progression='@json($playoffProgression)'
        data-selected-venue="{{ $selectedVenue?->id }}"
        data-available-venues='@json($venues->pluck('id')->map(fn($id) => (int) $id)->values())'
        data-force-all-venues="{{ request()->boolean('all_venues') ? '1' : '0' }}">
+    @foreach($playoffProgression as $progressDrawId => $progress)
+      @if($progress['pending'] && $progress['total'] > 0 && $progress['completed'] === $progress['total'] && (!$selectedDraw || $selectedDraw->id === $progressDrawId))
+        <div class="alert alert-info d-flex flex-wrap justify-content-between align-items-center gap-2" role="status">
+          <span><strong>{{ $progress['drawName'] }}</strong>: all group results are complete. Review the standings to fill the playoff fixtures.</span>
+          <button type="button" class="btn btn-primary progress-draw" data-url="{{ $progress['url'] }}" data-review-url="{{ $progress['reviewUrl'] }}" data-draw-name="{{ $progress['drawName'] }}">Review &amp; progress to playoffs</button>
+        </div>
+      @endif
+    @endforeach
     <div class="offcanvas offcanvas-end next-court-panel" tabindex="-1" id="next-on-court-panel"
          aria-labelledby="next-on-court-title">
       <div class="offcanvas-header border-bottom">
@@ -452,7 +462,12 @@
               <div class="match-identity">
                 <div class="small text-muted mb-1">{{ $draw->drawName }} · {{ $stageLabel }} · Match {{ $matchNumber }}</div>
                 @if($isTimed)
-                  <div class="small text-muted mb-1">{{ $matchTiming['duration_minutes'] }} minutes of play@if($matchTiming['court_gap_minutes'] !== null) · {{ $matchTiming['court_gap_minutes'] }} minutes changeover@endif</div>
+                  <div class="small text-muted mb-1">
+                    {{ $matchTiming['duration_minutes'] }} minutes of play
+                    @if($matchTiming['court_gap_minutes'] !== null)
+                      · {{ $matchTiming['court_gap_minutes'] }} minutes changeover
+                    @endif
+                  </div>
                 @endif
                 <div class="match-players">
                   <div class="match-player{{ $winnerSide ? ($winnerSide === 'home' ? ' is-winner' : ' is-loser') : '' }}">{{ $home }}@if($winnerSide)<span class="visually-hidden"> ({{ $winnerSide === 'home' ? 'Winner' : 'Loser' }})</span>@endif</div>
@@ -474,7 +489,7 @@
                 </button>
                 @endunless
                 <button type="button" class="btn btn-sm btn-primary score-action js-open-score"
-                      data-fixture="{{ $match->id }}" data-home="{{ $home }}" data-away="{{ $away }}"
+                      data-fixture="{{ $match->id }}" data-draw-id="{{ $draw->id }}" data-has-result="{{ $hasScore ? '1' : '0' }}" data-home="{{ $home }}" data-away="{{ $away }}"
                       data-engine="{{ $engine }}" data-participant-revision="{{ $engine === 'team' ? app(\App\Services\TeamParticipantHistoryService::class)->revision($match) : '' }}"
                       data-store="{{ $isFlexible ? $flexibleUrl : $normalStore }}"
                       data-delete="{{ $isFlexible ? $flexibleUrl : $normalDelete }}"
@@ -918,7 +933,10 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!active) return;
     error.classList.add('d-none');
     saveButton.disabled = true;
+    let scoreSaved = false;
     try {
+      const savedMatch = {...active};
+      const progressionBefore = window.CTScoringPlayoffs.state(savedMatch.drawId);
       const walkover = active.engine !== 'team' && resultType.value === 'walkover';
       const retired = active.engine !== 'team' && resultType.value === 'retired';
       const sets = walkover ? [] : setsFromForm();
@@ -940,10 +958,20 @@ document.addEventListener('DOMContentLoaded', function () {
       } else {
         await request(active.store, 'POST', walkover ? scorePayload : {...scorePayload, sets: sets.map(set => set[0] + '-' + set[1])});
       }
+      scoreSaved = true;
+      const modalHidden = modalElement.classList.contains('show')
+        ? new Promise(resolve => modalElement.addEventListener('hidden.bs.modal', resolve, {once: true}))
+        : Promise.resolve();
       modal.hide();
       active = null;
       await refreshWorkspace(window.location.href);
+      await modalHidden;
+      await window.CTScoringPlayoffs.afterSave(savedMatch, progressionBefore, () => refreshWorkspace(window.location.href));
     } catch (failure) {
+      if (scoreSaved) {
+        showWorkspaceError('The score was saved. ' + failure.message);
+        return;
+      }
       error.textContent = failure.message;
       error.classList.remove('d-none');
       saveButton.disabled = false;
@@ -974,4 +1002,10 @@ document.addEventListener('DOMContentLoaded', function () {
   applyScoreFilter(currentFilter(), false);
 });
 </script>
+@endsection
+
+@section('page-script')
+<script src="{{ asset('assets/vendor/libs/sweetalert2/sweetalert2.js') }}"></script>
+<script src="{{ asset('js/draw-progression.js') }}?v={{ filemtime(public_path('js/draw-progression.js')) }}"></script>
+<script src="{{ asset('js/scoring-playoff-prompt.js') }}?v={{ filemtime(public_path('js/scoring-playoff-prompt.js')) }}"></script>
 @endsection

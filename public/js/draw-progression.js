@@ -35,14 +35,11 @@ $(document).ready(function () {
             + escapeProgressReviewHtml(group.name) + ' are correct.</label></div>';
     }
 
-    $(document).on('click', '.progress-draw', async function () {
-        var $button = $(this);
+    async function reviewProgression(options) {
         if (window.RRGroups && (window.RRGroups.isDirty() || window.RRGroups.isBusy())) {
             toastr.warning('Save your player assignments before reviewing progression.');
             return;
         }
-        $button.prop('disabled', true).attr('aria-busy', 'true');
-
         Swal.fire({
             title: 'Loading final standings…',
             allowOutsideClick: false,
@@ -51,7 +48,7 @@ $(document).ready(function () {
         });
 
         try {
-            var response = await $.get($button.data('review-url'));
+            var response = await $.get(options.reviewUrl);
             var review = response.review;
             var destination = review.destination || 'playoffs';
             var groups = review.groups || [];
@@ -101,7 +98,7 @@ $(document).ready(function () {
                 step++;
             }
 
-            var progressResponse = await $.post($button.data('url'), {
+            var progressResponse = await $.post(options.url, {
                 _token: $('meta[name="csrf-token"]').attr('content')
                 , confirmed_group_ids: confirmedGroupIds
                 , standings_snapshot: review.snapshot
@@ -111,12 +108,25 @@ $(document).ready(function () {
                 title: 'Draw progressed',
                 text: progressResponse.message,
                 icon: 'success',
-                confirmButtonText: 'Refresh draws'
+                confirmButtonText: options.onSuccess ? 'Show playoff matches' : 'Refresh draws'
             });
-            window.location.reload();
+            if (options.onSuccess) await options.onSuccess(progressResponse);
+            else window.location.reload();
+            return true;
         } catch (xhr) {
             Swal.close();
-            toastr.error(xhr.responseJSON?.message || 'Could not progress ' + $button.data('draw-name') + '.');
+            toastr.error(xhr.responseJSON?.message || 'Could not progress ' + options.drawName + '.');
+            return false;
+        }
+    }
+
+    window.CTDrawProgression = {review: reviewProgression};
+
+    $(document).on('click', '.progress-draw', async function () {
+        var $button = $(this);
+        $button.prop('disabled', true).attr('aria-busy', 'true');
+        try {
+            await reviewProgression({url: $button.data('url'), reviewUrl: $button.data('review-url'), drawName: $button.data('draw-name')});
         } finally {
             $button.prop('disabled', false).removeAttr('aria-busy');
         }

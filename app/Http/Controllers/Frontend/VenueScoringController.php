@@ -43,6 +43,14 @@ class VenueScoringController extends Controller
 
         $draws = $event->draws()
             ->with(['settings', 'flexibleMonrad', 'draw_types', 'categoryEvent.category'])
+            ->withCount([
+                'drawFixtures as progression_rr_total' => fn ($query) => $query->where('stage', 'RR'),
+                'drawFixtures as progression_rr_completed' => fn ($query) => $query->where('stage', 'RR')->whereHas('fixtureResults'),
+                'drawFixtures as progression_playoff_total' => fn ($query) => $query->where('stage', '!=', 'RR'),
+                'drawFixtures as progression_pending_sources' => fn ($query) => $query->where('stage', '!=', 'RR')->where(fn ($slots) => $slots
+                    ->where(fn ($slot) => $slot->whereNotNull('registration1_source_group_id')->whereNull('registration1_id'))
+                    ->orWhere(fn ($slot) => $slot->whereNotNull('registration2_source_group_id')->whereNull('registration2_id'))),
+            ])
             ->orderBy('drawName')
             ->get();
         $scheduleDrawIds = $request->input('draw_ids', []);
@@ -196,6 +204,19 @@ class VenueScoringController extends Controller
             ->limit(12)
             ->get();
 
+        // Use the whole draw, including matches outside the visible venue/date.
+        // Scoring permission alone never grants playoff progression permission.
+        $playoffProgression = $draws->filter(fn (Draw $draw) => $draw->settings?->workflow === 'round_robin_playoffs'
+            && ! $draw->isTeamDraw() && $user->can('progress', $draw))
+            ->mapWithKeys(fn (Draw $draw) => [$draw->id => [
+                'drawName' => $draw->drawName,
+                'total' => (int) $draw->progression_rr_total,
+                'completed' => (int) $draw->progression_rr_completed,
+                'pending' => (int) $draw->progression_pending_sources > 0 || (int) $draw->progression_playoff_total === 0,
+                'url' => route('backend.draw.progress', $draw),
+                'reviewUrl' => route('backend.draw.progress-review', $draw),
+            ]]);
+
         return view('frontend.scoring.workspace', [
             'event' => $event,
             'draws' => $draws,
@@ -213,6 +234,7 @@ class VenueScoringController extends Controller
             'scheduleDate' => $request->input('date'),
             'availableDates' => $availableDates,
             'scheduleDrawIds' => $scheduleDrawIds,
+            'playoffProgression' => $playoffProgression,
         ]);
     }
 
