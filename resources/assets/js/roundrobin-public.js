@@ -342,9 +342,9 @@
         return resolved;
       }
 
-      const timed = window.RR_SCORE_FORMAT === 'timed';
+      const showPoints = true;
       if (!(rows[0] && rows[0].group_result_status)) {
-      const rankingValue = row => timed ? Number(row.points || 0) : Number(row.wins || 0);
+      const rankingValue = row => showPoints ? Number(row.points || 0) : Number(row.wins || 0);
       rows.sort((a, b) => rankingValue(b) - rankingValue(a));
       const final = [];
       let i = 0;
@@ -370,7 +370,7 @@
               <th>#</th>
               <th>Player</th>
               <th class="text-center">W</th>
-              ${timed ? '<th class="text-center">D</th><th class="text-center">Pts</th>' : ''}
+              ${showPoints ? '<th class="text-center">D</th><th class="text-center">Pts</th>' : ''}
               <th class="text-center">L</th>
               <th class="text-center">Sets %</th>
               <th class="text-center">Games %</th>
@@ -399,7 +399,7 @@
             <td>${r.display_position ?? (i + 1)}</td>
             <td>${escapeHtml(r.player)}${r.group_winner ? ' <span class="badge bg-success">Group winner</span>' : ''}</td>
             <td class="text-center">${r.wins}</td>
-            ${timed ? `<td class="text-center">${Number(r.draws || 0)}</td><td class="text-center">${Number(r.points || 0)}</td>` : ''}
+            ${showPoints ? `<td class="text-center">${Number(r.draws || 0)}</td><td class="text-center">${Number(r.points || 0)}</td>` : ''}
             <td class="text-center">${r.losses}</td>
             <td class="text-center">${setsPct === '-' ? '—' : setsPct + '%'}</td>
             <td class="text-center">${gamesPct === '-' ? '—' : gamesPct + '%'}</td>

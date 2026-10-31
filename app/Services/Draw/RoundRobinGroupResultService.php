@@ -48,7 +48,7 @@ final class RoundRobinGroupResultService
                 $sets = $fixture->fixtureResults->sortBy('set_nr')->map(fn ($set) => [(int) $set->registration1_score, (int) $set->registration2_score])->values()->all();
                 $complete = $complete && $pair[0] !== $pair[1] && $ids->contains($pair[0]) && $ids->contains($pair[1]) && ! isset($pairs[$key])
                     && app(ScoreValidationService::class)->validate($fixture, $sets)['valid']
-                    && ($draw->settings?->score_format === TennisScoreFormat::TIMED || app(IndividualMatchOutcomeService::class)->winner($fixture) !== null);
+                    && (app(IndividualMatchOutcomeService::class)->isDraw($fixture) || app(IndividualMatchOutcomeService::class)->winner($fixture) !== null);
                 $pairs[$key] = true;
             }
 

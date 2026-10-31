@@ -855,7 +855,7 @@ class InterproDrawBuilder
     if ($draw->isTwoStageRoundRobin() && ! $timed) {
       return app(\App\Domain\Draws\Services\StandingsService::class)->forDraw($draw);
     }
-    $rankingMetric = $timed ? 'points' : 'wins';
+    $rankingMetric = 'points';
     $standings = [];
 
     // ============================================================
@@ -876,7 +876,7 @@ class InterproDrawBuilder
           'box' => $group->name,
           'wins' => 0,
           'losses' => 0,
-          ...($timed ? ['draws' => 0, 'points' => 0] : []),
+          'draws' => 0, 'points' => 0,
           'sets_won' => 0,
           'sets_lost' => 0,
           'games_won' => 0,
@@ -963,13 +963,13 @@ class InterproDrawBuilder
       // Update wins/losses
       if ($winner == $home) {
         $standings[$box][$home]['wins']++;
-        if ($timed) $standings[$box][$home]['points'] += 2;
+        $standings[$box][$home]['points'] += 2;
         $standings[$box][$away]['losses']++;
       } elseif ($winner == $away) {
         $standings[$box][$away]['wins']++;
-        if ($timed) $standings[$box][$away]['points'] += 2;
+        $standings[$box][$away]['points'] += 2;
         $standings[$box][$home]['losses']++;
-      } elseif ($timed && $fx->fixtureResults->count() === 1 && $homeGames === $awayGames) {
+      } elseif (app(IndividualMatchOutcomeService::class)->isDraw($fx)) {
         $standings[$box][$home]['draws']++;
         $standings[$box][$away]['draws']++;
         $standings[$box][$home]['points']++;

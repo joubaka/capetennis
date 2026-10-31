@@ -102,7 +102,8 @@ final class SchedulePublicationService
                 $fixture->setAttribute('court_label', $row->court);
                 $fixture->setRelation('venue', $venues->get($row->venue_id));
             } else {
-                $slot = new OrderOfPlay(['time' => $row->scheduled_at, 'court' => $row->court, 'venue_id' => $row->venue_id]);
+                $slot = new OrderOfPlay(['time' => $row->scheduled_at, 'court' => $row->court, 'venue_id' => $row->venue_id,
+                    'duration_minutes' => $row->duration]);
                 $slot->setRelation('venue', $venues->get($row->venue_id));
                 $fixture->setRelation('orderOfPlay', $slot);
             }

@@ -13,7 +13,7 @@ use Illuminate\Support\Collection;
  * No other class should implement standings logic.
  *
  * Tiebreak cascade (in order):
- *   1. Matches won
+ *   1. Match points (win 2, draw 1, loss 0)
  *   2. Sets won %
  *   3. Games won %
  *   4. Head-to-head (2-player ties only)
@@ -76,6 +76,8 @@ final class StandingsService
                 'player'     => optional($gr->registration)->display_name ?? "Player #{$regId}",
                 'wins'       => 0,
                 'losses'     => 0,
+                'draws'      => 0,
+                'points'     => 0,
                 'sets_won'   => 0,
                 'sets_lost'  => 0,
                 'games_won'  => 0,
@@ -119,7 +121,13 @@ final class StandingsService
             if ($matchWinner && isset($rows[$matchWinner])) {
                 $matchLoser  = ($matchWinner === $home) ? $away : $home;
                 $rows[$matchWinner]['wins']++;
+                $rows[$matchWinner]['points'] += 2;
                 $rows[$matchLoser]['losses']++;
+            } elseif (app(\App\Services\IndividualMatchOutcomeService::class)->isDraw($fx)) {
+                foreach ([$home, $away] as $registration) {
+                    $rows[$registration]['draws']++;
+                    $rows[$registration]['points']++;
+                }
             }
         }
 
@@ -167,7 +175,7 @@ final class StandingsService
     {
         if (! $rows) return false;
         $timed = $draw->settings?->score_format === TennisScoreFormat::TIMED;
-        $metric = $timed ? 'points' : 'wins';
+        $metric = 'points';
         $top = $rows[0];
         $equalWins = array_values(array_filter($rows, fn ($row) => ($row[$metric] ?? 0) === ($top[$metric] ?? 0)));
         if (count($equalWins) === 1) return true;
@@ -194,7 +202,7 @@ final class StandingsService
             if ($fx->isRetired() && !$set->winner_registration) continue;
             if ($s1 > $s2) {
                 $homeSets++;
-            } else {
+            } elseif ($s2 > $s1) {
                 $awaySets++;
             }
         }
@@ -209,8 +217,8 @@ final class StandingsService
         $gamesPct   = fn($r) => ($t = $r['games_won'] + $r['games_lost']) > 0 ? $r['games_won'] / $t : 0.0;
 
         return function ($a, $b) use ($headToHead, $setsPct, $gamesPct) {
-            if ($a['wins'] !== $b['wins']) {
-                return $b['wins'] <=> $a['wins'];
+            if ($a['points'] !== $b['points']) {
+                return $b['points'] <=> $a['points'];
             }
 
             $aSP = $setsPct($a); $bSP = $setsPct($b);
@@ -254,7 +262,7 @@ final class StandingsService
             $above = $rows[$i - 1];
             $curr  = $rows[$i];
 
-            if ($above['wins'] !== $curr['wins']) continue;
+            if ($above['points'] !== $curr['points']) continue;
 
             if (abs($setsPct($above) - $setsPct($curr)) > 0.0001) {
                 $rows[$i]['tiebreak']       = 'Sets %';

@@ -252,14 +252,14 @@
         html += '<div class="page-break"></div>';
         html += '<h3 style="font-size:14px; margin:16px 0 6px;">Box ' + escapeHtml(group.name) + ' — Standings</h3>';
         if (rows[0] && rows[0].group_result_status) html += '<p>' + (rows[0].group_result_message ? escapeHtml(rows[0].group_result_message) : rows[0].group_result_status === 'complete' ? 'Separate group competition — final standings.' : rows[0].group_result_status === 'tied' ? 'Group winner pending: leading tie unresolved.' : 'Group winner pending: complete every group match.') + '</p>';
-      html += '<table class="standings-table"><thead><tr><th>#</th><th>Player</th><th>W</th><th>L</th><th>Sets %</th><th>Games %</th><th>TB</th></tr></thead><tbody>';
+      html += '<table class="standings-table"><thead><tr><th>#</th><th>Player</th><th>W</th><th>D</th><th>L</th><th>Pts</th><th>Sets %</th><th>Games %</th><th>TB</th></tr></thead><tbody>';
         rows.forEach(function(r, i) {
           var totalSets = r.sets_won + r.sets_lost;
           var setsPct = totalSets > 0 ? ((r.sets_won / totalSets) * 100).toFixed(0) + '%' : '-';
           var totalGames = (r.games_won || 0) + (r.games_lost || 0);
           var gamesPct = totalGames > 0 ? (((r.games_won || 0) / totalGames) * 100).toFixed(0) + '%' : '-';
           var tb = r.tiebreak || '';
-          html += '<tr><td>' + (r.display_position ?? (i + 1)) + '</td><td>' + escapeHtml(r.player) + (r.group_winner ? ' — Group winner' : '') + '</td><td>' + r.wins + '</td><td>' + r.losses + '</td><td>' + setsPct + '</td><td>' + gamesPct + '</td><td>' + escapeHtml(tb) + '</td></tr>';
+          html += '<tr><td>' + (r.display_position ?? (i + 1)) + '</td><td>' + escapeHtml(r.player) + (r.group_winner ? ' — Group winner' : '') + '</td><td>' + r.wins + '</td><td>' + (r.draws || 0) + '</td><td>' + r.losses + '</td><td>' + (r.points ?? r.wins * 2) + '</td><td>' + setsPct + '</td><td>' + gamesPct + '</td><td>' + escapeHtml(tb) + '</td></tr>';
         });
         html += '</tbody></table>';
       });
@@ -619,30 +619,17 @@
     sortedGroups.forEach(function(group) {
       if (!standings[group.id]) return;
       var rows = Object.values(standings[group.id]);
-      if (!(rows[0] && rows[0].group_result_status)) rows.sort(function(a, b) {
-        if (a.wins !== b.wins) return b.wins - a.wins;
-        var aTotalSets = a.sets_won + a.sets_lost;
-        var bTotalSets = b.sets_won + b.sets_lost;
-        var aSetsPct = aTotalSets > 0 ? a.sets_won / aTotalSets : 0;
-        var bSetsPct = bTotalSets > 0 ? b.sets_won / bTotalSets : 0;
-        if (Math.abs(aSetsPct - bSetsPct) > 0.0001) return bSetsPct - aSetsPct;
-        var aTotalGames = (a.games_won || 0) + (a.games_lost || 0);
-        var bTotalGames = (b.games_won || 0) + (b.games_lost || 0);
-        var aGamesPct = aTotalGames > 0 ? (a.games_won || 0) / aTotalGames : 0;
-        var bGamesPct = bTotalGames > 0 ? (b.games_won || 0) / bTotalGames : 0;
-        if (Math.abs(aGamesPct - bGamesPct) > 0.0001) return bGamesPct - aGamesPct;
-        return 0;
-      });
+      // Preserve the canonical order, including points and head-to-head tiebreaks.
       html += '<h3 style="font-size:14px; margin:16px 0 6px;">Box ' + escapeHtml(group.name) + ' — Standings</h3>';
       if (rows[0] && rows[0].group_result_status) html += '<p>' + (rows[0].group_result_message ? escapeHtml(rows[0].group_result_message) : rows[0].group_result_status === 'complete' ? 'Separate group competition — final standings.' : rows[0].group_result_status === 'tied' ? 'Group winner pending: leading tie unresolved.' : 'Group winner pending: complete every group match.') + '</p>';
-      html += '<table class="standings-table"><thead><tr><th>#</th><th>Player</th><th>W</th><th>L</th><th>Sets %</th><th>Games %</th><th>TB</th></tr></thead><tbody>';
+      html += '<table class="standings-table"><thead><tr><th>#</th><th>Player</th><th>W</th><th>D</th><th>L</th><th>Pts</th><th>Sets %</th><th>Games %</th><th>TB</th></tr></thead><tbody>';
       rows.forEach(function(r, i) {
         var totalSets = r.sets_won + r.sets_lost;
         var setsPct = totalSets > 0 ? ((r.sets_won / totalSets) * 100).toFixed(0) + '%' : '-';
         var totalGames = (r.games_won || 0) + (r.games_lost || 0);
         var gamesPct = totalGames > 0 ? (((r.games_won || 0) / totalGames) * 100).toFixed(0) + '%' : '-';
         var tb = r.tiebreak || '';
-        html += '<tr><td>' + (r.display_position ?? (i + 1)) + '</td><td>' + escapeHtml(r.player) + (r.group_winner ? ' — Group winner' : '') + '</td><td>' + r.wins + '</td><td>' + r.losses + '</td><td>' + setsPct + '</td><td>' + gamesPct + '</td><td>' + escapeHtml(tb) + '</td></tr>';
+        html += '<tr><td>' + (r.display_position ?? (i + 1)) + '</td><td>' + escapeHtml(r.player) + (r.group_winner ? ' — Group winner' : '') + '</td><td>' + r.wins + '</td><td>' + (r.draws || 0) + '</td><td>' + r.losses + '</td><td>' + (r.points ?? r.wins * 2) + '</td><td>' + setsPct + '</td><td>' + gamesPct + '</td><td>' + escapeHtml(tb) + '</td></tr>';
       });
       html += '</tbody></table>';
     });

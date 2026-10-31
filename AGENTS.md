@@ -33,6 +33,8 @@
 
 ## Verification
 
+- Individual round-robin scheduling rotates through group rounds by default (A, B, A, B or A, B, C, D, A, B, C, D), rather than finishing one group's programme first. Preserve played and fixed assignments, court availability, player rest and playoff dependencies; this rule does not change team-tie ordering.
+
 - Add regression coverage for authorization, cross-event isolation, idempotency, exact amounts, and record counts when changing financial flows.
 - Run focused tests first and the complete feature suite for cross-cutting registration or payment changes.
 - Verify `git diff --check`, route registration, and Blade compilation before committing.

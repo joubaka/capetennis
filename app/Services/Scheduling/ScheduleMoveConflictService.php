@@ -22,7 +22,7 @@ final class ScheduleMoveConflictService
         ];
         $key = fn ($dependency) => is_numeric($dependency) ? 'individual:'.$dependency : (string) $dependency;
         $at = Carbon::parse($move['scheduled_at']);
-        $timing = app(MatchTimingService::class)->forDraw($draws[$moving['draw_id']], (int) ($options['duration'] ?? $moving['duration'] ?? 60), (int) ($options['court_gap'] ?? 5));
+        $timing = app(MatchTimingService::class)->forDraw($draws[$moving['draw_id']], (int) ($options['duration'] ?? $moving['duration'] ?? 60), (int) ($options['court_gap'] ?? 5), !empty($options['day_batch']));
         $duration = $timing['duration_minutes'];
         $rest = (int) ($options['player_rest'] ?? 30);
         $gap = $timing['court_gap_minutes'];

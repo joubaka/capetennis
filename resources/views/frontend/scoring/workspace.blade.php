@@ -432,6 +432,8 @@
           }
           $isTimedDraw = $isTimed && $hasScore && strtoupper((string) $match->stage) === 'RR'
             && $sets->count() === 1 && $sets[0][0] === $sets[0][1];
+          $matchTiming = $isTimed && $match instanceof \App\Models\Fixture
+            ? app(\App\Services\Scheduling\MatchTimingService::class)->forBookedFixture($match) : null;
         @endphp
         <article class="card match-card {{ $hasScore ? 'is-completed' : ($isPlaying ? 'is-playing' : ($hasPlayers ? '' : 'is-waiting')) }}"
                  data-score-state="{{ $state }}" data-score-timing="{{ $timing }}">
@@ -449,7 +451,7 @@
               <div class="match-identity">
                 <div class="small text-muted mb-1">{{ $draw->drawName }} · {{ $stageLabel }} · Match {{ $matchNumber }}</div>
                 @if($isTimed)
-                  <div class="small text-muted mb-1">{{ $draw->settings->match_duration_minutes }} minutes of play · {{ $draw->settings->changeover_minutes }} minutes changeover</div>
+                  <div class="small text-muted mb-1">{{ $matchTiming['duration_minutes'] }} minutes of play@if($matchTiming['court_gap_minutes'] !== null) · {{ $matchTiming['court_gap_minutes'] }} minutes changeover@endif</div>
                 @endif
                 <div class="match-players">
                   <div class="match-player{{ $winnerSide ? ($winnerSide === 'home' ? ' is-winner' : ' is-loser') : '' }}">{{ $home }}@if($winnerSide)<span class="visually-hidden"> ({{ $winnerSide === 'home' ? 'Winner' : 'Loser' }})</span>@endif</div>
@@ -481,8 +483,8 @@
                       data-deciding-winner="{{ $isTimed && $hasScore ? ($winnerRegistration ?? '') : '' }}"
                       data-walkover-winner="{{ $isWalkover ? $match->winner_registration : '' }}"
                       data-retired-registration="{{ $isRetired ? ($match->winner_registration == $match->registration1_id ? $match->registration2_id : $match->registration1_id) : '' }}"
-                      data-match-minutes="{{ $isTimed ? $draw->settings->match_duration_minutes : '' }}"
-                      data-changeover-minutes="{{ $isTimed ? $draw->settings->changeover_minutes : '' }}"
+                      data-match-minutes="{{ $matchTiming['duration_minutes'] ?? '' }}"
+                      data-changeover-minutes="{{ $matchTiming['court_gap_minutes'] ?? '' }}"
                       data-num-sets="{{ $draw->settings?->score_format ? \App\Domain\Draws\Services\TennisScoreFormat::maxSets($draw->settings->score_format) : max(1, min(5, (int) ($draw->settings?->num_sets ?: 3))) }}"
                       data-score-guidance="{{ $draw->settings?->score_format
                         ? \App\Domain\Draws\Services\TennisScoreFormat::rules($draw->settings->score_format)
@@ -796,6 +798,9 @@ document.addEventListener('DOMContentLoaded', function () {
           : active.engine === 'flexible' && active.requireFullSets === '0'
           ? 'Custom set scores allowed'
           : (active.scoreGuidance || 'Enter completed sets');
+      if (active.engine !== 'team' && String(active.stage).toUpperCase() === 'RR') {
+        scoreGuidance.textContent += ' Round-robin draws such as 3–3 or 5–5 are allowed: 1 point each (win 2, loss 0).';
+      }
       document.getElementById('score-match-title').textContent = active.home + ' vs ' + active.away;
       scoreGuidance.dataset.played = scoreGuidance.textContent;
       const scores = JSON.parse(active.scores || '[]');

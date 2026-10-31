@@ -274,7 +274,7 @@ final class EventVenueScheduleService
                 continue;
             }
             foreach (($draw->isTeamDraw() ? app(UnifiedTeamScheduleService::class)->nodes($draw, $roundProgression) : $this->nodesForDraw($draw, $start, $waveMinutes, (bool) $programme || $dayBatch)) as $id => $node) {
-                $timing = app(MatchTimingService::class)->forDraw($draw, $duration, $courtGap);
+                $timing = app(MatchTimingService::class)->forDraw($draw, $duration, $courtGap, $dayBatch);
                 $node['timed'] = ! $draw->isTeamDraw() && $draw->settings?->score_format === 'timed';
                 $node['duration'] = $timing['duration_minutes'];
                 $node['court_gap'] = $timing['court_gap_minutes'];
@@ -333,6 +333,7 @@ final class EventVenueScheduleService
         if ($dayBatch) foreach ($drawRounds as $row) foreach ($row['rounds'] as $round) {
             if (! isset($dayRoundCoverage[$row['draw_id'].'|'.$round])) throw new \InvalidArgumentException('Choose matches in every selected round for this day, or remove the empty round.');
         }
+        $this->configureRoundRobinGroupRotation($nodes);
         if ($dayBatch && $drawOrderMode === 'sequential') $this->configureDayDrawOrder($nodes, $drawOrder);
 
         app(ScheduleProgramme::class)->configureNodes($nodes, $programme);
@@ -1446,6 +1447,8 @@ final class EventVenueScheduleService
         return [
             'fixture' => $fixture, 'draw_id' => $draw->id, 'draw_name' => $draw->drawName,
             'stage' => $fixture->stage, 'round' => max(1, (int) $fixture->round), 'match' => $fixture->match_nr,
+            'rr_group_name' => $draw->groups->firstWhere('id', $fixture->draw_group_id)?->name,
+            'rr_group_phase' => $draw->groups->firstWhere('id', $fixture->draw_group_id)?->round_robin_phase ?? 1,
             'play_order' => (int) ($fixture->play_order ?: $fixture->match_nr), 'dependencies' => $dependencies,
             'participants' => array_values(array_unique(array_filter($participants))), 'participant_names' => $names,
             // A Flexible Monrad graph already models the winner and loser paths within one draw. Its sibling
@@ -1717,6 +1720,33 @@ final class EventVenueScheduleService
         return $normalized;
     }
 
+    private function configureRoundRobinGroupRotation(array &$nodes): void
+    {
+        $waves = [];
+        foreach ($nodes as $id => $node) {
+            $fixture = $node['fixture'];
+            if (($node['fixture_kind'] ?? 'individual') !== 'individual' || $node['stage'] !== 'RR'
+                || ! $fixture->draw_group_id || ! $node['selected_round'] || $node['automatic']
+                || $node['fixed'] || $node['played']) continue;
+            $key = sprintf('%04d:%08d:', (int) $node['rr_group_phase'], $node['round'])
+                .str_pad((string) ($node['rr_group_name'] ?? $fixture->draw_group_id), 20, '0', STR_PAD_LEFT);
+            $waves[$node['draw_id']][$key][] = $id;
+        }
+        foreach ($waves as $groups) {
+            ksort($groups, SORT_NATURAL);
+            $previous = [];
+            foreach ($groups as $ids) {
+                foreach ($ids as $id) {
+                    // Group turns wait for play to finish, without adding unrelated players' rest.
+                    $nodes[$id]['day_finish_dependencies'] = array_values(array_unique(array_merge(
+                        $nodes[$id]['day_finish_dependencies'] ?? [], array_diff($previous, $nodes[$id]['dependencies']))));
+                    $nodes[$id]['dependencies'] = array_values(array_unique(array_merge($nodes[$id]['dependencies'], $previous)));
+                }
+                $previous = $ids;
+            }
+        }
+    }
+
     private function configureDayDrawOrder(array &$nodes, array $drawOrder): void
     {
         $groups = [];
@@ -1729,7 +1759,8 @@ final class EventVenueScheduleService
         $previous = [];
         foreach ($groups as $ids) {
             foreach ($ids as $id) {
-                $nodes[$id]['day_finish_dependencies'] = array_values(array_diff($previous, $nodes[$id]['dependencies']));
+                $nodes[$id]['day_finish_dependencies'] = array_values(array_unique(array_merge(
+                    $nodes[$id]['day_finish_dependencies'] ?? [], array_diff($previous, $nodes[$id]['dependencies']))));
                 $nodes[$id]['dependencies'] = array_values(array_unique(array_merge($nodes[$id]['dependencies'], $previous)));
             }
             $previous = $ids;

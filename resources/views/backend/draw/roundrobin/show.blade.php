@@ -276,7 +276,7 @@
         <div class="card-body">
           <p><strong>Groups:</strong> {{ $currentBoxes }} · <strong>Match scoring:</strong> {{ $scoreFormats[$currentScoreFormat]['label'] ?? "Legacy: maximum {$legacySets} sets" }}</p>
           @if($currentScoreFormat === 'timed')
-            <p class="mb-2">{{ $draw->settings->match_duration_minutes }} minutes playing time + {{ $draw->settings->changeover_minutes }} minutes changeover.</p>
+            <p class="mb-2">Default: {{ $draw->settings->match_duration_minutes }} minutes playing time + {{ $draw->settings->changeover_minutes }} minutes changeover. Use each match’s saved schedule and scoring card for any timing set when scheduling the day.</p>
           @endif
           @unless($roundRobinOnly)
             <div id="rr-saved-playoff-summary">
@@ -1018,9 +1018,10 @@
         <p class="small text-muted mb-3">
           {{ optional($draw->settings)->score_format
             ? \App\Domain\Draws\Services\TennisScoreFormat::rules($draw->settings->score_format)
-            : 'Legacy scoring: enter a decisive result within the configured set limit.' }}
+            : 'Enter scores within the configured set limit.' }}
+          Round-robin draws such as 3–3 or 5–5 are allowed: 1 point each (win 2, loss 0). Playoffs require a winner.
           @if($selectedScoreFormat === 'timed')
-            {{ $draw->settings->match_duration_minutes }} minutes playing time; {{ $draw->settings->changeover_minutes }} minutes changeover.
+            Default: {{ $draw->settings->match_duration_minutes }} minutes playing time; {{ $draw->settings->changeover_minutes }} minutes changeover. A match’s saved schedule may specify different timing.
           @endif
         </p>
 

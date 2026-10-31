@@ -26,7 +26,7 @@ final class ScoreValidationService
             return $this->failure('A deciding-point winner is only allowed for tied timed playoffs.');
         }
         if ($scoreFormat !== '' && in_array($scoreFormat, TennisScoreFormat::keys(), true)) {
-            return $this->validatePreset($scoreFormat, $sets);
+            return $this->validatePreset($scoreFormat, $sets, $fixture->stage === 'RR');
         }
 
         // Historical draws did not store a format, only a maximum set count.
@@ -43,14 +43,14 @@ final class ScoreValidationService
             $exceedsRange = $index === 2
                 ? $home > 999 || $away > 999
                 : $home > 20 || $away > 20;
-            if ($home < 0 || $away < 0 || $exceedsRange || $home === $away) {
+            if ($home < 0 || $away < 0 || $exceedsRange || ($home === $away && $fixture->stage !== 'RR')) {
                 return ['valid' => false, 'message' => 'Each set must have different, non-negative scores within the valid range.'];
             }
         }
 
         $homeSets = collect($sets)->where(fn ($set) => $set[0] > $set[1])->count();
-        $awaySets = count($sets) - $homeSets;
-        if ($homeSets === $awaySets) {
+        $awaySets = collect($sets)->where(fn ($set) => $set[1] > $set[0])->count();
+        if ($homeSets === $awaySets && $fixture->stage !== 'RR') {
             return ['valid' => false, 'message' => 'The entered sets do not produce a match winner.'];
         }
 
@@ -137,7 +137,7 @@ final class ScoreValidationService
         return ['valid' => true, 'message' => null];
     }
 
-    private function validatePreset(string $key, array $sets): array
+    private function validatePreset(string $key, array $sets, bool $roundRobin = false): array
     {
         $format = TennisScoreFormat::get($key);
         if ($sets === [] || count($sets) > $format['max_sets']) {
@@ -155,10 +155,14 @@ final class ScoreValidationService
 
             $home = filter_var($set[0], FILTER_VALIDATE_INT);
             $away = filter_var($set[1], FILTER_VALIDATE_INT);
-            if ($home === false || $away === false || $home < 0 || $away < 0 || $home === $away) {
+            if ($home === false || $away === false || $home < 0 || $away < 0 || ($home === $away && ! $roundRobin)) {
                 return $this->failure('Each set needs different, non-negative whole-number scores.');
             }
 
+            if ($roundRobin && $home === $away) {
+                if ($home > 999) return $this->failure('Drawn set scores cannot exceed 999.');
+                continue;
+            }
             $setType = $format['set_types'][$index] ?? end($format['set_types']);
             $setError = $this->setError($setType, $home, $away);
             if ($setError !== null) {
@@ -168,7 +172,7 @@ final class ScoreValidationService
             $wins[$home > $away ? 0 : 1]++;
         }
 
-        if (max($wins) !== $format['wins_needed']) {
+        if (max($wins) !== $format['wins_needed'] && ! ($roundRobin && $wins[0] === $wins[1])) {
             return $this->failure("{$format['label']} requires {$format['wins_needed']} set win(s) to complete the match.");
         }
 

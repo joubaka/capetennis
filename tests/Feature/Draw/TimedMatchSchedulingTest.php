@@ -14,6 +14,73 @@ class TimedMatchSchedulingTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_day_batch_honors_entered_timing_in_preview_move_and_apply_without_changing_draw_defaults(): void
+    {
+        [$event, $venue, $draw] = $this->setupDraw();
+        $event->update(['start_date' => '2026-09-10', 'end_date' => '2026-09-10']);
+        $fixtures = collect([$this->fixture($draw), $this->fixture($draw, 2)]);
+        $options = array_replace($this->schedulingOptions(), [
+            'day_batch' => true, 'full_day_scope' => '2026-09-10',
+            'draw_ids' => [$draw->id], 'draw_order' => [$draw->id], 'draw_order_mode' => 'mixed',
+            'draw_rounds' => [['draw_id' => $draw->id, 'rounds' => [1]]],
+            'selected_fixture_keys' => $fixtures->map(fn ($fixture) => 'individual:'.$fixture->id)->all(),
+            'venue_ids' => [$venue->id], 'day_court_labels' => [$venue->id => ['1']],
+            'duration' => 15, 'court_gap' => 0, 'player_rest' => 0,
+        ]);
+        $service = app(EventVenueScheduleService::class);
+        $preview = $service->preview($event, $options);
+        $this->assertSame([], $preview['unscheduled']);
+        $this->assertSame(['2026-09-10 08:00:00', '2026-09-10 08:15:00'], array_column($preview['matches'], 'scheduled_at'));
+        $this->assertSame([15, 15], array_column($preview['matches'], 'duration'));
+        $this->assertSame([0, 0], array_column($preview['matches'], 'court_gap'));
+        $first = $preview['matches'][0];
+        $report = app(\App\Services\Scheduling\ScheduleMoveConflictService::class)->report($event, $options, $preview,
+            ['fixture_key' => $first['fixture_key'], 'scheduled_at' => $first['scheduled_at'], 'venue_id' => $venue->id, 'court' => '1'],
+            'Synthetic move explanation', false);
+        $this->assertNotContains('court', array_column($report['issues'], 'type'));
+        $last = $preview['matches'][1];
+        $move = ['fixture_key' => $last['fixture_key'], 'scheduled_at' => '2026-09-10 08:30:00', 'venue_id' => $venue->id, 'court' => '1'];
+        $movedOptions = $service->preservePreviewOptions($options, $preview, $move);
+        $moved = $service->preview($event, $movedOptions);
+        $this->assertSame([15, 15], array_column($moved['matches'], 'duration'));
+        $this->assertSame(2, $service->apply($event, $movedOptions, $moved['revision'])['count']);
+        $this->assertSame([15, 15], OrderOfPlay::where('draw_id', $draw->id)->pluck('duration_minutes')->map(fn ($value) => (int) $value)->all());
+        $this->assertSame([0, 0], OrderOfPlay::where('draw_id', $draw->id)->pluck('gap_minutes')->map(fn ($value) => (int) $value)->all());
+        $this->assertSame(20, $draw->settings()->first()->match_duration_minutes);
+        $this->assertSame(5, $draw->settings()->first()->changeover_minutes);
+    }
+
+    public function test_scoring_workspace_uses_booked_timing_for_draw_and_venue_views(): void
+    {
+        [$event, $venue, $draw] = $this->setupDraw();
+        $fixture = $this->fixture($draw);
+        OrderOfPlay::create(['fixture_id' => $fixture->id, 'draw_id' => $draw->id, 'venue_id' => $venue->id,
+            'court' => '1', 'time' => '2026-09-10 08:00:00', 'duration_minutes' => 15, 'gap_minutes' => 0]);
+        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $this->actingAs($admin);
+        foreach ([['draw' => $draw->id], ['venue' => $venue->id, 'schedule_source' => 'working']] as $scope) {
+            $this->get(route('frontend.scoring.workspace', ['event' => $event] + $scope))->assertOk()
+                ->assertSee('15 minutes of play')->assertSee('0 minutes changeover')
+                ->assertSee('data-match-minutes="15"', false)->assertSee('data-changeover-minutes="0"', false)->assertDontSee('20 minutes of play');
+        }
+    }
+
+    public function test_timing_projection_never_reloads_private_booking_over_published_or_hidden_relation(): void
+    {
+        [$event, $venue, $draw] = $this->setupDraw();
+        $fixture = $this->fixture($draw);
+        OrderOfPlay::create(['fixture_id' => $fixture->id, 'draw_id' => $draw->id, 'venue_id' => $venue->id,
+            'court' => '1', 'time' => '2026-09-10 08:00:00', 'duration_minutes' => 15, 'gap_minutes' => 0]);
+        $fixture->setRelation('orderOfPlay', new OrderOfPlay(['duration_minutes' => 20]));
+        $timing = app(\App\Services\Scheduling\MatchTimingService::class);
+        $this->assertSame(['duration_minutes' => 20, 'court_gap_minutes' => null], $timing->forBookedFixture($fixture));
+        $fixture->setRelation('orderOfPlay', null);
+        $this->assertSame(['duration_minutes' => 20, 'court_gap_minutes' => 5], $timing->forBookedFixture($fixture));
+        $this->assertDatabaseHas('order_of_plays', ['fixture_id' => $fixture->id, 'duration_minutes' => 15]);
+    }
+
     private function setupDraw(bool $timed = true, ?Event $event = null, ?Venue $venue = null): array
     {
         $event ??= Event::factory()->create(['eventType' => 6]);

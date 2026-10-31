@@ -43,6 +43,59 @@ class TimedDrawScoringTest extends TestCase
             'registration1_id' => $players[0]->id, 'registration2_id' => $players[1]->id]);
     }
 
+    public function test_all_round_robin_formats_save_draws_on_both_routes_and_share_points(): void
+    {
+        foreach ([null, TennisScoreFormat::SHORT_SET_4, TennisScoreFormat::ONE_FULL_SET, TennisScoreFormat::BEST_OF_3_FULL, TennisScoreFormat::TIMED] as $format) {
+            $draw = $this->draw();
+            $draw->settings->update(['score_format' => $format, 'workflow' => 'round_robin']);
+            $fixture = $this->fixture($draw);
+            foreach (['3-3', '5-5'] as $score) {
+                foreach ([route('rr.fixture.saveScore', $fixture), route('api.draws.fixtures.score.store', ['draw' => $draw, 'fixture' => $fixture])] as $url) {
+                    $this->postJson($url, ['sets' => [$score]])->assertOk();
+                    $fixture->refresh();
+                    $this->assertNull($fixture->winner_registration);
+                    $this->assertSame(1, $fixture->fixtureResults()->count());
+                    $this->assertNull($fixture->fixtureResults()->first()->winner_registration);
+                    foreach ([app(StandingsService::class)->forDraw($draw->fresh()), app(InterproDrawBuilder::class)->standings($draw->fresh())] as $standings) {
+                        foreach ($standings[$fixture->draw_group_id] as $row) {
+                            $this->assertSame(1, $row['points']);
+                            $this->assertSame(1, $row['draws']);
+                            $this->assertSame(0, $row['wins']);
+                            $this->assertSame(0, $row['losses']);
+                            $this->assertSame(0, $row['sets_won']);
+                            $this->assertSame(0, $row['sets_lost']);
+                        }
+                    }
+                }
+            }
+            $rows = app(StandingsService::class)->forDraw($draw->fresh());
+            $annotated = app(\App\Services\Draw\RoundRobinGroupResultService::class)->annotate($draw->fresh(), $rows);
+            $this->assertSame('tied', $annotated[$fixture->draw_group_id][0]['group_result_status']);
+        }
+    }
+
+    public function test_partial_legacy_result_is_not_a_draw_and_tied_sets_do_not_create_a_phantom_winner(): void
+    {
+        $draw = $this->draw();
+        $draw->settings->update(['score_format' => null, 'num_sets' => 3]);
+        $fixture = $this->fixture($draw);
+        $fixture->fixtureResults()->create(['set_nr' => 1, 'registration1_score' => 6, 'registration2_score' => 0]);
+        $this->assertFalse(app(IndividualMatchOutcomeService::class)->isDraw($fixture->fresh()));
+        $rows = app(StandingsService::class)->forDraw($draw->fresh())[$fixture->draw_group_id];
+        $this->assertSame([0, 0], array_column($rows, 'points'));
+        $draw->settings->update(['score_format' => TennisScoreFormat::BEST_OF_3_FULL]);
+        $url = route('rr.fixture.saveScore', $fixture);
+        $this->postJson($url, ['sets' => ['6-0', '3-3']])->assertUnprocessable();
+        $this->postJson($url, ['sets' => ['6-0', '0-6', '3-3']])->assertOk();
+        $this->assertTrue(app(IndividualMatchOutcomeService::class)->isDraw($fixture->fresh()));
+        $this->assertNull($fixture->fresh()->winner_registration);
+        $rows = app(StandingsService::class)->forDraw($draw->fresh())[$fixture->draw_group_id];
+        $this->assertSame([1, 1], array_column($rows, 'points'));
+        $this->assertSame([1, 1], array_column($rows, 'sets_won'));
+        $fixture->update(['stage' => 'MAIN']);
+        $this->postJson($url, ['sets' => ['3-3']])->assertUnprocessable();
+    }
+
     public function test_timed_settings_validate_bounds_and_preserve_values_when_switching_back(): void
     {
         $draw = $this->draw();

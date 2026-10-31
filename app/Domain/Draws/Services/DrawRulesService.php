@@ -26,13 +26,13 @@ final class DrawRulesService
 
         $timed = $format === TennisScoreFormat::TIMED;
         if ($timed) {
-            $add('timing', 'Match timing', 'Playing time: '.(int) $settings->match_duration_minutes.' minutes. Changeover: '.(int) $settings->changeover_minutes.' minutes between court bookings.');
+            $add('timing', 'Match timing', 'Default playing time: '.(int) $settings->match_duration_minutes.' minutes. Default changeover: '.(int) $settings->changeover_minutes.' minutes between court bookings. A saved match booking may specify its own playing time and changeover; use that match’s schedule and scoring card.');
         }
         $flexible = $draw->usesFlexibleMonrad();
         $workflow = $settings?->workflow;
         $roundRobin = ! $flexible && ! in_array($workflow, ['playoffs', 'monrad', 'custom_monrad', 'feed_in_monrad'], true);
         if ($roundRobin) {
-            $add('round_robin', 'Round Robin scoring rules', $timed ? 'Players play the other players in their group for the saved match duration. Most games wins; equal games are a draw. Standings award 2 points for a win, 1 for a draw and 0 for a loss. Existing head-to-head, sets percentage and games percentage tiebreaks apply within equal-points groups.' : 'Players play the other players in their group. Standings are ordered by matches won, then percentage of sets won, then percentage of games won, then head-to-head. Players still tied remain equal until the tie is resolved.');
+            $add('round_robin', 'Round Robin scoring rules', $timed ? 'Players play the other players in their group for the saved match duration. Most games wins; equal games are a draw. Standings award 2 points for a win, 1 for a draw and 0 for a loss. Existing head-to-head, sets percentage and games percentage tiebreaks apply within equal-points groups.' : 'Players play the other players in their group. Equal scores are allowed and share the match points. Standings award 2 points for a win, 1 for a draw and 0 for a loss, ordered by points, then percentage of sets won, then percentage of games won, then head-to-head. Players still tied remain equal until the tie is resolved.');
         }
         if ($draw->isTwoStageRoundRobin()) {
             $add('second_round_robin', 'Two-stage round robin', 'Complete every first-stage match and resolve all tied positions before confirming progression. All first-place finishers enter second-stage Group 1, all second-place finishers Group 2, and so on. Results start afresh in each second-stage group. Group 1 determines the highest final positions, followed by Group 2 and the remaining groups. First-stage results and memberships are frozen after progression. Second-stage fixtures become available for scheduling after progression.');

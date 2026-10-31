@@ -53,17 +53,17 @@ test('ordinary formats never expose or submit a deciding-point override', () => 
   assert.equal(page.requests[0].deciding_point_winner_id, undefined);
 });
 
-test('timed standings rank points above wins while normal standings retain wins', () => {
+test('all round-robin standings rank points above wins', () => {
   for (const timed of [true, false]) {
     let output = '';
-    const wrapper = {length: 1, html(value) {output = value; return this;}, append(value) {output += value; return this;}, on() {return this;}};
+    const wrapper = {length: 1, text(value) {this.label = value; return this;}, html(value) {if (value === undefined) return this.label || ''; output = value; return this;}, append(value) {output += value; return this;}, on() {return this;}};
     const rows = [{player: 'One win', wins: 1, losses: 0, draws: 0, points: 2, sets_won: 1, sets_lost: 0}, {player: 'Three draws', wins: 0, losses: 0, draws: 3, points: 3, sets_won: 0, sets_lost: 0}];
     const context = {jQuery: () => wrapper, window: {RR_SCORE_FORMAT: timed ? 'timed' : 'one_set_to_4'},
       AdminState: {on() {}, getGroups: () => [{id: 1, name: 'A'}], getStandings: () => ({1: rows}), getFixtures: () => ({})}};
     vm.runInNewContext(fs.readFileSync('public/assets/js/admin/roundrobin/standings.js', 'utf8'), context);
     context.window.RRStandings.render();
-    assert.equal(output.indexOf('Three draws') < output.indexOf('One win'), timed);
-    assert.equal(output.includes('>Pts</th>'), timed);
+    assert.equal(output.indexOf('Three draws') < output.indexOf('One win'), true);
+    assert.equal(output.includes('>Pts</th>'), true);
   }
 });
 
