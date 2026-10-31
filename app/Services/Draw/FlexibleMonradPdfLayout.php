@@ -14,7 +14,7 @@ final class FlexibleMonradPdfLayout
 
     public function build(array $state): array
     {
-        $matches = (array) ($state['matches'] ?? []);
+        $matches = array_filter((array) ($state['matches'] ?? []), fn ($match) => ($match['challenge_status'] ?? null) !== 'disabled');
         $players = collect($state['players'] ?? [])->mapWithKeys(fn ($player) => [(int) $player['id'] => $player]);
         $baseRanks = collect($state['base_positions'] ?? [])->filter(fn ($row) => ! empty($row['player']))
             ->mapWithKeys(fn ($row) => [(int) $row['player'] => (int) $row['position']]);

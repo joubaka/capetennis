@@ -55,4 +55,28 @@ class FlexibleMonradPrintResultsTest extends TestCase
         $this->assertNull($layout['boards'][0]['cards'][0]['note']);
         $this->assertSame(['Bye - no position awarded', 'Unassigned after withdrawal'], array_column($layout['positions'], 'name'));
     }
+
+    public function test_disabled_challenge_branches_are_absent_but_selected_pending_and_skipped_matches_remain(): void
+    {
+        $state = $this->state();
+        foreach (['challenge_2' => [2, 3], 'challenge_4' => [4, 5], 'challenge_6' => [6, 7], 'challenge_8' => [8, 9],
+            'challenge_3' => [3, 4], 'challenge_2_repeat' => [2, 3]] as $key => $pair) {
+            $state['matches'][$key] = ['section' => 'Challenge play-offs', 'round' => $key === 'challenge_3' ? 2 : ($key === 'challenge_2_repeat' ? 3 : 1),
+                'label' => implode('–', $pair), 'number' => count($state['matches']) + 1, 'challenge_positions' => $pair,
+                'sources' => array_map(fn ($rank) => ['type' => 'player', 'base_position' => $rank], $pair),
+                'players' => [null, null], 'sets' => [], 'winner' => null,
+                'challenge_status' => in_array($key, ['challenge_6', 'challenge_8'], true) ? 'disabled' : ($key === 'challenge_4' ? 'skipped' : 'pending')];
+        }
+        $before = $state;
+        $layout = (new FlexibleMonradPdfLayout)->build($state);
+        $challenge = collect($layout['boards'])->firstWhere('section', 'Challenge play-offs');
+        $this->assertSame(['challenge_2', 'challenge_4', 'challenge_3', 'challenge_2_repeat'], array_column($challenge['cards'], 'key'));
+        $this->assertCount(4, $challenge['endpoints']);
+        $this->assertSame($before, $state);
+        foreach ($state['matches'] as &$match) if (isset($match['challenge_positions'])) $match['challenge_status'] = 'disabled';
+        unset($match);
+        $off = (new FlexibleMonradPdfLayout)->build($state);
+        $this->assertNotContains('Challenge play-offs', array_column($off['boards'], 'section'));
+        $this->assertSame($layout['positions'], $off['positions']);
+    }
 }

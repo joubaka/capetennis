@@ -688,4 +688,24 @@ class FlexibleMonradChallengeTest extends TestCase
             $this->assertSame($before, Fixture::with('fixtureResults')->findOrFail($id)->toArray());
         }
     }
+
+    public function test_disabled_branches_retain_fixture_state_and_settings_choices_for_renderers(): void
+    {
+        $draw = $this->draw(16, 16, null, [2, 4, 6, 8]);
+        $service = app(FlexibleMonradService::class);
+        $record = $service->enableRollingChallenges($draw, $draw->flexibleMonrad->revision);
+        $service->configureRollingChallenges($draw, $record->revision, FlexibleMonradCompiler::ROLLING_STAGES);
+        $state = $service->state($draw->fresh());
+        foreach (['challenge_6', 'challenge_8'] as $key) {
+            $this->assertSame('disabled', ((array) $state['matches'])[$key]['challenge_status']);
+            $this->assertNotContains($key, $state['rolling_challenge_stages']);
+            $this->assertArrayHasKey($key, $state['challenge_stage_options']['base']);
+        }
+        $this->assertSame($record->fixture_map, $draw->fresh()->flexibleMonrad->fixture_map);
+        if (getenv('DISABLED_CHALLENGE_SNAPSHOT') === '1') {
+            $page = $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk();
+            @mkdir(storage_path('app/testing'), 0777, true);
+            file_put_contents(storage_path('app/testing/disabled-challenge-branches.html'), $page->getContent());
+        }
+    }
 }

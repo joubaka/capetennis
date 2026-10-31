@@ -430,8 +430,9 @@
       + 'Only selected matches are played. A match is skipped if these players have already met in this draw or a player is unavailable.';
   }
   function generatedBoard() {
+    const selectedMatches = Object.fromEntries(Object.entries(state.matches).filter(([, match]) => match.challenge_status !== 'disabled'));
     const displayMatches = config.workflow === 'feed_in_monrad'
-      ? bracketLayout.withMainDrawByes(state.matches, state.draft) : state.matches;
+      ? bracketLayout.withMainDrawByes(selectedMatches, state.draft) : selectedMatches;
     const board = $('fm-board'),
       sections = new Map(),
       coords = new Map();
@@ -670,7 +671,7 @@
     const root = $('fm-timetable');
     if (!root) return;
     root.replaceChildren();
-    const matches = Object.values(state.matches || {});
+    const matches = Object.values(state.matches || {}).filter(match => match.challenge_status !== 'disabled');
     if (!matches.length) { root.append(el('p', '', 'Generate fixtures before scheduling matches.')); return; }
     const table = el('table');
     const head = el('thead');
@@ -723,7 +724,7 @@
     root.replaceChildren();
     const sections = new Map();
     if (state.generated)
-      Object.values(state.matches).forEach(match => {
+      Object.values(state.matches).filter(match => match.challenge_status !== 'disabled').forEach(match => {
         if (!sections.has(match.section)) sections.set(match.section, []);
         sections
           .get(match.section)
