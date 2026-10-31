@@ -29,8 +29,8 @@
         @if($estimate['played'] === 0)<p>With little direct evidence, the model pulls this estimate toward 50. That does not establish average playing strength.</p>@endif
         @if($estimate['reason'])<p>{{ $estimate['reason'] }}</p>@endif
     @else
-        <p class="h3">Unrated</p><p>No eligible standard-singles evidence for a shared rating. Modified-ball and unverified playing formats cannot establish a comparable all-age score.</p>
+        <p class="h3">Unrated</p><p>No eligible singles evidence for a shared rating. Verified played results must connect the player to the shared reference group.</p>
     @endif
-    <p class="alert alert-info text-dark">The shared rating uses one scale across ages within the connected standard-singles reference group. This provisional 0–100 index is not a win probability or an official selection ranking. Disconnected groups and separate age-specific performance scores cannot be compared.</p>
+    <p class="alert alert-info text-dark">The shared rating uses one scale across ages within the connected singles reference group. This provisional 0–100 index is not a win probability or an official selection ranking. Disconnected groups and separate age-specific performance scores cannot be compared.</p>
     <p>Calculated {{ $ability['built_at'] }} · <a href="{{ route('backend.player-performance.show', $player->id) }}">View shared comparison evidence</a></p>
 </div></div>

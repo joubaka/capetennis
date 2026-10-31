@@ -34,9 +34,11 @@ class AllAgeRatingModelTest extends TestCase
         $fit = (new AllAgeRatingModel)->fit([$this->match(1, 2, 'u13 boys', 'a'), $this->match(2, 3, 'u18 boys', 'b'), $this->match(10, 11, 'u10 girls', 'c')], CarbonImmutable::parse('2026-10-02'));
         $this->assertTrue($fit['ratings'][1]['comparable']);
         $this->assertFalse($fit['ratings'][10]['comparable']);
-        $this->assertNull($fit['ratings'][10]['score']);
+        $this->assertNotNull($fit['ratings'][10]['score']);
         $this->assertNotNull($fit['ratings'][10]['local_score']);
-        $this->assertSame('disconnected', $fit['ratings'][10]['rating_status']);
+        $this->assertSame('provisional_local', $fit['ratings'][10]['rating_status']);
+        $this->assertSame('Low', $fit['ratings'][10]['confidence_label']);
+        $this->assertLessThanOrEqual(39, $fit['ratings'][10]['confidence_index']);
     }
 
     public function test_ancient_bridge_cannot_make_recent_disconnected_groups_comparable(): void
@@ -44,21 +46,24 @@ class AllAgeRatingModelTest extends TestCase
         $fit = (new AllAgeRatingModel)->fit([$this->match(1, 2, 'u13 boys', 'a'), $this->match(3, 4, 'u18 boys', 'b'), $this->match(2, 3, 'u15 boys', 'old', '2024-10-01')], CarbonImmutable::parse('2026-10-02'));
         $this->assertCount(2, $fit['components']);
         $this->assertSame(1, $fit['excluded']['Outside the supported played-match window']);
-        $this->assertNull($fit['ratings'][3]['score']);
+        $this->assertNotNull($fit['ratings'][3]['score']);
     }
 
-    public function test_modified_ball_and_unknown_young_formats_never_join_standard_graph(): void
+    public function test_ball_colour_court_and_age_labels_do_not_classify_verified_head_to_head_results(): void
     {
         $model = new AllAgeRatingModel;
-        foreach (['red', 'orange', 'green', 'unrecognized'] as $ball) { $this->assertFalse($model->format('U13 boys', $ball)['eligible']); }
-        foreach (['U7 boys', 'U9 girls', 'U10A boys', 'Open', 'Unknown'] as $category) { $this->assertFalse($model->format($category, null)['eligible']); }
+        foreach (['red', 'orange', 'green', 'unrecognized'] as $ball) { $this->assertTrue($model->format('U13 boys', $ball)['eligible']); }
+        foreach (['U7 boys', 'U9 girls', 'U10A boys', 'Open', 'Unknown'] as $category) { $this->assertTrue($model->format($category, null)['eligible']); }
         $this->assertTrue($model->format('U10 boys', 'yellow')['eligible']);
-        $this->assertFalse($model->format('U13 green ball', 'yellow')['eligible']);
-        $this->assertFalse($model->format('U13 short court', 'standard')['eligible']);
-        $this->assertTrue($model->format('U13B boys', null)['assumed']);
+        $this->assertTrue($model->format('U13 green ball', 'yellow')['eligible']);
+        $this->assertTrue($model->format('U13 short court', 'standard')['eligible']);
+        $this->assertFalse($model->format('U13B boys', null)['assumed']);
         $fit = $model->fit([$this->match(1, 2, 'u13 boys', 'a'), $this->match(2, 3, 'u10 boys', 'unknown', ball: null), $this->match(2, 4, 'u18 boys', 'green', ball: 'green')], CarbonImmutable::parse('2026-10-02'));
-        $this->assertSame([1, 2], array_keys($fit['ratings']));
-        $this->assertSame(2, array_sum($fit['excluded']));
+        $this->assertSame([1, 2, 3, 4], array_keys($fit['ratings']));
+        $this->assertSame([], $fit['excluded']);
+        $this->assertCount(1, $fit['components']);
+        $relabeled = [$this->match(1, 2, 'Open', 'a', ball: 'red'), $this->match(2, 3, 'u18 girls orange ball', 'unknown', ball: 'orange'), $this->match(2, 4, 'unknown', 'green', ball: null)];
+        $this->assertSame(array_column($fit['ratings'], 'score'), array_column($model->fit($relabeled, CarbonImmutable::parse('2026-10-02'))['ratings'], 'score'));
     }
 
     public function test_duplicate_source_and_input_order_do_not_change_ratings_or_counts(): void
@@ -78,11 +83,11 @@ class AllAgeRatingModelTest extends TestCase
         $this->assertArrayNotHasKey(3, $fit['ratings']);
     }
 
-    public function test_legacy_assumptions_remain_visible_and_never_receive_high_evidence_label(): void
+    public function test_missing_ball_metadata_does_not_add_standard_format_assumptions(): void
     {
         $fit = (new AllAgeRatingModel)->fit([$this->match(1, 2, 'u13 boys', 'legacy', ball: null)], CarbonImmutable::parse('2026-10-02'));
-        $this->assertSame(1, $fit['ratings'][1]['standard_assumed_matches']);
-        $this->assertStringContainsString('assume standard', $fit['ratings'][1]['confidence_explanation']);
+        $this->assertSame(0, $fit['ratings'][1]['standard_assumed_matches']);
+        $this->assertStringNotContainsString('assume standard', $fit['ratings'][1]['confidence_explanation']);
         $context = ['rating_scope' => 'all_age', 'comparable' => true, 'confidence_index' => 99, 'played' => 20, 'component_inferred' => 0, 'bridge_count' => 0];
         $this->assertSame('High', AbilityConfidenceDisplay::normalize($context)['confidence_label']);
         $this->assertSame('Medium', AbilityConfidenceDisplay::normalize($context + ['standard_assumed_matches' => 1])['confidence_label']);

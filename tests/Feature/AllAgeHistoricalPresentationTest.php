@@ -46,4 +46,28 @@ class AllAgeHistoricalPresentationTest extends TestCase
         $recent = array_replace($estimate, ['historical_connection' => false]);
         $this->assertStringNotContainsString('role="status"', view('backend.player-performance.all-age-rating', ['estimate' => $recent])->render());
     }
+
+    public function test_disconnected_numeric_rating_is_visible_with_an_explicit_low_confidence_warning(): void
+    {
+        $saved = $this->savedHistory();
+        $saved['months'][0]['cohorts'][AllAgeRatingModel::COHORT][1] = [
+            'score' => 61.5, 'group' => 'local', 'component' => 'local', 'connection_status' => 'disconnected',
+            'historical_connection' => false, 'connection_age_days' => null, 'connection_reference_date' => null,
+        ];
+        $ability = $this->createStub(PlayerSharedAbilityService::class);
+        $ability->method('fingerprint')->willReturn('same');
+        $store = $this->createStub(PlayerRatingHistoryStore::class);
+        $store->method('read')->willReturn($saved);
+        $player = new Player;
+        $player->setRawAttributes(['id' => 1, 'name' => 'Synthetic', 'surname' => 'Player']);
+        $history = (new PlayerRatingHistoryService($ability, $store))->forPlayer($player, ['month' => 0]);
+        $html = view('frontend.my-tennis.rating', ['ratingPlayer' => $player, 'ratingHistory' => $history])->render();
+        $this->assertStringContainsString('61.5', $html);
+        $this->assertStringContainsString('Provisional rating · low confidence', $html);
+        $this->assertStringContainsString('not yet calibrated against other comparison groups', $html);
+        $estimate = ['score' => 61.5, 'component' => 'local', 'confidence_label' => 'Low', 'comparable' => false];
+        $html = view('backend.player-performance.all-age-rating', compact('estimate'))->render();
+        $this->assertStringContainsString('61.5/100', $html);
+        $this->assertStringContainsString('Provisional within-group rating · low confidence', $html);
+    }
 }

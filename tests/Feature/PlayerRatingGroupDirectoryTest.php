@@ -34,25 +34,26 @@ class PlayerRatingGroupDirectoryTest extends TestCase
         return [$players, $snapshot, $graph['ratings'][$players[3]->id]['component']];
     }
 
-    public function test_disconnected_girls_receive_explicit_within_group_values_only_after_selecting_their_group(): void
+    public function test_disconnected_girls_have_provisional_ratings_and_positions_only_within_their_group(): void
     {
         Role::findOrCreate('super-user', 'web');
         $this->actingAs(User::factory()->create()->assignRole('super-user'));
         [$players, $snapshot, $group] = $this->saved();
         $url = route('backend.player-performance.ratings');
         $default = $this->get($url.'?gender=girls')->assertOk()->assertSee('Girls First')->assertDontSee('within-group only');
-        $this->assertNull($default->viewData('players')->getCollection()->first()['rating']);
+        $this->assertIsFloat($default->viewData('players')->getCollection()->first()['rating']['score']);
+        $default->assertSee('Provisional within-group rating')->assertSee('Not calibrated against other groups.');
         $response = $this->get($url.'?comparison_group='.$group)->assertOk()->assertSee('Within-group ratings only.')
             ->assertSee('within-group only')->assertSee('Girls First')->assertSee('Girls Second')->assertDontSee('Reference One')
-            ->assertSee('Shared badges and profile ratings remain withheld.')->assertHeader('Cache-Control', 'no-store, private');
+            ->assertSee('Provisional badges and profile ratings carry the same low-confidence, within-group restriction.')->assertHeader('Cache-Control', 'no-store, private');
         if ($artifact = getenv('CT_GROUP_VIEW_HTML')) { file_put_contents($artifact, $response->getContent()); }
         $first = $response->viewData('players')->getCollection()->first();
         $this->assertSame($players[3]->id, $first['id']);
         $this->assertSame(1, $first['position']);
-        $this->assertNull($first['rating']['score']);
+        $this->assertIsFloat($first['rating']['score']);
         $this->assertFalse($first['rating']['comparable']);
         $this->assertIsFloat($first['rating']['within_group_score']);
-        $this->assertNull($snapshot['all_age']['ratings'][$players[3]->id]['score']);
+        $this->assertSame($snapshot['all_age']['ratings'][$players[3]->id]['score'], $first['rating']['score']);
         $search = $this->get($url.'?comparison_group='.$group.'&search=Second')->assertOk()->assertDontSee('Girls First')->assertSee('Girls Second');
         $this->assertSame(2, $search->viewData('players')->getCollection()->first()['position']);
         $this->assertDatabaseCount('user_players', 0);

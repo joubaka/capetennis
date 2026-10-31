@@ -33,7 +33,7 @@ class PlayerRatingGroupProjection
             $local = $rating['local_score'] ?? null;
             if (($rating['component'] ?? null) !== $comparisonGroup || !is_numeric($local)
                 || !is_finite((float) $local) || $local < 0 || $local > 100
-                || ($rating['score'] ?? null) !== null || !empty($rating['comparable'])) { return []; }
+                || ($rating['score'] ?? null) !== $local || !empty($rating['comparable'])) { return []; }
             $projected[$id] = array_intersect_key($rating, array_flip([
                 'score', 'comparable', 'component', 'comparison_group', 'cohort', 'last_played',
                 'confidence_label', 'confidence_explanation', 'standard_assumed_matches', 'played',

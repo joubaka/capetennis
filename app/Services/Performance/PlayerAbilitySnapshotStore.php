@@ -18,11 +18,12 @@ class PlayerAbilitySnapshotStore
             'all_age' => ['version' => AllAgeRatingModel::VERSION, 'regularization' => AllAgeRatingModel::REGULARIZATION, 'window_days' => AllAgeRatingModel::WINDOW_DAYS, 'recent_window_days' => AllAgeRatingModel::RECENT_WINDOW_DAYS,
                 'evidence' => 'played singles only; no age offsets, ordinal fields or cohort trial anchors',
                 'reference' => 'historical component containing the largest recent connected backbone; no reference without recent matches',
+                'disconnected' => 'provisional numeric estimate within its played component; confidence capped Low; not calibrated across components',
                 'historical_connection' => 'minimax played-link age from the recent backbone; edge age is freshest actual result between opponents',
                 'historical_connection_confidence_cap' => AllAgeRatingModel::HISTORICAL_CONFIDENCE_CAP,
-                'format' => 'explicit standard/yellow or conventional U11+ legacy assumption; modified and unresolved young formats excluded'],
+                'format' => 'all ball and court categories included; no format assumptions or rating offsets'],
             'all_age_team_reader' => ['version' => 1, 'demographics' => 'labels do not establish identity or restrict shared singles',
-                'cross_context_format' => 'explicit standard/yellow required', 'source_gates' => 'independent pre-cohort identity, event-side, roster, singles, score, date and publication checks'],
+                'cross_context_format' => 'playing conditions do not restrict verified singles', 'source_gates' => 'independent pre-cohort identity, event-side, roster, singles, score, date and publication checks'],
             'policy' => self::POLICY_VERSION, 'played_event_incident_budget' => 1, 'played_half_life_days' => 180,
             'unanchored_prior' => 0.5, 'ordinal_weight' => SharedAbilityModel::ORDINAL_WEIGHT,
             'played_margin_policy' => PlayedMatchMarginPolicy::VERSION, 'played_margin_floor' => 0.75,
@@ -280,9 +281,9 @@ class PlayerAbilitySnapshotStore
             $comparable = $component === $reference;
             if (!is_array($rating) || ($rating['rating_scope'] ?? null) !== 'all_age' || ($rating['cohort'] ?? null) !== AllAgeRatingModel::COHORT
                 || ($rating['component'] ?? null) !== $component || ($rating['comparison_group'] ?? null) !== $component
-                || ($rating['comparable'] ?? null) !== $comparable || ($rating['rating_status'] ?? null) !== ($comparable ? 'provisional' : 'disconnected')
+                || ($rating['comparable'] ?? null) !== $comparable || ($rating['rating_status'] ?? null) !== ($comparable ? 'provisional' : 'provisional_local')
                 || !is_numeric($rating['strength'] ?? null) || !is_finite((float) $rating['strength'])
-                || !array_key_exists('score', $rating) || ($comparable && $rating['score'] === null) || (!$comparable && $rating['score'] !== null)
+                || !is_numeric($rating['score'] ?? null) || (!$comparable && ($rating['score'] !== ($rating['local_score'] ?? null)))
                 || ($rating['score'] !== null && (!is_numeric($rating['score']) || !is_finite((float) $rating['score']) || $rating['score'] < 0 || $rating['score'] > 100))) { throw new \UnexpectedValueException('Invalid all-age estimate.'); }
             $age = $rating['connection_age_days'] ?? null;
             $historical = $comparable && !isset($backboneMembers[$id]);
@@ -291,7 +292,7 @@ class PlayerAbilitySnapshotStore
                 || ($comparable && (!is_int($age) || ($historical ? $age <= AllAgeRatingModel::RECENT_WINDOW_DAYS || $age > AllAgeRatingModel::WINDOW_DAYS : $age !== 0)))
                 || (!$comparable && ($age !== null || ($rating['connection_reference_date'] ?? null) !== null))
                 || ($comparable && ($rating['connection_reference_date'] ?? null) !== $policyDate->subDays($age)->toDateString())
-                || ($historical && (!is_int($rating['confidence_index'] ?? null) || $rating['confidence_index'] < 0 || $rating['confidence_index'] > AllAgeRatingModel::HISTORICAL_CONFIDENCE_CAP
+                || (($historical || !$comparable) && (!is_int($rating['confidence_index'] ?? null) || $rating['confidence_index'] < 0 || $rating['confidence_index'] > AllAgeRatingModel::HISTORICAL_CONFIDENCE_CAP
                     || ($rating['confidence_label'] ?? null) !== 'Low' || ($rating['confidence_band'] ?? null) !== 'Low'))) { throw new \UnexpectedValueException('Invalid historical connection confidence or provenance.'); }
         }
     }

@@ -46,6 +46,19 @@ class AllAgeHistoricalHistoryIntegrityTest extends TestCase
                 file_put_contents($path, json_encode($invalid, JSON_THROW_ON_ERROR));
                 $this->assertNull($store->read());
             }
+            $local = $saved;
+            foreach ($local['months'] as &$month) {
+                $month['cohorts'][AllAgeRatingModel::COHORT][1] = array_replace($month['cohorts'][AllAgeRatingModel::COHORT][1], [
+                    'connection_status' => 'disconnected', 'historical_connection' => false,
+                    'connection_age_days' => null, 'connection_reference_date' => null,
+                ]);
+            }
+            unset($month);
+            $store->replace($local, $local['source_fingerprint']);
+            $this->assertSame($local, $store->read(), 'Numeric provisional within-group history must survive persistence.');
+            $local['months'][11]['cohorts'][AllAgeRatingModel::COHORT][1]['score'] = null;
+            file_put_contents($path, json_encode($local, JSON_THROW_ON_ERROR));
+            $this->assertNull($store->read(), 'A disconnected estimate cannot silently become an old-policy missing score.');
         } finally {
             if (is_file($path)) unlink($path);
         }

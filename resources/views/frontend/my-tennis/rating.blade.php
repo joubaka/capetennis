@@ -5,7 +5,7 @@
     .ctr-history .ctr-stat { border:1px solid #dce6e2;border-radius:14px;padding:1rem;min-width:0; }
     .ctr-history .ctr-stat h3 { font-size:.8rem;color:#5e716c;margin:0 0 .6rem; }
     .ctr-history .ctr-stat-value { color:#233d50;font-size:1.6rem;line-height:1.3;font-weight:700; }
-    .ctr-history .ctr-filters { display:grid;grid-template-columns:2fr 1.5fr 1fr;gap:.75rem; }
+    .ctr-history .ctr-filters { display:grid;grid-template-columns:1.5fr 1fr;gap:.75rem; }
     .ctr-history .ctr-filters label { font-size:.8rem;display:block;margin-bottom:.3rem; }
     .ctr-history .ctr-result { border-top:1px solid #e0e7e3;padding:1rem 0;overflow-wrap:anywhere; }
     .ctr-history .ctr-result-top { display:flex;flex-wrap:wrap;justify-content:space-between;gap:.5rem;align-items:center; }
@@ -43,16 +43,14 @@
       $comparable = $point && $previous && $point['group'] === $previous['group'];
       $axis = $ratingHistory['axis'];
       $plotY = fn ($score) => 225 - (($score - $axis['min']) / ($axis['max'] - $axis['min'])) * 200;
-      $query = ['cohort' => $ratingHistory['cohort'], 'month' => $ratingHistory['month'], 'scope' => $ratingHistory['scope'], 'scale' => $ratingHistory['scale']];
+      $query = ['month' => $ratingHistory['month'], 'scope' => $ratingHistory['scope'], 'scale' => $ratingHistory['scale']];
       $ratingUrl = fn ($changes = []) => route('my.tennis.rating', ['player' => $ratingPlayer->id] + array_replace($query, $changes));
     @endphp
     <p class="small text-muted mt-3 mb-3">Saved through {{ $ratingHistory['as_of'] }} · updated nightly at 03:00 SAST.@if($ratingHistory['stale']) Showing the latest saved calculation until the next update is ready.@endif</p>
-    @if(!$points)<p role="status" class="alert alert-info">No comparable shared rating is available for this player. Suitable recent standard-singles results must connect the player to the reference group. Historical context estimates remain available in the selector.</p>@endif
+    @if(!$points)<p role="status" class="alert alert-info">No comparable shared rating is available for this player. Suitable recent singles results must connect the player to the reference group.</p>@endif
     @if(!empty($point['historical_connection']))<p role="status" class="alert alert-warning"><strong>Low confidence — historical connection.</strong> The selected estimate needs an older match link dated {{ $point['connection_reference_date'] ?? 'unknown' }} ({{ $point['connection_age_days'] ?? '?' }} days old), even if this player has recent results.</p>@endif
+    @if(($point['connection_status'] ?? '') === 'disconnected')<p role="status" class="alert alert-warning"><strong>Provisional rating · low confidence.</strong> This estimate is based on this player's connected opponents. It is not yet calibrated against other comparison groups; the same number in another group does not establish equal ability.</p>@endif
     <form method="get" action="{{ route('my.tennis.rating', $ratingPlayer) }}" data-rating-filters class="ctr-filters">
-      <div><label for="ctr-cohort">Shared rating / historical context</label><select class="form-select" name="cohort" id="ctr-cohort">
-        @foreach(array_keys($ratingHistory['series']) as $cohort)<option value="{{ $cohort }}" @selected($ratingHistory['cohort'] === $cohort)>{{ ucfirst($cohort) }}</option>@endforeach
-      </select></div>
       <div><label for="ctr-month">Explore a month</label><select class="form-select" name="month" id="ctr-month">
         @foreach($ratingHistory['months'] as $index => $month)<option value="{{ $index }}" @selected($ratingHistory['month'] === $index)>{{ \Carbon\CarbonImmutable::parse($month['date'])->format('M Y') }} · {{ $month['date'] }}</option>@endforeach
       </select></div>
@@ -125,8 +123,8 @@
       @endif
     </section>
     <details class="ctr-method"><summary>How to read CTR and its evidence</summary><div class="small text-muted mt-2">
-      <p>CTR is a provisional ability estimate, not an official ranking or an accuracy percentage. The all-age standard-singles rating uses played results across ages; compare players connected to the same shared reference group. Separate historical age-context estimates remain comparable only within their own cohort and group. Solid lines retain the same comparison group; dashed lines join consecutive snapshots whose group or baseline changed. Those changes are not like-for-like performance gains or losses.</p>
-      <p>Each point refits the model using eligible completed matches dated on or before that date, including matches from ongoing events. The shared model uses up to two years of standard-singles results with a six-month weight half-life. Comparisons needing links older than one year are marked Low confidence — historical connection. Modified-ball formats are excluded and disconnected scores are withheld. Older conventional categories may include an explicitly assumed standard playing format. Recorded publication and player identity are checked as they exist now, so this is a retrospective reconstruction rather than archived historical ratings. Finishing-order and main-trial baseline evidence enter only after the event end date and belong to separate historical context estimates.</p>
+      <p>CTR is a provisional ability estimate, not an official ranking or an accuracy percentage. The all-age singles rating uses played results across ages; compare players connected to the same shared reference group. Solid lines retain the same comparison group; dashed lines join consecutive snapshots whose group or baseline changed. Those changes are not like-for-like performance gains or losses.</p>
+      <p>Each point refits the model using eligible completed matches dated on or before that date, including matches from ongoing events. The shared model uses up to two years of singles results with a six-month weight half-life. Comparisons needing links older than one year are marked Low confidence — historical connection. All ball colours and court formats are included without category-based rating offsets. Disconnected groups receive provisional within-group ratings with low confidence; scores are not calibrated against other groups. Recorded publication and player identity are checked as they exist now, so this is a retrospective reconstruction rather than archived historical ratings. This shared rating uses played singles results only; finishing orders and category baselines do not add points.</p>
       <p>Premium membership access remains hidden until enabled and a verified premium entitlement is connected. Super Admin can preview any player.</p>
       @if($point)<details><summary>Technical comparison reference</summary><p class="mt-2 mb-0">Cohort: {{ $ratingHistory['cohort'] }} · comparison group {{ $point['component'] }} · saved {{ $ratingHistory['built_at'] }}</p></details>@endif
     </div></details>

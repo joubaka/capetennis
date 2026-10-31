@@ -94,7 +94,7 @@ class AllAgeRatingExperimentService
                     $counts[$key] ??= ['players' => 0, 'recent_evidence_players' => 0, 'shared_scored_players' => 0, 'within_component_players' => 0];
                     $counts[$key]['players']++;
                     $counts[$key]['recent_evidence_players'] += (int) $recent;
-                    $counts[$key]['shared_scored_players'] += (int) is_numeric($rating['score'] ?? null);
+                    $counts[$key]['shared_scored_players'] += (int) (!empty($rating['comparable']) && is_numeric($rating['score'] ?? null));
                     $counts[$key]['within_component_players'] += (int) is_numeric($rating['local_score'] ?? null);
                 }
                 $key = $rating['component'];

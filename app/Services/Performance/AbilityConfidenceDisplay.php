@@ -7,7 +7,7 @@ class AbilityConfidenceDisplay
 {
     public static function label(int $index, ?array $context = null): string
     {
-        if (($context['rating_scope'] ?? '') === 'all_age' && !empty($context['historical_connection'])) { return 'Low'; }
+        if (($context['rating_scope'] ?? '') === 'all_age' && (!empty($context['historical_connection']) || ($context['comparable'] ?? true) === false)) { return 'Low'; }
         if ($context !== null && array_key_exists('played', $context) && (int) $context['played'] === 0) { return 'Low'; }
         $label = $index < 40 ? 'Low' : ($index < 70 ? 'Medium' : 'High');
         if ($label === 'High' && $context !== null && (
@@ -32,7 +32,7 @@ class AbilityConfidenceDisplay
             if (($estimate['standard_assumed_matches'] ?? 0) > 0 || ($estimate['component_standard_assumed_matches'] ?? 0) > 0) { $reasons[] = 'some historical matches assume standard playing conditions'; }
         } elseif (($estimate['baseline_status'] ?? '') !== 'Direct main-trial baseline') { $reasons[] = 'the main-trial reference is indirect or unavailable'; }
         if (($estimate['played'] ?? 0) < 5) { $reasons[] = 'own played-match evidence is sparse'; }
-        if (($estimate['rating_scope'] ?? '') === 'all_age' && !empty($estimate['historical_connection'])) {
+        if (($estimate['rating_scope'] ?? '') === 'all_age' && (!empty($estimate['historical_connection']) || ($estimate['comparable'] ?? true) === false)) {
             $estimate['confidence_index'] = min(AllAgeRatingModel::HISTORICAL_CONFIDENCE_CAP, (int) ($estimate['confidence_index'] ?? 0));
         }
         return array_replace($estimate, ['confidence_band' => $label, 'confidence_label' => $label,

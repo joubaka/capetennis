@@ -4,7 +4,7 @@ namespace App\Services\Performance;
 
 use Illuminate\Support\Facades\{DB, Schema};
 
-/** Resolve the actual event court where available; never infer modified-ball equivalence. */
+/** Resolve optional playing-condition metadata while enforcing individual schedule integrity. */
 class AllAgeMatchFormatResolver
 {
     private array $events = [];
@@ -33,7 +33,7 @@ class AllAgeMatchFormatResolver
         foreach ($courts as $court) { $byKey[$court->venue_id.'|'.$court->label] = $court->ball_type; }
         $key = ($match['venue_id'] ?? '').'|'.($match['court_label'] ?? '');
         if (($match['venue_id'] ?? null) && trim((string) ($match['court_label'] ?? '')) !== '' && array_key_exists($key, $byKey) && $byKey[$key] !== null) {
-            return $this->decision(['ball_type' => $byKey[$key], 'format_reason' => null], $match);
+            return ['ball_type' => $byKey[$key], 'format_reason' => null];
         }
         $assigned = [];
         foreach ($allocations as $allocation) {
@@ -41,24 +41,8 @@ class AllAgeMatchFormatResolver
         }
         if ($assigned) {
             $unique = array_values(array_unique($assigned, SORT_REGULAR));
-            if (count($unique) === 1 && $unique[0] !== null) { return $this->decision(['ball_type' => $unique[0], 'format_reason' => null], $match); }
-            return $this->decision(['ball_type' => null, 'format_reason' => 'Draw court format is mixed or unresolved'], $match);
+            if (count($unique) === 1 && $unique[0] !== null) { return ['ball_type' => $unique[0], 'format_reason' => null]; }
         }
-        foreach ($courts as $court) {
-            if ($court->ball_type !== null && !in_array($court->ball_type, ['standard', 'yellow'], true)) {
-                return $this->decision(['ball_type' => null, 'format_reason' => 'Match court is unresolved in an event with modified-ball courts'], $match);
-            }
-        }
-        return $this->decision(['ball_type' => null, 'format_reason' => null], $match);
-    }
-
-    private function decision(array $resolved, array $match): array
-    {
-        if ($match['all_age_source_format_reason'] ?? null) { $resolved['format_reason'] = $match['all_age_source_format_reason']; }
-        if (!empty($match['all_age_requires_explicit_format']) && $resolved['ball_type'] === null
-            && !preg_match('/\b(yellow[\s-]*ball|standard[\s-]*ball)\b/iu', $match['category'] ?? '')) {
-            $resolved['format_reason'] ??= 'Cross-context or unclassified team singles require explicit standard playing conditions';
-        }
-        return $resolved;
+        return ['ball_type' => null, 'format_reason' => null];
     }
 }

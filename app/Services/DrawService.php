@@ -1652,7 +1652,9 @@ class DrawService
       // SAVE MATCH WINNER
       $fixture->winner_registration = app(IndividualMatchOutcomeService::class)->winnerFromSets($fixture, $sets);
 
-      $fixture->match_status = $fixture->winner_registration ? 1 : 2;
+      // A submitted, validated timed total is final even when the round-robin result is a draw.
+      $fixture->match_status = $fixture->draw?->settings?->score_format === \App\Domain\Draws\Services\TennisScoreFormat::TIMED
+        || $fixture->winner_registration ? 1 : 2;
       $fixture->save();
       app(MatchResultNotificationService::class)->record($fixture);
     });

@@ -23,6 +23,7 @@ class PlayerRatingHistoryService
         foreach ($saved['months'] as $index => $snapshot) {
             $hasSharedProjection = $hasSharedProjection || array_key_exists(AllAgeRatingModel::COHORT, $snapshot['cohorts']);
             foreach ($snapshot['cohorts'] as $cohort => $data) {
+                if ($cohort !== AllAgeRatingModel::COHORT) continue;
                 $rating = $data[$player->id] ?? null;
                 if (!$rating || !is_numeric($rating['score']) || !is_finite((float) $rating['score'])) continue;
                 $series[$cohort][] = ['index' => $index, 'date' => $snapshot['date'], 'score' => $rating['score'],
@@ -34,12 +35,10 @@ class PlayerRatingHistoryService
             }
         }
         if ($hasSharedProjection) { $series[AllAgeRatingModel::COHORT] ??= []; }
-        $cohorts = array_keys($series);
-        usort($cohorts, fn ($a, $b) => strcmp((end($series[$b]) ?: [])['last_activity'] ?? '', (end($series[$a]) ?: [])['last_activity'] ?? '') ?: strcmp($a, $b));
-        $cohort = isset($series[$filters['cohort'] ?? '']) ? $filters['cohort'] : (isset($series[AllAgeRatingModel::COHORT]) ? AllAgeRatingModel::COHORT : ($cohorts[0] ?? null));
+        $cohort = AllAgeRatingModel::COHORT;
         $month = max(0, min(11, (int) ($filters['month'] ?? 11)));
         $scope = ($filters['scope'] ?? 'new') === 'all' ? 'all' : 'new';
-        $points = $cohort ? $series[$cohort] : [];
+        $points = $series[$cohort] ?? [];
         $point = collect($points)->firstWhere('index', $month);
         $previous = collect($points)->firstWhere('index', $month - 1);
         $evidence = $this->evidence($saved['evidence'], $player, $cohort, $month, $scope, (int) ($filters['page'] ?? 1), $point !== null);

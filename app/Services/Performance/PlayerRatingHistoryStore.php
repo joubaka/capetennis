@@ -89,7 +89,7 @@ class PlayerRatingHistoryStore
             || !is_bool($rating['historical_connection'] ?? null)
             || !array_key_exists('connection_age_days', $rating) || !array_key_exists('connection_reference_date', $rating)) return false;
         if ($status === 'disconnected') {
-            return $rating['score'] === null && $rating['historical_connection'] === false
+            return is_numeric($rating['score']) && $rating['historical_connection'] === false
                 && $rating['connection_age_days'] === null && $rating['connection_reference_date'] === null;
         }
         $age = $rating['connection_age_days'];

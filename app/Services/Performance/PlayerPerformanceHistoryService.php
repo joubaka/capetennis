@@ -182,6 +182,7 @@ class PlayerPerformanceHistoryService
             $winsNeeded = $hasPreset ? \App\Domain\Draws\Services\TennisScoreFormat::get($format)['wins_needed'] : (int) ceil(max(1, min(5, (int) ($fixture->draw->settings?->num_sets ?: 3))) / 2);
             $maxWins = max($sets->filter(fn ($set) => $set->registration1_score > $set->registration2_score)->count(), $sets->filter(fn ($set) => $set->registration2_score > $set->registration1_score)->count());
             if (!in_array((int) $fixture->match_status, $sharedNetwork ? [0, 1, 2, 3] : [1, 2, 3], true) || !$expected || !$validation['valid'] || (!$hasPreset && !$credibleLegacy) || ($declared && $declared !== $expected)
+                || ($timed && (int) $fixture->match_status !== 1)
                 || ((int) $fixture->match_status === 0 && (!$sharedNetwork || !$this->completeSequence($sets, $winsNeeded, 'registration1_score', 'registration2_score')))
                 || ((int) $fixture->match_status === 2 && (!$legacyRr || (!$hasPreset && $maxWins < $winsNeeded)))
                 || ((int) $fixture->match_status === 3 && ($declared !== $expected || (!$hasPreset && $maxWins < $winsNeeded)))) {
@@ -352,7 +353,7 @@ class PlayerPerformanceHistoryService
                 $allAgeReason ??= $reason;
             }
             $allAgeData = $allAgeEvidence ? ['all_age_reason' => $allAgeReason,
-                'all_age_requires_explicit_format' => $sharedCohort === null,
+                'all_age_requires_explicit_format' => false,
                 'all_age_contexts' => $allAgeContext['contexts'],
                 'all_age_cohort' => $sharedCohort ?? implode(' / ', $allAgeContext['contexts']),
                 'all_age_source_format_reason' => $allAgeContext['format_reason']] : [];
@@ -392,11 +393,6 @@ class PlayerPerformanceHistoryService
                 }
             }
             $label = $source->category?->category?->name ?? $source->name;
-            $formatLabel = $label ?? '';
-            if (!$source->category && $source->regions?->region_name
-                && preg_match('/^(.+?)\s+(u\s*\/?\s*\d{1,2}\b.*)$/iu', trim($formatLabel), $parts)
-                && preg_match('/^'.preg_quote(trim($parts[1]), '/').'(?:\s|$)/iu', trim($source->regions->region_name))) { $formatLabel = $parts[2]; }
-            if ((new AllAgeRatingModel)->format($formatLabel, 'yellow')['reason'] !== null) { $formatReason = 'Team source declares a modified ball or court format'; }
             $normalized = app(PlayerSharedAbilityService::class)->cohort(app(PlayerPerformancePilotService::class)->division($label ?? '')['cohort']);
             $contexts[] = preg_match('/\bu(\d{1,2}) (boys|girls)\b/u', $normalized, $parts) ? 'u'.(int) $parts[1].' '.$parts[2] : 'unclassified singles';
         }

@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\{Cache, DB, Schema};
 /** Private v6 shared-opponent estimates. No saved financial/player/ranking state. */
 class PlayerSharedAbilityService
 {
-    public const VERSION = 11;
+    public const VERSION = 13;
     private const EVENT_CAP = 1000;
     private const PLAYER_CAP = 5000;
     private const EDGE_CAP = 50000;

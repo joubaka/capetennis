@@ -128,7 +128,7 @@ class PlayerAbilityValidationService
             'current' => $this->metrics($predictions), 'chance_reference' => $this->metrics(array_fill(0, count($predictions), 0.5)),
             'connection_groups' => array_map($this->metrics(...), $connectionGroups),
             'age_category_groups' => $subgroups, 'excluded' => $excluded,
-            'interpretation' => 'Chronological holdout of the shared standard-singles reference. Category groups describe held-out events, not separate rating scales. Small samples and sparse bridges cannot establish all-age calibration.'];
+            'interpretation' => 'Chronological holdout of the shared singles reference. Category groups describe held-out events, not separate rating scales. Small samples and sparse bridges cannot establish all-age calibration.'];
     }
 
     /** Same held-out rows, plus a paired comparison on the intersection of covered players. */

@@ -14,6 +14,59 @@ class TimedDrawScoringTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_identical_explicit_timed_final_submission_repairs_only_stale_metadata_after_playoffs_exist(): void
+    {
+        $draw = $this->draw();
+        $fixture = $this->fixture($draw);
+        $fixture->update(['match_status' => 2, 'winner_registration' => null]);
+        $set = $fixture->fixtureResults()->create(['set_nr' => 1, 'registration1_score' => 0, 'registration2_score' => 1,
+            'winner_registration' => $fixture->registration2_id, 'loser_registration' => $fixture->registration1_id]);
+        $playoff = $this->fixture($draw, 'MAIN');
+        $playoff->update(['match_status' => 1, 'winner_registration' => $playoff->registration1_id]);
+        $playoff->fixtureResults()->create(['set_nr' => 1, 'registration1_score' => 4, 'registration2_score' => 2]);
+        $venue = DB::table('venues')->insertGetId(['name' => 'Protected playoff court']);
+        $playoff->orderOfPlay()->create(['draw_id' => $draw->id, 'venue_id' => $venue, 'court' => '1', 'time' => '2026-10-31 10:00:00']);
+        $before = [
+            DB::table('fixtures')->where('id', $playoff->id)->get()->toJson(),
+            DB::table('fixture_results')->orderBy('id')->get()->toJson(),
+            DB::table('order_of_plays')->orderBy('id')->get()->toJson(),
+        ];
+        $url = route('rr.fixture.saveScore', $fixture);
+        $actor = auth()->user();
+        $this->actingAs(User::factory()->create());
+        $this->postJson($url, ['sets' => ['0-1']])->assertForbidden();
+        $this->actingAs($actor);
+        $draw->update(['locked' => true]);
+        $this->postJson($url, ['sets' => ['0-1']])->assertForbidden();
+        $draw->update(['locked' => false]);
+        $secondRegistration = $fixture->registration2_id;
+        $fixture->update(['registration2_id' => null]);
+        $this->assertNull(app(\App\Services\Draw\TimedRoundRobinCompletionService::class)->finalizeIdentical($fixture->fresh(), [[0, 1]]));
+        $this->assertSame(2, (int) $fixture->fresh()->match_status);
+        $fixture->update(['registration2_id' => $secondRegistration]);
+        DB::table('fixture_results')->where('id', $set->id)->update(['registration1_score' => null]);
+        $this->postJson($url, ['sets' => ['0-1']])->assertConflict();
+        DB::table('fixture_results')->where('id', $set->id)->update(['registration1_score' => 0]);
+        $this->postJson($url, ['sets' => ['0-2']])->assertConflict();
+        $this->assertSame(2, (int) $fixture->fresh()->match_status);
+        $this->postJson($url, ['sets' => ['0-1']])->assertOk()->assertJsonPath('metadata_only', true);
+        $this->postJson($url, ['sets' => ['0-1']])->assertOk()->assertJsonPath('already_completed', true);
+        $fixture->refresh();
+        $this->assertSame(1, (int) $fixture->match_status);
+        $this->assertSame((int) $fixture->registration2_id, (int) $fixture->winner_registration);
+        $this->assertSame($set->id, $fixture->fixtureResults()->sole()->id);
+        $this->assertSame($before, [
+            DB::table('fixtures')->where('id', $playoff->id)->get()->toJson(),
+            DB::table('fixture_results')->orderBy('id')->get()->toJson(),
+            DB::table('order_of_plays')->orderBy('id')->get()->toJson(),
+        ]);
+        $this->assertDatabaseHas('draw_audit_logs', ['draw_id' => $draw->id, 'fixture_id' => $fixture->id,
+            'user_id' => auth()->id(), 'action' => 'timed_result_completion_normalized']);
+        $this->assertSame(1, \App\Models\DrawAuditLog::where('fixture_id', $fixture->id)->where('action', 'timed_result_completion_normalized')->count());
+        $this->assertDatabaseCount('fixtures', 2);
+        $this->assertDatabaseCount('fixture_results', 2);
+    }
+
     private function draw(): Draw
     {
         Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
@@ -119,7 +172,7 @@ class TimedDrawScoringTest extends TestCase
         $this->postJson(route('api.draws.fixtures.score.store', ['draw' => $draw, 'fixture' => $fixture]), ['sets' => ['3-3']])->assertOk();
         $fixture->refresh();
         $this->assertNull($fixture->winner_registration);
-        $this->assertSame(2, (int) $fixture->match_status);
+        $this->assertSame(1, (int) $fixture->match_status);
         $this->assertSame(1, $fixture->fixtureResults()->count());
         $this->assertNull($fixture->fixtureResults()->first()->winner_registration);
         $this->assertNull($fixture->fixtureResults()->first()->loser_registration);

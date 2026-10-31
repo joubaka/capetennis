@@ -47,11 +47,10 @@ class PlayerRatingBadgeService
         if ($allAge) {
             $rating = AbilityConfidenceDisplay::normalize($rating);
             return $rating + ['label' => number_format($rating['score'], 1),
-                'display_label' => number_format($rating['score'], 1).' | '.$rating['confidence_label'].(!empty($rating['historical_connection']) ? ' · old link' : ''),
-                'title' => 'Cape Tennis all-age singles rating: '.number_format($rating['score'], 1).'/100. Provisional; compare across ages within standard singles comparison group '.$rating['component']
+                'display_label' => number_format($rating['score'], 1).' | '.$rating['confidence_label'].(($rating['comparable'] ?? true) === false ? ' · provisional' : (!empty($rating['historical_connection']) ? ' · old link' : '')),
+                'title' => 'Cape Tennis all-age singles rating: '.number_format($rating['score'], 1).'/100. Provisional; compare across ages within singles comparison group '.$rating['component']
                     .'. Evidence confidence: '.$rating['confidence_label'].'. '.($rating['confidence_explanation'] ?? '')
                     .' Recorded matches: '.($rating['played'] ?? 0).'. '.($rating['reason'] ?? '')
-                    .(!empty($rating['standard_assumed_matches']) ? ' Includes legacy results whose standard playing format is assumed.' : '')
                     .(!empty($rating['snapshot_stale']) ? ' Saved update is stale; awaiting the background refresh.' : '')];
         }
         $reference = $rating['baseline_status'] ?? 'No connected main-trial baseline';

@@ -8,7 +8,7 @@ use Tests\TestCase;
 
 class AllAgeRatingHistoryViewTest extends TestCase
 {
-    public function test_empty_shared_history_renders_unrated_and_retains_explicit_context_selector(): void
+    public function test_my_tennis_shows_only_one_shared_rating_even_when_a_historical_cohort_is_requested(): void
     {
         $ability = $this->createStub(PlayerSharedAbilityService::class);
         $ability->method('fingerprint')->willReturn('same');
@@ -17,11 +17,14 @@ class AllAgeRatingHistoryViewTest extends TestCase
             'months' => [['date' => '2026-10-01', 'cohorts' => ['u13 boys' => [1 => ['score' => 75, 'group' => 'old', 'component' => 'old']], AllAgeRatingModel::COHORT => []]]]]);
         $player = new Player;
         $player->setRawAttributes(['id' => 1, 'name' => 'Synthetic', 'surname' => 'Player']);
-        $history = (new PlayerRatingHistoryService($ability, $store))->forPlayer($player, ['month' => 0]);
+        $history = (new PlayerRatingHistoryService($ability, $store))->forPlayer($player, ['month' => 0, 'cohort' => 'u13 boys']);
         $html = view('frontend.my-tennis.rating', ['ratingPlayer' => $player, 'ratingHistory' => $history])->render();
         $this->assertStringContainsString('Unrated', $html);
         $this->assertStringContainsString('No comparable shared rating is available', $html);
-        $this->assertStringContainsString('u13 boys', $html);
+        $this->assertStringNotContainsString('u13 boys', $html);
+        $this->assertStringNotContainsString('ctr-cohort', $html);
+        $this->assertStringNotContainsString('name="cohort"', $html);
+        $this->assertStringContainsString('All ages · singles', $html);
         $this->assertStringNotContainsString('75.0', $html);
     }
 }

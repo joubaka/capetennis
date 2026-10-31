@@ -7,31 +7,17 @@ use Carbon\CarbonImmutable;
 /** One played-singles scale; age and gender are evidence labels, never rating offsets. */
 class AllAgeRatingModel
 {
-    public const VERSION = 4;
+    public const VERSION = 6;
     public const REGULARIZATION = 0.015625;
-    public const COHORT = 'all ages · standard singles';
+    public const COHORT = 'all ages · singles';
     public const WINDOW_DAYS = 730;
     public const RECENT_WINDOW_DAYS = 365;
     public const HISTORICAL_CONFIDENCE_CAP = 39;
 
     public function format(string $category, ?string $ball): array
     {
-        $label = mb_strtolower($category);
-        if (preg_match('/\b(red|orange|green|mini|short|half|quarter|reduced)[\s-]*(ball|court)?\b/u', $label)
-            || preg_match('/\b(?:1\/2|3\/4|36|60)[\s-]*(?:ft|foot)?[\s-]*court\b/u', $label)
-            || (preg_match('/\b([\p{L}]+)[\s-]+ball\b/u', $label, $declared) && !in_array($declared[1], ['yellow', 'standard'], true))) {
-            return ['eligible' => false, 'assumed' => false, 'reason' => 'Modified ball or court'];
-        }
-        if ($ball !== null && !in_array($ball, ['yellow', 'standard'], true)) {
-            return ['eligible' => false, 'assumed' => false, 'reason' => 'Modified or unresolved court metadata'];
-        }
-        if ($ball !== null || preg_match('/\b(yellow[\s-]*ball|standard[\s-]*ball)\b/u', $label)) {
-            return ['eligible' => true, 'assumed' => false, 'reason' => null];
-        }
-        if (!preg_match('/\bu\s*\/?\s*(\d{1,2})(?:[ab])?\b/u', $label, $age) || (int) $age[1] <= 10) {
-            return ['eligible' => false, 'assumed' => false, 'reason' => 'Ball and court format not established'];
-        }
-        return ['eligible' => true, 'assumed' => true, 'reason' => null];
+        // Playing conditions do not classify or offset verified head-to-head results.
+        return ['eligible' => true, 'assumed' => false, 'reason' => null];
     }
 
     /** Canonical, already validated match rows; never accepts ordinal or main-trial anchors. */
@@ -91,13 +77,12 @@ class AllAgeRatingModel
             $connectionAge = $comparable ? ($connections['connection_ages'][$id] ?? null) : null;
             $historical = $connectionAge !== null && $connectionAge > self::RECENT_WINDOW_DAYS;
             $rating['local_score'] = $rating['score'];
-            if (!$comparable) { $rating['score'] = null; }
             $rating += ['rating_scope' => 'all_age', 'cohort' => self::COHORT, 'comparison_group' => $rating['component'],
-                'rating_status' => $comparable ? 'provisional' : 'disconnected', 'comparable' => $comparable,
+                'rating_status' => $comparable ? 'provisional' : 'provisional_local', 'comparable' => $comparable,
                 'historical_connection' => $historical, 'connection_age_days' => $connectionAge,
                 'connection_reference_date' => $connectionAge === null ? null : $asOf->subDays($connectionAge)->toDateString(),
                 'connection_status' => !$comparable ? 'disconnected' : ($historical ? 'historical' : 'recent'),
-                'reason' => !$component['converged'] ? 'The shared model did not converge.' : ($comparable ? null : ($backbone ? 'No played-match connection to the recent reference group within '.$windowDays.' days.' : 'No recent played-match reference group is available.')),
+                'reason' => !$component['converged'] ? 'The shared model did not converge.' : ($comparable ? null : 'Provisional within-group estimate; uncalibrated against other comparison groups. More connecting results are needed.'),
                 'played' => $players[$id]['played'], 'last_played' => $players[$id]['last_played'], 'inferred' => 0,
                 'component_players' => count($component['members']), 'component_played' => $component['played'],
                 'component_inferred' => 0, 'bridge_count' => $component['bridge_count'], 'division_links' => 0,
@@ -107,8 +92,8 @@ class AllAgeRatingModel
                 'baseline_status' => 'Recent shared played-match reference', 'baseline_source' => null,
                 'comparators' => [], 'anchors' => []];
             $rating += (new SharedAbilityConfidencePolicy)->evaluate($players[$id], $component, $asOf);
-            if ($historical) { $rating['confidence_index'] = min(self::HISTORICAL_CONFIDENCE_CAP, $rating['confidence_index']); }
-            $rating['confidence'] = $historical ? 'Low — connection depends on older played results' : 'Provisional — evidence sufficiency is not calibrated accuracy';
+            if ($historical || !$comparable) { $rating['confidence_index'] = min(self::HISTORICAL_CONFIDENCE_CAP, $rating['confidence_index']); }
+            $rating['confidence'] = !$comparable ? 'Low — provisional within-group estimate, uncalibrated across groups' : ($historical ? 'Low — connection depends on older played results' : 'Provisional — evidence sufficiency is not calibrated accuracy');
             $rating = AbilityConfidenceDisplay::normalize($rating);
         }
         unset($rating);
@@ -118,7 +103,7 @@ class AllAgeRatingModel
         return ['ratings' => $fit['ratings'], 'components' => $components, 'players' => $players, 'reference_component' => $reference, 'recent_backbone' => $backbone,
             'excluded' => $excluded, 'history_evidence' => ['matches' => $edges, 'fields' => []],
             'policy' => ['version' => self::VERSION, 'regularization' => self::REGULARIZATION, 'window_days' => $windowDays, 'recent_window_days' => self::RECENT_WINDOW_DAYS, 'as_of' => $asOf->toDateString(), 'scale' => '0–100; higher is stronger',
-                'format' => 'Standard singles only; conventional U11+ legacy categories assume standard format when metadata is absent.',
+                'format' => 'Verified completed singles across all ball and court categories; no category-based rating offsets.',
                 'status' => 'Provisional; historical links have low confidence and comparisons require the same connected reference group.']];
     }
 }

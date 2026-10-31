@@ -31,7 +31,7 @@ class PlayerRatingGroupProjectionTest extends TestCase
         $projection = (new PlayerRatingGroupProjection)->project($snapshot, $group);
         $this->assertSame([10, 11], array_keys($projection));
         $this->assertGreaterThan($projection[11]['within_group_score'], $projection[10]['within_group_score']);
-        $this->assertNull($projection[10]['score']);
+        $this->assertSame($snapshot['all_age']['ratings'][10]['score'], $projection[10]['score']);
         $this->assertFalse($projection[10]['comparable']);
         $this->assertSame('group_local', $projection[10]['rating_scope']);
         $this->assertArrayNotHasKey('strength', $projection[10]);

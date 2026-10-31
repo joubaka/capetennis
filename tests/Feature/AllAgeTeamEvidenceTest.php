@@ -79,7 +79,7 @@ class AllAgeTeamEvidenceTest extends TestCase
         $rows = iterator_to_array(app(PlayerPerformanceHistoryService::class)->teamMatches($bridge['event'], null, $asOf, allAgeEvidence: true));
         $this->assertSame('Team singles age/gender context cannot be verified', $rows[0]['reason']);
         $this->assertNull($rows[0]['all_age_reason']);
-        $this->assertTrue($rows[0]['all_age_requires_explicit_format']);
+        $this->assertFalse($rows[0]['all_age_requires_explicit_format']);
         $after = $service->calculateSnapshot($asOf);
         $this->assertCount(1, $after['all_age']['components']);
         $this->assertCount(4, $after['all_age']['ratings']);
@@ -103,20 +103,20 @@ class AllAgeTeamEvidenceTest extends TestCase
         $this->assertNotNull((new PlayerAbilitySnapshotStore)->current()['reason']);
     }
 
-    public function test_cross_context_and_unclassified_matches_require_explicit_standard_conditions(): void
+    public function test_cross_context_and_unclassified_completed_singles_do_not_require_ball_metadata(): void
     {
         $service = app(PlayerSharedAbilityService::class); $date = CarbonImmutable::parse('2026-10-03');
         $unknown = $this->fixture(ball: null);
         $this->assertNull($this->globalRows($unknown)[0]['reason']);
-        $this->assertSame([], $service->calculateSnapshot($date)['all_age']['ratings']);
+        $this->assertCount(2, $service->calculateSnapshot($date)['all_age']['ratings']);
         $unclassified = $this->fixture('Open home squad', 'Open away squad');
         $snapshot = $service->calculateSnapshot($date);
-        $this->assertCount(2, $snapshot['all_age']['ratings']);
+        $this->assertCount(4, $snapshot['all_age']['ratings']);
         $this->assertSame(['unclassified singles'], $snapshot['all_age']['ratings'][$unclassified['first']->id]['age_groups']);
         $blocked = $this->fixture('U13 Boys Green ball A', 'U18 Girls A');
         $snapshot = $service->calculateSnapshot($date);
-        $this->assertArrayNotHasKey($blocked['first']->id, $snapshot['all_age']['ratings']);
-        $this->assertSame('Team source declares a modified ball or court format', (new AllAgeMatchFormatResolver)->resolve($blocked['event']->id, $this->globalRows($blocked)[0])['format_reason']);
+        $this->assertArrayHasKey($blocked['first']->id, $snapshot['all_age']['ratings']);
+        $this->assertNull((new AllAgeMatchFormatResolver)->resolve($blocked['event']->id, $this->globalRows($blocked)[0])['format_reason']);
     }
 
     public function test_invalid_snapshot_error_is_preserved_when_legacy_demographic_error_overwrites_it(): void
@@ -130,14 +130,14 @@ class AllAgeTeamEvidenceTest extends TestCase
         $this->assertSame([], app(PlayerSharedAbilityService::class)->calculateSnapshot(CarbonImmutable::parse('2026-10-03'))['all_age']['ratings']);
     }
 
-    public function test_legacy_team_prefix_normalization_never_hides_modified_or_unknown_format_declarations(): void
+    public function test_legacy_team_ball_and_court_labels_do_not_exclude_verified_head_to_head_results(): void
     {
         $data = $this->fixture();
         $data['home']->update(['category_event_id' => null]);
         foreach (['60ft court U13 Boys', '36 foot court U13 Boys', '1/2 court U13 Boys', 'blue ball U13 Boys'] as $name) {
             $data['home']->update(['name' => $name]);
             $row = $this->globalRows($data)[0];
-            $this->assertSame('Team source declares a modified ball or court format', (new AllAgeMatchFormatResolver)->resolve($data['event']->id, $row)['format_reason']);
+            $this->assertNull((new AllAgeMatchFormatResolver)->resolve($data['event']->id, $row)['format_reason']);
         }
         $data['home']->regions()->update(['region_name' => 'Green Point Schools']);
         $data['home']->update(['name' => 'Green Point U13 Boys']);
@@ -185,7 +185,7 @@ class AllAgeTeamEvidenceTest extends TestCase
         $this->assertSame('Team match schedule is later than the snapshot date', $this->globalRows($data)[0]['reason']);
     }
 
-    public function test_all_age_holdout_uses_the_same_age_neutral_reader_and_standard_format_gate(): void
+    public function test_all_age_holdout_uses_the_same_age_neutral_reader_without_ball_metadata_gate(): void
     {
         $boys = $this->fixture('U13 Boys A', 'U13 Boys A');
         $girls = $this->fixture('U18 Girls A', 'U18 Girls A');
@@ -199,6 +199,6 @@ class AllAgeTeamEvidenceTest extends TestCase
         $this->assertSame(1, $report['coverage']);
         DB::table('event_venue_courts')->where('event_id', $holdout['event']->id)->update(['ball_type' => null]);
         $report = app(PlayerAbilityValidationService::class)->run($holdout['event']->fresh(), false, true);
-        $this->assertSame(0, $report['eligible_matches']);
+        $this->assertSame(1, $report['eligible_matches']);
     }
 }

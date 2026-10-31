@@ -25,8 +25,9 @@ class AllAgeRatingHistoryTest extends TestCase
         $this->assertSame([], $shared['points']);
         $this->assertNull($shared['point']);
         $explicit = $service->forPlayer($player, ['cohort' => 'u13 boys', 'month' => 0]);
-        $this->assertSame(75, $explicit['point']['score']);
-        $this->assertSame('cohort', $explicit['rating_scope']);
+        $this->assertNull($explicit['point']);
+        $this->assertSame('all_age', $explicit['rating_scope']);
+        $this->assertSame([AllAgeRatingModel::COHORT], array_keys($explicit['series']));
     }
 
     public function test_one_canonical_match_can_support_both_projections_without_provenance_collision(): void

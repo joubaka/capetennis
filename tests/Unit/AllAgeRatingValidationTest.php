@@ -37,16 +37,17 @@ class AllAgeRatingValidationTest extends TestCase
         $this->assertEquals(0.25, $report['chance_reference']['brier']);
     }
 
-    public function test_disconnected_and_modified_ball_matches_cannot_create_coverage(): void
+    public function test_disconnected_results_remain_uncovered_while_ball_metadata_does_not_restrict_coverage(): void
     {
         $report = (new PlayerAbilityValidationService)->evaluateAllAge($this->training(), [
             $this->match(['player2_id' => 3]),
             $this->match(['fixture_id' => 2, 'ball_type' => 'green']),
             $this->match(['fixture_id' => 3, 'ball_type' => null]),
         ]);
-        $this->assertSame('insufficient_coverage', $report['status']);
-        $this->assertSame(1, $report['eligible_matches']);
-        $this->assertNull($report['current']['brier']);
+        $this->assertSame('partial_coverage', $report['status']);
+        $this->assertSame(3, $report['eligible_matches']);
+        $this->assertSame(2, $report['current']['evaluated_matches']);
+        $this->assertNotNull($report['current']['brier']);
         $this->assertSame(1, $report['excluded']['no_shared_pre_event_reference']);
     }
 

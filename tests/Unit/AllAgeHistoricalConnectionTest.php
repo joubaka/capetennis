@@ -40,7 +40,7 @@ class AllAgeHistoricalConnectionTest extends TestCase
         $this->assertStringContainsString('500 days old', $rating['confidence_explanation']);
         $this->assertStringContainsString('not calibrated rating accuracy', $rating['confidence_explanation']);
         $baseline = $model->fit($this->network(), $asOf, 365);
-        $this->assertNull($baseline['ratings'][10]['score']);
+        $this->assertNotNull($baseline['ratings'][10]['score']);
         $this->assertSame(365, $baseline['policy']['window_days']);
         $this->assertSame(730, $fit['policy']['window_days']);
     }
@@ -78,7 +78,7 @@ class AllAgeHistoricalConnectionTest extends TestCase
         $this->assertSame($fit['ratings'][1]['component'], $fit['reference_component']);
         $this->assertTrue($fit['ratings'][3]['historical_connection']);
         $this->assertSame('Low', $fit['ratings'][3]['confidence_label']);
-        $this->assertNull($fit['ratings'][100]['score']);
+        $this->assertNotNull($fit['ratings'][100]['score']);
         $this->assertFalse($fit['ratings'][100]['historical_connection']);
         $this->assertNull($fit['ratings'][100]['connection_age_days']);
     }
@@ -89,9 +89,9 @@ class AllAgeHistoricalConnectionTest extends TestCase
         $this->assertNull($fit['reference_component']);
         $this->assertNull($fit['recent_backbone']);
         foreach ($fit['ratings'] as $rating) {
-            $this->assertNull($rating['score']);
+            $this->assertNotNull($rating['score']);
             $this->assertSame('disconnected', $rating['connection_status']);
-            $this->assertStringContainsString('No recent played-match reference', $rating['reason']);
+            $this->assertStringContainsString('Provisional within-group estimate', $rating['reason']);
         }
         $this->assertNull((new PlayerAbilitySnapshotStore)->assertAllAgeGraph($fit));
     }

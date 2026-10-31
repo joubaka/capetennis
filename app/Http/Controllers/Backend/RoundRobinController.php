@@ -464,6 +464,8 @@ class RoundRobinController extends Controller
       $wins1 = count(array_filter($validSets, fn ($set) => $set[0] > $set[1]));
       $wins2 = count(array_filter($validSets, fn ($set) => $set[1] > $set[0]));
       $newWinner = app(\App\Services\IndividualMatchOutcomeService::class)->winnerFromSets($fixture, $validSets, $decidingPointWinnerId);
+      $normalized = app(\App\Services\Draw\TimedRoundRobinCompletionService::class)->finalizeIdentical($fixture, $validSets, $decidingPointWinnerId);
+      if ($normalized !== null) return response()->json($normalized);
       if ($hadExistingResult && (int) $fixture->winner_registration !== (int) $newWinner) {
         app(\App\Services\Draw\DrawRecoveryImpactService::class)->assertSafeOrdinaryCorrection($fixture);
       }

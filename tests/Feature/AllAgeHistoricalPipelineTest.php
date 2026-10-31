@@ -54,7 +54,7 @@ class AllAgeHistoricalPipelineTest extends TestCase
         $counts = [Player::count(), Fixture::count(), FixtureResult::count(), DB::table('user_players')->count()];
         $ability = app(PlayerSharedAbilityService::class);
         $baseline = $ability->validationSnapshot($asOf->addDay(), experiment: ['all_age_window_days' => 365]);
-        $this->assertNull($baseline['all_age']['ratings'][$players[3]->id]['score']);
+        $this->assertNotNull($baseline['all_age']['ratings'][$players[3]->id]['score']);
         $this->assertSame(365, $baseline['all_age']['policy']['window_days']);
         $snapshot = $ability->calculateSnapshot($asOf);
         $rating = $snapshot['all_age']['ratings'][$players[3]->id];

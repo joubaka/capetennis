@@ -74,7 +74,7 @@ class PlayerRatingHistoryTest extends TestCase
             $this->assertSame(count($dates), count($sources));
             $sources[] = ['matches' => [], 'ordinal' => []];
             $dates[] = $date->toDateString();
-            return ['reason' => null, 'cohorts' => ['u12 boys' => [
+            return ['reason' => null, 'cohorts' => [\App\Services\Performance\AllAgeRatingModel::COHORT => [
                 'ratings' => [42 => ['score' => count($dates) === 1 ? null : 50 + count($dates), 'component' => 'a']],
                 'components' => ['a' => ['members' => [42, 43], 'converged' => true]],
             ]]];
@@ -87,11 +87,11 @@ class PlayerRatingHistoryTest extends TestCase
         $saved = $service->calculate(CarbonImmutable::today('Africa/Johannesburg'));
         $store->shouldReceive('read')->once()->andReturn($saved);
         $history = $service->forPlayer($player);
-        $this->assertCount(11, $history['series']['u12 boys']);
+        $this->assertCount(11, $history['series'][\App\Services\Performance\AllAgeRatingModel::COHORT]);
         $this->assertSame('2025-11-30', $dates[0]);
         $this->assertSame('2026-10-29', $dates[11]);
-        $this->assertSame('2026-10-29', $history['series']['u12 boys'][10]['date']);
-        $this->assertSame(62, $history['series']['u12 boys'][10]['score']);
+        $this->assertSame('2026-10-29', $history['series'][\App\Services\Performance\AllAgeRatingModel::COHORT][10]['date']);
+        $this->assertSame(62, $history['series'][\App\Services\Performance\AllAgeRatingModel::COHORT][10]['score']);
     }
 
     public function test_source_change_withholds_entire_history(): void

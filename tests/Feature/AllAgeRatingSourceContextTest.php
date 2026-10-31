@@ -77,7 +77,7 @@ class AllAgeRatingSourceContextTest extends TestCase
         }
     }
 
-    public function test_resolver_uses_exact_event_court_and_refuses_unresolved_mixed_draw(): void
+    public function test_resolver_keeps_optional_court_metadata_without_excluding_mixed_or_unresolved_formats(): void
     {
         ['event' => $event, 'draw' => $draw] = $this->context();
         foreach (['1' => 'yellow', '2' => 'green'] as $label => $ball) {
@@ -86,7 +86,7 @@ class AllAgeRatingSourceContextTest extends TestCase
         }
         $resolver = new AllAgeMatchFormatResolver;
         $this->assertSame('yellow', $resolver->resolve($event->id, ['draw_id' => $draw->id, 'venue_id' => 1, 'court_label' => '1'])['ball_type']);
-        $this->assertNotNull($resolver->resolve($event->id, ['draw_id' => $draw->id])['format_reason']);
+        $this->assertNull($resolver->resolve($event->id, ['draw_id' => $draw->id])['format_reason']);
         $other = Event::factory()->create(['published' => true]);
         $this->assertNull($resolver->resolve($other->id, ['venue_id' => 1, 'court_label' => '2'])['ball_type']);
     }

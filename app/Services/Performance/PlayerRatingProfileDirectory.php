@@ -48,7 +48,7 @@ class PlayerRatingProfileDirectory
         }
         $connectionPlan = $unified ? app(AllAgeConnectivityService::class)->summarize($snapshot['all_age']) : null;
         $sharedCoverage = $unified ? ['eligible' => count($snapshot['all_age']['ratings'] ?? []),
-            'connected' => count(array_filter($snapshot['all_age']['ratings'] ?? [], fn ($rating) => is_numeric($rating['score'] ?? null)))] : null;
+            'connected' => count(array_filter($snapshot['all_age']['ratings'] ?? [], fn ($rating) => !empty($rating['comparable'])))] : null;
         $ratings = $snapshot['reason'] ? [] : ($unified
             ? array_map(fn ($rating) => [$rating], app(PlayerSharedAbilityService::class)->allAgeBadgeSnapshot())
             : app(PlayerSharedAbilityService::class)->badgeSnapshot());
@@ -75,18 +75,26 @@ class PlayerRatingProfileDirectory
             $scoreSql .= ' ELSE NULL END';
         }
         $query->selectRaw('CAST(('.$scoreSql.') AS DECIMAL(30,15)) AS ordering_score', $scoreBindings);
+        $componentSql = 'CASE id'; $componentBindings = [];
+        foreach ($headlines as $id => $rating) {
+            $componentSql .= ' WHEN ? THEN ?';
+            $componentBindings[] = (int) $id; $componentBindings[] = $rating['component'];
+        }
+        $componentSql = $headlines ? $componentSql.' ELSE NULL END' : 'NULL';
+        $query->selectRaw('('.$componentSql.') AS rating_component', $componentBindings);
         $query->selectRaw("CASE WHEN dateOfBirth IS NULL OR dateOfBirth < '1000-01-01' OR dateOfBirth > ? THEN 5 WHEN YEAR(dateOfBirth) >= ? THEN 0 WHEN YEAR(dateOfBirth) = ? THEN 1 WHEN YEAR(dateOfBirth) = ? THEN 2 WHEN YEAR(dateOfBirth) = ? THEN 3 WHEN YEAR(dateOfBirth) >= ? THEN 4 ELSE 6 END AS age_order",
             [$today->toDateString(), $year - 10, $year - 11, $year - 12, $year - 13, $year - 18]);
         $query->selectRaw("CASE WHEN LOWER(TRIM(gender)) IN ('1','male','boy','boys','m') THEN 0 WHEN LOWER(TRIM(gender)) IN ('2','female','girl','girls','f') THEN 1 ELSE 2 END AS gender_order");
         // SQL ranks the complete filtered groups before name search and pagination.
         // Only the requested page of profiles is materialised in PHP.
-        $partition = $unified ? '' : 'PARTITION BY age_order, gender_order ';
+        $partition = $unified ? 'PARTITION BY rating_component ' : 'PARTITION BY age_order, gender_order ';
         $ranked = DB::query()->fromSub($query, 'profile_scores')->select('*')->selectRaw('ROW_NUMBER() OVER ('.$partition.'ORDER BY ordering_score IS NULL, ordering_score DESC, surname, name, id) AS position');
         $ordered = DB::query()->fromSub($ranked, 'ranked_profiles');
         foreach (preg_split('/\s+/u', $search, -1, PREG_SPLIT_NO_EMPTY) as $token) {
             $ordered->where(fn ($q) => $q->where('name', 'like', '%'.addcslashes($token, '%_\\').'%')->orWhere('surname', 'like', '%'.addcslashes($token, '%_\\').'%'));
         }
         if (!$unified) { $ordered->orderBy('age_order')->orderBy('gender_order'); }
+        else { $ordered->orderByRaw('rating_component IS NULL')->orderBy('rating_component'); }
         $players = $ordered->orderBy('position')->paginate(25)->withQueryString();
         $players->through(function ($player) use ($year, $today, $ratings, $headlines, $boys, $girls) {
             $raw = (string) $player->dateOfBirth;
