@@ -385,8 +385,8 @@
     window.TennisBracket.refresh();
   }
   function sourceLabel(source) {
-    if (source.current_position) return `Current position ${source.current_position}`;
-    if (source.base_position) return `Base position ${source.base_position}`;
+    if (source.current_position) return `Updated position ${source.current_position}`;
+    if (source.base_position) return `Before challenges: ${source.base_position}`;
     if (source.type === 'player') return 'Direct entry';
     if (source.type === 'bye') return 'Bye';
     return `${source.type === 'winner' ? 'Winner' : 'Loser'} of Match ${state.matches[source.original_match || source.match]?.number ?? '?'}`;
@@ -417,6 +417,18 @@
     if (match.byes?.[slot]) return 'Bye';
     return match.vacant?.[slot] ? 'Bye (inactive)' : sourceLabel(match.sources[slot]);
   }
+  function challengeStageHeading(round) {
+    return ({ 1: 'Step 1 · Starting pairs', 2: 'Step 2 · Updated 3 vs 4', 3: 'Step 3 · 2 vs new 3' })[round] || 'Challenge matches';
+  }
+  function challengePendingNote(match) {
+    if (match.requires_new_third) return 'After 3 vs 4 · only if position 3 changes';
+    return match.rolling_gate ? 'Waiting for required earlier results' : 'Waiting for main draw and placement results';
+  }
+  function challengeExplanation(rolling) {
+    return 'Starting positions come from the main draw and placement matches. Each challenge winner takes the higher position; the loser takes the lower one. '
+      + (rolling ? 'Read left to right: play the selected starting pairs, then updated 3 vs 4, then 2 vs new 3 only if position 3 changes. ' : '')
+      + 'Only selected matches are played. A match is skipped if these players have already met in this draw or a player is unavailable.';
+  }
   function generatedBoard() {
     const displayMatches = config.workflow === 'feed_in_monrad'
       ? bracketLayout.withMainDrawByes(state.matches, state.draft) : state.matches;
@@ -437,13 +449,19 @@
       const title = el('div', 'fm-section-label', section);
       title.style.top = yOffset + 'px';
       board.append(title);
+      if (section === 'Challenge play-offs') {
+        const explanation = el('p', 'fm-challenge-explanation', challengeExplanation(state.rolling_challenges));
+        Object.assign(explanation.style, { position: 'absolute', top: (yOffset + 28) + 'px', left: '0', width: Math.min(700, Math.max(220, $('fm-scroll').clientWidth - 32)) + 'px', fontSize: '13px', lineHeight: '1.5', margin: '0' });
+        board.append(explanation);
+        yOffset += explanation.offsetHeight + 40;
+      }
       const rounds = [...new Set(entries.map(([, m]) => Number(m.round)))].sort((a, b) => a - b);
       const layout = bracketLayout.layout(entries.map(([key, match]) => ({ key, column: rounds.indexOf(Number(match.round)), sources: match.sources })), yOffset + 96);
       layout.positions.forEach((position, key) => coords.set(key, { ...position, section }));
       rounds.forEach((round, col) => {
         const group = entries.filter(([, m]) => Number(m.round) === round),
           x = col * bracketDimensions.column;
-        const heading = el('div', 'fm-round-title', group[0][1].challenge_positions ? 'Challenge play-offs' : group[0][1].label);
+        const heading = el('div', 'fm-round-title', group[0][1].challenge_positions ? challengeStageHeading(round) : group[0][1].label);
         heading.style.top = yOffset + 32 + 'px';
         heading.style.left = x + 'px';
         board.append(heading);
@@ -480,12 +498,14 @@
             card.append(el('div', 'fm-match-note', match.byes.every(Boolean) ? 'Byes · no match played' : 'Bye · no match played'));
           } else if (match.pending_withdrawal_players?.some(Boolean)) {
             card.append(el('div', 'fm-match-note fm-match-note-alert', 'Late withdrawal · admin decision required'));
+          } else if (match.challenge_status === 'disabled') {
+            card.append(el('div', 'fm-match-note', 'Not selected · positions unchanged'));
           } else if (match.skip_reason) {
-            const note = el('div', 'fm-match-note', match.skip_reason.includes('already played') ? 'Skipped · already played' : 'Skipped · player unavailable');
+            const note = el('div', 'fm-match-note', match.skip_reason.includes('already played') ? 'Not played · players have already met' : match.skip_reason.includes('Position 3 did not change') ? 'Not needed · position 3 unchanged' : 'Not played · player unavailable');
             note.title = match.skip_reason;
             card.append(note);
           }
-          else if (match.challenge_status === 'pending') card.append(el('div', 'fm-match-note fm-pending-result', match.rolling_gate ? 'Awaiting preceding results · conditional' : 'Awaiting all base results · provisional'));
+          else if (match.challenge_status === 'pending') card.append(el('div', 'fm-match-note fm-pending-result', challengePendingNote(match)));
           else if (match.walkover) card.append(el('div', 'fm-match-note', 'W/O · walkover'));
           else if (match.retired_registration_id) card.append(el('div', 'fm-match-note', 'RET · ' + name(match.retired_registration_id) + ' retired'));
           else if (match.automatic) card.append(el('div', 'fm-match-note', match.automatic === 'walkover'
@@ -507,12 +527,13 @@
           position = coords.get(key),
           lineEnd = position.x + bracketDimensions.width + 120,
           endpoint = el('div', 'fm-winner-endpoint'),
-          label = match.challenge_positions ? `Position ${match.challenge_positions[0]}` : section === 'Main draw' ? 'Champion'
+          label = match.challenge_positions ? `Winner takes position ${match.challenge_positions[0]}` : section === 'Main draw' ? 'Champion'
             : placement ? `${state.challenge_playoffs ? 'Base position' : 'Position'} ${basePosition || placement[1]}` : 'Winner';
         endpoint.style.left = lineEnd + 10 + 'px';
         endpoint.style.top = position.middle - bracketDimensions.slotHeight + 'px';
         const winnerName = el('strong', 'fm-winner-name');
-        if (match.challenge_status === 'skipped') winnerName.textContent = 'Skipped · positions unchanged';
+        if (match.challenge_status === 'disabled') winnerName.textContent = 'Not selected · positions unchanged';
+        else if (match.challenge_status === 'skipped') winnerName.textContent = 'Skipped · positions unchanged';
         else if (match.winner) winnerName.append(playerNameNode(match.winner, 'fm-player-identity-winner'));
         else { winnerName.textContent = 'Awaiting result'; winnerName.classList.add('fm-pending-result'); }
         endpoint.append(el('span', 'fm-winner-label', label), winnerName);
@@ -760,6 +781,49 @@
       section.append(text); root.append(section);
     });
   }
+  let refreshInFlight = false;
+  let refreshStopped = false;
+  function canRefreshDraw() {
+    return !config.demo && config.refreshUrl && state.generated && state.challenge_playoffs
+      && !refreshStopped && !busy && !dirty && !document.hidden
+      && !$('fm-score-dialog')?.open && !document.querySelector('dialog[open]')
+      && !document.activeElement?.matches('input, textarea, select, [contenteditable="true"]');
+  }
+  async function refreshDraw() {
+    if (refreshInFlight || !canRefreshDraw()) return;
+    const previous = state;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    refreshInFlight = true;
+    try {
+      const response = await fetch(config.refreshUrl, {
+        headers: { Accept: 'application/json' }, cache: 'no-store', signal: controller.signal
+      });
+      if ([401, 403, 404, 419].includes(response.status) || response.redirected) {
+        refreshStopped = true;
+        window.location.reload();
+        return;
+      }
+      if (!response.ok) return;
+      const next = await response.json();
+      // A save or score edit may have begun while this read was in flight.
+      if (state !== previous || !canRefreshDraw() || !next.state || !next.urls) return;
+      if (JSON.stringify(next) === JSON.stringify(config)) return;
+      const scroll = $('fm-scroll');
+      const left = scroll.scrollLeft, top = scroll.scrollTop;
+      Object.assign(config, next);
+      state = next.state;
+      draft = clone(state.draft);
+      render();
+      scroll.scrollLeft = left;
+      scroll.scrollTop = top;
+    } catch (_) {
+      // Keep the current draw during temporary network failures; retry next tick.
+    } finally {
+      clearTimeout(timeout);
+      refreshInFlight = false;
+    }
+  }
   async function request(url, body, method = 'POST') {
     const response = await fetch(url, {
       method,
@@ -773,8 +837,11 @@
     const data = await response
       .json()
       .catch(() => ({ message: 'The server returned an unexpected response. Reload and try again.' }));
-    if (!response.ok)
-      throw Error(data.errors ? Object.values(data.errors).flat().join(' ') : data.message || 'Unable to save.');
+    if (!response.ok) {
+      const error = Error(data.errors ? Object.values(data.errors).flat().join(' ') : data.message || 'Unable to save.');
+      error.details = data;
+      throw error;
+    }
     return data;
   }
   async function run(fn) {
@@ -1099,10 +1166,30 @@
     })
   );
   $('fm-rolling-challenges')?.addEventListener('click', () => run(async () => {
-    state = await request(config.urls.rollingChallenges, {revision: state.revision});
-    $('fm-rolling-challenges').disabled = true;
-    $('fm-rolling-challenges').textContent = 'Rolling challenges enabled';
-    message('Rolling conditional matches added. Schedule them separately; publication is unchanged.');
+    const stages = [...document.querySelectorAll('[data-rolling-stage]:checked')].map(input => input.dataset.rollingStage);
+    const feedback = $('fm-rolling-feedback');
+    feedback.textContent = '';
+    const body = {revision: state.revision, stages};
+    try {
+      try {
+        state = await request(config.urls.configureRollingChallenges, body);
+      } catch (error) {
+        const detail = error.details;
+        if (!detail?.schedule_confirmation || !detail.schedule_removals?.length) throw error;
+        const times = detail.schedule_removals.map(row => `Match ${row.match}: ${row.time} · ${row.venue}${row.court ? ' · Court '+row.court : ''}`).join('\n');
+        if (!confirm(`Saving these choices will remove the following PRIVATE saved times, including affected later matches:\n\n${times}\n\nYou will need to schedule those matches again. Save these choices and remove exactly these times?`)) {
+          feedback.textContent = 'No changes saved. Existing match times are retained.';
+          return;
+        }
+        state = await request(config.urls.configureRollingChallenges, {...body, schedule_confirmation: detail.schedule_confirmation});
+      }
+      document.querySelectorAll('[data-rolling-stage]').forEach(input => { input.checked = state.rolling_challenge_stages.includes(input.dataset.rollingStage); });
+      feedback.textContent = 'Challenge choices saved for this draw. Schedule publication is unchanged.';
+      message(feedback.textContent);
+    } catch (error) {
+      feedback.textContent = error.message;
+      throw error;
+    }
   }));
   $('fm-withdrawals').addEventListener('click', () => run(async () => {
     state = await request(config.urls.withdrawals, { revision: state.revision });
@@ -1131,6 +1218,9 @@
   $('fm-score-delete').addEventListener('click', () => submitScore(true));
   $('fm-print')?.addEventListener('click', () => window.print());
   window.addEventListener('hashchange', renderRoster);
+  setInterval(refreshDraw, 10000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshDraw(); });
+  window.addEventListener('online', refreshDraw);
   window.addEventListener('draw-workspace-notes-saved', event => { config.notes = event.detail; renderPrint(); });
   window.addEventListener('beforeunload', event => {
     if (dirty && !config.demo) {

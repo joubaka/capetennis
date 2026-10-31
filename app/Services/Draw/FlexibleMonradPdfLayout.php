@@ -108,9 +108,10 @@ final class FlexibleMonradPdfLayout
                     'label' => isset($entry['match']['challenge_positions']) ? 'Position '.$entry['match']['challenge_positions'][0]
                         : ($section === 'Main draw' ? 'Champion' : (isset($placement[1])
                             ? (($state['challenge_playoffs'] ?? false) ? 'Base position ' : 'Position ').($baseRanks[(int) ($entry['match']['winner'] ?? 0)] ?? $placement[1]) : 'Winner')),
-                    'name' => ($entry['match']['challenge_status'] ?? null) === 'skipped' ? 'Skipped - positions unchanged' : (!empty($entry['match']['winner'])
+                    'name' => ($entry['match']['challenge_status'] ?? null) === 'disabled' ? 'Not selected - positions unchanged'
+                        : (($entry['match']['challenge_status'] ?? null) === 'skipped' ? 'Skipped - positions unchanged' : (!empty($entry['match']['winner'])
                         ? ($players[(int) $entry['match']['winner']]['name'] ?? 'Winner')
-                        : ''),
+                        : '')),
                 ];
                 $connections[] = [
                     'x1' => $position['x'] + self::CARD_WIDTH,

@@ -81,4 +81,59 @@ class DailyMatchLimitTest extends TestCase
         $this->assertArrayNotHasKey('profile:10', $counts);
         $this->assertSame(1, $counts['profile:20']);
     }
+
+    public function test_rolling_challenges_include_preceding_appearances_and_disabled_stages_do_not_count(): void
+    {
+        foreach ([true, false] as $includeFourFive) {
+            $graph = ['nodes' => ['base_five' => ['sources' => [['type' => 'player', 'id' => 5], ['type' => 'player', 'id' => 6]]]],
+                'positions' => [], 'players' => range(1, 6)];
+            foreach (range(1, 6) as $rank) $graph['positions'][$rank] = ['type' => 'player', 'id' => $rank];
+            $graph['positions'][5] = ['type' => 'winner', 'match' => 'base_five'];
+            $stages = $includeFourFive ? FlexibleMonradCompiler::ROLLING_STAGES : ['challenge_2', 'challenge_3', 'challenge_2_repeat'];
+            $graph = FlexibleMonradCompiler::withRollingChallenges($graph, $stages);
+            $input = array_map(fn ($node) => ['players' => [null, null], 'winner' => null, 'played' => false], $graph['nodes']);
+            $projection = (new \App\Services\Draw\FlexibleMonradProgression)->resolve($graph, $input, []);
+            $matches = []; $bookings = [];
+            foreach ($graph['nodes'] as $key => $node) {
+                $id = count($matches) + 1;
+                $matches[$key] = $node + $projection['matches'][$key] + ['id' => $id];
+                $bookings['individual:'.$id] = '2026-11-01';
+            }
+            $counts = DailyMatchLimit::pathCounts($matches, $bookings, '2026-11-01', []);
+            $this->assertSame($includeFourFive ? 4 : 1, $counts['registration:5']);
+            $limit = new DailyMatchLimit;
+            (new \ReflectionProperty($limit, 'graphs'))->setValue($limit, [$matches]);
+            foreach ($bookings as $key => $date) $limit->reserve($key, $date);
+            $error = $limit->error('individual:'.$matches['challenge_2_repeat']['id'], '2026-11-01', 3);
+            if ($includeFourFive) $this->assertStringContainsString('Maximum 3 matches', $error);
+            else $this->assertNull($error);
+        }
+    }
+
+    public function test_two_three_current_three_four_and_repeat_are_alternative_routes_not_three_appearances_for_one_player(): void
+    {
+        $graph = ['nodes' => [], 'positions' => [], 'players' => range(1, 6)];
+        foreach ([1, 3, 5] as $rank) {
+            $key = 'base_'.$rank;
+            $graph['nodes'][$key] = ['sources' => [['type' => 'player', 'id' => $rank], ['type' => 'player', 'id' => $rank + 1]]];
+            $graph['positions'][$rank] = ['type' => 'winner', 'match' => $key];
+            $graph['positions'][$rank + 1] = ['type' => 'loser', 'match' => $key];
+        }
+        $graph = FlexibleMonradCompiler::withRollingChallenges($graph, ['challenge_2', 'challenge_3', 'challenge_2_repeat']);
+        $input = array_map(fn ($node) => ['players' => [null, null], 'winner' => null, 'played' => false], $graph['nodes']);
+        $projection = (new \App\Services\Draw\FlexibleMonradProgression)->resolve($graph, $input, []);
+        $matches = []; $bookings = [];
+        foreach ($graph['nodes'] as $key => $node) {
+            $id = count($matches) + 1;
+            $matches[$key] = $node + $projection['matches'][$key] + ['id' => $id];
+            $bookings['individual:'.$id] = '2026-11-01';
+        }
+        $counts = DailyMatchLimit::pathCounts($matches, $bookings, '2026-11-01', []);
+        foreach ([1, 2, 3, 4] as $player) $this->assertSame(3, $counts['registration:'.$player]);
+        foreach ([5, 6] as $player) $this->assertSame(1, $counts['registration:'.$player]);
+        $limit = new DailyMatchLimit;
+        (new \ReflectionProperty($limit, 'graphs'))->setValue($limit, [$matches]);
+        foreach ($bookings as $key => $date) $limit->reserve($key, $date);
+        $this->assertNull($limit->error('individual:'.$matches['challenge_2_repeat']['id'], '2026-11-01', 3));
+    }
 }

@@ -10,6 +10,15 @@
   <p class="text-primary mb-1">Step 1 of 5 · Format</p>
   <h3 class="mb-2">How should this draw start?</h3>
   <p class="text-muted mb-4">{{ $draw->drawName }} · Choose the format first. Player placement and format-specific settings come next.</p>
+  @if($draw->settings?->workflow === 'feed_in_monrad' && !empty($draw->flexibleMonrad?->graph))
+    @can('enableRollingChallenges', $draw)
+      <div class="alert alert-info" role="note">
+        <strong>Choose individual playoff matches in the draw's Settings tab.</strong>
+        <p class="mb-2">You can change challenge match choices there without resetting the draw format or recorded results.</p>
+        <a class="btn btn-outline-primary" href="{{ route('backend.draw.roundrobin.show', $draw) }}#settings">Choose playoff matches</a>
+      </div>
+    @endcan
+  @endif
   <details class="alert alert-info mb-4">
     <summary class="fw-semibold" style="cursor:pointer">Help me choose a format</summary>
     <div class="small mt-3">

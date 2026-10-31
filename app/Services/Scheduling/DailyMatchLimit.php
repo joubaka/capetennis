@@ -103,6 +103,10 @@ final class DailyMatchLimit
             if (isset($visiting[$key])) throw new \InvalidArgumentException('The draw contains a circular match dependency.');
             $visiting[$key] = true;
             $match = $matches[$key]; $counts = [];
+            if (($match['automatic'] ?? null) === 'challenge_disabled') {
+                unset($visiting[$key]);
+                return $paths[$key] = [];
+            }
             foreach ($match['sources'] as $slot => $source) {
                 if (isset($source['match'])) {
                     $prior = $matches[$source['match']];
@@ -125,7 +129,71 @@ final class DailyMatchLimit
             unset($count, $visiting[$key]);
             return $paths[$key] = $counts;
         };
-        foreach (array_keys($matches) as $key) $visit($key);
+        $rolling = isset($matches['challenge_3']['rolling_challenge']);
+        foreach (array_keys($matches) as $key) {
+            if ($rolling && in_array($key, \App\Services\Draw\FlexibleMonradCompiler::ROLLING_STAGES, true)) continue;
+            $visit($key);
+        }
+        if ($rolling) {
+            foreach (self::rollingCounts($matches, $bookings, $date, $visit) as $player => $count) {
+                if ($count) foreach ($identities[$player] ?? ['registration:'.$player] as $identity) $totals[$identity] = max($totals[$identity] ?? 0, $count);
+            }
+        }
         return $totals;
+    }
+
+    /** Four base-rank roles have at most sixteen feasible challenge outcomes. */
+    private static function rollingCounts(array $matches, array $bookings, string $date, \Closure $basePaths): array
+    {
+        $candidates = [];
+        foreach ([2 => ['challenge_2', 0], 3 => ['challenge_2', 1], 4 => ['challenge_4', 0], 5 => ['challenge_4', 1]] as $rank => [$key, $slot]) {
+            $source = $matches[$key]['sources'][$slot];
+            if (isset($source['match'])) {
+                $prior = $matches[$source['match']];
+                $incoming = $basePaths($source['match']);
+                if ($prior['winner'] ?? null) {
+                    $allowed = $source['type'] === 'winner' ? [$prior['winner']] : array_diff(array_filter($prior['players'] ?? []), [$prior['winner']]);
+                    $incoming = array_intersect_key($incoming, array_flip($allowed));
+                }
+            } else $incoming = ($source['type'] ?? null) === 'player' ? [(int) $source['id'] => 0] : [];
+            $candidates[$rank] = $incoming;
+        }
+        $states = [['ranks' => [2 => 2, 3 => 3, 4 => 4, 5 => 5], 'games' => [2 => 0, 3 => 0, 4 => 0, 5 => 0],
+            'new_third' => false, 'meetings' => []]];
+        foreach (['challenge_2', 'challenge_4', 'challenge_3', 'challenge_2_repeat'] as $key) {
+            $match = $matches[$key];
+            if (! ($match['challenge_enabled'] ?? true) || ($match['automatic'] ?? false)) continue;
+            [$upper, $lower] = $match['challenge_positions'];
+            $weight = ($bookings['individual:'.$match['id']] ?? null) === $date ? 1 : 0;
+            $next = [];
+            foreach ($states as $state) {
+                if ($key === 'challenge_2_repeat' && ! $state['new_third']) { $next[] = $state; continue; }
+                $roles = [$state['ranks'][$upper], $state['ranks'][$lower]];
+                $valid = true;
+                foreach ($roles as $slot => $role) {
+                    if (($player = $match['players'][$slot] ?? null) && ! array_key_exists($player, $candidates[$role])) $valid = false;
+                }
+                if (! $valid) continue;
+                $pair = $roles; sort($pair); $pair = implode(':', $pair);
+                if (isset($state['meetings'][$pair])) { $next[] = $state; continue; }
+                $outcomes = ($match['winner'] ?? null) ? [array_search($match['winner'], $match['players'], true)] : [0, 1];
+                foreach ($outcomes as $winnerSlot) {
+                    if ($winnerSlot === false) continue;
+                    $branch = $state;
+                    foreach ($roles as $role) $branch['games'][$role] += $weight;
+                    $branch['ranks'][$upper] = $roles[$winnerSlot];
+                    $branch['ranks'][$lower] = $roles[1 - $winnerSlot];
+                    if ($key === 'challenge_3') $branch['new_third'] = $winnerSlot === 1;
+                    $branch['meetings'][$pair] = true;
+                    $next[] = $branch;
+                }
+            }
+            $states = $next;
+        }
+        $counts = [];
+        foreach ($states as $state) foreach ($candidates as $role => $players) foreach ($players as $player => $baseCount) {
+            $counts[$player] = max($counts[$player] ?? 0, $baseCount + $state['games'][$role]);
+        }
+        return $counts;
     }
 }

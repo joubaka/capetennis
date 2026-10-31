@@ -175,15 +175,98 @@ final class FlexibleMonradService
     /** Append tournament-day challenges without regenerating or publishing the draw. */
     public function enableRollingChallenges(Draw $draw, int $revision): FlexibleMonradDraw
     {
-        return DB::transaction(function () use ($draw, $revision) {
+        return $this->configureRollingChallenges($draw, $revision, null);
+    }
+
+    public function configureRollingChallenges(Draw $draw, int $revision, ?array $stages, ?string $scheduleConfirmation = null): FlexibleMonradDraw
+    {
+        return DB::transaction(function () use ($draw, $revision, $stages, $scheduleConfirmation) {
+            // Share the scheduling/publication sentinel before event/draw locks.
+            DB::table('venues')->orderBy('id')->limit(1)->lockForUpdate()->get();
+            \App\Models\Event::whereKey($draw->event_id)->lockForUpdate()->firstOrFail();
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
             abort_if($draw->locked, 409, 'The draw is locked.');
             abort_unless($draw->settings?->workflow === 'feed_in_monrad', 422, 'Rolling challenges require Feed-in Monrad.');
             $record = FlexibleMonradDraw::where('draw_id', $draw->id)->lockForUpdate()->firstOrFail();
             $this->revision($record, $revision);
             abort_unless($record->graph, 422, 'Generate the base draw first.');
-            if ($record->graph['rolling_challenges'] ?? false) return $record;
-            $graph = FlexibleMonradCompiler::withRollingChallenges($record->graph);
+            $wasRolling = (bool) ($record->graph['rolling_challenges'] ?? false);
+            $graph = FlexibleMonradCompiler::withRollingChallenges($record->graph, $stages);
+            $stages = $graph['rolling_challenge_stages'];
+            $before = FlexibleMonradCompiler::selectedRollingStages($record->graph);
+            if (($record->graph['rolling_challenges'] ?? false) && $before === $stages) return $record;
+            $changed = array_values(array_filter(FlexibleMonradCompiler::allowedChallengeStages($record->graph),
+                fn ($key) => in_array($key, $before, true) !== in_array($key, $stages, true)));
+            $topChanged = (bool) array_intersect($changed, FlexibleMonradCompiler::ROLLING_STAGES);
+            // Editing one independent pair must not rewrite another pair's
+            // dependency footprint, including legacy draws with all-base gates.
+            foreach (FlexibleMonradCompiler::baseChallengeKeys($record->graph) as $key) {
+                if (! in_array($key, $changed, true) && isset($record->graph['nodes'][$key])
+                    && (! in_array($key, FlexibleMonradCompiler::ROLLING_STAGES, true) || $wasRolling || ! $topChanged)) {
+                    $graph['nodes'][$key] = $record->graph['nodes'][$key];
+                }
+            }
+            if (! $topChanged) {
+                foreach (FlexibleMonradCompiler::ROLLING_STAGES as $key) {
+                    if (isset($record->graph['nodes'][$key])) $graph['nodes'][$key] = $record->graph['nodes'][$key];
+                }
+            }
+            $modified = array_values(array_filter(array_keys($record->graph['nodes']), fn ($key) => isset($graph['nodes'][$key]['challenge_positions'])
+                && $graph['nodes'][$key] != $record->graph['nodes'][$key]));
+            $affected = array_values(array_unique(array_merge($changed, $modified)));
+            foreach ($affected as $key) $affected = array_merge($affected,
+                $this->descendants($record->graph['nodes'], $key), $this->descendants($graph['nodes'], $key));
+            $fixtures = $draw->drawFixtures()->lockForUpdate()->with('fixtureResults')->get()->keyBy('id');
+            $input = [];
+            foreach ($graph['nodes'] as $key => $node) {
+                $fixture = $fixtures->get($record->fixture_map[$key] ?? null);
+                $input[$key] = ['players' => [$fixture?->registration1_id ? (int) $fixture->registration1_id : null,
+                    $fixture?->registration2_id ? (int) $fixture->registration2_id : null],
+                    'winner' => $fixture?->winner_registration ? (int) $fixture->winner_registration : null,
+                    'walkover' => $fixture?->isWalkover() ?? false,
+                    'played' => $fixture && ($fixture->fixtureResults->isNotEmpty() || $fixture->isWalkover())];
+            }
+            $projection = app(FlexibleMonradProgression::class)->resolve($graph, $input, $this->withdrawn($draw, $graph));
+            // Include bookings that the new projection would automatically close;
+            // switching from a legacy all-base gate must not remove times silently.
+            foreach ($projection['matches'] as $key => $match) {
+                if (in_array($match['automatic'], ['challenge_disabled', 'challenge_skipped'], true)
+                    && ($record->graph['automatic'][$key] ?? null) !== $match['automatic']) $affected[] = $key;
+            }
+            $affectedIds = array_values(array_filter(array_map(fn ($key) => $record->fixture_map[$key] ?? null, array_unique($affected))));
+            $protected = $fixtures->only($affectedIds)->contains(fn ($fixture) => $fixture->fixtureResults->isNotEmpty()
+                || in_array((int) $fixture->match_status, [1, 2, 4], true) || $fixture->isWalkover());
+            $started = DrawAuditLog::where('draw_id', $draw->id)->whereIn('fixture_id', $affectedIds)
+                ->where('action', 'match_started')->lockForUpdate()->get()->isNotEmpty();
+            abort_if($protected || $started, 409, 'A changed challenge or a later dependent match has started or has a result. Use the existing score correction process first.');
+            $published = DB::table('published_schedule_assignments')->where('event_id', $draw->event_id)
+                ->where('draw_id', $draw->id)->where('fixture_kind', 'individual')->whereIn('fixture_id', $affectedIds)->lockForUpdate()->get();
+            abort_if($published->isNotEmpty(), 409, 'A changed challenge or a later dependent match has a published time. Hide its published time through the calendar before changing these choices.');
+            $orders = DB::table('order_of_plays')->whereIn('fixture_id', $affectedIds)->orderBy('id')->lockForUpdate()->get();
+            $schedules = DB::table('schedules')->where('draw_id', $draw->id)->whereIn('fixture_id', $affectedIds)->orderBy('id')->lockForUpdate()->get();
+            $removals = $orders->map(fn ($row) => ['fixture_id' => $row->fixture_id, 'match' => $fixtures[$row->fixture_id]->match_nr,
+                'time' => $row->time, 'venue_id' => $row->venue_id, 'court' => $row->court])->all();
+            foreach ($schedules as $row) {
+                if ($orders->contains(fn ($order) => (int) $order->fixture_id === (int) $row->fixture_id
+                    && $order->time === $row->time && (int) $order->venue_id === (int) $row->venue_id)) continue;
+                $removals[] = ['fixture_id' => $row->fixture_id, 'match' => $fixtures[$row->fixture_id]->match_nr,
+                    'time' => $row->time, 'venue_id' => $row->venue_id, 'court' => null];
+            }
+            $venueNames = DB::table('venues')->whereIn('id', array_column($removals, 'venue_id'))->pluck('name', 'id');
+            foreach ($removals as &$removal) $removal['venue'] = $venueNames[$removal['venue_id']] ?? 'Unassigned venue';
+            unset($removal);
+            $token = hash_hmac('sha256', json_encode([$draw->id, auth()->id(), $revision, $stages, $orders, $schedules]), (string) config('app.key'));
+            if ($removals && ($scheduleConfirmation === null || ! hash_equals($token, $scheduleConfirmation))) {
+                throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
+                    'message' => 'Review the private match times that must be removed before saving these challenge choices.',
+                    'schedule_confirmation' => $token, 'schedule_removals' => $removals,
+                ], 409));
+            }
+            if ($removals) {
+                DB::table('order_of_plays')->whereIn('id', $orders->pluck('id'))->delete();
+                DB::table('schedules')->whereIn('id', $schedules->pluck('id'))->delete();
+                Fixture::where('draw_id', $draw->id)->whereIn('id', $affectedIds)->update(['scheduled' => 0]);
+            }
             $map = $record->fixture_map;
             $previousMap = $map;
             $number = (int) $draw->drawFixtures()->max('match_nr');
@@ -195,12 +278,17 @@ final class FlexibleMonradService
             }
             $draft = $record->draft;
             $draft['rolling_challenges'] = true;
+            $draft['rolling_challenge_stages'] = $stages;
             $record->fill(['draft' => $draft, 'graph' => $graph, 'fixture_map' => $map, 'revision' => $revision + 1])->save();
             $config = $draw->settings->playoff_config ?? [];
-            $draw->settings->update(['playoff_config' => array_replace($config, ['rolling_challenges' => true])]);
+            $draw->settings->update(['playoff_config' => array_replace($config,
+                ['rolling_challenges' => true, 'rolling_challenge_stages' => $stages,
+                    'challenge_playoffs' => $stages !== [], 'challenge_pairs' => $graph['challenge_pairs']])]);
             $this->resolve($record);
-            DrawAuditLog::record($draw->id, 'monrad_rolling_challenges_enabled', null,
-                ['revision' => $record->revision, 'added_fixture_ids' => array_values(array_diff_key($map, $previousMap))]);
+            DrawAuditLog::record($draw->id, $wasRolling ? 'monrad_rolling_challenges_configured' : 'monrad_rolling_challenges_enabled', null,
+                ['revision' => $record->revision, 'stages_before' => $before, 'stages_after' => $stages,
+                    'added_fixture_ids' => array_values(array_diff_key($map, $previousMap)), 'removed_private_times' => $removals,
+                    'previous_orders' => $orders->all(), 'previous_schedules' => $schedules->all()]);
             return $record->refresh();
         });
     }
@@ -480,6 +568,8 @@ final class FlexibleMonradService
         return ['revision' => $record?->revision ?? 0, 'draft' => $draft, 'setup_withdrawals_removed' => $setupSlotsRemoved,
             'challenge_playoffs' => (bool) ($record?->graph['challenge_playoffs'] ?? $draft['challenge_playoffs'] ?? false),
             'rolling_challenges' => (bool) ($record?->graph['rolling_challenges'] ?? false),
+            'rolling_challenge_stages' => FlexibleMonradCompiler::selectedRollingStages($record?->graph ?? []),
+            'challenge_stage_options' => FlexibleMonradCompiler::challengeOptions($record?->graph ?? []),
             'base_positions' => $progression['base_positions'] ?? [],
             'positions_complete' => $progression['positions_complete'] ?? false,
             'best_of' => (int) ($draw->settings?->num_sets ?: 3),
@@ -541,7 +631,7 @@ final class FlexibleMonradService
             if ($match['automatic']) $automatic[$key] = $match['automatic'];
             if ($fixture->fixtureResults->isNotEmpty() || $fixture->isWalkover()) continue;
             $fixture->fill(['registration1_id' => $match['players'][0], 'registration2_id' => $match['players'][1],
-                'winner_registration' => $match['winner'], 'match_status' => $match['automatic'] === 'challenge_skipped' ? 5 : ($match['resolved'] ? 3 : 0)]);
+                'winner_registration' => $match['winner'], 'match_status' => in_array($match['automatic'], ['challenge_skipped', 'challenge_disabled'], true) ? 5 : ($match['resolved'] ? 3 : 0)]);
             $changed = $fixture->isDirty() || $changed;
             $fixture->save();
         }
@@ -642,7 +732,7 @@ final class FlexibleMonradService
         $additional = FlexibleMonradDraw::where('draw_id', $draw->id)->first()?->draft['additional_registration_ids'] ?? [];
         return ['size' => (int) $draft['size'], 'slots' => $slots]
             + ($draw->settings?->workflow === 'feed_in_monrad' && ($draw->settings?->playoff_config['rolling_challenges'] ?? false)
-                ? ['rolling_challenges' => true] : [])
+                ? ['rolling_challenges' => true, 'rolling_challenge_stages' => $draw->settings->playoff_config['rolling_challenge_stages'] ?? FlexibleMonradCompiler::ROLLING_STAGES] : [])
             + ($draw->settings?->workflow === 'feed_in_monrad' && ($draw->settings?->playoff_config['challenge_playoffs'] ?? false)
                 ? ['challenge_playoffs' => true] + (array_key_exists('challenge_pairs', $draw->settings->playoff_config)
                     ? ['challenge_pairs' => array_map('intval', $draw->settings->playoff_config['challenge_pairs'])] : []) : [])

@@ -14,7 +14,7 @@ class PlayerRatingHistoryStore
 
     public function policyHash(): string
     {
-        return hash('sha256', self::VERSION.':'.app(PlayerAbilitySnapshotStore::class)->policyHash().':completed-events:12-calendar-months');
+        return hash('sha256', self::VERSION.':'.app(PlayerAbilitySnapshotStore::class)->policyHash().':completed-matches:12-calendar-months');
     }
 
     public function read(): ?array

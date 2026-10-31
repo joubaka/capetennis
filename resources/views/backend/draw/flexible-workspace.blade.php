@@ -57,14 +57,27 @@
       <p>Best of {{ $config['state']['best_of'] }} set(s). Starting positions and bracket size are managed in Players &amp; Positions.</p>
       <a class="btn btn-outline-primary" href="{{ route('draw.setup.show', $draw) }}">Review draw format</a>
       <p class="text-muted mt-3">Changing format requires an empty, unlocked, unpublished draw. Existing fixtures and results are protected.</p>
-      @if(($config['workflow'] ?? null) === 'feed_in_monrad' && $config['state']['generated'])
+      @if(($config['workflow'] ?? null) === 'feed_in_monrad' && $config['state']['generated'] && $config['state']['challenge_stage_options']['base'])
         @can('enableRollingChallenges', $draw)
-          <div class="border rounded p-3 mb-3">
-            <h3 class="h6">Rolling top-five challenges</h3>
-            <p>Play 4–5 and 2–3 when the players have not met. Then play the current 3–4; if position 3 changes, play 2 against the new 3. Every stage skips pairs that have already played in this draw.</p>
-            <p class="text-muted">Existing results and match times are retained. New conditional matches need scheduling and schedule publication separately.</p>
-            <button type="button" class="btn btn-outline-primary" id="fm-rolling-challenges" @disabled($config['state']['rolling_challenges'])>{{ $config['state']['rolling_challenges'] ? 'Rolling challenges enabled' : 'Enable rolling challenges' }}</button>
-          </div>
+          <fieldset class="border rounded p-3 mb-3" id="fm-rolling-settings" aria-describedby="fm-rolling-help">
+            <legend class="h6 float-none w-auto">Challenge matches</legend>
+            <p id="fm-rolling-help">Choose the matches for this draw. Every selected match is skipped if the players have already met in this draw.</p>
+            @foreach(['base' => 'Base-position pairs', 'follow_on' => 'Follow-on matches for the top five'] as $group => $heading)
+              @if($config['state']['challenge_stage_options'][$group])
+                <h3 class="h6 mt-3">{{ $heading }}</h3>
+                @foreach($config['state']['challenge_stage_options'][$group] as $stage => $label)
+                  <label class="d-flex gap-2 align-items-center py-2">
+                    <input type="checkbox" class="form-check-input mt-0" data-rolling-stage="{{ $stage }}" @checked(in_array($stage, $config['state']['rolling_challenge_stages'], true))>
+                    <span>{{ $label }}</span>
+                  </label>
+                @endforeach
+              @endif
+            @endforeach
+            <p class="text-muted small">Current 3 vs 4 uses the positions after whichever earlier matches you select. “2 vs new 3” requires Current 3 vs 4 and only takes place if that match changes position 3. No other match is enabled automatically.</p>
+            <p class="text-muted small">New matches need scheduling separately. A change to private saved times requires your confirmation. Started matches, results and published times are protected.</p>
+            <button type="button" class="btn btn-outline-primary" id="fm-rolling-challenges">Save challenge choices</button>
+            <p role="status" id="fm-rolling-feedback" class="small mt-2 mb-0"></p>
+          </fieldset>
         @endcan
       @endif
       @can('editNotes', $draw)

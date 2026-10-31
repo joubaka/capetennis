@@ -1403,6 +1403,7 @@ Route::delete(
   Route::get('draw/{draw}/setup', [\App\Http\Controllers\Backend\DrawSetupController::class, 'show'])->name('draw.setup.show');
   Route::post('draw/{draw}/setup', [\App\Http\Controllers\Backend\DrawSetupController::class, 'store'])->name('draw.setup.store');
   Route::get('draw/{draw}/flexible-monrad', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'show'])->name('flexible-monrad.show');
+  Route::get('draw/{draw}/flexible-monrad/live', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'liveState'])->name('flexible-monrad.live');
   Route::put('draw/{draw}/flexible-monrad', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'save'])->name('flexible-monrad.save');
   Route::post('draw/{draw}/flexible-monrad/swap-players', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'swapPlayers'])->name('flexible-monrad.players.swap');
   Route::get('draw/{draw}/flexible-monrad/players', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'searchPlayers'])->name('flexible-monrad.players.search');
@@ -1410,6 +1411,7 @@ Route::delete(
   Route::post('draw/{draw}/flexible-monrad/generate', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'generate'])->name('flexible-monrad.generate');
   Route::post('draw/{draw}/flexible-monrad/publish', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'publish'])->name('flexible-monrad.publish');
   Route::post('draw/{draw}/flexible-monrad/rolling-challenges', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'enableRollingChallenges'])->name('flexible-monrad.rolling-challenges');
+  Route::post('draw/{draw}/flexible-monrad/rolling-challenges/configure', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'configureRollingChallenges'])->name('flexible-monrad.rolling-challenges.configure');
   Route::post('draw/{draw}/flexible-monrad/reopen', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'reopen'])->name('flexible-monrad.reopen');
   Route::post('draw/{draw}/flexible-monrad/withdrawal-redraw', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'prepareWithdrawalRedraw'])->name('flexible-monrad.withdrawal-redraw');
   Route::post('draw/{draw}/flexible-monrad/withdrawals', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'reconcileWithdrawals'])->name('flexible-monrad.withdrawals');
@@ -2471,6 +2473,7 @@ Route::get('ranking-review/{campaign}', [\App\Http\Controllers\Frontend\RankingR
 Route::get('flexible-monrad/demo', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'demo'])->name('flexible-monrad.demo');
 Route::post('flexible-monrad/demo-preview', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'demoPreview'])->middleware('throttle:60,1')->name('flexible-monrad.demo-preview');
 Route::get('flexible-monrad/{draw}', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'publicShow'])->name('public.flexible-monrad.show');
+Route::get('flexible-monrad/{draw}/live', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'publicLiveState'])->name('public.flexible-monrad.live');
 Route::get('players/{player}/public-profile', \App\Http\Controllers\Frontend\PublicPlayerProfileController::class)
   ->middleware(['signed', 'throttle:60,1'])->name('public.player.profile');
 Route::get('roundrobin/{draw}', [PublicRoundRobinController::class, 'show'])

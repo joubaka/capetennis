@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\{Cache, DB, Schema};
 /** Private v6 shared-opponent estimates. No saved financial/player/ranking state. */
 class PlayerSharedAbilityService
 {
-    public const VERSION = 10;
+    public const VERSION = 11;
     private const EVENT_CAP = 1000;
     private const PLAYER_CAP = 5000;
     private const EDGE_CAP = 50000;
@@ -133,13 +133,13 @@ class PlayerSharedAbilityService
         return $this->build($eventStart->startOfDay()->subDay(), $eventStart->startOfDay(), $excludedEventId, $experiment);
     }
 
-    /** Background history only: completed-event source validation is independent of later cutoffs.
+    /** Background history only: source validation is independent of later snapshot cutoffs.
      * Scheduled dates outside the event interval always retain the canonical event-start fallback.
      * The caller holds a consistent read and checks the source fingerprint before saving.
      */
     public function historySnapshot(CarbonImmutable $asOf, array &$completedSources): array
     {
-        return $this->build($asOf, $asOf->addDay()->startOfDay(), completedSources: $completedSources);
+        return $this->build($asOf, completedSources: $completedSources);
     }
 
     private function formatBadgeSnapshot(array $snapshot, CarbonImmutable $asOf): array
@@ -230,14 +230,17 @@ class PlayerSharedAbilityService
         $pilot = app(PlayerPerformancePilotService::class);
         $history = app(PlayerPerformanceHistoryService::class);
         $events = Event::query()->with('eventTypeModel')->whereDate('start_date', '<=', $asOf->toDateString())
+            ->whereNotNull('end_date')->whereColumn('end_date', '>=', 'start_date')
             ->where(fn ($query) => $query->where('published', true)->orWhere('results_published', true));
         if ($completedBefore) { $events->whereNotNull('end_date')->whereColumn('end_date', '>=', 'start_date')->whereDate('end_date', '<', $completedBefore->toDateString()); }
         if ($excludedEventId !== null) { $events->where('id', '!=', $excludedEventId); }
         foreach ($events->lazyById(25) as $event) {
             if (++$eventsSeen > self::EVENT_CAP) { return $this->withheld($builtAt); }
             if (\App\Models\CategoryEvent::query()->where('event_id', $event->id)->count() > self::EVENT_FIELD_CAP) { return $this->withheld($builtAt); }
-            if (CarbonImmutable::parse($event->end_date)->greaterThan($asOf)) { $event->end_date = $asOf->toDateString(); }
-            $weight = max(PHP_FLOAT_MIN, pow(0.5, max(0, CarbonImmutable::parse($event->end_date)->diffInDays($asOf, false)) / 180));
+            $eventEnd = CarbonImmutable::parse($event->end_date)->startOfDay();
+            $eventCompleted = $eventEnd->lessThanOrEqualTo($asOf);
+            // Cache canonical rows once, including later matches, then apply each history cutoff below.
+            $sourceAsOf = $completedSources !== null ? $eventEnd : $asOf;
             $eventPlayed = []; $eventOrdinal = []; $eventEdges = [];
             $sourceData = $completedSources[$event->id] ?? null;
             $definitionCounts = $sourceData['definitions'] ?? [];
@@ -251,19 +254,19 @@ class PlayerSharedAbilityService
             }
             }
             $fields = [];
-            $preview = $sourceData === null ? $pilot->preview([], 'singles', $asOf, 12, null, $event->id, true)
+            $preview = $sourceData === null ? $pilot->preview([], 'singles', $sourceAsOf, 12, null, $event->id, true)
                 : ['evidence' => collect($sourceData['ordinal'])];
             if ($completedSources !== null && $sourceData === null) {
                 $matches = [];
                 try {
-                    foreach ($this->playedSources($history, $event, $pilot, $asOf) as $match) {
+                    foreach ($this->playedSources($history, $event, $pilot, $sourceAsOf) as $match) {
                         $matches[] = $match;
                         if (count($matches) > self::EDGE_CAP) return $this->withheld($builtAt);
                     }
                 } catch (\OverflowException) { return $this->withheld($builtAt); }
                 $sourceData = $completedSources[$event->id] = ['definitions' => $definitionCounts, 'ordinal' => $preview['evidence']->all(), 'matches' => $matches];
             }
-            foreach ($preview['evidence']->whereNull('reason')->whereNotNull('position') as $row) {
+            foreach (($eventCompleted ? $preview['evidence'] : collect())->whereNull('reason')->whereNotNull('position') as $row) {
                 if (count($row['players']) !== 1) { continue; }
                 $cohort = $this->cohort($row['cohort']);
                 $fieldKey = $row['event_id'].':'.$row['category_id'];
@@ -301,6 +304,7 @@ class PlayerSharedAbilityService
             try {
                 foreach ($sourceData['matches'] ?? $this->playedSources($history, $event, $pilot, $asOf, $identityPreview) as $match) {
                     if (++$scannedMatches > self::EDGE_CAP) { return $this->withheld($builtAt); }
+                    if ($match['confidence_date'] > $asOf->toDateString()) { continue; }
                     if ($match['discipline'] !== 'singles') { continue; }
                     $allAgeReason = array_key_exists('all_age_reason', $match) ? $match['all_age_reason'] : $match['reason'];
                     if ($match['reason'] !== null && $allAgeReason !== null) { continue; }
@@ -409,7 +413,7 @@ class PlayerSharedAbilityService
         $graphs[$cohort]['edges'][] = $edge;
         foreach ([$edge['winner'], $edge['loser']] as $id) {
             $node = &$graphs[$cohort]['players'][$id];
-            $date = CarbonImmutable::parse($event->end_date)->toDateString();
+            $date = $edge['kind'] === 'played' ? $edge['confidence_date'] : CarbonImmutable::parse($event->end_date)->toDateString();
             $node ??= ['played' => 0, 'inferred' => 0, 'last_played' => $date, 'events' => []];
             if ($edge['kind'] === 'played') {
                 $node['confidence_matches'][] = ['date' => $edge['confidence_date'], 'basis' => $edge['confidence_date_basis'],

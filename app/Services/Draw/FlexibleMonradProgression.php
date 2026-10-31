@@ -69,6 +69,13 @@ final class FlexibleMonradProgression
         foreach (array_keys($graph['nodes']) as $key) $visitChallenge($key);
         foreach (array_keys($challengeOrder) as $key) {
             $node = $graph['nodes'][$key];
+            if (! ($node['challenge_enabled'] ?? true) && ! $fixtures[$key]['played']) {
+                $matches[$key] = ['players' => [null, null], 'winner' => null, 'resolved' => true,
+                    'automatic' => 'challenge_disabled', 'vacant' => [false, false],
+                    'withdrawn_players' => [null, null], 'byes' => [false, false],
+                    'challenge_status' => 'disabled', 'skip_reason' => 'This challenge stage is not selected.'];
+                continue;
+            }
             [$upper, $lower] = $node['challenge_positions'];
             $ready = ($node['rolling_gate'] ?? false)
                 ? ! array_filter($node['prerequisites'] ?? [], fn ($dependency) => ! ($matches[$dependency]['resolved'] ?? false)) : $complete;

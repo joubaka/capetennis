@@ -44,6 +44,22 @@ class FlexibleMonradController extends Controller
         return $response;
     }
 
+    public function liveState(Draw $draw)
+    {
+        $this->authorize('view', $draw);
+        return response()->json($this->page($draw, false)->getData()['config'])
+            ->header('Cache-Control', 'private, no-store, max-age=0');
+    }
+
+    public function publicLiveState(Draw $draw)
+    {
+        app(PublicTournamentVisibility::class)->ensureDrawIsVisible($draw, auth()->user());
+        abort_unless($draw->flexibleMonrad?->graph, 404);
+        // Use the same published-schedule and player projection as the public page.
+        return response()->json($this->page($draw, true)->getData()['config'])
+            ->header('Cache-Control', 'private, no-store, max-age=0');
+    }
+
     public function demo()
     {
         $players = array_map(fn ($id) => ['id' => $id, 'name' => sprintf('Demo Player %02d', $id)], range(1, 22));
@@ -115,6 +131,16 @@ class FlexibleMonradController extends Controller
         $this->authorize('enableRollingChallenges', $draw);
         $data = $request->validate(['revision' => 'required|integer|min:0']);
         $this->monrad->enableRollingChallenges($draw, $data['revision']);
+        return response()->json($this->monrad->state($draw->fresh()));
+    }
+
+    public function configureRollingChallenges(Request $request, Draw $draw)
+    {
+        $this->authorize('enableRollingChallenges', $draw);
+        $data = $request->validate(['revision' => 'required|integer|min:0', 'stages' => 'present|array|max:33',
+            'stages.*' => 'required|string|distinct',
+            'schedule_confirmation' => 'nullable|string|size:64']);
+        $this->monrad->configureRollingChallenges($draw, $data['revision'], $data['stages'], $data['schedule_confirmation'] ?? null);
         return response()->json($this->monrad->state($draw->fresh()));
     }
 
@@ -239,6 +265,7 @@ class FlexibleMonradController extends Controller
             'rankingReference' => $public ? null : $this->rankingReference($draw),
             'config' => [
             'workflow' => $workflow,
+            'refreshUrl' => route($public ? 'public.flexible-monrad.live' : 'flexible-monrad.live', $draw),
             'notes' => $draw->settings?->notes ?? [],
             'setupUrl' => $public ? null : route('draw.setup.show', $draw),
             'demo' => false, 'readOnly' => $public,
@@ -259,6 +286,7 @@ class FlexibleMonradController extends Controller
                 'addPlayer' => route('flexible-monrad.players.add', $draw),
                 'publish' => route('flexible-monrad.publish', $draw),
                 'rollingChallenges' => route('flexible-monrad.rolling-challenges', $draw),
+                'configureRollingChallenges' => route('flexible-monrad.rolling-challenges.configure', $draw),
                 'reopen' => route('flexible-monrad.reopen', $draw),
                 'prepareWithdrawalRedraw' => route('flexible-monrad.withdrawal-redraw', $draw),
                 'withdrawals' => route('flexible-monrad.withdrawals', $draw),

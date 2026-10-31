@@ -43,6 +43,30 @@ class AllAgeTeamEvidenceTest extends TestCase
         return iterator_to_array(app(PlayerPerformanceHistoryService::class)->allAgeTeamMatches($data['event'], CarbonImmutable::parse('2026-10-03')));
     }
 
+    public function test_ongoing_team_event_history_includes_only_completed_published_rubbers_by_the_cutoff(): void
+    {
+        $data = $this->fixture('U13 Boys A', 'U13 Boys A');
+        $data['event']->update(['end_date' => '2026-11-02']);
+        $service = app(PlayerSharedAbilityService::class);
+        $sources = [];
+        $snapshot = $service->historySnapshot(CarbonImmutable::parse('2026-10-03'), $sources);
+        $this->assertCount(1, $snapshot['all_age']['history_evidence']['matches']);
+        $this->assertCount(1, $snapshot['cohorts']['u13 boys']['history_evidence']['matches']);
+        $this->assertNull($snapshot['cohorts']['u13 boys']['baseline']['metadata']);
+        $this->assertSame([], $snapshot['cohorts']['u13 boys']['history_evidence']['fields']);
+        $data['fixture']->update(['scheduled_at' => '2026-11-01 09:00:00']);
+        $sources = [];
+        $this->assertSame([], $service->historySnapshot(CarbonImmutable::parse('2026-10-31'), $sources)['source_matches']);
+        $this->assertCount(1, $service->historySnapshot(CarbonImmutable::parse('2026-11-01'), $sources)['all_age']['history_evidence']['matches']);
+        foreach (['partial', 'private-tie', 'private-draw'] as $state) {
+            $data['fixture']->teamResults()->update(['team2_score' => $state === 'partial' ? 5 : 2]);
+            $data['tie']->update(['published_at' => $state === 'private-tie' ? null : now()]);
+            $data['draw']->update(['published' => $state !== 'private-draw']);
+            $sources = [];
+            $this->assertSame([], $service->historySnapshot(CarbonImmutable::parse('2026-11-01'), $sources)['source_matches'], $state);
+        }
+    }
+
     public function test_real_cross_age_and_cross_gender_result_connects_graph_without_changing_legacy_cohorts_or_sources(): void
     {
         $boys = $this->fixture('U13 Boys A', 'U13 Boys A');

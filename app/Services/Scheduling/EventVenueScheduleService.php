@@ -1375,6 +1375,7 @@ final class EventVenueScheduleService
                 $dependencies = array_map(fn ($dependency) => $keyToId[$dependency], \App\Services\Draw\FlexibleMonradCompiler::dependencies($match));
                 $nodes[$match['id']] = $this->node($draw, $fixture, $dependencies, $participants[$key] ?? [], (bool) $match['automatic'], (bool) $match['sets'] || $fixture->fixtureResults->isNotEmpty() || (int) $fixture->match_status !== 0,
                     $sourceLabels);
+                $nodes[$match['id']]['challenge_disabled'] = ($match['challenge_status'] ?? null) === 'disabled';
             }
             // Placement sections restart fixture round numbers; programme rounds follow graph depth.
             foreach (array_keys($nodes) as $id) $nodes[$id]['venue_round'] = $this->wave($id, $nodes);
@@ -1694,6 +1695,7 @@ final class EventVenueScheduleService
         foreach ($draws->filter(fn ($draw) => $programme && ($draw->usesFlexibleMonrad() || $draw->hasRoundRobinProgression())) as $draw) {
             $draw->loadMissing('drawFixtures.fixtureResults');
             $available[$draw->id] = collect($this->nodesForDraw($draw, Carbon::now(), 90, true))
+                ->reject(fn ($node) => $node['challenge_disabled'] ?? false)
                 ->pluck('round')->unique()->sort()->values()->all();
         }
         return $available;

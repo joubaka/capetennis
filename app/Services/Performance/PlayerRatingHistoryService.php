@@ -96,7 +96,7 @@ class PlayerRatingHistoryService
             'matches' => $matches, 'wins' => $wins, 'losses' => $matches - $wins, 'finishes' => $finishes];
     }
 
-    /** Explicit background calculation; completed-event evidence is validated once for all months. */
+    /** Explicit background calculation; source evidence is validated once for all monthly cutoffs. */
     public function calculate(CarbonImmutable $today): array
     {
         $fingerprint = $this->ability->fingerprint();
