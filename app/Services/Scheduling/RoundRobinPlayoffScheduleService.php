@@ -85,16 +85,16 @@ final class RoundRobinPlayoffScheduleService
             && $this->pairDefinitions($draw)->count() === $config->count();
     }
 
-    public function resolveFromStandings(Draw $draw, array $standings): int
+    public function resolveFromStandings(Draw $draw, array $standings, bool $preserveOccupiedSlots = false): int
     {
         $fixtures = $draw->drawFixtures()->where(function ($query) {
             $query->whereNotNull('registration1_source_group_id')
                 ->orWhereNotNull('registration2_source_group_id');
-        })->with('fixtureResults')->get();
+        })->with('fixtureResults')->lockForUpdate()->get();
         $resolved = 0;
 
         foreach ($fixtures as $fixture) {
-            if ($fixture->fixtureResults->isNotEmpty()) {
+            if (! $preserveOccupiedSlots && $fixture->fixtureResults->isNotEmpty()) {
                 continue;
             }
 
@@ -102,13 +102,24 @@ final class RoundRobinPlayoffScheduleService
             foreach ([1, 2] as $slot) {
                 $groupId = (int) $fixture->getAttribute("registration{$slot}_source_group_id");
                 $position = (int) $fixture->getAttribute("registration{$slot}_source_position");
-                $updates["registration{$slot}_id"] = $this->groupIsComplete($draw, $groupId)
+                if (! $groupId) continue;
+                $column = "registration{$slot}_id";
+                $registrationId = $this->groupIsComplete($draw, $groupId)
                     ? $this->registrationAt($standings[$groupId] ?? [], $position)
                     : null;
+
+                if ($preserveOccupiedSlots && $registrationId === null) {
+                    throw new \InvalidArgumentException('A playoff group-position source could not be resolved from this draw\'s completed standings. Review the playoff sources.');
+                }
+                if ($preserveOccupiedSlots && (int) $fixture->$column !== (int) $registrationId
+                    && ($fixture->$column !== null || $fixture->fixtureResults->isNotEmpty()
+                        || $fixture->winner_registration !== null || (int) $fixture->match_status !== 0)) {
+                    throw new \InvalidArgumentException('An occupied or played playoff slot differs from the confirmed standings. Review the draw through tournament recovery.');
+                }
+                $updates[$column] = $registrationId;
             }
 
-            if ((int) $fixture->registration1_id !== (int) $updates['registration1_id']
-                || (int) $fixture->registration2_id !== (int) $updates['registration2_id']) {
+            if (collect($updates)->contains(fn ($id, $column) => (int) $fixture->$column !== (int) $id)) {
                 $fixture->update($updates);
                 $resolved++;
             }

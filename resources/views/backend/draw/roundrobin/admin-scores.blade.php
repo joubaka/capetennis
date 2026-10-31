@@ -6,6 +6,7 @@
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
 <div class="container py-4">
+  @include('frontend.scoring.partials.lucky-prize', ['luckyPrizeDraws' => collect([$draw])])
 
   <h3 class="mb-1">Round Robin — {{ $draw->name }}</h3>
   <small class="text-muted">{{ $draw->category->name ?? '' }} @ {{ $draw->event->name ?? '' }}</small>

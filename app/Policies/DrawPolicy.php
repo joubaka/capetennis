@@ -7,6 +7,11 @@ use App\Models\User;
 
 class DrawPolicy
 {
+    public function awardLuckyPrize(User $user, Draw $draw): bool
+    {
+        return ! $draw->isTeamDraw() && $this->canManage($user, $draw, false);
+    }
+
     private function canManage(User $user, Draw $draw, bool $allowConvenor = true): bool
     {
         // Event assignments are the authoritative scope. Requiring a second,

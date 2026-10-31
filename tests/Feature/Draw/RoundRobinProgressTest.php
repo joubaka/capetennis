@@ -227,6 +227,102 @@ class RoundRobinProgressTest extends TestCase
         $this->postJson(route('backend.draw.progress', $draw))->assertForbidden();
     }
 
+    private function scheduledPlayoffPlaceholders(): array
+    {
+        [$draw, $category] = $this->draw([
+            ['name' => 'Main', 'slug' => 'main', 'size' => 4, 'positions' => [1, 2], 'enabled' => true],
+            ['name' => 'Plate', 'slug' => 'plate', 'size' => 4, 'positions' => [3, 4], 'enabled' => true],
+        ], false);
+        $entrants = $this->entrants($category, 8);
+        $this->completeGroup($draw, 'A', array_slice($entrants, 0, 4));
+        $this->completeGroup($draw, 'B', array_slice($entrants, 4, 4));
+        $controller = app(\App\Http\Controllers\Backend\RoundRobinController::class);
+        $this->assertSame(8, $controller->prepareSchedulePlayoffs($draw));
+        $venue = \App\Models\Venue::forceCreate(['name' => 'Progression test venue']);
+        foreach ($draw->drawFixtures()->where('stage', '!=', 'RR')->get() as $fixture) {
+            \App\Models\OrderOfPlay::create([
+                'draw_id' => $draw->id, 'fixture_id' => $fixture->id, 'venue_id' => $venue->id,
+                'court' => '1', 'time' => '2026-10-31 10:00:00', 'duration_minutes' => 15, 'gap_minutes' => 0,
+            ]);
+        }
+        $draw->update(['published' => true, 'oop_published' => true]);
+        return [$draw, $entrants];
+    }
+
+    public function test_progress_resolves_scheduled_main_and_plate_sources_in_place_once(): void
+    {
+        [$draw, $entrants] = $this->scheduledPlayoffPlaceholders();
+        $before = $draw->drawFixtures()->where('stage', '!=', 'RR')->orderBy('id')->get();
+        $bookings = DB::table('order_of_plays')->orderBy('id')->get()->toJson();
+        // A matching slot may already have resolved; it must remain untouched.
+        $before->first()->update(['registration1_id' => $entrants[0]->id]);
+
+        $this->progress($draw)->assertOk()->assertJsonPath('progress.created', 0)
+            ->assertJsonPath('progress.resolved', 4)->assertJsonPath('progress.unscheduled', 0);
+        $opening = $draw->drawFixtures()->where('stage', '!=', 'RR')->where('round', 1)->orderBy('match_nr')->get();
+        $expected = [[0, 5], [4, 1], [2, 7], [6, 3]];
+        foreach ($opening as $index => $fixture) {
+            $this->assertSame($entrants[$expected[$index][0]]->id, $fixture->registration1_id);
+            $this->assertSame($entrants[$expected[$index][1]]->id, $fixture->registration2_id);
+        }
+        $after = $draw->drawFixtures()->where('stage', '!=', 'RR')->orderBy('id')->get();
+        $this->assertSame($before->modelKeys(), $after->modelKeys());
+        foreach ($after as $index => $fixture) {
+            foreach (['parent_fixture_id', 'loser_parent_fixture_id', 'match_nr', 'stage', 'round'] as $column) {
+                $this->assertSame($before[$index]->$column, $fixture->$column);
+            }
+        }
+        $this->assertSame($bookings, DB::table('order_of_plays')->orderBy('id')->get()->toJson());
+        $this->progress($draw)->assertOk()->assertJsonPath('progress.resolved', 0)->assertJsonPath('progress.created', 0);
+        $this->assertSame(20, $draw->drawFixtures()->count());
+        $this->assertDatabaseCount('fixture_results', 12);
+    }
+
+    public function test_progress_rejects_conflicting_occupied_source_and_rolls_back_all_slots(): void
+    {
+        [$draw, $entrants] = $this->scheduledPlayoffPlaceholders();
+        $last = $draw->drawFixtures()->where('stage', 'PLATE')->where('round', 1)->orderByDesc('match_nr')->firstOrFail();
+        $last->update(['registration2_id' => $entrants[0]->id]);
+        $before = $draw->drawFixtures()->orderBy('id')->get()->toJson();
+        $bookings = DB::table('order_of_plays')->orderBy('id')->get()->toJson();
+        $this->progress($draw)->assertUnprocessable()->assertJsonPath('success', false);
+        $this->assertSame($before, $draw->drawFixtures()->orderBy('id')->get()->toJson());
+        $this->assertSame($bookings, DB::table('order_of_plays')->orderBy('id')->get()->toJson());
+    }
+
+    public function test_progress_is_restricted_to_the_draws_event_administrators(): void
+    {
+        [$draw] = $this->scheduledPlayoffPlaceholders();
+        $unrelatedAdmin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => Event::factory()->create()->id, 'user_id' => $unrelatedAdmin->id]);
+        $this->actingAs($unrelatedAdmin);
+        $this->getJson(route('backend.draw.progress-review', $draw))->assertForbidden();
+        $this->postJson(route('backend.draw.progress', $draw))->assertForbidden();
+        $this->assertSame(0, $draw->drawFixtures()->where('stage', '!=', 'RR')->whereNotNull('registration1_id')->count());
+    }
+
+    public function test_progress_does_not_fill_a_missing_slot_on_a_recorded_playoff(): void
+    {
+        [$draw, $entrants] = $this->scheduledPlayoffPlaceholders();
+        $fixture = $draw->drawFixtures()->where('stage', 'MAIN')->where('round', 1)->firstOrFail();
+        FixtureResult::factory()->create(['fixture_id' => $fixture->id, 'winner_registration' => $entrants[0]->id]);
+        $before = $draw->drawFixtures()->orderBy('id')->get()->toJson();
+        $this->progress($draw)->assertUnprocessable();
+        $this->assertSame($before, $draw->drawFixtures()->orderBy('id')->get()->toJson());
+        $this->assertDatabaseCount('fixture_results', 13);
+    }
+
+    public function test_strict_resolution_preserves_a_slot_without_a_group_source(): void
+    {
+        [$draw, $entrants] = $this->scheduledPlayoffPlaceholders();
+        $fixture = $draw->drawFixtures()->where('stage', 'MAIN')->where('round', 1)->firstOrFail();
+        $fixture->update(['registration2_source_group_id' => null, 'registration2_source_position' => null,
+            'registration2_id' => $entrants[5]->id]);
+        $this->progress($draw)->assertOk();
+        $this->assertSame($entrants[0]->id, $fixture->fresh()->registration1_id);
+        $this->assertSame($entrants[5]->id, $fixture->fresh()->registration2_id);
+    }
+
     public function test_progress_review_returns_each_group_in_natural_order_with_full_standings(): void
     {
         [$draw, $category] = $this->draw([[

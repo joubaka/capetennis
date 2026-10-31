@@ -318,6 +318,7 @@
         </div>
         </div>
       </div>
+      @include('frontend.scoring.partials.lucky-prize', ['luckyPrizeDraws' => $selectedDraw ? collect([$selectedDraw]) : $draws])
       <details class="scoring-operator" @if(!$operatorName || $errors->has('operator')) open @endif>
         <summary class="operator-summary d-flex align-items-center gap-2">
           <i class="ti ti-device-mobile text-primary" aria-hidden="true"></i>
@@ -743,6 +744,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
   async function refreshWorkspace(url, options) {
     options = options || {};
+    if (window.CTLuckyPrize?.pending()) {
+      showWorkspaceError('Retrieve the pending lucky-prize result before refreshing or changing the scoring view.');
+      return;
+    }
     const sequence = ++workspaceRequestSequence;
     const filter = options.filter || currentFilter();
     const shell = document.querySelector('.scoring-shell');
@@ -758,9 +763,16 @@ document.addEventListener('DOMContentLoaded', function () {
       const html = await response.text();
       if (!response.ok) throw new Error('The scoring workspace could not be refreshed.');
       if (sequence !== workspaceRequestSequence) return;
+      if (window.CTLuckyPrize?.pending()) {
+        shell.classList.remove('is-refreshing');
+        shell.removeAttribute('aria-busy');
+        showWorkspaceError('Retrieve the pending lucky-prize result before refreshing or changing the scoring view.');
+        return;
+      }
       const replacement = new DOMParser().parseFromString(html, 'text/html').querySelector('.scoring-shell');
       if (!replacement) throw new Error('The scoring workspace returned an unexpected response.');
       shell.replaceWith(replacement);
+      window.CTLuckyPrize?.init();
       if (options.pushState) history.pushState({}, '', options.historyUrl || url);
       syncRememberedVenue(false);
       applyScoreFilter(filter, false);

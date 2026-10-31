@@ -185,6 +185,8 @@ Route::get('masters/invitations/{invitation}/confirm-decline', [\App\Http\Contro
 
 // Player Profile Update (frontend)
 Route::middleware('auth')->group(function () {
+  Route::get('/events/{event}/scoring/draws/{draw}/lucky-prize', [\App\Http\Controllers\Frontend\LuckyPrizeController::class, 'pool'])->name('frontend.scoring.lucky-prize.pool');
+  Route::post('/events/{event}/scoring/draws/{draw}/lucky-prize', [\App\Http\Controllers\Frontend\LuckyPrizeController::class, 'spin'])->middleware('throttle:20,1')->name('frontend.scoring.lucky-prize.spin');
   Route::get('/player/profiles/pending', [\App\Http\Controllers\Frontend\PlayerProfileController::class, 'pending'])->name('player.profiles.pending');
   Route::get('/player/profile/create', [\App\Http\Controllers\Frontend\PlayerProfileController::class, 'create'])->name('player.profile.create');
   Route::post('/player/profile/create', [\App\Http\Controllers\Frontend\PlayerProfileController::class, 'storeNew'])->name('player.profile.store');

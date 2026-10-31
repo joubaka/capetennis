@@ -852,7 +852,6 @@ class RoundRobinController extends Controller
 
         if ($this->playoffSchedules->supportsEntireConfiguration($draw)) {
           $created = $this->playoffSchedules->prepare($draw)->count();
-          $resolved = $this->playoffSchedules->resolveFromStandings($draw, $standings);
         } elseif ($existingBefore === 0) {
           $playoffConfig = $draw->settings?->playoff_config
             ?? DrawSetting::defaultPlayoffConfig($draw->groups->count());
@@ -860,6 +859,10 @@ class RoundRobinController extends Controller
           $this->generateDynamicPlayoffFixtures($draw, $playoffConfig, $seeds);
           $created = $draw->drawFixtures()->where('stage', '!=', 'RR')->count();
         }
+
+        // Scheduled knockout brackets also carry group-position sources.
+        // Resolve those slots in place, retaining fixture IDs and bookings.
+        $resolved = $this->playoffSchedules->resolveFromStandings($draw, $standings, true);
 
         // Reconcile winners from completed playoff fixtures. Normal score save
         // already does this; the explicit Progress action also repairs a missed

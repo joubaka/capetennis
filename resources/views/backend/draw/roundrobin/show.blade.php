@@ -110,6 +110,7 @@
   </li>
 
 </ul>
+@include('frontend.scoring.partials.lucky-prize', ['luckyPrizeDraws' => collect([$draw])])
 <a class="btn btn-primary d-none" data-full-schedule-action href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'manual' => 1]) }}">
   <i class="ti ti-calendar-cog me-1" aria-hidden="true"></i> Schedule multiple draws
 </a>
