@@ -47,17 +47,18 @@ class RoundRobinPlayoffSchedulingTest extends TestCase
     {
         [$event, $draw] = $this->scenario();
         $url = route('backend.event-venue-schedule.index', ['event' => $event->id, 'draw_ids' => [$draw->id]]);
-        $page = $this->get($url)->assertOk()->assertSee('Prepare playoff fixtures')->assertSee('Playoff rounds are not prepared yet');
+        $page = $this->get($url)->assertOk()->assertSee('Prepare playoff fixtures')->assertSee('Add playoffs to the scheduling list')
+            ->assertSee('Players remain undecided until they qualify.');
         $html = $page->getContent();
         $this->assertLessThan(strpos($html, 'id="pending-playoff-rounds"'), strpos($html, 'id="day-batch-rounds-step"'));
         $this->assertLessThan(strpos($html, 'id="day-batch-rounds"'), strpos($html, 'id="pending-playoff-rounds"'));
         $this->assertSame(12, $draw->drawFixtures()->count());
         $post = route('backend.event-venue-schedule.prepare-playoffs', $event);
         $this->post($post, ['draw_ids' => [$draw->id]])->assertRedirect($url);
-        $ids = $draw->drawFixtures()->pluck('id')->all();
+        $ids = $draw->drawFixtures()->orderBy('id')->pluck('id')->all();
         $this->assertCount(20, $ids);
         $this->post($post, ['draw_ids' => [$draw->id]])->assertRedirect();
-        $this->assertSame($ids, $draw->drawFixtures()->pluck('id')->all());
+        $this->assertSame($ids, $draw->drawFixtures()->orderBy('id')->pluck('id')->all());
         $service = app(EventVenueScheduleService::class);
         $this->assertSame([1, 2, 3, 4, 5], $service->availableDrawRounds(collect([$draw->fresh()]), true)[$draw->id]);
         $details = $service->dayRoundDetails($draw->fresh());

@@ -206,7 +206,9 @@ class VenueScoringController extends Controller
 
         // Use the whole draw, including matches outside the visible venue/date.
         // Scoring permission alone never grants playoff progression permission.
-        $playoffProgression = $draws->filter(fn (Draw $draw) => $draw->settings?->workflow === 'round_robin_playoffs'
+        $visibleDrawIds = $matches->pluck('draw_id')->unique();
+        $playoffProgression = $draws->filter(fn (Draw $draw) => $visibleDrawIds->contains($draw->id)
+            && $draw->settings?->workflow === 'round_robin_playoffs'
             && ! $draw->isTeamDraw() && $user->can('progress', $draw))
             ->mapWithKeys(fn (Draw $draw) => [$draw->id => [
                 'drawName' => $draw->drawName,

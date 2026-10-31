@@ -960,6 +960,39 @@ class VenueScoringWorkspaceTest extends TestCase
         $this->get($url)->assertOk()->assertViewHas('playoffProgression', fn ($states) => $states->isEmpty());
     }
 
+    public function test_ready_playoff_actions_follow_selected_venue_draw_and_date(): void
+    {
+        [$event, $visibleDraw, $venue, $visibleFixture] = $this->scheduledFixture('Selected venue');
+        [, $otherVenueDraw, , $otherVenueFixture] = $this->scheduledFixture('Different venue', $event);
+        [, $otherDateDraw, , $otherDateFixture] = $this->scheduledFixture('Date setup venue', $event);
+        $otherDateFixture->orderOfPlay()->update(['venue_id' => $venue->id, 'time' => '2026-09-11 08:00:00']);
+        foreach ([$visibleDraw, $otherVenueDraw, $otherDateDraw] as $index => $draw) {
+            $draw->update(['drawName' => 'Ready draw '.($index + 1)]);
+            $draw->settings()->updateOrCreate([], ['workflow' => 'round_robin_playoffs']);
+        }
+        foreach ([$visibleFixture, $otherVenueFixture, $otherDateFixture] as $fixture) {
+            FixtureResult::factory()->create(['fixture_id' => $fixture->id]);
+        }
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $this->actingAs($admin);
+        $route = fn (array $filters = []) => route('frontend.scoring.workspace', [
+            'event' => $event, 'schedule_source' => 'working', ...$filters,
+        ]);
+        $page = $this->get($route(['venue' => $venue->id, 'date' => '2026-09-10']))->assertOk();
+        $this->assertSame([$visibleDraw->id], $page->viewData('playoffProgression')->keys()->all());
+        $this->assertSame(1, substr_count($page->getContent(), 'class="btn btn-primary progress-draw"'));
+        $this->get($route(['venue' => $venue->id, 'date' => '2026-09-11']))->assertOk()
+            ->assertViewHas('playoffProgression', fn ($states) => $states->keys()->all() === [$otherDateDraw->id]);
+        $this->get($route(['draw' => $otherVenueDraw->id, 'all_venues' => 1]))->assertOk()
+            ->assertViewHas('playoffProgression', fn ($states) => $states->keys()->all() === [$otherVenueDraw->id]);
+        $this->get($route(['venue' => $venue->id, 'draw' => $otherVenueDraw->id]))->assertOk()
+            ->assertViewHas('playoffProgression', fn ($states) => $states->isEmpty())
+            ->assertDontSee('Review &amp; progress to playoffs', false);
+        $this->get($route(['venue' => $venue->id, 'date' => '2026-09-12']))->assertOk()
+            ->assertViewHas('playoffProgression', fn ($states) => $states->isEmpty());
+    }
+
     private function scheduledFixture(
         string $venueName,
         ?Event $event = null,

@@ -79,7 +79,8 @@ final class EventVenueScheduleService
 
         $draws = $event->draws()->with([
             'venues' => fn ($query) => $query->withPivot('num_courts'),
-            'drawFixtures.orderOfPlay', 'drawFixtures.fixtureResults', 'flexibleMonrad', 'groups', 'settings',
+            'drawFixtures.orderOfPlay', 'drawFixtures.fixtureResults', 'flexibleMonrad',
+            'groups' => fn ($query) => $query->withCount('groupRegistrations'), 'settings',
         ])->when($selectedDraws, fn ($query) => $query->whereIn('id', $selectedDraws))->get();
 
         $foreignDraws = array_diff($selectedDraws, $draws->pluck('id')->map(fn ($id) => (int) $id)->all());
@@ -1449,6 +1450,7 @@ final class EventVenueScheduleService
             'stage' => $fixture->stage, 'round' => max(1, (int) $fixture->round), 'match' => $fixture->match_nr,
             'rr_group_name' => $draw->groups->firstWhere('id', $fixture->draw_group_id)?->name,
             'rr_group_phase' => $draw->groups->firstWhere('id', $fixture->draw_group_id)?->round_robin_phase ?? 1,
+            'rr_group_size' => (int) $draw->groups->firstWhere('id', $fixture->draw_group_id)?->group_registrations_count,
             'play_order' => (int) ($fixture->play_order ?: $fixture->match_nr), 'dependencies' => $dependencies,
             'participants' => array_values(array_unique(array_filter($participants))), 'participant_names' => $names,
             // A Flexible Monrad graph already models the winner and loser paths within one draw. Its sibling
@@ -1728,7 +1730,8 @@ final class EventVenueScheduleService
             if (($node['fixture_kind'] ?? 'individual') !== 'individual' || $node['stage'] !== 'RR'
                 || ! $fixture->draw_group_id || ! $node['selected_round'] || $node['automatic']
                 || $node['fixed'] || $node['played']) continue;
-            $key = sprintf('%04d:%08d:', (int) $node['rr_group_phase'], $node['round'])
+            // Use the full group size, even when only some fixtures are selected for planning.
+            $key = sprintf('%04d:%08d:%010d:', (int) $node['rr_group_phase'], $node['round'], PHP_INT_MAX - $node['rr_group_size'])
                 .str_pad((string) ($node['rr_group_name'] ?? $fixture->draw_group_id), 20, '0', STR_PAD_LEFT);
             $waves[$node['draw_id']][$key][] = $id;
         }

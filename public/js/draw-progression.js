@@ -12,10 +12,12 @@ $(document).ready(function () {
 
             return '<tr>'
                 + '<td class="text-center fw-bold">' + row.position + '</td>'
-                + '<td class="text-start fw-semibold">' + escapeProgressReviewHtml(row.player) + '</td>'
+                + '<td class="text-start fw-semibold text-nowrap">' + escapeProgressReviewHtml(row.player) + '</td>'
                 + '<td class="text-center">' + row.played + '</td>'
                 + '<td class="text-center">' + row.wins + '</td>'
+                + '<td class="text-center">' + (row.draws || 0) + '</td>'
                 + '<td class="text-center">' + row.losses + '</td>'
+                + '<td class="text-center">' + (row.points || 0) + '</td>'
                 + '<td class="text-center text-nowrap">' + row.sets_won + '–' + row.sets_lost + '</td>'
                 + '<td class="text-center text-nowrap">' + row.games_won + '–' + row.games_lost + '</td>'
                 + '<td class="text-center">' + tiebreak + '</td>'
@@ -23,10 +25,11 @@ $(document).ready(function () {
         }).join('');
 
         return '<p class="text-muted mb-3">Check the final order carefully. These positions will be used to place players into the ' + escapeProgressReviewHtml(destination) + '.</p>'
+            + '<p class="small text-muted d-md-none mb-2">Swipe the table to see all columns.</p>'
             + '<div class="table-responsive border rounded mb-3">'
-            + '<table class="table table-sm table-striped align-middle mb-0">'
-            + '<thead><tr><th class="text-center">Pos</th><th class="text-start">Player / team</th><th class="text-center">P</th>'
-            + '<th class="text-center">W</th><th class="text-center">L</th><th class="text-center">Sets</th>'
+            + '<table class="table table-sm table-striped align-middle mb-0" style="min-width:48rem">'
+            + '<thead class="text-nowrap"><tr><th class="text-center">Pos</th><th class="text-start">Player / team</th><th class="text-center">P</th>'
+            + '<th class="text-center">W</th><th class="text-center">D</th><th class="text-center">L</th><th class="text-center">Pts</th><th class="text-center">Sets</th>'
             + '<th class="text-center">Games</th><th class="text-center">Tie-break</th></tr></thead>'
             + '<tbody>' + rows + '</tbody></table></div>'
             + '<div class="form-check text-start border rounded p-3 ps-5 bg-light">'

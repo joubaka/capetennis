@@ -83,17 +83,17 @@ class TwoStageRoundRobinTest extends TestCase
     public function test_nine_players_progress_once_preserving_first_stage_and_finish_with_four_matches_each(): void
     {
         [$draw, $entrants] = $this->scenario();
-        $firstIds = $draw->drawFixtures()->pluck('id')->all();
-        $firstResults = DB::table('fixture_results')->whereIn('fixture_id', $firstIds)->get()->toJson();
+        $firstIds = $draw->drawFixtures()->orderBy('id')->pluck('id')->all();
+        $firstResults = DB::table('fixture_results')->whereIn('fixture_id', $firstIds)->orderBy('id')->get()->toJson();
         $venue = Venue::forceCreate(['name' => 'Example courts']);
         $booking = OrderOfPlay::create(['draw_id' => $draw->id, 'fixture_id' => $firstIds[0], 'venue_id' => $venue->id,
             'court' => '1', 'time' => '2026-10-30 08:00', 'duration_minutes' => 30]);
         $draw->update(['published' => true]);
         $this->progress($draw)->assertOk()->assertJsonPath('progress.created', 9);
         $this->progress($draw)->assertOk()->assertJsonPath('progress.created', 0);
-        $this->assertSame($firstIds, $draw->drawFixtures()->whereIn('id', $firstIds)->pluck('id')->all());
-        $this->assertSame($firstResults, DB::table('fixture_results')->whereIn('fixture_id', $firstIds)->get()->toJson());
-        $this->assertSame('2026-10-30 08:00:00', (string) $booking->fresh()->time);
+        $this->assertSame($firstIds, $draw->drawFixtures()->whereIn('id', $firstIds)->orderBy('id')->pluck('id')->all());
+        $this->assertSame($firstResults, DB::table('fixture_results')->whereIn('fixture_id', $firstIds)->orderBy('id')->get()->toJson());
+        $this->assertSame('2026-10-30 08:00:00', Carbon::parse($booking->fresh()->time)->toDateTimeString());
         $this->assertSame(18, $draw->drawFixtures()->count());
         $secondGroups = $draw->groups()->where('round_robin_phase', 2)->orderBy('qualifying_position')->get();
         foreach ($secondGroups as $index => $group) {

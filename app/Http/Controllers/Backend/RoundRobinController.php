@@ -820,7 +820,6 @@ class RoundRobinController extends Controller
       ], 422);
     }
 
-    ['total' => $total, 'completed' => $completed] = $readiness['round_robin'];
     $review = $this->roundRobinProgressReview($draw);
     $confirmedGroupIds = collect($request->input('confirmed_group_ids', []))
       ->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
@@ -842,9 +841,27 @@ class RoundRobinController extends Controller
     }
 
     try {
-      $result = DB::transaction(function () use ($draw, $total, $completed) {
-        Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
+      $result = DB::transaction(function () use ($draw, $confirmedGroupIds, $submittedSnapshot) {
+        $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
+        $draw->load(['settings', 'groups', 'event']);
+        if ($draw->locked || $draw->settings?->workflow !== 'round_robin_playoffs') {
+          throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
+            'success' => false,
+            'message' => 'The draw configuration changed during review. Please review the draw again.',
+          ], 409));
+        }
+        $lockedReadiness = $this->roundRobinProgressReadiness($draw);
         $hub = $this->builder->loadRoundRobinHub($draw);
+        $lockedReview = $this->roundRobinProgressReview($draw, $hub);
+        $lockedGroupIds = collect($lockedReview['groups'])->pluck('id')->sort()->values()->all();
+        if (! $lockedReadiness['ready'] || $confirmedGroupIds !== $lockedGroupIds
+            || ! hash_equals($lockedReview['snapshot'], $submittedSnapshot)) {
+          throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
+            'success' => false,
+            'message' => 'The round-robin standings changed during review. Please review every group again.',
+          ], 409));
+        }
+        ['total' => $total, 'completed' => $completed] = $lockedReadiness['round_robin'];
         $standings = $hub['standings'] ?? [];
         $existingBefore = $draw->drawFixtures()->where('stage', '!=', 'RR')->count();
         $created = 0;
@@ -919,6 +936,8 @@ class RoundRobinController extends Controller
         'message' => $message,
         'progress' => $result,
       ]);
+    } catch (\Illuminate\Http\Exceptions\HttpResponseException $exception) {
+      return $exception->getResponse();
     } catch (\Throwable $exception) {
       Log::error('[RoundRobinProgress] Failed', [
         'draw_id' => $draw->id,
@@ -948,9 +967,9 @@ class RoundRobinController extends Controller
     ];
   }
 
-  private function roundRobinProgressReview(Draw $draw): array
+  private function roundRobinProgressReview(Draw $draw, ?array $hub = null): array
   {
-    $hub = $this->builder->loadRoundRobinHub($draw);
+    $hub ??= $this->builder->loadRoundRobinHub($draw);
     $standings = $hub['standings'] ?? [];
     $groups = $draw->groups
       ->sort(fn ($left, $right) => strnatcasecmp((string) $left->name, (string) $right->name))
@@ -961,8 +980,10 @@ class RoundRobinController extends Controller
             'position' => $index + 1,
             'registration_id' => (int) $row['reg_id'],
             'player' => (string) $row['player'],
-            'played' => (int) $row['wins'] + (int) $row['losses'],
+            'played' => (int) $row['wins'] + (int) ($row['draws'] ?? 0) + (int) $row['losses'],
             'wins' => (int) $row['wins'],
+            'draws' => (int) ($row['draws'] ?? 0),
+            'points' => (int) ($row['points'] ?? 0),
             'losses' => (int) $row['losses'],
             'sets_won' => (int) $row['sets_won'],
             'sets_lost' => (int) $row['sets_lost'],

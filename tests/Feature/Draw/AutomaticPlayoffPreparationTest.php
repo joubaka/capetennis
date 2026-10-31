@@ -52,7 +52,7 @@ class AutomaticPlayoffPreparationTest extends TestCase
         $draw = $this->scenario();
         $response = $this->postJson(route('backend.draw.regenerate-rr', $draw))->assertOk();
         $this->assertSame(4, $draw->drawFixtures()->where('stage', 'RR')->count());
-        $playoffs = $draw->drawFixtures()->where('stage', '!=', 'RR')->get();
+        $playoffs = $draw->drawFixtures()->where('stage', '!=', 'RR')->orderBy('id')->get();
         $this->assertSame(8, $playoffs->count());
         $response->assertJsonPath('fixture_count', 12);
         foreach (['MAIN', 'PLATE'] as $stage) {
@@ -67,7 +67,7 @@ class AutomaticPlayoffPreparationTest extends TestCase
         }
         $before = $playoffs->modelKeys();
         $this->assertSame(0, app(AutomaticPlayoffPreparationService::class)->prepare($draw));
-        $this->assertSame($before, $draw->drawFixtures()->where('stage', '!=', 'RR')->pluck('id')->all());
+        $this->assertSame($before, $draw->drawFixtures()->where('stage', '!=', 'RR')->orderBy('id')->pluck('id')->all());
         $this->assertDatabaseCount('order_of_plays', 0);
         $this->assertDatabaseCount('published_schedule_assignments', 0);
     }
@@ -111,20 +111,20 @@ class AutomaticPlayoffPreparationTest extends TestCase
     {
         $draw = $this->scenario();
         $this->postJson(route('backend.draw.regenerate-rr', $draw))->assertOk();
-        $rr = $draw->drawFixtures()->where('stage', 'RR')->pluck('id')->all();
-        $old = $draw->drawFixtures()->where('stage', '!=', 'RR')->pluck('id')->all();
+        $rr = $draw->drawFixtures()->where('stage', 'RR')->orderBy('id')->pluck('id')->all();
+        $old = $draw->drawFixtures()->where('stage', '!=', 'RR')->orderBy('id')->pluck('id')->all();
         $config = $this->config();
         $config[0]['positions'] = [2];
         $config[1]['positions'] = [1];
         $this->postJson(route('backend.draw.update-playoff-config', $draw), ['playoff_config' => $config])->assertOk();
-        $this->assertSame($rr, $draw->drawFixtures()->where('stage', 'RR')->pluck('id')->all());
+        $this->assertSame($rr, $draw->drawFixtures()->where('stage', 'RR')->orderBy('id')->pluck('id')->all());
         $this->assertSame(0, $draw->drawFixtures()->whereIn('id', $old)->count());
         $main = $draw->drawFixtures()->where('stage', 'MAIN')->where('round', 1)->firstOrFail();
         $this->assertSame(2, (int) $main->registration1_source_position);
-        $before = $draw->drawFixtures()->pluck('id')->all();
+        $before = $draw->drawFixtures()->orderBy('id')->pluck('id')->all();
         $config[0]['size'] = 8;
         $this->postJson(route('backend.draw.update-playoff-config', $draw), ['playoff_config' => $config])->assertUnprocessable();
-        $this->assertSame($before, $draw->drawFixtures()->pluck('id')->all());
+        $this->assertSame($before, $draw->drawFixtures()->orderBy('id')->pluck('id')->all());
         $this->assertSame(4, $draw->settings()->first()->playoff_config[0]['size']);
     }
 

@@ -341,12 +341,46 @@ class RoundRobinProgressTest extends TestCase
             ->assertJsonCount(2, 'review.groups.0.standings')
             ->assertJsonStructure(['review' => ['snapshot', 'groups' => [[
                 'id', 'name', 'standings' => [[
-                    'position', 'registration_id', 'player', 'played', 'wins', 'losses',
+                    'position', 'registration_id', 'player', 'played', 'wins', 'draws', 'points', 'losses',
                     'sets_won', 'sets_lost', 'games_won', 'games_lost', 'tiebreak',
                 ]],
             ]]]]);
 
         $this->assertSame(64, strlen($response->json('review.snapshot')));
+    }
+
+    public function test_timed_draw_review_includes_draws_in_played_and_canonical_points(): void
+    {
+        [$draw, $category] = $this->draw([[
+            'name' => 'Main', 'slug' => 'main', 'size' => 2,
+            'positions' => [1, 2], 'enabled' => true,
+        ]]);
+        $draw->settings()->update(['score_format' => 'timed']);
+        $registrations = $this->entrants($category, 4);
+        $this->completeGroup($draw, 'A', $registrations);
+        foreach ($draw->drawFixtures()->where('stage', 'RR')->get() as $fixture) {
+            $tied = $fixture->registration2_id === $registrations[1]->id;
+            $fixture->update(['winner_registration' => $tied ? null : $fixture->registration1_id]);
+            $fixture->fixtureResults()->update([
+                'registration1_score' => 3, 'registration2_score' => $tied ? 3 : 1,
+                'winner_registration' => $tied ? null : $fixture->registration1_id,
+                'loser_registration' => $tied ? null : $fixture->registration2_id,
+            ]);
+        }
+        $review = $this->getJson(route('backend.draw.progress-review', $draw))->assertOk()->json('review');
+        $rows = collect($review['groups'][0]['standings'])->keyBy('registration_id');
+        foreach ($rows as $row) {
+            $this->assertSame(3, $row['played']);
+            $this->assertSame($row['wins'] + $row['draws'] + $row['losses'], $row['played']);
+            $this->assertSame(2 * $row['wins'] + $row['draws'], $row['points']);
+        }
+        $this->assertSame(1, $rows[$registrations[0]->id]['draws']);
+        $this->assertSame(2, $rows[$registrations[0]->id]['wins']);
+        $this->assertSame(5, $rows[$registrations[0]->id]['points']);
+        $this->assertSame(1, $rows[$registrations[1]->id]['draws']);
+        $this->assertSame(2, $rows[$registrations[1]->id]['wins']);
+        $this->assertSame(5, $rows[$registrations[1]->id]['points']);
+        $this->progress($draw)->assertOk();
     }
 
     public function test_progress_requires_every_group_confirmation_and_current_standings_snapshot(): void
@@ -375,6 +409,39 @@ class RoundRobinProgressTest extends TestCase
         );
 
         $this->assertSame(0, $draw->drawFixtures()->where('stage', '!=', 'RR')->count());
+    }
+
+    public function test_progress_rechecks_the_confirmed_snapshot_after_acquiring_the_draw_lock(): void
+    {
+        [$draw, $category] = $this->draw([[
+            'name' => 'Main', 'slug' => 'main', 'size' => 2,
+            'positions' => [1, 2], 'enabled' => true,
+        ]]);
+        $this->completeGroup($draw, 'A', $this->entrants($category, 2));
+        $review = $this->getJson(route('backend.draw.progress-review', $draw))->assertOk()->json('review');
+        $fixture = $draw->drawFixtures()->where('stage', 'RR')->sole();
+        $realBuilder = app(DrawService::class);
+        $calls = 0;
+        $this->partialMock(DrawService::class, function ($mock) use ($realBuilder, $fixture, &$calls) {
+            $mock->shouldReceive('loadRoundRobinHub')->andReturnUsing(function ($currentDraw) use ($realBuilder, $fixture, &$calls) {
+                $hub = $realBuilder->loadRoundRobinHub($currentDraw);
+                if (++$calls === 1) {
+                    // A different scorer commits a correction after the first
+                    // snapshot check, before progression acquires its lock.
+                    $fixture->fixtureResults()->update(['registration1_score' => 7, 'registration2_score' => 5]);
+                }
+                return $hub;
+            });
+        });
+        $this->postJson(route('backend.draw.progress', $draw), [
+            'confirmed_group_ids' => collect($review['groups'])->pluck('id')->all(),
+            'standings_snapshot' => $review['snapshot'],
+        ])->assertStatus(409)->assertJsonPath('message',
+            'The round-robin standings changed during review. Please review every group again.');
+        $this->assertSame(2, $calls);
+        $this->assertSame(0, $draw->drawFixtures()->where('stage', '!=', 'RR')->count());
+        $this->assertDatabaseCount('fixture_results', 1);
+        $this->assertDatabaseHas('fixture_results', ['fixture_id' => $fixture->id, 'registration1_score' => 7, 'registration2_score' => 5]);
     }
 
     public function test_correcting_a_bracket_winner_replaces_winner_and_loser_in_downstream_fixtures(): void
