@@ -37,7 +37,8 @@ final class EventMatchProgressService
             ->chunkById(200, function ($fixtures) use (&$progress) {
                 foreach ($fixtures as $fixture) {
                     $progress['total']++;
-                    $progress['finished'] += app(IndividualMatchOutcomeService::class)->winner($fixture) !== null ? 1 : 0;
+                    $outcome = app(IndividualMatchOutcomeService::class);
+                    $progress['finished'] += $outcome->winner($fixture) !== null || $outcome->isDraw($fixture) ? 1 : 0;
                 }
             });
 

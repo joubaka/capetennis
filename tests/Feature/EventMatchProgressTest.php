@@ -11,6 +11,25 @@ class EventMatchProgressTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_valid_round_robin_draws_count_as_finished_without_counting_unresolved_timed_playoffs(): void
+    {
+        $event = Event::factory()->create();
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'published' => true]);
+        $draw->settings()->create(['score_format' => \App\Domain\Draws\Services\TennisScoreFormat::TIMED]);
+        $home = Registration::factory()->create();
+        $away = Registration::factory()->create();
+        foreach (['RR', 'MAIN'] as $stage) {
+            $fixture = Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => $stage,
+                'registration1_id' => $home->id, 'registration2_id' => $away->id]);
+            $fixture->fixtureResults()->create(['set_nr' => 1, 'registration1_score' => 1, 'registration2_score' => 1]);
+        }
+        Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'RR',
+            'registration1_id' => $home->id, 'registration2_id' => $away->id]);
+
+        $this->assertSame(['finished' => 1, 'total' => 3], app(EventMatchProgressService::class)->forEvent($event));
+        $this->get('/events/'.$event->id)->assertOk()->assertSee('1 / 3')->assertSee('matches finished');
+    }
+
     public function test_counts_all_published_draws_without_drafts_foreign_events_byes_or_partial_scores(): void
     {
         $event = Event::factory()->create();

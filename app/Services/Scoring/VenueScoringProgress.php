@@ -2,7 +2,6 @@
 
 namespace App\Services\Scoring;
 
-use App\Domain\Draws\Enums\FixtureState;
 use App\Models\Event;
 use App\Models\Fixture;
 use App\Models\TeamFixture;
@@ -15,20 +14,24 @@ final class VenueScoringProgress
     {
         $date = now(config('app.timezone'))->toDateString();
         $drawIds = $event->draws()->select('id');
+        // Match the scoring workspace: saved results (including legacy results
+        // without a completed status) or a valid two-player walkover are scored.
+        $scoredIndividuals = Fixture::query()->select('id')->withRecordedResult();
+        $scoredTeams = TeamFixture::query()->select('id')->whereHas('fixtureResults');
         $individual = Fixture::query()->join('order_of_plays', 'order_of_plays.fixture_id', '=', 'fixtures.id')
             ->whereIn('fixtures.draw_id', $drawIds)->whereNotNull('order_of_plays.time')->whereNotNull('order_of_plays.venue_id')
             ->when($venueId !== null, fn ($query) => $query->where('order_of_plays.venue_id', $venueId))
             ->selectRaw('order_of_plays.venue_id, COUNT(DISTINCT fixtures.id) AS total,
                 COUNT(DISTINCT CASE WHEN DATE(order_of_plays.time) = ? THEN fixtures.id END) AS today_total,
-                COUNT(DISTINCT CASE WHEN DATE(order_of_plays.time) = ? AND fixtures.match_status IN (?, ?) THEN fixtures.id END) AS today_scored',
-                [$date, $date, FixtureState::STATUS_COMPLETED, FixtureState::STATUS_RETIRED])
+                COUNT(DISTINCT CASE WHEN DATE(order_of_plays.time) = ? AND fixtures.id IN ('.$scoredIndividuals->toSql().') THEN fixtures.id END) AS today_scored',
+                [$date, $date, ...$scoredIndividuals->getBindings()])
             ->groupBy('order_of_plays.venue_id')->get()->keyBy('venue_id');
         $team = TeamFixture::query()->whereIn('draw_id', $drawIds)->whereNotNull('scheduled_at')->whereNotNull('venue_id')
             ->when($venueId !== null, fn ($query) => $query->where('venue_id', $venueId))
             ->selectRaw('venue_id, COUNT(*) AS total,
                 SUM(CASE WHEN DATE(scheduled_at) = ? THEN 1 ELSE 0 END) AS today_total,
-                SUM(CASE WHEN DATE(scheduled_at) = ? AND match_status = ? THEN 1 ELSE 0 END) AS today_scored',
-                [$date, $date, FixtureState::STATUS_COMPLETED])
+                SUM(CASE WHEN DATE(scheduled_at) = ? AND id IN ('.$scoredTeams->toSql().') THEN 1 ELSE 0 END) AS today_scored',
+                [$date, $date, ...$scoredTeams->getBindings()])
             ->groupBy('venue_id')->get()->keyBy('venue_id');
 
         return Venue::query()->whereIn('id', $individual->keys()->merge($team->keys())->unique())->orderBy('name')->get()

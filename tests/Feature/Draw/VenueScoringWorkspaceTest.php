@@ -840,8 +840,9 @@ class VenueScoringWorkspaceTest extends TestCase
         [, , $saturdayVenue, $saturday] = $this->scheduledFixture('Saturday only', $event, $draw);
         $saturday->orderOfPlay()->update(['time' => '2026-10-10 08:00:00']);
         $saturday->update(['match_status' => FixtureState::STATUS_COMPLETED]);
-        TeamFixture::create(['draw_id' => $draw->id, 'round_nr' => 1, 'match_nr' => 1, 'venue_id' => $venue->id,
+        $completedTeam = TeamFixture::create(['draw_id' => $draw->id, 'round_nr' => 1, 'match_nr' => 1, 'venue_id' => $venue->id,
             'scheduled_at' => '2026-10-09 09:00:00', 'match_status' => FixtureState::STATUS_COMPLETED]);
+        $completedTeam->fixtureResults()->create(['set_nr' => 1, 'team1_score' => 6, 'team2_score' => 2]);
         TeamFixture::create(['draw_id' => $draw->id, 'round_nr' => 1, 'match_nr' => 2, 'venue_id' => $venue->id,
             'scheduled_at' => '2026-10-09 10:00:00', 'match_status' => FixtureState::STATUS_PARTIAL]);
         TeamFixture::create(['draw_id' => $draw->id, 'round_nr' => 1, 'match_nr' => 3, 'venue_id' => $venue->id,
@@ -867,6 +868,43 @@ class VenueScoringWorkspaceTest extends TestCase
         $html = view('frontend.event.partials._venue-scoring', ['event' => $event, 'scoringVenues' => $venues])->render();
         $this->assertStringContainsString('Friday: 2 of 3 scored', $html);
         $this->assertStringContainsString('4 scheduled total', $html);
+        $this->travelBack();
+    }
+
+    public function test_venue_card_scored_count_matches_workspace_for_legacy_results_draws_and_walkovers(): void
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-09-10 09:00:00', config('app.timezone')));
+        [$event, $draw, $venue, $legacy] = $this->scheduledFixture('Consistent progress');
+        $draw->settings()->create(['score_format' => \App\Domain\Draws\Services\TennisScoreFormat::TIMED,
+            'match_duration_minutes' => 15, 'changeover_minutes' => 0]);
+        $legacy->update(['stage' => 'RR', 'match_status' => FixtureState::STATUS_PENDING]);
+        $legacy->fixtureResults()->create(['set_nr' => 1, 'registration1_score' => 1, 'registration2_score' => 1]);
+        foreach ([FixtureState::STATUS_BYE, FixtureState::STATUS_RETIRED, FixtureState::STATUS_COMPLETED, FixtureState::STATUS_BYE] as $index => $status) {
+            $fixture = Fixture::factory()->create(['draw_id' => $draw->id,
+                'registration1_id' => $legacy->registration1_id,
+                // A one-player bye is not a scoring-workspace walkover.
+                'registration2_id' => $index === 3 ? null : $legacy->registration2_id,
+                'winner_registration' => $legacy->registration1_id, 'match_status' => $status]);
+            OrderOfPlay::create(['fixture_id' => $fixture->id, 'draw_id' => $draw->id, 'venue_id' => $venue->id,
+                'court' => '1', 'time' => '2026-09-10 08:00:00']);
+            if ($status === FixtureState::STATUS_RETIRED) {
+                $fixture->fixtureResults()->create(['set_nr' => 1, 'registration1_score' => 2, 'registration2_score' => 1]);
+            }
+        }
+        $legacyTeam = TeamFixture::create(['draw_id' => $draw->id, 'round_nr' => 1, 'match_nr' => 1,
+            'venue_id' => $venue->id, 'scheduled_at' => '2026-09-10 08:00:00', 'match_status' => FixtureState::STATUS_PENDING]);
+        $legacyTeam->fixtureResults()->create(['set_nr' => 1, 'team1_score' => 6, 'team2_score' => 2]);
+        TeamFixture::create(['draw_id' => $draw->id, 'round_nr' => 1, 'match_nr' => 2,
+            'venue_id' => $venue->id, 'scheduled_at' => '2026-09-10 08:00:00', 'match_status' => FixtureState::STATUS_COMPLETED]);
+
+        $response = $this->actingAs($this->scorerFor($event))->get(route('frontend.scoring.workspace', [
+            'event' => $event, 'venue' => $venue->id, 'date' => '2026-09-10', 'schedule_source' => 'working',
+        ]))->assertOk();
+        $counts = app(\App\Services\Scoring\VenueScoringProgress::class)->venues($event, $venue->id)->sole();
+        $this->assertSame(7, $counts->today_fixture_count);
+        $this->assertSame(4, $counts->today_scored_count);
+        $this->assertSame($response->viewData('matches')->count(), $counts->today_fixture_count);
+        $this->assertSame($response->viewData('completed'), $counts->today_scored_count);
         $this->travelBack();
     }
 
