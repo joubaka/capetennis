@@ -26,6 +26,18 @@ class VenueScoringWorkspaceTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function createApplication()
+    {
+        $app = parent::createApplication();
+        $connection = $app['config']->get('database.default');
+        $database = $app['config']->get('database.connections.'.$connection.'.database');
+        if ($app->environment() !== 'testing' || ! (($connection === 'sqlite' && $database === ':memory:')
+            || ($connection === 'mysql' && $database === 'ct_testing'))) {
+            throw new \RuntimeException('Venue scoring tests require an isolated testing database.');
+        }
+        return $app;
+    }
+
     public function test_walkover_is_completed_and_cannot_be_marked_on_court(): void
     {
         [$event, $draw, $venue, $fixture] = $this->scheduledFixture('Walkover Venue');
@@ -860,14 +872,91 @@ class VenueScoringWorkspaceTest extends TestCase
         $this->assertSame(4, $counts->fixture_count);
         $this->assertSame(3, $counts->today_fixture_count);
         $this->assertSame(2, $counts->today_scored_count);
-        $zero = $venues->firstWhere('id', $saturdayVenue->id);
-        $this->assertSame(0, $zero->today_fixture_count);
-        $this->assertSame(0, $zero->today_scored_count);
+        $this->assertNull($venues->firstWhere('id', $saturdayVenue->id));
+        $this->assertTrue($progress->venues($event, $saturdayVenue->id)->isEmpty());
         $this->assertSame([$venue->id], $progress->venues($event, $venue->id)->pluck('id')->all());
         $this->actingAs($this->scorerFor($event));
         $html = view('frontend.event.partials._venue-scoring', ['event' => $event, 'scoringVenues' => $venues])->render();
         $this->assertStringContainsString('Friday: 2 of 3 scored', $html);
         $this->assertStringContainsString('4 scheduled total', $html);
+        $this->travelBack();
+    }
+
+    public function test_venue_cards_follow_the_current_app_day_and_exclude_other_days_undated_and_foreign_matches(): void
+    {
+        config(['app.timezone' => 'Africa/Johannesburg']);
+        [$event, $draw, $bloemhof, $saturday] = $this->scheduledFixture('Bloemhof');
+        $saturday->orderOfPlay()->update(['time' => '2026-10-31 08:30:00']);
+        $saturday->fixtureResults()->create(['set_nr' => 1, 'registration1_score' => 6, 'registration2_score' => 2]);
+        $saturdayTeam = TeamFixture::create(['draw_id' => $draw->id, 'round_nr' => 1, 'match_nr' => 1,
+            'venue_id' => $bloemhof->id, 'scheduled_at' => '2026-10-31 10:30:00']);
+        $saturdayTeam->fixtureResults()->create(['set_nr' => 1, 'team1_score' => 6, 'team2_score' => 2]);
+        [, , $paulRoos, $sunday] = $this->scheduledFixture('Paul Roos', $event, $draw);
+        $sunday->orderOfPlay()->update(['time' => '2026-11-01 08:30:00']);
+        $sunday->fixtureResults()->create(['set_nr' => 1, 'registration1_score' => 6, 'registration2_score' => 2]);
+        TeamFixture::create(['draw_id' => $draw->id, 'round_nr' => 1, 'match_nr' => 2,
+            'venue_id' => $paulRoos->id, 'scheduled_at' => '2026-11-01 10:30:00']);
+        foreach (['2026-10-30 08:30:00', '2026-11-02 08:30:00'] as $time) TeamFixture::create([
+            'draw_id' => $draw->id, 'round_nr' => 1, 'match_nr' => 3, 'venue_id' => $paulRoos->id, 'scheduled_at' => $time]);
+        [, , $pastVenue, $past] = $this->scheduledFixture('Past only', $event, $draw);
+        $past->orderOfPlay()->update(['time' => '2026-10-30 08:30:00']);
+        $futureVenue = Venue::forceCreate(['name' => 'Future team only']);
+        TeamFixture::create(['draw_id' => $draw->id, 'round_nr' => 1, 'match_nr' => 4,
+            'venue_id' => $futureVenue->id, 'scheduled_at' => '2026-11-02 08:30:00']);
+        [, , $undatedVenue, $undated] = $this->scheduledFixture('Undated only', $event, $draw);
+        $undated->orderOfPlay()->delete();
+        TeamFixture::create(['draw_id' => $draw->id, 'round_nr' => 1, 'match_nr' => 5, 'venue_id' => $undatedVenue->id]);
+        [, $foreignDraw, $foreignVenue, $foreign] = $this->scheduledFixture('Foreign only');
+        $foreign->orderOfPlay()->update(['time' => '2026-11-01 08:30:00']);
+        TeamFixture::create(['draw_id' => $foreignDraw->id, 'round_nr' => 1, 'match_nr' => 6,
+            'venue_id' => $bloemhof->id, 'scheduled_at' => '2026-11-01 10:30:00']);
+        $progress = app(\App\Services\Scoring\VenueScoringProgress::class);
+        $this->travelTo(\Carbon\Carbon::parse('2026-10-31 12:00:00', 'Africa/Johannesburg'));
+        $saturdayVenues = $progress->venues($event);
+        $this->assertSame([$bloemhof->id], $saturdayVenues->pluck('id')->all());
+        $this->assertSame(2, $saturdayVenues->sole()->today_fixture_count);
+        $this->assertSame(2, $saturdayVenues->sole()->today_scored_count, 'Completed venues remain visible for today.');
+        // It is still Saturday in UTC, but already Sunday in the app timezone.
+        $this->travelTo(\Carbon\Carbon::parse('2026-10-31 22:30:00', 'UTC'));
+        $sundayVenues = $progress->venues($event);
+        $this->assertSame([$paulRoos->id], $sundayVenues->pluck('id')->all());
+        $this->assertSame('2026-11-01', $sundayVenues->sole()->scoring_date);
+        $this->assertSame(2, $sundayVenues->sole()->today_fixture_count);
+        $this->assertSame(1, $sundayVenues->sole()->today_scored_count);
+        $this->assertSame(4, $sundayVenues->sole()->fixture_count, 'The scheduled total still spans all days.');
+        $this->assertTrue($progress->venues($event, $bloemhof->id)->isEmpty());
+        $this->assertTrue($progress->venues($event, $foreignVenue->id)->isEmpty());
+        $this->assertSame([$paulRoos->id], $progress->venues($event, $paulRoos->id)->pluck('id')->all());
+        $this->actingAs($this->scorerFor($event));
+        $html = view('frontend.event.partials._venue-scoring', ['event' => $event, 'scoringVenues' => $sundayVenues])->render();
+        $this->assertStringContainsString('Paul Roos', $html);
+        foreach (['Bloemhof', 'Past only', 'Future team only', 'Undated only', 'Foreign only'] as $hidden) $this->assertStringNotContainsString($hidden, $html);
+        $this->assertStringContainsString('Sunday: 1 of 2 scored', $html);
+        $this->assertStringContainsString('4 scheduled total', $html);
+        if (getenv('TODAY_VENUES_SNAPSHOT') === '1') {
+            @mkdir(storage_path('app/testing'), 0777, true);
+            file_put_contents(storage_path('app/testing/today-scoring-venues.html'), '<!doctype html><html><head><meta charset="utf-8"><title>Sunday scoring venues — fictional QA</title></head><body>'.$html.'</body></html>');
+        }
+        $this->travelBack();
+    }
+
+    public function test_today_team_only_venue_is_included_without_exposing_scoring_controls_to_guests(): void
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-01 09:00:00', config('app.timezone')));
+        [$event, $draw, $pastVenue, $past] = $this->scheduledFixture('Individual yesterday');
+        $past->orderOfPlay()->update(['time' => '2026-10-31 08:30:00']);
+        $venue = Venue::forceCreate(['name' => 'Today team only']);
+        TeamFixture::create(['draw_id' => $draw->id, 'round_nr' => 1, 'match_nr' => 1,
+            'venue_id' => $venue->id, 'scheduled_at' => '2026-11-01 10:00:00']);
+        $venues = app(\App\Services\Scoring\VenueScoringProgress::class)->venues($event);
+        $this->assertSame([$venue->id], $venues->pluck('id')->all());
+        $html = view('frontend.event.partials._venue-scoring', ['event' => $event, 'scoringVenues' => $venues])->render();
+        $this->assertStringNotContainsString('Score fixtures by venue', $html);
+        $this->get(route('frontend.scoring.workspace', ['event' => $event, 'venue' => $venue->id]))->assertRedirect(route('login'));
+        $this->actingAs(User::factory()->create());
+        $html = view('frontend.event.partials._venue-scoring', ['event' => $event, 'scoringVenues' => $venues])->render();
+        $this->assertStringNotContainsString('Score fixtures by venue', $html);
+        $this->get(route('frontend.scoring.workspace', ['event' => $event, 'venue' => $venue->id]))->assertForbidden();
         $this->travelBack();
     }
 

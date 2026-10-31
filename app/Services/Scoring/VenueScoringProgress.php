@@ -34,7 +34,10 @@ final class VenueScoringProgress
                 [$date, $date, ...$scoredTeams->getBindings()])
             ->groupBy('venue_id')->get()->keyBy('venue_id');
 
-        return Venue::query()->whereIn('id', $individual->keys()->merge($team->keys())->unique())->orderBy('name')->get()
+        $todayVenueIds = $individual->filter(fn ($counts) => (int) $counts->today_total > 0)->keys()
+            ->merge($team->filter(fn ($counts) => (int) $counts->today_total > 0)->keys())->unique();
+
+        return Venue::query()->whereIn('id', $todayVenueIds)->orderBy('name')->get()
             ->map(function ($venue) use ($individual, $team, $date) {
                 $venue->fixture_count = (int) ($individual->get($venue->id)?->total ?? 0) + (int) ($team->get($venue->id)?->total ?? 0);
                 $venue->today_fixture_count = (int) ($individual->get($venue->id)?->today_total ?? 0) + (int) ($team->get($venue->id)?->today_total ?? 0);
