@@ -83,7 +83,7 @@ final class FlexibleMonradCompiler
                     ];
                 }
             }
-            return $graph;
+            return ($draft['rolling_challenges'] ?? false) ? self::withRollingChallenges($graph) : $graph;
         }
         ksort($this->losses);
         $place = 2;
@@ -97,6 +97,51 @@ final class FlexibleMonradCompiler
     }
 
     /** Match dependencies shared by correction and scheduling, not just feeders. */
+    public static function withRollingChallenges(array $graph): array
+    {
+        if (count($graph['positions'] ?? []) < 5) {
+            throw ValidationException::withMessages(['challenges' => 'Rolling challenges require at least five positions.']);
+        }
+        $graph['base_positions'] = $graph['positions'];
+        $graph['challenge_playoffs'] = true;
+        $graph['rolling_challenges'] = true;
+        $base = array_keys(array_filter($graph['nodes'], fn ($node) => ! isset($node['challenge_positions'])));
+        // Top-five challenges must not wait for unrelated lower-place matches.
+        $required = [];
+        $visit = function (array $source) use (&$visit, &$required, $graph): void {
+            if (! isset($source['match']) || isset($required[$source['match']])) return;
+            $required[$source['match']] = true;
+            foreach ($graph['nodes'][$source['match']]['sources'] as $upstream) $visit($upstream);
+        };
+        foreach ([2, 3, 4, 5] as $position) $visit($graph['positions'][$position]);
+        $required = array_keys($required);
+        foreach ([2, 4] as $upper) {
+            $graph['nodes']['challenge_'.$upper] ??= [
+                'sources' => [$graph['positions'][$upper] + ['base_position' => $upper],
+                    $graph['positions'][$upper + 1] + ['base_position' => $upper + 1]],
+                'prerequisites' => $base, 'challenge_positions' => [$upper, $upper + 1],
+                'section' => 'Challenge play-offs', 'round' => 1,
+                'label' => 'Base positions '.$upper.'–'.($upper + 1), 'path' => null,
+            ];
+            $graph['nodes']['challenge_'.$upper]['prerequisites'] = $required;
+            $graph['nodes']['challenge_'.$upper]['rolling_gate'] = true;
+        }
+        $graph['challenge_pairs'] = array_values(array_unique(array_merge($graph['challenge_pairs'] ?? [], [2, 4])));
+        foreach (['challenge_3' => [3, 4], 'challenge_2_repeat' => [2, 3]] as $key => [$upper, $lower]) {
+            $dependencies = $key === 'challenge_3' ? ['challenge_2', 'challenge_4'] : ['challenge_3'];
+            $graph['nodes'][$key] = [
+                'sources' => [$graph['positions'][$upper] + ['current_position' => $upper],
+                    $graph['positions'][$lower] + ['current_position' => $lower]],
+                'prerequisites' => array_merge($required, $dependencies), 'rolling_gate' => true,
+                'challenge_positions' => [$upper, $lower], 'rolling_challenge' => true,
+                'requires_new_third' => $key === 'challenge_2_repeat',
+                'section' => 'Challenge play-offs', 'round' => $key === 'challenge_3' ? 2 : 3,
+                'label' => $key === 'challenge_3' ? 'Current positions 3–4' : 'Position 2 vs new position 3', 'path' => null,
+            ];
+        }
+        return $graph;
+    }
+
     public static function dependencies(array $node): array
     {
         return array_values(array_unique(array_merge(array_column($node['sources'], 'match'), $node['prerequisites'] ?? [])));

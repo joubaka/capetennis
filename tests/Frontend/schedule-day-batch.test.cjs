@@ -15,6 +15,21 @@ const draws=[
 const venues=[{id:7,court_list:[{label:'1'},{label:'2'}]},{id:8,court_labels:['A','B']}];
 function state(){const value=createState(structuredClone(draws),structuredClone(venues),days);value.setCourt(7,'2',true);return value;}
 
+test('new draw selection starts at the first unplayed round eligible on the chosen day',()=>{
+ const s=createState([{id:1,name:'In progress',day_round_details:{
+  1:[group('Opening',{key:'individual:1',played:true})],
+  2:[group('Earlier day',{key:'individual:2',scheduled_at:days[0]+' 09:00:00'})],
+  3:[group('Current finals',{key:'individual:3'})],
+  4:[group('Conditional',{key:'individual:4'})],
+ }}],structuredClone(venues),days);
+ s.setDay(days[1]);s.selectDraw(1,true);
+ assert.deepEqual([...s.selectedRounds.get(1)],[3]);
+ assert.deepEqual([...s.selectedFixtures.get('1:3')],['individual:3']);
+ assert.ok(!s.selectedFixtures.has('1:4'),'later conditional rounds remain an explicit choice');
+ s.restore({full_day_scope:days[1],draw_ids:[1],draw_rounds:[{draw_id:1,rounds:[4]}],selected_fixture_keys:['individual:4']});
+ assert.deepEqual([...s.selectedRounds.get(1)],[4],'explicit saved selection overrides defaults');
+});
+
 test('day batch selects one, several or all available draws without adding locked or empty draws',()=>{
  const s=state();s.selectDraw(1,true);assert.deepEqual(s.selectedDrawIds,[1]);
  s.selectAll();assert.deepEqual(s.selectedDrawIds,[1,2,3]);
@@ -116,6 +131,20 @@ function mounted(overrides={}) {
  const s=mount({document:{getElementById:get,defaultView:overrides.defaultView},draws,venues,dates:days,initialDrawIds:[1],savedByDay:{[days[0]]:saved},...overrides});
  return {s,get,sections,change(input){get('day-batch-workflow').listeners.change({target:input});}};
 }
+
+test('match chooser shows escaped player and conditional names and keeps played matches disabled',()=>{
+ const app=mounted({savedByDay:{},draws:[{id:1,name:'Fictional draw',day_round_details:{1:[group('Finals',
+  {key:'individual:1',number:15,participants:['Player <A>','Player B']},
+  {key:'individual:2',number:16,played:true,participants:['Played A','Played B']},
+  {key:'individual:3',number:17,participants:['Current position 3','Current position 4']},
+ )]}}]});
+ const html=app.get('day-batch-rounds').innerHTML;
+ assert.match(html,/Match 15 · Player &lt;A&gt; v Player B/);
+ assert.match(html,/Match 17 · Current position 3 v Current position 4/);
+ assert.match(html,/value="individual:2"[^>]*disabled[^>]*>Match 16 · Played A v Played B \(Played · kept\)/);
+ assert.deepEqual([...app.s.selectedFixtures.get('1:1')],['individual:1','individual:3']);
+ assert.equal(app.s.selectionCounts()[0].count,2);
+});
 test('preparing playoffs resumes day, courts, rounds and timing once without carrying replanning consent',()=>{
  const storage=new Map();
  const defaultView={sessionStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)}};

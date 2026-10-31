@@ -172,6 +172,39 @@ final class FlexibleMonradService
         });
     }
 
+    /** Append tournament-day challenges without regenerating or publishing the draw. */
+    public function enableRollingChallenges(Draw $draw, int $revision): FlexibleMonradDraw
+    {
+        return DB::transaction(function () use ($draw, $revision) {
+            $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
+            abort_if($draw->locked, 409, 'The draw is locked.');
+            abort_unless($draw->settings?->workflow === 'feed_in_monrad', 422, 'Rolling challenges require Feed-in Monrad.');
+            $record = FlexibleMonradDraw::where('draw_id', $draw->id)->lockForUpdate()->firstOrFail();
+            $this->revision($record, $revision);
+            abort_unless($record->graph, 422, 'Generate the base draw first.');
+            if ($record->graph['rolling_challenges'] ?? false) return $record;
+            $graph = FlexibleMonradCompiler::withRollingChallenges($record->graph);
+            $map = $record->fixture_map;
+            $previousMap = $map;
+            $number = (int) $draw->drawFixtures()->max('match_nr');
+            foreach ($graph['nodes'] as $key => $node) {
+                if (isset($map[$key])) continue;
+                $fixture = Fixture::create(['draw_id' => $draw->id, 'stage' => 'FM',
+                    'round' => $node['round'], 'match_nr' => ++$number, 'match_status' => 0]);
+                $map[$key] = $fixture->id;
+            }
+            $draft = $record->draft;
+            $draft['rolling_challenges'] = true;
+            $record->fill(['draft' => $draft, 'graph' => $graph, 'fixture_map' => $map, 'revision' => $revision + 1])->save();
+            $config = $draw->settings->playoff_config ?? [];
+            $draw->settings->update(['playoff_config' => array_replace($config, ['rolling_challenges' => true])]);
+            $this->resolve($record);
+            DrawAuditLog::record($draw->id, 'monrad_rolling_challenges_enabled', null,
+                ['revision' => $record->revision, 'added_fixture_ids' => array_values(array_diff_key($map, $previousMap))]);
+            return $record->refresh();
+        });
+    }
+
     public function publish(Draw $draw, int $revision, bool $published): FlexibleMonradDraw
     {
         return DB::transaction(function () use ($draw, $revision, $published) {
@@ -446,6 +479,7 @@ final class FlexibleMonradService
         $draft['slots'] = (object) $draft['slots'];
         return ['revision' => $record?->revision ?? 0, 'draft' => $draft, 'setup_withdrawals_removed' => $setupSlotsRemoved,
             'challenge_playoffs' => (bool) ($record?->graph['challenge_playoffs'] ?? $draft['challenge_playoffs'] ?? false),
+            'rolling_challenges' => (bool) ($record?->graph['rolling_challenges'] ?? false),
             'base_positions' => $progression['base_positions'] ?? [],
             'positions_complete' => $progression['positions_complete'] ?? false,
             'best_of' => (int) ($draw->settings?->num_sets ?: 3),
@@ -607,6 +641,8 @@ final class FlexibleMonradService
         // The saved workflow, never a submitted mode, controls progression.
         $additional = FlexibleMonradDraw::where('draw_id', $draw->id)->first()?->draft['additional_registration_ids'] ?? [];
         return ['size' => (int) $draft['size'], 'slots' => $slots]
+            + ($draw->settings?->workflow === 'feed_in_monrad' && ($draw->settings?->playoff_config['rolling_challenges'] ?? false)
+                ? ['rolling_challenges' => true] : [])
             + ($draw->settings?->workflow === 'feed_in_monrad' && ($draw->settings?->playoff_config['challenge_playoffs'] ?? false)
                 ? ['challenge_playoffs' => true] + (array_key_exists('challenge_pairs', $draw->settings->playoff_config)
                     ? ['challenge_pairs' => array_map('intval', $draw->settings->playoff_config['challenge_pairs'])] : []) : [])

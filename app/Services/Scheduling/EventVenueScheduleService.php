@@ -1367,9 +1367,11 @@ final class EventVenueScheduleService
             $nodes = [];
             foreach ($matches as $key => $match) {
                 $fixture = $draw->drawFixtures->firstWhere('id', $match['id']);
-                $sourceLabels = collect($match['sources'])->map(fn ($source) => isset($source['match'])
+                $sourceLabels = collect($match['sources'])->map(fn ($source) => isset($source['current_position'])
+                    ? 'Current position '.$source['current_position'] : (isset($source['base_position'])
+                    ? 'Base position '.$source['base_position'] : (isset($source['match'])
                     ? ucfirst((string) $source['type']).' of Match '.($matchNumbers[$source['match']] ?? $source['match'])
-                    : (($source['type'] ?? null) === 'bye' ? 'Bye' : 'Unassigned draw position'))->all();
+                    : (($source['type'] ?? null) === 'bye' ? 'Bye' : 'Unassigned draw position'))))->all();
                 $dependencies = array_map(fn ($dependency) => $keyToId[$dependency], \App\Services\Draw\FlexibleMonradCompiler::dependencies($match));
                 $nodes[$match['id']] = $this->node($draw, $fixture, $dependencies, $participants[$key] ?? [], (bool) $match['automatic'], (bool) $match['sets'] || $fixture->fixtureResults->isNotEmpty() || (int) $fixture->match_status !== 0,
                     $sourceLabels);
@@ -1658,6 +1660,7 @@ final class EventVenueScheduleService
             $fixture = $node['fixture']; $slot = $this->nodeSlot($node);
             $key = ($node['fixture_kind'] ?? 'individual').':'.$fixture->id;
             $byKey[$key] = ['fixture_id' => (int) $fixture->id, 'number' => (int) $node['match'], 'key' => $key,
+                'participants' => $node['participant_names'],
                 'scheduled_at' => $slot?->time ? Carbon::parse($slot->time)->format('Y-m-d H:i:s') : null, 'played' => (bool) $node['played']];
         }
         if (! $draw->isTeamDraw() && $draw->usesFlexibleMonrad()) {

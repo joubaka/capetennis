@@ -385,6 +385,7 @@
     window.TennisBracket.refresh();
   }
   function sourceLabel(source) {
+    if (source.current_position) return `Current position ${source.current_position}`;
     if (source.base_position) return `Base position ${source.base_position}`;
     if (source.type === 'player') return 'Direct entry';
     if (source.type === 'bye') return 'Bye';
@@ -484,7 +485,7 @@
             note.title = match.skip_reason;
             card.append(note);
           }
-          else if (match.challenge_status === 'pending') card.append(el('div', 'fm-match-note fm-pending-result', 'Awaiting all base results · provisional'));
+          else if (match.challenge_status === 'pending') card.append(el('div', 'fm-match-note fm-pending-result', match.rolling_gate ? 'Awaiting preceding results · conditional' : 'Awaiting all base results · provisional'));
           else if (match.walkover) card.append(el('div', 'fm-match-note', 'W/O · walkover'));
           else if (match.retired_registration_id) card.append(el('div', 'fm-match-note', 'RET · ' + name(match.retired_registration_id) + ' retired'));
           else if (match.automatic) card.append(el('div', 'fm-match-note', match.automatic === 'walkover'
@@ -1097,6 +1098,12 @@
       }
     })
   );
+  $('fm-rolling-challenges')?.addEventListener('click', () => run(async () => {
+    state = await request(config.urls.rollingChallenges, {revision: state.revision});
+    $('fm-rolling-challenges').disabled = true;
+    $('fm-rolling-challenges').textContent = 'Rolling challenges enabled';
+    message('Rolling conditional matches added. Schedule them separately; publication is unchanged.');
+  }));
   $('fm-withdrawals').addEventListener('click', () => run(async () => {
     state = await request(config.urls.withdrawals, { revision: state.revision });
     message('Late withdrawal recorded. The withdrawn player is the loser and the active opponent advances by walkover.');

@@ -110,6 +110,14 @@ class FlexibleMonradController extends Controller
         return response()->json($this->monrad->state($draw->fresh()));
     }
 
+    public function enableRollingChallenges(Request $request, Draw $draw)
+    {
+        $this->authorize('enableRollingChallenges', $draw);
+        $data = $request->validate(['revision' => 'required|integer|min:0']);
+        $this->monrad->enableRollingChallenges($draw, $data['revision']);
+        return response()->json($this->monrad->state($draw->fresh()));
+    }
+
     public function publish(Request $request, Draw $draw)
     {
         $this->authorize('publish', $draw);
@@ -250,6 +258,7 @@ class FlexibleMonradController extends Controller
                 'searchPlayers' => route('flexible-monrad.players.search', $draw),
                 'addPlayer' => route('flexible-monrad.players.add', $draw),
                 'publish' => route('flexible-monrad.publish', $draw),
+                'rollingChallenges' => route('flexible-monrad.rolling-challenges', $draw),
                 'reopen' => route('flexible-monrad.reopen', $draw),
                 'prepareWithdrawalRedraw' => route('flexible-monrad.withdrawal-redraw', $draw),
                 'withdrawals' => route('flexible-monrad.withdrawals', $draw),

@@ -193,6 +193,13 @@ final class ScheduleAvailability
                 elseif (isset($source['match'])) $ids = array_merge($ids, $visit($source['match']));
                 elseif (($source['type'] ?? null) === 'player') $ids[] = $source['id'];
             }
+            if (($match['rolling_challenge'] ?? false) && count(array_filter($match['players'] ?? [])) < 2) {
+                // Current ranks can change in earlier challenges. Until resolved,
+                // reserve those possible players as well as the original paths.
+                foreach ($match['prerequisites'] ?? [] as $dependency) {
+                    if (isset($matches[$dependency]['challenge_positions'])) $ids = array_merge($ids, $visit($dependency));
+                }
+            }
             return $result[$key] = array_values(array_unique($ids));
         };
         foreach (array_keys($matches) as $key) $visit($key);

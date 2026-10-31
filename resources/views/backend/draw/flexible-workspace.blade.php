@@ -57,6 +57,16 @@
       <p>Best of {{ $config['state']['best_of'] }} set(s). Starting positions and bracket size are managed in Players &amp; Positions.</p>
       <a class="btn btn-outline-primary" href="{{ route('draw.setup.show', $draw) }}">Review draw format</a>
       <p class="text-muted mt-3">Changing format requires an empty, unlocked, unpublished draw. Existing fixtures and results are protected.</p>
+      @if(($config['workflow'] ?? null) === 'feed_in_monrad' && $config['state']['generated'])
+        @can('enableRollingChallenges', $draw)
+          <div class="border rounded p-3 mb-3">
+            <h3 class="h6">Rolling top-five challenges</h3>
+            <p>Play 4–5 and 2–3 when the players have not met. Then play the current 3–4; if position 3 changes, play 2 against the new 3. Every stage skips pairs that have already played in this draw.</p>
+            <p class="text-muted">Existing results and match times are retained. New conditional matches need scheduling and schedule publication separately.</p>
+            <button type="button" class="btn btn-outline-primary" id="fm-rolling-challenges" @disabled($config['state']['rolling_challenges'])>{{ $config['state']['rolling_challenges'] ? 'Rolling challenges enabled' : 'Enable rolling challenges' }}</button>
+          </div>
+        @endcan
+      @endif
       @can('editNotes', $draw)
         <form data-workspace-notes action="{{ route('backend.draw.update-notes', $draw) }}" method="POST">
           @csrf

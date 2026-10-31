@@ -230,6 +230,7 @@ final class FlexibleMonradPdfLayout
             return 'Bye (inactive)';
         }
         $source = (array) ($match['sources'][$slot] ?? []);
+        if (isset($source['current_position'])) return 'Current position '.$source['current_position'];
         if (isset($source['base_position'])) return 'Base position '.$source['base_position'];
         if (($source['type'] ?? null) === 'player') {
             return 'Direct entry';

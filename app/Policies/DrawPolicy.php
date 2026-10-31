@@ -7,6 +7,12 @@ use App\Models\User;
 
 class DrawPolicy
 {
+    /** Non-destructive live progression; only event administrators may opt in. */
+    public function enableRollingChallenges(User $user, Draw $draw): bool
+    {
+        return ! $draw->locked && $this->canManage($user, $draw, false);
+    }
+
     public function awardLuckyPrize(User $user, Draw $draw): bool
     {
         return ! $draw->isTeamDraw() && $this->canManage($user, $draw, false);

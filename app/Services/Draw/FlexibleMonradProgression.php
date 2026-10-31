@@ -59,17 +59,36 @@ final class FlexibleMonradProgression
             sort($pair);
             $playedPairs[implode(':', $pair)] = true;
         }
-        foreach ($graph['nodes'] as $key => $node) {
-            if (! isset($node['challenge_positions'])) continue;
+        // JSON key order is not dependency order (the repeat sorts before 3–4).
+        $challengeOrder = [];
+        $visitChallenge = function (string $key) use (&$visitChallenge, &$challengeOrder, $graph): void {
+            if (isset($challengeOrder[$key]) || ! isset($graph['nodes'][$key]['challenge_positions'])) return;
+            foreach ($graph['nodes'][$key]['prerequisites'] ?? [] as $dependency) $visitChallenge($dependency);
+            $challengeOrder[$key] = true;
+        };
+        foreach (array_keys($graph['nodes']) as $key) $visitChallenge($key);
+        foreach (array_keys($challengeOrder) as $key) {
+            $node = $graph['nodes'][$key];
             [$upper, $lower] = $node['challenge_positions'];
-            $sources = array_map(fn ($source) => $this->source($source, $matches, $withdrawn), $node['sources']);
-            $players = array_column($sources, 'player');
+            $ready = ($node['rolling_gate'] ?? false)
+                ? ! array_filter($node['prerequisites'] ?? [], fn ($dependency) => ! ($matches[$dependency]['resolved'] ?? false)) : $complete;
+            if ($node['rolling_challenge'] ?? false) {
+                $ranks = array_column($positions, 'player', 'position');
+                $players = [$ranks[$upper] ?? null, $ranks[$lower] ?? null];
+            } else {
+                $sources = array_map(fn ($source) => $this->source($source, $matches, $withdrawn), $node['sources']);
+                $players = array_column($sources, 'player');
+            }
             $pair = array_filter($players);
             sort($pair);
-            $reason = ! $complete ? null : (count($pair) !== 2 ? 'A base-position player is unavailable or withdrawn.'
+            $reason = ! $ready ? null : (count($pair) !== 2 ? 'A position player is unavailable or withdrawn.'
                 : (isset($playedPairs[implode(':', $pair)]) ? 'These players already played each other in this draw.' : null));
+            if ($ready && ($node['requires_new_third'] ?? false)
+                && ($matches['challenge_3']['players'][0] ?? null) === $players[1]) {
+                $reason = 'Position 3 did not change after the 3–4 challenge.';
+            }
             $fixture = $fixtures[$key];
-            $status = ! $complete ? 'pending' : ($reason ? 'skipped' : 'ready');
+            $status = ! $ready ? 'pending' : ($reason ? 'skipped' : 'ready');
             if ($fixture['played']) {
                 // Keep played evidence even after a later withdrawal. Corrections
                 // to base results explicitly reset dependent challenge results.
@@ -90,8 +109,12 @@ final class FlexibleMonradProgression
                     }
                     unset($position);
                 }
+                if (! ($fixture['walkover'] ?? false) && count($pair = array_filter($fixture['players'])) === 2) {
+                    sort($pair);
+                    $playedPairs[implode(':', $pair)] = true;
+                }
             } else {
-                $match = ['players' => $complete ? $players : [null, null], 'winner' => null,
+                $match = ['players' => $ready ? $players : [null, null], 'winner' => null,
                     'resolved' => $status === 'skipped', 'automatic' => $status === 'skipped' ? 'challenge_skipped' : null,
                     'vacant' => [false, false], 'withdrawn_players' => [null, null], 'byes' => [false, false]];
             }

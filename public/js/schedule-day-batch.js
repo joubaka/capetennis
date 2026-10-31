@@ -7,11 +7,12 @@
   const details = draw => draw.day_round_details || {};
   const rounds = draw => Object.keys(details(draw)).map(Number).sort((a,b) => a-b);
   const courtLabels = venue => (venue.court_labels || (venue.court_list || []).map(court => court.label)).map(String);
+  const matchTitle = match => `Match ${Number(match.number)}${match.participants?.length ? ' · '+match.participants.join(' v ') : ''}`;
   function createState(draws, venues, dates) {
     const state = {draws, venues, dates, day:dates[0] || '', selectedDrawIds:[], selectedRounds:new Map(), selectedFixtures:new Map(), courts:new Map()};
     state.ready = draw => !draw.locked && rounds(draw).length > 0;
     state.matches = (drawId, round) => (details(draws.find(draw => Number(draw.id) === Number(drawId)) || {})[round] || []).flatMap(group => group.matches || []);
-    state.eligible = match => !match.scheduled_at || String(match.scheduled_at).slice(0,10) === state.day;
+    state.eligible = match => !match.played && (!match.scheduled_at || String(match.scheduled_at).slice(0,10) === state.day);
     state.updateBooking = (key, scheduledAt) => {
       draws.forEach(draw=>rounds(draw).forEach(round=>state.matches(draw.id,round).forEach(match=>{
         if(match.key!==key)return;
@@ -32,7 +33,9 @@
       id=Number(id); const draw=draws.find(draw => Number(draw.id)===id);
       if (!draw || !state.ready(draw)) return;
       if (checked && !state.selectedDrawIds.includes(id)) {
-        state.selectedDrawIds.push(id); state.selectRound(id,rounds(draw)[0],true);
+        state.selectedDrawIds.push(id);
+        const next=rounds(draw).find(round=>state.matches(id,round).some(match=>!match.played && state.eligible(match)));
+        state.selectRound(id,next ?? rounds(draw)[0],true);
       } else if (!checked) {
         state.selectedDrawIds=state.selectedDrawIds.filter(value=>value!==id); state.selectedRounds.delete(id);
         [...state.selectedFixtures.keys()].filter(key=>key.startsWith(id+':')).forEach(key=>state.selectedFixtures.delete(key));
@@ -158,7 +161,7 @@
         const draw=state.draws.find(draw=>Number(draw.id)===id);
         return `<section class="mb-3"><h6>${escape(draw.name)}</h6>${rounds(draw).map(round=>{
           const checked=state.selectedRounds.get(id)?.has(round),groups=details(draw)[round];
-          return `<div class="border rounded p-2 mb-2"><label class="fw-semibold"><input type="checkbox" class="form-check-input me-2 day-batch-round" data-draw="${id}" value="${round}" ${checked?'checked':''}>${escape(groups.map(group=>group.label).join(' / '))} <span class="small text-muted">(Round ${round})</span></label><ul class="small mb-1">${groups.map(group=>`<li>${escape(group.label)}: ${Number(group.count)} ${Number(group.count)===1?'match':'matches'}</li>`).join('')}</ul>${checked?`<details data-day-round-panel="${id}:${round}" ${opened.has(id+':'+round)?'open':''}><summary class="small">Choose position groups or specific matches</summary>${groups.map((group,index)=>{const eligible=(group.matches||[]).filter(state.eligible),selected=state.selectedFixtures.get(id+':'+round)||new Set();return `<div class="border-top mt-2 pt-2"><label class="small fw-semibold"><input type="checkbox" class="form-check-input me-1 day-batch-group" data-draw="${id}" data-round="${round}" value="${index}" ${eligible.length&&eligible.every(match=>selected.has(match.key))?'checked':''} ${eligible.length?'':'disabled'}>${escape(group.label)}</label><div class="d-flex flex-wrap gap-3 mt-1">${(group.matches||[]).map(match=>`<label class="small"><input type="checkbox" class="form-check-input me-1 day-batch-fixture" data-draw="${id}" data-round="${round}" value="${escape(match.key)}" ${selected.has(match.key)?'checked':''} ${state.eligible(match)?'':'disabled'}>Match ${Number(match.number)}${match.scheduled_at?` (${escape(match.scheduled_at.slice(0,16))}${state.eligible(match)?' · kept unless replanning':' · another day, kept'})`:''}</label>`).join('')}</div></div>`;}).join('')}</details>`:''}</div>`;
+          return `<div class="border rounded p-2 mb-2"><label class="fw-semibold"><input type="checkbox" class="form-check-input me-2 day-batch-round" data-draw="${id}" value="${round}" ${checked?'checked':''}>${escape(groups.map(group=>group.label).join(' / '))} <span class="small text-muted">(Round ${round})</span></label><ul class="small mb-1">${groups.map(group=>`<li>${escape(group.label)}: ${Number(group.count)} ${Number(group.count)===1?'match':'matches'}</li>`).join('')}</ul>${checked?`<details data-day-round-panel="${id}:${round}" ${opened.has(id+':'+round)?'open':''}><summary class="small">Choose position groups or specific matches</summary>${groups.map((group,index)=>{const eligible=(group.matches||[]).filter(state.eligible),selected=state.selectedFixtures.get(id+':'+round)||new Set();return `<div class="border-top mt-2 pt-2"><label class="small fw-semibold"><input type="checkbox" class="form-check-input me-1 day-batch-group" data-draw="${id}" data-round="${round}" value="${index}" ${eligible.length&&eligible.every(match=>selected.has(match.key))?'checked':''} ${eligible.length?'':'disabled'}>${escape(group.label)}</label><div class="d-flex flex-wrap gap-3 mt-1">${(group.matches||[]).map(match=>`<label class="small"><input type="checkbox" class="form-check-input me-1 day-batch-fixture" data-draw="${id}" data-round="${round}" value="${escape(match.key)}" ${selected.has(match.key)?'checked':''} ${state.eligible(match)?'':'disabled'}>${escape(matchTitle(match))}${match.played?' (Played · kept)':match.scheduled_at?` (${escape(match.scheduled_at.slice(0,16))}${state.eligible(match)?' · kept unless replanning':' · another day, kept'})`:''}</label>`).join('')}</div></div>`;}).join('')}</details>`:''}</div>`;
         }).join('')}</section>`;
       }).join('');
       if(focus?.kind) [...container.querySelectorAll('.day-batch-'+focus.kind)].find(input=>input.dataset.draw===focus.draw && input.dataset.round===focus.round && input.value===focus.value)?.focus({preventScroll:true});
