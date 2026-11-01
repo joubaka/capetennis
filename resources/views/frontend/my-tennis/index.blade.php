@@ -60,6 +60,7 @@
     #my-tennis-page .my-tennis-fixture-vs { line-height: 1.2; margin: .15rem 0; }
     #my-tennis-page .my-tennis-fixture-link { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; color: #456356; font-size: .8rem; text-decoration: underline; text-underline-offset: 3px; }
     #my-tennis-page .btn { min-height: 44px; }
+    #my-tennis-page [data-rating-placeholder][hidden] { display: none !important; }
     @media (max-width: 575.98px) {
       #my-tennis-page .my-tennis-heading form { width: 100%; }
       #my-tennis-page .my-tennis-player-summary { padding: 1rem; gap: .75rem; }
@@ -107,7 +108,7 @@
   <div class="tab-content" id="my-tennis-tab-content">
   @if($canViewRating ?? false)
   <div class="tab-pane fade" id="my-tennis-rating" role="tabpanel" aria-labelledby="my-tennis-rating-tab" data-rating-url="{{ route('my.tennis.rating', $ratingPlayer) }}">
-    <div class="card"><div class="card-body"><p role="status">Select Player rating to view the saved last 12 months.</p><button type="button" class="btn btn-outline-primary" data-rating-retry hidden>Try again</button></div></div>
+    <div class="card" data-rating-placeholder><div class="card-body"><p role="status">Select Player rating to view the saved last 12 months.</p></div></div>
   </div>
   @endif
   <div class="tab-pane fade show active" id="my-tennis-overview" role="tabpanel" aria-labelledby="my-tennis-overview-tab">
@@ -296,10 +297,15 @@ document.addEventListener('DOMContentLoaded', () => {
     lastUrl = url || lastUrl;
     loading = true;
     panel.querySelectorAll('[data-rating-filters] select').forEach(select => { select.disabled = true; });
+    panel.querySelectorAll('[data-rating-placeholder], [data-rating-retry]').forEach(element => { element.hidden = true; });
     panel.setAttribute('aria-busy', 'true');
     let status = panel.querySelector('[data-rating-load-status]');
-    if (!status) { status = document.createElement('p'); status.dataset.ratingLoadStatus = ''; status.setAttribute('role', 'status'); status.className = 'small text-muted'; panel.prepend(status); }
-    status.textContent = 'Loading saved rating history…';
+    if (!status) { status = document.createElement('p'); status.dataset.ratingLoadStatus = ''; status.setAttribute('role', 'status'); status.className = 'small text-muted d-flex align-items-center gap-2'; panel.prepend(status); }
+    status.textContent = '';
+    const spinner = document.createElement('span');
+    spinner.className = 'spinner-border spinner-border-sm flex-shrink-0';
+    spinner.setAttribute('aria-hidden', 'true');
+    status.append(spinner, 'Loading saved rating history…');
     try {
       const response = await fetch(lastUrl, { headers: { Accept: 'text/html' }, cache: 'no-store' });
       if (!response.ok || response.redirected) throw new Error('Unavailable');

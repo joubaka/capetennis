@@ -6,13 +6,6 @@
       this.reload = reload;
       this.csrf = options.csrf || '';
       this.pending = false;
-      panel.addEventListener('change', event => {
-        if (!event.target.matches('[data-pathway-stage]')) return;
-        const division = event.target.closest('form').querySelector('[data-pathway-division]');
-        if (!division) return;
-        division.disabled = event.target.value !== 'standard';
-        if (division.disabled) division.value = '';
-      });
       // Delegate from the persistent panel: its contents are replaced after month/filter changes.
       panel.addEventListener('submit', event => {
         const form = event.target.closest('[data-pathway-form]');

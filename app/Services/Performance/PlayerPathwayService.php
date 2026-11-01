@@ -5,7 +5,6 @@ namespace App\Services\Performance;
 use App\Models\{Player, PlayerPathwayProfile, User};
 use Illuminate\Support\Facades\{DB, Schema, Validator};
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 
 /** Starting-stage metadata and read-only, evidence-based progression recommendations. */
 class PlayerPathwayService
@@ -22,40 +21,55 @@ class PlayerPathwayService
         $available = $this->available();
         $profile = $available ? PlayerPathwayProfile::where('player_id', $player->id)->first() : null;
         $stage = isset(self::STAGES[$profile?->stage ?? '']) ? $profile->stage : null;
-        $division = $stage === 'standard' && in_array($profile?->wilson_division, ['A', 'B'], true) ? $profile->wilson_division : null;
+        $saved_division = in_array($profile?->wilson_division, ['A', 'B'], true) ? $profile->wilson_division : null;
         $metrics = $history['pathway_metrics'] ?? [];
         if (($history['reason'] ?? null) !== null || ($metrics['player_id'] ?? null) !== (int) $player->id) $metrics = [];
         $metricAvailable = ($metrics['available'] ?? false) === true;
-        $stageRating = $stage ? ($metrics['stage_ratings'][$stage] ?? []) : [];
+        if (!$metricAvailable) $metrics = [];
+        // Rated level is evidence, independent of the saved starting stage and CTR magnitude.
+        $current_stage = null;
+        foreach (['standard', 'orange', 'red'] as $ball) {
+            if ($this->validScore($metrics['stage_ratings'][$ball]['score'] ?? null) !== null) {
+                $current_stage = $ball;
+                break;
+            }
+        }
+        $division = $current_stage === 'standard' ? $saved_division : null;
+        $stageRating = $current_stage ? ($metrics['stage_ratings'][$current_stage] ?? []) : [];
         $score = $stageRating['score'] ?? null;
-        $score = is_numeric($score) && is_finite((float) $score) && $score >= 0 && $score <= 100 ? (float) $score : null;
+        $score = $this->validScore($score);
         $events = $metricAvailable && is_int($metrics['events'] ?? null) && $metrics['events'] >= 0 ? $metrics['events'] : null;
-        $eligible = $metricAvailable && $score !== null && ($stageRating['comparable'] ?? false) === true && ($metrics['stale'] ?? true) === false;
-        $targetKey = $stage === 'standard' ? ($division ? 'standard_'.strtolower($division) : null) : $stage;
+        $eligible = $metricAvailable && $score !== null && ($stageRating['comparable'] ?? false) === true
+            && ($stageRating['local'] ?? false) !== true && ($metrics['stale'] ?? true) === false;
+        $targetKey = $current_stage === 'standard' ? ($division ? 'standard_'.strtolower($division) : null) : $current_stage;
         $target = $this->target($targetKey);
-        $ownEvents = $stage && $metricAvailable && is_int($metrics['stage_events'][$stage] ?? null) ? $metrics['stage_events'][$stage] : null;
-        $ratingMet = $target !== null && $eligible && $score >= $target['ctr'];
-        $eventsMet = $target !== null && $eligible && $ownEvents !== null && $ownEvents >= $target['events'];
+        $ownEvents = $current_stage && $metricAvailable && is_int($metrics['stage_events'][$current_stage] ?? null) ? $metrics['stage_events'][$current_stage] : null;
+        $assessed = $stage !== null && $target !== null && $eligible && $ownEvents !== null;
+        $ratingMet = $assessed && $score >= $target['ctr'];
+        $eventsMet = $ownEvents !== null && $ownEvents >= ($target['events'] ?? 3);
         $ready = $stage !== null && $ratingMet && $eventsMet;
+        $assessment_status = !$assessed ? 'Not assessed' : ($ready ? 'Targets met' : 'Targets not yet met');
         $reason = match (true) {
-            $stage === null => 'Record a starting playing stage to assess the next step.',
+            $stage === null => 'Assessment pending: a starting stage must be recorded. Available ratings and event counts are shown separately.',
+            $current_stage === null => 'Assessment pending: no saved ball-level rating is available.',
             $targetKey === null => 'Record the appropriate Wilson A or B division to show its benchmark.',
             $target === null => 'Progression targets are not configured for this step.',
             !$metricAvailable => 'Verified current rating and event evidence is not available yet.',
-            !$eligible => 'Progress needs a current comparable rating from this ball level only.',
+            ($metrics['stale'] ?? true) => 'Assessment pending: progress awaits a current saved rating update.',
+            !$eligible => 'Assessment pending: progress needs a current comparable rating from this ball level only.',
             $ownEvents === null || (($metrics['unknown_stage_events'] ?? 0) > 0 && $ownEvents < $target['events']) => 'Some included events have conflicting ball labels and cannot count towards a stage target.',
             !$ready => 'Both the CTR target and the minimum number of events in this ball stage must be met.',
-            default => 'Targets met. Ready to consider an eligible next competition.',
+            default => 'Current targets met. Consider the next pathway options subject to each event’s entry rules.',
         };
-        [$competition, $options] = match ($stage) {
+        [$competition, $options] = match ($current_stage) {
             'red' => ['Wilson Red', ['Wilson Orange', 'Wilson U10 B, where age and event rules permit']],
-            'orange' => ['Wilson Orange', ['A suitable Green/Yellow ball competition']],
+            'orange' => ['Wilson Orange', ['Green/Yellow ball competitions']],
             'standard' => match ($division) {
                 'B' => ['Wilson B', ['Wilson A']],
-                'A' => ['Wilson A', ['A suitable TSA tournament']],
-                default => ['A suitable Wilson Green/Yellow ball competition', ['Record the appropriate Wilson A or B division']],
+                'A' => ['Wilson A', ['TSA tournaments, subject to their entry rules']],
+                default => ['Wilson Green/Yellow ball competitions', ['Confirm the Wilson A or B division before assessing the next benchmark']],
             },
-            default => ['A competition suitable for the player’s recorded eligibility', ['Record a starting playing stage']],
+            default => ['No rated ball level available yet', ['Confirm the starting stage and play an eligible published event']],
         };
         $stageProgress = [];
         foreach (self::STAGES as $ball => $label) {
@@ -63,30 +77,29 @@ class PlayerPathwayService
             $count = $metricAvailable && is_int($metrics['stage_events'][$ball] ?? null) ? $metrics['stage_events'][$ball] : null;
             $ballRating = $metrics['stage_ratings'][$ball] ?? [];
             $ballScore = $ballRating['score'] ?? null;
-            $ballScore = is_numeric($ballScore) && is_finite((float) $ballScore) && $ballScore >= 0 && $ballScore <= 100 ? (float) $ballScore : null;
-            $ballEligible = $metricAvailable && $ballScore !== null && ($ballRating['comparable'] ?? false) === true && ($metrics['stale'] ?? true) === false;
+            $ballScore = $this->validScore($ballScore);
+            $ballEligible = $metricAvailable && $ballScore !== null && ($ballRating['comparable'] ?? false) === true
+                && ($ballRating['local'] ?? false) !== true && ($metrics['stale'] ?? true) === false;
+            $ballAssessed = $stage !== null && $ballEligible && $ballTarget !== null && $count !== null;
+            $met = $ballAssessed && $count >= $ballTarget['events'] && $ballScore >= $ballTarget['ctr'];
             $stageProgress[$ball] = ['label' => $label, 'score' => $ballScore, 'local' => ($ballRating['local'] ?? false) === true,
                 'confidence_label' => $ballRating['confidence_label'] ?? null, 'reason' => $ballRating['reason'] ?? null, 'events' => $count, 'target' => $ballTarget,
-                'met' => $stage !== null && $ballEligible && $ballTarget !== null && $count !== null
-                    && $count >= $ballTarget['events'] && $ballScore >= $ballTarget['ctr']];
+                'assessed' => $ballAssessed, 'status' => !$ballAssessed ? 'Not assessed' : ($met ? 'Targets met' : 'Targets not yet met'), 'met' => $met];
         }
-        // Badge presentation may use recorded rating evidence without assigning a starting stage.
-        $badgeStage = $stage;
-        if ($badgeStage === null) {
-            foreach (['standard', 'orange', 'red'] as $ball) {
-                if ($stageProgress[$ball]['score'] !== null) {
-                    $badgeStage = $ball;
-                    break;
-                }
-            }
-        }
+        $badgeStage = $current_stage;
         $badge = ['stage' => $badgeStage, 'score' => $stageProgress[$badgeStage]['score'] ?? null,
             'local' => $stageProgress[$badgeStage]['local'] ?? false];
 
-        return compact('available', 'stage', 'division', 'competition', 'options', 'score', 'events', 'target', 'ownEvents', 'eligible', 'ratingMet', 'eventsMet', 'ready', 'reason', 'stageProgress', 'badge') + [
+        return compact('available', 'stage', 'division', 'saved_division', 'current_stage', 'competition', 'options', 'score', 'events', 'target', 'ownEvents', 'eligible', 'ratingMet', 'eventsMet', 'ready', 'assessed', 'assessment_status', 'reason', 'stageProgress', 'badge') + [
             'stage_label' => $stage ? self::STAGES[$stage] : 'Stage not recorded',
+            'current_stage_label' => $current_stage ? self::STAGES[$current_stage] : 'Not rated yet',
             'metrics' => $metrics,
         ];
+    }
+
+    private function validScore(mixed $score): ?float
+    {
+        return is_numeric($score) && is_finite((float) $score) && $score >= 0 && $score <= 100 ? (float) $score : null;
     }
 
     private function target(?string $key): ?array
@@ -102,13 +115,14 @@ class PlayerPathwayService
     public static function unrecorded(): array
     {
         return [
-            'available' => false, 'stage' => null, 'division' => null,
-            'competition' => 'A competition suitable for the player’s recorded eligibility',
-            'options' => ['Record a starting playing stage'], 'stage_label' => 'Stage not recorded',
+            'available' => false, 'stage' => null, 'division' => null, 'saved_division' => null,
+            'current_stage' => null, 'current_stage_label' => 'Not rated yet', 'assessed' => false, 'assessment_status' => 'Not assessed',
+            'competition' => 'No rated ball level available yet',
+            'options' => ['Confirm the starting stage and play an eligible published event'], 'stage_label' => 'Stage not recorded',
             'score' => null, 'events' => null, 'ownEvents' => null, 'target' => null, 'metrics' => [],
             'badge' => ['stage' => null, 'score' => null, 'local' => false],
             'eligible' => false, 'ratingMet' => false, 'eventsMet' => false, 'ready' => false, 'stageProgress' => [],
-            'reason' => 'Record a starting playing stage to assess the next step.',
+            'reason' => 'Assessment pending: a starting stage must be recorded. Available ratings and event counts are shown separately.',
         ];
     }
 
@@ -122,9 +136,6 @@ class PlayerPathwayService
         $stage = $data['stage'] ?? null;
         if (in_array($stage, ['green', 'yellow'], true)) $stage = 'standard';
         $division = $data['wilson_division'] ?? null;
-        if ($stage !== 'standard' && $division !== null) {
-            throw ValidationException::withMessages(['wilson_division' => 'A Wilson division applies only to the Green/Yellow ball stage.']);
-        }
 
         DB::transaction(function () use ($player, $actor, $stage, $division) {
             Player::whereKey($player->id)->lockForUpdate()->firstOrFail();

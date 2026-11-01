@@ -67,12 +67,17 @@ test('validation failures keep the form available and show server messages as te
   } finally { global.fetch = oldFetch; global.FormData = oldFormData; }
 });
 
-test('division control is cleared outside standard-ball stage and repeated submits are suppressed', async () => {
+test('changing starting stage preserves an independently recorded current Wilson division', async () => {
   const h = harness(); const division = { value: 'A', disabled: false };
-  h.listeners.change({ target: { matches: () => true, value: 'red', closest: () => ({ querySelector: () => division }) } });
-  assert.equal(division.disabled, true); assert.equal(division.value, '');
-  h.listeners.change({ target: { matches: () => true, value: 'standard', closest: () => ({ querySelector: () => division }) } });
-  assert.equal(division.disabled, false);
+  for (const startingStage of ['red', 'orange', '', 'standard']) {
+    h.listeners.change?.({ target: { matches: () => true, value: startingStage, closest: () => ({ querySelector: () => division }) } });
+    assert.equal(division.disabled, false);
+    assert.equal(division.value, 'A');
+  }
+});
+
+test('repeated submits remain suppressed while a pathway save is pending', async () => {
+  const h = harness();
   h.ui.pending = true;
   await h.ui.save(h.form());
   assert.equal(h.reloads(), 0);
