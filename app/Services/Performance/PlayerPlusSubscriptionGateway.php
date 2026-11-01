@@ -21,8 +21,21 @@ class PlayerPlusSubscriptionGateway
             $response = Http::timeout(15)->connectTimeout(5)->withHeaders($headers)->put(
                 'https://api.payfast.co.za/subscriptions/'.rawurlencode($token).'/cancel'.($sandbox ? '?testing=true' : '')
             );
-            return $response->successful() && (int) $response->json('code') === 200
-                && $response->json('status') === 'success' && $response->json('data.response') === true;
+            if ($response->successful() && (int) $response->json('code') === 200
+                && $response->json('status') === 'success' && $response->json('data.response') === true) return true;
+        } catch (\Illuminate\Http\Client\ConnectionException) {
+            // The provider may have cancelled before the response was lost. Fetch its explicit state.
+        }
+        $headers = ['merchant-id' => (string) $merchant, 'version' => 'v1', 'timestamp' => now()->toIso8601String()];
+        $signed = $headers + ['passphrase' => $passphrase];
+        ksort($signed);
+        $headers['signature'] = md5(http_build_query($signed));
+        try {
+            $response = Http::timeout(15)->connectTimeout(5)->withHeaders($headers)->get(
+                'https://api.payfast.co.za/subscriptions/'.rawurlencode($token).'/fetch'.($sandbox ? '?testing=true' : '')
+            );
+            return $response->successful() && (int) $response->json('code') === 200 && $response->json('status') === 'success'
+                && $response->json('data.response.token') === $token && strtoupper((string) $response->json('data.response.status_text')) === 'CANCELLED';
         } catch (\Illuminate\Http\Client\ConnectionException) {
             return false;
         }

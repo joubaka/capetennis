@@ -1273,6 +1273,7 @@
                       </div>
                       <small class="text-muted d-block mt-2">Applies to new checkouts only. Existing checkout prices and purchased terms remain unchanged.</small>
                       <p id="sa-plus-price-status" class="small mt-2" role="status"></p>
+                      @include('backend.settings.partials.player-plus-monthly')
                       <a class="d-inline-block py-2" href="{{ route('superadmin.player-plus.index') }}">Review Plus payment issues</a>
                     </div>
                   </div>
