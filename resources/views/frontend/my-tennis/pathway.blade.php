@@ -24,8 +24,8 @@
   <div class="pathway-grid">
     <div>
       <h4 class="h6">{{ $pathway['stage_label'] }}@if($pathway['division']) · Wilson {{ $pathway['division'] }}@endif</h4>
-      <div class="pathway-score"><x-ctr-badge :stage="$pathway['stage']" :score="$pathway['score']" :local="$pathway['metrics']['stage_ratings'][$pathway['stage'] ?? '']['local'] ?? false" /></div>
-      <p class="small text-muted mt-2 mb-0">@if($pathway['metrics']['date'] ?? null) Latest saved ball-level rating · {{ $pathway['metrics']['date'] }} @else No saved ball-level rating available. @endif Badge colour shows the recorded playing stage, not completion of that stage or earlier stages.</p>
+      <div class="pathway-score" data-pathway-top-badge><x-ctr-badge :stage="$pathway['badge']['stage']" :score="$pathway['badge']['score']" :local="$pathway['badge']['local']" /></div>
+      <p class="small text-muted mt-2 mb-0">@if($pathway['metrics']['date'] ?? null) Latest saved ball-level rating · {{ $pathway['metrics']['date'] }} @else No saved ball-level rating available. @endif Badge colour identifies the displayed rating’s ball level, not completion of that stage or earlier stages.@if(!$pathway['stage'] && $pathway['badge']['stage']) Starting stage is not recorded; showing an available ball-level rating.@endif</p>
     </div>
     <div>
       <h4 class="h6">Automatic progress</h4>

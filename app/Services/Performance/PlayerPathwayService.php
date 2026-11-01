@@ -70,7 +70,20 @@ class PlayerPathwayService
                 'met' => $stage !== null && $ballEligible && $ballTarget !== null && $count !== null
                     && $count >= $ballTarget['events'] && $ballScore >= $ballTarget['ctr']];
         }
-        return compact('available', 'stage', 'division', 'competition', 'options', 'score', 'events', 'target', 'ownEvents', 'eligible', 'ratingMet', 'eventsMet', 'ready', 'reason', 'stageProgress') + [
+        // Badge presentation may use recorded rating evidence without assigning a starting stage.
+        $badgeStage = $stage;
+        if ($badgeStage === null) {
+            foreach (['standard', 'orange', 'red'] as $ball) {
+                if ($stageProgress[$ball]['score'] !== null) {
+                    $badgeStage = $ball;
+                    break;
+                }
+            }
+        }
+        $badge = ['stage' => $badgeStage, 'score' => $stageProgress[$badgeStage]['score'] ?? null,
+            'local' => $stageProgress[$badgeStage]['local'] ?? false];
+
+        return compact('available', 'stage', 'division', 'competition', 'options', 'score', 'events', 'target', 'ownEvents', 'eligible', 'ratingMet', 'eventsMet', 'ready', 'reason', 'stageProgress', 'badge') + [
             'stage_label' => $stage ? self::STAGES[$stage] : 'Stage not recorded',
             'metrics' => $metrics,
         ];
@@ -93,6 +106,7 @@ class PlayerPathwayService
             'competition' => 'A competition suitable for the player’s recorded eligibility',
             'options' => ['Record a starting playing stage'], 'stage_label' => 'Stage not recorded',
             'score' => null, 'events' => null, 'ownEvents' => null, 'target' => null, 'metrics' => [],
+            'badge' => ['stage' => null, 'score' => null, 'local' => false],
             'eligible' => false, 'ratingMet' => false, 'eventsMet' => false, 'ready' => false, 'stageProgress' => [],
             'reason' => 'Record a starting playing stage to assess the next step.',
         ];

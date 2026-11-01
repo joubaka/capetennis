@@ -87,6 +87,76 @@ class PlayerPathwayTest extends TestCase
         $this->assertDatabaseHas('player_pathway_profiles', ['player_id' => 1, 'stage' => 'standard', 'wilson_division' => 'A']);
     }
 
+    public function test_unrecorded_stage_displays_green_yellow_badge_without_awarding_progress(): void
+    {
+        $metrics = $this->metrics(67.9, ['red' => 0, 'orange' => 0, 'standard' => 6]);
+        $metrics['stage_ratings']['red']['score'] = null;
+        $metrics['stage_ratings']['orange']['score'] = null;
+        $history = ['reason' => null, 'pathway_metrics' => $metrics, 'series' => [], 'points' => []];
+        $summary = app(PlayerPathwayService::class)->summary(Player::findOrFail(1), $history);
+        $this->assertSame(['stage' => 'standard', 'score' => 67.9, 'local' => false], $summary['badge']);
+        $this->assertNull($summary['stage']);
+        $this->assertNull($summary['score']);
+        $this->assertNull($summary['target']);
+        $this->assertFalse($summary['ready']);
+        $this->assertFalse($summary['ratingMet']);
+        $this->assertFalse($summary['eventsMet']);
+        foreach ($summary['stageProgress'] as $progress) $this->assertFalse($progress['met']);
+
+        $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturn($history);
+        $this->actingAs($this->actor());
+        $response = $this->get(route('my.tennis.rating', 1))->assertOk()->assertSee('Stage not recorded');
+        $this->assertMatchesRegularExpression('/data-pathway-top-badge>.*?aria-label="CTR 67\\.9 · Green\/Yellow ball"/s', $response->getContent());
+        $response->assertSee('Record a starting playing stage to assess the next step.');
+        $this->assertDatabaseCount('player_pathway_profiles', 0);
+        $this->assertDatabaseCount('player_pathway_achievements', 0);
+    }
+
+    public function test_badge_fallback_preserves_recorded_stage_and_withheld_history(): void
+    {
+        $service = app(PlayerPathwayService::class);
+        $player = Player::findOrFail(1);
+        $metrics = $this->metrics(67.9);
+        $metrics['stage_ratings']['orange'] = ['score' => 42.1, 'local' => true];
+        $metrics['stage_ratings']['standard']['score'] = null;
+        $this->assertSame(['stage' => 'orange', 'score' => 42.1, 'local' => true], $service->summary($player, ['pathway_metrics' => $metrics])['badge']);
+        foreach ([['reason' => 'Publication revoked'], ['pathway_metrics' => array_replace($metrics, ['player_id' => 2])], ['pathway_metrics' => []]] as $change) {
+            $this->assertSame(['stage' => null, 'score' => null, 'local' => false], $service->summary($player, array_replace(['pathway_metrics' => $metrics], $change))['badge']);
+        }
+        $service->recordStage($player, $this->actor(), ['stage' => 'red']);
+        $metrics['stage_ratings']['red']['score'] = null;
+        $this->assertSame(['stage' => 'red', 'score' => null, 'local' => false], $service->summary($player, ['pathway_metrics' => $metrics])['badge']);
+    }
+
+    public function test_overview_badge_requires_selected_players_entitlement_and_never_loads_locked_ratings(): void
+    {
+        $player = Player::findOrFail(1);
+        $page = new \Illuminate\Pagination\LengthAwarePaginator([], 0, 25);
+        $dashboard = ['accountUser' => $this->actor(10, false), 'selectedPlayer' => $player, 'players' => collect([$player]), 'linkedPlayerIds' => [],
+            'linkedPlayerPage' => $page, 'profile' => ['message' => 'Profile up to date'], 'entries' => collect(),
+            'upcomingMatches' => collect(), 'upcomingMatchPage' => $page,
+            'history' => ['placements' => collect(), 'seriesRankings' => collect()]];
+        $this->mock(\App\Services\MyTennisService::class)->shouldReceive('dashboard')->andReturn($dashboard);
+        $this->mock(\App\Services\Performance\TeamSheetProfileLinkService::class)->shouldReceive('status')->andReturn(['available' => false]);
+        $history = $this->mock(PlayerRatingHistoryService::class);
+        $history->shouldReceive('forPlayer')->once()->with(Mockery::on(fn ($candidate) => $candidate->id === 1))
+            ->andReturn(['reason' => null, 'pathway_metrics' => $this->metrics(67.9)]);
+        SiteSetting::set(PlayerRatingAccess::SETTING, '1');
+        $entitled = false;
+        Gate::define('player-premium-rating', function ($user, $candidate) use (&$entitled) { return $entitled && $candidate->id === 1; });
+        $this->actingAs($this->actor(10, false));
+        $locked = $this->get(route('my.tennis', ['player' => 1]))->assertOk()
+            ->assertSee('data-overview-rating-badge', false)->assertSee('Unlock CTR')->assertSee('filter:blur(5px)', false)->assertDontSee('67.9');
+        $this->assertTrue($locked->headers->hasCacheControlDirective('private'));
+        $this->assertTrue($locked->headers->hasCacheControlDirective('no-store'));
+        $entitled = true;
+        $this->get(route('my.tennis', ['player' => 1]))->assertOk()->assertSee('aria-label="CTR 67.9 · Green/Yellow ball"', false)
+            ->assertDontSee('Unlock CTR')->assertSee('#rating', false);
+        // Entitlement to this player does not allow an unlinked viewer to load the badge.
+        $this->actingAs($this->actor(30, false));
+        $this->get(route('my.tennis', ['player' => 1]))->assertOk()->assertSee('Unlock CTR')->assertDontSee('67.9');
+    }
+
     public function test_starting_orange_or_skipping_to_standard_never_completes_earlier_stages(): void
     {
         $service = app(PlayerPathwayService::class); $player = Player::findOrFail(1); $actor = $this->actor();

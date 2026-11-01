@@ -129,6 +129,7 @@
         <h2>{{ $selectedPlayer->full_name }}</h2>
         <span class="my-tennis-player-status">{{ $profile['message'] }}</span>
       </div>
+      @include('frontend.my-tennis.overview-badge')
       <div class="my-tennis-upcoming-total"><strong>{{ $upcomingMatchPage->total() }}</strong><span>Upcoming matches</span></div>
     </div>
     <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
@@ -314,6 +315,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
   button.addEventListener('shown.bs.tab', () => load());
+  document.querySelector('[data-overview-rating-link]')?.addEventListener('click', event => {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    bootstrap.Tab.getOrCreateInstance(button).show();
+  });
   panel.addEventListener('click', event => {
     const link = event.target.closest('[data-rating-link]');
     if (link && !event.ctrlKey && !event.metaKey && !event.shiftKey) { event.preventDefault(); load(link.getAttribute('href')); }
