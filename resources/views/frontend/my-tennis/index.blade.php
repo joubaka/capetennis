@@ -460,12 +460,12 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!searchInput || !linkButton || !feedback) return;
 
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
-  const searchUrl = @json(route('player.search', [], false));
-  const linkUrl = @json(route('backend.user.players.store', $accountUser, false));
-  const unlinkUrl = @json(route('backend.user.players.destroy', [$accountUser, '__PLAYER__'], false));
-  const bulkUnlinkUrl = @json(route('backend.user.players.bulk-destroy', $accountUser, false));
-  const playersUrl = @json(route('my.tennis.players', [], false));
-  const linkedIds = new Set(@json(array_map('intval', $linkedPlayerIds)));
+  const searchUrl = {{ Illuminate\Support\Js::from(route('player.search', [], false)) }};
+  const linkUrl = {{ Illuminate\Support\Js::from(route('backend.user.players.store', $accountUser, false)) }};
+  const unlinkUrl = {{ Illuminate\Support\Js::from(route('backend.user.players.destroy', [$accountUser, '__PLAYER__'], false)) }};
+  const bulkUnlinkUrl = {{ Illuminate\Support\Js::from(route('backend.user.players.bulk-destroy', $accountUser, false)) }};
+  const playersUrl = {{ Illuminate\Support\Js::from(route('my.tennis.players', [], false)) }};
+  const linkedIds = new Set({{ Illuminate\Support\Js::from(array_map('intval', $linkedPlayerIds)) }});
 
   const showFeedback = (message, type = 'info') => {
     const alert = document.createElement('div');
