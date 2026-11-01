@@ -60,7 +60,7 @@ class PlayerPlusController extends Controller
     {
         $data = $request->validate(['request_token' => ['required', 'uuid'], 'confirm' => ['accepted'],
             'plan' => ['sometimes', \Illuminate\Validation\Rule::in(['annual', 'monthly'])],
-            'recurring_consent' => ['required_if:plan,monthly', 'accepted'],
+            'recurring_consent' => ['exclude_unless:plan,monthly', 'required', 'accepted'],
             'terms_version' => ['required', \Illuminate\Validation\Rule::in([self::TERMS_VERSION])],
             'quoted_price_cents' => ['required', 'integer', 'min:'.PlayerPlusService::MIN_PRICE_CENTS, 'max:'.PlayerPlusService::MAX_PRICE_CENTS]],
             ['quoted_price_cents.min' => 'Please reload the player membership page to review a supported annual price.']);
