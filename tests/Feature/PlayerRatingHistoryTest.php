@@ -94,6 +94,35 @@ class PlayerRatingHistoryTest extends TestCase
         $this->assertSame(62, $history['series'][\App\Services\Performance\AllAgeRatingModel::COHORT][10]['score']);
     }
 
+    public function test_monthly_materialization_keeps_only_consumed_projections_without_dropping_source_context(): void
+    {
+        $graph = ['ratings' => [42 => ['score' => 61.5, 'component' => 'a']],
+            'components' => ['a' => ['members' => [42, 43], 'converged' => true]], 'history_evidence' => ['matches' => [], 'fields' => []]];
+        $legacy = array_replace_recursive($graph, ['components' => ['a' => ['converged' => false]]]);
+        $ability = Mockery::mock(PlayerSharedAbilityService::class);
+        $ability->shouldReceive('fingerprint')->twice()->andReturn(str_repeat('a', 64));
+        $ability->shouldReceive('historySnapshot')->times(12)->andReturn([
+            'reason' => null, 'cohorts' => ['unused legacy age group' => $legacy],
+            'all_age' => $graph, 'ball_ratings' => array_fill_keys(array_keys(\App\Services\Performance\BallRatingModel::COHORTS), $graph),
+            'source_events' => [99], 'source_matches' => ['match:9'],
+        ]);
+        $snapshotStore = Mockery::mock(\App\Services\Performance\PlayerAbilitySnapshotStore::class);
+        $snapshotStore->shouldReceive('manifest')->once()->withArgs(fn ($context) => $context === [
+            'source_events' => [99], 'source_matches' => ['match:9'], 'all_age' => [],
+        ])->andReturn(['retained_source_context' => true]);
+        $this->app->instance(\App\Services\Performance\PlayerAbilitySnapshotStore::class, $snapshotStore);
+        $store = Mockery::mock(PlayerRatingHistoryStore::class);
+        $store->shouldReceive('policyHash')->once()->andReturn('policy');
+        $saved = (new PlayerRatingHistoryService($ability, $store))->calculate(CarbonImmutable::parse('2026-11-01'));
+        $this->assertCount(12, $saved['months']);
+        foreach ($saved['months'] as $month) {
+            $this->assertSame([\App\Services\Performance\AllAgeRatingModel::COHORT, ...array_values(\App\Services\Performance\BallRatingModel::COHORTS)], array_keys($month['cohorts']));
+            foreach ($month['cohorts'] as $players) $this->assertSame(61.5, $players[42]['score']);
+        }
+        $this->assertSame(['retained_source_context' => true], $saved['publication_manifest']);
+        $this->assertStringNotContainsString('unused legacy age group', json_encode($saved, JSON_THROW_ON_ERROR));
+    }
+
     public function test_source_change_withholds_entire_history(): void
     {
         Cache::store('array')->flush();

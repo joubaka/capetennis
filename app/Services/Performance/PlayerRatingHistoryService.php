@@ -124,10 +124,7 @@ class PlayerRatingHistoryService
             $shared = $shared || isset($snapshot['all_age']);
             $evidence->append($snapshot, $sources, 11 - $offset);
             $compact = [];
-            $projections = $snapshot['cohorts'];
-            if (isset($snapshot['all_age'])) { $projections[AllAgeRatingModel::COHORT] = $snapshot['all_age']; }
-            foreach ($snapshot['ball_ratings'] ?? [] as $stage => $graph) $projections[BallRatingModel::COHORTS[$stage]] = $graph;
-            foreach ($projections as $cohort => $data) {
+            foreach (PlayerRatingEvidenceBuilder::projections($snapshot) as $cohort => $data) {
                 $compact[$cohort] = [];
                 $groups = [];
                 foreach ($data['components'] as $id => $component) {

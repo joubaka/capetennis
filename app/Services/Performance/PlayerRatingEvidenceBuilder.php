@@ -9,6 +9,20 @@ class PlayerRatingEvidenceBuilder
     private array $indexedEvents = [];
     private array $registry = [];
 
+    /** Persist only projections consumed by shared history and pathway pages. */
+    public static function projections(array $snapshot): array
+    {
+        // Legacy-only snapshots remain supported, but an empty modern graph must
+        // never silently fall back to an age-relative estimate or its evidence.
+        if (!array_key_exists('all_age', $snapshot) && !array_key_exists('ball_ratings', $snapshot)) {
+            return $snapshot['cohorts'] ?? [];
+        }
+        $projections = [];
+        if (isset($snapshot['all_age'])) $projections[AllAgeRatingModel::COHORT] = $snapshot['all_age'];
+        foreach ($snapshot['ball_ratings'] ?? [] as $stage => $graph) $projections[BallRatingModel::COHORTS[$stage]] = $graph;
+        return $projections;
+    }
+
     public function append(array $snapshot, array $sources, int $month): void
     {
         foreach ($sources as $eventId => $source) {
@@ -20,10 +34,7 @@ class PlayerRatingEvidenceBuilder
             $this->indexedEvents[$eventId] = true;
         }
         $bit = 1 << $month;
-        $projections = $snapshot['cohorts'];
-        if (isset($snapshot['all_age'])) { $projections[AllAgeRatingModel::COHORT] = $snapshot['all_age']; }
-        foreach ($snapshot['ball_ratings'] ?? [] as $stage => $graph) $projections[BallRatingModel::COHORTS[$stage]] = $graph;
-        foreach ($projections as $cohort => $data) {
+        foreach (self::projections($snapshot) as $cohort => $data) {
             foreach ($data['history_evidence']['matches'] ?? [] as $edge) {
                 $id = $edge['source_id'];
                 $match = $this->matches[$id] ?? throw new \RuntimeException('Fit provenance has no validated source.');
