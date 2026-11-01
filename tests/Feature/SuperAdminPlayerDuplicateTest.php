@@ -806,6 +806,13 @@ class SuperAdminPlayerDuplicateTest extends TestCase
             'position' => 1, 'created_at' => now(), 'updated_at' => now(),
         ]);
 
+        // A receipt for another payment domain cannot make this unpaid registration paid.
+        DB::table('transactions_pf')->insert([
+            'custom_int5' => $unpaidOrderId, 'custom_str5' => 'PlayerPlus', 'transaction_type' => 'Player Plus',
+            'pf_payment_id' => 'PF-PLUS-UNRELATED', 'amount_gross' => 499,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
         $analysis = app(PlayerDuplicateService::class)->analyze($keep, $remove);
 
         $this->assertTrue($analysis['can_merge'], json_encode($analysis['blockers']));
@@ -830,6 +837,30 @@ class SuperAdminPlayerDuplicateTest extends TestCase
         $this->assertDatabaseHas('player_registrations', ['registration_id' => $unpaidRegistration, 'player_id' => $keep->id]);
         $this->assertDatabaseHas('registration_order_items', ['order_id' => $unpaidOrderId, 'player_id' => $keep->id]);
         $this->assertDatabaseMissing('players', ['id' => $remove->id]);
+    }
+
+    public function test_player_plus_checkout_history_on_either_profile_blocks_merge_and_preserves_identity(): void
+    {
+        foreach (['keep', 'remove'] as $side) {
+            $keep = Player::factory()->create(['name' => 'Plus', 'surname' => 'Identity', 'dateOfBirth' => '2010-01-01']);
+            $remove = Player::factory()->create(['name' => 'Plus', 'surname' => 'Identity', 'dateOfBirth' => '2010-01-01']);
+            $covered = $side === 'keep' ? $keep : $remove;
+            $order = \App\Models\PlayerPlusOrder::create([
+                'player_id' => $covered->id, 'user_id' => $this->superUser->id,
+                'request_token' => (string) \Illuminate\Support\Str::uuid(),
+                'expires_at' => now()->subDay(), 'status' => 'expired',
+            ]);
+            $analysis = app(PlayerDuplicateService::class)->analyze($keep, $remove);
+            $this->assertFalse($analysis['can_merge']);
+            $this->assertContains('player_plus', collect($analysis['blockers'])->pluck('domain')->all());
+            $this->actingAs($this->superUser)
+                ->post(route('superadmin.player-duplicates.merge'), $this->mergePayload($keep, $remove, $analysis))
+                ->assertSessionHasErrors();
+            $this->assertDatabaseHas('players', ['id' => $keep->id]);
+            $this->assertDatabaseHas('players', ['id' => $remove->id]);
+            $this->assertDatabaseHas('player_plus_orders', ['id' => $order->id, 'player_id' => $covered->id]);
+        }
+        $this->assertDatabaseCount('player_merge_audits', 0);
     }
 
     public function test_two_paid_registrations_in_same_category_remain_blocked(): void

@@ -5,7 +5,6 @@ namespace App\Services\Performance;
 use App\Domain\Payments\Services\{PaymentOrchestrator, PaymentTransactionService};
 use App\Models\{Player, PlayerPlusMembership, PlayerPlusOrder, SiteSetting, User};
 use App\Services\Payfast;
-use App\Support\FinanceMutationScope;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -55,7 +54,7 @@ class PlayerPlusService
             Player::whereKey($order->player_id)->lockForUpdate()->firstOrFail();
             $order = PlayerPlusOrder::lockForUpdate()->findOrFail($order->id);
             abort_unless((int) $order->user_id === (int) $payer->id, 403);
-            if ($order->status !== 'pending' || $order->expires_at->isPast() || $order->payfast_handed_off_at) {
+            if ($order->status !== 'pending' || !$order->expires_at->isFuture() || $order->payfast_handed_off_at) {
                 $this->reject('This checkout is no longer available for payment. Check its status before starting again.');
             }
             if (PlayerPlusMembership::where('player_id', $order->player_id)->where('ends_at', '>', now())->exists()) {
@@ -92,7 +91,7 @@ class PlayerPlusService
             if ($order->payfast_handed_off_at && $order->expires_at->isFuture()) {
                 $this->reject('Please wait for the five-minute payment window to finish before closing this checkout.');
             }
-            return $this->close($order, $order->expires_at->isPast() ? 'expired' : 'cancelled');
+            return $this->close($order, !$order->expires_at->isFuture() ? 'expired' : 'cancelled');
         }, 3);
     }
 
@@ -125,21 +124,19 @@ class PlayerPlusService
             $this->receipts->record(array_merge($data, ['cape_tennis_fee' => 0]), $order);
             if ($order->payfast_paid) {
                 if ($order->payfast_pf_payment_id !== $providerId) {
-                    $order->update(['reconciliation_reason' => 'Additional payment '.$providerId.' received for an already settled checkout. Original membership unchanged.']);
+                    $this->payments->recordVerifiedPaymentForReconciliation($order, $providerId,
+                        'Additional payment '.$providerId.' received for an already settled checkout. Original membership unchanged.');
                 }
                 return;
             }
             $reason = null;
-            if ($order->status !== 'pending' || $order->expires_at->isPast()) {
+            if ($order->status !== 'pending' || !$order->expires_at->isFuture()) {
                 $reason = 'Payment arrived after checkout cancellation or expiry.';
             } elseif (PlayerPlusMembership::where('player_id', $order->player_id)->where('ends_at', '>', now())->exists()) {
                 $reason = 'The player already has active membership.';
             }
             if ($reason) {
-                FinanceMutationScope::run('payment_state_write', fn () => $order->update([
-                    'status' => 'reconciliation_required', 'pay_status' => true, 'payfast_paid' => true,
-                    'payfast_pf_payment_id' => $providerId, 'reconciliation_reason' => $reason,
-                ]));
+                $this->payments->recordVerifiedPaymentForReconciliation($order, $providerId, $reason);
                 return;
             }
             $order = $this->payments->finalizePayment($order, ['payment_method' => 'payfast',

@@ -56,7 +56,7 @@ class AccountStatementController extends Controller
                     $write(['History notice', $warning]);
                 }
                 $write(['Matching checkouts include all their players and full receipt amounts. Item fees are descriptive, not additional payments.']);
-                $write(['Completed refunds and category-change wallet credits recorded in the selected dates reduce the net. Category-change charges are included with entry fees. Unverified/private collections and unreconciled payments are excluded. This is not a wallet balance or outstanding-fee statement.']);
+                $write(['Completed refunds and category-change wallet credits recorded in the selected dates reduce the net. Category-change charges are included with entry fees. Verified Player Plus receipts awaiting reconciliation are included and labelled separately; they do not confirm membership activation. Other unreconciled payments and unverified/private collections are excluded. This is not a wallet balance or outstanding-fee statement.']);
                 fputcsv($out, ['Period', $statement['allTime'] ? 'All time' : $statement['from'].' to '.$statement['to'], 'Generated', $statement['generated_at']->toIso8601String()], ',', '"', '');
                 fputcsv($out, ['Recorded date', 'Method', 'Reference', 'Checkout', 'Entry details (fees are not additional payments)', 'Paid ZAR', 'Refunded ZAR'], ',', '"', '');
                 foreach ($statement['rows'] as $row) {

@@ -204,6 +204,22 @@ class RegistrationPaymentRecoveryTest extends TestCase
         $this->assertContains('PayFast transaction exists', $result['reasons']);
     }
 
+    public function test_player_plus_receipt_with_same_numeric_order_id_does_not_block_registration_recovery(): void
+    {
+        [$order, $owner] = $this->erroneousFreeOrder(300);
+        DB::table('transactions_pf')->insert([
+            'custom_int5' => $order->id, 'custom_str5' => 'PlayerPlus', 'transaction_type' => 'Player Plus',
+            'pf_payment_id' => 'PF-PLUS-COLLISION', 'payment_status' => 'COMPLETE', 'amount_gross' => 499,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $service = app(RegistrationPaymentRecoveryService::class);
+        $this->assertTrue($service->inspect($order)['eligible']);
+        $recovery = $service->prepare($order, $owner->id);
+        $this->assertSame($order->id, $service->validatePrepared($recovery)->id);
+        $this->assertDatabaseCount('transactions_pf', 1);
+        $this->assertDatabaseCount('registration_payment_recoveries', 1);
+    }
+
     public function test_signed_link_is_owner_bound_tamper_resistant_and_expires(): void
     {
         [$order, $owner] = $this->erroneousFreeOrder(300);

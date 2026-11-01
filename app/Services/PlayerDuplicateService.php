@@ -1330,6 +1330,11 @@ class PlayerDuplicateService
         string $reason,
         bool $allowPublishedRankingCollisions = false
     ): Player {
+        if ($this->hasPlayerPlusHistory($keep, $remove)) {
+            throw ValidationException::withMessages([
+                'remove_player_id' => 'Player Plus membership or checkout history requires separate review before these profiles can be merged.',
+            ]);
+        }
         $keptBefore = $this->playerSnapshot($keep);
         $removedSnapshot = $this->playerSnapshot($remove);
         $manifest = [];
@@ -1534,6 +1539,9 @@ class PlayerDuplicateService
         $keep = $keepDescription['player'];
         /** @var Player $remove */
         $remove = $removeDescription['player'];
+        if ($this->hasPlayerPlusHistory($keep, $remove)) {
+            return $this->analyze($keep, $remove);
+        }
         $fields = [];
         foreach (self::PROFILE_FIELDS as $field) {
             $keepValue = $this->fieldValue($keep, $field);
@@ -1958,9 +1966,26 @@ class PlayerDuplicateService
         })->values()->all();
     }
 
+    private function hasPlayerPlusHistory(Player $keep, Player $remove): bool
+    {
+        foreach (['player_plus_orders', 'player_plus_memberships'] as $table) {
+            if (Schema::hasTable($table) && DB::table($table)->whereIn('player_id', [$keep->id, $remove->id])->exists()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function collisionBlockers(Player $keep, Player $remove, ?array $registrationOverlapResolutions = null, bool $allowPublishedRankingCollisions = false): array
     {
         $blockers = [];
+        if ($this->hasPlayerPlusHistory($keep, $remove)) {
+            $blockers[] = [
+                'domain' => 'player_plus',
+                'message' => 'Player Plus membership or checkout history requires separate review before these profiles can be merged.',
+            ];
+        }
         $autoResolvableRankingKeys = collect($this->autoResolvableSeriesRankingCollisions($keep, $remove))
             ->mapWithKeys(fn (array $collision) => [
                 $this->seriesRankingCollisionKey($collision['series_id'], $collision['category_id']) => true,

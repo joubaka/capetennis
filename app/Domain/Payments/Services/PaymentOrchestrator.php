@@ -162,6 +162,35 @@ class PaymentOrchestrator
         });
     }
 
+    /** Record already-verified money without activating participation or debiting released wallet funds. */
+    public function recordVerifiedPaymentForReconciliation(Model $order, string $providerId, string $reason): Model
+    {
+        if ($providerId === '' || strlen($providerId) > 120 || $reason === '') {
+            throw new \InvalidArgumentException('A verified payment reference and reconciliation reason are required.');
+        }
+        $orderClass = get_class($order);
+        return FinanceMutationScope::run('payment_state_write', function () use ($order, $orderClass, $providerId, $reason) {
+            return DB::transaction(function () use ($order, $orderClass, $providerId, $reason) {
+                $locked = $orderClass::query()->lockForUpdate()->findOrFail($order->getKey());
+                // Additional money must not replace the original settlement or revoke its benefits.
+                if ((bool) $locked->payfast_paid || (int) $locked->pay_status === 1) {
+                    if ((string) $locked->payfast_pf_payment_id !== $providerId) {
+                        $locked->reconciliation_reason = $reason;
+                        $locked->save();
+                    }
+                    return $locked;
+                }
+                $locked->status = 'reconciliation_required';
+                $locked->pay_status = true;
+                $locked->payfast_paid = true;
+                $locked->payfast_pf_payment_id = $providerId;
+                $locked->reconciliation_reason = $reason;
+                $locked->save();
+                return $locked;
+            });
+        });
+    }
+
     public function reconcilePayment(Model $order): array
     {
         $walletReserved = round((float) ($order->wallet_reserved ?? 0), 2);

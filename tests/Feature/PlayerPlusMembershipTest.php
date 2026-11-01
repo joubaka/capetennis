@@ -47,10 +47,12 @@ class PlayerPlusMembershipTest extends TestCase
     {
         $playerAccount = User::factory()->create();
         $parent = User::factory()->create();
+        $secondParent = User::factory()->create();
         $sponsor = User::factory()->create();
         $outsider = User::factory()->create();
         $player = Player::factory()->create(['userId' => $playerAccount->id]);
         $parent->players()->attach($player);
+        $secondParent->players()->attach($player);
         $other = Player::factory()->create(['userId' => $parent->id]);
         $links = DB::table('user_players')->count();
         $order = $this->activate($this->order($player, $sponsor));
@@ -60,7 +62,7 @@ class PlayerPlusMembershipTest extends TestCase
         $this->assertFalse($order->wallet_debited);
         $this->assertSame($links, DB::table('user_players')->count());
         $access = app(PlayerRatingAccess::class);
-        foreach ([$playerAccount, $parent] as $user) {
+        foreach ([$playerAccount, $parent, $secondParent] as $user) {
             $this->assertTrue($access->allows($user, $player));
             $this->assertTrue($access->allowsDiscovery($user));
         }
@@ -80,6 +82,35 @@ class PlayerPlusMembershipTest extends TestCase
         $parent->players()->detach($player);
         $this->assertFalse($access->allows($parent, $player));
         $this->assertFalse($access->allowsDiscovery($parent));
+        SiteSetting::set(PlayerRatingAccess::SETTING, '0');
+        $this->assertFalse($access->allows($secondParent, $player));
+        $this->assertFalse($access->allowsDiscovery($secondParent));
+    }
+
+    public function test_provider_receipt_cannot_be_reused_by_another_order(): void
+    {
+        $original = $this->activate($this->order());
+        $other = $this->order();
+        app(PlayerPlusService::class)->handoff($other, $other->user);
+        try {
+            app(PlayerPlusService::class)->receive($this->itn($other));
+            $this->fail('Provider receipt was reused.');
+        } catch (\RuntimeException) {}
+        $this->assertTrue($original->fresh()->payfast_paid);
+        $this->assertFalse($other->fresh()->payfast_paid);
+        $this->assertDatabaseCount('transactions_pf', 1);
+        $this->assertDatabaseCount('player_plus_memberships', 1);
+    }
+
+    public function test_exact_five_minute_expiry_withholds_activation(): void
+    {
+        $order = $this->order();
+        $order = app(PlayerPlusService::class)->handoff($order, $order->user);
+        $this->travelTo($order->expires_at);
+        app(PlayerPlusService::class)->receive($this->itn($order));
+        $this->assertSame('reconciliation_required', $order->fresh()->status);
+        $this->assertDatabaseCount('player_plus_memberships', 0);
+        $this->assertDatabaseCount('transactions_pf', 1);
     }
 
     public function test_repeated_callback_and_start_are_idempotent_and_additional_money_does_not_extend_term(): void

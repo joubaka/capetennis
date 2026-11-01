@@ -42,7 +42,9 @@ class AccountStatementService
 
         foreach ($receipts->unique('pf_payment_id') as $receipt) {
             if ($receipt->custom_str5 === 'PlayerPlus') {
-                $plus = \App\Models\PlayerPlusOrder::whereKey($receipt->custom_int5)->where('user_id', $user->id)->first();
+                $plus = \App\Models\PlayerPlusOrder::whereKey($receipt->custom_int5)->where('user_id', $user->id)
+                    ->where('pay_status', true)->where('payfast_paid', true)
+                    ->whereIn('status', ['completed', 'reconciliation_required'])->whereNotNull('payfast_handed_off_at')->first();
                 if ($plus && (int) $plus->player_id === (int) $receipt->player_id
                     && $plus->price_cents === $this->cents($receipt->amount_gross)) {
                     $label = $plus->activated_at && $plus->payfast_pf_payment_id === $receipt->pf_payment_id
