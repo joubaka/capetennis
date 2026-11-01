@@ -57,12 +57,12 @@
           <small>@if($pathway['tsaCutoff'] !== null) CTR above {{ number_format($pathway['tsaCutoff'], 0) }} @else Recommendation awaiting configuration @endif</small>
           <a class="small d-inline-flex align-items-center" style="min-height:44px" href="https://www.satennis.co.za/" target="_blank" rel="noopener noreferrer">TSA events <span class="visually-hidden">(opens in a new tab)</span></a>
         @endif
-        <small>Review with your coach; event entry rules apply.</small>
+        <small>Chat with your coach about events that would suit you.</small>
         @include('frontend.my-tennis.pathway-info-button', ['infoStage' => ['Wilson B' => 'wilson-b', 'Wilson A' => 'wilson-a', 'TSA tournaments' => 'tsa'][$competition], 'infoLabel' => $competition])
       </li>
     @endforeach
   </ol>
-  <p class="small text-muted mb-0">A guide to development, not automatic promotion. Red and Orange progression use their own rating and played-event targets; Wilson divisions are suggestions from current comparable CTR.</p>
+  <p class="small text-muted mb-0">A guide to your next step. Red and Orange each have their own rating and event targets. Your current comparable CTR helps suggest a Wilson division; your coach can help you explore the options.</p>
   <div class="mt-3 d-flex flex-wrap align-items-center gap-2">
     <p class="small mb-0 flex-grow-1" role="status"><strong>{{ $pathway['assessment_status'] }}</strong> · {{ $pathway['reason'] }}</p>
     <a class="btn btn-sm btn-outline-primary pathway-browse" href="{{ route('home') }}">Browse published events</a>

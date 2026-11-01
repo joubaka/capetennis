@@ -96,10 +96,10 @@ class PlayerPathwayService
             !$eligible => ['Play more eligible singles at this ball level to build comparable rating evidence. Ask Cape Tennis or your coach to review a within-group or low-confidence estimate.'],
             $ownEvents === null => ['Ask Cape Tennis to review the published played-event evidence for this ball level.'],
             $ready => [match ($current_stage) {
-                'red' => 'Discuss Orange-ball play with your coach and check the next event’s age and entry rules.',
-                'orange' => 'Discuss Wilson B / Wilson A play with your coach and check the next event’s age and entry rules.',
+                'red' => 'Chat with your coach about trying Orange-ball events and check their age and entry requirements.',
+                'orange' => 'Chat with your coach about trying Wilson B or Wilson A events and check their age and entry requirements.',
                 default => 'Review your next competition options with your coach. TSA tournament entry depends on its own rules, not this benchmark.',
-            }, 'Both current benchmarks are met; this does not automatically promote you or complete earlier levels.'],
+            }, 'You have met both current targets. Your coach can help you plan the next step; earlier levels and event entry are reviewed separately.'],
             default => array_values(array_filter([
                 $score < $target['ctr'] ? 'Build your '.$ctr_label.' from '.number_format($score, 1).' to '.number_format($target['ctr'], 1).' ('.number_format($target['ctr'] - $score, 1).' points to the benchmark) through eligible singles at this ball level.' : null,
                 $ownEvents < $target['events'] ? 'Play '.($target['events'] - $ownEvents).' more published '.self::STAGES[$current_stage].' '.($target['events'] - $ownEvents === 1 ? 'event' : 'events').' to reach '.$target['events'].' at this level.' : null,
@@ -111,8 +111,8 @@ class PlayerPathwayService
             $assessment_status = $assessed ? $suggestedCompetition.' suggested' : 'Not assessed';
             $stageProgress['standard']['status'] = $assessment_status;
             $stageProgress['standard']['assessed'] = $assessed;
-            $reason = $assessed ? 'The current comparable Wilson pathway CTR suggests a division; this does not grant entry.' : 'A current comparable Wilson pathway rating is needed before suggesting a division.';
-            $next_steps = [$assessed ? 'Discuss '.$suggestedCompetition.' events with your coach and check age, entry and nomination rules.' : 'Wait for current comparable Wilson pathway evidence, then review event options with your coach.'];
+            $reason = $assessed ? 'Your current comparable CTR points to a division to explore with your coach.' : 'Once a current comparable rating is available, we can suggest a division to explore.';
+            $next_steps = [$assessed ? 'Chat with your coach about which '.$suggestedCompetition.' events would suit you. They can help you check the age, entry and nomination requirements.' : 'When your current comparable rating is ready, chat with your coach about the event options.'];
         }
         return compact('available', 'stage', 'division', 'saved_division', 'current_stage', 'competition', 'options', 'score', 'events', 'target', 'ownEvents', 'eligible', 'ratingMet', 'eventsMet', 'ready', 'assessed', 'assessment_status', 'reason', 'stageProgress', 'badge', 'ctr_label', 'next_steps', 'wilsonProgress', 'benchmark_division', 'wilsonCutoff', 'tsaCutoff', 'suggestedDivision', 'suggestedCompetition') + [
             'stage_label' => $stage ? self::STAGES[$stage] : 'Stage not recorded',

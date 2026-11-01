@@ -129,17 +129,17 @@ class PlayerPathwayTest extends TestCase
         $this->assertSame(5, substr_count($overview->getContent(), 'data-pathway-info="'));
         foreach (['red', 'orange', 'wilson-b', 'wilson-a', 'tsa'] as $stage) {
             $response = $this->get(route('my.tennis.pathway.info', ['player' => 1, 'stage' => $stage]))->assertOk()
-                ->assertSee('data-pathway-stage-details="'.$stage.'"', false)->assertSee('Review with your coach')
-                ->assertSee('Promotion is not automatic');
+                ->assertSee('data-pathway-stage-details="'.$stage.'"', false)->assertSee('This is a guide to your next step.')
+                ->assertSee('Each event or team still has its own entry and selection process.');
             $this->assertTrue($response->headers->hasCacheControlDirective('private'));
             $this->assertTrue($response->headers->hasCacheControlDirective('no-store'));
             if (in_array($stage, ['red', 'orange'], true)) {
                 foreach (PlayerPathwayService::EVENT_OPTIONS[$stage] as $option) $response->assertSee($option);
                 $response->assertSee($stage === 'red' ? '50 CTR and 3 published Red ball events' : '60 CTR and 3 published Orange ball events');
             } elseif ($stage === 'tsa') {
-                $response->assertSee('https://www.satennis.co.za/', false)->assertSee('Exactly 85 remains');
+                $response->assertSee('https://www.satennis.co.za/', false)->assertSee('A CTR of exactly 85');
             } else {
-                $response->assertSee('supporting history, not a division-entry requirement')->assertDontSee('Red ball · Fictional');
+                $response->assertSee('There is no event-count target for choosing between them.')->assertDontSee('Red ball · Fictional');
             }
         }
         $this->assertDatabaseCount('player_pathway_profiles', 0);
@@ -282,10 +282,10 @@ class PlayerPathwayTest extends TestCase
             ->assertDontSee('points to the benchmark')
             ->assertSee('Wilson A')->assertSee(route('my.tennis.pathway', $player), false);
         $metrics['stale'] = true;
-        $this->get(route('my.tennis', ['player' => 1]))->assertOk()->assertSee('Wait for current comparable Wilson pathway evidence')
+        $this->get(route('my.tennis', ['player' => 1]))->assertOk()->assertSee('When your current comparable rating is ready')
             ->assertDontSee('2.1 points to the benchmark')->assertDontSee('Aim for');
         $metrics = $this->metrics(85, ['red' => 0, 'orange' => 0, 'standard' => 3]);
-        $this->get(route('my.tennis', ['player' => 1]))->assertOk()->assertSee('Discuss Wilson A events with your coach')
+        $this->get(route('my.tennis', ['player' => 1]))->assertOk()->assertSee('Chat with your coach about which Wilson A events would suit you.')
             ->assertDontSee('Benchmark achieved:')->assertDontSee('points to the benchmark');
         $this->get(route('my.tennis', ['player' => 1, 'preview_non_plus' => 1]))->assertOk()
             ->assertDontSee('data-overview-development-comment', false)->assertDontSee('Benchmark achieved:');
@@ -448,7 +448,7 @@ class PlayerPathwayTest extends TestCase
         $this->postJson(route('my.tennis.pathway.milestones', 1), ['stage' => 'red', 'milestones' => ['independent_scoring']])->assertStatus(410);
         $this->assertSame($audit, PlayerPathwayAchievement::firstOrFail()->getAttributes());
         $this->assertFalse($service->summary($player)['ready']);
-        $this->get(route('my.tennis.pathway.info', ['player' => 1, 'stage' => 'red']))->assertOk()->assertSee('Your saved progress')->assertDontSee('coach_review')->assertDontSee('Verify selected milestones');
+        $this->get(route('my.tennis.pathway.info', ['player' => 1, 'stage' => 'red']))->assertOk()->assertSee('Your progress so far')->assertDontSee('coach_review')->assertDontSee('Verify selected milestones');
         $this->assertDatabaseCount('player_pathway_achievements', 1);
     }
 
@@ -562,8 +562,8 @@ class PlayerPathwayTest extends TestCase
             $metrics['stage_events'][$ball] = 3;
             $summary = $service->summary($player, ['pathway_metrics' => $metrics]);
             $this->assertTrue($summary['ready']);
-            $this->assertStringContainsString('Discuss '.$next.' play with your coach', $summary['next_steps'][0]);
-            $this->assertStringContainsString('does not automatically promote', $summary['next_steps'][1]);
+            $this->assertStringContainsString('Chat with your coach about trying '.($ball === 'red' ? 'Orange-ball' : 'Wilson B or Wilson A').' events', $summary['next_steps'][0]);
+            $this->assertStringContainsString('earlier levels and event entry are reviewed separately', $summary['next_steps'][1]);
             $this->assertDatabaseHas('player_pathway_profiles', ['player_id' => 1, 'stage' => $ball]);
         }
         $this->assertDatabaseCount('player_pathway_achievements', 0);
@@ -584,10 +584,10 @@ class PlayerPathwayTest extends TestCase
         $history = ['reason' => null, 'pathway_metrics' => $metrics, 'series' => [], 'points' => []];
         $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturn($history);
         $this->actingAs($this->actor());
-        $response = $this->get(route('my.tennis.pathway.info', ['player' => 1, 'stage' => 'red']))->assertOk()->assertSee('What to do next')
+        $response = $this->get(route('my.tennis.pathway.info', ['player' => 1, 'stage' => 'red']))->assertOk()->assertSee('What’s next?')
             ->assertSee('52 CTR and 4 published Red ball events')
             ->assertSee('4.0 points to the benchmark')->assertSee('Play 3 more published Red ball events')
-            ->assertSee('results at another level do not complete this stage.');
+            ->assertSee('your progress here comes from results at this level.');
         $response->assertSee('data-pathway-stage-details="red"', false);
         $this->assertDatabaseHas('player_pathway_profiles', ['player_id' => 1, 'stage' => 'red']);
         $this->assertDatabaseCount('player_pathway_achievements', 0);
