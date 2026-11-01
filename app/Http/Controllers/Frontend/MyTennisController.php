@@ -38,6 +38,7 @@ class MyTennisController extends Controller
         return response()->view('frontend.my-tennis.rating', [
             'ratingPlayer' => $player,
             'ratingHistory' => $history,
+            'ratingPathway' => app(\App\Services\Performance\PlayerPathwayService::class)->summary($player, $history),
         ])->header('Cache-Control', 'private, no-store');
     }
 

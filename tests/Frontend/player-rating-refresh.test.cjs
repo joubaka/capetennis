@@ -13,7 +13,7 @@ function harness({ enabled = true, svg = false, category = false } = {}) {
   const calls = [];
   let poll;
   let version = 'v1';
-  let ratings = [{ title: 'Private rating <safe>', display_label: '61.2 | Medium' }];
+  let ratings = [{ score: 61.2, rating_scope: 'all_age', confidence_label: 'Medium', title: 'Private rating <safe>', display_label: '61.2 | Medium' }];
   let failed = false;
   let networkFailure = false;
   const document = { readyState: 'complete', hidden: false, body: {},
@@ -28,7 +28,13 @@ function harness({ enabled = true, svg = false, category = false } = {}) {
     },
     addEventListener(name, callback) { listeners[name] = callback; },
   };
-  const window = { ...(enabled ? { CTPlayerRatingConfig: { endpoint: '/private/badges', drawId: 99 } } : {}),
+  const window = { ...(enabled ? { CTPlayerRatingConfig: { endpoint: '/private/badges', drawId: 99,
+    stampTemplates: {
+      ...Object.fromEntries(['unknown', 'red', 'orange', 'green', 'yellow', 'standard'].map(stage => [stage, {
+        shared: '<span data-ctr-badge data-stage="' + stage + '" title="__CTR_TITLE__">CTR __CTR_SCORE__/100</span>',
+        local: '<span data-ctr-badge data-stage="' + stage + '" title="__CTR_TITLE__">CTR __CTR_SCORE__/100</span><span>within-group only</span>'
+      }]))
+    } } } : {}),
     setTimeout(callback) { timers.push(callback); },
     setInterval(callback, delay) { assert.equal(delay, 60000); poll = callback; },
   };
@@ -54,7 +60,10 @@ function harness({ enabled = true, svg = false, category = false } = {}) {
 test('private rendered badges refresh after version changes and removed ratings clear old HTML', async () => {
   const h = harness();
   await h.flush();
-  assert.match(h.node.innerHTML, /61.2 \| Medium/);
+  assert.match(h.node.innerHTML, /data-ctr-badge/);
+  assert.match(h.node.innerHTML, /61.2\/100/);
+  assert.match(h.node.innerHTML, /Medium confidence/);
+  assert.doesNotMatch(h.node.innerHTML, /within-group only/);
   assert.match(h.node.innerHTML, /&lt;safe&gt;/);
   assert.ok(h.calls.some(url => url.includes('players%5B%5D=7')));
   assert.ok(h.calls.every(url => !url.includes('draw_id=99'))); // explicit global SSR context stays global
@@ -63,6 +72,39 @@ test('private rendered badges refresh after version changes and removed ratings 
   assert.equal(h.node.innerHTML, '');
   assert.equal(h.node.dataset.ratingDone, '1');
   assert.equal(h.detail.hidden, false);
+});
+
+test('AJAX stamps preserve within-group warnings and escape title and confidence text', async () => {
+  const h = harness();
+  h.update('v1', [{ score: 44.2, rating_scope: 'all_age', comparable: false,
+    title: '$& \"\'><img src=x onerror=alert(1)>', confidence_label: '<script>unsafe</script>', historical_connection: true }]);
+  await h.flush();
+  assert.match(h.node.innerHTML, /CTR 44.2\/100/);
+  assert.match(h.node.innerHTML, /within-group only/);
+  assert.match(h.node.innerHTML, /old link/);
+  assert.match(h.node.innerHTML, /&lt;script&gt;/);
+  assert.match(h.node.innerHTML, /\$&amp;/);
+  assert.doesNotMatch(h.node.innerHTML, /__CTR_TITLE__/);
+  assert.doesNotMatch(h.node.innerHTML, /<img|<script/);
+  h.update('v2', [{ score: 'invalid', title: 'Invalid' }]);
+  await h.poll(); await h.flush();
+  assert.equal(h.node.innerHTML, '');
+});
+
+test('stage templates use only explicit validated ball metadata and retain local warnings', async () => {
+  const h = harness();
+  await h.flush();
+  assert.match(h.node.innerHTML, /data-stage="unknown"/);
+  for (const ball of ['red', 'orange', 'green', 'yellow', 'standard']) {
+    h.update(ball, [{ score: 55.1, ball_type: ball, rating_scope: 'all_age', comparable: false, title: 'Explicit ball' }]);
+    await h.poll(); await h.flush();
+    assert.match(h.node.innerHTML, new RegExp('data-stage="' + ball + '"'));
+    assert.match(h.node.innerHTML, /within-group only/);
+  }
+  h.update('invalid-stage', [{ score: 99.9, ball_type: '<script>red</script>', category: 'Red ball U8', rating_scope: 'all_age', title: 'Unrecorded stage' }]);
+  await h.poll(); await h.flush();
+  assert.match(h.node.innerHTML, /data-stage="unknown"/);
+  assert.doesNotMatch(h.node.innerHTML, /<script>/);
 });
 
 test('unrated server markers receive new ratings and SVG stays SVG', async () => {

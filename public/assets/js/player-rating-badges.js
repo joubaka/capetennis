@@ -34,7 +34,22 @@
       node.dataset.ratingDone = '1';
       return;
     }
-    node.innerHTML = ratings.map(rating => '<span class="badge player-rating-badge ms-1" style="font-size:.68rem;vertical-align:middle;background:#e0f2fe;color:#075985;padding:.2em .4em;border:1px solid #7dd3fc;white-space:nowrap" title="' + escape(rating.title) + '" aria-label="' + escape(rating.title) + '">' + escape(rating.display_label || rating.label) + '</span>').join('');
+    node.innerHTML = ratings.map(rating => {
+      const score = Number(rating.score ?? rating.label);
+      if (!Number.isFinite(score)) return '';
+      const local = rating.rating_scope !== 'all_age' || rating.comparable === false;
+      // Explicit ball metadata only. Age, score and category names never establish a stage.
+      const ball = typeof rating.ball_type === 'string' ? rating.ball_type.trim().toLowerCase() : '';
+      const stage = ['red', 'orange', 'green', 'yellow', 'standard'].includes(ball) ? ball : 'unknown';
+      const template = config.stampTemplates?.[stage]?.[local ? 'local' : 'shared'];
+      if (!template) return escape(rating.display_label || rating.label || score.toFixed(1));
+      const stamp = template.replaceAll('__CTR_SCORE__', () => escape(score.toFixed(1)))
+        .replaceAll('__CTR_TITLE__', () => escape(rating.title || ''));
+      const confidence = rating.confidence_label || rating.confidence_band || 'Low';
+      return '<span class="player-rating-badge" style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:.25rem;vertical-align:middle">'
+        + stamp + '<span class="small" style="font-size:.65rem;font-weight:500;white-space:normal">'
+        + escape(confidence) + ' confidence' + (rating.historical_connection ? ' · old link' : '') + '</span></span>';
+    }).join('');
     node.dataset.ratingDone = '1';
   }
   function status(data) {

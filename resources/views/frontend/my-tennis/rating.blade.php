@@ -22,6 +22,7 @@
     <div><h2 id="player-rating-heading" class="h4 mb-1">{{ $ratingPlayer->full_name }} · Player rating</h2><p class="small text-muted mb-0">12-month progress · provisional ability estimates</p></div>
     @if(auth()->user()?->hasRole('super-user'))<span class="badge bg-label-primary">Super Admin preview</span>@endif
   </div>
+  @include('frontend.my-tennis.pathway', ['pathway' => $ratingPathway ?? \App\Services\Performance\PlayerPathwayService::unrecorded()])
   <x-rating-explanation class="mt-3" />
   @if(auth()->user()?->hasRole('super-user'))
     <div class="d-flex flex-wrap align-items-center gap-2 mt-3" data-history-refresh-controls data-refresh-url="{{ route('my.tennis.rating.refresh') }}" data-status-url="{{ route('my.tennis.rating.refresh-status') }}">
@@ -61,7 +62,7 @@
     <div class="ctr-stats">
       <div class="ctr-stat"><h3>Latest {{ ucfirst($ratingHistory['cohort']) }} estimate</h3>@if($latest)<x-ctr-badge :score="$latest['score']" :local="($latest['connection_status'] ?? '') === 'disconnected'" /><p class="small text-muted mt-2 mb-0">{{ $latest['date'] }} · 0–100 ability scale</p>@if(!empty($latest['historical_connection']))<p class="small mt-2 mb-0"><strong>Low confidence — historical connection</strong> · link dated {{ $latest['connection_reference_date'] ?? 'unknown' }}.</p>@endif @else<div class="ctr-stat-value">Unrated</div>@endif</div>
       <div class="ctr-stat"><h3>Selected month · {{ \Carbon\CarbonImmutable::parse($ratingHistory['months'][$ratingHistory['month']]['date'])->format('M Y') }}</h3>
-        <div class="ctr-stat-value">{{ $point ? number_format($point['score'], 1).' / 100' : 'Unrated' }}</div>
+        <div>@if($point)<x-ctr-badge :score="$point['score']" :local="($point['connection_status'] ?? '') === 'disconnected'" />@else<span class="ctr-stat-value">Unrated</span>@endif</div>
         @if($comparable)<p class="mt-2 mb-0"><strong>{{ sprintf('%+.1f', $point['score'] - $previous['score']) }}</strong> from the previous month · same comparison group</p><p class="small text-muted mt-1 mb-0">Results, opponents’ results and older matches losing weight can all move your rating.</p>
         @elseif($point && $previous)<p class="small text-muted mt-2 mb-0">Comparison group changed. A like-for-like monthly change is unavailable. The difference does not reliably show improvement or decline.</p>
         @else<p class="small text-muted mt-2 mb-0">No comparable previous-month estimate.</p>@endif
@@ -105,12 +106,15 @@
       @foreach($points as $tablePoint)
         @php($before = $points[$loop->index - 1] ?? null)
         @php($same = $before && $before['index'] + 1 === $tablePoint['index'] && $before['group'] === $tablePoint['group'])
-        <tr><td><a href="{{ $ratingUrl(['month' => $tablePoint['index']]) }}" data-rating-link>{{ $tablePoint['date'] }}</a></td><td>{{ number_format($tablePoint['score'], 1) }}</td><td>{{ $same ? sprintf('%+.1f', $tablePoint['score'] - $before['score']) : '—' }}</td><td>{{ !$before ? 'First estimate' : ($same ? 'Same group' : 'Group changed or gap') }}</td></tr>
+        <tr><td><a href="{{ $ratingUrl(['month' => $tablePoint['index']]) }}" data-rating-link>{{ $tablePoint['date'] }}</a></td><td><x-ctr-badge size="small" :score="$tablePoint['score']" :local="($tablePoint['connection_status'] ?? '') === 'disconnected'" /></td><td>{{ $same ? sprintf('%+.1f', $tablePoint['score'] - $before['score']) : '—' }}</td><td>{{ !$before ? 'First estimate' : ($same ? 'Same group' : 'Group changed or gap') }}</td></tr>
       @endforeach
     </tbody></table></div></details>
     <section class="mt-4" aria-labelledby="ctr-results-heading">
       <div class="ctr-heading"><h3 id="ctr-results-heading" class="h5 mb-0">Your results behind this estimate</h3><span class="small text-muted">{{ $evidence['included'] }} personal evidence records included</span></div>
       <p class="small text-muted mt-2 mb-3">These saved results contributed to the model. Opponents’ results, network connections and time weighting also matter; a match does not award a fixed number of CTR points.</p>
+      @if($evidence['restricted'] ?? 0)
+          <p class="small text-muted">{{ $evidence['restricted'] }} TeamSheet match details restricted to administrators. Their contributions remain included in your rating and match totals.</p>
+      @endif
       <div class="d-flex flex-wrap gap-2 mb-3" aria-label="Evidence scope">
         <a class="btn btn-sm {{ $ratingHistory['scope'] === 'new' ? 'btn-primary' : 'btn-outline-primary' }}" href="{{ $ratingUrl(['scope' => 'new']) }}" data-rating-link @if($ratingHistory['scope'] === 'new') aria-current="true" @endif>{{ $ratingHistory['month'] === 0 ? 'Included at chart start' : 'Added since previous month' }} ({{ $evidence['new'] }})</a>
         <a class="btn btn-sm {{ $ratingHistory['scope'] === 'all' ? 'btn-primary' : 'btn-outline-primary' }}" href="{{ $ratingUrl(['scope' => 'all']) }}" data-rating-link @if($ratingHistory['scope'] === 'all') aria-current="true" @endif>All included ({{ $evidence['included'] }})</a>
@@ -124,8 +128,14 @@
             <div class="ctr-result-top"><time datetime="{{ $result['date'] }}" class="small text-muted">{{ \Carbon\CarbonImmutable::parse($result['date'])->format('d M Y') }}</time><span class="badge {{ $result['kind'] === 'match' ? ($result['won'] ? 'bg-label-success' : 'bg-label-secondary') : 'bg-label-info' }}">{{ $result['kind'] === 'match' ? ($result['won'] ? 'Won' : 'Lost') : 'Finishing order' }}</span></div>
             @if($result['kind'] === 'match')<h4>vs {{ $result['opponent'] }} <strong class="ms-2">{{ $result['score'] }}</strong></h4>
             @else<h4>Model order #{{ $result['position'] }} of {{ $result['field_size'] }}</h4><p class="small text-muted mb-1">Finishing-order evidence; this model order may combine A/B divisions and is not an official finishing position.</p>@endif
-            <p class="mb-1"><a href="{{ route('event.tab.results', ['id' => $result['event_id']]) }}">{{ $result['event'] }}</a></p>
-            <p class="small text-muted mb-0">{{ $result['role'] }} · {{ $result['date_basis'] }} · event end date {{ $result['completed_at'] }}</p>
+            <p class="mb-1">
+                @if(str_starts_with($result['source_id'], 'teamsheet:'))
+                    {{ $result['event'] }} · TeamSheet result
+                @else
+                    <a href="{{ route('event.tab.results', ['id' => $result['event_id']]) }}">{{ $result['event'] }}</a>
+                @endif
+            </p>
+            <p class="small text-muted mb-0">{{ $result['role'] }} · {{ $result['date_basis'] }} · {{ str_starts_with($result['source_id'], 'teamsheet:') ? 'match date' : 'event end date' }} {{ $result['completed_at'] }}</p>
           </article>
         @endforeach
         @if($evidence['pages'] > 1)<nav class="d-flex justify-content-between gap-2 mt-3" aria-label="Rating evidence pages">

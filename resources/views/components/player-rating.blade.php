@@ -13,7 +13,10 @@
         @if($svg)
             <tspan class="player-rating-badge" dx="4" style="font-size:10px;fill:#075985;font-weight:700"><title>{{ $rating['title'] }}</title>[{{ $rating['display_label'] }}]</tspan>
         @else
-            <span class="badge player-rating-badge ms-1" style="font-size:.68rem;vertical-align:middle;background:#e0f2fe;color:#075985;padding:.2em .4em;border:1px solid #7dd3fc;white-space:nowrap" title="{{ $rating['title'] }}" aria-label="{{ $rating['title'] }}">{{ $rating['display_label'] }}</span>
+            <span class="player-rating-badge" style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:.25rem;vertical-align:middle">
+                <x-ctr-badge size="inline" class="badge player-rating-badge ms-1" :score="$rating['score']" :title="$rating['title']" :local="($rating['rating_scope'] ?? null) !== 'all_age' || ($rating['comparable'] ?? true) === false" :stage="$rating['ball_type'] ?? null" />
+                <span class="small" style="font-size:.65rem;font-weight:500;white-space:normal">{{ $rating['confidence_label'] ?? $rating['confidence_band'] ?? 'Low' }} confidence {{ !empty($rating['historical_connection']) ? '· old link' : '' }}</span>
+            </span>
         @endif
     @endif
     @if($svg)</tspan>@else</span>@endif

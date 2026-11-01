@@ -67,7 +67,9 @@ class PlayerRatingHistoryStore
         foreach ($saved['evidence'] as $row) {
             if (!is_array($row) || !in_array($row['kind'] ?? null, ['match', 'finish'], true)
                 || !is_string($row['source_id'] ?? null) || strlen($row['source_id']) > 350 || !is_string($row['cohort'] ?? null) || strlen($row['cohort']) > 255
-                || !is_int($row['event_id'] ?? null) || $row['event_id'] < 1 || !is_string($row['event'] ?? null) || mb_strlen($row['event']) > 255
+                || !is_int($row['event_id'] ?? null) || (str_starts_with($row['source_id'], 'teamsheet:')
+                    ? !($row['event_id'] < 0 && preg_match('/^teamsheet:ts-(?:tournament-rubber|fixture-rubber|challenge)-[1-9][0-9]{0,14}$/', $row['source_id']))
+                    : $row['event_id'] < 1) || !is_string($row['event'] ?? null) || mb_strlen($row['event']) > 255
                 || !is_string($row['date'] ?? null) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $row['date'])
                 || !is_string($row['completed_at'] ?? null) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $row['completed_at'])
                 || !is_string($row['date_basis'] ?? null) || strlen($row['date_basis']) > 150
@@ -79,6 +81,7 @@ class PlayerRatingHistoryStore
             foreach ($row['names'] as $name) if (!is_string($name) || mb_strlen($name) > 255) return false;
             if ($row['kind'] === 'match' && (count($row['players']) !== 2 || !in_array($row['winner_side'] ?? null, [1, 2], true)
                 || !is_string($row['score'] ?? null) || strlen($row['score']) > 150)) return false;
+            if (array_key_exists('ball_type', $row) && !in_array($row['ball_type'], [null, 'red', 'orange', 'green', 'yellow', 'standard'], true)) return false;
         }
         return true;
     }

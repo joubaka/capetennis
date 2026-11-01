@@ -103,13 +103,16 @@ class PlayerAbilitySnapshotStore
     /** Capture positive gates only. New sources/publications wait until the next refresh. */
     public function manifest(array $payload): array
     {
-        $events = $payload['source_events'] ?? [];
+        $events = array_values(array_filter($payload['source_events'] ?? [], fn ($id) => is_int($id) && $id > 0));
         $individual = []; $team = [];
         foreach ($payload['source_matches'] ?? [] as $source) {
             [$kind, $id] = explode(':', $source, 2);
-            if ($kind === 'match') { $individual[] = (int) $id; } else { $team[] = (int) $id; }
+            if ($kind === 'match') { $individual[] = (int) $id; } elseif ($kind === 'team-match') { $team[] = (int) $id; }
         }
         $manifest = [];
+        if (collect($payload['source_matches'] ?? [])->contains(fn ($source) => str_starts_with($source, 'teamsheet:'))) {
+            $manifest['teamsheet_context'] = app(TeamSheetTennisEvidence::class)->fingerprint();
+        }
         $capture = function (string $table, array $columns, $query) use (&$manifest): array {
             $rows = $query->select($columns)->limit(50001)->get()->map(fn ($r) => (array) $r)->all();
             if (count($rows) > 50000) { throw new \OverflowException('Snapshot context exceeds its bounded publication check.'); }
@@ -164,6 +167,10 @@ class PlayerAbilitySnapshotStore
     {
         if (!empty($manifest['historical_identity_recoveries']) && !is_array($manifest['historical_recovery_sources'] ?? null)) { return false; }
         foreach ($manifest as $table => $captured) {
+            if ($table === 'teamsheet_context') {
+                if (!app(TeamSheetTennisEvidence::class)->published($captured)) return false;
+                continue;
+            }
             if ($table === 'all_age_format_context') {
                 if (!is_array($captured) || !isset($captured['event_ids'], $captured['draw_ids'], $captured['fixture_ids'])
                     || $this->canonicalRecoveryContext($captured) !== $this->canonicalRecoveryContext($this->formatContext($captured['event_ids'], $captured['draw_ids'], $captured['fixture_ids']))) { return false; }

@@ -59,7 +59,7 @@
         <p class="result-review-notice">
           <strong>Cape Tennis rating · {{ $rating['cohort'] }}</strong>:
           @if($rating['score'] !== null)
-            {{ number_format($rating['score'], 1) }}/100 · Rating rank {{ $rating['position'] }} · Comparison group {{ $rating['component'] }} · Overall playing cohort.
+            <x-ctr-badge size="small" :score="$rating['score']" :local="true" /> · Rating rank {{ $rating['position'] }} · Comparison group {{ $rating['component'] }} · Overall playing cohort.
           @else
             Unavailable. {{ $rating['unavailable_reason'] }}
           @endif

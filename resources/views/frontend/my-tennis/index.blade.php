@@ -274,6 +274,7 @@
 
 @section('page-script')
 <script src="{{ asset('assets/js/player-rating-history-refresh.js') }}"></script>
+<script src="{{ asset('assets/js/player-pathway.js') }}?v={{ filemtime(public_path('assets/js/player-pathway.js')) }}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
   const button = document.getElementById('my-tennis-rating-tab');
@@ -281,6 +282,10 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!button || !panel) return;
   let loaded = false, loading = false, refreshPending = false, lastUrl = panel.dataset.ratingUrl;
   const refreshUI = new window.PlayerRatingHistoryRefreshUI(panel, () => {
+    if (loading) { refreshPending = true; return; }
+    return load(lastUrl);
+  }, { csrf: document.querySelector('meta[name="csrf-token"]')?.content || '' });
+  new window.PlayerPathwayUI(panel, () => {
     if (loading) { refreshPending = true; return; }
     return load(lastUrl);
   }, { csrf: document.querySelector('meta[name="csrf-token"]')?.content || '' });

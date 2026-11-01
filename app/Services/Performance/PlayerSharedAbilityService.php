@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\{Cache, DB, Schema};
 /** Private v6 shared-opponent estimates. No saved financial/player/ranking state. */
 class PlayerSharedAbilityService
 {
-    public const VERSION = 13;
+    public const VERSION = 14;
     private const EVENT_CAP = 1000;
     private const PLAYER_CAP = 5000;
     private const EDGE_CAP = 50000;
@@ -161,6 +161,7 @@ class PlayerSharedAbilityService
     public function fingerprint(): string
     {
         $hash = hash_init('sha256');
+        hash_update($hash, 'teamsheet:'.app(TeamSheetTennisEvidence::class)->fingerprint());
         if (Schema::hasTable('historical_identity_recoveries')) {
             $recoveries = [];
             foreach (DB::table('historical_identity_recoveries')->orderBy('id')->lazyById(500) as $row) {
@@ -227,6 +228,7 @@ class PlayerSharedAbilityService
         $builtAt = CarbonImmutable::now('Africa/Johannesburg')->format('Y-m-d H:i:s').' SAST';
         $graphs = []; $ordinalFields = []; $trialBaselines = []; $names = []; $eventsSeen = 0; $edgeCount = 0; $scannedMatches = 0; $seenSources = []; $allAgeMatches = []; $allAgePlayers = []; $allAgeEvents = [];
         $formats = new AllAgeMatchFormatResolver;
+        $external = app(TeamSheetTennisEvidence::class); $nativeKeys = []; $externalHeld = [];
         $pilot = app(PlayerPerformancePilotService::class);
         $history = app(PlayerPerformanceHistoryService::class);
         $events = Event::query()->with('eventTypeModel')->whereDate('start_date', '<=', $asOf->toDateString())
@@ -314,6 +316,7 @@ class PlayerSharedAbilityService
                     $cohort = $match['source'] === 'Team match' ? ($match['shared_cohort'] ?? '') : $this->cohort($match['cohort']);
                     $winner = $match['winner_side'] === 1 ? $match['player1_id'] : $match['player2_id'];
                     $loser = $match['winner_side'] === 1 ? $match['player2_id'] : $match['player1_id'];
+                    if ($winner && $loser && ($duplicate = $external->duplicateKey((int) $match['player1_id'], (int) $match['player2_id'], $match['confidence_date'], $match['score']))) $nativeKeys[$duplicate] = true;
                     if ($allAgeReason === null) {
                         $globalCohort = $match['all_age_cohort'] ?? $cohort;
                         $allAgeMatches[] = ['winner' => $winner, 'loser' => $loser, 'source_id' => $source, 'event_id' => $event->id,
@@ -350,7 +353,22 @@ class PlayerSharedAbilityService
             foreach ($graphs as $graph) { foreach (array_keys($graph['players']) as $id) { $uniqueIds[$id] = true; } }
             if (count($uniqueIds) > self::PLAYER_CAP) { return $this->withheld($builtAt); }
         }
+        // Retrospective holdout experiments deliberately exclude external evidence: its
+        // competition provenance cannot establish non-overlap with a held-out Cape event.
+        if ($completedBefore === null && $excludedEventId === null) {
+            try {
+                foreach ($external->matches($asOf, $nativeKeys, held: $externalHeld) as $match) {
+                    if (++$scannedMatches > self::EDGE_CAP) return $this->withheld($builtAt);
+                    $allAgeMatches[] = $match; $seenSources[$match['source_id']] = true;
+                    $allAgePlayers[$match['winner']] = true; $allAgePlayers[$match['loser']] = true;
+                    if ($completedSources !== null) {
+                        $completedSources['teamsheet:'.$match['event_id']]['matches'][$match['source_id']] = $match;
+                    }
+                }
+            } catch (\OverflowException) { return $this->withheld($builtAt); }
+        }
         $playerIds = collect($graphs)->flatMap(fn ($graph) => array_keys($graph['players']))->merge(array_keys($allAgePlayers))->unique()->all();
+        if (count($playerIds) > self::PLAYER_CAP) return $this->withheld($builtAt);
         foreach (array_chunk($playerIds, 500) as $chunk) {
             foreach (Player::query()->whereIn('id', $chunk)->get(['id', 'name', 'surname']) as $player) { $names[$player->id] = trim($player->name.' '.$player->surname); }
         }
@@ -370,7 +388,7 @@ class PlayerSharedAbilityService
                     'fields' => $ordinalFields[$cohort] ?? []];
             }
         }
-        return ['cohorts' => $cohorts, 'all_age' => (new AllAgeRatingModel)->fit($allAgeMatches, $asOf, $experiment['all_age_window_days'] ?? AllAgeRatingModel::WINDOW_DAYS), 'names' => $names, 'reason' => null, 'built_at' => $builtAt,
+        return ['cohorts' => $cohorts, 'all_age' => (new AllAgeRatingModel)->fit($allAgeMatches, $asOf, $experiment['all_age_window_days'] ?? AllAgeRatingModel::WINDOW_DAYS), 'names' => $names, 'reason' => null, 'built_at' => $builtAt, 'teamsheet_held' => $externalHeld,
             'source_events' => collect($graphs)->flatMap(fn ($g) => array_column($g['edges'], 'event_id'))->merge(array_keys($allAgeEvents))->unique()->values()->all(),
             'source_matches' => array_keys($seenSources)];
     }

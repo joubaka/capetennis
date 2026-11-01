@@ -26,7 +26,7 @@ class SharedAbilityConfidencePolicy
             $opponents[$match['opponent']] = max($opponents[$match['opponent']] ?? 0, $weight);
             $events[$match['event']] = max($events[$match['event']] ?? 0, $weight);
             $last = max($last ?? '', $match['date']);
-            if ($match['basis'] !== 'scheduled match date') { $proxy++; }
+            if (!in_array($match['basis'], ['scheduled match date', 'actual match date', 'reviewed actual date'], true)) { $proxy++; }
         }
         $finish = ($own['last_finish'] ?? '') <= $asOf->toDateString() ? ($own['last_finish'] ?? null) : null;
         $lastEvidence = max($last ?? '', $finish ?? '') ?: null;

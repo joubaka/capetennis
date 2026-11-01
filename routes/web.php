@@ -2289,6 +2289,8 @@ Route::get('/admin/draws/format-options/{id}', function ($id) {
 Route::middleware('auth')->group(function () {
   Route::get('/my-tennis', [MyTennisController::class, 'index'])->name('my.tennis');
   Route::post('/my-tennis/rating-history/refresh', [\App\Http\Controllers\Frontend\PlayerRatingHistoryRefreshController::class, 'store'])->middleware(['role:super-user', 'throttle:5,1,history-refresh:'])->name('my.tennis.rating.refresh');
+  Route::post('/my-tennis/players/{player}/pathway/stage', [\App\Http\Controllers\Frontend\PlayerPathwayController::class, 'stage'])->middleware(['role:super-user', 'throttle:30,1'])->name('my.tennis.pathway.stage');
+  Route::post('/my-tennis/players/{player}/pathway/milestones', [\App\Http\Controllers\Frontend\PlayerPathwayController::class, 'milestones'])->middleware(['role:super-user', 'throttle:30,1'])->name('my.tennis.pathway.milestones');
   Route::get('/my-tennis/rating-history/refresh-status', [\App\Http\Controllers\Frontend\PlayerRatingHistoryRefreshController::class, 'status'])->middleware(['role:super-user', 'throttle:120,1,history-status:'])->name('my.tennis.rating.refresh-status');
   Route::get('/my-tennis/players/{player}/rating', [MyTennisController::class, 'rating'])->middleware('throttle:30,1')->name('my.tennis.rating');
   Route::get('/my-tennis/match-reminder', \App\Http\Controllers\Frontend\MatchReminderController::class)->name('my.tennis.match-reminder');

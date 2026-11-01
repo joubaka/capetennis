@@ -12,9 +12,9 @@ class PlayerRatingEvidenceBuilder
     public function append(array $snapshot, array $sources, int $month): void
     {
         foreach ($sources as $eventId => $source) {
-            if (isset($this->indexedEvents[$eventId])) continue;
+            if (isset($this->indexedEvents[$eventId]) && !str_starts_with((string) $eventId, 'teamsheet:')) continue;
             foreach ($source['matches'] as $match) {
-                $id = ($match['source'] === 'Team match' ? 'team-match:' : 'match:').$match['fixture_id'];
+                $id = $match['source_id'] ?? (($match['source'] === 'Team match' ? 'team-match:' : 'match:').$match['fixture_id']);
                 $this->matches[$id] = $match;
             }
             $this->indexedEvents[$eventId] = true;
@@ -34,6 +34,8 @@ class PlayerRatingEvidenceBuilder
                     'players' => [(int) $match['player1_id'], (int) $match['player2_id']],
                     'names' => [$snapshot['names'][$match['player1_id']] ?? 'Player #'.$match['player1_id'], $snapshot['names'][$match['player2_id']] ?? 'Player #'.$match['player2_id']],
                     'winner_side' => (int) $match['winner_side'], 'score' => $match['score'], 'months' => 0, 'baseline_months' => 0,
+                    // The fitted edge carries explicit resolved court/ball metadata; names and ages do not establish a stage.
+                    'ball_type' => in_array($edge['ball_type'] ?? null, ['red', 'orange', 'green', 'yellow', 'standard'], true) ? $edge['ball_type'] : null,
                 ];
                 if ($this->registry[$registryId]['cohort'] !== $cohort) throw new \RuntimeException('Match appears in conflicting fit cohorts.');
                 $this->registry[$registryId]['months'] |= $bit;

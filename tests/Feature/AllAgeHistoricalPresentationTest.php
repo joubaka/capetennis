@@ -25,7 +25,7 @@ class AllAgeHistoricalPresentationTest extends TestCase
         $this->assertSame('historical', $history['point']['connection_status']);
         $html = view('frontend.my-tennis.rating', ['ratingPlayer' => $player, 'ratingHistory' => $history])->render();
         $this->assertStringContainsString('93.1', $html);
-        $this->assertStringContainsString('Within-group only', $html);
+        $this->assertStringContainsString('within-group only', $html);
     }
 
     private function savedHistory(): array
@@ -87,7 +87,8 @@ class AllAgeHistoricalPresentationTest extends TestCase
         $this->assertStringContainsString('not yet calibrated against other comparison groups', $html);
         $estimate = ['score' => 61.5, 'component' => 'local', 'confidence_label' => 'Low', 'comparable' => false];
         $html = view('backend.player-performance.all-age-rating', compact('estimate'))->render();
-        $this->assertStringContainsString('61.5/100', $html);
+        $this->assertStringContainsString('61.5/100', preg_replace('/\s+/', '', strip_tags($html)));
+        $this->assertStringContainsString('ctr-badge--local', $html);
         $this->assertStringContainsString('All-age rating unavailable — insufficient connecting results', $html);
         $this->assertStringContainsString('Within-group score only:', $html);
         $this->assertStringNotContainsString('<p class="h2">61.5/100</p>', $html);
@@ -100,7 +101,9 @@ class AllAgeHistoricalPresentationTest extends TestCase
         $estimate = ['score' => 93.1, 'component' => 'local', 'connection_status' => 'disconnected'];
         $html = view('backend.player-performance.all-age-rating', compact('estimate'))->render();
         $this->assertStringContainsString('All-age rating unavailable — insufficient connecting results', $html);
-        $this->assertStringContainsString('Within-group score only: <strong>93.1/100</strong>', $html);
+        $this->assertStringContainsString('Within-group score only:', $html);
+        $this->assertStringContainsString('CTR 93.1 within-group only', $html);
+        $this->assertStringContainsString('ctr-badge--local', $html);
         $this->assertStringNotContainsString('<p class="h2">93.1/100</p>', $html);
     }
 
@@ -108,7 +111,9 @@ class AllAgeHistoricalPresentationTest extends TestCase
     {
         $estimate = ['score' => 61.5, 'component' => 'shared', 'comparable' => true, 'connection_status' => 'recent'];
         $html = view('backend.player-performance.all-age-rating', compact('estimate'))->render();
-        $this->assertStringContainsString('<p class="h2">61.5/100</p>', $html);
+        $this->assertStringContainsString('data-ctr-badge', $html);
+        $this->assertStringContainsString('61.5/100', preg_replace('/\s+/', '', strip_tags($html)));
+        $this->assertStringNotContainsString('ctr-badge--local', $html);
         $this->assertStringContainsString('One singles rating across age groups', $html);
         $this->assertStringNotContainsString('Within-group score only:', $html);
         $this->assertStringNotContainsString('All-age rating unavailable', $html);

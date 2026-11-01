@@ -3,12 +3,12 @@
 @if(is_numeric($estimate['score'] ?? null))
 <p class="h2">All-age rating unavailable — insufficient connecting results</p>
 <p>Comparison group {{ $estimate['component'] }} is not connected to the shared all-age reference.</p>
-<p>Within-group score only: <strong>{{ number_format($estimate['score'], 1) }}/100</strong>. This is not an all-age rating.</p>
+<p>Within-group score only: <x-ctr-badge :score="$estimate['score']" :local="true" />. This is not an all-age rating.</p>
 @else
 <p class="h2">All-age rating unavailable</p>
 @endif
 @else
-<p class="h2">{{ is_numeric($estimate['score'] ?? null) ? number_format($estimate['score'], 1).'/100' : 'Shared rating withheld' }}</p>
+@if(is_numeric($estimate['score'] ?? null))<p><x-ctr-badge :score="$estimate['score']" /></p>@else<p class="h2">Shared rating withheld</p>@endif
 <p>One singles rating across age groups · provisional · comparison group {{ $estimate['component'] }}</p>
 @endif
 @if($estimate['reason'] ?? null)<p role="status">{{ $estimate['reason'] }}</p>@endif

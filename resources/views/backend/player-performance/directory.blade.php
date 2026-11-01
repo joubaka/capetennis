@@ -7,6 +7,9 @@
 
 <div class="card"><div class="card-body">
     <h1 class="h3">All players · performance pilot</h1>
+    @role('super-user')
+        <p><a href="{{ route('backend.integrations.teamsheet.tennis.index') }}">TeamSheet tennis results</a></p>
+    @endrole
     <p>Choose a player to see their private provisional score and evidence. Players without eligible results remain unrated.</p>
     <a class="btn btn-primary mb-3" href="{{ route('backend.player-performance.ratings') }}">Site-wide ratings by cohort</a>
     <form method="get" class="mb-3">

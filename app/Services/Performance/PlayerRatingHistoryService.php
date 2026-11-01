@@ -14,6 +14,9 @@ class PlayerRatingHistoryService
     {
         $saved = $this->store->read();
         if ($saved === null) return ['series' => [], 'reason' => 'Rating history is awaiting its first saved calculation. Updates run nightly at 03:00 SAST.'];
+        if (isset($saved['publication_manifest']['teamsheet_context']) && !app(TeamSheetTennisEvidence::class)->published($saved['publication_manifest']['teamsheet_context'])) {
+            return ['series' => [], 'reason' => 'Rating history is awaiting an update because its TeamSheet source is stale or changed.'];
+        }
         $pending = $saved['source_fingerprint'] !== $this->ability->fingerprint();
         if ($pending && !$this->canRetainSavedHistory($saved)) {
             return ['series' => [], 'reason' => 'Rating history is awaiting the next nightly update because its source results or publication changed.'];
@@ -43,10 +46,12 @@ class PlayerRatingHistoryService
         $point = collect($points)->firstWhere('index', $month);
         $previous = collect($points)->firstWhere('index', $month - 1);
         $evidence = $this->evidence($saved['evidence'], $player, $cohort, $month, $scope, (int) ($filters['page'] ?? 1), $point !== null);
+        $pathwayMetrics = app(PlayerPathwayEvidence::class)->fromHistory($saved, $player, $points, $pending);
         return ['series' => $series, 'reason' => null, 'as_of' => $saved['as_of'], 'built_at' => $saved['built_at'],
             'stale' => $pending || $saved['as_of'] < CarbonImmutable::today('Africa/Johannesburg')->toDateString(),
             'cohort' => $cohort, 'rating_scope' => $cohort === AllAgeRatingModel::COHORT ? 'all_age' : 'cohort', 'shared_available' => $hasSharedProjection, 'points' => $points, 'month' => $month, 'months' => $saved['months'], 'scope' => $scope,
             'point' => $point, 'previous' => $previous, 'evidence' => $evidence,
+            'pathway_metrics' => $pathwayMetrics,
             'scale' => ($filters['scale'] ?? '') === 'full' ? 'full' : 'focused',
             'axis' => PlayerRatingHistoryDisplay::axis($points, ($filters['scale'] ?? '') === 'full' ? 'full' : 'focused')];
     }
@@ -65,7 +70,7 @@ class PlayerRatingHistoryService
 
     private function evidence(array $registry, Player $player, ?string $cohort, int $month, string $scope, int $page, bool $rated): array
     {
-        $rows = []; $included = 0; $new = 0; $matches = 0; $wins = 0; $finishes = 0; $bit = 1 << $month; $previousBit = $month > 0 ? 1 << ($month - 1) : 0;
+        $rows = []; $included = 0; $new = 0; $matches = 0; $wins = 0; $finishes = 0; $restricted = 0; $bit = 1 << $month; $previousBit = $month > 0 ? 1 << ($month - 1) : 0;
         foreach ($rated ? $registry : [] as $row) {
             if ($row['cohort'] !== $cohort || !($row['months'] & $bit)) continue;
             $side = array_search((int) $player->id, $row['players'], true);
@@ -76,6 +81,7 @@ class PlayerRatingHistoryService
             $isNew = !($row['months'] & $previousBit);
             if ($isNew) $new++;
             if ($scope === 'new' && !$isNew) continue;
+            if (str_starts_with($row['source_id'], 'teamsheet:') && !auth()->user()?->hasRole('super-user')) { $restricted++; continue; }
             $row['new'] = $isNew;
             if ($row['kind'] === 'match') {
                 $row['opponent'] = $row['names'][$side === 0 ? 1 : 0];
@@ -93,7 +99,7 @@ class PlayerRatingHistoryService
         usort($rows, fn ($a, $b) => strcmp($b['date'], $a['date']) ?: $b['event_id'] <=> $a['event_id'] ?: strcmp($a['source_id'], $b['source_id']));
         $total = count($rows); $pages = max(1, (int) ceil($total / 20)); $page = max(1, min($page, $pages));
         return ['rows' => array_slice($rows, ($page - 1) * 20, 20), 'total' => $total, 'included' => $included, 'new' => $new, 'page' => $page, 'pages' => $pages,
-            'matches' => $matches, 'wins' => $wins, 'losses' => $matches - $wins, 'finishes' => $finishes];
+            'matches' => $matches, 'wins' => $wins, 'losses' => $matches - $wins, 'finishes' => $finishes, 'restricted' => $restricted];
     }
 
     /** Explicit background calculation; source evidence is validated once for all monthly cutoffs. */

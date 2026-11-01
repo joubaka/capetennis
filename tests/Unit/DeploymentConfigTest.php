@@ -6,6 +6,22 @@ use PHPUnit\Framework\TestCase;
 
 class DeploymentConfigTest extends TestCase
 {
+    public function test_teamsheet_tennis_import_migration_is_explicitly_allowlisted(): void
+    {
+        $config = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.config');
+        preg_match('/^MIGRATION_PATHS="([^"]*)"/ms', $config, $match);
+        $paths = preg_split('/\s+/', trim($match[1] ?? ''));
+        $this->assertContains('database/migrations/2026_11_01_170000_create_teamsheet_tennis_imports.php', $paths);
+    }
+
+    public function test_player_pathway_migration_is_explicitly_allowlisted(): void
+    {
+        $config = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.config');
+        preg_match('/^MIGRATION_PATHS="([^"]*)"/ms', $config, $match);
+        $paths = preg_split('/\s+/', trim($match[1] ?? ''));
+        $this->assertContains('database/migrations/2026_11_01_160000_create_player_pathway_tables.php', $paths);
+    }
+
     public function test_player_plus_migration_is_explicitly_allowlisted(): void
     {
         $config = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.config');
