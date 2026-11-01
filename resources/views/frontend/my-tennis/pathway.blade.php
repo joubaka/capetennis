@@ -1,7 +1,7 @@
 <section id="player-development-pathway" class="ctr-pathway mt-3" aria-labelledby="ctr-pathway-heading" data-player-pathway>
   <style>
     .ctr-pathway{border:1px solid #d9e8e4;border-radius:14px;padding:1rem;background:#f6faf9;overflow-wrap:anywhere;scroll-margin-top:6rem}
-    .ctr-pathway .pathway-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:1.25rem;margin-top:1rem}
+    .ctr-pathway .pathway-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:1.25rem;margin-top:1rem}
     .ctr-pathway .pathway-action{grid-column:1/-1;border-top:1px solid #d9e8e4;padding-top:1rem}
     .ctr-pathway .pathway-map{list-style:none;padding:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1.1rem;margin:1.25rem 0}
     .ctr-pathway .pathway-map > li{position:relative;border:1px solid #d9e8e4;border-top:4px solid var(--stage-ink);border-radius:14px;padding:1rem .8rem;background:linear-gradient(150deg,#fff,#f0f7f5);min-width:0;box-shadow:0 5px 14px #183c3210}
@@ -24,32 +24,13 @@
     @media(max-width:575.98px){.ctr-pathway .pathway-stages,.ctr-pathway .pathway-map{grid-template-columns:1fr}.ctr-pathway .pathway-map > li + li::before{content:'↓';left:50%;top:-1.25rem}}
   </style>
   <div class="ctr-heading"><h3 class="h5 mb-0" id="ctr-pathway-heading">Your tennis pathway</h3><span class="small text-muted">Current assessment · independent of the selected history month</span></div>
-  <section class="mt-3" aria-labelledby="pathway-event-targets-heading" data-pathway-event-targets>
-    <h4 class="h6" id="pathway-event-targets-heading">Suggested events to play</h4>
-    @if($pathway['current_stage'])
-      <p class="small mb-2">Options at your current rated level: <strong>{{ $pathway['current_stage_label'] }}</strong></p>
-      <ul class="small ps-3 mb-2" data-pathway-current-events>
-        @foreach(\App\Services\Performance\PlayerPathwayService::EVENT_OPTIONS[$pathway['current_stage']] as $eventOption)<li>{{ $eventOption }}</li>@endforeach
-      </ul>
-      <h5 class="h6 mt-3">{{ $pathway['current_stage'] === 'standard' ? 'Which Wilson division to play' : 'What to achieve before moving on' }}</h5>
-      <ul class="small ps-3 mb-2" data-pathway-advancement-targets>
-        @if($pathway['current_stage'] === 'standard')
-          <li>@if($pathway['wilsonCutoff'] !== null) Above CTR {{ number_format($pathway['wilsonCutoff'], 0) }}@if($pathway['tsaCutoff'] !== null) through {{ number_format($pathway['tsaCutoff'], 0) }}@endif: Wilson A suggested. CTR {{ number_format($pathway['wilsonCutoff'], 0) }} or below: Wilson B suggested, after Orange. @else Wilson recommendation awaiting configuration. @endif</li>
-          @if($pathway['tsaCutoff'] !== null)<li>Above CTR {{ number_format($pathway['tsaCutoff'], 0) }}: TSA tournaments suggested. Exactly {{ number_format($pathway['tsaCutoff'], 0) }} remains Wilson A. Check each tournament’s entry rules.</li>@endif
-          <li>{{ $pathway['assessment_status'] }} · {{ $pathway['reason'] }}</li>
-        @else
-          <li>@if($pathway['target']) {{ $pathway['ctr_label'] }} {{ number_format($pathway['target']['ctr'], 0) }} and {{ $pathway['target']['events'] }} published {{ $pathway['current_stage_label'] }} events @else Target not configured @endif · {{ $pathway['assessment_status'] }}</li>
-        @endif
-      </ul>
-      <p class="small text-muted mb-2">@if($pathway['current_stage'] === 'standard') Wilson suggestions use current comparable Wilson pathway evidence. The event count is supporting history, not a division-entry requirement. @else Both the comparable CTR target and the played-event minimum must be met at the same ball level using current saved evidence. @endif Review with your coach; promotion is not automatic.</p>
-      <p class="small mb-1"><strong>Next pathway target to review</strong></p>
-      <ul class="small ps-3 mb-2">@foreach($pathway['options'] as $option)<li>{{ $option }}</li>@endforeach</ul>
-      @if(!$pathway['ready'] && $pathway['current_stage'] !== 'standard')<p class="small text-muted mb-2">{{ $pathway['assessment_status'] }}. Review the progress requirements below before considering the next level with your coach.</p>@endif
-    @else
-      <p class="small mb-2">No rated ball level is available yet. Ask your coach which ball level suits you, then use the event options below.</p>
-    @endif
-    <p class="small text-muted mb-0">These are event types to discuss with your coach. Check each event’s age, entry and nomination rules; a pathway target does not grant entry or selection. TSA tournament entry follows its own rules.</p>
-  </section>
+    <div>
+      <h4 class="h6">Current rated level: {{ $pathway['current_stage_label'] }}</h4>
+      <div class="pathway-score" data-pathway-top-badge><x-ctr-badge :stage="$pathway['badge']['stage']" :label="$pathway['badge']['stage'] === 'standard' ? 'Wilson B / Wilson A' : null" :score="$pathway['badge']['score']" :local="$pathway['badge']['local']" /></div>
+      <p class="small text-muted mt-2 mb-0">@if($pathway['metrics']['date'] ?? null) Latest saved ball-level rating · {{ $pathway['metrics']['date'] }} @else No saved ball-level rating available. @endif</p>
+      <p class="small mt-2 mb-0">Your latest saved badge is used automatically as your current development level. No starting-stage confirmation is needed.</p>
+      @if($pathway['metrics']['stale'] ?? false)<p class="small text-muted mt-2 mb-0">Saved rating awaiting an update; progress is not assessed.</p>@endif
+    </div>
   <ol class="pathway-map" aria-label="Development pathway snapshot" data-pathway-snapshot>
     @foreach(['red' => ['Red ball', '#ed2029', 0], 'orange' => ['Orange ball', '#ed7100', 1]] as $ball => [$label, $ink, $benchmarkIndex])
       <li style="--stage-ink:{{ $ink }}" @if($pathway['current_stage'] === $ball) aria-current="step" @endif>
@@ -80,14 +61,33 @@
     @endforeach
   </ol>
   <p class="small text-muted mb-0">A guide to development, not automatic promotion. Red and Orange progression use their own rating and played-event targets; Wilson divisions are suggestions from current comparable CTR.</p>
+  <section class="mt-3" aria-labelledby="pathway-event-targets-heading" data-pathway-event-targets>
+    <h4 class="h6" id="pathway-event-targets-heading">Suggested events to play</h4>
+    @if($pathway['current_stage'])
+      <p class="small mb-2">Options at your current rated level: <strong>{{ $pathway['current_stage_label'] }}</strong></p>
+      <ul class="small ps-3 mb-2" data-pathway-current-events>
+        @foreach(\App\Services\Performance\PlayerPathwayService::EVENT_OPTIONS[$pathway['current_stage']] as $eventOption)<li>{{ $eventOption }}</li>@endforeach
+      </ul>
+      <h5 class="h6 mt-3">{{ $pathway['current_stage'] === 'standard' ? 'Which Wilson division to play' : 'What to achieve before moving on' }}</h5>
+      <ul class="small ps-3 mb-2" data-pathway-advancement-targets>
+        @if($pathway['current_stage'] === 'standard')
+          <li>@if($pathway['wilsonCutoff'] !== null) Above CTR {{ number_format($pathway['wilsonCutoff'], 0) }}@if($pathway['tsaCutoff'] !== null) through {{ number_format($pathway['tsaCutoff'], 0) }}@endif: Wilson A suggested. CTR {{ number_format($pathway['wilsonCutoff'], 0) }} or below: Wilson B suggested, after Orange. @else Wilson recommendation awaiting configuration. @endif</li>
+          @if($pathway['tsaCutoff'] !== null)<li>Above CTR {{ number_format($pathway['tsaCutoff'], 0) }}: TSA tournaments suggested. Exactly {{ number_format($pathway['tsaCutoff'], 0) }} remains Wilson A. Check each tournament’s entry rules.</li>@endif
+          <li>{{ $pathway['assessment_status'] }} · {{ $pathway['reason'] }}</li>
+        @else
+          <li>@if($pathway['target']) {{ $pathway['ctr_label'] }} {{ number_format($pathway['target']['ctr'], 0) }} and {{ $pathway['target']['events'] }} published {{ $pathway['current_stage_label'] }} events @else Target not configured @endif · {{ $pathway['assessment_status'] }}</li>
+        @endif
+      </ul>
+      <p class="small text-muted mb-2">@if($pathway['current_stage'] === 'standard') Wilson suggestions use current comparable Wilson pathway evidence. The event count is supporting history, not a division-entry requirement. @else Both the comparable CTR target and the played-event minimum must be met at the same ball level using current saved evidence. @endif Review with your coach; promotion is not automatic.</p>
+      <p class="small mb-1"><strong>Next pathway target to review</strong></p>
+      <ul class="small ps-3 mb-2">@foreach($pathway['options'] as $option)<li>{{ $option }}</li>@endforeach</ul>
+      @if(!$pathway['ready'] && $pathway['current_stage'] !== 'standard')<p class="small text-muted mb-2">{{ $pathway['assessment_status'] }}. Review the progress requirements below before considering the next level with your coach.</p>@endif
+    @else
+      <p class="small mb-2">No rated ball level is available yet. Ask your coach which ball level suits you, then use the event options below.</p>
+    @endif
+    <p class="small text-muted mb-0">These are event types to discuss with your coach. Check each event’s age, entry and nomination rules; a pathway target does not grant entry or selection. TSA tournament entry follows its own rules.</p>
+  </section>
   <div class="pathway-grid">
-    <div>
-      <h4 class="h6">Current rated level: {{ $pathway['current_stage_label'] }}</h4>
-      <div class="pathway-score" data-pathway-top-badge><x-ctr-badge :stage="$pathway['badge']['stage']" :label="$pathway['badge']['stage'] === 'standard' ? 'Wilson B / Wilson A' : null" :score="$pathway['badge']['score']" :local="$pathway['badge']['local']" /></div>
-      <p class="small text-muted mt-2 mb-0">@if($pathway['metrics']['date'] ?? null) Latest saved ball-level rating · {{ $pathway['metrics']['date'] }} @else No saved ball-level rating available. @endif</p>
-      <p class="small mt-2 mb-0">Your latest saved badge is used automatically as your current development level. No starting-stage confirmation is needed.</p>
-      @if($pathway['metrics']['stale'] ?? false)<p class="small text-muted mt-2 mb-0">Saved rating awaiting an update; progress is not assessed.</p>@endif
-    </div>
     <div>
       <h4 class="h6">Current progress assessment</h4>
       @if($pathway['benchmark_division'])<p class="small">Next benchmark to review: <strong>Wilson {{ $pathway['benchmark_division'] }}</strong>. This is development guidance, not an assigned competition division.</p>@endif

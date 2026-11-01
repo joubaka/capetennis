@@ -1,0 +1,100 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\User;
+use App\Services\Performance\{PlayerAbilitySnapshotStore, PlayerRatingAccess, PlayerRatingTopTen};
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\{DB, Schema};
+use Tests\TestCase;
+
+class PlayerRatingTopTenTest extends TestCase
+{
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => ':memory:', 'cache.default' => 'array']);
+        DB::purge('sqlite');
+        Schema::create('players', function (Blueprint $table) { $table->id(); $table->string('name'); $table->string('surname'); });
+        Schema::create('series', function (Blueprint $table) { $table->id(); $table->boolean('leaderboard_published'); $table->integer('minimum_events_for_team_selection')->default(1); });
+        Schema::create('series_rankings', function (Blueprint $table) {
+            $table->id(); $table->integer('series_id'); $table->integer('player_id'); $table->string('status'); $table->string('run_id')->nullable();
+            $table->text('meta_json')->nullable(); $table->timestamp('published_at')->nullable(); $table->timestamps();
+        });
+        DB::table('series')->insert(['id' => 1, 'leaderboard_published' => true, 'minimum_events_for_team_selection' => 1]);
+    }
+
+    private function player(int $id, string $name = 'Player', int $series = 1, string $run = 'current', string $status = 'published', int $events = 1): void
+    {
+        DB::table('players')->insertOrIgnore(['id' => $id, 'name' => $name, 'surname' => 'Example']);
+        DB::table('series_rankings')->insert(['series_id' => $series, 'player_id' => $id, 'run_id' => $run, 'status' => $status,
+            'meta_json' => json_encode(['events_played' => $events]), 'published_at' => $run === 'old' ? '2026-10-01' : '2026-11-01', 'updated_at' => '2026-11-01']);
+    }
+
+    private function snapshot(array $scores): array
+    {
+        $ratings = [];
+        foreach ($scores as $id => $score) $ratings[$id] = ['component' => 'shared', 'comparable' => true, 'score' => $score, 'confidence_label' => 'Moderate'];
+        $graph = ['reference_component' => 'shared', 'components' => ['shared' => ['converged' => true, 'members' => array_keys($scores)]], 'ratings' => $ratings];
+        return ['reason' => null, 'snapshot_as_of' => '2026-11-01', 'snapshot_stale' => false, 'all_age' => $graph, 'ball_ratings' => array_fill_keys(['red', 'orange', 'standard'], $graph)];
+    }
+
+    private function build(array $snapshot, bool $allowed = true): array
+    {
+        $this->mock(PlayerRatingAccess::class)->shouldReceive('allowsDiscovery')->once()->andReturn($allowed);
+        $store = $this->mock(PlayerAbilitySnapshotStore::class);
+        if ($allowed) $store->shouldReceive('current')->once()->andReturn($snapshot);
+        else $store->shouldNotReceive('current');
+        return app(PlayerRatingTopTen::class)->build(new User());
+    }
+
+    public function test_four_independent_top_tens_use_current_public_participants_and_live_revocation(): void
+    {
+        $this->player(1); $this->player(2, 'Hidden', run: 'old'); $this->player(3, 'Draft', status: 'draft');
+        DB::table('series')->insert(['id' => 2, 'leaderboard_published' => false, 'minimum_events_for_team_selection' => 1]);
+        $this->player(4, 'Private', series: 2);
+        DB::table('series')->insert(['id' => 3, 'leaderboard_published' => true, 'minimum_events_for_team_selection' => 3]);
+        $this->player(5, 'Ineligible', series: 3, events: 2);
+        $snapshot = $this->snapshot([1 => 65, 2 => 99, 3 => 98, 4 => 97, 5 => 96, 6 => 95]);
+        $result = $this->build($snapshot);
+        $this->assertSame(['red', 'orange', 'standard', 'overall'], array_keys($result['lists']));
+        foreach ($result['lists'] as $list) $this->assertSame([1], array_column($list['players'], 'id'));
+        DB::table('series')->where('id', 1)->update(['leaderboard_published' => false]);
+        foreach ($this->build($snapshot)['lists'] as $list) $this->assertSame([], $list['players']);
+    }
+
+    public function test_discovery_denial_and_invalidated_snapshot_fail_closed(): void
+    {
+        $this->assertFalse($this->build([], false)['visible']);
+        foreach ([[], ['reason' => 'Source publication changed']] as $snapshot) {
+            foreach ($this->build($snapshot)['lists'] as $list) $this->assertSame([], $list['players']);
+        }
+    }
+
+    public function test_scores_stay_independent_and_disconnected_nonconverged_invalid_scores_are_excluded(): void
+    {
+        foreach (range(1, 7) as $id) $this->player($id);
+        $snapshot = $this->snapshot([1 => 0, 2 => 100, 3 => -1, 4 => 101, 5 => INF, 6 => 90, 7 => 80]);
+        $snapshot['ball_ratings']['red']['ratings'][6]['comparable'] = false;
+        $snapshot['ball_ratings']['red']['ratings'][7]['component'] = 'local';
+        $snapshot['ball_ratings']['orange']['components']['shared']['converged'] = false;
+        $snapshot['all_age']['ratings'][1]['score'] = 99;
+        $result = $this->build($snapshot);
+        $this->assertSame([2, 1], array_column($result['lists']['red']['players'], 'id'));
+        $this->assertSame([], $result['lists']['orange']['players']);
+        $this->assertSame([2, 6, 7, 1], array_column($result['lists']['standard']['players'], 'id'));
+        $this->assertSame([2, 1, 6, 7], array_column($result['lists']['overall']['players'], 'id'));
+    }
+
+    public function test_tied_displayed_scores_share_positions_and_lists_are_bounded_to_ten(): void
+    {
+        $scores = [];
+        foreach (range(1, 12) as $id) { $this->player($id, sprintf('Player %02d', $id)); $scores[$id] = $id <= 2 ? 90.04 : 80; }
+        $result = $this->build($this->snapshot($scores));
+        foreach ($result['lists'] as $list) {
+            $this->assertCount(10, $list['players']);
+            $this->assertSame([1, 1, 3, 3, 3, 3, 3, 3, 3, 3], array_column($list['players'], 'position'));
+            $this->assertSame(range(1, 10), array_column($list['players'], 'id'));
+        }
+    }
+}

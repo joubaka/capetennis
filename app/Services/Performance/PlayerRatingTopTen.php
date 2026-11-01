@@ -1,0 +1,82 @@
+<?php
+
+namespace App\Services\Performance;
+
+use App\Domain\Ranking\Services\RankingTeamEligibilityService;
+use App\Models\{SeriesRanking, User};
+
+/** Discovery projection: public series identities and comparable saved ratings only. */
+class PlayerRatingTopTen
+{
+    public function __construct(private PlayerRatingAccess $access, private PlayerAbilitySnapshotStore $snapshots, private RankingTeamEligibilityService $eligibility) {}
+
+    public function build(?User $user): array
+    {
+        $result = ['visible' => $this->access->allowsDiscovery($user), 'lists' => [], 'as_of' => null, 'stale' => false, 'reason' => null];
+        if (!$result['visible']) return $result;
+        $snapshot = $this->snapshots->current();
+        foreach (['red' => 'Red', 'orange' => 'Orange', 'standard' => 'CTR · Wilson', 'overall' => 'Overall CTR'] as $key => $label) {
+            $result['lists'][$key] = ['label' => $label, 'players' => []];
+        }
+        if (!array_key_exists('reason', $snapshot) || $snapshot['reason'] !== null) {
+            $result['reason'] = 'Saved Top 10 ratings are not available yet.';
+            return $result;
+        }
+        $result['as_of'] = $snapshot['snapshot_as_of'] ?? null;
+        $result['stale'] = ($snapshot['snapshot_stale'] ?? false) === true;
+        $ratings = [];
+        foreach (array_keys($result['lists']) as $key) {
+            $graph = $key === 'overall' ? ($snapshot['all_age'] ?? []) : ($snapshot['ball_ratings'][$key] ?? []);
+            $reference = $graph['reference_component'] ?? null;
+            $component = $graph['components'][$reference ?? ''] ?? [];
+            if (!$reference || ($component['converged'] ?? false) !== true) continue;
+            $members = array_fill_keys($component['members'] ?? [], true);
+            foreach ($graph['ratings'] ?? [] as $id => $rating) {
+                if (!is_array($rating) || !ctype_digit((string) $id) || (int) $id < 1 || (string) (int) $id !== (string) $id) continue;
+                $score = $rating['score'] ?? null;
+                if (!isset($members[$id]) || ($rating['component'] ?? null) !== $reference || ($rating['comparable'] ?? false) !== true
+                    || !is_numeric($score) || !is_finite((float) $score) || $score < 0 || $score > 100) continue;
+                $ratings[$key][(int) $id] = ['score' => round((float) $score, 1), 'confidence' => $rating['confidence_label'] ?? 'Low'];
+            }
+        }
+        $ids = array_values(array_unique(array_merge(...array_values(array_map('array_keys', $ratings ?: [[]])))));
+        if (count($ids) > 5000) return $this->limited($result);
+        $public = [];
+        foreach (array_chunk($ids, 200) as $chunk) {
+            $rows = SeriesRanking::query()->with(['series:id,minimum_events_for_team_selection', 'player:id,name,surname'])
+                ->whereIn('player_id', $chunk)->where('status', 'published')->whereNotNull('run_id')
+                ->whereHas('series', fn ($query) => $query->where('leaderboard_published', true))
+                ->where('run_id', function ($query) {
+                    $query->from('series_rankings as latest')->select('latest.run_id')
+                        ->whereColumn('latest.series_id', 'series_rankings.series_id')->where('latest.status', 'published')->whereNotNull('latest.run_id')
+                        ->orderByDesc('latest.published_at')->orderByDesc('latest.updated_at')->limit(1);
+                })->limit(1001)->get();
+            if ($rows->count() > 1000) return $this->limited($result);
+            foreach ($rows as $row) {
+                if (!$row->player || !$row->series || $this->eligibility->publiclyRanked(collect([$row]), $row->series)->isEmpty()) continue;
+                $public[(int) $row->player_id] = trim($row->player->name.' '.$row->player->surname);
+            }
+        }
+        foreach ($ratings as $key => $members) {
+            $players = [];
+            foreach ($members as $id => $rating) {
+                if (isset($public[$id])) $players[] = ['id' => $id, 'name' => $public[$id], ...$rating];
+            }
+            usort($players, fn ($a, $b) => $b['score'] <=> $a['score'] ?: strnatcasecmp($a['name'], $b['name']) ?: $a['id'] <=> $b['id']);
+            $position = 0; $previous = null;
+            foreach (array_slice($players, 0, 10) as $index => $player) {
+                if ($previous !== $player['score']) $position = $index + 1;
+                $previous = $player['score'];
+                $result['lists'][$key]['players'][] = $player + ['position' => $position];
+            }
+        }
+        return $result;
+    }
+
+    private function limited(array $result): array
+    {
+        $result['reason'] = 'The published player selection exceeds the safe display limit. Top 10 is temporarily unavailable.';
+        foreach ($result['lists'] as &$list) $list['players'] = [];
+        return $result;
+    }
+}

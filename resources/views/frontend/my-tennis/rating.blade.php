@@ -28,7 +28,9 @@
     @if(auth()->user()?->hasRole('super-user'))<span class="badge bg-label-primary">Super Admin preview</span>@endif
   </div>
   <a class="btn btn-outline-primary mt-3" href="{{ route('my.tennis.pathway', $ratingPlayer) }}" style="min-height:44px;white-space:normal" data-pathway-jump>What should I play next?</a>
+  @if($ratingTopTen['visible'] ?? false)<a class="btn btn-outline-primary mt-3" href="#player-top-ten-heading" style="min-height:44px;white-space:normal">Explore all CTR Top 10 lists</a>@endif
   @include('frontend.my-tennis.pathway', ['pathway' => $ratingPathway ?? \App\Services\Performance\PlayerPathwayService::unrecorded()])
+  @include('frontend.my-tennis.rating-top-ten')
   <x-rating-explanation class="mt-3" />
   @if(auth()->user()?->hasRole('super-user'))
     <div class="d-flex flex-wrap align-items-center gap-2 mt-3" data-history-refresh-controls data-refresh-url="{{ route('my.tennis.rating.refresh') }}" data-status-url="{{ route('my.tennis.rating.refresh-status') }}">
