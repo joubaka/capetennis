@@ -42,13 +42,16 @@ class MyTennisController extends Controller
     {
         abort_unless(app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $player), 403);
         $filters = $request->validate(['cohort' => 'nullable|string|max:255', 'month' => 'nullable|integer|min:0|max:11',
-            'scope' => 'nullable|in:new,all', 'page' => 'nullable|integer|min:1|max:2500', 'scale' => 'nullable|in:focused,full']);
+            'scope' => 'nullable|in:new,all', 'page' => 'nullable|integer|min:1|max:2500', 'scale' => 'nullable|in:focused,full',
+            'rating_age' => 'nullable|in:u7,u8,u9,u10,u11,u12,u13,u18,other,unknown',
+            'rating_gender' => 'nullable|in:boys,girls,unknown', 'rating_level' => 'nullable|in:red,orange,standard']);
         $history = app(\App\Services\Performance\PlayerRatingHistoryService::class)->forPlayer($player, $filters);
         return response()->view('frontend.my-tennis.rating', [
             'ratingPlayer' => $player,
             'ratingHistory' => $history,
             'ratingPathway' => app(\App\Services\Performance\PlayerPathwayService::class)->summary($player, $history),
-            'ratingTopTen' => app(\App\Services\Performance\PlayerRatingTopTen::class)->build($request->user()),
+            'ratingTopTen' => app(\App\Services\Performance\PlayerRatingTopTen::class)->build($request->user(), $player,
+                array_map(fn ($value) => $value ?? '', array_intersect_key($filters, array_flip(['rating_age', 'rating_gender', 'rating_level'])))),
         ])->header('Cache-Control', 'private, no-store');
     }
 
@@ -58,6 +61,17 @@ class MyTennisController extends Controller
         $history = app(\App\Services\Performance\PlayerRatingHistoryService::class)->forPlayer($player);
         return response()->view('frontend.my-tennis.pathway-page', [
             'ratingPlayer' => $player,
+            'pathway' => app(\App\Services\Performance\PlayerPathwayService::class)->summary($player, $history),
+        ])->header('Cache-Control', 'private, no-store');
+    }
+
+    public function pathwayInfo(Request $request, \App\Models\Player $player, string $stage)
+    {
+        abort_unless(app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $player), 403);
+        abort_unless(in_array($stage, ['red', 'orange', 'wilson-b', 'wilson-a', 'tsa'], true), 404);
+        $history = app(\App\Services\Performance\PlayerRatingHistoryService::class)->forPlayer($player);
+        return response()->view('frontend.my-tennis.pathway-info', [
+            'ratingPlayer' => $player, 'infoStage' => $stage,
             'pathway' => app(\App\Services\Performance\PlayerPathwayService::class)->summary($player, $history),
         ])->header('Cache-Control', 'private, no-store');
     }

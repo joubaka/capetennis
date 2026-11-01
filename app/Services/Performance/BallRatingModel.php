@@ -11,6 +11,16 @@ class BallRatingModel
     public const LABELS = ['red' => 'Red ball', 'orange' => 'Orange ball', 'standard' => 'Green/Yellow ball'];
     public const COHORTS = ['red' => 'red ball · singles', 'orange' => 'orange ball · singles', 'standard' => 'green/yellow ball · singles'];
 
+    /** Current rated level follows saved evidence, never age or CTR magnitude. */
+    public static function currentStage(array $ratings): ?string
+    {
+        foreach (['standard', 'orange', 'red'] as $stage) {
+            $score = $ratings[$stage]['score'] ?? null;
+            if (is_numeric($score) && is_finite((float) $score) && $score >= 0 && $score <= 100) return $stage;
+        }
+        return null;
+    }
+
     public static function bucket(?string $ball, ?string $eventName = null): ?string
     {
         $ball = mb_strtolower(trim((string) $ball));

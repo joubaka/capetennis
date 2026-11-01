@@ -40,7 +40,7 @@
     <section class="pp-actions" aria-labelledby="pp-explore-heading"><h2 id="pp-explore-heading">Follow {{ $player->name }}’s progress</h2><p>Your available player views, together in one place.</p><div class="pp-action-links">
     <a class="btn btn-primary" href="{{ route('my.tennis', ['player' => $player->id]) }}#rating">View rating and progress <span class="ms-2" aria-hidden="true">→</span></a>
     <a class="btn btn-outline-primary" href="{{ route('my.tennis.pathway', $player) }}">View tennis pathway</a>
-    <a class="btn btn-outline-primary" href="{{ route('rankings.index') }}">Explore published series and CTR Top 10</a>
+    <a class="btn btn-outline-primary" href="{{ route('my.tennis', ['player' => $player->id]) }}#rating">Explore CTR ratings</a>
     </div></section>
   @endif
   @unless($linked)<p class="mt-3">You are sponsoring this player. Only the player and accounts already linked to them can use their private Player Plus benefits.</p>@endunless

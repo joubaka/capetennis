@@ -82,3 +82,54 @@ test('repeated submits remain suppressed while a pathway save is pending', async
   await h.ui.save(h.form());
   assert.equal(h.reloads(), 0);
 });
+
+function infoCard() {
+  const attrs = { 'aria-expanded': 'false' };
+  const content = { hidden: true, dataset: {}, textContent: '', innerHTML: '', setAttribute() {}, removeAttribute() {} };
+  const button = { disabled: false, dataset: { pathwayInfo: '/my-tennis/players/1/pathway/info/red' },
+    closest() { return { querySelector() { return content; } }; },
+    getAttribute(name) { return attrs[name]; }, setAttribute(name, value) { attrs[name] = value; } };
+  return { button, content, attrs };
+}
+
+test('stage details load on demand, suppress duplicate clicks and toggle cached content', async () => {
+  const oldFetch = global.fetch;
+  let finish; const requests = [];
+  global.fetch = (url, options) => { requests.push({ url, options }); return new Promise(resolve => { finish = resolve; }); };
+  try {
+    const h = harness(), card = infoCard();
+    const pending = h.ui.info(card.button);
+    assert.equal(card.content.hidden, false);
+    assert.equal(card.button.disabled, true);
+    await h.ui.info(card.button);
+    assert.equal(requests.length, 1);
+    finish({ ok: true, text: async () => '<div data-pathway-stage-details="red">Red guidance</div>' });
+    await pending;
+    assert.equal(card.content.dataset.loaded, 'true');
+    assert.equal(card.button.disabled, false);
+    await h.ui.info(card.button);
+    assert.equal(card.content.hidden, true);
+    assert.equal(card.attrs['aria-expanded'], 'false');
+    await h.ui.info(card.button);
+    assert.equal(card.content.hidden, false);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].options.cache, 'no-store');
+    assert.equal(requests[0].options.credentials, 'same-origin');
+  } finally { global.fetch = oldFetch; }
+});
+
+test('stage detail failures and login redirects stay retryable without inserting response HTML', async () => {
+  const oldFetch = global.fetch;
+  try {
+    const h = harness(), card = infoCard();
+    global.fetch = async () => ({ ok: true, redirected: true, text: async () => '<form>Login</form>' });
+    await h.ui.info(card.button);
+    assert.match(card.content.textContent, /try again/);
+    assert.equal(card.content.innerHTML, '');
+    assert.equal(card.button.disabled, false);
+    assert.equal(card.attrs['aria-expanded'], 'true');
+    global.fetch = async () => ({ ok: true, text: async () => '<div data-pathway-stage-details="red">Ready</div>' });
+    await h.ui.info(card.button);
+    assert.equal(card.content.dataset.loaded, 'true');
+  } finally { global.fetch = oldFetch; }
+});

@@ -13,6 +13,40 @@
         event.preventDefault();
         this.save(form);
       });
+      panel.addEventListener('click', event => {
+        const button = event.target.closest('[data-pathway-info]');
+        if (button) { event.preventDefault(); this.info(button); }
+      });
+    }
+
+    async info(button) {
+      const card = button.closest('li');
+      const content = card?.querySelector('[data-pathway-info-content]');
+      if (!content || button.disabled) return;
+      if (button.getAttribute('aria-expanded') === 'true' && content.dataset.loaded === 'true') {
+        content.hidden = true; button.setAttribute('aria-expanded', 'false'); return;
+      }
+      content.hidden = false;
+      button.setAttribute('aria-expanded', 'true');
+      if (content.dataset.loaded === 'true') return;
+      button.disabled = true;
+      content.setAttribute('aria-busy', 'true');
+      content.textContent = 'Loading stage details…';
+      try {
+        const response = await root.fetch(button.dataset.pathwayInfo, {
+          credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'text/html', 'X-Requested-With': 'XMLHttpRequest' }
+        });
+        if (!response.ok || response.redirected) throw new Error('Stage details are unavailable. Select More info to try again.');
+        const html = await response.text();
+        if (!html.includes('data-pathway-stage-details=')) throw new Error('Stage details are unavailable. Select More info to try again.');
+        content.innerHTML = html;
+        content.dataset.loaded = 'true';
+      } catch (error) {
+        content.textContent = 'Stage details are unavailable. Select More info to try again.';
+      } finally {
+        content.removeAttribute('aria-busy');
+        button.disabled = false;
+      }
     }
 
     message(text) {

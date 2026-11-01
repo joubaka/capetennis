@@ -15,7 +15,7 @@ class PlayerRatingTopTenTest extends TestCase
         parent::setUp();
         config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => ':memory:', 'cache.default' => 'array']);
         DB::purge('sqlite');
-        Schema::create('players', function (Blueprint $table) { $table->id(); $table->string('name'); $table->string('surname'); });
+        Schema::create('players', function (Blueprint $table) { $table->id(); $table->string('name'); $table->string('surname'); $table->string('dateOfBirth')->nullable(); $table->string('gender')->nullable(); });
         Schema::create('series', function (Blueprint $table) { $table->id(); $table->boolean('leaderboard_published'); $table->integer('minimum_events_for_team_selection')->default(1); });
         Schema::create('series_rankings', function (Blueprint $table) {
             $table->id(); $table->integer('series_id'); $table->integer('player_id'); $table->string('status'); $table->string('run_id')->nullable();
@@ -39,13 +39,37 @@ class PlayerRatingTopTenTest extends TestCase
         return ['reason' => null, 'snapshot_as_of' => '2026-11-01', 'snapshot_stale' => false, 'all_age' => $graph, 'ball_ratings' => array_fill_keys(['red', 'orange', 'standard'], $graph)];
     }
 
-    private function build(array $snapshot, bool $allowed = true): array
+    private function build(array $snapshot, bool $allowed = true, ?\App\Models\Player $selected = null, array $filters = []): array
     {
         $this->mock(PlayerRatingAccess::class)->shouldReceive('allowsDiscovery')->once()->andReturn($allowed);
         $store = $this->mock(PlayerAbilitySnapshotStore::class);
         if ($allowed) $store->shouldReceive('current')->once()->andReturn($snapshot);
         else $store->shouldNotReceive('current');
-        return app(PlayerRatingTopTen::class)->build(new User());
+        return app(PlayerRatingTopTen::class)->build(new User(), $selected, $filters);
+    }
+
+    public function test_selected_player_defaults_to_age_group_and_keeps_overall_summary_when_filters_change(): void
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-01'));
+        foreach (range(1, 13) as $id) $this->player($id);
+        DB::table('players')->update(['dateOfBirth' => '2013-12-20', 'gender' => '1']);
+        DB::table('players')->where('id', 1)->update(['dateOfBirth' => '2014-01-01', 'gender' => '2']);
+        $selected = \App\Models\Player::find(13);
+        $snapshot = $this->snapshot(array_combine(range(1, 13), range(99, 87)));
+        $result = $this->build($snapshot, selected: $selected);
+        $this->assertSame('u13', $result['filters']['rating_age']);
+        $this->assertSame(['standard'], array_keys($result['lists']));
+        $this->assertSame(12, $result['summary']['age']['player']['position']);
+        $this->assertSame(13, $result['summary']['overall']['player']['position']);
+        $this->assertSame(range(2, 11), array_column($result['lists']['standard']['players'], 'id'));
+        $filtered = $this->build($snapshot, selected: $selected, filters: ['rating_age' => 'u13', 'rating_gender' => 'girls', 'rating_level' => 'red']);
+        $this->assertSame([1], array_column($filtered['lists']['red']['players'], 'id'));
+        $this->assertSame($result['summary'], $filtered['summary']);
+        $html = view('frontend.my-tennis.rating-top-ten', ['ratingTopTen' => $filtered, 'ratingPlayer' => $selected,
+            'ratingHistory' => ['cohort' => 'overall', 'month' => 11, 'scope' => 'new', 'scale' => 'focused']])->render();
+        $this->assertStringContainsString('Rating position #13 of 13', $html);
+        $this->assertStringContainsString('name="rating_age"', $html);
+        $this->assertStringContainsString('Green/Yellow ball CTR', $html);
     }
 
     public function test_four_independent_top_tens_use_current_public_participants_and_live_revocation(): void

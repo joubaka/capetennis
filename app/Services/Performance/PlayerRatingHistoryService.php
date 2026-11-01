@@ -23,12 +23,10 @@ class PlayerRatingHistoryService
         }
         $series = [];
         $hasSharedProjection = false;
-        $hasBallProjection = false;
         foreach ($saved['months'] as $index => $snapshot) {
             $hasSharedProjection = $hasSharedProjection || array_key_exists(AllAgeRatingModel::COHORT, $snapshot['cohorts']);
             foreach ($snapshot['cohorts'] as $cohort => $data) {
                 if ($cohort !== AllAgeRatingModel::COHORT && BallRatingModel::stage($cohort) === null) continue;
-                $hasBallProjection = $hasBallProjection || BallRatingModel::stage($cohort) !== null;
                 $rating = $data[$player->id] ?? null;
                 if (!$rating || !is_numeric($rating['score']) || !is_finite((float) $rating['score'])) continue;
                 $series[$cohort][] = ['index' => $index, 'date' => $snapshot['date'], 'score' => $rating['score'],
@@ -41,9 +39,12 @@ class PlayerRatingHistoryService
             }
         }
         if ($hasSharedProjection) { $series[AllAgeRatingModel::COHORT] ??= []; }
-        $selected = $filters['cohort'] ?? null;
-        $cohort = in_array($selected, [AllAgeRatingModel::COHORT, ...array_values(BallRatingModel::COHORTS)], true)
-            ? $selected : ($hasBallProjection ? BallRatingModel::COHORTS['standard'] : AllAgeRatingModel::COHORT);
+        $latestMonth = $saved['months'] ? $saved['months'][array_key_last($saved['months'])] : [];
+        $stageRatings = [];
+        foreach (BallRatingModel::COHORTS as $stage => $stageCohort) $stageRatings[$stage] = $latestMonth['cohorts'][$stageCohort][$player->id] ?? [];
+        $currentStage = BallRatingModel::currentStage($stageRatings);
+        // Older months remain in the player's current saved rating group.
+        $cohort = $currentStage ? BallRatingModel::COHORTS[$currentStage] : '';
         $month = max(0, min(11, (int) ($filters['month'] ?? 11)));
         $scope = ($filters['scope'] ?? 'new') === 'all' ? 'all' : 'new';
         $points = $series[$cohort] ?? [];
@@ -53,12 +54,13 @@ class PlayerRatingHistoryService
         $pathwayMetrics = app(PlayerPathwayEvidence::class)->fromHistory($saved, $player, $series[AllAgeRatingModel::COHORT] ?? [], $pending);
         return ['series' => $series, 'reason' => null, 'as_of' => $saved['as_of'], 'built_at' => $saved['built_at'],
             'stale' => $pending || $saved['as_of'] < CarbonImmutable::today('Africa/Johannesburg')->toDateString(),
-            'cohort' => $cohort, 'ball_stage' => BallRatingModel::stage($cohort), 'rating_scope' => BallRatingModel::stage($cohort) !== null ? 'ball' : 'all_age', 'shared_available' => $hasSharedProjection,
+            'cohort' => $cohort, 'current_group_label' => $currentStage ? BallRatingModel::LABELS[$currentStage] : 'Not rated yet',
+            'ball_stage' => $currentStage, 'rating_scope' => 'ball', 'shared_available' => $hasSharedProjection,
             'ball_series' => array_intersect_key($series, array_flip(array_values(BallRatingModel::COHORTS))), 'points' => $points, 'month' => $month, 'months' => $saved['months'], 'scope' => $scope,
             'point' => $point, 'previous' => $previous, 'evidence' => $evidence,
             'pathway_metrics' => $pathwayMetrics,
-            'scale' => ($filters['scale'] ?? '') === 'full' ? 'full' : 'focused',
-            'axis' => PlayerRatingHistoryDisplay::axis($points, ($filters['scale'] ?? '') === 'full' ? 'full' : 'focused')];
+            'scale' => 'full',
+            'axis' => PlayerRatingHistoryDisplay::axis($points, 'full')];
     }
 
     private function canRetainSavedHistory(array $saved): bool

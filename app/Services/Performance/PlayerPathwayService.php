@@ -32,13 +32,7 @@ class PlayerPathwayService
         $metricAvailable = ($metrics['available'] ?? false) === true;
         if (!$metricAvailable) $metrics = [];
         // Rated level is evidence, independent of the saved starting stage and CTR magnitude.
-        $current_stage = null;
-        foreach (['standard', 'orange', 'red'] as $ball) {
-            if ($this->validScore($metrics['stage_ratings'][$ball]['score'] ?? null) !== null) {
-                $current_stage = $ball;
-                break;
-            }
-        }
+        $current_stage = BallRatingModel::currentStage($metrics['stage_ratings'] ?? []);
         $division = $current_stage === 'standard' ? $saved_division : null;
         $stageRating = $current_stage ? ($metrics['stage_ratings'][$current_stage] ?? []) : [];
         $score = $stageRating['score'] ?? null;

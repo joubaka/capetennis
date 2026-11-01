@@ -3,23 +3,32 @@
 namespace App\Services\Performance;
 
 use App\Domain\Ranking\Services\RankingTeamEligibilityService;
-use App\Models\{SeriesRanking, User};
+use App\Models\{Player, SeriesRanking, User};
+use Carbon\CarbonImmutable;
 
 /** Discovery projection: public series identities and comparable saved ratings only. */
 class PlayerRatingTopTen
 {
     public function __construct(private PlayerRatingAccess $access, private PlayerAbilitySnapshotStore $snapshots, private RankingTeamEligibilityService $eligibility) {}
 
-    public function build(?User $user): array
+    public function build(?User $user, ?Player $selected = null, array $filters = []): array
     {
         $result = ['visible' => $this->access->allowsDiscovery($user), 'lists' => [], 'as_of' => null, 'stale' => false, 'reason' => null];
+        $today = CarbonImmutable::today('Africa/Johannesburg');
+        $selectedAge = $selected ? $this->ageKey($selected->dateOfBirth, $today) : '';
+        $age = $filters['rating_age'] ?? $selectedAge;
+        $gender = $filters['rating_gender'] ?? '';
+        $level = ($filters['rating_level'] ?? '') ?: 'standard';
+        $result += ['filters' => ['rating_age' => $age, 'rating_gender' => $gender, 'rating_level' => $level],
+            'age_options' => PlayerRatingProfileDirectory::birthYearLabels($today->year), 'summary' => [], 'selected_age' => $selectedAge];
         if (!$result['visible']) return $result;
         $snapshot = $this->snapshots->current();
-        foreach (['red' => 'Red', 'orange' => 'Orange', 'standard' => 'CTR · Wilson', 'overall' => 'Overall CTR'] as $key => $label) {
+        foreach (['red' => 'Red', 'orange' => 'Orange', 'standard' => 'Green/Yellow ball CTR', 'overall' => 'Overall CTR'] as $key => $label) {
             $result['lists'][$key] = ['label' => $label, 'players' => []];
         }
         if (!array_key_exists('reason', $snapshot) || $snapshot['reason'] !== null) {
             $result['reason'] = 'Saved Top 10 ratings are not available yet.';
+            if ($selected) $result['lists'] = array_intersect_key($result['lists'], [$level => true]);
             return $result;
         }
         $result['as_of'] = $snapshot['snapshot_as_of'] ?? null;
@@ -43,7 +52,7 @@ class PlayerRatingTopTen
         if (count($ids) > 5000) return $this->limited($result);
         $public = [];
         foreach (array_chunk($ids, 200) as $chunk) {
-            $rows = SeriesRanking::query()->with(['series:id,minimum_events_for_team_selection', 'player:id,name,surname'])
+            $rows = SeriesRanking::query()->with(['series:id,minimum_events_for_team_selection', 'player:id,name,surname,dateOfBirth,gender'])
                 ->whereIn('player_id', $chunk)->where('status', 'published')->whereNotNull('run_id')
                 ->whereHas('series', fn ($query) => $query->where('leaderboard_published', true))
                 ->where('run_id', function ($query) {
@@ -54,15 +63,27 @@ class PlayerRatingTopTen
             if ($rows->count() > 1000) return $this->limited($result);
             foreach ($rows as $row) {
                 if (!$row->player || !$row->series || $this->eligibility->publiclyRanked(collect([$row]), $row->series)->isEmpty()) continue;
-                $public[(int) $row->player_id] = trim($row->player->name.' '.$row->player->surname);
+                $rawGender = strtolower(trim((string) $row->player->gender));
+                $public[(int) $row->player_id] = ['name' => trim($row->player->name.' '.$row->player->surname),
+                    'age' => $this->ageKey($row->player->dateOfBirth, $today),
+                    'gender' => in_array($rawGender, ['1', 'male', 'boy', 'boys', 'm'], true) ? 'boys'
+                        : (in_array($rawGender, ['2', 'female', 'girl', 'girls', 'f'], true) ? 'girls' : 'unknown')];
             }
         }
         foreach ($ratings as $key => $members) {
             $players = [];
             foreach ($members as $id => $rating) {
-                if (isset($public[$id])) $players[] = ['id' => $id, 'name' => $public[$id], ...$rating];
+                if (isset($public[$id])) $players[] = ['id' => $id, ...$public[$id], ...$rating];
             }
             usort($players, fn ($a, $b) => $b['score'] <=> $a['score'] ?: strnatcasecmp($a['name'], $b['name']) ?: $a['id'] <=> $b['id']);
+            if ($selected && in_array($key, ['standard', 'overall'], true)) {
+                $populations = $key === 'standard' ? ['age' => $selectedAge === 'unknown' ? [] : array_values(array_filter($players, fn ($p) => $p['age'] === $selectedAge))] : ['overall' => $players];
+                foreach ($populations as $scope => $population) {
+                    $ranked = $this->positions($population);
+                    $result['summary'][$scope] = ['player' => collect($ranked)->firstWhere('id', (int) $selected->id), 'total' => count($ranked)];
+                }
+            }
+            if ($selected) $players = array_values(array_filter($players, fn ($p) => ($level !== 'standard' || $age === '' || $p['age'] === $age) && ($gender === '' || $p['gender'] === $gender)));
             $position = 0; $previous = null;
             foreach (array_slice($players, 0, 10) as $index => $player) {
                 if ($previous !== $player['score']) $position = $index + 1;
@@ -70,13 +91,34 @@ class PlayerRatingTopTen
                 $result['lists'][$key]['players'][] = $player + ['position' => $position];
             }
         }
+        if ($selected) $result['lists'] = array_intersect_key($result['lists'], [$level => true]);
         return $result;
+    }
+
+    private function positions(array $players): array
+    {
+        $position = 0; $previous = null;
+        foreach ($players as $index => &$player) {
+            if ($previous !== $player['score']) $position = $index + 1;
+            $previous = $player['score'];
+            $player['position'] = $position;
+        }
+        return $players;
+    }
+
+    private function ageKey(?string $raw, CarbonImmutable $today): string
+    {
+        try { $birth = CarbonImmutable::createFromFormat('!Y-m-d', $raw ?? ''); } catch (\Throwable) { return 'unknown'; }
+        if (!$birth || $birth->format('Y-m-d') !== $raw || $birth->year < 1000 || $birth->greaterThan($today)) return 'unknown';
+        $age = $today->year - $birth->year;
+        return match (true) { $age <= 7 => 'u7', $age <= 13 => 'u'.$age, $age <= 18 => 'u18', default => 'other' };
     }
 
     private function limited(array $result): array
     {
         $result['reason'] = 'The published player selection exceeds the safe display limit. Top 10 is temporarily unavailable.';
         foreach ($result['lists'] as &$list) $list['players'] = [];
+        if ($result['selected_age'] !== '') $result['lists'] = array_intersect_key($result['lists'], [$result['filters']['rating_level'] => true]);
         return $result;
     }
 }
