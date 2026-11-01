@@ -1250,6 +1250,26 @@ Route::delete(
     ->name('backend.draw.venues.json');
 
 
+  // Restricted pilot: widening access requires an explicit reviewed change after approval.
+  Route::prefix('events/{event}/assistant')->name('backend.event-assistant.')->middleware(['role:super-user', 'throttle:40,1'])->group(function () {
+    $controller = \App\Http\Controllers\Backend\EventAssistantController::class;
+    Route::get('/', [$controller, 'workspace'])->name('workspace');
+    Route::get('context', [$controller, 'context'])->name('context');
+    Route::get('conversation/{uuid}', [$controller, 'conversation'])->name('conversation');
+    Route::post('timing-observations', [\App\Http\Controllers\Backend\EventAssistantTimingController::class, 'store'])->name('timing-observations');
+    Route::get('timing-matches', [\App\Http\Controllers\Backend\EventAssistantTimingController::class, 'matches'])->name('timing-matches');
+    Route::get('duration-suggestion', [\App\Http\Controllers\Backend\EventAssistantTimingController::class, 'suggestion'])->name('duration-suggestion');
+    Route::post('message', [$controller, 'message'])->name('message');
+    Route::post('preview', [$controller, 'preview'])->name('preview');
+    Route::post('publication-preview', [$controller, 'publicationPreview'])->name('publication-preview');
+    Route::post('generation-preview', [$controller, 'generationPreview'])->name('generation-preview');
+    Route::post('confirm', [$controller, 'confirm'])->name('confirm');
+    Route::post('feedback', [$controller, 'feedback'])->name('feedback');
+    Route::put('preferences', [$controller, 'preferences'])->name('preferences');
+    Route::post('transcribe', [$controller, 'transcribe'])->name('transcribe');
+    Route::get('improvements', [$controller, 'improvements'])->name('improvements');
+  });
+
   // Individual schedule
 // Individual schedule
   Route::get('events/{event}/venue-schedule/calendar', [EventVenueScheduleController::class, 'calendar'])->name('backend.event-venue-schedule.calendar');

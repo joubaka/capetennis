@@ -1,5 +1,5 @@
 /* Presentation QA of synthetic Laravel-rendered ratings and actual linked styles.
- * Generate the fixture with CT_ALL_AGE_QA_HTML=1 and AllAgeRatingIntegrationTest.
+ * Generate fixtures with CT_ALL_AGE_QA_HTML=1 and the integration/group directory tests.
  * No application, database, or external network requests are made here.
  */
 const fs = require('node:fs');
@@ -8,6 +8,12 @@ const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
 const root = path.resolve(__dirname, '../..');
 const publicRoot = path.join(root, 'public');
+const unavailableHtml = fs.readFileSync(path.join(root, 'storage/framework/testing/all-age-ratings-unavailable.html'), 'utf8')
+  .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
+const scoreHtml = fs.readFileSync(path.join(root, 'storage/framework/testing/all-age-ratings-score.html'), 'utf8')
+  .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
+const ageHtml = fs.readFileSync(path.join(root, 'storage/framework/testing/all-age-ratings-age.html'), 'utf8')
+  .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
 let html = fs.readFileSync(path.join(root, 'storage/framework/testing/all-age-ratings.html'), 'utf8')
   .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
 const connections = path.join(root, 'storage/framework/testing/all-age-connections-fragment.html');
@@ -33,6 +39,9 @@ if (fs.existsSync(connections)) html = html.replace('<form method="get"', fs.rea
       const panel = page.locator('.operational-page').last();
       await assert.equal(await panel.locator('h1').innerText(), 'Cape Tennis all-age ratings');
       assert.equal(await panel.locator('.list-group-item').count(), 3);
+      assert.equal(await panel.locator('section > h2').count(), 1);
+      assert.equal(await panel.locator('section > h2').innerText(), 'All players');
+      assert.equal(await panel.locator('[data-rating-position]').count(), 2);
       assert.match(await panel.innerText(), /No recent played-match connection/);
       assert.match(await panel.innerText(), /Low confidence — historical connection/);
       const layout = await panel.evaluate(element => {
@@ -53,12 +62,43 @@ if (fs.existsSync(connections)) html = html.replace('<form method="get"', fs.rea
       await explanation.locator(':scope > summary').click();
       assert.equal(await explanation.getAttribute('open'), '');
       const connectionPanel = panel.locator('[data-rating-connections]');
-      if (await connectionPanel.count()) {
-        assert.match(await connectionPanel.innerText(), /not scheduled matches or confirmed links/);
-        assert.equal(await connectionPanel.evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
+      for (const connection of await connectionPanel.all()) {
+        if (await connection.getAttribute('open') === null) await connection.locator(':scope > summary').click();
+        assert.match(await connection.innerText(), /not scheduled matches or confirmed links/);
+        assert.equal(await connection.evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
       }
       await panel.screenshot({ path: path.join(root, `storage/framework/testing/all-age-ratings-${width}.png`) });
       console.log(`PASS ${width}px: shared/withheld rows, filters, explanation and containment`);
+      await page.setContent(unavailableHtml, { waitUntil: 'networkidle' });
+      const unavailable = page.locator('.operational-page').last();
+      assert.equal(await unavailable.locator('section > h2').count(), 1);
+      assert.equal(await unavailable.locator('section > h2').innerText(), 'All players');
+      assert.ok(await unavailable.locator('.list-group-item').count() >= 2);
+      assert.equal(await unavailable.locator('[data-rating-position]').count(), 0);
+      assert.match(await unavailable.innerText(), /Rating unavailable/);
+      assert.equal(await unavailable.evaluate(el => el.scrollWidth <= el.clientWidth + 1), true, `unavailable ${width}px`);
+      await unavailable.screenshot({ path: path.join(root, `storage/framework/testing/all-age-ratings-unavailable-${width}.png`) });
+      console.log(`PASS ${width}px: unavailable snapshot stays one unranked list`);
+      await page.setContent(scoreHtml, { waitUntil: 'networkidle' });
+      const scores = page.locator('.operational-page').last();
+      assert.equal(await scores.locator('section > h2').count(), 1);
+      assert.equal(await scores.locator('#rating-sort').inputValue(), 'score');
+      assert.equal(await scores.locator('[data-rating-position]').count(), 0);
+      assert.ok(await scores.locator('[data-score-list-position]').count() >= 3);
+      assert.match(await scores.innerText(), /uncalibrated/i);
+      assert.equal(await scores.evaluate(el => el.scrollWidth <= el.clientWidth + 1), true, `score order ${width}px`);
+      await scores.screenshot({ path: path.join(root, `storage/framework/testing/all-age-ratings-score-${width}.png`) });
+      console.log(`PASS ${width}px: optional all-score list, warning and list numbers`);
+      await page.setContent(ageHtml, { waitUntil: 'networkidle' });
+      const ages = page.locator('.operational-page').last();
+      assert.ok(await ages.locator('section > h2').count() >= 2);
+      assert.equal(await ages.locator('#rating-sort').inputValue(), 'age');
+      assert.equal(await ages.locator('[data-rating-position]').count(), 0);
+      assert.ok(await ages.locator('[data-score-list-position]').count() >= 3);
+      assert.match(await ages.innerText(), /uncalibrated/i);
+      assert.equal(await ages.evaluate(el => el.scrollWidth <= el.clientWidth + 1), true, `age order ${width}px`);
+      await ages.screenshot({ path: path.join(root, `storage/framework/testing/all-age-ratings-age-${width}.png`) });
+      console.log(`PASS ${width}px: age-group score order and list numbers`);
     }
     assert.ok(loadedStyles.length > 0, 'Actual rendered stylesheet links must load');
   } finally {

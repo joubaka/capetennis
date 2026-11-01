@@ -8,6 +8,8 @@ Cape Tennis Platform — Draw Domain
 
 The draw domain manages tournament bracket generation, fixture progression, score recording, and result publication. It is the most complex domain in the platform and must be treated with extreme care when modified.
 
+For reviewed historical questions, verified solutions and focused regression commands, see the [draw knowledge library](../draw-knowledge/README.md). Its catalogue links current owning sources and distinguishes implemented behaviour from historical recommendations.
+
 ---
 
 ## Key Models

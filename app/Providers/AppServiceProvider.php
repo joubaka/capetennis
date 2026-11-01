@@ -47,6 +47,7 @@ class AppServiceProvider extends ServiceProvider
    */
   public function register()
   {
+    require_once base_path('packages/assistant-foundation/autoload.php');
     $this->app->scoped(\App\Services\Performance\PendingBankRefundCount::class);
     $this->app->scoped(\App\Services\Performance\PlayerRatingBadgeService::class);
     $this->app->scoped(\App\Services\Performance\PlayerAbilitySnapshotStore::class);

@@ -14,7 +14,13 @@ class TimedDrawScoringTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_identical_explicit_timed_final_submission_repairs_only_stale_metadata_after_playoffs_exist(): void
+    public static function scoreRoutes(): array
+    {
+        return ['admin score page' => ['backend'], 'venue scoring API' => ['api']];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('scoreRoutes')]
+    public function test_identical_explicit_timed_final_submission_repairs_only_stale_metadata_after_playoffs_exist(string $route): void
     {
         $draw = $this->draw();
         $fixture = $this->fixture($draw);
@@ -31,11 +37,16 @@ class TimedDrawScoringTest extends TestCase
             DB::table('fixture_results')->orderBy('id')->get()->toJson(),
             DB::table('order_of_plays')->orderBy('id')->get()->toJson(),
         ];
-        $url = route('rr.fixture.saveScore', $fixture);
+        $url = $route === 'backend' ? route('rr.fixture.saveScore', $fixture)
+            : route('api.draws.fixtures.score.store', ['draw' => $draw, 'fixture' => $fixture]);
         $actor = auth()->user();
         $this->actingAs(User::factory()->create());
         $this->postJson($url, ['sets' => ['0-1']])->assertForbidden();
         $this->actingAs($actor);
+        if ($route === 'api') {
+            $foreignDraw = Draw::factory()->create(['event_id' => $draw->event_id, 'published' => false, 'locked' => false]);
+            $this->postJson(route('api.draws.fixtures.score.store', ['draw' => $foreignDraw, 'fixture' => $fixture]), ['sets' => ['0-1']])->assertUnprocessable();
+        }
         $draw->update(['locked' => true]);
         $this->postJson($url, ['sets' => ['0-1']])->assertForbidden();
         $draw->update(['locked' => false]);

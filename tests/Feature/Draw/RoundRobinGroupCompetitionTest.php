@@ -25,22 +25,24 @@ class RoundRobinGroupCompetitionTest extends TestCase
         return $draw;
     }
 
-    private function group(Draw $draw, string $name): Fixture
+    private function group(Draw $draw, string $name, bool $complete = true): Fixture
     {
         $group = $draw->groups()->create(['name' => $name]);
         $ids = Registration::factory()->count(2)->create()->pluck('id');
         foreach ($ids as $seed => $id) $group->registrations()->attach($id, ['seed' => $seed + 1]);
-        $fixture = Fixture::factory()->create(['draw_id' => $draw->id, 'draw_group_id' => $group->id, 'stage' => 'RR', 'registration1_id' => $ids[0], 'registration2_id' => $ids[1], 'winner_registration' => $ids[0]]);
-        FixtureResult::factory()->create(['fixture_id' => $fixture->id, 'registration1_score' => 6, 'registration2_score' => 2, 'set_nr' => 1]);
+        $fixture = Fixture::factory()->create(['draw_id' => $draw->id, 'draw_group_id' => $group->id, 'stage' => 'RR', 'registration1_id' => $ids[0], 'registration2_id' => $ids[1], 'winner_registration' => $complete ? $ids[0] : null, 'match_status' => $complete ? 1 : 0]);
+        if ($complete) FixtureResult::factory()->create(['fixture_id' => $fixture->id, 'registration1_score' => 6, 'registration2_score' => 2, 'set_nr' => 1]);
         return $fixture;
     }
 
-    public function test_competition_choice_preserves_groups_fixtures_results_and_schedule(): void
+    public function test_competition_choice_preserves_unplayed_groups_fixtures_and_schedule_but_rejects_recorded_results(): void
     {
         $draw = $this->draw();
-        $fixture = $this->group($draw, 'A');
-        $this->group($draw, 'B');
-        OrderOfPlay::create(['draw_id' => $draw->id, 'fixture_id' => $fixture->id, 'venue_id' => Venue::factory()->create()->id, 'court' => '1', 'time' => '2026-11-01 09:00:00']);
+        $fixture = $this->group($draw, 'A', false);
+        $this->group($draw, 'B', false);
+        $venue = new Venue();
+        $venue->forceFill(['name' => 'Group competition courts'])->save();
+        OrderOfPlay::create(['draw_id' => $draw->id, 'fixture_id' => $fixture->id, 'venue_id' => $venue->id, 'court' => '1', 'time' => '2026-11-01 09:00:00']);
         $before = [DB::table('draw_groups')->get()->toJson(), DB::table('draw_group_registrations')->get()->toJson(), Fixture::all()->toJson(), FixtureResult::all()->toJson(), DB::table('order_of_plays')->get()->toJson()];
         foreach (['round_robin_playoffs', 'round_robin'] as $workflow) {
             $this->post(route('draw.setup.store', $draw), ['workflow' => $workflow])->assertRedirect();
@@ -50,14 +52,23 @@ class RoundRobinGroupCompetitionTest extends TestCase
         Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'MAIN']);
         $this->post(route('draw.setup.store', $draw), ['workflow' => 'round_robin_playoffs'])->assertStatus(409);
         $this->assertSame('round_robin', $draw->fresh()->settings->workflow);
+
+        // Even without playoffs, a recorded result freezes tournament rules.
+        $draw->drawFixtures()->where('stage', 'MAIN')->delete();
+        FixtureResult::factory()->create(['fixture_id' => $fixture->id, 'registration1_score' => 6, 'registration2_score' => 2, 'set_nr' => 1]);
+        $fixture->update(['winner_registration' => $fixture->registration1_id, 'match_status' => 1]);
+        $scored = [Fixture::all()->toJson(), FixtureResult::all()->toJson(), DB::table('order_of_plays')->get()->toJson()];
+        $this->post(route('draw.setup.store', $draw), ['workflow' => 'round_robin_playoffs'])->assertStatus(409);
+        $this->assertSame('round_robin', $draw->fresh()->settings->workflow);
+        $this->assertSame($scored, [Fixture::all()->toJson(), FixtureResult::all()->toJson(), DB::table('order_of_plays')->get()->toJson()]);
     }
 
     public function test_lifecycle_and_event_authorization_protect_competition_option(): void
     {
         $draw = $this->draw();
-        foreach (['locked', 'published', 'oop_published'] as $flag) {
+        foreach (['locked' => 403, 'published' => 403, 'oop_published' => 409] as $flag => $status) {
             $draw->update([$flag => true]);
-            $this->post(route('draw.setup.store', $draw), ['workflow' => 'round_robin_playoffs'])->assertStatus(409);
+            $this->post(route('draw.setup.store', $draw), ['workflow' => 'round_robin_playoffs'])->assertStatus($status);
             $draw->update([$flag => false]);
         }
         $outsider = User::factory()->create()->assignRole('admin');

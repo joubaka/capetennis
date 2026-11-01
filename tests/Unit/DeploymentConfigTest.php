@@ -6,6 +6,15 @@ use PHPUnit\Framework\TestCase;
 
 class DeploymentConfigTest extends TestCase
 {
+    public function test_event_assistant_migrations_are_explicitly_allowlisted(): void
+    {
+        $config = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.config');
+        preg_match('/^MIGRATION_PATHS="([^"]*)"/ms', $config, $match);
+        $paths = preg_split('/\s+/', trim($match[1] ?? ''));
+        $this->assertContains('database/migrations/2026_11_01_120000_create_event_assistant_tables.php', $paths);
+        $this->assertContains('database/migrations/2026_11_01_120100_create_event_assistant_timing_observations.php', $paths);
+    }
+
     public function test_two_stage_round_robin_migration_is_explicitly_allowlisted(): void
     {
         $config = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.config');

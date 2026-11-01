@@ -279,7 +279,7 @@ class PlayerRatingLeaderboardTest extends TestCase
         $response->assertDontSee('Ratings banner event · player ratings');
 
         $this->get(route('backend.player-performance.ratings'))->assertOk()
-            ->assertSee('Player ratings by age group')->assertDontSee('Tournament workspace')
+            ->assertSee('Cape Tennis all-age ratings')->assertDontSee('Tournament workspace')
             ->assertDontSee('event-workspace-chrome');
     }
 

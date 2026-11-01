@@ -51,8 +51,9 @@ class PlayerRatingLeaderboardController extends Controller
                 'gender' => ['nullable', \Illuminate\Validation\Rule::in(array_keys(\App\Services\Performance\PlayerRatingProfileDirectory::GENDERS))],
                 'search' => ['nullable', 'string', 'max:100'], 'page' => ['nullable', 'integer', 'min:1'],
                 'comparison_group' => ['nullable', 'string', 'max:64'],
+                'sort' => ['nullable', \Illuminate\Validation\Rule::in(['shared', 'score', 'age'])],
             ]);
-            $data = app(\App\Services\Performance\PlayerRatingProfileDirectory::class)->build($settings['age_group'] ?? '', $settings['gender'] ?? '', trim($settings['search'] ?? ''), $settings['comparison_group'] ?? '');
+            $data = app(\App\Services\Performance\PlayerRatingProfileDirectory::class)->build($settings['age_group'] ?? '', $settings['gender'] ?? '', trim($settings['search'] ?? ''), $settings['comparison_group'] ?? '', $settings['sort'] ?? 'shared');
             $data['refreshStatus'] = app(\App\Services\Performance\PlayerAbilityRefreshState::class)->status();
             return response()->view('backend.player-performance.profile-ratings', $data)->header('Cache-Control', 'no-store, private');
         }

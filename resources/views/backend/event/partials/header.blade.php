@@ -18,6 +18,13 @@
       @if($event->status_label)<span class="badge bg-label-primary">{{ $event->status_label }}</span>@endif
     </x-slot:meta>
     <x-slot:actions>
+      @can('event.manage', $event)
+        @if(auth()->user()?->hasRole('super-user') && config('event-assistant.enabled', true))
+          <button type="button" class="event-workspace-action" data-event-assistant-open aria-controls="event-assistant-panel" aria-expanded="false">
+            <i class="ti ti-message-circle" aria-hidden="true"></i><span>Ask assistant</span>
+          </button>
+        @endif
+      @endcan
       @unless($rosterOnly ?? false)
       @if($event->isTeam())
       @can('event.manage', $event)
@@ -42,6 +49,11 @@
   </x-backend.page-header>
   @include('backend.event.partials.workspace-nav')
 </div>
+@can('event.manage', $event)
+  @if(auth()->user()?->hasRole('super-user') && config('event-assistant.enabled', true))
+    @include('backend.event.partials.assistant')
+  @endif
+@endcan
 @if(session('schedule_adaptation_warning'))
   <div class="alert alert-warning mb-3" role="status">
     {{ session('schedule_adaptation_warning') }}
