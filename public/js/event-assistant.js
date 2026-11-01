@@ -11,8 +11,8 @@
     const backdrop = document.getElementById('event-assistant-backdrop');
     const openers = [...document.querySelectorAll('[data-event-assistant-open]')];
     let conversation = null, context = null, busy = false, currentProposal = null;
-    let returnFocus = null, previousOverflow = '', recorder = null, stream = null, timer = null;
-    let chunks = [], discardRecording = false, requestController = null, voiceStarting = false, voiceEpoch = 0;
+    let returnFocus = null, previousOverflow = '', recorder = null;
+    let requestController = null, voiceStarting = false, voiceTranscribing = false, voiceEpoch = 0;
     function node(tag, text, className) {
       const element = document.createElement(tag);
       if (text !== undefined) element.textContent = String(text);
@@ -34,7 +34,7 @@
     }
     async function request(url, payload, method) {
       const controller = new AbortController(); requestController = controller;
-      const timeout = root.setTimeout(() => controller.abort(), 60000);
+      const timeout = root.setTimeout(() => controller.abort(), url === panel.dataset.transcribeUrl && context?.capabilities?.voice_local ? 125000 : 60000);
       try {
         const headers = { Accept: 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.content || '' };
         const options = { method: method || 'POST', headers, signal: controller.signal, credentials: 'same-origin' };
@@ -107,6 +107,8 @@
       choices('[data-ea-draws]', data.draws || [], 'draw_ids'); choices('[data-ea-venues]', data.venues || [], 'venue_ids');
       ai.disabled = data.capabilities?.ai_available === false; if (ai.disabled) ai.checked = false;
       mic.disabled = data.capabilities?.voice_available === false;
+      const voicePrivacy = find('[data-ea-voice-privacy]');
+      if (voicePrivacy && data.capabilities?.voice_local) voicePrivacy.textContent = 'Speak transcribes on this computer using Whisper, with event player names as hints. Review the transcript before sending. AI interpretation is optional; confirmations always use Cape Tennis permissions.';
     }
     function planningOptions() {
       const data = new FormData(form), date = data.get('date');
@@ -222,52 +224,104 @@
         catch (error) { say(error.message, true); } finally { setBusy(false); }
       }
     }
-    function cleanAudio() { root.clearTimeout(timer); timer = null; if (stream) stream.getTracks().forEach(track => track.stop()); stream = null; }
-    function stopVoice(discard) {
-      voiceEpoch++; voiceStarting = false; discardRecording = !!discard;
-      if (recorder && recorder.state !== 'inactive') recorder.stop();
-      else { cleanAudio(); if (!requestController) setBusy(false); }
+    function encodeWav(chunks, sampleRate) {
+      const inputLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+      const samples = new Float32Array(inputLength); let position = 0;
+      chunks.forEach(chunk => { samples.set(chunk, position); position += chunk.length; });
+      const targetRate = 16000, ratio = sampleRate / targetRate, length = Math.floor(inputLength / ratio);
+      const buffer = new ArrayBuffer(44 + length * 2), view = new DataView(buffer);
+      function write(offset, text) { for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i)); }
+      write(0, 'RIFF'); view.setUint32(4, 36 + length * 2, true); write(8, 'WAVE'); write(12, 'fmt ');
+      view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+      view.setUint32(24, targetRate, true); view.setUint32(28, targetRate * 2, true);
+      view.setUint16(32, 2, true); view.setUint16(34, 16, true); write(36, 'data'); view.setUint32(40, length * 2, true);
+      let offset = 44;
+      for (let i = 0; i < length; i++) {
+        // Browsers may keep a native sample rate despite the requested 16 kHz context.
+        // Average source samples across each output interval when downsampling.
+        const start = i * ratio, end = Math.min(inputLength, (i + 1) * ratio);
+        let sum = 0;
+        for (let index = Math.floor(start); index < Math.ceil(end); index++) {
+          sum += samples[index] * (Math.min(index + 1, end) - Math.max(index, start));
+        }
+        const value = Math.max(-1, Math.min(1, sum / (end - start)));
+        view.setInt16(offset, value < 0 ? value * 32768 : value * 32767, true); offset += 2;
+      }
+      return new Blob([buffer], { type: 'audio/wav' });
+    }
+    function cleanAudio(session) {
+      if (!session || session.cleaned) return;
+      session.cleaned = true; root.clearTimeout(session.timer);
+      if (session.processor) session.processor.onaudioprocess = null;
+      [session.processor, session.source, session.silent].forEach(part => { try { part?.disconnect(); } catch (_) {} });
+      session.stream?.getTracks().forEach(track => track.stop());
+      if (session.audioContext?.state !== 'closed') session.audioContext?.close().catch(() => {});
+    }
+    async function stopVoice(discard) {
+      const epoch = ++voiceEpoch, session = recorder; recorder = null; voiceStarting = false;
+      cleanAudio(session); mic.textContent = 'Speak'; find('[data-ea-cancel-voice]').hidden = true;
+      if (!session) { if (!requestController) setBusy(false); return; }
+      if (discard) { session.chunks = []; setBusy(false); say('Recording discarded.'); return; }
+      if (!session.heardSpeech) { session.chunks = []; setBusy(false); say('No speech was heard. Try again or type your request.', true); return; }
+      const audio = encodeWav(session.chunks, session.audioContext.sampleRate); session.chunks = [];
+      if (audio.size > 5 * 1024 * 1024) { setBusy(false); say('Recording is too large. Try a shorter request.', true); return; }
+      const data = new FormData(); data.append('audio', audio, 'request.wav');
+      data.append(context?.capabilities?.voice_local ? 'transcription_consent' : 'use_ai', '1');
+      voiceTranscribing = true; setBusy(true); say('Transcribing your recording…');
+      try {
+        const result = await request(panel.dataset.transcribeUrl, data);
+        if (epoch !== voiceEpoch || panel.hidden) return;
+        const transcript = String(result.transcript || result.text || '').trim();
+        if (!transcript) throw new Error('No speech could be transcribed. Try again or type your request.');
+        input.value = transcript; say('Review the transcript, then Send.'); input.focus();
+      } catch (error) { if (epoch === voiceEpoch && !panel.hidden) say(error.message, true); }
+      finally { if (epoch === voiceEpoch) { voiceTranscribing = false; setBusy(false); if (!panel.hidden) input.focus(); } }
     }
     function close() {
       if (recorder || voiceStarting) stopVoice(true);
+      else if (voiceTranscribing) { voiceEpoch++; voiceTranscribing = false; requestController?.abort(); setBusy(false); }
       panel.hidden = true; backdrop.hidden = true; document.body.style.overflow = previousOverflow;
       openers.forEach(b => b.setAttribute('aria-expanded', 'false')); returnFocus?.focus();
     }
     async function startVoice() {
       if (recorder && recorder.state === 'recording') { stopVoice(false); return; }
       if (busy || voiceStarting) return;
-      if (!root.MediaRecorder || !root.navigator.mediaDevices?.getUserMedia) { say('Voice recording is unavailable in this browser. Type your request instead.', true); return; }
+      const AudioContextClass = root.AudioContext || root.webkitAudioContext;
+      if (!AudioContextClass || !root.navigator.mediaDevices?.getUserMedia) { say('Voice recording is unavailable in this browser. Use localhost or HTTPS, or type your request instead.', true); return; }
       const epoch = ++voiceEpoch; voiceStarting = true; setBusy(true);
+      let session = null;
       try {
         const acquired = await root.navigator.mediaDevices.getUserMedia({ audio: true });
         if (epoch !== voiceEpoch || panel.hidden) { acquired.getTracks().forEach(track => track.stop()); return; }
-        stream = acquired;
-        const mimeType = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus', 'audio/webm'].find(type => root.MediaRecorder.isTypeSupported(type));
-        const activeRecorder = new root.MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-        recorder = activeRecorder; chunks = []; discardRecording = false;
-        recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
-        recorder.onerror = () => {
-          discardRecording = true; cleanAudio();
-          if (activeRecorder.state !== 'inactive') activeRecorder.stop();
-          else { recorder = null; mic.textContent = 'Speak'; find('[data-ea-cancel-voice]').hidden = true; setBusy(false); }
-          say('Recording failed. Please type your request.', true);
+        session = { stream: acquired, chunks: [], heardSpeech: false, speechStartedAt: null, lastVoiceAt: root.performance.now(), state: 'starting' };
+        recorder = session;
+        try { session.audioContext = new AudioContextClass({ sampleRate: 16000 }); }
+        catch (error) { if (error.name !== 'NotSupportedError') throw error; session.audioContext = new AudioContextClass(); }
+        if (session.audioContext.state === 'suspended') await session.audioContext.resume();
+        if (epoch !== voiceEpoch || panel.hidden) { cleanAudio(session); return; }
+        session.source = session.audioContext.createMediaStreamSource(acquired);
+        session.processor = session.audioContext.createScriptProcessor(4096, 1, 1);
+        session.silent = session.audioContext.createGain(); session.silent.gain.value = 0;
+        session.processor.onaudioprocess = event => {
+          if (recorder !== session || session.state !== 'recording') return;
+          const samples = new Float32Array(event.inputBuffer.getChannelData(0)); session.chunks.push(samples);
+          let power = 0; for (let i = 0; i < samples.length; i++) power += samples[i] * samples[i];
+          const now = root.performance.now(), level = Math.sqrt(power / samples.length);
+          if (level > 0.018) {
+            session.heardSpeech = true; session.lastVoiceAt = now;
+            if (session.speechStartedAt === null) session.speechStartedAt = now;
+          }
+          if (session.heardSpeech && now - session.lastVoiceAt > 1400 && now - session.speechStartedAt > 700) stopVoice(false);
         };
-        recorder.onstop = async () => {
-          const type = activeRecorder.mimeType || mimeType || 'audio/webm'; recorder = null; cleanAudio();
-          mic.textContent = 'Speak'; find('[data-ea-cancel-voice]').hidden = true;
-          input.disabled = false; find('[data-ea-send]').disabled = false;
-          if (discardRecording) { chunks = []; setBusy(false); say('Recording discarded.'); return; }
-          const audio = new Blob(chunks, { type }); chunks = [];
-          if (!audio.size || audio.size > 5 * 1024 * 1024) { setBusy(false); say('Recording is empty or too large. Try a shorter request.', true); return; }
-          const data = new FormData(); data.append('audio', audio, 'request.' + (type.includes('mp4') ? 'm4a' : type.includes('ogg') ? 'ogg' : 'webm')); data.append('use_ai', '1');
-          setBusy(true); say('Transcribing your recording…');
-          try { const result = await request(panel.dataset.transcribeUrl, data); input.value = result.transcript || result.text || ''; say('Review the transcript, then Send.'); if (!panel.hidden) input.focus(); }
-          catch (error) { say(error.message, true); } finally { setBusy(false); }
-        };
-        recorder.start(); mic.textContent = 'Stop recording'; mic.disabled = false; find('[data-ea-cancel-voice]').hidden = false; find('[data-ea-cancel-voice]').disabled = false;
+        session.source.connect(session.processor); session.processor.connect(session.silent); session.silent.connect(session.audioContext.destination);
+        session.state = 'recording'; mic.textContent = 'Stop recording'; mic.disabled = false; find('[data-ea-cancel-voice]').hidden = false; find('[data-ea-cancel-voice]').disabled = false;
         input.disabled = true; find('[data-ea-send]').disabled = true;
-        say('Recording. Stops after 30 seconds; you can review the transcript before sending.'); timer = root.setTimeout(() => stopVoice(false), 30000);
-      } catch (error) { cleanAudio(); say(error.name === 'NotAllowedError' ? 'Microphone access was denied. Allow it in your browser settings or type your request.' : 'Could not start recording. Check your microphone or type your request.', true); }
+        say('Recording. Stops after about 1.5 seconds of silence or 30 seconds. Review the transcript before sending.');
+        session.timer = root.setTimeout(() => stopVoice(false), 30000);
+      } catch (error) {
+        cleanAudio(session);
+        if (epoch === voiceEpoch) { recorder = null; say(error.name === 'NotAllowedError' ? 'Microphone access was denied. Allow it in your browser settings or type your request.' : 'Could not start recording. Check your microphone or type your request.', true); }
+      }
       finally { if (epoch === voiceEpoch) voiceStarting = false; if (!recorder && !requestController && !voiceStarting) setBusy(false); }
     }
     openers.forEach(button => button.addEventListener('click', open)); find('[data-ea-close]').addEventListener('click', close); backdrop.addEventListener('click', close);

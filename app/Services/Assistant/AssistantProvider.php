@@ -69,7 +69,9 @@ final class AssistantProvider implements \SportStack\Assistant\Contracts\IntentP
 
     private function request(array $parts, bool $json): array
     {
-        $model = (string) config('services.gemini.model_fast', config('services.gemini.model'));
+        $model = (string) ($json
+            ? config('services.gemini.model_fast', config('services.gemini.model'))
+            : config('services.gemini.model', 'gemini-2.5-flash'));
         try {
             $response = Http::acceptJson()->withHeaders(['x-goog-api-key' => trim((string) config('services.gemini.api_key'))])
                 ->timeout(35)->post('https://generativelanguage.googleapis.com/v1beta/models/'.rawurlencode($model).':generateContent', [

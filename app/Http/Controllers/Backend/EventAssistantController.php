@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
 use App\Models\Event;
-use App\Services\Assistant\{AssistantProvider, AssistantProviderException, AssistantUsageLimits, EventAssistantService};
+use App\Services\Assistant\{AssistantTranscriptionProvider, AssistantProviderException, AssistantUsageLimits, EventAssistantService};
 use Illuminate\Http\{JsonResponse, Request};
 use Illuminate\Support\Facades\Schema;
 
@@ -91,13 +91,14 @@ class EventAssistantController extends Controller
         return response()->json($this->assistant->improvements($event, $request->user()));
     }
 
-    public function transcribe(Request $request, Event $event, AssistantProvider $provider, AssistantUsageLimits $limits): JsonResponse
+    public function transcribe(Request $request, Event $event, AssistantTranscriptionProvider $provider, AssistantUsageLimits $limits): JsonResponse
     {
         $this->guard($event);
-        abort_unless(config('event-assistant.mode') === 'local_first', 403, 'Voice is disabled in local-only mode.');
-        $data = $request->validate(['use_ai' => ['required', 'accepted'], 'audio' => ['required', 'file', 'max:5120', 'mimetypes:audio/wav,audio/x-wav,audio/webm,video/webm,audio/mp4,video/mp4,audio/ogg,application/ogg']]);
+        abort_unless($provider->isLocal() || config('event-assistant.mode') === 'local_first', 403, 'External voice is disabled in local-only mode.');
+        $consent = $provider->isLocal() ? 'transcription_consent' : 'use_ai';
+        $data = $request->validate([$consent => ['required', 'accepted'], 'audio' => ['required', 'file', 'max:5120', 'mimetypes:audio/wav,audio/x-wav,audio/webm,video/webm,audio/mp4,video/mp4,audio/ogg,application/ogg']]);
         $limits->consume($request->user()->id, 'voice');
-        return $this->respond(fn () => ['transcript' => $provider->transcribe($data['audio'])]);
+        return $this->respond(fn () => ['transcript' => $provider->transcribe($data['audio'], $event)]);
     }
 
     private function guard(Event $event, bool $database = true): void

@@ -39,7 +39,7 @@ final class EventAssistantService
             'court_labels' => $this->scheduler->fullDayCourtLabels($event),
             'defaults' => array_replace(['start_time' => '08:00', 'end_time' => '17:00', 'duration' => 60, 'court_gap' => 5, 'player_rest' => 60], $preferences),
             'preferences' => $preferences,
-            'capabilities' => ['ai_available' => app(AssistantProvider::class)->available(), 'voice_available' => app(AssistantProvider::class)->available(), 'schedule' => true, 'publication' => true, 'draw_draft' => Gate::forUser($actor)->allows('individual-draw.create', $event), 'draw_generation' => 'prepared_initial_round_robin'],
+            'capabilities' => ['ai_available' => app(AssistantProvider::class)->available(), 'voice_available' => app(AssistantTranscriptionProvider::class)->available(), 'voice_local' => app(AssistantTranscriptionProvider::class)->isLocal(), 'schedule' => true, 'publication' => true, 'draw_draft' => Gate::forUser($actor)->allows('individual-draw.create', $event), 'draw_generation' => 'prepared_initial_round_robin'],
         ];
     }
 

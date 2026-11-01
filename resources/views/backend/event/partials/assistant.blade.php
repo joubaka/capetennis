@@ -82,7 +82,7 @@
       <button type="submit" class="ea-primary" data-ea-send>Send</button>
       <button type="button" data-ea-new>New conversation</button>
     </div>
-    <p class="ea-privacy">Speak sends your recording for transcription. Review the transcript before sending. AI interpretation is optional; confirmations always use Cape Tennis permissions.</p>
+    <p class="ea-privacy" data-ea-voice-privacy>Speak sends your recording for transcription. Review the transcript before sending. AI interpretation is optional; confirmations always use Cape Tennis permissions.</p>
   </form>
 </section>
 <script src="{{ asset('js/event-assistant.js') }}?v={{ filemtime(public_path('js/event-assistant.js')) }}" defer></script>

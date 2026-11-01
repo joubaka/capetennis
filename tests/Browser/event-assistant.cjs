@@ -12,10 +12,12 @@ test('event assistant preview, confirmation, privacy and voice recovery at phone
   const browser = await chromium.launch({ headless: true, channel: 'msedge' });
   try {
     for (const width of [320, 390, 768, 1280]) {
+      const voiceLocal = width === 320 || width === 768;
       const page = await browser.newPage({ viewport: { width, height: 900 } });
-      const errors = [], confirmations = [], posts = [];
+      const errors = [], confirmations = [], posts = [], transcriptions = [];
       page.on('pageerror', error => errors.push(error.message));
       let confirmationFails = false, confirmationServerError = false;
+      let holdTranscription = false, releaseTranscription = null;
       const proposal = { uuid: 'proposal-1', type: 'schedule', confirmation_token: 'token-1', can_confirm: true,
         preview: { matches: [{ fixture_key: 'individual:1', draw_name: 'U14 Boys <img src=x>', scheduled_at: '2026-11-07 08:00:00', venue_name: 'Main courts', court: '1' }], existing_matches: [{ fixture_key: 'individual:2' }], warnings: [], unscheduled: [] } };
       await page.route('**/*', async route => {
@@ -23,8 +25,12 @@ test('event assistant preview, confirmation, privacy and voice recovery at phone
         if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html });
         if (url.pathname === '/css/event-assistant.css' || url.pathname === '/js/event-assistant.js') return route.fulfill({ contentType: url.pathname.endsWith('.css') ? 'text/css' : 'application/javascript', body: fs.readFileSync(path.join(root, 'public', url.pathname), 'utf8') });
         const action = url.pathname.split('/').pop();
-        if (action === 'context') return route.fulfill({ json: { available: true, dates: ['2026-11-07'], defaults: { end_time: '17:00' }, event: { name: 'Demo' }, draws: [{ id: 1, name: 'U14 Boys' }], venues: [{ id: 1, name: 'Main courts' }], capabilities: { ai_available: true, voice_available: true } } });
-        if (action === 'transcribe') return route.fulfill({ json: { transcript: 'Start the matches at nine instead' } });
+        if (action === 'context') return route.fulfill({ json: { available: true, dates: ['2026-11-07'], defaults: { end_time: '17:00' }, event: { name: 'Demo' }, draws: [{ id: 1, name: 'U14 Boys' }], venues: [{ id: 1, name: 'Main courts' }], capabilities: { ai_available: !voiceLocal, voice_available: true, voice_local: voiceLocal } } });
+        if (action === 'transcribe') {
+          transcriptions.push(request.postDataBuffer());
+          if (holdTranscription) await new Promise(resolve => { releaseTranscription = resolve; });
+          return route.fulfill({ json: { transcript: 'Start the matches at nine instead' } });
+        }
         const data = request.method() === 'GET' ? {} : request.postDataJSON(); posts.push({ action, data });
         if (action === 'preview') return route.fulfill({ json: { conversation_uuid: 'test-conversation', message: { id: 1, content: 'Review your schedule.' }, proposal } });
         if (action === 'publication-preview') return route.fulfill({ json: { proposal: { ...proposal, type: 'publication' }, message: { id: 3, content: 'Review the public order of play.' } } });
@@ -91,7 +97,6 @@ test('event assistant preview, confirmation, privacy and voice recovery at phone
       await panel.getByText('A · 4 players · 6 matches', { exact: true }).waitFor();
       assert.equal(await panel.getByRole('button', { name: 'Generate round-robin fixtures', exact: true }).isDisabled(), true);
       await page.evaluate(() => {
-        Object.defineProperty(window, 'MediaRecorder', { configurable: true, value: class { static isTypeSupported() { return true; } } });
         Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: async () => { throw Object.assign(new Error('denied'), { name: 'NotAllowedError' }); } } });
       });
       await panel.getByRole('button', { name: 'Speak', exact: true }).click();
@@ -100,21 +105,98 @@ test('event assistant preview, confirmation, privacy and voice recovery at phone
       const messageCount = posts.filter(p => p.action === 'message').length;
       await page.evaluate(() => {
         window.stoppedTracks = 0;
-        Object.defineProperty(window, 'MediaRecorder', { configurable: true, value: class {
-          static isTypeSupported() { return true; }
-          constructor(stream, options) { this.mimeType = options.mimeType; this.state = 'inactive'; }
-          start() { this.state = 'recording'; }
-          stop() { this.state = 'inactive'; this.ondataavailable({ data: new Blob(['synthetic-audio'], { type: this.mimeType }) }); this.onstop(); }
+        window.closedAudioContexts = 0; window.voiceNow = 100;
+        Object.defineProperty(performance, 'now', { configurable: true, value: () => window.voiceNow });
+        const originalTimeout = window.setTimeout;
+        window.setTimeout = (callback, delay, ...args) => {
+          if (delay === 30000) window.voiceLimit = callback;
+          return originalTimeout(callback, delay, ...args);
+        };
+        Object.defineProperty(window, 'AudioContext', { configurable: true, value: class {
+          // Deliberately keep a native 48 kHz rate to exercise 16 kHz WAV resampling.
+          constructor(options) { window.requestedSampleRate = options.sampleRate; this.sampleRate = 48000; this.state = 'running'; this.destination = {}; }
+          createMediaStreamSource() { return { connect() {}, disconnect() {} }; }
+          createScriptProcessor() { const processor = { connect() {}, disconnect() {}, onaudioprocess: null }; window.voiceProcessor = processor; return processor; }
+          createGain() { return { gain: { value: 1 }, connect() {}, disconnect() {} }; }
+          close() { this.state = 'closed'; window.closedAudioContexts++; return Promise.resolve(); }
         } });
+        window.emitVoice = (level = 0.1, elapsed = 100) => {
+          window.voiceNow += elapsed;
+          window.voiceProcessor.onaudioprocess?.({ inputBuffer: { getChannelData: () => new Float32Array(4800).fill(level) } });
+        };
         Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: async () => ({ getTracks: () => [{ stop() { window.stoppedTracks++; } }] }) } });
       });
       await panel.getByRole('button', { name: 'Speak', exact: true }).click();
       assert.equal(await panel.getByRole('button', { name: 'Remember current timing defaults', exact: true }).isDisabled(), true, 'recording blocks unrelated requests');
+      await page.evaluate(() => window.emitVoice());
       await panel.getByRole('button', { name: 'Stop recording', exact: true }).click();
       await page.waitForFunction(() => document.getElementById('ea-input').value === 'Start the matches at nine instead');
       assert.equal(posts.filter(p => p.action === 'message').length, messageCount, 'transcript is not automatically submitted');
       assert.equal(await panel.locator('[data-ea-ai]').isChecked(), false, 'transcription does not opt in interpretation');
+      assert.equal(await panel.locator('[data-ea-ai]').isDisabled(), voiceLocal, 'local voice remains independent of external AI availability');
+      assert.equal(transcriptions.length, 1);
+      const multipart = transcriptions[0].toString('latin1');
+      assert.match(multipart, voiceLocal ? /name="transcription_consent"/ : /name="use_ai"/);
+      assert.doesNotMatch(multipart, voiceLocal ? /name="use_ai"/ : /name="transcription_consent"/);
+      assert.match(multipart, /filename="request.wav"/); assert.match(multipart, /Content-Type: audio\/wav/);
+      const wav = transcriptions[0].subarray(transcriptions[0].indexOf(Buffer.from('RIFF')));
+      assert.equal(wav.toString('ascii', 8, 12), 'WAVE');
+      assert.equal(wav.readUInt16LE(20), 1, 'PCM encoding'); assert.equal(wav.readUInt16LE(22), 1, 'mono audio');
+      assert.equal(wav.readUInt32LE(24), 16000, 'native 48 kHz audio is resampled to 16 kHz');
+      assert.equal(wav.readUInt16LE(34), 16, '16-bit samples'); assert.equal(wav.readUInt32LE(40), 3200, '0.1 second duration is preserved after resampling');
+      assert.equal(await page.evaluate(() => window.requestedSampleRate), 16000);
       assert.equal(await page.evaluate(() => window.stoppedTracks), 1, 'microphone tracks released');
+      assert.equal(await page.evaluate(() => window.closedAudioContexts), 1, 'audio context released');
+
+      await panel.getByRole('button', { name: 'Speak', exact: true }).click();
+      await page.evaluate(() => { window.emitVoice(); window.emitVoice(0, 1501); });
+      await page.waitForFunction(() => document.querySelector('[data-ea-status]').textContent === 'Review the transcript, then Send.');
+      assert.equal(transcriptions.length, 2, 'speech followed by silence stops and transcribes');
+      await panel.getByRole('button', { name: 'Speak', exact: true }).click();
+      await page.evaluate(() => { window.emitVoice(); window.voiceLimit(); });
+      await page.waitForFunction(() => document.querySelector('[data-ea-status]').textContent === 'Review the transcript, then Send.');
+      assert.equal(transcriptions.length, 3, '30-second cap stops and transcribes');
+      await panel.getByRole('button', { name: 'Speak', exact: true }).click();
+      await panel.getByRole('button', { name: 'Stop recording', exact: true }).click();
+      await page.waitForFunction(() => document.querySelector('[data-ea-status]').textContent.includes('No speech was heard'));
+      assert.equal(transcriptions.length, 3, 'silence alone is not uploaded');
+      await panel.getByRole('button', { name: 'Speak', exact: true }).click();
+      await page.evaluate(() => window.emitVoice());
+      await panel.locator('[data-ea-cancel-voice]').click();
+      assert.equal(transcriptions.length, 3, 'cancel discards recorded speech');
+      await panel.getByRole('button', { name: 'Speak', exact: true }).click();
+      await page.evaluate(() => window.emitVoice());
+      await panel.getByRole('button', { name: 'Close assistant', exact: true }).click();
+      assert.equal(transcriptions.length, 3, 'closing discards recorded speech');
+      assert.equal(await page.evaluate(() => window.stoppedTracks), 6, 'all recording paths release tracks');
+      assert.equal(await page.evaluate(() => window.closedAudioContexts), 6, 'all recording paths release audio contexts');
+      await page.getByRole('button', { name: 'Ask assistant', exact: true }).click();
+      await page.evaluate(() => {
+        window.originalGetUserMedia = navigator.mediaDevices.getUserMedia;
+        navigator.mediaDevices.getUserMedia = () => new Promise(resolve => { window.finishVoicePermission = resolve; });
+      });
+      await panel.getByRole('button', { name: 'Speak', exact: true }).click();
+      await panel.getByRole('button', { name: 'Close assistant', exact: true }).click();
+      await page.evaluate(() => {
+        window.finishVoicePermission({ getTracks: () => [{ stop() { window.stoppedTracks++; } }] });
+        navigator.mediaDevices.getUserMedia = window.originalGetUserMedia;
+      });
+      await page.waitForFunction(() => window.stoppedTracks === 7);
+      assert.equal(transcriptions.length, 3, 'closing during microphone permission prevents recording/upload');
+      await page.getByRole('button', { name: 'Ask assistant', exact: true }).click();
+      await panel.locator('#ea-input').fill('Keep this typed text');
+      holdTranscription = true;
+      await panel.getByRole('button', { name: 'Speak', exact: true }).click();
+      await page.evaluate(() => window.emitVoice());
+      await panel.getByRole('button', { name: 'Stop recording', exact: true }).click();
+      for (let wait = 0; !releaseTranscription && wait < 50; wait++) await page.waitForTimeout(10);
+      assert.equal(typeof releaseTranscription, 'function', 'transcription request is pending');
+      await panel.getByRole('button', { name: 'Close assistant', exact: true }).click();
+      holdTranscription = false; releaseTranscription();
+      await page.getByRole('button', { name: 'Ask assistant', exact: true }).click();
+      await page.waitForTimeout(50);
+      assert.equal(await panel.locator('#ea-input').inputValue(), 'Keep this typed text', 'late transcript after close cannot overwrite input');
+      assert.equal(posts.filter(p => p.action === 'message').length, messageCount, 'automatic stops never submit messages');
       assert.deepEqual(await page.evaluate(() => {
         const rect = document.getElementById('event-assistant-panel').getBoundingClientRect();
         return { overflow: document.documentElement.scrollWidth > innerWidth, outside: rect.left < -1 || rect.right > innerWidth + 1 };

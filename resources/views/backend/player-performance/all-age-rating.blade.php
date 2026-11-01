@@ -1,8 +1,19 @@
+@php($disconnected = ($estimate['comparable'] ?? true) === false || ($estimate['connection_status'] ?? null) === 'disconnected')
+@if($disconnected)
+@if(is_numeric($estimate['score'] ?? null))
+<p class="h2">All-age rating unavailable — insufficient connecting results</p>
+<p>Comparison group {{ $estimate['component'] }} is not connected to the shared all-age reference.</p>
+<p>Within-group score only: <strong>{{ number_format($estimate['score'], 1) }}/100</strong>. This is not an all-age rating.</p>
+@else
+<p class="h2">All-age rating unavailable</p>
+@endif
+@else
 <p class="h2">{{ is_numeric($estimate['score'] ?? null) ? number_format($estimate['score'], 1).'/100' : 'Shared rating withheld' }}</p>
 <p>One singles rating across age groups · provisional · comparison group {{ $estimate['component'] }}</p>
+@endif
 @if($estimate['reason'] ?? null)<p role="status">{{ $estimate['reason'] }}</p>@endif
 <p>Evidence confidence: {{ $estimate['confidence_label'] ?? 'Low' }}. {{ $estimate['played'] ?? 0 }} recorded matches against {{ $estimate['direct_opponents'] ?? 0 }} distinct opponents.</p>
-@if(($estimate['comparable'] ?? true) === false)<p class="alert alert-warning" role="status"><strong>Provisional within-group rating · low confidence.</strong> This estimate is not calibrated against other comparison groups. A matching number elsewhere does not establish equal ability.</p>@endif
+@if($disconnected && is_numeric($estimate['score'] ?? null))<p class="alert alert-warning" role="status"><strong>Provisional within-group rating · low confidence.</strong> This estimate is not calibrated against other comparison groups. A matching number elsewhere does not establish equal ability.</p>@endif
 <p class="small">{{ $estimate['confidence_explanation'] ?? '' }}</p>
 @if(!empty($estimate['historical_connection']))
 <p class="alert alert-warning text-dark" role="status"><strong>Low confidence — historical connection.</strong> This comparison needs a match link from {{ $estimate['connection_reference_date'] ?? 'an older date' }} ({{ $estimate['connection_age_days'] ?? '?' }} days old). Recent matches within the player's own group do not make that link recent.</p>

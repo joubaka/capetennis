@@ -25,7 +25,7 @@ class EventAssistantProviderTest extends TestCase
 
     private function scenario(): Event
     {
-        config(['event-assistant.enabled' => true, 'event-assistant.mode' => 'local_first', 'services.gemini.api_key' => 'test-only-key']);
+        config(['event-assistant.enabled' => true, 'event-assistant.mode' => 'local_first', 'event-assistant.transcription.provider' => 'gemini', 'services.gemini.api_key' => 'test-only-key']);
         Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
         $actor = User::factory()->create()->assignRole('super-user');
         $event = Event::factory()->create(['name' => 'Provider test event', 'start_date' => '2026-11-07', 'end_date' => '2026-11-07']);
@@ -77,6 +77,26 @@ class EventAssistantProviderTest extends TestCase
         Http::preventStrayRequests();
         $this->post(route('backend.event-assistant.transcribe', $event), ['audio' => UploadedFile::fake()->create('question.wav', 1, 'audio/wav')], ['Accept' => 'application/json'])->assertUnprocessable();
         Http::assertNothingSent();
+    }
+
+    public function test_voice_uses_the_full_model_while_text_interpretation_keeps_the_fast_model(): void
+    {
+        $event = $this->scenario();
+        config(['services.gemini.model' => 'voice-full-test', 'services.gemini.model_fast' => 'text-fast-test']);
+        Http::preventStrayRequests();
+        Http::fake([
+            '*voice-full-test:generateContent' => Http::response(['candidates' => [['content' => ['parts' => [['text' => 'Schedule Saturday at eight']]]]]]),
+            '*text-fast-test:generateContent' => Http::response(['candidates' => [['content' => ['parts' => [['text' => '{"action":"help"}']]]]]]),
+        ]);
+        $this->post(route('backend.event-assistant.transcribe', $event), [
+            'audio' => UploadedFile::fake()->create('question.wav', 1, 'audio/wav'), 'use_ai' => true,
+        ], ['Accept' => 'application/json'])->assertOk();
+        $this->postJson(route('backend.event-assistant.message', $event), ['message' => 'What can you do?', 'use_ai' => true])->assertOk();
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/voice-full-test:generateContent')
+            && $request->hasHeader('x-goog-api-key') && ! str_contains($request->url(), 'key='));
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/text-fast-test:generateContent'));
+        $this->assertDatabaseCount('event_assistant_proposals', 0);
     }
 
     public function test_provider_status_errors_are_actionable_and_never_echo_provider_bodies(): void

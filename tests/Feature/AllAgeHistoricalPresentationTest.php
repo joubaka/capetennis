@@ -68,6 +68,58 @@ class AllAgeHistoricalPresentationTest extends TestCase
         $estimate = ['score' => 61.5, 'component' => 'local', 'confidence_label' => 'Low', 'comparable' => false];
         $html = view('backend.player-performance.all-age-rating', compact('estimate'))->render();
         $this->assertStringContainsString('61.5/100', $html);
+        $this->assertStringContainsString('All-age rating unavailable — insufficient connecting results', $html);
+        $this->assertStringContainsString('Within-group score only:', $html);
+        $this->assertStringNotContainsString('<p class="h2">61.5/100</p>', $html);
+        $this->assertStringNotContainsString('One singles rating across age groups', $html);
         $this->assertStringContainsString('Provisional within-group rating · low confidence', $html);
+    }
+
+    public function test_disconnected_saved_status_withholds_headline_even_without_comparable_flag(): void
+    {
+        $estimate = ['score' => 93.1, 'component' => 'local', 'connection_status' => 'disconnected'];
+        $html = view('backend.player-performance.all-age-rating', compact('estimate'))->render();
+        $this->assertStringContainsString('All-age rating unavailable — insufficient connecting results', $html);
+        $this->assertStringContainsString('Within-group score only: <strong>93.1/100</strong>', $html);
+        $this->assertStringNotContainsString('<p class="h2">93.1/100</p>', $html);
+    }
+
+    public function test_connected_rating_retains_numeric_all_age_headline(): void
+    {
+        $estimate = ['score' => 61.5, 'component' => 'shared', 'comparable' => true, 'connection_status' => 'recent'];
+        $html = view('backend.player-performance.all-age-rating', compact('estimate'))->render();
+        $this->assertStringContainsString('<p class="h2">61.5/100</p>', $html);
+        $this->assertStringContainsString('One singles rating across age groups', $html);
+        $this->assertStringNotContainsString('Within-group score only:', $html);
+        $this->assertStringNotContainsString('All-age rating unavailable', $html);
+    }
+
+    public function test_unavailable_score_does_not_render_a_within_group_number(): void
+    {
+        foreach ([null, 'not-a-number'] as $score) {
+            $estimate = ['score' => $score, 'component' => 'local', 'comparable' => false];
+            $html = view('backend.player-performance.all-age-rating', compact('estimate'))->render();
+            $this->assertStringContainsString('<p class="h2">All-age rating unavailable</p>', $html);
+            $this->assertStringNotContainsString('insufficient connecting results', $html);
+            $this->assertStringNotContainsString('is not connected', $html);
+            $this->assertStringNotContainsString('Within-group score only:', $html);
+            $this->assertStringNotContainsString('/100', $html);
+        }
+        $estimate = ['score' => null, 'component' => 'shared', 'comparable' => true];
+        $html = view('backend.player-performance.all-age-rating', compact('estimate'))->render();
+        $this->assertStringContainsString('<p class="h2">Shared rating withheld</p>', $html);
+    }
+
+    public function test_nonconverged_score_retains_the_actual_failure_reason(): void
+    {
+        $estimate = ['score' => null, 'component' => 'shared', 'comparable' => false,
+            'connection_status' => 'disconnected', 'reason' => 'The shared model did not converge.'];
+        $html = view('backend.player-performance.all-age-rating', compact('estimate'))->render();
+        $this->assertStringContainsString('<p class="h2">All-age rating unavailable</p>', $html);
+        $this->assertStringContainsString('The shared model did not converge.', $html);
+        $this->assertStringNotContainsString('insufficient connecting results', $html);
+        $this->assertStringNotContainsString('is not connected', $html);
+        $this->assertStringNotContainsString('Within-group score only:', $html);
+        $this->assertStringNotContainsString('Provisional within-group rating', $html);
     }
 }

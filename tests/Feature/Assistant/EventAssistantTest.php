@@ -16,7 +16,7 @@ class EventAssistantTest extends TestCase
 
     private function scenario(): array
     {
-        config(['event-assistant.enabled' => true, 'event-assistant.mode' => 'local_first']);
+        config(['event-assistant.enabled' => true, 'event-assistant.mode' => 'local_first', 'event-assistant.transcription.provider' => 'gemini']);
         Http::preventStrayRequests();
         Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
         $actor = User::factory()->create()->assignRole('super-user');
