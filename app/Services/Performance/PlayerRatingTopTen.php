@@ -9,6 +9,8 @@ use Carbon\CarbonImmutable;
 /** Discovery projection: public series identities and comparable saved ratings only. */
 class PlayerRatingTopTen
 {
+    public const PER_PAGE = 25;
+
     public function __construct(private PlayerRatingAccess $access, private PlayerAbilitySnapshotStore $snapshots, private RankingTeamEligibilityService $eligibility) {}
 
     public function build(?User $user, ?Player $selected = null, array $filters = []): array
@@ -29,7 +31,7 @@ class PlayerRatingTopTen
             $result['lists'][$key] = ['label' => $label, 'players' => []];
         }
         if (!array_key_exists('reason', $snapshot) || $snapshot['reason'] !== null) {
-            $result['reason'] = 'Saved Top 10 ratings are not available yet.';
+            $result['reason'] = 'Saved ratings are not available yet.';
             if ($selected) $result['lists'] = array_intersect_key($result['lists'], [$level => true]);
             return $result;
         }
@@ -84,11 +86,15 @@ class PlayerRatingTopTen
                 }
             }
             if ($selected) $players = array_values(array_filter($players, fn ($p) => ($key !== 'overall' || $age === '' || $p['age'] === $age) && ($gender === '' || $p['gender'] === $gender)));
-            $position = 0; $previous = null;
-            foreach (array_slice($players, 0, 10) as $index => $player) {
-                if ($previous !== $player['score']) $position = $index + 1;
-                $previous = $player['score'];
-                $result['lists'][$key]['players'][] = $player + ['position' => $position];
+            $ranked = $this->positions($players);
+            if ($selected) {
+                $total = count($ranked);
+                $pages = max(1, (int) ceil($total / self::PER_PAGE));
+                $page = min($pages, max(1, (int) ($filters['rating_page'] ?? 1)));
+                $result['lists'][$key]['players'] = array_slice($ranked, ($page - 1) * self::PER_PAGE, self::PER_PAGE);
+                $result['lists'][$key]['pagination'] = ['page' => $page, 'pages' => $pages, 'total' => $total, 'per_page' => self::PER_PAGE];
+            } else {
+                $result['lists'][$key]['players'] = array_slice($ranked, 0, 10);
             }
         }
         if ($selected) $result['lists'] = array_intersect_key($result['lists'], [$level => true]);
@@ -123,7 +129,7 @@ class PlayerRatingTopTen
 
     private function limited(array $result): array
     {
-        $result['reason'] = 'The published player selection exceeds the safe display limit. Top 10 is temporarily unavailable.';
+        $result['reason'] = 'The published player selection exceeds the safe display limit. Ratings are temporarily unavailable.';
         foreach ($result['lists'] as &$list) $list['players'] = [];
         if ($result['selected_age'] !== '') $result['lists'] = array_intersect_key($result['lists'], [$result['filters']['rating_level'] => true]);
         return $result;

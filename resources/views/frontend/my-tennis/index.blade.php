@@ -363,6 +363,12 @@
   </div>
   </div>
 
+  <dialog id="my-tennis-rating-loading" aria-labelledby="my-tennis-rating-loading-title" aria-describedby="my-tennis-rating-loading-message" aria-busy="true" style="border:0;border-radius:1rem;padding:1.75rem;max-width:calc(100vw - 2rem);width:22rem;text-align:center">
+    <span class="spinner-border text-primary mb-3" aria-hidden="true"></span>
+    <h2 class="h5" id="my-tennis-rating-loading-title">Loading ratings</h2>
+    <p class="text-muted mb-0" id="my-tennis-rating-loading-message">Please wait while your ratings update.</p>
+  </dialog>
+  <style>#my-tennis-rating-loading::backdrop{background:rgba(32,56,75,.35)}#my-tennis-rating-loading:not([open]){display:none}</style>
 </div>
 @endsection
 
@@ -385,6 +391,14 @@ document.addEventListener('DOMContentLoaded', () => {
     return;
   }
   let loaded = false, loading = false, refreshPending = false, pendingUrl = null, lastUrl = panel.dataset.ratingUrl;
+  const loadingDialog = document.getElementById('my-tennis-rating-loading');
+  let focusId = null;
+  loadingDialog.addEventListener('cancel', event => event.preventDefault());
+  const syncAgeFilter = () => {
+    const level = panel.querySelector('[name="rating_level"]:not([type="hidden"])');
+    const age = panel.querySelector('[data-rating-age-filter]');
+    if (age && level) age.hidden = level.value !== 'overall';
+  };
   const refreshUI = new window.PlayerRatingHistoryRefreshUI(panel, () => {
     if (loading) { refreshPending = true; return; }
     return load(lastUrl);
@@ -402,6 +416,10 @@ document.addEventListener('DOMContentLoaded', () => {
     lastUrl = url || lastUrl;
     const requestUrl = lastUrl;
     loading = true;
+    if (!loadingDialog.open) {
+      focusId = panel.contains(document.activeElement) ? document.activeElement.id : button.id;
+      loadingDialog.showModal();
+    }
     panel.querySelectorAll('[data-rating-placeholder], [data-rating-retry]').forEach(element => { element.hidden = true; });
     panel.setAttribute('aria-busy', 'true');
     let status = panel.querySelector('[data-rating-load-status]');
@@ -411,17 +429,18 @@ document.addEventListener('DOMContentLoaded', () => {
     spinner.className = 'spinner-border spinner-border-sm flex-shrink-0';
     spinner.setAttribute('aria-hidden', 'true');
     status.append(spinner, 'Loading saved rating history…');
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
     try {
-      const response = await fetch(requestUrl, { headers: { Accept: 'text/html', 'X-Requested-With': 'XMLHttpRequest' }, cache: 'no-store' });
+      const response = await fetch(requestUrl, { headers: { Accept: 'text/html', 'X-Requested-With': 'XMLHttpRequest' }, cache: 'no-store', signal: controller.signal });
       if (!response.ok || response.redirected) throw new Error('Unavailable');
       const html = await response.text();
       if (pendingUrl) return;
       const activeSection = panel.querySelector('[data-rating-section].active')?.dataset.ratingSection || 'progress';
-      const focusId = panel.contains(document.activeElement) ? document.activeElement.id : null;
       panel.innerHTML = html;
+      syncAgeFilter();
       const sectionButton = panel.querySelector('[data-rating-section="' + activeSection + '"]');
       if (sectionButton) bootstrap.Tab.getOrCreateInstance(sectionButton).show();
-      if (focusId) document.getElementById(focusId)?.focus({ preventScroll: true });
       loaded = true;
       refreshUI.sync();
     } catch (error) {
@@ -429,10 +448,16 @@ document.addEventListener('DOMContentLoaded', () => {
       status.textContent = 'Rating history could not be loaded. ';
       const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'btn btn-sm btn-outline-primary'; retry.dataset.ratingRetry = ''; retry.textContent = 'Try again'; status.append(retry);
     } finally {
+      clearTimeout(timeout);
       loading = false;
       panel.removeAttribute('aria-busy');
       if (pendingUrl) { const nextUrl = pendingUrl; pendingUrl = null; refreshPending = false; load(nextUrl); }
       else if (refreshPending) { refreshPending = false; load(lastUrl); }
+      else {
+        loadingDialog.close();
+        const focusTarget = (focusId && document.getElementById(focusId)) || panel.querySelector('[data-rating-list-focus]') || button;
+        focusTarget.focus({ preventScroll: true });
+      }
     }
   };
   button.addEventListener('shown.bs.tab', () => load());
@@ -452,12 +477,17 @@ document.addEventListener('DOMContentLoaded', () => {
         || (loading && changedControl && key !== changedControl.name);
       if (params.has(key) && preserve) params.set(key, value);
     });
+    if (!params.has('rating_page') || ['rating_age', 'rating_gender', 'rating_level'].includes(changedControl?.name)) params.set('rating_page', '1');
     url.search = params.toString();
     return url.toString();
   };
   panel.addEventListener('change', event => {
     const form = event.target.closest('[data-rating-filters]');
-    if (form) load(filterUrl(form, event.target));
+    if (form) {
+      syncAgeFilter();
+      if (loading && event.target.id) focusId = event.target.id;
+      load(filterUrl(form, event.target));
+    }
   });
   panel.addEventListener('submit', event => {
     const form = event.target.closest('[data-rating-filters]');

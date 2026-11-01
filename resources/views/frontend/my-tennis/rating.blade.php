@@ -75,6 +75,7 @@
       $axis = $ratingHistory['axis'];
       $plotY = fn ($score) => 225 - (($score - $axis['min']) / ($axis['max'] - $axis['min'])) * 200;
       $query = ['month' => $ratingHistory['month'], 'scope' => $ratingHistory['scope'], 'scale' => $ratingHistory['scale']] + ($ratingTopTen['filters'] ?? []);
+      $query['rating_page'] = $ratingTopTen['lists'][$ratingTopTen['filters']['rating_level'] ?? 'overall']['pagination']['page'] ?? 1;
       $ratingUrl = fn ($changes = []) => route('my.tennis.rating', ['player' => $ratingPlayer->id] + array_replace($query, $changes));
     @endphp
     <p class="small text-muted mt-3 mb-3">Saved through {{ $ratingHistory['as_of'] }} · updated nightly at 03:00 SAST.@if($ratingHistory['stale']) Showing the latest saved calculation until the next update is ready.@endif</p>
@@ -83,6 +84,7 @@
     @if(($point['connection_status'] ?? '') === 'disconnected')<p role="status" class="alert alert-warning"><strong>Provisional rating · low confidence.</strong> This estimate is based on {{ ($point['evidence_basis'] ?? null) === 'finish_only' ? 'published final placings only' : 'this player’s connected evidence group' }}. It is not yet calibrated against other comparison groups; the same number in another group does not establish equal ability.</p>@endif
     <form method="get" action="{{ route('my.tennis.rating', $ratingPlayer) }}" data-rating-filters class="ctr-filters">
       @foreach($ratingTopTen['filters'] ?? [] as $filter => $value)<input type="hidden" name="{{ $filter }}" value="{{ $value }}">@endforeach
+      <input type="hidden" name="rating_page" value="{{ $query['rating_page'] }}">
       <div><span class="small text-muted d-block">Current rating group</span><strong data-current-rating-group>{{ $ratingHistory['current_group_label'] ?? 'Not rated yet' }}</strong></div>
       <div><label for="ctr-month">Explore a month</label><select class="form-select" name="month" id="ctr-month">
         @foreach($ratingHistory['months'] as $index => $month)<option value="{{ $index }}" @selected($ratingHistory['month'] === $index)>{{ \Carbon\CarbonImmutable::parse($month['date'])->format('M Y') }} · {{ $month['date'] }}</option>@endforeach

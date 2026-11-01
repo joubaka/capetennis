@@ -62,7 +62,7 @@ class PlayerRatingTopTenTest extends TestCase
         $this->assertSame(['overall'], array_keys($result['lists']));
         $this->assertSame(12, $result['summary']['age']['player']['position']);
         $this->assertSame(13, $result['summary']['overall']['player']['position']);
-        $this->assertSame(range(2, 11), array_column($result['lists']['overall']['players'], 'id'));
+        $this->assertSame(range(2, 13), array_column($result['lists']['overall']['players'], 'id'));
         $filtered = $this->build($snapshot, selected: $selected, filters: ['rating_age' => 'u13', 'rating_gender' => 'girls', 'rating_level' => 'red']);
         $this->assertSame([1], array_column($filtered['lists']['red']['players'], 'id'));
         $this->assertSame($result['summary'], $filtered['summary']);
@@ -166,6 +166,76 @@ class PlayerRatingTopTenTest extends TestCase
 
         $html = view('frontend.my-tennis.rating-top-ten', ['ratingTopTen' => $default, 'ratingPlayer' => $selected, 'ratingHistory' => []])->render();
         $this->assertMatchesRegularExpression('/value="girls"\\s+selected/', $html);
+    }
+
+    public function test_red_and_orange_ignore_age_filters_and_hide_age_controls(): void
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-01'));
+        $this->player(1);
+        $this->player(2);
+        DB::table('players')->update(['gender' => '1']);
+        DB::table('players')->where('id', 1)->update(['dateOfBirth' => '2017-01-01']);
+        DB::table('players')->where('id', 2)->update(['dateOfBirth' => '2013-01-01']);
+        $selected = \App\Models\Player::find(1);
+        $snapshot = $this->snapshot([1 => 60, 2 => 70]);
+
+        foreach (['red', 'orange', 'overall'] as $level) {
+            $result = $this->build($snapshot, selected: $selected, filters: ['rating_level' => $level, 'rating_age' => 'u9']);
+            $this->assertSame($level === 'overall' ? [1] : [2, 1], array_column($result['lists'][$level]['players'], 'id'));
+            $html = view('frontend.my-tennis.rating-top-ten', ['ratingTopTen' => $result, 'ratingPlayer' => $selected, 'ratingHistory' => []])->render();
+            $document = new \DOMDocument();
+            @$document->loadHTML('<?xml encoding="utf-8" ?>'.$html);
+            $xpath = new \DOMXPath($document);
+            $this->assertSame(1, $xpath->query('//*[@data-rating-age-filter]')->length);
+            $this->assertSame($level === 'overall' ? 0 : 1, $xpath->query('//*[@data-rating-age-filter and @hidden]')->length);
+            if ($level === 'overall') $this->assertStringContainsString('Age group:', $html);
+            else $this->assertStringNotContainsString('Age group:', $html);
+        }
+    }
+
+    public function test_plus_selected_player_can_browse_all_published_ratings_with_global_ties(): void
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-01'));
+        $scores = [];
+        foreach (range(1, 52) as $id) {
+            $this->player($id, sprintf('Player %02d', $id));
+            $scores[$id] = $id === 26 ? 75 : 100 - $id;
+        }
+        DB::table('players')->update(['dateOfBirth' => '2017-01-01', 'gender' => '1']);
+        $selected = \App\Models\Player::find(52);
+        $snapshot = $this->snapshot($scores);
+        $first = $this->build($snapshot, selected: $selected);
+        $this->assertSame(range(1, 25), array_column($first['lists']['overall']['players'], 'id'));
+        $this->assertSame(['page' => 1, 'pages' => 3, 'total' => 52, 'per_page' => 25], $first['lists']['overall']['pagination']);
+        $second = $this->build($snapshot, selected: $selected, filters: ['rating_page' => 2]);
+        $this->assertSame(range(26, 50), array_column($second['lists']['overall']['players'], 'id'));
+        $this->assertSame(25, $second['lists']['overall']['players'][0]['position']);
+        $this->assertSame(27, $second['lists']['overall']['players'][1]['position']);
+        $last = $this->build($snapshot, selected: $selected, filters: ['rating_page' => 999]);
+        $this->assertSame([51, 52], array_column($last['lists']['overall']['players'], 'id'));
+        $this->assertSame(52, $last['lists']['overall']['players'][1]['position']);
+        $this->assertSame($first['summary'], $last['summary']);
+
+        $html = view('frontend.my-tennis.rating-top-ten', ['ratingTopTen' => $second, 'ratingPlayer' => $selected,
+            'ratingHistory' => ['month' => 3, 'scope' => 'all', 'scale' => 'full']])->render();
+        $this->assertStringContainsString('Showing 26–50 of 52 players', $html);
+        $this->assertStringNotContainsString('Top 10', $html);
+        $document = new \DOMDocument();
+        @$document->loadHTML('<?xml encoding="utf-8" ?>'.$html);
+        $links = (new \DOMXPath($document))->query('//nav[@aria-label="Rating list pages"]//a[@data-rating-link]');
+        $this->assertSame(2, $links->length);
+        foreach ($links as $index => $link) {
+            parse_str(parse_url($link->getAttribute('href'), PHP_URL_QUERY), $query);
+            $this->assertSame(['month' => '3', 'scope' => 'all', 'scale' => 'full', 'rating_age' => 'u9', 'rating_gender' => 'boys', 'rating_level' => 'overall', 'rating_page' => $index === 0 ? '1' : '3'], $query);
+        }
+
+        DB::table('series')->where('id', 1)->update(['leaderboard_published' => false]);
+        $revoked = $this->build($snapshot, selected: $selected, filters: ['rating_page' => 2]);
+        $this->assertSame([], $revoked['lists']['overall']['players']);
+        $this->assertSame(0, $revoked['lists']['overall']['pagination']['total']);
+        $denied = $this->build($snapshot, allowed: false, selected: $selected, filters: ['rating_page' => 2]);
+        $this->assertFalse($denied['visible']);
+        $this->assertSame([], $denied['lists']);
     }
 
     public function test_tied_displayed_scores_share_positions_and_lists_are_bounded_to_ten(): void
