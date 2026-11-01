@@ -32,6 +32,7 @@ class PlayerPlusEntitlement
     {
         return PlayerPlusMembership::query()->where('starts_at', '<=', now())->where('ends_at', '>', now())
             ->whereHas('order', fn ($query) => $query->where('status', 'completed')->where('pay_status', true)
-                ->where('payfast_paid', true)->whereNotNull('activated_at'));
+                ->where('payfast_paid', true)->whereNotNull('activated_at')
+                ->whereColumn('player_plus_orders.player_id', 'player_plus_memberships.player_id'));
     }
 }

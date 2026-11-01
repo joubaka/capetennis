@@ -28,7 +28,7 @@ class PlayerRatingProfileDirectory
         ];
     }
 
-    public function build(string $ageGroup, string $gender, string $search, string $comparisonGroup = '', string $sort = 'grouped', ?int $perPage = null, string $ageScope = 'group'): array
+    public function build(string $ageGroup, string $gender, string $search, string $comparisonGroup = '', string $sort = 'grouped', ?int $perPage = null, string $ageScope = 'group', string $region = ''): array
     {
         $today = CarbonImmutable::today('Africa/Johannesburg');
         $year = $today->year;
@@ -105,6 +105,17 @@ class PlayerRatingProfileDirectory
         }
         unset($savedRatings);
         $query->whereIn('id', array_keys($ratings));
+        $affiliations = app(PlayerRatingRegionAffiliations::class);
+        $regionOptions = $affiliations->options(array_keys($ratings));
+        $region = trim($region);
+        if ($region !== '') {
+            $canonicalRegion = collect($regionOptions)->first(fn ($option) => mb_strtolower($option) === mb_strtolower($region));
+            if ($canonicalRegion === null) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['region' => 'Choose an available recorded region.']);
+            }
+            $region = $canonicalRegion;
+            $affiliations->filter($query, $region);
+        }
         $headlines = [];
         foreach ($ratings as $id => &$saved) {
             // Match the no-context profile headline/name badge, not the highest historical score.
@@ -211,6 +222,6 @@ class PlayerRatingProfileDirectory
             foreach ($section['columns'] as $column) $column->through($withRegions);
         }
         unset($section);
-        return compact('ageScope', 'includeYounger', 'ageScopeLabel', 'perPage', 'sections', 'groupedOrder', 'players', 'snapshot', 'year', 'ageGroup', 'gender', 'search', 'unified', 'combined', 'sort', 'scoreOrder', 'diagnosticOrder', 'ageOrder', 'sharedCoverage', 'connectionPlan', 'comparisonGroup', 'withinGroup');
+        return compact('region', 'regionOptions', 'ageScope', 'includeYounger', 'ageScopeLabel', 'perPage', 'sections', 'groupedOrder', 'players', 'snapshot', 'year', 'ageGroup', 'gender', 'search', 'unified', 'combined', 'sort', 'scoreOrder', 'diagnosticOrder', 'ageOrder', 'sharedCoverage', 'connectionPlan', 'comparisonGroup', 'withinGroup');
     }
 }

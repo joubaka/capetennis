@@ -195,7 +195,9 @@ class AccountStatementService
                 return $row;
             })->values();
         if ($category !== 'all') {
-            $rows = $rows->filter(fn ($r) => ($category === 'clothing') === str_starts_with($r['checkout'], 'C'));
+            $rows = $rows->filter(fn ($r) => $category === 'clothing'
+                ? str_starts_with($r['checkout'], 'C')
+                : ! str_starts_with($r['checkout'], 'C') && ! str_starts_with($r['checkout'], 'P'));
         }
         if ($player !== '') {
             $rows = $rows->filter(fn ($r) => collect($r['details'])->contains(fn ($d) => mb_stripos($d['player'], $player) !== false));

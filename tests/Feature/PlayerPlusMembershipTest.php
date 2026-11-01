@@ -136,6 +136,8 @@ class PlayerPlusMembershipTest extends TestCase
         $statement = $service->build($order->user, now()->subDay()->toDateString(), now()->addDay()->toDateString());
         $this->assertSame(49900, $statement['paid']);
         $this->assertSame('Player Plus / PayFast', $statement['rows']->sole()['method']);
+        $entryOnly = $service->build($order->user, now()->subDay()->toDateString(), now()->addDay()->toDateString(), '', 'entry');
+        $this->assertCount(0, $entryOnly['rows']);
         $linkedParent = User::factory()->create();
         $linkedParent->players()->attach($order->player_id);
         $other = $service->build($linkedParent, now()->subDay()->toDateString(), now()->addDay()->toDateString());
