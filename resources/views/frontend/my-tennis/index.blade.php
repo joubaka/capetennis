@@ -445,7 +445,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const url = new URL(form.action);
     const params = new URLSearchParams(new FormData(form));
     // A second form may still contain hidden values from the previous response.
-    // Keep the latest requested choices while another filter update is pending.
+    // Keep the latest choices while updating and after a failed request.
     const latest = new URL(lastUrl, form.action).searchParams;
     latest.forEach((value, key) => {
       const preserve = form.elements.namedItem(key)?.type === 'hidden'
